@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>meu-bot</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="drag-region"></div>
+    <h1>meu-bot</h1>
+    <span id="key-pill" class="pill pill-on">…</span>
+    <span id="host-pill" class="pill pill-neutral">VM: …</span>
+    <span id="status-pill" class="pill pill-neutral" hidden></span>
+    <div class="spacer"></div>
+    <button id="btn-new" class="btn btn-ghost" type="button">Nova conversa</button>
+    <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
+  </header>
+
+  <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+  <main id="panels" class="panels"></main>
+
+  <footer class="composer">
+    <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
+    <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
+  </footer>
+
+  <dialog id="settings-dialog">
+    <form id="settings-form" method="dialog">
+      <h2>Configurações</h2>
+      <label>
+        Host SSH da VM
+        <input id="ssh-host" type="text" list="ssh-hosts" autocomplete="off" placeholder="grokbot-1" />
+        <datalist id="ssh-hosts"></datalist>
+      </label>
+      <p id="ssh-host-hint" class="hint">Hosts lidos do seu ~/.ssh/config. Também aceita digitar um hostname. O login precisa funcionar sem senha.</p>
+      <label>
+        Modelo do backend
+        <select id="backend-model">
+          <option value="rene-dm">rene-dm · agente René com ferramentas (pode levar minutos)</option>
+          <option value="rene">rene · agente René com MCP completo</option>
+          <option value="claudecode">claudecode · chat puro, rápido</option>
+        </select>
+      </label>
+      <label>
+        Porta do backend na VM
+        <input id="backend-port" type="number" min="1" max="65535" placeholder="8080" />
+      </label>
+      <p class="hint">A chave do backend é lida da própria VM na hora de conectar. Nada a configurar aqui.</p>
+      <p id="settings-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <div class="spacer"></div>
+        <button id="btn-cancel" class="btn btn-ghost" type="button">Cancelar</button>
+        <button id="btn-save" class="btn btn-primary" type="submit">Salvar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

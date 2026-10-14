@@ -1,0 +1,26 @@
+{
+  "name": "meu-bot",
+  "productName": "meu-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot de mesa pessoal: chat com Claude e execução aprovada na sua VM",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "tsc -p tsconfig.renderer.json && cp src/renderer/index.html src/renderer/style.css dist/renderer/",
+    "build": "rm -rf dist && npm run build:main && npm run build:renderer",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
+    "package": "npm run build && node scripts/package.mjs",
+    "fuses": "node scripts/fuses.mjs",
+    "dist": "npm run package && npm run fuses"
+  },
+  "devDependencies": {
+    "@electron/fuses": "2.1.3",
+    "@electron/packager": "20.3.0",
+    "@types/node": "24.19.2",
+    "electron": "44.7.2",
+    "typescript": "7.0.2"
+  }
+}
