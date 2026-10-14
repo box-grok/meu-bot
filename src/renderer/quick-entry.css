@@ -1,0 +1,12 @@
+:root { --bg: #ffffff; --fg: #1c1f23; --muted: #6a737d; --line: #dfe3e8; --accent: #2f6fed; --bad: #c62828; --chat-font: 14px; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1a1d23; --fg: #e8eaed; --muted: #9aa3ad; --line: #2a2f37; --accent: #6c9cff; --bad: #ff6b6b; } }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; }
+body { font: 14px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; color: var(--fg); -webkit-app-region: drag; }
+.card { height: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+textarea { -webkit-app-region: no-drag; font: inherit; font-size: var(--chat-font); resize: none; border: none; outline: none; background: transparent; color: var(--fg); flex: 1; }
+textarea:disabled { opacity: .6; }
+.foot { display: flex; gap: 10px; align-items: center; font-size: 11px; }
+.hint { color: var(--muted); }
+.error { color: var(--bad); }
+.error[hidden] { display: none; }

@@ -3,11 +3,18 @@
   "compilerOptions": {
     "module": "ES2022",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": [],
     "rootDir": "src",
     "outDir": "dist",
     "verbatimModuleSyntax": true
   },
-  "include": ["src/renderer", "src/shared/ipc.ts"]
+  "include": [
+    "src/renderer",
+    "src/shared/ipc.ts"
+  ]
 }

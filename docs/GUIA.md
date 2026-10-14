@@ -323,6 +323,98 @@ meu-bot/
 
 ---
 
+## Passo 6b: v2, funcionalidades inspiradas no Hermes
+
+Três levantamentos do código do `hermes-agent` (app de mesa, gestão de contexto, transporte com
+provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementadas em ondas.
+
+### Onda A — fundações, Markdown, modelo por conversa, fonte e tema
+- `src/shared/ipc.ts` virou **só tipos**; `BACKEND_MODELS` mora em `settings.ts`. Isso acabou com a
+  dupla emissão de `dist/shared/ipc.js` (CJS pelo main, ESM pelo renderer).
+- `scripts/vendor.mjs` copia `marked`, `DOMPurify` e `highlight.js` (pacote `@highlightjs/cdn-assets`,
+  que é ESM autônomo; o `highlight.js` do npm não roda no browser sem bundler) para `dist/renderer/vendor/`.
+  Tipos locais em `src/renderer/vendor/*.d.ts`. CSP inalterada: temas do hljs como `<link>`.
+- `src/renderer/lib/markdown.ts`: `marked` com `renderer.code` → `DOMPurify.sanitize(RETURN_DOM_FRAGMENT,
+  FORBID_TAGS img/svg/form…)` → links só `https?://` abrindo via `shell:open-external`.
+- Modelo por conversa (`conv.model`, IPC `chat:set-model`); fonte e tema (`nativeTheme.themeSource`,
+  `--chat-font`); `backgroundColor` da janela segue o tema pra não piscar.
+- `npm test` roda `node --test scripts/tests/` sobre o `dist/` (renderer como ESM via
+  `dist/renderer/package.json {"type":"module"}`; main como CJS com stub do `electron`).
+
+### Onda B — conversas
+- Modelo: `archived`, `openAsTab`, `branchedFrom`. **Fechar aba só fecha a aba**; a conversa fica na
+  lista. Excluir é explícito e pede confirmação.
+- `src/renderer/lib/sidebar.ts`: busca normalizada (NFD, sem acento) e `groupByDate` com cabeça
+  "Recentes" cortada no primeiro intervalo ≥ 30 min (nunca atravessando 8 h), depois Hoje / Ontem /
+  Esta semana / Mais antigas.
+- `src/main/export.ts`: Markdown legível ou JSON via `dialog.showSaveDialog`. Ramificar copia o
+  histórico até a mensagem escolhida (`branchConversation`).
+- Menu de contexto nativo (`Menu.popup` com callback adiado pra o clique vencer). Notificações:
+  o renderer decide (janela sem foco ou aba inativa) e o clique ativa a conversa.
+- `src/renderer/lib/palette-rank.ts`: escada exato > prefixo > prefixo de palavra > substring >
+  termos espalhados > subsequência > só keywords.
+
+### Onda C — contexto e memória
+- `src/main/context.ts`: `planContext(messages, summary, budget)` → `full` (cabe no orçamento),
+  `summary` (cabeça + resumo + turnos novos + cauda) ou `truncated` (cabeça + cauda). Cauda por tokens
+  (chars/4) com ≥ 2 turnos do usuário, sempre começando em `user`. Resumo entra como mensagem `user`
+  com prefixo "[RESUMO DE CONTEXTO — só referência]".
+- Resumo gerado em **fila serial de background** com `claudecode`, prompt fixo em pt-BR com 8 seções,
+  atualização incremental ("RESUMO ANTERIOR + NOVOS TURNOS"), validado por ≥ 4 seções; falha mantém o
+  anterior. Indicador "contexto: resumo + N de M msgs · resumindo…" acima da caixa de texto.
+- `src/main/memory.ts`: `memory.json` com `perfil` (≤ 1375) e `notas` (≤ 2200), injetado como `system`
+  inicial; editor em Configurações > Memória; extração a cada N turnos via JSON `{ops:[…]}` com parse
+  tolerante e `applyOps` respeitando limites.
+
+### Onda D — túnel e streaming no cliente
+- `src/main/tunnel.ts`: `ssh -M -N -f` com `ControlMaster=yes`, `ControlPersist=600`, socket em
+  `/tmp/meu-bot-<uid>/cm-%C` (userData passa do limite de 104 bytes). Chave, forward e checagens são
+  clientes `ControlMaster=no` do mesmo master. Estados `idle | connecting | ready | degraded | error`.
+  Liveness = `-O check` **mais** um `ssh … true` real. `powerMonitor`: suspend marca suspeito,
+  resume/unlock revalidam. Forward morto reinicia (orçamento 5) antes de refazer o master.
+- Pegadinhas descobertas: pelo mux, o `ssh -N` é uma sessão do master e **sai quando o stdin fecha**
+  (o filho mantém um pipe de stdin aberto); quem anuncia o listener é o master, então "pronto" = porta
+  local aceitando conexão; o forward persiste no master depois que o cliente sai, por isso `-O cancel`
+  no teardown.
+- `backend.ts`: `httpPostStream` pede `Accept: text/event-stream` + `X-Stream-Mode: live`; se vier JSON
+  (backend antigo, 401, 503) usa o caminho normal; se vier SSE, emite `chat:delta` por chunk. Timeout
+  total 2/10 min **e** ocioso 60 s. Botão **Parar** (`chat:cancel` → `AbortController` → `req.destroy`);
+  resposta parcial é mantida com marca "[interrompido]".
+
+### Onda E — backend na VM (opt-in, Hermes intacto)
+Código versionado em `backend-vm/` neste repo e instalado em
+`grokbot-1:~/.hermes/agente-rene/backend-sdk-claude/` (backup `services/openai-compat.js.bak-<TS>`).
+- `services/openai-compat.js`: o loop de coleta (retry 3x, entrega após `error_max_turns`) virou
+  `_collectResponse()`; os caminhos sem cabeçalho são idênticos ao histórico (testado byte a byte no
+  jest: não-stream e stream legado de um chunk só).
+- **Streaming ao vivo**: `stream: true` + `X-Stream-Mode: live` (ou `OPENAI_COMPAT_LIVE_STREAM_DEFAULT=1`)
+  → `includePartialMessages`, cabeçalhos SSE só no primeiro texto (erro antes vira 401/503 JSON),
+  deltas `content_block_delta`, `"\n\n"` entre blocos separados por ferramentas, `: ping` a cada 15 s,
+  `finish_reason: "stop"`, chunk de `usage`, `[DONE]`. Cliente que desconecta aborta a CLI
+  (`res.on('close')`; em `req`, no Node 16+, `close` dispara ao fim do corpo do pedido e abortaria tudo).
+- **Retomada de sessão**: `X-Conversation-Id` (+ `X-Conversation-Seen: N` = quantas mensagens
+  não-system do body o servidor já conhece). `services/session-map.js` guarda
+  `data/openai-compat-sessions.json` (chave `modelo:conversa` → `sessionId`, `cwd`, `mcpConfigPath`,
+  `sysHash`, TTL 6 h) e confere o `.jsonl` em `~/.claude/projects/<cwd com / e . → ->/`. Com tudo
+  válido, `prompt` = só as mensagens novas e `--resume`; senão achata como sempre. Resposta leva
+  `X-Session-Resumed: true|false`. Lock em memória por conversa.
+- Teste: `tests/openai-compat-live.test.js` (CLI mockado); suíte completa na VM: 14 suítes, 161 testes.
+  Deploy: `cp` dos 3 arquivos, `node --check`, `bash scripts/run-tests.sh`, `pm2 restart hermes-mythos-lucas`.
+  Smoke: não-stream igual; stream legado 4 linhas `data:`; live com deltas reais (primeiro em 1,4 s);
+  duas chamadas com `X-Conversation-Id` → a segunda lembrou o conteúdo com `X-Session-Resumed: true`.
+- Cliente: `context.ts` marca `absIndex` em cada mensagem enviada e `alreadySeenPrefix()` calcula o
+  `X-Conversation-Seen`; `conv.serverSeen` persiste; com `resumed=true` o cliente não gera resumo.
+
+### Onda F — entrada rápida global
+- `src/main/quickEntry.ts`: janela `frame:false`, `alwaysOnTop(floating)`, `type:"panel"`,
+  `hiddenInMissionControl`, visível em todos os espaços, posicionada a 22% do topo do display do
+  cursor, esconde no `blur`. `globalShortcut` com `parseAccelerator` (`src/main/accelerator.ts`:
+  exige modificador, proíbe Escape). Status `registered | taken | invalid | disabled` nas Configurações,
+  com gravador de atalho (pressione a combinação; Backspace limpa).
+- Relay: `quick:submit` → main → `ui:quick-submit {correlationId, text}` na janela principal (fila até
+  as abas restaurarem; aba ativa ou nova se ocupada) → `quick:ack`; timeout 8 s; a janela rápida some
+  e a principal vem à frente.
+
 ## Passo 7: empacotar e travar os fuses
 
 ```bash
@@ -360,6 +452,8 @@ assinatura; no nosso app, decidimos na hora de empacotar.
 | "Nova conversa" apagava o histórico | Uma conversa por janela | Uma conversa por aba, mapa por id no processo principal |
 | Backend: `401 invalid api key` pelo túnel | `tr -d '"\x27 '` no Linux apagava os caracteres `x`, `2`, `7` da chave | Limpeza de aspas movida pro Node |
 | `ECONNRESET` ao salvar Configurações durante uma resposta | `settings:set` fechava o túnel SSH sempre, cortando o pedido em andamento | Trocar modelo não mexe no túnel; host/porta novos são recusados enquanto houver resposta pendente |
+| Forward SSH pelo mux saía em 400 ms com código 0 | Pelo ControlMaster, `ssh -N` é sessão do master e termina quando o stdin fecha | Filho do forward mantém um pipe de stdin aberto; "pronto" = porta local aceitar conexão |
+| Teste jest do backend travava e abortava todo stream ao vivo | `req.on('close')` no Node 16+ dispara ao fim do corpo do pedido | Ouvir `res.on('close')` |
 | `ssh: connect ... Operation timed out` intermitente | VM oscilando no Tailscale (endpoint público mudou, "offline, last seen 1m") | Retentativas com backoff + `ConnectTimeout=15`; mensagem clara |
 
 ---
@@ -397,3 +491,69 @@ Depuração rápida do meu-bot:
 - `~/Desktop/meu-bot` ainda não é um repositório git. `.gitignore` já exclui `node_modules`, `dist` e `out`.
 - A versão com aprovação por comando (ferramentas `run_on_vm` via API da Anthropic) foi removida.
   Se quiser de volta, está no histórico desta sessão e no plano em `~/.claude/plans/lovely-painting-badger.md`.
+
+## Backend local no Colima (`backend-colima/`)
+
+Quando a `grokbot-1` fica inacessível, o meu-bot usa a VM do Colima (host `colima` do
+`~/.ssh/config`, incluído pelo Lima) com um backend próprio, sem dependências npm:
+
+- `backend-colima/server.js`: `node:http` puro. Mesmo contrato do backend da grokbot-1
+  (`/v1/models`, `/v1/chat/completions`, Bearer, SSE legado, `X-Stream-Mode: live`,
+  `X-Conversation-Id`/`X-Conversation-Seen` → `X-Session-Resumed`). Modelos: `claudecode` (chat,
+  8 turnos, `--permission-mode default`) e `agente` (30 turnos, `--dangerously-skip-permissions`,
+  cwd `~/agent-workspace`: edita arquivos e roda comandos na VM do Colima sem perguntar).
+  Spawna `~/.local/bin/claude -p --output-format stream-json --include-partial-messages` em
+  `~/chat-workspace`; `res.on('close')` aborta a CLI.
+- `backend-colima/session-map.js`: cópia do mapa de sessões da VM remota.
+- `backend-colima/meu-bot-backend.service`: unidade systemd de usuário (linger já ativo na VM).
+- `backend-colima/install.sh`: baixa Node 20 (`.tar.gz`; a VM não tem `xz`) em `~/.local/node`,
+  copia os arquivos para `~/.hermes/agente-rene/backend-sdk-claude` (mesmo caminho que o app
+  procura o `.env`), gera `OPENAI_COMPAT_KEY` se não existir e sobe o serviço.
+
+Atualizar: `scp backend-colima/* colima:~/backend-colima/ && ssh colima bash ~/backend-colima/install.sh`.
+Logs: `ssh colima journalctl --user -u meu-bot-backend -f`. A VM do Colima tem 4 GB; cada CLI do
+Claude usa ~250 MB. Se faltar memória: `colima stop && colima start --cpu 4 --memory 8`.
+O Claude Code dentro da VM precisa estar logado (`claude /login` lá) — o backend devolve 401
+`claude_auth` quando a CLI responde "Not logged in".
+
+## Máquinas (hosts) por conversa
+
+- Cada conversa guarda `host` (alias do `~/.ssh/config`) desde a criação; o seletor de modelo troca
+  só o modelo. "Máquina padrão" nas Configurações vale apenas para conversas novas. Para usar outra
+  máquina, mude o padrão e abra uma aba nova; as antigas continuam na máquina em que nasceram.
+- `src/main/tunnel.ts` mantém um túnel por host (`Map<host, HostTunnel>`: master, forward, estado,
+  suspeita pós-sleep). `backend:status` leva `host`; o renderer guarda o último estado por host e
+  mostra o da aba ativa. Com abas em máquinas diferentes, o badge da aba vira "máquina · modelo".
+- Trocar a porta fecha todos os túneis (recusado com resposta em andamento). Trocar o host padrão
+  não mexe em túnel nenhum.
+- Host sem backend: `fetchBackendKey` lança `TunnelFatalError` (sem retry) com a instrução de
+  instalar pelas Configurações.
+- `src/main/hostProbe.ts`: `probeHost` roda um script por ssh avulso (ControlMaster=no) e devolve
+  usuário, SO, arquitetura, backend instalado/ouvindo, caminho do `claude`, login (procura
+  `oauthAccount` em `~/.claude.json`), Node e systemd. `installBackend` copia `backend-colima/`
+  (em `Contents/Resources/backend-colima` no .app, via `extraResource`) para `~/.meu-bot-install`
+  no host e roda `install.sh`, com progresso por `backend:install-progress`.
+- `install.sh` é idempotente: usa Node existente (>= 18) ou baixa o 20 em `~/.local/node`; unidade
+  systemd de usuário (com linger) ou, como root, unidade do sistema em `/etc/systemd/system`;
+  grava `CLAUDE_BIN` no `.env`; termina com um GET em `/v1/models`.
+- Estado das Configurações por host: "✓ backend instalado e ouvindo", "⚠ Claude logado, sem backend"
+  (botão Instalar), "✗ Claude não logado" (instruções `ssh -t host claude` + `/login`), "✗ inacessível".
+
+## Máquina "local" (este Mac, sem SSH)
+
+- Host especial `local`, primeiro do seletor ("este Mac (sem SSH)"). `src/main/localBackend.ts` copia
+  `server.js` e `session-map.js` do bundle para `userData/backend-local`, gera `.env` (chave própria,
+  porta fixa 8790 porque o Lima do Colima costuma encaminhar a 8080 para o Mac) e sobe o Node como
+  processo filho; log em `userData/backend-local.log`. Workspaces em `~/meu-bot-workspace/{chat,agente}`.
+- Apps de GUI no macOS têm PATH mínimo: `findNode`/`findClaude` procuram em Homebrew, /usr/local,
+  `~/.local/bin`, `~/.local/node`, nvm e, por fim, num `zsh -lc`. Login = `oauthAccount` em `~/.claude.json`.
+- O managed settings deste Mac já põe `bypassPermissions` como padrão, então até o `claudecode` roda
+  sem pedir permissão aqui; o `agente` é explícito com `--dangerously-skip-permissions`.
+- O processo morre com o app (`will-quit` → `closeTunnel()` → `stopLocalBackend`); se morrer sozinho,
+  o host fica `degraded` e a próxima mensagem sobe de novo.
+
+## Modelo `agente` na grokbot-1
+
+- `backend-vm/services/openai-compat.js` ganhou o modelo `agente` (bypassPermissions, 30 turnos, cwd
+  `~/agent-workspace`, sem bridge-rene nem MCP dedicado). `backend-vm/deploy-agente.sh` faz backup,
+  copia, roda os testes, `pm2 restart hermes-mythos-lucas` e um smoke que cria um arquivo.

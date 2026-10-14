@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>meu-bot · entrada rápida</title>
+  <link rel="stylesheet" href="quick-entry.css" />
+</head>
+<body>
+  <div class="card">
+    <textarea id="qe-input" rows="2" placeholder="Mande algo pro meu-bot… (Enter envia · Esc fecha)"></textarea>
+    <div class="foot">
+      <span id="qe-hint" class="hint">Vai pra conversa ativa do meu-bot</span>
+      <span id="qe-error" class="error" hidden></span>
+    </div>
+  </div>
+  <script type="module" src="quick-entry.js"></script>
+</body>
+</html>

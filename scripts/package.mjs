@@ -14,6 +14,7 @@ const paths = await packager({
   icon: "assets/icon.icns",
   appCategoryType: "public.app-category.productivity",
   prune: true,
-  ignore: [/^\/hermes-agent($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/],
+  extraResource: ["backend-colima"],
+  ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/],
 });
 console.log("Empacotado em:", paths.join(", "));

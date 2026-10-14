@@ -10,7 +10,10 @@ próprio e a VM sob seu controle.
 ## Requisitos
 
 - macOS, Node.js 24+ e npm.
-- Acesso SSH sem senha à VM, com um alias no `~/.ssh/config` (padrão: `grokbot-1`).
+- Backend em qualquer máquina com Claude Code logado, inclusive este Mac sem SSH (`local`): cada
+  conversa fica presa à máquina em que nasceu (`local`, `colima`, `grokbot-1`, `agente-root`…). Configurações mostram o estado de cada host
+  e instalam o backend (`backend-colima/`) com um clique.
+- Acesso SSH sem senha à VM, com um alias no `~/.ssh/config` (padrão: `colima`, a VM local do Colima; `grokbot-1` para a VM remota).
 - Na VM, o backend `~/.hermes/agente-rene/backend-sdk-claude` rodando na porta 8080 e com
   `OPENAI_COMPAT_KEY` no `.env`. O app lê essa chave pela própria conexão SSH, em memória.
 
@@ -24,6 +27,24 @@ npm run dev
 Na primeira mensagem o app busca a chave na VM e abre um túnel SSH para a porta do backend.
 O selo no topo mostra o estado: "buscando chave…", "abrindo túnel…", "túnel ativo · modelo".
 
+## Funcionalidades (v2)
+
+- **Markdown** nas respostas, com blocos de código realçados e botão Copiar; links abrem no navegador.
+- **Modelo por conversa** no seletor ao lado da caixa de texto (`claudecode`, `rene-dm`, `rene`).
+- **Lista lateral** (☰ ou Cmd+B) com todas as conversas agrupadas por data, busca sem acento, arquivar.
+- **Exportar** (.md/.json) e **ramificar** a partir de qualquer mensagem (ícones no hover da mensagem: copiar e ramificar, com tooltip).
+- **Menu de contexto** nas abas (botão direito) e **notificações** quando a resposta termina em segundo plano.
+- **Paleta de comandos** (⌘K): conversas, ações e configurações.
+- **Fonte e tema** nas Configurações.
+- **Resumo contínuo**: acima do orçamento de contexto, o meio da conversa vira um resumo gerado pelo
+  `claudecode` em background; **memória** local (perfil e notas) injetada em toda mensagem e
+  preenchida automaticamente a cada N turnos.
+- **Túnel SSH com ControlMaster** (uma autenticação, clientes leves), revalidação ao acordar o Mac,
+  botão **Parar** para cancelar uma resposta.
+- **Streaming real** e **retomada de sessão** no backend da VM (opt-in por cabeçalho; código em
+  `backend-vm/`). O texto chega token a token e o Claude Code lembra da conversa sem reler tudo.
+- **Entrada rápida**: Cmd+Shift+Espaço de qualquer app abre uma janelinha; Enter manda pra conversa ativa.
+
 ## Abas
 
 "Nova conversa" (Cmd+T) abre uma aba nova e mantém as anteriores vivas, cada uma com o próprio
@@ -34,8 +55,9 @@ fechar uma aba apaga aquela conversa. Dois cliques no título da aba renomeiam; 
 ## Configurações
 
 - **Host SSH da VM**: lista com os hosts do seu `~/.ssh/config`; também aceita digitar.
-- **Modelo do backend**: `rene-dm` (agente René com ferramentas, pode levar minutos),
-  `rene` (MCP completo) ou `claudecode` (chat puro, rápido).
+- **Modelo do backend**: `claudecode` (chat puro, rápido; padrão), `agente` (só no Colima:
+  ferramentas com `--dangerously-skip-permissions` em `~/agent-workspace`, pode levar minutos),
+  `rene-dm` (agente René com ferramentas) ou `rene` (MCP completo), estes dois só na `grokbot-1`.
 - **Porta do backend na VM**: padrão 8080.
 
 Configuração em `~/Library/Application Support/meu-bot/settings.json`. Transcripts em

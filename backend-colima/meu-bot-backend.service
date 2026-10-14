@@ -1,0 +1,19 @@
+[Unit]
+Description=meu-bot backend (OpenAI-compatível sobre a CLI do Claude Code)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__DEST__
+Environment=HOME=__HOME__
+Environment=OPENAI_COMPAT_SESSIONS_PATH=__DEST__/data/openai-compat-sessions.json
+Environment=PATH=__NODEDIR__:__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__NODE__ __DEST__/server.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+__USERLINE__
+
+[Install]
+WantedBy=__TARGET__

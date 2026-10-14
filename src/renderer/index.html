@@ -7,6 +7,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>meu-bot</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="vendor/hljs-github.css" media="(prefers-color-scheme: light)" />
+  <link rel="stylesheet" href="vendor/hljs-github-dark.css" media="(prefers-color-scheme: dark)" />
 </head>
 <body>
   <header class="topbar">
@@ -16,14 +18,34 @@
     <span id="host-pill" class="pill pill-neutral">VM: …</span>
     <span id="status-pill" class="pill pill-neutral" hidden></span>
     <div class="spacer"></div>
+    <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
+    <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-new" class="btn btn-ghost" type="button">Nova conversa</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
   </header>
 
-  <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
-  <main id="panels" class="panels"></main>
+  <div class="body">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-head">
+        <input id="sidebar-search" type="search" placeholder="Buscar conversas…" autocomplete="off" />
+        <label class="check"><input id="sidebar-archived" type="checkbox" /> arquivadas</label>
+      </div>
+      <div id="sidebar-list" class="sidebar-list"></div>
+    </aside>
+    <div class="content">
+      <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+      <main id="panels" class="panels"></main>
+    </div>
+  </div>
 
+  <div id="ctx-line" class="ctx-line" hidden></div>
   <footer class="composer">
+    <select id="model-select" class="model-select" title="Modelo desta conversa">
+      <option value="claudecode">claudecode · chat rápido</option>
+      <option value="agente">agente · ferramentas sem pedir permissão (Colima)</option>
+      <option value="rene-dm">rene-dm · agente com ferramentas</option>
+      <option value="rene">rene · agente com MCP completo</option>
+    </select>
     <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
     <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
   </footer>
@@ -32,24 +54,73 @@
     <form id="settings-form" method="dialog">
       <h2>Configurações</h2>
       <label>
-        Host SSH da VM
-        <input id="ssh-host" type="text" list="ssh-hosts" autocomplete="off" placeholder="grokbot-1" />
-        <datalist id="ssh-hosts"></datalist>
+        Máquina padrão para novas conversas (host SSH)
+        <select id="ssh-host"></select>
+        <input id="ssh-host-custom" type="text" autocomplete="off" placeholder="hostname ou usuario@host" hidden />
       </label>
-      <p id="ssh-host-hint" class="hint">Hosts lidos do seu ~/.ssh/config. Também aceita digitar um hostname. O login precisa funcionar sem senha.</p>
+      <p id="ssh-host-hint" class="hint">Hosts lidos do seu ~/.ssh/config. Cada conversa fica presa à máquina em que nasceu; mudar aqui só vale para conversas novas.</p>
+      <p id="host-status" class="host-status" hidden></p>
+      <button type="button" id="install-backend" class="btn btn-ghost" hidden>Instalar backend neste host</button>
+      <pre id="install-log" class="install-log" hidden></pre>
       <label>
-        Modelo do backend
+        Modelo padrão para novas conversas
         <select id="backend-model">
+          <option value="claudecode">claudecode · chat puro, rápido</option>
+          <option value="agente">agente · ferramentas sem pedir permissão, só no Colima (pode levar minutos)</option>
           <option value="rene-dm">rene-dm · agente René com ferramentas (pode levar minutos)</option>
           <option value="rene">rene · agente René com MCP completo</option>
-          <option value="claudecode">claudecode · chat puro, rápido</option>
         </select>
       </label>
+      <p class="hint">Cada conversa pode trocar o próprio modelo no seletor ao lado da caixa de texto.</p>
       <label>
         Porta do backend na VM
         <input id="backend-port" type="number" min="1" max="65535" placeholder="8080" />
       </label>
       <p class="hint">A chave do backend é lida da própria VM na hora de conectar. Nada a configurar aqui.</p>
+      <div class="row">
+        <label>
+          Tamanho da fonte
+          <input id="font-size" type="number" min="12" max="20" />
+        </label>
+        <label>
+          Tema
+          <select id="theme">
+            <option value="system">Sistema</option>
+            <option value="light">Claro</option>
+            <option value="dark">Escuro</option>
+          </select>
+        </label>
+      </div>
+      <label class="check"><input id="notifications" type="checkbox" /> Avisar com notificação quando uma resposta terminar em segundo plano</label>
+      <div class="row">
+        <label>
+          Orçamento de contexto (tokens)
+          <input id="context-budget" type="number" min="4000" max="200000" step="1000" />
+        </label>
+        <label>
+          Extrair memória a cada N turnos (0 desliga)
+          <input id="memory-every" type="number" min="0" max="100" />
+        </label>
+      </div>
+      <h3>Entrada rápida</h3>
+      <label class="check"><input id="quick-enabled" type="checkbox" /> Janela flutuante por atalho global</label>
+      <div class="row">
+        <label>
+          Atalho <span id="quick-status" class="count"></span>
+          <input id="quick-shortcut" type="text" autocomplete="off" placeholder="CommandOrControl+Shift+Space" />
+        </label>
+      </div>
+      <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
+      <h3>Memória</h3>
+      <p class="hint">Fatos permanentes enviados em toda mensagem. O app também preenche sozinho a cada N turnos.</p>
+      <label>
+        Perfil do usuário <span id="perfil-count" class="count"></span>
+        <textarea id="memory-perfil" rows="3" placeholder="- Nome, papel, preferências de resposta…"></textarea>
+      </label>
+      <label>
+        Notas <span id="notas-count" class="count"></span>
+        <textarea id="memory-notas" rows="5" placeholder="- Convenções, ambiente, decisões permanentes…"></textarea>
+      </label>
       <p id="settings-error" class="error" hidden></p>
       <div class="dialog-actions">
         <div class="spacer"></div>
@@ -58,6 +129,13 @@
       </div>
     </form>
   </dialog>
+
+  <div id="palette" class="palette" hidden role="dialog" aria-label="Paleta de comandos">
+    <div class="palette-card">
+      <input id="palette-input" type="text" placeholder="Buscar conversas, ações e configurações…" autocomplete="off" />
+      <ul id="palette-list" role="listbox"></ul>
+    </div>
+  </div>
 
   <script type="module" src="renderer.js"></script>
 </body>
