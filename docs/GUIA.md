@@ -598,7 +598,7 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 ## Atalhos na área de trabalho (`src/main/shortcuts.ts`)
 
 - "meu-bot <host>.app" é um applet AppleScript (`osacompile`) que roda o binário do app com
-  `--host=<host>` (ou `--picker` para "meu-bot seletor.app"). Com o app aberto, isso vira
+  `--host=<host>`. Com o app aberto, isso vira
   `second-instance` na instância principal, que abre a janela da máquina direto (`openFromArgs`).
   `open -a` não serviria: num app em execução o macOS descarta os `--args`.
 - Ícone: janela offscreen do Electron renderiza um quadrado arredondado com cor e emoji sorteados
@@ -624,3 +624,23 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - A `grokbot-1` é um contêiner (pod) da infraestrutura do Grok Bot: PID 1 `tini`/`pod-daemon`, overlay em
   `/var/lib/isod`, IP 172.30.0.2 atrás de NAT, sem systemd nem sudo, `virtio_balloon` do host pausa a
   máquina. O alívio só alcança processos nossos e o PM2.
+
+## Sincronizar SSH e alívio pelo seletor (14 out 2026)
+
+- `config/ssh-hosts.conf` é o modelo versionado das máquinas (formato do `~/.ssh/config`, sem segredo).
+  Botão ⇅ "sincronizar ssh" no rodapé do seletor → `picker:sync-ssh` → `sshSync.ts`: lê o modelo
+  (`Resources/config/` no .app), planeja com `ssh-sync.ts` (puro, testado: Include normalizado com `~`,
+  Host existente nunca alterado, "só neste Mac" relatado), faz backup `config.bak-<data>` e **acrescenta**
+  no fim. Pergunta de origem: "num Mac novo, como sincronizar com o Cursor?" Resposta: não há sync; os
+  dois leem o mesmo arquivo, o botão só preenche o arquivo.
+- Sondagem ganhou `grokPod` (PID 1 `pod-daemon` ou cgroup `pod-`), lembrado em `settings.podHosts`
+  (só uma sondagem que entrou atualiza; inacessível não apaga). Linha do pod: botão 🧯 "aliviar agora"
+  (`picker:relieve` → `showRelief`, fecha o seletor). Caixa de baixo: "🧯 Botão de alívio na mesa"
+  (`picker:relief-shortcut` → `createReliefShortcut`, applet `aliviar <host>.app`, `RELIEF_LOOK` fixo).
+- `shortcuts.ts` virou genérico: `createApplet(nome, arg, look)` + marcador `meu-bot-shortcut-v1 <nome>`.
+  O `aliviar grokbot-1.app` feito à mão ganhou o marcador para o app reconhecer e poder substituir.
+- `relief.ts` não depende mais de `~/bin/alivio-pod.sh` existir: manda o script pelo stdin do ssh
+  (`cat > ~/bin/alivio-pod.sh && bash …`). Empacotado em `Resources/alivio/` (extraResource).
+- Testes: 33 (novo `ssh-sync.test.mjs`).
+- "seletor na mesa" (`seletor.app`, `--picker`) foi removido: o próprio `meu-bot.app` e o Dock já abrem o
+  seletor. `--picker` em argv ainda cai no padrão (`showPicker`) por não ser `--host`/`--alivio`.

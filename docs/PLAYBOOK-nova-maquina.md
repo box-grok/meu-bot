@@ -6,6 +6,40 @@ comando, o que esperar e o que costuma dar errado. Quem executa é o Claude Code
 
 ---
 
+## Mac novo: do clone ao seletor
+
+O que precisa existir num Mac novo antes de o seletor listar as máquinas, e como o Cursor entra nisso.
+Não há "sincronização com o Cursor": o seletor e o Cursor (Remote SSH) leem o **mesmo**
+`~/.ssh/config`. Quem põe as máquinas lá é o botão **⇅ sincronizar ssh** do seletor, a partir do
+modelo versionado `config/ssh-hosts.conf`.
+
+1. Node 24+ (`node -v`), `git clone` do projeto (fora da Mesa, por exemplo `~/dev/meu-bot`; o SSH
+   não lê `~/Desktop` sem Acesso Total ao Disco), `npm install`, `npm test`, `npm run dist`. O
+   `dist` deixa o app em `~/Applications/meu-bot.app` e `~/Desktop/meu-bot.app`.
+2. Chave SSH: copie `~/.ssh/id_ed25519` (e a `.pub`) do Mac antigo, `chmod 600`. Ou gere uma nova
+   (`ssh-keygen -t ed25519`) e coloque a `.pub` no `authorized_keys` de cada máquina (seção 1).
+   A chave nunca vai no repositório.
+3. Tailscale: instalar o app, entrar na conta que vê os computadores do Grok Bot (`agentesgrok@`),
+   conferir `tailscale status`. Sem isso a `grokbot-1` não resolve.
+4. Abra o meu-bot. O seletor mostra só `local`. Clique em **⇅ sincronizar ssh** (rodapé): ele acrescenta ao `~/.ssh/config` os `Host` e `Include` do modelo que faltam,
+   com backup `config.bak-<data>`, sem tocar em bloco que já existe. A caixa abaixo da lista diz o
+   que entrou, o que já havia, o que existe só neste Mac e se falta a chave. A lista recarrega e as
+   sondagens começam.
+5. Cursor: instale a extensão Remote SSH; ela já lista os mesmos hosts. Se não listar, veja se a
+   configuração `remote.SSH.configFile` aponta para outro arquivo; apague ou aponte para
+   `~/.ssh/config`. A primeira conexão pergunta a plataforma (Linux).
+6. Atalhos da mesa não vêm junto: crie de novo pelo seletor (botão "+" na linha). Numa
+   máquina reconhecida como computador do Grok Bot, a caixa de baixo tem "🧯 Botão de alívio na
+   mesa".
+7. Opcional: copiar `~/Library/Application Support/meu-bot/{conversations.json,settings.json,memory.json}`
+   do Mac antigo traz as conversas e preferências.
+
+Máquina nova no projeto: acrescente o bloco em `config/ssh-hosts.conf` (o sync nunca altera um
+`Host` existente, então quem já tinha o bloco antigo precisa editar o `~/.ssh/config` na mão).
+O que existe só no seu Mac e não está no modelo aparece como "só neste Mac" para você decidir.
+
+---
+
 ## 0. Reconheça o tipo de máquina
 
 Rode no host:
@@ -40,7 +74,8 @@ no app do Grok Bot).
    tailscale status            # no Mac: a máquina aparece? "direct" ou "relay"?
    tailscale ping 100.x.y.z    # responde?
    ```
-3. Bloco no `~/.ssh/config` do Mac (o meu-bot e o Cursor leem daqui; `Include` também vale):
+3. Bloco no `~/.ssh/config` do Mac (o meu-bot e o Cursor leem daqui; `Include` também vale). Coloque
+   o mesmo bloco em `config/ssh-hosts.conf` do projeto: é o que o botão ⇅ do seletor replica num Mac novo.
    ```
    Host nome-curto
        HostName 100.x.y.z        # IP Tailscale ou público
@@ -151,33 +186,43 @@ curl -s -H "Authorization: Bearer $K" -H 'Content-Type: application/json' 127.0.
 - Cada conversa guarda o `host`; o túnel é um por máquina (ControlMaster em `/tmp/meu-bot-<uid>/`,
   forward `-N -L`, chave lida por ssh, nunca persistida). Log: `~/Library/Application Support/meu-bot/meu-bot.log`,
   linhas `[tunnel] [host]`.
-- Atalho na mesa pelo seletor: `<host>.app` chama o binário com `--host=<host>`; `--alivio=<host>` abre
-  a janela de alívio. Com o app aberto, isso chega por `second-instance` (lock de instância única).
-  `open -a App --args` **não** funciona com o app já aberto: o macOS descarta os argumentos.
+- A sondagem também detecta **computador do Grok Bot** (PID 1 `pod-daemon` ou cgroup `pod-…`) e o
+  app lembra isso em `settings.json` (`podHosts`), para os botões de alívio existirem mesmo quando a
+  máquina está inacessível, que é justamente quando se precisa deles. Na linha aparece 🧯 (aliviar
+  agora: abre a janela de alívio e fecha o seletor); na caixa de baixo, "🧯 Botão de alívio na mesa".
+- Rodapé: ⇅ sincroniza o `~/.ssh/config` com `config/ssh-hosts.conf` (seção "Mac novo"). Não há atalho
+  do seletor na mesa: o próprio `meu-bot.app` (e o Dock) sempre abre nele.
+- Atalho na mesa pelo seletor: `<host>.app` chama o binário com `--host=<host>`; `aliviar <host>.app`
+  com `--alivio=<host>` abre a janela de alívio. Com o app aberto, isso chega por `second-instance`
+  (lock de instância única). `open -a App --args` **não** funciona com o app já aberto: o macOS
+  descarta os argumentos. Todo applet nosso tem `Contents/Resources/meu-bot-host.txt`
+  (`meu-bot-shortcut-v1 <nome>`); sem o marcador o app se recusa a remover a pasta.
 
 ---
 
 ## 5. Alívio de um computador do Grok Bot
 
-Instalar o script no pod:
+Nada a instalar no pod: a janela de alívio manda `scripts/alivio/alivio-pod.sh` pelo stdin do ssh,
+grava em `~/bin/alivio-pod.sh` do host e roda com `--tailscale`. A cópia do pod fica sempre igual à do
+app (`Contents/Resources/alivio/` no .app). Pela mão:
 ```bash
-ssh nome-curto 'mkdir -p ~/bin' && scp scripts/alivio/alivio-pod.sh nome-curto:~/bin/ && ssh nome-curto 'chmod +x ~/bin/alivio-pod.sh'
+ssh -o ConnectTimeout=90 nome-curto 'mkdir -p ~/bin && cat > ~/bin/alivio-pod.sh && bash ~/bin/alivio-pod.sh --tailscale' < scripts/alivio/alivio-pod.sh
 ```
 O que ele faz: encerra CLIs do Claude do backend com mais de 30 min (`LIMITE_S`), Chrome headless; com
 `--tailscale`, agenda `pm2 restart tailscaled` em 2 s por `nohup` (a sessão cai e volta; estado e IP
 preservados). Log em `~/alivio.log`. Não toca em serviços do Grok Bot nem no PM2 inteiro.
 
-Botão na mesa (`aliviar <host>.app`):
+Os botões: no seletor, a máquina reconhecida como pod ganha 🧯 na linha (aliviar agora) e, na caixa
+de baixo, "🧯 Botão de alívio na mesa", que cria `aliviar <host>.app` (applet que chama o binário com
+`--alivio=<host>`, ícone 🧯 sobre vermelho fixo). Se quiser fazer o applet na mão:
 ```bash
 osacompile -o "$HOME/Desktop/aliviar nome-curto.app" -e "do shell script \"'$HOME/Desktop/meu-bot.app/Contents/MacOS/meu-bot' --alivio=nome-curto >/dev/null 2>&1 &\""
 rm -f "$HOME/Desktop/aliviar nome-curto.app/Contents/Resources/Assets.car"   # senão o Finder mostra o ícone de script
 defaults write "$HOME/Desktop/aliviar nome-curto.app/Contents/Info.plist" LSUIElement -bool true
+printf 'meu-bot-shortcut-v1 aliviar nome-curto\n🧯\n' > "$HOME/Desktop/aliviar nome-curto.app/Contents/Resources/meu-bot-host.txt"
 ```
-(ícone: copiar um `applet.icns` seu para `Contents/Resources/`.) Não use `tell application "Terminal"`
-no applet: pede permissão de Automação e, sem resposta, o clique não faz nada.
-
-Hoje o alívio está fixo na `grokbot-1` dentro do app (`relief.ts` recebe o host do argumento, então
-outro `--alivio=<host>` já funciona desde que o script exista em `~/bin` do host).
+Não use `tell application "Terminal"` no applet: pede permissão de Automação e, sem resposta, o
+clique não faz nada.
 
 ---
 
@@ -201,11 +246,12 @@ roda nela e turnos sem limite de tempo no backend do René.
 
 ## 7. Checklist resumido para uma máquina nova
 
+- [ ] Mac novo? Seção "Mac novo": clone, chave, Tailscale, botão ⇅ do seletor.
 - [ ] Reconhecer o tipo (seção 0) e anotar IPs/usuário no mapa de máquinas do `GUIA.md`.
-- [ ] Chave no `authorized_keys`; bloco no `~/.ssh/config`; `ssh host uptime` com 90 s.
+- [ ] Chave no `authorized_keys`; bloco no `~/.ssh/config` **e** em `config/ssh-hosts.conf`; `ssh host uptime` com 90 s.
 - [ ] Usuário comum (não root); Claude Code nativo em `~/.local/bin`; `/login` via `ssh -t`.
 - [ ] Backend: Instalar pelo seletor (ou `install.sh`); num pod do Grok Bot, subir por PM2 + `pm2 save`.
 - [ ] Verificação 3c: 401, modelos, chat, stream live, retomada, bypass.
 - [ ] No meu-bot: abrir a janela da máquina, mandar uma mensagem; criar o atalho na mesa.
-- [ ] Se for pod do Grok Bot: `alivio-pod.sh` em `~/bin`, botão de alívio na mesa.
+- [ ] Se for pod do Grok Bot: conferir que o seletor mostra 🧯 na linha; criar o botão de alívio na mesa pela caixa de baixo.
 - [ ] Segurança: se tiver IP público, `PasswordAuthentication no` no sshd depois que a chave funcionar.

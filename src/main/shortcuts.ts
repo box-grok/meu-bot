@@ -1,7 +1,8 @@
 /**
- * Atalhos por máquina na área de trabalho: um applet AppleScript ("meu-bot <host>.app") que chama
- * o binário do app com `--host=<host>`. Com o app já aberto, essa chamada vira `second-instance`
- * na instância principal (via requestSingleInstanceLock), que abre a janela da máquina direto.
+ * Atalhos na área de trabalho: applets AppleScript que chamam o binário do app com um argumento.
+ *   "<host>.app"          → `--host=<host>`   abre direto a janela da máquina
+ *   "aliviar <host>.app"  → `--alivio=<host>` abre a janela de alívio (computador do Grok Bot)
+ * Com o app já aberto, a chamada vira `second-instance` na instância principal (requestSingleInstanceLock).
  * `open -a` não serviria: num app já em execução o macOS descarta os `--args`.
  */
 import { app, BrowserWindow, nativeImage } from "electron";
@@ -23,6 +24,9 @@ export function randomLook(avoidEmoji?: string): ShortcutLook {
   const hue = Math.floor(Math.random() * 360);
   return { emoji, color: `hsl(${hue} 70% 46%)` };
 }
+
+/** O botão de alívio é sempre igual: extintor sobre vermelho, para ser achado de longe. */
+export const RELIEF_LOOK: ShortcutLook = { emoji: "🧯", color: "hsl(4 75% 48%)" };
 
 /** PNG 1024² do ícone: quadrado arredondado na cor sólida com o emoji no centro, fundo transparente. */
 async function renderIconPng(look: ShortcutLook): Promise<Buffer> {
@@ -64,47 +68,45 @@ function pngToIcns(png: Buffer, out: string): void {
 }
 
 const MARKER = "meu-bot-shortcut-v1";
-/** Alvo especial: abre só o seletor de máquinas. */
-export const PICKER_TARGET = "seletor";
 
-/** Nome do atalho na mesa é só o da máquina ("agente-box.app"); o seletor vira "seletor.app". */
-export const shortcutPath = (host: string): string => path.join(app.getPath("desktop"), `${host}.app`);
-const isTarget = (t: string): boolean => t === PICKER_TARGET || isValidHost(t);
+/** Nome do applet na mesa: só o da máquina ("agente-box.app"). O seletor não precisa de atalho: o próprio meu-bot.app abre nele. */
+export const shortcutPath = (host: string): string => appletPath(host);
+/** Nome do botão de alívio: "aliviar <host>.app". */
+export const reliefShortcutName = (host: string): string => `aliviar ${host}`;
+const appletPath = (name: string): string => path.join(app.getPath("desktop"), `${name}.app`);
 
-const markerFile = (host: string): string => path.join(shortcutPath(host), "Contents", "Resources", "meu-bot-host.txt");
+const markerFile = (name: string): string => path.join(appletPath(name), "Contents", "Resources", "meu-bot-host.txt");
 
-/** Linha 1: marcador + host; linha 2 (opcional): emoji do ícone. */
-function readMarker(host: string): { ok: boolean; emoji: string | null } {
+/** Linha 1: marcador + nome do applet; linha 2 (opcional): emoji do ícone. */
+function readMarker(name: string): { ok: boolean; emoji: string | null } {
   try {
-    const [first, second] = fs.readFileSync(markerFile(host), "utf8").split("\n");
-    return { ok: first?.trim() === `${MARKER} ${host}`, emoji: second?.trim() || null };
+    const [first, second] = fs.readFileSync(markerFile(name), "utf8").split("\n");
+    return { ok: first?.trim() === `${MARKER} ${name}`, emoji: second?.trim() || null };
   } catch { return { ok: false, emoji: null }; }
 }
 
 export const hasShortcut = (host: string): boolean => readMarker(host).ok;
 export const shortcutEmoji = (host: string): string | null => (readMarker(host).ok ? readMarker(host).emoji : null);
+export const hasReliefShortcut = (host: string): boolean => readMarker(reliefShortcutName(host)).ok;
 
-/** Comando que inicia o app com o host: binário empacotado, ou electron + pasta do app no dev. */
-function launchCommand(host: string): string {
+/** Comando que inicia o app com o argumento: binário empacotado, ou electron + pasta do app no dev. */
+function launchCommand(arg: string): string {
   const q = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;
   const parts = app.isPackaged ? [process.execPath] : [process.execPath, app.getAppPath()];
-  const arg = host === PICKER_TARGET ? "--picker" : `--host=${host}`;
   return `${parts.map(q).join(" ")} ${arg} >/dev/null 2>&1 &`;
 }
 
-export async function createShortcut(host: string): Promise<ShortcutLook> {
-  if (!isTarget(host)) throw new Error(`Host inválido: ${JSON.stringify(host)}`);
-  const target = shortcutPath(host);
-  const previous = shortcutEmoji(host) ?? undefined;
-  removeShortcut(host);
-  const look = randomLook(previous);
+/** Cria o applet "<name>.app" na mesa (substitui o anterior nosso), com ícone gerado. */
+async function createApplet(name: string, arg: string, look: ShortcutLook): Promise<void> {
+  const target = appletPath(name);
+  removeApplet(name);
   const png = await renderIconPng(look);
   // AppleScript: `do shell script` com o comando em background; o applet encerra na hora.
-  const script = `do shell script ${JSON.stringify(launchCommand(host))}`;
+  const script = `do shell script ${JSON.stringify(launchCommand(arg))}`;
   const r = spawnSync("osacompile", ["-o", target, "-e", script], { encoding: "utf8", timeout: 30_000 });
   if (r.status !== 0) throw new Error(`osacompile falhou: ${(r.stderr || r.stdout || "").trim() || `código ${r.status}`}`);
   const res = path.join(target, "Contents", "Resources");
-  fs.writeFileSync(path.join(res, "meu-bot-host.txt"), `${MARKER} ${host}\n${look.emoji}\n`);
+  fs.writeFileSync(path.join(res, "meu-bot-host.txt"), `${MARKER} ${name}\n${look.emoji}\n`);
   try { pngToIcns(png, path.join(res, "applet.icns")); } catch { /* sem ícone próprio fica o do applet; o atalho funciona igual */ }
   // O applet vem com um catálogo Assets.car e CFBundleIconName apontando para o ícone padrão; o Finder
   // prefere isso ao applet.icns. Sem os dois, o nosso ícone aparece.
@@ -114,15 +116,36 @@ export async function createShortcut(host: string): Promise<ShortcutLook> {
   spawnSync("defaults", ["write", path.join(target, "Contents", "Info.plist"), "LSUIElement", "-bool", "true"], { timeout: 10_000 });
   // Finder só percebe o ícone novo quando a pasta muda de data.
   try { const now = new Date(); fs.utimesSync(target, now, now); } catch { /* ok */ }
+}
+
+function removeApplet(name: string): void {
+  const target = appletPath(name);
+  if (!fs.existsSync(target)) return;
+  // Só remove o que foi criado por nós (marcador), nunca uma pasta qualquer com esse nome.
+  if (!readMarker(name).ok) throw new Error(`"${path.basename(target)}" existe na mesa mas não é um atalho do meu-bot; não removo.`);
+  fs.rmSync(target, { recursive: true, force: true });
+}
+
+export async function createShortcut(host: string): Promise<ShortcutLook> {
+  if (!isValidHost(host)) throw new Error(`Host inválido: ${JSON.stringify(host)}`);
+  const look = randomLook(shortcutEmoji(host) ?? undefined);
+  await createApplet(host, `--host=${host}`, look);
   return look;
 }
 
 export function removeShortcut(host: string): void {
-  const target = shortcutPath(host);
-  if (!fs.existsSync(target)) return;
-  // Só remove o que foi criado por nós (marcador), nunca uma pasta qualquer com esse nome.
-  if (!hasShortcut(host)) throw new Error(`"${path.basename(target)}" existe na mesa mas não é um atalho do meu-bot; não removo.`);
-  fs.rmSync(target, { recursive: true, force: true });
+  if (!isValidHost(host)) return;
+  removeApplet(host);
+}
+
+export async function createReliefShortcut(host: string): Promise<void> {
+  if (!isValidHost(host)) throw new Error(`Host inválido: ${JSON.stringify(host)}`);
+  await createApplet(reliefShortcutName(host), `--alivio=${host}`, RELIEF_LOOK);
+}
+
+export function removeReliefShortcut(host: string): void {
+  if (!isValidHost(host)) return;
+  removeApplet(reliefShortcutName(host));
 }
 
 /** `--alivio=<x>` entre os argumentos: abre a janela de alívio da máquina. */

@@ -18,6 +18,8 @@ próprio e a VM sob seu controle.
   máquina e Cmd+Shift+N abre outra. Fechar a última janela deixa o app no Dock. Configurações mostram o estado de cada host
   e instalam o backend (`backend-colima/`) com um clique.
 - Acesso SSH sem senha à VM, com um alias no `~/.ssh/config` (padrão: `colima`, a VM local do Colima; `grokbot-1` para a VM remota).
+  Num Mac novo, o botão ⇅ "sincronizar ssh" do seletor preenche o `~/.ssh/config` a partir de `config/ssh-hosts.conf`;
+  o Cursor lê o mesmo arquivo.
 - Na VM, o backend `~/.hermes/agente-rene/backend-sdk-claude` rodando na porta 8080 e com
   `OPENAI_COMPAT_KEY` no `.env`. O app lê essa chave pela própria conexão SSH, em memória.
 

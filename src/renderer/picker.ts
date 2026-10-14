@@ -1,5 +1,5 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
-import type { HostProbe, PickerApi, PickerInit } from "../shared/ipc";
+import type { HostProbe, PickerApi, PickerInit, SshSyncResult } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { describeProbe, hostLabel, type ProbeText } from "./lib/probe-text.js";
 
@@ -12,14 +12,17 @@ const errorEl = $<HTMLParagraphElement>("pk-error");
 const detailEl = $<HTMLElement>("pk-detail");
 const statusEl = $<HTMLParagraphElement>("pk-status");
 const installBtn = $<HTMLButtonElement>("pk-install");
+const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const logEl = $<HTMLPreElement>("pk-log");
+const noteEl = $<HTMLParagraphElement>("pk-note");
 const openBtn = $<HTMLButtonElement>("pk-open");
 const cancelBtn = $<HTMLButtonElement>("pk-cancel");
-const pickerShortcutBtn = $<HTMLButtonElement>("pk-shortcut");
+const syncBtn = $<HTMLButtonElement>("pk-sync");
 
-interface Row { host: string; li: HTMLLIElement; badgeEl: HTMLSpanElement; shortcutBtn: HTMLButtonElement }
+interface Row { host: string; li: HTMLLIElement; badgeEl: HTMLSpanElement; shortcutBtn: HTMLButtonElement; relieveBtn: HTMLButtonElement }
 let shortcuts = new Map<string, string | null>();
-const SELETOR = "seletor";
+let reliefShortcuts = new Set<string>();
+let pods = new Set<string>();
 
 let hosts: string[] = [];
 let openHosts = new Set<string>();
@@ -35,6 +38,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return n;
 }
 
+const errorText = (err: unknown): string =>
+  err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': Error: /, "") : String(err);
+
+function showError(prefix: string, err: unknown): void {
+  errorEl.hidden = false;
+  errorEl.textContent = `${prefix}: ${errorText(err)}`;
+}
+
 function buildRows(): void {
   listEl.replaceChildren();
   rows.clear();
@@ -46,28 +57,41 @@ function buildRows(): void {
     const name = el("span", "name", hostLabel(host));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);
+    // Só num computador do Grok Bot: aliviar agora (abre a janela de alívio e fecha o seletor).
+    const relieveBtn = el("button", "relieve", "🧯");
+    relieveBtn.type = "button";
+    relieveBtn.title = `Aliviar ${host} agora: limpa processos presos no pod e reinicia o Tailscale`;
+    relieveBtn.setAttribute("aria-label", `aliviar ${host} agora`);
+    relieveBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void relieve(host, relieveBtn); });
     const shortcutBtn = el("button", "shortcut");
     shortcutBtn.type = "button";
     shortcutBtn.addEventListener("click", (ev) => { ev.stopPropagation(); void toggleShortcut(host, shortcutBtn); });
-    li.append(dot, name, badge, shortcutBtn);
+    li.append(dot, name, badge, relieveBtn, shortcutBtn);
     li.addEventListener("click", () => select(host));
     li.addEventListener("dblclick", () => { select(host); void open(); });
     listEl.appendChild(li);
-    rows.set(host, { host, li, badgeEl: badge, shortcutBtn });
+    rows.set(host, { host, li, badgeEl: badge, shortcutBtn, relieveBtn });
     paintShortcut(host);
+    paintPod(host);
   }
   applyFilter();
 }
 
+function paintPod(host: string): void {
+  const r = rows.get(host);
+  if (r !== undefined) r.relieveBtn.hidden = !pods.has(host);
+  if (host === selected) paintDetail();
+}
+
 function paintShortcut(host: string): void {
-  const btn = host === SELETOR ? pickerShortcutBtn : rows.get(host)?.shortcutBtn;
+  const btn = rows.get(host)?.shortcutBtn;
   if (btn === undefined) return;
   const has = shortcuts.has(host);
   const emoji = shortcuts.get(host) ?? null;
   btn.textContent = has ? (emoji ?? "★") : "+";
   btn.classList.toggle("on", has);
   btn.setAttribute("aria-label", has ? "remover atalho da área de trabalho" : "criar atalho na área de trabalho");
-  btn.title = has ? `Remover "${host}.app" da área de trabalho` : `Criar "${host}.app" na área de trabalho, que abre ${host === SELETOR ? "só este seletor" : `direto a janela de ${hostLabel(host)}`}`;
+  btn.title = has ? `Remover "${host}.app" da área de trabalho` : `Criar "${host}.app" na área de trabalho, que abre direto a janela de ${hostLabel(host)}`;
 }
 
 async function toggleShortcut(host: string, btn: HTMLButtonElement): Promise<void> {
@@ -77,11 +101,36 @@ async function toggleShortcut(host: string, btn: HTMLButtonElement): Promise<voi
     if (r.has) shortcuts.set(host, r.emoji); else shortcuts.delete(host);
     errorEl.hidden = true;
   } catch (err) {
-    errorEl.hidden = false;
-    errorEl.textContent = `Atalho: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': Error: /, "") : String(err)}`;
+    showError("Atalho", err);
   } finally {
     btn.disabled = false;
     paintShortcut(host);
+  }
+}
+
+async function toggleReliefShortcut(): Promise<void> {
+  if (selected === null || !pods.has(selected)) return;
+  const host = selected;
+  reliefShortcutBtn.disabled = true;
+  try {
+    const r = await window.picker.setReliefShortcut(host, !reliefShortcuts.has(host));
+    if (r.has) reliefShortcuts.add(host); else reliefShortcuts.delete(host);
+    errorEl.hidden = true;
+  } catch (err) {
+    showError("Botão de alívio", err);
+  } finally {
+    reliefShortcutBtn.disabled = false;
+    paintDetail();
+  }
+}
+
+async function relieve(host: string, btn: HTMLButtonElement): Promise<void> {
+  btn.disabled = true;
+  try {
+    await window.picker.relieve(host);
+  } catch (err) {
+    showError("Alívio", err);
+    btn.disabled = false;
   }
 }
 
@@ -106,6 +155,13 @@ function paintDetail(): void {
   detailEl.hidden = false;
   const t = results.get(selected);
   installBtn.hidden = true;
+  const isPod = pods.has(selected);
+  reliefShortcutBtn.hidden = !isPod;
+  if (isPod) {
+    const has = reliefShortcuts.has(selected);
+    reliefShortcutBtn.textContent = has ? "🧯 Tirar o botão de alívio da mesa" : "🧯 Botão de alívio na mesa";
+    reliefShortcutBtn.title = has ? `Remover "aliviar ${selected}.app" da área de trabalho` : `Criar "aliviar ${selected}.app" na área de trabalho: um clique limpa o pod e abre a janela`;
+  }
   if (t === undefined) {
     statusEl.className = "status";
     statusEl.textContent = `verificando ${hostLabel(selected)}…`;
@@ -136,8 +192,9 @@ async function probe(host: string, force = false): Promise<void> {
   try {
     const p: HostProbe = await window.picker.probe(host);
     results.set(host, describeProbe(p));
+    if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
   } catch (err) {
-    results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${err instanceof Error ? err.message : String(err)}`, install: null, canOpen: false });
+    results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${errorText(err)}`, install: null, canOpen: false });
   }
   paintState(host);
 }
@@ -166,7 +223,7 @@ async function install(): Promise<void> {
       return;
     }
   } catch (err) {
-    results.set(host, { kind: "bad", text: `✗ instalação falhou: ${err instanceof Error ? err.message : String(err)}`, install: "install", canOpen: false });
+    results.set(host, { kind: "bad", text: `✗ instalação falhou: ${errorText(err)}`, install: "install", canOpen: false });
     paintState(host);
     return;
   } finally {
@@ -175,15 +232,55 @@ async function install(): Promise<void> {
   await probe(host, true);
 }
 
-function init(payload: PickerInit): void {
+function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
+  const lines: string[] = [];
+  if (r.added.length === 0 && r.includesAdded === 0) lines.push("✓ ~/.ssh/config já tinha todas as máquinas do projeto; nada mudou.");
+  else lines.push(`✓ entraram no ~/.ssh/config: ${[...r.added, ...(r.includesAdded > 0 ? [`${r.includesAdded} Include`] : [])].join(", ")}${r.backup !== null ? ` (backup em ${r.backup.replace(/^.*\//, "")})` : ""}.`);
+  if (r.kept.length > 0) lines.push(`mantidas como estavam: ${r.kept.join(", ")}.`);
+  if (r.onlyLocal.length > 0) lines.push(`só neste Mac (o projeto não conhece): ${r.onlyLocal.join(", ")}.`);
+  let kind: "ok" | "warn" = "ok";
+  if (r.missingKeys.length > 0) {
+    kind = "warn";
+    lines.push(`⚠ falta a chave ${r.missingKeys.map((k) => k.replace(/^.*\/\.ssh\//, "~/.ssh/")).join(", ")} neste Mac: copie do outro Mac, ou gere uma nova e coloque a .pub no authorized_keys de cada máquina (PLAYBOOK, seção 1).`);
+  }
+  lines.push("O Cursor (Remote SSH) lê o mesmo arquivo, então as máquinas aparecem lá também.");
+  return { kind, text: lines.join("\n") };
+}
+
+/** Acrescenta as máquinas do projeto ao ~/.ssh/config e recarrega a lista. */
+async function syncSsh(): Promise<void> {
+  syncBtn.disabled = true;
+  noteEl.hidden = false;
+  noteEl.className = "note";
+  noteEl.textContent = "sincronizando o ~/.ssh/config com as máquinas do projeto…";
+  try {
+    const r = await window.picker.syncSsh();
+    const s = syncSummary(r);
+    noteEl.className = `note ${s.kind}`;
+    noteEl.textContent = s.text;
+    if (r.added.length > 0 || r.includesAdded > 0) {
+      const keep = selected;
+      init(await window.picker.list(), keep);
+    }
+  } catch (err) {
+    noteEl.className = "note bad";
+    noteEl.textContent = `✗ sincronização falhou: ${errorText(err)}`;
+  } finally {
+    syncBtn.disabled = false;
+  }
+}
+
+function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
   openHosts = new Set(payload.open);
   shortcuts = new Map(payload.shortcuts.map((s) => [s.host, s.emoji]));
-  paintShortcut(SELETOR);
+  reliefShortcuts = new Set(payload.reliefShortcuts);
+  pods = new Set(payload.pods);
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
   buildRows();
-  select(hosts.includes(payload.preselect) ? payload.preselect : (hosts[0] ?? null));
+  const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
+  select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
   // Todas em paralelo: a lista nunca espera a máquina lenta.
   for (const h of hosts) void probe(h);
   filterEl.focus();
@@ -200,9 +297,10 @@ window.picker.on("picker:install-progress", (p) => {
 
 filterEl.addEventListener("input", () => applyFilter());
 installBtn.addEventListener("click", () => { void install(); });
+reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut(); });
 openBtn.addEventListener("click", () => { void open(); });
 cancelBtn.addEventListener("click", () => window.picker.cancel());
-pickerShortcutBtn.addEventListener("click", () => { void toggleShortcut(SELETOR, pickerShortcutBtn); });
+syncBtn.addEventListener("click", () => { void syncSsh(); });
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") { ev.preventDefault(); window.picker.cancel(); return; }
   if (ev.key === "Enter") { ev.preventDefault(); void open(); return; }

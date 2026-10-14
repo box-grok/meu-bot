@@ -7,7 +7,7 @@ export interface ProbeText { kind: ProbeKind; text: string; install: "install" |
 export const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
 
 export function describeProbe(p: HostProbe): ProbeText {
-  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}`;
+  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}`;
   if (p.host === "local") {
     if (p.error !== null || p.claudePath === null || !p.claudeLoggedIn) {
       const why = p.error ?? (p.claudePath === null ? "Claude Code não encontrado" : "Claude Code não está logado: rode claude no Terminal e use /login");

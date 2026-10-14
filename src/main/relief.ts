@@ -1,10 +1,11 @@
 /**
- * Janela "aliviar <host>": roda o alívio do pod por SSH (script ~/bin/alivio-pod.sh no host), mostra
+ * Janela "aliviar <host>": envia o alivio-pod.sh por SSH (fica em ~/bin do host) e o roda, mostra
  * etapas e números de antes/depois, e no fim abre a janela principal da máquina e se fecha. É o que
  * o botão "aliviar grokbot-1.app" da mesa chama, via `--alivio=<host>` (second-instance).
  */
-import { BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import type { ReliefEvent } from "../shared/ipc";
 import { isValidHost } from "./settings";
@@ -17,6 +18,12 @@ const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=90", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
   "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "StrictHostKeyChecking=accept-new",
 ];
+
+/** scripts/alivio/alivio-pod.sh: Resources/alivio no .app; pasta do projeto no dev. */
+function reliefScript(): string {
+  const p = app.isPackaged ? path.join(process.resourcesPath, "alivio", "alivio-pod.sh") : path.join(app.getAppPath(), "scripts", "alivio", "alivio-pod.sh");
+  return fs.readFileSync(p, "utf8");
+}
 
 function send(ev: ReliefEvent): void {
   if (reliefWin !== null && !reliefWin.isDestroyed()) reliefWin.webContents.send("relief:event", ev);
@@ -34,7 +41,11 @@ async function runRelief(host: string): Promise<void> {
   running = true;
   const t0 = Date.now();
   send({ kind: "step", step: "connect", state: "doing", text: `conectando a ${host} por SSH (até 90 s se o pod estiver no limite)` });
-  const child = spawn("ssh", [...SSH_OPTS, "--", host, "bash ~/bin/alivio-pod.sh --tailscale"], { stdio: ["ignore", "pipe", "pipe"] });
+  // O script vai junto pelo stdin e é gravado em ~/bin do pod antes de rodar: serve para qualquer
+  // computador do Grok Bot sem instalação prévia, e a cópia de lá fica sempre igual à do app.
+  const child = spawn("ssh", [...SSH_OPTS, "--", host, "mkdir -p ~/bin && cat > ~/bin/alivio-pod.sh && bash ~/bin/alivio-pod.sh --tailscale"], { stdio: ["pipe", "pipe", "pipe"] });
+  child.stdin.on("error", () => { /* o ssh caiu antes de ler o script; o close abaixo reporta */ });
+  child.stdin.end(reliefScript());
   let stderr = ""; let buf = ""; let connected = false; let before: ReturnType<typeof parseStats> = null; let after: ReturnType<typeof parseStats> = null;
   const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ok */ } }, 150_000);
   child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf8"); });

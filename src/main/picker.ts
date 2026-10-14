@@ -1,16 +1,21 @@
 /**
  * Seletor de máquinas: a janela que abre o app ("abrir o meu-bot em…"). Lista `local` + hosts do
  * ~/.ssh/config, sonda todos em paralelo (com cache curto para reabrir instantâneo), instala o
- * backend quando falta e abre a janela principal da máquina escolhida.
+ * backend quando falta e abre a janela principal da máquina escolhida. Também sincroniza o
+ * ~/.ssh/config com o modelo versionado e, para computadores do Grok Bot, dispara o alívio.
  */
 import { BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
 import { installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
-import { getBackendPort, getLastHost, isValidHost, setLastHost } from "./settings";
+import { showRelief } from "./relief";
+import { getBackendPort, getLastHost, isPodHost, isValidHost, setLastHost, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
-import { createShortcut, hasShortcut, PICKER_TARGET, removeShortcut, shortcutEmoji } from "./shortcuts";
+import { syncSshConfig } from "./sshSync";
+import {
+  createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
+} from "./shortcuts";
 import { backgroundColor, openMainWindow, windowForHost } from "./windows";
 
 let pickerWin: BrowserWindow | null = null;
@@ -29,7 +34,12 @@ function probeCached(host: string): Promise<HostProbe> {
   if (hit !== undefined && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(hit.probe);
   const running = inflight.get(host);
   if (running !== undefined) return running;
-  const p = probeHost(host, getBackendPort()).then((probe) => { probes.set(host, { probe, at: Date.now() }); return probe; }).finally(() => inflight.delete(host));
+  const p = probeHost(host, getBackendPort()).then((probe) => {
+    probes.set(host, { probe, at: Date.now() });
+    // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
+    if (probe.reachable) setPodHost(host, probe.grokPod);
+    return probe;
+  }).finally(() => inflight.delete(host));
   inflight.set(host, p);
   return p;
 }
@@ -43,7 +53,9 @@ function initPayload(): PickerInit {
     hosts,
     preselect: hosts.includes(wanted) ? wanted : LOCAL_HOST,
     open: hosts.filter((h) => windowForHost(h) !== undefined),
-    shortcuts: [...hosts, PICKER_TARGET].filter(hasShortcut).map((h) => ({ host: h, emoji: shortcutEmoji(h) })),
+    shortcuts: hosts.filter(hasShortcut).map((h) => ({ host: h, emoji: shortcutEmoji(h) })),
+    pods: hosts.filter(isPodHost),
+    reliefShortcuts: hosts.filter(hasReliefShortcut),
     error: lastError,
   };
 }
@@ -82,11 +94,28 @@ export function initPicker(): void {
   });
   ipcMain.handle("picker:shortcut", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
-    const raw = String((payload as { host?: unknown } | null)?.host ?? "").trim();
-    const host = raw === PICKER_TARGET ? PICKER_TARGET : hostArg(payload);
+    const host = hostArg(payload);
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createShortcut(host); else removeShortcut(host);
     return { has: hasShortcut(host), emoji: shortcutEmoji(host) };
+  });
+  ipcMain.handle("picker:sync-ssh", (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    return syncSshConfig();
+  });
+  ipcMain.handle("picker:relieve", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    if (!isPodHost(host)) throw new Error(`${host} não foi reconhecida como computador do Grok Bot.`);
+    showRelief(host);
+    pickerWin?.close();
+  });
+  ipcMain.handle("picker:relief-shortcut", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    const create = (payload as { create?: unknown } | null)?.create === true;
+    if (create) await createReliefShortcut(host); else removeReliefShortcut(host);
+    return { has: hasReliefShortcut(host) };
   });
   ipcMain.on("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
 }

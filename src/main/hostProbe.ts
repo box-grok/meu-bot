@@ -56,6 +56,8 @@ function probeScript(port: number): string {
     `grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null && echo login=1 || echo login=0`,
     `echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"`,
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
+    // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
+    `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
     `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:${port}/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
 }
@@ -73,7 +75,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, models: [], error: null,
   };
   const r = await run("ssh", [...sshBase(host), "--", host, probeScript(port)], 25_000);
   if (r.code !== 0) return { ...base, error: lastLine(r.stderr) || (r.code === null ? "tempo esgotado" : `ssh saiu com código ${r.code}`) };
@@ -90,6 +92,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     claudeLoggedIn: kv.get("login") === "1",
     node: kv.get("node") || null,
     systemd: kv.get("systemd") === "1",
+    grokPod: kv.get("grokpod") === "1",
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
   };
 }
@@ -103,7 +106,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, systemd: false, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, systemd: false, grokPod: false, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 

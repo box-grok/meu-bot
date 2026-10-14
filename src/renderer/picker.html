@@ -16,12 +16,16 @@
   <ul id="pk-list" class="list" role="listbox"></ul>
   <section id="pk-detail" class="detail" hidden>
     <p id="pk-status" class="status"></p>
-    <button type="button" id="pk-install" class="btn btn-ghost" hidden>Instalar backend</button>
+    <div class="actions">
+      <button type="button" id="pk-install" class="btn btn-ghost" hidden>Instalar backend</button>
+      <button type="button" id="pk-relief-shortcut" class="btn btn-ghost" hidden>🧯 Botão de alívio na mesa</button>
+    </div>
     <pre id="pk-log" class="log" hidden></pre>
   </section>
+  <p id="pk-note" class="note" hidden></p>
   <footer class="foot">
-    <span class="foot-caption">seletor na mesa</span>
-    <button type="button" id="pk-shortcut" class="shortcut">+</button>
+    <span class="foot-caption">sincronizar ssh</span>
+    <button type="button" id="pk-sync" class="shortcut" title="Acrescenta ao ~/.ssh/config deste Mac as máquinas do projeto que ainda faltam (o Cursor lê o mesmo arquivo)">⇅</button>
     <span class="spacer"></span>
     <button type="button" id="pk-cancel" class="btn btn-ghost">Cancelar</button>
     <button type="button" id="pk-open" class="btn btn-primary" disabled>Abrir</button>

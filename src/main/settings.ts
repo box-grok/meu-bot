@@ -56,6 +56,14 @@ export function setWindowBounds(host: string, bounds: WindowBounds): void {
   try { persist(); } catch { /* cortesia */ }
 }
 
+export const isPodHost = (host: string): boolean => file.podHosts.includes(host);
+/** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
+export function setPodHost(host: string, isPod: boolean): void {
+  if (!isValidHost(host) || isPodHost(host) === isPod) return;
+  file.podHosts = isPod ? [...file.podHosts, host] : file.podHosts.filter((h) => h !== host);
+  try { persist(); } catch { /* cortesia */ }
+}
+
 /** Visão das configurações para uma janela: o modelo padrão já resolvido para a máquina dela. */
 export const settingsView = (host?: string): SettingsView => ({
   lastHost: file.lastHost,

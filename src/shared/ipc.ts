@@ -79,6 +79,8 @@ export interface HostProbe {
   claudeLoggedIn: boolean;
   node: string | null;
   systemd: boolean;
+  /** Computador do Grok Bot (pod): PID 1 pod-daemon/tini ou cgroup pod-…; tem botão de alívio. */
+  grokPod: boolean;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
@@ -110,7 +112,26 @@ export interface PickerInit {
   open: string[];
   /** Máquinas (e "seletor") com atalho na área de trabalho, com o emoji do ícone de cada um. */
   shortcuts: { host: string; emoji: string | null }[];
+  /** Máquinas reconhecidas como computador do Grok Bot (lembradas entre sondagens). */
+  pods: string[];
+  /** Máquinas com o botão "aliviar <host>.app" na área de trabalho. */
+  reliefShortcuts: string[];
   error: string | null;
+}
+
+/** Resultado do botão "sincronizar ssh": o que entrou no ~/.ssh/config e o que faltava no Mac. */
+export interface SshSyncResult {
+  configPath: string;
+  /** Aliases acrescentados. */
+  added: string[];
+  includesAdded: number;
+  /** Aliases do modelo que já existiam (não tocados). */
+  kept: string[];
+  /** Aliases só deste Mac, que o modelo versionado não conhece. */
+  onlyLocal: string[];
+  backup: string | null;
+  /** Chaves (IdentityFile) do modelo que não existem neste Mac. */
+  missingKeys: string[];
 }
 
 /** Eventos da janela de alívio (aliviar <host>). */
@@ -130,6 +151,12 @@ export interface PickerApi {
   choose(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
   setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
+  /** Acrescenta ao ~/.ssh/config as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo). */
+  syncSsh(): Promise<SshSyncResult>;
+  /** Abre a janela de alívio da máquina (computador do Grok Bot) e fecha o seletor. */
+  relieve(host: string): Promise<void>;
+  /** Cria (true) ou remove (false) o botão "aliviar <host>.app" na área de trabalho. */
+  setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
