@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { BackendModel, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, HostProbe, InstallBackendResult } from "../shared/ipc";
+import type { BackendModel, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -8,7 +8,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "chat:done",
   "chat:error",
   "backend:status",
-  "backend:install-progress",
+  "settings:changed",
   "ui:focus-conversation",
   "chat:context",
   "memory:changed",
@@ -38,9 +38,8 @@ const api: MeuBotApi = {
   quickAck: (correlationId: string, ok: boolean, message?: string): void => ipcRenderer.send("quick:ack", { correlationId, ok, ...(message === undefined ? {} : { message }) }),
   setMemory: (update: { notas?: string; perfil?: string }): Promise<MemoryView> => ipcRenderer.invoke("memory:set", update),
   getSettings: (): Promise<SettingsView> => ipcRenderer.invoke("settings:get", {}),
-  listSshHosts: (): Promise<string[]> => ipcRenderer.invoke("settings:ssh-hosts", {}),
-  probeHost: (host: string): Promise<HostProbe> => ipcRenderer.invoke("settings:probe-host", { host }),
-  installBackend: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("settings:install-backend", { host }),
+  getWindowInfo: (): Promise<WindowInfo | null> => ipcRenderer.invoke("window:info", {}),
+  openPicker: () => ipcRenderer.invoke("ui:open-picker", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

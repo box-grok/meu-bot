@@ -5,9 +5,12 @@ export type Theme = "system" | "light" | "dark";
 export type QuickEntryStatus = "registered" | "taken" | "invalid" | "disabled";
 
 export interface SettingsView {
-  sshHost: string;
-  /** Modelo padrão para conversas novas; cada conversa pode trocar o seu. */
+  /** Última máquina aberta (pré-seleção do seletor); null antes da primeira escolha. */
+  lastHost: string | null;
+  /** Modelo padrão global para conversas novas; cada conversa pode trocar o seu. */
   backendModel: BackendModel;
+  /** Modelo padrão já resolvido para a máquina da janela que pediu (por máquina vence o global). */
+  backendModelForHost: BackendModel;
   backendPort: number;
   fontSize: number;
   theme: Theme;
@@ -23,9 +26,9 @@ export interface SettingsView {
 }
 
 export interface SettingsUpdate {
-  /** Host SSH (alias do ~/.ssh/config ou hostname). */
-  sshHost?: string;
   backendModel?: BackendModel;
+  /** Modelo padrão só para a máquina da janela que salvou. */
+  backendModelForHost?: BackendModel;
   backendPort?: number;
   fontSize?: number;
   theme?: Theme;
@@ -61,7 +64,7 @@ export interface BackendStatusEvent {
   detail: string;
 }
 
-/** Resultado da sondagem de um host SSH, para a tela de Configurações. */
+/** Resultado da sondagem de um host SSH, para o seletor de máquinas. */
 export interface HostProbe {
   host: string;
   reachable: boolean;
@@ -76,6 +79,8 @@ export interface HostProbe {
   claudeLoggedIn: boolean;
   node: string | null;
   systemd: boolean;
+  /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
+  models: string[];
   error: string | null;
 }
 
@@ -87,6 +92,46 @@ export interface InstallBackendResult {
 export interface InstallProgressEvent {
   host: string;
   line: string;
+}
+
+/** O que a janela principal recebe ao nascer: a máquina a que está presa. */
+export interface WindowInfo {
+  host: string;
+  /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
+  models: string[];
+}
+
+/** Dados iniciais do seletor de máquinas. */
+export interface PickerInit {
+  hosts: string[];
+  /** Máquina a pré-selecionar (última aberta). */
+  preselect: string;
+  /** Máquinas que já têm janela aberta. */
+  open: string[];
+  /** Máquinas (e "seletor") com atalho na área de trabalho, com o emoji do ícone de cada um. */
+  shortcuts: { host: string; emoji: string | null }[];
+  error: string | null;
+}
+
+/** Eventos da janela de alívio (aliviar <host>). */
+export type ReliefEvent =
+  | { kind: "init"; host: string }
+  | { kind: "step"; step: "connect" | "clean" | "tailscale" | "open"; state: "doing" | "done" | "fail"; text: string }
+  | { kind: "stats"; which: "before" | "after"; load: string; memMb: number | null }
+  | { kind: "countdown"; seconds: number }
+  | { kind: "log"; text: string }
+  | { kind: "done"; ok: boolean; text: string };
+
+/** API exposta ao seletor de máquinas como window.picker. */
+export interface PickerApi {
+  list(): Promise<PickerInit>;
+  probe(host: string): Promise<HostProbe>;
+  install(host: string): Promise<InstallBackendResult>;
+  choose(host: string): Promise<void>;
+  /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
+  setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
+  cancel(): void;
+  on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
 
 export interface DoneEvent {
@@ -141,7 +186,8 @@ export interface MainEvents {
   "chat:done": DoneEvent;
   "chat:error": ErrorEvent;
   "backend:status": BackendStatusEvent;
-  "backend:install-progress": InstallProgressEvent;
+  /** Configurações mudaram em outra janela. */
+  "settings:changed": SettingsView;
   /** Clique numa notificação: ativar esta conversa. */
   "ui:focus-conversation": ConversationRef;
   "chat:context": ContextEvent;
@@ -184,12 +230,10 @@ export interface MeuBotApi {
   toggleQuickEntry(): Promise<void>;
   setMemory(update: { notas?: string; perfil?: string }): Promise<MemoryView>;
   getSettings(): Promise<SettingsView>;
-  /** Aliases "Host" do ~/.ssh/config (e Includes), sem curingas, em ordem alfabética. */
-  listSshHosts(): Promise<string[]>;
-  /** Sonda um host por ssh: acessível? backend instalado? Claude Code logado? */
-  probeHost(host: string): Promise<HostProbe>;
-  /** Copia o backend para o host e roda o instalador; progresso chega por "backend:install-progress". */
-  installBackend(host: string): Promise<InstallBackendResult>;
+  /** Máquina desta janela; null se a janela não está registrada (não deveria acontecer). */
+  getWindowInfo(): Promise<WindowInfo | null>;
+  /** Abre o seletor de máquinas (nova janela em outra máquina). */
+  openPicker(): Promise<void>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;

@@ -1,4 +1,5 @@
-import type { BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, HostProbe, InstallProgressEvent } from "../shared/ipc";
+import type { BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -21,14 +22,9 @@ const statusPill = $<HTMLSpanElement>("status-pill");
 const modelSelect = $<HTMLSelectElement>("model-select");
 const dialog = $<HTMLDialogElement>("settings-dialog");
 const form = $<HTMLFormElement>("settings-form");
-const sshHostSelect = $<HTMLSelectElement>("ssh-host");
-const sshHostCustom = $<HTMLInputElement>("ssh-host-custom");
-const hostStatusEl = $<HTMLParagraphElement>("host-status");
-const installBtn = $<HTMLButtonElement>("install-backend");
-const installLog = $<HTMLPreElement>("install-log");
-const OTHER_HOST = "__other__";
-let knownHosts: string[] = [];
-const sshHostHint = $<HTMLParagraphElement>("ssh-host-hint");
+/** Máquina desta janela; vem do main em window:info e não muda. */
+let windowHost = "";
+const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
 const fontSizeInput = $<HTMLInputElement>("font-size");
@@ -129,10 +125,11 @@ function syncComposer(): void {
   sendBtn.textContent = busy ? "Parar" : "Enviar";
   sendBtn.classList.toggle("btn-bad", busy);
   modelSelect.disabled = tab === null;
+  applyModelAvailability(modelSelect, tab === null ? null : tab.host);
   if (tab !== null) modelSelect.value = tab.model;
   keyPill.textContent = tab === null ? "backend" : `backend · ${tab.model}`;
-  hostPill.textContent = tab === null ? `máquina padrão: ${hostLabel(settings?.sshHost ?? "…")}` : `máquina: ${hostLabel(tab.host)}`;
-  paintStatus(tab === null ? null : tab.host);
+  hostPill.textContent = `máquina: ${hostLabel(windowHost)}`;
+  paintStatus(windowHost);
   paintContext(tab);
   if (!busy) inputEl.focus();
 }
@@ -246,12 +243,23 @@ function setTabModel(tab: Tab, model: BackendModel): void {
   if (tab.id === activeId) syncComposer();
 }
 
-/** Badge da aba: só o modelo; com abas em máquinas diferentes, mostra "máquina · modelo". */
+/** Badge da aba: o modelo; a máquina é a da janela inteira. */
 function refreshTabBadges(): void {
-  const hostsOpen = new Set([...tabs.values()].map((t) => t.host));
   for (const t of tabs.values()) {
-    t.modelEl.textContent = hostsOpen.size > 1 ? `${t.host} · ${t.model}` : t.model;
-    t.tabEl.title = `Máquina: ${t.host} · modelo: ${t.model}`;
+    t.modelEl.textContent = t.model;
+    t.tabEl.title = `Máquina: ${hostLabel(t.host)} · modelo: ${t.model}`;
+  }
+}
+
+/** Modelos anunciados por cada host (preenchido pela sondagem das Configurações). */
+const hostModels = new Map<string, string[]>();
+/** Desabilita no <select> os modelos que o host não oferece; host nunca sondado deixa tudo liberado. */
+function applyModelAvailability(select: HTMLSelectElement, host: string | null): void {
+  const avail = host === null ? undefined : hostModels.get(host);
+  for (const opt of select.options) {
+    const off = avail !== undefined && avail.length > 0 && !avail.includes(opt.value);
+    opt.disabled = off;
+    opt.textContent = `${opt.textContent?.replace(/ · não existe nesta máquina$/, "") ?? opt.value}${off ? " · não existe nesta máquina" : ""}`;
   }
 }
 
@@ -461,7 +469,8 @@ function buildPaletteItems(): PaletteItem[] {
       recency: new Date(c.updatedAt).getTime(),
     }, () => openFromIndex(c.id));
   }
-  const settingsFields: [string, string][] = [["ssh-host", "Host SSH da VM"], ["backend-model", "Modelo padrão"], ["backend-port", "Porta do backend"], ["font-size", "Tamanho da fonte"], ["theme", "Tema"], ["notifications", "Notificações"]];
+  add({ id: "a:new-window", kind: "action", label: "Nova janela em outra máquina", detail: "Cmd+Shift+N", keywords: ["janela", "máquina", "host", "ssh", "trocar"] }, () => { void window.meuBot.openPicker(); });
+  const settingsFields: [string, string][] = [["backend-model", "Modelo padrão nesta máquina"], ["backend-port", "Porta do backend"], ["font-size", "Tamanho da fonte"], ["theme", "Tema"], ["notifications", "Notificações"]];
   for (const [id, label] of settingsFields) add({ id: `s:${id}`, kind: "setting", label, detail: "Configurações" }, () => focusSettingsField(id));
   return items;
 }
@@ -642,8 +651,8 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
 
 async function newTab(): Promise<Tab> {
   const { conversationId } = await window.meuBot.newConversation();
-  const model = settings?.backendModel ?? "claudecode";
-  const host = settings?.sshHost ?? "";
+  const model = settings?.backendModelForHost ?? "agente";
+  const host = windowHost;
   const now = new Date().toISOString();
   index.set(conversationId, { id: conversationId, model, host, messages: [], createdAt: now, updatedAt: now, order: index.size, archived: false, openAsTab: true });
   const tab = buildTab(conversationId, model, host);
@@ -666,8 +675,8 @@ async function restoreTabs(): Promise<void> {
 
 function applySettings(view: SettingsView): void {
   settings = view;
-  setHostValue(view.sshHost);
-  backendModelSelect.value = view.backendModel;
+  lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
+  backendModelSelect.value = view.backendModelForHost;
   backendPortInput.value = String(view.backendPort);
   fontSizeInput.value = String(view.fontSize);
   themeSelect.value = view.theme;
@@ -682,133 +691,8 @@ function applySettings(view: SettingsView): void {
   syncComposer();
 }
 
-/** Seleciona o host no <select>; um host fora do ~/.ssh/config vai para "Outro…" com o campo de texto. */
-function setHostValue(host: string): void {
-  const opts = [...knownHosts, ...(host !== "" && !knownHosts.includes(host) ? [host] : [])];
-  sshHostSelect.replaceChildren(
-    ...opts.map((h) => { const o = el("option", undefined, hostLabel(h)); o.value = h; return o; }),
-    (() => { const o = el("option", undefined, "Outro (digitar)…"); o.value = OTHER_HOST; return o; })(),
-  );
-  sshHostSelect.value = host === "" ? OTHER_HOST : host;
-  sshHostCustom.hidden = sshHostSelect.value !== OTHER_HOST;
-  if (sshHostSelect.value === OTHER_HOST) sshHostCustom.value = host;
-}
-
+/** Rótulo amigável da máquina (o seletor usa o mesmo, em lib/probe-text). */
 const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
-
-function currentHostValue(): string {
-  return sshHostSelect.value === OTHER_HOST ? sshHostCustom.value.trim() : sshHostSelect.value;
-}
-
-sshHostSelect.addEventListener("change", () => {
-  const other = sshHostSelect.value === OTHER_HOST;
-  sshHostCustom.hidden = !other;
-  if (other) { sshHostCustom.value = ""; sshHostCustom.focus(); }
-  scheduleProbe();
-});
-sshHostCustom.addEventListener("input", () => scheduleProbe());
-
-let probeTimer: number | null = null;
-let probeSeq = 0;
-function scheduleProbe(): void {
-  if (probeTimer !== null) window.clearTimeout(probeTimer);
-  probeTimer = window.setTimeout(() => { probeTimer = null; void probeCurrentHost(); }, 400);
-}
-
-/** Sonda o host escolhido e mostra se dá pra usar; o botão de instalar aparece quando faz sentido. */
-async function probeCurrentHost(): Promise<void> {
-  const host = currentHostValue();
-  installBtn.hidden = true;
-  if (host === "") { hostStatusEl.hidden = true; return; }
-  const seq = ++probeSeq;
-  hostStatusEl.hidden = false;
-  hostStatusEl.className = "host-status";
-  hostStatusEl.textContent = `verificando ${host}…`;
-  let probe: HostProbe;
-  try { probe = await window.meuBot.probeHost(host); }
-  catch (err) { if (seq !== probeSeq) return; hostStatusEl.className = "host-status bad"; hostStatusEl.textContent = err instanceof Error ? err.message : String(err); return; }
-  if (seq !== probeSeq) return;
-  renderProbe(probe);
-}
-
-function renderProbe(p: HostProbe): void {
-  hostStatusEl.hidden = false;
-  installBtn.hidden = true;
-  if (!p.reachable) {
-    hostStatusEl.className = "host-status bad";
-    hostStatusEl.textContent = `✗ ${hostLabel(p.host)} inacessível por SSH: ${p.error ?? "sem detalhes"}`;
-    return;
-  }
-  const who = `${p.user ?? "?"}@${p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}`;
-  if (p.host === "local") {
-    if (p.error !== null || p.claudePath === null || !p.claudeLoggedIn) {
-      hostStatusEl.className = "host-status bad";
-      hostStatusEl.textContent = `✗ este Mac · ${p.error ?? (p.claudePath === null ? "Claude Code não encontrado" : "Claude Code não está logado: rode claude no Terminal e use /login")}`;
-      return;
-    }
-    hostStatusEl.className = "host-status ok";
-    hostStatusEl.textContent = `✓ ${who} · Node ${p.node ?? "?"} · Claude Code logado · backend sobe junto com a primeira mensagem${p.backendListening ? " (no ar agora)" : ""}`;
-    return;
-  }
-  if (p.backendInstalled && p.backendListening) {
-    hostStatusEl.className = "host-status ok";
-    hostStatusEl.textContent = `✓ ${who} · backend instalado e ouvindo`;
-    return;
-  }
-  if (p.backendInstalled) {
-    hostStatusEl.className = "host-status warn";
-    hostStatusEl.textContent = `⚠ ${who} · backend instalado mas parado. Reinstalar sobe o serviço de novo.`;
-    installBtn.textContent = "Reinstalar backend neste host";
-    installBtn.hidden = false;
-    return;
-  }
-  if (p.claudePath === null) {
-    hostStatusEl.className = "host-status bad";
-    hostStatusEl.textContent = `✗ ${who} · sem backend e sem Claude Code. Instale o Claude Code nessa máquina e faça login antes.`;
-    return;
-  }
-  if (!p.claudeLoggedIn) {
-    hostStatusEl.className = "host-status bad";
-    hostStatusEl.textContent = `✗ ${who} · sem backend; Claude Code existe mas não está logado. No terminal: ssh -t ${p.host} claude  e depois /login. Aí volte aqui e instale.`;
-    return;
-  }
-  hostStatusEl.className = "host-status warn";
-  hostStatusEl.textContent = `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot.${p.node ? ` Node ${p.node} presente.` : " Node será baixado."}`;
-  installBtn.textContent = "Instalar backend neste host";
-  installBtn.hidden = false;
-}
-
-installBtn.addEventListener("click", async () => {
-  const host = currentHostValue();
-  if (host === "") return;
-  installBtn.disabled = true;
-  installLog.hidden = false;
-  installLog.textContent = "";
-  hostStatusEl.className = "host-status";
-  hostStatusEl.textContent = `instalando o backend em ${host}… (pode levar alguns minutos)`;
-  try {
-    const r = await window.meuBot.installBackend(host);
-    if (!r.ok) { hostStatusEl.className = "host-status bad"; hostStatusEl.textContent = `✗ instalação falhou: ${r.log.at(-1) ?? "sem detalhes"}`; return; }
-  } catch (err) {
-    hostStatusEl.className = "host-status bad";
-    hostStatusEl.textContent = `✗ instalação falhou: ${err instanceof Error ? err.message : String(err)}`;
-    return;
-  } finally {
-    installBtn.disabled = false;
-  }
-  await probeCurrentHost();
-});
-
-async function fillSshHosts(): Promise<void> {
-  const current = currentHostValue();
-  knownHosts = await window.meuBot.listSshHosts();
-  setHostValue(current);
-  installLog.hidden = true;
-  scheduleProbe();
-  sshHostHint.textContent = knownHosts.length > 0
-    ? `${knownHosts.length} host${knownHosts.length === 1 ? "" : "s"} no seu ~/.ssh/config. Também aceita digitar um hostname. O login precisa funcionar sem senha.`
-    : "Nenhum host encontrado no ~/.ssh/config. Digite um hostname; o login precisa funcionar sem senha.";
-}
 
 async function sendText(tab: Tab, raw: string): Promise<void> {
   const text = raw.trim();
@@ -891,10 +775,9 @@ window.meuBot.on("backend:status", (st: BackendStatusEvent) => {
   const tab = active();
   if (tab !== null && tab.host === st.host) paintStatus(st.host);
 });
-window.meuBot.on("backend:install-progress", (ev: InstallProgressEvent) => {
-  if (ev.host !== currentHostValue()) return;
-  installLog.hidden = false;
-  installLog.textContent = `${installLog.textContent ?? ""}${ev.line}\n`.split("\n").slice(-12).join("\n");
+window.meuBot.on("settings:changed", (view: SettingsView) => {
+  // Outra janela salvou: fonte/tema/notificações valem para todas; o modelo padrão vem resolvido pela máquina.
+  applySettings({ ...view, backendModelForHost: settings?.backendModelForHost ?? view.backendModelForHost });
 });
 
 // Cliques dentro das respostas: botão Copiar dos blocos de código e links externos.
@@ -948,7 +831,11 @@ paletteInput.addEventListener("keydown", (ev) => {
   ev.stopPropagation();
 });
 paletteEl.addEventListener("click", (ev) => { if (ev.target === paletteEl) closePalette(); });
-window.meuBot.on("ui:focus-conversation", ({ conversationId }) => { void openFromIndex(conversationId); });
+const pendingFocus: string[] = [];
+window.meuBot.on("ui:focus-conversation", ({ conversationId }) => {
+  if (!tabsReady) { pendingFocus.push(conversationId); return; }
+  void openFromIndex(conversationId);
+});
 window.meuBot.on("chat:context", (c: ContextEvent) => {
   const tab = tabs.get(c.conversationId);
   if (tab === undefined) return;
@@ -1047,7 +934,6 @@ document.addEventListener("keydown", (ev) => {
 newBtn.addEventListener("click", () => { void newTab(); });
 settingsBtn.addEventListener("click", () => {
   settingsError.hidden = true;
-  void fillSshHosts();
   void window.meuBot.getMemory().then(applyMemory);
   dialog.showModal();
 });
@@ -1061,8 +947,7 @@ form.addEventListener("submit", (ev) => {
   const every = Number.parseInt(memoryEveryInput.value, 10);
   void window.meuBot.setMemory({ notas: memoryNotas.value, perfil: memoryPerfil.value }).then(applyMemory);
   const update = {
-    sshHost: currentHostValue(),
-    backendModel: backendModelSelect.value as BackendModel,
+    backendModelForHost: backendModelSelect.value as BackendModel,
     theme: themeSelect.value as Theme,
     notifications: notificationsInput.checked,
     ...(Number.isInteger(port) ? { backendPort: port } : {}),
@@ -1088,9 +973,16 @@ form.addEventListener("submit", (ev) => {
 
 void (async () => {
   try { if (localStorage.getItem("sidebarHidden") === "1") sidebarEl.hidden = true; } catch { /* opcional */ }
+  const info = await window.meuBot.getWindowInfo();
+  if (info === null) throw new Error("janela sem máquina registrada");
+  windowHost = info.host;
+  document.title = `meu-bot · ${hostLabel(windowHost)}`;
+  document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
+  if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
   await restoreTabs();
   renderSidebar();
   tabsReady = true;
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
+  for (const id of pendingFocus.splice(0)) void openFromIndex(id);
 })();

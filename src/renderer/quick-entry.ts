@@ -26,9 +26,11 @@ input.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") { ev.preventDefault(); window.quickEntry.hide(); }
 });
 window.quickEntry.on("quick:shown", () => { error.hidden = true; input.focus(); input.select(); });
+const hint = document.getElementById("qe-hint") as HTMLSpanElement;
 window.quickEntry.on("quick:appearance", (p) => {
-  const size = (p as { fontSize?: number })?.fontSize;
-  if (typeof size === "number") document.documentElement.style.setProperty("--chat-font", `${size}px`);
+  const a = p as { fontSize?: number; host?: string };
+  if (typeof a?.fontSize === "number") document.documentElement.style.setProperty("--chat-font", `${a.fontSize}px`);
+  hint.textContent = typeof a?.host === "string" ? `Vai pra conversa ativa em ${a.host}` : "Vai pra conversa ativa do meu-bot";
 });
 input.focus();
 export {};

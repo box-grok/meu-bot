@@ -2,7 +2,9 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { BackendModel } from "../shared/ipc";
-import { getBackendModel, getSshHost, isBackendModel, isValidHost } from "./settings";
+import { getBackendModel, getLastHost, isBackendModel, isValidHost } from "./settings";
+import { LOCAL_HOST } from "./localBackend";
+import { nextOrderAmong, reorderWithin } from "./order";
 import type { SummaryState } from "./context";
 
 export interface BackendMessage {
@@ -12,7 +14,6 @@ export interface BackendMessage {
 
 export interface Conversation {
   id: string;
-  windowId: number;
   title?: string;
   /** Modelo do backend usado nesta conversa. */
   model: BackendModel;
@@ -86,21 +87,13 @@ const validSummary = (v: unknown, length: number): SummaryState | undefined => {
   return { text: s.text, coveredUntil: s.coveredUntil, updatedAt: typeof s.updatedAt === "string" ? s.updatedAt : "" };
 };
 
-const nextOrder = (): number => Math.max(-1, ...[...conversations.values()].map((c) => c.order)) + 1;
+/** Ordem é por máquina: cada janela reordena só as suas abas. */
+const nextOrder = (host: string): number => nextOrderAmong([...conversations.values()].filter((c) => c.host === host).map((c) => c.order));
 
-/** Reordena pelas ids recebidas; ids desconhecidas são ignoradas, conhecidas ausentes vão para o fim. */
-export function reorderConversations(ids: string[]): void {
-  const seen = new Set<string>();
-  let i = 0;
-  for (const id of ids) {
-    const conv = conversations.get(id);
-    if (conv === undefined || seen.has(id)) continue;
-    seen.add(id);
-    conv.order = i++;
-  }
-  for (const conv of [...conversations.values()].sort((a, b) => a.order - b.order)) {
-    if (!seen.has(conv.id)) conv.order = i++;
-  }
+/** Reordena pelas ids recebidas, só entre conversas da máquina; desconhecidas ignoradas, ausentes vão para o fim. */
+export function reorderConversations(ids: string[], host: string): void {
+  const orders = reorderWithin([...conversations.values()].map((c) => ({ id: c.id, host: c.host, order: c.order })), ids, host);
+  for (const [id, order] of orders) { const c = conversations.get(id); if (c !== undefined) c.order = order; }
   persistConversations();
 }
 
@@ -143,10 +136,11 @@ export function loadConversations(): void {
         (m): m is BackendMessage => (m?.role === "user" || m?.role === "assistant") && typeof m.content === "string",
       );
       const now = new Date().toISOString();
+      const host = typeof item.host === "string" && isValidHost(item.host) ? item.host : (getLastHost() ?? LOCAL_HOST);
       conversations.set(item.id, {
-        id: item.id, windowId: -1, backendMessages: messages,
-        model: isBackendModel(item.model) ? item.model : getBackendModel(),
-        host: typeof item.host === "string" && isValidHost(item.host) ? item.host : getSshHost(),
+        id: item.id, backendMessages: messages,
+        model: isBackendModel(item.model) ? item.model : getBackendModel(host),
+        host,
         ...(typeof item.title === "string" && item.title.trim() !== "" ? { title: item.title.slice(0, MAX_TITLE) } : {}),
         createdAt: typeof item.createdAt === "string" ? item.createdAt : now,
         updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : now,
@@ -169,10 +163,10 @@ export function loadConversations(): void {
   }
 }
 
-export function createConversation(windowId: number, model: BackendModel = getBackendModel(), host: string = getSshHost()): Conversation {
+export function createConversation(host: string, model: BackendModel = getBackendModel(host)): Conversation {
   const now = new Date().toISOString();
   const conv: Conversation = {
-    id: newId(), windowId, model, host, backendMessages: [], createdAt: now, updatedAt: now, order: nextOrder(),
+    id: newId(), model, host, backendMessages: [], createdAt: now, updatedAt: now, order: nextOrder(host),
     archived: false, openAsTab: true, userTurnsSinceMemory: 0, serverSeen: 0, lastResumed: false, summarizing: false, busy: false, closed: false,
   };
   conversations.set(conv.id, conv);
@@ -192,6 +186,14 @@ export function setConversationModel(id: string, model: BackendModel): void {
 
 /** Alguma conversa aguardando resposta do backend. */
 export const anyConversationBusy = (): boolean => [...conversations.values()].some((c) => c.busy);
+
+/** Alguma conversa da máquina em turno ou resumo (o túnel não deve cair). */
+export const hostBusy = (host: string): boolean => [...conversations.values()].some((c) => c.host === host && (c.busy || c.summarizing));
+
+export const getStoredConversation = (id: string): StoredConversation | undefined => {
+  const conv = conversations.get(id);
+  return conv === undefined ? undefined : toStored(conv);
+};
 
 /** Fechar a aba: a conversa continua na lista lateral. */
 export function closeTab(id: string): void {
@@ -227,8 +229,8 @@ const copyTitleBase = (conv: Conversation): string => {
 function cloneFrom(conv: Conversation, messages: BackendMessage[], title: string, branchedFrom?: { id: string; index: number }): Conversation {
   const now = new Date().toISOString();
   const copy: Conversation = {
-    id: newId(), windowId: conv.windowId, model: conv.model, host: conv.host, title: title.slice(0, MAX_TITLE),
-    backendMessages: messages.map((m) => ({ ...m })), createdAt: now, updatedAt: now, order: nextOrder(),
+    id: newId(), model: conv.model, host: conv.host, title: title.slice(0, MAX_TITLE),
+    backendMessages: messages.map((m) => ({ ...m })), createdAt: now, updatedAt: now, order: nextOrder(conv.host),
     archived: false, openAsTab: true, userTurnsSinceMemory: 0, serverSeen: 0, lastResumed: false, summarizing: false, busy: false, closed: false,
     ...(branchedFrom === undefined ? {} : { branchedFrom }),
   };
@@ -251,11 +253,10 @@ export function branchConversation(id: string, index: number): StoredConversatio
   return toStored(cloneFrom(conv, conv.backendMessages.slice(0, index + 1), `Ramo de ${copyTitleBase(conv)}`, { id, index }));
 }
 
-/** Conversas para reabrir numa janela: liga todas a ela e devolve em ordem de criação. */
-export function listConversationsFor(windowId: number): StoredConversation[] {
-  const list = [...conversations.values()].sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt));
-  for (const c of list) c.windowId = windowId;
-  return list.map(toStored);
+/** Conversas de uma máquina, em ordem de aba e criação. */
+export function listConversationsForHost(host: string): StoredConversation[] {
+  return [...conversations.values()].filter((c) => c.host === host)
+    .sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt)).map(toStored);
 }
 
 export function touchConversation(conv: Conversation): void {
@@ -270,11 +271,6 @@ export function dropConversation(id: string): void {
   conv.abort?.abort();
   conversations.delete(id);
   persistConversations();
-}
-
-/** Janela fechada: só marca como ociosa; o histórico fica para a próxima abertura. */
-export function releaseWindow(windowId: number): void {
-  for (const conv of conversations.values()) if (conv.windowId === windowId) conv.busy = false;
 }
 
 /** Transcript em disco, só para consulta do usuário. Falhas são ignoradas. */

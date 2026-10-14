@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>meu-bot · aliviar</title>
+  <link rel="stylesheet" href="relief.css" />
+</head>
+<body>
+  <header class="head">
+    <div class="badge">🧯</div>
+    <div>
+      <h1 id="rl-title">Aliviando…</h1>
+      <p id="rl-sub" class="sub">limpa processos presos no pod e reinicia a rede</p>
+    </div>
+  </header>
+  <ol class="steps">
+    <li id="st-connect"><span class="mark"></span><span class="label">Conectar por SSH</span><span class="detail"></span></li>
+    <li id="st-clean"><span class="mark"></span><span class="label">Limpar processos presos</span><span class="detail"></span></li>
+    <li id="st-tailscale"><span class="mark"></span><span class="label">Reiniciar o Tailscale</span><span class="detail"></span></li>
+    <li id="st-open"><span class="mark"></span><span class="label">Abrir o meu-bot</span><span class="detail"></span></li>
+  </ol>
+  <section class="stats">
+    <div class="card"><div class="k">antes</div><div class="v" id="before-load">—</div><div class="s" id="before-mem"></div></div>
+    <div class="arrow">→</div>
+    <div class="card"><div class="k">depois</div><div class="v" id="after-load">—</div><div class="s" id="after-mem"></div></div>
+  </section>
+  <p id="rl-result" class="result" hidden></p>
+  <footer class="foot">
+    <button type="button" id="rl-close" class="btn btn-ghost">Fechar</button>
+  </footer>
+  <script type="module" src="relief.js"></script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { app, type BrowserWindow } from "electron";
+import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -9,11 +9,13 @@ import { alreadySeenPrefix, buildSummaryRequest, planContext, toWire, validateSu
 import { applyOps, buildMemoryRequest, getMemory, memorySystemMessage, NOTAS_MAX, parseOps, PERFIL_MAX, setMemory } from "./memory";
 import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "./settings";
 import { ensureTunnel, markDegraded } from "./tunnel";
+import { broadcast, sendToHost } from "./windows";
 
+/** Entrega eventos à janela da máquina, resolvida a cada envio: a janela pode fechar no meio do turno. */
 class Sender {
-  constructor(private readonly win: BrowserWindow) {}
+  constructor(private readonly host: string) {}
   send<K extends MainEventChannel>(channel: K, payload: MainEvents[K]): void {
-    if (!this.win.isDestroyed()) this.win.webContents.send(channel, payload);
+    sendToHost(this.host, channel, payload);
   }
 }
 
@@ -268,16 +270,16 @@ function maybeExtractMemory(out: Sender, conv: Conversation): void {
     if (next.applied === 0) return;
     const saved = setMemory({ notas: next.notas, perfil: next.perfil });
     log(`memória: ${next.applied} operação(ões) aplicada(s)`);
-    out.send("memory:changed", { ...saved, limits: { notas: NOTAS_MAX, perfil: PERFIL_MAX } });
+    broadcast("memory:changed", { ...saved, limits: { notas: NOTAS_MAX, perfil: PERFIL_MAX } });
   });
 }
 
-export async function runBackendTurn(win: BrowserWindow, conv: Conversation, userText: string): Promise<void> {
-  const out = new Sender(win);
+export async function runBackendTurn(conv: Conversation, userText: string): Promise<void> {
+  const out = new Sender(conv.host);
   const host = conv.host;
   const model = conv.model;
   const conversationId = conv.id;
-  const cancelled = (): boolean => conv.closed || win.isDestroyed();
+  const cancelled = (): boolean => conv.closed;
   const abort = new AbortController();
   conv.abort = abort;
   let partial = "";

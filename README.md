@@ -7,11 +7,15 @@ com a assinatura já logada lá. Não há chave de API no app.
 Inspirado na arquitetura do Grok Bot (cliente fino + "computador do bot"), mas com código
 próprio e a VM sob seu controle.
 
+> Para ligar outra máquina (outro computador do Grok Bot, VM ou o Colima): `docs/PLAYBOOK-nova-maquina.md`.
+> Detalhes de implementação e pegadinhas: `docs/GUIA.md`.
+
 ## Requisitos
 
 - macOS, Node.js 24+ e npm.
-- Backend em qualquer máquina com Claude Code logado, inclusive este Mac sem SSH (`local`): cada
-  conversa fica presa à máquina em que nasceu (`local`, `colima`, `grokbot-1`, `agente-root`…). Configurações mostram o estado de cada host
+- Uma janela por máquina, como o Cursor com SSH: o app abre no seletor de máquinas (`local` = este
+  Mac sem SSH, `colima`, `agente-box`, `grokbot-1`…), cada janela mostra só as conversas da sua
+  máquina e Cmd+Shift+N abre outra. Fechar a última janela deixa o app no Dock. Configurações mostram o estado de cada host
   e instalam o backend (`backend-colima/`) com um clique.
 - Acesso SSH sem senha à VM, com um alias no `~/.ssh/config` (padrão: `colima`, a VM local do Colima; `grokbot-1` para a VM remota).
 - Na VM, o backend `~/.hermes/agente-rene/backend-sdk-claude` rodando na porta 8080 e com
@@ -55,9 +59,12 @@ fechar uma aba apaga aquela conversa. Dois cliques no título da aba renomeiam; 
 ## Configurações
 
 - **Host SSH da VM**: lista com os hosts do seu `~/.ssh/config`; também aceita digitar.
-- **Modelo do backend**: `claudecode` (chat puro, rápido; padrão), `agente` (só no Colima:
-  ferramentas com `--dangerously-skip-permissions` em `~/agent-workspace`, pode levar minutos),
-  `rene-dm` (agente René com ferramentas) ou `rene` (MCP completo), estes dois só na `grokbot-1`.
+- **Máquina**: escolhida no seletor que abre com o app (`local` = este Mac sem SSH, mais os hosts do
+  `~/.ssh/config`). Cada máquina é uma janela; Cmd+Shift+N abre outra. O seletor sonda todas em
+  paralelo, mostra o estado e instala o backend onde falta.
+- **Modelo padrão nesta máquina**: `agente` (bypass: ferramentas com `--dangerously-skip-permissions`
+  em `~/agent-workspace`, pode levar minutos), `claudecode` (chat puro, rápido), `rene-dm` ou `rene`,
+  estes dois só na `grokbot-1`. Modelos que a máquina não tem ficam desabilitados.
 - **Porta do backend na VM**: padrão 8080.
 
 Configuração em `~/Library/Application Support/meu-bot/settings.json`. Transcripts em

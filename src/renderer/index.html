@@ -14,8 +14,8 @@
   <header class="topbar">
     <div class="drag-region"></div>
     <h1>meu-bot</h1>
+    <span id="host-pill" class="pill pill-host">máquina: …</span>
     <span id="key-pill" class="pill pill-on">…</span>
-    <span id="host-pill" class="pill pill-neutral">VM: …</span>
     <span id="status-pill" class="pill pill-neutral" hidden></span>
     <div class="spacer"></div>
     <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
@@ -42,9 +42,9 @@
   <footer class="composer">
     <select id="model-select" class="model-select" title="Modelo desta conversa">
       <option value="claudecode">claudecode · chat rápido</option>
-      <option value="agente">agente · ferramentas sem pedir permissão (Colima)</option>
-      <option value="rene-dm">rene-dm · agente com ferramentas</option>
-      <option value="rene">rene · agente com MCP completo</option>
+      <option value="agente">agente · bypass</option>
+      <option value="rene-dm">rene-dm · agente René com ferramentas</option>
+      <option value="rene">rene · agente René com MCP completo</option>
     </select>
     <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
     <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
@@ -53,22 +53,15 @@
   <dialog id="settings-dialog">
     <form id="settings-form" method="dialog">
       <h2>Configurações</h2>
+      <p class="hint">Esta janela é da máquina mostrada no topo. Para outra máquina: Arquivo › Nova janela em outra máquina (Cmd+Shift+N).</p>
+      <p id="last-host" class="hint"></p>
       <label>
-        Máquina padrão para novas conversas (host SSH)
-        <select id="ssh-host"></select>
-        <input id="ssh-host-custom" type="text" autocomplete="off" placeholder="hostname ou usuario@host" hidden />
-      </label>
-      <p id="ssh-host-hint" class="hint">Hosts lidos do seu ~/.ssh/config. Cada conversa fica presa à máquina em que nasceu; mudar aqui só vale para conversas novas.</p>
-      <p id="host-status" class="host-status" hidden></p>
-      <button type="button" id="install-backend" class="btn btn-ghost" hidden>Instalar backend neste host</button>
-      <pre id="install-log" class="install-log" hidden></pre>
-      <label>
-        Modelo padrão para novas conversas
+        Modelo padrão nesta máquina (conversas novas)
         <select id="backend-model">
           <option value="claudecode">claudecode · chat puro, rápido</option>
-          <option value="agente">agente · ferramentas sem pedir permissão, só no Colima (pode levar minutos)</option>
-          <option value="rene-dm">rene-dm · agente René com ferramentas (pode levar minutos)</option>
-          <option value="rene">rene · agente René com MCP completo</option>
+          <option value="agente">agente · bypass (ferramentas sem pedir permissão, pode levar minutos)</option>
+          <option value="rene-dm">rene-dm · agente René com ferramentas, só na grokbot-1</option>
+          <option value="rene">rene · agente René com MCP completo, só na grokbot-1</option>
         </select>
       </label>
       <p class="hint">Cada conversa pode trocar o próprio modelo no seletor ao lado da caixa de texto.</p>

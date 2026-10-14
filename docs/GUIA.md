@@ -1,3 +1,5 @@
+> Roteiro passo a passo para uma máquina nova: [PLAYBOOK-nova-maquina.md](PLAYBOOK-nova-maquina.md). Este guia é o diário técnico.
+
 # Guia passo a passo: do REA ao meu-bot
 
 Registro de como saímos de "o que é o REA?" para um app de mesa próprio que conversa com o
@@ -557,3 +559,68 @@ O Claude Code dentro da VM precisa estar logado (`claude /login` lá) — o back
 - `backend-vm/services/openai-compat.js` ganhou o modelo `agente` (bypassPermissions, 30 turnos, cwd
   `~/agent-workspace`, sem bridge-rene nem MCP dedicado). `backend-vm/deploy-agente.sh` faz backup,
   copia, roda os testes, `pm2 restart hermes-mythos-lucas` e um smoke que cria um arquivo.
+
+## Mapa das máquinas (14 out 2026)
+
+| Alias ssh | Endereço | Usuário | O que é | Backend do meu-bot | Modelos |
+|---|---|---|---|---|---|
+| `local` | este Mac, sem SSH | box | macOS, Node 26 (Homebrew), Claude Code 2.1.300 logado (m6), bypass global por managed settings | processo filho do app, porta 8790 | claudecode, agente |
+| `colima` | 127.0.0.1:53314 (VM Lima) | box (home `/home/box.guest`) | Ubuntu 24.04 arm64, 3 CPU / 4 GB, Node 20 em `~/.local/node`, Claude Code 2.1.299 logado (m5) | systemd user `meu-bot-backend`, 8080 | claudecode, agente |
+| `agente-box` | 187.127.41.175 (público, sem NAT) · Tailscale 100.65.117.27 · IPv6 2a02:4780:6e:8383::1 | box (uid 1002, sudo sem senha) | Debian 13 x86_64, 2 CPU / 8 GB, hostname `agente`, Node 24 em `/opt/node`, Claude Code 2.1.300 nativo em `~/.local/bin`, logado | systemd user `meu-bot-backend` com linger, 8080 | claudecode, agente |
+| `agente-root` | mesma máquina acima | root | Claude Code global 2.1.296 (`/usr/local/bin/claude` → `/opt/node`), não logado; root não roda bypass | nenhum | — |
+| `grokbot-1` | Tailscale 100.69.163.93 (hostname grok-bot-vm-153046289) | box | Linux x86_64, 8 vCPU / 16 GB, sem systemd; Tailscale SSH servido por `tailscaled` sob PM2; daemon do Grok Bot, Hermes do WhatsApp, backend original (`hermes-mythos-lucas`) | pm2 `hermes-mythos-lucas`, 8080 | claudecode, rene, rene-dm, rene-buffer (+ agente após o deploy) |
+
+Outros nós do Tailscale: `agente-br` (= agente-box/root), `grokbot-2` (este Mac), `grokbot` (antigo, offline).
+O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/sshd_config.d/50-cloud-init.conf`); vale desligar.
+
+## v3: uma janela por máquina
+
+- Abertura: `showPicker()` (`src/main/picker.ts`) sempre; Enter abre a última máquina (`lastHost` nas
+  settings). Segunda instância (`requestSingleInstanceLock` + `second-instance`), clique no Dock sem
+  janelas, Cmd+Shift+N (`src/main/menu.ts`), e a ação da paleta abrem o mesmo seletor.
+- `src/main/windows.ts`: registro `host → BrowserWindow` (uma por host), última focada, `sendToHost` /
+  `broadcast` / `sendWhenLoaded`, bounds por máquina, pré-aquecimento do túnel ao abrir e carência de
+  5 min antes de derrubar o túnel de uma máquina sem janela (adiada se houver turno/resumo).
+- O renderer descobre a máquina por `window:info`; todo handler resolve o host pela janela remetente
+  (`hostFromEvent`) e a propriedade da conversa é `conv.host === host`. `windowId` sumiu.
+- `Sender` do backend é por host e resolve a janela a cada evento: fechar a janela no meio da resposta
+  não perde a resposta. `memory:changed` e `settings:changed` são broadcast.
+- Entrada rápida vai para a última janela focada (ou abre a do último host); o ack é validado pelo
+  id do webContents que recebeu o pedido.
+- Settings v3: `sshHost` → `lastHost` (migração em `settings-normalize.ts`), `defaultModelByHost`,
+  `windowBounds`. "Modelo padrão nesta máquina" grava por host.
+- Seletor: lista imediata, sondagens em paralelo com cache de 60 s (`picker.ts`), `describeProbe`
+  (`src/renderer/lib/probe-text.ts`) decide texto/botão, `hostAccent` (`lib/host-color.ts`) dá a cor
+  da faixa e da bolinha. Instalação do backend acontece ali, com progresso.
+- Menu próprio: inclui `editMenu` (senão Cmd+C/V somem) e `windowMenu` (lista as janelas por título).
+- Testes novos: `order`, `host-color`, `probe-text`, `settings-normalize`.
+
+## Atalhos na área de trabalho (`src/main/shortcuts.ts`)
+
+- "meu-bot <host>.app" é um applet AppleScript (`osacompile`) que roda o binário do app com
+  `--host=<host>` (ou `--picker` para "meu-bot seletor.app"). Com o app aberto, isso vira
+  `second-instance` na instância principal, que abre a janela da máquina direto (`openFromArgs`).
+  `open -a` não serviria: num app em execução o macOS descarta os `--args`.
+- Ícone: janela offscreen do Electron renderiza um quadrado arredondado com cor e emoji sorteados
+  (`randomLook`), `capturePage` → PNG 1024² → `iconutil` monta o `.icns`. O applet traz um
+  `Assets.car` com o ícone padrão, que o Finder prefere: é removido junto com `CFBundleIconName`.
+- Marcador `Contents/Resources/meu-bot-host.txt` (linha 1 `meu-bot-shortcut-v1 <host>`, linha 2 o
+  emoji): só o que tem marcador é removido pelo botão; o emoji aparece no botão do seletor.
+- `LSUIElement` no applet evita o ícone piscar no Dock. Se o Finder mostrar o ícone antigo, `touch`
+  no bundle resolve (o Finder cacheia por data).
+
+## Botão "aliviar grokbot-1" (`scripts/alivio/`)
+
+- `alivio-pod.sh` vive no pod em `~/bin/` (cópia versionada aqui): encerra CLIs do Claude do backend
+  presas há mais de 30 min (`LIMITE_S`), Chrome headless, e com `--tailscale` agenda `pm2 restart
+  tailscaled` em 2 s via nohup (a sessão ssh cai e volta). Log em `~/alivio.log` no pod.
+- `aliviar-grokbot1.sh` roda no Mac num Terminal: ssh com ConnectTimeout 90 s, mostra antes/depois e
+  oferece abrir `~/Desktop/grokbot-1.app` (atalho do meu-bot) 8 s depois. Se o ssh não entrar, diz que
+  o pod está congelado pelo host e que o caminho é reiniciar pelo app do Grok Bot.
+- `~/Desktop/aliviar grokbot-1.app`: applet osacompile que faz `open -a Terminal aliviar-grokbot1.command`
+  (cópia executável do .sh). Não usar `tell application "Terminal"`: isso pede permissão de Automação na
+  primeira vez e, sem resposta, o clique não faz nada. Ícone 🧯 sobre vermelho pelo mesmo método dos
+  atalhos (Assets.car removido, LSUIElement).
+- A `grokbot-1` é um contêiner (pod) da infraestrutura do Grok Bot: PID 1 `tini`/`pod-daemon`, overlay em
+  `/var/lib/isod`, IP 172.30.0.2 atrás de NAT, sem systemd nem sudo, `virtio_balloon` do host pausa a
+  máquina. O alívio só alcança processos nossos e o PM2.

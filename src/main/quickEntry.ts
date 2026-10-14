@@ -9,14 +9,16 @@ let registered: string | null = null;
 let status: QuickEntryStatus = "disabled";
 let getMainWindow: (() => BrowserWindow) | null = null;
 let getFontSize: (() => number) | null = null;
-const pendingAcks = new Map<string, { resolve: (r: { ok: boolean; message?: string }) => void; timer: NodeJS.Timeout }>();
+const pendingAcks = new Map<string, { resolve: (r: { ok: boolean; message?: string }) => void; timer: NodeJS.Timeout; senderId: number }>();
+let getHostLabel: ((win: BrowserWindow) => string) | null = null;
 let counter = 0;
 
 export const quickEntryStatus = (): QuickEntryStatus => status;
 
-export function initQuickEntry(deps: { mainWindow: () => BrowserWindow; fontSize: () => number }): void {
+export function initQuickEntry(deps: { mainWindow: () => BrowserWindow; fontSize: () => number; hostLabel?: (win: BrowserWindow) => string }): void {
   getMainWindow = deps.mainWindow;
   getFontSize = deps.fontSize;
+  getHostLabel = deps.hostLabel ?? null;
   ipcMain.handle("quick:submit", async (event, payload: unknown) => {
     if (quickWin === null || event.sender !== quickWin.webContents) return { ok: false, message: "origem inválida" };
     const text = typeof (payload as { text?: unknown })?.text === "string" ? (payload as { text: string }).text.trim() : "";
@@ -25,12 +27,11 @@ export function initQuickEntry(deps: { mainWindow: () => BrowserWindow; fontSize
   });
   ipcMain.on("quick:hide", (event) => { if (quickWin !== null && event.sender === quickWin.webContents) quickWin.hide(); });
   ipcMain.on("quick:ack", (event, payload: unknown) => {
-    const main = getMainWindow?.();
-    if (main === undefined || event.sender !== main.webContents) return;
     const p = payload as { correlationId?: unknown; ok?: unknown; message?: unknown };
     if (typeof p?.correlationId !== "string") return;
     const pending = pendingAcks.get(p.correlationId);
-    if (pending === undefined) return;
+    // Só a janela que recebeu o pedido confirma; o foco pode ter mudado de janela nesse meio-tempo.
+    if (pending === undefined || event.sender.id !== pending.senderId) return;
     clearTimeout(pending.timer);
     pendingAcks.delete(p.correlationId);
     pending.resolve({ ok: p.ok === true, ...(typeof p.message === "string" ? { message: p.message } : {}) });
@@ -45,7 +46,7 @@ async function relayToMain(text: string): Promise<{ ok: boolean; message?: strin
   const correlationId = `q${Date.now()}-${++counter}`;
   const result = new Promise<{ ok: boolean; message?: string }>((resolve) => {
     const timer = setTimeout(() => { pendingAcks.delete(correlationId); resolve({ ok: false, message: "A janela principal não confirmou." }); }, 8000);
-    pendingAcks.set(correlationId, { resolve, timer });
+    pendingAcks.set(correlationId, { resolve, timer, senderId: main.webContents.id });
   });
   main.webContents.send("ui:quick-submit", { correlationId, text });
   const r = await result;
@@ -90,7 +91,8 @@ export function toggleQuickEntry(): void {
   quickWin.show();
   quickWin.focus();
   quickWin.webContents.send("quick:shown", {});
-  quickWin.webContents.send("quick:appearance", { fontSize: getFontSize?.() ?? 14 });
+  const target = getMainWindow?.();
+  quickWin.webContents.send("quick:appearance", { fontSize: getFontSize?.() ?? 14, ...(target !== undefined && getHostLabel !== null ? { host: getHostLabel(target) } : {}) });
 }
 
 /** (Re)registra o atalho conforme as configurações; devolve o status para a UI. */
