@@ -1,5 +1,6 @@
 import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { planMascots } from "./lib/intro-mascots.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -16,11 +17,18 @@ const tabsEl = $<HTMLElement>("tabs");
 const panelsEl = $<HTMLElement>("panels");
 const inputEl = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("btn-send");
+/** Fase do botão Enviar por conversa: ausente = parado. "sending" até a resposta começar, "streaming" enquanto chega, "done" por 900 ms. */
+const sendPhase = new Map<string, "sending" | "streaming" | "done">();
+function setSendPhase(tab: Tab, phase: "sending" | "streaming" | "done" | null): void {
+  if (phase === null) sendPhase.delete(tab.id); else sendPhase.set(tab.id, phase);
+  if (tab.id === activeId) syncComposer();
+}
 const newBtn = $<HTMLButtonElement>("btn-new");
 const settingsBtn = $<HTMLButtonElement>("btn-settings");
 const keyPill = $<HTMLSpanElement>("key-pill");
 const hostPill = $<HTMLSpanElement>("host-pill");
 const statusPill = $<HTMLSpanElement>("status-pill");
+const sidebarStatus = $<HTMLElement>("sidebar-status");
 const modelSelect = $<HTMLSelectElement>("model-select");
 const dialog = $<HTMLDialogElement>("settings-dialog");
 const form = $<HTMLFormElement>("settings-form");
@@ -143,9 +151,13 @@ function syncComposer(): void {
   const tab = active();
   const busy = tab?.busy ?? true;
   inputEl.disabled = busy;
+  // Enviar (shot "cred-button-loading-to-tick"): clique → ponto pulsando até a resposta começar; aí Parar; ao terminar, ✓.
+  const phase = tab === null ? "idle" : (sendPhase.get(tab.id) ?? (busy ? "streaming" : "idle"));
   sendBtn.disabled = tab === null;
-  sendBtn.textContent = busy ? "Parar" : "Enviar";
-  sendBtn.classList.toggle("btn-bad", busy);
+  sendBtn.textContent = phase === "streaming" ? "Parar" : "Enviar";
+  sendBtn.classList.toggle("btn-bad", phase === "streaming");
+  sendBtn.classList.toggle("is-sending", phase === "sending");
+  sendBtn.classList.toggle("is-done", phase === "done");
   modelSelect.disabled = tab === null;
   applyModelAvailability(modelSelect, tab === null ? null : tab.host);
   if (tab !== null) modelSelect.value = tab.model;
@@ -317,10 +329,12 @@ const hostStatus = new Map<string, BackendStatusEvent>();
 function paintStatus(host: string | null): void {
   paintMini();
   const st = host === null ? undefined : hostStatus.get(host);
-  if (st === undefined) { statusPill.hidden = true; return; }
+  if (st === undefined) { statusPill.hidden = true; sidebarStatus.hidden = true; return; }
   statusPill.hidden = false;
   statusPill.textContent = st.state === "degraded" ? `túnel instável: ${st.detail}` : st.detail;
   statusPill.className = `pill ${st.state === "ready" ? "pill-on" : st.state === "error" ? "pill-off" : "pill-neutral"}`;
+  // Verde não precisa aparecer: o bloco na base da lista só abre quando há algo a resolver.
+  sidebarStatus.hidden = !(st.state === "error" || st.state === "degraded");
 }
 
 /** Tira a aba da tela; a conversa continua na lista lateral. */
@@ -513,6 +527,26 @@ function paintModeMenu(): void {
 modeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (modeMenu.hidden) { paintModeMenu(); modeMenu.hidden = false; } else modeMenu.hidden = true; });
 document.addEventListener("click", (ev) => { if (!modeMenu.hidden && !(ev.target as HTMLElement).closest(".mode-wrap")) modeMenu.hidden = true; });
 
+const modeToast = $<HTMLElement>("mode-toast");
+let modeToastTimer: ReturnType<typeof setTimeout> | null = null;
+const MODE_HUE: Record<string, number> = { agente: 145, claudecode: 220, "grok-4": 40, "rene-dm": 330, rene: 270 };
+/** Toast de modo (shot "telegram-copy-link-toast"): sobe acima da caixa com mola, o mascote-ícone nasce girando na cor do modo e pisca, e sai descendo 2 s depois. */
+function showModeToast(model: string): void {
+  const opt = [...modelSelect.options].find((o) => o.value === model);
+  const label = (opt?.textContent ?? model).replace(/ · não existe nesta máquina$/, "");
+  const [name, ...rest] = label.split(" · ");
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const icon = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+  icon.removeAttribute("class"); icon.style.setProperty("--hue", String(MODE_HUE[model] ?? 220));
+  modeToast.querySelector(".mt-icon")?.replaceChildren(icon);
+  const nameEl = modeToast.querySelector(".mt-name"); if (nameEl !== null) nameEl.textContent = `modo ${name ?? model}`;
+  const descEl = modeToast.querySelector(".mt-desc"); if (descEl !== null) descEl.textContent = rest.join(" · ");
+  if (modeToastTimer !== null) clearTimeout(modeToastTimer);
+  modeToast.classList.remove("in"); modeToast.hidden = false; void modeToast.offsetWidth;
+  modeToast.classList.add("in");
+  modeToastTimer = setTimeout(() => { modeToast.classList.remove("in"); modeToastTimer = setTimeout(() => { modeToast.hidden = true; modeToastTimer = null; }, 240); }, 2000);
+}
+
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
@@ -547,7 +581,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
-  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp do Hermes: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes", keywords: ["whatsapp", "qr", "parear", "hermes"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem o WhatsApp do Hermes (~/.hermes/whatsapp).", "warn"); } });
+  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes ou OpenClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
     const tab = active();
@@ -570,7 +604,7 @@ function buildPaletteItems(): PaletteItem[] {
     add({ id: "a:archive", kind: "action", label: "Arquivar conversa atual" }, () => archive(cur.id, true));
     add({ id: "a:close", kind: "action", label: "Fechar aba atual", detail: "Cmd+W" }, () => closeTab(cur.id));
     for (const m of ["claudecode", "agente", "rene-dm", "rene", "grok-4"] as const) {
-      add({ id: `a:model:${m}`, kind: "action", label: `Usar modelo ${m} nesta conversa` }, () => { setTabModel(cur, m); void window.meuBot.setConversationModel(cur.id, m); });
+      add({ id: `a:model:${m}`, kind: "action", label: `Usar modelo ${m} nesta conversa` }, () => { if (cur.model !== m && !prefersReducedMotion) showModeToast(m); setTabModel(cur, m); void window.meuBot.setConversationModel(cur.id, m); });
     }
   }
   for (const c of index.values()) {
@@ -969,7 +1003,7 @@ function openXai(): void {
 async function runXaiLogin(): Promise<void> {
   if (xaiRunning) return;
   xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
-  xaiStatus.textContent = "Pedindo o login ao Hermes da máquina…";
+  xaiStatus.textContent = "Pedindo o login OAuth da xAI à máquina…";
   try { await window.meuBot.xaiLogin(); } catch (err) { xaiStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
   finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
 }
@@ -1007,7 +1041,7 @@ xaiLineBtn.addEventListener("click", () => {
   void runXaiLogin();
 });
 
-// ---- WhatsApp do Hermes: linha no topo da lista de conversas e modal de pareamento por QR.
+// ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
 const waLine = $<HTMLButtonElement>("wa-line");
 const waDialog = $<HTMLDialogElement>("wa-dialog");
 const waStatusEl = $<HTMLParagraphElement>("wa-status");
@@ -1019,6 +1053,8 @@ const waResetBtn = $<HTMLButtonElement>("wa-reset");
 const waCloseBtn = $<HTMLButtonElement>("wa-close");
 let waStatus: WhatsappStatus | null = null;
 let waPairing = false;
+/** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
+let waConnected = false;
 
 /** "5516992294486" → "+55 (16) 99229-4486"; outros formatos ficam com o + na frente. */
 function fmtPhone(digits: string | null): string {
@@ -1033,7 +1069,8 @@ function paintWhatsapp(): void {
   waLine.hidden = false;
   waLine.className = `wa-line ${st.connected ? "on" : "off"}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
-  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `WhatsApp do Hermes · ${who} · conectado` : `WhatsApp do Hermes · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
+  const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : "WhatsApp";
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
   waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
@@ -1041,10 +1078,24 @@ function paintWhatsapp(): void {
   waCloseBtn.textContent = waPairing ? "Cancelar" : "Fechar";
 }
 
+let waTimer: ReturnType<typeof setTimeout> | null = null;
+let waRefreshing = false;
+/**
+ * Consulta o estado e agenda a próxima: 10 s enquanto a máquina tem WhatsApp mas não está conectado
+ * (gateway reiniciando, sessão caindo), 60 s quando está bem. Sem isso a linha congelava no estado da
+ * abertura da janela — vermelha depois de um alívio, mesmo com o gateway já de volta.
+ */
 async function refreshWhatsapp(): Promise<void> {
+  if (waRefreshing) return;
+  waRefreshing = true;
+  if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; }
   try { waStatus = await window.meuBot.whatsappStatus(); } catch { waStatus = null; }
+  finally { waRefreshing = false; }
   paintWhatsapp();
+  const soon = waStatus !== null && waStatus.present && !waStatus.connected && !waPairing;
+  waTimer = setTimeout(() => { void refreshWhatsapp(); }, soon ? 10_000 : 60_000);
 }
+window.addEventListener("focus", () => { if (waStatus?.present) void refreshWhatsapp(); });
 
 function openWhatsapp(): void {
   waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = "";
@@ -1054,7 +1105,7 @@ function openWhatsapp(): void {
 
 async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
-  waPairing = true;
+  waPairing = true; waConnected = false;
   waLog.hidden = false; waLog.textContent = "";
   waStatusEl.textContent = reset ? "Apagando a sessão antiga e gerando um QR novo…" : "Gerando o QR…";
   paintWhatsapp();
@@ -1076,19 +1127,29 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
   switch (ev.kind) {
     case "step": appendLog(`▸ ${ev.text}`); break;
     case "log": appendLog(ev.text); break;
-    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do Hermes."; break;
-    case "connected": waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. Subindo o gateway…`; appendLog("✓ conectado"); break;
+    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente."; break;
+    case "connected": {
+      // Vinculou: a janela fecha sozinha; o gateway volta em segundo plano e o refresh depois do `done` mostra o número.
+      waConnected = true;
+      waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`; appendLog("✓ conectado");
+      const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info");
+      setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
+      break;
+    }
     case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
     case "done":
       appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
-      if (ev.ok) { const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp do Hermes pareado; o gateway está voltando.", "info"); setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500); }
+      if (ev.ok && waDialog.open) setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
       break;
   }
 });
 waLine.addEventListener("click", () => openWhatsapp());
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
 waResetBtn.addEventListener("click", () => { void pairWhatsapp(true); });
-waCloseBtn.addEventListener("click", () => { if (waPairing) void window.meuBot.whatsappCancel(); waDialog.close(); });
+const waCancelIfPairing = (): void => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); };
+waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close(); });
+// Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.
+waDialog.addEventListener("cancel", () => { waCancelIfPairing(); });
 
 // ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
 const introEl = $<HTMLElement>("intro");
@@ -1099,27 +1160,33 @@ async function playIntro(): Promise<void> {
   if (settings?.openDirect !== false || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { introEl.remove(); return; }
   const brand = $<HTMLElement>("intro-brand");
   const host = $<HTMLElement>("intro-host");
-  const key = $<HTMLElement>("intro-key");
-  const tunnel = $<HTMLElement>("intro-tunnel");
-  host.textContent = `máquina: ${hostLabel(windowHost)}`;
-  key.textContent = `backend · ${settings?.backendModelForHost ?? "agente"}`;
-  tunnel.textContent = "túnel";
+  host.textContent = hostLabel(windowHost);
+  // Mascotes: a bolha do ícone, 5 cores, em arco sobre o nome; cada um com semente própria para os loops não coincidirem.
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const stage = $<HTMLElement>("intro-mascots");
+  const mascots = planMascots(5).map((m) => {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.style.setProperty("--x", `${m.x}px`); el.style.setProperty("--y", `${m.y}px`); el.style.setProperty("--size", `${m.size}px`);
+    el.style.setProperty("--hue", String(m.hue)); el.style.setProperty("--seed", m.seed.toFixed(3));
+    stage.append(el);
+    return { el, m };
+  });
   introEl.hidden = false;
   await wait(30); brand.classList.add("in");            // meu-bot no centro, discreto
-  await wait(300); host.classList.add("in");            // a máquina se materializa abaixo
-  await wait(350); key.classList.add("in");             // backend e túnel, lado a lado, mais rápido
-  await wait(120); tunnel.classList.add("in");
-  // Clímax: espera o túnel real ficar pronto, mas por pouco tempo; espera longa vira tédio.
+  for (const { el, m } of mascots) setTimeout(() => el.classList.add("in"), m.delayMs); // pop com overshoot, em cascata
+  await wait(300); host.classList.add("in");            // o nome da máquina, embaixo
+  // Clímax: espera o túnel real ficar pronto, mas por pouco tempo; espera longa vira tédio. O estado em si fica na barra.
   const t0 = Date.now();
-  while (hostStatus.get(windowHost)?.state !== "ready" && Date.now() - t0 < 500) await wait(40);
-  const st = hostStatus.get(windowHost);
-  const ready = st?.state === "ready";
-  tunnel.textContent = ready ? "túnel ativo" : (st?.detail ?? "conectando…");
-  tunnel.className = `pill intro-item in ${ready ? "lit" : "pill-neutral"}`;
-  await wait(ready ? 450 : 300);
+  while (hostStatus.get(windowHost)?.state !== "ready" && Date.now() - t0 < 700) await wait(40);
+  const ready = hostStatus.get(windowHost)?.state === "ready";
+  if (ready) mascots.forEach(({ el }, i) => setTimeout(() => el.classList.add("cheer"), i * 40)); // pulinho em cascata: o túnel acendeu
+  await wait(ready ? 520 : 300);
+  // Portal: o nome escala e some, e o app por baixo assenta (scale 1.03 → 1) enquanto a camada se dissolve.
   introEl.classList.add("out");
-  await wait(220);
+  document.body.classList.add("app-enter");
+  await wait(480);
   introEl.remove();
+  document.body.classList.remove("app-enter");
 }
 
 // ---- Onboarding guiado (primeira vez, sem conversas): a pessoa faz cada ação, o app só orienta.
@@ -1130,6 +1197,45 @@ const obFeedback = $<HTMLParagraphElement>("ob-feedback");
 const obTitle = $<HTMLHeadingElement>("ob-title");
 const obText = $<HTMLParagraphElement>("ob-text");
 const obSkip = $<HTMLButtonElement>("ob-skip");
+const obStage = $<HTMLElement>("ob-mascots");
+const obRipple = $<HTMLElement>("ob-ripple");
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let obMascots: SVGSVGElement[] = [];
+
+/**
+ * Entrada do onboarding (shot "capwords-splash"): o cartão chega com mola, os mascotes (os da abertura) deslizam das
+ * bordas e param em volta dele, em idle até o fim, e aviso, título e texto sobem em sequência.
+ */
+function onboardEnter(): void {
+  if (prefersReducedMotion) return;
+  onboardEl.classList.remove("enter", "shrink"); void onboardEl.offsetWidth; onboardEl.classList.add("enter");
+  setTimeout(() => onboardEl.classList.remove("enter"), 800);
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  obStage.replaceChildren(); obStage.hidden = false; obMascots = [];
+  for (const m of planMascots(5, Math.random, 310, 150)) {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.classList.add("from-edge");
+    el.style.setProperty("--x", `${m.x}px`); el.style.setProperty("--y", `${m.y}px`); el.style.setProperty("--size", `${m.size + 6}px`);
+    el.style.setProperty("--hue", String(m.hue)); el.style.setProperty("--seed", m.seed.toFixed(3));
+    el.style.setProperty("--fx", `${Math.round(m.x * 1.6)}px`); el.style.setProperty("--fy", `${Math.round(m.y * 2.2)}px`); // nasce empurrado para a borda
+    obStage.append(el); obMascots.push(el);
+    setTimeout(() => el.classList.add("in"), 30 + m.delayMs);
+  }
+}
+
+/** Saída. "done": o cartão se dissolve encolhendo de leve, os mascotes se despedem junto e uma onda verde se abre do centro do cartão e se dissolve. "skipped": só dispensa os mascotes. */
+async function onboardLeave(how: "done" | "skipped"): Promise<void> {
+  const bye = (): void => { for (const el of obMascots) el.classList.add("bye"); setTimeout(() => { obStage.replaceChildren(); obStage.hidden = true; obMascots = []; }, 400); };
+  if (prefersReducedMotion || how === "skipped") { bye(); return; }
+  const r = onboardEl.getBoundingClientRect();
+  obRipple.style.setProperty("--cx", `${r.left + r.width / 2}px`); obRipple.style.setProperty("--cy", `${r.top + r.height / 2}px`);
+  bye();
+  onboardEl.classList.add("shrink");
+  await wait(280);                         // a onda nasce enquanto o cartão ainda está se dissolvendo
+  obRipple.hidden = false; obRipple.classList.add("go");
+  await wait(1000);
+  obRipple.classList.remove("go"); obRipple.hidden = true; onboardEl.classList.remove("shrink");
+}
 let onboard: OnboardState | null = null;
 let lastFeedback: Feedback | undefined;
 let feedbackTimer: number | null = null;
@@ -1158,6 +1264,7 @@ function startOnboarding(): void {
   onboard = initialOnboardState();
   lastFeedback = undefined;
   paintOnboard();
+  onboardEnter();
 }
 
 async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
@@ -1172,7 +1279,7 @@ async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
   obFeedback.hidden = true;
   obTitle.textContent = msg.title;
   obText.textContent = msg.text;
-  window.setTimeout(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }, how === "done" ? 3200 : 4500);
+  window.setTimeout(() => { if (onboard !== null) return; void onboardLeave(how).then(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }); }, how === "done" ? 3200 : 4500);
   try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
   if (how === "skipped" && tabs.size === 0) await newTab();
 }
@@ -1212,12 +1319,14 @@ async function sendText(tab: Tab, raw: string): Promise<void> {
   setBusy(tab, true);
   tab.currentAssistant = null;
   tab.pendingText = "";
+  setSendPhase(tab, "sending");
   try {
     await window.meuBot.send(tab.id, text);
   } catch (err) {
     addNotice(tab, err instanceof Error ? err.message : String(err), "error");
+    setSendPhase(tab, null);
   } finally {
-    if (tabs.has(tab.id)) setBusy(tab, false);
+    if (tabs.has(tab.id)) { setBusy(tab, false); if (sendPhase.get(tab.id) !== "done") setSendPhase(tab, null); }
   }
 }
 
@@ -1236,6 +1345,7 @@ const markUnread = (tab: Tab): void => { if (tab.id !== activeId) tab.dotEl.hidd
 window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
   const tab = tabs.get(conversationId);
   if (tab === undefined) return;
+  if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   tab.pendingText = "";
   tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
   scrollToBottom(tab, false);
@@ -1243,6 +1353,7 @@ window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
 window.meuBot.on("chat:delta", ({ conversationId, text }) => {
   const tab = tabs.get(conversationId);
   if (tab === undefined) return;
+  if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   if (tab.currentAssistant === null) {
     tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
   }
@@ -1253,6 +1364,8 @@ window.meuBot.on("chat:delta", ({ conversationId, text }) => {
 window.meuBot.on("chat:done", (done: DoneEvent) => {
   const tab = tabs.get(done.conversationId);
   if (tab === undefined) return;
+  if (done.stopReason === "cancelled" || done.refusal !== undefined) setSendPhase(tab, null);
+  else { setSendPhase(tab, "done"); setTimeout(() => { if (sendPhase.get(tab.id) === "done") setSendPhase(tab, null); }, 900); }
   if (done.ms !== undefined) { tab.lastTurn = { ms: done.ms, completion: done.usage?.completion ?? 0 }; if (tab.id === activeId) paintContext(tab); }
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
@@ -1271,6 +1384,7 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
 window.meuBot.on("chat:error", (e: ErrorEvent) => {
   const tab = tabs.get(e.conversationId);
   if (tab === undefined) return;
+  setSendPhase(tab, null);
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
   addNotice(tab, e.message, "error");
@@ -1426,6 +1540,7 @@ modelSelect.addEventListener("change", () => {
   const tab = active();
   if (tab === null) return;
   const model = modelSelect.value as BackendModel;
+  if (tab.model !== model && !prefersReducedMotion) showModeToast(model);
   setTabModel(tab, model);
   void window.meuBot.setConversationModel(tab.id, model);
 });
@@ -1450,7 +1565,25 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
-newBtn.addEventListener("click", () => { void newTab(); });
+/** Novo (shot "x-campaign grok-bot like button"): afunda e volta com mola; bolhas-mascote saltam em leque enquanto a aba nova aparece. */
+function burstNew(): void {
+  if (prefersReducedMotion) return;
+  newBtn.classList.remove("pressed"); void newBtn.offsetWidth; newBtn.classList.add("pressed");
+  setTimeout(() => newBtn.classList.remove("pressed"), 500);
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const hues = [220, 145, 40, 330, 270];
+  for (let i = 0; i < 5; i++) {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.setAttribute("class", "burst-m");
+    const ang = ((-150 + i * 30 + (Math.random() - 0.5) * 14) * Math.PI) / 180; // leque para cima
+    const d = 34 + Math.random() * 22;
+    el.style.setProperty("--bx", `${Math.round(Math.cos(ang) * d)}px`); el.style.setProperty("--by", `${Math.round(Math.sin(ang) * d)}px`);
+    el.style.setProperty("--hue", String(hues[i])); el.style.setProperty("--d", `${i * 40}ms`);
+    newBtn.append(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+}
+newBtn.addEventListener("click", () => { burstNew(); void newTab(); });
 // ---- Seção Fallback: o primário é o modelo padrão da máquina; a reserva vem da corrente do backend.
 const primarySelect = $<HTMLSelectElement>("primary-provider");
 const fallbackOrderEl = $<HTMLParagraphElement>("fallback-order");

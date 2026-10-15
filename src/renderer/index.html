@@ -12,13 +12,20 @@
 </head>
 <body>
   <div id="intro" class="intro" hidden aria-hidden="true">
+    <div id="intro-mascots" class="intro-mascots"></div>
     <div id="intro-brand" class="intro-brand">meu-bot</div>
-    <span id="intro-host" class="pill pill-host intro-item"></span>
-    <div class="intro-row">
-      <span id="intro-key" class="pill pill-on intro-item"></span>
-      <span id="intro-tunnel" class="pill pill-neutral intro-item"></span>
-    </div>
+    <div id="intro-host" class="intro-sub"></div>
   </div>
+  <!-- Mascote da abertura: a bolha do ícone com olhos e o cursor de boca. Cada <g> anima um transform só, para os loops não brigarem. -->
+  <template id="intro-mascot-tpl">
+    <svg class="mascot" viewBox="0 0 64 64" aria-hidden="true">
+      <g class="m-tilt"><g class="m-breathe"><g class="m-squish">
+        <path class="m-bubble" d="M12 8h40a8 8 0 0 1 8 8v26a8 8 0 0 1-8 8H30l-11 10V50h-7a8 8 0 0 1-8-8V16a8 8 0 0 1 8-8z"/>
+        <g class="m-eyes"><g class="m-pupils"><circle class="m-eye" cx="24" cy="27" r="4"/><circle class="m-eye" cx="40" cy="27" r="4"/></g></g>
+        <rect class="m-mouth" x="26" y="37" width="12" height="3.5" rx="1.75"/>
+      </g></g></g>
+    </svg>
+  </template>
   <div id="topbar-mini" class="topbar-mini" hidden>
     <div class="drag-region"></div>
     <span id="mini-dot" class="mini-dot"></span>
@@ -27,14 +34,8 @@
   </div>
   <header class="topbar">
     <div class="drag-region"></div>
-    <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
-    <h1>meu-bot</h1>
-    <span id="host-pill" class="pill pill-host">máquina: …</span>
-    <span id="key-pill" class="pill pill-on">…</span>
-    <span id="status-pill" class="pill pill-neutral" hidden></span>
     <div class="spacer"></div>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
-    <button id="btn-new" class="btn btn-ghost" type="button" title="Nova conversa (Cmd+N)">Novo</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
     <button id="btn-topbar-hide" class="btn btn-ghost mini-btn" type="button" title="Recolher a barra (Cmd+Shift+B)">⌃</button>
   </header>
@@ -42,19 +43,35 @@
   <div class="body">
     <aside id="sidebar" class="sidebar" hidden>
       <div class="sidebar-head">
-        <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do Hermes nesta máquina: clique para ver o estado ou parear"></button>
+        <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do agente desta máquina (Hermes ou OpenClaw): clique para ver o estado ou parear"></button>
         <div id="cl-line" class="wa-line cl-line" hidden title="Conta do Claude Code nesta máquina"><span class="dot"></span><span id="cl-line-text" class="grow"></span><button type="button" id="cl-line-btn" class="btn btn-ghost btn-small">sair</button></div>
-        <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) no Hermes desta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
+        <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
         <input id="sidebar-search" type="search" placeholder="Buscar conversas…" autocomplete="off" />
       </div>
       <div id="sidebar-list" class="sidebar-list"></div>
       <div class="sidebar-foot">
         <label class="switch" title="Mostrar também as conversas arquivadas"><input id="sidebar-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivadas</span></label>
       </div>
+      <!-- Quem/onde/como desta janela. Recolhido por padrão: verde não precisa aparecer; só abre quando o túnel está em erro ou instável. -->
+      <div id="sidebar-status" class="sidebar-status" hidden>
+        <h1>meu-bot</h1>
+        <span id="host-pill" class="pill pill-host">máquina: …</span>
+        <span id="key-pill" class="pill pill-on">…</span>
+        <span id="status-pill" class="pill pill-neutral" hidden></span>
+      </div>
     </aside>
     <div class="content">
-      <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+      <!-- ☰ pequeno, ao lado das abas: esta linha nunca some (a barra de cima sim, com Cmd+Shift+B). -->
+      <div class="tabs-row">
+        <div class="tabs-menu-cell"><button id="btn-sidebar" class="btn btn-ghost tabs-menu" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button></div>
+        <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+      </div>
       <main id="panels" class="panels">
+        <!-- Onboarding: mascotes em volta do cartão (entrada) e a piscada verde ao concluir (saída). -->
+        <div id="ob-mascots" class="ob-mascots" hidden aria-hidden="true"></div>
+        <div id="ob-ripple" class="ob-ripple" hidden aria-hidden="true"></div>
+        <!-- Toast de modo: sobe acima da caixa quando se escolhe um modo do agente. -->
+        <div id="mode-toast" class="mode-toast" hidden aria-live="polite"><span class="mt-icon"></span><span class="mt-name"></span><span class="mt-desc"></span></div>
         <section id="onboard" class="onboard" hidden aria-live="polite">
           <div class="onboard-top">
             <span id="ob-count" class="onboard-count"></span>
@@ -83,11 +100,12 @@
         <option value="agente">agente · ferramentas sem pedir permissão (bypass)</option>
         <option value="rene-dm">rene-dm · René com ferramentas, só na grokbot-1</option>
         <option value="rene">rene · René com MCP completo, só na grokbot-1</option>
-        <option value="grok-4">grok-4 · Grok da xAI, pelo login do Hermes</option>
+        <option value="grok-4">grok-4 · Grok da xAI, pelo login OAuth da máquina</option>
       </select>
     </div>
     <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
     <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
+    <button id="btn-new" class="btn btn-ghost btn-new" type="button" title="Nova conversa (Cmd+N)">Novo</button>
   </footer>
 
   <dialog id="cl-dialog">
@@ -124,14 +142,14 @@
   </dialog>
   <dialog id="wa-dialog">
     <div class="wa-box">
-      <h2>WhatsApp do Hermes</h2>
+      <h2>WhatsApp</h2>
       <p id="wa-status" class="hint"></p>
       <img id="wa-qr" class="wa-qr" alt="QR code para parear o WhatsApp" hidden />
       <p id="wa-how" class="hint" hidden>No celular: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. Ele renova sozinho até você ler.</p>
       <pre id="wa-log" class="log" hidden></pre>
       <div class="dialog-actions">
         <button type="button" id="wa-pair" class="btn btn-primary">Gerar QR</button>
-        <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Guarda a sessão atual como session.loggedout-… e gera um QR novo">Reparear (apaga a sessão)</button>
+        <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Desfaz a sessão atual (Hermes: guarda como session.loggedout-…; OpenClaw: channels logout) e gera um QR novo">Reparear (apaga a sessão)</button>
         <div class="spacer"></div>
         <button type="button" id="wa-close" class="btn btn-ghost">Fechar</button>
       </div>

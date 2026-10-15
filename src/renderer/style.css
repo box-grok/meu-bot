@@ -31,7 +31,6 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 }
 .drag-region { position: absolute; inset: 0; -webkit-app-region: drag; }
 .topbar > *:not(.drag-region) { position: relative; -webkit-app-region: no-drag; }
-.topbar h1 { font-size: 15px; margin: 0; }
 .topbar { border-top: 3px solid var(--host-accent, var(--accent)); }
 .pill-host { color: var(--host-accent, var(--accent)); border-color: var(--host-accent, var(--accent)); font-weight: 600; }
 .spacer { flex: 1; }
@@ -48,7 +47,10 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .btn-ok { border-color: var(--ok); color: var(--ok); }
 .btn-bad { border-color: var(--bad); color: var(--bad); }
 
-.tabs { display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); background: var(--card); overflow-x: auto; }
+.tabs-row { display: flex; align-items: stretch; background: var(--card); min-width: 0; }
+.tabs-menu-cell { display: flex; align-items: center; padding: 0 2px 0 8px; border-bottom: 1px solid var(--line); flex: none; }
+.tabs-menu { width: 26px; height: 26px; padding: 0; font-size: 14px; line-height: 1; border-radius: 7px; }
+.tabs { flex: 1; min-width: 0; display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); background: var(--card); overflow-x: auto; }
 .tab {
   display: flex; align-items: center; gap: 6px; max-width: 240px; padding: 6px 8px 6px 12px;
   border: 1px solid var(--line); border-bottom: none; border-radius: 10px 10px 0 0; background: var(--bg);
@@ -149,7 +151,33 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
   flex: 1; min-width: 0; resize: none; font: inherit; font-size: var(--chat-font); padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--fg);
 }
-.composer .btn-primary { white-space: nowrap; }
+.composer .btn-primary { white-space: nowrap; min-width: 74px; position: relative; transition: color .12s ease, background-color .2s ease, border-color .2s ease, padding .2s ease; }
+/* Novo, ao lado de Enviar (shot "x-campaign grok-bot like button"): no clique o botão afunda e volta com mola, preenche de
+   azul por um instante, e bolhas-mascote saltam dele em leque com física de brinquedo — sobem, abrem e caem sumindo —
+   enquanto a aba nova aparece (o "contador" do shot). */
+.composer .btn-new { white-space: nowrap; position: relative; overflow: visible; transition: background-color .25s ease, color .25s ease, border-color .25s ease; }
+.composer .btn-new.pressed { animation: new-press .46s cubic-bezier(.34, 1.56, .64, 1); background: var(--accent); color: var(--accent-fg); border-color: var(--accent); transition: none; }
+@keyframes new-press { 0% { scale: 1; } 30% { scale: .9; } 100% { scale: 1; } }
+.burst-m { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; pointer-events: none; z-index: 3; overflow: visible; animation: burst-pop .85s cubic-bezier(.2, .9, .3, 1) var(--d, 0ms) both; }
+.burst-m .m-bubble { fill: hsl(var(--hue) 78% 62%); } .burst-m .m-eye, .burst-m .m-mouth { fill: #0d1322; }
+@keyframes burst-pop { 0% { translate: 0 0; scale: .2; opacity: 0; } 18% { opacity: 1; scale: 1.15; } 55% { translate: var(--bx) var(--by); scale: 1; opacity: 1; } 100% { translate: calc(var(--bx) * 1.2) calc(var(--by) * .55); scale: .8; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .composer .btn-new.pressed { animation: none; } .burst-m { display: none; } }
+/* Enviar (shot "cred-button-loading-to-tick"): no clique o texto some e um ponto pulsa até a resposta começar; aí vira
+   Parar (a saída continua à mão); ao terminar, um ✓ entra com mola e, 900 ms depois, volta a Enviar. A forma não muda. */
+#btn-send.is-sending, #btn-send.is-done { color: transparent; }
+#btn-send.is-sending::after, #btn-send.is-done::after { content: ""; position: absolute; left: 50%; top: 50%; }
+#btn-send.is-sending::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent-fg); animation: send-dot .9s ease-in-out infinite; }
+#btn-send.is-done { background: var(--ok); border-color: var(--ok); }
+#btn-send.is-done::after { width: 6px; height: 11px; margin: -8px 0 0 -3px; border: solid #fff; border-width: 0 2.5px 2.5px 0; animation: send-tick .36s cubic-bezier(.34, 1.56, .64, 1) both; }
+/* Parar: quadradinho de stop que respira enquanto a resposta chega, fundo vermelho suave; no hover, sólido. */
+#btn-send.btn-bad { background: color-mix(in srgb, var(--bad) 12%, var(--card)); border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad); padding-left: 27px; }
+#btn-send.btn-bad::before { content: ""; position: absolute; left: 11px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 2px; background: var(--bad); animation: stop-breathe 1.6s ease-in-out infinite; }
+#btn-send.btn-bad:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+#btn-send.btn-bad:hover::before { background: #fff; animation: none; }
+@keyframes stop-breathe { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--bad) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { #btn-send.btn-bad::before, #btn-send.is-sending::after { animation: none; } }
+@keyframes send-dot { 0%, 100% { transform: scale(.7); opacity: .55; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes send-tick { from { transform: rotate(45deg) scale(0); } to { transform: rotate(45deg) scale(1); } }
 .model-select { font: inherit; font-size: 12px; max-width: 170px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--fg); padding: 0; width: min(560px, 92vw); }
@@ -189,14 +217,61 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 /* Abertura da primeira vez: cobre a janela e se desfaz em ~1,5 s. */
 .intro { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .22s ease; }
 .intro[hidden] { display: none; }
-.intro.out { opacity: 0; pointer-events: none; }
-.intro-brand { font-size: 20px; font-weight: 600; letter-spacing: .02em; color: var(--muted); opacity: 0; transition: opacity .3s ease; }
-.intro-brand.in { opacity: .85; }
-.intro-row { display: flex; gap: 8px; }
-.intro .intro-item { font-size: 12px; padding: 3px 10px; opacity: 0; transform: translateY(6px) scale(.98); transition: opacity .32s ease, transform .32s ease, color .2s, border-color .2s; }
-.intro .intro-item.in { opacity: 1; transform: none; }
-.intro .intro-item.lit { color: var(--ok); border-color: var(--ok); animation: intro-pulse .5s ease-out; }
-@keyframes intro-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--ok) 0%, transparent); } }
+/* Saída como portal (shot "clay-splash"): o nome escala rápido e some, os mascotes se afastam, a camada se dissolve um
+   tiquinho depois — e o app, que já estava por baixo, assenta de 1.03 → 1 (body.app-enter). Sensação de profundidade e entrada. */
+.intro.out { opacity: 0; pointer-events: none; transition: opacity .3s ease .08s; }
+.intro-brand { font-size: 20px; font-weight: 600; letter-spacing: .02em; color: var(--muted); opacity: 0; transform: scale(1.06); transition: opacity .3s ease, transform .42s cubic-bezier(.2, .8, .2, 1); }
+.intro-brand.in { opacity: .85; transform: none; }             /* entrada: aparece e assenta, mesmo vocabulário do app ao revelar */
+.intro.out .intro-brand { opacity: 0; transform: scale(2.6); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .3s ease; }
+.intro.out .mascot { opacity: 0; transform: scale(1.25); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .28s ease; }
+.intro.out .intro-sub { opacity: 0; transition: opacity .2s ease; }
+body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes app-settle { from { transform: scale(1.03); opacity: .55; } to { transform: none; opacity: 1; } }
+/* Só o nome da máquina embaixo do nome: cada máquina é uma janela, vale saber qual abriu. O resto do estado fica na barra. */
+.intro-sub { font-size: 12px; color: var(--muted); opacity: 0; transform: translateY(4px); transition: opacity .32s ease, transform .32s ease; }
+.intro-sub.in { opacity: .7; transform: none; }
+/* Mascotes da abertura: bolhas em arco sobre o nome, cada uma respirando, piscando, olhando de lado, inclinando e
+   dando um "squish" fora de fase (var(--seed) desloca fase e duração) — ilustração viva, abaixo do nome na hierarquia
+   e sem competir com o túnel acendendo. Cada camada (<g>) anima um transform só. */
+.intro-mascots { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.mascot { position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size); margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  overflow: visible; opacity: 0; transform: scale(.6); transition: opacity .28s ease, transform .5s cubic-bezier(.34, 1.56, .64, 1); }
+.mascot.in { opacity: .92; transform: none; }
+.mascot.cheer { animation: m-hop .42s cubic-bezier(.34, 1.56, .64, 1); }
+.mascot g { transform-box: fill-box; transform-origin: 50% 60%; }
+.mascot .m-bubble { fill: hsl(var(--hue) 78% 62%); }
+.mascot .m-eye, .mascot .m-mouth { fill: #0d1322; }
+.mascot .m-breathe { animation: m-breathe calc(3.4s + var(--seed) * 1.4s) ease-in-out calc(var(--seed) * -4s) infinite; }
+.mascot .m-tilt { animation: m-tilt calc(5.5s + var(--seed) * 2.5s) ease-in-out calc(var(--seed) * -6s) infinite; }
+.mascot .m-squish { animation: m-squish calc(8s + var(--seed) * 3s) ease-in-out calc(var(--seed) * -9s) infinite; }
+.mascot .m-eyes { transform-origin: 50% 50%; animation: m-blink calc(3.2s + var(--seed) * 2.4s) linear calc(var(--seed) * -3s) infinite; }
+.mascot .m-pupils { animation: m-glance calc(6s + var(--seed) * 3s) ease-in-out calc(var(--seed) * -7s) infinite; }
+@keyframes m-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.03); } }
+@keyframes m-tilt { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-4deg); } 70% { transform: rotate(3deg); } }
+@keyframes m-squish { 0%, 88%, 100% { transform: scale(1, 1); } 92% { transform: scale(1.08, .92); } 96% { transform: scale(.97, 1.03); } }
+@keyframes m-blink { 0%, 95.5%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } 98.5% { transform: scaleY(1); } }
+@keyframes m-glance { 0%, 40%, 70%, 100% { transform: translateX(0); } 46%, 62% { transform: translateX(1.6px); } }
+@keyframes m-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .mascot, .mascot g { animation: none !important; transition: none; } }
+/* Onboarding — entrada (shot "capwords-splash"): o cartão chega com mola, os mascotes deslizam das bordas e param em volta
+   dele em idle, e aviso, título e texto sobem em sequência. Saída ao concluir (a piscada do shot "monday-splash", sem o
+   ponto): o cartão se dissolve encolhendo de leve, os mascotes se despedem junto, e uma onda verde se abre do centro do
+   cartão sobre a tela e se dissolve — a conversa já está embaixo, com a primeira mensagem enviada. */
+.ob-mascots { position: absolute; left: 50%; top: calc(50% + 24px); width: 0; height: 0; z-index: 4; }
+.ob-mascots[hidden] { display: none; }
+.mascot.from-edge:not(.in) { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.8); }
+.mascot.bye { opacity: 0; transform: scale(.8); transition: opacity .55s ease, transform .55s ease; }
+.onboard.enter { animation: ob-spring .56s cubic-bezier(.34, 1.56, .64, 1) both; }
+.onboard.enter .onboard-lead, .onboard.enter h3, .onboard.enter #ob-text { animation: ob-rise .4s ease-out both; }
+.onboard.enter .onboard-lead { animation-delay: .28s; } .onboard.enter h3 { animation-delay: .4s; } .onboard.enter #ob-text { animation-delay: .48s; }
+@keyframes ob-spring { from { scale: .9; opacity: 0; } to { scale: 1; opacity: 1; } }
+@keyframes ob-rise { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+.onboard.shrink { animation: ob-dissolve .6s cubic-bezier(.45, 0, .15, 1) forwards; }
+@keyframes ob-dissolve { to { scale: .96; opacity: 0; } }
+.ob-ripple { position: fixed; inset: 0; z-index: 6; pointer-events: none; background: var(--ok); opacity: .5; clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); }
+.ob-ripple[hidden] { display: none; }
+.ob-ripple.go { animation: ob-ripple 1s cubic-bezier(.3, .5, .25, 1) forwards; }
+@keyframes ob-ripple { from { clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); opacity: .5; } 60% { opacity: .22; } to { clip-path: circle(160% at var(--cx, 50%) var(--cy, 50%)); opacity: 0; } }
 /* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
 .btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
 @keyframes attention-pulse {
@@ -245,6 +320,11 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 
 /* Rodapé da lista: interruptor discreto das arquivadas (saiu do topo para a lista ficar limpa). */
 .sidebar-foot { padding: 8px 10px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+/* Base da lista: nome do app e as pílulas de máquina, backend e túnel, empilhadas. */
+.sidebar-status { padding: 10px 12px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sidebar-status[hidden] { display: none; }
+.sidebar-status h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.sidebar-status .pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .switch .track { width: 28px; height: 16px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; flex: none; }
@@ -266,6 +346,21 @@ body.topbar-hidden .topbar { display: none; }
 .mini-btn:hover { color: var(--fg); border-color: var(--line); }
 
 /* Modos do agente: botão na caixa + menu próprio (o <select> nativo fica escondido e guarda o valor). */
+/* Toast de modo (shot "telegram-copy-link-toast"): ao escolher um modo do agente, um toast escuro sobe acima da caixa com
+   mola e sai descendo 2 s depois; o mascote-ícone nasce girando na cor do modo e dá uma piscada. Não bloqueia a caixa. */
+.mode-toast { position: absolute; left: 50%; bottom: 12px; z-index: 7; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 999px; background: #1a1d23; color: #e8eaed; font-size: 12px; white-space: nowrap; max-width: calc(100% - 32px); box-shadow: 0 8px 24px rgba(0, 0, 0, .28); transform: translate(-50%, 24px); opacity: 0; transition: transform .22s ease-in, opacity .2s ease-in; }
+.mode-toast[hidden] { display: none; }
+.mode-toast.in { transform: translate(-50%, 0); opacity: 1; transition: transform .42s cubic-bezier(.34, 1.56, .64, 1), opacity .2s ease-out; }
+.mode-toast .mt-name { font-weight: 600; }
+.mode-toast .mt-desc { color: #9aa3ad; overflow: hidden; text-overflow: ellipsis; }
+.mode-toast .mt-icon { width: 20px; height: 20px; display: inline-flex; flex: none; }
+.mode-toast .mt-icon svg { width: 20px; height: 20px; overflow: visible; }
+.mode-toast.in .mt-icon svg { animation: mt-pop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+.mode-toast.in .mt-icon .m-eyes { transform-box: fill-box; transform-origin: 50% 50%; animation: mt-wink 1.2s linear .5s both; }
+.mode-toast .m-bubble { fill: hsl(var(--hue) 78% 62%); } .mode-toast .m-eye, .mode-toast .m-mouth { fill: #0d1322; }
+@keyframes mt-pop { from { transform: rotate(-25deg) scale(.4); } to { transform: rotate(0) scale(1); } }
+@keyframes mt-wink { 0%, 20%, 40%, 100% { transform: scaleY(1); } 30% { transform: scaleY(.1); } }
+@media (prefers-reduced-motion: reduce) { .mode-toast, .mode-toast.in { transition: none; } .mode-toast.in .mt-icon svg, .mode-toast.in .mt-icon .m-eyes { animation: none; } }
 .mode-wrap { position: relative; display: flex; }
 .model-select[hidden] { display: none; }
 .mode-btn { font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; max-width: 220px; }

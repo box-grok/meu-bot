@@ -183,7 +183,9 @@ curl -sN -H "$H" -H "$J" -H 'X-Stream-Mode: live' localhost:8080/v1/chat/complet
 # bypass: pedir ao modelo "agente" para criar um arquivo e ler de volta
 # grok-4: model grok-4 → resposta curta em ~3 s; cabeçalho X-Provider: grok-4
 # status line: GET /v1/meu-bot/status → {claude:{email,assento,sessionPct,…}, providers:[…]}; campos null se o
-#   ~/.cache/claude-statusline/ não existe (só o Claude Code interativo com o statusline.sh da box grava isso)
+#   ~/.cache/claude-statusline/ratelimits.json não existe. Quem grava é o statusline.sh de backend-colima/ (o do
+#   claude-statusline mais o cache de limites); o seletor oferece "Instalar status line" onde falta, ou na mão:
+#   bash ~/.meu-bot-install/install-statusline.sh. O cache só nasce depois de um Claude Code interativo na máquina.
 ```
 
 Do Mac, pelo mesmo caminho do app:

@@ -67,12 +67,26 @@ elif [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
   $SUDO systemctl enable meu-bot-backend.service >/dev/null
   $SUDO systemctl restart meu-bot-backend.service
   sleep 1.5; $SUDO systemctl --no-pager --lines=3 status meu-bot-backend.service || true
+elif supervisorctl status meu-bot-backend >/dev/null 2>&1; then
+  # Computador do Grok Bot com supervisord e o programa já cadastrado (ver PERSISTENCIA.md da máquina):
+  # reiniciar por ele, nunca por nohup — senão nascem dois server.js disputando a porta.
+  echo "supervisord gerencia meu-bot-backend: reiniciando por ele"
+  supervisorctl restart meu-bot-backend >/dev/null 2>&1 || { echo "supervisorctl restart falhou"; exit 1; }
+  sleep 2
 else
   echo "sem systemd: subindo com nohup (não sobrevive a reinício)"
-  pkill -f "$DEST/server.js" 2>/dev/null || true
+  # O processo anterior foi iniciado como `node server.js` (relativo, a partir de $DEST): `pkill -f` pelo
+  # caminho completo nunca casa, o novo nasce com EADDRINUSE e o curl do fim responde pelo velho. Mata
+  # pelo cwd, que é o que identifica o nosso.
+  for p in $(pgrep -f 'node server\.js' 2>/dev/null); do [ "$(readlink "/proc/$p/cwd" 2>/dev/null)" = "$DEST" ] && kill "$p" 2>/dev/null; done
+  pkill -f "$DEST/server.js" 2>/dev/null || true; sleep 0.5
   (cd "$DEST" && OPENAI_COMPAT_SESSIONS_PATH="$DEST/data/openai-compat-sessions.json" nohup "$NODE" server.js >> "$DEST/backend.log" 2>&1 &)
   sleep 1.5
 fi
 
 K=$(grep '^OPENAI_COMPAT_KEY=' "$DEST/.env" | cut -d= -f2-)
 if curl -s -m 5 -H "Authorization: Bearer $K" "http://127.0.0.1:$PORT/v1/models" | grep -q claudecode; then echo "OK: backend respondendo em 127.0.0.1:$PORT"; else echo "AVISO: backend ainda não respondeu em 127.0.0.1:$PORT"; exit 1; fi
+
+# Status line do Claude (Sessão/Semanal no app) vai junto quando o instalador está ao lado. Não derruba o
+# backend: numa máquina com statusLine gerenciada ele sai com 3 e explica.
+if [ -f "$HERE/install-statusline.sh" ]; then bash "$HERE/install-statusline.sh" || echo "aviso: status line não instalada (código $?)"; fi

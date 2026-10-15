@@ -106,6 +106,10 @@ export interface HostProbe {
   grokPod: boolean;
   /** O Tailscale SSH pediu a verificação extra (check mode): a pessoa precisa aprovar um link no navegador. */
   tailscaleCheck: boolean;
+  /** ~/.claude/statusline.sh é o nosso: grava ~/.cache/claude-statusline/ratelimits.json, que a status line do app lê. */
+  statusLine: boolean;
+  /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
+  gateway: Gateway | null;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
@@ -143,15 +147,21 @@ export interface PickerInit {
   reliefShortcuts: string[];
   /** Caixinha "abrir direto": marcada = sem a abertura animada. */
   openDirect: boolean;
+  /** Primeira abertura do seletor nesta sessão do app: toca a chegada animada (logo que nasce grande e vai para o cabeçalho). */
+  arrival: boolean;
   /** Caixinha "onboarding feito": marcada = respeita; desmarcada = força o onboarding na próxima janela. */
   onboardingDone: boolean;
   error: string | null;
 }
 
-/** WhatsApp do Hermes na máquina (gateway do Hermes Agent). */
+/** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */
+export type Gateway = "hermes" | "openclaw";
+
+/** WhatsApp do agente da máquina (Hermes: bridge em ~/.hermes/whatsapp; OpenClaw: `openclaw channels`). */
 export interface WhatsappStatus {
-  /** A máquina tem ~/.hermes/whatsapp (Hermes com WhatsApp). */
+  /** A máquina tem um agente com WhatsApp (Hermes ou OpenClaw). */
   present: boolean;
+  gateway: Gateway | null;
   connected: boolean;
   /** Estado do bridge (open, connecting, close, "sem bridge"…). */
   state: string;
@@ -225,6 +235,8 @@ export interface PickerApi {
   list(): Promise<PickerInit>;
   probe(host: string): Promise<HostProbe>;
   install(host: string): Promise<InstallBackendResult>;
+  /** Instala a status line do Claude Code na máquina (statusline.sh + statusLine no settings.json); mesmo log de progresso. */
+  installStatusLine(host: string): Promise<InstallBackendResult>;
   choose(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
   setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
