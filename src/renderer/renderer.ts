@@ -460,8 +460,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
-  add({ id: "a:onboard", kind: "action", label: "Rever onboarding e abertura", detail: "começa agora nesta janela" }, async () => {
-    try { localStorage.removeItem("introSeen"); } catch { /* opcional */ }
+  add({ id: "a:onboard", kind: "action", label: "Rever onboarding", detail: "começa agora nesta janela" }, async () => {
     try { applySettings(await window.meuBot.setSettings({ onboarding: "pending" })); } catch { /* segue mesmo assim */ }
     startOnboarding();
   });
@@ -729,15 +728,13 @@ function applySettings(view: SettingsView): void {
   syncComposer();
 }
 
-// ---- Abertura (só na primeira vez): o topo se materializa em etapas e o túnel acende como clímax.
+// ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
 const introEl = $<HTMLElement>("intro");
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 async function playIntro(): Promise<void> {
-  let seen = false;
-  try { seen = localStorage.getItem("introSeen") === "1"; } catch { /* opcional */ }
-  if (seen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { introEl.remove(); return; }
-  try { localStorage.setItem("introSeen", "1"); } catch { /* opcional */ }
+  // Caixinha "abrir direto" do seletor (padrão marcada): sem abertura. Desmarcada: toda vez.
+  if (settings?.openDirect !== false || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { introEl.remove(); return; }
   const brand = $<HTMLElement>("intro-brand");
   const host = $<HTMLElement>("intro-host");
   const key = $<HTMLElement>("intro-key");

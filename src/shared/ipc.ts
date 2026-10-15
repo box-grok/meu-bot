@@ -25,6 +25,8 @@ export interface SettingsView {
   quickEntryStatus: QuickEntryStatus;
   /** Onboarding guiado: "pending" até concluir ("done") ou pular ("skipped"). */
   onboarding: "pending" | "done" | "skipped";
+  /** true = a janela abre direto; false = abertura animada toda vez (caixinha do seletor). */
+  openDirect: boolean;
 }
 
 export interface SettingsUpdate {
@@ -120,6 +122,8 @@ export interface PickerInit {
   pods: string[];
   /** Máquinas com o botão "aliviar <host>.app" na área de trabalho. */
   reliefShortcuts: string[];
+  /** Caixinha "abrir direto": marcada = sem a abertura animada. */
+  openDirect: boolean;
   error: string | null;
 }
 
@@ -161,6 +165,8 @@ export interface PickerApi {
   relieve(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o botão "aliviar <host>.app" na área de trabalho. */
   setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
+  /** Caixinha "abrir direto" do rodapé. */
+  setOpenDirect(value: boolean): Promise<void>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }

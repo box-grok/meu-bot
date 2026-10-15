@@ -56,6 +56,13 @@ export function setWindowBounds(host: string, bounds: WindowBounds): void {
   try { persist(); } catch { /* cortesia */ }
 }
 
+export const getOpenDirect = (): boolean => file.openDirect;
+export function setOpenDirect(value: boolean): void {
+  if (file.openDirect === value) return;
+  file.openDirect = value;
+  persist();
+}
+
 export const isPodHost = (host: string): boolean => file.podHosts.includes(host);
 /** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
 export function setPodHost(host: string, isPod: boolean): void {
@@ -79,6 +86,7 @@ export const settingsView = (host?: string): SettingsView => ({
   quickEntryShortcut: file.quickEntryShortcut,
   quickEntryStatus: quickEntryStatusProvider(),
   onboarding: file.onboarding,
+  openDirect: file.openDirect,
 });
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */

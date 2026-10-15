@@ -10,7 +10,7 @@ import type { HostProbe, PickerInit } from "../shared/ipc";
 import { installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
-import { getBackendPort, getLastHost, isPodHost, isValidHost, setLastHost, setPodHost } from "./settings";
+import { getBackendPort, getLastHost, getOpenDirect, isPodHost, isValidHost, setLastHost, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { syncSshConfig } from "./sshSync";
 import {
@@ -56,6 +56,7 @@ function initPayload(): PickerInit {
     shortcuts: hosts.filter(hasShortcut).map((h) => ({ host: h, emoji: shortcutEmoji(h) })),
     pods: hosts.filter(isPodHost),
     reliefShortcuts: hosts.filter(hasReliefShortcut),
+    openDirect: getOpenDirect(),
     error: lastError,
   };
 }
@@ -116,6 +117,10 @@ export function initPicker(): void {
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createReliefShortcut(host); else removeReliefShortcut(host);
     return { has: hasReliefShortcut(host) };
+  });
+  ipcMain.handle("picker:open-direct", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    setOpenDirect((payload as { value?: unknown } | null)?.value === true);
   });
   ipcMain.on("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
 }

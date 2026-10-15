@@ -29,3 +29,9 @@ test("onboarding: pendente por padrão, inválido vira pendente, done/skipped fi
   assert.equal(normalizeSettings({ onboarding: "done" }).onboarding, "done");
   assert.equal(normalizeSettings({ onboarding: "skipped" }).onboarding, "skipped");
 });
+
+test("openDirect: true por padrão, respeita false", () => {
+  assert.equal(normalizeSettings({}).openDirect, true);
+  assert.equal(normalizeSettings({ openDirect: false }).openDirect, false);
+  assert.equal(normalizeSettings({ openDirect: "x" }).openDirect, true);
+});

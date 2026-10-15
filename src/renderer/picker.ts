@@ -18,6 +18,7 @@ const noteEl = $<HTMLParagraphElement>("pk-note");
 const openBtn = $<HTMLButtonElement>("pk-open");
 const cancelBtn = $<HTMLButtonElement>("pk-cancel");
 const syncBtn = $<HTMLButtonElement>("pk-sync");
+const directCheck = $<HTMLInputElement>("pk-direct");
 
 interface Row { host: string; li: HTMLLIElement; badgeEl: HTMLSpanElement; shortcutBtn: HTMLButtonElement; relieveBtn: HTMLButtonElement }
 let shortcuts = new Map<string, string | null>();
@@ -276,6 +277,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   shortcuts = new Map(payload.shortcuts.map((s) => [s.host, s.emoji]));
   reliefShortcuts = new Set(payload.reliefShortcuts);
   pods = new Set(payload.pods);
+  directCheck.checked = payload.openDirect;
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
   buildRows();
@@ -301,6 +303,7 @@ reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut();
 openBtn.addEventListener("click", () => { void open(); });
 cancelBtn.addEventListener("click", () => window.picker.cancel());
 syncBtn.addEventListener("click", () => { void syncSsh(); });
+directCheck.addEventListener("change", () => { void window.picker.setOpenDirect(directCheck.checked).catch((err: unknown) => showError("Abrir direto", err)); });
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") { ev.preventDefault(); window.picker.cancel(); return; }
   if (ev.key === "Enter") { ev.preventDefault(); void open(); return; }

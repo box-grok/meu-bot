@@ -54,3 +54,5 @@ h1 { margin: 0; font-size: 18px; }
 .note.bad { color: var(--bad); border-color: var(--bad); }
 /* display explícito acima vence o [hidden] do navegador; sem isto o 🧯 aparece em toda linha. */
 .relieve[hidden], .shortcut[hidden], .btn[hidden] { display: none; }
+.foot-check { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); margin-left: 10px; cursor: pointer; }
+.foot-check input { margin: 0; }

@@ -688,3 +688,6 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Onboarding, passo "Primeira conversa": o botão Novo recebe `.attention` (pulso na cor de destaque)
   até ser clicado; sem movimento, vira um anel fixo.
 - Atalho de conversa nova: Cmd+T virou Cmd+N (Cmd+Shift+N continua sendo a janela nova, pelo menu).
+- Abertura animada virou opção: caixinha "abrir direto" no rodapé do seletor (`settings.openDirect`,
+  padrão true = sem abertura). Desmarcada, a abertura toca toda vez que uma janela abre. O `introSeen`
+  do localStorage saiu; a ação da paleta virou só "Rever onboarding".

@@ -37,6 +37,8 @@ export interface SettingsFile {
   podHosts: string[];
   /** Onboarding guiado da primeira vez: pendente até a pessoa concluir ou pular. */
   onboarding: Onboarding;
+  /** Abrir a janela direto (padrão) ou com a abertura animada toda vez; caixinha no seletor. */
+  openDirect: boolean;
 }
 
 export type Onboarding = "pending" | "done" | "skipped";
@@ -70,7 +72,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], onboarding: "pending",
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], onboarding: "pending", openDirect: true,
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -102,6 +104,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     quickEntryShortcut: typeof p["quickEntryShortcut"] === "string" && parseAccelerator(p["quickEntryShortcut"]) !== null ? p["quickEntryShortcut"] : DEFAULT_SHORTCUT,
     windowBounds: bounds,
     onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",
+    openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
   };
 }
