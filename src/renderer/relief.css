@@ -38,3 +38,6 @@ h1 { margin: 0; font-size: 18px; }
 .foot { margin-top: auto; display: flex; justify-content: flex-end; padding: 12px 24px 16px; }
 .btn { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
 .btn-ghost { background: transparent; }
+.btn-danger { color: var(--bad); border-color: var(--bad); margin-right: 8px; }
+.btn-danger:hover { background: var(--bad); color: #fff; }
+.btn[hidden] { display: none; }

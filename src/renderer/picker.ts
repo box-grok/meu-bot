@@ -13,6 +13,9 @@ const detailEl = $<HTMLElement>("pk-detail");
 const statusEl = $<HTMLParagraphElement>("pk-status");
 const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
+const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
+const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
+const needsCheck = new Set<string>();
 const logEl = $<HTMLPreElement>("pk-log");
 const noteEl = $<HTMLParagraphElement>("pk-note");
 const openBtn = $<HTMLButtonElement>("pk-open");
@@ -159,6 +162,9 @@ function paintDetail(): void {
   installBtn.hidden = true;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
+  // Pod inacessível: o alívio não alcança; o que resolve é o reset pelo app do Grok Bot.
+  grokbotResetBtn.hidden = !(isPod && t !== undefined && t.kind === "bad");
+  tailscaleBtn.hidden = !needsCheck.has(selected);
   if (isPod) {
     const has = reliefShortcuts.has(selected);
     reliefShortcutBtn.textContent = has ? "🧯 Tirar o botão de alívio da mesa" : "🧯 Botão de alívio na mesa";
@@ -194,6 +200,7 @@ async function probe(host: string, force = false): Promise<void> {
   try {
     const p: HostProbe = await window.picker.probe(host);
     results.set(host, describeProbe(p));
+    if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
   } catch (err) {
     results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${errorText(err)}`, install: null, canOpen: false });
@@ -302,6 +309,28 @@ window.picker.on("picker:install-progress", (p) => {
 filterEl.addEventListener("input", () => applyFilter());
 installBtn.addEventListener("click", () => { void install(); });
 reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut(); });
+tailscaleBtn.addEventListener("click", () => {
+  if (selected === null) return;
+  const host = selected;
+  tailscaleBtn.disabled = true;
+  statusEl.className = "status";
+  statusEl.textContent = `abri o link de verificação no navegador; esperando você aprovar para ${host} (até 4 min)…`;
+  void window.picker.approveTailscale(host).then(async (r) => {
+    if (!r.ok) { results.set(host, { kind: "bad", text: `✗ ${host}: ${r.detail}`, install: null, canOpen: false }); paintState(host); return; }
+    needsCheck.delete(host);
+    await probe(host, true);
+  }).finally(() => { tailscaleBtn.disabled = false; paintDetail(); });
+});
+grokbotResetBtn.addEventListener("click", () => {
+  grokbotResetBtn.disabled = true;
+  void window.picker.openGrokbotReset().then((ok) => {
+    noteEl.hidden = false;
+    noteEl.className = `note ${ok ? "warn" : "bad"}`;
+    noteEl.textContent = ok
+      ? "O app do Grok Bot abriu no card \"Reset computer\". O reset só acontece quando você clicar no botão vermelho lá. Depois, volte aqui e espere a máquina ficar verde."
+      : "Não achei quem atenda grokbot:// neste Mac. O app do Grok Bot está instalado?";
+  }).finally(() => { grokbotResetBtn.disabled = false; });
+});
 openBtn.addEventListener("click", () => { void open(); });
 cancelBtn.addEventListener("click", () => window.picker.cancel());
 syncBtn.addEventListener("click", () => { void syncSsh(); });

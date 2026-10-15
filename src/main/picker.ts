@@ -7,9 +7,10 @@
 import { BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
-import { installBackend, probeHost } from "./hostProbe";
+import { approveTailscaleCheck, installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
+import { openGrokbotReset } from "./grokbot";
 import { getBackendPort, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { syncSshConfig } from "./sshSync";
@@ -126,6 +127,17 @@ export function initPicker(): void {
   ipcMain.handle("picker:onboarding-done", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     setOnboardingDone((payload as { value?: unknown } | null)?.value === true);
+  });
+  ipcMain.handle("picker:approve-tailscale", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    const r = await approveTailscaleCheck(host);
+    probes.delete(host); // a próxima sondagem precisa ser nova
+    return r;
+  });
+  ipcMain.handle("picker:open-grokbot-reset", (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    return openGrokbotReset();
   });
   ipcMain.on("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
 }

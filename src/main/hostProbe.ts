@@ -7,7 +7,7 @@
  */
 import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
-import { app } from "electron";
+import { app, shell } from "electron";
 import os from "node:os";
 import type { HostProbe, InstallBackendResult } from "../shared/ipc";
 import { claudeLoggedIn, findClaude, findNode, LOCAL_HOST, localBackendAlive } from "./localBackend";
@@ -43,6 +43,34 @@ function run(cmd: string, args: string[], timeoutMs: number, onLine?: (line: str
 
 const lastLine = (s: string): string => s.trim().split("\n").filter((l) => l !== "" && !l.startsWith("Warning: Permanently added")).pop() ?? "";
 
+/** Link de verificação do Tailscale SSH ("# To authenticate, visit: https://login.tailscale.com/a/…"). */
+export const TAILSCALE_CHECK_RE = /https:\/\/login\.tailscale\.com\/a\/[A-Za-z0-9]+/;
+export const tailscaleCheckUrl = (text: string): string | null => TAILSCALE_CHECK_RE.exec(text)?.[0] ?? null;
+
+/**
+ * Verificação do Tailscale SSH: o link só vale enquanto a sessão ssh que o pediu estiver viva, então
+ * abrimos um ssh paciente, levamos o link ao navegador e esperamos a aprovação (até 4 min).
+ */
+export function approveTailscaleCheck(host: string): Promise<{ ok: boolean; detail: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=240", "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "StrictHostKeyChecking=accept-new", "--", host, "echo ok"], { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = ""; let stdout = ""; let opened = false; let done = false;
+    const timer = setTimeout(() => { if (!done) child.kill("SIGKILL"); }, 250_000);
+    child.stderr.on("data", (d: Buffer) => {
+      stderr += d.toString("utf8");
+      const url = tailscaleCheckUrl(stderr);
+      if (url !== null && !opened) { opened = true; void shell.openExternal(url); }
+    });
+    child.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf8"); });
+    child.on("error", (e) => { if (!done) { done = true; clearTimeout(timer); resolve({ ok: false, detail: e.message }); } });
+    child.on("close", (code) => {
+      if (done) return; done = true; clearTimeout(timer);
+      if (code === 0 && stdout.includes("ok")) resolve({ ok: true, detail: opened ? "verificação aprovada; o ssh entrou" : "o ssh entrou sem pedir verificação" });
+      else resolve({ ok: false, detail: opened ? `o link foi aberto mas a sessão terminou sem aprovação (${lastLine(stderr) || `código ${code}`})` : (lastLine(stderr) || `ssh saiu com código ${code}`) });
+    });
+  });
+}
+
 /** Script remoto: imprime `chave=valor` por linha; cada checagem é tolerante a ferramenta ausente. */
 function probeScript(port: number): string {
   return [
@@ -75,7 +103,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -86,7 +114,11 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     await new Promise((res) => setTimeout(res, 500));
     r = await run("ssh", [...sshBase(host), "--", host, probeScript(port)], 25_000);
   }
-  if (r.code !== 0) return { ...base, error: lastLine(r.stderr) || (r.code === null ? "tempo esgotado" : `ssh saiu com código ${r.code}`) };
+  if (r.code !== 0) {
+    // O Tailscale SSH pediu a verificação extra: não é máquina fora, é aprovação pendente no navegador.
+    if (tailscaleCheckUrl(r.stderr) !== null) return { ...base, tailscaleCheck: true, error: "o Tailscale SSH pede uma verificação extra no navegador antes de deixar entrar" };
+    return { ...base, error: lastLine(r.stderr) || (r.code === null ? "tempo esgotado" : `ssh saiu com código ${r.code}`) };
+  }
   const kv = parseKv(r.stdout);
   return {
     ...base,
@@ -114,7 +146,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, systemd: false, grokPod: false, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 

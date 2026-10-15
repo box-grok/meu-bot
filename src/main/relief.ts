@@ -3,16 +3,20 @@
  * etapas e números de antes/depois, e no fim abre a janela principal da máquina e se fecha. É o que
  * o botão "aliviar grokbot-1.app" da mesa chama, via `--alivio=<host>` (second-instance).
  */
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, shell } from "electron";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReliefEvent } from "../shared/ipc";
 import { isValidHost } from "./settings";
 import { backgroundColor, openMainWindow } from "./windows";
+import { openGrokbotReset } from "./grokbot";
+import { tailscaleCheckUrl } from "./hostProbe";
 
 let reliefWin: BrowserWindow | null = null;
 let running = false;
+/** A pessoa clicou "Abrir agora" antes da contagem acabar: a contagem para. */
+let resetOpenedByHand = false;
 
 const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=90", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
@@ -47,8 +51,20 @@ async function runRelief(host: string): Promise<void> {
   child.stdin.on("error", () => { /* o ssh caiu antes de ler o script; o close abaixo reporta */ });
   child.stdin.end(reliefScript());
   let stderr = ""; let buf = ""; let connected = false; let before: ReturnType<typeof parseStats> = null; let after: ReturnType<typeof parseStats> = null;
-  const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ok */ } }, 150_000);
-  child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf8"); });
+  let timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ok */ } }, 150_000);
+  let checkOpened = false;
+  child.stderr.on("data", (d: Buffer) => {
+    stderr += d.toString("utf8");
+    // O Tailscale SSH pediu verificação: o link vale só para esta sessão, então abrimos já e esperamos.
+    const url = tailscaleCheckUrl(stderr);
+    if (url !== null && !checkOpened) {
+      checkOpened = true;
+      void shell.openExternal(url);
+      clearTimeout(timer);
+      timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* ok */ } }, 300_000); // tempo para a pessoa aprovar
+      send({ kind: "step", step: "connect", state: "doing", text: "o Tailscale SSH pede verificação: abri o link no navegador, aprove lá (espero até 5 min)" });
+    }
+  });
   child.stdout.on("data", (d: Buffer) => {
     buf += d.toString("utf8");
     let i: number;
@@ -67,9 +83,26 @@ async function runRelief(host: string): Promise<void> {
   clearTimeout(timer);
   if (!connected || code !== 0) {
     const why = stderr.trim().split("\n").pop() ?? "";
+    if (checkOpened && !connected) {
+      // Não é pod congelado: faltou aprovar a verificação do Tailscale. Sem contagem para o reset.
+      send({ kind: "step", step: "connect", state: "fail", text: "a verificação do Tailscale não foi aprovada a tempo" });
+      send({ kind: "done", ok: false, text: "Aprove o link do Tailscale no navegador e rode o alívio de novo. Isso não é caso de reset." });
+      running = false;
+      return;
+    }
     send({ kind: "step", step: "connect", state: "fail", text: connected ? `o alívio terminou com erro (${code ?? "sem código"})` : `o ssh não entrou: ${why || "tempo esgotado"}` });
     send({ kind: "done", ok: false, text: "O pod pode estar congelado pelo host. Aí o que resolve é reiniciar o computador pelo app do Grok Bot." });
     running = false;
+    // Contagem e abre o app do Grok Bot no card Reset sozinho; fechar a janela cancela. O reset em si
+    // continua sendo o clique da pessoa no botão vermelho de lá.
+    const win = reliefWin;
+    for (let s = 6; s >= 1; s--) {
+      if (win === null || win.isDestroyed() || resetOpenedByHand) return;
+      send({ kind: "reset-countdown", seconds: s });
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    if (win === null || win.isDestroyed() || resetOpenedByHand) return;
+    send({ kind: "reset-opened", ok: await openGrokbotReset() });
     return;
   }
   send({ kind: "step", step: "tailscale", state: "done", text: "tailscaled reiniciando em segundo plano" });
@@ -84,6 +117,11 @@ async function runRelief(host: string): Promise<void> {
 
 export function initRelief(): void {
   ipcMain.on("relief:close", (event) => { if (reliefWin !== null && event.sender === reliefWin.webContents) reliefWin.close(); });
+  ipcMain.handle("relief:open-reset", (event) => {
+    if (reliefWin === null || event.sender !== reliefWin.webContents) throw new Error("origem inválida");
+    resetOpenedByHand = true;
+    return openGrokbotReset();
+  });
 }
 
 /** Abre a janela de alívio e dispara o processo (uma por vez). */
@@ -99,6 +137,7 @@ export function showRelief(host: string): void {
     },
   });
   reliefWin = win;
+  resetOpenedByHand = false;
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
   win.on("closed", () => { if (reliefWin === win) reliefWin = null; });

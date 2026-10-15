@@ -766,3 +766,23 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   conta dele; a reserva não consome nada até ser acionada.
 - Na grokbot-1 o endpoint foi implantado e devolve a conta Premium e 37%/37% (cache de 01:14). No Mac
   (`local`) só há `profile.json`: o statusline do Mac é o da biblioteca gerenciada e não grava limites.
+
+## Grok Bot: Atualizar vs Redefinir, deep link e verificação do Tailscale SSH (15 out 2026)
+
+- `grokbot://app/v1/settings?id=<id>` (esquemas `grokbot` e `sand` no Info.plist do app) abre as
+  Configurações do Grok Bot no card pedido; `reset-computer` e `update-computer` estão na seção
+  "computer". É navegação: o card "Redefinir" tem o botão vermelho, e só o clique lá redefine.
+  Lido do `app.asar` (lista de ids, rota `/v1/settings`, estado `resetComputer`/`recoverComputer`).
+- "Atualizar o computador do Bot" = troca a base, "arquivos e logins ficam, aplicativos e pacotes
+  instalados são removidos". Não é socorro. Testado em 15 out 02:20: tudo nosso sobreviveu (home
+  inteira: Node em ~/.local, PM2 com 16 processos, backend 8080, proxy xAI, gateway, alivio-pod.sh).
+  "Redefinir" = "comece do zero se travar", reconstrói do último snapshot; é o socorro para pod congelado.
+- App: janela de alívio, quando o ssh não entra, faz contagem de 6 s e abre o Grok Bot no card Reset
+  (`src/main/grokbot.ts`, `shell.openExternal`); "Abrir agora" antecipa, Fechar cancela. Seletor: pod
+  inacessível ganha o botão "Abrir o reset no app do Grok Bot".
+- Pegadinha nova: depois da atualização o Tailscale SSH passou a exigir "check" (aprovação de um link
+  `https://login.tailscale.com/a/…` no navegador). Sintoma: `Connection … port 22 timed out` com
+  `# Tailscale SSH requires an additional check` no stderr. O link só vale para a sessão ssh que o
+  pediu. O app agora detecta (`tailscaleCheckUrl`), e: no seletor mostra "Aprovar verificação do
+  Tailscale" (ssh paciente de 4 min + link no navegador + re-sonda); na janela de alívio abre o link e
+  espera até 5 min, sem contagem para o reset. O usuário notou: "não era reset, só faltava logar".

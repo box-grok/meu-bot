@@ -14,6 +14,8 @@ const api: PickerApi = {
   setReliefShortcut: (host: string, create: boolean): Promise<{ has: boolean }> => ipcRenderer.invoke("picker:relief-shortcut", { host, create }),
   setOpenDirect: (value: boolean): Promise<void> => ipcRenderer.invoke("picker:open-direct", { value }),
   setOnboardingDone: (value: boolean): Promise<void> => ipcRenderer.invoke("picker:onboarding-done", { value }),
+  openGrokbotReset: (): Promise<boolean> => ipcRenderer.invoke("picker:open-grokbot-reset", {}),
+  approveTailscale: (host: string): Promise<{ ok: boolean; detail: string }> => ipcRenderer.invoke("picker:approve-tailscale", { host }),
   cancel: (): void => ipcRenderer.send("picker:cancel"),
   on: (channel, callback) => {
     if (!(EVENTS as readonly string[]).includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

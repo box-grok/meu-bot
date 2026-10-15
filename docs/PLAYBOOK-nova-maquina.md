@@ -251,8 +251,12 @@ Ordem de diagnóstico:
 1. `tailscale status` no Mac: a máquina está "active"? Isso é só o cadastro; não prova nada.
 2. `ssh -o ConnectTimeout=90 host uptime`: entrou? Carga alta (> nº de vCPUs) = sobrecarga; muitos
    processos em estado `D` = disco/pausa do host.
-3. Entrou mas lento → botão de alívio. Não entrou em 90 s → pod congelado pelo host do Grok Bot:
-   reiniciar o computador **pelo app do Grok Bot**. Não há como fazer isso por dentro.
+3. Entrou mas lento → botão de alívio. Não entrou em 90 s: antes de concluir "pod congelado", olhe o
+   stderr do ssh. Se tiver `Tailscale SSH requires an additional check` com um link
+   `login.tailscale.com/a/…`, é só aprovar o link no navegador (o seletor e a janela de alívio do app
+   fazem isso sozinhos). Sem esse aviso e sem resposta → pod congelado pelo host: **Redefinir** o
+   computador pelo app do Grok Bot (o app abre o card certo). Não use "Atualizar": troca a base e
+   remove pacotes instalados; não é socorro.
 4. Depois que voltar: `pm2 status` (tudo online?), `pm2 logs tailscaled --lines 20` (por que
    reiniciou?), `tail ~/alivio.log`.
 

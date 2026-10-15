@@ -104,6 +104,8 @@ export interface HostProbe {
   systemd: boolean;
   /** Computador do Grok Bot (pod): PID 1 pod-daemon/tini ou cgroup pod-…; tem botão de alívio. */
   grokPod: boolean;
+  /** O Tailscale SSH pediu a verificação extra (check mode): a pessoa precisa aprovar um link no navegador. */
+  tailscaleCheck: boolean;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
@@ -167,6 +169,9 @@ export type ReliefEvent =
   | { kind: "step"; step: "connect" | "clean" | "tailscale" | "open"; state: "doing" | "done" | "fail"; text: string }
   | { kind: "stats"; which: "before" | "after"; load: string; memMb: number | null }
   | { kind: "countdown"; seconds: number }
+  /** Alívio falhou: contagem até abrir o app do Grok Bot no card Reset (Fechar cancela). */
+  | { kind: "reset-countdown"; seconds: number }
+  | { kind: "reset-opened"; ok: boolean }
   | { kind: "log"; text: string }
   | { kind: "done"; ok: boolean; text: string };
 
@@ -188,6 +193,10 @@ export interface PickerApi {
   setOpenDirect(value: boolean): Promise<void>;
   /** Caixinha "onboarding feito" do rodapé. */
   setOnboardingDone(value: boolean): Promise<void>;
+  /** Abre o app do Grok Bot no card "Reset computer" (pod congelado). false se não há quem atenda grokbot://. */
+  openGrokbotReset(): Promise<boolean>;
+  /** Verificação do Tailscale SSH: abre um ssh que espera, leva o link ao navegador e resolve quando a pessoa aprovar. */
+  approveTailscale(host: string): Promise<{ ok: boolean; detail: string }>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
