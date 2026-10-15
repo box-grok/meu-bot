@@ -346,6 +346,21 @@ body.topbar-hidden .topbar { display: none; }
 .mini-btn:hover { color: var(--fg); border-color: var(--line); }
 
 /* Modos do agente: botão na caixa + menu próprio (o <select> nativo fica escondido e guarda o valor). */
+/* Toast de modo (shot "telegram-copy-link-toast"): ao escolher um modo do agente, um toast escuro sobe acima da caixa com
+   mola e sai descendo 2 s depois; o mascote-ícone nasce girando na cor do modo e dá uma piscada. Não bloqueia a caixa. */
+.mode-toast { position: absolute; left: 50%; bottom: 12px; z-index: 7; pointer-events: none; display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; border-radius: 999px; background: #1a1d23; color: #e8eaed; font-size: 12px; white-space: nowrap; max-width: calc(100% - 32px); box-shadow: 0 8px 24px rgba(0, 0, 0, .28); transform: translate(-50%, 24px); opacity: 0; transition: transform .22s ease-in, opacity .2s ease-in; }
+.mode-toast[hidden] { display: none; }
+.mode-toast.in { transform: translate(-50%, 0); opacity: 1; transition: transform .42s cubic-bezier(.34, 1.56, .64, 1), opacity .2s ease-out; }
+.mode-toast .mt-name { font-weight: 600; }
+.mode-toast .mt-desc { color: #9aa3ad; overflow: hidden; text-overflow: ellipsis; }
+.mode-toast .mt-icon { width: 20px; height: 20px; display: inline-flex; flex: none; }
+.mode-toast .mt-icon svg { width: 20px; height: 20px; overflow: visible; }
+.mode-toast.in .mt-icon svg { animation: mt-pop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+.mode-toast.in .mt-icon .m-eyes { transform-box: fill-box; transform-origin: 50% 50%; animation: mt-wink 1.2s linear .5s both; }
+.mode-toast .m-bubble { fill: hsl(var(--hue) 78% 62%); } .mode-toast .m-eye, .mode-toast .m-mouth { fill: #0d1322; }
+@keyframes mt-pop { from { transform: rotate(-25deg) scale(.4); } to { transform: rotate(0) scale(1); } }
+@keyframes mt-wink { 0%, 20%, 40%, 100% { transform: scaleY(1); } 30% { transform: scaleY(.1); } }
+@media (prefers-reduced-motion: reduce) { .mode-toast, .mode-toast.in { transition: none; } .mode-toast.in .mt-icon svg, .mode-toast.in .mt-icon .m-eyes { animation: none; } }
 .mode-wrap { position: relative; display: flex; }
 .model-select[hidden] { display: none; }
 .mode-btn { font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; max-width: 220px; }

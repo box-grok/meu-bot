@@ -527,6 +527,26 @@ function paintModeMenu(): void {
 modeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (modeMenu.hidden) { paintModeMenu(); modeMenu.hidden = false; } else modeMenu.hidden = true; });
 document.addEventListener("click", (ev) => { if (!modeMenu.hidden && !(ev.target as HTMLElement).closest(".mode-wrap")) modeMenu.hidden = true; });
 
+const modeToast = $<HTMLElement>("mode-toast");
+let modeToastTimer: ReturnType<typeof setTimeout> | null = null;
+const MODE_HUE: Record<string, number> = { agente: 145, claudecode: 220, "grok-4": 40, "rene-dm": 330, rene: 270 };
+/** Toast de modo (shot "telegram-copy-link-toast"): sobe acima da caixa com mola, o mascote-ícone nasce girando na cor do modo e pisca, e sai descendo 2 s depois. */
+function showModeToast(model: string): void {
+  const opt = [...modelSelect.options].find((o) => o.value === model);
+  const label = (opt?.textContent ?? model).replace(/ · não existe nesta máquina$/, "");
+  const [name, ...rest] = label.split(" · ");
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const icon = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+  icon.removeAttribute("class"); icon.style.setProperty("--hue", String(MODE_HUE[model] ?? 220));
+  modeToast.querySelector(".mt-icon")?.replaceChildren(icon);
+  const nameEl = modeToast.querySelector(".mt-name"); if (nameEl !== null) nameEl.textContent = `modo ${name ?? model}`;
+  const descEl = modeToast.querySelector(".mt-desc"); if (descEl !== null) descEl.textContent = rest.join(" · ");
+  if (modeToastTimer !== null) clearTimeout(modeToastTimer);
+  modeToast.classList.remove("in"); modeToast.hidden = false; void modeToast.offsetWidth;
+  modeToast.classList.add("in");
+  modeToastTimer = setTimeout(() => { modeToast.classList.remove("in"); modeToastTimer = setTimeout(() => { modeToast.hidden = true; modeToastTimer = null; }, 240); }, 2000);
+}
+
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
@@ -584,7 +604,7 @@ function buildPaletteItems(): PaletteItem[] {
     add({ id: "a:archive", kind: "action", label: "Arquivar conversa atual" }, () => archive(cur.id, true));
     add({ id: "a:close", kind: "action", label: "Fechar aba atual", detail: "Cmd+W" }, () => closeTab(cur.id));
     for (const m of ["claudecode", "agente", "rene-dm", "rene", "grok-4"] as const) {
-      add({ id: `a:model:${m}`, kind: "action", label: `Usar modelo ${m} nesta conversa` }, () => { setTabModel(cur, m); void window.meuBot.setConversationModel(cur.id, m); });
+      add({ id: `a:model:${m}`, kind: "action", label: `Usar modelo ${m} nesta conversa` }, () => { if (cur.model !== m && !prefersReducedMotion) showModeToast(m); setTabModel(cur, m); void window.meuBot.setConversationModel(cur.id, m); });
     }
   }
   for (const c of index.values()) {
@@ -1520,6 +1540,7 @@ modelSelect.addEventListener("change", () => {
   const tab = active();
   if (tab === null) return;
   const model = modelSelect.value as BackendModel;
+  if (tab.model !== model && !prefersReducedMotion) showModeToast(model);
   setTabModel(tab, model);
   void window.meuBot.setConversationModel(tab.id, model);
 });
