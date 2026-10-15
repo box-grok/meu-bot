@@ -58,3 +58,9 @@ h1 { margin: 0; font-size: 18px; }
 .foot-check input { margin: 0; }
 .btn-danger { color: var(--bad); border-color: var(--bad); }
 .btn-danger:hover { background: var(--bad); color: #fff; }
+/* Formulário do OAuth client do Tailscale (inline, no detalhe da máquina). */
+.ts-form { display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); }
+.ts-form[hidden] { display: none; }
+.ts-form input { font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.ts-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.btn-small { padding: 4px 10px; font-size: 12px; }

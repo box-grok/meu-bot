@@ -496,6 +496,16 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
+  add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
+    const r = await window.meuBot.disableTailscaleCheck();
+    const tab = active();
+    if (tab !== null) addNotice(tab, r.ok ? `✓ ${r.detail}` : `✗ ${r.detail}`, r.ok ? "info" : "error");
+  });
+  add({ id: "a:tailscale-restore", kind: "action", label: "Tailscale: restaurar política do último backup", detail: "desfaz a última edição", keywords: ["tailscale", "backup", "restaurar"] }, async () => {
+    const r = await window.meuBot.restoreTailscalePolicy();
+    const tab = active();
+    if (tab !== null) addNotice(tab, r.ok ? `✓ ${r.detail}` : `✗ ${r.detail}`, r.ok ? "info" : "error");
+  });
   add({ id: "a:onboard", kind: "action", label: "Rever onboarding", detail: "começa agora nesta janela" }, async () => {
     try { applySettings(await window.meuBot.setSettings({ onboarding: "pending" })); } catch { /* segue mesmo assim */ }
     startOnboarding();

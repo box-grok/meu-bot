@@ -20,7 +20,19 @@
       <button type="button" id="pk-install" class="btn btn-ghost" hidden>Instalar backend</button>
       <button type="button" id="pk-relief-shortcut" class="btn btn-ghost" hidden>🧯 Botão de alívio na mesa</button>
       <button type="button" id="pk-tailscale" class="btn btn-ghost" hidden title="Abre um ssh paciente, leva o link de verificação ao navegador e espera você aprovar">Aprovar verificação do Tailscale</button>
+      <button type="button" id="pk-tailscale-off" class="btn btn-ghost" hidden title="Edita a política do seu tailnet pela API do Tailscale: a regra ssh passa de check para accept, com backup antes. Precisa de um OAuth client, guardado no Keychain deste Mac.">Desligar a verificação de vez</button>
       <button type="button" id="pk-grokbot-reset" class="btn btn-ghost btn-danger" hidden title="Pod congelado pelo host: só o reset pelo app do Grok Bot resolve. Abre o app no card certo; o reset é o seu clique lá.">Abrir o reset no app do Grok Bot</button>
+    </div>
+    <div id="pk-ts-form" class="ts-form" hidden>
+      <p class="ts-hint">Precisa de um OAuth client do Tailscale com o escopo <strong>Policy File</strong> (leitura e escrita). Crie em Settings › Keys › Generate OAuth client. O secret aparece uma só vez lá; aqui ele vai para o Keychain deste Mac e nunca sai do app.</p>
+      <div class="actions"><button type="button" id="pk-ts-open" class="btn btn-ghost btn-small">abrir Settings › Keys no navegador</button></div>
+      <input id="pk-ts-id" type="text" placeholder="Client ID" autocomplete="off" spellcheck="false" />
+      <input id="pk-ts-secret" type="password" placeholder="Client secret (tskey-client-…)" autocomplete="off" />
+      <div class="actions">
+        <button type="button" id="pk-ts-save" class="btn btn-primary">Salvar no Keychain e desligar</button>
+        <button type="button" id="pk-ts-cancel" class="btn btn-ghost">Cancelar</button>
+        <button type="button" id="pk-ts-forget" class="btn btn-ghost" hidden>Esquecer credencial</button>
+      </div>
     </div>
     <pre id="pk-log" class="log" hidden></pre>
   </section>

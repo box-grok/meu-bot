@@ -148,6 +148,19 @@ export interface PickerInit {
   error: string | null;
 }
 
+/** Credencial do OAuth client do Tailscale: só o estado, nunca o valor. */
+export interface TailscaleCredentialState { configured: boolean; encryptionAvailable: boolean }
+
+/** Resultado de editar a política do tailnet (ssh: check → accept) ou de restaurar um backup. */
+export interface TailscaleSshResult {
+  ok: boolean;
+  changed: boolean;
+  /** Não há OAuth client salvo: configurar no seletor. */
+  needsCredential: boolean;
+  detail: string;
+  backupPath: string | null;
+}
+
 /** Resultado do botão "sincronizar ssh": o que entrou no ~/.ssh/config e o que faltava no Mac. */
 export interface SshSyncResult {
   configPath: string;
@@ -197,6 +210,14 @@ export interface PickerApi {
   openGrokbotReset(): Promise<boolean>;
   /** Verificação do Tailscale SSH: abre um ssh que espera, leva o link ao navegador e resolve quando a pessoa aprovar. */
   approveTailscale(host: string): Promise<{ ok: boolean; detail: string }>;
+  /** Estado da credencial do OAuth client do Tailscale (nunca o valor). */
+  tailscaleCredential(): Promise<TailscaleCredentialState>;
+  saveTailscaleCredential(clientId: string, clientSecret: string): Promise<TailscaleCredentialState>;
+  forgetTailscaleCredential(): Promise<TailscaleCredentialState>;
+  /** Edita a política do tailnet (ssh: check → accept); `host` só invalida a sondagem em cache. */
+  disableTailscaleCheck(host: string): Promise<TailscaleSshResult>;
+  /** Abre no navegador uma página fixa (allowlist no main): "tailscale-keys". */
+  openKnownUrl(which: "tailscale-keys"): Promise<void>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
@@ -314,6 +335,10 @@ export interface MeuBotApi {
   openPicker(): Promise<void>;
   /** Conta e limites do Claude na máquina desta janela (null se o backend não tem o endpoint). */
   getAccountStatus(): Promise<AccountStatus | null>;
+  /** Tailscale: ssh check → accept na política do tailnet (precisa da credencial salva no seletor). */
+  disableTailscaleCheck(): Promise<TailscaleSshResult>;
+  /** Tailscale: volta a política para o backup mais novo. */
+  restoreTailscalePolicy(): Promise<TailscaleSshResult>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;

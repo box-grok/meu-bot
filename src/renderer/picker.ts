@@ -15,6 +15,14 @@ const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
+const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
+const tsForm = $<HTMLDivElement>("pk-ts-form");
+const tsId = $<HTMLInputElement>("pk-ts-id");
+const tsSecret = $<HTMLInputElement>("pk-ts-secret");
+const tsSave = $<HTMLButtonElement>("pk-ts-save");
+const tsCancel = $<HTMLButtonElement>("pk-ts-cancel");
+const tsForget = $<HTMLButtonElement>("pk-ts-forget");
+const tsOpen = $<HTMLButtonElement>("pk-ts-open");
 const needsCheck = new Set<string>();
 const logEl = $<HTMLPreElement>("pk-log");
 const noteEl = $<HTMLParagraphElement>("pk-note");
@@ -165,6 +173,8 @@ function paintDetail(): void {
   // Pod inacessível: o alívio não alcança; o que resolve é o reset pelo app do Grok Bot.
   grokbotResetBtn.hidden = !(isPod && t !== undefined && t.kind === "bad");
   tailscaleBtn.hidden = !needsCheck.has(selected);
+  tailscaleOffBtn.hidden = !needsCheck.has(selected);
+  if (tailscaleOffBtn.hidden) tsForm.hidden = true;
   if (isPod) {
     const has = reliefShortcuts.has(selected);
     reliefShortcutBtn.textContent = has ? "🧯 Tirar o botão de alívio da mesa" : "🧯 Botão de alívio na mesa";
@@ -321,6 +331,59 @@ tailscaleBtn.addEventListener("click", () => {
     await probe(host, true);
   }).finally(() => { tailscaleBtn.disabled = false; paintDetail(); });
 });
+// ---- Desligar a verificação do Tailscale SSH de vez (edita a política do tailnet pela API).
+function note(kind: "ok" | "warn" | "bad", text: string): void { noteEl.hidden = false; noteEl.className = `note ${kind}`; noteEl.textContent = text; }
+
+async function runDisableCheck(host: string): Promise<void> {
+  tailscaleBtn.disabled = true; tailscaleOffBtn.disabled = true;
+  statusEl.className = "status";
+  statusEl.textContent = "editando a política do tailnet pela API do Tailscale…";
+  try {
+    const r = await window.picker.disableTailscaleCheck(host);
+    if (!r.ok) { note("bad", `✗ ${r.detail}`); paintDetail(); return; }
+    if (!r.changed) { note("warn", `${r.detail}.`); paintDetail(); return; }
+    note("ok", `✓ ${r.detail}. O tailscaled de cada máquina recarrega a política em segundos (a porta 22 pode recusar nesse meio-tempo); sondando de novo em 8 s…`);
+    needsCheck.delete(host);
+    paintDetail();
+    await new Promise((res) => setTimeout(res, 8000));
+    await probe(host, true);
+    if (needsCheck.has(host)) note("warn", "ainda pediu verificação: espere mais um pouco e aprove o link uma última vez; depois não será mais exigido.");
+    else if (results.get(host)?.kind === "ok") note("ok", "✓ Política salva e a máquina entrou sem pedir verificação.");
+  } catch (err) {
+    note("bad", `✗ ${errorText(err)}`);
+  } finally {
+    tailscaleBtn.disabled = false; tailscaleOffBtn.disabled = false;
+    paintDetail();
+  }
+}
+
+tailscaleOffBtn.addEventListener("click", () => {
+  if (selected === null) return;
+  const host = selected;
+  void window.picker.tailscaleCredential().then((st) => {
+    if (!st.encryptionAvailable) { note("bad", "✗ este Mac não tem o Keychain disponível para guardar o secret do Tailscale."); return; }
+    if (!st.configured) { tsForget.hidden = true; tsForm.hidden = false; tsId.focus(); return; }
+    return runDisableCheck(host);
+  }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`));
+});
+tsSave.addEventListener("click", () => {
+  if (selected === null) return;
+  const host = selected;
+  tsSave.disabled = true;
+  void window.picker.saveTailscaleCredential(tsId.value, tsSecret.value).then((st) => {
+    tsForm.hidden = true;
+    if (st.configured) return runDisableCheck(host);
+    note("bad", "✗ a credencial não ficou salva.");
+  }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`)).finally(() => { tsSecret.value = ""; tsSave.disabled = false; });
+});
+tsCancel.addEventListener("click", () => { tsSecret.value = ""; tsForm.hidden = true; });
+tsForget.addEventListener("click", () => {
+  void window.picker.forgetTailscaleCredential().then(() => { note("warn", "credencial do Tailscale removida do Keychain."); tsForget.hidden = true; }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`));
+});
+tsOpen.addEventListener("click", () => { void window.picker.openKnownUrl("tailscale-keys").catch((err: unknown) => note("bad", `✗ ${errorText(err)}`)); });
+// Atalho de "esquecer": clique com a tecla Option no botão principal mostra o formulário com a opção.
+tailscaleOffBtn.addEventListener("click", (ev) => { if (ev.altKey) { tsForget.hidden = false; tsForm.hidden = false; } });
+
 grokbotResetBtn.addEventListener("click", () => {
   grokbotResetBtn.disabled = true;
   void window.picker.openGrokbotReset().then((ok) => {
@@ -337,6 +400,8 @@ syncBtn.addEventListener("click", () => { void syncSsh(); });
 directCheck.addEventListener("change", () => { void window.picker.setOpenDirect(directCheck.checked).catch((err: unknown) => showError("Abrir direto", err)); });
 onboardedCheck.addEventListener("change", () => { void window.picker.setOnboardingDone(onboardedCheck.checked).catch((err: unknown) => showError("Onboarding", err)); });
 document.addEventListener("keydown", (ev) => {
+  // Digitando no formulário do Tailscale: Enter e setas não podem abrir máquina nem mover a seleção.
+  if ((ev.target as HTMLElement | null)?.closest("#pk-ts-form") !== null) { if (ev.key === "Escape") { tsSecret.value = ""; tsForm.hidden = true; } return; }
   if (ev.key === "Escape") { ev.preventDefault(); window.picker.cancel(); return; }
   if (ev.key === "Enter") { ev.preventDefault(); void open(); return; }
   if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {

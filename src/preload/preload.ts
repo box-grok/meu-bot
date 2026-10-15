@@ -44,6 +44,8 @@ const api: MeuBotApi = {
   getWindowInfo: (): Promise<WindowInfo | null> => ipcRenderer.invoke("window:info", {}),
   openPicker: () => ipcRenderer.invoke("ui:open-picker", {}),
   getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
+  disableTailscaleCheck: () => ipcRenderer.invoke("tailscale:disable-check", {}),
+  restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

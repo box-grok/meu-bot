@@ -254,7 +254,11 @@ Ordem de diagnóstico:
 3. Entrou mas lento → botão de alívio. Não entrou em 90 s: antes de concluir "pod congelado", olhe o
    stderr do ssh. Se tiver `Tailscale SSH requires an additional check` com um link
    `login.tailscale.com/a/…`, é só aprovar o link no navegador (o seletor e a janela de alívio do app
-   fazem isso sozinhos). Sem esse aviso e sem resposta → pod congelado pelo host: **Redefinir** o
+   fazem isso sozinhos). Para não pedir mais: no seletor, "Desligar a verificação de vez" edita a
+   política do tailnet (regra ssh: check → accept) pela API; precisa de um OAuth client do Tailscale
+   com escopo Policy File, criado em Settings › Keys e guardado no Keychain deste Mac (uma vez por
+   Mac). Backups da política ficam em `~/Library/Application Support/meu-bot/tailscale-policy-backups/`;
+   a paleta tem "Tailscale: restaurar política do último backup". Sem esse aviso e sem resposta → pod congelado pelo host: **Redefinir** o
    computador pelo app do Grok Bot (o app abre o card certo). Não use "Atualizar": troca a base e
    remove pacotes instalados; não é socorro.
 4. Depois que voltar: `pm2 status` (tudo online?), `pm2 logs tailscaled --lines 20` (por que

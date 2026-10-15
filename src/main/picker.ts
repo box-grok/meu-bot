@@ -11,6 +11,12 @@ import { approveTailscaleCheck, installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
+import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialState } from "./secrets";
+import { disableSshCheck } from "./tailscale";
+import { shell } from "electron";
+
+/** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
+const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
 import { getBackendPort, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { syncSshConfig } from "./sshSync";
@@ -134,6 +140,33 @@ export function initPicker(): void {
     const r = await approveTailscaleCheck(host);
     probes.delete(host); // a próxima sondagem precisa ser nova
     return r;
+  });
+  ipcMain.handle("picker:tailscale-credential", (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    return tailscaleCredentialState();
+  });
+  ipcMain.handle("picker:tailscale-credential-save", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const p = payload as { clientId?: unknown; clientSecret?: unknown } | null;
+    return saveTailscaleCredential(String(p?.clientId ?? ""), String(p?.clientSecret ?? ""));
+  });
+  ipcMain.handle("picker:tailscale-credential-forget", (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    return clearTailscaleCredential();
+  });
+  ipcMain.handle("picker:tailscale-disable-check", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    const r = await disableSshCheck();
+    probes.delete(host); // a próxima sondagem precisa ser nova
+    return r;
+  });
+  ipcMain.handle("picker:open-url", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const which = String((payload as { which?: unknown } | null)?.which ?? "");
+    const url = KNOWN_URLS[which];
+    if (url === undefined) throw new Error("página desconhecida");
+    await shell.openExternal(url);
   });
   ipcMain.handle("picker:open-grokbot-reset", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");

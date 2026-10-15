@@ -786,3 +786,29 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   pediu. O app agora detecta (`tailscaleCheckUrl`), e: no seletor mostra "Aprovar verificação do
   Tailscale" (ssh paciente de 4 min + link no navegador + re-sonda); na janela de alívio abre o link e
   espera até 5 min, sem contagem para o reset. O usuário notou: "não era reset, só faltava logar".
+
+## Tailscale SSH: de check para accept pela API, dentro do app (15 out 2026)
+
+- Problema: o "check" do Tailscale SSH pede aprovação de um link no navegador a cada 12 h e depois
+  de troca de chave do nó (ex.: "Atualizar o computador" do Grok Bot). O app já abria o link; agora
+  resolve de vez editando a política do tailnet: `"ssh"[].action: "check" → "accept"`.
+- Módulos (main): `tailscale-policy.ts` (puro: tokenizer + parser mínimo de HuJSON com spans;
+  `applySshAction(text, "accept"|"check")` edita por índice, preserva comentários e formatação,
+  remove `checkPeriod` ao ir para accept, insere a regra padrão se não há bloco ssh; `stripHujson`
+  para os testes), `tailscale-api.ts` (node:https, `baseUrl` injetável: `oauthToken`, `getPolicy`
+  com `Accept: application/hujson` + ETag, `validatePolicy`, `setPolicy` com `If-Match`; erros
+  tipados auth/conflict/invalid/network/timeout em pt-BR), `secrets.ts` (OAuth client cifrado pelo
+  `safeStorage` em `userData/tailscale-oauth.bin`, 0600; renderer só vê `{configured,
+  encryptionAvailable}`), `tailscale.ts` (`disableSshCheck`: credencial → token → GET → backup em
+  `userData/tailscale-policy-backups/` (10 últimos) → edição → validate → POST If-Match;
+  `restoreLastPolicy` desfaz).
+- Seletor: com verificação detectada, botão "Desligar a verificação de vez". Sem credencial, abre o
+  formulário inline (Client ID + secret, link para Settings › Keys); com credencial, roda e re-sonda
+  após 8 s (o tailscaled recarrega e a porta 22 recusa por segundos). Option+clique no botão mostra
+  "Esquecer credencial". Enter/setas não vazam do formulário para a lista. Paleta: "Tailscale:
+  desligar verificação do SSH" e "…restaurar política do último backup" (guarda `hostFromEvent`).
+- Escopo mínimo do OAuth client: Policy File leitura+escrita (`policy_file`). Docs verificados em
+  15 out: token `POST /api/v2/oauth/token` (form), `-` = tailnet da credencial, 412 em `If-Match`
+  errado, validate não salva, `checkPeriod` 1 min a 168 h, padrão 12 h.
+- Testes: `tailscale-policy.test.mjs` (política real do usuário como fixture, iscas em comentários e
+  grants, várias regras, inserção) e `tailscale-api.test.mjs` (servidor falso: token, ETag, 412, 400).
