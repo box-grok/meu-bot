@@ -10,8 +10,8 @@
 #      do host congelou no meio) e relógio de parede que avançou mais que o uptime (+ TOLERANCIA_S);
 #   2. mede alcançabilidade de verdade (não liveness, nem Self.Online — o plano de controle oscila o
 #      tempo todo nessas VMs enquanto o tráfego passa): BackendState=Running e `tailscale ping` em pelo
-#      menos um dos PEERS (o Mac e a grokbot-1) respondendo. Se ambos os peers estiverem desligados, a
-#      leitura é "sem referência" e não conta como ruim;
+#      menos um dos PEERS respondendo — o Mac, o agente-br (servidor fixo) e a grokbot-1, que congela
+#      metade do dia e entra só como desempate. Basta um pong; só sem nenhum a leitura conta como ruim;
 #   3. após BAD_READINGS medições ruins seguidas (80 s no padrão: acima de um blip, abaixo da mediana
 #      de recuperação espontânea; atropelar uma recuperação em curso custa 2 s), reinicia o tailscaled por
 #      `supervisorctl restart tailscaled`, com GRACA_S de carência depois e no máximo MAX_RESTARTS por
@@ -25,7 +25,7 @@ TOLERANCIA_S=${TOLERANCIA_S:-60}
 MAX_RESTARTS=${MAX_RESTARTS:-3}
 JANELA_S=${JANELA_S:-1800}
 TS=${TAILSCALE_BIN:-/home/box/.local/bin/tailscale}   # absoluto: o secure_path do sudo não vê ~/.local/bin e /usr zera na recriação
-PEERS=${PEERS:-"100.118.233.106 100.69.163.93"}         # Mac (grokbot-2) e grokbot-1
+PEERS=${PEERS:-"100.118.233.106 100.65.117.27 100.69.163.93"}   # Mac (grokbot-2), agente-br (servidor fixo, exit node) e grokbot-1 (congela metade do dia; só desempate)
 log() { echo "$(date '+%F %T') $*"; }
 
 uptime_s() { cut -d. -f1 "${UPTIME_FILE:-/proc/uptime}"; }   # UPTIME_FILE só para ensaio fora do Linux
