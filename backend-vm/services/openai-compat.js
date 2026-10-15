@@ -450,9 +450,29 @@ function mount(app) {
   app.post('/v1/chat/completions', jsonBig, async (req, res) => {
     if (!_authOk(req)) return res.status(401).json({ error: { message: 'invalid api key', type: 'invalid_request_error' } });
 
+    // Modelo de um provedor OpenAI-compatível (ex.: "grok-4"): atende direto, sem Claude, mesmo em authDown.
+    {
+      const direct = providers.byName(PROVIDERS, String((req.body || {}).model || '').toLowerCase());
+      if (direct && direct.type === 'openai') {
+        if (!direct.available) return res.status(404).json({ error: { message: `provedor ${direct.name} sem chave/endpoint nesta máquina`, type: 'invalid_request_error', code: 'model_not_found' } });
+        const b = req.body || {};
+        const live0 = b.stream === true && (String(req.headers['x-stream-mode'] || '').toLowerCase() === 'live' || process.env.OPENAI_COMPAT_LIVE_STREAM_DEFAULT === '1');
+        return _serveOpenai(req, res, { provider: direct, messages: b.messages, stream: b.stream === true, live: live0, id: `chatcmpl-${uuidv4()}`, created: Math.floor(Date.now() / 1000) });
+      }
+    }
+
     // authDown: falha o primary de verdade pra o Hermes cair no fallback_providers (xAI).
     // Não usar SSE 200 com texto de erro — isso NÃO dispara fallback.
+    // Exceção: modelo com reserva na corrente (agente → grok-4) cai para ela em vez de 503.
     if (authMonitor.isDown()) {
+      const b0 = req.body || {};
+      const reqModel0 = String(b0.model || '').toLowerCase();
+      const fb0 = _nextOpenai(reqModel0);
+      if (fb0 && Array.isArray(b0.messages)) {
+        const live0 = b0.stream === true && (String(req.headers['x-stream-mode'] || '').toLowerCase() === 'live' || process.env.OPENAI_COMPAT_LIVE_STREAM_DEFAULT === '1');
+        console.warn(`[openai-compat] authDown: ${reqModel0} → ${fb0.name}`);
+        return _serveOpenai(req, res, { provider: fb0, messages: b0.messages, stream: b0.stream === true, live: live0, id: `chatcmpl-${uuidv4()}`, created: Math.floor(Date.now() / 1000), note: { from: reqModel0, to: fb0.name, reason: 'Claude Code deslogado nesta máquina (authDown)' } });
+      }
       return res.status(503).json({
         error: {
           message: 'claude authDown — primary unavailable; client should use fallback',

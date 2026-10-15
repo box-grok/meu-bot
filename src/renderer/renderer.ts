@@ -1,4 +1,4 @@
-import type { AccountStatus, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -496,6 +496,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
+  add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
   add({ id: "a:whatsapp", kind: "action", label: "WhatsApp do Hermes: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes", keywords: ["whatsapp", "qr", "parear", "hermes"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem o WhatsApp do Hermes (~/.hermes/whatsapp).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
@@ -777,6 +778,185 @@ function applySettings(view: SettingsView): void {
   syncComposer();
 }
 
+// ---- Entrar no Claude Code: modal que roda `claude auth login` na máquina, abre o link e recebe o código.
+const clDialog = $<HTMLDialogElement>("cl-dialog");
+const clStatus = $<HTMLParagraphElement>("cl-status");
+const clOpen = $<HTMLButtonElement>("cl-open");
+const clCodeRow = $<HTMLDivElement>("cl-code-row");
+const clCode = $<HTMLInputElement>("cl-code");
+const clSend = $<HTMLButtonElement>("cl-send");
+const clLog = $<HTMLPreElement>("cl-log");
+const clStart = $<HTMLButtonElement>("cl-start");
+const clClose = $<HTMLButtonElement>("cl-close");
+let clRunning = false;
+let clUrl: string | null = null;
+
+function openClaudeLogin(): void {
+  clLog.hidden = true; clLog.textContent = ""; clCodeRow.hidden = true; clOpen.hidden = true; clCode.value = "";
+  clStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link de autorização no navegador; você entra na conta e cola aqui o código que aparece.`;
+  clStart.hidden = clRunning; clStart.textContent = "Começar"; clClose.textContent = clRunning ? "Cancelar" : "Fechar";
+  if (!clDialog.open) clDialog.showModal();
+}
+
+async function runClaudeLogin(): Promise<void> {
+  if (clRunning) return;
+  clRunning = true; clStart.hidden = true; clClose.textContent = "Cancelar"; clLog.hidden = false; clLog.textContent = "";
+  clStatus.textContent = "Iniciando o login na máquina…";
+  try { await window.meuBot.claudeLogin(); } catch (err) { clStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
+  finally { clRunning = false; clClose.textContent = "Fechar"; clCodeRow.hidden = true; }
+}
+
+window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {
+  const appendLog = (t: string): void => { clLog.hidden = false; clLog.textContent = `${clLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); };
+  switch (ev.kind) {
+    case "url": clUrl = ev.url; clOpen.hidden = false; clStatus.textContent = "Abri o link no navegador. Entre na conta e copie o código que a página mostra."; appendLog("▸ link aberto no navegador"); break;
+    case "waiting-code": clCodeRow.hidden = false; clCode.focus(); clStatus.textContent = "Cole o código da página e clique em Enviar código."; break;
+    case "log": appendLog(ev.text); break;
+    case "done":
+      clStatus.textContent = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
+      appendLog(ev.ok ? "✓ logado" : "não concluiu");
+      clStart.hidden = ev.ok; clStart.textContent = "Tentar de novo";
+      if (ev.ok) {
+        const tab = active();
+        if (tab !== null) addNotice(tab, "✓ Claude Code logado nesta máquina. Pode mandar a próxima mensagem.", "info");
+        void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); });
+        clAuth = { loggedIn: true, email: clAuth?.email ?? null }; paintClaudeLine();
+        void refreshClaudeLine();
+        // Deu certo: o modal se fecha sozinho; o aviso fica na conversa.
+        setTimeout(() => { if (clDialog.open) clDialog.close(); }, 1200);
+      }
+      break;
+  }
+});
+clStart.addEventListener("click", () => { void runClaudeLogin(); });
+clSend.addEventListener("click", () => {
+  const code = clCode.value.trim();
+  if (code === "") return;
+  clSend.disabled = true;
+  void window.meuBot.claudeLoginCode(code).then((ok) => { if (ok) { clStatus.textContent = "Código enviado; conferindo o login…"; clCode.value = ""; } else clStatus.textContent = "✗ não há login em andamento; clique em Começar."; }).finally(() => { clSend.disabled = false; });
+});
+clCode.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); clSend.click(); } ev.stopPropagation(); });
+clOpen.addEventListener("click", () => { if (clUrl !== null) void window.meuBot.openExternal(clUrl); });
+
+/** Erro/aviso que indica Claude Code deslogado: a notice ganha o botão "Entrar no Claude Code". */
+const LOGGED_OUT_RE = /not logged in|please run \/?login|deslogad|não está logado/i;
+function offerClaudeLogin(tab: Tab, text: string): void {
+  if (!LOGGED_OUT_RE.test(text)) return;
+  const box = el("div", "notice notice-warn");
+  box.append(el("span", "", "O Claude Code desta máquina está deslogado. "));
+  const btn = el("button", "btn btn-ghost btn-small", "Entrar no Claude Code");
+  btn.type = "button";
+  btn.addEventListener("click", () => { openClaudeLogin(); void runClaudeLogin(); });
+  box.append(btn);
+  tab.messagesEl.appendChild(box);
+  scrollToBottom(tab, false);
+}
+clClose.addEventListener("click", () => { if (clRunning) void window.meuBot.claudeLoginCancel(); clDialog.close(); });
+window.meuBot.on("ui:claude-login", () => { openClaudeLogin(); void runClaudeLogin(); });
+
+// ---- Linha "Claude Code" na lista de conversas: conta logada, sair (para entrar com outra) ou entrar.
+const clLine = $<HTMLDivElement>("cl-line");
+const clLineText = $<HTMLSpanElement>("cl-line-text");
+const clLineBtn = $<HTMLButtonElement>("cl-line-btn");
+let clAuth: ClaudeAuthInfo | null = null;
+
+function paintClaudeLine(): void {
+  if (clAuth === null) { clLine.hidden = true; return; }
+  clLine.hidden = false;
+  clLine.className = `wa-line cl-line ${clAuth.loggedIn ? "on" : "off"}`;
+  clLineText.textContent = clAuth.loggedIn ? `Claude Code · ${clAuth.email ?? "logado"}` : "Claude Code · deslogado";
+  clLineBtn.textContent = clAuth.loggedIn ? "sair" : "entrar";
+  clLineBtn.title = clAuth.loggedIn ? "Sai da conta do Claude Code nesta máquina e abre o login para entrar com outra" : "Abre o login do Claude Code nesta máquina";
+}
+
+async function refreshClaudeLine(): Promise<void> {
+  try { clAuth = await window.meuBot.claudeAuth(); } catch { clAuth = null; }
+  paintClaudeLine();
+}
+
+clLineBtn.addEventListener("click", () => {
+  if (clAuth !== null && clAuth.loggedIn) {
+    if (!window.confirm(`Sair da conta ${clAuth.email ?? "do Claude Code"} nesta máquina? O agente para de responder pelo Claude até entrar de novo (o grok-4 continua).`)) return;
+    clLineBtn.disabled = true;
+    void window.meuBot.claudeLogout().then((st) => { clAuth = st; paintClaudeLine(); openClaudeLogin(); void runClaudeLogin(); }).finally(() => { clLineBtn.disabled = false; });
+    return;
+  }
+  openClaudeLogin();
+  void runClaudeLogin();
+});
+
+// ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude.
+const xaiLine = $<HTMLDivElement>("xai-line");
+const xaiLineText = $<HTMLSpanElement>("xai-line-text");
+const xaiLineBtn = $<HTMLButtonElement>("xai-line-btn");
+const xaiDialog = $<HTMLDialogElement>("xai-dialog");
+const xaiStatus = $<HTMLParagraphElement>("xai-status");
+const xaiOpen = $<HTMLButtonElement>("xai-open");
+const xaiLog = $<HTMLPreElement>("xai-log");
+const xaiStart = $<HTMLButtonElement>("xai-start");
+const xaiClose = $<HTMLButtonElement>("xai-close");
+let xaiAuth: ClaudeAuthInfo | null = null;
+let xaiRunning = false;
+let xaiUrl: string | null = null;
+
+function paintXaiLine(): void {
+  if (xaiAuth === null) { xaiLine.hidden = true; return; }
+  xaiLine.hidden = false;
+  xaiLine.className = `wa-line cl-line ${xaiAuth.loggedIn ? "on" : "off"}`;
+  xaiLineText.textContent = xaiAuth.loggedIn ? `xAI (Grok) · ${xaiAuth.email ?? "logada"}` : "xAI (Grok) · deslogada · o grok-4 não responde";
+  xaiLineBtn.textContent = xaiAuth.loggedIn ? "sair" : "entrar";
+}
+async function refreshXaiLine(): Promise<void> {
+  try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
+  paintXaiLine();
+}
+function openXai(): void {
+  xaiLog.hidden = true; xaiLog.textContent = ""; xaiOpen.hidden = true;
+  xaiStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
+  xaiStart.hidden = xaiRunning; xaiStart.textContent = "Começar"; xaiClose.textContent = xaiRunning ? "Cancelar" : "Fechar";
+  if (!xaiDialog.open) xaiDialog.showModal();
+}
+async function runXaiLogin(): Promise<void> {
+  if (xaiRunning) return;
+  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
+  xaiStatus.textContent = "Pedindo o login ao Hermes da máquina…";
+  try { await window.meuBot.xaiLogin(); } catch (err) { xaiStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
+  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
+}
+window.meuBot.on("xai-login:event", (ev: ClaudeLoginEvent) => {
+  const appendLog = (t: string): void => { xaiLog.hidden = false; xaiLog.textContent = `${xaiLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); };
+  switch (ev.kind) {
+    case "url": xaiUrl = ev.url; xaiOpen.hidden = false; xaiStatus.textContent = "Abri o link no navegador. Entre na conta da xAI e aprove o dispositivo; esperando a aprovação…"; break;
+    case "waiting-code": break;
+    case "log": appendLog(ev.text); break;
+    case "done":
+      xaiStatus.textContent = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
+      xaiStart.hidden = ev.ok; xaiStart.textContent = "Tentar de novo";
+      if (ev.ok) {
+        // Verde na hora, com o rótulo que veio no texto; a consulta de confirmação roda em segundo plano.
+        xaiAuth = { loggedIn: true, email: /\(([^)]+)\)/.exec(ev.text)?.[1] ?? xaiAuth?.email ?? null };
+        paintXaiLine();
+        const tab = active(); if (tab !== null) addNotice(tab, "✓ xAI logada no Hermes desta máquina; o grok-4 já usa a conta nova.", "info");
+        void refreshXaiLine();
+        setTimeout(() => { if (xaiDialog.open) xaiDialog.close(); }, 1200);
+      }
+      break;
+  }
+});
+xaiStart.addEventListener("click", () => { void runXaiLogin(); });
+xaiOpen.addEventListener("click", () => { if (xaiUrl !== null) void window.meuBot.openExternal(xaiUrl); });
+xaiClose.addEventListener("click", () => { if (xaiRunning) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
+xaiLineBtn.addEventListener("click", () => {
+  if (xaiAuth !== null && xaiAuth.loggedIn) {
+    if (!window.confirm("Sair da conta da xAI no Hermes desta máquina? O grok-4 para de responder até entrar de novo.")) return;
+    xaiLineBtn.disabled = true;
+    void window.meuBot.xaiLogout().then((st) => { xaiAuth = st; paintXaiLine(); openXai(); void runXaiLogin(); }).finally(() => { xaiLineBtn.disabled = false; });
+    return;
+  }
+  openXai();
+  void runXaiLogin();
+});
+
 // ---- WhatsApp do Hermes: linha no topo da lista de conversas e modal de pareamento por QR.
 const waLine = $<HTMLButtonElement>("wa-line");
 const waDialog = $<HTMLDialogElement>("wa-dialog");
@@ -786,7 +966,6 @@ const waHow = $<HTMLParagraphElement>("wa-how");
 const waLog = $<HTMLPreElement>("wa-log");
 const waPairBtn = $<HTMLButtonElement>("wa-pair");
 const waResetBtn = $<HTMLButtonElement>("wa-reset");
-const waCancelBtn = $<HTMLButtonElement>("wa-cancel");
 const waCloseBtn = $<HTMLButtonElement>("wa-close");
 let waStatus: WhatsappStatus | null = null;
 let waPairing = false;
@@ -809,7 +988,7 @@ function paintWhatsapp(): void {
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
   waResetBtn.hidden = waPairing || st.number === null;
-  waCancelBtn.hidden = !waPairing;
+  waCloseBtn.textContent = waPairing ? "Cancelar" : "Fechar";
 }
 
 async function refreshWhatsapp(): Promise<void> {
@@ -850,13 +1029,15 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
     case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do Hermes."; break;
     case "connected": waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. Subindo o gateway…`; appendLog("✓ conectado"); break;
     case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
-    case "done": appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar"); break;
+    case "done":
+      appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
+      if (ev.ok) { const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp do Hermes pareado; o gateway está voltando.", "info"); setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500); }
+      break;
   }
 });
 waLine.addEventListener("click", () => openWhatsapp());
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
 waResetBtn.addEventListener("click", () => { void pairWhatsapp(true); });
-waCancelBtn.addEventListener("click", () => { void window.meuBot.whatsappCancel(); });
 waCloseBtn.addEventListener("click", () => { if (waPairing) void window.meuBot.whatsappCancel(); waDialog.close(); });
 
 // ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
@@ -1043,6 +1224,7 @@ window.meuBot.on("chat:error", (e: ErrorEvent) => {
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
   addNotice(tab, e.message, "error");
+  offerClaudeLogin(tab, e.message);
   markUnread(tab);
   maybeNotify(tab, e.message);
 });
@@ -1249,7 +1431,7 @@ function openSettings(): void {
 }
 settingsBtn.addEventListener("click", () => openSettings());
 window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
-window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) addNotice(tab, text, "warn"); });
+window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) { addNotice(tab, text, "warn"); offerClaudeLogin(tab, text); } });
 window.meuBot.on("chat:account", ({ host, status }) => {
   if (host !== windowHost) return;
   account = status;
@@ -1304,6 +1486,8 @@ void (async () => {
   applySettings(await window.meuBot.getSettings());
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); });
   void refreshWhatsapp();
+  void refreshClaudeLine();
+  void refreshXaiLine();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
   renderSidebar();

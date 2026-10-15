@@ -834,3 +834,29 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Pegadinhas: sessão deslogada precisa ser movida antes do QR (senão o bridge só repete "Logged
   out"); nunca rodar dois bridges na mesma sessão (conflito 440 derruba a sessão nova); o script
   remoto sempre sobe o gateway de volta.
+
+## Entrar no Claude Code pelo app (15 out 2026)
+
+- `claude auth login` (CLI 2.1.300) sem terminal imprime o link `https://claude.com/cai/oauth/authorize?…`
+  e espera o código no stdin ("Paste code here if prompted >"). `src/main/claudeLogin.ts` roda isso por
+  ssh (ou local), abre o link no navegador do Mac, recebe o código pelo modal (`#cl-dialog`) e
+  escreve no stdin; no fim confere com `claude auth status` (JSON `loggedIn`). Timeout 10 min.
+- Entradas: botão "Entrar no Claude Code" na notice de erro/fallback que mencione login/deslogado
+  (`offerClaudeLogin`), ação na paleta, e no seletor (abre a janela da máquina já no modal, via
+  `ui:claude-login`). Sondagem: backend no ar + Claude deslogado agora é amarelo com o botão
+  (antes ficava verde). `probe-text` ganhou o campo `login`.
+- Backend do Hermes: pedido direto a `grok-4` passa antes do corte do authDown, e em authDown um
+  modelo com reserva (agente → grok-4) cai para ela com aviso em vez de 503. `rene-dm` segue 503
+  (fora da corrente), que é o que o Hermes do WhatsApp espera.
+- Pegadinha mantida: o login reescreve `settings.json`/`.bashrc` na máquina; o backend não depende
+  disso (bypass vai por flag).
+- Lista de conversas ganhou três linhas de conta no topo: WhatsApp do Hermes, Claude Code
+  (`claudeAuthInfo`: `claude auth status` + e-mail do `~/.claude.json`; "sair" = `claude auth logout`
+  e já abre o login) e xAI (Grok) (`src/main/xaiLogin.ts`: `hermes auth status/list/add/logout
+  xai-oauth`; o login abre o link de código de dispositivo e espera a aprovação; ao concluir remove
+  as credenciais antigas do provedor, porque uma vencida na frente derruba o proxy com invalid_grant).
+  Modais: um botão só (Cancelar enquanto roda, Fechar depois), "Começar" some ao concluir e vira
+  "Tentar de novo" se falhar; fecham sozinhos no sucesso.
+- Pegadinha: `hermes auth add xai-oauth --type oauth --no-browser` sem pseudo-terminal não imprime
+  nada e fica parado (o CLI exige tty); o app usa `ssh -tt` com stdin aberto e limpa ANSI/CR da saída.
+  Já `claude auth login`, `hermes auth status/list/logout` funcionam sem tty.

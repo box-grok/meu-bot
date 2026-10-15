@@ -11,7 +11,12 @@ test("estados da sondagem remota", () => {
   assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: false })), { kind: "warn", install: "reinstall", canOpen: true });
   assert.deepEqual(pick(describeProbe({ ...base, claudePath: null })), { kind: "bad", install: null, canOpen: false });
   assert.deepEqual(pick(describeProbe({ ...base, claudeLoggedIn: false })), { kind: "bad", install: null, canOpen: false });
-  assert.match(describeProbe({ ...base, claudeLoggedIn: false }).text, /ssh -t vm claude/);
+  assert.match(describeProbe({ ...base, claudeLoggedIn: false }).text, /Entrar no Claude Code/);
+  assert.equal(describeProbe({ ...base, claudeLoggedIn: false }).login, true);
+  // backend no ar mas Claude deslogado: dá para abrir (grok-4 responde), mas avisa e oferece o login
+  const offLogged = describeProbe({ ...base, backendInstalled: true, backendListening: true, claudeLoggedIn: false });
+  assert.deepEqual(pick(offLogged), { kind: "warn", install: null, canOpen: true });
+  assert.equal(offLogged.login, true);
   assert.deepEqual(pick(describeProbe(base)), { kind: "warn", install: "install", canOpen: false });
 });
 

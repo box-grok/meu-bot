@@ -7,6 +7,8 @@ import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
 import { cancelPairing, startPairing, whatsappStatus } from "./whatsapp";
+import { cancelClaudeLogin, claudeAuthInfo, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "./claudeLogin";
+import { cancelXaiLogin, startXaiLogin, xaiAuthInfo, xaiLogout } from "./xaiLogin";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import {
   anyConversationBusy, archiveConversation, branchConversation, closeTab, createConversation, dropConversation,
@@ -86,6 +88,37 @@ function registerIpc(): void {
     if (h === null) throw new Error("origem inválida");
     const reset = (payload as { reset?: unknown } | null)?.reset === true;
     return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
+  });
+  ipcMain.handle("claude-login:start", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return startClaudeLogin(h.host, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("claude-login:event", ev); });
+  });
+  ipcMain.handle("claude-login:code", (event, payload: unknown) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    return submitClaudeLoginCode(String((payload as { code?: unknown } | null)?.code ?? ""));
+  });
+  ipcMain.handle("claude-login:auth", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return claudeAuthInfo(h.host);
+  });
+  ipcMain.handle("claude-login:logout", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return claudeLogout(h.host);
+  });
+  ipcMain.handle("xai-login:auth", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiAuthInfo(h.host); });
+  ipcMain.handle("xai-login:start", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return startXaiLogin(h.host, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", ev); });
+  });
+  ipcMain.handle("xai-login:cancel", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelXaiLogin(); });
+  ipcMain.handle("xai-login:logout", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiLogout(h.host); });
+  ipcMain.handle("claude-login:cancel", (event) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    cancelClaudeLogin();
   });
   ipcMain.handle("whatsapp:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");

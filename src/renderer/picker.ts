@@ -16,6 +16,7 @@ const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
+const claudeLoginBtn = $<HTMLButtonElement>("pk-claude-login");
 const tsForm = $<HTMLDivElement>("pk-ts-form");
 const tsId = $<HTMLInputElement>("pk-ts-id");
 const tsSecret = $<HTMLInputElement>("pk-ts-secret");
@@ -184,11 +185,13 @@ function paintDetail(): void {
     statusEl.className = "status";
     statusEl.textContent = `verificando ${hostLabel(selected)}…`;
     openBtn.disabled = true;
+    claudeLoginBtn.hidden = true;
     return;
   }
   statusEl.className = `status ${t.kind}`;
   statusEl.textContent = t.text;
   openBtn.disabled = !t.canOpen || installing;
+  claudeLoginBtn.hidden = t.login !== true;
   if (t.install !== null && !installing) {
     installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : "Instalar backend";
     installBtn.hidden = false;
@@ -357,6 +360,7 @@ async function runDisableCheck(host: string): Promise<void> {
   }
 }
 
+claudeLoginBtn.addEventListener("click", () => { if (selected !== null) void window.picker.claudeLogin(selected).catch((err: unknown) => showError("Login", err)); });
 tailscaleOffBtn.addEventListener("click", () => {
   if (selected === null) return;
   const host = selected;

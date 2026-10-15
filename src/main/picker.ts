@@ -23,7 +23,7 @@ import { syncSshConfig } from "./sshSync";
 import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
 } from "./shortcuts";
-import { backgroundColor, openMainWindow, windowForHost } from "./windows";
+import { backgroundColor, openMainWindow, sendWhenLoaded, windowForHost } from "./windows";
 
 let pickerWin: BrowserWindow | null = null;
 let lastError: string | null = null;
@@ -167,6 +167,16 @@ export function initPicker(): void {
     const url = KNOWN_URLS[which];
     if (url === undefined) throw new Error("página desconhecida");
     await shell.openExternal(url);
+  });
+  ipcMain.handle("picker:claude-login", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const raw = String((payload as { host?: unknown } | null)?.host ?? "").trim();
+    const host = raw === LOCAL_HOST ? LOCAL_HOST : hostArg(payload);
+    setLastHost(host);
+    const win = openMainWindow(host, "picker");
+    sendWhenLoaded(win, "ui:claude-login", {});
+    probes.delete(host);
+    pickerWin?.close();
   });
   ipcMain.handle("picker:open-grokbot-reset", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");

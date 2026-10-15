@@ -36,10 +36,14 @@
     <aside id="sidebar" class="sidebar" hidden>
       <div class="sidebar-head">
         <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do Hermes nesta máquina: clique para ver o estado ou parear"></button>
+        <div id="cl-line" class="wa-line cl-line" hidden title="Conta do Claude Code nesta máquina"><span class="dot"></span><span id="cl-line-text" class="grow"></span><button type="button" id="cl-line-btn" class="btn btn-ghost btn-small">sair</button></div>
+        <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) no Hermes desta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
         <input id="sidebar-search" type="search" placeholder="Buscar conversas…" autocomplete="off" />
-        <label class="check"><input id="sidebar-archived" type="checkbox" /> arquivadas</label>
       </div>
       <div id="sidebar-list" class="sidebar-list"></div>
+      <div class="sidebar-foot">
+        <label class="switch" title="Mostrar também as conversas arquivadas"><input id="sidebar-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivadas</span></label>
+      </div>
     </aside>
     <div class="content">
       <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
@@ -72,6 +76,38 @@
     <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
   </footer>
 
+  <dialog id="cl-dialog">
+    <div class="wa-box">
+      <h2>Entrar no Claude Code</h2>
+      <p id="cl-status" class="hint">Abre o link de autorização no navegador; você entra na conta e cola aqui o código que aparece.</p>
+      <div class="actions"><button type="button" id="cl-open" class="btn btn-ghost btn-small" hidden>abrir o link de novo</button></div>
+      <div id="cl-code-row" class="row" hidden>
+        <label>Código de autorização
+          <input id="cl-code" type="text" autocomplete="off" spellcheck="false" placeholder="cole o código aqui" />
+        </label>
+        <button type="button" id="cl-send" class="btn btn-primary">Enviar código</button>
+      </div>
+      <pre id="cl-log" class="log" hidden></pre>
+      <div class="dialog-actions">
+        <button type="button" id="cl-start" class="btn btn-primary">Começar</button>
+        <div class="spacer"></div>
+        <button type="button" id="cl-close" class="btn btn-ghost">Fechar</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="xai-dialog">
+    <div class="wa-box">
+      <h2>Entrar na xAI (Grok)</h2>
+      <p id="xai-status" class="hint">Abre o link de autorização da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.</p>
+      <div class="actions"><button type="button" id="xai-open" class="btn btn-ghost btn-small" hidden>abrir o link de novo</button></div>
+      <pre id="xai-log" class="log" hidden></pre>
+      <div class="dialog-actions">
+        <button type="button" id="xai-start" class="btn btn-primary">Começar</button>
+        <div class="spacer"></div>
+        <button type="button" id="xai-close" class="btn btn-ghost">Fechar</button>
+      </div>
+    </div>
+  </dialog>
   <dialog id="wa-dialog">
     <div class="wa-box">
       <h2>WhatsApp do Hermes</h2>
@@ -83,7 +119,6 @@
         <button type="button" id="wa-pair" class="btn btn-primary">Gerar QR</button>
         <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Guarda a sessão atual como session.loggedout-… e gera um QR novo">Reparear (apaga a sessão)</button>
         <div class="spacer"></div>
-        <button type="button" id="wa-cancel" class="btn btn-ghost" hidden>Cancelar</button>
         <button type="button" id="wa-close" class="btn btn-ghost">Fechar</button>
       </div>
     </div>

@@ -17,6 +17,9 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "chat:notice",
   "chat:account",
   "whatsapp:event",
+  "claude-login:event",
+  "xai-login:event",
+  "ui:claude-login",
 ];
 
 const api: MeuBotApi = {
@@ -50,6 +53,15 @@ const api: MeuBotApi = {
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
   whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
+  claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
+  claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),
+  claudeLoginCancel: () => ipcRenderer.invoke("claude-login:cancel", {}),
+  claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),
+  claudeLogout: () => ipcRenderer.invoke("claude-login:logout", {}),
+  xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
+  xaiLogin: () => ipcRenderer.invoke("xai-login:start", {}),
+  xaiLoginCancel: () => ipcRenderer.invoke("xai-login:cancel", {}),
+  xaiLogout: () => ipcRenderer.invoke("xai-login:logout", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

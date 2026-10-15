@@ -21,6 +21,7 @@ const api: PickerApi = {
   forgetTailscaleCredential: (): Promise<TailscaleCredentialState> => ipcRenderer.invoke("picker:tailscale-credential-forget", {}),
   disableTailscaleCheck: (host: string): Promise<TailscaleSshResult> => ipcRenderer.invoke("picker:tailscale-disable-check", { host }),
   openKnownUrl: (which: "tailscale-keys"): Promise<void> => ipcRenderer.invoke("picker:open-url", { which }),
+  claudeLogin: (host: string): Promise<void> => ipcRenderer.invoke("picker:claude-login", { host }),
   cancel: (): void => ipcRenderer.send("picker:cancel"),
   on: (channel, callback) => {
     if (!(EVENTS as readonly string[]).includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

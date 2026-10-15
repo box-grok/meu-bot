@@ -170,6 +170,16 @@ export type WhatsappEvent =
   | { kind: "error"; text: string }
   | { kind: "done"; ok: boolean };
 
+/** Conta do Claude Code na máquina. */
+export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null }
+
+/** Eventos do login do Claude Code numa máquina (claude auth login por SSH). */
+export type ClaudeLoginEvent =
+  | { kind: "url"; url: string }
+  | { kind: "waiting-code" }
+  | { kind: "log"; text: string }
+  | { kind: "done"; ok: boolean; text: string };
+
 /** Credencial do OAuth client do Tailscale: só o estado, nunca o valor. */
 export interface TailscaleCredentialState { configured: boolean; encryptionAvailable: boolean }
 
@@ -240,6 +250,8 @@ export interface PickerApi {
   disableTailscaleCheck(host: string): Promise<TailscaleSshResult>;
   /** Abre no navegador uma página fixa (allowlist no main): "tailscale-keys". */
   openKnownUrl(which: "tailscale-keys"): Promise<void>;
+  /** Abre a janela da máquina já no modal "Entrar no Claude Code". */
+  claudeLogin(host: string): Promise<void>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
@@ -317,6 +329,12 @@ export interface MainEvents {
   "chat:account": { host: string; status: AccountStatus | null };
   /** Pareamento do WhatsApp do Hermes em andamento. */
   "whatsapp:event": WhatsappEvent;
+  /** Login do Claude Code em andamento. */
+  "claude-login:event": ClaudeLoginEvent;
+  /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
+  "xai-login:event": ClaudeLoginEvent;
+  /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
+  "ui:claude-login": Record<string, never>;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -368,6 +386,21 @@ export interface MeuBotApi {
   /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
   whatsappPair(reset: boolean): Promise<void>;
   whatsappCancel(): Promise<void>;
+  /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
+  claudeLogin(): Promise<void>;
+  /** Código colado pela pessoa; false se não há login em andamento. */
+  claudeLoginCode(code: string): Promise<boolean>;
+  claudeLoginCancel(): Promise<void>;
+  /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
+  claudeAuth(): Promise<ClaudeAuthInfo | null>;
+  /** `claude auth logout` na máquina; devolve o estado depois. */
+  claudeLogout(): Promise<ClaudeAuthInfo | null>;
+  /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
+  xaiAuth(): Promise<ClaudeAuthInfo | null>;
+  /** `hermes auth add xai-oauth --type oauth --no-browser` (eventos em xai-login:event). */
+  xaiLogin(): Promise<void>;
+  xaiLoginCancel(): Promise<void>;
+  xaiLogout(): Promise<ClaudeAuthInfo | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;
