@@ -244,8 +244,9 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 @keyframes m-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .mascot, .mascot g { animation: none !important; transition: none; } }
 /* Onboarding — entrada (shot "capwords-splash"): o cartão chega com mola, os mascotes deslizam das bordas e param em volta
-   dele em idle, e aviso, título e texto sobem em sequência. Saída ao concluir: o cartão se dissolve encolhendo de leve e os
-   mascotes se despedem junto — a conversa já está embaixo, com a primeira mensagem enviada. */
+   dele em idle, e aviso, título e texto sobem em sequência. Saída ao concluir (a piscada do shot "monday-splash", sem o
+   ponto): o cartão se dissolve encolhendo de leve, os mascotes se despedem junto, e uma onda verde se abre do centro do
+   cartão sobre a tela e se dissolve — a conversa já está embaixo, com a primeira mensagem enviada. */
 .ob-mascots { position: absolute; left: 50%; top: calc(50% + 24px); width: 0; height: 0; z-index: 4; }
 .ob-mascots[hidden] { display: none; }
 .mascot.from-edge:not(.in) { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.8); }
@@ -257,6 +258,10 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 @keyframes ob-rise { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
 .onboard.shrink { animation: ob-dissolve .6s cubic-bezier(.45, 0, .15, 1) forwards; }
 @keyframes ob-dissolve { to { scale: .96; opacity: 0; } }
+.ob-ripple { position: fixed; inset: 0; z-index: 6; pointer-events: none; background: var(--ok); opacity: .5; clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); }
+.ob-ripple[hidden] { display: none; }
+.ob-ripple.go { animation: ob-ripple 1s cubic-bezier(.3, .5, .25, 1) forwards; }
+@keyframes ob-ripple { from { clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); opacity: .5; } 60% { opacity: .22; } to { clip-path: circle(160% at var(--cx, 50%) var(--cy, 50%)); opacity: 0; } }
 /* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
 .btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
 @keyframes attention-pulse {

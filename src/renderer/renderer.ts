@@ -1184,6 +1184,7 @@ const obTitle = $<HTMLHeadingElement>("ob-title");
 const obText = $<HTMLParagraphElement>("ob-text");
 const obSkip = $<HTMLButtonElement>("ob-skip");
 const obStage = $<HTMLElement>("ob-mascots");
+const obRipple = $<HTMLElement>("ob-ripple");
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let obMascots: SVGSVGElement[] = [];
 
@@ -1208,14 +1209,18 @@ function onboardEnter(): void {
   }
 }
 
-/** Saída. "done": o cartão se dissolve encolhendo de leve e os mascotes se despedem junto. "skipped": só dispensa os mascotes. */
+/** Saída. "done": o cartão se dissolve encolhendo de leve, os mascotes se despedem junto e uma onda verde se abre do centro do cartão e se dissolve. "skipped": só dispensa os mascotes. */
 async function onboardLeave(how: "done" | "skipped"): Promise<void> {
   const bye = (): void => { for (const el of obMascots) el.classList.add("bye"); setTimeout(() => { obStage.replaceChildren(); obStage.hidden = true; obMascots = []; }, 400); };
   if (prefersReducedMotion || how === "skipped") { bye(); return; }
+  const r = onboardEl.getBoundingClientRect();
+  obRipple.style.setProperty("--cx", `${r.left + r.width / 2}px`); obRipple.style.setProperty("--cy", `${r.top + r.height / 2}px`);
   bye();
   onboardEl.classList.add("shrink");
-  await wait(620);
-  onboardEl.classList.remove("shrink");
+  await wait(280);                         // a onda nasce enquanto o cartão ainda está se dissolvendo
+  obRipple.hidden = false; obRipple.classList.add("go");
+  await wait(1000);
+  obRipple.classList.remove("go"); obRipple.hidden = true; onboardEl.classList.remove("shrink");
 }
 let onboard: OnboardState | null = null;
 let lastFeedback: Feedback | undefined;
