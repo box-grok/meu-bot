@@ -10,7 +10,7 @@ import type { HostProbe, PickerInit } from "../shared/ipc";
 import { installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
-import { getBackendPort, getLastHost, getOpenDirect, isPodHost, isValidHost, setLastHost, setOpenDirect, setPodHost } from "./settings";
+import { getBackendPort, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { syncSshConfig } from "./sshSync";
 import {
@@ -57,6 +57,7 @@ function initPayload(): PickerInit {
     pods: hosts.filter(isPodHost),
     reliefShortcuts: hosts.filter(hasReliefShortcut),
     openDirect: getOpenDirect(),
+    onboardingDone: isOnboardingDone(),
     error: lastError,
   };
 }
@@ -121,6 +122,10 @@ export function initPicker(): void {
   ipcMain.handle("picker:open-direct", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     setOpenDirect((payload as { value?: unknown } | null)?.value === true);
+  });
+  ipcMain.handle("picker:onboarding-done", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    setOnboardingDone((payload as { value?: unknown } | null)?.value === true);
   });
   ipcMain.on("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
 }

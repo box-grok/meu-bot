@@ -124,6 +124,8 @@ export interface PickerInit {
   reliefShortcuts: string[];
   /** Caixinha "abrir direto": marcada = sem a abertura animada. */
   openDirect: boolean;
+  /** Caixinha "onboarding feito": marcada = respeita; desmarcada = força o onboarding na próxima janela. */
+  onboardingDone: boolean;
   error: string | null;
 }
 
@@ -167,6 +169,8 @@ export interface PickerApi {
   setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
   /** Caixinha "abrir direto" do rodapé. */
   setOpenDirect(value: boolean): Promise<void>;
+  /** Caixinha "onboarding feito" do rodapé. */
+  setOnboardingDone(value: boolean): Promise<void>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }

@@ -691,3 +691,12 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Abertura animada virou opção: caixinha "abrir direto" no rodapé do seletor (`settings.openDirect`,
   padrão true = sem abertura). Desmarcada, a abertura toca toda vez que uma janela abre. O `introSeen`
   do localStorage saiu; a ação da paleta virou só "Rever onboarding".
+- Caixinha "onboarding feito" no rodapé do seletor (`settings.onboarding`): marcada = done, respeita;
+  desmarcada = pending, força o onboarding na próxima janela de máquina, mesmo com conversas (as abas
+  voltam por baixo do cartão). O renderer começa o onboarding sempre que a flag está pendente.
+- "onboarding sempre" foi removido no mesmo dia (o usuário não gostou). Rodapé do seletor ficou com
+  três controles curtos: ⇅ sincronizar ssh, "abrir" (= abrir direto, sem a abertura animada) e
+  "feito" (= onboarding feito). Os títulos (tooltip) explicam.
+- Onboarding: "pular" virou texto pequeno em cinza (não se clica por reflexo); pular mostra o cartão
+  "Onboarding pulado" por 4,5 s com o caminho para refazer (`SKIPPED_MESSAGE`). A lista de conversas
+  entra deslizando com um brilho azul (`.sidebar.reveal`), para quem aperta Cmd+B olhando o teclado.

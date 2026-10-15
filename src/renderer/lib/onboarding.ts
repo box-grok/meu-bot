@@ -18,13 +18,15 @@ export interface OnboardStep {
 
 export const ONBOARD_STEPS: readonly OnboardStep[] = [
   { id: "sidebar", title: "Lista de conversas", text: "Ela fica recolhida por padrão. Abra com o botão ☰ no topo ou com Cmd + B.", completes: "sidebar" },
-  { id: "palette", title: "Paleta de comandos", text: "Cmd + K abre a paleta: ela acha conversas e ações pelo nome. Cmd + K de novo fecha.", completes: "palette-close", after: "palette-open" },
-  { id: "settings", title: "Configurações", text: "Aperte Cmd + vírgula (⌘ ,) para abrir as Configurações, o mesmo atalho de preferências de todo app do Mac. Dê uma olhada nas seções e feche com Cmd + vírgula de novo.", completes: "settings-closed" },
-  { id: "new", title: "Primeira conversa", text: "Crie a primeira conversa com o botão Novo. A primeira mensagem vai sozinha.", completes: "new-tab" },
+  { id: "palette", title: "Paleta de comandos", text: "Aperte Cmd + K DUAS vezes: a primeira abre a paleta, que acha conversas e ações pelo nome; a segunda fecha. O passo só conclui quando ela fechar.", completes: "palette-close", after: "palette-open" },
+  { id: "settings", title: "Configurações", text: "Aperte Cmd + vírgula (⌘ ,) DUAS vezes: a primeira abre as Configurações, o mesmo atalho de preferências de todo app do Mac; a segunda fecha. Entre uma e outra, espie as seções.", completes: "settings-closed" },
+  { id: "new", title: "Primeira conversa", text: "Aperte Cmd + N, ou clique no botão Novo, para criar a primeira conversa. A primeira mensagem vai sozinha.", completes: "new-tab" },
 ];
 
 /** Primeira mensagem da primeira conversa: enviada sozinha quando o último passo conclui. */
 export const EXAMPLE_MESSAGE = "Oi! Em uma frase: o que você consegue fazer nesta máquina?";
+/** Aviso ao pular: deixa claro que acabou e como refazer. */
+export const SKIPPED_MESSAGE = { title: "Onboarding ignorado", text: "Tudo bem. Para refazer depois: desmarque \"feito\" no rodapé do seletor, ou use \"Rever onboarding\" na paleta (Cmd + K)." };
 /** Transição de encerramento, mostrada no cartão por alguns segundos. */
 export const FINAL_MESSAGE = { title: "Isso é tudo", text: "Fim do onboarding. A partir daqui é só conversar: cada máquina é uma janela, e a lista guarda o resto." };
 

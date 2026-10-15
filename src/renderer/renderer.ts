@@ -3,7 +3,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
-import { advanceOnboard, EXAMPLE_MESSAGE, FINAL_MESSAGE, initialOnboardState, ONBOARD_STEPS, pickFeedback, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
+import { advanceOnboard, EXAMPLE_MESSAGE, FINAL_MESSAGE, SKIPPED_MESSAGE, initialOnboardState, ONBOARD_STEPS, pickFeedback, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -438,7 +438,14 @@ function paintSidebar(): void {
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
-  if (!hidden) onboardEvent("sidebar");
+  if (!hidden) {
+    // Entra deslizando com um brilho curto: quem apertou Cmd+B olhando o teclado percebe que ela apareceu.
+    sidebarEl.classList.remove("reveal");
+    void sidebarEl.offsetWidth; // reinicia a animação
+    sidebarEl.classList.add("reveal");
+    window.setTimeout(() => sidebarEl.classList.remove("reveal"), 3700);
+    onboardEvent("sidebar");
+  }
   try { localStorage.setItem("sidebarShown", hidden ? "0" : "1"); } catch { /* opcional */ }
 }
 
@@ -699,10 +706,12 @@ async function restoreTabs(): Promise<void> {
   for (const c of saved) if (c.messages.length === 0) void window.meuBot.deleteConversation(c.id);
   for (const c of saved) if (c.messages.length > 0) index.set(c.id, c);
   const asTabs = saved.filter((c) => c.messages.length > 0 && c.openAsTab && !c.archived);
+  // Onboarding pendente (primeira vez, ou caixinha "onboarding feito" desmarcada no seletor): começa
+  // sempre, com ou sem conversas; o passo "Novo" cria a conversa, então não se cria a automática.
+  const pending = settings?.onboarding === "pending";
+  if (pending) startOnboarding();
   if (asTabs.length === 0) {
-    // Primeira vez, sem nenhuma conversa nesta máquina: onboarding guiado no lugar da conversa automática.
-    if (settings?.onboarding === "pending" && !saved.some((c) => c.messages.length > 0)) { startOnboarding(); return; }
-    await newTab();
+    if (!pending) await newTab();
     return;
   }
   for (const c of asTabs) buildTab(c.id, c.model, c.host, c);
@@ -763,6 +772,7 @@ async function playIntro(): Promise<void> {
 // ---- Onboarding guiado (primeira vez, sem conversas): a pessoa faz cada ação, o app só orienta.
 const onboardEl = $<HTMLElement>("onboard");
 const obCount = $<HTMLSpanElement>("ob-count");
+const obLead = $<HTMLParagraphElement>("ob-lead");
 const obFeedback = $<HTMLParagraphElement>("ob-feedback");
 const obTitle = $<HTMLHeadingElement>("ob-title");
 const obText = $<HTMLParagraphElement>("ob-text");
@@ -778,7 +788,9 @@ function paintOnboard(feedback?: Feedback): void {
   for (const [id, btn] of Object.entries(targets)) btn.classList.toggle("attention", step?.id === id);
   if (onboard === null || step === undefined) { onboardEl.hidden = true; return; }
   onboardEl.hidden = false;
-  obCount.textContent = `${onboard.step + 1} de ${ONBOARD_STEPS.length}`;
+  // Número do passo em negrito e azul, para a mudança de passo ser percebida.
+  obCount.replaceChildren(el("strong", "n", String(onboard.step + 1)), document.createTextNode(` de ${ONBOARD_STEPS.length}`));
+  obLead.hidden = onboard.step !== 0; // o aviso de "leia e siga" só no primeiro passo
   obTitle.textContent = step.title;
   obText.textContent = step.text;
   if (feedbackTimer !== null) { clearTimeout(feedbackTimer); feedbackTimer = null; }
@@ -797,18 +809,17 @@ function startOnboarding(): void {
 
 async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
   onboard = null;
-  if (how === "done") {
-    // Transição final: o cartão fica mais alguns segundos com a mensagem de encerramento.
-    onboardEl.hidden = false;
-    obCount.textContent = "pronto";
-    obSkip.hidden = true;
-    obFeedback.hidden = true;
-    obTitle.textContent = FINAL_MESSAGE.title;
-    obText.textContent = FINAL_MESSAGE.text;
-    window.setTimeout(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }, 3200);
-  } else {
-    paintOnboard();
-  }
+  paintOnboard(); // tira o pulso dos botões
+  // Transição final (concluído ou pulado): o cartão fica mais alguns segundos deixando claro que acabou.
+  const msg = how === "done" ? FINAL_MESSAGE : SKIPPED_MESSAGE;
+  onboardEl.hidden = false;
+  obCount.textContent = how === "done" ? "pronto" : "ignorado";
+  obLead.hidden = true;
+  obSkip.hidden = true;
+  obFeedback.hidden = true;
+  obTitle.textContent = msg.title;
+  obText.textContent = msg.text;
+  window.setTimeout(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }, how === "done" ? 3200 : 4500);
   try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
   if (how === "skipped" && tabs.size === 0) await newTab();
 }

@@ -56,6 +56,15 @@ export function setWindowBounds(host: string, bounds: WindowBounds): void {
   try { persist(); } catch { /* cortesia */ }
 }
 
+export const isOnboardingDone = (): boolean => file.onboarding !== "pending";
+/** Caixinha do seletor: marcada = feito (respeita), desmarcada = pendente (força na próxima janela). */
+export function setOnboardingDone(done: boolean): void {
+  const next = done ? "done" : "pending";
+  if (file.onboarding === next || (done && file.onboarding === "skipped")) return;
+  file.onboarding = next;
+  persist();
+}
+
 export const getOpenDirect = (): boolean => file.openDirect;
 export function setOpenDirect(value: boolean): void {
   if (file.openDirect === value) return;
