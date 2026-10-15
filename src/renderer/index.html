@@ -12,6 +12,7 @@
 </head>
 <body>
   <div id="intro" class="intro" hidden aria-hidden="true">
+    <div id="intro-mascots" class="intro-mascots"></div>
     <div id="intro-brand" class="intro-brand">meu-bot</div>
     <span id="intro-host" class="pill pill-host intro-item"></span>
     <div class="intro-row">
@@ -19,6 +20,16 @@
       <span id="intro-tunnel" class="pill pill-neutral intro-item"></span>
     </div>
   </div>
+  <!-- Mascote da abertura: a bolha do ícone com olhos e o cursor de boca. Cada <g> anima um transform só, para os loops não brigarem. -->
+  <template id="intro-mascot-tpl">
+    <svg class="mascot" viewBox="0 0 64 64" aria-hidden="true">
+      <g class="m-tilt"><g class="m-breathe"><g class="m-squish">
+        <path class="m-bubble" d="M12 8h40a8 8 0 0 1 8 8v26a8 8 0 0 1-8 8H30l-11 10V50h-7a8 8 0 0 1-8-8V16a8 8 0 0 1 8-8z"/>
+        <g class="m-eyes"><g class="m-pupils"><circle class="m-eye" cx="24" cy="27" r="4"/><circle class="m-eye" cx="40" cy="27" r="4"/></g></g>
+        <rect class="m-mouth" x="26" y="37" width="12" height="3.5" rx="1.75"/>
+      </g></g></g>
+    </svg>
+  </template>
   <div id="topbar-mini" class="topbar-mini" hidden>
     <div class="drag-region"></div>
     <span id="mini-dot" class="mini-dot"></span>

@@ -1,5 +1,6 @@
 import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { planMascots } from "./lib/intro-mascots.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -1131,8 +1132,19 @@ async function playIntro(): Promise<void> {
   host.textContent = `máquina: ${hostLabel(windowHost)}`;
   key.textContent = `backend · ${settings?.backendModelForHost ?? "agente"}`;
   tunnel.textContent = "túnel";
+  // Mascotes: a bolha do ícone, 5 cores, em arco sobre o nome; cada um com semente própria para os loops não coincidirem.
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const stage = $<HTMLElement>("intro-mascots");
+  const mascots = planMascots(5).map((m) => {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.style.setProperty("--x", `${m.x}px`); el.style.setProperty("--y", `${m.y}px`); el.style.setProperty("--size", `${m.size}px`);
+    el.style.setProperty("--hue", String(m.hue)); el.style.setProperty("--seed", m.seed.toFixed(3));
+    stage.append(el);
+    return { el, m };
+  });
   introEl.hidden = false;
   await wait(30); brand.classList.add("in");            // meu-bot no centro, discreto
+  for (const { el, m } of mascots) setTimeout(() => el.classList.add("in"), m.delayMs); // pop com overshoot, em cascata
   await wait(300); host.classList.add("in");            // a máquina se materializa abaixo
   await wait(350); key.classList.add("in");             // backend e túnel, lado a lado, mais rápido
   await wait(120); tunnel.classList.add("in");
@@ -1143,6 +1155,7 @@ async function playIntro(): Promise<void> {
   const ready = st?.state === "ready";
   tunnel.textContent = ready ? "túnel ativo" : (st?.detail ?? "conectando…");
   tunnel.className = `pill intro-item in ${ready ? "lit" : "pill-neutral"}`;
+  if (ready) mascots.forEach(({ el }, i) => setTimeout(() => el.classList.add("cheer"), i * 40)); // pulinho em cascata: o clímax é o túnel
   await wait(ready ? 450 : 300);
   introEl.classList.add("out");
   await wait(220);

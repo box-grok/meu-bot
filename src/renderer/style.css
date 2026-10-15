@@ -197,6 +197,29 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 .intro .intro-item.in { opacity: 1; transform: none; }
 .intro .intro-item.lit { color: var(--ok); border-color: var(--ok); animation: intro-pulse .5s ease-out; }
 @keyframes intro-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--ok) 0%, transparent); } }
+/* Mascotes da abertura: bolhas em arco sobre o nome, cada uma respirando, piscando, olhando de lado, inclinando e
+   dando um "squish" fora de fase (var(--seed) desloca fase e duração) — ilustração viva, abaixo do nome na hierarquia
+   e sem competir com o túnel acendendo. Cada camada (<g>) anima um transform só. */
+.intro-mascots { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.mascot { position: absolute; left: var(--x); top: var(--y); width: var(--size); height: var(--size); margin: calc(var(--size) / -2) 0 0 calc(var(--size) / -2);
+  overflow: visible; opacity: 0; transform: scale(.6); transition: opacity .28s ease, transform .5s cubic-bezier(.34, 1.56, .64, 1); }
+.mascot.in { opacity: .92; transform: none; }
+.mascot.cheer { animation: m-hop .42s cubic-bezier(.34, 1.56, .64, 1); }
+.mascot g { transform-box: fill-box; transform-origin: 50% 60%; }
+.mascot .m-bubble { fill: hsl(var(--hue) 78% 62%); }
+.mascot .m-eye, .mascot .m-mouth { fill: #0d1322; }
+.mascot .m-breathe { animation: m-breathe calc(3.4s + var(--seed) * 1.4s) ease-in-out calc(var(--seed) * -4s) infinite; }
+.mascot .m-tilt { animation: m-tilt calc(5.5s + var(--seed) * 2.5s) ease-in-out calc(var(--seed) * -6s) infinite; }
+.mascot .m-squish { animation: m-squish calc(8s + var(--seed) * 3s) ease-in-out calc(var(--seed) * -9s) infinite; }
+.mascot .m-eyes { transform-origin: 50% 50%; animation: m-blink calc(3.2s + var(--seed) * 2.4s) linear calc(var(--seed) * -3s) infinite; }
+.mascot .m-pupils { animation: m-glance calc(6s + var(--seed) * 3s) ease-in-out calc(var(--seed) * -7s) infinite; }
+@keyframes m-breathe { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-2px) scale(1.03); } }
+@keyframes m-tilt { 0%, 100% { transform: rotate(0deg); } 30% { transform: rotate(-4deg); } 70% { transform: rotate(3deg); } }
+@keyframes m-squish { 0%, 88%, 100% { transform: scale(1, 1); } 92% { transform: scale(1.08, .92); } 96% { transform: scale(.97, 1.03); } }
+@keyframes m-blink { 0%, 95.5%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } 98.5% { transform: scaleY(1); } }
+@keyframes m-glance { 0%, 40%, 70%, 100% { transform: translateX(0); } 46%, 62% { transform: translateX(1.6px); } }
+@keyframes m-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .mascot, .mascot g { animation: none !important; transition: none; } }
 /* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
 .btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
 @keyframes attention-pulse {
