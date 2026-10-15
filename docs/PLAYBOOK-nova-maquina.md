@@ -14,8 +14,9 @@ Não há "sincronização com o Cursor": o seletor e o Cursor (Remote SSH) leem 
 modelo versionado `config/ssh-hosts.conf`.
 
 1. Node 24+ (`node -v`), `git clone` do projeto (fora da Mesa, por exemplo `~/dev/meu-bot`; o SSH
-   não lê `~/Desktop` sem Acesso Total ao Disco), `npm install`, `npm test`, `npm run dist`. O
-   `dist` deixa o app em `~/Applications/meu-bot.app` e `~/Desktop/meu-bot.app`.
+   não lê `~/Desktop` sem Acesso Total ao Disco) e `./instalar.sh --abrir`: instala dependências se
+   faltam, fecha um meu-bot aberto, roda `npm run dist` e abre o seletor. O app fica em
+   `~/Applications/meu-bot.app` e `~/Desktop/meu-bot.app`. (`npm test` confere o build e os testes.)
 2. Chave SSH: copie `~/.ssh/id_ed25519` (e a `.pub`) do Mac antigo, `chmod 600`. Ou gere uma nova
    (`ssh-keygen -t ed25519`) e coloque a `.pub` no `authorized_keys` de cada máquina (seção 1).
    A chave nunca vai no repositório.
