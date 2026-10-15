@@ -212,14 +212,12 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 .intro-brand.in { opacity: .85; transform: none; }             /* entrada: aparece e assenta, mesmo vocabulário do app ao revelar */
 .intro.out .intro-brand { opacity: 0; transform: scale(2.6); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .3s ease; }
 .intro.out .mascot { opacity: 0; transform: scale(1.25); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .28s ease; }
-.intro.out .intro-item { opacity: 0; transition: opacity .2s ease; }
+.intro.out .intro-sub { opacity: 0; transition: opacity .2s ease; }
 body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, .2, 1) both; }
 @keyframes app-settle { from { transform: scale(1.03); opacity: .55; } to { transform: none; opacity: 1; } }
-.intro-row { display: flex; gap: 8px; }
-.intro .intro-item { font-size: 12px; padding: 3px 10px; opacity: 0; transform: translateY(6px) scale(.98); transition: opacity .32s ease, transform .32s ease, color .2s, border-color .2s; }
-.intro .intro-item.in { opacity: 1; transform: none; }
-.intro .intro-item.lit { color: var(--ok); border-color: var(--ok); animation: intro-pulse .5s ease-out; }
-@keyframes intro-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--ok) 0%, transparent); } }
+/* Só o nome da máquina embaixo do nome: cada máquina é uma janela, vale saber qual abriu. O resto do estado fica na barra. */
+.intro-sub { font-size: 12px; color: var(--muted); opacity: 0; transform: translateY(4px); transition: opacity .32s ease, transform .32s ease; }
+.intro-sub.in { opacity: .7; transform: none; }
 /* Mascotes da abertura: bolhas em arco sobre o nome, cada uma respirando, piscando, olhando de lado, inclinando e
    dando um "squish" fora de fase (var(--seed) desloca fase e duração) — ilustração viva, abaixo do nome na hierarquia
    e sem competir com o túnel acendendo. Cada camada (<g>) anima um transform só. */

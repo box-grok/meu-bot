@@ -1137,11 +1137,7 @@ async function playIntro(): Promise<void> {
   if (settings?.openDirect !== false || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { introEl.remove(); return; }
   const brand = $<HTMLElement>("intro-brand");
   const host = $<HTMLElement>("intro-host");
-  const key = $<HTMLElement>("intro-key");
-  const tunnel = $<HTMLElement>("intro-tunnel");
-  host.textContent = `máquina: ${hostLabel(windowHost)}`;
-  key.textContent = `backend · ${settings?.backendModelForHost ?? "agente"}`;
-  tunnel.textContent = "túnel";
+  host.textContent = hostLabel(windowHost);
   // Mascotes: a bolha do ícone, 5 cores, em arco sobre o nome; cada um com semente própria para os loops não coincidirem.
   const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
   const stage = $<HTMLElement>("intro-mascots");
@@ -1155,18 +1151,13 @@ async function playIntro(): Promise<void> {
   introEl.hidden = false;
   await wait(30); brand.classList.add("in");            // meu-bot no centro, discreto
   for (const { el, m } of mascots) setTimeout(() => el.classList.add("in"), m.delayMs); // pop com overshoot, em cascata
-  await wait(300); host.classList.add("in");            // a máquina se materializa abaixo
-  await wait(350); key.classList.add("in");             // backend e túnel, lado a lado, mais rápido
-  await wait(120); tunnel.classList.add("in");
-  // Clímax: espera o túnel real ficar pronto, mas por pouco tempo; espera longa vira tédio.
+  await wait(300); host.classList.add("in");            // o nome da máquina, embaixo
+  // Clímax: espera o túnel real ficar pronto, mas por pouco tempo; espera longa vira tédio. O estado em si fica na barra.
   const t0 = Date.now();
-  while (hostStatus.get(windowHost)?.state !== "ready" && Date.now() - t0 < 500) await wait(40);
-  const st = hostStatus.get(windowHost);
-  const ready = st?.state === "ready";
-  tunnel.textContent = ready ? "túnel ativo" : (st?.detail ?? "conectando…");
-  tunnel.className = `pill intro-item in ${ready ? "lit" : "pill-neutral"}`;
-  if (ready) mascots.forEach(({ el }, i) => setTimeout(() => el.classList.add("cheer"), i * 40)); // pulinho em cascata: o clímax é o túnel
-  await wait(ready ? 450 : 300);
+  while (hostStatus.get(windowHost)?.state !== "ready" && Date.now() - t0 < 700) await wait(40);
+  const ready = hostStatus.get(windowHost)?.state === "ready";
+  if (ready) mascots.forEach(({ el }, i) => setTimeout(() => el.classList.add("cheer"), i * 40)); // pulinho em cascata: o túnel acendeu
+  await wait(ready ? 520 : 300);
   // Portal: o nome escala e some, e o app por baixo assenta (scale 1.03 → 1) enquanto a camada se dissolve.
   introEl.classList.add("out");
   document.body.classList.add("app-enter");
