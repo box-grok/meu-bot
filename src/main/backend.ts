@@ -8,7 +8,7 @@ import { persistConversations, saveTranscript, type BackendMessage, type Convers
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
 import { applyOps, buildMemoryRequest, getMemory, memorySystemMessage, NOTAS_MAX, parseOps, PERFIL_MAX, setMemory } from "./memory";
 import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "./settings";
-import { ensureTunnel, markDegraded } from "./tunnel";
+import { ensureTunnel, markDegraded, TunnelFatalError } from "./tunnel";
 import { broadcast, sendToHost } from "./windows";
 
 /** Entrega eventos à janela da máquina, resolvida a cada envio: a janela pode fechar no meio do turno. */
@@ -176,7 +176,8 @@ async function postWithReconnect(host: string, localPort: number, apiKey: string
     if (!isConnectionError(err) || !early) throw err;
     out?.send("backend:status", { host, state: "connecting", detail: "túnel caiu; reabrindo…" });
     markDegraded(host, errCode(err));
-    const fresh = await ensureTunnel(host, getBackendPort(), (detail) => out?.send("backend:status", { host, state: "connecting", detail }));
+    // A mensagem ainda não chegou ao backend (fase de conexão): reabrir e mandar de novo é seguro.
+    const fresh = await readyTunnel(host, out, signal);
     out?.send("backend:status", { host, state: "ready", detail: `túnel reaberto · ${model}` });
     return httpPostStream(fresh.localPort, "/v1/chat/completions", fresh.apiKey, body, opts);
   }
@@ -197,21 +198,57 @@ function tunnelHealthy(localPort: number, apiKey: string): Promise<boolean> {
   });
 }
 
-/** Garante um túnel que responde: se o atual não passa na checagem, reabre uma vez. */
-async function readyTunnel(host: string, out: Sender | null): Promise<{ localPort: number; apiKey: string }> {
+/** Num turno interativo, por quanto tempo insistir em reabrir o túnel antes de devolver erro. */
+const RECONNECT_WINDOW_MS = 75_000;
+/** Espera entre tentativas (o último valor repete). Um blip do Tailscale costuma durar 10–40 s. */
+const RECONNECT_DELAYS_MS = [3_000, 5_000, 8_000, 12_000, 15_000];
+
+const sleepAbortable = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
+  if (signal?.aborted) { reject(Object.assign(new Error("cancelado"), { code: "ABORTED" })); return; }
+  const t = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+  function onAbort(): void { clearTimeout(t); reject(Object.assign(new Error("cancelado"), { code: "ABORTED" })); }
+  signal?.addEventListener("abort", onAbort, { once: true });
+});
+
+/**
+ * Garante um túnel que responde. Num turno interativo (há janela ouvindo) insiste por até
+ * RECONNECT_WINDOW_MS com recuo progressivo — um blip do Tailscale derrubava a pergunta e pedia para a
+ * pessoa tentar "em um minuto", quando a conexão seguinte entrava sozinha em segundos. Tarefas de fundo
+ * (resumo, memória) ficam com uma reabertura só, como antes. Parar cancela a espera.
+ */
+async function readyTunnel(host: string, out: Sender | null, signal?: AbortSignal): Promise<{ localPort: number; apiKey: string }> {
   const status = (detail: string): void => out?.send("backend:status", { host, state: "connecting", detail });
-  let tunnel = await ensureTunnel(host, getBackendPort(), status);
-  if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) return tunnel;
-  status("túnel sem resposta; reabrindo…");
-  markDegraded(host, "preflight");
-  tunnel = await ensureTunnel(host, getBackendPort(), status);
-  if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) return tunnel;
-  throw new Error("A VM não respondeu pelo túnel, mesmo depois de reabrir. Ela pode estar pausada; tente em um minuto.");
+  const interactive = out !== null;
+  const deadline = Date.now() + RECONNECT_WINDOW_MS;
+  let attempt = 0; let lastErr: unknown = null;
+  for (;;) {
+    if (signal?.aborted) throw Object.assign(new Error("cancelado"), { code: "ABORTED" });
+    try {
+      const tunnel = await ensureTunnel(host, getBackendPort(), status);
+      if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) return tunnel;
+      lastErr = null;
+    } catch (err) {
+      if (err instanceof TunnelFatalError) throw err;
+      lastErr = err;
+    }
+    attempt += 1;
+    markDegraded(host, "preflight");
+    const left = deadline - Date.now();
+    if (!interactive ? attempt >= 2 : left <= 0) break;
+    const wait = Math.min(RECONNECT_DELAYS_MS[Math.min(attempt - 1, RECONNECT_DELAYS_MS.length - 1)]!, Math.max(left, 1_000));
+    status(`VM sem resposta; tentando de novo em ${Math.round(wait / 1000)} s (${attempt}ª vez)…`);
+    log(`[${host}] túnel sem resposta (${attempt}ª vez${lastErr instanceof Error ? `: ${lastErr.message}` : ""}); nova tentativa em ${wait} ms`);
+    await sleepAbortable(wait, signal);
+  }
+  const why = lastErr instanceof Error ? ` (${lastErr.message})` : "";
+  throw new Error(interactive
+    ? `A VM não respondeu pelo túnel em ${Math.round(RECONNECT_WINDOW_MS / 1000)} s, mesmo reabrindo. Ela pode estar pausada pelo host; tente de novo daqui a pouco.${why}`
+    : `A VM não respondeu pelo túnel, mesmo depois de reabrir.${why}`);
 }
 
 /** Uma chamada completa ao backend (túnel pronto + POST + parse). Reutilizada pelo chat e pelas tarefas de fundo. */
 export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
-  const tunnel = await readyTunnel(host, out);
+  const tunnel = await readyTunnel(host, out, signal);
   out?.send("backend:status", { host, state: "ready", detail: `túnel ativo · ${model}` });
   const t0 = Date.now();
   const res = await postWithReconnect(host, tunnel.localPort, tunnel.apiKey, model, messages, out, signal, onDelta, extraHeaders, onNotice);
