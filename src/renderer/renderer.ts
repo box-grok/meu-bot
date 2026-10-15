@@ -547,7 +547,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
-  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp do Hermes: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes", keywords: ["whatsapp", "qr", "parear", "hermes"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem o WhatsApp do Hermes (~/.hermes/whatsapp).", "warn"); } });
+  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes ou OpenClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
     const tab = active();
@@ -969,7 +969,7 @@ function openXai(): void {
 async function runXaiLogin(): Promise<void> {
   if (xaiRunning) return;
   xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
-  xaiStatus.textContent = "Pedindo o login ao Hermes da máquina…";
+  xaiStatus.textContent = "Pedindo o login OAuth da xAI à máquina…";
   try { await window.meuBot.xaiLogin(); } catch (err) { xaiStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
   finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
 }
@@ -1007,7 +1007,7 @@ xaiLineBtn.addEventListener("click", () => {
   void runXaiLogin();
 });
 
-// ---- WhatsApp do Hermes: linha no topo da lista de conversas e modal de pareamento por QR.
+// ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
 const waLine = $<HTMLButtonElement>("wa-line");
 const waDialog = $<HTMLDialogElement>("wa-dialog");
 const waStatusEl = $<HTMLParagraphElement>("wa-status");
@@ -1033,7 +1033,8 @@ function paintWhatsapp(): void {
   waLine.hidden = false;
   waLine.className = `wa-line ${st.connected ? "on" : "off"}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
-  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `WhatsApp do Hermes · ${who} · conectado` : `WhatsApp do Hermes · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
+  const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : "WhatsApp";
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
   waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
@@ -1076,12 +1077,12 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
   switch (ev.kind) {
     case "step": appendLog(`▸ ${ev.text}`); break;
     case "log": appendLog(ev.text); break;
-    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do Hermes."; break;
+    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente."; break;
     case "connected": waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. Subindo o gateway…`; appendLog("✓ conectado"); break;
     case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
     case "done":
       appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
-      if (ev.ok) { const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp do Hermes pareado; o gateway está voltando.", "info"); setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500); }
+      if (ev.ok) { const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info"); setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500); }
       break;
   }
 });

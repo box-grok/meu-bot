@@ -11,7 +11,7 @@ const slNote = (p: HostProbe): string => (p.statusLine ? "" : " · sem status li
 const slInstall = (p: HostProbe): "statusline" | null => (p.statusLine ? null : "statusline");
 
 export function describeProbe(p: HostProbe): ProbeText {
-  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}`;
+  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : ""}`;
   if (p.host === "local") {
     if (p.error !== null || p.claudePath === null || !p.claudeLoggedIn) {
       const why = p.error ?? (p.claudePath === null ? "Claude Code não encontrado" : "Claude Code não está logado");

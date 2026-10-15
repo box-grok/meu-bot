@@ -108,6 +108,8 @@ export interface HostProbe {
   tailscaleCheck: boolean;
   /** ~/.claude/statusline.sh é o nosso: grava ~/.cache/claude-statusline/ratelimits.json, que a status line do app lê. */
   statusLine: boolean;
+  /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
+  gateway: Gateway | null;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
@@ -150,10 +152,14 @@ export interface PickerInit {
   error: string | null;
 }
 
-/** WhatsApp do Hermes na máquina (gateway do Hermes Agent). */
+/** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */
+export type Gateway = "hermes" | "openclaw";
+
+/** WhatsApp do agente da máquina (Hermes: bridge em ~/.hermes/whatsapp; OpenClaw: `openclaw channels`). */
 export interface WhatsappStatus {
-  /** A máquina tem ~/.hermes/whatsapp (Hermes com WhatsApp). */
+  /** A máquina tem um agente com WhatsApp (Hermes ou OpenClaw). */
   present: boolean;
+  gateway: Gateway | null;
   connected: boolean;
   /** Estado do bridge (open, connecting, close, "sem bridge"…). */
   state: string;
