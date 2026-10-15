@@ -17,6 +17,12 @@ const tabsEl = $<HTMLElement>("tabs");
 const panelsEl = $<HTMLElement>("panels");
 const inputEl = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("btn-send");
+/** Fase do botão Enviar por conversa: ausente = parado. "sending" até a resposta começar, "streaming" enquanto chega, "done" por 900 ms. */
+const sendPhase = new Map<string, "sending" | "streaming" | "done">();
+function setSendPhase(tab: Tab, phase: "sending" | "streaming" | "done" | null): void {
+  if (phase === null) sendPhase.delete(tab.id); else sendPhase.set(tab.id, phase);
+  if (tab.id === activeId) syncComposer();
+}
 const newBtn = $<HTMLButtonElement>("btn-new");
 const settingsBtn = $<HTMLButtonElement>("btn-settings");
 const keyPill = $<HTMLSpanElement>("key-pill");
@@ -144,9 +150,13 @@ function syncComposer(): void {
   const tab = active();
   const busy = tab?.busy ?? true;
   inputEl.disabled = busy;
+  // Enviar (shot "cred-button-loading-to-tick"): clique → ponto pulsando até a resposta começar; aí Parar; ao terminar, ✓.
+  const phase = tab === null ? "idle" : (sendPhase.get(tab.id) ?? (busy ? "streaming" : "idle"));
   sendBtn.disabled = tab === null;
-  sendBtn.textContent = busy ? "Parar" : "Enviar";
-  sendBtn.classList.toggle("btn-bad", busy);
+  sendBtn.textContent = phase === "streaming" ? "Parar" : "Enviar";
+  sendBtn.classList.toggle("btn-bad", phase === "streaming");
+  sendBtn.classList.toggle("is-sending", phase === "sending");
+  sendBtn.classList.toggle("is-done", phase === "done");
   modelSelect.disabled = tab === null;
   applyModelAvailability(modelSelect, tab === null ? null : tab.host);
   if (tab !== null) modelSelect.value = tab.model;
@@ -1173,6 +1183,49 @@ const obFeedback = $<HTMLParagraphElement>("ob-feedback");
 const obTitle = $<HTMLHeadingElement>("ob-title");
 const obText = $<HTMLParagraphElement>("ob-text");
 const obSkip = $<HTMLButtonElement>("ob-skip");
+const obStage = $<HTMLElement>("ob-mascots");
+const obRipple = $<HTMLElement>("ob-ripple");
+const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let obMascots: SVGSVGElement[] = [];
+
+/**
+ * Entrada do onboarding (shot "capwords-splash"): o cartão chega com mola, os mascotes (os da abertura) deslizam das
+ * bordas e param em volta dele, em idle até o fim, e aviso, título e texto sobem em sequência.
+ */
+function onboardEnter(): void {
+  if (prefersReducedMotion) return;
+  onboardEl.classList.remove("enter", "shrink"); void onboardEl.offsetWidth; onboardEl.classList.add("enter");
+  setTimeout(() => onboardEl.classList.remove("enter"), 800);
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  obStage.replaceChildren(); obStage.hidden = false; obMascots = [];
+  for (const m of planMascots(5, Math.random, 310, 150)) {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.classList.add("from-edge");
+    el.style.setProperty("--x", `${m.x}px`); el.style.setProperty("--y", `${m.y}px`); el.style.setProperty("--size", `${m.size + 6}px`);
+    el.style.setProperty("--hue", String(m.hue)); el.style.setProperty("--seed", m.seed.toFixed(3));
+    el.style.setProperty("--fx", `${Math.round(m.x * 1.6)}px`); el.style.setProperty("--fy", `${Math.round(m.y * 2.2)}px`); // nasce empurrado para a borda
+    obStage.append(el); obMascots.push(el);
+    setTimeout(() => el.classList.add("in"), 30 + m.delayMs);
+  }
+}
+
+/**
+ * Saída. "done" (shot "monday-splash"): os mascotes dão o pulinho e somem, o cartão encolhe num ponto verde e o ponto
+ * se expande sobre a tela, revelando a conversa que já está embaixo. "skipped": só dispensa os mascotes.
+ */
+async function onboardLeave(how: "done" | "skipped"): Promise<void> {
+  const bye = (): void => { for (const el of obMascots) el.classList.add("bye"); setTimeout(() => { obStage.replaceChildren(); obStage.hidden = true; obMascots = []; }, 400); };
+  if (prefersReducedMotion || how === "skipped") { bye(); return; }
+  obMascots.forEach((el, i) => setTimeout(() => el.classList.add("cheer"), i * 40));
+  await wait(260); bye();
+  const r = onboardEl.getBoundingClientRect();
+  obRipple.style.setProperty("--cx", `${r.left + r.width / 2}px`); obRipple.style.setProperty("--cy", `${r.top + r.height / 2}px`);
+  onboardEl.classList.add("shrink");
+  await wait(360);
+  obRipple.hidden = false; obRipple.classList.add("go");
+  await wait(560);
+  obRipple.classList.remove("go"); obRipple.hidden = true; onboardEl.classList.remove("shrink");
+}
 let onboard: OnboardState | null = null;
 let lastFeedback: Feedback | undefined;
 let feedbackTimer: number | null = null;
@@ -1201,6 +1254,7 @@ function startOnboarding(): void {
   onboard = initialOnboardState();
   lastFeedback = undefined;
   paintOnboard();
+  onboardEnter();
 }
 
 async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
@@ -1215,7 +1269,7 @@ async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
   obFeedback.hidden = true;
   obTitle.textContent = msg.title;
   obText.textContent = msg.text;
-  window.setTimeout(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }, how === "done" ? 3200 : 4500);
+  window.setTimeout(() => { if (onboard !== null) return; void onboardLeave(how).then(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }); }, how === "done" ? 3200 : 4500);
   try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
   if (how === "skipped" && tabs.size === 0) await newTab();
 }
@@ -1255,12 +1309,14 @@ async function sendText(tab: Tab, raw: string): Promise<void> {
   setBusy(tab, true);
   tab.currentAssistant = null;
   tab.pendingText = "";
+  setSendPhase(tab, "sending");
   try {
     await window.meuBot.send(tab.id, text);
   } catch (err) {
     addNotice(tab, err instanceof Error ? err.message : String(err), "error");
+    setSendPhase(tab, null);
   } finally {
-    if (tabs.has(tab.id)) setBusy(tab, false);
+    if (tabs.has(tab.id)) { setBusy(tab, false); if (sendPhase.get(tab.id) !== "done") setSendPhase(tab, null); }
   }
 }
 
@@ -1279,6 +1335,7 @@ const markUnread = (tab: Tab): void => { if (tab.id !== activeId) tab.dotEl.hidd
 window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
   const tab = tabs.get(conversationId);
   if (tab === undefined) return;
+  if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   tab.pendingText = "";
   tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
   scrollToBottom(tab, false);
@@ -1286,6 +1343,7 @@ window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
 window.meuBot.on("chat:delta", ({ conversationId, text }) => {
   const tab = tabs.get(conversationId);
   if (tab === undefined) return;
+  if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   if (tab.currentAssistant === null) {
     tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
   }
@@ -1296,6 +1354,8 @@ window.meuBot.on("chat:delta", ({ conversationId, text }) => {
 window.meuBot.on("chat:done", (done: DoneEvent) => {
   const tab = tabs.get(done.conversationId);
   if (tab === undefined) return;
+  if (done.stopReason === "cancelled" || done.refusal !== undefined) setSendPhase(tab, null);
+  else { setSendPhase(tab, "done"); setTimeout(() => { if (sendPhase.get(tab.id) === "done") setSendPhase(tab, null); }, 900); }
   if (done.ms !== undefined) { tab.lastTurn = { ms: done.ms, completion: done.usage?.completion ?? 0 }; if (tab.id === activeId) paintContext(tab); }
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
@@ -1314,6 +1374,7 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
 window.meuBot.on("chat:error", (e: ErrorEvent) => {
   const tab = tabs.get(e.conversationId);
   if (tab === undefined) return;
+  setSendPhase(tab, null);
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
   addNotice(tab, e.message, "error");

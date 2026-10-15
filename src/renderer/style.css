@@ -149,7 +149,23 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
   flex: 1; min-width: 0; resize: none; font: inherit; font-size: var(--chat-font); padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--fg);
 }
-.composer .btn-primary { white-space: nowrap; }
+.composer .btn-primary { white-space: nowrap; min-width: 74px; position: relative; transition: color .12s ease, background-color .2s ease, border-color .2s ease, padding .2s ease; }
+/* Enviar (shot "cred-button-loading-to-tick"): no clique o texto some e um ponto pulsa até a resposta começar; aí vira
+   Parar (a saída continua à mão); ao terminar, um ✓ entra com mola e, 900 ms depois, volta a Enviar. A forma não muda. */
+#btn-send.is-sending, #btn-send.is-done { color: transparent; }
+#btn-send.is-sending::after, #btn-send.is-done::after { content: ""; position: absolute; left: 50%; top: 50%; }
+#btn-send.is-sending::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent-fg); animation: send-dot .9s ease-in-out infinite; }
+#btn-send.is-done { background: var(--ok); border-color: var(--ok); }
+#btn-send.is-done::after { width: 6px; height: 11px; margin: -8px 0 0 -3px; border: solid #fff; border-width: 0 2.5px 2.5px 0; animation: send-tick .36s cubic-bezier(.34, 1.56, .64, 1) both; }
+/* Parar: quadradinho de stop que respira enquanto a resposta chega, fundo vermelho suave; no hover, sólido. */
+#btn-send.btn-bad { background: color-mix(in srgb, var(--bad) 12%, var(--card)); border-color: color-mix(in srgb, var(--bad) 55%, transparent); color: var(--bad); padding-left: 27px; }
+#btn-send.btn-bad::before { content: ""; position: absolute; left: 11px; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 2px; background: var(--bad); animation: stop-breathe 1.6s ease-in-out infinite; }
+#btn-send.btn-bad:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+#btn-send.btn-bad:hover::before { background: #fff; animation: none; }
+@keyframes stop-breathe { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent); } 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--bad) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { #btn-send.btn-bad::before, #btn-send.is-sending::after { animation: none; } }
+@keyframes send-dot { 0%, 100% { transform: scale(.7); opacity: .55; } 50% { transform: scale(1.15); opacity: 1; } }
+@keyframes send-tick { from { transform: rotate(45deg) scale(0); } to { transform: rotate(45deg) scale(1); } }
 .model-select { font: inherit; font-size: 12px; max-width: 170px; padding: 0 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 
 dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--fg); padding: 0; width: min(560px, 92vw); }
@@ -227,6 +243,25 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 @keyframes m-glance { 0%, 40%, 70%, 100% { transform: translateX(0); } 46%, 62% { transform: translateX(1.6px); } }
 @keyframes m-hop { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .mascot, .mascot g { animation: none !important; transition: none; } }
+/* Onboarding — entrada (shot "capwords-splash"): o cartão chega com mola, os mascotes deslizam das bordas e param em volta
+   dele em idle, e aviso, título e texto sobem em sequência. Saída ao concluir (shot "monday-splash"): os mascotes dão o
+   pulinho e somem, o cartão encolhe num ponto verde e o ponto se expande sobre a tela, revelando a conversa. */
+.ob-mascots { position: absolute; left: 50%; top: calc(50% + 24px); width: 0; height: 0; z-index: 4; }
+.ob-mascots[hidden] { display: none; }
+.mascot.from-edge:not(.in) { opacity: 0; transform: translate(var(--fx), var(--fy)) scale(.8); }
+.mascot.bye { opacity: 0; transform: scale(.6); transition: opacity .3s ease-in, transform .3s ease-in; }
+.onboard.enter { animation: ob-spring .56s cubic-bezier(.34, 1.56, .64, 1) both; }
+.onboard.enter .onboard-lead, .onboard.enter h3, .onboard.enter #ob-text { animation: ob-rise .4s ease-out both; }
+.onboard.enter .onboard-lead { animation-delay: .28s; } .onboard.enter h3 { animation-delay: .4s; } .onboard.enter #ob-text { animation-delay: .48s; }
+@keyframes ob-spring { from { scale: .9; opacity: 0; } to { scale: 1; opacity: 1; } }
+@keyframes ob-rise { from { opacity: 0; translate: 0 8px; } to { opacity: 1; translate: 0 0; } }
+.onboard.shrink { animation: ob-shrink .38s cubic-bezier(.55, 0, 1, .45) forwards; }
+.onboard.shrink > * { opacity: 0; transition: opacity .16s ease; }
+@keyframes ob-shrink { to { scale: .06; border-radius: 50%; background: var(--ok); border-color: var(--ok); box-shadow: none; } }
+.ob-ripple { position: fixed; inset: 0; z-index: 6; pointer-events: none; background: var(--ok); opacity: .9; clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); }
+.ob-ripple[hidden] { display: none; }
+.ob-ripple.go { animation: ob-ripple .56s cubic-bezier(.2, .8, .2, 1) forwards; }
+@keyframes ob-ripple { from { clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); opacity: .9; } to { clip-path: circle(160% at var(--cx, 50%) var(--cy, 50%)); opacity: 0; } }
 /* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
 .btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
 @keyframes attention-pulse {
