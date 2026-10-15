@@ -19,17 +19,24 @@
       <span id="intro-tunnel" class="pill pill-neutral intro-item"></span>
     </div>
   </div>
+  <div id="topbar-mini" class="topbar-mini" hidden>
+    <div class="drag-region"></div>
+    <span id="mini-dot" class="mini-dot"></span>
+    <span id="mini-text" class="mini-text"></span>
+    <button type="button" id="btn-topbar-show" class="mini-btn" title="Mostrar a barra (Cmd+Shift+B)">⌄</button>
+  </div>
   <header class="topbar">
     <div class="drag-region"></div>
+    <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
     <h1>meu-bot</h1>
     <span id="host-pill" class="pill pill-host">máquina: …</span>
     <span id="key-pill" class="pill pill-on">…</span>
     <span id="status-pill" class="pill pill-neutral" hidden></span>
     <div class="spacer"></div>
-    <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-new" class="btn btn-ghost" type="button" title="Nova conversa (Cmd+N)">Novo</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
+    <button id="btn-topbar-hide" class="btn btn-ghost mini-btn" type="button" title="Recolher a barra (Cmd+Shift+B)">⌃</button>
   </header>
 
   <div class="body">
@@ -65,13 +72,20 @@
 
   <div id="ctx-line" class="ctx-line" hidden></div>
   <footer class="composer">
-    <select id="model-select" class="model-select" title="Modelo desta conversa">
-      <option value="claudecode">claudecode · chat rápido</option>
-      <option value="agente">agente · bypass</option>
-      <option value="rene-dm">rene-dm · agente René com ferramentas</option>
-      <option value="rene">rene · agente René com MCP completo</option>
-      <option value="grok-4">grok-4 · xAI</option>
-    </select>
+    <div class="mode-wrap">
+      <button type="button" id="mode-btn" class="mode-btn" title="Modo do agente nesta conversa"><span class="mode-k">modo</span><span id="mode-label">…</span><span class="chev">⌄</span></button>
+      <div id="mode-menu" class="mode-menu" hidden>
+        <div class="mode-title">Modos do agente</div>
+        <ul id="mode-list" class="mode-list" role="listbox"></ul>
+      </div>
+      <select id="model-select" class="model-select" title="Modelo desta conversa" hidden>
+        <option value="claudecode">claudecode · chat puro, sem ferramentas</option>
+        <option value="agente">agente · ferramentas sem pedir permissão (bypass)</option>
+        <option value="rene-dm">rene-dm · René com ferramentas, só na grokbot-1</option>
+        <option value="rene">rene · René com MCP completo, só na grokbot-1</option>
+        <option value="grok-4">grok-4 · Grok da xAI, pelo login do Hermes</option>
+      </select>
+    </div>
     <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
     <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
   </footer>

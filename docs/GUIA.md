@@ -860,3 +860,7 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Pegadinha: `hermes auth add xai-oauth --type oauth --no-browser` sem pseudo-terminal não imprime
   nada e fica parado (o CLI exige tty); o app usa `ssh -tt` com stdin aberto e limpa ANSI/CR da saída.
   Já `claude auth login`, `hermes auth status/list/logout` funcionam sem tty.
+- Interface "clean" (15 out, madrugada): ☰ na ponta esquerda da barra; "arquivadas" virou interruptor
+  no rodapé da lista; barra superior recolhível (Cmd+Shift+B, botão ⌃/⌄, paleta) com faixa fina
+  mostrando máquina · modelo · estado do túnel. Lista e barra começam recolhidas por padrão
+  (`localStorage.sidebarShown` / `topbarShown`).

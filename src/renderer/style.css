@@ -253,3 +253,36 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 .switch input:checked + .track::after { transform: translateX(12px); }
 .switch input:checked ~ .switch-label { color: var(--fg); }
 .switch:hover .switch-label { color: var(--fg); }
+
+/* Barra recolhida: faixa fina arrastável com o nome da máquina e o estado do túnel. Cmd+Shift+B alterna. */
+body.topbar-hidden .topbar { display: none; }
+.topbar-mini { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 86px; background: var(--card); border-bottom: 1px solid var(--line); border-top: 3px solid var(--host-accent, var(--accent)); position: relative; }
+.topbar-mini[hidden] { display: none; }
+.topbar-mini > *:not(.drag-region) { position: relative; -webkit-app-region: no-drag; }
+.mini-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.mini-dot.ok { background: var(--ok); } .mini-dot.bad { background: var(--bad); } .mini-dot.warn { background: var(--warn); }
+.mini-text { font-size: 11px; color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mini-btn { font: 13px/1 inherit; padding: 2px 8px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.mini-btn:hover { color: var(--fg); border-color: var(--line); }
+
+/* Modos do agente: botão na caixa + menu próprio (o <select> nativo fica escondido e guarda o valor). */
+.mode-wrap { position: relative; display: flex; }
+.model-select[hidden] { display: none; }
+.mode-btn { font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; max-width: 220px; }
+.mode-btn:hover { border-color: var(--accent); }
+.mode-btn:disabled { opacity: .5; cursor: default; }
+.mode-btn .mode-k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.mode-btn #mode-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mode-btn .chev { color: var(--muted); font-size: 12px; }
+.mode-menu { position: absolute; left: 0; bottom: calc(100% + 8px); width: 320px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.25); padding: 6px; z-index: 20; }
+.mode-menu[hidden] { display: none; }
+.mode-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px 4px; }
+.mode-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.mode-item { display: grid; grid-template-columns: 16px 1fr; column-gap: 8px; align-items: start; padding: 7px 10px; border-radius: 8px; cursor: pointer; }
+.mode-item:hover { background: var(--bg); }
+.mode-item .tick { color: var(--accent); font-size: 12px; line-height: 1.3; }
+.mode-item .name { font-weight: 600; font-size: 13px; }
+.mode-item .desc { grid-column: 2; font-size: 11px; color: var(--muted); }
+.mode-item.off { opacity: .45; cursor: default; }
+.mode-item.off .desc::after { content: " · não existe nesta máquina"; }
+.mode-item.current .name { color: var(--accent); }

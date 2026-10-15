@@ -50,6 +50,15 @@ const sidebarSearch = $<HTMLInputElement>("sidebar-search");
 const sidebarArchived = $<HTMLInputElement>("sidebar-archived");
 const sidebarList = $<HTMLElement>("sidebar-list");
 const paletteBtn = $<HTMLButtonElement>("btn-palette");
+const modeBtn = $<HTMLButtonElement>("mode-btn");
+const modeLabel = $<HTMLSpanElement>("mode-label");
+const modeMenu = $<HTMLDivElement>("mode-menu");
+const modeList = $<HTMLUListElement>("mode-list");
+const topbarMini = $<HTMLElement>("topbar-mini");
+const miniDot = $<HTMLSpanElement>("mini-dot");
+const miniText = $<HTMLSpanElement>("mini-text");
+const topbarHideBtn = $<HTMLButtonElement>("btn-topbar-hide");
+const topbarShowBtn = $<HTMLButtonElement>("btn-topbar-show");
 const paletteEl = $<HTMLElement>("palette");
 const paletteInput = $<HTMLInputElement>("palette-input");
 const paletteList = $<HTMLUListElement>("palette-list");
@@ -140,6 +149,7 @@ function syncComposer(): void {
   modelSelect.disabled = tab === null;
   applyModelAvailability(modelSelect, tab === null ? null : tab.host);
   if (tab !== null) modelSelect.value = tab.model;
+  paintModeButton();
   keyPill.textContent = tab === null ? "backend" : `backend · ${tab.model}`;
   hostPill.textContent = `máquina: ${hostLabel(windowHost)}`;
   paintStatus(windowHost);
@@ -305,6 +315,7 @@ function applyModelAvailability(select: HTMLSelectElement, host: string | null):
 /** Último estado do túnel por host; o pill mostra o da conversa ativa. */
 const hostStatus = new Map<string, BackendStatusEvent>();
 function paintStatus(host: string | null): void {
+  paintMini();
   const st = host === null ? undefined : hostStatus.get(host);
   if (st === undefined) { statusPill.hidden = true; return; }
   statusPill.hidden = false;
@@ -464,6 +475,44 @@ function paintSidebar(): void {
   }
 }
 
+/** Barra recolhida por padrão; a escolha fica no localStorage da janela. */
+function setTopbarHidden(hidden: boolean): void {
+  document.body.classList.toggle("topbar-hidden", hidden);
+  topbarMini.hidden = !hidden;
+  try { localStorage.setItem("topbarShown", hidden ? "0" : "1"); } catch { /* opcional */ }
+  paintMini();
+}
+function paintMini(): void {
+  if (topbarMini.hidden) return;
+  const st = hostStatus.get(windowHost);
+  const tab = active();
+  miniDot.className = `mini-dot ${st === undefined ? "" : st.state === "ready" ? "ok" : st.state === "error" ? "bad" : "warn"}`;
+  miniText.textContent = `${hostLabel(windowHost)}${tab !== null ? ` · ${tab.model}` : ""}${st !== undefined ? ` · ${st.detail}` : ""}`;
+}
+
+/** Botão e menu "Modos do agente", espelhando o <select> escondido (que continua sendo a fonte do valor). */
+function paintModeButton(): void {
+  const cur = modelSelect.selectedOptions[0];
+  const text = cur?.textContent?.replace(/ · não existe nesta máquina$/, "") ?? modelSelect.value;
+  modeLabel.textContent = text.split(" · ")[0] ?? text;
+  modeBtn.title = `Modo do agente nesta conversa: ${text}`;
+  modeBtn.disabled = modelSelect.disabled;
+}
+function paintModeMenu(): void {
+  modeList.replaceChildren();
+  for (const opt of modelSelect.options) {
+    const label = (opt.textContent ?? opt.value).replace(/ · não existe nesta máquina$/, "");
+    const [name, ...rest] = label.split(" · ");
+    const li = el("li", `mode-item${opt.disabled ? " off" : ""}${opt.value === modelSelect.value ? " current" : ""}`);
+    li.setAttribute("role", "option");
+    li.append(el("span", "tick", opt.value === modelSelect.value ? "✓" : ""), el("span", "name", name ?? opt.value), el("span", "desc", rest.join(" · ")));
+    if (!opt.disabled) li.addEventListener("click", () => { modelSelect.value = opt.value; modelSelect.dispatchEvent(new Event("change")); modeMenu.hidden = true; paintModeButton(); });
+    modeList.appendChild(li);
+  }
+}
+modeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (modeMenu.hidden) { paintModeMenu(); modeMenu.hidden = false; } else modeMenu.hidden = true; });
+document.addEventListener("click", (ev) => { if (!modeMenu.hidden && !(ev.target as HTMLElement).closest(".mode-wrap")) modeMenu.hidden = true; });
+
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
@@ -496,6 +545,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
+  add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
   add({ id: "a:whatsapp", kind: "action", label: "WhatsApp do Hermes: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes", keywords: ["whatsapp", "qr", "parear", "hermes"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem o WhatsApp do Hermes (~/.hermes/whatsapp).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
@@ -1284,6 +1334,8 @@ for (const g of settingsGroups) {
   g.addEventListener("toggle", () => { if (g.open) for (const other of settingsGroups) if (other !== g) other.open = false; });
 }
 paletteBtn.addEventListener("click", () => openPalette());
+topbarHideBtn.addEventListener("click", () => setTopbarHidden(true));
+topbarShowBtn.addEventListener("click", () => setTopbarHidden(false));
 paletteInput.addEventListener("input", () => { paletteSelected = 0; paintPalette(); });
 paletteInput.addEventListener("keydown", (ev) => {
   const count = paletteList.querySelectorAll("li[role=option]").length;
@@ -1389,10 +1441,12 @@ inputEl.addEventListener("keydown", (ev) => {
   }
 });
 document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && !modeMenu.hidden) { modeMenu.hidden = true; return; }
   const mod = ev.metaKey || ev.ctrlKey;
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
+  if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
@@ -1477,6 +1531,8 @@ form.addEventListener("submit", (ev) => {
 void (async () => {
   // Lista de conversas oculta por padrão (Cmd+B ou ☰ mostra); só fica visível se a pessoa a abriu antes.
   try { sidebarEl.hidden = localStorage.getItem("sidebarShown") !== "1"; } catch { sidebarEl.hidden = true; }
+  // Barra recolhida por padrão (como a lista): só fica aberta se a pessoa a mostrou da última vez.
+  try { setTopbarHidden(localStorage.getItem("topbarShown") !== "1"); } catch { setTopbarHidden(true); }
   const info = await window.meuBot.getWindowInfo();
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
