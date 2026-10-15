@@ -193,7 +193,7 @@ function paintDetail(): void {
   openBtn.disabled = !t.canOpen || installing;
   claudeLoginBtn.hidden = t.login !== true;
   if (t.install !== null && !installing) {
-    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : "Instalar backend";
+    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : t.install === "statusline" ? "Instalar status line" : "Instalar backend";
     installBtn.hidden = false;
   }
 }
@@ -230,23 +230,23 @@ async function open(): Promise<void> {
 async function install(): Promise<void> {
   if (selected === null || installing) return;
   const host = selected;
+  // O mesmo botão instala o backend ou a status line, conforme o que a sondagem pediu.
+  const what = results.get(host)?.install ?? "install";
+  const statusLine = what === "statusline";
   installing = true;
   installBtn.hidden = true;
   logEl.hidden = false;
   logEl.textContent = "";
   statusEl.className = "status";
-  statusEl.textContent = `instalando o backend em ${hostLabel(host)}… (pode levar alguns minutos)`;
+  statusEl.textContent = statusLine ? `instalando a status line em ${hostLabel(host)}…` : `instalando o backend em ${hostLabel(host)}… (pode levar alguns minutos)`;
   openBtn.disabled = true;
+  // Status line que falhou não impede abrir: o backend continua de pé.
+  const failed = (why: string): void => { results.set(host, { kind: "bad", text: `✗ instalação falhou: ${why}`, install: what, canOpen: statusLine }); paintState(host); };
   try {
-    const r = await window.picker.install(host);
-    if (!r.ok) {
-      results.set(host, { kind: "bad", text: `✗ instalação falhou: ${r.log.at(-1) ?? "sem detalhes"}`, install: "install", canOpen: false });
-      paintState(host);
-      return;
-    }
+    const r = statusLine ? await window.picker.installStatusLine(host) : await window.picker.install(host);
+    if (!r.ok) { failed(r.log.at(-1) ?? "sem detalhes"); return; }
   } catch (err) {
-    results.set(host, { kind: "bad", text: `✗ instalação falhou: ${errorText(err)}`, install: "install", canOpen: false });
-    paintState(host);
+    failed(errorText(err));
     return;
   } finally {
     installing = false;

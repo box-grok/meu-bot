@@ -7,7 +7,7 @@
 import { BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
-import { approveTailscaleCheck, installBackend, probeHost } from "./hostProbe";
+import { approveTailscaleCheck, installBackend, installStatusLine, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
@@ -88,6 +88,13 @@ export function initPicker(): void {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installBackend(host, getBackendPort(), (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
+    probes.delete(host);
+    return r;
+  });
+  ipcMain.handle("picker:install-statusline", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    const r = await installStatusLine(host, (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
     return r;
   });

@@ -6,6 +6,7 @@
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
 import { spawn, spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { app, shell } from "electron";
 import os from "node:os";
@@ -82,6 +83,8 @@ function probeScript(port: number): string {
     `( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q ':${port} ' ) && echo port=1 || echo port=0`,
     `C=$(command -v claude 2>/dev/null); [ -z "$C" ] && [ -x "$HOME/.local/bin/claude" ] && C="$HOME/.local/bin/claude"; echo "claude=$C"`,
     `grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null && echo login=1 || echo login=0`,
+    // Status line nossa: o statusline.sh que grava o cache de limites lido em /v1/meu-bot/status.
+    `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
     `echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"`,
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
@@ -103,7 +106,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -133,8 +136,26 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     node: kv.get("node") || null,
     systemd: kv.get("systemd") === "1",
     grokPod: kv.get("grokpod") === "1",
+    statusLine: kv.get("statusline") === "1",
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
   };
+}
+
+const fileHas = (file: string, needle: string): boolean => { try { return fs.readFileSync(file, "utf8").includes(needle); } catch { return false; } };
+
+/**
+ * A status line efetiva deste Mac grava o cache de limites? Settings gerenciadas ganham do settings.json
+ * do usuário: se elas definem statusLine, só o script delas conta.
+ */
+function localStatusLine(): boolean {
+  try {
+    const managed = JSON.parse(fs.readFileSync("/Library/Application Support/ClaudeCode/managed-settings.json", "utf8")) as { statusLine?: { command?: string } };
+    if (managed.statusLine !== undefined) {
+      const m = /(\/[^'"]+statusline\.sh)/.exec(managed.statusLine.command ?? "");
+      return m !== null && fileHas(m[1]!, "ratelimits.json");
+    }
+  } catch { /* sem settings gerenciadas */ }
+  return fileHas(path.join(os.homedir(), ".claude", "statusline.sh"), "ratelimits.json");
 }
 
 /** "local": este Mac, sem SSH. O backend vai junto no app, então "instalado" é sempre verdade. */
@@ -146,7 +167,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 
@@ -170,6 +191,31 @@ export async function installBackend(host: string, port: number, onLine?: (line:
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   say("rodando o instalador…");
   const inst = await run("ssh", [...sshBase(host), "--", host, `PORT=${port} bash ${REMOTE_STAGE}/install.sh 2>&1`], 10 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+
+
+const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh"];
+
+/** Instala a status line do Claude Code no host (ou neste Mac): manda os dois arquivos e roda o instalador. */
+export async function installStatusLine(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  if (host === LOCAL_HOST) {
+    say("instalando a status line neste Mac…");
+    const r = await run("bash", [path.join(dir, "install-statusline.sh")], 60_000, say);
+    if (r.code !== 0) return { ok: false, log: [...lines, lastLine(r.stderr) || `instalador saiu com código ${r.code ?? "timeout"}`] };
+    return { ok: true, log: lines };
+  }
+  say(`enviando ${STATUSLINE_FILES.length} arquivos para ${host}:${REMOTE_STAGE}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...STATUSLINE_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-statusline.sh 2>&1`], 2 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }

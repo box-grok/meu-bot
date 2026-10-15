@@ -767,6 +767,26 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Na grokbot-1 o endpoint foi implantado e devolve a conta Premium e 37%/37% (cache de 01:14). No Mac
   (`local`) só há `profile.json`: o statusline do Mac é o da biblioteca gerenciada e não grava limites.
 
+## Instalar status line pelo seletor (15 out 2026)
+
+- A status line do app só tem Sessão/Semanal se a máquina grava `~/.cache/claude-statusline/ratelimits.json`.
+  O `statusline.sh` do `claude-statusline` (Diego) lê esses limites do stdin que o Claude Code manda
+  (`rate_limits.five_hour/seven_day`), mas só persistia `profile.json`; o semanal nem era lido. Sem o arquivo,
+  `account-status.js` devolve null e o rodapé fica só com modelo, Ctx e conta.
+- `backend-colima/statusline.sh` é aquele script com um bloco a mais que grava `ratelimits.json`
+  (`session_pct`, `session_resets`, `weekly_pct`, `weekly_resets`, `updated`), só quando há dado. O semanal vai
+  para o cache mesmo sem aparecer na barra do terminal; quem o mostra é o painel. Testado em
+  `scripts/tests/statusline-cache.test.mjs` (HOME descartável, `security`/`curl` neutralizados no PATH).
+- `backend-colima/install-statusline.sh` copia para `~/.claude/statusline.sh`, injeta `statusLine` no
+  `~/.claude/settings.json` preservando o resto (backup `.antes-do-meu-bot`, uma vez) e prova que o script roda.
+  Idempotente. Se a máquina tem settings gerenciadas com `statusLine`, sai com 3 e explica: elas ganham do
+  settings.json, e instalar ali não teria efeito — é o caso deste Mac (`/Library/Application Support/ClaudeCode`),
+  que se atualiza pela skill `global-statusline`, não pelo app.
+- Sondagem: `statusline=1` quando `~/.claude/statusline.sh` contém `ratelimits.json` (no `local`, se há
+  gerenciada, é o script dela que conta). `probe-text.ts` mantém a máquina em ✓ e abrível, só acrescenta
+  "sem status line do Claude" e troca o botão para "Instalar status line" (`install: "statusline"`); o mesmo
+  `install()` do seletor atende os dois, pelo canal `picker:install-statusline`, com o log de progresso de sempre.
+
 ## Grok Bot: Atualizar vs Redefinir, deep link e verificação do Tailscale SSH (15 out 2026)
 
 - `grokbot://app/v1/settings?id=<id>` (esquemas `grokbot` e `sand` no Info.plist do app) abre as
