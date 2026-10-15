@@ -24,7 +24,11 @@ FLUSH_DIR=${FLUSH_DIR:-/run/sand-box-store-flush}
 TOLERANCIA_S=${TOLERANCIA_S:-60}
 MAX_RESTARTS=${MAX_RESTARTS:-3}
 JANELA_S=${JANELA_S:-1800}
-TS=${TAILSCALE_BIN:-/home/box/.local/bin/tailscale}   # absoluto: o secure_path do sudo não vê ~/.local/bin e /usr zera na recriação
+# Onde está o `tailscale`? Varia por máquina: apt (/usr/bin, grokbot-lv) ou instalação no home (~/.local/bin,
+# grokbot-1). Caminho absoluto, porque o secure_path do sudo não vê o PATH do usuário.
+TS=${TAILSCALE_BIN:-}
+if [ -z "$TS" ]; then for c in /usr/bin/tailscale /usr/local/bin/tailscale /home/box/.local/bin/tailscale; do [ -x "$c" ] && { TS=$c; break; }; done; fi
+[ -n "$TS" ] || { echo "$(date '+%F %T') tailscale não encontrado em /usr/bin, /usr/local/bin ou ~/.local/bin; saindo"; exit 1; }
 PEERS=${PEERS:-"100.118.233.106 100.65.117.27 100.69.163.93"}   # Mac (grokbot-2), agente-br (servidor fixo, exit node) e grokbot-1 (congela metade do dia; só desempate)
 log() { echo "$(date '+%F %T') $*"; }
 
@@ -39,6 +43,7 @@ saude() { # 0 = bem; 1 = mal; 2 = sem referência (nenhum peer para medir). Impr
   echo "sem pong de ${PEERS}"; return 1
 }
 fifos() { ls -1 "$FLUSH_DIR"/response.* 2>/dev/null | wc -l | tr -d " "; }
+log "tailscale em $TS"
 log "vigia iniciado (check ${CHECK_S}s, age após ${BAD_READINGS} leituras ruins, tolerância ${TOLERANCIA_S}s, carência ${GRACA_S}s, máx ${MAX_RESTARTS} reinícios/${JANELA_S}s)"
 prev_wall=$(date +%s); prev_up=$(uptime_s); prev_fifos=$(fifos); ruins=0; restarts=(); graca_ate=0
 while :; do
