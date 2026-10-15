@@ -1019,6 +1019,8 @@ const waResetBtn = $<HTMLButtonElement>("wa-reset");
 const waCloseBtn = $<HTMLButtonElement>("wa-close");
 let waStatus: WhatsappStatus | null = null;
 let waPairing = false;
+/** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
+let waConnected = false;
 
 /** "5516992294486" → "+55 (16) 99229-4486"; outros formatos ficam com o + na frente. */
 function fmtPhone(digits: string | null): string {
@@ -1055,7 +1057,7 @@ function openWhatsapp(): void {
 
 async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
-  waPairing = true;
+  waPairing = true; waConnected = false;
   waLog.hidden = false; waLog.textContent = "";
   waStatusEl.textContent = reset ? "Apagando a sessão antiga e gerando um QR novo…" : "Gerando o QR…";
   paintWhatsapp();
@@ -1078,18 +1080,28 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
     case "step": appendLog(`▸ ${ev.text}`); break;
     case "log": appendLog(ev.text); break;
     case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente."; break;
-    case "connected": waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. Subindo o gateway…`; appendLog("✓ conectado"); break;
+    case "connected": {
+      // Vinculou: a janela fecha sozinha; o gateway volta em segundo plano e o refresh depois do `done` mostra o número.
+      waConnected = true;
+      waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`; appendLog("✓ conectado");
+      const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info");
+      setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
+      break;
+    }
     case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
     case "done":
       appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
-      if (ev.ok) { const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info"); setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500); }
+      if (ev.ok && waDialog.open) setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
       break;
   }
 });
 waLine.addEventListener("click", () => openWhatsapp());
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
 waResetBtn.addEventListener("click", () => { void pairWhatsapp(true); });
-waCloseBtn.addEventListener("click", () => { if (waPairing) void window.meuBot.whatsappCancel(); waDialog.close(); });
+const waCancelIfPairing = (): void => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); };
+waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close(); });
+// Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.
+waDialog.addEventListener("cancel", () => { waCancelIfPairing(); });
 
 // ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
 const introEl = $<HTMLElement>("intro");

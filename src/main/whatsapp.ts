@@ -121,14 +121,21 @@ if command -v openclaw >/dev/null 2>&1; then
   GW=$(supervisorctl status 2>/dev/null | awk '/openclaw-gateway/ {print $1; exit}')
   restart() { if [ -n "$GW" ]; then supervisorctl restart "$GW" >/dev/null 2>&1; else openclaw gateway restart >/dev/null 2>&1; fi; echo '{"event":"meu-bot","step":"gateway-started"}'; }
   echo '{"event":"started"}'
-  openclaw channels login --channel whatsapp 2>&1 &
+  # O CLI pode ficar pendurado depois de vincular (sincronizando); a janela não deve esperar por isso.
+  # Um vigia lê a saída: viu "linked/paired/…", dá 4 s para o CLI guardar as credenciais e o encerra.
+  LOG=$(mktemp); rm -f "$LOG.linked"
+  openclaw channels login --channel whatsapp >"$LOG" 2>&1 &
   P=$!
-  trap 'kill $P 2>/dev/null; exit 130' HUP TERM INT
+  tail -n +1 -F --pid=$P "$LOG" 2>/dev/null & TAIL=$!
+  ( while kill -0 $P 2>/dev/null; do grep -qiE 'linked|logged in|successfully|paired|authenticated' "$LOG" 2>/dev/null && { touch "$LOG.linked"; sleep 4; kill $P 2>/dev/null; break; }; sleep 1; done ) & W=$!
+  trap 'kill $P $W 2>/dev/null; exit 130' HUP TERM INT
   ( sleep 300; kill $P 2>/dev/null ) & T=$!
   wait $P; rc=$?
-  kill $T 2>/dev/null
+  kill $T $W 2>/dev/null; wait $TAIL 2>/dev/null
   trap - HUP TERM INT
-  [ $rc -eq 0 ] && restart
+  LINKED=0; [ -f "$LOG.linked" ] && LINKED=1
+  rm -f "$LOG" "$LOG.linked"
+  if [ $rc -eq 0 ] || [ $LINKED -eq 1 ]; then restart; exit 0; fi
   exit $rc
 fi
 echo '{"event":"error","error":"esta máquina não tem Hermes nem OpenClaw com WhatsApp"}'; exit 2
