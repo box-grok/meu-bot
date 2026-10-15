@@ -6,7 +6,7 @@
 import type { BackendModel, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 
-export const BACKEND_MODELS: readonly BackendModel[] = ["claudecode", "agente", "rene-dm", "rene"];
+export const BACKEND_MODELS: readonly BackendModel[] = ["claudecode", "agente", "rene-dm", "rene", "grok-4"];
 export const isBackendModel = (v: unknown): v is BackendModel =>
   typeof v === "string" && (BACKEND_MODELS as readonly string[]).includes(v);
 

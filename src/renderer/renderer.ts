@@ -478,7 +478,7 @@ function buildPaletteItems(): PaletteItem[] {
     add({ id: "a:export-json", kind: "action", label: "Exportar conversa atual em JSON" }, () => exportConversation(cur.id, "json"));
     add({ id: "a:archive", kind: "action", label: "Arquivar conversa atual" }, () => archive(cur.id, true));
     add({ id: "a:close", kind: "action", label: "Fechar aba atual", detail: "Cmd+W" }, () => closeTab(cur.id));
-    for (const m of ["claudecode", "agente", "rene-dm", "rene"] as const) {
+    for (const m of ["claudecode", "agente", "rene-dm", "rene", "grok-4"] as const) {
       add({ id: `a:model:${m}`, kind: "action", label: `Usar modelo ${m} nesta conversa` }, () => { setTabModel(cur, m); void window.meuBot.setConversationModel(cur.id, m); });
     }
   }
@@ -1102,6 +1102,7 @@ function openSettings(): void {
 }
 settingsBtn.addEventListener("click", () => openSettings());
 window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
+window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) addNotice(tab, text, "warn"); });
 cancelBtn.addEventListener("click", () => dialog.close());
 dialog.addEventListener("close", () => onboardEvent("settings-closed"));
 form.addEventListener("submit", (ev) => {

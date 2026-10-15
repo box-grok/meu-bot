@@ -20,6 +20,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
+const providers = require('./providers');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -37,6 +38,13 @@ const MODELS = {
 };
 
 const CONV_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
+
+/** providers.json: ordem de fallback (agente → grok-4 por padrão) e os provedores OpenAI-compatíveis (xAI). */
+const PROVIDERS = providers.load(path.join(ROOT, 'providers.json'), { ...process.env, ...ENV }, log);
+const listedModels = () => [
+  ...Object.entries(MODELS).map(([id, p]) => ({ id, object: 'model', created: 0, owned_by: 'meu-bot', description: p.description })),
+  ...providers.openaiModels(PROVIDERS).map((p) => ({ id: p.name, object: 'model', created: 0, owned_by: p.base_url, description: p.description })),
+];
 
 function loadEnv(file) {
   const out = {};
@@ -219,8 +227,10 @@ async function chatCompletions(req, res) {
   let body;
   try { body = JSON.parse(await readBody(req) || '{}'); } catch (e) { return json(res, 400, { error: { message: `JSON inválido: ${e.message}`, type: 'invalid_request_error' } }); }
   const model = String(body.model || 'claudecode');
-  const profile = MODELS[model];
-  if (!profile) return json(res, 404, { error: { message: `modelo desconhecido: ${model}`, type: 'invalid_request_error', code: 'model_not_found' } });
+  const openaiProvider = providers.byName(PROVIDERS, model);
+  if (!MODELS[model] && !(openaiProvider && openaiProvider.type === 'openai' && openaiProvider.available)) {
+    return json(res, 404, { error: { message: `modelo desconhecido: ${model}`, type: 'invalid_request_error', code: 'model_not_found' } });
+  }
   const messages = Array.isArray(body.messages) ? body.messages.filter((m) => m && typeof m.role === 'string') : [];
   if (!messages.some((m) => m.role === 'user')) return json(res, 400, { error: { message: 'messages precisa ter ao menos um user', type: 'invalid_request_error' } });
   const stream = body.stream === true;
@@ -228,35 +238,44 @@ async function chatCompletions(req, res) {
 
   const convRaw = req.headers['x-conversation-id'];
   const convId = typeof convRaw === 'string' && CONV_ID_RE.test(convRaw) ? convRaw : null;
-  const key = convId ? `${model}:${convId}` : null;
   const hash = sysHash(messages);
   const id = `chatcmpl-${crypto.randomBytes(8).toString('hex')}`;
   const created = Math.floor(Date.now() / 1000);
   const t0 = Date.now();
+  // Corrente: o pedido primeiro, depois os outros por prioridade. Fora do providers.json → só ele.
+  const attempts = providers.chain(PROVIDERS, model);
+  if (attempts.length === 0) attempts.push(model);
+  const env = { ...process.env, ...ENV };
 
   const run = async () => {
     const abort = new AbortController();
     res.on('close', () => { if (!res.writableFinished) abort.abort(); });
 
-    let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
-    let resumed = Boolean(plan.resume);
+    let used = model; let resumed = false; let usedKey = null; let usedProfile = null;
     let headersSent = false; let heartbeat = null; let firstDeltaAt = 0;
+    const pendingNotes = []; // fallbacks ocorridos antes de abrir o SSE
 
     const startSse = () => {
       if (headersSent) return;
       headersSent = true;
       res.writeHead(200, {
         'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no', 'X-Session-Resumed': resumed ? 'true' : 'false',
+        'X-Accel-Buffering': 'no', 'X-Session-Resumed': resumed ? 'true' : 'false', 'X-Provider': used,
       });
       res.flushHeaders && res.flushHeaders();
-      res.write(`data: ${JSON.stringify(chunk(id, created, model, { role: 'assistant', content: '' }))}\n\n`);
+      res.write(`data: ${JSON.stringify(chunk(id, created, used, { role: 'assistant', content: '' }))}\n\n`);
+      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason))}\n\n`);
       heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15000);
     };
-    const onDelta = live ? (t) => { if (!firstDeltaAt) firstDeltaAt = Date.now(); startSse(); res.write(`data: ${JSON.stringify(chunk(id, created, model, { content: t }))}\n\n`); } : null;
+    const onDelta = live ? (t) => { if (!firstDeltaAt) firstDeltaAt = Date.now(); startSse(); res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: t }))}\n\n`); } : null;
 
-    let out;
-    try {
+    /** Um provedor claude: planeja resume pela chave dele e refaz sem resume se a sessão sumiu. */
+    const runClaudeProvider = async (name) => {
+      const profile = MODELS[name];
+      const key = convId ? `${name}:${convId}` : null;
+      let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
+      resumed = Boolean(plan.resume);
+      let out;
       try {
         out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta });
       } catch (e) {
@@ -267,53 +286,81 @@ async function chatCompletions(req, res) {
           out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta });
         } else throw e;
       }
+      usedKey = key; usedProfile = profile;
+      return out;
+    };
+
+    let out;
+    try {
+      for (let i = 0; i < attempts.length; i++) {
+        const name = attempts[i];
+        const next = attempts[i + 1];
+        used = name;
+        try {
+          if (MODELS[name]) out = await runClaudeProvider(name);
+          else { resumed = false; usedKey = null; usedProfile = null; out = await providers.openaiCompletion({ provider: providers.byName(PROVIDERS, name), env, messages, signal: abort.signal, onDelta }); }
+          break;
+        } catch (e) {
+          // Já saiu texto para o cliente, ou não há próximo: o erro é definitivo.
+          if (e.code === 'aborted' || firstDeltaAt || next === undefined) throw e;
+          log(`${name} falhou (${e.code || '?'}: ${e.message}); caindo para ${next}`);
+          const note = { from: name, to: next, reason: e.message };
+          if (headersSent) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, next, note.from, note.to, note.reason))}\n\n`);
+          else pendingNotes.push(note);
+        }
+      }
     } catch (e) {
       if (heartbeat) clearInterval(heartbeat);
       if (e.code === 'aborted') { log(`abortado pelo cliente após ${Date.now() - t0} ms`); try { res.end(); } catch (_) {} return; }
       log(`erro: ${e.code || '?'} ${e.message}${e.stderr ? ` | stderr: ${e.stderr.slice(-300).replace(/\s+/g, ' ')}` : ''}`);
       if (headersSent) {
-        res.write(`data: ${JSON.stringify(chunk(id, created, model, { content: `\n\n[erro claudecode: ${e.message}]` }, 'stop'))}\n\n`);
+        res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: `\n\n[erro ${used}: ${e.message}]` }, 'stop'))}\n\n`);
         res.write('data: [DONE]\n\n'); res.end(); return;
       }
       const status = e.code === 'auth' ? 401 : 503;
       return json(res, status, { error: { message: e.message, type: e.code === 'auth' ? 'authentication_error' : 'server_error', code: e.code || 'cli_failed' } }, { 'X-Session-Resumed': 'false' });
     }
 
-    if (key && out.sessionId) sessions.put(key, { sessionId: out.sessionId, cwd: profile.cwd, sysHash: hash, seen: convoCount(messages) + 1 });
-    log(`${model} ${live ? 'live' : stream ? 'stream' : 'json'} resumed=${resumed} first_delta_ms=${firstDeltaAt ? firstDeltaAt - t0 : '-'} total_ms=${Date.now() - t0} chars=${out.text.length} deltas=${out.deltas}`);
+    if (usedKey && out.sessionId) sessions.put(usedKey, { sessionId: out.sessionId, cwd: usedProfile.cwd, sysHash: hash, seen: convoCount(messages) + 1 });
+    log(`${used}${used !== model ? ` (fallback de ${model})` : ''} ${live ? 'live' : stream ? 'stream' : 'json'} resumed=${resumed} first_delta_ms=${firstDeltaAt ? firstDeltaAt - t0 : '-'} total_ms=${Date.now() - t0} chars=${out.text.length} deltas=${out.deltas}`);
 
     if (live) {
       startSse();
-      if (!out.deltas) res.write(`data: ${JSON.stringify(chunk(id, created, model, { content: out.text }))}\n\n`);
+      if (!out.deltas) res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: out.text }))}\n\n`);
       clearInterval(heartbeat);
-      res.write(`data: ${JSON.stringify(chunk(id, created, model, {}, 'stop'))}\n\n`);
-      res.write(`data: ${JSON.stringify(usageChunk(id, created, model, out.usage))}\n\n`);
+      res.write(`data: ${JSON.stringify(chunk(id, created, used, {}, 'stop'))}\n\n`);
+      res.write(`data: ${JSON.stringify(usageChunk(id, created, used, out.usage))}\n\n`);
       res.write('data: [DONE]\n\n'); res.end(); return;
     }
+    const extra = { 'X-Session-Resumed': resumed ? 'true' : 'false', 'X-Provider': used };
     if (stream) {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Session-Resumed': resumed ? 'true' : 'false' });
-      res.write(`data: ${JSON.stringify(chunk(id, created, model, { role: 'assistant', content: '' }))}\n\n`);
-      res.write(`data: ${JSON.stringify(chunk(id, created, model, { content: out.text }))}\n\n`);
-      res.write(`data: ${JSON.stringify(chunk(id, created, model, {}, 'stop'))}\n\n`);
+      res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...extra });
+      res.write(`data: ${JSON.stringify(chunk(id, created, used, { role: 'assistant', content: '' }))}\n\n`);
+      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason))}\n\n`);
+      res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: out.text }))}\n\n`);
+      res.write(`data: ${JSON.stringify(chunk(id, created, used, {}, 'stop'))}\n\n`);
       res.write('data: [DONE]\n\n'); res.end(); return;
     }
     json(res, 200, {
-      id, object: 'chat.completion', created, model,
+      id, object: 'chat.completion', created, model: used,
       choices: [{ index: 0, message: { role: 'assistant', content: out.text }, finish_reason: 'stop' }],
       usage: usageObj(out.usage),
-    }, { 'X-Session-Resumed': resumed ? 'true' : 'false' });
+      ...(pendingNotes.length ? { x_meu_bot: { fallback: pendingNotes[pendingNotes.length - 1] } } : {}),
+    }, extra);
   };
 
-  if (key) return sessions.withLock(key, run);
+  // Lock por conversa+modelo pedido: dois turnos da mesma conversa não correm em paralelo.
+  const lockKey = convId ? `${model}:${convId}` : null;
+  if (lockKey) return sessions.withLock(lockKey, run);
   return run();
 }
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: Object.keys(MODELS) });
+  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id) });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
   if (url.pathname === '/v1/models' && req.method === 'GET') {
-    return json(res, 200, { object: 'list', data: Object.entries(MODELS).map(([id, p]) => ({ id, object: 'model', created: 0, owned_by: 'meu-bot', description: p.description })) });
+    return json(res, 200, { object: 'list', data: listedModels() });
   }
   if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
     chatCompletions(req, res).catch((e) => { log(`falha inesperada: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); else { try { res.end(); } catch (_) {} } });
@@ -325,6 +372,6 @@ const server = http.createServer((req, res) => {
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 70000;
 server.requestTimeout = 0;
-server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=${Object.keys(MODELS).join(',')} claude=${CLAUDE_BIN} workspace=${WORKSPACE} auth=${KEY ? 'bearer' : 'DESLIGADA'}`));
+server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=${listedModels().map((m) => m.id).join(',')} fallback=${PROVIDERS.map((p) => `${p.name}${p.available ? '' : '(indisponível)'}`).join('→')} claude=${CLAUDE_BIN} workspace=${WORKSPACE} auth=${KEY ? 'bearer' : 'DESLIGADA'}`));
 
 process.on('SIGTERM', () => { log('SIGTERM; encerrando'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); });

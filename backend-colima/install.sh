@@ -29,8 +29,17 @@ CLAUDE=$(command -v claude 2>/dev/null || true); [ -z "$CLAUDE" ] && [ -x "$HOME
 [ -n "$CLAUDE" ] || { echo "claude não encontrado no PATH nem em ~/.local/bin"; exit 1; }
 grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null || echo "aviso: Claude Code parece deslogado (sem oauthAccount em ~/.claude.json); o backend vai responder 401 até fazer /login"
 
+# Trava: na grokbot-1 o mesmo caminho é o backend ORIGINAL do Hermes (app.js, services/, git). Copiar o
+# server.js genérico por cima apaga o dele; o processo vivo não nota, mas o próximo restart sobe o
+# genérico e o WhatsApp (rene-dm) para. Aconteceu em 14/15 out 2026. Nunca mais.
+if [ -f "$DEST/app.js" ] || [ -d "$DEST/services" ]; then
+  echo "ERRO: $DEST já é o backend do Hermes (app.js/services). Este instalador é só para máquinas sem ele." >&2
+  echo "      Para o modelo agente/grok-4 nessa máquina use backend-vm/deploy-agente.sh." >&2
+  exit 3
+fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
-cp "$HERE/server.js" "$HERE/session-map.js" "$DEST/"
+cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$DEST/"
+[ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   umask 077; printf 'OPENAI_COMPAT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env"; echo ".env criado"
 else

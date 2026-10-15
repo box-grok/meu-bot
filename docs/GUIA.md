@@ -700,3 +700,47 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Onboarding: "pular" virou texto pequeno em cinza (não se clica por reflexo); pular mostra o cartão
   "Onboarding pulado" por 4,5 s com o caminho para refazer (`SKIPPED_MESSAGE`). A lista de conversas
   entra deslizando com um brilho azul (`.sidebar.reveal`), para quem aperta Cmd+B olhando o teclado.
+
+## Provedores com fallback e o modelo grok-4 (15 out 2026)
+
+- `providers.json` ao lado do backend: lista ordenada `{ name, type: claude|openai, priority, … }`.
+  Padrão: `agente` (claude, 0) → `grok-4` (openai, 1). Entrada openai tem `base_url`, `model`,
+  `key_env`/`key`; sem chave só fica disponível com endpoint local (127.0.0.1), que é o caso do
+  `hermes proxy start --provider xai` da grokbot-1 (porta 8645, aceita qualquer bearer e usa o OAuth da
+  xAI). Em outras máquinas, `XAI_API_KEY` no `.env` liga o grok-4 direto na api.x.ai.
+- Módulo `providers.js` (cópia idêntica em `backend-colima/` e `backend-vm/services/`): `load`,
+  `chain(requested)` = pedido primeiro + outros disponíveis por prioridade, `openaiCompletion` (SSE),
+  `fallbackChunk`. Testes em `scripts/tests/providers.test.mjs` (mock HTTP incluso).
+- Regra do fallback: só se o provedor pedido falhar ANTES de produzir texto; já saiu delta, o erro é
+  definitivo. O cliente recebe um chunk com `x_meu_bot.fallback {from,to,reason}` (delta vazio) e o
+  cabeçalho `X-Provider`. Modelo fora do providers.json (rene, rene-dm, claudecode) roda como sempre.
+- Backend genérico (`server.js`): `attempts = chain(model)`, laço de tentativas, `used` vira o model dos
+  chunks. Backend do Hermes (`openai-compat.js`): `_serveOpenai` atende grok-4 direto; `_streamLive` com
+  `ctx.canFallback` devolve o erro ao chamador em vez de responder 503, e aí `_nextOpenai(reqModel)`
+  decide. `/v1/models` dos dois listam os openai disponíveis.
+- App: `BackendModel` ganhou `grok-4` (seletor "grok-4 · xAI", paleta, Configurações; 120 s de timeout).
+  `backend.ts` lê `x_meu_bot.fallback` e manda `chat:notice` (aviso amarelo na conversa) +
+  `backend:status degraded`. É o "aviso de fallback" que tinha sido apagado, de volta.
+- Deploy na grokbot-1: `backend-vm/deploy-agente.sh` leva `openai-compat.js` + `providers.js` e cria
+  `providers.json` (proxy local) só se faltar. Verificado: `/v1/models` com os seis modelos, grok-4
+  respondeu em 2,4 s.
+
+### Incidente: o instalador genérico sobrescreveu o server.js do Hermes
+- `install.sh` copia para `~/.hermes/agente-rene/backend-sdk-claude`, que na grokbot-1 é o backend
+  ORIGINAL do Hermes (git em `~/.hermes/agente-rene`). Em 14 out 17:00 o `server.js` do Hermes foi
+  substituído pelo genérico. O processo vivo continuou com o código antigo em memória; só o restart do
+  deploy de 15 out 01:18 subiu o genérico, e por 3 minutos a porta 8080 não conhecia `rene-dm` (WhatsApp).
+  Restaurado com `git checkout -- server.js` + `rm session-map.js` (cópia do genérico em `/tmp`).
+- Trava nova no `install.sh`: se `$DEST/app.js` ou `$DEST/services/` existir, recusa (exit 3) e aponta
+  para o `deploy-agente.sh`. Não existe backup automático do `server.js` do Hermes fora do git: não
+  rodar o instalador genérico na grokbot-1.
+- Outra regra da grokbot-1: `hermes gateway restart` na mão deixa um gateway solto fora do PM2 e o PM2
+  entra em loop (17 mil reinícios em 2,5 h). Sempre `pm2 restart hermes-gateway`.
+- Pill do túnel mostra quem respondeu de fato (`X-Provider` do backend): "túnel ativo · agente ·
+  respondeu grok-4", em amarelo quando difere do pedido. Lição do diálogo na grokbot-1 (15 out): a prova
+  do modelo é o log/cabeçalho, nunca o nome que o modelo dá a si mesmo.
+- Troca de modelo no meio da conversa: `setConversationModel` guarda `pendingSwitch {from,to}`
+  (transitório) e o próximo turno manda a mensagem do usuário com `note` (campo de `BackendMessage`,
+  persistido mas nunca exibido; `toWire` concatena antes do conteúdo). A nota diz ao modelo novo que as
+  respostas anteriores foram de outro modelo. Motivo: no teste do usuário o grok-4 disse "na mensagem
+  anterior eu respondi errado" sobre uma resposta que era do Claude.

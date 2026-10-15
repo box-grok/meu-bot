@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { planContext, validateSummary, buildSummaryRequest, estimateTokens } = require("../../dist/main/context.js");
+const { planContext, validateSummary, buildSummaryRequest, estimateTokens, toWire } = require("../../dist/main/context.js");
 
 const msg = (role, n) => ({ role, content: "x".repeat(n) });
 const convo = (turns, size) => Array.from({ length: turns * 2 }, (_, i) => msg(i % 2 === 0 ? "user" : "assistant", size));
@@ -63,4 +63,13 @@ test("alreadySeenPrefix: prefixo conhecido só quando o resto é todo novo", () 
   const first = plan(long, undefined, 800);
   const withSummary = plan(long, { text: "## Tarefa atual\nx", coveredUntil: first.tailStart, updatedAt: "" }, 800);
   assert.equal(alreadySeenPrefix(withSummary.outgoing, 2), 0);
+});
+
+test("toWire põe a nota do app antes do conteúdo e planContext a preserva", () => {
+  const msgs = [{ role: "user", content: "oi" }, { role: "assistant", content: "olá" }, { role: "user", content: "qual modelo?", note: "[nota]" }];
+  const plan = planContext(msgs, undefined, 100000);
+  const wire = toWire(plan.outgoing);
+  assert.equal(wire[2].content, "[nota]\n\nqual modelo?");
+  assert.equal(wire[0].content, "oi");
+  assert.equal("note" in wire[2], false);
 });

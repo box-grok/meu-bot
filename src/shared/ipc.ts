@@ -1,6 +1,6 @@
 /** Contrato IPC entre renderer, preload e processo principal. Só tipos: nada aqui é emitido em runtime. */
 
-export type BackendModel = "claudecode" | "agente" | "rene-dm" | "rene";
+export type BackendModel = "claudecode" | "agente" | "rene-dm" | "rene" | "grok-4";
 export type Theme = "system" | "light" | "dark";
 export type QuickEntryStatus = "registered" | "taken" | "invalid" | "disabled";
 
@@ -237,6 +237,8 @@ export interface MainEvents {
   "ui:quick-submit": { correlationId: string; text: string };
   /** Menu meu-bot › Configurações… (Cmd+,): abre, ou fecha se já está aberto. */
   "ui:toggle-settings": Record<string, never>;
+  /** Aviso do backend no meio de um turno (ex.: caiu para outro provedor). */
+  "chat:notice": { conversationId: string; text: string };
 }
 
 export type MainEventChannel = keyof MainEvents;

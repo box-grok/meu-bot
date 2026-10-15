@@ -31,6 +31,18 @@ const { query } = require('../claude-query');
 const authMonitor = require('./health/auth-monitor');
 const { isAuthError } = authMonitor;
 const sessionMap = require('./session-map');
+const providers = require('./providers');
+
+/** providers.json na raiz do backend: corrente de fallback (agente → grok-4) e provedores OpenAI-compatíveis. */
+const PROVIDERS = providers.load(path.join(__dirname, '..', 'providers.json'), process.env, (m) => console.warn(`[openai-compat] ${m}`));
+/** Próximo provedor openai disponível na corrente do modelo pedido (ou null). */
+function _nextOpenai(reqModel) {
+  for (const name of providers.chain(PROVIDERS, reqModel).slice(1)) {
+    const p = providers.byName(PROVIDERS, name);
+    if (p && p.type === 'openai' && p.available) return p;
+  }
+  return null;
+}
 
 const MODEL_ID = 'claudecode';
 
@@ -326,7 +338,9 @@ async function _streamLive(req, res, ctx) {
   if (finished) return result; // cliente foi embora
 
   if (!headersSent) {
-    // Nada foi transmitido: erros viram JSON com status, como no modo legado.
+    // Nada foi transmitido: com fallback possível, o chamador decide (outro provedor ou o erro).
+    if (!result.text && result.errored && ctx.canFallback) return result;
+    // Senão, erros viram JSON com status, como no modo legado.
     if (!result.text && result.errored && isAuthError(result.errored)) {
       authMonitor.reportAuthFailure(result.errored);
       res.status(401).json({ error: { message: result.errored, type: 'authentication_error', code: 'claude_auth' } });
@@ -354,6 +368,59 @@ async function _streamLive(req, res, ctx) {
   return result;
 }
 
+/**
+ * Atende um provedor OpenAI-compatível (xAI pelo hermes proxy, ou direto com chave): usado quando o
+ * cliente pede o modelo (ex.: "grok-4") ou como fallback depois que o Claude falhou sem produzir texto.
+ * `note` = {from, to, reason} quando é fallback; vai num chunk `x_meu_bot.fallback` para o cliente avisar.
+ */
+async function _serveOpenai(req, res, { provider, messages, stream, live, id, created, note = null }) {
+  const abort = new AbortController();
+  let headersSent = false; let heartbeat = null; let finished = false; let streamed = '';
+  const t0 = Date.now();
+  res.on('close', () => { if (!finished) { finished = true; if (heartbeat) clearInterval(heartbeat); try { abort.abort(); } catch (_) {} } });
+  const send = (obj) => { if (!finished) res.write(`data: ${JSON.stringify(obj)}\n\n`); };
+  const start = () => {
+    if (headersSent) return;
+    headersSent = true;
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'X-Accel-Buffering': 'no', 'X-Session-Resumed': 'false', 'X-Provider': provider.name });
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    send(_chunk(id, created, provider.name, { role: 'assistant' }));
+    if (note) send(providers.fallbackChunk(id, created, provider.name, note.from, note.to, note.reason));
+    heartbeat = setInterval(() => { if (!finished) res.write(': ping\n\n'); }, 15000);
+  };
+  const onDelta = live ? (t) => { start(); streamed += t; send(_chunk(id, created, provider.name, { content: t })); } : null;
+  let out;
+  try {
+    out = await providers.openaiCompletion({ provider, messages, signal: abort.signal, onDelta });
+  } catch (e) {
+    if (finished) return;
+    console.warn(`[openai-compat] ${provider.name}${note ? ` (fallback de ${note.from})` : ''} falhou: ${e.code || '?'} ${e.message}`);
+    if (headersSent) {
+      send(_chunk(id, created, provider.name, { content: `\n[erro ${provider.name}: ${e.message}]` }, 'error'));
+      send({ id, object: 'chat.completion.chunk', created, model: provider.name, choices: [], error: { message: e.message, type: 'api_error' } });
+      res.write('data: [DONE]\n\n'); finished = true; if (heartbeat) clearInterval(heartbeat); return res.end();
+    }
+    const msg = note ? `${note.from}: ${note.reason} | ${provider.name}: ${e.message}` : e.message;
+    return res.status(e.code === 'upstream_401' ? 401 : 503).json({ error: { message: msg, type: 'api_error', code: e.code || 'upstream_failed' } });
+  }
+  if (finished) return;
+  console.log(`[openai-compat] ${provider.name}${note ? ` (fallback de ${note.from})` : ''} ${live ? 'live' : stream ? 'stream' : 'json'} total_ms=${Date.now() - t0} chars=${out.text.length}`);
+  if (live || stream) {
+    start();
+    if (!streamed) send(_chunk(id, created, provider.name, { content: out.text }));
+    send(_chunk(id, created, provider.name, {}, 'stop'));
+    send(_usageChunk(id, created, provider.name, out.usage));
+    res.write('data: [DONE]\n\n'); finished = true; if (heartbeat) clearInterval(heartbeat); return res.end();
+  }
+  res.setHeader('X-Session-Resumed', 'false'); res.setHeader('X-Provider', provider.name);
+  return res.json({
+    id, object: 'chat.completion', created, model: provider.name,
+    choices: [{ index: 0, message: { role: 'assistant', content: out.text }, finish_reason: 'stop' }],
+    usage: { prompt_tokens: out.usage?.input_tokens ?? 0, completion_tokens: out.usage?.output_tokens ?? 0, total_tokens: (out.usage?.input_tokens ?? 0) + (out.usage?.output_tokens ?? 0) },
+    ...(note ? { x_meu_bot: { fallback: note } } : {}),
+  });
+}
+
 function mount(app) {
   const jsonBig = express.json({ limit: '25mb' });
 
@@ -368,6 +435,7 @@ function mount(app) {
         { id: RENE_DM_MODEL_ID, object: 'model', created: 0, owned_by: 'anthropic-claude-code' },
         { id: AGENTE_MODEL_ID, object: 'model', created: 0, owned_by: 'anthropic-claude-code' },
         { id: 'rene-buffer', object: 'model', created: 0, owned_by: 'anthropic-claude-code' },
+        ...providers.openaiModels(PROVIDERS).map((p) => ({ id: p.name, object: 'model', created: 0, owned_by: p.base_url, description: p.description })),
       ],
     });
   });
@@ -402,6 +470,13 @@ function mount(app) {
 
     const id = `chatcmpl-${uuidv4()}`;
     const created = Math.floor(Date.now() / 1000);
+
+    // Modelo de um provedor OpenAI-compatível (ex.: "grok-4"): atende direto, sem Claude.
+    const direct = providers.byName(PROVIDERS, String(body.model || '').toLowerCase());
+    if (direct && direct.type === 'openai') {
+      if (!direct.available) return res.status(404).json({ error: { message: `provedor ${direct.name} sem chave/endpoint nesta máquina`, type: 'invalid_request_error', code: 'model_not_found' } });
+      return _serveOpenai(req, res, { provider: direct, messages: body.messages, stream, live, id, created });
+    }
 
     // model=rene → agêntico, MCP completo. model=rene-dm → agêntico, MCP
     // restrito (sem financeiro). Qualquer outro valor → chat puro.
@@ -449,7 +524,7 @@ function mount(app) {
 
     const run = async () => {
       const runOptions = resumeSessionId ? { ...options, resume: resumeSessionId } : options;
-      const ctx = { id, created, respModel, prompt, options: runOptions, resumed: !!resumeSessionId, resumeSessionId };
+      const ctx = { id, created, respModel, prompt, options: runOptions, resumed: !!resumeSessionId, resumeSessionId, canFallback: !!_nextOpenai(reqModel) };
       let result;
       if (live) result = await _streamLive(req, res, ctx);
       else result = await _collectResponse({ prompt, options: runOptions });
@@ -460,7 +535,7 @@ function mount(app) {
         sessionMap.del(key);
         resumeSessionId = null;
         prompt = flatPrompt;
-        const ctx2 = { id, created, respModel, prompt, options, resumed: false, resumeSessionId: null };
+        const ctx2 = { id, created, respModel, prompt, options, resumed: false, resumeSessionId: null, canFallback: !!_nextOpenai(reqModel) };
         result = live ? await _streamLive(req, res, ctx2) : await _collectResponse({ prompt, options });
       }
 
@@ -475,7 +550,20 @@ function mount(app) {
     };
 
     const { text, usage, errored } = key ? await sessionMap.withLock(key, run) : await run();
-    if (live) return; // _streamLive já respondeu
+
+    // Claude falhou sem produzir nada e há outro provedor na corrente: desce para ele e avisa o cliente.
+    const fallbackTo = (!text && errored) ? _nextOpenai(reqModel) : null;
+    if (fallbackTo && !res.headersSent) {
+      console.warn(`[openai-compat] ${reqModel} falhou (${String(errored).slice(0, 200)}); caindo para ${fallbackTo.name}`);
+      if (isAuthError(errored)) authMonitor.reportAuthFailure(errored);
+      return _serveOpenai(req, res, { provider: fallbackTo, messages: body.messages, stream, live, id, created, note: { from: reqModel, to: fallbackTo.name, reason: String(errored).slice(0, 300) } });
+    }
+    if (live) {
+      if (res.headersSent) return; // _streamLive já respondeu
+      // canFallback adiou o erro, mas não há para onde cair: responde como o modo legado.
+      if (isAuthError(errored)) { authMonitor.reportAuthFailure(errored); return res.status(401).json({ error: { message: errored, type: 'authentication_error', code: 'claude_auth' } }); }
+      return res.status(503).json({ error: { message: errored || 'sem resposta', type: 'api_error' } });
+    }
 
     if (convId) res.setHeader('X-Session-Resumed', resumeSessionId ? 'true' : 'false');
 

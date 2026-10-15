@@ -10,6 +10,8 @@ import type { SummaryState } from "./context";
 export interface BackendMessage {
   role: "user" | "assistant";
   content: string;
+  /** Linha de contexto injetada pelo app (ex.: troca de modelo). Vai ao backend junto do conteúdo; nunca aparece na tela. */
+  note?: string;
 }
 
 export interface Conversation {
@@ -21,6 +23,8 @@ export interface Conversation {
   host: string;
   /** Histórico no formato OpenAI-compatível do backend. */
   backendMessages: BackendMessage[];
+  /** Troca de modelo ainda não comunicada ao backend; vira nota na próxima mensagem. Transitório. */
+  pendingSwitch?: { from: BackendModel; to: BackendModel };
   createdAt: string;
   updatedAt: string;
   /** Posição da aba; menor fica mais à esquerda. */
@@ -180,6 +184,12 @@ export const getConversation = (id: string): Conversation | undefined => convers
 export function setConversationModel(id: string, model: BackendModel): void {
   const conv = conversations.get(id);
   if (conv === undefined || !isBackendModel(model)) return;
+  if (conv.model === model) return;
+  // Com histórico, o próximo turno avisa o novo modelo de quem respondeu antes (senão ele assume que foi ele).
+  if (conv.backendMessages.length > 0) {
+    const from = conv.pendingSwitch?.from ?? conv.model;
+    if (from === model) delete conv.pendingSwitch; else conv.pendingSwitch = { from, to: model };
+  }
   conv.model = model;
   persistConversations();
 }

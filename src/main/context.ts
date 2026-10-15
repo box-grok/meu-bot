@@ -6,6 +6,8 @@ export interface OutgoingMessage {
   content: string;
   /** Índice no histórico da conversa; ausente em resumo e system. Não é enviado ao backend. */
   absIndex?: number;
+  /** Nota do app para o backend (troca de modelo); entra no conteúdo só na hora de enviar. */
+  note?: string;
 }
 
 /** Quantas mensagens do começo de `outgoing` o servidor já conhece (índice absoluto < seen). */
@@ -22,9 +24,9 @@ export function alreadySeenPrefix(outgoing: readonly OutgoingMessage[], serverSe
   return rest.every((m) => m.absIndex !== undefined && m.absIndex >= serverSeen) ? n : 0;
 }
 
-/** Remove campos internos antes de mandar ao backend. */
+/** Remove campos internos antes de mandar ao backend; a nota do app vai antes do conteúdo. */
 export const toWire = (outgoing: readonly OutgoingMessage[]): { role: OutgoingMessage["role"]; content: string }[] =>
-  outgoing.map((m) => ({ role: m.role, content: m.content }));
+  outgoing.map((m) => ({ role: m.role, content: m.note !== undefined && m.note !== "" ? `${m.note}\n\n${m.content}` : m.content }));
 
 export interface SummaryState {
   text: string;
@@ -78,7 +80,7 @@ export function planContext(
   const tailRatio = opts.tailRatio ?? 0.5;
   const minTailUserTurns = opts.minTailUserTurns ?? 2;
   const minNew = opts.minNewForSummary ?? 4;
-  const all = messages.map((m, i) => ({ role: m.role, content: m.content, absIndex: i }) as OutgoingMessage);
+  const all = messages.map((m, i) => ({ role: m.role, content: m.content, absIndex: i, ...(m.note !== undefined ? { note: m.note } : {}) }) as OutgoingMessage);
   const full = (): ContextPlan => ({ outgoing: all, mode: "full", tailStart: 0, sentCount: all.length, needsSummary: false, summarizeRange: [0, 0] });
   if (messagesTokens(messages) <= budgetTokens) return full();
 

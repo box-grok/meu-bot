@@ -14,6 +14,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "memory:changed",
   "ui:quick-submit",
   "ui:toggle-settings",
+  "chat:notice",
 ];
 
 const api: MeuBotApi = {
