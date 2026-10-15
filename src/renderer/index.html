@@ -97,6 +97,20 @@
         <p class="hint">A chave do backend é lida da própria VM na hora de conectar. Nada a configurar aqui.</p>
       </details>
 
+      <details class="group" data-group="fallback">
+        <summary>Fallback <span class="sum-hint">primário e reserva automática</span></summary>
+        <label>
+          Primário nesta máquina
+          <select id="primary-provider">
+            <option value="claude">Claude (agente · bypass)</option>
+            <option value="xai">xAI (grok-4)</option>
+            <option value="other" disabled>outro modelo escolhido acima</option>
+          </select>
+        </label>
+        <p id="fallback-order" class="hint"></p>
+        <p class="hint">O primário é quem gasta o orçamento da conta dele. Se ele falhar antes de responder, o backend desce para a reserva e a conversa recebe um aviso. A ordem vem do providers.json do backend.</p>
+      </details>
+
       <details class="group" data-group="aparencia">
         <summary>Aparência e avisos <span class="sum-hint">fonte, tema, notificações</span></summary>
         <div class="row">

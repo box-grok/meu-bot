@@ -38,6 +38,8 @@ O selo no topo mostra o estado: "buscando chave…", "abrindo túnel…", "túne
 - **Markdown** nas respostas, com blocos de código realçados e botão Copiar; links abrem no navegador.
 - **Modelo por conversa** no seletor ao lado da caixa de texto (`claudecode`, `agente`, `rene-dm`, `rene`, `grok-4`).
   O backend tem uma corrente de fallback (`providers.json`: agente → grok-4) e avisa na conversa quando troca.
+  Configurações › Fallback escolhe o primário (Claude ou xAI). A status line no rodapé mostra modelo, contexto,
+  conta e limites de 5 h e 7 dias do Claude, com aviso ao passar de 80, 90 e 95%.
 - **Lista lateral** (☰ ou Cmd+B) com todas as conversas agrupadas por data, busca sem acento, arquivar.
 - **Exportar** (.md/.json) e **ramificar** a partir de qualquer mensagem (ícones no hover da mensagem: copiar e ramificar, com tooltip).
 - **Menu de contexto** nas abas (botão direito) e **notificações** quando a resposta termina em segundo plano.

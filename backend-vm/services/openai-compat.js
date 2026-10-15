@@ -32,6 +32,7 @@ const authMonitor = require('./health/auth-monitor');
 const { isAuthError } = authMonitor;
 const sessionMap = require('./session-map');
 const providers = require('./providers');
+const { readClaudeStatus } = require('./account-status');
 
 /** providers.json na raiz do backend: corrente de fallback (agente → grok-4) e provedores OpenAI-compatíveis. */
 const PROVIDERS = providers.load(path.join(__dirname, '..', 'providers.json'), process.env, (m) => console.warn(`[openai-compat] ${m}`));
@@ -438,6 +439,12 @@ function mount(app) {
         ...providers.openaiModels(PROVIDERS).map((p) => ({ id: p.name, object: 'model', created: 0, owned_by: p.base_url, description: p.description })),
       ],
     });
+  });
+
+  // Status line do meu-bot: conta e limites do Claude Code desta máquina (cache do statusline.sh).
+  app.get('/v1/meu-bot/status', (req, res) => {
+    if (!_authOk(req)) return res.status(401).json({ error: { message: 'invalid api key', type: 'invalid_request_error' } });
+    res.json({ claude: readClaudeStatus(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
   });
 
   app.post('/v1/chat/completions', jsonBig, async (req, res) => {

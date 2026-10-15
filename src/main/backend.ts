@@ -2,10 +2,10 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { BackendModel } from "../shared/ipc";
+import type { AccountStatus, BackendModel } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
-import { alreadySeenPrefix, buildSummaryRequest, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
+import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
 import { applyOps, buildMemoryRequest, getMemory, memorySystemMessage, NOTAS_MAX, parseOps, PERFIL_MAX, setMemory } from "./memory";
 import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "./settings";
 import { ensureTunnel, markDegraded } from "./tunnel";
@@ -69,6 +69,8 @@ interface HttpReply {
   status: number;
   /** Corpo JSON completo (resposta não-stream ou erro). Vazio quando veio SSE. */
   body: string;
+  /** Tokens informados pelo backend no chunk de usage (SSE ao vivo). */
+  usage?: { prompt: number; completion: number } | undefined;
   /** Texto acumulado dos deltas quando veio SSE. */
   streamed: string;
   finishReason: string | null;
@@ -103,6 +105,7 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
         let buffer = "";
         let streamed = "";
         let finishReason: string | null = null;
+        let usage: { prompt: number; completion: number } | undefined;
         let streamError: Error | null = null;
         let idle: NodeJS.Timeout | null = null;
         const bumpIdle = (): void => {
@@ -114,7 +117,7 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
             if (!line.startsWith("data:")) continue;
             const data = line.slice(5).trim();
             if (data === "[DONE]") return;
-            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string } } };
+            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string } }; usage?: { prompt_tokens?: number; completion_tokens?: number } };
             try { chunk = JSON.parse(data) as typeof chunk; } catch { continue; }
             const fb = chunk.x_meu_bot?.fallback;
             if (fb !== undefined) opts.onNotice?.(`${fb.from} falhou (${fb.reason}); respondendo com ${fb.to}`);
@@ -124,6 +127,7 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
               opts.onDelta?.(choice.delta.content);
             }
             if (choice?.finish_reason) finishReason = choice.finish_reason;
+            if (chunk.usage !== undefined) usage = { prompt: chunk.usage.prompt_tokens ?? 0, completion: chunk.usage.completion_tokens ?? 0 };
             if (chunk.error?.message) streamError = new Error(chunk.error.message);
           }
         };
@@ -142,7 +146,7 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
           if (idle !== null) clearTimeout(idle);
           if (isSse && buffer.trim() !== "") handleEvent(buffer);
           if (streamError !== null && streamed === "") { reject(streamError); return; }
-          resolve({ status: res.statusCode ?? 0, body: isSse ? "" : Buffer.concat(chunks).toString("utf8"), streamed, finishReason, headers: res.headers });
+          resolve({ status: res.statusCode ?? 0, body: isSse ? "" : Buffer.concat(chunks).toString("utf8"), streamed, finishReason, headers: res.headers, usage });
         });
         res.on("error", reject);
         bumpIdle();
@@ -206,7 +210,7 @@ async function readyTunnel(host: string, out: Sender | null): Promise<{ localPor
 }
 
 /** Uma chamada completa ao backend (túnel pronto + POST + parse). Reutilizada pelo chat e pelas tarefas de fundo. */
-export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string }> {
+export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
   const tunnel = await readyTunnel(host, out);
   out?.send("backend:status", { host, state: "ready", detail: `túnel ativo · ${model}` });
   const t0 = Date.now();
@@ -217,7 +221,7 @@ export async function chatCompletion(host: string, model: BackendModel, messages
   const providerHdr = res.headers["x-provider"];
   const provider = typeof providerHdr === "string" && providerHdr !== "" ? providerHdr : model;
   log(`POST ${model} ${res.status} em ${Date.now() - t0} ms (${messages.length} msgs, ${streamed ? `sse ${res.streamed.length} chars` : `${res.body.length} bytes`}${resumed ? ", sessão retomada" : ""})`);
-  if (streamed) return { text: res.streamed, finishReason: res.finishReason ?? "stop", streamed: true, resumed, provider };
+  if (streamed) return { text: res.streamed, finishReason: res.finishReason ?? "stop", streamed: true, resumed, provider, usage: res.usage };
   let data: ChatCompletion = {};
   try { data = JSON.parse(res.body) as ChatCompletion; } catch { data = {}; }
   if (res.status < 200 || res.status >= 300) {
@@ -229,15 +233,45 @@ export async function chatCompletion(host: string, model: BackendModel, messages
   return { text: data.choices?.[0]?.message?.content ?? "", finishReason: data.choices?.[0]?.finish_reason ?? "stop", streamed: false, resumed, provider };
 }
 
+/** GET /v1/meu-bot/status pelo túnel: conta e limites do Claude na máquina. null se o backend não tem o endpoint. */
+export async function fetchAccountStatus(host: string): Promise<AccountStatus | null> {
+  let tunnel: { localPort: number; apiKey: string };
+  try { tunnel = await readyTunnel(host, null); } catch { return null; }
+  return new Promise((resolve) => {
+    const req = http.request({ host: "127.0.0.1", port: tunnel.localPort, path: "/v1/meu-bot/status", method: "GET", headers: { Authorization: `Bearer ${tunnel.apiKey}` }, timeout: 8000 }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"] };
+          const c = j.claude ?? {};
+          const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+          resolve({
+            email: typeof c.email === "string" ? c.email : null, assento: typeof c.assento === "string" ? c.assento : null,
+            sessionPct: num(c.sessionPct), weeklyPct: num(c.weeklyPct), sessionResets: num(c.sessionResets), weeklyResets: num(c.weeklyResets), updated: num(c.updated),
+            providers: Array.isArray(j.providers) ? j.providers.filter((p) => p && typeof p.name === "string").map((p) => ({ name: p.name, type: p.type === "openai" ? "openai" : "claude", available: p.available === true })) : [],
+          });
+        } catch { resolve(null); }
+      });
+      res.on("error", () => resolve(null));
+    });
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.on("error", () => resolve(null));
+    req.end();
+  });
+}
+
 /** Fila serial de tarefas de fundo (resumo, memória): nunca duas ao mesmo tempo no túnel. */
 let background: Promise<void> = Promise.resolve();
 function enqueue(task: () => Promise<void>): void {
   background = background.then(task).catch((err) => log(`background: ${err instanceof Error ? err.message : String(err)}`));
 }
 
-function sendContext(out: Sender, conv: Conversation, sent: number, mode: "full" | "summary" | "truncated"): void {
+function sendContext(out: Sender, conv: Conversation, sent: number, mode: "full" | "summary" | "truncated", tokens?: number): void {
   out.send("chat:context", {
     conversationId: conv.id, sent, total: conv.backendMessages.length, mode, summarizing: conv.summarizing,
+    ...(tokens === undefined ? {} : { tokens, budget: getContextBudget() }),
     ...(conv.summary === undefined ? {} : { summaryUpdatedAt: conv.summary.updatedAt }),
   });
 }
@@ -307,14 +341,15 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
   try {
     out.send("backend:status", { host, state: "connecting", detail: "verificando a VM…" });
     const plan = planContext(conv.backendMessages, conv.summary, getContextBudget());
-    sendContext(out, conv, plan.sentCount, plan.mode);
     const memory = memorySystemMessage();
     const outgoing = memory === undefined ? plan.outgoing : [memory, ...plan.outgoing];
+    sendContext(out, conv, plan.sentCount, plan.mode, outgoing.reduce((n, m) => n + estimateTokens(m.content), 0));
+    const t0 = Date.now();
     // Retomada de sessão no backend: diz quantas mensagens do começo ele já conhece.
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
     const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen) };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
-    const { text, finishReason, streamed, resumed, provider } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {
+    const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {
       partial += delta;
       if (!cancelled()) out.send("chat:delta", { conversationId, text: delta });
     }, headers, (notice) => {
@@ -329,7 +364,9 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     conv.serverSeen = conv.backendMessages.length;
     conv.lastResumed = resumed;
     if (!streamed) out.send("chat:delta", { conversationId, text });
-    out.send("chat:done", { conversationId, stopReason: finishReason, resumed });
+    out.send("chat:done", { conversationId, stopReason: finishReason, resumed, ms: Date.now() - t0, provider, ...(usage === undefined ? {} : { usage }) });
+    // Status line: conta e limites do Claude, atualizados depois de cada turno.
+    void fetchAccountStatus(host).then((status) => { if (!cancelled()) out.send("chat:account", { host, status }); });
     if (provider !== model) log(`provedor ${conversationId}: pedido ${model}, respondeu ${provider}`);
     out.send("backend:status", { host, state: provider === model ? "ready" : "degraded", detail: `túnel ativo · ${model}${provider !== model ? ` · respondeu ${provider}` : ""}${resumed ? " · sessão retomada ↻" : " · sessão nova"}` });
     // Com a sessão retomada o servidor já tem todo o contexto; resumir no cliente seria desperdício.

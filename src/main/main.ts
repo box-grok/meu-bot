@@ -4,7 +4,7 @@ import path from "node:path";
 import type { ExportFormat, SettingsUpdate, TabMenuAction } from "../shared/ipc";
 import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
-import { runBackendTurn } from "./backend";
+import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import {
   anyConversationBusy, archiveConversation, branchConversation, closeTab, createConversation, dropConversation,
@@ -66,6 +66,10 @@ function registerIpc(): void {
     return ctx === null ? null : { host: ctx.host, models: knownModels(ctx.host) };
   });
   ipcMain.handle("ui:open-picker", () => showPicker());
+  ipcMain.handle("backend:account", async (event) => {
+    const host = hostFromEvent(event)?.host;
+    return host === undefined ? null : fetchAccountStatus(host);
+  });
   ipcMain.handle("settings:get", (event) => settingsView(hostFromEvent(event)?.host));
 
   ipcMain.handle("settings:set", (event, update: unknown) => {

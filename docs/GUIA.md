@@ -744,3 +744,25 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   persistido mas nunca exibido; `toWire` concatena antes do conteúdo). A nota diz ao modelo novo que as
   respostas anteriores foram de outro modelo. Motivo: no teste do usuário o grok-4 disse "na mensagem
   anterior eu respondi errado" sobre uma resposta que era do Claude.
+
+## Status line e seção Fallback (15 out 2026)
+
+- Rodapé da conversa (`#ctx-line`) virou a status line no modelo do `statusline.sh` da box:
+  `agente | Ctx: 13% · 3.2k/24.0k | 6.3 s · 258 tok · 41 t/s | m6@… (Premium) | Sessão: 37% · 1h35m |
+  Semanal: 37% · 5d0h | há 12 min`. Cores: modelo amarelo, Ctx/Sessão ciano, conta verde, Semanal
+  magenta. Conta e limites só aparecem em modelos do Claude (não no grok-4). Puro em
+  `lib/status-line.ts` (`buildSegments`, `timeUntil`, `fmtK`, `thresholdToWarn`), testado.
+- Dados: `GET /v1/meu-bot/status` nos dois backends (`account-status.js`, cópia idêntica) lê
+  `~/.cache/claude-statusline/{profile,ratelimits}.json`, que o statusline.sh do Claude Code interativo
+  mantém na máquina; `updated` vira "há N min". O app busca no boot (`backend:account`) e depois de
+  cada turno (`chat:account`). Tokens de contexto: `chat:context.tokens/budget` (estimativa do que foi
+  enviado); turno: `chat:done.ms/usage` (usage vem do chunk final do SSE).
+- Aviso de sessão: ao cruzar 80, 90 e 95% da sessão de 5 h, um aviso amarelo na conversa ativa
+  ("Sessão do Claude em 92% … renova em 1h35m"), uma vez por limiar; zera quando a sessão renova.
+  Mesma regra do alerta do Hermes no WhatsApp da box, adaptada ao painel.
+- Configurações › Fallback: seletor "Primário nesta máquina" (Claude = agente, xAI = grok-4) que é só
+  uma cara amigável do "Modelo padrão nesta máquina" (os dois ficam sincronizados), mais a linha da
+  reserva calculada da corrente do backend (`providers` do status). O primário gasta o orçamento da
+  conta dele; a reserva não consome nada até ser acionada.
+- Na grokbot-1 o endpoint foi implantado e devolve a conta Premium e 37%/37% (cache de 01:14). No Mac
+  (`local`) só há `profile.json`: o statusline do Mac é o da biblioteca gerenciada e não grava limites.

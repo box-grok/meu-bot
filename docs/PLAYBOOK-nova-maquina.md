@@ -182,6 +182,8 @@ curl -sN -H "$H" -H "$J" -H 'X-Stream-Mode: live' localhost:8080/v1/chat/complet
 # retomada: duas chamadas com X-Conversation-Id: t1 e X-Conversation-Seen: 0 / 2 → a segunda vem com X-Session-Resumed: true
 # bypass: pedir ao modelo "agente" para criar um arquivo e ler de volta
 # grok-4: model grok-4 → resposta curta em ~3 s; cabeçalho X-Provider: grok-4
+# status line: GET /v1/meu-bot/status → {claude:{email,assento,sessionPct,…}, providers:[…]}; campos null se o
+#   ~/.cache/claude-statusline/ não existe (só o Claude Code interativo com o statusline.sh da box grava isso)
 ```
 
 Do Mac, pelo mesmo caminho do app:

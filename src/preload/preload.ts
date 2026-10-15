@@ -15,6 +15,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "ui:quick-submit",
   "ui:toggle-settings",
   "chat:notice",
+  "chat:account",
 ];
 
 const api: MeuBotApi = {
@@ -42,6 +43,7 @@ const api: MeuBotApi = {
   getSettings: (): Promise<SettingsView> => ipcRenderer.invoke("settings:get", {}),
   getWindowInfo: (): Promise<WindowInfo | null> => ipcRenderer.invoke("window:info", {}),
   openPicker: () => ipcRenderer.invoke("ui:open-picker", {}),
+  getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

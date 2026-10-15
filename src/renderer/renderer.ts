@@ -1,8 +1,9 @@
-import type { BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
+import { buildSegments, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, EXAMPLE_MESSAGE, FINAL_MESSAGE, SKIPPED_MESSAGE, initialOnboardState, ONBOARD_STEPS, pickFeedback, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -76,6 +77,8 @@ interface Tab {
   /** Nome dado pelo usuário; não é trocado pelo título automático. */
   customTitle: boolean;
   context: ContextEvent | null;
+  /** Último turno concluído (status line). */
+  lastTurn: { ms: number; completion: number } | null;
 }
 
 const tabs = new Map<string, Tab>();
@@ -151,10 +154,36 @@ function describeContext(c: ContextEvent): string {
   return c.summarizing ? `${base} · resumindo…` : base;
 }
 
+/** Conta e limites do Claude nesta máquina (GET /v1/meu-bot/status); null = backend sem o endpoint. */
+let account: AccountStatus | null = null;
+/** Último limiar de sessão já avisado nesta janela (80, 90 ou 95); zera quando a sessão renova. */
+let warnedThreshold = 0;
+
+/** Status line no rodapé da conversa, no modelo do statusline.sh da box: modelo | Ctx | conta | Sessão | Semanal. */
 function paintContext(tab: Tab | null): void {
-  if (tab === null || tab.context === null || tab.context.total === 0) { ctxLine.hidden = true; return; }
+  if (tab === null) { ctxLine.hidden = true; return; }
+  const ctx = tab.context !== null && tab.context.tokens !== undefined && tab.context.budget !== undefined ? { tokens: tab.context.tokens, budget: tab.context.budget } : null;
+  const segs = buildSegments({ model: tab.model, ctx, turn: tab.lastTurn, account });
   ctxLine.hidden = false;
-  ctxLine.textContent = describeContext(tab.context);
+  ctxLine.replaceChildren(...segs.flatMap((s, i) => {
+    const span = el("span", `seg seg-${s.kind}`, s.text);
+    if (s.title !== undefined) span.title = s.title;
+    return i === 0 ? [span] : [el("span", "seg-sep", "|"), span];
+  }));
+  if (tab.context !== null && tab.context.total > 0) ctxLine.title = describeContext(tab.context);
+}
+
+/** Mesma regra do alerta do Hermes no WhatsApp: avisa ao cruzar 80, 90 e 95% da sessão de 5 h. */
+function checkSessionThreshold(): void {
+  const pct = account?.sessionPct ?? null;
+  if (pct !== null && pct < 80) warnedThreshold = 0;
+  const t = thresholdToWarn(pct, warnedThreshold);
+  if (t === null || account === null) return;
+  warnedThreshold = t;
+  const tab = active();
+  if (tab === null) return;
+  const renew = account.sessionResets !== null ? ` Renova em ${timeUntil(account.sessionResets)}.` : "";
+  addNotice(tab, `⚠ Sessão do Claude em ${Math.round(pct ?? 0)}% do limite de 5 h.${renew}`, "warn");
 }
 
 function setBusy(tab: Tab, value: boolean): void {
@@ -637,7 +666,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   messagesEl.addEventListener("scroll", () => { tab.followBottom = nearBottom(messagesEl); }, { passive: true });
   const tab: Tab = {
     id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, followBottom: true, currentAssistant: null,
-    pendingText: "", renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null,
+    pendingText: "", renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
   };
   tabs.set(conversationId, tab);
   tabsEl.appendChild(tabEl);
@@ -900,6 +929,7 @@ window.meuBot.on("chat:delta", ({ conversationId, text }) => {
 window.meuBot.on("chat:done", (done: DoneEvent) => {
   const tab = tabs.get(done.conversationId);
   if (tab === undefined) return;
+  if (done.ms !== undefined) { tab.lastTurn = { ms: done.ms, completion: done.usage?.completion ?? 0 }; if (tab.id === activeId) paintContext(tab); }
   if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); flushRender(tab); }
   if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
   if (done.stopReason === "cancelled") addNotice(tab, "Resposta interrompida.", "warn");
@@ -1092,9 +1122,33 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
 newBtn.addEventListener("click", () => { void newTab(); });
+// ---- Seção Fallback: o primário é o modelo padrão da máquina; a reserva vem da corrente do backend.
+const primarySelect = $<HTMLSelectElement>("primary-provider");
+const fallbackOrderEl = $<HTMLParagraphElement>("fallback-order");
+const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
+function syncPrimaryFromModel(): void {
+  const m = backendModelSelect.value;
+  primarySelect.value = m === "grok-4" ? "xai" : m === "agente" ? "claude" : "other";
+}
+function paintFallbackOrder(): void {
+  const primary = backendModelSelect.value;
+  const chain = account?.providers ?? [];
+  const reserve = chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
+  const known = chain.some((p) => p.name === primary);
+  fallbackOrderEl.textContent = chain.length === 0
+    ? "O backend desta máquina ainda não informa a corrente de provedores."
+    : !known
+      ? `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`
+      : reserve.length === 0 ? `Primário: ${primary}. Sem reserva disponível nesta máquina.` : `Primário: ${primary}. Reserva: ${reserve.join(" → ")}, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.`;
+}
+primarySelect.addEventListener("change", () => { const m = PRIMARY_OF[primarySelect.value]; if (m !== undefined) backendModelSelect.value = m; paintFallbackOrder(); });
+backendModelSelect.addEventListener("change", () => { syncPrimaryFromModel(); paintFallbackOrder(); });
+
 /** Abre as Configurações (botão ou Cmd+,): sempre com as seções recolhidas e a memória recém-lida. */
 function openSettings(): void {
   if (dialog.open) return;
+  syncPrimaryFromModel();
+  paintFallbackOrder();
   settingsError.hidden = true;
   for (const g of settingsGroups) g.open = false;
   void window.meuBot.getMemory().then(applyMemory);
@@ -1103,6 +1157,13 @@ function openSettings(): void {
 settingsBtn.addEventListener("click", () => openSettings());
 window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
 window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) addNotice(tab, text, "warn"); });
+window.meuBot.on("chat:account", ({ host, status }) => {
+  if (host !== windowHost) return;
+  account = status;
+  paintContext(active());
+  paintFallbackOrder();
+  checkSessionThreshold();
+});
 cancelBtn.addEventListener("click", () => dialog.close());
 dialog.addEventListener("close", () => onboardEvent("settings-closed"));
 form.addEventListener("submit", (ev) => {
@@ -1148,6 +1209,7 @@ void (async () => {
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
+  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); });
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
   renderSidebar();

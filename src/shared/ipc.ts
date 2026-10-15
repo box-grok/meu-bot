@@ -53,6 +53,23 @@ export interface ContextEvent {
   mode: "full" | "summary" | "truncated";
   summarizing: boolean;
   summaryUpdatedAt?: string;
+  /** Tokens estimados do que foi enviado e o orçamento (para a status line). */
+  tokens?: number;
+  budget?: number;
+}
+
+/** Conta e limites do Claude Code na máquina (cache do statusline.sh), via GET /v1/meu-bot/status. */
+export interface AccountStatus {
+  email: string | null;
+  assento: string | null;
+  sessionPct: number | null;
+  weeklyPct: number | null;
+  /** Epoch em segundos. */
+  sessionResets: number | null;
+  weeklyResets: number | null;
+  updated: number | null;
+  /** Corrente de provedores do backend, em ordem de prioridade. */
+  providers: { name: string; type: "claude" | "openai"; available: boolean }[];
 }
 
 export interface MemoryView {
@@ -181,6 +198,11 @@ export interface DoneEvent {
   /** O backend retomou a sessão do Claude Code desta conversa. */
   resumed?: boolean;
   refusal?: { category: string | null; explanation: string };
+  /** Duração do turno e tokens informados pelo backend (status line). */
+  ms?: number;
+  usage?: { prompt: number; completion: number };
+  /** Quem respondeu de fato (X-Provider). */
+  provider?: string;
 }
 
 export type ErrorKind = "backend" | "unknown";
@@ -239,6 +261,8 @@ export interface MainEvents {
   "ui:toggle-settings": Record<string, never>;
   /** Aviso do backend no meio de um turno (ex.: caiu para outro provedor). */
   "chat:notice": { conversationId: string; text: string };
+  /** Conta e limites do Claude na máquina, depois de cada turno. */
+  "chat:account": { host: string; status: AccountStatus | null };
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -279,6 +303,8 @@ export interface MeuBotApi {
   getWindowInfo(): Promise<WindowInfo | null>;
   /** Abre o seletor de máquinas (nova janela em outra máquina). */
   openPicker(): Promise<void>;
+  /** Conta e limites do Claude na máquina desta janela (null se o backend não tem o endpoint). */
+  getAccountStatus(): Promise<AccountStatus | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;
