@@ -47,7 +47,10 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .btn-ok { border-color: var(--ok); color: var(--ok); }
 .btn-bad { border-color: var(--bad); color: var(--bad); }
 
-.tabs { display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); background: var(--card); overflow-x: auto; }
+.tabs-row { display: flex; align-items: stretch; background: var(--card); min-width: 0; }
+.tabs-menu-cell { display: flex; align-items: center; padding: 0 2px 0 8px; border-bottom: 1px solid var(--line); flex: none; }
+.tabs-menu { width: 26px; height: 26px; padding: 0; font-size: 14px; line-height: 1; border-radius: 7px; }
+.tabs { flex: 1; min-width: 0; display: flex; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid var(--line); background: var(--card); overflow-x: auto; }
 .tab {
   display: flex; align-items: center; gap: 6px; max-width: 240px; padding: 6px 8px 6px 12px;
   border: 1px solid var(--line); border-bottom: none; border-radius: 10px 10px 0 0; background: var(--bg);

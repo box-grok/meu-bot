@@ -34,7 +34,6 @@
   </div>
   <header class="topbar">
     <div class="drag-region"></div>
-    <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
     <div class="spacer"></div>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
@@ -62,7 +61,11 @@
       </div>
     </aside>
     <div class="content">
-      <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+      <!-- ☰ pequeno, ao lado das abas: esta linha nunca some (a barra de cima sim, com Cmd+Shift+B). -->
+      <div class="tabs-row">
+        <div class="tabs-menu-cell"><button id="btn-sidebar" class="btn btn-ghost tabs-menu" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button></div>
+        <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
+      </div>
       <main id="panels" class="panels">
         <!-- Onboarding: mascotes em volta do cartão (entrada) e a piscada verde ao concluir (saída). -->
         <div id="ob-mascots" class="ob-mascots" hidden aria-hidden="true"></div>
