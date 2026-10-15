@@ -75,7 +75,7 @@ async function runRelief(host: string): Promise<void> {
       send({ kind: "log", text: line });
       if (line.startsWith("antes:")) { before = parseStats(line); if (before !== null) send({ kind: "stats", which: "before", ...before }); }
       if (line.startsWith("encerrados:")) send({ kind: "step", step: "clean", state: "done", text: line.replace(/^encerrados:\s*/, "") });
-      if (line.startsWith("tailscaled:")) send({ kind: "step", step: "tailscale", state: "doing", text: "reiniciando o tailscaled pelo PM2" });
+      if (line.startsWith("tailscaled:")) send({ kind: "step", step: "tailscale", state: /não achei/.test(line) ? "fail" : "doing", text: line.replace(/^tailscaled:\s*/, "") });
       if (line.startsWith("depois:")) { after = parseStats(line); if (after !== null) send({ kind: "stats", which: "after", ...after }); }
     }
   });
