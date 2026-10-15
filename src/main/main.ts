@@ -82,6 +82,7 @@ function registerIpc(): void {
       ...(typeof u.memoryEveryTurns === "number" ? { memoryEveryTurns: u.memoryEveryTurns } : {}),
       ...(typeof u.quickEntryEnabled === "boolean" ? { quickEntryEnabled: u.quickEntryEnabled } : {}),
       ...(typeof u.quickEntryShortcut === "string" ? { quickEntryShortcut: u.quickEntryShortcut } : {}),
+      ...(u.onboarding === "done" || u.onboarding === "skipped" || u.onboarding === "pending" ? { onboarding: u.onboarding } : {}),
     };
     // Porta nova atinge todos os túneis, o que cortaria uma resposta em andamento; recusa até ficar ocioso.
     const portChanges = clean.backendPort !== undefined && clean.backendPort !== getBackendPort();
@@ -273,7 +274,14 @@ app.whenReady().then(() => {
   loadMemory();
   loadConversations();
   registerIpc();
-  installAppMenu({ openPicker: () => showPicker() });
+  installAppMenu({
+    openPicker: () => showPicker(),
+    toggleSettings: () => {
+      // Só as janelas de máquina têm Configurações; seletor e alívio ignoram.
+      const win = BrowserWindow.getFocusedWindow() ?? lastFocusedWindow();
+      if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:toggle-settings", {});
+    },
+  });
   initPicker();
   initRelief();
   setQuickEntryStatusProvider(quickEntryStatus);

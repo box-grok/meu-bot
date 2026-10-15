@@ -23,6 +23,8 @@ export interface SettingsView {
   quickEntryEnabled: boolean;
   quickEntryShortcut: string;
   quickEntryStatus: QuickEntryStatus;
+  /** Onboarding guiado: "pending" até concluir ("done") ou pular ("skipped"). */
+  onboarding: "pending" | "done" | "skipped";
 }
 
 export interface SettingsUpdate {
@@ -37,6 +39,8 @@ export interface SettingsUpdate {
   memoryEveryTurns?: number;
   quickEntryEnabled?: boolean;
   quickEntryShortcut?: string;
+  /** O renderer marca concluído/pulado; "pending" é a ação "Rever onboarding" da paleta. */
+  onboarding?: "pending" | "done" | "skipped";
 }
 
 export interface ContextEvent {
@@ -221,6 +225,8 @@ export interface MainEvents {
   "memory:changed": MemoryView;
   /** Texto vindo da janela de entrada rápida; responder com quickAck. */
   "ui:quick-submit": { correlationId: string; text: string };
+  /** Menu meu-bot › Configurações… (Cmd+,): abre, ou fecha se já está aberto. */
+  "ui:toggle-settings": Record<string, never>;
 }
 
 export type MainEventChannel = keyof MainEvents;

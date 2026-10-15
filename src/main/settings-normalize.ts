@@ -35,7 +35,13 @@ export interface SettingsFile {
   windowBounds: Record<string, WindowBounds>;
   /** Máquinas que a sondagem reconheceu como computador do Grok Bot; vale mesmo quando inacessíveis. */
   podHosts: string[];
+  /** Onboarding guiado da primeira vez: pendente até a pessoa concluir ou pular. */
+  onboarding: Onboarding;
 }
+
+export type Onboarding = "pending" | "done" | "skipped";
+const ONBOARDINGS: readonly Onboarding[] = ["pending", "done", "skipped"];
+export const isOnboarding = (v: unknown): v is Onboarding => typeof v === "string" && (ONBOARDINGS as readonly string[]).includes(v);
 
 export const DEFAULT_SHORTCUT = "CommandOrControl+Shift+Space";
 export const DEFAULT_MODEL: BackendModel = "agente";
@@ -64,7 +70,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [],
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], onboarding: "pending",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -95,6 +101,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     quickEntryEnabled: typeof p["quickEntryEnabled"] === "boolean" ? p["quickEntryEnabled"] : true,
     quickEntryShortcut: typeof p["quickEntryShortcut"] === "string" && parseAccelerator(p["quickEntryShortcut"]) !== null ? p["quickEntryShortcut"] : DEFAULT_SHORTCUT,
     windowBounds: bounds,
+    onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
   };
 }

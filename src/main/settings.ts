@@ -4,7 +4,7 @@ import path from "node:path";
 import type { BackendModel, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 import {
-  defaultSettings, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isPort, isTheme, isValidHost, normalizeSettings,
+  defaultSettings, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeSettings,
   type SettingsFile, type WindowBounds,
 } from "./settings-normalize";
 
@@ -78,6 +78,7 @@ export const settingsView = (host?: string): SettingsView => ({
   quickEntryEnabled: file.quickEntryEnabled,
   quickEntryShortcut: file.quickEntryShortcut,
   quickEntryStatus: quickEntryStatusProvider(),
+  onboarding: file.onboarding,
 });
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */
@@ -116,6 +117,10 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     const acc = parseAccelerator(update.quickEntryShortcut);
     if (acc === null) throw new Error("Atalho inválido: use pelo menos um modificador (Cmd, Ctrl, Alt, Shift) e uma tecla.");
     file.quickEntryShortcut = acc;
+  }
+  if (update.onboarding !== undefined) {
+    if (!isOnboarding(update.onboarding)) throw new Error("Estado de onboarding inválido.");
+    file.onboarding = update.onboarding;
   }
   persist();
   return settingsView(host);

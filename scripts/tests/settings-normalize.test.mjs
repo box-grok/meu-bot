@@ -22,3 +22,10 @@ test("defaults, modelo por máquina e bounds validados", () => {
   assert.deepEqual(Object.keys(s.windowBounds), ["colima"]);
   assert.deepEqual(normalizeSettings({}), defaultSettings());
 });
+
+test("onboarding: pendente por padrão, inválido vira pendente, done/skipped ficam", () => {
+  assert.equal(normalizeSettings({}).onboarding, "pending");
+  assert.equal(normalizeSettings({ onboarding: "x" }).onboarding, "pending");
+  assert.equal(normalizeSettings({ onboarding: "done" }).onboarding, "done");
+  assert.equal(normalizeSettings({ onboarding: "skipped" }).onboarding, "skipped");
+});

@@ -652,3 +652,39 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   chamava `paintPalette()`, que reconstrói a lista com `replaceChildren` (zera a rolagem) e dava
   `scrollIntoView`. Agora `selectPalette(i, scroll)` só troca `aria-selected`; a lista é reconstruída só
   ao abrir e ao digitar, e o `scrollIntoView` fica para o teclado.
+- Configurações em quatro seções recolhíveis (`<details class="group">`): Conexão, Aparência e avisos,
+  Memória e contexto, Entrada rápida. Acordeão: abrir uma recolhe as outras; nada é lembrado:
+  toda vez que as Configurações abrem, as quatro começam recolhidas.
+
+## Onboarding guiado (15 out 2026)
+
+- Quando a janela abre sem nenhuma conversa na máquina e `settings.onboarding === "pending"`, em vez
+  de criar a conversa automática aparece um cartão flutuante no alto da área de conversa
+  (`#onboard`). Cinco passos, cada um é uma ação da pessoa que o renderer detecta: abrir a lista (☰/Cmd+B),
+  abrir e fechar a paleta (⌘K, Esc), abrir e fechar as Configurações, criar a conversa (Novo/Cmd+T) e
+  enviar a mensagem de exemplo, que já nasce na caixa de texto (`EXAMPLE_MESSAGE`).
+- "Pular" em qualquer passo marca `skipped` e cria a conversa normal. Enviar a mensagem marca `done`.
+  A flag vive em `settings.json` (`settings-normalize.ts`, `settings:set` só aceita done/skipped), nunca
+  em `conversations.json`, porque não é dado de conversa.
+- Feedback de cada passo é sorteado em `lib/onboarding.ts` (`pickFeedback`): 40 % frase curta, 30 % ícone,
+  30 % nada; nunca repete o anterior e dois "nada" seguidos viram ícone. Máquina de estados pura
+  (`advanceOnboard`), testada em `onboarding.test.mjs`.
+- Para ver de novo: `"onboarding": "pending"` no `settings.json` e abrir uma máquina sem conversas.
+- Abertura (`#intro`, `playIntro`): só na primeira vez (`localStorage.introSeen`; respeita
+  prefers-reduced-motion). "meu-bot" discreto no centro → pill da máquina se materializa abaixo →
+  backend e túnel lado a lado, mais rápido → o túnel acende verde com um pulso curto e segura. Espera o
+  túnel real ficar pronto por no máximo 500 ms; se não, mostra o estado real (amarelo) e some. ~1,5 s,
+  2 s no pior caso. Roda antes do onboarding, cobrindo a janela enquanto as abas voltam.
+- Onboarding reduzido a 4 passos: criar a conversa pelo botão Novo já envia a primeira mensagem sozinho
+  (`sendText(tab, EXAMPLE_MESSAGE)`) e o cartão vira a transição final (`FINAL_MESSAGE`, 3,2 s).
+  Cmd+K agora fecha a paleta também (o `stopPropagation` do input engolia o atalho global); Cmd+, abre e
+  fecha as Configurações (`openSettings`, `dialog.open`).
+- Paleta: "Rever onboarding e abertura" limpa `introSeen`, grava `onboarding: pending` (o `settings:set`
+  passou a aceitar "pending") e inicia o onboarding na janela atual, mesmo com conversas. A abertura
+  toca na próxima janela que abrir.
+- Cmd+, saiu do keydown do renderer (não funcionou para o usuário) e virou item de menu nativo
+  "meu-bot › Configurações…" (`menu.ts`, acelerador tratado pelo Electron) → `ui:toggle-settings` na
+  janela de máquina focada → abre ou fecha o `<dialog>`. Seletor e alívio ignoram.
+- Onboarding, passo "Primeira conversa": o botão Novo recebe `.attention` (pulso na cor de destaque)
+  até ser clicado; sem movimento, vira um anel fixo.
+- Atalho de conversa nova: Cmd+T virou Cmd+N (Cmd+Shift+N continua sendo a janela nova, pelo menu).

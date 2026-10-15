@@ -53,7 +53,7 @@ O selo no topo mostra o estado: "buscando chave…", "abrindo túnel…", "túne
 
 ## Abas
 
-"Nova conversa" (Cmd+T) abre uma aba nova e mantém as anteriores vivas, cada uma com o próprio
+"Novo" (Cmd+N) abre uma aba nova e mantém as anteriores vivas, cada uma com o próprio
 histórico. Feche com o × ou Cmd+W. Uma aba em segundo plano mostra um ponto azul quando chega resposta.
 As conversas ficam salvas em `conversations.json` no userData e voltam quando o app reabre;
 fechar uma aba apaga aquela conversa. Dois cliques no título da aba renomeiam; o nome fica salvo. Arraste as abas pra reordenar; a ordem também fica salva.

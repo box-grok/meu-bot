@@ -11,6 +11,14 @@
   <link rel="stylesheet" href="vendor/hljs-github-dark.css" media="(prefers-color-scheme: dark)" />
 </head>
 <body>
+  <div id="intro" class="intro" hidden aria-hidden="true">
+    <div id="intro-brand" class="intro-brand">meu-bot</div>
+    <span id="intro-host" class="pill pill-host intro-item"></span>
+    <div class="intro-row">
+      <span id="intro-key" class="pill pill-on intro-item"></span>
+      <span id="intro-tunnel" class="pill pill-neutral intro-item"></span>
+    </div>
+  </div>
   <header class="topbar">
     <div class="drag-region"></div>
     <h1>meu-bot</h1>
@@ -20,7 +28,7 @@
     <div class="spacer"></div>
     <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
-    <button id="btn-new" class="btn btn-ghost" type="button" title="Nova conversa (Cmd+T)">Novo</button>
+    <button id="btn-new" class="btn btn-ghost" type="button" title="Nova conversa (Cmd+N)">Novo</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
   </header>
 
@@ -34,7 +42,18 @@
     </aside>
     <div class="content">
       <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
-      <main id="panels" class="panels"></main>
+      <main id="panels" class="panels">
+        <section id="onboard" class="onboard" hidden aria-live="polite">
+          <div class="onboard-top">
+            <span id="ob-count" class="onboard-count"></span>
+            <span class="spacer"></span>
+            <button type="button" id="ob-skip" class="btn btn-ghost btn-small">Pular</button>
+          </div>
+          <p id="ob-feedback" class="onboard-feedback" hidden></p>
+          <h3 id="ob-title"></h3>
+          <p id="ob-text"></p>
+        </section>
+      </main>
     </div>
   </div>
 
@@ -55,65 +74,80 @@
       <h2>Configurações</h2>
       <p class="hint">Esta janela é da máquina mostrada no topo. Para outra máquina: Arquivo › Nova janela em outra máquina (Cmd+Shift+N).</p>
       <p id="last-host" class="hint"></p>
-      <label>
-        Modelo padrão nesta máquina (conversas novas)
-        <select id="backend-model">
-          <option value="claudecode">claudecode · chat puro, rápido</option>
-          <option value="agente">agente · bypass (ferramentas sem pedir permissão, pode levar minutos)</option>
-          <option value="rene-dm">rene-dm · agente René com ferramentas, só na grokbot-1</option>
-          <option value="rene">rene · agente René com MCP completo, só na grokbot-1</option>
-        </select>
-      </label>
-      <p class="hint">Cada conversa pode trocar o próprio modelo no seletor ao lado da caixa de texto.</p>
-      <label>
-        Porta do backend na VM
-        <input id="backend-port" type="number" min="1" max="65535" placeholder="8080" />
-      </label>
-      <p class="hint">A chave do backend é lida da própria VM na hora de conectar. Nada a configurar aqui.</p>
-      <div class="row">
+
+      <details class="group" data-group="conexao">
+        <summary>Conexão <span class="sum-hint">modelo padrão e porta do backend</span></summary>
         <label>
-          Tamanho da fonte
-          <input id="font-size" type="number" min="12" max="20" />
-        </label>
-        <label>
-          Tema
-          <select id="theme">
-            <option value="system">Sistema</option>
-            <option value="light">Claro</option>
-            <option value="dark">Escuro</option>
+          Modelo padrão nesta máquina (conversas novas)
+          <select id="backend-model">
+            <option value="claudecode">claudecode · chat puro, rápido</option>
+            <option value="agente">agente · bypass (ferramentas sem pedir permissão, pode levar minutos)</option>
+            <option value="rene-dm">rene-dm · agente René com ferramentas, só na grokbot-1</option>
+            <option value="rene">rene · agente René com MCP completo, só na grokbot-1</option>
           </select>
         </label>
-      </div>
-      <label class="check"><input id="notifications" type="checkbox" /> Avisar com notificação quando uma resposta terminar em segundo plano</label>
-      <div class="row">
+        <p class="hint">Cada conversa pode trocar o próprio modelo no seletor ao lado da caixa de texto.</p>
         <label>
-          Orçamento de contexto (tokens)
-          <input id="context-budget" type="number" min="4000" max="200000" step="1000" />
+          Porta do backend na VM
+          <input id="backend-port" type="number" min="1" max="65535" placeholder="8080" />
+        </label>
+        <p class="hint">A chave do backend é lida da própria VM na hora de conectar. Nada a configurar aqui.</p>
+      </details>
+
+      <details class="group" data-group="aparencia">
+        <summary>Aparência e avisos <span class="sum-hint">fonte, tema, notificações</span></summary>
+        <div class="row">
+          <label>
+            Tamanho da fonte
+            <input id="font-size" type="number" min="12" max="20" />
+          </label>
+          <label>
+            Tema
+            <select id="theme">
+              <option value="system">Sistema</option>
+              <option value="light">Claro</option>
+              <option value="dark">Escuro</option>
+            </select>
+          </label>
+        </div>
+        <label class="check"><input id="notifications" type="checkbox" /> Avisar com notificação quando uma resposta terminar em segundo plano</label>
+      </details>
+
+      <details class="group" data-group="memoria">
+        <summary>Memória e contexto <span class="sum-hint">o que vai em toda mensagem</span></summary>
+        <div class="row">
+          <label>
+            Orçamento de contexto (tokens)
+            <input id="context-budget" type="number" min="4000" max="200000" step="1000" />
+          </label>
+          <label>
+            Extrair memória a cada N turnos (0 desliga)
+            <input id="memory-every" type="number" min="0" max="100" />
+          </label>
+        </div>
+        <p class="hint">Fatos permanentes enviados em toda mensagem. O app também preenche sozinho a cada N turnos.</p>
+        <label>
+          Perfil do usuário <span id="perfil-count" class="count"></span>
+          <textarea id="memory-perfil" rows="3" placeholder="- Nome, papel, preferências de resposta…"></textarea>
         </label>
         <label>
-          Extrair memória a cada N turnos (0 desliga)
-          <input id="memory-every" type="number" min="0" max="100" />
+          Notas <span id="notas-count" class="count"></span>
+          <textarea id="memory-notas" rows="5" placeholder="- Convenções, ambiente, decisões permanentes…"></textarea>
         </label>
-      </div>
-      <h3>Entrada rápida</h3>
-      <label class="check"><input id="quick-enabled" type="checkbox" /> Janela flutuante por atalho global</label>
-      <div class="row">
-        <label>
-          Atalho <span id="quick-status" class="count"></span>
-          <input id="quick-shortcut" type="text" autocomplete="off" placeholder="CommandOrControl+Shift+Space" />
-        </label>
-      </div>
-      <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
-      <h3>Memória</h3>
-      <p class="hint">Fatos permanentes enviados em toda mensagem. O app também preenche sozinho a cada N turnos.</p>
-      <label>
-        Perfil do usuário <span id="perfil-count" class="count"></span>
-        <textarea id="memory-perfil" rows="3" placeholder="- Nome, papel, preferências de resposta…"></textarea>
-      </label>
-      <label>
-        Notas <span id="notas-count" class="count"></span>
-        <textarea id="memory-notas" rows="5" placeholder="- Convenções, ambiente, decisões permanentes…"></textarea>
-      </label>
+      </details>
+
+      <details class="group" data-group="entrada-rapida">
+        <summary>Entrada rápida <span class="sum-hint">janela flutuante por atalho global</span></summary>
+        <label class="check"><input id="quick-enabled" type="checkbox" /> Janela flutuante por atalho global</label>
+        <div class="row">
+          <label>
+            Atalho <span id="quick-status" class="count"></span>
+            <input id="quick-shortcut" type="text" autocomplete="off" placeholder="CommandOrControl+Shift+Space" />
+          </label>
+        </div>
+        <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
+      </details>
+
       <p id="settings-error" class="error" hidden></p>
       <div class="dialog-actions">
         <div class="spacer"></div>

@@ -162,3 +162,46 @@ dialog select, dialog input { font: inherit; padding: 7px 9px; border-radius: 8p
 .hint { margin: 0; font-size: 12px; color: var(--muted); }
 .error { margin: 0; font-size: 12px; color: var(--bad); }
 .dialog-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+
+/* Configurações em seções recolhíveis; estado lembrado por seção (localStorage). */
+dialog details.group { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: var(--bg); }
+dialog details.group[open] { padding-bottom: 12px; }
+dialog details.group > summary { cursor: pointer; padding: 10px 0; font-weight: 600; font-size: 14px; list-style: none; display: flex; align-items: baseline; gap: 8px; }
+dialog details.group > summary::-webkit-details-marker { display: none; }
+dialog details.group > summary::before { content: "›"; display: inline-block; width: 12px; color: var(--muted); transition: transform .15s; transform: translateY(-1px); }
+dialog details.group[open] > summary::before { transform: rotate(90deg) translateX(-1px); }
+dialog details.group .sum-hint { font-weight: 400; font-size: 12px; color: var(--muted); }
+dialog details.group > :not(summary) { margin-top: 8px; }
+dialog details.group > label, dialog details.group > .row, dialog details.group > p { display: flex; }
+dialog details.group > p { margin: 8px 0 0; }
+dialog details.group textarea, dialog details.group input, dialog details.group select { background: var(--card); }
+/* Onboarding guiado: cartão flutuante no alto da área de conversa; a interface continua usável. */
+.onboard { position: absolute; left: 50%; top: calc(50% + 24px); transform: translate(-50%, -50%); width: min(480px, calc(100% - 32px)); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.18); z-index: 5; display: flex; flex-direction: column; gap: 6px; }
+.onboard[hidden] { display: none; }
+.onboard-top { display: flex; align-items: center; gap: 8px; }
+.onboard-count { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.onboard h3 { margin: 0; font-size: 15px; }
+.onboard p { margin: 0; font-size: 13px; color: var(--fg); }
+.onboard-feedback { font-size: 13px; color: var(--ok); }
+.onboard-feedback.icon { font-size: 18px; line-height: 1; }
+.onboard-feedback[hidden] { display: none; }
+.btn-small { padding: 4px 10px; font-size: 12px; }
+/* Abertura da primeira vez: cobre a janela e se desfaz em ~1,5 s. */
+.intro { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .22s ease; }
+.intro[hidden] { display: none; }
+.intro.out { opacity: 0; pointer-events: none; }
+.intro-brand { font-size: 20px; font-weight: 600; letter-spacing: .02em; color: var(--muted); opacity: 0; transition: opacity .3s ease; }
+.intro-brand.in { opacity: .85; }
+.intro-row { display: flex; gap: 8px; }
+.intro .intro-item { font-size: 12px; padding: 3px 10px; opacity: 0; transform: translateY(6px) scale(.98); transition: opacity .32s ease, transform .32s ease, color .2s, border-color .2s; }
+.intro .intro-item.in { opacity: 1; transform: none; }
+.intro .intro-item.lit { color: var(--ok); border-color: var(--ok); animation: intro-pulse .5s ease-out; }
+@keyframes intro-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok) 55%, transparent); } 100% { box-shadow: 0 0 0 16px color-mix(in srgb, var(--ok) 0%, transparent); } }
+/* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
+.btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
+@keyframes attention-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+  70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .btn.attention { animation: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); } }

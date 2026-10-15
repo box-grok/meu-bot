@@ -3,6 +3,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
+import { advanceOnboard, EXAMPLE_MESSAGE, FINAL_MESSAGE, initialOnboardState, ONBOARD_STEPS, pickFeedback, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -437,6 +438,7 @@ function paintSidebar(): void {
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
+  if (!hidden) onboardEvent("sidebar");
   try { localStorage.setItem("sidebarShown", hidden ? "0" : "1"); } catch { /* opcional */ }
 }
 
@@ -455,9 +457,14 @@ function buildPaletteItems(): PaletteItem[] {
   const items: PaletteItem[] = [];
   const add = (item: PaletteItem, run: () => void | Promise<void>): void => { items.push(item); paletteActions.set(item.id, run); };
   const cur = active();
-  add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+T" }, async () => { await newTab(); });
+  add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
+  add({ id: "a:onboard", kind: "action", label: "Rever onboarding e abertura", detail: "começa agora nesta janela" }, async () => {
+    try { localStorage.removeItem("introSeen"); } catch { /* opcional */ }
+    try { applySettings(await window.meuBot.setSettings({ onboarding: "pending" })); } catch { /* segue mesmo assim */ }
+    startOnboarding();
+  });
   add({ id: "a:quick", kind: "action", label: "Entrada rápida: mostrar", detail: settings?.quickEntryShortcut ?? "" }, () => window.meuBot.toggleQuickEntry());
   if (cur !== null) {
     add({ id: "a:rename", kind: "action", label: "Renomear conversa atual" }, () => startRename(cur));
@@ -529,11 +536,13 @@ function openPalette(): void {
   paletteEl.hidden = false;
   paintPalette();
   paletteInput.focus();
+  onboardEvent("palette-open");
 }
 
 function closePalette(): void {
   paletteEl.hidden = true;
   if (!inputEl.disabled) inputEl.focus();
+  onboardEvent("palette-close");
 }
 
 const titleOf = (c: StoredConversationView): string =>
@@ -680,6 +689,7 @@ async function newTab(): Promise<Tab> {
   index.set(conversationId, { id: conversationId, model, host, messages: [], createdAt: now, updatedAt: now, order: index.size, archived: false, openAsTab: true });
   const tab = buildTab(conversationId, model, host);
   activate(conversationId);
+  onboardEvent("new-tab");
   return tab;
 }
 
@@ -690,7 +700,12 @@ async function restoreTabs(): Promise<void> {
   for (const c of saved) if (c.messages.length === 0) void window.meuBot.deleteConversation(c.id);
   for (const c of saved) if (c.messages.length > 0) index.set(c.id, c);
   const asTabs = saved.filter((c) => c.messages.length > 0 && c.openAsTab && !c.archived);
-  if (asTabs.length === 0) { await newTab(); return; }
+  if (asTabs.length === 0) {
+    // Primeira vez, sem nenhuma conversa nesta máquina: onboarding guiado no lugar da conversa automática.
+    if (settings?.onboarding === "pending" && !saved.some((c) => c.messages.length > 0)) { startOnboarding(); return; }
+    await newTab();
+    return;
+  }
   for (const c of asTabs) buildTab(c.id, c.model, c.host, c);
   const latest = [...asTabs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   activate(latest?.id ?? asTabs[asTabs.length - 1]!.id);
@@ -713,6 +728,113 @@ function applySettings(view: SettingsView): void {
   document.documentElement.dataset["theme"] = view.theme;
   syncComposer();
 }
+
+// ---- Abertura (só na primeira vez): o topo se materializa em etapas e o túnel acende como clímax.
+const introEl = $<HTMLElement>("intro");
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+async function playIntro(): Promise<void> {
+  let seen = false;
+  try { seen = localStorage.getItem("introSeen") === "1"; } catch { /* opcional */ }
+  if (seen || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { introEl.remove(); return; }
+  try { localStorage.setItem("introSeen", "1"); } catch { /* opcional */ }
+  const brand = $<HTMLElement>("intro-brand");
+  const host = $<HTMLElement>("intro-host");
+  const key = $<HTMLElement>("intro-key");
+  const tunnel = $<HTMLElement>("intro-tunnel");
+  host.textContent = `máquina: ${hostLabel(windowHost)}`;
+  key.textContent = `backend · ${settings?.backendModelForHost ?? "agente"}`;
+  tunnel.textContent = "túnel";
+  introEl.hidden = false;
+  await wait(30); brand.classList.add("in");            // meu-bot no centro, discreto
+  await wait(300); host.classList.add("in");            // a máquina se materializa abaixo
+  await wait(350); key.classList.add("in");             // backend e túnel, lado a lado, mais rápido
+  await wait(120); tunnel.classList.add("in");
+  // Clímax: espera o túnel real ficar pronto, mas por pouco tempo; espera longa vira tédio.
+  const t0 = Date.now();
+  while (hostStatus.get(windowHost)?.state !== "ready" && Date.now() - t0 < 500) await wait(40);
+  const st = hostStatus.get(windowHost);
+  const ready = st?.state === "ready";
+  tunnel.textContent = ready ? "túnel ativo" : (st?.detail ?? "conectando…");
+  tunnel.className = `pill intro-item in ${ready ? "lit" : "pill-neutral"}`;
+  await wait(ready ? 450 : 300);
+  introEl.classList.add("out");
+  await wait(220);
+  introEl.remove();
+}
+
+// ---- Onboarding guiado (primeira vez, sem conversas): a pessoa faz cada ação, o app só orienta.
+const onboardEl = $<HTMLElement>("onboard");
+const obCount = $<HTMLSpanElement>("ob-count");
+const obFeedback = $<HTMLParagraphElement>("ob-feedback");
+const obTitle = $<HTMLHeadingElement>("ob-title");
+const obText = $<HTMLParagraphElement>("ob-text");
+const obSkip = $<HTMLButtonElement>("ob-skip");
+let onboard: OnboardState | null = null;
+let lastFeedback: Feedback | undefined;
+let feedbackTimer: number | null = null;
+
+function paintOnboard(feedback?: Feedback): void {
+  const step = onboard === null ? undefined : ONBOARD_STEPS[onboard.step];
+  // O botão do passo atual pulsa em azul (e pode ser clicado); os outros ficam normais.
+  const targets: Record<string, HTMLButtonElement> = { sidebar: sidebarBtn, palette: paletteBtn, settings: settingsBtn, new: newBtn };
+  for (const [id, btn] of Object.entries(targets)) btn.classList.toggle("attention", step?.id === id);
+  if (onboard === null || step === undefined) { onboardEl.hidden = true; return; }
+  onboardEl.hidden = false;
+  obCount.textContent = `${onboard.step + 1} de ${ONBOARD_STEPS.length}`;
+  obTitle.textContent = step.title;
+  obText.textContent = step.text;
+  if (feedbackTimer !== null) { clearTimeout(feedbackTimer); feedbackTimer = null; }
+  if (feedback === undefined || feedback.kind === "none") { obFeedback.hidden = true; return; }
+  obFeedback.hidden = false;
+  obFeedback.className = `onboard-feedback ${feedback.kind}`;
+  obFeedback.textContent = feedback.text;
+  feedbackTimer = window.setTimeout(() => { obFeedback.hidden = true; feedbackTimer = null; }, 2200);
+}
+
+function startOnboarding(): void {
+  onboard = initialOnboardState();
+  lastFeedback = undefined;
+  paintOnboard();
+}
+
+async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
+  onboard = null;
+  if (how === "done") {
+    // Transição final: o cartão fica mais alguns segundos com a mensagem de encerramento.
+    onboardEl.hidden = false;
+    obCount.textContent = "pronto";
+    obSkip.hidden = true;
+    obFeedback.hidden = true;
+    obTitle.textContent = FINAL_MESSAGE.title;
+    obText.textContent = FINAL_MESSAGE.text;
+    window.setTimeout(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }, 3200);
+  } else {
+    paintOnboard();
+  }
+  try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
+  if (how === "skipped" && tabs.size === 0) await newTab();
+}
+
+/** O renderer avisa o que aconteceu; só o evento do passo atual avança. */
+function onboardEvent(ev: OnboardEvent): void {
+  if (onboard === null) return;
+  const r = advanceOnboard(onboard, ev);
+  onboard = r.state;
+  if (r.finished) {
+    // Último passo concluído: a primeira mensagem vai sozinha e o cartão vira a transição final.
+    const tab = active();
+    if (tab !== null && !tab.busy) void sendText(tab, EXAMPLE_MESSAGE);
+    void finishOnboarding("done");
+    return;
+  }
+  if (!r.advanced) return;
+  const fb = pickFeedback(Math.random, lastFeedback);
+  lastFeedback = fb;
+  paintOnboard(fb);
+}
+
+obSkip.addEventListener("click", () => { void finishOnboarding("skipped"); });
 
 /** Rótulo amigável da máquina (o seletor usa o mesmo, em lib/probe-text). */
 const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
@@ -843,6 +965,11 @@ panelsEl.addEventListener("click", (ev) => {
 sidebarBtn.addEventListener("click", () => toggleSidebar());
 sidebarSearch.addEventListener("input", () => renderSidebar());
 sidebarArchived.addEventListener("change", () => renderSidebar());
+// Seções das Configurações: todas recolhidas sempre que o painel abre; abrir uma recolhe as outras. Nada é lembrado.
+const settingsGroups = [...document.querySelectorAll<HTMLDetailsElement>("details.group")];
+for (const g of settingsGroups) {
+  g.addEventListener("toggle", () => { if (g.open) for (const other of settingsGroups) if (other !== g) other.open = false; });
+}
 paletteBtn.addEventListener("click", () => openPalette());
 paletteInput.addEventListener("input", () => { paletteSelected = 0; paintPalette(); });
 paletteInput.addEventListener("keydown", (ev) => {
@@ -851,6 +978,8 @@ paletteInput.addEventListener("keydown", (ev) => {
   else if (ev.key === "ArrowUp") { ev.preventDefault(); selectPalette(count === 0 ? 0 : (paletteSelected - 1 + count) % count, true); }
   else if (ev.key === "Enter") { ev.preventDefault(); const sel = paletteList.querySelector<HTMLElement>("li[aria-selected=true]"); if (sel?.dataset["id"] !== undefined) void runPalette(sel.dataset["id"]); }
   else if (ev.key === "Escape") { ev.preventDefault(); closePalette(); }
+  // Cmd+K de novo fecha. O handler global não recebe a tecla: o stopPropagation abaixo é para as setas/Enter não vazarem.
+  else if ((ev.metaKey || ev.ctrlKey) && ev.key === "k") { ev.preventDefault(); closePalette(); }
   ev.stopPropagation();
 });
 paletteEl.addEventListener("click", (ev) => { if (ev.target === paletteEl) closePalette(); });
@@ -950,17 +1079,23 @@ document.addEventListener("keydown", (ev) => {
   const mod = ev.metaKey || ev.ctrlKey;
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
-  if (mod && ev.key === "t") { ev.preventDefault(); void newTab(); }
+  if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
 newBtn.addEventListener("click", () => { void newTab(); });
-settingsBtn.addEventListener("click", () => {
+/** Abre as Configurações (botão ou Cmd+,): sempre com as seções recolhidas e a memória recém-lida. */
+function openSettings(): void {
+  if (dialog.open) return;
   settingsError.hidden = true;
+  for (const g of settingsGroups) g.open = false;
   void window.meuBot.getMemory().then(applyMemory);
   dialog.showModal();
-});
+}
+settingsBtn.addEventListener("click", () => openSettings());
+window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
 cancelBtn.addEventListener("click", () => dialog.close());
+dialog.addEventListener("close", () => onboardEvent("settings-closed"));
 form.addEventListener("submit", (ev) => {
   ev.preventDefault();
   settingsError.hidden = true;
@@ -1004,9 +1139,11 @@ void (async () => {
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
+  const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
   renderSidebar();
   tabsReady = true;
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);
+  await intro;
 })();
