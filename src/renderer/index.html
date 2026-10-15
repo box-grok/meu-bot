@@ -35,10 +35,6 @@
   <header class="topbar">
     <div class="drag-region"></div>
     <button id="btn-sidebar" class="btn btn-ghost" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
-    <h1>meu-bot</h1>
-    <span id="host-pill" class="pill pill-host">máquina: …</span>
-    <span id="key-pill" class="pill pill-on">…</span>
-    <span id="status-pill" class="pill pill-neutral" hidden></span>
     <div class="spacer"></div>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-new" class="btn btn-ghost" type="button" title="Nova conversa (Cmd+N)">Novo</button>
@@ -57,6 +53,13 @@
       <div id="sidebar-list" class="sidebar-list"></div>
       <div class="sidebar-foot">
         <label class="switch" title="Mostrar também as conversas arquivadas"><input id="sidebar-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivadas</span></label>
+      </div>
+      <!-- Quem/onde/como desta janela: antes ficava na barra; aqui não disputa espaço com as ações. -->
+      <div class="sidebar-status">
+        <h1>meu-bot</h1>
+        <span id="host-pill" class="pill pill-host">máquina: …</span>
+        <span id="key-pill" class="pill pill-on">…</span>
+        <span id="status-pill" class="pill pill-neutral" hidden></span>
       </div>
     </aside>
     <div class="content">

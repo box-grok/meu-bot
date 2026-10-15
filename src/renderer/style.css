@@ -31,7 +31,6 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 }
 .drag-region { position: absolute; inset: 0; -webkit-app-region: drag; }
 .topbar > *:not(.drag-region) { position: relative; -webkit-app-region: no-drag; }
-.topbar h1 { font-size: 15px; margin: 0; }
 .topbar { border-top: 3px solid var(--host-accent, var(--accent)); }
 .pill-host { color: var(--host-accent, var(--accent)); border-color: var(--host-accent, var(--accent)); font-weight: 600; }
 .spacer { flex: 1; }
@@ -308,6 +307,10 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 
 /* Rodapé da lista: interruptor discreto das arquivadas (saiu do topo para a lista ficar limpa). */
 .sidebar-foot { padding: 8px 10px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
+/* Base da lista: nome do app e as pílulas de máquina, backend e túnel, empilhadas. */
+.sidebar-status { padding: 10px 12px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sidebar-status h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.sidebar-status .pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); cursor: pointer; user-select: none; }
 .switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .switch .track { width: 28px; height: 16px; border-radius: 999px; background: var(--line); position: relative; transition: background .15s; flex: none; }
