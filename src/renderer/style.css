@@ -309,6 +309,7 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .sidebar-foot { padding: 8px 10px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; }
 /* Base da lista: nome do app e as pílulas de máquina, backend e túnel, empilhadas. */
 .sidebar-status { padding: 10px 12px 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.sidebar-status[hidden] { display: none; }
 .sidebar-status h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
 .sidebar-status .pill { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .switch { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); cursor: pointer; user-select: none; }

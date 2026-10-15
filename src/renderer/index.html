@@ -54,8 +54,8 @@
       <div class="sidebar-foot">
         <label class="switch" title="Mostrar também as conversas arquivadas"><input id="sidebar-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivadas</span></label>
       </div>
-      <!-- Quem/onde/como desta janela: antes ficava na barra; aqui não disputa espaço com as ações. -->
-      <div class="sidebar-status">
+      <!-- Quem/onde/como desta janela. Recolhido por padrão: verde não precisa aparecer; só abre quando o túnel está em erro ou instável. -->
+      <div id="sidebar-status" class="sidebar-status" hidden>
         <h1>meu-bot</h1>
         <span id="host-pill" class="pill pill-host">máquina: …</span>
         <span id="key-pill" class="pill pill-on">…</span>

@@ -28,6 +28,7 @@ const settingsBtn = $<HTMLButtonElement>("btn-settings");
 const keyPill = $<HTMLSpanElement>("key-pill");
 const hostPill = $<HTMLSpanElement>("host-pill");
 const statusPill = $<HTMLSpanElement>("status-pill");
+const sidebarStatus = $<HTMLElement>("sidebar-status");
 const modelSelect = $<HTMLSelectElement>("model-select");
 const dialog = $<HTMLDialogElement>("settings-dialog");
 const form = $<HTMLFormElement>("settings-form");
@@ -328,10 +329,12 @@ const hostStatus = new Map<string, BackendStatusEvent>();
 function paintStatus(host: string | null): void {
   paintMini();
   const st = host === null ? undefined : hostStatus.get(host);
-  if (st === undefined) { statusPill.hidden = true; return; }
+  if (st === undefined) { statusPill.hidden = true; sidebarStatus.hidden = true; return; }
   statusPill.hidden = false;
   statusPill.textContent = st.state === "degraded" ? `túnel instável: ${st.detail}` : st.detail;
   statusPill.className = `pill ${st.state === "ready" ? "pill-on" : st.state === "error" ? "pill-off" : "pill-neutral"}`;
+  // Verde não precisa aparecer: o bloco na base da lista só abre quando há algo a resolver.
+  sidebarStatus.hidden = !(st.state === "error" || st.state === "degraded");
 }
 
 /** Tira a aba da tela; a conversa continua na lista lateral. */
