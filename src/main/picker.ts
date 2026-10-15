@@ -53,7 +53,11 @@ function probeCached(host: string): Promise<HostProbe> {
 
 const hostsList = (): string[] => [LOCAL_HOST, ...listSshHosts()];
 
+/** A chegada animada do seletor toca uma vez por sessão do app; depois a lista aparece seca. */
+let arrivalShown = false;
+
 function initPayload(): PickerInit {
+  const arrival = !arrivalShown; arrivalShown = true;
   const hosts = hostsList();
   const wanted = preselectOverride ?? getLastHost() ?? LOCAL_HOST;
   return {
@@ -66,6 +70,7 @@ function initPayload(): PickerInit {
     openDirect: getOpenDirect(),
     onboardingDone: isOnboardingDone(),
     error: lastError,
+    arrival,
   };
 }
 

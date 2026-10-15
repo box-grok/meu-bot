@@ -28,6 +28,34 @@ const needsCheck = new Set<string>();
 const logEl = $<HTMLPreElement>("pk-log");
 const noteEl = $<HTMLParagraphElement>("pk-note");
 const openBtn = $<HTMLButtonElement>("pk-open");
+const glowEl = $<HTMLDivElement>("pk-glow");
+const logoEl = document.getElementById("pk-logo") as unknown as SVGSVGElement;
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let firstInit = true;
+
+/**
+ * Chegada (shot "particle-news-splash"), só na primeira abertura da sessão: o logo nasce grande no centro da janela e
+ * encolhe subindo até a casa dele no cabeçalho (FLIP: medimos a casa e transformamos a partir dela), enquanto o brilho de
+ * cor acende e título, filtro, máquinas e rodapé chegam em sequência. Sem chegada: só tira o `pre` e tudo aparece de vez.
+ */
+function arrive(animate: boolean): void {
+  const body = document.body;
+  if (!animate || reducedMotion) { body.classList.remove("pre"); return; }
+  const r = logoEl.getBoundingClientRect();
+  logoEl.style.setProperty("--dx", `${window.innerWidth / 2 - (r.left + r.width / 2)}px`);
+  logoEl.style.setProperty("--dy", `${window.innerHeight * 0.42 - (r.top + r.height / 2)}px`);
+  body.classList.add("arriving"); body.classList.remove("pre");
+  // Dois frames: o navegador precisa pintar o logo no centro antes de transicioná-lo para casa.
+  requestAnimationFrame(() => requestAnimationFrame(() => { body.classList.remove("arriving"); body.classList.add("arrive"); }));
+  setTimeout(() => body.classList.remove("arrive"), 900); // linhas criadas depois (sincronizar ssh) não repetem a entrada
+}
+
+/** Brilho atrás do cabeçalho: a cor da máquina em foco e a de uma vizinha. */
+function paintGlow(primary: string): void {
+  glowEl.style.setProperty("--g1", hostAccent(primary));
+  glowEl.style.setProperty("--g2", hostAccent(hosts.find((h) => h !== primary) ?? primary));
+  glowEl.classList.add("on");
+}
 const cancelBtn = $<HTMLButtonElement>("pk-cancel");
 const syncBtn = $<HTMLButtonElement>("pk-sync");
 const directCheck = $<HTMLInputElement>("pk-direct");
@@ -83,6 +111,7 @@ function buildRows(): void {
     li.append(dot, name, badge, relieveBtn, shortcutBtn);
     li.addEventListener("click", () => select(host));
     li.addEventListener("dblclick", () => { select(host); void open(); });
+    li.style.setProperty("--i", String(rows.size)); // ordem, para a chegada escalonar as linhas
     listEl.appendChild(li);
     rows.set(host, { host, li, badgeEl: badge, shortcutBtn, relieveBtn });
     paintShortcut(host);
@@ -200,6 +229,7 @@ function paintDetail(): void {
 
 function select(host: string | null): void {
   selected = host;
+  if (host !== null) glowEl.style.setProperty("--g1", hostAccent(host)); // o brilho acompanha a máquina em foco
   for (const r of rows.values()) r.li.classList.toggle("selected", r.host === host);
   if (host !== null) rows.get(host)?.li.scrollIntoView({ block: "nearest" });
   logEl.hidden = true;
@@ -294,6 +324,8 @@ async function syncSsh(): Promise<void> {
 
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
+  if (firstInit) { firstInit = false; arrive(payload.arrival); }
+  paintGlow(keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect);
   openHosts = new Set(payload.open);
   shortcuts = new Map(payload.shortcuts.map((s) => [s.host, s.emoji]));
   reliefShortcuts = new Set(payload.reliefShortcuts);

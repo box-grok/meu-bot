@@ -6,9 +6,14 @@
   <title>meu-bot · escolher máquina</title>
   <link rel="stylesheet" href="picker.css" />
 </head>
-<body>
+<body class="pre">
+  <div id="pk-glow" class="glow" aria-hidden="true"></div>
   <header class="head">
-    <h1>Abrir o meu-bot em…</h1>
+    <div class="head-title">
+      <!-- A bolha do ícone do app. Na primeira abertura da sessão nasce grande no centro e vem parar aqui. -->
+      <svg id="pk-logo" class="logo" viewBox="140 260 760 520" aria-hidden="true"><defs><linearGradient id="pk-bubble" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7aa2ff"/><stop offset="1" stop-color="#2f6fed"/></linearGradient></defs><path d="M232 300h560a72 72 0 0 1 72 72v300a72 72 0 0 1-72 72H492l-150 120V744H232a72 72 0 0 1-72-72V372a72 72 0 0 1 72-72z" fill="url(#pk-bubble)"/><path d="M330 420l90 76-90 76" fill="none" stroke="#0d1322" stroke-width="44" stroke-linecap="round" stroke-linejoin="round"/><rect x="470" y="548" width="200" height="44" rx="22" fill="#0d1322"/></svg>
+      <h1>Abrir o meu-bot em…</h1>
+    </div>
     <p class="sub">Cada máquina é uma janela. ↑↓ escolhe · Enter abre · Esc fecha</p>
     <p id="pk-error" class="error" hidden></p>
   </header>

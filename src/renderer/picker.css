@@ -6,12 +6,38 @@
 @media (prefers-color-scheme: dark) {
   :root { --bg: #111317; --card: #1a1d23; --fg: #e6e8ee; --muted: #9aa3b2; --line: #2a2f3a; --accent: #6b8cff; --accent-fg: #0b0e14; --ok: #3ccf6c; --bad: #ff6b6b; --warn: #e2a33a; }
 }
+/* Cores do brilho registradas para transicionarem (trocar a máquina selecionada muda a cor suavemente). */
+@property --g1 { syntax: "<color>"; inherits: false; initial-value: transparent; }
+@property --g2 { syntax: "<color>"; inherits: false; initial-value: transparent; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
-body { font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); display: flex; flex-direction: column; -webkit-app-region: drag; }
+body { position: relative; z-index: 0; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); display: flex; flex-direction: column; -webkit-app-region: drag; }
 button, input, ul, section, pre { -webkit-app-region: no-drag; }
 .head { padding: 44px 20px 8px; }
+.head-title { display: flex; align-items: center; gap: 10px; }
+.logo { width: 26px; height: 18px; flex: none; transform-origin: center; }
 h1 { margin: 0; font-size: 18px; }
+/* Brilho de cor atrás do cabeçalho (shot "particle-news-splash"): a cor da máquina selecionada e a de uma vizinha, borradas,
+   derivando devagar. Baixa opacidade: ambiente, não protagonista. z-index -1 num body com stacking context = atrás do conteúdo. */
+.glow { position: fixed; left: -20%; right: -20%; top: -25%; height: 62%; z-index: -1; pointer-events: none; opacity: 0; filter: blur(48px);
+  background: radial-gradient(42% 58% at 28% 40%, var(--g1), transparent 72%), radial-gradient(36% 52% at 72% 34%, var(--g2), transparent 72%);
+  transition: opacity .8s ease, --g1 .6s ease, --g2 .6s ease; animation: glow-drift 9s ease-in-out infinite alternate; }
+.glow.on { opacity: .26; }
+@media (prefers-color-scheme: dark) { .glow.on { opacity: .34; } }
+@keyframes glow-drift { from { transform: translate(-3%, -2%) rotate(-2deg); } to { transform: translate(3%, 2%) rotate(2deg); } }
+/* Chegada, só na primeira abertura da sessão: `pre` esconde tudo até o init medir; `arriving` põe o logo grande no centro da
+   janela (FLIP: --dx/--dy medidos da casa dele no cabeçalho); `arrive` manda o logo para casa com ease-out e faz título, filtro,
+   máquinas (35 ms cada) e rodapé chegarem em sequência. ~600 ms. Nas aberturas seguintes nada disto roda. */
+body.pre > :not(.glow) { opacity: 0; }
+body.arriving .head-title > h1, body.arriving .sub, body.arriving #pk-filter, body.arriving .list, body.arriving .foot, body.arriving .detail, body.arriving .note { opacity: 0; }
+body.arriving .logo { transform: translate(var(--dx, 0px), var(--dy, 0px)) scale(2.9); }
+body.arrive .logo { transition: transform .48s cubic-bezier(.2, .8, .2, 1); }
+body.arrive .head-title > h1, body.arrive .sub, body.arrive #pk-filter, body.arrive .foot, body.arrive .detail, body.arrive .note { animation: arrive-fade .3s ease-out both; }
+body.arrive .head-title > h1 { animation-delay: .1s; } body.arrive .sub { animation-delay: .16s; } body.arrive #pk-filter { animation-delay: .22s; } body.arrive .foot { animation-delay: .44s; }
+body.arrive .row { animation: arrive-row .26s ease-out both; animation-delay: calc(.26s + var(--i, 0) * 35ms); }
+@keyframes arrive-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes arrive-row { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
 .sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .error { margin: 8px 0 0; color: var(--bad); font-size: 12px; }
 #pk-filter { margin: 8px 20px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; }

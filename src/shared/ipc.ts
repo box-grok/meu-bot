@@ -147,6 +147,8 @@ export interface PickerInit {
   reliefShortcuts: string[];
   /** Caixinha "abrir direto": marcada = sem a abertura animada. */
   openDirect: boolean;
+  /** Primeira abertura do seletor nesta sessão do app: toca a chegada animada (logo que nasce grande e vai para o cabeçalho). */
+  arrival: boolean;
   /** Caixinha "onboarding feito": marcada = respeita; desmarcada = força o onboarding na próxima janela. */
   onboardingDone: boolean;
   error: string | null;
