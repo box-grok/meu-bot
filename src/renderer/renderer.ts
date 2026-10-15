@@ -1157,9 +1157,12 @@ async function playIntro(): Promise<void> {
   tunnel.className = `pill intro-item in ${ready ? "lit" : "pill-neutral"}`;
   if (ready) mascots.forEach(({ el }, i) => setTimeout(() => el.classList.add("cheer"), i * 40)); // pulinho em cascata: o clímax é o túnel
   await wait(ready ? 450 : 300);
+  // Portal: o nome escala e some, e o app por baixo assenta (scale 1.03 → 1) enquanto a camada se dissolve.
   introEl.classList.add("out");
-  await wait(220);
+  document.body.classList.add("app-enter");
+  await wait(480);
   introEl.remove();
+  document.body.classList.remove("app-enter");
 }
 
 // ---- Onboarding guiado (primeira vez, sem conversas): a pessoa faz cada ação, o app só orienta.

@@ -189,9 +189,16 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 /* Abertura da primeira vez: cobre a janela e se desfaz em ~1,5 s. */
 .intro { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; transition: opacity .22s ease; }
 .intro[hidden] { display: none; }
-.intro.out { opacity: 0; pointer-events: none; }
-.intro-brand { font-size: 20px; font-weight: 600; letter-spacing: .02em; color: var(--muted); opacity: 0; transition: opacity .3s ease; }
-.intro-brand.in { opacity: .85; }
+/* Saída como portal (shot "clay-splash"): o nome escala rápido e some, os mascotes se afastam, a camada se dissolve um
+   tiquinho depois — e o app, que já estava por baixo, assenta de 1.03 → 1 (body.app-enter). Sensação de profundidade e entrada. */
+.intro.out { opacity: 0; pointer-events: none; transition: opacity .3s ease .08s; }
+.intro-brand { font-size: 20px; font-weight: 600; letter-spacing: .02em; color: var(--muted); opacity: 0; transform: scale(1.06); transition: opacity .3s ease, transform .42s cubic-bezier(.2, .8, .2, 1); }
+.intro-brand.in { opacity: .85; transform: none; }             /* entrada: aparece e assenta, mesmo vocabulário do app ao revelar */
+.intro.out .intro-brand { opacity: 0; transform: scale(2.6); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .3s ease; }
+.intro.out .mascot { opacity: 0; transform: scale(1.25); transition: transform .38s cubic-bezier(.55, 0, 1, .45), opacity .28s ease; }
+.intro.out .intro-item { opacity: 0; transition: opacity .2s ease; }
+body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes app-settle { from { transform: scale(1.03); opacity: .55; } to { transform: none; opacity: 1; } }
 .intro-row { display: flex; gap: 8px; }
 .intro .intro-item { font-size: 12px; padding: 3px 10px; opacity: 0; transform: translateY(6px) scale(.98); transition: opacity .32s ease, transform .32s ease, color .2s, border-color .2s; }
 .intro .intro-item.in { opacity: 1; transform: none; }
