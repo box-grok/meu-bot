@@ -10,6 +10,7 @@ import type { HostProbe, PickerInit } from "../shared/ipc";
 import { approveTailscaleCheck, installBackend, probeHost } from "./hostProbe";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
+import { showWhatsappPair } from "./whatsappPair";
 import { openGrokbotReset } from "./grokbot";
 import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialState } from "./secrets";
 import { disableSshCheck } from "./tailscale";
@@ -125,6 +126,12 @@ export function initPicker(): void {
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createReliefShortcut(host); else removeReliefShortcut(host);
     return { has: hasReliefShortcut(host) };
+  });
+  ipcMain.handle("picker:pair-whatsapp", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    if (host === LOCAL_HOST) throw new Error("O Hermes roda numa máquina remota, não neste Mac.");
+    showWhatsappPair(host);
   });
   ipcMain.handle("picker:open-direct", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");

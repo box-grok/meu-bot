@@ -13,6 +13,7 @@ const detailEl = $<HTMLElement>("pk-detail");
 const statusEl = $<HTMLParagraphElement>("pk-status");
 const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
+const waPairBtn = $<HTMLButtonElement>("pk-wa-pair");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
@@ -170,6 +171,8 @@ function paintDetail(): void {
   installBtn.hidden = true;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
+  // O Hermes roda numa máquina remota; se ela não tiver Hermes, a janela de pareamento diz isso.
+  waPairBtn.hidden = selected === "local";
   // Pod inacessível: o alívio não alcança; o que resolve é o reset pelo app do Grok Bot.
   grokbotResetBtn.hidden = !(isPod && t !== undefined && t.kind === "bad");
   tailscaleBtn.hidden = !needsCheck.has(selected);
@@ -319,6 +322,10 @@ window.picker.on("picker:install-progress", (p) => {
 filterEl.addEventListener("input", () => applyFilter());
 installBtn.addEventListener("click", () => { void install(); });
 reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut(); });
+waPairBtn.addEventListener("click", () => {
+  if (selected === null) return;
+  void window.picker.pairWhatsapp(selected).catch((err: unknown) => showError("Parear WhatsApp", err));
+});
 tailscaleBtn.addEventListener("click", () => {
   if (selected === null) return;
   const host = selected;

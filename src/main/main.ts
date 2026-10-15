@@ -19,6 +19,7 @@ import { installAppMenu } from "./menu";
 import { initPicker, knownModels, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
 import { initRelief, showRelief } from "./relief";
+import { initWhatsappPair } from "./whatsappPair";
 import { listSshHosts } from "./sshConfig";
 import { broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost, sendWhenLoaded } from "./windows";
 
@@ -297,6 +298,7 @@ app.whenReady().then(() => {
   });
   initPicker();
   initRelief();
+  initWhatsappPair();
   setQuickEntryStatusProvider(quickEntryStatus);
   initQuickEntry({
     mainWindow: () => lastFocusedWindow() ?? openMainWindow(getLastFocusedHost() ?? getLastHost() ?? LOCAL_HOST, "quick"),

@@ -14,8 +14,8 @@ const paths = await packager({
   icon: "assets/icon.icns",
   appCategoryType: "public.app-category.productivity",
   prune: true,
-  // config/ (modelo de hosts ssh) e scripts/alivio/ (script enviado ao pod) vão em Resources/.
-  extraResource: ["backend-colima", "config", "scripts/alivio"],
+  // config/ (modelo de hosts ssh) e scripts/alivio/ e scripts/whatsapp/ (scripts enviados ao pod) vão em Resources/.
+  extraResource: ["backend-colima", "config", "scripts/alivio", "scripts/whatsapp"],
   ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/config($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/],
 });
 console.log("Empacotado em:", paths.join(", "));

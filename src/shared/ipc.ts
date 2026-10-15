@@ -188,6 +188,18 @@ export type ReliefEvent =
   | { kind: "log"; text: string }
   | { kind: "done"; ok: boolean; text: string };
 
+/** Eventos da janela de pareamento do WhatsApp do Hermes (parear-hermes.sh por SSH). */
+export type WhatsappPairEvent =
+  | { kind: "init"; host: string }
+  | { kind: "step"; step: "connect" | "checar" | "parar" | "sessao" | "qr" | "religar"; state: "doing" | "done" | "fail"; text: string }
+  /** QR novo (o WhatsApp troca a cada ~20 s), SVG em base64 já validado. */
+  | { kind: "qr"; svgBase64: string }
+  /** O celular leu o QR; falta o gateway religar e confirmar. */
+  | { kind: "paired"; who: string }
+  /** A ponte já estava conectada: nada foi tocado. */
+  | { kind: "already"; text: string }
+  | { kind: "done"; ok: boolean; text: string };
+
 /** API exposta ao seletor de máquinas como window.picker. */
 export interface PickerApi {
   list(): Promise<PickerInit>;
@@ -202,6 +214,8 @@ export interface PickerApi {
   relieve(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o botão "aliviar <host>.app" na área de trabalho. */
   setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
+  /** Abre a janela que pareia de novo o WhatsApp do Hermes da máquina (QR ao vivo). */
+  pairWhatsapp(host: string): Promise<void>;
   /** Caixinha "abrir direto" do rodapé. */
   setOpenDirect(value: boolean): Promise<void>;
   /** Caixinha "onboarding feito" do rodapé. */

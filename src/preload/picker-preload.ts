@@ -12,6 +12,7 @@ const api: PickerApi = {
   syncSsh: (): Promise<SshSyncResult> => ipcRenderer.invoke("picker:sync-ssh", {}),
   relieve: (host: string): Promise<void> => ipcRenderer.invoke("picker:relieve", { host }),
   setReliefShortcut: (host: string, create: boolean): Promise<{ has: boolean }> => ipcRenderer.invoke("picker:relief-shortcut", { host, create }),
+  pairWhatsapp: (host: string): Promise<void> => ipcRenderer.invoke("picker:pair-whatsapp", { host }),
   setOpenDirect: (value: boolean): Promise<void> => ipcRenderer.invoke("picker:open-direct", { value }),
   setOnboardingDone: (value: boolean): Promise<void> => ipcRenderer.invoke("picker:onboarding-done", { value }),
   openGrokbotReset: (): Promise<boolean> => ipcRenderer.invoke("picker:open-grokbot-reset", {}),

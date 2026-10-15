@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'" />
+  <title>meu-bot · parear WhatsApp</title>
+  <link rel="stylesheet" href="whatsapp-pair.css" />
+</head>
+<body>
+  <header class="head">
+    <div class="badge">📱</div>
+    <div>
+      <h1 id="wp-title">Parear o WhatsApp do Hermes</h1>
+      <p id="wp-sub" class="sub">o agente volta a responder depois que o número dele ler o QR</p>
+    </div>
+  </header>
+  <section class="qr-box">
+    <div id="wp-qr" class="qr"><span id="wp-qr-wait" class="qr-wait">preparando o QR…</span><img id="wp-qr-img" alt="QR code para parear o WhatsApp" hidden /></div>
+    <p id="wp-qr-hint" class="qr-hint">No celular do número do agente: WhatsApp › ⋮ ou Ajustes › <strong>Dispositivos conectados</strong> › <strong>Conectar dispositivo</strong>, e aponte para o QR. Ele se renova sozinho a cada ~20 s.</p>
+  </section>
+  <ol class="steps">
+    <li id="st-connect"><span class="mark"></span><span class="label">Conectar por SSH</span><span class="detail"></span></li>
+    <li id="st-parar"><span class="mark"></span><span class="label">Pausar o gateway</span><span class="detail"></span></li>
+    <li id="st-qr"><span class="mark"></span><span class="label">Ler o QR com o celular</span><span class="detail"></span></li>
+    <li id="st-religar"><span class="mark"></span><span class="label">Religar e confirmar</span><span class="detail"></span></li>
+  </ol>
+  <p id="wp-result" class="result" hidden></p>
+  <footer class="foot">
+    <button type="button" id="wp-force" class="btn btn-ghost" hidden title="Desconecta a sessão atual e gera um QR novo">Parear mesmo assim</button>
+    <button type="button" id="wp-retry" class="btn btn-ghost" hidden>Gerar outro QR</button>
+    <button type="button" id="wp-close" class="btn btn-ghost">Fechar</button>
+  </footer>
+  <script type="module" src="whatsapp-pair.js"></script>
+</body>
+</html>
