@@ -812,3 +812,25 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   errado, validate não salva, `checkPeriod` 1 min a 168 h, padrão 12 h.
 - Testes: `tailscale-policy.test.mjs` (política real do usuário como fixture, iscas em comentários e
   grants, várias regras, inserção) e `tailscale-api.test.mjs` (servidor falso: token, ETag, 412, 400).
+
+## WhatsApp do Hermes: estado e pareamento por QR no app (15 out 2026)
+
+- Motivo: o WhatsApp do gateway do Hermes na grokbot-1 estava deslogado ("❌ Logged out" no
+  `~/.hermes/whatsapp/bridge.log`; o gateway tenta reconectar a cada 60/120/240 s e falha). Antes,
+  parear era `hermes whatsapp` no terminal da máquina. Referência: `~/Desktop/qr-hermes-padrao`
+  (painel Next.js que roda o bridge em `--pair-only --pair-json`).
+- `src/main/whatsapp.ts`: tudo por ssh com `bash -s` (script no stdin, sem quoting). Estado:
+  `~/.hermes/whatsapp` existe? + `GET 127.0.0.1:3000/health` do bridge (`status: "connected"` = conectado; não é o "open" do Baileys) +
+  `me.id` do `session/creds.json` + "Logged out" nas últimas linhas do bridge.log. Pareamento:
+  `pm2 stop hermes-gateway` (senão o bridge do gateway disputa a sessão), opcional `mv session
+  session.loggedout-<ts>` (igual ao Hermes), `node bridge.js --pair-only --pair-json --session
+  ~/.hermes/whatsapp/session --mode bot` (eventos JSON por linha: started/qr/connected/error), e
+  `pm2 start hermes-gateway` no fim, inclusive em cancelamento (trap HUP/TERM/INT) e timeout de 5 min.
+  O QR vira PNG no main com o pacote `qrcode` e vai como data URL.
+- Renderer: linha `#wa-line` no topo da lista de conversas (só aparece onde há Hermes com WhatsApp),
+  verde "conectado · +55 (16) 99229-4486" ou vermelha "desconectado · clique para parear"; modal
+  `#wa-dialog` com QR, instrução, log curto, "Gerar QR" / "Reparear (apaga a sessão)" / Cancelar.
+  Paleta: "WhatsApp do Hermes: estado e pareamento por QR". Depois do pareamento, re-consulta em 6 s.
+- Pegadinhas: sessão deslogada precisa ser movida antes do QR (senão o bridge só repete "Logged
+  out"); nunca rodar dois bridges na mesma sessão (conflito 440 derruba a sessão nova); o script
+  remoto sempre sobe o gateway de volta.

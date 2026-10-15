@@ -1,4 +1,4 @@
-import type { AccountStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -496,6 +496,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
+  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp do Hermes: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes", keywords: ["whatsapp", "qr", "parear", "hermes"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem o WhatsApp do Hermes (~/.hermes/whatsapp).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
     const tab = active();
@@ -775,6 +776,88 @@ function applySettings(view: SettingsView): void {
   document.documentElement.dataset["theme"] = view.theme;
   syncComposer();
 }
+
+// ---- WhatsApp do Hermes: linha no topo da lista de conversas e modal de pareamento por QR.
+const waLine = $<HTMLButtonElement>("wa-line");
+const waDialog = $<HTMLDialogElement>("wa-dialog");
+const waStatusEl = $<HTMLParagraphElement>("wa-status");
+const waQr = $<HTMLImageElement>("wa-qr");
+const waHow = $<HTMLParagraphElement>("wa-how");
+const waLog = $<HTMLPreElement>("wa-log");
+const waPairBtn = $<HTMLButtonElement>("wa-pair");
+const waResetBtn = $<HTMLButtonElement>("wa-reset");
+const waCancelBtn = $<HTMLButtonElement>("wa-cancel");
+const waCloseBtn = $<HTMLButtonElement>("wa-close");
+let waStatus: WhatsappStatus | null = null;
+let waPairing = false;
+
+/** "5516992294486" → "+55 (16) 99229-4486"; outros formatos ficam com o + na frente. */
+function fmtPhone(digits: string | null): string {
+  if (digits === null) return "";
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(digits);
+  return m === null ? `+${digits}` : `+55 (${m[1]}) ${m[2]}-${m[3]}`;
+}
+
+function paintWhatsapp(): void {
+  const st = waStatus;
+  if (st === null || !st.present) { waLine.hidden = true; return; }
+  waLine.hidden = false;
+  waLine.className = `wa-line ${st.connected ? "on" : "off"}`;
+  const who = st.number !== null ? fmtPhone(st.number) : "sem número";
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `WhatsApp do Hermes · ${who} · conectado` : `WhatsApp do Hermes · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
+  waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`;
+  waPairBtn.hidden = st.connected || waPairing;
+  waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
+  waResetBtn.hidden = waPairing || st.number === null;
+  waCancelBtn.hidden = !waPairing;
+}
+
+async function refreshWhatsapp(): Promise<void> {
+  try { waStatus = await window.meuBot.whatsappStatus(); } catch { waStatus = null; }
+  paintWhatsapp();
+}
+
+function openWhatsapp(): void {
+  waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = "";
+  paintWhatsapp();
+  if (!waDialog.open) waDialog.showModal();
+}
+
+async function pairWhatsapp(reset: boolean): Promise<void> {
+  if (waPairing) return;
+  waPairing = true;
+  waLog.hidden = false; waLog.textContent = "";
+  waStatusEl.textContent = reset ? "Apagando a sessão antiga e gerando um QR novo…" : "Gerando o QR…";
+  paintWhatsapp();
+  try {
+    await window.meuBot.whatsappPair(reset);
+  } catch (err) {
+    waLog.textContent += `✗ ${err instanceof Error ? err.message : String(err)}\n`;
+  } finally {
+    waPairing = false;
+    waQr.hidden = true; waHow.hidden = true;
+    // O gateway acabou de voltar; dá alguns segundos para o bridge abrir a sessão antes de consultar.
+    setTimeout(() => { void refreshWhatsapp(); }, 6000);
+    paintWhatsapp();
+  }
+}
+
+window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
+  const appendLog = (t: string): void => { waLog.hidden = false; waLog.textContent = `${waLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); waLog.scrollTop = waLog.scrollHeight; };
+  switch (ev.kind) {
+    case "step": appendLog(`▸ ${ev.text}`); break;
+    case "log": appendLog(ev.text); break;
+    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do Hermes."; break;
+    case "connected": waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. Subindo o gateway…`; appendLog("✓ conectado"); break;
+    case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
+    case "done": appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar"); break;
+  }
+});
+waLine.addEventListener("click", () => openWhatsapp());
+waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
+waResetBtn.addEventListener("click", () => { void pairWhatsapp(true); });
+waCancelBtn.addEventListener("click", () => { void window.meuBot.whatsappCancel(); });
+waCloseBtn.addEventListener("click", () => { if (waPairing) void window.meuBot.whatsappCancel(); waDialog.close(); });
 
 // ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
 const introEl = $<HTMLElement>("intro");
@@ -1220,6 +1303,7 @@ void (async () => {
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); });
+  void refreshWhatsapp();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
   renderSidebar();

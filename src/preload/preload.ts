@@ -16,6 +16,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "ui:toggle-settings",
   "chat:notice",
   "chat:account",
+  "whatsapp:event",
 ];
 
 const api: MeuBotApi = {
@@ -46,6 +47,9 @@ const api: MeuBotApi = {
   getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
   disableTailscaleCheck: () => ipcRenderer.invoke("tailscale:disable-check", {}),
   restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
+  whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
+  whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
+  whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

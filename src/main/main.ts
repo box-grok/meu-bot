@@ -6,6 +6,7 @@ import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
+import { cancelPairing, startPairing, whatsappStatus } from "./whatsapp";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import {
   anyConversationBusy, archiveConversation, branchConversation, closeTab, createConversation, dropConversation,
@@ -74,6 +75,21 @@ function registerIpc(): void {
   ipcMain.handle("tailscale:restore", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     return restoreLastPolicy();
+  });
+  ipcMain.handle("whatsapp:status", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappStatus(h.host);
+  });
+  ipcMain.handle("whatsapp:pair", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const reset = (payload as { reset?: unknown } | null)?.reset === true;
+    return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
+  });
+  ipcMain.handle("whatsapp:cancel", (event) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    cancelPairing();
   });
   ipcMain.handle("backend:account", async (event) => {
     const host = hostFromEvent(event)?.host;

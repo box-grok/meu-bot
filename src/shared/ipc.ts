@@ -148,6 +148,28 @@ export interface PickerInit {
   error: string | null;
 }
 
+/** WhatsApp do Hermes na máquina (gateway do Hermes Agent). */
+export interface WhatsappStatus {
+  /** A máquina tem ~/.hermes/whatsapp (Hermes com WhatsApp). */
+  present: boolean;
+  connected: boolean;
+  /** Estado do bridge (open, connecting, close, "sem bridge"…). */
+  state: string;
+  /** Número pareado (só dígitos), se há sessão. */
+  number: string | null;
+  loggedOut: boolean;
+  detail: string;
+}
+
+/** Eventos do pareamento por QR. */
+export type WhatsappEvent =
+  | { kind: "step"; text: string }
+  | { kind: "log"; text: string }
+  | { kind: "qr"; dataUrl: string }
+  | { kind: "connected"; number: string | null }
+  | { kind: "error"; text: string }
+  | { kind: "done"; ok: boolean };
+
 /** Credencial do OAuth client do Tailscale: só o estado, nunca o valor. */
 export interface TailscaleCredentialState { configured: boolean; encryptionAvailable: boolean }
 
@@ -293,6 +315,8 @@ export interface MainEvents {
   "chat:notice": { conversationId: string; text: string };
   /** Conta e limites do Claude na máquina, depois de cada turno. */
   "chat:account": { host: string; status: AccountStatus | null };
+  /** Pareamento do WhatsApp do Hermes em andamento. */
+  "whatsapp:event": WhatsappEvent;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -339,6 +363,11 @@ export interface MeuBotApi {
   disableTailscaleCheck(): Promise<TailscaleSshResult>;
   /** Tailscale: volta a política para o backup mais novo. */
   restoreTailscalePolicy(): Promise<TailscaleSshResult>;
+  /** WhatsApp do Hermes na máquina desta janela. */
+  whatsappStatus(): Promise<WhatsappStatus>;
+  /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
+  whatsappPair(reset: boolean): Promise<void>;
+  whatsappCancel(): Promise<void>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;

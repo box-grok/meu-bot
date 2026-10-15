@@ -40,6 +40,7 @@ O selo no topo mostra o estado: "buscando chave…", "abrindo túnel…", "túne
   O backend tem uma corrente de fallback (`providers.json`: agente → grok-4) e avisa na conversa quando troca.
   Configurações › Fallback escolhe o primário (Claude ou xAI). A status line no rodapé mostra modelo, contexto,
   conta e limites de 5 h e 7 dias do Claude, com aviso ao passar de 80, 90 e 95%.
+- **WhatsApp do Hermes**: estado no topo da lista de conversas e pareamento por QR dentro do app (bridge oficial do Hermes por SSH).
 - **Tailscale SSH sem pedir aprovação**: o seletor detecta o "check" do Tailscale, abre o link, e pode desligar
   de vez editando a política do tailnet pela API (OAuth client no Keychain, backup antes, desfazer pela paleta).
 - **Lista lateral** (☰ ou Cmd+B) com todas as conversas agrupadas por data, busca sem acento, arquivar.

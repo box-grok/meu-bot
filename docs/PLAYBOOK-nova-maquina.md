@@ -245,6 +245,15 @@ clique não faz nada.
 
 ---
 
+## 5b. WhatsApp do Hermes (só em máquina com o gateway do Hermes Agent)
+
+No topo da lista de conversas (☰) o app mostra "WhatsApp do Hermes · número · conectado/
+desconectado". Desconectado: clique → "Gerar QR" (ou "Reparear" se a sessão foi deslogada pelo
+WhatsApp) → leia com o celular do número do bot (WhatsApp › Aparelhos conectados › Conectar
+aparelho). O app pausa o gateway, roda o bridge oficial em modo pareamento e sobe o gateway de
+volta. Pela mão, na máquina: `hermes whatsapp`. Diagnóstico: `tail ~/.hermes/whatsapp/bridge.log`
+("Logged out" = sessão morta), `curl 127.0.0.1:3000/health` (`connected` = conectado).
+
 ## 6. Quando a máquina não responde
 
 Ordem de diagnóstico:

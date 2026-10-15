@@ -228,3 +228,14 @@ dialog details.group textarea, dialog details.group input, dialog details.group 
 .ctx-line .seg-account { color: var(--ok); }
 .ctx-line .seg-weekly { color: #a85fc9; }
 .ctx-line .seg-turn, .ctx-line .seg-age { color: var(--muted); }
+/* WhatsApp do Hermes: linha no topo da lista de conversas e modal de pareamento. */
+.wa-line { font: inherit; font-size: 12px; text-align: left; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.wa-line[hidden] { display: none; }
+.wa-line .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--muted); }
+.wa-line.on .dot { background: var(--ok); }
+.wa-line.off .dot { background: var(--bad); }
+.wa-line:hover { border-color: var(--accent); }
+.wa-box { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.wa-qr { width: 300px; height: 300px; align-self: center; background: #fff; padding: 8px; border-radius: 12px; }
+.wa-qr[hidden] { display: none; }
+#wa-dialog .log { max-height: 120px; }
