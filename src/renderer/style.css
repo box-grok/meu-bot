@@ -149,6 +149,16 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
   border: 1px solid var(--line); background: var(--bg); color: var(--fg);
 }
 .composer .btn-primary { white-space: nowrap; min-width: 74px; position: relative; transition: color .12s ease, background-color .2s ease, border-color .2s ease, padding .2s ease; }
+/* Novo, ao lado de Enviar (shot "x-campaign grok-bot like button"): no clique o botão afunda e volta com mola, preenche de
+   azul por um instante, e bolhas-mascote saltam dele em leque com física de brinquedo — sobem, abrem e caem sumindo —
+   enquanto a aba nova aparece (o "contador" do shot). */
+.composer .btn-new { white-space: nowrap; position: relative; overflow: visible; transition: background-color .25s ease, color .25s ease, border-color .25s ease; }
+.composer .btn-new.pressed { animation: new-press .46s cubic-bezier(.34, 1.56, .64, 1); background: var(--accent); color: var(--accent-fg); border-color: var(--accent); transition: none; }
+@keyframes new-press { 0% { scale: 1; } 30% { scale: .9; } 100% { scale: 1; } }
+.burst-m { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; pointer-events: none; z-index: 3; overflow: visible; animation: burst-pop .85s cubic-bezier(.2, .9, .3, 1) var(--d, 0ms) both; }
+.burst-m .m-bubble { fill: hsl(var(--hue) 78% 62%); } .burst-m .m-eye, .burst-m .m-mouth { fill: #0d1322; }
+@keyframes burst-pop { 0% { translate: 0 0; scale: .2; opacity: 0; } 18% { opacity: 1; scale: 1.15; } 55% { translate: var(--bx) var(--by); scale: 1; opacity: 1; } 100% { translate: calc(var(--bx) * 1.2) calc(var(--by) * .55); scale: .8; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .composer .btn-new.pressed { animation: none; } .burst-m { display: none; } }
 /* Enviar (shot "cred-button-loading-to-tick"): no clique o texto some e um ponto pulsa até a resposta começar; aí vira
    Parar (a saída continua à mão); ao terminar, um ✓ entra com mola e, 900 ms depois, volta a Enviar. A forma não muda. */
 #btn-send.is-sending, #btn-send.is-done { color: transparent; }

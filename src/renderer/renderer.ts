@@ -1544,7 +1544,25 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
-newBtn.addEventListener("click", () => { void newTab(); });
+/** Novo (shot "x-campaign grok-bot like button"): afunda e volta com mola; bolhas-mascote saltam em leque enquanto a aba nova aparece. */
+function burstNew(): void {
+  if (prefersReducedMotion) return;
+  newBtn.classList.remove("pressed"); void newBtn.offsetWidth; newBtn.classList.add("pressed");
+  setTimeout(() => newBtn.classList.remove("pressed"), 500);
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const hues = [220, 145, 40, 330, 270];
+  for (let i = 0; i < 5; i++) {
+    const el = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+    el.setAttribute("class", "burst-m");
+    const ang = ((-150 + i * 30 + (Math.random() - 0.5) * 14) * Math.PI) / 180; // leque para cima
+    const d = 34 + Math.random() * 22;
+    el.style.setProperty("--bx", `${Math.round(Math.cos(ang) * d)}px`); el.style.setProperty("--by", `${Math.round(Math.sin(ang) * d)}px`);
+    el.style.setProperty("--hue", String(hues[i])); el.style.setProperty("--d", `${i * 40}ms`);
+    newBtn.append(el);
+    setTimeout(() => el.remove(), 1000);
+  }
+}
+newBtn.addEventListener("click", () => { burstNew(); void newTab(); });
 // ---- Seção Fallback: o primário é o modelo padrão da máquina; a reserva vem da corrente do backend.
 const primarySelect = $<HTMLSelectElement>("primary-provider");
 const fallbackOrderEl = $<HTMLParagraphElement>("fallback-order");
