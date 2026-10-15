@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tailscale-watchdog.sh — vigia do tailscaled num computador do Grok Bot (grokbot-lv).
+# tailscale-watchdog.sh — vigia do tailscaled num computador do Grok Bot (grokbot-3).
 #
 # O host suspende a VM (dezenas de vezes por dia, medido na grokbot-1). Ao acordar, o tailscaled
 # costuma se reconectar sozinho, mas devagar (mediana 74 s, p90 ~18 min; 4 vezes em 10 dias nunca
@@ -24,7 +24,7 @@ FLUSH_DIR=${FLUSH_DIR:-/run/sand-box-store-flush}
 TOLERANCIA_S=${TOLERANCIA_S:-60}
 MAX_RESTARTS=${MAX_RESTARTS:-3}
 JANELA_S=${JANELA_S:-1800}
-# Onde está o `tailscale`? Varia por máquina: apt (/usr/bin, grokbot-lv) ou instalação no home (~/.local/bin,
+# Onde está o `tailscale`? Varia por máquina: apt (/usr/bin, grokbot-3) ou instalação no home (~/.local/bin,
 # grokbot-1). Caminho absoluto, porque o secure_path do sudo não vê o PATH do usuário.
 TS=${TAILSCALE_BIN:-}
 if [ -z "$TS" ]; then for c in /usr/bin/tailscale /usr/local/bin/tailscale /home/box/.local/bin/tailscale; do [ -x "$c" ] && { TS=$c; break; }; done; fi

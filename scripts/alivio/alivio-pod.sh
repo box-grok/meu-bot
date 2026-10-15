@@ -1,7 +1,7 @@
 #!/bin/bash
 # Alívio de um computador do Grok Bot, rodado DENTRO dele. Encerra só processos nossos que ficaram
 # presos e, com --tailscale, reinicia o tailscaled por quem o gerencia nesta máquina — supervisord
-# (grokbot-lv), PM2 (grokbot-1) ou systemd — porque é ele que trava sem netmap quando o host suspende
+# (grokbot-3), PM2 (grokbot-1) ou systemd — porque é ele que trava sem netmap quando o host suspende
 # a VM (derruba esta sessão ssh por alguns segundos; o estado é preservado e o IP volta o mesmo).
 # Nunca mexe em serviços do Grok Bot nem no gerenciador inteiro.
 LOG=$HOME/alivio.log
