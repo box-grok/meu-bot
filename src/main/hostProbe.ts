@@ -176,7 +176,12 @@ export function backendBundleDir(): string {
   return app.isPackaged ? path.join(process.resourcesPath, "backend-colima") : path.join(app.getAppPath(), "backend-colima");
 }
 
-const BUNDLE_FILES = ["server.js", "session-map.js", "meu-bot-backend.service", "install.sh"];
+// Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
+// e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
+const BUNDLE_FILES = [
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "meu-bot-backend.service", "install.sh",
+  "statusline.sh", "install-statusline.sh",
+];
 
 /** Copia o bundle para o host e roda o instalador; `onLine` recebe o progresso linha a linha. */
 export async function installBackend(host: string, port: number, onLine?: (line: string) => void): Promise<InstallBackendResult> {

@@ -14,7 +14,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+// Number(null) e Number('') são 0: um limite ausente virava "Sessão: 0% · now" no app. Ausente é null.
+const num = (v) => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
 
 function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
