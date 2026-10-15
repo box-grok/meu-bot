@@ -1044,10 +1044,24 @@ function paintWhatsapp(): void {
   waCloseBtn.textContent = waPairing ? "Cancelar" : "Fechar";
 }
 
+let waTimer: ReturnType<typeof setTimeout> | null = null;
+let waRefreshing = false;
+/**
+ * Consulta o estado e agenda a próxima: 10 s enquanto a máquina tem WhatsApp mas não está conectado
+ * (gateway reiniciando, sessão caindo), 60 s quando está bem. Sem isso a linha congelava no estado da
+ * abertura da janela — vermelha depois de um alívio, mesmo com o gateway já de volta.
+ */
 async function refreshWhatsapp(): Promise<void> {
+  if (waRefreshing) return;
+  waRefreshing = true;
+  if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; }
   try { waStatus = await window.meuBot.whatsappStatus(); } catch { waStatus = null; }
+  finally { waRefreshing = false; }
   paintWhatsapp();
+  const soon = waStatus !== null && waStatus.present && !waStatus.connected && !waPairing;
+  waTimer = setTimeout(() => { void refreshWhatsapp(); }, soon ? 10_000 : 60_000);
 }
+window.addEventListener("focus", () => { if (waStatus?.present) void refreshWhatsapp(); });
 
 function openWhatsapp(): void {
   waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = "";
