@@ -3,6 +3,8 @@
 # meu-bot-backend.service e este script no mesmo diretório. Idempotente: pode rodar de novo.
 # - Node: usa o existente se for >= 18; senão baixa o 20 LTS (.tar.gz) em ~/.local/node.
 # - Serviço: unidade systemd de usuário; como root (ou sem gerenciador de usuário) vira unidade do sistema.
+#   Onde o systemd não roda (Computador do Grok Bot: PID 1 é o pod-daemon, mas /usr/bin/systemctl existe),
+#   cai no nohup — por isso testamos /run/systemd/system, não a presença do binário.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 DEST=$HOME/.hermes/agente-rene/backend-sdk-claude
@@ -49,7 +51,7 @@ if [ "$(id -u)" -ne 0 ] && systemctl --user is-system-running >/dev/null 2>&1; t
   systemctl --user restart meu-bot-backend.service
   command -v loginctl >/dev/null && loginctl enable-linger "$(id -un)" 2>/dev/null || true
   sleep 1.5; systemctl --user --no-pager --lines=3 status meu-bot-backend.service || true
-elif command -v systemctl >/dev/null 2>&1; then
+elif [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
   SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo -n"
   render_unit "User=$(id -un)" "multi-user.target" | $SUDO tee /etc/systemd/system/meu-bot-backend.service >/dev/null
   $SUDO systemctl daemon-reload

@@ -77,7 +77,15 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
     claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, models: [], error: null,
   };
-  const r = await run("ssh", [...sshBase(host), "--", host, probeScript(port)], 25_000);
+  const t0 = Date.now();
+  // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
+  // costuma passar na segunda tentativa, e repetir custa menos de um segundo. Já um timeout cheio
+  // é host fora: repetir só faria o seletor, que sonda todos em paralelo, esperar o dobro à toa.
+  let r = await run("ssh", [...sshBase(host), "--", host, probeScript(port)], 25_000);
+  if (r.code !== 0 && Date.now() - t0 < 3_000 && /connection (refused|reset|closed)|broken pipe/i.test(r.stderr)) {
+    await new Promise((res) => setTimeout(res, 500));
+    r = await run("ssh", [...sshBase(host), "--", host, probeScript(port)], 25_000);
+  }
   if (r.code !== 0) return { ...base, error: lastLine(r.stderr) || (r.code === null ? "tempo esgotado" : `ssh saiu com código ${r.code}`) };
   const kv = parseKv(r.stdout);
   return {
