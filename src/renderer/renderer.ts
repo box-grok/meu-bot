@@ -62,6 +62,8 @@ interface Tab {
   host: string;
   dotEl: HTMLElement;
   messagesEl: HTMLElement;
+  /** Acompanhar o fim durante a resposta: só enquanto a pessoa estiver perto do fim. Rolou para cima para ler = fica onde está. */
+  followBottom: boolean;
   currentAssistant: HTMLElement | null;
   /** Texto acumulado da resposta em andamento (renderizado com throttle). */
   pendingText: string;
@@ -91,12 +93,19 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 }
 
 const active = (): Tab | null => (activeId === null ? null : (tabs.get(activeId) ?? null));
-const scrollToBottom = (tab: Tab): void => { tab.messagesEl.scrollTop = tab.messagesEl.scrollHeight; };
+/** Rola até o fim. Sem `force`, só se a pessoa já estava acompanhando o fim (não puxa quem rolou para cima para ler). */
+const scrollToBottom = (tab: Tab, force = true): void => {
+  if (!force && !tab.followBottom) return;
+  tab.followBottom = true;
+  tab.messagesEl.scrollTop = tab.messagesEl.scrollHeight;
+};
+const NEAR_BOTTOM_PX = 48;
+const nearBottom = (elm: HTMLElement): boolean => elm.scrollHeight - elm.scrollTop - elm.clientHeight <= NEAR_BOTTOM_PX;
 
 function addNotice(tab: Tab, text: string, kind: "info" | "error" | "warn" = "info"): void {
   const cls = kind === "error" ? "notice notice-error" : kind === "warn" ? "notice notice-warn" : "notice";
   tab.messagesEl.appendChild(el("div", cls, text));
-  scrollToBottom(tab);
+  scrollToBottom(tab, false);
 }
 
 /** Resposta do assistente: Markdown sanitizado. Mensagens do usuário continuam texto puro. */
@@ -109,7 +118,7 @@ function renderAssistant(target: HTMLElement, text: string): void {
 function flushRender(tab: Tab): void {
   tab.renderTimer = null;
   if (tab.currentAssistant !== null) renderAssistant(tab.currentAssistant, tab.pendingText);
-  scrollToBottom(tab);
+  scrollToBottom(tab, false);
 }
 
 function scheduleRender(tab: Tab): void {
@@ -428,7 +437,7 @@ function paintSidebar(): void {
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
-  try { localStorage.setItem("sidebarHidden", hidden ? "1" : "0"); } catch { /* opcional */ }
+  try { localStorage.setItem("sidebarShown", hidden ? "0" : "1"); } catch { /* opcional */ }
 }
 
 /* ---------- Paleta de comandos ---------- */
@@ -475,24 +484,36 @@ function buildPaletteItems(): PaletteItem[] {
   return items;
 }
 
+/**
+ * Marca o item selecionado sem reconstruir a lista. Reconstruir (replaceChildren) zera a rolagem: era o
+ * "pulo para cima" ao mover o mouse sobre a lista rolada. `scroll` só no teclado; com o mouse o item já
+ * está à vista.
+ */
+function selectPalette(i: number, scroll: boolean): void {
+  const lis = paletteList.querySelectorAll<HTMLElement>("li[role=option]");
+  if (lis.length === 0) { paletteSelected = 0; return; }
+  paletteSelected = Math.max(0, Math.min(i, lis.length - 1));
+  lis.forEach((li, k) => li.setAttribute("aria-selected", k === paletteSelected ? "true" : "false"));
+  if (scroll) lis[paletteSelected]?.scrollIntoView({ block: "nearest" });
+}
+
+/** Reconstrói a lista (ao abrir e ao digitar). */
 function paintPalette(): void {
   const ranked = rankPalette(paletteItems, paletteInput.value);
   paletteList.replaceChildren();
   if (ranked.length === 0) { paletteList.appendChild(el("li", "palette-empty", "Nada encontrado.")); return; }
-  paletteSelected = Math.min(paletteSelected, ranked.length - 1);
   ranked.forEach((item, i) => {
     const li = el("li");
     li.setAttribute("role", "option");
-    li.setAttribute("aria-selected", i === paletteSelected ? "true" : "false");
     li.dataset["id"] = item.id;
     li.appendChild(el("span", "pk", item.kind === "action" ? "ação" : item.kind === "conversation" ? "conversa" : "config"));
     li.appendChild(el("span", "pl", item.label));
     if (item.detail !== undefined) li.appendChild(el("span", "pd", item.detail));
     li.addEventListener("click", () => { void runPalette(item.id); });
-    li.addEventListener("mousemove", () => { if (paletteSelected !== i) { paletteSelected = i; paintPalette(); } });
+    li.addEventListener("mousemove", () => { if (paletteSelected !== i) selectPalette(i, false); });
     paletteList.appendChild(li);
-    if (i === paletteSelected) li.scrollIntoView({ block: "nearest" });
   });
+  selectPalette(paletteSelected, true);
 }
 
 async function runPalette(id: string): Promise<void> {
@@ -597,8 +618,10 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   tabEl.append(dotEl, titleEl, modelEl, closeBtn);
   const messagesEl = el("div", "messages");
   messagesEl.setAttribute("aria-live", "polite");
+  // Rolagem da pessoa decide se a resposta em andamento continua puxando para o fim.
+  messagesEl.addEventListener("scroll", () => { tab.followBottom = nearBottom(messagesEl); }, { passive: true });
   const tab: Tab = {
-    id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, currentAssistant: null,
+    id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, followBottom: true, currentAssistant: null,
     pendingText: "", renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null,
   };
   tabs.set(conversationId, tab);
@@ -732,7 +755,7 @@ window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
   if (tab === undefined) return;
   tab.pendingText = "";
   tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
-  scrollToBottom(tab);
+  scrollToBottom(tab, false);
 });
 window.meuBot.on("chat:delta", ({ conversationId, text }) => {
   const tab = tabs.get(conversationId);
@@ -824,8 +847,8 @@ paletteBtn.addEventListener("click", () => openPalette());
 paletteInput.addEventListener("input", () => { paletteSelected = 0; paintPalette(); });
 paletteInput.addEventListener("keydown", (ev) => {
   const count = paletteList.querySelectorAll("li[role=option]").length;
-  if (ev.key === "ArrowDown") { ev.preventDefault(); paletteSelected = count === 0 ? 0 : (paletteSelected + 1) % count; paintPalette(); }
-  else if (ev.key === "ArrowUp") { ev.preventDefault(); paletteSelected = count === 0 ? 0 : (paletteSelected - 1 + count) % count; paintPalette(); }
+  if (ev.key === "ArrowDown") { ev.preventDefault(); selectPalette(count === 0 ? 0 : (paletteSelected + 1) % count, true); }
+  else if (ev.key === "ArrowUp") { ev.preventDefault(); selectPalette(count === 0 ? 0 : (paletteSelected - 1 + count) % count, true); }
   else if (ev.key === "Enter") { ev.preventDefault(); const sel = paletteList.querySelector<HTMLElement>("li[aria-selected=true]"); if (sel?.dataset["id"] !== undefined) void runPalette(sel.dataset["id"]); }
   else if (ev.key === "Escape") { ev.preventDefault(); closePalette(); }
   ev.stopPropagation();
@@ -972,7 +995,8 @@ form.addEventListener("submit", (ev) => {
 });
 
 void (async () => {
-  try { if (localStorage.getItem("sidebarHidden") === "1") sidebarEl.hidden = true; } catch { /* opcional */ }
+  // Lista de conversas oculta por padrão (Cmd+B ou ☰ mostra); só fica visível se a pessoa a abriu antes.
+  try { sidebarEl.hidden = localStorage.getItem("sidebarShown") !== "1"; } catch { sidebarEl.hidden = true; }
   const info = await window.meuBot.getWindowInfo();
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;

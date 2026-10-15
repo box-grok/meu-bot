@@ -644,3 +644,11 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Testes: 33 (novo `ssh-sync.test.mjs`).
 - "seletor na mesa" (`seletor.app`, `--picker`) foi removido: o próprio `meu-bot.app` e o Dock já abrem o
   seletor. `--picker` em argv ainda cai no padrão (`showPicker`) por não ser `--host`/`--alivio`.
+- Ajustes de interface (14 out, noite): botão "Nova conversa" virou "Novo" (dica com Cmd+T); lista de
+  conversas oculta por padrão (`localStorage.sidebarShown`, ☰/Cmd+B); rolagem do chat só acompanha o fim
+  da resposta se a pessoa já estava perto do fim (`followBottom`, 48 px; evento scroll decide). Antes,
+  cada tick de render puxava para baixo e quem rolava para cima para ler era arrastado de volta.
+- Paleta ⌘K: mover o mouse sobre a lista rolada fazia a lista "pular para cima". Causa: `mousemove`
+  chamava `paintPalette()`, que reconstrói a lista com `replaceChildren` (zera a rolagem) e dava
+  `scrollIntoView`. Agora `selectPalette(i, scroll)` só troca `aria-selected`; a lista é reconstruída só
+  ao abrir e ao digitar, e o `scrollIntoView` fica para o teclado.
