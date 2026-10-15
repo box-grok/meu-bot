@@ -175,7 +175,15 @@ export interface WhatsappStatus {
   number: string | null;
   loggedOut: boolean;
   detail: string;
+  /** OpenClaw: quem o agente responde nas DMs (`channels.whatsapp.dmPolicy`); null = Hermes ou desconhecido. */
+  dmPolicy: WhatsappDmPolicy | null;
+  /** OpenClaw: o bloco `channels.whatsapp` como está no openclaw.json (JSON), para "Ver configuração do canal". */
+  channelConfig: string | null;
 }
+
+export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
+/** O que o app oferece: "self" = só você (allowlist + selfChatMode); "open" = todo mundo (open + allowFrom *). */
+export type WhatsappReplyChoice = "self" | "open";
 
 /** Eventos do pareamento por QR. */
 export type WhatsappEvent =
@@ -404,6 +412,8 @@ export interface MeuBotApi {
   /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
   whatsappPair(reset: boolean): Promise<void>;
   whatsappCancel(): Promise<void>;
+  /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo. Vale sem reiniciar o gateway. */
+  whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
   claudeLogin(): Promise<void>;
   /** Código colado pela pessoa; false se não há login em andamento. */

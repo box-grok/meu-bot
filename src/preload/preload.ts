@@ -53,6 +53,7 @@ const api: MeuBotApi = {
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
   whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
+  whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
   claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),
   claudeLoginCancel: () => ipcRenderer.invoke("claude-login:cancel", {}),

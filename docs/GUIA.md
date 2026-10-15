@@ -361,6 +361,15 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   `pkill -P`: um `sleep 300` órfão segurava o ssh e deixava o modal preso em "Cancelar" (15 out). No app,
   `waShowSuccess` é chamado pelo vigia e também pela consulta de estado (a cada 8 s durante o pareamento):
   ✓ verde animado no lugar do QR, o único botão vira "Concluído" e o modal fecha em 2,6 s.
+- Quem o agente responde (OpenClaw): o padrão do OpenClaw é `dmPolicy: pairing`, que manda um código de
+  pareamento a qualquer desconhecido que escreva (aconteceu com um contato real na agente-box, 15 out). Duas
+  escolhas no app (`REPLY_OPTIONS` em `lib/tutoriais.ts`, cartões de rádio iguais no modal e no guia):
+  "só você" = `dmPolicy allowlist` + `allowFrom [+número]` + `selfChatMode true` (as mensagens que você manda
+  para o próprio número entram; mais ninguém recebe resposta nem código; `SELF_POLICY_SH`) e "todo mundo" =
+  `open` + `allowFrom ["*"]`. Grupos sempre desativados. O `PAIR_SCRIPT` grava "só você" antes do login quando
+  não há valor autorado (allowFrom vazio, com aviso do OpenClaw) e, ao vincular, põe o número no allowFrom. O
+  status lê `dmPolicy` (vazio = pairing) e o bloco `channels.whatsapp` em JSON (`channelConfig`, "Ver
+  configuração do canal"). `whatsapp:dm-policy` → `setDmPolicy`; vale sem reiniciar o gateway.
 - Plug and play pelo próprio agente: no modal, "Pedir ao agente para preparar" (`waAgentPrompt` em
   `renderer.ts`) abre uma conversa nova e manda ao Claude Code em bypass da máquina o pedido pronto
   (onboard não interativo com `--auth-choice anthropic-cli`, plugin do ClawHub, conferência do gateway e
@@ -368,11 +377,22 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   agente, com o mesmo acesso que já tem. A linha do WhatsApp se atualiza sozinha a cada 10 s e passa a
   mostrar "Gerar QR" quando ficar pronto.
 
+### Páginas em aba própria: Acervo e Tutoriais
+- `definePage/openPage/activatePage/closePage` em `renderer.ts`: abas que não são conversa, uma de cada vez
+  na frente (`pageActive`); `activate()` de qualquer conversa manda a página para trás; fechar volta a
+  `pagePrev`; Cmd+W fecha. Tutoriais: `src/renderer/lib/tutoriais.ts` (`Tutorial`: id, título, resumo,
+  passos), linha abaixo do Acervo, painel `#tutoriais-panel` com `<details>` por tutorial, ação na paleta.
+  Cada tutorial é um guia ao vivo (estilo onboarding) numa aba própria ("WhatsApp 2/4", uma por tutorial,
+  `openGuide`/`guidePages`): o passo atual tem o botão que leva ao lugar (`GUIDE_ACTION_LABEL`; "Gerar QR"
+  já dispara o pareamento), só os botões do modal pulsam (nada na lateral, que não abre sozinha), os
+  títulos das abas acompanham o progresso e os passos se marcam concluídos pelo
+  `WhatsappStatus` real (`guideView`): preparado = `ready`, QR = `connected`, escolha = clique num botão de
+  política ou `dmPolicy open` (o silencioso automático não conta), teste = botão "Testei, funcionou"
+  (flags em `localStorage` `guia:<id>:<host>`). `paintWhatsapp` chama `paintGuide`.
+
 ### Acervo (biblioteca de skills)
-- Linha "Acervo" acima da busca da lista lateral (`#acervo-line`), aba própria (`openAcervo`: a aba não é
-  conversa; `activateAcervo` zera `activeId`, desliga o compositor e lembra `acervoPrev` para voltar ao
-  fechar; `activate()` de qualquer conversa a manda para trás; Cmd+W fecha) com o painel `#acervo-panel`, e
-  ação na paleta.
+- Linha "Acervo" acima da busca da lista lateral (`#acervo-line`), aba própria pelo mecanismo de páginas
+  acima, painel `#acervo-panel` e ação na paleta.
   `src/renderer/lib/acervo.ts` define `Skill` (id, nome, resumo, passos de instalação, conferência) e
   `installPrompt(skill, máquina)`, o pedido pronto ao agente. A lista `ACERVO_SKILLS` está vazia de
   propósito: é o começo do conceito. Para entrar uma skill, basta um item na lista; o botão "Pedir ao agente
@@ -383,7 +403,9 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - Modelo: `archived`, `openAsTab`, `branchedFrom`. **Fechar aba só fecha a aba**; a conversa fica na
   lista. Excluir é explícito e pede confirmação. Fechar a última aba deixa a tela vazia (campo e
   Enviar desligados), sem criar outra conversa sozinha: Novo, Cmd+N ou a lista abrem a próxima.
-  Só na abertura da janela, sem aba salva, a primeira conversa é criada automaticamente.
+  Só na abertura da janela, sem aba salva, a primeira conversa é criada automaticamente. Sem aba de
+  conversa, a fila mostra uma aba só com "+" ao lado do ☰ (`#tab-plus`, visibilidade em `syncRest`), que é
+  o Novo; some assim que a primeira aba nasce.
 - Tela vazia = cobrinha (`src/renderer/lib/snake.ts` regras puras + testes; `src/renderer/snake.ts`
   canvas e teclado; seção `#rest` em `index.html`). Já sai andando ao fechar a última aba, atravessa
   as bordas, nunca morre (passa pelo próprio rabo) e para de crescer em 24 segmentos. O tabuleiro é o
@@ -740,8 +762,10 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   desmarcada = pending, força o onboarding na próxima janela de máquina, mesmo com conversas (as abas
   voltam por baixo do cartão). O renderer começa o onboarding sempre que a flag está pendente.
 - "onboarding sempre" foi removido no mesmo dia (o usuário não gostou). Rodapé do seletor ficou com
-  três controles curtos: ⇅ sincronizar ssh, "abrir" (= abrir direto, sem a abertura animada) e
-  "feito" (= onboarding feito). Os títulos (tooltip) explicam.
+  três controles curtos: ⇅ sincronizar ssh e dois interruptores (15 out, mesmo `.switch` da lista):
+  "Intro" (ligado = abertura animada; grava `openDirect` invertido) e "Onboarding" (ligado = guia na
+  próxima janela; grava `onboarding` pending/done invertido). Ligado = tem. O `label.switch` precisa de
+  `-webkit-app-region: no-drag`: o seletor inteiro é região de arrasto e o clique no rótulo virava arrasto.
 - Onboarding: "pular" virou texto pequeno em cinza (não se clica por reflexo); pular mostra o cartão
   "Onboarding pulado" por 4,5 s com o caminho para refazer (`SKIPPED_MESSAGE`). A lista de conversas
   entra deslizando com um brilho azul (`.sidebar.reveal`), para quem aperta Cmd+B olhando o teclado.

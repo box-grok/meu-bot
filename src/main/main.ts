@@ -6,7 +6,7 @@ import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
-import { cancelPairing, startPairing, whatsappStatus } from "./whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappStatus } from "./whatsapp";
 import { cancelClaudeLogin, claudeAuthInfo, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "./claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiAuthInfo, xaiLogout } from "./xaiLogin";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
@@ -119,6 +119,13 @@ function registerIpc(): void {
   ipcMain.handle("claude-login:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     cancelClaudeLogin();
+  });
+  ipcMain.handle("whatsapp:dm-policy", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const policy = (payload as { policy?: unknown } | null)?.policy;
+    if (policy !== "open" && policy !== "self") throw new Error("política inválida");
+    return setDmPolicy(h.host, policy);
   });
   ipcMain.handle("whatsapp:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");

@@ -46,8 +46,9 @@
   <footer class="foot">
     <span class="foot-caption">sincronizar ssh</span>
     <button type="button" id="pk-sync" class="shortcut" title="Acrescenta ao ~/.ssh/config deste Mac as máquinas do projeto que ainda faltam (o Cursor lê o mesmo arquivo)">⇅</button>
-    <label class="foot-check" title="Marcado: a janela abre direto. Desmarcado: a abertura animada aparece toda vez."><input type="checkbox" id="pk-direct" /> abrir</label>
-    <label class="foot-check" title="Marcado: o onboarding já foi feito. Desmarcado: a próxima janela abre com o onboarding guiado."><input type="checkbox" id="pk-onboarded" /> feito</label>
+    <!-- Ligado = tem: Intro ligado mostra a abertura animada; Onboarding ligado faz o guia na próxima janela. (No settings.json ficam openDirect e onboarding, invertidos.) -->
+    <label class="switch" title="Ligado: a abertura animada aparece ao abrir a janela. Desligado: a janela abre direto."><input type="checkbox" id="pk-direct" /><span class="track"></span><span class="switch-label">Intro</span></label>
+    <label class="switch" title="Ligado: a próxima janela abre com o onboarding guiado. Desligado: sem onboarding."><input type="checkbox" id="pk-onboarded" /><span class="track"></span><span class="switch-label">Onboarding</span></label>
     <span class="spacer"></span>
     <button type="button" id="pk-cancel" class="btn btn-ghost">Cancelar</button>
     <button type="button" id="pk-open" class="btn btn-primary" disabled><span>Abrir</span></button>

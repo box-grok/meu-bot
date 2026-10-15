@@ -1,0 +1,137 @@
+/**
+ * Tutoriais: guias ao vivo do meu-bot, numa aba própria (como o Acervo). Cada um é um cartão com selo
+ * ("COMECE POR AQUI · 4 PASSOS · 3 MIN"), título, resumo e "Começar". Ao começar, o cartão vira um guia no
+ * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
+ * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
+ */
+import type { WhatsappStatus } from "../../shared/ipc";
+
+/** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
+export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "none";
+
+/** Quem o agente responde, como o guia e o modal oferecem (os mesmos dois cartões). */
+export interface ReplyOption { id: "self" | "open"; title: string; text: string; isDefault: boolean }
+export const REPLY_OPTIONS: readonly ReplyOption[] = [
+  { id: "self", title: "Desativado: só eu falo com o agente", text: "O agente só responde mensagens que você manda para si mesmo. Ninguém mais recebe resposta nem código de pareamento.", isDefault: true },
+  { id: "open", title: "Responder todo mundo", text: "Logo depois do pareamento, o agente responde qualquer pessoa que mandar mensagem para este número.", isDefault: false },
+];
+export const REPLY_NOTE = "Para atender clientes, as respostas precisam estar ativas. Você pode testar só com você agora e ativar depois no canal WhatsApp.";
+/** A política gravada no OpenClaw → qual cartão está marcado (null = nenhum dos dois: pairing ou disabled). */
+export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "open" | null {
+  return dmPolicy === "allowlist" ? "self" : dmPolicy === "open" ? "open" : null;
+}
+
+/** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
+export interface GuideFlags { policyChosen: boolean; tested: boolean }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false });
+
+export interface GuideStep {
+  id: string;
+  title: string;
+  /** Instrução curta de uma ação. */
+  text: string;
+  target: GuideTarget;
+  /** Corpo especial do passo no guia (os cartões de quem responder). */
+  body?: "reply-choice";
+  /** Concluído pelo estado real; `null` de status = ainda não consultado. */
+  done: (status: WhatsappStatus | null, flags: GuideFlags) => boolean;
+  /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
+  manual?: { label: string; flag: keyof GuideFlags };
+}
+
+export interface Tutorial {
+  /** Identificador estável (kebab-case). */
+  id: string;
+  title: string;
+  /** Nome curto para a aba do guia ("WhatsApp"). */
+  short: string;
+  /** Uma frase: o que a pessoa vai conseguir fazer. */
+  summary: string;
+  /** Tempo estimado, em minutos. */
+  minutes: number;
+  /** Selo em caixa alta antes dos passos ("Comece por aqui", "Próximo"); opcional. */
+  badge?: string;
+  /** Ícone do cartão. */
+  icon?: "target" | "chat";
+  /** Ainda não existe: o cartão aparece com "Em breve" e não abre guia. */
+  comingSoon?: boolean;
+  steps: GuideStep[];
+}
+
+const WHATSAPP_STEPS: GuideStep[] = [
+  {
+    id: "preparar", title: "Preparar o OpenClaw nesta máquina", target: "wa-agent",
+    text: "O agente da máquina configura o OpenClaw e instala o plugin do WhatsApp. Abra o WhatsApp e clique em \"Pedir ao agente para preparar\".",
+    done: (st) => st !== null && st.present && st.ready,
+  },
+  {
+    id: "qr", title: "Conectar o número pelo QR", target: "wa-pair",
+    text: "No celular do número: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. O app mostra o ✓ verde ao vincular.",
+    done: (st) => st !== null && st.connected,
+  },
+  {
+    id: "quem", title: "Quem o agente responde no WhatsApp?", target: "wa-policy", body: "reply-choice",
+    text: "Vale assim que o WhatsApp é pareado. Seus contatos não recebem nenhuma mensagem automática enquanto as respostas estiverem desativadas.",
+    done: (st, f) => f.policyChosen || (st !== null && st.dmPolicy === "open"),
+  },
+  {
+    id: "teste", title: "Testar com uma mensagem real", target: "none",
+    text: "Com \"só eu\", mande uma mensagem para o seu próprio número. Com \"todo mundo\", mande de outro celular. O agente responde na conversa do WhatsApp.",
+    done: (_st, f) => f.tested,
+    manual: { label: "Testei, funcionou", flag: "tested" },
+  },
+];
+
+/** Os tutoriais, na ordem em que aparecem. */
+export const TUTORIAIS: readonly Tutorial[] = [
+  {
+    id: "whatsapp-openclaw",
+    title: "Conectar o WhatsApp ao agente",
+    short: "WhatsApp",
+    summary: "Conecte um número ao agente da máquina, decida quem ele responde e teste com uma mensagem real.",
+    minutes: 3,
+    badge: "Comece por aqui",
+    icon: "target",
+    steps: WHATSAPP_STEPS,
+  },
+  {
+    id: "whatsapp-objetivo",
+    title: "O que você quer resolver pelo WhatsApp?",
+    short: "Objetivo",
+    summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo.",
+    minutes: 2,
+    badge: "Próximo",
+    icon: "chat",
+    comingSoon: true,
+    steps: [
+      { id: "objetivo", title: "Escolher o objetivo", text: "", target: "none", done: () => false },
+      { id: "liberdade", title: "Dizer quanta liberdade o agente tem", text: "", target: "none", done: () => false },
+      { id: "skill", title: "Salvar como skill no Acervo", text: "", target: "none", done: () => false },
+    ],
+  },
+];
+
+/** Selo do cartão: "COMECE POR AQUI · 4 PASSOS · 3 MIN" (o renderer põe em caixa alta). */
+export function tutorialBadge(t: Tutorial, withBadge = true): string {
+  const n = t.steps.length;
+  return [withBadge ? t.badge : undefined, `${n} ${n === 1 ? "passo" : "passos"}`, `${t.minutes} min`].filter((x): x is string => x !== undefined && x !== "").join(" · ");
+}
+
+/** Rótulo do botão do passo atual, por alvo: o guia leva a pessoa ao lugar certo em vez de pedir para procurar. */
+export const GUIDE_ACTION_LABEL: Record<Exclude<GuideTarget, "none">, string> = {
+  "wa-line": "Abrir o WhatsApp", "wa-agent": "Abrir o WhatsApp", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp",
+};
+
+/** Título da aba do guia: "WhatsApp 2/4", ou "WhatsApp ✓" quando tudo está feito. */
+export function guideTabTitle(t: Tutorial, v: GuideView): string {
+  return v.finished ? `${t.short} ✓` : `${t.short} ${v.done.filter(Boolean).length}/${t.steps.length}`;
+}
+
+export interface GuideView { done: boolean[]; current: number; finished: boolean }
+
+/** Estado do guia: quais passos estão concluídos e qual é o atual (o primeiro pendente). */
+export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags): GuideView {
+  const done = t.steps.map((s) => s.done(status, flags));
+  const current = done.indexOf(false);
+  return { done, current, finished: current === -1 };
+}

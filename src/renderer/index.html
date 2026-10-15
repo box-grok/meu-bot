@@ -48,6 +48,7 @@
         <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
         <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
         <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
+        <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count">0 tutoriais</span></button>
         <input id="sidebar-search" type="search" placeholder="Buscar conversas…" autocomplete="off" />
       </div>
       <div id="sidebar-list" class="sidebar-list"></div>
@@ -65,7 +66,11 @@
     <div class="content">
       <!-- ☰ pequeno, ao lado das abas: esta linha nunca some (a barra de cima sim, com Cmd+Shift+B). -->
       <div class="tabs-row">
-        <div class="tabs-menu-cell"><button id="btn-sidebar" class="btn btn-ghost tabs-menu" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button></div>
+        <!-- ☰ e + são gêmeos (mesmo quadrado 26px, lado a lado); o + só aparece sem nenhuma aba de conversa. -->
+        <div class="tabs-menu-cell">
+          <button id="btn-sidebar" class="btn btn-ghost tabs-menu" type="button" title="Mostrar/ocultar lista (Cmd+B)">☰</button>
+          <button id="tab-plus" class="btn btn-ghost tabs-menu tabs-plus" type="button" title="Nova conversa (Cmd+N)" hidden>+</button>
+        </div>
         <nav id="tabs" class="tabs" aria-label="Conversas"></nav>
       </div>
       <main id="panels" class="panels">
@@ -80,6 +85,11 @@
           <p class="hint">Biblioteca de skills da máquina. Cada skill diz o que faz e tem um botão que pede ao agente desta máquina para instalar, como no WhatsApp. O app não instala nada sozinho.</p>
           <div id="acervo-list" class="acervo-list"></div>
         </section>
+        <section id="tutoriais-panel" class="acervo-panel" hidden>
+          <h2>Tutoriais</h2>
+          <p class="hint">Passo a passo curtos do meu-bot. Cada tutorial abre e fecha aqui mesmo.</p>
+          <div id="tutoriais-list" class="acervo-list"></div>
+        </section>
         <!-- Tela vazia (nenhuma aba): a cobrinha anda sozinha; setas viram, Novo ou Cmd+N abrem uma conversa. -->
         <section id="rest" class="rest" hidden aria-label="Nenhuma conversa aberta">
           <canvas id="rest-canvas" class="rest-canvas"></canvas>
@@ -88,7 +98,7 @@
           <div class="onboard-top">
             <span id="ob-count" class="onboard-count"></span>
             <span class="spacer"></span>
-            <button type="button" id="ob-skip" class="btn btn-skip" title="Pula o onboarding; dá para refazer pelo seletor (caixinha \"feito\") ou pela paleta">Ignorar onboarding</button>
+            <button type="button" id="ob-skip" class="btn btn-skip" title="Pula o onboarding; dá para refazer pelo seletor (interruptor \"Onboarding\") ou pela paleta">Ignorar onboarding</button>
           </div>
           <p id="ob-lead" class="onboard-lead" hidden>Para entender o app, basta ler e seguir este passo a passo. Cada passo é uma ação sua.</p>
           <p id="ob-feedback" class="onboard-feedback" hidden></p>
@@ -162,6 +172,12 @@
         <span class="wa-wave" aria-hidden="true"></span>
         <svg class="wa-check" viewBox="0 0 52 52" aria-hidden="true"><circle cx="26" cy="26" r="24"/><path d="M15 27l7 7 15-16"/></svg>
         <strong id="wa-success-text">Pareado</strong>
+      </div>
+      <!-- OpenClaw conectado: quem o agente responde nas DMs. Começa em "ninguém"; a pessoa escolhe. -->
+      <div id="wa-policy" class="wa-policy" hidden>
+        <p class="hint"><strong>Quem o agente responde no WhatsApp</strong></p>
+        <div id="wa-policy-cards" class="reply-cards"></div>
+        <p id="wa-policy-hint" class="hint"></p>
       </div>
       <p id="wa-how" class="hint" hidden>No celular: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. Ele renova sozinho até você ler.</p>
       <!-- Progresso do pareamento: ponto pulsando + passo atual + QR nº e contagem da renovação; o log cru fica em "detalhes". -->
@@ -238,7 +254,7 @@
             </select>
           </label>
         </div>
-        <label class="check"><input id="notifications" type="checkbox" /> Avisar com notificação quando uma resposta terminar em segundo plano</label>
+        <label class="switch switch-row"><input id="notifications" type="checkbox" /><span class="track"></span><span class="switch-label">Avisar com notificação quando uma resposta terminar em segundo plano</span></label>
       </details>
 
       <details class="group" data-group="memoria">
@@ -266,7 +282,7 @@
 
       <details class="group" data-group="entrada-rapida">
         <summary>Entrada rápida <span class="sum-hint">janela flutuante por atalho global</span></summary>
-        <label class="check"><input id="quick-enabled" type="checkbox" /> Janela flutuante por atalho global</label>
+        <label class="switch switch-row"><input id="quick-enabled" type="checkbox" /><span class="track"></span><span class="switch-label">Janela flutuante por atalho global</span></label>
         <div class="row">
           <label>
             Atalho <span id="quick-status" class="count"></span>

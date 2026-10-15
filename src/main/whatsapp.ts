@@ -12,7 +12,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
-import type { Gateway, WhatsappEvent, WhatsappStatus } from "../shared/ipc";
+import type { Gateway, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus } from "../shared/ipc";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
@@ -47,6 +47,8 @@ if command -v openclaw >/dev/null 2>&1; then
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null)"
   # Sem config não há gateway; pular o channels status poupa 25 s.
   [ -f "$HOME/.openclaw/openclaw.json" ] || exit 0
+  echo "dmpolicy=$(timeout 15 openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"' | head -1)"
+  echo "channel=$(timeout 15 openclaw config get channels.whatsapp --json 2>/dev/null | tr -d '\n' | tr -s ' ')"
   echo "oc=$(timeout 25 openclaw channels status --channel whatsapp --json 2>/dev/null | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
@@ -73,7 +75,7 @@ const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.ex
 
 /** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes nem OpenClaw. */
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
-  const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "" };
+  const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
   const r = await runSsh(host, STATUS_SCRIPT, 60_000);
   if (r.code !== 0) return { ...none, detail: `não consegui consultar: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}` };
@@ -84,7 +86,7 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   if (gateway === "openclaw") return openclawStatus(kv);
   const agent = describeInstall("Hermes", kv);
   const ready = kv.get("bridge") === "1";
-  if (!ready) return { present: true, gateway, agent, ready, missing: "o bridge do WhatsApp não está nesta instalação do Hermes", connected: false, state: "sem bridge", number: null, loggedOut: false, detail: "Hermes sem o bridge do WhatsApp" };
+  if (!ready) return { present: true, gateway, agent, ready, missing: "o bridge do WhatsApp não está nesta instalação do Hermes", connected: false, state: "sem bridge", number: null, loggedOut: false, detail: "Hermes sem o bridge do WhatsApp", dmPolicy: null, channelConfig: null };
   let state = "sem bridge";
   try { const h = JSON.parse(kv.get("health") || "{}") as { status?: unknown }; if (typeof h.status === "string") state = h.status; } catch { /* bridge fora do ar */ }
   const number = phoneOf(kv.get("me") ?? "");
@@ -92,7 +94,7 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   // O bridge do Hermes reporta "connected"/"disconnected" (não o "open" do Baileys).
   const connected = state === "connected" || state === "open";
   const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : `bridge ${state}`;
-  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail };
+  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: null, channelConfig: null };
 }
 
 /** "OpenClaw 2026.9.9 em /usr/local/bin (global, todos os usuários)": versão, caminho e se é do sistema ou só deste usuário. */
@@ -113,7 +115,7 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const cfg = kv.get("cfg") === "1";
   if (!plugin || !cfg) {
     const faltas = [...(!cfg ? ["sem configuração (~/.openclaw/openclaw.json)"] : []), ...(!plugin ? ["sem o plugin do WhatsApp: `openclaw plugins install clawhub:@openclaw/whatsapp`"] : [])];
-    return { present: true, gateway: "openclaw", agent, ready: false, missing: faltas.join("\n"), connected: false, state: "sem configurar", number: null, loggedOut: false, detail: `OpenClaw instalado, mas ${!cfg ? "sem configurar" : "sem o plugin do WhatsApp"}` };
+    return { present: true, gateway: "openclaw", agent, ready: false, missing: faltas.join("\n"), connected: false, state: "sem configurar", number: null, loggedOut: false, detail: `OpenClaw instalado, mas ${!cfg ? "sem configurar" : "sem o plugin do WhatsApp"}`, dmPolicy: null, channelConfig: null };
   }
   let oc: { linked?: unknown; connected?: unknown; state?: unknown; lifecycle?: unknown; loggedOut?: unknown; e164?: unknown; starting?: unknown } = {};
   try { oc = JSON.parse(kv.get("oc") || "{}") as typeof oc; } catch { /* gateway fora do ar ou CLI sem --json */ }
@@ -122,8 +124,34 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const loggedOut = oc.loggedOut === true;
   const state = typeof oc.state === "string" ? oc.state : oc.starting === true ? "gateway iniciando" : kv.get("oc") ? "sem estado" : "gateway fora do ar";
   const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : oc.linked === true ? (state === "linked" ? "vinculado, conectando" : `vinculado, ${state}`) : state;
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail };
+  const dm = kv.get("dmpolicy") ?? "";
+  const dmPolicy: WhatsappDmPolicy | null = dm === "pairing" || dm === "allowlist" || dm === "open" || dm === "disabled" ? dm : dm === "" ? "pairing" : null; // sem valor autorado, o OpenClaw usa pairing
+  let channelConfig: string | null = null;
+  try { const raw = kv.get("channel") ?? ""; if (raw !== "") channelConfig = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* sem bloco ainda */ }
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail, dmPolicy, channelConfig };
 }
+
+/**
+ * Quem o agente responde nas DMs do WhatsApp (OpenClaw). "self" = só você: `dmPolicy allowlist` com `allowFrom`
+ * vazio e `selfChatMode true` (as mensagens que você manda para o próprio número entram; mais ninguém recebe
+ * resposta nem código). "open" = todo mundo: `dmPolicy open` + `allowFrom ["*"]`. Grupos ficam desativados nos
+ * dois. O OpenClaw aplica sem reiniciar o gateway.
+ */
+export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const script = policy === "open"
+    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`
+    : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh((await whatsappStatus(host)).number)}`;
+  const r = await runSsh(host, `${script}\n`, 60_000);
+  if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  log(`[whatsapp] ${host}: dmPolicy=${policy}`);
+  return whatsappStatus(host);
+}
+
+/** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
+export const SELF_POLICY_SH = `openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`;
+/** Com o número já conhecido, ele entra no allowFrom: tira o aviso "allowFrom vazio" e deixa explícito quem é "você". */
+const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`);
 
 const PAIR_SCRIPT = `
 set -u
@@ -152,6 +180,11 @@ if command -v openclaw >/dev/null 2>&1; then
   echo '{"event":"meu-bot","step":"openclaw"}'
   if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then echo '{"event":"error","error":"OpenClaw instalado, mas sem configurar nesta máquina (não há ~/.openclaw/openclaw.json); rode o onboarding do OpenClaw antes de parear"}'; exit 2; fi
   if ! timeout 25 openclaw plugins list 2>/dev/null | grep -qi whatsapp; then echo '{"event":"error","error":"OpenClaw sem o plugin do WhatsApp; na máquina: openclaw plugins install clawhub:@openclaw/whatsapp"}'; exit 2; fi
+  # Padrão do OpenClaw é "pairing": qualquer desconhecido que mandar DM recebe um código. Antes de conectar, sem
+  # política autorada, deixa silencioso (ninguém é respondido); a pessoa escolhe depois, no app ou no tutorial.
+  if [ -z "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" ] || openclaw config get channels.whatsapp.dmPolicy 2>&1 | grep -q unset; then
+    ( ${SELF_POLICY_SH} ) >/dev/null 2>&1 && echo '{"event":"meu-bot","step":"silent"}'
+  fi
   if [ "$RESET" = "1" ]; then timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1; echo '{"event":"meu-bot","step":"logged-out"}'; fi
   # Gateway: sob supervisord (computador do Grok Bot) o programa se chama openclaw-gateway; senão o daemon do próprio openclaw.
   GW=$(supervisorctl status 2>/dev/null | awk '/openclaw-gateway/ {print $1; exit}')
@@ -170,7 +203,12 @@ if command -v openclaw >/dev/null 2>&1; then
   [ "$RESET" = "1" ] && ME0=""
   ( while kill -0 $P 2>/dev/null; do
       ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
-      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then touch "$LOG.linked"; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; sleep 4; kill $P 2>/dev/null; break; fi
+      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then
+        touch "$LOG.linked"; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"
+        # "só você": o número recém-vinculado entra no allowFrom (antes do login ele não existia).
+        if [ "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" = "allowlist" ]; then NUM=$(printf '%s' "$ME" | sed 's/[:@].*//'); openclaw config set channels.whatsapp.allowFrom "[\"+$NUM\"]" --strict-json >/dev/null 2>&1; fi
+        sleep 4; kill $P 2>/dev/null; break
+      fi
       sleep 1
     done ) & W=$!
   trap 'kill $P $W 2>/dev/null; exit 130' HUP TERM INT
@@ -240,6 +278,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
+          else if (ev.step === "silent") send({ kind: "step", text: "padrão: só você fala com o agente; ninguém mais recebe resposta nem código" });
           else if (ev.step === "gateway-started") send({ kind: "step", text: "gateway de volta no ar" });
           break;
         case "started": send({ kind: "step", text: openclaw ? "gerando o QR…" : "bridge do Hermes iniciado; gerando o QR…" }); break;

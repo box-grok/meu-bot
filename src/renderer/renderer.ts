@@ -3,6 +3,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
+import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -218,7 +219,7 @@ function setBusy(tab: Tab, value: boolean): void {
 }
 
 function activate(id: string): void {
-  deactivateAcervo();
+  deactivatePage();
   const prev = active();
   if (prev !== null) prev.draft = inputEl.value;
   for (const t of tabs.values()) {
@@ -589,7 +590,8 @@ function buildPaletteItems(): PaletteItem[] {
   const cur = active();
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
-  add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openAcervo());
+  add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
+  add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: TUTORIAIS.length === 0 ? "vazio por enquanto" : `${TUTORIAIS.length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
@@ -843,12 +845,13 @@ async function restoreTabs(): Promise<void> {
   for (const c of saved) if (c.messages.length === 0) void window.meuBot.deleteConversation(c.id);
   for (const c of saved) if (c.messages.length > 0) index.set(c.id, c);
   const asTabs = saved.filter((c) => c.messages.length > 0 && c.openAsTab && !c.archived);
-  // Onboarding pendente (primeira vez, ou caixinha "onboarding feito" desmarcada no seletor): começa
+  // Onboarding pendente (primeira vez, ou interruptor "Onboarding" ligado no seletor): começa
   // sempre, com ou sem conversas; o passo "Novo" cria a conversa, então não se cria a automática.
   const pending = settings?.onboarding === "pending";
   if (pending) startOnboarding();
   if (asTabs.length === 0) {
     if (!pending) await newTab();
+    else syncRest();
     return;
   }
   for (const c of asTabs) buildTab(c.id, c.model, c.host, c);
@@ -1054,17 +1057,85 @@ xaiLineBtn.addEventListener("click", () => {
 });
 
 // ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
-// ---- Acervo: biblioteca de skills (lib/acervo.ts), numa aba própria. Instalar = pedir ao agente, numa conversa nova.
-const acervoLine = $<HTMLButtonElement>("acervo-line");
-const acervoPanel = $<HTMLElement>("acervo-panel");
+// ---- Páginas em aba própria (Acervo, Tutoriais…): não são conversas. Uma de cada vez na frente; o compositor
+// desliga; qualquer conversa ativada manda a página para trás; fechar volta à conversa de antes.
+interface PageTab { id: string; title: string; panel: HTMLElement; render: () => void; tabEl: HTMLElement | null }
+const pages = new Map<string, PageTab>();
+let pageActive: PageTab | null = null;
+/** Conversa que estava ativa quando a página tomou a frente; volta a ela ao fechar. */
+let pagePrev: string | null = null;
+
+function definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab {
+  const page: PageTab = { id, title, panel, render, tabEl: null };
+  pages.set(id, page);
+  return page;
+}
+
+function activatePage(page: PageTab): void {
+  if (pageActive === page) return;
+  if (pageActive === null) {
+    const prev = active();
+    if (prev !== null) prev.draft = inputEl.value;
+    pagePrev = activeId;
+  } else { pageActive.panel.hidden = true; pageActive.tabEl?.classList.remove("active"); }
+  activeId = null;
+  pageActive = page;
+  for (const t of tabs.values()) { t.tabEl.classList.remove("active"); t.messagesEl.hidden = true; }
+  page.tabEl?.classList.add("active");
+  page.render();
+  page.panel.hidden = false;
+  inputEl.value = "";
+  syncComposer();
+  renderSidebar();
+  syncRest();
+  paintGuideTargets();
+}
+
+/** Uma conversa tomou a frente: a página vai para trás (a aba continua aberta). */
+function deactivatePage(): void {
+  if (pageActive === null) return;
+  pageActive.panel.hidden = true;
+  pageActive.tabEl?.classList.remove("active");
+  pageActive = null;
+  paintGuideTargets();
+}
+
+function openPage(page: PageTab): void {
+  if (page.tabEl === null) {
+    const tabEl = el("div", `tab tab-page tab-${page.id}`);
+    const titleEl = el("span", "tab-title", page.title);
+    const closeBtn = el("button", "tab-close", "×");
+    closeBtn.type = "button"; closeBtn.title = "Fechar aba";
+    tabEl.append(titleEl, closeBtn);
+    tabEl.addEventListener("click", () => activatePage(page));
+    closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); closePage(page); });
+    tabsEl.appendChild(tabEl);
+    page.tabEl = tabEl;
+  }
+  activatePage(page);
+}
+
+function closePage(page: PageTab): void {
+  if (page.tabEl === null) return;
+  if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
+  const wasActive = pageActive === page;
+  if (wasActive) deactivatePage();
+  page.tabEl.remove();
+  page.tabEl = null;
+  if (!wasActive) return;
+  const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1);
+  pagePrev = null;
+  if (back !== undefined) { activate(back); return; }
+  activeId = null;
+  syncComposer();
+  renderSidebar();
+  syncRest();
+}
+
+// ---- Acervo: biblioteca de skills (lib/acervo.ts). Instalar = pedir ao agente, numa conversa nova.
 const acervoList = $<HTMLElement>("acervo-list");
 $<HTMLElement>("acervo-count").textContent = ACERVO_SKILLS.length === 1 ? "1 skill" : `${ACERVO_SKILLS.length} skills`;
-let acervoTab: HTMLElement | null = null;
-let acervoActive = false;
-/** Conversa que estava ativa quando o Acervo tomou a frente; volta a ela ao fechar. */
-let acervoPrev: string | null = null;
-
-function renderAcervo(): void {
+const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel"), () => {
   acervoList.replaceChildren();
   if (ACERVO_SKILLS.length === 0) {
     acervoList.append(el("div", "acervo-empty", "Nenhuma skill no acervo ainda. As mais usadas vão entrar aqui, cada uma com instalação pelo agente da máquina."));
@@ -1084,65 +1155,151 @@ function renderAcervo(): void {
     item.append(info, btn);
     acervoList.append(item);
   }
-}
+});
+$<HTMLButtonElement>("acervo-line").addEventListener("click", () => openPage(acervoPage));
 
-/** Traz a aba do Acervo para a frente: as conversas ficam atrás, o compositor desliga (não é conversa). */
-function activateAcervo(): void {
-  if (acervoActive) return;
-  const prev = active();
-  if (prev !== null) prev.draft = inputEl.value;
-  acervoPrev = activeId;
-  activeId = null;
-  acervoActive = true;
-  for (const t of tabs.values()) { t.tabEl.classList.remove("active"); t.messagesEl.hidden = true; }
-  acervoTab?.classList.add("active");
-  renderAcervo();
-  acervoPanel.hidden = false;
-  inputEl.value = "";
-  syncComposer();
-  renderSidebar();
-  syncRest();
-}
+// ---- Tutoriais (lib/tutoriais.ts): passo a passo em aba própria.
+const tutList = $<HTMLElement>("tutoriais-list");
+$<HTMLElement>("tutoriais-count").textContent = TUTORIAIS.length === 1 ? "1 tutorial" : `${TUTORIAIS.length} tutoriais`;
+const TUT_ICONS = {
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+} as const;
 
-/** Uma conversa tomou a frente: o Acervo vai para trás (a aba continua aberta). */
-function deactivateAcervo(): void {
-  if (!acervoActive) return;
-  acervoActive = false;
-  acervoPanel.hidden = true;
-  acervoTab?.classList.remove("active");
+// ---- Guia ao vivo (estilo onboarding), um por aba: "Começar" abre a aba do tutorial ("WhatsApp 2/4"); o passo
+// atual tem o botão que leva ao lugar certo, os botões do modal pulsam, e os passos concluídos ganham ✓ pelo
+// estado real do WhatsApp. O que o app não vê (a mensagem de teste) a pessoa marca. Uma aba por tutorial.
+const guidePages = new Map<string, { page: PageTab; tutorial: Tutorial }>();
+const guideFlagsKey = (t: Tutorial): string => `guia:${t.id}:${windowHost}`;
+function loadGuideFlags(t: Tutorial): GuideFlags {
+  try { const raw = localStorage.getItem(guideFlagsKey(t)); if (raw !== null) return { ...emptyFlags(), ...(JSON.parse(raw) as Partial<GuideFlags>) }; } catch { /* opcional */ }
+  return emptyFlags();
 }
-
-function openAcervo(): void {
-  if (acervoTab === null) {
-    const tabEl = el("div", "tab tab-acervo");
-    const titleEl = el("span", "tab-title", "Acervo");
-    const closeBtn = el("button", "tab-close", "×");
-    closeBtn.type = "button"; closeBtn.title = "Fechar aba";
-    tabEl.append(titleEl, closeBtn);
-    tabEl.addEventListener("click", () => activateAcervo());
-    closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); closeAcervo(); });
-    tabsEl.appendChild(tabEl);
-    acervoTab = tabEl;
+function saveGuideFlag(t: Tutorial, flag: keyof GuideFlags): void {
+  const f = loadGuideFlags(t); f[flag] = true;
+  try { localStorage.setItem(guideFlagsKey(t), JSON.stringify(f)); } catch { /* opcional */ }
+}
+/** O guia na frente, se a aba ativa é de um tutorial. */
+function activeGuide(): Tutorial | null {
+  if (pageActive === null) return null;
+  return guidePages.get(pageActive.id)?.tutorial ?? null;
+}
+const guideTargets = (): Record<Exclude<GuideTarget, "none">, HTMLElement[]> => ({
+  "wa-line": [], "wa-agent": [waAgentBtn], "wa-pair": [waPairBtn], "wa-policy": [waPolicyCards],
+});
+/** Só os botões do modal do passo atual pulsam (nada na lateral). */
+function paintGuideTargets(): void {
+  const all = new Set(Object.values(guideTargets()).flat());
+  const want = new Set<HTMLElement>();
+  const t = activeGuide();
+  if (t !== null) {
+    const v = guideView(t, waStatus, loadGuideFlags(t));
+    const step = v.finished ? undefined : t.steps[v.current];
+    if (step !== undefined && step.target !== "none") for (const e of guideTargets()[step.target]) want.add(e);
   }
-  activateAcervo();
+  for (const e of all) e.classList.toggle("attention", want.has(e));
+}
+function runGuideAction(target: GuideTarget): void {
+  if (target === "none") return;
+  void refreshWhatsapp();
+  if (waStatus === null || !waStatus.present) { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
+  openWhatsapp();
+  if (target === "wa-pair" && waStatus.ready && !waStatus.connected) void pairWhatsapp(false);
+}
+/** Chamado sempre que o estado do WhatsApp muda: redesenha o guia da frente, os títulos das abas e o catálogo. */
+function paintGuide(): void {
+  for (const { page, tutorial } of guidePages.values()) {
+    const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial));
+    const title = page.tabEl?.querySelector(".tab-title"); if (title !== null && title !== undefined) title.textContent = guideTabTitle(tutorial, v);
+    if (pageActive === page) page.render();
+  }
+  if (pageActive === tutoriaisPage) tutoriaisPage.render();
+  paintGuideTargets();
+}
+function renderGuide(t: Tutorial, panel: HTMLElement): void {
+  const flags = loadGuideFlags(t);
+  const view = guideView(t, waStatus, flags);
+  panel.replaceChildren();
+  // Barra de progresso em segmentos: um por passo; concluídos e o atual em verde.
+  const bar = el("div", "guide-progress");
+  t.steps.forEach((_, i) => bar.append(el("span", `seg${view.done[i] === true || i === view.current ? " on" : ""}`)));
+  panel.append(bar);
+  const meta = el("div", "guide-meta");
+  const st = waStatus;
+  if (st !== null && st.present) {
+    const pill = el("span", `guide-pill${st.connected ? " on" : ""}`);
+    pill.append(el("span", "dot"), document.createTextNode(`Canal WhatsApp (${st.gateway === "openclaw" ? "OpenClaw" : "Hermes"})${st.number !== null ? ` · ${fmtPhone(st.number)}` : ""}`));
+    meta.append(pill);
+  }
+  meta.append(el("span", "guide-count", view.finished ? "Concluído" : `Passo ${view.current + 1} de ${t.steps.length}`));
+  panel.append(meta);
+  if (view.finished) {
+    panel.append(el("h1", "", "Tudo feito"), el("p", "guide-text", "O WhatsApp desta máquina está conectado e configurado do seu jeito. Para mudar quem o agente responde, abra a linha WhatsApp na lateral."));
+    const close = el("button", "btn btn-primary", "Fechar"); close.type = "button";
+    close.addEventListener("click", () => { const g = guidePages.get(`tut-${t.id}`); if (g !== undefined) closePage(g.page); });
+    panel.append(close);
+    return;
+  }
+  const step = t.steps[view.current]!;
+  panel.append(el("h1", "", step.title), el("p", "guide-text", step.text));
+  if (step.body === "reply-choice") {
+    const cards = el("div", "reply-cards guide-cards");
+    renderReplyCards(cards, replyChoiceOf(st?.dmPolicy ?? null), waPolicySaving || st === null || !st.connected, chooseReply);
+    panel.append(cards, el("div", "guide-note", REPLY_NOTE));
+    if (st !== null && st.channelConfig !== null) {
+      const det = el("details", "guide-details");
+      det.append(el("summary", "", "Ver configuração do canal"), el("pre", "guide-config", st.channelConfig));
+      panel.append(det);
+    }
+    if (st === null || !st.connected) panel.append(el("p", "hint", "Conecte o número primeiro: a escolha é gravada no OpenClaw da máquina."));
+  } else if (step.target !== "none") {
+    const b = el("button", "btn btn-primary", GUIDE_ACTION_LABEL[step.target]); b.type = "button";
+    const target = step.target;
+    b.addEventListener("click", () => runGuideAction(target));
+    panel.append(b);
+  }
+  if (step.manual !== undefined) {
+    const b = el("button", "btn btn-ghost", step.manual.label); b.type = "button";
+    const flag = step.manual.flag;
+    b.addEventListener("click", () => { saveGuideFlag(t, flag); paintGuide(); });
+    panel.append(b);
+  }
+}
+/** Abre (ou traz para a frente) a aba do guia de um tutorial. */
+function openGuide(t: Tutorial): void {
+  let g = guidePages.get(`tut-${t.id}`);
+  if (g === undefined) {
+    const panel = el("section", "acervo-panel guide-panel"); panel.hidden = true;
+    panelsEl.append(panel);
+    const page = definePage(`tut-${t.id}`, t.short, panel, () => renderGuide(t, panel));
+    g = { page, tutorial: t };
+    guidePages.set(page.id, g);
+  }
+  openPage(g.page);
+  paintGuide();
 }
 
-function closeAcervo(): void {
-  if (acervoTab === null) return;
-  const wasActive = acervoActive;
-  deactivateAcervo();
-  acervoTab.remove();
-  acervoTab = null;
-  if (!wasActive) return;
-  const back = acervoPrev !== null && tabs.has(acervoPrev) ? acervoPrev : [...tabs.keys()].at(-1);
-  acervoPrev = null;
-  if (back !== undefined) { activate(back); return; }
-  activeId = null;
-  syncComposer();
-  renderSidebar();
-  syncRest();
-}
-acervoLine.addEventListener("click", () => openAcervo());
+const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
+  tutList.replaceChildren();
+  if (TUTORIAIS.length === 0) {
+    tutList.append(el("div", "acervo-empty", "Nenhum tutorial ainda. Os passo a passo do meu-bot vão entrar aqui: parear o WhatsApp, entrar no Claude Code, aliviar o pod…"));
+  }
+  for (const t of TUTORIAIS) {
+    const view = guideView(t, waStatus, loadGuideFlags(t));
+    const started = view.done.some(Boolean);
+    const soon = t.comingSoon === true;
+    const card = el("article", `tut-card${view.finished ? " finished" : ""}${soon ? " soon" : ""}`);
+    const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
+    const body = el("div", "tut-body");
+    body.append(el("span", "tut-badge", view.finished ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t)), el("h3", "", t.title), el("p", "", t.summary));
+    const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : view.finished ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
+    if (soon) start.disabled = true; else start.addEventListener("click", () => openGuide(t));
+    const head = el("div", "tut-head"); head.append(icon, body, start);
+    card.append(head);
+    tutList.append(card);
+  }
+});
+$<HTMLButtonElement>("tutoriais-line").addEventListener("click", () => openPage(tutoriaisPage));
 
 const waLine = $<HTMLButtonElement>("wa-line");
 const waDialog = $<HTMLDialogElement>("wa-dialog");
@@ -1181,6 +1338,45 @@ const waResetBtn = $<HTMLButtonElement>("wa-reset");
 const waCloseBtn = $<HTMLButtonElement>("wa-close");
 const waAgentBtn = $<HTMLButtonElement>("wa-agent");
 const waRefreshBtn = $<HTMLButtonElement>("wa-refresh");
+const waPolicyBox = $<HTMLElement>("wa-policy");
+const waPolicyHint = $<HTMLElement>("wa-policy-hint");
+const waPolicyCards = $<HTMLElement>("wa-policy-cards");
+let waPolicySaving = false;
+/** Os dois cartões de rádio (só você / todo mundo), iguais no modal e no guia; o escolhido fica verde. */
+function renderReplyCards(container: HTMLElement, current: "self" | "open" | null, disabled: boolean, onChoose: (c: "self" | "open") => void): void {
+  container.replaceChildren();
+  for (const o of REPLY_OPTIONS) {
+    const card = el("button", `reply-card${current === o.id ? " on" : ""}`);
+    card.type = "button"; card.disabled = disabled; card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(current === o.id));
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
+    if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(el("span", "reply-radio"), body);
+    card.addEventListener("click", () => onChoose(o.id));
+    container.append(card);
+  }
+}
+function chooseReply(choice: "self" | "open"): void {
+  if (waPolicySaving) return;
+  for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
+  if (replyChoiceOf(waStatus?.dmPolicy ?? null) === choice) { paintWhatsapp(); return; }
+  waPolicySaving = true; paintWhatsapp();
+  void window.meuBot.whatsappSetDmPolicy(choice)
+    .then((st) => { waStatus = st; })
+    .catch((err: unknown) => { waStatusEl.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; })
+    .finally(() => { waPolicySaving = false; paintWhatsapp(); });
+}
+function paintWaPolicy(): void {
+  const st = waStatus;
+  const show = st !== null && st.gateway === "openclaw" && st.ready && st.dmPolicy !== null && !waPairing;
+  waPolicyBox.hidden = !show;
+  if (!show || st === null) return;
+  renderReplyCards(waPolicyCards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
+  waPolicyHint.textContent = waPolicySaving ? "Aplicando na máquina…"
+    : st.dmPolicy === "pairing" ? "Hoje está no padrão do OpenClaw: quem manda mensagem recebe um código de pareamento e espera aprovação. Escolha uma das opções para mudar."
+    : st.dmPolicy === "disabled" ? "Hoje está tudo desligado, inclusive suas próprias mensagens. Escolha uma das opções."
+    : "Vale na hora, sem reiniciar nada. Grupos continuam desativados.";
+}
 waRefreshBtn.addEventListener("click", () => {
   waRefreshBtn.disabled = true; waRefreshBtn.textContent = "Consultando a máquina…";
   void refreshWhatsapp().finally(() => {
@@ -1250,14 +1446,18 @@ function paintWhatsapp(): void {
     waPairBtn.hidden = true; waResetBtn.hidden = true; waCloseBtn.textContent = "Fechar";
     waAgentBtn.hidden = waPairing;
     waRefreshBtn.hidden = waPairing;
+    waPolicyBox.hidden = true;
     return;
   }
   waAgentBtn.hidden = true;
-  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
+  paintWaPolicy();
+  const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? "só você" : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado${responde}` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
   waStatusEl.textContent = `${st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`} ${st.agent}.`;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
   waResetBtn.hidden = waPairing || st.number === null;
+  paintGuide();
   waCloseBtn.textContent = waConnected && !waSuccess.hidden ? "Concluído" : waPairing ? "Cancelar" : "Fechar";
   waCloseBtn.classList.toggle("btn-done", waConnected && !waSuccess.hidden);
   waRefreshBtn.hidden = waPairing;
@@ -1376,7 +1576,7 @@ waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close
 // Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.
 waDialog.addEventListener("cancel", () => { waCancelIfPairing(); });
 
-// ---- Abertura (opcional, caixinha "abrir direto" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
+// ---- Abertura (opcional, interruptor "Intro" do seletor): o topo se materializa em etapas e o túnel acende como clímax.
 const introEl = $<HTMLElement>("intro");
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -1466,8 +1666,11 @@ let onboard: OnboardState | null = null;
 // ---- Tela vazia: sem aba e sem onboarding, a cobrinha (snake.ts) ocupa o painel e já sai andando.
 const restEl = $<HTMLElement>("rest");
 const rest = mountSnake($<HTMLCanvasElement>("rest-canvas"));
+const tabPlus = $<HTMLButtonElement>("tab-plus");
+tabPlus.addEventListener("click", () => { void newTab(); });
 function syncRest(): void {
-  const show = tabs.size === 0 && onboard === null && !acervoActive;
+  tabPlus.hidden = tabs.size > 0; // a aba "+" só existe quando não há aba de conversa
+  const show = tabs.size === 0 && onboard === null && pageActive === null;
   restEl.hidden = !show;
   newBtn.classList.toggle("shine", show);
   if (show) rest.start(); else rest.stop();
@@ -1799,7 +2002,7 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
   if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
-  if (mod && ev.key === "w" && acervoActive) { ev.preventDefault(); closeAcervo(); return; }
+  if (mod && ev.key === "w" && pageActive !== null) { ev.preventDefault(); closePage(pageActive); return; }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
 /** Novo (shot "x-campaign grok-bot like button"): afunda e volta com mola; bolhas-mascote saltam em leque enquanto a aba nova aparece. */

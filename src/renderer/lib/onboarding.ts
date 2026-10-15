@@ -26,7 +26,7 @@ export const ONBOARD_STEPS: readonly OnboardStep[] = [
 /** Primeira mensagem da primeira conversa: enviada sozinha quando o último passo conclui. */
 export const EXAMPLE_MESSAGE = "Oi! Em uma frase: o que você consegue fazer nesta máquina?";
 /** Aviso ao pular: deixa claro que acabou e como refazer. */
-export const SKIPPED_MESSAGE = { title: "Onboarding ignorado", text: "Tudo bem. Para refazer depois: desmarque \"feito\" no rodapé do seletor, ou use \"Rever onboarding\" na paleta (Cmd + K)." };
+export const SKIPPED_MESSAGE = { title: "Onboarding ignorado", text: "Tudo bem. Para refazer depois: ligue \"Onboarding\" no rodapé do seletor, ou use \"Rever onboarding\" na paleta (Cmd + K)." };
 /** Transição de encerramento, mostrada no cartão por alguns segundos. */
 export const FINAL_MESSAGE = { title: "Isso é tudo", text: "Fim do onboarding. A partir daqui é só conversar: cada máquina é uma janela, e a lista guarda o resto." };
 

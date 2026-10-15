@@ -338,8 +338,9 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   shortcuts = new Map(payload.shortcuts.map((s) => [s.host, s.emoji]));
   reliefShortcuts = new Set(payload.reliefShortcuts);
   pods = new Set(payload.pods);
-  directCheck.checked = payload.openDirect;
-  onboardedCheck.checked = payload.onboardingDone;
+  // Interruptores "Intro" e "Onboarding": ligado = tem. O settings.json guarda o contrário (openDirect, onboarding done).
+  directCheck.checked = !payload.openDirect;
+  onboardedCheck.checked = !payload.onboardingDone;
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
   buildRows();
@@ -441,8 +442,8 @@ grokbotResetBtn.addEventListener("click", () => {
 openBtn.addEventListener("click", () => { void open(); });
 cancelBtn.addEventListener("click", () => window.picker.cancel());
 syncBtn.addEventListener("click", () => { void syncSsh(); });
-directCheck.addEventListener("change", () => { void window.picker.setOpenDirect(directCheck.checked).catch((err: unknown) => showError("Abrir direto", err)); });
-onboardedCheck.addEventListener("change", () => { void window.picker.setOnboardingDone(onboardedCheck.checked).catch((err: unknown) => showError("Onboarding", err)); });
+directCheck.addEventListener("change", () => { void window.picker.setOpenDirect(!directCheck.checked).catch((err: unknown) => showError("Intro", err)); });
+onboardedCheck.addEventListener("change", () => { void window.picker.setOnboardingDone(!onboardedCheck.checked).catch((err: unknown) => showError("Onboarding", err)); });
 document.addEventListener("keydown", (ev) => {
   // Digitando no formulário do Tailscale: Enter e setas não podem abrir máquina nem mover a seleção.
   if ((ev.target as HTMLElement | null)?.closest("#pk-ts-form") !== null) { if (ev.key === "Escape") { tsSecret.value = ""; tsForm.hidden = true; } return; }
