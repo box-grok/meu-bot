@@ -161,9 +161,18 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .burst-m { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; pointer-events: none; z-index: 3; overflow: visible; animation: burst-pop .85s cubic-bezier(.2, .9, .3, 1) var(--d, 0ms) both; }
 .burst-m .m-bubble { fill: hsl(var(--hue) 78% 62%); } .burst-m .m-eye, .burst-m .m-mouth { fill: #0d1322; }
 @keyframes burst-pop { 0% { translate: 0 0; scale: .2; opacity: 0; } 18% { opacity: 1; scale: 1.15; } 55% { translate: var(--bx) var(--by); scale: 1; opacity: 1; } 100% { translate: calc(var(--bx) * 1.2) calc(var(--by) * .55); scale: .8; opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .composer .btn-new.pressed { animation: none; } .burst-m { display: none; } }
+/* Enquanto a cobrinha está na tela (nenhuma aba), Novo brilha parado como o Abrir do seletor: o botão da vez. */
+.composer .btn-new.shine { color: var(--accent-fg); border-color: var(--accent); background: linear-gradient(110deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 62%, #fff) 45%, var(--accent) 70%); background-size: 220% 100%; animation: new-shine 2.6s ease-in-out infinite, new-glow 2.6s ease-in-out infinite; }
+@keyframes new-shine { 0% { background-position: 110% 0; } 100% { background-position: -110% 0; } }
+@keyframes new-glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .composer .btn-new.pressed { animation: none; } .burst-m { display: none; } .composer .btn-new.shine { animation: none; background: var(--accent); } }
 /* Enviar (shot "cred-button-loading-to-tick"): no clique o texto some e um ponto pulsa até a resposta começar; aí vira
    Parar (a saída continua à mão); ao terminar, um ✓ entra com mola e, 900 ms depois, volta a Enviar. A forma não muda. */
+/* Com duas ou mais letras no campo (e nada em andamento), só a faixa luminosa do Abrir corre pelo Enviar: tem algo pronto para mandar. */
+#btn-send.shine { background: linear-gradient(110deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 62%, #fff) 45%, var(--accent) 70%); background-size: 220% 100%; animation: send-shine 30s ease-in-out infinite; }
+/* A faixa passa em ~2 s e o botão fica parado até completar 30 s: um lembrete raro, não uma insistência. */
+@keyframes send-shine { 0% { background-position: 110% 0; } 7%, 100% { background-position: -110% 0; } }
+@media (prefers-reduced-motion: reduce) { #btn-send.shine { animation: none; background: var(--accent); } }
 #btn-send.is-sending, #btn-send.is-done { color: transparent; }
 #btn-send.is-sending::after, #btn-send.is-done::after { content: ""; position: absolute; left: 50%; top: 50%; }
 #btn-send.is-sending::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent-fg); animation: send-dot .9s ease-in-out infinite; }
@@ -204,6 +213,10 @@ dialog details.group > label, dialog details.group > .row, dialog details.group 
 dialog details.group > p { margin: 8px 0 0; }
 dialog details.group textarea, dialog details.group input, dialog details.group select { background: var(--card); }
 /* Onboarding guiado: cartão flutuante no alto da área de conversa; a interface continua usável. */
+/* Tela vazia: a cobrinha no fundo sólido do tema, centrada no painel; a legenda é discreta como o rodapé. */
+.rest { position: absolute; inset: 0; background: var(--bg); }
+.rest[hidden] { display: none; }
+.rest-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .onboard { position: absolute; left: 50%; top: calc(50% + 24px); transform: translate(-50%, -50%); width: min(480px, calc(100% - 32px)); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px 14px; box-shadow: 0 10px 30px rgba(0,0,0,.18); z-index: 5; display: flex; flex-direction: column; gap: 6px; }
 .onboard[hidden] { display: none; }
 .onboard-top { display: flex; align-items: center; gap: 8px; }
@@ -313,7 +326,33 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .wa-box { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
 .wa-qr { width: 300px; height: 300px; align-self: center; background: #fff; padding: 8px; border-radius: 12px; }
 .wa-qr[hidden] { display: none; }
+/* Progresso do pareamento: uma linha calma no lugar do log que repetia o convite do CLI. */
+.wa-progress { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 13px; }
+.wa-progress[hidden] { display: none; }
+.wa-progress .grow { flex: 1; min-width: 0; }
+.wa-progress-meta { font: 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.wa-progress .btn-small { padding: 2px 8px; font-size: 11px; }
+.wa-pulse { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); flex: none; animation: wa-pulse 1.6s ease-in-out infinite; }
+.wa-progress.ok .wa-pulse { background: var(--ok); animation: none; }
+.wa-progress.bad .wa-pulse { background: var(--bad); animation: none; }
+@keyframes wa-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .wa-pulse { animation: none; } }
 #wa-dialog .log { max-height: 120px; }
+/* Acervo (biblioteca de skills), acima da busca: mesma linha neutra, com ícone e contagem à direita. */
+.acervo-line .grow { flex: 1; }
+.acervo-icon { color: var(--accent); font-size: 12px; }
+.acervo-count { font-size: 11px; color: var(--muted); }
+.acervo-panel { position: absolute; inset: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
+.acervo-panel[hidden] { display: none; }
+.acervo-panel h2 { margin: 0; font-size: 16px; }
+.acervo-panel .hint { max-width: 640px; }
+.tab-acervo .tab-title::before { content: "▤ "; color: var(--accent); }
+.acervo-list { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.acervo-empty { font-size: 13px; color: var(--muted); padding: 18px 8px; text-align: center; border: 1px dashed var(--line); border-radius: 10px; }
+.acervo-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.acervo-item .grow { flex: 1; min-width: 0; }
+.acervo-item strong { display: block; font-size: 13px; }
+.acervo-item span { font-size: 12px; color: var(--muted); }
 .cl-line { cursor: default; }
 .cl-line .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-line .btn-small { padding: 2px 8px; font-size: 11px; }
@@ -381,3 +420,19 @@ body.topbar-hidden .topbar { display: none; }
 .mode-item.off { opacity: .45; cursor: default; }
 .mode-item.off .desc::after { content: " · não existe nesta máquina"; }
 .mode-item.current .name { color: var(--accent); }
+/* Estado do WhatsApp: o que falta vem em linhas (uma por item). */
+.wa-status { white-space: pre-line; }
+/* Pareado: no lugar do QR, o círculo verde entra com mola, o ✓ se desenha por dentro e uma onda verde se abre. */
+.wa-success { position: relative; align-self: center; width: 300px; height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+.wa-success[hidden] { display: none; }
+.wa-success strong { font-size: 15px; color: var(--ok); animation: wa-rise .5s ease .45s both; }
+.wa-check { width: 96px; height: 96px; overflow: visible; animation: wa-pop .55s cubic-bezier(.34, 1.56, .64, 1) both; }
+.wa-check circle { fill: var(--ok); }
+.wa-check path { fill: none; stroke: #fff; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: wa-draw .4s ease-out .3s forwards; }
+.wa-wave { position: absolute; left: 50%; top: 36%; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%; border: 3px solid var(--ok); opacity: 0; animation: wa-wave 1.1s ease-out .2s; }
+@keyframes wa-pop { 0% { scale: .2; opacity: 0; } 100% { scale: 1; opacity: 1; } }
+@keyframes wa-draw { to { stroke-dashoffset: 0; } }
+@keyframes wa-wave { 0% { scale: 1; opacity: .7; } 100% { scale: 2.6; opacity: 0; } }
+@keyframes wa-rise { 0% { translate: 0 6px; opacity: 0; } 100% { translate: 0 0; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .wa-check, .wa-success strong { animation: none; } .wa-check path { animation: none; stroke-dashoffset: 0; } .wa-wave { display: none; } }
+.btn.btn-done { background: var(--ok); border-color: var(--ok); color: #fff; }

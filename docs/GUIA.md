@@ -343,9 +343,54 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - `npm test` roda `node --test scripts/tests/` sobre o `dist/` (renderer como ESM via
   `dist/renderer/package.json {"type":"module"}`; main como CJS com stub do `electron`).
 
+### Qual agente a máquina tem (Hermes ou OpenClaw)
+- `whatsappStatus` (`src/main/whatsapp.ts`) devolve `agent` ("OpenClaw 2026.9.9 em /usr/local/bin (global,
+  todos os usuários; /opt/node/lib/node_modules/openclaw)"), `ready` e `missing`. Hermes = `~/.hermes/whatsapp`
+  existe; OpenClaw = `openclaw` no PATH. Escopo: binário sob `/home`, `/Users` ou `/root` é "só deste
+  usuário"; o resto é global. Para o OpenClaw, `ready` exige `~/.openclaw/openclaw.json` e o plugin do
+  WhatsApp em `openclaw plugins list` (não vem de fábrica; `openclaw plugins install clawhub:@openclaw/whatsapp`).
+  Sem config o script nem chama `channels status` (poupa 25 s). A linha do WhatsApp mostra "instalado, mas
+  sem configurar · clique para ver o que falta" e esconde o botão de parear; o `PAIR_SCRIPT` também recusa
+  cedo com a mensagem certa, em vez do "código 255" que o wizard cancelado devolvia (agente-box, 15 out).
+- Pareamento do OpenClaw: "conectado" só vem do vigia do `PAIR_SCRIPT`, quando o
+  `~/.openclaw/credentials/whatsapp/default/creds.json` ganha `me.id` (emite um JSON `connected`). Antes se
+  casava texto ("linked", "successfully"…) e o próprio convite do CLI ("go to Linked Devices") disparava:
+  o QR fechava em 4 s, antes de escanear (agente-box, 15 out). O CLI só imprime com pseudo-terminal.
+- Fim do pareamento do OpenClaw: o CLI sai sozinho logo após vincular, então o script confere o creds.json
+  mais uma vez depois do `wait`. Os cronômetros de 5 min rodam com a saída em /dev/null e são mortos com
+  `pkill -P`: um `sleep 300` órfão segurava o ssh e deixava o modal preso em "Cancelar" (15 out). No app,
+  `waShowSuccess` é chamado pelo vigia e também pela consulta de estado (a cada 8 s durante o pareamento):
+  ✓ verde animado no lugar do QR, o único botão vira "Concluído" e o modal fecha em 2,6 s.
+- Plug and play pelo próprio agente: no modal, "Pedir ao agente para preparar" (`waAgentPrompt` em
+  `renderer.ts`) abre uma conversa nova e manda ao Claude Code em bypass da máquina o pedido pronto
+  (onboard não interativo com `--auth-choice anthropic-cli`, plugin do ClawHub, conferência do gateway e
+  do linger), sem parear: o QR continua sendo do app. O app não roda nada disso por SSH; quem executa é o
+  agente, com o mesmo acesso que já tem. A linha do WhatsApp se atualiza sozinha a cada 10 s e passa a
+  mostrar "Gerar QR" quando ficar pronto.
+
+### Acervo (biblioteca de skills)
+- Linha "Acervo" acima da busca da lista lateral (`#acervo-line`), aba própria (`openAcervo`: a aba não é
+  conversa; `activateAcervo` zera `activeId`, desliga o compositor e lembra `acervoPrev` para voltar ao
+  fechar; `activate()` de qualquer conversa a manda para trás; Cmd+W fecha) com o painel `#acervo-panel`, e
+  ação na paleta.
+  `src/renderer/lib/acervo.ts` define `Skill` (id, nome, resumo, passos de instalação, conferência) e
+  `installPrompt(skill, máquina)`, o pedido pronto ao agente. A lista `ACERVO_SKILLS` está vazia de
+  propósito: é o começo do conceito. Para entrar uma skill, basta um item na lista; o botão "Pedir ao agente
+  para instalar" abre uma conversa e manda o pedido, como o WhatsApp faz. O teste garante ids únicos e
+  campos obrigatórios.
+
 ### Onda B — conversas
 - Modelo: `archived`, `openAsTab`, `branchedFrom`. **Fechar aba só fecha a aba**; a conversa fica na
-  lista. Excluir é explícito e pede confirmação.
+  lista. Excluir é explícito e pede confirmação. Fechar a última aba deixa a tela vazia (campo e
+  Enviar desligados), sem criar outra conversa sozinha: Novo, Cmd+N ou a lista abrem a próxima.
+  Só na abertura da janela, sem aba salva, a primeira conversa é criada automaticamente.
+- Tela vazia = cobrinha (`src/renderer/lib/snake.ts` regras puras + testes; `src/renderer/snake.ts`
+  canvas e teclado; seção `#rest` em `index.html`). Já sai andando ao fechar a última aba, atravessa
+  as bordas, nunca morre (passa pelo próprio rabo) e para de crescer em 24 segmentos. O tabuleiro é o
+  painel inteiro (células de ~30 px; `resizeBoard` dobra posições quando a janela muda) e cada bolha
+  acelera 7% (170 ms → mínimo 55 ms por passo). A comida é a
+  bolha-mascote do Novo, uma cor por vez na ordem de `MASCOT_HUES`. Setas ou WASD viram e, seguradas por mais de 160 ms, viram turbo (passo pela metade); o listener de
+  teclado só existe enquanto o painel está visível (`syncRest()` liga/desliga em `activate`/`afterTabGone`).
 - `src/renderer/lib/sidebar.ts`: busca normalizada (NFD, sem acento) e `groupByDate` com cabeça
   "Recentes" cortada no primeiro intervalo ≥ 30 min (nunca atravessando 8 h), depois Hoje / Ontem /
   Esta semana / Mais antigas.

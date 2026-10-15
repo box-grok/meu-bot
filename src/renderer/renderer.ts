@@ -1,6 +1,8 @@
 import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
+import { mountSnake } from "./snake.js";
+import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -158,6 +160,7 @@ function syncComposer(): void {
   sendBtn.classList.toggle("btn-bad", phase === "streaming");
   sendBtn.classList.toggle("is-sending", phase === "sending");
   sendBtn.classList.toggle("is-done", phase === "done");
+  sendBtn.classList.toggle("shine", tab !== null && phase === "idle" && inputEl.value.trim().length >= 2);
   modelSelect.disabled = tab === null;
   applyModelAvailability(modelSelect, tab === null ? null : tab.host);
   if (tab !== null) modelSelect.value = tab.model;
@@ -215,6 +218,7 @@ function setBusy(tab: Tab, value: boolean): void {
 }
 
 function activate(id: string): void {
+  deactivateAcervo();
   const prev = active();
   if (prev !== null) prev.draft = inputEl.value;
   for (const t of tabs.values()) {
@@ -229,6 +233,7 @@ function activate(id: string): void {
   if (tab !== undefined) scrollToBottom(tab);
   syncComposer();
   renderSidebar();
+  syncRest();
 }
 
 const shorten = (text: string): string => {
@@ -347,11 +352,17 @@ function detachTab(id: string): void {
   tab.messagesEl.remove();
 }
 
-async function afterTabGone(id: string): Promise<void> {
+/** Depois de fechar/arquivar/excluir: ativa a aba vizinha. Sem nenhuma, a tela fica vazia (sem aba
+ *  automática): Novo, Cmd+N ou a lista lateral abrem a próxima. */
+function afterTabGone(id: string): void {
   if (activeId !== id) { renderSidebar(); return; }
   const last = [...tabs.keys()].at(-1);
-  if (last !== undefined) activate(last);
-  else await newTab();
+  if (last !== undefined) { activate(last); return; }
+  activeId = null;
+  inputEl.value = "";
+  syncComposer();
+  renderSidebar();
+  syncRest();
 }
 
 async function closeTab(id: string): Promise<void> {
@@ -365,7 +376,7 @@ async function closeTab(id: string): Promise<void> {
     patchIndex(id, { openAsTab: false, updatedAt: cur?.updatedAt });
     void window.meuBot.closeConversation(id);
   }
-  await afterTabGone(id);
+  afterTabGone(id);
 }
 
 async function deleteConversation(id: string): Promise<void> {
@@ -376,7 +387,7 @@ async function deleteConversation(id: string): Promise<void> {
   index.delete(id);
   renderSidebar();
   void window.meuBot.deleteConversation(id);
-  await afterTabGone(id);
+  afterTabGone(id);
 }
 
 async function archive(id: string, archived: boolean): Promise<void> {
@@ -384,7 +395,7 @@ async function archive(id: string, archived: boolean): Promise<void> {
   if (archived) detachTab(id);
   patchIndex(id, { archived, openAsTab: archived ? false : (cur?.openAsTab ?? false), updatedAt: cur?.updatedAt });
   await window.meuBot.archiveConversation(id, archived);
-  if (archived) await afterTabGone(id);
+  if (archived) afterTabGone(id);
 }
 
 /** Abre (ou foca) a aba de uma conversa da lista. */
@@ -578,6 +589,7 @@ function buildPaletteItems(): PaletteItem[] {
   const cur = active();
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
+  add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openAcervo());
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
@@ -1042,15 +1054,177 @@ xaiLineBtn.addEventListener("click", () => {
 });
 
 // ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
+// ---- Acervo: biblioteca de skills (lib/acervo.ts), numa aba própria. Instalar = pedir ao agente, numa conversa nova.
+const acervoLine = $<HTMLButtonElement>("acervo-line");
+const acervoPanel = $<HTMLElement>("acervo-panel");
+const acervoList = $<HTMLElement>("acervo-list");
+$<HTMLElement>("acervo-count").textContent = ACERVO_SKILLS.length === 1 ? "1 skill" : `${ACERVO_SKILLS.length} skills`;
+let acervoTab: HTMLElement | null = null;
+let acervoActive = false;
+/** Conversa que estava ativa quando o Acervo tomou a frente; volta a ela ao fechar. */
+let acervoPrev: string | null = null;
+
+function renderAcervo(): void {
+  acervoList.replaceChildren();
+  if (ACERVO_SKILLS.length === 0) {
+    acervoList.append(el("div", "acervo-empty", "Nenhuma skill no acervo ainda. As mais usadas vão entrar aqui, cada uma com instalação pelo agente da máquina."));
+  }
+  for (const skill of ACERVO_SKILLS) {
+    const info = el("div", "grow");
+    info.append(el("strong", "", skill.name), el("span", "", skill.summary));
+    const btn = el("button", "btn btn-primary btn-small", "Pedir ao agente para instalar");
+    btn.type = "button";
+    btn.addEventListener("click", () => {
+      void (async () => {
+        const tab = await newTab();
+        await sendText(tab, installPrompt(skill, hostLabel(windowHost)));
+      })();
+    });
+    const item = el("div", "acervo-item");
+    item.append(info, btn);
+    acervoList.append(item);
+  }
+}
+
+/** Traz a aba do Acervo para a frente: as conversas ficam atrás, o compositor desliga (não é conversa). */
+function activateAcervo(): void {
+  if (acervoActive) return;
+  const prev = active();
+  if (prev !== null) prev.draft = inputEl.value;
+  acervoPrev = activeId;
+  activeId = null;
+  acervoActive = true;
+  for (const t of tabs.values()) { t.tabEl.classList.remove("active"); t.messagesEl.hidden = true; }
+  acervoTab?.classList.add("active");
+  renderAcervo();
+  acervoPanel.hidden = false;
+  inputEl.value = "";
+  syncComposer();
+  renderSidebar();
+  syncRest();
+}
+
+/** Uma conversa tomou a frente: o Acervo vai para trás (a aba continua aberta). */
+function deactivateAcervo(): void {
+  if (!acervoActive) return;
+  acervoActive = false;
+  acervoPanel.hidden = true;
+  acervoTab?.classList.remove("active");
+}
+
+function openAcervo(): void {
+  if (acervoTab === null) {
+    const tabEl = el("div", "tab tab-acervo");
+    const titleEl = el("span", "tab-title", "Acervo");
+    const closeBtn = el("button", "tab-close", "×");
+    closeBtn.type = "button"; closeBtn.title = "Fechar aba";
+    tabEl.append(titleEl, closeBtn);
+    tabEl.addEventListener("click", () => activateAcervo());
+    closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); closeAcervo(); });
+    tabsEl.appendChild(tabEl);
+    acervoTab = tabEl;
+  }
+  activateAcervo();
+}
+
+function closeAcervo(): void {
+  if (acervoTab === null) return;
+  const wasActive = acervoActive;
+  deactivateAcervo();
+  acervoTab.remove();
+  acervoTab = null;
+  if (!wasActive) return;
+  const back = acervoPrev !== null && tabs.has(acervoPrev) ? acervoPrev : [...tabs.keys()].at(-1);
+  acervoPrev = null;
+  if (back !== undefined) { activate(back); return; }
+  activeId = null;
+  syncComposer();
+  renderSidebar();
+  syncRest();
+}
+acervoLine.addEventListener("click", () => openAcervo());
+
 const waLine = $<HTMLButtonElement>("wa-line");
 const waDialog = $<HTMLDialogElement>("wa-dialog");
 const waStatusEl = $<HTMLParagraphElement>("wa-status");
 const waQr = $<HTMLImageElement>("wa-qr");
 const waHow = $<HTMLParagraphElement>("wa-how");
 const waLog = $<HTMLPreElement>("wa-log");
+const waSuccess = $<HTMLElement>("wa-success");
+const waSuccessText = $<HTMLElement>("wa-success-text");
+const waProgress = $<HTMLElement>("wa-progress");
+const waProgressText = $<HTMLElement>("wa-progress-text");
+const waProgressMeta = $<HTMLElement>("wa-progress-meta");
+const waDetailsBtn = $<HTMLButtonElement>("wa-details");
+waDetailsBtn.addEventListener("click", () => { waLog.hidden = !waLog.hidden; waDetailsBtn.textContent = waLog.hidden ? "detalhes" : "ocultar"; });
+/** QR da vez: quantos já vieram, quando chegou o último e o intervalo medido entre eles (o WhatsApp renova ~20 s). */
+let waQrCount = 0; let waQrAt = 0; let waQrEvery = 20_000;
+let waTick: ReturnType<typeof setInterval> | null = null;
+function setWaProgress(text: string, tone: "run" | "ok" | "bad" = "run"): void {
+  waProgress.hidden = false;
+  waProgress.className = `wa-progress${tone === "run" ? "" : ` ${tone}`}`;
+  waProgressText.textContent = text;
+}
+function paintWaMeta(): void {
+  if (waQrCount === 0 || !waPairing || waConnected) { waProgressMeta.textContent = ""; return; }
+  const left = Math.max(0, Math.round((waQrAt + waQrEvery - Date.now()) / 1000));
+  waProgressMeta.textContent = `QR ${waQrCount} · renova em ${left} s`;
+}
+function resetWaProgress(): void {
+  waQrCount = 0; waQrAt = 0; waQrEvery = 20_000;
+  if (waTick !== null) { clearInterval(waTick); waTick = null; }
+  waProgressMeta.textContent = "";
+  waLog.hidden = true; waDetailsBtn.textContent = "detalhes";
+}
 const waPairBtn = $<HTMLButtonElement>("wa-pair");
 const waResetBtn = $<HTMLButtonElement>("wa-reset");
 const waCloseBtn = $<HTMLButtonElement>("wa-close");
+const waAgentBtn = $<HTMLButtonElement>("wa-agent");
+const waRefreshBtn = $<HTMLButtonElement>("wa-refresh");
+waRefreshBtn.addEventListener("click", () => {
+  waRefreshBtn.disabled = true; waRefreshBtn.textContent = "Consultando a máquina…";
+  void refreshWhatsapp().finally(() => {
+    waRefreshBtn.disabled = false; waRefreshBtn.textContent = "Atualizar";
+    // Mesmo sem mudança, dizer que consultou: senão o clique parece não fazer nada.
+    if (waCheckedAt !== null) waStatusEl.textContent = `${waStatusEl.textContent ?? ""}\nConsultado às ${waCheckedAt.toLocaleTimeString("pt-BR")}.`;
+  });
+});
+
+/**
+ * Pedido pronto ao agente da máquina (Claude Code em bypass): ele configura o OpenClaw e instala o plugin;
+ * o pareamento (QR) fica com o app. Idempotente por instrução: pular o que já está feito.
+ */
+function waAgentPrompt(st: WhatsappStatus): string {
+  if (st.gateway === "hermes") {
+    return [
+      "Prepare o Hermes desta máquina para o WhatsApp, sem parear (o QR eu faço pelo meu-bot).",
+      "Falta: " + (st.missing ?? "o bridge do WhatsApp") + ".",
+      "Verifique a instalação do hermes-agent em ~/.local/lib/node_modules/hermes-agent e garanta o bridge em runtime/hermes-agent/scripts/whatsapp-bridge/bridge.js (reinstale o pacote se preciso, sem mexer no backend do meu-bot nem reiniciar o gateway à mão).",
+      "No fim, resuma o que fez e o que ainda falta. Não pareie o WhatsApp.",
+    ].join("\n");
+  }
+  return [
+    "Prepare o OpenClaw desta máquina para o WhatsApp, sem interação e sem parear (o QR eu faço pelo meu-bot).",
+    "Encontrado: " + st.agent + ".",
+    "Falta:\n" + (st.missing ?? "?").split("\n").map((l) => "- " + l).join("\n"),
+    "",
+    "Passos (pule o que já estiver feito):",
+    "1. Se não houver ~/.openclaw/openclaw.json: `openclaw onboard --non-interactive --accept-risk --auth-choice anthropic-cli --skip-channels --skip-skills --skip-hooks --skip-search --skip-ui --install-daemon --gateway-bind loopback --gateway-auth token --gateway-token \"$(openssl rand -hex 24)\" --json`. Se o anthropic-cli não servir, me diga o que falta em vez de inventar chave.",
+    "2. Plugin: `openclaw plugins install clawhub:@openclaw/whatsapp --accept-capabilities`.",
+    "3. Confira com `openclaw gateway status` e `openclaw plugins list | grep -i whatsapp`. Se o serviço for systemd de usuário, veja `loginctl show-user $USER -p Linger`; se for `no`, avise (precisa de root para o gateway sobreviver ao logout).",
+    "",
+    "No fim, resuma o que fez e o que ainda falta. Não rode `openclaw channels login`; não pareie o WhatsApp.",
+  ].join("\n");
+}
+waAgentBtn.addEventListener("click", () => {
+  const st = waStatus;
+  if (st === null) return;
+  void (async () => {
+    waDialog.close();
+    const tab = await newTab();
+    await sendText(tab, waAgentPrompt(st));
+  })();
+});
 let waStatus: WhatsappStatus | null = null;
 let waPairing = false;
 /** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
@@ -1070,12 +1244,23 @@ function paintWhatsapp(): void {
   waLine.className = `wa-line ${st.connected ? "on" : "off"}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
   const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : "WhatsApp";
+  if (!st.ready) {
+    waLine.replaceChildren(el("span", "dot"), el("span", "", `${via} · ${st.detail} · clique para resolver`));
+    waStatusEl.textContent = `${st.agent}.\nFalta:\n${(st.missing ?? "?").split("\n").map((l) => `• ${l}`).join("\n")}`;
+    waPairBtn.hidden = true; waResetBtn.hidden = true; waCloseBtn.textContent = "Fechar";
+    waAgentBtn.hidden = waPairing;
+    waRefreshBtn.hidden = waPairing;
+    return;
+  }
+  waAgentBtn.hidden = true;
   waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
-  waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`;
+  waStatusEl.textContent = `${st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`} ${st.agent}.`;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
   waResetBtn.hidden = waPairing || st.number === null;
-  waCloseBtn.textContent = waPairing ? "Cancelar" : "Fechar";
+  waCloseBtn.textContent = waConnected && !waSuccess.hidden ? "Concluído" : waPairing ? "Cancelar" : "Fechar";
+  waCloseBtn.classList.toggle("btn-done", waConnected && !waSuccess.hidden);
+  waRefreshBtn.hidden = waPairing;
 }
 
 let waTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1085,20 +1270,28 @@ let waRefreshing = false;
  * (gateway reiniciando, sessão caindo), 60 s quando está bem. Sem isso a linha congelava no estado da
  * abertura da janela — vermelha depois de um alívio, mesmo com o gateway já de volta.
  */
-async function refreshWhatsapp(): Promise<void> {
-  if (waRefreshing) return;
+/** Consulta em andamento: quem chama de novo (o botão Atualizar) espera por ela em vez de ser ignorado. */
+let waInflight: Promise<void> | null = null;
+let waCheckedAt: Date | null = null;
+function refreshWhatsapp(): Promise<void> {
+  if (waInflight !== null) return waInflight;
   waRefreshing = true;
   if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; }
-  try { waStatus = await window.meuBot.whatsappStatus(); } catch { waStatus = null; }
-  finally { waRefreshing = false; }
-  paintWhatsapp();
-  const soon = waStatus !== null && waStatus.present && !waStatus.connected && !waPairing;
-  waTimer = setTimeout(() => { void refreshWhatsapp(); }, soon ? 10_000 : 60_000);
+  waInflight = (async () => {
+    try { waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); } catch { waStatus = null; }
+    finally { waRefreshing = false; waInflight = null; }
+    paintWhatsapp();
+    if (waPairing && waStatus?.connected === true) waShowSuccess(waStatus.number);
+    const soon = waStatus !== null && waStatus.present && !waStatus.connected;
+    waTimer = setTimeout(() => { void refreshWhatsapp(); }, waPairing && !waConnected ? 8_000 : soon ? 10_000 : 60_000);
+  })();
+  return waInflight;
 }
 window.addEventListener("focus", () => { if (waStatus?.present) void refreshWhatsapp(); });
 
 function openWhatsapp(): void {
-  waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = "";
+  // No meio de um pareamento o QR e o log continuam: reabrir o modal não pode esconder o QR da vez.
+  if (!waPairing) { waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = ""; waProgress.hidden = true; waSuccess.hidden = true; resetWaProgress(); }
   paintWhatsapp();
   if (!waDialog.open) waDialog.showModal();
 }
@@ -1106,7 +1299,9 @@ function openWhatsapp(): void {
 async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
   waPairing = true; waConnected = false;
-  waLog.hidden = false; waLog.textContent = "";
+  waLog.textContent = ""; resetWaProgress(); waSuccess.hidden = true;
+  setWaProgress(reset ? "Apagando a sessão antiga…" : "Conectando à máquina…");
+  waTick = setInterval(paintWaMeta, 1000);
   waStatusEl.textContent = reset ? "Apagando a sessão antiga e gerando um QR novo…" : "Gerando o QR…";
   paintWhatsapp();
   try {
@@ -1115,6 +1310,9 @@ async function pairWhatsapp(reset: boolean): Promise<void> {
     waLog.textContent += `✗ ${err instanceof Error ? err.message : String(err)}\n`;
   } finally {
     waPairing = false;
+    if (waTick !== null) { clearInterval(waTick); waTick = null; }
+    paintWaMeta();
+    if (!waConnected && !waProgress.classList.contains("bad")) setWaProgress("O QR expirou sem leitura. Gere outro quando quiser.", "bad");
     waQr.hidden = true; waHow.hidden = true;
     // O gateway acabou de voltar; dá alguns segundos para o bridge abrir a sessão antes de consultar.
     setTimeout(() => { void refreshWhatsapp(); }, 6000);
@@ -1122,24 +1320,51 @@ async function pairWhatsapp(reset: boolean): Promise<void> {
   }
 }
 
-window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
-  const appendLog = (t: string): void => { waLog.hidden = false; waLog.textContent = `${waLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); waLog.scrollTop = waLog.scrollHeight; };
-  switch (ev.kind) {
-    case "step": appendLog(`▸ ${ev.text}`); break;
-    case "log": appendLog(ev.text); break;
-    case "qr": waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false; waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente."; break;
-    case "connected": {
+function waAppendLog(t: string): void {
+  const lines = (waLog.textContent ?? "").split("\n").filter((l) => l !== "");
+  // "↻ QR renovado" substitui o anterior em vez de empilhar; linha idêntica à última também não repete.
+  const last = lines.at(-1) ?? "";
+  if (last === t || (t.startsWith("↻ QR renovado") && last.startsWith("↻ QR renovado"))) lines[lines.length - 1] = t; else lines.push(t);
+  waLog.textContent = lines.slice(-8).join("\n");
+  waLog.scrollTop = waLog.scrollHeight;
+}
+
+/** Pareou (pelo vigia do script ou pela consulta de estado): ✓ animado no lugar do QR, aviso na aba, modal fecha. */
+function waShowSuccess(number: string | null): void {
+  if (waConnected) return;
+  const ev = { number };
       // Vinculou: a janela fecha sozinha; o gateway volta em segundo plano e o refresh depois do `done` mostra o número.
       waConnected = true;
-      waQr.hidden = true; waHow.hidden = true; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`; appendLog("✓ conectado");
+      setWaProgress(`Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}`, "ok");
+      waProgressMeta.textContent = "";
+      waQr.hidden = true; waHow.hidden = true;
+      waSuccessText.textContent = ev.number !== null ? `Pareado como ${fmtPhone(ev.number)}` : "Pareado";
+      waSuccess.hidden = false; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`; waAppendLog("✓ conectado");
+      // O único botão vira "Concluído" (verde): cancelar depois de pareado não faz sentido.
+      waCloseBtn.textContent = "Concluído"; waCloseBtn.classList.add("btn-done");
       const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info");
-      setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
+      setTimeout(() => { if (waDialog.open) waDialog.close(); }, 2600);
+}
+
+window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
+  const appendLog = waAppendLog;
+  switch (ev.kind) {
+    case "step": appendLog(`▸ ${ev.text}`); if (waQrCount === 0) setWaProgress(ev.text.charAt(0).toUpperCase() + ev.text.slice(1)); break;
+    case "log": appendLog(ev.text); break;
+    case "qr": {
+      const now = Date.now();
+      if (waQrCount > 0 && now - waQrAt > 5_000) waQrEvery = now - waQrAt; // mede o ciclo real do WhatsApp
+      waQrCount += 1; waQrAt = now;
+      waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false;
+      waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente.";
+      setWaProgress("Aguardando a leitura no celular"); paintWaMeta();
       break;
     }
-    case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); break;
+    case "connected": { waShowSuccess(ev.number); break; }
+    case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); setWaProgress(ev.text, "bad"); break;
     case "done":
       appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
-      if (ev.ok && waDialog.open) setTimeout(() => { if (waDialog.open) waDialog.close(); }, 1500);
+      if (ev.ok && waDialog.open) setTimeout(() => { if (waDialog.open) waDialog.close(); }, 2600);
       break;
   }
 });
@@ -1237,6 +1462,16 @@ async function onboardLeave(how: "done" | "skipped"): Promise<void> {
   obRipple.classList.remove("go"); obRipple.hidden = true; onboardEl.classList.remove("shrink");
 }
 let onboard: OnboardState | null = null;
+
+// ---- Tela vazia: sem aba e sem onboarding, a cobrinha (snake.ts) ocupa o painel e já sai andando.
+const restEl = $<HTMLElement>("rest");
+const rest = mountSnake($<HTMLCanvasElement>("rest-canvas"));
+function syncRest(): void {
+  const show = tabs.size === 0 && onboard === null && !acervoActive;
+  restEl.hidden = !show;
+  newBtn.classList.toggle("shine", show);
+  if (show) rest.start(); else rest.stop();
+}
 let lastFeedback: Feedback | undefined;
 let feedbackTimer: number | null = null;
 
@@ -1549,6 +1784,7 @@ sendBtn.addEventListener("click", () => {
   if (tab !== null && tab.busy) { void window.meuBot.cancel(tab.id); return; }
   void sendMessage();
 });
+inputEl.addEventListener("input", () => { const t = active(); sendBtn.classList.toggle("shine", t !== null && !t.busy && (sendPhase.get(t.id) ?? "idle") === "idle" && inputEl.value.trim().length >= 2); });
 inputEl.addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && !ev.shiftKey) {
     ev.preventDefault();
@@ -1563,6 +1799,7 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
   if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
+  if (mod && ev.key === "w" && acervoActive) { ev.preventDefault(); closeAcervo(); return; }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
 /** Novo (shot "x-campaign grok-bot like button"): afunda e volta com mola; bolhas-mascote saltam em leque enquanto a aba nova aparece. */

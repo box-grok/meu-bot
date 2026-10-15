@@ -162,6 +162,12 @@ export interface WhatsappStatus {
   /** A máquina tem um agente com WhatsApp (Hermes ou OpenClaw). */
   present: boolean;
   gateway: Gateway | null;
+  /** O que foi encontrado, para humanos: "OpenClaw 2026.9.9 em /usr/local/bin (global, todos os usuários)". */
+  agent: string;
+  /** Dá para parear: o Hermes tem o bridge; o OpenClaw tem o plugin do WhatsApp. */
+  ready: boolean;
+  /** O que falta quando `ready` é falso (pt-BR, com o comando quando há um). */
+  missing: string | null;
   connected: boolean;
   /** Estado do bridge (open, connecting, close, "sem bridge"…). */
   state: string;

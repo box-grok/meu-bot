@@ -27,6 +27,10 @@ export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
 S=$HOME/.hermes/whatsapp
 if [ -d "$S" ]; then
   echo gateway=hermes; echo present=1
+  echo "bin=$(command -v hermes 2>/dev/null)"
+  echo "ver=$(timeout 10 hermes --version 2>/dev/null | head -1)"
+  B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
+  [ -f "$B/bridge.js" ] && echo bridge=1 || echo bridge=0
   echo "health=$(curl -s -m 3 http://127.0.0.1:3000/health 2>/dev/null | tr -d '\\n')"
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$S/session/creds.json" 2>/dev/null)"
   echo "loggedout=$(tail -8 "$S/bridge.log" 2>/dev/null | grep -c 'Logged out')"
@@ -34,7 +38,15 @@ if [ -d "$S" ]; then
 fi
 if command -v openclaw >/dev/null 2>&1; then
   echo gateway=openclaw; echo present=1
+  echo "bin=$(command -v openclaw)"
+  echo "real=$(readlink -f "$(command -v openclaw)" 2>/dev/null)"
+  echo "ver=$(timeout 10 openclaw --version 2>/dev/null | head -1)"
+  [ -f "$HOME/.openclaw/openclaw.json" ] && echo cfg=1 || echo cfg=0
+  # Plugin do WhatsApp instalado? (não vem de fábrica; é do ClawHub)
+  echo "plugin=$(timeout 25 openclaw plugins list 2>/dev/null | grep -ci whatsapp)"
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null)"
+  # Sem config não há gateway; pular o channels status poupa 25 s.
+  [ -f "$HOME/.openclaw/openclaw.json" ] || exit 0
   echo "oc=$(timeout 25 openclaw channels status --channel whatsapp --json 2>/dev/null | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
@@ -61,15 +73,18 @@ const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.ex
 
 /** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes nem OpenClaw. */
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
-  const none: WhatsappStatus = { present: false, gateway: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "" };
+  const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "" };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
-  const r = await runSsh(host, STATUS_SCRIPT, 45_000);
+  const r = await runSsh(host, STATUS_SCRIPT, 60_000);
   if (r.code !== 0) return { ...none, detail: `não consegui consultar: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}` };
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1).trim()); }
   if (kv.get("present") !== "1") return none;
   const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : "hermes";
   if (gateway === "openclaw") return openclawStatus(kv);
+  const agent = describeInstall("Hermes", kv);
+  const ready = kv.get("bridge") === "1";
+  if (!ready) return { present: true, gateway, agent, ready, missing: "o bridge do WhatsApp não está nesta instalação do Hermes", connected: false, state: "sem bridge", number: null, loggedOut: false, detail: "Hermes sem o bridge do WhatsApp" };
   let state = "sem bridge";
   try { const h = JSON.parse(kv.get("health") || "{}") as { status?: unknown }; if (typeof h.status === "string") state = h.status; } catch { /* bridge fora do ar */ }
   const number = phoneOf(kv.get("me") ?? "");
@@ -77,19 +92,37 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   // O bridge do Hermes reporta "connected"/"disconnected" (não o "open" do Baileys).
   const connected = state === "connected" || state === "open";
   const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : `bridge ${state}`;
-  return { present: true, gateway, connected, state, number, loggedOut, detail };
+  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail };
+}
+
+/** "OpenClaw 2026.9.9 em /usr/local/bin (global, todos os usuários)": versão, caminho e se é do sistema ou só deste usuário. */
+function describeInstall(name: string, kv: Map<string, string>): string {
+  // "OpenClaw 2026.9.9 (bcfc888)" → "2026.9.9": o hash do commit não ajuda ninguém na tela.
+  const ver = (kv.get("ver") ?? "").replace(new RegExp(`^${name}\\s*`, "i"), "").replace(/\s*\([0-9a-f]{6,}\)\s*$/i, "").trim();
+  const bin = kv.get("bin") ?? "";
+  const real = kv.get("real") ?? "";
+  const where = bin === "" ? "" : ` em ${bin.replace(/\/[^/]+$/, "")}`;
+  const scope = bin === "" ? "" : bin.startsWith("/home/") || bin.startsWith("/Users/") || bin.startsWith("/root/") ? " (só deste usuário)" : ` (global, todos os usuários${real !== "" && real !== bin ? `; ${real.replace(/\/[^/]+$/, "")}` : ""})`;
+  return `${name}${ver === "" ? "" : ` ${ver}`}${where}${scope}`;
 }
 
 /** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
 function openclawStatus(kv: Map<string, string>): WhatsappStatus {
+  const agent = describeInstall("OpenClaw", kv);
+  const plugin = Number(kv.get("plugin") ?? "0") > 0;
+  const cfg = kv.get("cfg") === "1";
+  if (!plugin || !cfg) {
+    const faltas = [...(!cfg ? ["sem configuração (~/.openclaw/openclaw.json)"] : []), ...(!plugin ? ["sem o plugin do WhatsApp: `openclaw plugins install clawhub:@openclaw/whatsapp`"] : [])];
+    return { present: true, gateway: "openclaw", agent, ready: false, missing: faltas.join("\n"), connected: false, state: "sem configurar", number: null, loggedOut: false, detail: `OpenClaw instalado, mas ${!cfg ? "sem configurar" : "sem o plugin do WhatsApp"}` };
+  }
   let oc: { linked?: unknown; connected?: unknown; state?: unknown; lifecycle?: unknown; loggedOut?: unknown; e164?: unknown; starting?: unknown } = {};
   try { oc = JSON.parse(kv.get("oc") || "{}") as typeof oc; } catch { /* gateway fora do ar ou CLI sem --json */ }
   const number = phoneOf(kv.get("me") ?? "") ?? (typeof oc.e164 === "string" ? oc.e164.replace(/\D/g, "") || null : null);
   const connected = oc.connected === true;
   const loggedOut = oc.loggedOut === true;
   const state = typeof oc.state === "string" ? oc.state : oc.starting === true ? "gateway iniciando" : kv.get("oc") ? "sem estado" : "gateway fora do ar";
-  const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : oc.linked === true ? `vinculado, ${state}` : state;
-  return { present: true, gateway: "openclaw", connected, state, number, loggedOut, detail };
+  const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : oc.linked === true ? (state === "linked" ? "vinculado, conectando" : `vinculado, ${state}`) : state;
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail };
 }
 
 const PAIR_SCRIPT = `
@@ -107,15 +140,18 @@ if [ -d "$S" ]; then
   node bridge.js --pair-only --pair-json --session "$S/session" --mode bot 2>&1 &
   NODE=$!
   trap 'kill $NODE 2>/dev/null; restart; exit 130' HUP TERM INT
-  ( sleep 300; kill $NODE 2>/dev/null ) & T=$!
+  # O sleep do cronômetro não pode herdar a saída: um sleep órfão seguraria o ssh aberto até o fim dos 5 min.
+  ( sleep 300 >/dev/null 2>&1; kill $NODE 2>/dev/null ) >/dev/null 2>&1 & T=$!
   wait $NODE; rc=$?
-  kill $T 2>/dev/null
+  pkill -P $T 2>/dev/null; kill $T 2>/dev/null
   trap - HUP TERM INT
   restart
   exit $rc
 fi
 if command -v openclaw >/dev/null 2>&1; then
   echo '{"event":"meu-bot","step":"openclaw"}'
+  if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then echo '{"event":"error","error":"OpenClaw instalado, mas sem configurar nesta máquina (não há ~/.openclaw/openclaw.json); rode o onboarding do OpenClaw antes de parear"}'; exit 2; fi
+  if ! timeout 25 openclaw plugins list 2>/dev/null | grep -qi whatsapp; then echo '{"event":"error","error":"OpenClaw sem o plugin do WhatsApp; na máquina: openclaw plugins install clawhub:@openclaw/whatsapp"}'; exit 2; fi
   if [ "$RESET" = "1" ]; then timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1; echo '{"event":"meu-bot","step":"logged-out"}'; fi
   # Gateway: sob supervisord (computador do Grok Bot) o programa se chama openclaw-gateway; senão o daemon do próprio openclaw.
   GW=$(supervisorctl status 2>/dev/null | awk '/openclaw-gateway/ {print $1; exit}')
@@ -127,13 +163,30 @@ if command -v openclaw >/dev/null 2>&1; then
   openclaw channels login --channel whatsapp >"$LOG" 2>&1 &
   P=$!
   tail -n +1 -F --pid=$P "$LOG" 2>/dev/null & TAIL=$!
-  ( while kill -0 $P 2>/dev/null; do grep -qiE 'linked|logged in|successfully|paired|authenticated' "$LOG" 2>/dev/null && { touch "$LOG.linked"; sleep 4; kill $P 2>/dev/null; break; }; sleep 1; done ) & W=$!
+  # Vinculou = o creds.json do WhatsApp ganhou o número (me.id). Texto não serve: o próprio convite diz
+  # "go to Linked Devices", e casar "linked" fechava o QR antes de alguém escanear.
+  CREDS=$HOME/.openclaw/credentials/whatsapp/default/creds.json
+  ME0=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
+  [ "$RESET" = "1" ] && ME0=""
+  ( while kill -0 $P 2>/dev/null; do
+      ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
+      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then touch "$LOG.linked"; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; sleep 4; kill $P 2>/dev/null; break; fi
+      sleep 1
+    done ) & W=$!
   trap 'kill $P $W 2>/dev/null; exit 130' HUP TERM INT
-  ( sleep 300; kill $P 2>/dev/null ) & T=$!
+  ( sleep 300 >/dev/null 2>&1; kill $P 2>/dev/null ) >/dev/null 2>&1 & T=$!
   wait $P; rc=$?
-  kill $T $W 2>/dev/null; wait $TAIL 2>/dev/null
+  pkill -P $T 2>/dev/null; pkill -P $W 2>/dev/null; kill $T $W 2>/dev/null; wait $TAIL 2>/dev/null
   trap - HUP TERM INT
   LINKED=0; [ -f "$LOG.linked" ] && LINKED=1
+  # O CLI encerra sozinho logo depois de vincular, às vezes antes de o vigia olhar: confere uma última vez.
+  if [ $LINKED -eq 0 ]; then
+    for _ in 1 2 3 4 5; do
+      ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
+      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then LINKED=1; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; break; fi
+      sleep 1
+    done
+  fi
   rm -f "$LOG" "$LOG.linked"
   if [ $rc -eq 0 ] || [ $LINKED -eq 1 ]; then restart; exit 0; fi
   exit $rc
@@ -141,8 +194,6 @@ fi
 echo '{"event":"error","error":"esta máquina não tem Hermes nem OpenClaw com WhatsApp"}'; exit 2
 `;
 
-/** `openclaw channels login` vinculou (mesmas pistas do qr-code-openclaw). */
-const OC_LINKED_RE = /linked|logged in|successfully|paired|authenticated|syncing|sync complete|bootstrap/i;
 const OC_FAIL_RE = /failed|error|timeout/i;
 
 let current: { host: string; child: ChildProcess } | null = null;
@@ -156,7 +207,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
   return new Promise((resolve) => {
     const child = spawn("ssh", [...SSH_OPTS, "--", host, "bash -s"], { stdio: ["pipe", "pipe", "pipe"] });
     current = { host, child };
-    let buf = ""; let connected = false; let stderr = ""; let openclaw = false;
+    let buf = ""; let connected = false; let stderr = ""; let openclaw = false; let qrRounds = 0;
     const qr = new BlockQrCollector();
     send({ kind: "step", text: `conectando a ${host} por SSH` });
     // Linha de texto do `openclaw channels login`: blocos do QR, pistas de vinculado/falha, ou log.
@@ -167,9 +218,18 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
       const clean = line.trim();
       if (clean === "") return;
       if (/[█▀▄]/.test(clean)) return;
+      // Linhas conhecidas do CLI viram passos em pt-BR; o convite se repete a cada QR novo (~20 s) e vira contador.
+      if (/^Waiting for WhatsApp connection/i.test(clean)) { send({ kind: "step", text: "aguardando o WhatsApp" }); return; }
+      if (/scan this QR/i.test(clean)) {
+        qrRounds += 1;
+        send({ kind: qrRounds === 1 ? "step" : "log", text: qrRounds === 1 ? "QR pronto: escaneie no celular" : `↻ QR renovado (${qrRounds}º)` });
+        return;
+      }
+      if (/timed out before login|fresh socket/i.test(clean)) { send({ kind: "log", text: "↻ conexão com o WhatsApp renovada" }); return; }
+      if (/^OpenClaw \d|^│$|^◇\s*$/.test(clean) || /^[A-Z][^.]*—/.test(clean)) return; // banner, moldura e frase de efeito do CLI
       send({ kind: "log", text: clean });
-      if (!connected && OC_LINKED_RE.test(clean)) { connected = true; send({ kind: "connected", number: null }); }
-      else if (!connected && OC_FAIL_RE.test(clean)) send({ kind: "error", text: clean });
+      // Conectado só vem do vigia do script (creds.json com número), em JSON; o texto do CLI só vai para o log.
+      if (!connected && OC_FAIL_RE.test(clean)) send({ kind: "error", text: clean });
     };
     const handle = async (line: string): Promise<void> => {
       let ev: { event?: string; qr?: string; step?: string; user?: { id?: string }; error?: string; reason?: unknown; session?: string };
