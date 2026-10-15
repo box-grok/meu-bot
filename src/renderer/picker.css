@@ -67,6 +67,20 @@ body.arrive .row { animation: arrive-row .26s ease-out both; animation-delay: ca
 .btn { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); cursor: pointer; }
 .btn:disabled { opacity: .5; cursor: default; }
 .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* Abrir (shot "opal-hold-to-commit", sem o gesto de segurar): parado e habilitado, um brilho luminoso corre devagar pelo
+   botão; no clique, o preenchimento avança da esquerda para a direita com "Abrindo…" e o botão fecha em branco com ✓ no
+   instante em que a janela abre. */
+#pk-open { position: relative; overflow: hidden; }
+#pk-open > span { position: relative; z-index: 1; }
+#pk-open:not(:disabled) { background: linear-gradient(110deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 62%, #fff) 45%, var(--accent) 70%); background-size: 220% 100%; animation: open-shine 2.6s ease-in-out infinite, open-glow 2.6s ease-in-out infinite; }
+@keyframes open-shine { 0% { background-position: 110% 0; } 100% { background-position: -110% 0; } }
+@keyframes open-glow { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 50% { box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent); } }
+#pk-open::before { content: ""; position: absolute; inset: 0; width: 0; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 70%, #fff), color-mix(in srgb, var(--accent) 45%, #fff)); }
+#pk-open.committing, #pk-open.committed { opacity: 1; animation: none; }
+#pk-open.committing::before { width: 100%; transition: width .34s cubic-bezier(.2, .8, .2, 1); }
+#pk-open.committed { background: #fff; color: var(--accent); border-color: #fff; }
+#pk-open.committed::before { opacity: 0; transition: opacity .12s ease; }
+@media (prefers-reduced-motion: reduce) { #pk-open:not(:disabled) { animation: none; background: var(--accent); } #pk-open.committing::before { transition: none; } }
 .btn-ghost { background: transparent; }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .actions:empty { display: none; }

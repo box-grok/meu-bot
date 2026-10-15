@@ -254,6 +254,14 @@ async function probe(host: string, force = false): Promise<void> {
 async function open(): Promise<void> {
   if (selected === null || openBtn.disabled) return;
   openBtn.disabled = true;
+  // Commit (shot "opal-hold-to-commit"): preenche da esquerda para a direita e fecha em branco com ✓ enquanto a janela abre.
+  if (!reducedMotion) {
+    const label = openBtn.querySelector("span");
+    openBtn.classList.add("committing"); if (label !== null) label.textContent = "Abrindo…";
+    await new Promise((r) => setTimeout(r, 340));
+    openBtn.classList.add("committed"); if (label !== null) label.textContent = "✓ Abrindo";
+    await new Promise((r) => setTimeout(r, 120));
+  }
   await window.picker.choose(selected);
 }
 
