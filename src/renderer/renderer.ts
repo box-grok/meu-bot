@@ -1216,14 +1216,15 @@ function onboardEnter(): void {
 async function onboardLeave(how: "done" | "skipped"): Promise<void> {
   const bye = (): void => { for (const el of obMascots) el.classList.add("bye"); setTimeout(() => { obStage.replaceChildren(); obStage.hidden = true; obMascots = []; }, 400); };
   if (prefersReducedMotion || how === "skipped") { bye(); return; }
-  obMascots.forEach((el, i) => setTimeout(() => el.classList.add("cheer"), i * 40));
-  await wait(260); bye();
+  // Um movimento só, sem golpes: os mascotes se despedem junto com o cartão encolhendo (700 ms, curva simétrica),
+  // o ponto verde começa a se abrir antes de o cartão terminar, e se dissolve devagar (1 s, meia opacidade).
   const r = onboardEl.getBoundingClientRect();
   obRipple.style.setProperty("--cx", `${r.left + r.width / 2}px`); obRipple.style.setProperty("--cy", `${r.top + r.height / 2}px`);
+  bye();
   onboardEl.classList.add("shrink");
-  await wait(360);
+  await wait(520);
   obRipple.hidden = false; obRipple.classList.add("go");
-  await wait(560);
+  await wait(1000);
   obRipple.classList.remove("go"); obRipple.hidden = true; onboardEl.classList.remove("shrink");
 }
 let onboard: OnboardState | null = null;
