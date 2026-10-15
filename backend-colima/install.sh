@@ -67,6 +67,12 @@ elif [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
   $SUDO systemctl enable meu-bot-backend.service >/dev/null
   $SUDO systemctl restart meu-bot-backend.service
   sleep 1.5; $SUDO systemctl --no-pager --lines=3 status meu-bot-backend.service || true
+elif supervisorctl status meu-bot-backend >/dev/null 2>&1; then
+  # Computador do Grok Bot com supervisord e o programa já cadastrado (ver PERSISTENCIA.md da máquina):
+  # reiniciar por ele, nunca por nohup — senão nascem dois server.js disputando a porta.
+  echo "supervisord gerencia meu-bot-backend: reiniciando por ele"
+  supervisorctl restart meu-bot-backend >/dev/null 2>&1 || { echo "supervisorctl restart falhou"; exit 1; }
+  sleep 2
 else
   echo "sem systemd: subindo com nohup (não sobrevive a reinício)"
   # O processo anterior foi iniciado como `node server.js` (relativo, a partir de $DEST): `pkill -f` pelo
