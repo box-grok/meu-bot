@@ -179,6 +179,9 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 /* A faixa passa em ~2 s e o botão fica parado até completar 30 s: um lembrete raro, não uma insistência. */
 @keyframes send-shine { 0% { background-position: 110% 0; } 7%, 100% { background-position: -110% 0; } }
 @media (prefers-reduced-motion: reduce) { #btn-send.shine { animation: none; background: var(--accent); } }
+/* Contagem "Enviando em 3…" (tutorial da status line): o botão respira a cada segundo até mandar. */
+#btn-send.countdown { animation: new-glow 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { #btn-send.countdown { animation: none; } }
 #btn-send.is-sending, #btn-send.is-done { color: transparent; }
 #btn-send.is-sending::after, #btn-send.is-done::after { content: ""; position: absolute; left: 50%; top: 50%; }
 #btn-send.is-sending::after { width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: var(--accent-fg); animation: send-dot .9s ease-in-out infinite; }

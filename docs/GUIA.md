@@ -1189,8 +1189,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   que acusa chamada). Tutorial com 4 passos: Instalar → **Escolher o que aparece** (interruptores + prévia
   `previewLine`) → **Conferir no terminal** (digita `SL_TEST_COMMAND` num terminal do app; "Apareceu certo"
   marca `GuideFlags.statusTested`) → **Ver os limites na conversa** (alvo `chat`: botão "Ir para a conversa"
-  volta à aba de conversa com uma mensagem pronta no compositor, nada é enviado sozinho, e um aviso de onde
-  olhar; o passo se conclui sozinho quando a conta traz os limites). `GuideTarget` ganhou `chat`
+  volta à aba de conversa com uma mensagem pronta no compositor e um aviso de onde olhar; o botão Enviar faz
+  uma contagem "Enviando em 3 → 2 → 1" e manda sozinho, para a pessoa ver o fluxo acontecer (`startAutoSend`;
+  digitar ou Esc cancela, clicar em Enviar manda na hora, trocar de aba ou esvaziar o compositor cancela;
+  `syncComposer` não repinta o botão durante a contagem); o passo se conclui sozinho quando a conta traz os limites). `GuideTarget` ganhou `chat`
   (`goToChatForStatusLine`, `backToChat` compartilhado com "Perguntar ao agente" do terminal); o painel de
   gerência do tutorial concluído repete o botão em "Onde aparece". `backend-vm/services/account-status.js` é cópia.
   O rótulo da barra no terminal passou de "Sessão diaria" (herdado do script original; a janela é de 5 h, não

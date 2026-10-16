@@ -23,6 +23,8 @@ const tabsEl = $<HTMLElement>("tabs");
 const panelsEl = $<HTMLElement>("panels");
 const inputEl = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("btn-send");
+/** Contagem "Enviando em 3…" em andamento (startAutoSend); null fora dela. */
+let autoSend: { timer: number; tab: Tab } | null = null;
 /** Fase do botão Enviar por conversa: ausente = parado. "sending" até a resposta começar, "streaming" enquanto chega, "done" por 900 ms. */
 const sendPhase = new Map<string, "sending" | "streaming" | "done">();
 function setSendPhase(tab: Tab, phase: "sending" | "streaming" | "done" | null): void {
@@ -163,6 +165,7 @@ function syncComposer(): void {
   // Enviar (shot "cred-button-loading-to-tick"): clique → ponto pulsando até a resposta começar; aí Parar; ao terminar, ✓.
   const phase = tab === null ? "idle" : (sendPhase.get(tab.id) ?? (busy ? "streaming" : "idle"));
   sendBtn.disabled = tab === null;
+  if (autoSend !== null && phase === "idle") return; // contagem "Enviando em 3…" no botão; sai com cancelAutoSend
   sendBtn.textContent = phase === "streaming" ? "Parar" : "Enviar";
   sendBtn.classList.toggle("btn-bad", phase === "streaming");
   sendBtn.classList.toggle("is-sending", phase === "sending");
@@ -2810,12 +2813,15 @@ modelSelect.addEventListener("change", () => {
 sendBtn.addEventListener("click", () => {
   const tab = active();
   if (tab !== null && tab.busy) { void window.meuBot.cancel(tab.id); return; }
+  cancelAutoSend();
   void sendMessage();
 });
-inputEl.addEventListener("input", () => { const t = active(); sendBtn.classList.toggle("shine", t !== null && !t.busy && (sendPhase.get(t.id) ?? "idle") === "idle" && inputEl.value.trim().length >= 2); });
+inputEl.addEventListener("input", () => { cancelAutoSend(); const t = active(); sendBtn.classList.toggle("shine", t !== null && !t.busy && (sendPhase.get(t.id) ?? "idle") === "idle" && inputEl.value.trim().length >= 2); });
 inputEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && autoSend !== null) { ev.preventDefault(); cancelAutoSend(); return; }
   if (ev.key === "Enter" && !ev.shiftKey) {
     ev.preventDefault();
+    cancelAutoSend();
     void sendMessage();
   }
 });
@@ -3252,8 +3258,36 @@ async function goToChatForStatusLine(): Promise<void> {
   const tab = await backToChat();
   if (tab === null) return;
   if (inputEl.value.trim() === "") inputEl.value = "Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.";
-  addNotice(tab, "Mande a mensagem. Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
+  addNotice(tab, "Vou enviar em 3, 2, 1 para você ver acontecendo (digitar ou Esc cancela; Enviar manda já). Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
   inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+  syncComposer();
+  if (!tab.busy) startAutoSend(tab);
+}
+
+/**
+ * Contagem regressiva no botão Enviar ("Enviando em 3 → 2 → 1") e envio sozinho, para a pessoa ver o fluxo
+ * acontecer. Qualquer gesto dela manda: digitar ou Esc cancela, clicar em Enviar manda na hora; trocar de
+ * aba ou esvaziar o compositor também cancela.
+ */
+function startAutoSend(tab: Tab): void {
+  cancelAutoSend();
+  let n = 3;
+  const paint = (): void => { sendBtn.textContent = `Enviando em ${n}`; sendBtn.classList.add("countdown"); sendBtn.classList.remove("shine"); };
+  paint();
+  const timer = window.setInterval(() => {
+    if (active() !== tab || tab.busy || inputEl.value.trim() === "") { cancelAutoSend(); return; }
+    n -= 1;
+    if (n > 0) { paint(); return; }
+    cancelAutoSend();
+    void sendMessage();
+  }, 1000);
+  autoSend = { timer, tab };
+}
+function cancelAutoSend(): void {
+  if (autoSend === null) return;
+  window.clearInterval(autoSend.timer);
+  autoSend = null;
+  sendBtn.classList.remove("countdown");
   syncComposer();
 }
 
