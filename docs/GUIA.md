@@ -1085,3 +1085,57 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   no rodapé da lista; barra superior recolhível (Cmd+Shift+B, botão ⌃/⌄, paleta) com faixa fina
   mostrando máquina · modelo · estado do túnel. Lista e barra começam recolhidas por padrão
   (`localStorage.sidebarShown` / `topbarShown`).
+
+## Suporte: meu-bot-admin (16 out 2026)
+
+Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bot** (de cada pessoa) e o
+**meu-bot-admin** (só no Mac do admin; ícone âmbar com escudo). Cada pessoa tem a própria máquina do agente.
+
+- Variante: `scripts/package.mjs --admin` (nome, bundle id `local.meu-bot-admin`, ícone, `variant.json` em
+  Resources; userData separado, os dois apps convivem) e `scripts/fuses.mjs --admin` (instala
+  `~/Applications/meu-bot-admin.app` + atalho na mesa). `src/main/variant.ts` (`isAdmin`, dev:
+  `MEU_BOT_VARIANT=admin`). Ícones: `npm run icons` (`scripts/icon.mjs`: qlmanage → sips → iconutil).
+- Preparo, uma vez: `node scripts/suporte-setup.mjs [--caixa agente-box] [--nome Lucas]`. Cria
+  `~/.ssh/meu-bot-admin` (a chave do suporte), `build/suporte/entrega` (chave SÓ de entrega, gitignored),
+  instala a caixa de entrada na máquina do admin (`backend-colima/meu-bot-suporte-inbox` em
+  `~/.local/bin`) com `restrict,command="…inbox" <entrega> meu-bot-entrega` no authorized_keys de lá, e
+  grava `build/suporte/suporte.json` + `known_hosts`. Testado: com a chave de entrega, pedir comando é
+  ignorado (roda a caixa), túnel dá "administratively prohibited", terminal é recusado.
+- Pacotes: `npm run dmg -- --suporte` (pessoas: pública do admin, chave de entrega e a chave do servidor da
+  caixa; nenhuma máquina do admin) e `npm run dmg:admin` (admin; leva só o `suporte.json` público).
+- Código de suporte (`src/main/support-code.ts`, testado): `MBS1.<base64url(JSON)>` com nome, endereço
+  (`ssh -G` do Mac da pessoa), usuário, porta, chave pública do servidor dela, estado on/off e data. Sem
+  segredo. Alias no admin: `suporte-<nome>-<4 hex do hash da chave do servidor>`.
+- Pessoa (`src/main/support.ts`; Configurações › Suporte, vale na hora): ligar = nome + chave do admin no
+  authorized_keys (`no-agent-forwarding,no-X11-forwarding … meu-bot-admin`) + entregador na máquina dela
+  (`~/.local/share/meu-bot/suporte/`, timer systemd --user de 30 min ou cron) que manda o código para a
+  caixa por SSH (máquina com máquina; se a máquina não sai, o Mac entrega). Desligar = tira a chave, entrega
+  "off", remove timer e arquivos. "Copiar código de suporte" é o plano B. Tudo vai para
+  `~/.local/share/meu-bot/suporte.log`, mostrado como "O que o suporte fez nesta máquina".
+- Admin (`src/main/support-admin.ts`): o seletor lê a caixa (`~/suporte-inbox/<id>.code`; o id tem de bater
+  com a chave do servidor do código) e lista as pessoas com "visto há"; "Adicionar pessoa" cola o código.
+  As pessoas viram `~/.ssh/meu-bot-suporte.conf` (gerado; `Include` no topo do `~/.ssh/config`, backup em
+  `config.antes-do-meu-bot-admin`) com `IdentityFile ~/.ssh/meu-bot-admin` e known_hosts próprio
+  (`StrictHostKeyChecking yes`). Janela da pessoa: página "Suporte" (saúde = sondagem + WhatsApp; ações com
+  confirmação de 2 cliques: reiniciar gateway, reiniciar backend, ativar transcrição; registros do
+  journalctl) e o espelho do WhatsApp na lateral (menu "…" só Exportar/Arquivar). Sem compositor, sem túnel;
+  o main recusa no admin tudo que escreve (pareamento, política, logins, pausar, limpar, chat).
+- Progresso nos tutoriais: com o suporte ligado, o meu-bot da pessoa grava `~/.local/share/meu-bot/
+  progresso.json` (tour feito/pulado, cada tutorial com passos feitos, total e onde parou; validado por
+  `parseSupportProgress`) 3 s depois de cada mudança do guia, só quando algo mudou. O admin mostra o quadro
+  "Progresso nos tutoriais" (✓ concluído, "3 de 5 · parou em …"). Desligar o suporte apaga o arquivo.
+- Código de suporte na tela da pessoa: "Mostrar código de suporte" revela o código numa caixa selecionável
+  com Copiar (plano B da entrega automática). Registros no admin: recolhidos por padrão; só leem o journal
+  quando abertos.
+- Tutorial "Ligar o suporte" (3 passos, depois do WhatsApp; `requires: "support"`, só aparece com o pacote
+  de suporte, em máquina por SSH e fora do admin): dizer o nome → permitir → "{admin} recebe o aviso". Os
+  passos leem o estado real pelo `GuideContext` (`guideView(t, status, flags, ctx)`, `visibleTutorials`,
+  `withAdmin` troca "{admin}" pelo nome). Conclui sozinho: o `entregar.sh` grava
+  `~/.local/share/meu-bot/suporte/ultima-entrega` quando a entrega na caixa dá certo (a entrega pelo Mac
+  também grava) e `supportInfo` devolve `deliveredAt`. Enquanto o aviso não chega, a tela confere a cada
+  10 s e oferece "Tentar de novo" (`support:deliver`); o código visível fica recolhido em "Não chegou?
+  Mostrar código de suporte". As peças (nome, interruptor, aviso/código, registro) são as mesmas das
+  Configurações › Suporte (`renderSupportParts`). O progresso dele vai para o admin como os outros.
+- Verificado de ponta a ponta (16 out, Electron rodando as funções do app): ligar → timer ativo e código na
+  caixa → admin vê a pessoa, saúde, WhatsApp e 200 linhas de registro → desligar → a chave do admin passa a
+  ser recusada e o timer/arquivos somem.

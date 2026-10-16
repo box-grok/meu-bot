@@ -51,3 +51,21 @@ test("guia é sequencial: marcações antigas não acendem passos à frente de u
   assert.equal(v.current, 1);
   assert.equal(guideTabTitle(t, v), "WhatsApp 1/5");
 });
+
+test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui quando a entrega chega", async () => {
+  const { visibleTutorials, withAdmin } = await import("../../dist/renderer/lib/tutoriais.js");
+  const sup = TUTORIAIS.find((x) => x.id === "suporte");
+  const idx = TUTORIAIS.indexOf(sup);
+  assert.equal(TUTORIAIS[idx - 1].id, "whatsapp-openclaw", "depois do WhatsApp");
+  const s = (over) => ({ support: { available: true, admin: "Lucas", on: false, name: "", log: [], deliveredAt: null, ...over } });
+  assert.ok(!visibleTutorials({ support: null }).includes(sup));
+  assert.ok(!visibleTutorials(s({ available: false })).includes(sup));
+  assert.ok(visibleTutorials(s({})).includes(sup));
+  const wa0 = wa();
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({})).current, 0);
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia" })).current, 1);
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true })).current, 2, "ligado, falta a entrega");
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true, deliveredAt: "2026-10-16T12:00:00Z" })).finished, true);
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: false, deliveredAt: "2026-10-16T12:00:00Z" })).current, 1, "desligado volta");
+  assert.equal(withAdmin("Permitir o suporte de {admin}", s({})), "Permitir o suporte de Lucas");
+});

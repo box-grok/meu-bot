@@ -16,7 +16,10 @@
     "fuses": "node scripts/fuses.mjs",
     "dist": "npm run package && npm run fuses",
     "test": "npm run build && node --test scripts/tests/",
-    "dmg": "npm run dist && node scripts/dmg.mjs"
+    "dmg": "npm run dist && node scripts/dmg.mjs",
+    "dist:admin": "npm run build && node scripts/package.mjs --admin && node scripts/fuses.mjs --admin",
+    "dmg:admin": "npm run dist:admin && node scripts/dmg.mjs --admin",
+    "icons": "node scripts/icon.mjs assets/icon.svg assets/icon.icns && node scripts/icon.mjs assets/icon-admin.svg assets/icon-admin.icns"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",

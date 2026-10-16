@@ -8,6 +8,8 @@ import { BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
 import { approveTailscaleCheck, installAudio, installBackend, installStatusLine, probeHost } from "./hostProbe";
+import { isAdmin } from "./variant";
+import { addSupportCode, adminKeyExists, knownPeople, supportPeople } from "./support-admin";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
@@ -51,7 +53,8 @@ function probeCached(host: string): Promise<HostProbe> {
   return p;
 }
 
-const hostsList = (): string[] => [LOCAL_HOST, ...listSshHosts()];
+// No meu-bot-admin a lista são as pessoas com suporte ligado (os aliases do ~/.ssh/meu-bot-suporte.conf).
+const hostsList = (): string[] => (isAdmin() ? knownPeople().filter((p) => p.on).map((p) => p.alias) : [LOCAL_HOST, ...listSshHosts()]);
 
 /** A chegada animada do seletor toca uma vez por sessão do app; depois a lista aparece seca. */
 let arrivalShown = false;
@@ -62,7 +65,8 @@ function initPayload(): PickerInit {
   const wanted = preselectOverride ?? getLastHost() ?? LOCAL_HOST;
   return {
     hosts,
-    preselect: hosts.includes(wanted) ? wanted : LOCAL_HOST,
+    support: isAdmin() ? { people: knownPeople(), adminKey: adminKeyExists() } : null,
+    preselect: hosts.includes(wanted) ? wanted : (hosts[0] ?? LOCAL_HOST),
     open: hosts.filter((h) => windowForHost(h) !== undefined),
     shortcuts: hosts.filter(hasShortcut).map((h) => ({ host: h, emoji: shortcutEmoji(h) })),
     pods: hosts.filter(isPodHost),
@@ -89,15 +93,23 @@ export function initPicker(): void {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return probeCached(hostArg(payload));
   });
+  ipcMain.handle("picker:support-refresh", async (event) => {
+    if (!fromPicker(event) || !isAdmin()) throw new Error("origem inválida");
+    return supportPeople();
+  });
+  ipcMain.handle("picker:support-add", (event, payload: unknown) => {
+    if (!fromPicker(event) || !isAdmin()) throw new Error("origem inválida");
+    return addSupportCode(String((payload as { code?: unknown } | null)?.code ?? ""));
+  });
   ipcMain.handle("picker:install", async (event, payload: unknown) => {
-    if (!fromPicker(event)) throw new Error("origem inválida");
+    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installBackend(host, getBackendPort(), (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
     return r;
   });
   ipcMain.handle("picker:install-statusline", async (event, payload: unknown) => {
-    if (!fromPicker(event)) throw new Error("origem inválida");
+    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installStatusLine(host, (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
@@ -216,7 +228,7 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
   }
   const win = new BrowserWindow({
     width: 540, height: 600, minWidth: 460, minHeight: 420, resizable: true,
-    title: "meu-bot · escolher máquina",
+    title: isAdmin() ? "meu-bot-admin · escolher pessoa" : "meu-bot · escolher máquina",
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
     webPreferences: {

@@ -9,6 +9,7 @@ import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { hostBusy } from "./conversation";
 import { getBackendPort, getWindowBounds, setWindowBounds } from "./settings";
 import { closeTunnel, ensureTunnel, log } from "./tunnel";
+import { appTitle, isAdmin } from "./variant";
 
 export type OpenOrigin = "startup" | "picker" | "notify" | "quick" | "menu" | "shortcut";
 
@@ -105,7 +106,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
     ...initialBounds(host),
     minWidth: 640,
     minHeight: 480,
-    title: `meu-bot · ${host}`,
+    title: `${appTitle()} · ${host}`,
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
     webPreferences: {
@@ -135,7 +136,8 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   void win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
   log(`[${host}] janela aberta (${origin})`);
   // Pré-aquecimento: a primeira mensagem não espera o SSH. Erro aqui só pinta o pill; o envio tenta de novo.
-  void ensureTunnel(host, getBackendPort()).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
+  // O admin só lê e roda ações por SSH: nada de túnel para o backend da pessoa.
+  if (!isAdmin()) void ensureTunnel(host, getBackendPort()).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
   return win;
 }
 

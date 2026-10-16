@@ -1,0 +1,243 @@
+/**
+ * Suporte, lado da pessoa (meu-bot normal com o pacote de suporte no .dmg: `scripts/dmg.mjs --suporte`).
+ * "Permitir suporte" põe a chave pública do admin no authorized_keys da máquina dela e instala lá um timer
+ * que entrega o código de suporte na caixa de entrada do admin a cada 30 min (máquina com máquina, por SSH,
+ * com a chave só de entrega). Desligar tira a chave, entrega "desligado" e remove o timer. Tudo que o
+ * suporte faz na máquina fica em ~/.local/share/meu-bot/suporte.log, que a pessoa vê nas Configurações.
+ */
+import { execFile } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { app } from "electron";
+import type { SupportInfo } from "../shared/ipc";
+import { LOCAL_HOST } from "./localBackend";
+import { isValidHost } from "./settings";
+import { log } from "./backend";
+import { authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, type SupportCode } from "./support-code";
+import { runSsh } from "./whatsapp";
+
+/** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
+interface SupportBundle {
+  admin: string;
+  adminKey: string;
+  inbox: { hostname: string; user: string; port: number; hostKey: string };
+  /** Chave só de entrega (privada) e o known_hosts da caixa. */
+  keyPath: string;
+  knownHostsPath: string;
+}
+
+const configDir = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config") : path.join(app.getAppPath(), "build", "suporte"));
+
+/** O pacote de suporte deste app; null = .dmg sem suporte (a seção não aparece). */
+export function supportBundle(): SupportBundle | null {
+  const dir = configDir();
+  const keyPath = path.join(dir, app.isPackaged ? "suporte-entrega" : "entrega");
+  const knownHostsPath = path.join(dir, app.isPackaged ? "suporte-known_hosts" : "known_hosts");
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "suporte.json"), "utf8")) as Partial<SupportBundle>;
+    const inbox = raw.inbox;
+    if (typeof raw.admin !== "string" || typeof raw.adminKey !== "string" || publicKeyBody(raw.adminKey) === null) return null;
+    if (inbox === undefined || typeof inbox.hostname !== "string" || typeof inbox.user !== "string" || typeof inbox.port !== "number" || typeof inbox.hostKey !== "string") return null;
+    if (!fs.existsSync(keyPath) || !fs.existsSync(knownHostsPath)) return null;
+    return { admin: raw.admin.slice(0, 40), adminKey: raw.adminKey, inbox, keyPath, knownHostsPath };
+  } catch {
+    return null;
+  }
+}
+
+/** Nome que a pessoa deu para si (aparece para o admin); fica no userData deste Mac. */
+const namePath = (): string => path.join(app.getPath("userData"), "suporte.json");
+export function supportName(): string {
+  try { const v = JSON.parse(fs.readFileSync(namePath(), "utf8")) as { name?: unknown }; if (typeof v.name === "string") return v.name; } catch { /* ainda não deu nome */ }
+  return "";
+}
+function saveSupportName(name: string): void {
+  try { fs.writeFileSync(namePath(), JSON.stringify({ name }), { mode: 0o600 }); } catch { /* cortesia */ }
+}
+
+const LOG = "$HOME/.local/share/meu-bot/suporte.log";
+const D = "$HOME/.local/share/meu-bot/suporte";
+/** Linha do registro de suporte: "2026-10-16T12:00:00Z|quem|o quê" (o texto é só [A-Za-zÀ-ÿ0-9 .,:()-]). */
+export const supportLogSh = (who: string, what: string): string => {
+  const clean = (s: string): string => s.replace(/[^\p{L}\p{N} .,:()-]/gu, "").slice(0, 120);
+  return `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s|%s|%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${clean(who)}' '${clean(what)}' >> "${LOG}"`;
+};
+
+/** Como o Mac dela chega na máquina (o que o ssh dela resolve para o alias), para o admin chegar igual. */
+function resolveSsh(host: string): Promise<{ hostname: string; user: string; port: number }> {
+  return new Promise((resolve, reject) => {
+    execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => {
+      if (err) { reject(new Error(`não consegui ler o endereço de ${host}`)); return; }
+      const kv = new Map(stdout.split("\n").map((l) => { const i = l.indexOf(" "); return [l.slice(0, i), l.slice(i + 1).trim()] as const; }));
+      const hostname = kv.get("hostname") ?? "";
+      if (/^(localhost|127\.|::1$)/.test(hostname)) { reject(new Error("esta máquina só é acessível deste Mac (endereço local); o suporte não chega nela")); return; }
+      resolve({ hostname, user: kv.get("user") ?? "", port: Number(kv.get("port") ?? "22") });
+    });
+  });
+}
+
+async function buildCode(host: string, name: string, state: "on" | "off"): Promise<{ id: string; code: SupportCode; text: string }> {
+  const addr = await resolveSsh(host);
+  const r = await runSsh(host, "cat /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || cat /etc/ssh/ssh_host_ecdsa_key.pub\n", 20_000);
+  const hostKey = r.stdout.trim().split(" ").slice(0, 2).join(" ");
+  if (r.code !== 0 || hostKey === "") throw new Error("não consegui ler a chave do servidor desta máquina");
+  const code: SupportCode = { v: 1, name, hostname: addr.hostname, user: addr.user, port: addr.port, hostKey, state, at: new Date().toISOString() };
+  return { id: machineId(hostKey), code, text: encodeSupportCode(code) };
+}
+
+/** Script remoto: grava chave de entrega, known_hosts, código e o entregador; liga o timer; entrega já. */
+function installDeliverySh(b: SupportBundle, id: string, codeText: string): string {
+  const key = fs.readFileSync(b.keyPath, "utf8").trim();
+  const kh = fs.readFileSync(b.knownHostsPath, "utf8").trim();
+  return `set -e
+umask 077
+mkdir -p "${D}"
+cat > "${D}/entrega" <<'MEUBOT_KEY'
+${key}
+MEUBOT_KEY
+chmod 600 "${D}/entrega"
+printf '%s\\n' '${kh}' > "${D}/known_hosts"
+printf '%s\\n%s\\n' '${id}' '${codeText}' > "${D}/codigo"
+cat > "${D}/entregar.sh" <<'MEUBOT_SH'
+#!/bin/sh
+# Entrega o código de suporte na caixa de entrada do admin (só isso: a chave não abre terminal lá). Deu certo:
+# grava a hora em ultima-entrega (o tutorial "Ligar o suporte" se marca por ela).
+D="$HOME/.local/share/meu-bot/suporte"
+ssh -i "$D/entrega" -o IdentitiesOnly=yes -o IdentityAgent=none -o BatchMode=yes -o ConnectTimeout=20 -o HostKeyAlias=meu-bot-caixa -o UserKnownHostsFile="$D/known_hosts" -o StrictHostKeyChecking=yes -p ${b.inbox.port} ${b.inbox.user}@${b.inbox.hostname} < "$D/codigo" || exit 1
+date -u +%Y-%m-%dT%H:%M:%SZ > "$D/ultima-entrega"
+MEUBOT_SH
+chmod 700 "${D}/entregar.sh"
+if systemctl --user show-environment >/dev/null 2>&1; then
+  U="$HOME/.config/systemd/user"; mkdir -p "$U"
+  printf '[Unit]\\nDescription=meu-bot: avisa o suporte que esta máquina está no ar\\n[Service]\\nType=oneshot\\nExecStart=%%h/.local/share/meu-bot/suporte/entregar.sh\\n' > "$U/meu-bot-suporte.service"
+  printf '[Unit]\\nDescription=meu-bot: aviso ao suporte a cada 30 min\\n[Timer]\\nOnBootSec=2min\\nOnUnitActiveSec=30min\\n[Install]\\nWantedBy=timers.target\\n' > "$U/meu-bot-suporte.timer"
+  { systemctl --user daemon-reload && systemctl --user enable --now meu-bot-suporte.timer; } >/dev/null 2>&1 || echo TIMER=0
+else
+  ( crontab -l 2>/dev/null | grep -v meu-bot-suporte; echo "*/30 * * * * \\$HOME/.local/share/meu-bot/suporte/entregar.sh >/dev/null 2>&1 # meu-bot-suporte" ) | crontab - || echo TIMER=0
+fi
+"${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0
+`;
+}
+
+/** Script remoto ao desligar: entrega "desligado" uma última vez e apaga timer, chave e código. */
+function removeDeliverySh(id: string, offText: string): string {
+  return `umask 077
+if [ -x "${D}/entregar.sh" ]; then printf '%s\\n%s\\n' '${id}' '${offText}' > "${D}/codigo"; "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0; fi
+systemctl --user disable --now meu-bot-suporte.timer >/dev/null 2>&1 || true
+rm -f "$HOME/.config/systemd/user/meu-bot-suporte.service" "$HOME/.config/systemd/user/meu-bot-suporte.timer"
+systemctl --user daemon-reload >/dev/null 2>&1 || true
+( crontab -l 2>/dev/null | grep -v meu-bot-suporte ) | crontab - 2>/dev/null || true
+rm -rf "${D}"
+`;
+}
+
+/** Suporte ligado por máquina (da última consulta): o progresso só é gravado com o suporte ligado. */
+const supportOn = new Map<string, boolean>();
+const PROGRESS = "$HOME/.local/share/meu-bot/progresso.json";
+const lastProgress = new Map<string, string>();
+
+/**
+ * Grava na máquina o progresso da pessoa nos tutoriais (para o admin ver onde ela trava). Só com o suporte
+ * ligado: foi o que ela autorizou. Sem mudança desde a última gravação, não faz nada.
+ */
+export async function reportSupportProgress(host: string, raw: unknown): Promise<void> {
+  if (supportBundle() === null || host === LOCAL_HOST || !isValidHost(host)) return;
+  const p = parseSupportProgress(raw);
+  if (p === null) return;
+  const body = JSON.stringify(p);
+  if (lastProgress.get(host) === JSON.stringify({ ...p, at: "" })) return;
+  if (!supportOn.has(host)) await supportInfo(host).catch(() => undefined);
+  if (supportOn.get(host) !== true) return;
+  const b64 = Buffer.from(body, "utf8").toString("base64");
+  const r = await runSsh(host, `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s' '${b64}' | base64 -d > "${PROGRESS}.tmp" && mv "${PROGRESS}.tmp" "${PROGRESS}"\n`, 20_000);
+  if (r.code === 0) lastProgress.set(host, JSON.stringify({ ...p, at: "" }));
+}
+
+/** Estado do suporte na máquina desta janela: chave do admin presente + últimas linhas do registro. */
+export async function supportInfo(host: string): Promise<SupportInfo> {
+  const b = supportBundle();
+  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), log: [], deliveredAt: null };
+  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\n`, 20_000);
+  if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
+  const lines = r.stdout.split("\n");
+  const entries = lines.filter((l) => l.startsWith("L=")).map((l) => {
+    const [at = "", who = "", what = ""] = l.slice(2).split("|");
+    return { at, who, what };
+  }).reverse();
+  supportOn.set(host, lines.includes("ON=1"));
+  const e = (lines.find((l) => l.startsWith("E=")) ?? "E=").slice(2).trim();
+  const deliveredAt = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(e) ? e : null;
+  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), log: entries, deliveredAt };
+}
+
+/** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */
+export async function setSupport(host: string, on: boolean, name: string): Promise<SupportInfo> {
+  const b = supportBundle();
+  if (b === null) throw new Error("este meu-bot não veio com suporte");
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("o suporte vale para máquinas por SSH, não para este Mac");
+  const who = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  if (on && who === "") throw new Error("diga seu nome para o suporte saber quem é");
+  if (who !== "") saveSupportName(who);
+  const built = await buildCode(host, who || "pessoa", on ? "on" : "off");
+  const script = on
+    ? `${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, `ligou o suporte de ${b.admin}`)}\n${installDeliverySh(b, built.id, built.text)}`
+    : `${authorizedKeysScript(null)}\n${supportLogSh(who || "pessoa", `desligou o suporte de ${b.admin}`)}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
+  lastProgress.delete(host);
+  const r = await runSsh(host, script, 60_000);
+  if (r.code !== 0) throw new Error(`não consegui ${on ? "ligar" : "desligar"} o suporte: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  // Se a máquina dela não alcança a caixa (saída bloqueada), o Mac entrega no lugar dela.
+  if (!r.stdout.includes("ENTREGUE=1")) await deliverFromMacAndMark(host, b, built.id, built.text, on);
+  log(`[suporte] ${host}: ${on ? "ligado" : "desligado"} (${who})`);
+  return supportInfo(host);
+}
+
+/** Entrega pelo Mac e, ligado, marca a entrega na máquina (para o tutorial ver que chegou). */
+async function deliverFromMacAndMark(host: string, b: SupportBundle, id: string, codeText: string, on: boolean): Promise<boolean> {
+  try {
+    await deliverFromMac(b, id, codeText);
+    if (on) await runSsh(host, `mkdir -p "${D}" && date -u +%Y-%m-%dT%H:%M:%SZ > "${D}/ultima-entrega"\n`, 15_000);
+    return true;
+  } catch (e) {
+    log(`[suporte] entrega pelo Mac falhou: ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+}
+
+/** Salva só o nome (passo 1 do tutorial "Ligar o suporte"). */
+export function setSupportNameOnly(host: string, name: string): Promise<SupportInfo> {
+  const who = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  if (who === "") throw new Error("escreva seu nome");
+  saveSupportName(who);
+  return supportInfo(host);
+}
+
+/** "Tentar de novo": entrega o aviso agora, pela máquina; se ela não alcança a caixa, pelo Mac. */
+export async function deliverNow(host: string): Promise<SupportInfo> {
+  const b = supportBundle();
+  if (b === null) throw new Error("este meu-bot não veio com suporte");
+  const r = await runSsh(host, `[ -x "${D}/entregar.sh" ] && "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0\n`, 60_000);
+  if (!r.stdout.includes("ENTREGUE=1")) {
+    const built = await buildCode(host, supportName() || "pessoa", "on");
+    if (!(await deliverFromMacAndMark(host, b, built.id, built.text, true))) throw new Error(`não consegui avisar ${b.admin}: nem a máquina nem este Mac alcançaram a caixa de entrada dele`);
+  }
+  return supportInfo(host);
+}
+
+/** Código para copiar (plano B: mandar pelo WhatsApp). */
+export async function supportCodeText(host: string): Promise<string> {
+  const name = supportName();
+  if (name === "") throw new Error("ligue o suporte antes (é lá que vai o seu nome)");
+  return (await buildCode(host, name, "on")).text;
+}
+
+/** Entrega pelo próprio Mac (quando a máquina dela não consegue sair por SSH). A chave vai num arquivo 600. */
+function deliverFromMac(b: SupportBundle, id: string, codeText: string): Promise<void> {
+  const tmp = path.join(app.getPath("userData"), "suporte-entrega");
+  fs.writeFileSync(tmp, `${fs.readFileSync(b.keyPath, "utf8").trim()}\n`, { mode: 0o600 });
+  return new Promise((resolve, reject) => {
+    const child = execFile("ssh", ["-i", tmp, "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
+      "-o", "HostKeyAlias=meu-bot-caixa", "-o", `UserKnownHostsFile=${b.knownHostsPath}`, "-o", "StrictHostKeyChecking=yes",
+      "-p", String(b.inbox.port), `${b.inbox.user}@${b.inbox.hostname}`], { timeout: 30_000 }, (err) => (err ? reject(err) : resolve()));
+    child.stdin?.end(`${id}\n${codeText}\n`);
+  });
+}

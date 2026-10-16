@@ -130,6 +130,10 @@ export interface InstallProgressEvent {
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */
 export interface WindowInfo {
   host: string;
+  /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
+  admin: boolean;
+  /** No admin: nome da pessoa dona da máquina. */
+  person: string | null;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
   models: string[];
 }
@@ -137,6 +141,8 @@ export interface WindowInfo {
 /** Dados iniciais do seletor de máquinas. */
 export interface PickerInit {
   hosts: string[];
+  /** meu-bot-admin: as pessoas (os hosts são os aliases delas, só as com suporte ligado). null = meu-bot normal. */
+  support: { people: SupportPerson[]; adminKey: boolean } | null;
   /** Máquina a pré-selecionar (última aberta). */
   preselect: string;
   /** Máquinas que já têm janela aberta. */
@@ -186,6 +192,43 @@ export interface WhatsappStatus {
   /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
 }
+
+/** Suporte (meu-bot-admin), lado da pessoa: estado na máquina desta janela. */
+export interface SupportInfo {
+  /** Este meu-bot veio com o pacote de suporte e a janela é de uma máquina por SSH. */
+  available: boolean;
+  /** Nome de quem dá o suporte ("Lucas"). */
+  admin: string;
+  /** A chave do admin está no authorized_keys da máquina. */
+  on: boolean;
+  /** Nome que a pessoa deu para si. */
+  name: string;
+  /** Últimas linhas do registro de suporte da máquina (mais nova primeiro). */
+  log: { at: string; who: string; what: string }[];
+  /** Última entrega do aviso na caixa do admin que deu certo (ISO); null = ainda nenhuma. */
+  deliveredAt: string | null;
+}
+
+/** Suporte, lado do admin: uma pessoa (uma máquina) que entregou ou colou o código. */
+export interface SupportPerson {
+  /** Alias no ~/.ssh do admin (`suporte-<nome>-<4 hex>`): é o "host" da janela. */
+  alias: string;
+  name: string;
+  hostname: string;
+  /** A pessoa deixou o suporte ligado (desligado = sem acesso). */
+  on: boolean;
+  /** Última entrega na caixa (ISO): o "visto há". */
+  seenAt: string;
+  source: "caixa" | "colado";
+}
+export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null }
+/** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
+export interface SupportProgress {
+  at: string;
+  tour: "done" | "skipped" | "pending";
+  tutorials: { id: string; title: string; done: number; total: number; current: string | null; finished: boolean; comingSoon: boolean }[];
+}
+export type AdminAction = "restart-gateway" | "restart-backend" | "transcription";
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
 export type VoiceReplyMode = "off" | "inbound" | "always";
@@ -291,6 +334,10 @@ export interface PickerApi {
   installStatusLine(host: string): Promise<InstallBackendResult>;
   /** Liga a transcrição de áudio do agente do WhatsApp (OpenClaw) na máquina; mesmo log de progresso. */
   installTranscription(host: string): Promise<InstallBackendResult>;
+  /** meu-bot-admin: lê a caixa de entrada e devolve as pessoas (warning se a caixa não respondeu). */
+  supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
+  /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
+  supportAdd(code: string): Promise<SupportPerson>;
   choose(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
   setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
@@ -458,6 +505,20 @@ export interface MeuBotApi {
   whatsappPair(reset: boolean): Promise<void>;
   /** Desconecta o número da máquina (sem gerar QR novo). */
   whatsappLogout(): Promise<void>;
+  /** Suporte (lado da pessoa): estado, ligar/desligar, código para copiar. */
+  supportInfo(): Promise<SupportInfo>;
+  setSupport(on: boolean, name: string): Promise<SupportInfo>;
+  supportCode(): Promise<string>;
+  /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
+  setSupportName(name: string): Promise<SupportInfo>;
+  /** "Tentar de novo": entrega o aviso na caixa do admin agora. */
+  supportDeliver(): Promise<SupportInfo>;
+  /** Progresso nos tutoriais desta pessoa (vai para a máquina só com o suporte ligado). */
+  reportProgress(p: SupportProgress): Promise<void>;
+  /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
+  adminHealth(): Promise<AdminHealth>;
+  adminLogs(): Promise<string>;
+  adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
   /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
   whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
   whatsappCancel(): Promise<void>;

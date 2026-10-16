@@ -19,6 +19,9 @@ import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBa
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
 import { installAudio } from "./hostProbe";
+import { isAdmin } from "./variant";
+import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
+import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
 import { installAppMenu } from "./menu";
 import { initPicker, knownModels, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
@@ -68,14 +71,60 @@ const ownedConversation = (event: Electron.IpcMainInvokeEvent, payload: unknown)
 function registerIpc(): void {
   ipcMain.handle("window:info", (event) => {
     const ctx = hostFromEvent(event);
-    return ctx === null ? null : { host: ctx.host, models: knownModels(ctx.host) };
+    return ctx === null ? null : { host: ctx.host, models: knownModels(ctx.host), admin: isAdmin(), person: isAdmin() ? personName(ctx.host) : null };
+  });
+  // Suporte, lado da pessoa (só no meu-bot normal com o pacote de suporte).
+  ipcMain.handle("support:info", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return supportInfo(h.host);
+  });
+  ipcMain.handle("support:set", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    const p = payload as { on?: unknown; name?: unknown } | null;
+    return setSupport(h.host, p?.on === true, typeof p?.name === "string" ? p.name : "");
+  });
+  ipcMain.handle("support:progress", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) return;
+    await reportSupportProgress(h.host, payload).catch(() => undefined);
+  });
+  ipcMain.handle("support:name", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return setSupportNameOnly(h.host, String((payload as { name?: unknown } | null)?.name ?? ""));
+  });
+  ipcMain.handle("support:deliver", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return deliverNow(h.host);
+  });
+  ipcMain.handle("support:code", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return supportCodeText(h.host);
+  });
+  // meu-bot-admin: só nas janelas de pessoas do suporte.
+  const adminHost = (event: Electron.IpcMainInvokeEvent): string => {
+    const h = hostFromEvent(event);
+    if (h === null || !isAdmin() || !isSupportAlias(h.host)) throw new Error("origem inválida");
+    return h.host;
+  };
+  ipcMain.handle("admin:health", (event) => adminHealth(adminHost(event)));
+  ipcMain.handle("admin:logs", (event) => adminLogs(adminHost(event)));
+  ipcMain.handle("admin:action", (event, payload: unknown) => {
+    const host = adminHost(event);
+    const a = (payload as { action?: unknown } | null)?.action;
+    if (a !== "restart-gateway" && a !== "restart-backend" && a !== "transcription") throw new Error("ação inválida");
+    return adminAction(host, a);
   });
   ipcMain.handle("ui:open-picker", () => showPicker());
-  ipcMain.handle("tailscale:disable-check", (event) => {
+  ipcMain.handle("tailscale:disable-check", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     return disableSshCheck();
   });
-  ipcMain.handle("tailscale:restore", (event) => {
+  ipcMain.handle("tailscale:restore", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     return restoreLastPolicy();
   });
@@ -84,13 +133,13 @@ function registerIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return whatsappStatus(h.host);
   });
-  ipcMain.handle("whatsapp:pair", (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:pair", (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const reset = (payload as { reset?: unknown } | null)?.reset === true;
     return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
   });
-  ipcMain.handle("whatsapp:audio", (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:audio", (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const p = payload as { kind?: unknown; mode?: unknown } | null;
@@ -99,17 +148,17 @@ function registerIpc(): void {
     if (setup === null) throw new Error("pedido inválido");
     return installAudio(h.host, setup);
   });
-  ipcMain.handle("whatsapp:logout", (event) => {
+  ipcMain.handle("whatsapp:logout", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return whatsappLogout(h.host);
   });
-  ipcMain.handle("claude-login:start", (event) => {
+  ipcMain.handle("claude-login:start", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return startClaudeLogin(h.host, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("claude-login:event", ev); });
   });
-  ipcMain.handle("claude-login:code", (event, payload: unknown) => {
+  ipcMain.handle("claude-login:code", (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     return submitClaudeLoginCode(String((payload as { code?: unknown } | null)?.code ?? ""));
   });
@@ -118,24 +167,24 @@ function registerIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return claudeAuthInfo(h.host);
   });
-  ipcMain.handle("claude-login:logout", (event) => {
+  ipcMain.handle("claude-login:logout", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return claudeLogout(h.host);
   });
   ipcMain.handle("xai-login:auth", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiAuthInfo(h.host); });
-  ipcMain.handle("xai-login:start", (event) => {
+  ipcMain.handle("xai-login:start", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return startXaiLogin(h.host, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", ev); });
   });
   ipcMain.handle("xai-login:cancel", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelXaiLogin(); });
-  ipcMain.handle("xai-login:logout", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiLogout(h.host); });
+  ipcMain.handle("xai-login:logout", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte"); const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiLogout(h.host); });
   ipcMain.handle("claude-login:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     cancelClaudeLogin();
   });
-  ipcMain.handle("whatsapp:dm-policy", (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:dm-policy", (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const policy = (payload as { policy?: unknown } | null)?.policy;
@@ -159,7 +208,7 @@ function registerIpc(): void {
     if (typeof n !== "string" || !/^\+?\d{8,15}$/.test(n)) throw new Error("número inválido");
     return n.replace(/\D/g, "");
   };
-  ipcMain.handle("whatsapp:branch", (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:branch", (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return whatsappBranch(h.host, waNumber(payload));
@@ -173,7 +222,11 @@ function registerIpc(): void {
       const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
       const item = (label: string, action: WhatsappMenuAction, enabled = true): Electron.MenuItemConstructorOptions =>
         ({ label, enabled, click: () => pick(action) });
-      const menu = Menu.buildFromTemplate([
+      // meu-bot-admin: só o que não mexe na máquina da pessoa (exportar; arquivar é só deste app).
+      const menu = isAdmin() ? Menu.buildFromTemplate([
+        { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
+        state.archived === true ? item("Desarquivar", "unarchive") : item("Arquivar", "archive"),
+      ]) : Menu.buildFromTemplate([
         item("Conversar com o meu-bot sobre isto", "talk"),
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
         { type: "separator" },
@@ -204,7 +257,7 @@ function registerIpc(): void {
     fs.writeFileSync(result.filePath, body, { mode: 0o600 });
     return { path: result.filePath };
   });
-  ipcMain.handle("whatsapp:pause", async (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:pause", async (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     await whatsappPause(h.host, waNumber(payload), (payload as { paused?: unknown }).paused === true);
@@ -217,7 +270,7 @@ function registerIpc(): void {
   });
   // A confirmação é da tela (inline na lista). Zerar a principal só com `includeShared`: se ela apareceu
   // depois que a pessoa confirmou só a sessão do contato, recusa em vez de zerar sem aviso.
-  ipcMain.handle("whatsapp:clear", async (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:clear", async (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const includeShared = (payload as { includeShared?: unknown }).includeShared === true;
@@ -287,7 +340,7 @@ function registerIpc(): void {
     if (typeof url === "string" && EXTERNAL_URL.test(url)) void shell.openExternal(url);
   });
 
-  ipcMain.handle("chat:send", async (event, payload: unknown) => {
+  ipcMain.handle("chat:send", async (event, payload: unknown) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const ctx = hostFromEvent(event);
     const p = payload as { conversationId?: unknown; text?: unknown };
     const text = typeof p?.text === "string" ? p.text.trim() : "";
@@ -310,7 +363,7 @@ function registerIpc(): void {
     owned?.conv.abort?.abort();
   });
 
-  ipcMain.handle("chat:new", (event) => {
+  ipcMain.handle("chat:new", (event) => { if (isAdmin()) throw new Error("o meu-bot-admin só lê; use as ações de suporte");
     const ctx = hostFromEvent(event);
     if (ctx === null) return { conversationId: "" };
     return { conversationId: createConversation(ctx.host).id };

@@ -4,7 +4,11 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { WhatsappStatus } from "../../shared/ipc";
+import type { SupportInfo, WhatsappStatus } from "../../shared/ipc";
+
+/** O que mais o guia sabe além do WhatsApp: o estado do suporte nesta máquina (null = ainda não consultado). */
+export interface GuideContext { support: SupportInfo | null }
+export const emptyContext = (): GuideContext => ({ support: null });
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "none";
@@ -31,10 +35,10 @@ export interface GuideStep {
   /** Instrução curta de uma ação. */
   text: string;
   target: GuideTarget;
-  /** Corpo especial do passo no guia: os cartões de quem responder, ou os controles de áudio. */
-  body?: "reply-choice" | "audio";
+  /** Corpo especial do passo no guia: cartões de quem responder, controles de áudio, ou os do suporte. */
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
-  done: (status: WhatsappStatus | null, flags: GuideFlags) => boolean;
+  done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
   manual?: { label: string; flag: "policyChosen" | "tested" };
 }
@@ -55,6 +59,8 @@ export interface Tutorial {
   icon?: "target" | "chat";
   /** Ainda não existe: o cartão aparece com "Em breve" e não abre guia. */
   comingSoon?: boolean;
+  /** Só aparece quando o meu-bot veio com o pacote de suporte (e a janela é de máquina por SSH). */
+  requires?: "support";
   steps: GuideStep[];
 }
 
@@ -100,6 +106,32 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: WHATSAPP_STEPS,
   },
   {
+    id: "suporte",
+    title: "Ligar o suporte",
+    short: "Suporte",
+    summary: "Deixe quem cuida do seu meu-bot ver a sua máquina e te ajudar. Você liga, desliga e vê tudo o que ele fizer.",
+    minutes: 1,
+    icon: "target",
+    requires: "support",
+    steps: [
+      {
+        id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
+        text: "É como {admin} vai te ver na lista dele.",
+        done: (_st, _f, c) => (c.support?.name ?? "") !== "",
+      },
+      {
+        id: "permitir", title: "Permitir o suporte de {admin}", target: "none", body: "support-switch",
+        text: "Ligado, {admin} consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer fica registrado nas Configurações. Você desliga quando quiser.",
+        done: (_st, _f, c) => c.support?.on === true,
+      },
+      {
+        id: "entrega", title: "{admin} recebe o aviso", target: "none", body: "support-delivery",
+        text: "A sua máquina avisa {admin} sozinha, sem você precisar mandar nada. Este passo se marca quando o aviso chegar.",
+        done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
+      },
+    ],
+  },
+  {
     id: "whatsapp-objetivo",
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
@@ -138,10 +170,17 @@ export interface GuideView { done: boolean[]; current: number; finished: boolean
  * só conta como concluído se todos os anteriores também estão; assim uma marcação antiga ("testei") não
  * acende o passo 4 enquanto o número está desconectado.
  */
-export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags): GuideView {
+export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext = emptyContext()): GuideView {
   const done: boolean[] = [];
   let chain = true;
-  for (const s of t.steps) { chain = chain && s.done(status, flags); done.push(chain); }
+  for (const s of t.steps) { chain = chain && s.done(status, flags, ctx); done.push(chain); }
   const current = done.indexOf(false);
   return { done, current, finished: current === -1 };
 }
+
+/** Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível. */
+export const visibleTutorials = (ctx: GuideContext): Tutorial[] =>
+  TUTORIAIS.filter((t) => t.requires !== "support" || ctx.support?.available === true);
+
+/** "{admin}" nos textos vira o nome de quem dá o suporte. */
+export const withAdmin = (text: string, ctx: GuideContext): string => text.replace(/\{admin\}/g, ctx.support?.admin || "o suporte");

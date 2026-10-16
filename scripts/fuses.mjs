@@ -2,7 +2,10 @@ import { flipFuses, FuseVersion, FuseV1Options, getCurrentFuseWire } from "@elec
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const app = `out/meu-bot-darwin-${process.arch === "arm64" ? "arm64" : "x64"}/meu-bot.app`;
+// `--admin`: o meu-bot-admin (ver scripts/package.mjs).
+const name = process.argv.includes("--admin") ? "meu-bot-admin" : "meu-bot";
+const bundleId = `local.${name}`;
+const app = `out/${name}-darwin-${process.arch === "arm64" ? "arm64" : "x64"}/${name}.app`;
 if (!existsSync(app)) {
   console.error(`App não encontrado em ${app}. Rode npm run package primeiro.`);
   process.exit(1);
@@ -31,18 +34,18 @@ console.log("Assinatura ad-hoc aplicada em", app);
 import { rmSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-const installed = path.join(homedir(), "Applications", "meu-bot.app");
+const installed = path.join(homedir(), "Applications", `${name}.app`);
 mkdirSync(path.dirname(installed), { recursive: true });
 rmSync(installed, { recursive: true, force: true });
 // ditto preserva symlinks dos frameworks, atributos e a assinatura; cpSync quebrava os helpers.
 execFileSync("ditto", [app, installed]);
 console.log("Instalado em", installed);
 // Cópia do app na área de trabalho: o "botão". Só substitui um bundle nosso (mesmo bundle id); nunca toca em outra coisa.
-const desktopApp = path.join(homedir(), "Desktop", "meu-bot.app");
+const desktopApp = path.join(homedir(), "Desktop", `${name}.app`);
 const plist = path.join(desktopApp, "Contents", "Info.plist");
 if (existsSync(desktopApp)) {
   const id = existsSync(plist) ? execFileSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleIdentifier", plist]).toString().trim() : "";
-  if (id !== "local.meu-bot") throw new Error(`${desktopApp} existe e não é o meu-bot (bundle id "${id}"); não vou sobrescrever.`);
+  if (id !== bundleId) throw new Error(`${desktopApp} existe e não é o ${name} (bundle id "${id}"); não vou sobrescrever.`);
   rmSync(desktopApp, { recursive: true, force: true });
 }
 execFileSync("ditto", [app, desktopApp]);

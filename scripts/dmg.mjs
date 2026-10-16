@@ -9,17 +9,26 @@
 // Para mandar a outra pessoa: o config/ssh-hosts.conf do app (as suas máquinas e IPs) é trocado por um
 // modelo vazio e o app é reassinado ad-hoc. `--com-minhas-maquinas` mantém o arquivo como está.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const DMGBUILD = "dmgbuild==1.6.7";
 const root = resolve(import.meta.dirname, "..");
-const keepHosts = process.argv.includes("--com-minhas-maquinas");
+// --admin: o meu-bot-admin (só para o admin; leva as máquinas dele). --suporte: o .dmg das pessoas leva o
+// pacote de suporte de build/suporte (scripts/suporte-setup.mjs): pública do admin, chave só de entrega e
+// endereço/chave do servidor da caixa de entrada.
+const admin = process.argv.includes("--admin");
+const support = process.argv.includes("--suporte");
+const name = admin ? "meu-bot-admin" : "meu-bot";
+const keepHosts = admin || process.argv.includes("--com-minhas-maquinas");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 const arch = process.arch === "arm64" ? "arm64" : "x64";
-const appSrc = join(root, "out", `meu-bot-darwin-${arch}`, "meu-bot.app");
-const out = join(root, "out", `meu-bot-${version}-${arch}.dmg`);
+const appSrc = join(root, "out", `${name}-darwin-${arch}`, `${name}.app`);
+const out = join(root, "out", `${name}-${version}-${arch}${support ? "-suporte" : ""}.dmg`);
+if (admin && support) { console.error("✗ --suporte é para o .dmg das pessoas, não para o admin"); process.exit(64); }
+const supportDir = join(root, "build", "suporte");
+if (support && !existsSync(join(supportDir, "suporte.json"))) { console.error("✗ falta build/suporte. Rode antes: node scripts/suporte-setup.mjs"); process.exit(1); }
 const venv = join(root, "build", ".venv-dmg");
 
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
@@ -59,11 +68,19 @@ try {
 
   // 2. Cópia do app; para terceiros, sem as suas máquinas e reassinado.
   step("copiando o app");
-  const app = join(work, "meu-bot.app");
+  const app = join(work, `${name}.app`);
   run("ditto", [appSrc, app]);
+  const cfgDir = join(app, "Contents", "Resources", "config");
+  if (support) {
+    step("incluindo o pacote de suporte (pública do admin + chave só de entrega)");
+    copyFileSync(join(supportDir, "suporte.json"), join(cfgDir, "suporte.json"));
+    copyFileSync(join(supportDir, "known_hosts"), join(cfgDir, "suporte-known_hosts"));
+    copyFileSync(join(supportDir, "entrega"), join(cfgDir, "suporte-entrega"));
+    chmodSync(join(cfgDir, "suporte-entrega"), 0o600);
+  }
   if (!keepHosts) {
     step("trocando suas máquinas por um modelo vazio e reassinando");
-    writeFileSync(join(app, "Contents", "Resources", "config", "ssh-hosts.conf"), [
+    writeFileSync(join(cfgDir, "ssh-hosts.conf"), [
       "# Máquinas do meu-bot, no formato do ~/.ssh/config. O botão ⇅ \"sincronizar ssh\" do seletor copia para",
       "# o ~/.ssh/config os blocos daqui que ainda não existem lá. Acrescente as suas máquinas, por exemplo:",
       "#",
@@ -76,8 +93,8 @@ try {
       "Include ~/.colima/ssh_config",
       "",
     ].join("\n"));
-    run("codesign", ["--force", "--deep", "--sign", "-", app]);
   }
+  if (!keepHosts || support) run("codesign", ["--force", "--deep", "--sign", "-", app]);
 
   // 3. dmgbuild: janela 660×400 sem barras, ícones de 128, app à esquerda e Aplicativos à direita.
   step("criando o .dmg");
@@ -85,7 +102,7 @@ try {
   writeFileSync(settings, `
 files = [${py(app)}]
 symlinks = {"Aplicativos": "/Applications"}
-icon = ${py(join(root, "assets", "icon.icns"))}
+icon = ${py(join(root, "assets", admin ? "icon-admin.icns" : "icon.icns"))}
 background = ${py(tiff)}
 format = "UDZO"
 compression_level = 9
@@ -98,10 +115,10 @@ show_sidebar = False
 window_rect = ((200, 120), (660, 400))
 icon_size = 128
 text_size = 13
-icon_locations = {"meu-bot.app": (165, 175), "Aplicativos": (495, 175)}
+icon_locations = {${py(`${name}.app`)}: (165, 175), "Aplicativos": (495, 175)}
 `);
   rmSync(out, { force: true });
-  run(join(venv, "bin", "dmgbuild"), ["-s", settings, "meu-bot", out]);
+  run(join(venv, "bin", "dmgbuild"), ["-s", settings, name, out]);
   console.log(`✓ ${out}`);
   console.log(keepHosts ? "  (com as suas máquinas no ssh-hosts.conf)" : "  (sem as suas máquinas: pronto para mandar a outra pessoa)");
   console.log(`  Só roda em Mac ${arch === "arm64" ? "com Apple Silicon (M1 ou mais novo)" : "Intel"}.`);

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Caixa de entrada do suporte (meu-bot-admin), na máquina do admin. É o comando FORÇADO da chave de entrega
+# (authorized_keys: restrict,command="…/meu-bot-suporte-inbox"): quem tem essa chave não abre terminal, não
+# faz túnel e não escolhe comando; só pode entregar um código. O que o cliente pediu ($SSH_ORIGINAL_COMMAND)
+# é ignorado.
+# Entrada: 1ª linha = id da máquina (12 hex, hash da chave do servidor dela); 2ª = código MBS1.<base64url>.
+# Grava ~/suporte-inbox/<id>.code (reentrega só substitui; a hora do arquivo vira o "visto há" do admin).
+set -eu
+umask 077
+D="$HOME/suporte-inbox"
+mkdir -p "$D"
+chmod 700 "$D"
+IN=$(head -c 4200)
+ID=$(printf '%s\n' "$IN" | sed -n 1p)
+CODE=$(printf '%s\n' "$IN" | sed -n 2p)
+printf '%s' "$ID" | grep -Eq '^[0-9a-f]{12}$' || { echo "recusado: id inválido" >&2; exit 1; }
+[ "${#CODE}" -le 4096 ] || { echo "recusado: grande demais" >&2; exit 1; }
+printf '%s' "$CODE" | grep -Eq '^MBS1\.[A-Za-z0-9_-]+$' || { echo "recusado: não é um código de suporte" >&2; exit 1; }
+if [ ! -f "$D/$ID.code" ] && [ "$(ls "$D" | grep -c '\.code$' || true)" -ge 20 ]; then
+  echo "recusado: caixa cheia" >&2; exit 1
+fi
+printf '%s\n' "$CODE" > "$D/$ID.code.tmp"
+mv "$D/$ID.code.tmp" "$D/$ID.code"
+echo "entregue"

@@ -1,9 +1,9 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
-import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, withAdmin, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -37,6 +37,9 @@ const dialog = $<HTMLDialogElement>("settings-dialog");
 const form = $<HTMLFormElement>("settings-form");
 /** Máquina desta janela; vem do main em window:info e não muda. */
 let windowHost = "";
+/** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
+let windowAdmin = false;
+let windowPerson: string | null = null;
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -592,7 +595,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
-  add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: TUTORIAIS.length === 0 ? "vazio por enquanto" : `${TUTORIAIS.length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
+  add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: `${visibleTutorials(guideCtx()).length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
@@ -1173,9 +1176,9 @@ const tutArchivedEl = $<HTMLInputElement>("tut-archived");
 var tutorialsReady = true; // applySettings pode rodar antes deste trecho; var evita a zona morta do let
 try { tutArchivedEl.checked = localStorage.getItem("tutArchived") === "1"; } catch { /* opcional */ }
 const tourDone = (): boolean => settings?.onboarding === "done";
-const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t)).finished;
+const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t), guideCtx()).finished;
 function paintTutCount(): void {
-  const active = (tourDone() ? 0 : 1) + TUTORIAIS.filter((t) => !tutorialDone(t)).length;
+  const active = (tourDone() ? 0 : 1) + visibleTutorials(guideCtx()).filter((t) => !tutorialDone(t)).length;
   $<HTMLElement>("tutoriais-count").textContent = active === 0 ? "tudo feito" : active === 1 ? "1 tutorial" : `${active} tutoriais`;
 }
 const TUT_ICONS = {
@@ -1222,7 +1225,7 @@ function paintGuideTargets(): void {
   const want = new Set<HTMLElement>();
   const t = activeGuide();
   if (t !== null) {
-    const v = guideView(t, waStatus, loadGuideFlags(t));
+    const v = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
     const step = v.finished ? undefined : t.steps[v.current];
     if (step !== undefined && step.target !== "none") for (const e of guideTargets()[step.target]) want.add(e);
   }
@@ -1259,11 +1262,32 @@ function restorePairNodes(): void {
   box.insertBefore(waQr, waPolicyBox); box.insertBefore(waSuccess, waPolicyBox); box.insertBefore(waProgress, waDialog.querySelector(".dialog-actions"));
 }
 /** Chamado sempre que o estado do WhatsApp muda: redesenha o guia da frente, os títulos das abas e o catálogo. */
+/**
+ * Progresso nos tutoriais para o suporte (o main só grava na máquina se o suporte estiver ligado e se algo
+ * mudou). Agrupado: o guia repinta muito; manda 3 s depois da última mudança.
+ */
+let progressTimer: number | null = null;
+function reportProgress(): void {
+  if (windowAdmin || windowHost === "" || windowHost === "local" || settings === null) return;
+  if (progressTimer !== null) clearTimeout(progressTimer);
+  progressTimer = window.setTimeout(() => {
+    progressTimer = null;
+    const tutorials = visibleTutorials(guideCtx()).map((t) => {
+      const v = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
+      const done = v.done.filter(Boolean).length;
+      return { id: t.id, title: t.title, done, total: t.steps.length, current: v.finished ? null : (t.steps[v.current]?.title ?? null), finished: v.finished && t.comingSoon !== true, comingSoon: t.comingSoon === true };
+    });
+    const tour = settings?.onboarding === "done" ? "done" : settings?.onboarding === "skipped" ? "skipped" : "pending";
+    void window.meuBot.reportProgress({ at: new Date().toISOString(), tour, tutorials }).catch(() => undefined);
+  }, 3000);
+}
+
 function paintGuide(): void {
+  reportProgress();
   paintTutCount();
   for (const { tutorial } of guidePages.values()) reconcileGuideFlags(tutorial);
   for (const { page, tutorial } of guidePages.values()) {
-    const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial));
+    const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial), guideCtx());
     const title = page.tabEl?.querySelector(".tab-title"); if (title !== null && title !== undefined) title.textContent = guideTabTitle(tutorial, v);
     if (pageActive === page) page.render();
   }
@@ -1273,7 +1297,7 @@ function paintGuide(): void {
 function renderGuide(t: Tutorial, panel: HTMLElement): void {
   const flags = loadGuideFlags(t);
   const st = waStatus;
-  const view = guideView(t, st, flags);
+  const view = guideView(t, st, flags, guideCtx());
   panel.replaceChildren();
   // Cabeçalho: ícone, selo "0 de 4 · 4 passos · 3 min", título e resumo (o mesmo cartão do catálogo, sem botão).
   const head = el("div", "guide-head");
@@ -1298,10 +1322,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     const li = el("li", done ? "done" : cur ? "current" : "pending");
     const num = el("span", "tut-num", done ? "✓" : String(i + 1));
     const txt = el("div", "tut-step");
-    txt.append(el("strong", "", step.title));
+    txt.append(el("strong", "", withAdmin(step.title, guideCtx())));
     if (done) txt.append(el("p", "", "concluído"));
     if (cur) {
-      txt.append(el("p", "", step.text));
+      txt.append(el("p", "", withAdmin(step.text, guideCtx())));
       if (step.body === "reply-choice") {
         const cards = el("div", "reply-cards guide-cards");
         renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
@@ -1309,6 +1333,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderChannelEditor(txt);
       } else if (step.body === "audio") {
         renderAudioControls(txt);
+      } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
+        renderSupportParts(txt, [step.body === "support-name" ? "name" : step.body === "support-switch" ? "switch" : "delivery"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
@@ -1400,8 +1426,8 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     card.append(head);
     (done ? archived : active).push(card);
   }
-  for (const t of TUTORIAIS) {
-    const view = guideView(t, waStatus, loadGuideFlags(t));
+  for (const t of visibleTutorials(guideCtx())) {
+    const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
     const started = view.done.some(Boolean);
     const soon = t.comingSoon === true;
     const done = !soon && view.finished;
@@ -1667,10 +1693,11 @@ const listModeKey = (): string => `listMode:${windowHost}`;
 const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
 function getListMode(): ListMode {
   if (!waMirrorAvailable()) return "bot";
+  if (windowAdmin) return "whatsapp"; // o admin não tem conversas do meu-bot com a máquina da pessoa
   try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }
 }
 function paintListMode(): void {
-  listModeEl.hidden = !waMirrorAvailable();
+  listModeEl.hidden = !waMirrorAvailable() || windowAdmin;
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
@@ -2369,6 +2396,7 @@ async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
     });
   }, how === "done" ? 3200 : 4500);
   try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
+  reportProgress();
   if (how === "skipped" && tabs.size === 0) await newTab();
 }
 
@@ -2719,7 +2747,255 @@ primarySelect.addEventListener("change", () => { const m = PRIMARY_OF[primarySel
 backendModelSelect.addEventListener("change", () => { syncPrimaryFromModel(); paintFallbackOrder(); });
 
 /** Abre as Configurações (botão ou Cmd+,): sempre com as seções recolhidas e a memória recém-lida. */
+/**
+ * Suporte, lado da pessoa: o estado (`supportState`) e as peças da tela, usadas nas Configurações › Suporte e
+ * nos passos do tutorial "Ligar o suporte": nome, interruptor, aviso entregue/código (plano B) e o registro do
+ * que o suporte fez aqui. Tudo vale na hora; depois de cada ação as duas telas repintam.
+ */
+const supportGroup = $<HTMLDetailsElement>("support-group");
+const supportBody = $<HTMLElement>("support-body");
+let supportState: SupportInfo | null = null;
+let supportBusy = false;
+let supportMsg: { text: string; bad: boolean } | null = null;
+/** Código de suporte revelado (plano B; some ao fechar as Configurações ou esconder). */
+let supportCodeShown: string | null = null;
+let supportPoll: number | null = null;
+const guideCtx = (): GuideContext => ({ support: supportState });
+const errMsg = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
+
+async function refreshSupportState(): Promise<void> {
+  if (windowHost === "" || windowHost === "local" || windowAdmin) return;
+  try { supportState = await window.meuBot.supportInfo(); } catch { /* sem resposta: fica o que havia */ }
+  repaintSupport();
+}
+function repaintSupport(): void {
+  if (dialog.open) paintSupport();
+  paintGuide();
+  // Ligado e o aviso ainda não chegou: confere de novo em 10 s (a máquina entrega sozinha).
+  if (supportPoll !== null) { clearTimeout(supportPoll); supportPoll = null; }
+  if (supportState?.on === true && supportState.deliveredAt === null) supportPoll = window.setTimeout(() => { supportPoll = null; void refreshSupportState(); }, 10_000);
+}
+async function supportDo(run: () => Promise<SupportInfo>, ok: string | null): Promise<void> {
+  supportBusy = true; supportMsg = null; repaintSupport();
+  try { supportState = await run(); supportMsg = ok === null ? null : { text: ok, bad: false }; }
+  catch (err) { supportMsg = { text: errMsg(err), bad: true }; }
+  finally { supportBusy = false; repaintSupport(); }
+}
+
+type SupportPart = "name" | "switch" | "delivery" | "log";
+function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[]): void {
+  const s = supportState;
+  if (s === null || !s.available) return;
+  if (parts.includes("name")) {
+    const row = el("div", "support-name");
+    const name = el("input"); name.type = "text"; name.placeholder = `Seu nome (${s.admin} vê)`; name.value = s.name; name.maxLength = 40;
+    name.disabled = s.on || supportBusy;
+    row.append(name);
+    if (!s.on) {
+      const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
+      save.addEventListener("click", () => { void supportDo(() => window.meuBot.setSupportName(name.value), null); });
+      name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
+      row.append(save);
+    }
+    container.append(row);
+  }
+  if (parts.includes("switch")) {
+    const sw = el("label", "switch switch-row");
+    const box = el("input"); box.type = "checkbox"; box.checked = s.on; box.disabled = supportBusy || (!s.on && s.name === "");
+    sw.append(box, el("span", "track"), el("span", "switch-label", supportBusy ? "aplicando…" : `Permitir suporte de ${s.admin}`));
+    if (!s.on && s.name === "") sw.title = "Diga seu nome antes";
+    box.addEventListener("change", () => {
+      const on = box.checked;
+      void supportDo(() => window.meuBot.setSupport(on, s.name), on ? `Suporte ligado. Avisando ${s.admin}…` : "Suporte desligado. O acesso saiu desta máquina.");
+    });
+    container.append(sw);
+  }
+  if (parts.includes("delivery") && s.on) {
+    const box = el("div", "support-delivery");
+    if (s.deliveredAt !== null) box.append(el("p", "audio-ok", `✓ ${s.admin} recebeu o aviso (${new Date(s.deliveredAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). A máquina avisa de novo sozinha a cada 30 min.`));
+    else {
+      const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", `Avisando ${s.admin}…`));
+      const retry = el("button", "btn btn-ghost btn-small", "Tentar de novo"); retry.type = "button"; retry.disabled = supportBusy;
+      retry.addEventListener("click", () => { void supportDo(() => window.meuBot.supportDeliver(), null); });
+      box.append(wait, retry);
+    }
+    // Último recurso (se a entrega automática não chegar): revelar o código para mandar a mão.
+    const more = el("details", "support-more");
+    more.open = supportCodeShown !== null;
+    more.append(el("summary", "", "Não chegou? Mostrar código de suporte"));
+    if (supportCodeShown === null) {
+      const reveal = el("button", "btn btn-ghost btn-small", "Mostrar código"); reveal.type = "button";
+      reveal.addEventListener("click", () => {
+        reveal.disabled = true; reveal.textContent = "Gerando…";
+        void window.meuBot.supportCode().then((code) => { supportCodeShown = code; repaintSupport(); })
+          .catch((err: unknown) => { supportMsg = { text: errMsg(err), bad: true }; repaintSupport(); });
+      });
+      more.append(reveal);
+    } else {
+      const code = el("textarea"); code.readOnly = true; code.rows = 3; code.value = supportCodeShown;
+      code.addEventListener("focus", () => code.select());
+      const copy = el("button", "btn btn-primary btn-small", "Copiar"); copy.type = "button";
+      copy.addEventListener("click", () => { void navigator.clipboard.writeText(supportCodeShown ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+      more.append(code, copy, el("p", "hint", `Mande para ${s.admin} (WhatsApp, e-mail); ele cola em "Adicionar pessoa". Não é senha: mostra só como ele chega nesta máquina.`));
+    }
+    box.append(more);
+    container.append(box);
+  }
+  if (supportMsg !== null) container.append(el("p", `hint ${supportMsg.bad ? "guide-pair-note" : "audio-ok"}`, supportMsg.text));
+  if (parts.includes("log") && s.log.length > 0) {
+    container.append(el("p", "hint strong-hint", "O que o suporte fez nesta máquina"));
+    const ul = el("ul", "support-log");
+    for (const e of s.log) ul.append(el("li", "", `${new Date(e.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${e.who}: ${e.what}`));
+    container.append(ul);
+  }
+}
+async function loadSupport(): Promise<void> {
+  supportCodeShown = null;
+  if (windowHost === "local" || windowAdmin) { supportGroup.hidden = true; return; }
+  await refreshSupportState();
+}
+function paintSupport(): void {
+  const s = supportState;
+  supportGroup.hidden = s === null || !s.available;
+  if (s === null || !s.available) return;
+  supportBody.replaceChildren();
+  supportBody.append(el("p", "hint", s.on
+    ? `Ligado: ${s.admin} consegue entrar em ${hostLabel(windowHost)} para ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece abaixo. Desligar tira o acesso na hora.`
+    : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda de ${s.admin}.`));
+  renderSupportParts(supportBody, ["name", "switch", "delivery", "log"]);
+}
+
+/* ---------- meu-bot-admin: página "Suporte" da máquina da pessoa ---------- */
+interface AdminState { health: AdminHealth | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }
+const adminState: AdminState = { health: null, healthErr: null, logs: null, busy: null, msg: null };
+let adminPage: PageTab | null = null;
+/** Registros recolhidos por padrão: só lê o journal da máquina quando a pessoa abre. */
+let adminLogsOpen = false;
+const ADMIN_ACTIONS: { id: AdminAction; label: string; confirm: string }[] = [
+  { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
+  { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
+  { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
+];
+function openAdminPage(): void {
+  if (adminPage === null) {
+    const panel = el("section", "acervo-panel admin-panel"); panel.hidden = true;
+    panelsEl.append(panel);
+    adminPage = definePage("suporte", `Suporte · ${windowPerson ?? windowHost}`, panel, renderAdminPage);
+    void adminRefreshHealth();
+  }
+  openPage(adminPage);
+}
+async function adminRefreshHealth(): Promise<void> {
+  adminState.busy = "health"; renderAdminPage();
+  try { adminState.health = await window.meuBot.adminHealth(); adminState.healthErr = null; if (adminState.health.whatsapp !== null) { waStatus = adminState.health.whatsapp; paintWhatsapp(); renderSidebar(); } }
+  catch (err) { adminState.healthErr = err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err); }
+  finally { adminState.busy = null; renderAdminPage(); }
+}
+async function adminRefreshLogs(): Promise<void> {
+  adminState.busy = "logs"; renderAdminPage();
+  try { adminState.logs = await window.meuBot.adminLogs(); } catch (err) { adminState.logs = `não consegui ler: ${err instanceof Error ? err.message : String(err)}`; }
+  finally { adminState.busy = null; renderAdminPage(); }
+}
+function renderAdminPage(): void {
+  if (adminPage === null) return;
+  const panel = adminPage.panel;
+  panel.replaceChildren();
+  const who = windowPerson ?? windowHost;
+  const head = el("div", "guide-head");
+  const body = el("div", "tut-body");
+  body.append(el("span", "tut-badge", "suporte · espelho só leitura"), el("h2", "", who), el("p", "", `Máquina ${windowHost}. As ações abaixo ficam registradas para ${who} ver nas Configurações dela. Se ela desligar o suporte, o acesso acaba na hora.`));
+  head.append(body);
+  panel.append(head);
+  // Saúde
+  const h = el("div", "admin-card");
+  const hHead = el("div", "admin-card-head"); hHead.append(el("strong", "", "Saúde da máquina"));
+  const hBtn = el("button", "btn btn-ghost btn-small", adminState.busy === "health" ? "Consultando…" : "Atualizar"); hBtn.type = "button"; hBtn.disabled = adminState.busy !== null;
+  hBtn.addEventListener("click", () => { void adminRefreshHealth(); });
+  hHead.append(hBtn); h.append(hHead);
+  const hp = adminState.health;
+  if (adminState.healthErr !== null) h.append(el("p", "hint guide-pair-note", adminState.healthErr));
+  else if (hp === null) h.append(el("p", "hint", "Consultando…"));
+  else {
+    const p = hp.probe;
+    const lines: [string, boolean | null][] = [
+      [p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, p.reachable],
+      [p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", p.backendListening],
+      [p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado", p.claudeLoggedIn],
+      [p.statusLine ? "status line instalada" : "sem status line", p.statusLine],
+    ];
+    const wa = hp.whatsapp;
+    if (wa !== null && wa.present) {
+      lines.push([wa.connected ? `WhatsApp conectado${wa.number !== null ? ` (${fmtPhone(wa.number)})` : ""}` : `WhatsApp: ${wa.detail}`, wa.connected]);
+      if (wa.dmPolicy !== null) lines.push([`responde: ${wa.dmPolicy === "open" ? "todo mundo" : wa.dmPolicy === "allowlist" ? "só a dona do número" : wa.dmPolicy}`, null]);
+      if (wa.audioIn !== undefined) lines.push([wa.audioIn ? "entende áudios" : "não entende áudios (sem transcrição)", wa.audioIn]);
+      if (wa.audioOut !== undefined) lines.push([`responde em áudio: ${wa.audioOut === "inbound" ? "quando recebe áudio" : wa.audioOut === "always" ? "sempre" : "nunca"}`, null]);
+    }
+    const ul = el("ul", "admin-health");
+    for (const [t, ok] of lines) ul.append(el("li", ok === null ? "" : ok ? "ok" : "bad", t));
+    h.append(ul);
+  }
+  panel.append(h);
+  // Progresso nos tutoriais (onde a pessoa está e onde travou)
+  const pg = el("div", "admin-card");
+  pg.append(el("strong", "", "Progresso nos tutoriais"));
+  const prog = hp?.progress ?? null;
+  if (hp === null) pg.append(el("p", "hint", "Consultando…"));
+  else if (prog === null) pg.append(el("p", "hint", `Ainda sem dados: o meu-bot de ${who} grava o progresso na máquina quando ela abre o app com o suporte ligado.`));
+  else {
+    const ul = el("ul", "admin-health");
+    ul.append(el("li", prog.tour === "done" ? "ok" : "bad", prog.tour === "done" ? "Tour do meu-bot: feito" : prog.tour === "skipped" ? "Tour do meu-bot: pulado" : "Tour do meu-bot: não feito"));
+    for (const t of prog.tutorials) {
+      if (t.comingSoon) { ul.append(el("li", "", `${t.title}: em breve`)); continue; }
+      const li = el("li", t.finished ? "ok" : t.done > 0 ? "" : "bad", `${t.title}: ${t.finished ? "concluído" : `${t.done} de ${t.total}`}`);
+      if (!t.finished && t.current !== null) li.append(el("span", "admin-step", ` · parou em "${t.current}"`));
+      ul.append(li);
+    }
+    pg.append(ul, el("p", "hint", `Atualizado ${new Date(prog.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}, quando o meu-bot dela estava aberto.`));
+  }
+  panel.append(pg);
+  // Ações
+  const a = el("div", "admin-card");
+  a.append(el("strong", "", "Ações de suporte"));
+  const acts = el("div", "admin-actions");
+  for (const o of ADMIN_ACTIONS) {
+    if (o.id === "transcription" && hp?.whatsapp?.audioIn === true) continue;
+    const b = el("button", "btn btn-ghost btn-small", adminState.busy === o.id ? "Rodando…" : o.label); b.type = "button"; b.disabled = adminState.busy !== null;
+    b.addEventListener("click", () => armConfirm(b, o.confirm, () => {
+      adminState.busy = o.id; adminState.msg = null; renderAdminPage();
+      void window.meuBot.adminAction(o.id)
+        .then((r) => { adminState.msg = { text: `${o.label}: ${r.ok ? "feito" : "falhou"}${r.detail !== "" ? ` · ${r.detail}` : ""}`, bad: !r.ok }; })
+        .catch((err: unknown) => { adminState.msg = { text: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err), bad: true }; })
+        .finally(() => { adminState.busy = null; void adminRefreshHealth(); if (adminLogsOpen) void adminRefreshLogs(); });
+    }));
+    acts.append(b);
+  }
+  a.append(acts);
+  if (adminState.msg !== null) a.append(el("p", `hint ${adminState.msg.bad ? "guide-pair-note" : "audio-ok"}`, adminState.msg.text));
+  panel.append(a);
+  // Registros: recolhido por padrão (é o que menos se olha e o mais pesado de ler).
+  const r = el("details", "admin-card admin-logs-card");
+  r.open = adminLogsOpen;
+  const sum = el("summary", "admin-card-head");
+  sum.append(el("strong", "", "Registros (gateway e backend)"), el("span", "hint", adminLogsOpen ? "" : "clique para abrir"));
+  r.append(sum);
+  r.addEventListener("toggle", () => {
+    if (r.open === adminLogsOpen) return;
+    adminLogsOpen = r.open;
+    if (adminLogsOpen && adminState.logs === null) void adminRefreshLogs(); else renderAdminPage();
+  });
+  if (adminLogsOpen) {
+    const rBtn = el("button", "btn btn-ghost btn-small", adminState.busy === "logs" ? "Lendo…" : "Atualizar"); rBtn.type = "button"; rBtn.disabled = adminState.busy !== null;
+    rBtn.addEventListener("click", () => { void adminRefreshLogs(); });
+    const pre = el("pre", "admin-logs", adminState.logs ?? "Lendo…");
+    r.append(rBtn, pre);
+    requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
+  }
+  panel.append(r);
+  panel.append(el("p", "hint", "As conversas do WhatsApp dela estão na lateral (só leitura)."));
+}
+
 function openSettings(): void {
+  void loadSupport();
   if (dialog.open) return;
   syncPrimaryFromModel();
   paintFallbackOrder();
@@ -2781,12 +3057,27 @@ void (async () => {
   const info = await window.meuBot.getWindowInfo();
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
+  windowAdmin = info.admin;
+  windowPerson = info.person;
+  if (windowAdmin) {
+    // meu-bot-admin: espelho da máquina da pessoa (saúde, WhatsApp, registros) + ações de suporte. Sem compositor,
+    // sem conversas com o agente, sem logins nem pareamento (o main também recusa esses pedidos).
+    document.body.classList.add("admin-mode");
+    document.title = `${windowPerson ?? windowHost} · suporte`;
+    document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
+    applySettings(await window.meuBot.getSettings());
+    void refreshWhatsapp();
+    openAdminPage();
+    tabsReady = true;
+    return;
+  }
   document.title = `meu-bot · ${hostLabel(windowHost)}`;
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); });
   void refreshWhatsapp();
+  void refreshSupportState();
   void refreshClaudeLine();
   void refreshXaiLine();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha

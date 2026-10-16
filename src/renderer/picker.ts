@@ -1,5 +1,5 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
-import type { HostProbe, PickerApi, PickerInit, SshSyncResult } from "../shared/ipc";
+import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { describeProbe, hostLabel, type ProbeText } from "./lib/probe-text.js";
 
@@ -67,6 +67,15 @@ let reliefShortcuts = new Set<string>();
 let pods = new Set<string>();
 
 let hosts: string[] = [];
+/** meu-bot-admin: as pessoas do suporte (null = meu-bot normal). */
+let support: PickerInit["support"] = null;
+const personOf = (host: string): SupportPerson | undefined => support?.people.find((p) => p.alias === host);
+/** Nome na lista: a pessoa (admin) ou a máquina. */
+const rowLabel = (host: string): string => personOf(host)?.name ?? hostLabel(host);
+const ago = (iso: string): string => {
+  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
+  return Number.isNaN(min) ? "" : min < 1 ? "visto agora" : min < 60 ? `visto há ${min} min` : min < 48 * 60 ? `visto há ${Math.round(min / 60)} h` : `visto há ${Math.round(min / 1440)} dias`;
+};
 let openHosts = new Set<string>();
 let selected: string | null = null;
 const rows = new Map<string, Row>();
@@ -96,7 +105,9 @@ function buildRows(): void {
     li.setAttribute("role", "option");
     const dot = el("span", "dot");
     dot.style.background = hostAccent(host);
-    const name = el("span", "name", hostLabel(host));
+    const name = el("span", "name", rowLabel(host));
+    const person = personOf(host);
+    if (person !== undefined) name.append(el("span", "seen", ` · ${person.hostname}${person.seenAt !== "" ? ` · ${ago(person.seenAt)}` : ""}`));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);
     // Só num computador do Grok Bot: aliviar agora (abre a janela de alívio e fecha o seletor).
@@ -179,7 +190,7 @@ async function relieve(host: string, btn: HTMLButtonElement): Promise<void> {
 
 function visibleHosts(): string[] {
   const q = filterEl.value.trim().toLowerCase();
-  return hosts.filter((h) => q === "" || h.toLowerCase().includes(q) || hostLabel(h).toLowerCase().includes(q));
+  return hosts.filter((h) => q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q));
 }
 
 function applyFilter(): void {
@@ -242,7 +253,9 @@ async function probe(host: string, force = false): Promise<void> {
   paintState(host);
   try {
     const p: HostProbe = await window.picker.probe(host);
-    results.set(host, describeProbe(p));
+    const t = describeProbe(p);
+    // Admin não instala nem faz login na máquina da pessoa: só a sondagem.
+    results.set(host, support !== null ? { ...t, install: null, login: false } : t);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
   } catch (err) {
@@ -334,8 +347,51 @@ async function syncSsh(): Promise<void> {
   }
 }
 
+/** meu-bot-admin: textos, rodapé e o "Adicionar pessoa" no lugar do que é do meu-bot normal. */
+const addBox = document.createElement("div");
+function paintAdminChrome(): void {
+  document.body.classList.add("admin");
+  const h1 = document.querySelector("h1"); if (h1 !== null) h1.textContent = "Suporte: escolha uma pessoa";
+  const sub = document.querySelector(".sub"); if (sub !== null) sub.textContent = "Cada pessoa é uma janela, só leitura + ações de suporte. ↑↓ escolhe · Enter abre · Esc fecha";
+  filterEl.placeholder = "filtrar pessoas…";
+  document.title = "meu-bot-admin · escolher pessoa";
+  if (addBox.isConnected) return;
+  addBox.className = "add-person";
+  const open = el("button", "btn btn-ghost btn-small", "Adicionar pessoa"); open.type = "button";
+  const form = el("div", "add-form"); form.hidden = true;
+  const input = el("textarea"); input.rows = 2; input.placeholder = "Cole aqui o código de suporte (MBS1.…) que a pessoa mandou";
+  const add = el("button", "btn btn-primary btn-small", "Adicionar"); add.type = "button";
+  const msg = el("p", "add-msg"); msg.hidden = true;
+  open.addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) input.focus(); });
+  add.addEventListener("click", () => {
+    add.disabled = true;
+    void window.picker.supportAdd(input.value).then(async (p) => {
+      msg.hidden = false; msg.textContent = `✓ ${p.name} adicionada`; input.value = ""; form.hidden = true;
+      init(await window.picker.list(), p.alias);
+    }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${errorText(err)}`; }).finally(() => { add.disabled = false; });
+  });
+  form.append(input, add);
+  addBox.append(open, form, msg);
+  listEl.after(addBox);
+}
+let peopleRefreshed = false;
+/** Lê a caixa de entrada (pessoas que ligaram o suporte aparecem sozinhas) e redesenha a lista. */
+async function refreshPeople(): Promise<void> {
+  try {
+    const r = await window.picker.supportRefresh();
+    if (r.warning !== null) { noteEl.hidden = false; noteEl.textContent = `⚠ ${r.warning}`; }
+    init(await window.picker.list(), selected);
+  } catch (err) { showError("caixa de entrada", err); }
+}
+
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
+  support = payload.support;
+  if (support !== null) {
+    paintAdminChrome();
+    if (!support.adminKey) { noteEl.hidden = false; noteEl.textContent = "⚠ falta a chave ~/.ssh/meu-bot-admin neste Mac: rode node scripts/suporte-setup.mjs no projeto."; }
+    if (!peopleRefreshed) { peopleRefreshed = true; void refreshPeople(); }
+  }
   if (firstInit) { firstInit = false; arrive(payload.arrival); }
   paintGlow(keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect);
   openHosts = new Set(payload.open);
@@ -348,6 +404,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
   buildRows();
+  if (support !== null && hosts.length === 0) listEl.replaceChildren(el("li", "row empty", "Ninguém ainda. Quando uma pessoa ligar \"Permitir suporte\" no meu-bot dela, ela aparece aqui sozinha. Ou use Adicionar pessoa com o código dela."));
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
   // Todas em paralelo: a lista nunca espera a máquina lenta.

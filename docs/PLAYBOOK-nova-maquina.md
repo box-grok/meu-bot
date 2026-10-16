@@ -293,3 +293,12 @@ roda nela e turnos sem limite de tempo no backend do René.
 - [ ] No meu-bot: abrir a janela da máquina, mandar uma mensagem; criar o atalho na mesa.
 - [ ] Se for pod do Grok Bot: conferir que o seletor mostra 🧯 na linha; criar o botão de alívio na mesa pela caixa de baixo.
 - [ ] Segurança: se tiver IP público, `PasswordAuthentication no` no sshd depois que a chave funcionar.
+
+## Suporte para outra pessoa (meu-bot-admin)
+
+1. Uma vez, no Mac do admin: `node scripts/suporte-setup.mjs --caixa agente-box --nome Lucas`.
+2. Para a pessoa: `npm run dmg -- --suporte` → `out/meu-bot-<versão>-<arch>-suporte.dmg`.
+3. Para o admin: `npm run dmg:admin` (ou `npm run dist:admin`, que já instala).
+4. A pessoa abre a máquina dela no meu-bot › Configurações › Suporte › escreve o nome › liga. Ela aparece
+   sozinha no meu-bot-admin (ou ela manda o código e o admin usa "Adicionar pessoa").
+5. Para cortar: a pessoa desliga o interruptor (ou apaga a linha `meu-bot-admin` do authorized_keys).
