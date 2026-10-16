@@ -15,6 +15,8 @@ export function useAdminUserData(): void {
   const appData = app.getPath("appData");
   const dir = path.join(appData, ADMIN_USER_DATA_NAME);
   app.setName(ADMIN_USER_DATA_NAME);
+  // Um --user-data-dir explícito (testes de fumaça ao lado do app instalado) continua valendo.
+  if (app.commandLine.hasSwitch("user-data-dir")) return;
   app.setPath("userData", dir);
   const mine = path.join(dir, "pessoas.json");
   const shared = path.join(appData, "meu-bot", "pessoas.json");
