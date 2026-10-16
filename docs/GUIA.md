@@ -1195,6 +1195,17 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   admin a ação é Ativar ou Desativar conforme `audioIn`, e some com uma nota quando a máquina não tem OpenClaw
   (`transcriptionNote`): era o caso de "esta máquina não tem OpenClaw: a transcrição é para o agente do
   WhatsApp dele", que aparecia porque a máquina ainda não tinha o OpenClaw.
+- Conversas dela com o meu-bot no admin (16 out): além do WhatsApp, a lateral do admin tem o modo "meu-bot" com as
+  conversas da pessoa, só leitura, para ver onde ela trava. Não vêm do Mac dela: o backend roda cada turno pelo
+  Claude Code com `--resume`, e a transcrição fica em `~/.claude/projects/<cwd>/<sessão>.jsonl` na máquina
+  (pastas `*chat-workspace` e `*agent-workspace`). `admin:bot-chats` lista as sessões (uma linha por arquivo:
+  id, mtime, pasta, nº de respostas, 1ª linha `user`) e `admin:bot-thread` lê uma (só as linhas
+  `user`/`assistant`, 30 KB cada; o arquivo tem muito ruído: pedidos à API, anexos, filas). Parser puro em
+  `src/main/bot-chats.ts` (o "User: " que o backend põe sai; `tool_use` vira uma linha "ferramenta"), testado
+  com o formato real do colima. UI em `src/renderer/admin/bot-mirror.ts` (lista por data e página com as
+  bolhas do WhatsApp, atualiza a cada 8 s aberta e a lista a cada 30 s). Entra em `SupportShare.chat`
+  ("Minhas conversas com o meu-bot"), ligado por padrão. Limite: sessões sem `--resume` (fallback do backend)
+  aparecem como conversas novas com a história repetida no primeiro turno.
 - Arquivar pessoa no seletor do admin (16 out): "Arquivar" na pessoa selecionada tira da lista sem mexer no
   suporte dela (`archived` em pessoas.json, `picker:support-archive`); o interruptor "mostrar arquivadas"
   aparece quando há alguém arquivado. Mesmo modelo das conversas.
