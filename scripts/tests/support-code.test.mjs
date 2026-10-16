@@ -110,3 +110,12 @@ test("parseSupportShare: tudo compartilhado por padrão; só false desliga", () 
   assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0 }), { progress: true, whatsapp: true, logs: true });
   assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true });
 });
+
+test("parseSupportProgress: `app` opcional (versão e abertura); inválido some, o resto vale", () => {
+  const base = { at: "2026-10-16T12:00:00Z", tour: "done", tutorials: [] };
+  const ok = m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "2026-10-16T11:00:00Z" } });
+  assert.deepEqual(ok.app, { version: "0.1.0", openedAt: "2026-10-16T11:00:00Z" });
+  assert.equal("app" in m.parseSupportProgress(base), false);
+  assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0; rm -rf", openedAt: "2026-10-16T11:00:00Z" } }), false);
+  assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "ontem" } }), false);
+});

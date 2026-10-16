@@ -216,7 +216,7 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
-  const arg = setup.kind === "out" ? ` ${setup.mode}` : "";
+  const arg = setup.kind === "out" ? ` ${setup.mode}` : setup.off === true ? " off" : "";
   const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
   const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), file), `${host}:${REMOTE_STAGE}/`], 60_000);

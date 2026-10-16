@@ -16,7 +16,7 @@ import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
 interface AdminConfig { admin: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado" }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
@@ -33,11 +33,11 @@ export const adminName = (): string => adminConfig().admin;
 const storePath = (): string => path.join(app.getPath("userData"), "pessoas.json");
 function load(): Map<string, Stored> {
   try {
-    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown }>;
+    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown }>;
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
-      if (d?.ok === true && /^[0-9a-f]{12}$/.test(id)) m.set(id, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa" });
+      if (d?.ok === true && /^[0-9a-f]{12}$/.test(id)) m.set(id, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true });
     }
     return m;
   } catch {
@@ -45,8 +45,8 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string }> = {};
-  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source };
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean }> = {};
+  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
 const encode = (c: SupportCode): string => `MBS1.${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
@@ -89,13 +89,13 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
     if (!d.ok || machineId(d.code.hostKey) !== id) continue; // o id tem de bater com a chave do servidor do código
     const seenAt = new Date(Number(mtime) * 1000).toISOString();
     const prev = m.get(id);
-    if (prev === undefined || seenAt >= prev.seenAt) m.set(id, { code: d.code, seenAt, source: "caixa" });
+    if (prev === undefined || seenAt >= prev.seenAt) m.set(id, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true });
   }
   return null;
 }
 
 const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
-const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source });
+const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived });
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
@@ -114,11 +114,19 @@ export function addSupportCode(text: string): SupportPerson {
   const d = decodeSupportCode(text);
   if (!d.ok) throw new Error(d.reason);
   const m = load();
-  const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado" };
+  const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado", archived: false };
   m.set(machineId(d.code.hostKey), s);
   save(m);
   writeSshFiles(m);
   return toPerson(s);
+}
+
+/** Arquiva/desarquiva uma pessoa na lista do seletor (o acesso dela não muda). Devolve as pessoas. */
+export function archivePerson(alias: string, archived: boolean): SupportPerson[] {
+  const m = load();
+  for (const s of m.values()) if (supportAlias(s.code) === alias) s.archived = archived;
+  save(m);
+  return knownPeople();
 }
 
 /** Nome da pessoa e o apelido dela para a máquina, pelo alias (títulos e a página Suporte). */
@@ -163,6 +171,7 @@ const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
   "restart-gateway": { what: "reiniciou o gateway do OpenClaw", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
   "restart-backend": { what: "reiniciou o backend do meu-bot", sh: "systemctl --user restart meu-bot-backend 2>&1" },
   transcription: { what: "ativou a transcrição de áudio", sh: "" },
+  "transcription-off": { what: "desativou a transcrição de áudio", sh: "" },
 };
 
 /** Ação de suporte: roda na máquina da pessoa e fica no registro que ela vê. */
@@ -170,8 +179,8 @@ export async function adminAction(host: string, action: AdminAction): Promise<{ 
   const a = ACTIONS[action];
   // No registro que a pessoa vê, quem fez é "admin" (sem o nome de quem dá o suporte).
   const who = "admin";
-  if (action === "transcription") {
-    const r = await installAudio(host, { kind: "in" });
+  if (action === "transcription" || action === "transcription-off") {
+    const r = await installAudio(host, { kind: "in", ...(action === "transcription-off" ? { off: true } : {}) });
     await runSsh(host, `${supportLogSh(who, a.what)}\n`, 15_000);
     return { ok: r.ok, detail: r.log.at(-1) ?? "" };
   }

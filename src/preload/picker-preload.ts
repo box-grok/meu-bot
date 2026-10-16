@@ -44,6 +44,7 @@ const clientApi: PickerClientApi = {
 const adminApi: PickerAdminApi = {
   supportRefresh: () => ipcRenderer.invoke("picker:support-refresh", {}),
   supportAdd: (code: string) => ipcRenderer.invoke("picker:support-add", { code }),
+  supportArchive: (alias: string, archived: boolean) => ipcRenderer.invoke("picker:support-archive", { alias, archived }),
 };
 
 const api: PickerApi = { ...sharedApi, ...clientApi, ...adminApi };

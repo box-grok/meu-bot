@@ -13,6 +13,8 @@ export interface AdminPickerChromeDeps {
   filterEl: HTMLInputElement;
   noteEl: HTMLElement;
   api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list">;
+  /** Interruptor "arquivadas": mostrar ou não as pessoas arquivadas na lista. */
+  setShowArchived(show: boolean): void;
   /** Redesenha o seletor com um payload novo, mantendo a seleção se der. */
   reinit(payload: PickerInit, keepSelected: string | null): void;
   selected(): string | null;
@@ -29,6 +31,10 @@ export interface AdminPickerChrome {
 
 export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPickerChrome {
   const addBox = document.createElement("div");
+  const archivedSwitch = el("label", "switch switch-row");
+  const archivedBox = el("input"); archivedBox.type = "checkbox";
+  archivedSwitch.append(archivedBox, el("span", "track"), el("span", "switch-label", "mostrar arquivadas"));
+  archivedBox.addEventListener("change", () => deps.setShowArchived(archivedBox.checked));
   let peopleRefreshed = false;
 
   async function refreshPeople(): Promise<void> {
@@ -47,6 +53,8 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       deps.filterEl.placeholder = "filtrar pessoas…";
       document.title = "meu-bot-admin · escolher pessoa";
       if (!support.adminKey) { deps.noteEl.hidden = false; deps.noteEl.textContent = MISSING_ADMIN_KEY_TEXT; }
+      // O interruptor só aparece quando há alguém arquivado.
+      archivedSwitch.hidden = !support.people.some((p) => p.archived);
       if (addBox.isConnected) return;
       addBox.className = "add-person";
       const open = el("button", "btn btn-ghost btn-small", "Adicionar pessoa"); open.type = "button";
@@ -63,7 +71,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
         }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
       });
       form.append(input, add);
-      addBox.append(open, form, msg);
+      addBox.append(open, form, msg, archivedSwitch);
       deps.listEl.after(addBox);
     },
     refreshPeopleOnce: () => { if (!peopleRefreshed) { peopleRefreshed = true; void refreshPeople(); } },

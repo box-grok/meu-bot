@@ -8,19 +8,36 @@ export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: 
   { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
   { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
+  { id: "transcription-off", label: "Desativar a transcrição de áudio", confirm: "Confirmar? o agente dela deixa de entender áudios" },
 ];
+
+/** Compara versões "a.b.c" (números); negativo = a é mais antiga. Partes que não são número contam como 0. */
+export function compareVersions(a: string, b: string): number {
+  const pa = a.split(/[.+-]/).map((x) => Number.parseInt(x, 10) || 0), pb = b.split(/[.+-]/).map((x) => Number.parseInt(x, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] ?? 0) - (pb[i] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
+  return 0;
+}
 
 /** Uma linha da lista de saúde/progresso: ✓ (ok), ✗ (bad) ou • (null). */
 export interface HealthLine { text: string; ok: boolean | null; step?: string }
 
-export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string): HealthLine[] {
+export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string, adminVersion: string): HealthLine[] {
   const p = h.probe;
-  const lines: HealthLine[] = [
+  const lines: HealthLine[] = [];
+  // O meu-bot dela: versão (atrás da do admin = ainda não abriu o app com internet / não atualizou) e última abertura.
+  const a = h.progress?.app;
+  if (a !== undefined) {
+    const behind = compareVersions(a.version, adminVersion) < 0;
+    lines.push(behind
+      ? { text: `meu-bot ${a.version} no Mac dela, atrás da sua (${adminVersion}): ela ainda não abriu o app com internet · aberto ${agoText(a.openedAt)}`, ok: false }
+      : { text: `meu-bot ${a.version} no Mac dela · aberto ${agoText(a.openedAt)}`, ok: true });
+  } else if (h.share.progress) lines.push({ text: "versão do meu-bot dela: sem dados ainda (grava quando ela abre o app com o suporte ligado)", ok: null });
+  lines.push(
     { text: p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, ok: p.reachable },
     { text: p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", ok: p.backendListening },
     { text: p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado", ok: p.claudeLoggedIn },
     { text: p.statusLine ? "status line instalada" : "sem status line", ok: p.statusLine },
-  ];
+  );
   const wa = h.whatsapp;
   if (wa !== null && wa.present) {
     lines.push({ text: wa.connected ? `WhatsApp conectado${wa.number !== null ? ` (${fmtPhone(wa.number)})` : ""}` : `WhatsApp: ${wa.detail}`, ok: wa.connected });
@@ -50,17 +67,39 @@ export const progressEmptyText = (who: string): string =>
 export const progressUpdatedText = (at: string): string =>
   `Atualizado ${new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}, quando o meu-bot dela estava aberto.`;
 
-/** A transcrição só aparece enquanto a máquina não entende áudios. */
+/**
+ * Ações que fazem sentido: reiniciar sempre; transcrição só em máquina com OpenClaw (Ativar quando ela não entende
+ * áudios, Desativar quando entende). Sem saúde ainda, só o que não depende dela.
+ */
 export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_ACTIONS)[number][] =>
-  ADMIN_ACTIONS.filter((o) => !(o.id === "transcription" && h?.whatsapp?.audioIn === true));
+  ADMIN_ACTIONS.filter((o) => {
+    if (o.id !== "transcription" && o.id !== "transcription-off") return true;
+    const wa = h?.whatsapp ?? null;
+    if (wa === null || !wa.present || wa.gateway !== "openclaw") return false;
+    return o.id === "transcription" ? wa.audioIn === false : wa.audioIn === true;
+  });
+
+/** Por que não há ação de transcrição (null = há). */
+export function transcriptionNote(h: AdminHealth | null): string | null {
+  if (h === null) return null;
+  if (h.whatsapp === null) return h.share.whatsapp ? "Transcrição de áudio: a máquina não tem agente com WhatsApp." : "Transcrição de áudio: ela não compartilha o WhatsApp.";
+  if (!h.whatsapp.present) return "Transcrição de áudio: a máquina não tem OpenClaw (a transcrição é do agente do WhatsApp dele).";
+  if (h.whatsapp.gateway !== "openclaw") return "Transcrição de áudio: só com OpenClaw (esta máquina usa Hermes).";
+  return null;
+}
 
 export const actionResultText = (label: string, r: { ok: boolean; detail: string }): string =>
   `${label}: ${r.ok ? "feito" : "falhou"}${r.detail !== "" ? ` · ${r.detail}` : ""}`;
 
+/** "há …" / "agora" a partir de um ISO; "" se a data não vale. */
+export function agoText(iso: string, now: number = Date.now()): string {
+  const min = Math.round((now - new Date(iso).getTime()) / 60_000);
+  return Number.isNaN(min) ? "" : min < 1 ? "agora" : min < 60 ? `há ${min} min` : min < 48 * 60 ? `há ${Math.round(min / 60)} h` : `há ${Math.round(min / 1440)} dias`;
+}
 /** "visto há …" a partir de um ISO; "" se a data não vale. */
 export function timeAgo(iso: string, now: number = Date.now()): string {
-  const min = Math.round((now - new Date(iso).getTime()) / 60_000);
-  return Number.isNaN(min) ? "" : min < 1 ? "visto agora" : min < 60 ? `visto há ${min} min` : min < 48 * 60 ? `visto há ${Math.round(min / 60)} h` : `visto há ${Math.round(min / 1440)} dias`;
+  const t = agoText(iso, now);
+  return t === "" ? "" : `visto ${t}`;
 }
 
 /** O que vai depois do nome da pessoa na lista do seletor: endereço, alcance e "visto há". */

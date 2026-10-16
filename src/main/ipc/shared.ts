@@ -36,7 +36,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (ctx === null) return null;
     const c = caps();
     const p = c.supportAdmin ? deps.person(ctx.host) : null;
-    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null };
+    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion() };
   });
   handleShared("ui:open-picker", () => showPicker());
   handleShared("shell:open-external", (_event, payload: unknown) => {

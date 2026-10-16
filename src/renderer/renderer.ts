@@ -47,6 +47,9 @@ const form = $<HTMLFormElement>("settings-form");
 let windowHost = "";
 /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
 /** O que esta variante pode fazer (vem do main em window:info); até lá, o padrão do meu-bot normal. */
+/** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
+let appVersion = "";
+const sessionOpenedAt = new Date().toISOString();
 let caps: Capabilities = { variant: "client", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
@@ -1319,7 +1322,7 @@ function reportProgress(): void {
       return { id: t.id, title: t.title, done, total: t.steps.length, current: v.finished ? null : (t.steps[v.current]?.title ?? null), finished: v.finished && t.comingSoon !== true, comingSoon: t.comingSoon === true };
     });
     const tour = settings?.onboarding === "done" ? "done" : settings?.onboarding === "skipped" ? "skipped" : "pending";
-    void window.meuBot.reportProgress({ at: new Date().toISOString(), tour, tutorials }).catch(() => undefined);
+    void window.meuBot.reportProgress({ at: new Date().toISOString(), tour, tutorials, ...(appVersion === "" ? {} : { app: { version: appVersion, openedAt: sessionOpenedAt } }) }).catch(() => undefined);
   }, 3000);
 }
 
@@ -3441,6 +3444,7 @@ void (async () => {
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
   caps = info.caps;
+  appVersion = info.version;
   if (caps.supportAdmin) {
     // meu-bot-admin: espelho da máquina da pessoa (saúde, WhatsApp, registros) + ações de suporte. Sem compositor,
     // sem conversas com o agente, sem logins nem pareamento (o main nem registra esses canais no admin).
@@ -3450,7 +3454,7 @@ void (async () => {
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
-      who: { host: windowHost, person: info.person, machine: info.machine }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
+      who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
         else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }

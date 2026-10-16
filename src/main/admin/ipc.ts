@@ -21,7 +21,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:action", (event, payload: unknown) => {
     const host = adminHost(event);
     const a = (payload as { action?: unknown } | null)?.action;
-    if (a !== "restart-gateway" && a !== "restart-backend" && a !== "transcription") throw new Error("ação inválida");
+    if (a !== "restart-gateway" && a !== "restart-backend" && a !== "transcription" && a !== "transcription-off") throw new Error("ação inválida");
     return adminAction(host, a);
   });
 }

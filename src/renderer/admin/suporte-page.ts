@@ -8,11 +8,13 @@ import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus } from "../../
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { actionResultText, healthLines, progressEmptyText, progressLines, progressUpdatedText, visibleActions, type HealthLine } from "../lib/admin-view.js";
+import { actionResultText, healthLines, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
 
 export interface SuportePageDeps {
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
   who: { host: string; person: string | null; machine: string | null };
+  /** Versão deste app (a do admin), para comparar com a do meu-bot dela. */
+  adminVersion: string;
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
@@ -87,7 +89,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     if (state.healthErr !== null) h.append(el("p", "hint guide-pair-note", state.healthErr));
     else if (hp === null) h.append(el("p", "hint", "Consultando…"));
     else {
-      const lines = healthLines(hp, deps.fmtPhone);
+      const lines = healthLines(hp, deps.fmtPhone, deps.adminVersion);
       if (!hp.share.whatsapp) lines.push({ text: `WhatsApp: ${who} preferiu não compartilhar`, ok: null });
       h.append(list(lines));
     }
@@ -119,6 +121,8 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       acts.append(b);
     }
     a.append(acts);
+    const note = transcriptionNote(hp);
+    if (note !== null) a.append(el("p", "hint", note));
     if (state.msg !== null) a.append(el("p", `hint ${state.msg.bad ? "guide-pair-note" : "audio-ok"}`, state.msg.text));
     panel.append(a);
 

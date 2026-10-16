@@ -19,6 +19,7 @@ const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const removeBtn = $<HTMLButtonElement>("pk-remove");
 const renameBtn = $<HTMLButtonElement>("pk-rename");
+const archiveBtn = $<HTMLButtonElement>("pk-archive");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
@@ -182,9 +183,11 @@ async function relieve(host: string, btn: HTMLButtonElement): Promise<void> {
   }
 }
 
+/** meu-bot-admin: pessoas arquivadas só aparecem com o interruptor "arquivadas" ligado. */
+let showArchivedPeople = false;
 function visibleHosts(): string[] {
   const q = filterEl.value.trim().toLowerCase();
-  return hosts.filter((h) => q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q));
+  return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q)));
 }
 
 function applyFilter(): void {
@@ -205,6 +208,8 @@ function paintDetail(): void {
   installBtn.hidden = true;
   removeBtn.hidden = selected === "local" || support !== null;
   renameBtn.hidden = selected === "local" || support !== null;
+  archiveBtn.hidden = support === null;
+  archiveBtn.textContent = personOf(selected)?.archived === true ? "Desarquivar" : "Arquivar";
   if (renameBtn.hidden) renameForm.hidden = true;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
@@ -345,7 +350,13 @@ async function syncSsh(): Promise<void> {
 }
 
 /** Variante: admin. O que o seletor de pessoas tem a mais (admin/picker-chrome.ts). */
-const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError });
+const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError, setShowArchived: (v) => { showArchivedPeople = v; applyFilter(); } });
+archiveBtn.addEventListener("click", () => {
+  const alias = selected; const person = alias === null ? undefined : personOf(alias);
+  if (alias === null || person === undefined) return;
+  archiveBtn.disabled = true;
+  void window.picker.supportArchive(alias, !person.archived).then(async () => init(await window.picker.list(), alias)).catch((err: unknown) => showError("arquivar", err)).finally(() => { archiveBtn.disabled = false; });
+});
 
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;

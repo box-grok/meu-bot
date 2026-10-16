@@ -6,11 +6,11 @@
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { AudioSetup, ExportFormat, TabMenuAction } from "../../shared/ipc";
+import type { AudioSetup, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { fetchAccountStatus, runBackendTurn } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappClearPlan, whatsappClearSessions, whatsappPause } from "../whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappClearPlan, whatsappClearSessions, whatsappPause, whatsappStatus } from "../whatsapp";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../xaiLogin";
 import {
@@ -25,6 +25,18 @@ import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupport
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient } from "./registry";
+
+/**
+ * Padrão do app: máquina com OpenClaw pareada entende áudios. Depois de parear, se não há transcritor, instala
+ * (uma vez; baixa ~500 MB) e conta pelo mesmo canal de eventos do pareamento. O admin pode desativar depois.
+ */
+async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
+  const st = await whatsappStatus(host).catch(() => null);
+  if (st === null || st.gateway !== "openclaw" || st.audioIn !== false) return;
+  send({ kind: "step", text: "ligando a transcrição de áudio (padrão do meu-bot; baixa ~500 MB só na primeira vez)…" });
+  const r = await installAudio(host, { kind: "in" }, (line) => send({ kind: "log", text: line }));
+  send({ kind: r.ok ? "step" : "log", text: r.ok ? "transcrição de áudio pronta: o agente entende áudios" : `a transcrição não ligou: ${r.log.at(-1) ?? "erro"}` });
+}
 
 export function registerClientIpc(): void {
   // Suporte, lado da pessoa (só com o pacote de suporte no .dmg).
@@ -114,17 +126,20 @@ export function registerClientIpc(): void {
   });
 
   // WhatsApp: parear, áudio, política, pausar, limpar.
-  handleClient("whatsapp:pair", (event, payload: unknown) => {
+  handleClient("whatsapp:pair", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const reset = (payload as { reset?: unknown } | null)?.reset === true;
-    return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
+    let connected = false;
+    const send = (ev: WhatsappEvent): void => { if (ev.kind === "connected") connected = true; if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); };
+    await startPairing(h.host, reset, send);
+    if (connected) void ensureTranscription(h.host, send);
   });
   handleClient("whatsapp:audio", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const p = payload as { kind?: unknown; mode?: unknown } | null;
-    const setup: AudioSetup | null = p?.kind === "in" ? { kind: "in" }
+    const setup: AudioSetup | null = p?.kind === "in" ? { kind: "in", ...((p as { off?: unknown }).off === true ? { off: true } : {}) }
       : p?.kind === "out" && (p.mode === "off" || p.mode === "inbound" || p.mode === "always") ? { kind: "out", mode: p.mode } : null;
     if (setup === null) throw new Error("pedido inválido");
     return installAudio(h.host, setup);

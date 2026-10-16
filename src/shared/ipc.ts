@@ -169,6 +169,8 @@ export interface WindowInfo {
   person: string | null;
   /** No admin: apelido que a pessoa usa para a máquina ("colima"); null se o código não trouxe. */
   machine: string | null;
+  /** Versão deste app (package.json). */
+  version: string;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
   models: string[];
 }
@@ -273,6 +275,8 @@ export interface SupportPerson {
   /** Última entrega na caixa (ISO): o "visto há". */
   seenAt: string;
   source: "caixa" | "colado";
+  /** O admin tirou da lista (continua com suporte; o interruptor "arquivadas" mostra de volta). */
+  archived: boolean;
 }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
 export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare }
@@ -281,13 +285,16 @@ export interface SupportProgress {
   at: string;
   tour: "done" | "skipped" | "pending";
   tutorials: { id: string; title: string; done: number; total: number; current: string | null; finished: boolean; comingSoon: boolean }[];
+  /** O meu-bot dela: versão e quando esta sessão do app abriu (o admin vê se ela está atualizada e ativa). */
+  app?: { version: string; openedAt: string };
 }
-export type AdminAction = "restart-gateway" | "restart-backend" | "transcription";
+export type AdminAction = "restart-gateway" | "restart-backend" | "transcription" | "transcription-off";
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
 export type VoiceReplyMode = "off" | "inbound" | "always";
 /** Instaladores de áudio do agente do WhatsApp: ouvir (transcrição) ou falar (voz, com o modo). */
-export type AudioSetup = { kind: "in" } | { kind: "out"; mode: VoiceReplyMode };
+/** "in" liga a transcrição (padrão do app ao parear); `off: true` desliga. "out" é a voz, pelo modo. */
+export type AudioSetup = { kind: "in"; off?: boolean } | { kind: "out"; mode: VoiceReplyMode };
 
 export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
@@ -434,6 +441,8 @@ export interface PickerAdminApi {
   supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
   /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
   supportAdd(code: string): Promise<SupportPerson>;
+  /** meu-bot-admin: arquiva/desarquiva uma pessoa na lista; devolve as pessoas. */
+  supportArchive(alias: string, archived: boolean): Promise<SupportPerson[]>;
 }
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */

@@ -10,6 +10,7 @@
 #   {{AttachmentPath}} só existe nas novas) e tools.media.audio.enabled = true. Se já
 #   houver outro transcritor configurado, não mexe (avisa e sai com 3). Vale sem reiniciar o gateway.
 # - Testa de ponta a ponta com `openclaw capability audio transcribe` num áudio gerado aqui.
+# Uso: install-transcricao.sh [off]   (sem argumento liga; `off` desliga)
 set -euo pipefail
 FW_VERSION=1.1.1
 MODEL=${MEU_BOT_WHISPER_MODEL:-small}
@@ -18,6 +19,16 @@ BIN=$HOME/.local/bin/meu-bot-transcrever
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 
 command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw: a transcrição é para o agente do WhatsApp dele"; exit 2; }
+
+# `off`: desliga no OpenClaw (só se o transcritor configurado é o nosso); o ambiente fica, ligar de novo é rápido.
+if [ "${1:-}" = off ]; then
+  if openclaw config get tools.media.models 2>/dev/null | grep -q meu-bot-transcrever; then
+    openclaw config set tools.media.models '[]' --strict-json >/dev/null
+  fi
+  openclaw config set tools.media.audio.enabled false --strict-json >/dev/null
+  echo "pronto: o agente deixa de transcrever áudios"
+  exit 0
+fi
 command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg não encontrado: a transcrição precisa dele para ler os áudios (apt install ffmpeg)"; exit 1; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 não encontrado"; exit 1; }
 
