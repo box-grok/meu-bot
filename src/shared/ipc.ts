@@ -193,6 +193,10 @@ export interface WhatsappChat {
   isSelf: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
+  /** Tem sessão só dele (isolamento por contato): dá para pausar sem afetar os outros. */
+  ownSession: boolean;
+  /** O agente está pausado para este contato (não responde). */
+  paused: boolean;
   /** ISO da atividade mais recente. */
   updatedAt: string;
 }
@@ -357,7 +361,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "hide" | "unhide" | "clear";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "hide" | "unhide" | "clear" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "archive" | "unarchive" | "close" | "delete";
 export type ExportFormat = "md" | "json";
 
@@ -449,11 +453,15 @@ export interface MeuBotApi {
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { hidden: boolean }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { hidden: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  /** Pausa (true) ou retoma (false) as respostas do agente a este contato. */
+  pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** Salva a conversa toda num arquivo; null = cancelado. */
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
-  /** Limpa na máquina o histórico do agente com este contato (pede confirmação); false = cancelado. */
-  clearWhatsapp(number: string): Promise<boolean>;
+  /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). */
+  whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
+  /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
+  clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
   claudeLogin(): Promise<void>;
   /** Código colado pela pessoa; false se não há login em andamento. */

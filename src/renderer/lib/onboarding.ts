@@ -50,7 +50,7 @@ export const TOUR_INVITE = { title: "Vamos fazer um tour", text: "Quer que eu te
 /** Cartão do tour em Tutoriais (o primeiro da lista). */
 export const TOUR_CARD = { title: "Tour do meu-bot", summary: "A lateral, a paleta de comandos, as configurações e a primeira conversa, em quatro ações suas.", minutes: 1 };
 /** Transição de encerramento, mostrada no cartão por alguns segundos. */
-export const FINAL_MESSAGE = { title: "Isso é tudo", text: "Fim do onboarding. A partir daqui é só conversar: cada máquina é uma janela, e a lista guarda o resto." };
+export const FINAL_MESSAGE = { title: "Isso é tudo", text: "Fim do tour. Agora te levo aos Tutoriais para o próximo passo; a conversa fica na aba dela." };
 
 export interface OnboardState { step: number; armed: boolean }
 export const initialOnboardState = (): OnboardState => ({ step: 0, armed: false });

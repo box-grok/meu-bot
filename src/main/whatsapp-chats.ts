@@ -12,9 +12,12 @@ import type { WhatsappChat, WhatsappThreadMessage } from "../shared/ipc";
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** Número do contato quando a sessão é por contato (`…:whatsapp:default:direct:+5521…`); senão null. */
+/**
+ * Número do contato quando a sessão é por contato; senão null. O OpenClaw 2026.9.9 grava
+ * `agent:main:whatsapp:direct:+5521…`; com várias contas entra a conta antes (`…:whatsapp:<conta>:direct:…`).
+ */
 export function peerOfSessionKey(key: string): string | null {
-  const m = /:whatsapp:[^:]+:direct:\+?(\d{8,15})$/.exec(key);
+  const m = /:whatsapp:(?:[^:]+:)?direct:\+?(\d{8,15})$/.exec(key);
   return m === null ? null : m[1]!;
 }
 
@@ -37,7 +40,7 @@ function participantNumbers(session: Record<string, unknown>): string[] {
  */
 export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
-  const byNumber = new Map<string, { keys: string[]; updated: number }>();
+  const byNumber = new Map<string, { keys: string[]; updated: number; paused: boolean }>();
   const selfN = self === null ? null : digits(self);
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string") continue;
@@ -47,28 +50,48 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
     const numbers = peer !== null ? [peer] : participantNumbers(s).filter((n) => n !== selfN);
     const updated = typeof s.updatedAt === "number" ? s.updatedAt : 0;
     for (const n of numbers) {
-      const cur = byNumber.get(n) ?? { keys: [], updated: 0 };
+      const cur = byNumber.get(n) ?? { keys: [], updated: 0, paused: false };
       if (!cur.keys.includes(s.key)) cur.keys.push(s.key);
+      // Pausa = envio negado na sessão só do contato (a principal nunca é pausada pelo app).
+      if (peer !== null && s.sendPolicy === "deny") cur.paused = true;
       cur.updated = Math.max(cur.updated, updated);
       byNumber.set(n, cur);
     }
   }
   return [...byNumber.entries()]
-    .map(([number, v]) => ({ number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, updatedAt: new Date(v.updated).toISOString() }))
+    .map(([number, v]) => ({
+      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys,
+      ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused, updatedAt: new Date(v.updated).toISOString(),
+    }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-/** Texto de uma mensagem: string, ou partes `{type:"text", text}`; outras partes sem texto viram "[mídia]". */
+/** Partes que são mídia de verdade; chamadas de ferramenta, resultados e raciocínio não são. */
+const MEDIA_PARTS = new Set(["image", "audio", "video", "document", "file", "sticker", "media"]);
+
+/** Texto de uma mensagem: string, ou partes `{type:"text", text}`; só mídia (sem texto) vira "[mídia]". */
 function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   const texts: string[] = [];
-  let other = false;
+  let media = false;
   for (const p of content) {
-    if (isObj(p) && typeof p.text === "string") texts.push(p.text);
-    else if (isObj(p) && p.type !== "text") other = true;
+    if (!isObj(p)) continue;
+    if (p.type === "text" && typeof p.text === "string") texts.push(p.text);
+    else if (typeof p.type === "string" && MEDIA_PARTS.has(p.type)) media = true;
   }
-  return texts.length > 0 ? texts.join("\n") : other ? "[mídia]" : "";
+  return texts.length > 0 ? texts.join("\n") : media ? "[mídia]" : "";
+}
+
+/**
+ * Resposta que foi ao WhatsApp. Com o backend claude-cli, a entregue é a da execução (`__openclaw.runId`);
+ * as importadas do CLI sem `runId` são o rascunho interno (ferramentas, textos intermediários) e nunca saem
+ * do agente. Parada por ferramenta (`stopReason: "tool_use"`) também é meio de turno.
+ */
+function isDelivered(m: Record<string, unknown>): boolean {
+  const meta = isObj(m.__openclaw) ? m.__openclaw : {};
+  if (m.stopReason === "tool_use") return false;
+  return !(meta.importedFrom === "claude-cli" && typeof meta.runId !== "string");
 }
 
 export interface SessionHistory { sessionKey: string; history: unknown }
@@ -100,7 +123,7 @@ export function threadFor(number: string, histories: readonly SessionHistory[]):
         if (typeof meta.senderName === "string" && meta.senderName !== "") name = meta.senderName;
         out.push({ role: "contact", text, at });
       } else if (m.role === "assistant") {
-        if (current !== want || text === "" || text === "NO_REPLY") continue;
+        if (current !== want || text === "" || text === "NO_REPLY" || !isDelivered(m)) continue;
         out.push({ role: "agent", text, at });
       }
     }
@@ -146,10 +169,11 @@ export const ownSessionKeys = (number: string, keys: readonly string[]): string[
   keys.filter((k) => peerOfSessionKey(k) === digits(number));
 
 /**
- * Saída do script de limpeza: uma linha `R<TAB>chave<TAB>json` por `gateway call sessions.reset`.
+ * Saída dos scripts que chamam o gateway por sessão (`sessions.reset`, `sessions.patch`): uma linha
+ * `R<TAB>chave<TAB>json` por chamada.
  * Devolve as chaves que não voltaram com `ok: true` (vazio = todas limpas).
  */
-export function resetFailures(out: string, keys: readonly string[]): string[] {
+export function gatewayFailures(out: string, keys: readonly string[]): string[] {
   const ok = new Set<string>();
   for (const line of out.split("\n")) {
     const parts = line.split("\t");

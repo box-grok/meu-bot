@@ -1367,8 +1367,11 @@ function openGuide(t: Tutorial): void {
   paintGuide();
 }
 
+/** Acabou de concluir o tour: Tutoriais destaca o próximo (o primeiro pendente) até a pessoa começar algum. */
+let tutNext = false;
 const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
   tutList.replaceChildren();
+  let nextMarked = false;
   paintTutCount();
   const showArchived = tutArchivedEl.checked;
   const active: HTMLElement[] = [];
@@ -1382,7 +1385,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     const n = ONBOARD_STEPS.length;
     body.append(el("span", "tut-badge", done ? "Concluído" : `Comece por aqui · ${n} passos · ${TOUR_CARD.minutes} min`), el("h3", "", TOUR_CARD.title), el("p", "", TOUR_CARD.summary));
     const start = el("button", "btn tut-start", done ? "Rever" : "Começar"); start.type = "button";
-    start.addEventListener("click", () => { closePage(tutoriaisPage); void restartTour(); });
+    start.addEventListener("click", () => { tutNext = false; closePage(tutoriaisPage); void restartTour(); });
     const head = el("div", "tut-head"); head.append(icon, body, start);
     card.append(head);
     (done ? archived : active).push(card);
@@ -1392,12 +1395,15 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     const started = view.done.some(Boolean);
     const soon = t.comingSoon === true;
     const done = !soon && view.finished;
-    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}`);
+    const next = tutNext && !nextMarked && !soon && !done && tourDone();
+    if (next) nextMarked = true;
+    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
     const body = el("div", "tut-body");
-    body.append(el("span", "tut-badge", done ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t)), el("h3", "", t.title), el("p", "", t.summary));
+    const badge = done ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t);
+    body.append(el("span", "tut-badge", next ? `Seu próximo passo · ${started ? badge : tutorialBadge(t, false)}` : badge), el("h3", "", t.title), el("p", "", t.summary));
     const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
-    if (soon) start.disabled = true; else start.addEventListener("click", () => openGuide(t));
+    if (soon) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
     const head = el("div", "tut-head"); head.append(icon, body, start);
     card.append(head);
     (done ? archived : active).push(card);
@@ -1622,7 +1628,10 @@ function refreshWaChats(): Promise<void> {
   })();
   return waChatsInflight;
 }
-/** Conversas tiradas da lista (só neste app): número → hora da última atividade quando saiu. Volta sozinha se chegar mensagem nova. */
+/**
+ * Conversas tiradas da lista (só neste app) até "Voltar para a lista". Não voltam sozinhas: a sessão
+ * principal muda a hora de todos os participantes a cada conversa, e isso trazia de volta quem saiu.
+ */
 const waHiddenKey = (): string => `waHidden:${windowHost}`;
 function waHidden(): Record<string, string> {
   try { const v = JSON.parse(localStorage.getItem(waHiddenKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
@@ -1632,7 +1641,7 @@ function setWaHidden(number: string, at: string | null): void {
   if (at === null) delete h[number]; else h[number] = at;
   try { localStorage.setItem(waHiddenKey(), JSON.stringify(h)); } catch { /* opcional */ }
 }
-const isWaHidden = (c: WhatsappChat): boolean => { const at = waHidden()[c.number]; return at !== undefined && c.updatedAt <= at; };
+const isWaHidden = (c: WhatsappChat): boolean => waHidden()[c.number] !== undefined;
 
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
@@ -1661,15 +1670,75 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     case "unhide":
       setWaHidden(row.number, null); paintListMode(); renderSidebar();
       break;
-    case "clear":
+    case "pause": case "resume": {
+      const item = [...sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
+      item?.classList.add("wa-busy");
       try {
-        if (!(await window.meuBot.clearWhatsapp(row.number))) return;
-        setWaHidden(row.number, null);
-        { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
-        void refreshWaChats();
-      } catch (err) { fail("Não deu para limpar o histórico", err); }
+        await window.meuBot.pauseWhatsapp(row.number, action === "pause");
+        waChats = waChats.map((c) => (c.number === row.number ? { ...c, paused: action === "pause" } : c));
+        for (const g of waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: action === "pause" }; if (pageActive === g.page) renderWaChat(g); }
+        renderSidebar();
+      } catch (err) { fail(action === "pause" ? "Não deu para pausar" : "Não deu para retomar", err); }
+      finally { item?.classList.remove("wa-busy"); }
+      break;
+    }
+    case "clear":
+      void startWaClear(row.number);
       break;
   }
+}
+/**
+ * "Limpar histórico" confirmado na própria lista, logo abaixo do contato (nada de caixa por cima).
+ * Sobrevive às atualizações da lista porque o estado fica aqui, não no DOM.
+ */
+type WaClear = { number: string; phase: "plan" | "confirm" | "run"; shared: boolean; err: string | null };
+let waClear: WaClear | null = null;
+async function startWaClear(number: string): Promise<void> {
+  waClear = { number, phase: "plan", shared: false, err: null };
+  renderSidebar();
+  try {
+    const plan = await window.meuBot.whatsappClearPlan(number);
+    if (waClear?.number !== number) return;
+    waClear = plan.own + plan.shared === 0
+      ? { number, phase: "confirm", shared: false, err: "Não há histórico desta conversa na máquina." }
+      : { number, phase: "confirm", shared: plan.shared > 0, err: null };
+  } catch (err) {
+    if (waClear?.number !== number) return;
+    waClear = { number, phase: "confirm", shared: false, err: errText(err) };
+  }
+  renderSidebar();
+}
+async function runWaClear(c: WaClear): Promise<void> {
+  waClear = { ...c, phase: "run" };
+  renderSidebar();
+  try {
+    await window.meuBot.clearWhatsapp(c.number, c.shared);
+    waClear = null;
+    setWaHidden(c.number, null);
+    const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
+    void refreshWaChats();
+  } catch (err) { waClear = { ...c, phase: "confirm", err: errText(err) }; }
+  renderSidebar();
+}
+const errText = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
+function waClearBox(c: WaClear): HTMLElement {
+  const box = el("div", "wa-clear");
+  if (c.phase === "plan") { box.append(el("span", "wa-clear-text", "Verificando o histórico na máquina…")); return box; }
+  if (c.phase === "run") { box.append(el("span", "wa-clear-text", "Limpando o histórico…")); return box; }
+  const cancel = el("button", "btn", c.err !== null && !c.shared ? "Fechar" : "Cancelar"); cancel.type = "button";
+  cancel.addEventListener("click", (ev) => { ev.stopPropagation(); waClear = null; renderSidebar(); });
+  if (c.err !== null && !c.shared && /não há histórico/.test(c.err)) { box.append(el("span", "wa-clear-text", c.err), el("div", "wa-clear-actions")); box.lastElementChild!.append(cancel); return box; }
+  box.append(el("strong", "", c.shared ? "Limpar o histórico de todos?" : "Limpar o histórico?"));
+  box.append(el("span", "wa-clear-text", c.shared
+    ? "Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente."
+    : "O agente esquece o que conversou com este contato e recomeça do zero."));
+  if (c.err !== null) box.append(el("span", "wa-clear-err", c.err));
+  const go = el("button", "btn btn-bad", c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
+  go.addEventListener("click", (ev) => { ev.stopPropagation(); void runWaClear(c); });
+  const actions = el("div", "wa-clear-actions"); actions.append(cancel, go);
+  box.append(actions);
+  box.addEventListener("click", (ev) => ev.stopPropagation());
+  return box;
 }
 const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.name ?? fmtPhone(c.number));
 function paintWaSidebar(query: string): void {
@@ -1694,12 +1763,15 @@ function paintWaSidebar(query: string): void {
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { hidden }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { hidden, paused: row.paused, ownSession: row.ownSession }).then((a) => waMenuAction(row, a));
       });
-      item.append(el("span", "wa-item-dot"), el("span", "si-title", waChatTitle(row)), el("span", "si-date", shortDate(row.updatedAt)), menu);
-      item.title = row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number);
+      item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
+      if (row.paused) item.append(el("span", "si-tab", "pausado"));
+      item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
+      item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number)}${row.paused ? " · pausado: o agente não responde" : ""}`;
       item.addEventListener("click", () => openWaChat(row));
       sidebarList.appendChild(item);
+      if (waClear?.number === row.number) sidebarList.appendChild(waClearBox(waClear));
     }
   }
 }
@@ -1768,7 +1840,8 @@ function renderWaChat(g: WaChatPage): void {
   const atEnd = panel.dataset["rendered"] !== "1" || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
   panel.replaceChildren();
   const head = el("div", "wa-chat-head");
-  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)), el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"));
+  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)),
+    el("span", "wa-chat-hint", g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
   const list = el("div", "wa-chat-msgs");
   if (!g.loaded) {
     const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Carregando a conversa…"));
@@ -2128,7 +2201,15 @@ async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
   obFeedback.hidden = true;
   obTitle.textContent = msg.title;
   obText.textContent = msg.text;
-  window.setTimeout(() => { if (onboard !== null) return; void onboardLeave(how).then(() => { if (onboard === null) { onboardEl.hidden = true; obSkip.hidden = false; } }); }, how === "done" ? 3200 : 4500);
+  window.setTimeout(() => {
+    if (onboard !== null) return;
+    void onboardLeave(how).then(() => {
+      if (onboard !== null) return;
+      onboardEl.hidden = true; obSkip.hidden = false;
+      // Concluiu: volta aos Tutoriais com o próximo (o WhatsApp, para quem começa do zero) em destaque.
+      if (how === "done") { tutNext = true; openPage(tutoriaisPage); }
+    });
+  }, how === "done" ? 3200 : 4500);
   try { applySettings(await window.meuBot.setSettings({ onboarding: how })); } catch { /* fica pendente; volta na próxima vez */ }
   if (how === "skipped" && tabs.size === 0) await newTab();
 }

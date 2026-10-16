@@ -393,6 +393,9 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - Fim do tour: em vez de mandar uma pergunta de verdade ao agente (que falhava sem login), aparece uma
   boas-vindas local (`welcomeMessage` + `showWelcome`), não enviada e não salva. Com o Claude Code da máquina
   deslogado, ela explica e traz o botão "Entrar no Claude Code"; logado, sugere por onde começar.
+  Depois do cartão "Isso é tudo" (só ao concluir; pular não leva), a aba Tutoriais abre com o primeiro
+  tutorial pendente em destaque (`tutNext`: borda, selo "Seu próximo passo", Começar pulsando). Para quem
+  começa do zero é o WhatsApp. O destaque some quando a pessoa começa algum tutorial.
 - Tutoriais concluídos (o tour feito, um guia terminado) saem da lista e vão para "arquivados", como as
   conversas: interruptor `#tut-archived` no topo da aba (`localStorage tutArchived`), seção "Arquivados" com
   "Rever". A contagem da lateral mostra só os ativos ("tudo feito" quando não sobra nenhum).
@@ -454,13 +457,25 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   ficam gravadas em `fromWhatsapp.messages`) e, abaixo, a conversa com o meu-bot segue normal.
 - Menu "…" de cada contato (`ui:wa-menu`): Conversar com o meu-bot, Exportar (.md legível por dia, ou
   .json com contato, máquina e mensagens; `threadToMarkdown`), Remover da lista e Limpar histórico.
-  "Remover da lista" é só deste app (`localStorage waHidden:<host>`, número → `updatedAt` da saída) e a
-  conversa volta sozinha se chegar mensagem nova; o interruptor do rodapé vira "removidas" no modo
+  "Remover da lista" é só deste app (`localStorage waHidden:<host>`) e vale até "Voltar para a lista" (antes
+  voltava sozinha com atividade nova, mas a sessão principal muda a hora de todos os participantes e o
+  contato reaparecia sem mensagem nova); o interruptor do rodapé vira "removidas" no modo
   WhatsApp. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
   transcript antigo arquivado) e `memory forget` nas sessões do contato (`whatsappClearPlan`). O OpenClaw
   recusa apagar `agent:main:main` ("Cannot delete the main session"), mas zera; como a principal não se
-  separa por contato, o diálogo (Cancelar como padrão) avisa que ela inteira vai junto, com os outros
-  contatos e as conversas diretas com o agente.
+  separa por contato, a confirmação avisa que ela inteira vai junto, com os outros contatos e as
+  conversas diretas com o agente. A confirmação abre na própria lista, logo abaixo do contato
+  (`waClearBox`, Cancelar + Limpar em vermelho; nada de caixa nativa por cima). `whatsapp:clear-plan`
+  conta as sessões; `whatsapp:clear` refaz o plano e só zera a principal com `includeShared`.
+- Pausar o agente para uma pessoa (menu "…"): `gateway call sessions.patch` com `sendPolicy: "deny"` na
+  sessão só do contato (`null` retoma). O OpenClaw ainda recebe e grava a mensagem (e pode rodar o turno),
+  mas não entrega a resposta nem mostra "digitando". Só com sessão própria (`WhatsappChat.ownSession`):
+  pausar a principal calaria todo mundo. Lista com "pausado" e ponto vazado; cabeçalho da conversa avisa.
+- Chave por contato no OpenClaw 2026.9.9: `agent:main:whatsapp:direct:+N` (sem a conta); o parse aceita os
+  dois formatos. Respostas no espelho: só as entregues. Com o backend claude-cli, a entregue é a do
+  `runId`; as importadas do CLI sem `runId` (ferramentas, textos de meio de turno, `stopReason: tool_use`)
+  são rascunho e não aparecem. Partes sem texto só viram "[mídia]" se forem mídia (imagem, áudio…);
+  chamada de ferramenta não é mídia.
 - Depois: responder pelo app (`openclaw message send`), tempo real pelo WebSocket do gateway, mídia.
 
 ### Acervo (biblioteca de skills)

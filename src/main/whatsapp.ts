@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
-import { chatsFromSessions, ownSessionKeys, resetFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { chatsFromSessions, ownSessionKeys, gatewayFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
@@ -428,7 +428,22 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
     `timeout 60 openclaw memory forget --agent '${k.split(":")[1]}' --session '${k}' >/dev/null 2>&1 || true`,
   ].join("\n")).join("\n");
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 180_000);
-  const failed = resetFailures(r.stdout, safe);
+  const failed = gatewayFailures(r.stdout, safe);
   if (failed.length > 0) throw new Error(`o OpenClaw não limpou ${failed.length === safe.length ? "o histórico" : `${failed.length} de ${safe.length} sessões`}`);
   log(`whatsapp: histórico limpo em ${host}: ${safe.join(", ")}`);
+}
+
+/**
+ * Pausa ou retoma o agente para um contato: `sendPolicy` da sessão só dele (`deny` = o OpenClaw não entrega
+ * respostas nem mostra "digitando"; `null` volta à regra geral). A mensagem da pessoa continua chegando.
+ */
+export async function whatsappPause(host: string, number: string, paused: boolean): Promise<void> {
+  const { own } = await whatsappClearPlan(host, number);
+  if (own.length === 0) throw new Error("esta pessoa ainda não tem conversa própria com o agente; dá para pausar depois da próxima mensagem dela");
+  const value = paused ? '"deny"' : "null";
+  const lines = own.map((k) => `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.patch --json --params '{"key":"${k}","sendPolicy":${value}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 120_000);
+  const failed = gatewayFailures(r.stdout, own);
+  if (failed.length > 0) throw new Error(`o OpenClaw não ${paused ? "pausou" : "retomou"} a conversa`);
+  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${number.replace(/\D/g, "")} em ${host}`);
 }

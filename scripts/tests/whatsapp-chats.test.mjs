@@ -105,15 +105,15 @@ test("whatsappContextNote: trecho rotulado, contato e agente, e corta as mais an
 });
 
 test("limpar: separa as sessões do contato da principal; lê o resultado de cada reset", () => {
-  const { ownSessionKeys, resetFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { ownSessionKeys, gatewayFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
   const ana = chatsFromSessions(list, SELF).find((c) => c.number === ANA.slice(1));
   assert.deepEqual(ownSessionKeys(ANA, ana.sessionKeys), [`agent:main:whatsapp:default:direct:${ANA}`]);
   assert.deepEqual(ownSessionKeys(ANA, ["agent:main:main"]), []);
   const k = `agent:main:whatsapp:default:direct:${ANA}`;
   const ok = (key) => `R\t${key}\t${JSON.stringify({ ok: true, key })}`;
-  assert.deepEqual(resetFailures(`${ok(k)}\n${ok("agent:main:main")}\n`, [k, "agent:main:main"]), []);
-  assert.deepEqual(resetFailures(`${ok(k)}\nR\tagent:main:main\t\n`, [k, "agent:main:main"]), ["agent:main:main"]);
-  assert.deepEqual(resetFailures("lixo", [k]), [k]);
+  assert.deepEqual(gatewayFailures(`${ok(k)}\n${ok("agent:main:main")}\n`, [k, "agent:main:main"]), []);
+  assert.deepEqual(gatewayFailures(`${ok(k)}\nR\tagent:main:main\t\n`, [k, "agent:main:main"]), ["agent:main:main"]);
+  assert.deepEqual(gatewayFailures("lixo", [k]), [k]);
 });
 
 test("exportar: Markdown com contato, máquina, período, dias e falas", () => {
@@ -127,4 +127,39 @@ test("exportar: Markdown com contato, máquina, período, dias e falas", () => {
   assert.equal((md.match(/^## /gm) ?? []).length, 2);
   assert.match(md, /\*\*Ana\*\* · \d\d:\d\d\n\noi\n/);
   assert.match(md, /\*\*Agente\*\* · \d\d:\d\d\n\nolá!\n$/);
+});
+
+test("chave por contato sem a conta (formato do OpenClaw 2026.9.9) também vale", () => {
+  assert.equal(peerOfSessionKey("agent:main:whatsapp:direct:+5521900000004"), "5521900000004");
+  const { ownSessionKeys } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  assert.deepEqual(ownSessionKeys("+5521900000004", ["agent:main:main", "agent:main:whatsapp:direct:+5521900000004"]), ["agent:main:whatsapp:direct:+5521900000004"]);
+});
+
+test("rascunho interno do claude-cli (ferramentas, textos de meio de turno) não aparece nem vira [mídia]", () => {
+  const key = "agent:main:whatsapp:direct:+5521900000004";
+  const cli = (content, ts, extra = {}) => ({ role: "assistant", content, timestamp: ts, ...extra });
+  const history = { messages: [
+    user("+5521900000004", "Bia", "Sim", 1),
+    cli([{ type: "toolcall", name: "Read", arguments: {} }], 2, { stopReason: "tool_use", __openclaw: { importedFrom: "claude-cli" } }),
+    { role: "user", content: [{ type: "tool_result", content: "x" }], timestamp: 3, __openclaw: { importedFrom: "claude-cli" } },
+    cli([{ type: "text", text: "No recommendations, removing the file." }], 4, { stopReason: "tool_use", __openclaw: { importedFrom: "claude-cli" } }),
+    cli([{ type: "text", text: "Pronto! (rascunho final do CLI)" }], 5, { stopReason: "end_turn", __openclaw: { importedFrom: "claude-cli" } }),
+    cli([{ type: "text", text: "Pronto! Agora eu sou a Nunu." }], 6, { stopReason: "stop", __openclaw: { importedFrom: "claude-cli", runId: "r1" } }),
+    cli([{ type: "image", url: "x" }], 7, { stopReason: "stop" }),
+  ] };
+  const t = threadFor("5521900000004", [{ sessionKey: key, history }]);
+  assert.deepEqual(t.messages.map((m) => [m.role, m.text]), [["contact", "Sim"], ["agent", "Pronto! Agora eu sou a Nunu."], ["agent", "[mídia]"]]);
+});
+
+test("pausa: envio negado na sessão do contato marca paused; a principal não conta", () => {
+  const P = "+5521900000005";
+  const sessions = { sessions: [
+    { key: "agent:main:main", updatedAt: 1, participants: [wa(ANA), wa(P)], sendPolicy: "deny" },
+    { key: `agent:main:whatsapp:direct:${P}`, updatedAt: 2, participants: [wa(P)], sendPolicy: "deny" },
+  ] };
+  const chats = chatsFromSessions(sessions, SELF);
+  const p = chats.find((c) => c.number === P.slice(1));
+  const ana = chats.find((c) => c.number === ANA.slice(1));
+  assert.equal(p.paused, true); assert.equal(p.ownSession, true);
+  assert.equal(ana.paused, false); assert.equal(ana.ownSession, false);
 });
