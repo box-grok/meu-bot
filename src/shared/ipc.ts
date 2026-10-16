@@ -129,11 +129,39 @@ export interface InstallProgressEvent {
   line: string;
 }
 
+/** Qual app é este: o meu-bot (de cada pessoa) ou o meu-bot-admin (suporte). */
+export type AppVariant = "client" | "admin";
+/**
+ * O que esta variante do app pode fazer. O main decide (variant-core.ts) e manda para a janela em WindowInfo;
+ * o renderer esconde/mostra por capacidade, nunca por "é admin?". O admin tem tudo false menos supportAdmin.
+ */
+export interface Capabilities {
+  variant: AppVariant;
+  /** Conversar com o agente: compositor, abas de chat, entrada rápida. */
+  chat: boolean;
+  /** Parear/desconectar o WhatsApp, política de DM, áudio. */
+  pair: boolean;
+  /** Logins Claude e xAI, chave de API. */
+  login: boolean;
+  /** Mexer no espelho do WhatsApp: pausar, limpar, ramificar; menu "…" completo. */
+  manageWa: boolean;
+  /** Túnel para o backend da máquina (chat, conta). */
+  tunnel: boolean;
+  /** Instalar coisas na máquina pelo seletor e pelos tutoriais (status line, transcrição). */
+  install: boolean;
+  /** Configurações › Suporte, lado da pessoa. */
+  supportClient: boolean;
+  /** Página "Suporte" do admin e as ações de suporte. */
+  supportAdmin: boolean;
+}
+
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */
 export interface WindowInfo {
   host: string;
   /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
   admin: boolean;
+  /** O que esta variante pode fazer (ver Capabilities). */
+  caps: Capabilities;
   /** No admin: nome da pessoa dona da máquina. */
   person: string | null;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */

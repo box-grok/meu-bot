@@ -581,7 +581,8 @@ body.topbar-hidden .topbar { display: none; }
 #support-body { display: flex; flex-direction: column; gap: 8px; }
 body.admin-mode .composer, body.admin-mode #tab-plus, body.admin-mode #btn-new, body.admin-mode #list-mode,
 body.admin-mode #cl-line, body.admin-mode #xai-line, body.admin-mode #acervo-line, body.admin-mode #tutoriais-line,
-body.admin-mode #wa-line, body.admin-mode #rest, body.admin-mode #sidebar-foot { display: none !important; }
+body.admin-mode #wa-line, body.admin-mode #rest { display: none !important; }
+/* O rodapé "arquivadas" (.sidebar-foot) fica no admin: ele arquiva pelo menu "…" e precisa ver o que arquivou. */
 .admin-panel { display: flex; flex-direction: column; gap: 14px; }
 .admin-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 .admin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }

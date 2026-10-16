@@ -13,7 +13,7 @@ import type { SupportInfo } from "../shared/ipc";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
 import { log } from "./backend";
-import { authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, type SupportCode } from "./support-code";
+import { SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, supportLogSh, type SupportCode } from "./support-code";
 import { runSsh } from "./whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
@@ -55,13 +55,8 @@ function saveSupportName(name: string): void {
   try { fs.writeFileSync(namePath(), JSON.stringify({ name }), { mode: 0o600 }); } catch { /* cortesia */ }
 }
 
-const LOG = "$HOME/.local/share/meu-bot/suporte.log";
+const LOG = SUPPORT_LOG;
 const D = "$HOME/.local/share/meu-bot/suporte";
-/** Linha do registro de suporte: "2026-10-16T12:00:00Z|quem|o quê" (o texto é só [A-Za-zÀ-ÿ0-9 .,:()-]). */
-export const supportLogSh = (who: string, what: string): string => {
-  const clean = (s: string): string => s.replace(/[^\p{L}\p{N} .,:()-]/gu, "").slice(0, 120);
-  return `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s|%s|%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${clean(who)}' '${clean(what)}' >> "${LOG}"`;
-};
 
 /** Como o Mac dela chega na máquina (o que o ssh dela resolve para o alias), para o admin chegar igual. */
 function resolveSsh(host: string): Promise<{ hostname: string; user: string; port: number }> {

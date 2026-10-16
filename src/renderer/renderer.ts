@@ -1,5 +1,6 @@
 import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { ipcErrorText } from "./lib/ipc-error.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
@@ -1063,7 +1064,7 @@ async function applyXaiKey(key: string | null): Promise<void> {
       : grok ? "Pronto: o grok-4 já aparece nos modos e no fallback desta máquina." : `A chave foi gravada, mas o backend ainda não lista o grok-4 (modelos: ${models.join(", ") || "nenhum"}). Confira a chave em console.x.ai.`;
     xaiKeyClear.hidden = xaiKey?.hasKey !== true;
   } catch (err) {
-    xaiKeyMsg.className = "hint guide-pair-note"; xaiKeyMsg.textContent = errMsg(err);
+    xaiKeyMsg.className = "hint guide-pair-note"; xaiKeyMsg.textContent = ipcErrorText(err);
   } finally { xaiKeySave.disabled = false; xaiKeyClear.disabled = false; }
 }
 xaiKeySave.addEventListener("click", () => { const k = xaiKeyInput.value.trim(); if (k === "") { xaiKeyInput.focus(); return; } void applyXaiKey(k); });
@@ -1089,7 +1090,7 @@ async function prepareAndLoginXai(): Promise<void> {
     await refreshXaiLine();
     if (xaiAuth === null) { xaiStatus.textContent = "✗ o Hermes foi instalado mas o app ainda não o enxerga; feche e abra a janela desta máquina."; return; }
     if (xaiAuth.loggedIn) { xaiStatus.textContent = "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy."; return; }
-  } catch (err) { xaiStatus.textContent = `✗ ${errMsg(err)}`; return; }
+  } catch (err) { xaiStatus.textContent = `✗ ${ipcErrorText(err)}`; return; }
   finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
   await runXaiLogin();
 }
@@ -1670,7 +1671,7 @@ async function runAudioSetup(setup: AudioSetup): Promise<void> {
     waAudioMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok };
     await refreshWhatsapp();
   } catch (err) {
-    waAudioMsg = { text: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err), bad: true };
+    waAudioMsg = { text: ipcErrorText(err), bad: true };
   } finally { waAudioBusy = null; paintGuide(); }
 }
 function chooseReply(choice: "self" | "open"): void {
@@ -1822,7 +1823,7 @@ const isWaArchived = (c: WhatsappChat): boolean => waArchived()[c.number] !== un
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
   const fail = (what: string, err: unknown): void => {
-    sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `${what}: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`));
+    sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `${what}: ${ipcErrorText(err)}`));
   };
   switch (action) {
     case "talk": {
@@ -1880,7 +1881,7 @@ async function startWaClear(number: string): Promise<void> {
       : { number, phase: "confirm", shared: plan.shared > 0, err: null };
   } catch (err) {
     if (waClear?.number !== number) return;
-    waClear = { number, phase: "confirm", shared: false, err: errText(err) };
+    waClear = { number, phase: "confirm", shared: false, err: ipcErrorText(err) };
   }
   renderSidebar();
 }
@@ -1893,10 +1894,9 @@ async function runWaClear(c: WaClear): Promise<void> {
     setWaArchived(c.number, null);
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
     void refreshWaChats();
-  } catch (err) { waClear = { ...c, phase: "confirm", err: errText(err) }; }
+  } catch (err) { waClear = { ...c, phase: "confirm", err: ipcErrorText(err) }; }
   renderSidebar();
 }
-const errText = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 function waClearBox(c: WaClear): HTMLElement {
   const box = el("div", "wa-clear");
   if (c.phase === "plan") { box.append(el("span", "wa-clear-text", "Verificando o histórico na máquina…")); return box; }
@@ -2215,7 +2215,7 @@ async function disconnectWhatsapp(btn: HTMLButtonElement): Promise<void> {
     await window.meuBot.whatsappLogout();
     await refreshWhatsapp();
   } catch (err) {
-    btn.textContent = `Não desconectou: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`;
+    btn.textContent = `Não desconectou: ${ipcErrorText(err)}`;
     btn.classList.add("btn-bad");
     window.setTimeout(() => { btn.textContent = label; btn.classList.remove("btn-bad"); }, 5000);
     return;
@@ -2859,7 +2859,7 @@ function renderStatusLineInstall(container: HTMLElement): void {
     statusLineBusy = true; statusLineLog = []; statusLineMsg = null; paintGuide();
     void window.meuBot.installStatusLine()
       .then((r) => { statusLineMsg = r.ok ? { text: "Status line instalada.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
-      .catch((err: unknown) => { statusLineMsg = { text: errMsg(err), bad: true }; })
+      .catch((err: unknown) => { statusLineMsg = { text: ipcErrorText(err), bad: true }; })
       .finally(() => { statusLineBusy = false; void refreshStatusLine(); });
   });
   row.append(b);
@@ -2869,7 +2869,6 @@ function renderStatusLineInstall(container: HTMLElement): void {
   if (statusLineMsg !== null) box.append(el("p", `hint ${statusLineMsg.bad ? "guide-pair-note" : "audio-ok"}`, statusLineMsg.text));
   container.append(box);
 }
-const errMsg = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
 async function refreshSupportState(): Promise<void> {
   if (windowHost === "" || windowHost === "local" || windowAdmin) return;
@@ -2886,7 +2885,7 @@ function repaintSupport(): void {
 async function supportDo(run: () => Promise<SupportInfo>, ok: string | null): Promise<void> {
   supportBusy = true; supportMsg = null; repaintSupport();
   try { supportState = await run(); supportMsg = ok === null ? null : { text: ok, bad: false }; }
-  catch (err) { supportMsg = { text: errMsg(err), bad: true }; }
+  catch (err) { supportMsg = { text: ipcErrorText(err), bad: true }; }
   finally { supportBusy = false; repaintSupport(); }
 }
 
@@ -2939,7 +2938,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       reveal.addEventListener("click", () => {
         reveal.disabled = true; reveal.textContent = "Gerando…";
         void window.meuBot.supportCode().then((code) => { supportCodeShown = code; repaintSupport(); })
-          .catch((err: unknown) => { supportMsg = { text: errMsg(err), bad: true }; repaintSupport(); });
+          .catch((err: unknown) => { supportMsg = { text: ipcErrorText(err), bad: true }; repaintSupport(); });
       });
       more.append(reveal);
     } else {
@@ -2999,7 +2998,7 @@ function openAdminPage(): void {
 async function adminRefreshHealth(): Promise<void> {
   adminState.busy = "health"; renderAdminPage();
   try { adminState.health = await window.meuBot.adminHealth(); adminState.healthErr = null; if (adminState.health.whatsapp !== null) { waStatus = adminState.health.whatsapp; paintWhatsapp(); renderSidebar(); } }
-  catch (err) { adminState.healthErr = err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err); }
+  catch (err) { adminState.healthErr = ipcErrorText(err); }
   finally { adminState.busy = null; renderAdminPage(); }
 }
 async function adminRefreshLogs(): Promise<void> {
@@ -3075,7 +3074,7 @@ function renderAdminPage(): void {
       adminState.busy = o.id; adminState.msg = null; renderAdminPage();
       void window.meuBot.adminAction(o.id)
         .then((r) => { adminState.msg = { text: `${o.label}: ${r.ok ? "feito" : "falhou"}${r.detail !== "" ? ` · ${r.detail}` : ""}`, bad: !r.ok }; })
-        .catch((err: unknown) => { adminState.msg = { text: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err), bad: true }; })
+        .catch((err: unknown) => { adminState.msg = { text: ipcErrorText(err), bad: true }; })
         .finally(() => { adminState.busy = null; void adminRefreshHealth(); if (adminLogsOpen) void adminRefreshLogs(); });
     }));
     acts.append(b);
@@ -3155,7 +3154,7 @@ form.addEventListener("submit", (ev) => {
       if (tab !== null) addNotice(tab, "Configurações salvas.");
     },
     (err: unknown) => {
-      settingsError.textContent = err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': Error: /, "") : String(err);
+      settingsError.textContent = ipcErrorText(err);
       settingsError.hidden = false;
     },
   );

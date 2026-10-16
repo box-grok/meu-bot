@@ -85,3 +85,12 @@ test("progresso nos tutoriais: aceita o formato e recusa o que não é", () => {
     { ...ok, tutorials: [{ ...ok.tutorials[0], done: 9 }] }, { ...ok, tutorials: [{ ...ok.tutorials[0], title: "x".repeat(500) }] },
     { ...ok, tutorials: Array(30).fill(ok.tutorials[0]) }]) assert.equal(m.parseSupportProgress(bad), null);
 });
+
+test("supportLogSh: linha no registro da pessoa, texto limpo e curto", () => {
+  const sh = m.supportLogSh("Lucas", "reiniciou o backend; rm -rf / $(x) 'aspas'");
+  assert.match(sh, /suporte\.log"$/);
+  assert.ok(sh.includes("'Lucas'"));
+  assert.ok(sh.includes("'reiniciou o backend rm -rf  (x) aspas'"), sh);
+  assert.ok(!sh.includes("$(x)") && !sh.includes(";"), "sem $, ; nem aspas no texto");
+  assert.ok(m.supportLogSh("a".repeat(300), "b").includes(`'${"a".repeat(120)}'`), "corta em 120");
+});

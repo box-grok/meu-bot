@@ -1,6 +1,7 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
 import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { ipcErrorText } from "./lib/ipc-error.js";
 import { describeProbe, hostLabel, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
 
 declare global { interface Window { picker: PickerApi } }
@@ -91,12 +92,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return n;
 }
 
-const errorText = (err: unknown): string =>
-  err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': Error: /, "") : String(err);
 
 function showError(prefix: string, err: unknown): void {
   errorEl.hidden = false;
-  errorEl.textContent = `${prefix}: ${errorText(err)}`;
+  errorEl.textContent = `${prefix}: ${ipcErrorText(err)}`;
 }
 
 function buildRows(): void {
@@ -264,7 +263,7 @@ async function probe(host: string, force = false): Promise<void> {
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
   } catch (err) {
-    results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${errorText(err)}`, install: null, canOpen: false });
+    results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${ipcErrorText(err)}`, install: null, canOpen: false });
   }
   paintState(host);
 }
@@ -306,7 +305,7 @@ async function install(): Promise<void> {
       : await window.picker.install(host);
     if (!r.ok) { failed(r.log.at(-1) ?? "sem detalhes"); return; }
   } catch (err) {
-    failed(errorText(err));
+    failed(ipcErrorText(err));
     return;
   } finally {
     installing = false;
@@ -346,7 +345,7 @@ async function syncSsh(): Promise<void> {
     }
   } catch (err) {
     noteEl.className = "note bad";
-    noteEl.textContent = `✗ sincronização falhou: ${errorText(err)}`;
+    noteEl.textContent = `✗ sincronização falhou: ${ipcErrorText(err)}`;
   } finally {
     syncBtn.disabled = false;
   }
@@ -373,7 +372,7 @@ function paintAdminChrome(): void {
     void window.picker.supportAdd(input.value).then(async (p) => {
       msg.hidden = false; msg.textContent = `✓ ${p.name} adicionada`; input.value = ""; form.hidden = true;
       init(await window.picker.list(), p.alias);
-    }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${errorText(err)}`; }).finally(() => { add.disabled = false; });
+    }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
   });
   form.append(input, add);
   addBox.append(open, form, msg);
@@ -503,7 +502,7 @@ async function runDisableCheck(host: string): Promise<void> {
     if (needsCheck.has(host)) note("warn", "ainda pediu verificação: espere mais um pouco e aprove o link uma última vez; depois não será mais exigido.");
     else if (results.get(host)?.kind === "ok") note("ok", "✓ Política salva e a máquina entrou sem pedir verificação.");
   } catch (err) {
-    note("bad", `✗ ${errorText(err)}`);
+    note("bad", `✗ ${ipcErrorText(err)}`);
   } finally {
     tailscaleBtn.disabled = false; tailscaleOffBtn.disabled = false;
     paintDetail();
@@ -518,7 +517,7 @@ tailscaleOffBtn.addEventListener("click", () => {
     if (!st.encryptionAvailable) { note("bad", "✗ este Mac não tem o Keychain disponível para guardar o secret do Tailscale."); return; }
     if (!st.configured) { tsForget.hidden = true; tsForm.hidden = false; tsId.focus(); return; }
     return runDisableCheck(host);
-  }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`));
+  }).catch((err: unknown) => note("bad", `✗ ${ipcErrorText(err)}`));
 });
 tsSave.addEventListener("click", () => {
   if (selected === null) return;
@@ -528,13 +527,13 @@ tsSave.addEventListener("click", () => {
     tsForm.hidden = true;
     if (st.configured) return runDisableCheck(host);
     note("bad", "✗ a credencial não ficou salva.");
-  }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`)).finally(() => { tsSecret.value = ""; tsSave.disabled = false; });
+  }).catch((err: unknown) => note("bad", `✗ ${ipcErrorText(err)}`)).finally(() => { tsSecret.value = ""; tsSave.disabled = false; });
 });
 tsCancel.addEventListener("click", () => { tsSecret.value = ""; tsForm.hidden = true; });
 tsForget.addEventListener("click", () => {
-  void window.picker.forgetTailscaleCredential().then(() => { note("warn", "credencial do Tailscale removida do Keychain."); tsForget.hidden = true; }).catch((err: unknown) => note("bad", `✗ ${errorText(err)}`));
+  void window.picker.forgetTailscaleCredential().then(() => { note("warn", "credencial do Tailscale removida do Keychain."); tsForget.hidden = true; }).catch((err: unknown) => note("bad", `✗ ${ipcErrorText(err)}`));
 });
-tsOpen.addEventListener("click", () => { void window.picker.openKnownUrl("tailscale-keys").catch((err: unknown) => note("bad", `✗ ${errorText(err)}`)); });
+tsOpen.addEventListener("click", () => { void window.picker.openKnownUrl("tailscale-keys").catch((err: unknown) => note("bad", `✗ ${ipcErrorText(err)}`)); });
 // Atalho de "esquecer": clique com a tecla Option no botão principal mostra o formulário com a opção.
 tailscaleOffBtn.addEventListener("click", (ev) => { if (ev.altKey) { tsForget.hidden = false; tsForm.hidden = false; } });
 

@@ -20,7 +20,7 @@ import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryS
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "./hostProbe";
 import { setXaiKey, xaiKeyStatus } from "./xaiKey";
-import { isAdmin } from "./variant";
+import { caps, isAdmin } from "./variant";
 import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
 import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
 import { installAppMenu } from "./menu";
@@ -72,7 +72,7 @@ const ownedConversation = (event: Electron.IpcMainInvokeEvent, payload: unknown)
 function registerIpc(): void {
   ipcMain.handle("window:info", (event) => {
     const ctx = hostFromEvent(event);
-    return ctx === null ? null : { host: ctx.host, models: knownModels(ctx.host), admin: isAdmin(), person: isAdmin() ? personName(ctx.host) : null };
+    return ctx === null ? null : { host: ctx.host, models: knownModels(ctx.host), admin: isAdmin(), caps: caps(), person: isAdmin() ? personName(ctx.host) : null };
   });
   // Suporte, lado da pessoa (só no meu-bot normal com o pacote de suporte).
   ipcMain.handle("support:info", (event) => {

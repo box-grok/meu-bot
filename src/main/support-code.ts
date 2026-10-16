@@ -6,6 +6,9 @@
  * Formato: `MBS1.<base64url(JSON)>`. `state: "off"` = a pessoa desligou o suporte.
  */
 import { createHash } from "node:crypto";
+import type { SupportProgress } from "../shared/ipc";
+
+export type { SupportProgress };
 
 export const SUPPORT_PREFIX = "MBS1.";
 /** Teto do código (a caixa de entrada na agente-box também corta em 4 KB). */
@@ -117,17 +120,18 @@ export function adminSshBlock(c: SupportCode, identityFile: string): string {
 /** Linha do known_hosts do admin (pelo HostKeyAlias: endereço pode mudar sem quebrar a confiança). */
 export const knownHostsLine = (c: SupportCode): string => `${supportAlias(c)} ${c.hostKey}`;
 
+/** Registro de suporte na máquina da pessoa (ela vê nas Configurações; o admin anota as ações dele aqui). */
+export const SUPPORT_LOG = "$HOME/.local/share/meu-bot/suporte.log";
+/** Linha do registro de suporte: "2026-10-16T12:00:00Z|quem|o quê" (o texto é só letras, números e " .,:()-"). */
+export const supportLogSh = (who: string, what: string): string => {
+  const clean = (s: string): string => s.replace(/[^\p{L}\p{N} .,:()-]/gu, "").slice(0, 120);
+  return `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s|%s|%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${clean(who)}' '${clean(what)}' >> "${SUPPORT_LOG}"`;
+};
+
 /**
- * Progresso da pessoa nos tutoriais, gravado pelo meu-bot dela na máquina (só com o suporte ligado) e lido
- * pelo admin: mostra quem está avançando e onde trava. Vem de fora para o admin: validado aqui.
+ * Progresso da pessoa nos tutoriais (tipo em shared/ipc.ts), gravado pelo meu-bot dela na máquina (só com o
+ * suporte ligado) e lido pelo admin: mostra quem está avançando e onde trava. Vem de fora: validado aqui.
  */
-export interface SupportProgress {
-  /** Quando o meu-bot dela gravou (ISO). */
-  at: string;
-  /** Tour do meu-bot (onboarding). */
-  tour: "done" | "skipped" | "pending";
-  tutorials: { id: string; title: string; done: number; total: number; current: string | null; finished: boolean; comingSoon: boolean }[];
-}
 
 const str = (v: unknown, max: number): string | null => (typeof v === "string" && v.length <= max ? v : null);
 const count = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 50 ? v : null);
