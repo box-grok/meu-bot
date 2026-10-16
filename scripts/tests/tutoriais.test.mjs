@@ -42,3 +42,10 @@ test("cartões de quem responder: só você é o padrão; a política gravada ma
   assert.equal(replyChoiceOf("pairing"), null);
   assert.equal(replyChoiceOf("disabled"), null);
 });
+
+test("guia é sequencial: marcações antigas não acendem passos à frente de um pendente", () => {
+  const v = guideView(t, wa({ ready: true, connected: false }), { policyChosen: true, tested: true });
+  assert.deepEqual(v.done, [true, false, false, false]);
+  assert.equal(v.current, 1);
+  assert.equal(guideTabTitle(t, v), "WhatsApp 1/4");
+});

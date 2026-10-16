@@ -129,9 +129,15 @@ export function guideTabTitle(t: Tutorial, v: GuideView): string {
 
 export interface GuideView { done: boolean[]; current: number; finished: boolean }
 
-/** Estado do guia: quais passos estão concluídos e qual é o atual (o primeiro pendente). */
+/**
+ * Estado do guia: quais passos estão concluídos e qual é o atual (o primeiro pendente). Sequencial: um passo
+ * só conta como concluído se todos os anteriores também estão; assim uma marcação antiga ("testei") não
+ * acende o passo 4 enquanto o número está desconectado.
+ */
 export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags): GuideView {
-  const done = t.steps.map((s) => s.done(status, flags));
+  const done: boolean[] = [];
+  let chain = true;
+  for (const s of t.steps) { chain = chain && s.done(status, flags); done.push(chain); }
   const current = done.indexOf(false);
   return { done, current, finished: current === -1 };
 }

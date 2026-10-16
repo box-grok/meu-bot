@@ -1220,6 +1220,15 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   const flags = loadGuideFlags(t);
   const view = guideView(t, waStatus, flags);
   panel.replaceChildren();
+  // Sem o estado da máquina ainda, não há como saber em que passo a pessoa está: mostrar isso, não o passo 1.
+  if (waStatus === null) {
+    const bar0 = el("div", "guide-progress");
+    t.steps.forEach(() => bar0.append(el("span", "seg")));
+    const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Consultando o WhatsApp desta máquina…"));
+    panel.append(bar0, el("h1", "", t.title), wait);
+    void refreshWhatsapp();
+    return;
+  }
   // Barra de progresso em segmentos: um por passo; concluídos e o atual em verde.
   const bar = el("div", "guide-progress");
   t.steps.forEach((_, i) => bar.append(el("span", `seg${view.done[i] === true || i === view.current ? " on" : ""}`)));
@@ -1276,6 +1285,7 @@ function openGuide(t: Tutorial): void {
     guidePages.set(page.id, g);
   }
   openPage(g.page);
+  void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
   paintGuide();
 }
 
@@ -1306,14 +1316,11 @@ const waDialog = $<HTMLDialogElement>("wa-dialog");
 const waStatusEl = $<HTMLParagraphElement>("wa-status");
 const waQr = $<HTMLImageElement>("wa-qr");
 const waHow = $<HTMLParagraphElement>("wa-how");
-const waLog = $<HTMLPreElement>("wa-log");
 const waSuccess = $<HTMLElement>("wa-success");
 const waSuccessText = $<HTMLElement>("wa-success-text");
 const waProgress = $<HTMLElement>("wa-progress");
 const waProgressText = $<HTMLElement>("wa-progress-text");
 const waProgressMeta = $<HTMLElement>("wa-progress-meta");
-const waDetailsBtn = $<HTMLButtonElement>("wa-details");
-waDetailsBtn.addEventListener("click", () => { waLog.hidden = !waLog.hidden; waDetailsBtn.textContent = waLog.hidden ? "detalhes" : "ocultar"; });
 /** QR da vez: quantos já vieram, quando chegou o último e o intervalo medido entre eles (o WhatsApp renova ~20 s). */
 let waQrCount = 0; let waQrAt = 0; let waQrEvery = 20_000;
 let waTick: ReturnType<typeof setInterval> | null = null;
@@ -1331,7 +1338,6 @@ function resetWaProgress(): void {
   waQrCount = 0; waQrAt = 0; waQrEvery = 20_000;
   if (waTick !== null) { clearInterval(waTick); waTick = null; }
   waProgressMeta.textContent = "";
-  waLog.hidden = true; waDetailsBtn.textContent = "detalhes";
 }
 const waPairBtn = $<HTMLButtonElement>("wa-pair");
 const waResetBtn = $<HTMLButtonElement>("wa-reset");
@@ -1491,7 +1497,7 @@ window.addEventListener("focus", () => { if (waStatus?.present) void refreshWhat
 
 function openWhatsapp(): void {
   // No meio de um pareamento o QR e o log continuam: reabrir o modal não pode esconder o QR da vez.
-  if (!waPairing) { waQr.hidden = true; waHow.hidden = true; waLog.hidden = true; waLog.textContent = ""; waProgress.hidden = true; waSuccess.hidden = true; resetWaProgress(); }
+  if (!waPairing) { waQr.hidden = true; waHow.hidden = true; waProgress.hidden = true; waSuccess.hidden = true; resetWaProgress(); }
   paintWhatsapp();
   if (!waDialog.open) waDialog.showModal();
 }
@@ -1499,7 +1505,7 @@ function openWhatsapp(): void {
 async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
   waPairing = true; waConnected = false;
-  waLog.textContent = ""; resetWaProgress(); waSuccess.hidden = true;
+  resetWaProgress(); waSuccess.hidden = true;
   setWaProgress(reset ? "Apagando a sessão antiga…" : "Conectando à máquina…");
   waTick = setInterval(paintWaMeta, 1000);
   waStatusEl.textContent = reset ? "Apagando a sessão antiga e gerando um QR novo…" : "Gerando o QR…";
@@ -1507,7 +1513,7 @@ async function pairWhatsapp(reset: boolean): Promise<void> {
   try {
     await window.meuBot.whatsappPair(reset);
   } catch (err) {
-    waLog.textContent += `✗ ${err instanceof Error ? err.message : String(err)}\n`;
+    setWaProgress(err instanceof Error ? err.message : String(err), "bad");
   } finally {
     waPairing = false;
     if (waTick !== null) { clearInterval(waTick); waTick = null; }
@@ -1520,14 +1526,6 @@ async function pairWhatsapp(reset: boolean): Promise<void> {
   }
 }
 
-function waAppendLog(t: string): void {
-  const lines = (waLog.textContent ?? "").split("\n").filter((l) => l !== "");
-  // "↻ QR renovado" substitui o anterior em vez de empilhar; linha idêntica à última também não repete.
-  const last = lines.at(-1) ?? "";
-  if (last === t || (t.startsWith("↻ QR renovado") && last.startsWith("↻ QR renovado"))) lines[lines.length - 1] = t; else lines.push(t);
-  waLog.textContent = lines.slice(-8).join("\n");
-  waLog.scrollTop = waLog.scrollHeight;
-}
 
 /** Pareou (pelo vigia do script ou pela consulta de estado): ✓ animado no lugar do QR, aviso na aba, modal fecha. */
 function waShowSuccess(number: string | null): void {
@@ -1539,19 +1537,19 @@ function waShowSuccess(number: string | null): void {
       waProgressMeta.textContent = "";
       waQr.hidden = true; waHow.hidden = true;
       waSuccessText.textContent = ev.number !== null ? `Pareado como ${fmtPhone(ev.number)}` : "Pareado";
-      waSuccess.hidden = false; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`; waAppendLog("✓ conectado");
-      // O único botão vira "Concluído" (verde): cancelar depois de pareado não faz sentido.
+      waSuccess.hidden = false; waStatusEl.textContent = `✓ Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}. O gateway está voltando…`;       // O único botão vira "Concluído" (verde): cancelar depois de pareado não faz sentido.
       waCloseBtn.textContent = "Concluído"; waCloseBtn.classList.add("btn-done");
       const tab = active(); if (tab !== null) addNotice(tab, "✓ WhatsApp pareado; o gateway está voltando.", "info");
       setTimeout(() => { if (waDialog.open) waDialog.close(); }, 2600);
 }
 
 window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
-  const appendLog = waAppendLog;
   switch (ev.kind) {
-    case "step": appendLog(`▸ ${ev.text}`); if (waQrCount === 0) setWaProgress(ev.text.charAt(0).toUpperCase() + ev.text.slice(1)); break;
-    case "log": appendLog(ev.text); break;
+    // Só a linha de progresso: cada passo substitui o anterior; o log cru do CLI não aparece.
+    case "step": if (waQrCount === 0 && !waConnected) setWaProgress(ev.text.charAt(0).toUpperCase() + ev.text.slice(1)); break;
+    case "log": break;
     case "qr": {
+      if (waConnected) break; // já pareou nesta rodada: nenhum QR atrasado volta por cima do ✓
       const now = Date.now();
       if (waQrCount > 0 && now - waQrAt > 5_000) waQrEvery = now - waQrAt; // mede o ciclo real do WhatsApp
       waQrCount += 1; waQrAt = now;
@@ -1561,9 +1559,8 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
       break;
     }
     case "connected": { waShowSuccess(ev.number); break; }
-    case "error": waStatusEl.textContent = `✗ ${ev.text}`; appendLog(`✗ ${ev.text}`); setWaProgress(ev.text, "bad"); break;
+    case "error": waStatusEl.textContent = `✗ ${ev.text}`; setWaProgress(ev.text, "bad"); break;
     case "done":
-      appendLog(ev.ok ? "✓ pronto" : "terminou sem conectar");
       if (ev.ok && waDialog.open) setTimeout(() => { if (waDialog.open) waDialog.close(); }, 2600);
       break;
   }

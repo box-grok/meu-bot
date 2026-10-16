@@ -199,11 +199,12 @@ if command -v openclaw >/dev/null 2>&1; then
   # Vinculou = o creds.json do WhatsApp ganhou o número (me.id). Texto não serve: o próprio convite diz
   # "go to Linked Devices", e casar "linked" fechava o QR antes de alguém escanear.
   CREDS=$HOME/.openclaw/credentials/whatsapp/default/creds.json
-  ME0=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
-  [ "$RESET" = "1" ] && ME0=""
+  # Vinculou = o creds.json foi reescrito DEPOIS de o login começar e tem número. Comparar só o número falhava:
+  # ao reparear, o logout ainda não tinha limpado o arquivo e o número antigo virava um "conectado" falso.
+  T0=$(date +%s)
+  linked_now() { [ -f "$CREDS" ] || return 1; [ "$(stat -c %Y "$CREDS" 2>/dev/null || echo 0)" -ge "$T0" ] || return 1; ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null); [ -n "$ME" ]; }
   ( while kill -0 $P 2>/dev/null; do
-      ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
-      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then
+      if linked_now; then
         touch "$LOG.linked"; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"
         # "só você": o número recém-vinculado entra no allowFrom (antes do login ele não existia).
         if [ "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" = "allowlist" ]; then NUM=$(printf '%s' "$ME" | sed 's/[:@].*//'); openclaw config set channels.whatsapp.allowFrom "[\"+$NUM\"]" --strict-json >/dev/null 2>&1; fi
@@ -220,8 +221,7 @@ if command -v openclaw >/dev/null 2>&1; then
   # O CLI encerra sozinho logo depois de vincular, às vezes antes de o vigia olhar: confere uma última vez.
   if [ $LINKED -eq 0 ]; then
     for _ in 1 2 3 4 5; do
-      ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null)
-      if [ -n "$ME" ] && [ "$ME" != "$ME0" ]; then LINKED=1; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; break; fi
+      if linked_now; then LINKED=1; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; break; fi
       sleep 1
     done
   fi
