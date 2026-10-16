@@ -49,6 +49,11 @@
         <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
         <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
         <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count">0 tutoriais</span></button>
+        <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
+        <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>
+          <button type="button" data-mode="bot" role="tab">meu-bot</button>
+          <button type="button" data-mode="whatsapp" role="tab">WhatsApp</button>
+        </div>
         <input id="sidebar-search" type="search" placeholder="Buscar conversas…" autocomplete="off" />
       </div>
       <div id="sidebar-list" class="sidebar-list"></div>
@@ -86,13 +91,41 @@
           <div id="acervo-list" class="acervo-list"></div>
         </section>
         <section id="tutoriais-panel" class="acervo-panel" hidden>
-          <h2>Tutoriais</h2>
-          <p class="hint">Passo a passo curtos do meu-bot. Cada tutorial abre e fecha aqui mesmo.</p>
+          <div class="tut-top">
+            <h2>Tutoriais</h2>
+            <span class="spacer"></span>
+            <!-- Concluídos saem da lista e vão para "arquivados", como as conversas. -->
+            <label class="switch" title="Mostrar também os tutoriais já concluídos"><input id="tut-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivados</span></label>
+          </div>
+          <p class="hint">Passo a passo curtos do meu-bot. Concluídos vão para os arquivados, de onde dá para rever.</p>
           <div id="tutoriais-list" class="acervo-list"></div>
         </section>
         <!-- Tela vazia (nenhuma aba): a cobrinha anda sozinha; setas viram, Novo ou Cmd+N abrem uma conversa. -->
         <section id="rest" class="rest" hidden aria-label="Nenhuma conversa aberta">
           <canvas id="rest-canvas" class="rest-canvas"></canvas>
+        </section>
+        <!-- Convite da primeira abertura: o tour (onboarding) só começa se a pessoa aceitar. -->
+        <section id="tour-welcome" class="tour-welcome" hidden role="dialog" aria-labelledby="tw-title">
+          <div class="tw-art" aria-hidden="true">
+            <svg viewBox="0 0 560 150" preserveAspectRatio="xMidYMid meet">
+              <rect x="24" y="30" width="26" height="96" rx="8"/>
+              <rect x="60" y="30" width="90" height="44" rx="8"/><rect x="60" y="82" width="90" height="44" rx="8"/>
+              <path class="tw-path" d="M170 98 C 230 92, 260 66, 300 62 S 380 92, 418 74"/>
+              <circle class="tw-dot" cx="170" cy="98" r="5"/><circle class="tw-dot" cx="300" cy="62" r="6"/>
+              <rect x="428" y="30" width="112" height="96" rx="10"/>
+              <circle class="tw-ring" cx="484" cy="78" r="22"/><circle class="tw-dot" cx="484" cy="78" r="10"/>
+            </svg>
+          </div>
+          <button type="button" id="tw-close" class="tw-close" aria-label="Fechar">×</button>
+          <div class="tw-body">
+            <h2 id="tw-title"></h2>
+            <p id="tw-text"></p>
+            <div class="tw-actions">
+              <button type="button" id="tw-skip" class="tw-skip">Pular por enquanto</button>
+              <span class="spacer"></span>
+              <button type="button" id="tw-start" class="btn tut-start">Iniciar tour</button>
+            </div>
+          </div>
         </section>
         <section id="onboard" class="onboard" hidden aria-live="polite">
           <div class="onboard-top">

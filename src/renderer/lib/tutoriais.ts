@@ -90,7 +90,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     short: "WhatsApp",
     summary: "Conecte um número ao agente da máquina, decida quem ele responde e teste com uma mensagem real.",
     minutes: 3,
-    badge: "Comece por aqui",
+    badge: "Próximo",
     icon: "target",
     steps: WHATSAPP_STEPS,
   },
@@ -100,7 +100,6 @@ export const TUTORIAIS: readonly Tutorial[] = [
     short: "Objetivo",
     summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo.",
     minutes: 2,
-    badge: "Próximo",
     icon: "chat",
     comingSoon: true,
     steps: [

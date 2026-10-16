@@ -527,3 +527,56 @@ body.topbar-hidden .topbar { display: none; }
 .pair-inline .wa-success { width: 260px; height: 220px; }
 .pair-foot { display: flex; align-items: center; gap: 10px; width: 100%; }
 .pair-foot .wa-progress { flex: 1; }
+/* Seletor de lista na lateral: [ meu-bot | WhatsApp ], segmentado, o ativo em destaque. */
+.list-mode { display: flex; padding: 3px; gap: 3px; border-radius: 9px; background: var(--bg); border: 1px solid var(--line); }
+.list-mode[hidden] { display: none; }
+.list-mode button { flex: 1; font: inherit; font-size: 12px; padding: 5px 8px; border: none; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.list-mode button:hover { color: var(--fg); }
+.list-mode button.on { background: var(--card); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.sidebar-foot[hidden] { display: none; }
+.wa-item-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.tab-page[class*="tab-wa-"] .tab-title::before { content: "● "; color: var(--ok); }
+/* Conversa do WhatsApp (só leitura): cabeçalho fixo, bolhas — contato à esquerda, agente à direita. */
+.wa-chat-panel { position: absolute; inset: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.wa-chat-panel[hidden] { display: none; }
+.wa-chat-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+.wa-chat-head strong { font-size: 15px; }
+.wa-chat-num { font-size: 12px; color: var(--muted); }
+.wa-chat-hint { margin-left: auto; font-size: 11px; color: var(--muted); }
+.wa-chat-msgs { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+.wa-day { align-self: center; font-size: 11px; color: var(--muted); padding: 2px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); margin: 6px 0; }
+.wa-msg { display: flex; flex-direction: column; gap: 4px; }
+.wa-chat-talk { margin-left: auto; padding: 4px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; }
+.wa-chat-talk:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.wa-chat-talk:disabled { opacity: .5; cursor: default; }
+.wa-fail { color: var(--bad) !important; border-color: var(--bad) !important; }
+.wa-in { align-self: flex-start; background: var(--assistant); border: 1px solid var(--line); }
+.wa-in .wa-body { white-space: pre-wrap; }
+.wa-out { align-self: flex-end; background: color-mix(in srgb, var(--ok) 14%, var(--card)); border: 1px solid color-mix(in srgb, var(--ok) 30%, var(--line)); }
+.wa-time { align-self: flex-end; font-size: 10px; color: var(--muted); }
+/* Convite do tour (primeira abertura): ilustração verde em cima, pergunta, "Pular por enquanto" e "Iniciar tour". */
+.tour-welcome { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: min(560px, calc(100% - 32px)); z-index: 6; overflow: hidden; border-radius: 18px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 20px 50px rgba(0,0,0,.35); animation: ob-spring .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+.tour-welcome[hidden] { display: none; }
+.tw-art { background: color-mix(in srgb, var(--ok) 10%, var(--card)); border-bottom: 1px solid var(--line); padding: 10px 0; }
+.tw-art svg { display: block; width: 100%; height: 150px; }
+.tw-art rect { fill: color-mix(in srgb, var(--ok) 18%, var(--card)); }
+.tw-path { fill: none; stroke: var(--ok); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 1 9; animation: tw-walk 1.6s linear infinite; }
+.tw-dot { fill: var(--ok); }
+.tw-ring { fill: none; stroke: var(--ok); stroke-width: 3; }
+@keyframes tw-walk { to { stroke-dashoffset: -20; } }
+.tw-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(0,0,0,.35); color: #fff; font-size: 18px; line-height: 1; cursor: pointer; }
+.tw-close:hover { background: rgba(0,0,0,.55); }
+.tw-body { padding: 22px 26px 24px; display: flex; flex-direction: column; gap: 10px; }
+.tw-body h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.tw-body p { margin: 0; font-size: 14px; color: var(--muted); }
+.tw-actions { display: flex; align-items: center; margin-top: 10px; }
+.tw-skip { font: inherit; font-size: 14px; border: none; background: transparent; color: var(--muted); cursor: pointer; padding: 6px 0; }
+.tw-skip:hover { color: var(--fg); }
+@media (prefers-reduced-motion: reduce) { .tour-welcome { animation: none; } .tw-path { animation: none; } }
+/* Tutoriais: título com o interruptor "arquivados" à direita; concluídos aparecem esmaecidos quando ligado. */
+.tut-top { display: flex; align-items: center; gap: 10px; max-width: 760px; }
+.tut-card.archived { opacity: .72; }
+.tut-group { margin: 6px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+/* Boas-vindas do fim do tour: bolha do assistente com botão de login (se preciso) e uma etiqueta discreta. */
+.msg-welcome { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+.msg-welcome-tag { font-size: 10px; color: var(--muted); }

@@ -23,10 +23,32 @@ export const ONBOARD_STEPS: readonly OnboardStep[] = [
   { id: "new", title: "Primeira conversa", text: "Aperte Cmd + N, ou clique no botão Novo, para criar a primeira conversa. A primeira mensagem vai sozinha.", completes: "new-tab" },
 ];
 
-/** Primeira mensagem da primeira conversa: enviada sozinha quando o último passo conclui. */
-export const EXAMPLE_MESSAGE = "Oi! Em uma frase: o que você consegue fazer nesta máquina?";
+/**
+ * Boas-vindas no fim do tour: mensagem local (não vai ao agente, não gasta nada e não falha sem login). Com o
+ * Claude Code deslogado na máquina, explica que falta entrar; o renderer põe o botão "Entrar no Claude Code".
+ * `loggedIn` null = não deu para saber (ex.: este Mac): segue como logado.
+ */
+export function welcomeMessage(machine: string, loggedIn: boolean | null): string {
+  const head = `**Bem-vindo ao meu-bot.** Esta conversa roda na máquina **${machine}**: o agente de lá lê, escreve e executa por você.`;
+  if (loggedIn === false) {
+    return `${head}\n\nPara o agente responder, falta **entrar no Claude Code** desta máquina. O link abre no navegador e você cola o código aqui; leva um minuto.`;
+  }
+  return [
+    head, "",
+    "Algumas ideias para começar:",
+    "- \"O que tem nesta máquina?\"",
+    "- \"Resuma o que mudou no projeto hoje.\"",
+    "- Conectar o WhatsApp: **Tutoriais**, na lateral.",
+    "",
+    "Escreva abaixo quando quiser.",
+  ].join("\n");
+}
 /** Aviso ao pular: deixa claro que acabou e como refazer. */
-export const SKIPPED_MESSAGE = { title: "Onboarding ignorado", text: "Tudo bem. Para refazer depois: ligue \"Onboarding\" no rodapé do seletor, ou use \"Rever onboarding\" na paleta (Cmd + K)." };
+export const SKIPPED_MESSAGE = { title: "Tour pulado", text: "Tudo bem. Para fazer depois: Tutoriais, na lateral, › Tour do meu-bot. Ou ligue \"Onboarding\" no rodapé do seletor." };
+/** Convite da primeira abertura: o tour só começa se a pessoa aceitar. */
+export const TOUR_INVITE = { title: "Vamos fazer um tour", text: "Quer que eu te mostre a lateral, a paleta de comandos, as configurações e a primeira conversa, ou prefere explorar por conta própria?" };
+/** Cartão do tour em Tutoriais (o primeiro da lista). */
+export const TOUR_CARD = { title: "Tour do meu-bot", summary: "A lateral, a paleta de comandos, as configurações e a primeira conversa, em quatro ações suas.", minutes: 1 };
 /** Transição de encerramento, mostrada no cartão por alguns segundos. */
 export const FINAL_MESSAGE = { title: "Isso é tudo", text: "Fim do onboarding. A partir daqui é só conversar: cada máquina é uma janela, e a lista guarda o resto." };
 

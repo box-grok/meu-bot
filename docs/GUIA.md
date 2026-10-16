@@ -383,6 +383,20 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   agente, com o mesmo acesso que já tem. A linha do WhatsApp se atualiza sozinha a cada 10 s e passa a
   mostrar "Gerar QR" quando ficar pronto.
 
+### Tour (onboarding) com convite
+- Primeira abertura (ou interruptor "Onboarding" ligado no seletor): em vez de o guia começar direto, aparece o
+  convite "Vamos fazer um tour" (`#tour-welcome`, textos em `TOUR_INVITE`): "Iniciar tour" começa o
+  onboarding; "Pular por enquanto" ou × marca pulado (`SKIPPED_MESSAGE` aponta para Tutoriais).
+- Em Tutoriais o primeiro cartão é o "Tour do meu-bot" (`TOUR_CARD`): "Começar", ou "Rever" com selo
+  "Concluído" depois de feito; fecha Tutoriais e chama `restartTour()` (marca pendente e começa). A paleta usa o
+  mesmo caminho. O tutorial do WhatsApp passou a ter o selo "Próximo".
+- Fim do tour: em vez de mandar uma pergunta de verdade ao agente (que falhava sem login), aparece uma
+  boas-vindas local (`welcomeMessage` + `showWelcome`), não enviada e não salva. Com o Claude Code da máquina
+  deslogado, ela explica e traz o botão "Entrar no Claude Code"; logado, sugere por onde começar.
+- Tutoriais concluídos (o tour feito, um guia terminado) saem da lista e vão para "arquivados", como as
+  conversas: interruptor `#tut-archived` no topo da aba (`localStorage tutArchived`), seção "Arquivados" com
+  "Rever". A contagem da lateral mostra só os ativos ("tudo feito" quando não sobra nenhum).
+
 ### Páginas em aba própria: Acervo e Tutoriais
 - `definePage/openPage/activatePage/closePage` em `renderer.ts`: abas que não são conversa, uma de cada vez
   na frente (`pageActive`); `activate()` de qualquer conversa manda a página para trás; fechar volta a
@@ -395,6 +409,47 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   `WhatsappStatus` real (`guideView`): preparado = `ready`, QR = `connected`, escolha = clique num botão de
   política ou `dmPolicy open` (o silencioso automático não conta), teste = botão "Testei, funcionou"
   (flags em `localStorage` `guia:<id>:<host>`). `paintWhatsapp` chama `paintGuide`.
+
+### Instalador .dmg para mandar a outra pessoa
+- `npm run dmg` (= `npm run dist` + `node scripts/dmg.mjs`) gera `out/meu-bot-<versão>-<arch>.dmg`, fora do git.
+  Janela no estilo do Rambox: arte `assets/dmg-fundo.svg` (660×400), app à esquerda, "arraste", Aplicativos à
+  direita, ícones de 128.
+- Layout gravado direto no `.DS_Store` pelo `dmgbuild` 1.6.7 (MIT, o motor do electron-builder) num venv em
+  `build/.venv-dmg`, criado sozinho na primeira vez. Nada de AppleScript no Finder: pedia permissão e não
+  resolvia o fundo.
+- Pegadinha do fundo deslocado (15 out): o `qlmanage` renderiza SVG só em quadrado e o `sips -c` recorta só
+  pelo centro, ignorando `--cropOffset`. Recortar o topo deixava a arte 130 pt acima dos ícones, com branco
+  embaixo. A arte vai centralizada num quadro 660×660 (viewBox `0 -130 660 660`) e o recorte central pega o
+  desenho certo. Diagnóstico: o fundo do Rambox funcionou na nossa configuração, então era o arquivo.
+- Para terceiros, o `config/ssh-hosts.conf` do app (suas máquinas e IPs, inclusive o root da agente-box) vira
+  um modelo vazio e o app é reassinado ad-hoc. `node scripts/dmg.mjs --com-minhas-maquinas` mantém o arquivo.
+  Nenhum segredo vai no pacote: a chave do backend é gerada na instalação.
+- Limites: só Apple Silicon (arm64); assinado ad-hoc, então o macOS bloqueia a primeira abertura. Quem recebe
+  abre em Ajustes do Sistema › Privacidade e Segurança › "Abrir Mesmo Assim". Abrir direto exige Developer
+  ID da Apple e notarização.
+
+### Conversas do WhatsApp (espelho, só leitura)
+- Seletor `[ meu-bot | WhatsApp ]` acima da busca (`#list-mode`, só com OpenClaw pronto; escolha em
+  `localStorage listMode:<host>`). No modo WhatsApp a lista mostra os contatos e cada conversa abre numa
+  página em aba (`wa-<número>`, compositor desligado). Lista a cada 20 s; conversa aberta a cada 8 s.
+- Dados: `openclaw gateway call sessions.list` e `chat.history` pela CLI da máquina (`message read` não
+  suporta WhatsApp; `gateway call` não pede emparelhar dispositivo). Parse puro em
+  `src/main/whatsapp-chats.ts` (testado): junta por número a sessão principal (`agent:main:main`) e a por
+  contato (`…:whatsapp:default:direct:+N`); na principal só as mensagens com `senderId` do contato e as
+  respostas logo depois; descarta avisos `System:` (sem `senderId`), `NO_REPLY`, `tool_use` vazio; o
+  próprio número fica de fora da principal. IO em `whatsappChats`/`whatsappThread` (`whatsapp.ts`; chaves
+  de sessão validadas antes de entrar no script).
+- Isolamento: `session.dmScope = per-channel-peer` nas duas políticas (cada contato com memória própria;
+  sem reinício do gateway). Antes disso, todos os contatos dividiam o contexto do agente.
+- Levar ao meu-bot: cada bolha tem no hover Copiar e "Ramificar daqui" (como as conversas do meu-bot), e
+  o cabeçalho tem "Conversar com o meu-bot sobre isto" (a conversa toda). `whatsapp:branch` relê o
+  histórico no main (a fonte é o gateway), corta até a hora da bolha e cria uma conversa nova
+  ("WhatsApp: <nome>", `fromWhatsapp`) com o trecho em `pendingNote`. O trecho
+  (`whatsappContextNote`, testado; últimas mensagens até 24 mil caracteres, as antigas viram contagem) vai
+  como `note` da primeira mensagem da pessoa, igual à nota de troca de modelo: o agente sabe que é contexto
+  trazido e não fala do usuário. `pendingNote` só some quando essa mensagem fica no histórico (erro ou
+  Parar sem resposta devolvem o pendente). Nada vai ao WhatsApp.
+- Depois: responder pelo app (`openclaw message send`), tempo real pelo WebSocket do gateway, mídia.
 
 ### Acervo (biblioteca de skills)
 - Linha "Acervo" acima da busca da lista lateral (`#acervo-line`), aba própria pelo mecanismo de páginas

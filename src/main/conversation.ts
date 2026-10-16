@@ -1,7 +1,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendModel } from "../shared/ipc";
+import type { BackendModel, WhatsappOrigin } from "../shared/ipc";
 import { getBackendModel, getLastHost, isBackendModel, isValidHost } from "./settings";
 import { LOCAL_HOST } from "./localBackend";
 import { nextOrderAmong, reorderWithin } from "./order";
@@ -33,6 +33,10 @@ export interface Conversation {
   /** Aberta como aba; fechar a aba não apaga a conversa. */
   openAsTab: boolean;
   branchedFrom?: { id: string; index: number };
+  /** Trazida de uma conversa do WhatsApp ("Ramificar daqui" no espelho). */
+  fromWhatsapp?: WhatsappOrigin;
+  /** Contexto trazido que ainda não foi ao backend; vira nota da próxima mensagem da pessoa. */
+  pendingNote?: string;
   /** Resumo do meio da conversa, gerado em background. */
   summary?: SummaryState;
   /** Turnos do usuário desde a última extração de memória. */
@@ -63,6 +67,8 @@ export interface StoredConversation {
   archived: boolean;
   openAsTab: boolean;
   branchedFrom?: { id: string; index: number };
+  fromWhatsapp?: WhatsappOrigin;
+  pendingNote?: string;
   summary?: SummaryState;
   userTurnsSinceMemory?: number;
   serverSeen?: number;
@@ -80,6 +86,8 @@ const toStored = (c: Conversation): StoredConversation => ({
   messages: c.backendMessages, createdAt: c.createdAt, updatedAt: c.updatedAt, order: c.order,
   archived: c.archived, openAsTab: c.openAsTab,
   ...(c.branchedFrom === undefined ? {} : { branchedFrom: c.branchedFrom }),
+  ...(c.fromWhatsapp === undefined ? {} : { fromWhatsapp: c.fromWhatsapp }),
+  ...(c.pendingNote === undefined ? {} : { pendingNote: c.pendingNote }),
   ...(c.summary === undefined ? {} : { summary: c.summary }),
   userTurnsSinceMemory: c.userTurnsSinceMemory,
   serverSeen: c.serverSeen,
@@ -154,6 +162,12 @@ export function loadConversations(): void {
         ...(item.branchedFrom !== undefined && typeof item.branchedFrom === "object" && item.branchedFrom !== null
           && typeof item.branchedFrom.id === "string" && typeof item.branchedFrom.index === "number"
           ? { branchedFrom: { id: item.branchedFrom.id, index: item.branchedFrom.index } } : {}),
+        ...((): { fromWhatsapp?: WhatsappOrigin } => {
+          const w = item.fromWhatsapp as Partial<WhatsappOrigin> | undefined;
+          return w !== undefined && w !== null && typeof w.number === "string" && typeof w.name === "string" && typeof w.count === "number" && typeof w.until === "string"
+            ? { fromWhatsapp: { number: w.number, name: w.name, count: w.count, until: w.until } } : {};
+        })(),
+        ...(typeof item.pendingNote === "string" && item.pendingNote !== "" ? { pendingNote: item.pendingNote } : {}),
         ...((): { summary?: SummaryState } => { const sm = validSummary(item.summary, messages.length); return sm === undefined ? {} : { summary: sm }; })(),
         userTurnsSinceMemory: typeof item.userTurnsSinceMemory === "number" ? item.userTurnsSinceMemory : 0,
         serverSeen: typeof item.serverSeen === "number" && item.serverSeen <= messages.length ? item.serverSeen : 0,
@@ -261,6 +275,16 @@ export function branchConversation(id: string, index: number): StoredConversatio
   if (conv === undefined || conv.busy) return undefined;
   if (!Number.isInteger(index) || index < 0 || index >= conv.backendMessages.length) return undefined;
   return toStored(cloneFrom(conv, conv.backendMessages.slice(0, index + 1), `Ramo de ${copyTitleBase(conv)}`, { id, index }));
+}
+
+/** Conversa nova com um trecho do WhatsApp como contexto (vai como nota na primeira mensagem da pessoa). */
+export function createFromWhatsapp(host: string, origin: WhatsappOrigin, note: string): StoredConversation {
+  const conv = createConversation(host);
+  conv.title = `WhatsApp: ${origin.name}`.slice(0, MAX_TITLE);
+  conv.fromWhatsapp = origin;
+  conv.pendingNote = note;
+  persistConversations();
+  return toStored(conv);
 }
 
 /** Conversas de uma máquina, em ordem de aba e criação. */

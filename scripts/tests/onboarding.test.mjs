@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ONBOARD_STEPS, advanceOnboard, initialOnboardState, pickFeedback } from "../../dist/renderer/lib/onboarding.js";
+import { ONBOARD_STEPS, advanceOnboard, initialOnboardState, pickFeedback, welcomeMessage } from "../../dist/renderer/lib/onboarding.js";
 
 test("só o evento do passo atual avança; os outros são ignorados", () => {
   let s = initialOnboardState();
@@ -45,4 +45,16 @@ test("feedback varia conforme o sorteio e não repete o anterior", () => {
   const first = pickFeedback(seq(0.1, 0));
   const second = pickFeedback(seq(0.1, 0), first);
   assert.notEqual(second.text, first.text);
+});
+
+test("boas-vindas: deslogado pede o login; logado ou desconhecido sugere o que fazer", () => {
+  const off = welcomeMessage("agente-box", false);
+  assert.match(off, /\*\*agente-box\*\*/);
+  assert.match(off, /entrar no Claude Code/);
+  assert.doesNotMatch(off, /ideias para começar/);
+  for (const v of [true, null]) {
+    const on = welcomeMessage("este Mac", v);
+    assert.match(on, /ideias para começar/);
+    assert.doesNotMatch(on, /falta \*\*entrar/);
+  }
 });

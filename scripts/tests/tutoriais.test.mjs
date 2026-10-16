@@ -15,7 +15,7 @@ test("tutoriais: ids únicos e cada passo com título, texto, alvo e regra de co
 });
 
 test("selo: badge, passos e minutos; sem badge, só os dois", () => {
-  assert.equal(tutorialBadge(t), "Comece por aqui · 4 passos · 3 min");
+  assert.equal(tutorialBadge(t), "Próximo · 4 passos · 3 min");
   assert.equal(tutorialBadge({ ...t, minutes: 1, steps: [t.steps[0]] }, false), "1 passo · 1 min");
 });
 

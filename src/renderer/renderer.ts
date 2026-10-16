@@ -1,14 +1,14 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappEvent, WhatsappStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
-import { groupByDate, matches, shortDate, type SidebarConversation } from "./lib/sidebar.js";
+import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, thresholdToWarn, timeUntil } from "./lib/status-line.js";
-import { advanceOnboard, EXAMPLE_MESSAGE, FINAL_MESSAGE, SKIPPED_MESSAGE, initialOnboardState, ONBOARD_STEPS, pickFeedback, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
+import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -472,6 +472,7 @@ function renderSidebar(): void {
 
 function paintSidebar(): void {
   const query = sidebarSearch.value;
+  if (getListMode() === "whatsapp") { paintWaSidebar(query); return; }
   const showArchived = sidebarArchived.checked;
   const rows: (SidebarConversation & { view: StoredConversationView })[] = [...index.values()]
     .filter((c) => c.messages.length > 0 && (showArchived || !c.archived))
@@ -606,10 +607,7 @@ function buildPaletteItems(): PaletteItem[] {
     const tab = active();
     if (tab !== null) addNotice(tab, r.ok ? `✓ ${r.detail}` : `✗ ${r.detail}`, r.ok ? "info" : "error");
   });
-  add({ id: "a:onboard", kind: "action", label: "Rever onboarding", detail: "começa agora nesta janela" }, async () => {
-    try { applySettings(await window.meuBot.setSettings({ onboarding: "pending" })); } catch { /* segue mesmo assim */ }
-    startOnboarding();
-  });
+  add({ id: "a:onboard", kind: "action", label: "Tour do meu-bot (rever onboarding)", detail: "começa agora nesta janela", keywords: ["tour", "onboarding", "ajuda"] }, () => restartTour());
   add({ id: "a:quick", kind: "action", label: "Entrada rápida: mostrar", detail: settings?.quickEntryShortcut ?? "" }, () => window.meuBot.toggleQuickEntry());
   if (cur !== null) {
     add({ id: "a:rename", kind: "action", label: "Renomear conversa atual" }, () => startRename(cur));
@@ -811,6 +809,12 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   });
   tabEl.addEventListener("drop", (ev) => ev.preventDefault());
   tabEl.addEventListener("contextmenu", (ev) => { ev.preventDefault(); void showTabMenu(tab); });
+  if (restored?.fromWhatsapp !== undefined) {
+    const w = restored.fromWhatsapp;
+    const until = new Date(w.until).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    addNote(tab, `Trazida do WhatsApp: ${w.name} · ${w.count} ${w.count === 1 ? "mensagem" : "mensagens"} até ${until}`);
+    if (restored.pendingNote !== undefined) addNotice(tab, "O agente recebe esse trecho junto da sua primeira mensagem. Pergunte o que quiser: resumir, sugerir uma resposta, achar o que foi pedido… Nada daqui é enviado ao WhatsApp.");
+  }
   if (restored !== undefined && restored.messages.length > 0) {
     if (restored.branchedFrom !== undefined) {
       const origin = index.get(restored.branchedFrom.id);
@@ -819,7 +823,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
     restored.messages.forEach((m, i) => appendMessage(tab, m.role, m.content, i));
     const first = restored.messages.find((m) => m.role === "user");
     if (first !== undefined) setTitle(tab, first.content);
-  } else {
+  } else if (restored?.fromWhatsapp === undefined) {
     addNotice(tab, host === "local" ? "Nova conversa neste Mac. Suas mensagens vão pro backend local, que roda o Claude Code daqui por baixo." : `Nova conversa na máquina ${host}. Suas mensagens vão pro backend dela, que roda o Claude Code por baixo.`);
   }
   if (restored?.title !== undefined && restored.title !== "") applyCustomTitle(tab, restored.title);
@@ -848,7 +852,7 @@ async function restoreTabs(): Promise<void> {
   // Onboarding pendente (primeira vez, ou interruptor "Onboarding" ligado no seletor): começa
   // sempre, com ou sem conversas; o passo "Novo" cria a conversa, então não se cria a automática.
   const pending = settings?.onboarding === "pending";
-  if (pending) startOnboarding();
+  if (pending) showTourWelcome(); // convite; o tour só começa se a pessoa aceitar
   if (asTabs.length === 0) {
     if (!pending) await newTab();
     else syncRest();
@@ -861,6 +865,7 @@ async function restoreTabs(): Promise<void> {
 
 function applySettings(view: SettingsView): void {
   settings = view;
+  if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
   backendPortInput.value = String(view.backendPort);
@@ -1160,10 +1165,20 @@ $<HTMLButtonElement>("acervo-line").addEventListener("click", () => openPage(ace
 
 // ---- Tutoriais (lib/tutoriais.ts): passo a passo em aba própria.
 const tutList = $<HTMLElement>("tutoriais-list");
-$<HTMLElement>("tutoriais-count").textContent = TUTORIAIS.length === 1 ? "1 tutorial" : `${TUTORIAIS.length} tutoriais`;
+// Concluídos (o tour feito, um guia terminado) vão para "arquivados"; a contagem da lateral mostra só os ativos.
+const tutArchivedEl = $<HTMLInputElement>("tut-archived");
+var tutorialsReady = true; // applySettings pode rodar antes deste trecho; var evita a zona morta do let
+try { tutArchivedEl.checked = localStorage.getItem("tutArchived") === "1"; } catch { /* opcional */ }
+const tourDone = (): boolean => settings?.onboarding === "done";
+const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t)).finished;
+function paintTutCount(): void {
+  const active = (tourDone() ? 0 : 1) + TUTORIAIS.filter((t) => !tutorialDone(t)).length;
+  $<HTMLElement>("tutoriais-count").textContent = active === 0 ? "tudo feito" : active === 1 ? "1 tutorial" : `${active} tutoriais`;
+}
 const TUT_ICONS = {
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  tour: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M7 17c4-1 3-7 7-8s3-1 3-1" stroke-dasharray="2 3"/></svg>',
 } as const;
 
 // ---- Guia ao vivo (estilo onboarding), um por aba: "Começar" abre a aba do tutorial ("WhatsApp 2/4"); o passo
@@ -1233,6 +1248,7 @@ function restorePairNodes(): void {
 }
 /** Chamado sempre que o estado do WhatsApp muda: redesenha o guia da frente, os títulos das abas e o catálogo. */
 function paintGuide(): void {
+  paintTutCount();
   for (const { tutorial } of guidePages.values()) reconcileGuideFlags(tutorial);
   for (const { page, tutorial } of guidePages.values()) {
     const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial));
@@ -1350,23 +1366,46 @@ function openGuide(t: Tutorial): void {
 
 const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
   tutList.replaceChildren();
-  if (TUTORIAIS.length === 0) {
-    tutList.append(el("div", "acervo-empty", "Nenhum tutorial ainda. Os passo a passo do meu-bot vão entrar aqui: parear o WhatsApp, entrar no Claude Code, aliviar o pod…"));
+  paintTutCount();
+  const showArchived = tutArchivedEl.checked;
+  const active: HTMLElement[] = [];
+  const archived: HTMLElement[] = [];
+  // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela.
+  {
+    const done = tourDone();
+    const card = el("article", `tut-card${done ? " finished archived" : ""}`);
+    const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS.tour;
+    const body = el("div", "tut-body");
+    const n = ONBOARD_STEPS.length;
+    body.append(el("span", "tut-badge", done ? "Concluído" : `Comece por aqui · ${n} passos · ${TOUR_CARD.minutes} min`), el("h3", "", TOUR_CARD.title), el("p", "", TOUR_CARD.summary));
+    const start = el("button", "btn tut-start", done ? "Rever" : "Começar"); start.type = "button";
+    start.addEventListener("click", () => { closePage(tutoriaisPage); void restartTour(); });
+    const head = el("div", "tut-head"); head.append(icon, body, start);
+    card.append(head);
+    (done ? archived : active).push(card);
   }
   for (const t of TUTORIAIS) {
     const view = guideView(t, waStatus, loadGuideFlags(t));
     const started = view.done.some(Boolean);
     const soon = t.comingSoon === true;
-    const card = el("article", `tut-card${view.finished ? " finished" : ""}${soon ? " soon" : ""}`);
+    const done = !soon && view.finished;
+    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
     const body = el("div", "tut-body");
-    body.append(el("span", "tut-badge", view.finished ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t)), el("h3", "", t.title), el("p", "", t.summary));
-    const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : view.finished ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
+    body.append(el("span", "tut-badge", done ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t)), el("h3", "", t.title), el("p", "", t.summary));
+    const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
     if (soon) start.disabled = true; else start.addEventListener("click", () => openGuide(t));
     const head = el("div", "tut-head"); head.append(icon, body, start);
     card.append(head);
-    tutList.append(card);
+    (done ? archived : active).push(card);
   }
+  if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
+  tutList.append(...active);
+  if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived); }
+});
+tutArchivedEl.addEventListener("change", () => {
+  try { localStorage.setItem("tutArchived", tutArchivedEl.checked ? "1" : "0"); } catch { /* opcional */ }
+  tutoriaisPage.render();
 });
 $<HTMLButtonElement>("tutoriais-line").addEventListener("click", () => openPage(tutoriaisPage));
 
@@ -1530,6 +1569,228 @@ function requestAgentPrepare(): void {
 }
 waAgentBtn.addEventListener("click", () => requestAgentPrepare());
 let waStatus: WhatsappStatus | null = null;
+
+// ---- Conversas do WhatsApp (espelho só leitura, OpenClaw). Seletor `[ meu-bot | WhatsApp ]` acima da busca;
+// no modo WhatsApp a lista lateral mostra os contatos, e cada conversa abre numa aba própria (página, não
+// conversa do meu-bot: o compositor desliga sozinho). Lista a cada 20 s no modo WhatsApp; aberta a cada 8 s.
+type ListMode = "bot" | "whatsapp";
+const listModeEl = $<HTMLElement>("list-mode");
+const sidebarFootEl = document.querySelector<HTMLElement>(".sidebar-foot");
+let waChats: WhatsappChat[] = [];
+let waChatsErr: string | null = null;
+let waChatsInflight: Promise<void> | null = null;
+let waChatsTimer: number | null = null;
+const listModeKey = (): string => `listMode:${windowHost}`;
+const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
+function getListMode(): ListMode {
+  if (!waMirrorAvailable()) return "bot";
+  try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }
+}
+function paintListMode(): void {
+  listModeEl.hidden = !waMirrorAvailable();
+  const mode = getListMode();
+  for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
+  // No WhatsApp o interruptor vira "removidas" e só aparece quando há alguma tirada da lista.
+  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some(isWaHidden);
+  const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
+  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = mode === "whatsapp" ? "removidas" : "arquivadas";
+  sidebarSearch.placeholder = mode === "whatsapp" ? "Buscar no WhatsApp…" : "Buscar conversas…";
+  if (mode === "whatsapp" && waChatsInflight === null && waChatsTimer === null) void refreshWaChats();
+}
+function setListMode(mode: ListMode): void {
+  try { localStorage.setItem(listModeKey(), mode); } catch { /* opcional */ }
+  paintListMode();
+  renderSidebar();
+}
+listModeEl.addEventListener("click", (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button");
+  const mode = b?.dataset["mode"];
+  if (mode === "bot" || mode === "whatsapp") setListMode(mode);
+});
+function refreshWaChats(): Promise<void> {
+  if (waChatsInflight !== null) return waChatsInflight;
+  if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
+  waChatsInflight = (async () => {
+    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; }
+    catch (err) { waChatsErr = err instanceof Error ? err.message : String(err); }
+    finally { waChatsInflight = null; }
+    for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); } }
+    if (getListMode() === "whatsapp") { renderSidebar(); waChatsTimer = window.setTimeout(() => { waChatsTimer = null; void refreshWaChats(); }, 20_000); }
+  })();
+  return waChatsInflight;
+}
+/** Conversas tiradas da lista (só neste app): número → hora da última atividade quando saiu. Volta sozinha se chegar mensagem nova. */
+const waHiddenKey = (): string => `waHidden:${windowHost}`;
+function waHidden(): Record<string, string> {
+  try { const v = JSON.parse(localStorage.getItem(waHiddenKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+}
+function setWaHidden(number: string, at: string | null): void {
+  const h = waHidden();
+  if (at === null) delete h[number]; else h[number] = at;
+  try { localStorage.setItem(waHiddenKey(), JSON.stringify(h)); } catch { /* opcional */ }
+}
+const isWaHidden = (c: WhatsappChat): boolean => { const at = waHidden()[c.number]; return at !== undefined && c.updatedAt <= at; };
+
+async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
+  if (action === null) return;
+  const fail = (what: string, err: unknown): void => {
+    sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `${what}: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`));
+  };
+  switch (action) {
+    case "talk":
+      try { const view = await window.meuBot.whatsappBranch(row.number, null); upsertIndex(view); buildTab(view.id, view.model, view.host, view); activate(view.id); }
+      catch (err) { fail("Não deu para levar ao meu-bot", err); }
+      break;
+    case "export-md": case "export-json":
+      try { await window.meuBot.exportWhatsapp(row.number, action === "export-md" ? "md" : "json"); }
+      catch (err) { fail("Não deu para exportar", err); }
+      break;
+    case "hide":
+      setWaHidden(row.number, row.updatedAt);
+      { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
+      paintListMode(); renderSidebar();
+      break;
+    case "unhide":
+      setWaHidden(row.number, null); paintListMode(); renderSidebar();
+      break;
+    case "delete":
+      try {
+        if (!(await window.meuBot.deleteWhatsapp(row.number))) return;
+        setWaHidden(row.number, null);
+        { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
+        waChats = waChats.filter((c) => c.number !== row.number || !c.deletable);
+        renderSidebar(); void refreshWaChats();
+      } catch (err) { fail("Não deu para apagar", err); }
+      break;
+  }
+}
+const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.name ?? fmtPhone(c.number));
+function paintWaSidebar(query: string): void {
+  sidebarList.replaceChildren();
+  const q = normalize(query.trim());
+  const showHidden = sidebarArchived.checked;
+  const rows = waChats.filter((c) => (showHidden || !isWaHidden(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
+  if (rows.length === 0) {
+    const msg = waChatsErr !== null && waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
+      : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"
+      : q !== "" ? "Nada encontrado." : "Nenhuma conversa do WhatsApp ainda.";
+    sidebarList.appendChild(el("div", "sidebar-empty", msg));
+    return;
+  }
+  for (const group of groupByDate(rows)) {
+    sidebarList.appendChild(el("div", "sidebar-group", group.label));
+    for (const row of group.items) {
+      const hidden = isWaHidden(row);
+      const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${hidden ? " archived" : ""}`);
+      const menu = el("button", "si-menu", "…");
+      menu.type = "button"; menu.title = "Ações";
+      menu.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        void window.meuBot.showWhatsappMenu(row.number, { deletable: row.deletable, hidden }).then((a) => waMenuAction(row, a));
+      });
+      item.append(el("span", "wa-item-dot"), el("span", "si-title", waChatTitle(row)), el("span", "si-date", shortDate(row.updatedAt)), menu);
+      item.title = row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number);
+      item.addEventListener("click", () => openWaChat(row));
+      sidebarList.appendChild(item);
+    }
+  }
+}
+
+interface WaChatPage { page: PageTab; chat: WhatsappChat; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null }
+const waChatPages = new Map<string, WaChatPage>();
+function paintWaChatTab(g: WaChatPage): void {
+  g.page.title = waChatTitle(g.chat);
+  const t = g.page.tabEl?.querySelector(".tab-title"); if (t !== null && t !== undefined) t.textContent = g.page.title;
+}
+function openWaChat(c: WhatsappChat): void {
+  const id = `wa-${c.number}`;
+  let g = waChatPages.get(id);
+  if (g === undefined) {
+    const panel = el("section", "wa-chat-panel"); panel.hidden = true;
+    panelsEl.append(panel);
+    const created: WaChatPage = { page: null as unknown as PageTab, chat: c, msgs: [], err: null, loaded: false, inflight: null, timer: null };
+    created.page = definePage(id, waChatTitle(c), panel, () => renderWaChat(created));
+    waChatPages.set(id, created);
+    g = created;
+  } else { g.chat = c; }
+  openPage(g.page);
+  paintWaChatTab(g);
+  renderSidebar();
+}
+function refreshWaThread(g: WaChatPage): Promise<void> {
+  if (g.inflight !== null) return g.inflight;
+  if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; }
+  g.inflight = (async () => {
+    try { g.msgs = await window.meuBot.whatsappThread(g.chat.number); g.err = null; }
+    catch (err) { g.err = err instanceof Error ? err.message : String(err); }
+    finally { g.loaded = true; g.inflight = null; }
+    if (pageActive === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, 8_000); renderWaChat(g); }
+  })();
+  return g.inflight;
+}
+const hhmm = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
+function renderWaChat(g: WaChatPage): void {
+  const panel = g.page.panel;
+  const atEnd = panel.dataset["rendered"] !== "1" || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
+  panel.replaceChildren();
+  const head = el("div", "wa-chat-head");
+  const talk = el("button", "wa-chat-talk", "Conversar com o meu-bot sobre isto");
+  talk.type = "button"; talk.dataset["waBranch"] = "all";
+  talk.title = "Abre uma conversa nova com o meu-bot levando esta conversa do WhatsApp como contexto";
+  talk.disabled = g.msgs.length === 0;
+  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)), el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"), talk);
+  const list = el("div", "wa-chat-msgs");
+  if (!g.loaded) {
+    const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Carregando a conversa…"));
+    list.append(wait);
+  } else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint", `Não consegui ler a conversa: ${g.err}`));
+  else if (g.msgs.length === 0) list.append(el("p", "hint", "Sem mensagens ainda."));
+  let lastDay = "";
+  for (const m of g.msgs) {
+    const day = new Date(m.at).toLocaleDateString("pt-BR");
+    if (day !== lastDay) { list.append(el("div", "wa-day", day)); lastDay = day; }
+    const bubble = el("div", `msg wa-msg ${m.role === "contact" ? "wa-in" : "wa-out"}`);
+    const body = el("div", "wa-body");
+    if (m.role === "agent") body.append(renderMarkdown(m.text)); else body.textContent = m.text;
+    bubble.dataset["waAt"] = m.at;
+    const actions = el("div", "msg-actions");
+    actions.append(iconButton("wa-copy", "Copiar", ICON_COPY), iconButton("wa-branch", "Ramificar daqui: conversar com o meu-bot até esta mensagem", ICON_BRANCH));
+    bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`), actions);
+    list.append(bubble);
+  }
+  panel.append(head, list);
+  panel.dataset["rendered"] = "1";
+  if (atEnd) panel.scrollTop = panel.scrollHeight;
+  // Voltou para a frente sem consulta agendada: retoma o ciclo.
+  if (pageActive === g.page && g.inflight === null && g.timer === null) void refreshWaThread(g);
+}
+/** Ações do espelho: Copiar o texto da bolha, ou levar a conversa (até a bolha, ou toda) para o meu-bot. */
+async function waAction(btn: HTMLButtonElement): Promise<void> {
+  const g = [...waChatPages.values()].find((p) => p.page === pageActive);
+  if (g === undefined) return;
+  const bubble = btn.closest<HTMLElement>(".wa-msg");
+  const at = bubble?.dataset["waAt"] ?? null;
+  if (btn.dataset["action"] === "wa-copy") {
+    const m = g.msgs.find((x) => x.at === at);
+    void navigator.clipboard.writeText(m?.text ?? bubble?.querySelector(".wa-body")?.textContent ?? "").then(() => {
+      btn.replaceChildren(svgIcon(ICON_CHECK)); btn.title = "Copiado"; btn.classList.add("done");
+      window.setTimeout(() => { btn.replaceChildren(svgIcon(ICON_COPY)); btn.title = "Copiar"; btn.classList.remove("done"); }, 1500);
+    });
+    return;
+  }
+  if (btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const view = await window.meuBot.whatsappBranch(g.chat.number, btn.dataset["waBranch"] === "all" ? null : at);
+    upsertIndex(view);
+    buildTab(view.id, view.model, view.host, view);
+    activate(view.id);
+  } catch (err) {
+    btn.title = `Não deu para levar ao meu-bot: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`;
+    btn.classList.add("wa-fail");
+    window.setTimeout(() => btn.classList.remove("wa-fail"), 2500);
+  } finally { btn.disabled = false; }
+}
 let waPairing = false;
 /** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
 let waConnected = false;
@@ -1543,6 +1804,7 @@ function fmtPhone(digits: string | null): string {
 
 function paintWhatsapp(): void {
   const st = waStatus;
+  paintListMode();
   if (st === null || !st.present) { waLine.hidden = true; return; }
   waLine.hidden = false;
   // Ponto verde conectado; cinza no resto (limpo: vermelho só assusta, e o clique já leva à solução).
@@ -1777,7 +2039,7 @@ const tabPlus = $<HTMLButtonElement>("tab-plus");
 tabPlus.addEventListener("click", () => { void newTab(); });
 function syncRest(): void {
   tabPlus.hidden = tabs.size > 0; // a aba "+" só existe quando não há aba de conversa
-  const show = tabs.size === 0 && onboard === null && pageActive === null;
+  const show = tabs.size === 0 && onboard === null && pageActive === null && document.getElementById("tour-welcome")?.hidden !== false;
   restEl.hidden = !show;
   newBtn.classList.toggle("shine", show);
   if (show) rest.start(); else rest.stop();
@@ -1805,6 +2067,27 @@ function paintOnboard(feedback?: Feedback): void {
   feedbackTimer = window.setTimeout(() => { obFeedback.hidden = true; feedbackTimer = null; }, 2200);
 }
 
+// ---- Convite do tour (primeira abertura): "Iniciar tour" começa o onboarding; pular ou fechar marca pulado.
+const tourWelcomeEl = $<HTMLElement>("tour-welcome");
+$<HTMLElement>("tw-title").textContent = TOUR_INVITE.title;
+$<HTMLElement>("tw-text").textContent = TOUR_INVITE.text;
+function showTourWelcome(): void { tourWelcomeEl.hidden = false; syncRest(); $<HTMLButtonElement>("tw-start").focus(); }
+function closeTourWelcome(start: boolean): void {
+  tourWelcomeEl.hidden = true;
+  if (start) startOnboarding(); else void finishOnboarding("skipped");
+  syncRest();
+}
+$<HTMLButtonElement>("tw-start").addEventListener("click", () => closeTourWelcome(true));
+$<HTMLButtonElement>("tw-skip").addEventListener("click", () => closeTourWelcome(false));
+$<HTMLButtonElement>("tw-close").addEventListener("click", () => closeTourWelcome(false));
+/** Começar/rever o tour a partir de Tutoriais ou da paleta: marca pendente e começa já. */
+async function restartTour(): Promise<void> {
+  try { applySettings(await window.meuBot.setSettings({ onboarding: "pending" })); } catch { /* segue mesmo assim */ }
+  tourWelcomeEl.hidden = true;
+  startOnboarding();
+  syncRest();
+}
+
 function startOnboarding(): void {
   onboard = initialOnboardState();
   lastFeedback = undefined;
@@ -1829,15 +2112,35 @@ async function finishOnboarding(how: "done" | "skipped"): Promise<void> {
   if (how === "skipped" && tabs.size === 0) await newTab();
 }
 
+/**
+ * Mensagem de boas-vindas (mock, só na tela: não vai ao agente nem fica salva). Confere o login do Claude Code
+ * da máquina antes: deslogado, a própria mensagem traz o botão "Entrar no Claude Code".
+ */
+async function showWelcome(tab: Tab): Promise<void> {
+  await refreshClaudeLine();
+  const loggedIn = clAuth === null ? null : clAuth.loggedIn;
+  const bubble = el("div", "msg msg-assistant msg-welcome");
+  renderAssistant(bubble, welcomeMessage(hostLabel(windowHost), loggedIn));
+  if (loggedIn === false) {
+    const btn = el("button", "btn btn-primary btn-small", "Entrar no Claude Code");
+    btn.type = "button";
+    btn.addEventListener("click", () => { openClaudeLogin(); void runClaudeLogin(); });
+    bubble.append(btn);
+  }
+  bubble.append(el("span", "msg-welcome-tag", "boas-vindas do meu-bot · não enviada ao agente"));
+  tab.messagesEl.appendChild(bubble);
+  scrollToBottom(tab, false);
+}
+
 /** O renderer avisa o que aconteceu; só o evento do passo atual avança. */
 function onboardEvent(ev: OnboardEvent): void {
   if (onboard === null) return;
   const r = advanceOnboard(onboard, ev);
   onboard = r.state;
   if (r.finished) {
-    // Último passo concluído: a primeira mensagem vai sozinha e o cartão vira a transição final.
+    // Último passo concluído: boas-vindas local na conversa nova (sem chamar o agente) e a transição final.
     const tab = active();
-    if (tab !== null && !tab.busy) void sendText(tab, EXAMPLE_MESSAGE);
+    if (tab !== null) void showWelcome(tab);
     void finishOnboarding("done");
     return;
   }
@@ -1966,6 +2269,8 @@ panelsEl.addEventListener("click", (ev) => {
     void window.meuBot.openExternal(link.href);
     return;
   }
+  const waBtn = target.closest<HTMLButtonElement>(".wa-msg .msg-actions button, .wa-chat-talk");
+  if (waBtn !== null) { void waAction(waBtn); return; }
   const actionBtn = target.closest<HTMLButtonElement>(".msg-actions button");
   if (actionBtn !== null) {
     const msg = actionBtn.closest<HTMLElement>(".msg");

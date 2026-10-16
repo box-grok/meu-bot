@@ -371,9 +371,13 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
   let partial = "";
 
   // Trocou de modelo no meio da conversa: o novo modelo recebe uma nota dizendo quem respondeu antes.
-  const note = conv.pendingSwitch === undefined ? undefined : switchNote(conv.pendingSwitch.from, conv.pendingSwitch.to);
+  // Trecho trazido do WhatsApp entra na primeira mensagem; só sai de pendente se a mensagem ficar no histórico.
+  const notes = [conv.pendingNote, conv.pendingSwitch === undefined ? undefined : switchNote(conv.pendingSwitch.from, conv.pendingSwitch.to)]
+    .filter((n): n is string => n !== undefined && n !== "");
+  const note = notes.length === 0 ? undefined : notes.join("\n\n");
   delete conv.pendingSwitch;
-  conv.backendMessages.push({ role: "user", content: userText, ...(note === undefined ? {} : { note }) });
+  const userMsg: BackendMessage = { role: "user", content: userText, ...(note === undefined ? {} : { note }) };
+  conv.backendMessages.push(userMsg);
   out.send("chat:assistant-start", { conversationId });
   try {
     out.send("backend:status", { host, state: "connecting", detail: "verificando a VM…" });
@@ -429,6 +433,7 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     if (!cancelled()) out.send("chat:error", { conversationId, kind: "backend", message });
   } finally {
     delete conv.abort;
+    if (conv.pendingNote !== undefined && conv.backendMessages.includes(userMsg)) { delete conv.pendingNote; persistConversations(); }
     saveTranscript(conv);
   }
 }

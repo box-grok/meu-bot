@@ -1,0 +1,174 @@
+/**
+ * Conversas do WhatsApp (OpenClaw) para o espelho só-leitura do app. Puro (sem IO): recebe o JSON que
+ * `openclaw gateway call sessions.list` e `chat.history` devolvem e produz os tipos do contrato. É a fronteira
+ * dona desses dados: o renderer nunca vê o formato do OpenClaw.
+ *
+ * Duas formas de sessão convivem: a principal (`agent:main:main`, dmScope padrão, todos os contatos
+ * misturados) e as por contato (`…:whatsapp:<conta>:direct:+<número>`, com `session.dmScope =
+ * per-channel-peer`). Um contato pode ter mensagens nas duas (antes e depois do isolamento).
+ */
+import type { WhatsappChat, WhatsappThreadMessage } from "../shared/ipc";
+
+const digits = (s: string): string => s.replace(/\D/g, "");
+const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** Número do contato quando a sessão é por contato (`…:whatsapp:default:direct:+5521…`); senão null. */
+export function peerOfSessionKey(key: string): string | null {
+  const m = /:whatsapp:[^:]+:direct:\+?(\d{8,15})$/.exec(key);
+  return m === null ? null : m[1]!;
+}
+
+/** Números de WhatsApp que participam de uma sessão (lista de `participants[].identity`). */
+function participantNumbers(session: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  const parts = Array.isArray(session.participants) ? session.participants : [];
+  for (const p of parts) {
+    const id = isObj(p) && isObj(p.identity) ? p.identity : null;
+    if (id === null || id.pluginId !== "whatsapp" || typeof id.id !== "string") continue;
+    const n = digits(id.id);
+    if (n.length >= 8) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Lista de conversas a partir do `sessions.list`. Junta por número; `updatedAt` = sessão mais recente do
+ * contato. `names` traz o último `senderName` visto (cache do main); `self` marca o próprio aparelho.
+ */
+export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
+  const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
+  const byNumber = new Map<string, { keys: string[]; updated: number }>();
+  const selfN = self === null ? null : digits(self);
+  for (const s of sessions) {
+    if (!isObj(s) || typeof s.key !== "string") continue;
+    const peer = peerOfSessionKey(s.key);
+    // Na sessão principal o próprio aparelho aparece como participante mesmo sem mensagens (avisos do gateway):
+    // fica de fora; conversa consigo mesmo ganha sessão própria com o isolamento por contato.
+    const numbers = peer !== null ? [peer] : participantNumbers(s).filter((n) => n !== selfN);
+    const updated = typeof s.updatedAt === "number" ? s.updatedAt : 0;
+    for (const n of numbers) {
+      const cur = byNumber.get(n) ?? { keys: [], updated: 0 };
+      if (!cur.keys.includes(s.key)) cur.keys.push(s.key);
+      cur.updated = Math.max(cur.updated, updated);
+      byNumber.set(n, cur);
+    }
+  }
+  return [...byNumber.entries()]
+    .map(([number, v]) => ({
+      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys,
+      deletable: v.keys.some((k) => peerOfSessionKey(k) === number), updatedAt: new Date(v.updated).toISOString(),
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Texto de uma mensagem: string, ou partes `{type:"text", text}`; outras partes sem texto viram "[mídia]". */
+function textOf(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  const texts: string[] = [];
+  let other = false;
+  for (const p of content) {
+    if (isObj(p) && typeof p.text === "string") texts.push(p.text);
+    else if (isObj(p) && p.type !== "text") other = true;
+  }
+  return texts.length > 0 ? texts.join("\n") : other ? "[mídia]" : "";
+}
+
+export interface SessionHistory { sessionKey: string; history: unknown }
+export interface Thread { messages: WhatsappThreadMessage[]; name: string | null }
+
+/**
+ * Histórico de um contato. Na sessão por contato, tudo é dele; na principal, só as mensagens com
+ * `senderId` = número e as respostas do agente que vêm logo depois (até outro remetente ou um aviso de
+ * sistema). Descarta avisos de sistema (sem `senderId`), `NO_REPLY` e respostas vazias (`tool_use`).
+ */
+export function threadFor(number: string, histories: readonly SessionHistory[]): Thread {
+  const want = digits(number);
+  const out: WhatsappThreadMessage[] = [];
+  let name: string | null = null;
+  for (const { sessionKey, history } of histories) {
+    const perPeer = peerOfSessionKey(sessionKey) === want;
+    const messages = isObj(history) && Array.isArray(history.messages) ? history.messages : [];
+    let current: string | null = perPeer ? want : null; // remetente da vez, para atribuir as respostas
+    for (const m of messages) {
+      if (!isObj(m)) continue;
+      const at = typeof m.timestamp === "number" ? new Date(m.timestamp).toISOString() : "";
+      const text = textOf(m.content).trim();
+      if (m.role === "user") {
+        const meta = isObj(m.__openclaw) ? m.__openclaw : {};
+        const sender = typeof meta.senderId === "string" ? digits(meta.senderId) : "";
+        if (sender === "") { current = perPeer ? want : null; continue; } // aviso de sistema
+        current = sender;
+        if (sender !== want || text === "") continue;
+        if (typeof meta.senderName === "string" && meta.senderName !== "") name = meta.senderName;
+        out.push({ role: "contact", text, at });
+      } else if (m.role === "assistant") {
+        if (current !== want || text === "" || text === "NO_REPLY") continue;
+        out.push({ role: "agent", text, at });
+      }
+    }
+  }
+  // Mesma mensagem não pode vir duas vezes (sessões sobrepostas): chave = papel + hora + texto.
+  const seen = new Set<string>();
+  const unique = out.filter((m) => { const k = `${m.role}|${m.at}|${m.text}`; if (seen.has(k)) return false; seen.add(k); return true; });
+  unique.sort((a, b) => a.at.localeCompare(b.at));
+  return { messages: unique, name };
+}
+
+/** Teto do trecho levado ao meu-bot: as mensagens mais recentes que cabem; as antigas viram uma contagem. */
+export const CONTEXT_MAX_CHARS = 24_000;
+
+export interface WhatsappContext { note: string; count: number; omitted: number }
+
+/** "2026-10-15T17:32:00Z" → "15/10 14:32" no fuso local. */
+const stamp = (iso: string): string => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number): string => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+
+/**
+ * Nota que leva um trecho do WhatsApp para uma conversa do meu-bot. Vai junto da primeira mensagem da
+ * pessoa (como a nota de troca de modelo): o agente sabe que é contexto trazido, não fala do usuário.
+ */
+export function whatsappContextNote(contact: string, number: string, messages: readonly WhatsappThreadMessage[]): WhatsappContext {
+  const lines = messages.map((m) => `[${stamp(m.at)}] ${m.role === "contact" ? contact : "Agente"}: ${m.text}`);
+  let size = 0;
+  let first = lines.length;
+  while (first > 0 && size + lines[first - 1]!.length + 1 <= CONTEXT_MAX_CHARS) size += lines[--first]!.length + 1;
+  if (first === lines.length && lines.length > 0) { first = lines.length - 1; lines[first] = lines[first]!.slice(0, CONTEXT_MAX_CHARS); }
+  const kept = lines.slice(first);
+  const head = `[Nota do app meu-bot, não é fala do usuário: o usuário trouxe para esta conversa um trecho do WhatsApp entre o contato ${contact} (+${digits(number)}) e o agente que atende esse número nesta máquina. Use como contexto para o que ele pedir; quem está no WhatsApp não vê esta conversa e nada aqui é enviado para lá.]`;
+  const omitted = first > 0 ? `(${first} mensagens anteriores omitidas)\n` : "";
+  return { note: `${head}\n\n--- conversa do WhatsApp ---\n${omitted}${kept.join("\n")}\n--- fim do trecho ---`, count: kept.length, omitted: first };
+}
+
+/** Sessões só deste contato (por contato); a principal, compartilhada com os outros, nunca entra. */
+export const ownSessionKeys = (number: string, keys: readonly string[]): string[] =>
+  keys.filter((k) => peerOfSessionKey(k) === digits(number));
+
+/** Resultado do `openclaw sessions delete --json`: quais chaves não saíram (vazio = tudo apagado). */
+export function deleteFailures(out: string, keys: readonly string[]): string[] {
+  let r: unknown;
+  try { r = JSON.parse(out.slice(out.indexOf("{"))); } catch { return [...keys]; }
+  if (!isObj(r)) return [...keys];
+  const results = Array.isArray(r.results) ? r.results.filter(isObj) : [];
+  const ok = new Set(results.filter((x) => x.ok === true && typeof x.key === "string").map((x) => x.key as string));
+  return r.ok === true && results.length === 0 ? [] : keys.filter((k) => !ok.has(k));
+}
+
+/** Markdown legível da conversa inteira do WhatsApp (exportar). */
+export function threadToMarkdown(contact: string, number: string, host: string, messages: readonly WhatsappThreadMessage[], exportedAt: string): string {
+  const day = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR"); };
+  const lines = [`# WhatsApp: ${contact}`, "", `- Contato: ${contact} (+${digits(number)})`, `- Máquina: ${host}`, `- Mensagens: ${messages.length}`];
+  if (messages.length > 0) lines.push(`- Período: ${stamp(messages[0]!.at)} a ${stamp(messages.at(-1)!.at)}`);
+  lines.push(`- Exportada em: ${stamp(exportedAt)}`, "");
+  let lastDay = "";
+  for (const m of messages) {
+    const d = day(m.at);
+    if (d !== lastDay) { lines.push(`## ${d}`, ""); lastDay = d; }
+    lines.push(`**${m.role === "contact" ? contact : "Agente"}** · ${stamp(m.at).slice(6)}`, "", m.text.trim(), "");
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}

@@ -1,12 +1,12 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, powerMonitor, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { ExportFormat, SettingsUpdate, TabMenuAction } from "../shared/ipc";
+import type { ExportFormat, SettingsUpdate, TabMenuAction, WhatsappMenuAction } from "../shared/ipc";
 import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappStatus } from "./whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappChats, whatsappBranch, whatsappDeleteChat, whatsappExportBody, whatsappStatus, whatsappThread } from "./whatsapp";
 import { cancelClaudeLogin, claudeAuthInfo, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "./claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiAuthInfo, xaiLogout } from "./xaiLogin";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
@@ -126,6 +126,81 @@ function registerIpc(): void {
     const policy = (payload as { policy?: unknown } | null)?.policy;
     if (policy !== "open" && policy !== "self") throw new Error("política inválida");
     return setDmPolicy(h.host, policy);
+  });
+  ipcMain.handle("whatsapp:chats", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappChats(h.host);
+  });
+  ipcMain.handle("whatsapp:thread", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const number = (payload as { number?: unknown } | null)?.number;
+    if (typeof number !== "string") throw new Error("número inválido");
+    return whatsappThread(h.host, number);
+  });
+  ipcMain.handle("whatsapp:branch", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = payload as { number?: unknown; upTo?: unknown } | null;
+    if (typeof p?.number !== "string" || (p.upTo !== null && typeof p.upTo !== "string")) throw new Error("pedido inválido");
+    return whatsappBranch(h.host, p.number, p.upTo);
+  });
+  const waNumber = (payload: unknown): string => {
+    const n = (payload as { number?: unknown } | null)?.number;
+    if (typeof n !== "string" || !/^\+?\d{8,15}$/.test(n)) throw new Error("número inválido");
+    return n.replace(/\D/g, "");
+  };
+  ipcMain.handle("ui:wa-menu", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) return null;
+    const state = (payload as { state?: { deletable?: unknown; hidden?: unknown } } | null)?.state ?? {};
+    return new Promise<WhatsappMenuAction | null>((resolve) => {
+      let settled = false;
+      const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
+      const item = (label: string, action: WhatsappMenuAction, enabled = true): Electron.MenuItemConstructorOptions =>
+        ({ label, enabled, click: () => pick(action) });
+      const menu = Menu.buildFromTemplate([
+        item("Conversar com o meu-bot sobre isto", "talk"),
+        { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
+        { type: "separator" },
+        state.hidden === true ? item("Voltar para a lista", "unhide") : item("Remover da lista", "hide"),
+        state.deletable === true
+          ? item("Apagar na máquina…", "delete")
+          : { label: "Apagar na máquina (está na sessão principal)", enabled: false },
+      ]);
+      menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
+    });
+  });
+  ipcMain.handle("whatsapp:export", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const number = waNumber(payload);
+    const format = (payload as { format?: unknown }).format;
+    if (format !== "md" && format !== "json") throw new Error("formato inválido");
+    const { name, body } = await whatsappExportBody(h.host, number, format);
+    const result = await dialog.showSaveDialog(h.win, {
+      title: "Exportar conversa do WhatsApp",
+      defaultPath: path.join(app.getPath("documents"), `whatsapp-${slugify(name)}.${format}`),
+      filters: format === "md" ? [{ name: "Markdown", extensions: ["md"] }] : [{ name: "JSON", extensions: ["json"] }],
+    });
+    if (result.canceled || result.filePath === undefined || result.filePath === "") return null;
+    fs.writeFileSync(result.filePath, body, { mode: 0o600 });
+    return { path: result.filePath };
+  });
+  ipcMain.handle("whatsapp:delete", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const number = waNumber(payload);
+    const { response } = await dialog.showMessageBox(h.win, {
+      type: "warning",
+      message: "Apagar esta conversa na máquina?",
+      detail: "O histórico e a memória do agente com este contato são apagados no OpenClaw. Se a pessoa escrever de novo, o agente começa do zero. Exporte antes se quiser guardar.",
+      buttons: ["Apagar", "Cancelar"], defaultId: 1, cancelId: 1,
+    });
+    if (response !== 0) return false;
+    await whatsappDeleteChat(h.host, number);
+    return true;
   });
   ipcMain.handle("whatsapp:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");

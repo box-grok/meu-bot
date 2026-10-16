@@ -12,7 +12,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
-import type { Gateway, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus } from "../shared/ipc";
+import type { Gateway, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
+import { chatsFromSessions, deleteFailures, ownSessionKeys, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
@@ -147,7 +149,7 @@ async function readSelfNumber(host: string): Promise<string | null> {
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const script = policy === "open"
-    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`
+    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`
     : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
   const r = await runSsh(host, `${script}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
@@ -158,7 +160,7 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Pr
 
 
 /** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
-export const SELF_POLICY_SH = `openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`;
+export const SELF_POLICY_SH = `openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`;
 /** Com o número já conhecido, ele entra no allowFrom: tira o aviso "allowFrom vazio" e deixa explícito quem é "você". */
 const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`);
 
@@ -330,4 +332,94 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
 export function cancelPairing(): void {
   if (current === null) return;
   try { current.child.kill("SIGTERM"); } catch { /* ok */ }
+}
+
+// ---- Espelho só-leitura das conversas do WhatsApp (OpenClaw): `openclaw gateway call` pela CLI da máquina,
+// sem emparelhar dispositivo. O parse fica em whatsapp-chats.ts; aqui só o IO e o cache de nomes por host.
+const chatNames = new Map<string, Map<string, string>>();
+const namesOf = (host: string): Map<string, string> => { let m = chatNames.get(host); if (m === undefined) { m = new Map(); chatNames.set(host, m); } return m; };
+/** Só chaves que o próprio OpenClaw gera entram no script remoto (vão dentro de aspas simples). */
+const SAFE_KEY = /^[A-Za-z0-9:+._-]{1,200}$/;
+const CREDS_ME = `python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null`;
+
+export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
+  if (host === LOCAL_HOST || !isValidHost(host)) return [];
+  const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
+echo "self=$(${CREDS_ME})"
+echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+`;
+  const r = await runSsh(host, script, 60_000);
+  if (r.code !== 0) throw new Error(`não consegui ler as conversas do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const kv = new Map<string, string>();
+  for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
+  let list: unknown = null;
+  try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error("o gateway do OpenClaw não respondeu à lista de conversas"); }
+  return chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), namesOf(host));
+}
+
+export async function whatsappThread(host: string, number: string): Promise<WhatsappThreadMessage[]> {
+  if (host === LOCAL_HOST || !isValidHost(host)) return [];
+  const want = number.replace(/\D/g, "");
+  if (want.length < 8) throw new Error("número inválido");
+  const chat = (await whatsappChats(host)).find((c) => c.number === want);
+  if (chat === undefined) return [];
+  const keys = chat.sessionKeys.filter((k) => SAFE_KEY.test(k));
+  // Uma linha por sessão: "H<TAB>chave<TAB>json".
+  const lines = keys.map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":200}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 90_000);
+  if (r.code !== 0) throw new Error(`não consegui ler a conversa: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const histories: SessionHistory[] = [];
+  for (const line of r.stdout.split("\n")) {
+    const parts = line.split("\t");
+    if (parts[0] !== "H" || parts.length < 3) continue;
+    try { histories.push({ sessionKey: parts[1]!, history: JSON.parse(parts.slice(2).join("\t")) }); } catch { /* sessão sem resposta: fica de fora */ }
+  }
+  const t = threadFor(want, histories);
+  if (t.name !== null) namesOf(host).set(want, t.name);
+  return t.messages;
+}
+
+/**
+ * "Ramificar daqui" no espelho: conversa nova do meu-bot nesta máquina com o trecho do WhatsApp até `upTo`
+ * (inclusive). Relê o histórico aqui (a fonte é o gateway, não o que o renderer mostrou).
+ */
+export async function whatsappBranch(host: string, number: string, upTo: string | null): Promise<StoredConversation> {
+  const want = number.replace(/\D/g, "");
+  const all = await whatsappThread(host, want);
+  const msgs = upTo === null ? all : all.filter((m) => m.at <= upTo);
+  if (msgs.length === 0) throw new Error("não há mensagens para levar");
+  const name = namesOf(host).get(want) ?? `+${want}`;
+  const ctx = whatsappContextNote(name, want, msgs);
+  return createFromWhatsapp(host, { number: want, name, count: ctx.count, until: msgs.at(-1)!.at }, ctx.note);
+}
+
+
+/** Conversa inteira para exportar: Markdown legível ou JSON com contato, máquina e mensagens. */
+export async function whatsappExportBody(host: string, number: string, format: "md" | "json"): Promise<{ name: string; body: string }> {
+  const want = number.replace(/\D/g, "");
+  const messages = await whatsappThread(host, want);
+  const name = namesOf(host).get(want) ?? `+${want}`;
+  const exportedAt = new Date().toISOString();
+  const body = format === "md"
+    ? threadToMarkdown(name, want, host, messages, exportedAt)
+    : `${JSON.stringify({ channel: "whatsapp", contact: { name, number: `+${want}` }, host, exportedAt, messages }, null, 2)}\n`;
+  return { name, body };
+}
+
+/**
+ * Apaga na máquina as sessões só deste contato (`openclaw sessions delete`, com arquivamento do OpenClaw)
+ * e as memórias tiradas delas. A sessão principal, compartilhada com os outros contatos, nunca é tocada.
+ */
+export async function whatsappDeleteChat(host: string, number: string): Promise<void> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  const want = number.replace(/\D/g, "");
+  const chat = (await whatsappChats(host)).find((c) => c.number === want);
+  const keys = ownSessionKeys(want, chat?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
+  if (keys.length === 0) throw new Error("esta conversa está só na sessão principal do agente, junto com outros contatos; dá para tirar só da lista");
+  const quoted = keys.map((k) => `'${k}'`).join(" ");
+  const forget = keys.map((k) => `timeout 60 openclaw memory forget --agent '${k.split(":")[1]}' --session '${k}' >/dev/null 2>&1 || true`).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\ntimeout 60 openclaw sessions delete ${quoted} --yes --json 2>/dev/null\n${forget}\n`, 150_000);
+  const failed = deleteFailures(r.stdout, keys);
+  if (failed.length > 0) throw new Error(`o OpenClaw não apagou ${failed.length === keys.length ? "a conversa" : `${failed.length} de ${keys.length} sessões`}`);
+  log(`whatsapp: apagadas ${keys.length} sessão(ões) de +${want} em ${host}`);
 }

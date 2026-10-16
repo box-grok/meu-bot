@@ -15,7 +15,8 @@
     "package": "npm run build && node scripts/package.mjs",
     "fuses": "node scripts/fuses.mjs",
     "dist": "npm run package && npm run fuses",
-    "test": "npm run build && node --test scripts/tests/"
+    "test": "npm run build && node --test scripts/tests/",
+    "dmg": "npm run dist && node scripts/dmg.mjs"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
