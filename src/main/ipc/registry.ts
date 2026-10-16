@@ -1,0 +1,27 @@
+/**
+ * Registro dos handlers IPC por variante. O canal tem de estar numa lista de ipc-policy.ts (o tipo do parâmetro
+ * garante). No meu-bot-admin os canais de cliente viram stubs que recusam; no meu-bot normal os de admin
+ * recusam. O mesmo canal registrado duas vezes acusa na subida, em vez do erro opaco do Electron.
+ */
+import { ipcMain } from "electron";
+import { ADMIN_READONLY_MSG, NOT_ADMIN_MSG, type AdminChannel, type ClientChannel, type SharedChannel } from "../ipc-policy";
+import { caps } from "../variant";
+
+export type InvokeHandler = (event: Electron.IpcMainInvokeEvent, payload: unknown) => unknown;
+export type EventHandler = (event: Electron.IpcMainEvent, payload: unknown) => void;
+
+const registered = new Set<string>();
+function register(channel: string, fn: InvokeHandler): void {
+  if (registered.has(channel)) throw new Error(`canal IPC registrado duas vezes: ${channel}`);
+  registered.add(channel);
+  ipcMain.handle(channel, fn);
+}
+const refusing = (message: string): InvokeHandler => () => { throw new Error(message); };
+
+export const handleShared = (channel: SharedChannel, fn: InvokeHandler): void => register(channel, fn);
+export const handleClient = (channel: ClientChannel, fn: InvokeHandler): void =>
+  register(channel, caps().variant === "client" ? fn : refusing(ADMIN_READONLY_MSG));
+export const handleAdmin = (channel: AdminChannel, fn: InvokeHandler): void =>
+  register(channel, caps().supportAdmin ? fn : refusing(NOT_ADMIN_MSG));
+/** `ipcMain.on` (sem resposta), só para canais comuns. */
+export const onShared = (channel: SharedChannel, fn: EventHandler): void => { ipcMain.on(channel, fn); };

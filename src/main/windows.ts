@@ -9,7 +9,7 @@ import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { hostBusy } from "./conversation";
 import { getBackendPort, getWindowBounds, setWindowBounds } from "./settings";
 import { closeTunnel, ensureTunnel, log } from "./tunnel";
-import { appTitle, isAdmin } from "./variant";
+import { appTitle, caps } from "./variant";
 
 export type OpenOrigin = "startup" | "picker" | "notify" | "quick" | "menu" | "shortcut";
 
@@ -137,7 +137,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   log(`[${host}] janela aberta (${origin})`);
   // Pré-aquecimento: a primeira mensagem não espera o SSH. Erro aqui só pinta o pill; o envio tenta de novo.
   // O admin só lê e roda ações por SSH: nada de túnel para o backend da pessoa.
-  if (!isAdmin()) void ensureTunnel(host, getBackendPort()).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
+  if (caps().tunnel) void ensureTunnel(host, getBackendPort()).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
   return win;
 }
 

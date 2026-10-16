@@ -4,7 +4,7 @@
  * backend quando falta e abre a janela principal da máquina escolhida. Também sincroniza o
  * ~/.ssh/config com o modelo versionado e, para computadores do Grok Bot, dispara o alívio.
  */
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
 import { approveTailscaleCheck, installAudio, installBackend, installStatusLine, probeHost } from "./hostProbe";
@@ -15,7 +15,7 @@ import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
 import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialState } from "./secrets";
 import { disableSshCheck } from "./tailscale";
-import { shell } from "electron";
+import { handleAdmin, handleClient, handleShared, onShared } from "./ipc/registry";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
@@ -91,41 +91,41 @@ const hostArg = (payload: unknown): string => {
 };
 
 export function initPicker(): void {
-  ipcMain.handle("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
-  ipcMain.handle("picker:probe", (event, payload: unknown) => {
+  handleShared("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
+  handleShared("picker:probe", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return probeCached(hostArg(payload));
   });
-  ipcMain.handle("picker:support-refresh", async (event) => {
-    if (!fromPicker(event) || !isAdmin()) throw new Error("origem inválida");
+  handleAdmin("picker:support-refresh", async (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
     return supportPeople();
   });
-  ipcMain.handle("picker:support-add", (event, payload: unknown) => {
-    if (!fromPicker(event) || !isAdmin()) throw new Error("origem inválida");
+  handleAdmin("picker:support-add", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
     return addSupportCode(String((payload as { code?: unknown } | null)?.code ?? ""));
   });
-  ipcMain.handle("picker:install", async (event, payload: unknown) => {
-    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
+  handleClient("picker:install", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installBackend(host, getBackendPort(), (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
     return r;
   });
-  ipcMain.handle("picker:install-statusline", async (event, payload: unknown) => {
-    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
+  handleClient("picker:install-statusline", async (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installStatusLine(host, (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
     return r;
   });
-  ipcMain.handle("picker:install-transcricao", async (event, payload: unknown) => {
+  handleClient("picker:install-transcricao", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await installAudio(host, { kind: "in" }, (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); });
     probes.delete(host);
     return r;
   });
-  ipcMain.handle("picker:choose", (event, payload: unknown) => {
+  handleShared("picker:choose", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     setLastHost(host);
@@ -135,18 +135,18 @@ export function initPicker(): void {
     // Abrir antes de fechar: fora do macOS, fechar a última janela encerraria o app.
     pickerWin?.close();
   });
-  ipcMain.handle("picker:shortcut", async (event, payload: unknown) => {
+  handleShared("picker:shortcut", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createShortcut(host); else removeShortcut(host);
     return { has: hasShortcut(host), emoji: shortcutEmoji(host) };
   });
-  ipcMain.handle("picker:sync-ssh", (event) => {
+  handleClient("picker:sync-ssh", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return syncSshConfig();
   });
-  ipcMain.handle("picker:relieve", (event, payload: unknown) => {
+  handleShared("picker:relieve", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     if (!isPodHost(host)) throw new Error(`${host} não foi reconhecida como computador do Grok Bot.`);
@@ -154,8 +154,8 @@ export function initPicker(): void {
     pickerWin?.close();
   });
   // "Remover do seletor": sai do ~/.ssh/config (com backup) e os atalhos da mesa dela vão junto.
-  ipcMain.handle("picker:remove-host", (event, payload: unknown) => {
-    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
+  handleClient("picker:remove-host", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     if (host === LOCAL_HOST) throw new Error("este Mac não sai da lista");
     if (windowForHost(host) !== undefined) throw new Error(`feche a janela de ${host} antes de remover`);
@@ -166,63 +166,63 @@ export function initPicker(): void {
     if (getLastHost() === host) setLastHost(LOCAL_HOST);
     return { backup: r.backup };
   });
-  ipcMain.handle("picker:relief-shortcut", async (event, payload: unknown) => {
+  handleShared("picker:relief-shortcut", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createReliefShortcut(host); else removeReliefShortcut(host);
     return { has: hasReliefShortcut(host) };
   });
-  ipcMain.handle("picker:rename-host", (event, payload: unknown) => {
+  handleClient("picker:rename-host", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     setHostName(host, String((payload as { name?: unknown } | null)?.name ?? ""));
     // As janelas abertas trocam o título na hora (settings:changed já leva hostNames).
     broadcast("settings:changed", settingsView());
   });
-  ipcMain.handle("picker:open-direct", (event, payload: unknown) => {
+  handleClient("picker:open-direct", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     setOpenDirect((payload as { value?: unknown } | null)?.value === true);
   });
-  ipcMain.handle("picker:onboarding-done", (event, payload: unknown) => {
+  handleClient("picker:onboarding-done", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     setOnboardingDone((payload as { value?: unknown } | null)?.value === true);
   });
-  ipcMain.handle("picker:approve-tailscale", async (event, payload: unknown) => {
+  handleClient("picker:approve-tailscale", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await approveTailscaleCheck(host);
     probes.delete(host); // a próxima sondagem precisa ser nova
     return r;
   });
-  ipcMain.handle("picker:tailscale-credential", (event) => {
+  handleShared("picker:tailscale-credential", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return tailscaleCredentialState();
   });
-  ipcMain.handle("picker:tailscale-credential-save", (event, payload: unknown) => {
+  handleClient("picker:tailscale-credential-save", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const p = payload as { clientId?: unknown; clientSecret?: unknown } | null;
     return saveTailscaleCredential(String(p?.clientId ?? ""), String(p?.clientSecret ?? ""));
   });
-  ipcMain.handle("picker:tailscale-credential-forget", (event) => {
+  handleClient("picker:tailscale-credential-forget", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return clearTailscaleCredential();
   });
-  ipcMain.handle("picker:tailscale-disable-check", async (event, payload: unknown) => {
+  handleClient("picker:tailscale-disable-check", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const host = hostArg(payload);
     const r = await disableSshCheck();
     probes.delete(host); // a próxima sondagem precisa ser nova
     return r;
   });
-  ipcMain.handle("picker:open-url", async (event, payload: unknown) => {
+  handleShared("picker:open-url", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const which = String((payload as { which?: unknown } | null)?.which ?? "");
     const url = KNOWN_URLS[which];
     if (url === undefined) throw new Error("página desconhecida");
     await shell.openExternal(url);
   });
-  ipcMain.handle("picker:claude-login", (event, payload: unknown) => {
+  handleClient("picker:claude-login", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const raw = String((payload as { host?: unknown } | null)?.host ?? "").trim();
     const host = raw === LOCAL_HOST ? LOCAL_HOST : hostArg(payload);
@@ -232,11 +232,11 @@ export function initPicker(): void {
     probes.delete(host);
     pickerWin?.close();
   });
-  ipcMain.handle("picker:open-grokbot-reset", (event) => {
+  handleShared("picker:open-grokbot-reset", (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return openGrokbotReset();
   });
-  ipcMain.on("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
+  onShared("picker:cancel", (event) => { if (fromPicker(event)) pickerWin?.close(); });
 }
 
 /** Mostra o seletor (foca se já existe). `error` aparece no topo; `preselect` vence a última máquina. */
