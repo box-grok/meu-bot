@@ -1117,7 +1117,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 **meu-bot-admin** (só no Mac do admin; ícone âmbar com escudo). Cada pessoa tem a própria máquina do agente.
 
 - Variante: `scripts/package.mjs --admin` (nome, bundle id `local.meu-bot-admin`, ícone, `variant.json` em
-  Resources; userData separado, os dois apps convivem) e `scripts/fuses.mjs --admin` (instala
+  Resources) e `scripts/fuses.mjs --admin` (instala
   `~/Applications/meu-bot-admin.app` + atalho na mesa). `src/main/variant-core.ts` decide (puro, testado:
   `resolveVariant`, `capsFor`) e `src/main/variant.ts` só lê o arquivo (`appVariant`, `caps`, `isAdmin`,
   `appTitle`; dev: `MEU_BOT_VARIANT=admin`). Ver "Mapa de variantes" abaixo. Ícones: `npm run icons`
@@ -1281,7 +1281,7 @@ mapa responde ao abrir um arquivo: isto é admin, cliente ou dos dois?
 | `src/main/ipc-policy.ts` | comum (puro) | `SHARED_CHANNELS`, `CLIENT_CHANNELS`, `ADMIN_CHANNELS`: todo canal IPC está em exatamente uma lista. Testado contra os quatro preloads. |
 | `src/main/ipc/registry.ts` | comum | `handleShared` / `handleClient` / `handleAdmin` / `onShared`, tipados pelas listas: canal sem lista não compila. No admin, canal de cliente vira stub que recusa; no cliente, canal de admin recusa. Registro duplicado acusa na subida. |
 | `src/main/ipc/{context,shared,client,index}.ts` | comum e cliente | helpers de origem (`hostFromEvent`, `ownedConversation`); handlers comuns (leituras, configurações, memória, menu do WhatsApp, terminal); handlers só do cliente (chat, parear, logins, instalar, suporte lado da pessoa). `registerIpc(deps)` registra os três grupos. |
-| `src/main/admin/` | admin | `ipc.ts` (`admin:*`), `picker-source.ts` (seletor de pessoas), `support-admin.ts`. Só `main.ts`, `ipc/index.ts` e `picker.ts` importam daqui. |
+| `src/main/admin/` | admin | `ipc.ts` (`admin:*`), `picker-source.ts` (seletor de pessoas), `support-admin.ts`, `user-data.ts` (userData próprio: `~/Library/Application Support/meu-bot-admin`; o Electron nomearia a pasta pelo productName, "meu-bot" nos dois apps, e aí os dois dividiriam configurações, conversas e a trava de instância única: abrir um fechava o outro calado. Corrigido em 16 out, com migração do `pessoas.json`). Só `main.ts`, `ipc/index.ts` e `picker.ts` importam daqui. |
 | `src/main/client/support.ts` | cliente | suporte do lado da pessoa. |
 | `src/main/picker.ts` | comum | `initPicker(source: PickerSource)`; `clientPickerSource` mora aqui; os canais comuns do seletor também. |
 | `src/main/wa-menu.ts` | comum (puro) | itens do menu "…" do WhatsApp por capacidade. Testado. |

@@ -13,6 +13,7 @@ import { loadMemory } from "./memory";
 import { caps } from "./variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
+import { useAdminUserData } from "./admin/user-data";
 import { registerIpc } from "./ipc";
 import { applyStagedOnQuit, disposeUpdater, initUpdater } from "./updater";
 import { installAppMenu } from "./menu";
@@ -21,6 +22,9 @@ import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
 import { initRelief, showRelief } from "./relief";
 import { listSshHosts } from "./sshConfig";
 import { disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
+
+// O meu-bot-admin tem userData próprio (senão dividiria pasta e trava de instância com o meu-bot normal). Antes de tudo.
+if (caps().supportAdmin) useAdminUserData();
 
 // Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
 if (!app.requestSingleInstanceLock()) {

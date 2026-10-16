@@ -2,8 +2,9 @@ import { packager } from "@electron/packager";
 import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-// `--admin` empacota o meu-bot-admin: mesmo código, outro nome, bundle id e ícone (userData separado, então
-// os dois apps convivem). O app sabe qual é pelo Resources/variant.json.
+// `--admin` empacota o meu-bot-admin: mesmo código, outro nome, bundle id e ícone. O app sabe qual é pelo
+// Resources/variant.json e, sendo admin, usa userData próprio (src/main/admin/user-data.ts; o Electron nomearia a
+// pasta pelo productName do package.json, igual nos dois), então os dois apps convivem abertos ao mesmo tempo.
 const admin = process.argv.includes("--admin");
 const name = admin ? "meu-bot-admin" : "meu-bot";
 const arch = process.arch === "arm64" ? "arm64" : "x64";
