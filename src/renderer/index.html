@@ -63,7 +63,7 @@
         <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
         <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
         <button type="button" id="terminal-line" class="wa-line acervo-line" title="Terminal nesta máquina (Cmd+J; Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
-        <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count">0 tutoriais</span></button>
+        <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count"></span></button>
         <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
         <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>
           <button type="button" data-mode="bot" role="tab">meu-bot</button>
@@ -110,9 +110,11 @@
             <h2>Tutoriais</h2>
             <span class="spacer"></span>
             <!-- Concluídos saem da lista e vão para "arquivados", como as conversas. -->
+            <!-- O número ao lado de "Tutoriais" na lateral (só os que faltam fazer); a pessoa desliga aqui. -->
+            <label class="switch" title="Mostrar na lateral quantos tutoriais faltam fazer"><input id="tut-badge" type="checkbox" checked /><span class="track"></span><span class="switch-label">avisar na lateral</span></label>
             <label class="switch" title="Mostrar também os tutoriais já concluídos"><input id="tut-archived" type="checkbox" /><span class="track"></span><span class="switch-label">arquivados</span></label>
           </div>
-          <p class="hint">Passo a passo curtos do meu-bot. Concluídos vão para os arquivados, de onde dá para rever.</p>
+          <p class="hint"><span id="tutoriais-summary"></span>. Passo a passo curtos do meu-bot; concluídos vão para os arquivados, de onde dá para rever.</p>
           <div id="tutoriais-list" class="acervo-list"></div>
         </section>
         <!-- Tela vazia (nenhuma aba): a cobrinha anda sozinha; setas viram, Novo ou Cmd+N abrem uma conversa. -->
