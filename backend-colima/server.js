@@ -20,6 +20,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
+const toolEvents = require('./tool-events');
 const providers = require('./providers');
 const { readClaudeStatus } = require('./account-status');
 
@@ -112,7 +113,7 @@ function sysHash(messages) {
  * Roda a CLI uma vez. onDelta recebe texto incremental. Resolve {text, usage, sessionId, deltas}.
  * Rejeita com Error({code:'resume_failed'|'cli_failed'|'aborted'|'timeout'}).
  */
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta }) {
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool }) {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
@@ -122,6 +123,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir() }, stdio: ['pipe', 'pipe', 'pipe'] });
     let text = ''; let deltas = 0; let usage = null; let sessionId = resume || null; let stderr = '';
     let resultText = null; let finished = false; let blockOpen = false; let sawTextBlock = false;
+    const toolNames = new Map(); // tool_use_id → nome (o tool_result só traz o id)
     const timer = setTimeout(() => { fail('timeout', `CLI excedeu ${TURN_TIMEOUT_MS} ms`); }, TURN_TIMEOUT_MS);
     const onAbort = () => fail('aborted', 'cliente fechou a conexão');
     if (signal) { if (signal.aborted) onAbort(); else signal.addEventListener('abort', onAbort, { once: true }); }
@@ -151,6 +153,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
 
     function handle(ev) {
       if (ev.session_id && !sessionId) sessionId = ev.session_id;
+      if (onTool && (ev.type === 'assistant' || ev.type === 'user')) { for (const t of toolEvents.toolEventsFrom(ev, toolNames)) onTool(t); }
       if (ev.type === 'system' && ev.session_id) sessionId = ev.session_id;
       if (ev.type === 'stream_event' && ev.event) {
         const e = ev.event;
@@ -269,6 +272,8 @@ async function chatCompletions(req, res) {
       heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15000);
     };
     const onDelta = live ? (t) => { if (!firstDeltaAt) firstDeltaAt = Date.now(); startSse(); res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: t }))}\n\n`); } : null;
+    // Atividade do agente (ferramentas): só no modo live, como chunk próprio; não conta como texto para o fallback.
+    const onTool = live ? (t) => { startSse(); res.write(`data: ${JSON.stringify(toolEvents.toolChunk(id, created, used, t))}\n\n`); } : null;
 
     /** Um provedor claude: planeja resume pela chave dele e refaz sem resume se a sessão sumiu. */
     const runClaudeProvider = async (name) => {
@@ -278,13 +283,13 @@ async function chatCompletions(req, res) {
       resumed = Boolean(plan.resume);
       let out;
       try {
-        out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta });
+        out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool });
       } catch (e) {
         if (e.code === 'resume_failed' && plan.resume && !headersSent) {
           log(`resume falhou para ${key}; refazendo sem resume`);
           if (key) sessions.del(key);
           plan = { ...flatten(messages), resume: null }; resumed = false;
-          out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta });
+          out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool });
         } else throw e;
       }
       usedKey = key; usedProfile = profile;

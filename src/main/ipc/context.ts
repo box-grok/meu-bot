@@ -3,7 +3,7 @@ import { BrowserWindow } from "electron";
 import { getConversation } from "../conversation";
 import { hostOfWindow } from "../windows";
 
-export const windowFromEvent = (event: Electron.IpcMainInvokeEvent): BrowserWindow | null =>
+export const windowFromEvent = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null =>
   BrowserWindow.fromWebContents(event.sender);
 
 /** Janela registrada + máquina dela; null para remetentes que não são uma janela principal. */

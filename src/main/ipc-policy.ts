@@ -11,6 +11,8 @@ export const SHARED_CHANNELS = [
   "window:info", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
+  // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
+  "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // seletor
   "picker:list", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
@@ -31,7 +33,7 @@ export const CLIENT_CHANNELS = [
   "whatsapp:clear", "whatsapp:clear-plan", "whatsapp:cancel",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
-  "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel", "xai-key:set",
+  "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "tailscale:disable-check", "tailscale:restore",
   // suporte, lado da pessoa

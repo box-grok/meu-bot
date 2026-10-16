@@ -16,7 +16,8 @@ const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
   "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "StrictHostKeyChecking=accept-new",
 ];
-const REMOTE_PATH = "export PATH=$HOME/.local/bin:$HOME/bin:$PATH";
+// O hermes é um script Node: o node pode estar só no ~/.local/node/bin (instalação do backend), em /opt/node ou no PATH do login.
+const REMOTE_PATH = "export PATH=$HOME/.local/bin:$HOME/bin:$HOME/.local/node/bin:/opt/node/bin:/usr/local/bin:$PATH";
 const URL_RE = /https:\/\/accounts\.x\.ai\/[^\s"']+/;
 const CODE_RE = /user_code=([A-Z0-9-]+)/;
 

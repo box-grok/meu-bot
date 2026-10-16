@@ -1101,9 +1101,13 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   fallback nem grok-4, e "Reinstalar backend" no seletor resolve.
 - App: a linha "xAI (Grok)" aparece também sem Hermes quando há backend (`xaiKeyStatus`); "entrar" roda o
   instalador pela janela (`xai-login:prepare`, progresso no diálogo) e emenda no login OAuth de sempre
-  (`xaiLogin.ts`). Alternativa no mesmo diálogo: "usar chave de API" (`src/main/xaiKey.ts`: grava
-  `XAI_API_KEY` no .env do backend pelo stdin do ssh, reinicia e devolve os modelos listados; nunca em log).
-- Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Tutorial
+  (`xaiLogin.ts`). A opção de chave de API foi retirada a pedido do usuário (só OAuth); `src/main/xaiKey.ts`
+  ficou só com a checagem "há backend?" que decide se a linha aparece. `install-statusline.sh` instala o
+  `jq` sozinho quando há `sudo` sem senha (caso da colima).
+- Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Verificado na
+  colima (16 out): login OAuth concluído pelo app; o proxy aceita o id `grok-4` (responde com `grok-4.3`; lista
+  também 4.5/4.6/4.7 e os de imagem) e o backend respondeu `X-Provider: grok-4`. O `hermes` precisa do node no
+  PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`. Tutorial
   "Fallback: Claude e Grok logados" deixado como "Em breve" (pedido do usuário: fazer quando o login da xAI
   estiver redondo).
 
@@ -1180,3 +1184,43 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Verificado de ponta a ponta (16 out, Electron rodando as funções do app): ligar → timer ativo e código na
   caixa → admin vê a pessoa, saúde, WhatsApp e 200 linhas de registro → desligar → a chave do admin passa a
   ser recusada e o timer/arquivos somem.
+
+## Terminal na aba (16 out 2026)
+
+Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), sem o que ele tinha de frágil
+(porta HTTP sem autenticação, `select` bloqueante, decode UTF-8 por pedaço, sem aviso de saída).
+
+- **PTY sem módulo nativo:** `src/main/pty-broker.py` (só stdlib, Python 3.6+) roda **onde o shell roda**: na
+  máquina da janela via `ssh … python3 -c "<broker em base64>"` pegando carona no ControlMaster do túnel
+  (`sshMuxArgs` em `tunnel.ts`; sem master, `ssh` próprio) ou, em "este Mac", via `/usr/bin/python3` (sem
+  ele, erro pede `xcode-select --install`). `pty.fork` → `$SHELL -l` em `$HOME` com `TERM=xterm-256color`;
+  resize = `TIOCSWINSZ` no master, então o shell recebe SIGWINCH de verdade mesmo remoto.
+- **Framing** (`src/main/pty-frames.ts`, testado com o broker real): `tipo(1) + tamanho(4 BE) + payload`.
+  App→broker: `i` entrada, `r` "cols rows", `k` encerrar. Broker→app: `o` bytes crus (o xterm decodifica
+  UTF-8 incremental), `x` código de saída. `RingBuffer` de 256 KiB por sessão (`term:replay`).
+- **Sessões** (`src/main/terminal.ts`): presas à janela (`ownedTerminal`), máx. 8 por janela, encerradas no
+  `closed` da janela (`closeTerminalsOfWindow`). IPC: `term:open` (invoke), `term:input`/`term:resize`
+  (`ipcRenderer.send`, sem resposta), `term:close`, `term:replay`; eventos `term:data` (Uint8Array) e
+  `term:exit`. No admin, abrir um terminal entra no `suporte.log` da pessoa ("admin: abriu um terminal").
+- **xterm.js 5.5 no renderer:** só há build UMD, então `scripts/vendor.mjs` copia `xterm.js` + addons (fit,
+  webgl, web-links, search, unicode11) e `xterm.css`, e o `index.html` os carrega por `<script src>` (CSP
+  `script-src 'self'`). No navegador o UMD põe a **classe** em `window.Terminal` (em Node, `{ Terminal }`):
+  `xtermClass()` aceita os dois; addons vêm como `window.FitAddon.FitAddon` etc. (tipos em
+  `src/renderer/vendor/xterm-globals.d.ts`). **CSP:** `style-src 'self' 'unsafe-inline'` só por causa do
+  `<style>` que o renderer DOM do xterm injeta; `script-src` e `connect-src 'none'` seguem iguais.
+- **Abas:** linha "Terminal" na lateral (contagem de abertos), paleta, **Cmd+J** (foca o último vivo ou abre)
+  e **Cmd+Shift+J** (mais um). Página `term-<n>` ("Terminal n · <máquina>"), tema das variáveis CSS
+  (`xtermTheme`, repintado em `applySettings`), `ResizeObserver` → fit → resize. Com o terminal focado,
+  `Ctrl+*` vai ao shell; `Cmd+K/N/B/W/J/F` são do app (`attachCustomKeyEventHandler`), Cmd+F = busca do
+  addon. Fechar aba com shell vivo pede 2 cliques; saída do processo mostra "sessão encerrada" + Reconectar.
+- **Integrações:** (A) selecionou → barrinha "Copiar / Perguntar ao agente" (pré-preenche o compositor com o
+  trecho em bloco de código; nada é enviado sozinho) e "Últimas linhas → conversa"; (B) blocos `bash/sh/zsh/
+  shell/console` nas respostas ganham "Rodar no terminal": digita o comando com *bracketed paste* e **sem
+  Enter** (`shellBlockToPaste`, testado; em `console` tira o prompt e a saída); (C) **atividade do agente**:
+  o backend (`backend-colima/tool-events.js`, testado; `runClaude` ganhou `onTool`) emite `x_meu_bot.tool`
+  para cada `tool_use` (Bash → comando; Read/Write/Edit → arquivo; Grep/Glob → padrão…) e `tool_result`
+  (20 linhas); `backend.ts` → `chat:tool`; na conversa vira uma linha recolhível "rodou `cmd`" (verde/vermelho
+  pelo resultado) e a aba **"Agente · atividade"** (xterm só leitura, nasce atrás na primeira ferramenta;
+  também pela paleta) mostra `$ comando` e o resultado ao vivo. Exige backend reinstalado (colima: feito).
+- Verificado: broker local no teste; terminal na colima pelo app (prompt, `uname`, `stty size` = tamanho da
+  aba, cores). Pendente de ver no app: "este Mac", barra de seleção, Rodar no terminal, Reconectar.

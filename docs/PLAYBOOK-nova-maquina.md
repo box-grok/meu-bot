@@ -302,3 +302,10 @@ roda nela e turnos sem limite de tempo no backend do René.
 4. A pessoa abre a máquina dela no meu-bot › Configurações › Suporte › escreve o nome › liga. Ela aparece
    sozinha no meu-bot-admin (ou ela manda o código e o admin usa "Adicionar pessoa").
 5. Para cortar: a pessoa desliga o interruptor (ou apaga a linha `meu-bot-admin` do authorized_keys).
+
+## Terminal na aba
+
+- Nas máquinas por SSH não precisa de nada além do `python3` (já exigido pelo app). Em "este Mac", o shell
+  local usa `/usr/bin/python3`, que vem com as Ferramentas de Linha de Comando (`xcode-select --install`).
+- A "Atividade do agente" (o que o modo agente roda) depende do backend com `tool-events.js`: "Reinstalar
+  backend" no seletor atualiza.

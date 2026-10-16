@@ -20,7 +20,6 @@ import {
 import { isBackendModel } from "../settings";
 import { toggleQuickEntry } from "../quickEntry";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "../hostProbe";
-import { setXaiKey } from "../xaiKey";
 import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
@@ -70,12 +69,6 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return prepareGrokOauth(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", { kind: "log", text: line }); });
-  });
-  handleClient("xai-key:set", (event, payload: unknown) => {
-    const h = hostFromEvent(event);
-    if (h === null) throw new Error("origem inválida");
-    const k = (payload as { key?: unknown } | null)?.key;
-    return setXaiKey(h.host, k === null ? null : typeof k === "string" ? k.trim() : "");
   });
   // Status line do Claude (tutorial): checar e instalar na máquina desta janela.
   handleClient("statusline:status", (event) => {

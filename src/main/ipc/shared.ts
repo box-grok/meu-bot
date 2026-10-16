@@ -7,7 +7,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { whatsappChats, whatsappExportBody, whatsappStatus, whatsappThread } from "../whatsapp";
+import { runSsh, whatsappChats, whatsappExportBody, whatsappStatus, whatsappThread } from "../whatsapp";
+import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
+import { isSupportAlias, supportLogSh } from "../support-code";
 import { claudeAuthInfo } from "../claudeLogin";
 import { xaiAuthInfo } from "../xaiLogin";
 import { xaiKeyStatus } from "../xaiKey";
@@ -20,8 +22,8 @@ import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { caps } from "../variant";
 import { waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
-import { EXTERNAL_URL, hostFromEvent, waNumber } from "./context";
-import { handleShared } from "./registry";
+import { EXTERNAL_URL, hostFromEvent, waNumber, windowFromEvent } from "./context";
+import { handleShared, onShared } from "./registry";
 
 export interface SharedIpcDeps {
   /** No meu-bot-admin: a pessoa dona da máquina e o apelido dela para ela (vem de admin/support-admin.ts; aqui só se injeta). */
@@ -105,6 +107,34 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     fs.writeFileSync(result.filePath, body, { mode: 0o600 });
     return { path: result.filePath };
   });
+
+  // Terminal: sessões presas à janela que as abriu. Entrada e resize sem resposta (uma por tecla). Os dois
+  // apps: no meu-bot-admin a pessoa vê no registro dela que o suporte abriu um terminal.
+  handleShared("term:open", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = payload as { cols?: unknown; rows?: unknown } | null;
+    const id = await openTerminal(h.win, h.host, typeof p?.cols === "number" ? p.cols : 80, typeof p?.rows === "number" ? p.rows : 24);
+    if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", "abriu um terminal")}\n`, 15_000);
+    return { id };
+  });
+  const termOf = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent, payload: unknown) => {
+    const win = windowFromEvent(event);
+    const id = (payload as { id?: unknown } | null)?.id;
+    return win === null || typeof id !== "string" ? null : ownedTerminal(id, win.id);
+  };
+  onShared("term:input", (event, payload: unknown) => {
+    const s = termOf(event, payload);
+    const data = (payload as { data?: unknown }).data;
+    if (s !== null && (typeof data === "string" || data instanceof Uint8Array)) writeTerminal(s, data);
+  });
+  onShared("term:resize", (event, payload: unknown) => {
+    const s = termOf(event, payload);
+    const p = payload as { cols?: unknown; rows?: unknown };
+    if (s !== null && typeof p.cols === "number" && typeof p.rows === "number") resizeTerminal(s, p.cols, p.rows);
+  });
+  handleShared("term:close", (event, payload: unknown) => { const s = termOf(event, payload); if (s !== null) closeTerminal(s); });
+  handleShared("term:replay", (event, payload: unknown) => { const s = termOf(event, payload); return s === null ? new Uint8Array() : replayTerminal(s); });
 
   // Configurações e memória: deste Mac, valem para os dois apps.
   handleShared("settings:get", (event) => settingsView(hostFromEvent(event)?.host));

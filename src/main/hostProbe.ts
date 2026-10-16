@@ -185,7 +185,7 @@ export function backendBundleDir(): string {
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "meu-bot-backend.service", "install.sh",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "meu-bot-backend.service", "install.sh",
   "statusline.sh", "install-statusline.sh",
 ];
 
