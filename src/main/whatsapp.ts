@@ -147,7 +147,7 @@ async function readSelfNumber(host: string): Promise<string | null> {
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const script = policy === "open"
-    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`
+    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`
     : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
   const r = await runSsh(host, `${script}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
@@ -158,7 +158,7 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Pr
 
 
 /** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
-export const SELF_POLICY_SH = `openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`;
+export const SELF_POLICY_SH = `openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`;
 /** Com o número já conhecido, ele entra no allowFrom: tira o aviso "allowFrom vazio" e deixa explícito quem é "você". */
 const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`);
 

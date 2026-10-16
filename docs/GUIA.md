@@ -369,7 +369,9 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   `open` + `allowFrom ["*"]`. Grupos sempre desativados. O `PAIR_SCRIPT` grava "só você" antes do login quando
   não há valor autorado (allowFrom vazio, com aviso do OpenClaw) e, ao vincular, põe o número no allowFrom. O
   status lê `dmPolicy` (vazio = pairing) e o bloco `channels.whatsapp` em JSON (`channelConfig`).
-  `whatsapp:dm-policy` → `setDmPolicy`; vale sem reiniciar o gateway. Ajustes finos (lista de números,
+  `whatsapp:dm-policy` → `setDmPolicy`; vale sem reiniciar o gateway. As duas políticas também gravam
+  `responsePrefix ""`: sem isso o safeguard do `selfChatMode` prefixa as respostas com a identidade do agente
+  ("[main]") (agente-box, 15 out). Ajustes finos (lista de números,
   grupos, limite de mídia) são por conversa: "Ajustar pelo chat" (`waChannelPrompt`) abre uma conversa e
   dá ao agente o estado atual + como editar com `openclaw config set --strict-json`; nada de editor de JSON
   na interface. Conectado, a gerência (quem responde, ajustar pelo chat, atualizar, desconectar) fica na
