@@ -303,6 +303,9 @@ roda nela e turnos sem limite de tempo no backend do René.
    interruptor "Permitir o acesso do admin" já vem marcado, então salvar liga). Ela aparece
    sozinha no meu-bot-admin (ou ela manda o código e o admin usa "Adicionar pessoa").
 5. Para cortar: a pessoa desliga o interruptor (ou apaga a linha `meu-bot-admin` do authorized_keys).
+6. Versão nova para todo mundo: suba a versão no `package.json`, commite e rode `npm run release` (precisa do
+   `gh` logado). Os apps instalados baixam sozinhos e trocam ao reabrir (ou em "Reiniciar e atualizar"). O
+   admin vê na saúde de cada pessoa a versão em que ela está.
 
 ## Terminal na aba
 

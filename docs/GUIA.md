@@ -1184,6 +1184,20 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   progresso não compartilhados; `adminLogs` recusa; a lateral do admin só mostra o WhatsApp se a saúde o
   trouxer). Limite dito na tela: enquanto o suporte está ligado, o admin ainda entra por SSH; desligar o
   interruptor corta tudo.
+- Versão e atividade dela no admin (16 out): o progresso que o meu-bot dela grava leva `app: { version,
+  openedAt }` (versão do app e quando a sessão abriu; `WindowInfo.version`). A saúde mostra "meu-bot X no Mac
+  dela · aberto há N" e acusa em vermelho quando está atrás da versão do admin (`compareVersions`): ela ainda
+  não abriu o app com internet, então não atualizou. Depende de ela compartilhar o progresso.
+- Transcrição de áudio por padrão (16 out): o app não instala o OpenClaw (a pessoa instala; o app só pareia),
+  então o gancho é o pareamento: concluído numa máquina com OpenClaw sem transcritor, `ensureTranscription`
+  (`ipc/client.ts`) roda `install-transcricao.sh` em seguida, contando os passos no mesmo fluxo do QR
+  (baixa ~500 MB uma vez). `install-transcricao.sh off` desliga (`AudioSetup { kind: "in", off: true }`). No
+  admin a ação é Ativar ou Desativar conforme `audioIn`, e some com uma nota quando a máquina não tem OpenClaw
+  (`transcriptionNote`): era o caso de "esta máquina não tem OpenClaw: a transcrição é para o agente do
+  WhatsApp dele", que aparecia porque a máquina ainda não tinha o OpenClaw.
+- Arquivar pessoa no seletor do admin (16 out): "Arquivar" na pessoa selecionada tira da lista sem mexer no
+  suporte dela (`archived` em pessoas.json, `picker:support-archive`); o interruptor "mostrar arquivadas"
+  aparece quando há alguém arquivado. Mesmo modelo das conversas.
 - "Renomear" (seletor, máquina selecionada; não "este Mac" nem no admin): apelido guardado em
   `settings.hostNames` (host → nome, 1–40 caracteres, `normalizeHostNames`). A chave SSH não muda; o apelido
   entra em `hostLabel` (`lib/probe-text.ts`, com `setHostNicknames`), então seletor, título da janela e
@@ -1248,6 +1262,7 @@ mapa responde ao abrir um arquivo: isto é admin, cliente ou dos dois?
 | `src/main/client/support.ts` | cliente | suporte do lado da pessoa. |
 | `src/main/picker.ts` | comum | `initPicker(source: PickerSource)`; `clientPickerSource` mora aqui; os canais comuns do seletor também. |
 | `src/main/wa-menu.ts` | comum (puro) | itens do menu "…" do WhatsApp por capacidade. Testado. |
+| `src/main/updater-core.ts`, `src/main/updater.ts` | comum | atualização automática do próprio app pelo GitHub Releases (ver seção abaixo). Núcleo puro testado. |
 | `src/renderer/renderer.ts` | comum | `caps` (de `window:info`) no lugar de "é admin?": `caps.chat`, `caps.login`, `caps.install`, `caps.supportClient`; o arranque do admin chama `mountSuportePage`. |
 | `src/renderer/admin/` | admin | `suporte-page.ts` (fábrica com dependências explícitas, como `snake.ts`), `picker-chrome.ts` (seletor de pessoas). |
 | `src/renderer/lib/admin-view.ts` | admin (puro) | textos e linhas da página Suporte e do seletor. Testado. |
@@ -1271,6 +1286,24 @@ Regras:
   trava de instância única (pelo userData) faz um dev sair calado; para testar ao lado dele:
   `./node_modules/.bin/electron . --user-data-dir=<pasta> --remote-debugging-port=9333` e `curl
   127.0.0.1:9333/json` lista as janelas.
+
+## Atualização automática do app (16 out 2026)
+
+Como no Grok Bot (que usa a infra do Cursor com app assinado pela Anysphere), mas sem assinatura da Apple: o
+meu-bot é assinado ad-hoc, então o `autoUpdater` do Electron (Squirrel) não serve e o app se atualiza sozinho.
+
+- Publicar: `npm run release` (`scripts/release.mjs`): exige árvore limpa e `gh auth login`; empacota as duas
+  variantes (`fuses.mjs --no-install`, sem tocar nos apps deste Mac), zipa cada `.app` com `ditto -c -k
+  --keepParent` em `out/<app>-<versão>-<arch>.zip`, cria a tag `v<versão>` e a release no GitHub
+  (`diegofornalha/meu-bot`, público) com os dois .zip. O .dmg continua sendo o instalador da primeira vez.
+- No app (`src/main/updater.ts`, só empacotado; `MEU_BOT_NO_UPDATE=1` desliga): 20 s depois de abrir e a cada
+  6 h consulta `/releases/latest` (sem token; 404 = ainda sem release), escolhe o asset desta variante e
+  arquitetura (`pickUpdate`, puro, testado), baixa para `userData/update`, extrai, confere a versão e o bundle
+  id do Info.plist, tira a quarentena e reassina ad-hoc. Pronta, avisa as janelas (`update:ready`): faixa
+  "meu-bot X pronto para instalar · Reiniciar e atualizar" (`update:apply` troca o .app que está rodando e as
+  cópias em `~/Applications` e na mesa com o mesmo bundle id, e reabre). Sem clique, a troca acontece calada ao
+  sair do app (`will-quit`): a próxima abertura já é a nova. Canais comuns (`update:state`, `update:apply`).
+- A versão do meu-bot de cada pessoa aparece para o admin na saúde da máquina (abaixo).
 
 ## Terminal na aba (16 out 2026)
 

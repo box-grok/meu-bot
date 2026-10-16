@@ -41,9 +41,11 @@ for (const [index, value] of Object.entries(wire)) {
 execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
 console.log("Assinatura ad-hoc aplicada em", app);
 
-// Instala em ~/Applications e garante o atalho na área de trabalho.
+// Instala em ~/Applications e garante o atalho na área de trabalho. `--no-install` (scripts/release.mjs) para aqui:
+// só empacota e assina, sem tocar nos apps instalados neste Mac.
 import { rmSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
+if (process.argv.includes("--no-install")) process.exit(0);
 const installed = path.join(homedir(), "Applications", `${name}.app`);
 mkdirSync(path.dirname(installed), { recursive: true });
 rmSync(installed, { recursive: true, force: true });

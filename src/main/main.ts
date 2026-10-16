@@ -14,6 +14,7 @@ import { caps } from "./variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { registerIpc } from "./ipc";
+import { applyStagedOnQuit, disposeUpdater, initUpdater } from "./updater";
 import { installAppMenu } from "./menu";
 import { clientPickerSource, initPicker, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
@@ -55,6 +56,7 @@ app.whenReady().then(() => {
   });
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   initRelief();
+  initUpdater();
   // A entrada rápida é do chat: o meu-bot-admin não a sobe nem registra o atalho global.
   if (caps().chat) {
     setQuickEntryStatusProvider(quickEntryStatus);
@@ -93,4 +95,4 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("will-quit", () => { disposeQuickEntry(); disposeWindows(); closeTunnel(); });
+app.on("will-quit", () => { disposeUpdater(); disposeQuickEntry(); disposeWindows(); closeTunnel(); applyStagedOnQuit(); });

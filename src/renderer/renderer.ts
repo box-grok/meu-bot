@@ -3391,6 +3391,21 @@ function openSettings(): void {
 }
 settingsBtn.addEventListener("click", () => openSettings());
 window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
+
+/* ---------- Atualização automática: a faixa só aparece com a versão nova já pronta ---------- */
+const updateBar = $<HTMLElement>("update-bar");
+const updateText = $<HTMLElement>("update-text");
+const updateApply = $<HTMLButtonElement>("update-apply");
+function showUpdateReady(version: string): void {
+  updateText.textContent = `${caps.variant === "admin" ? "meu-bot-admin" : "meu-bot"} ${version} pronto para instalar (você está na ${appVersion}).`;
+  updateBar.hidden = false;
+}
+updateApply.addEventListener("click", () => {
+  updateApply.disabled = true; updateApply.textContent = "Reiniciando…";
+  void window.meuBot.applyUpdate().catch((err: unknown) => { updateApply.disabled = false; updateApply.textContent = "Reiniciar e atualizar"; updateText.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; });
+});
+window.meuBot.on("update:ready", ({ version }) => showUpdateReady(version));
+void window.meuBot.updateState().then((u) => { if (u.ready !== null) showUpdateReady(u.ready); }).catch(() => undefined);
 window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) { addNotice(tab, text, "warn"); offerClaudeLogin(tab, text); } });
 window.meuBot.on("chat:account", ({ host, status }) => {
   if (host !== windowHost) return;

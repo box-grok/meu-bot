@@ -24,6 +24,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "term:data",
   "term:exit",
   "ui:claude-login",
+  "update:ready",
 ];
 
 /** Os dois apps. */
@@ -41,6 +42,8 @@ const sharedApi: MeuBotSharedApi = {
   termResize: (id: string, cols: number, rows: number): void => ipcRenderer.send("term:resize", { id, cols, rows }),
   termClose: (id: string) => ipcRenderer.invoke("term:close", { id }),
   termReplay: (id: string) => ipcRenderer.invoke("term:replay", { id }),
+  updateState: () => ipcRenderer.invoke("update:state", {}),
+  applyUpdate: () => ipcRenderer.invoke("update:apply", {}),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
   showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),

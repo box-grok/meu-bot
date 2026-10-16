@@ -61,6 +61,9 @@ export interface ContextEvent {
 }
 
 /** Conta e limites do Claude Code na máquina (cache do statusline.sh), via GET /v1/meu-bot/status. */
+/** Atualização automática do app (src/main/updater.ts). */
+export interface UpdateState { current: string; available: string | null; ready: string | null; checking: boolean; error: string | null }
+
 /** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
 export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean }
 
@@ -542,6 +545,8 @@ export interface MainEvents {
   /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
   "term:data": { id: string; data: Uint8Array };
   "term:exit": { id: string; code: number; detail: string | null };
+  /** Uma versão nova do app foi baixada e preparada: "Reiniciar e atualizar" troca na hora. */
+  "update:ready": { version: string };
   /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
   "ui:claude-login": Record<string, never>;
 }
@@ -567,6 +572,9 @@ export interface MeuBotSharedApi {
   termResize(id: string, cols: number, rows: number): void;
   termClose(id: string): Promise<void>;
   termReplay(id: string): Promise<Uint8Array>;
+  /** Atualização automática: estado (versão atual, disponível, pronta) e trocar + reiniciar. */
+  updateState(): Promise<UpdateState>;
+  applyUpdate(): Promise<void>;
   /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
   whatsappChats(): Promise<WhatsappChat[]>;
   /** Histórico de um contato (número só com dígitos). Só leitura. */

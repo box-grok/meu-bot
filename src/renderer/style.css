@@ -658,3 +658,7 @@ body.topbar-hidden .topbar { display: none; }
 /* Boas-vindas do fim do tour: bolha do assistente com botão de login (se preciso) e uma etiqueta discreta. */
 .msg-welcome { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .msg-welcome-tag { font-size: 10px; color: var(--muted); }
+
+/* Atualização automática: faixa fina acima da barra do topo. */
+.update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px; font-size: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-bottom: 1px solid var(--line); }
+.update-bar[hidden] { display: none; }

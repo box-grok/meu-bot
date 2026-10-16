@@ -10,6 +10,7 @@ import { slugify } from "../export";
 import { runSsh, whatsappChats, whatsappExportBody, whatsappStatus, whatsappThread } from "../whatsapp";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
+import { applyUpdate, updateState } from "../updater";
 import { claudeAuthInfo } from "../claudeLogin";
 import { xaiAuthInfo } from "../xaiLogin";
 import { xaiKeyStatus } from "../xaiKey";
@@ -135,6 +136,10 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   });
   handleShared("term:close", (event, payload: unknown) => { const s = termOf(event, payload); if (s !== null) closeTerminal(s); });
   handleShared("term:replay", (event, payload: unknown) => { const s = termOf(event, payload); return s === null ? new Uint8Array() : replayTerminal(s); });
+
+  // Atualização automática do próprio app.
+  handleShared("update:state", () => updateState());
+  handleShared("update:apply", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); applyUpdate(); });
 
   // Configurações e memória: deste Mac, valem para os dois apps.
   handleShared("settings:get", (event) => settingsView(hostFromEvent(event)?.host));

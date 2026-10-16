@@ -13,6 +13,8 @@ export const SHARED_CHANNELS = [
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
+  // atualização automática do próprio app
+  "update:state", "update:apply",
   // seletor
   "picker:list", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
