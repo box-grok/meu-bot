@@ -17,9 +17,9 @@ function home(files) {
 }
 
 test("limite ausente (null) fica null, não vira 0% · now", () => {
-  const h = home({ "profile.json": { email: "a@b", assento: "Premium" }, "ratelimits.json": { session_pct: null, session_resets: null, weekly_pct: 27, weekly_resets: 1792314000, updated: 1792048848 } });
+  const h = home({ "profile.json": { email: "a@b", assento: "Premium" }, "ratelimits.json": { session_pct: null, session_resets: null, weekly_pct: 27, weekly_resets: 1792314000, updated: 1792048848 , segments: null } });
   try {
-    assert.deepEqual(readClaudeStatus(h), { email: "a@b", assento: "Premium", sessionPct: null, weeklyPct: 27, sessionResets: null, weeklyResets: 1792314000, updated: 1792048848 });
+    assert.deepEqual(readClaudeStatus(h), { email: "a@b", assento: "Premium", sessionPct: null, weeklyPct: 27, sessionResets: null, weeklyResets: 1792314000, updated: 1792048848 , segments: null });
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
@@ -30,7 +30,7 @@ test("strings do statusline.sh da box viram números; sem cache, tudo null", () 
     assert.deepEqual([s.sessionPct, s.weeklyPct, s.sessionResets, s.updated], [1, 31, 1792063200, 1792048664]);
   } finally { rmSync(h, { recursive: true, force: true }); }
   const vazio = mkdtempSync(path.join(tmpdir(), "meu-bot-as-"));
-  try { assert.deepEqual(readClaudeStatus(vazio), { email: null, assento: null, sessionPct: null, weeklyPct: null, sessionResets: null, weeklyResets: null, updated: null }); }
+  try { assert.deepEqual(readClaudeStatus(vazio), { email: null, assento: null, sessionPct: null, weeklyPct: null, sessionResets: null, weeklyResets: null, updated: null , segments: null }); }
   finally { rmSync(vazio, { recursive: true, force: true }); }
 });
 

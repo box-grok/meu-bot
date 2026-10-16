@@ -10,6 +10,12 @@ export LC_NUMERIC=C
 
 input=$(cat)
 
+# meu-bot: quais segmentos aparecem (~/.claude/statusline-segments.json, editado em Tutoriais › Status line).
+# Sem o arquivo, todos. O rodapé do meu-bot lê o mesmo arquivo pelo backend: barra e rodapé combinam.
+SEG_PREFS="${HOME}/.claude/statusline-segments.json"
+# (`// true` do jq trocaria false por true; por isso o if/has.)
+seg_on() { [ -f "$SEG_PREFS" ] || return 0; [ "$(jq -r --arg k "$1" 'if has($k) then .[$k] else true end' "$SEG_PREFS" 2>/dev/null)" != "false" ]; }
+
 # ─── Email + Assento (cache de 10min, OAuth profile API) ─────────────────────
 CACHE_DIR="${HOME}/.cache/claude-statusline"
 PROFILE_CACHE="${CACHE_DIR}/profile.json"
@@ -20,13 +26,13 @@ PROFILE_CACHE_MAX=600
 email=""
 assento=""
 if [ -f "$PROFILE_CACHE" ]; then
-  cache_age=$(( $(date +%s) - $(stat -f %m "$PROFILE_CACHE" 2>/dev/null || stat -c %Y "$PROFILE_CACHE" 2>/dev/null || echo 0) ))
+  cache_age=$(( $(date +%s) - $(stat -c %Y "$PROFILE_CACHE" 2>/dev/null || stat -f %m "$PROFILE_CACHE" 2>/dev/null || echo 0) ))
   if [ "$cache_age" -lt "$PROFILE_CACHE_MAX" ]; then
     email=$(jq -r '.email // empty' "$PROFILE_CACHE" 2>/dev/null)
     assento=$(jq -r '.assento // empty' "$PROFILE_CACHE" 2>/dev/null)
   fi
 fi
-if [ -z "$email" ]; then
+if [ -z "$email" ] && seg_on account; then
   creds=""
   if command -v security &>/dev/null; then
     creds=$(security find-generic-password -s "Claude Code-credentials" -a "$(whoami)" -w 2>/dev/null)
@@ -102,7 +108,8 @@ session_resets=$(echo "$input" | jq -r '.rate_limits.five_hour.resets_at // empt
 # nesta barra: quem o exibe é o painel do meu-bot.
 weekly_pct=$(echo "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 weekly_resets=$(echo "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
-if [ -n "$session_pct" ] || [ -n "$weekly_pct" ]; then
+# MEU_BOT_STATUSLINE_TEST=1: o teste do tutorial (JSON simulado) não pode gravar limites falsos no cache.
+if [ -z "${MEU_BOT_STATUSLINE_TEST:-}" ] && { [ -n "$session_pct" ] || [ -n "$weekly_pct" ]; }; then
   RATELIMITS_CACHE="${CACHE_DIR}/ratelimits.json"
   jq -n --arg s "$session_pct" --arg sr "$session_resets" --arg w "$weekly_pct" --arg wr "$weekly_resets" --arg u "$(date +%s)" \
     '{session_pct: ($s | tonumber? // null), session_resets: ($sr | tonumber? // null),
@@ -116,7 +123,13 @@ session_str=""
 if [ -n "$session_pct" ]; then
   session_int=$(printf "%.0f" "${session_pct:-0}" 2>/dev/null || echo 0)
   session_time=$([ -n "$session_resets" ] && time_until_reset "$session_resets" || echo "")
-  session_str="Sessão diaria: ${session_int}%$([ -n "$session_time" ] && echo " · ${session_time}")"
+  session_str="Sessão: ${session_int}%$([ -n "$session_time" ] && echo " · ${session_time}")"
+fi
+weekly_str=""
+if [ -n "$weekly_pct" ]; then
+  weekly_int=$(printf "%.0f" "${weekly_pct:-0}" 2>/dev/null || echo 0)
+  weekly_time=$([ -n "$weekly_resets" ] && time_until_reset "$weekly_resets" || echo "")
+  weekly_str="Semanal: ${weekly_int}%$([ -n "$weekly_time" ] && echo " · ${weekly_time}")"
 fi
 
 
@@ -129,12 +142,12 @@ add_seg() {
 }
 
 # Model
-if [ -n "$model" ]; then
+if [ -n "$model" ] && seg_on model; then
   add_seg "$(printf "\033[0;33m%s\033[0m" "$model")" "$model"
 fi
 
 # Context window
-if [ "${ctx_int:-0}" -gt 0 ] 2>/dev/null; then
+if seg_on ctx && [ "${ctx_int:-0}" -gt 0 ] 2>/dev/null; then
   ctx_total=${ctx_size:-0}
   divisor=${ctx_int:-1}
   [ "$divisor" -eq 0 ] 2>/dev/null && divisor=1
@@ -144,14 +157,16 @@ if [ "${ctx_int:-0}" -gt 0 ] 2>/dev/null; then
 fi
 
 # Email + assento
-if [ -n "$email" ]; then
+if [ -n "$email" ] && seg_on account; then
   email_label="$email"
   [ -n "$assento" ] && email_label="${email} (${assento})"
   add_seg "$(printf "\033[0;33m%s\033[0m" "$email_label")" "$email_label"
 fi
 
 # Session limit
-[ -n "$session_str" ] && add_seg "$(printf "\033[0;36m%s\033[0m" "$session_str")" "$session_str"
+if seg_on session && [ -n "$session_str" ]; then add_seg "$(printf "\033[0;36m%s\033[0m" "$session_str")" "$session_str"; fi
+# Weekly limit (magenta)
+if seg_on weekly && [ -n "$weekly_str" ]; then add_seg "$(printf "\033[0;35m%s\033[0m" "$weekly_str")" "$weekly_str"; fi
 
 
 # ─── Detect terminal width ───────────────────────────────────────────────────

@@ -4,17 +4,18 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { SupportInfo, WhatsappStatus } from "../../shared/ipc";
+import type { StatusLineSegments, SupportInfo, WhatsappStatus } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado) e a status
  * line do Claude (instalada? null = não consultado; `limits` = a conta já mostra Sessão/Semanal).
  */
-export interface GuideContext { support: SupportInfo | null; statusLine: { installed: boolean | null; limits: boolean } }
-export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false } });
+export interface GuideContext { support: SupportInfo | null; statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null } }
+export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false, segments: null } });
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
-export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "none";
+/** `chat` leva à conversa do meu-bot (passo que se conclui vendo algo no rodapé). */
+export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "chat" | "none";
 
 /** Quem o agente responde, como o guia e o modal oferecem (os mesmos dois cartões). */
 export interface ReplyOption { id: "self" | "open"; title: string; text: string; isDefault: boolean }
@@ -29,8 +30,8 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, number: null });
 
 export interface GuideStep {
   id: string;
@@ -39,11 +40,11 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
-  manual?: { label: string; flag: "policyChosen" | "tested" };
+  manual?: { label: string; flag: "policyChosen" | "tested" | "statusTested" };
 }
 
 export interface Tutorial {
@@ -64,6 +65,8 @@ export interface Tutorial {
   comingSoon?: boolean;
   /** Só aparece quando o meu-bot veio com o pacote de suporte (e a janela é de máquina por SSH). */
   requires?: "support";
+  /** "Refazer do zero" (tutorial concluído): o que é desfeito na máquina antes de voltar ao passo 1. */
+  reset?: { what: string };
   steps: GuideStep[];
 }
 
@@ -106,6 +109,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     minutes: 4,
     badge: "Próximo",
     icon: "target",
+    reset: { what: "desconecta o número desta máquina (o agente para de responder no WhatsApp) e esquece \"escolhi\" e \"testei\"" },
     steps: WHATSAPP_STEPS,
   },
   {
@@ -116,6 +120,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     minutes: 1,
     icon: "target",
     requires: "support",
+    reset: { what: "desliga o acesso do admin a esta máquina e esquece o seu nome" },
     steps: [
       {
         id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
@@ -138,9 +143,10 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "statusline",
     title: "Status line do Claude",
     short: "Status line",
-    summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou.",
-    minutes: 1,
+    summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
+    minutes: 3,
     icon: "target",
+    reset: { what: "desinstala a status line desta máquina (o settings.json anterior volta) e apaga a escolha de segmentos" },
     steps: [
       {
         id: "instalar", title: "Instalar a status line nesta máquina", target: "none", body: "statusline-install",
@@ -148,8 +154,19 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => c.statusLine.installed === true,
       },
       {
-        id: "limites", title: "Ver os limites no rodapé", target: "none",
-        text: "Os números aparecem depois que o Claude Code roda uma vez nesta máquina. Mande uma mensagem ao agente; em seguida o rodapé mostra Sessão e Semanal.",
+        id: "segmentos", title: "Escolher o que aparece", target: "none", body: "statusline-segments",
+        text: "Ligue e desligue cada parte da barra: modelo, contexto, conta, sessão (5 horas) e semanal (7 dias). Vale na barra do Claude Code no terminal desta máquina e no rodapé do meu-bot, ao mesmo tempo.",
+        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.segments !== null,
+      },
+      {
+        id: "conferir", title: "Conferir no terminal", target: "none", body: "statusline-test",
+        text: "O botão abre um terminal desta máquina e roda um teste do script com um JSON de exemplo; a linha aparece com as cores. Avisos de \"/dev/tty\" nesse teste são normais fora do Claude Code.",
+        done: (_st, f) => f.statusTested,
+        manual: { label: "Apareceu certo", flag: "statusTested" },
+      },
+      {
+        id: "limites", title: "Ver os limites na conversa", target: "chat",
+        text: "Os números aparecem depois que o Claude Code roda uma vez nesta máquina. Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal.",
         done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
       },
     ],
@@ -192,7 +209,7 @@ export function tutorialBadge(t: Tutorial, withBadge = true): string {
 
 /** Rótulo do botão do passo atual, por alvo: o guia leva a pessoa ao lugar certo em vez de pedir para procurar. */
 export const GUIDE_ACTION_LABEL: Record<Exclude<GuideTarget, "none">, string> = {
-  "wa-line": "Abrir o WhatsApp", "wa-agent": "Abrir o WhatsApp", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp",
+  "wa-line": "Abrir o WhatsApp", "wa-agent": "Abrir o WhatsApp", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp", "chat": "Ir para a conversa",
 };
 
 /** Título da aba do guia: "WhatsApp 2/4", ou "WhatsApp ✓" quando tudo está feito. */

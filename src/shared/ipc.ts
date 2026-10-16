@@ -61,7 +61,12 @@ export interface ContextEvent {
 }
 
 /** Conta e limites do Claude Code na máquina (cache do statusline.sh), via GET /v1/meu-bot/status. */
+/** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
+export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean }
+
 export interface AccountStatus {
+  /** Preferência de segmentos gravada na máquina (~/.claude/statusline-segments.json); ausente/null = todos. */
+  segments?: StatusLineSegments | null;
   email: string | null;
   assento: string | null;
   sessionPct: number | null;
@@ -575,6 +580,13 @@ export interface MeuBotApi {
   xaiKeyStatus(): Promise<XaiKeyStatus>;
   /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
   statusLineInstalled(): Promise<boolean>;
+  /** "Refazer do zero": desfaz a status line na máquina (script, settings.json, preferências). */
+  uninstallStatusLine(): Promise<InstallBackendResult>;
+  /** "Refazer do zero" do suporte: desliga e esquece o nome. */
+  resetSupport(): Promise<SupportInfo>;
+  /** Segmentos da status line nesta máquina (null = sem preferência gravada = todos). */
+  statusLineSegments(): Promise<StatusLineSegments | null>;
+  setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;

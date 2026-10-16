@@ -385,7 +385,9 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .tut-soon { flex: none; padding: 12px 22px; border-radius: 10px; font-weight: 700; opacity: 1; color: var(--muted); }
 .guide-panel { max-width: 820px; gap: 14px; }
 .tut-num { width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--ok); border: 1px solid var(--ok); }
-.tut-step { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tut-step { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; flex: 1; min-width: 0; }
+.tut-step > * { max-width: 100%; }
+.tut-step .audio-controls, .guide-manage .audio-controls { width: 100%; min-width: 0; }
 .tut-step strong { font-size: 14px; }
 .tut-step p { margin: 0; font-size: 13px; color: var(--muted); }
 .tut-step .btn-small { margin-top: 4px; padding: 3px 10px; font-size: 12px; }
@@ -605,6 +607,11 @@ body.admin-mode #wa-line, body.admin-mode #rest { display: none !important; }
 .support-more[open] { display: flex; flex-direction: column; gap: 6px; }
 .support-more textarea { width: 100%; box-sizing: border-box; font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); resize: none; word-break: break-all; }
 .support-more .btn { align-self: flex-start; }
+.tut-reset { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
+.tut-reset .hint { margin: 0; }
+.guide-reset { border-top: none; padding-top: 0; }
+.sl-preview { display: block; box-sizing: border-box; max-width: 100%; font: 12px/1.5 var(--mono); padding: 8px 10px; border-radius: 8px; background: var(--code); color: var(--fg); overflow-x: auto; white-space: nowrap; }
+.sl-switches { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .admin-step { color: var(--muted); }
 .admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .admin-logs { margin: 0; max-height: 320px; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }

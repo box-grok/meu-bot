@@ -18,13 +18,14 @@ import {
 import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBackendModel, loadSettings, setLastHost, setQuickEntryStatusProvider, settingsView, updateSettings } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
-import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "./hostProbe";
+import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallStatusLine } from "./hostProbe";
 import { xaiKeyStatus } from "./xaiKey";
+import { readSegments, writeSegments } from "./statusLine";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "./terminal";
 import { runSsh } from "./whatsapp";
 import { supportLogSh } from "./support-code";
 import { caps, isAdmin } from "./variant";
-import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
+import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
 import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
 import { installAppMenu } from "./menu";
 import { initPicker, knownModels, showPicker } from "./picker";
@@ -137,6 +138,26 @@ function registerIpc(): void {
     const h = hostFromEvent(event);
     if (h === null || isAdmin()) throw new Error("origem inválida");
     return statusLineInstalled(h.host);
+  });
+  ipcMain.handle("statusline:segments", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return readSegments(h.host);
+  });
+  ipcMain.handle("statusline:set-segments", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return writeSegments(h.host, payload);
+  });
+  ipcMain.handle("statusline:uninstall", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return uninstallStatusLine(h.host);
+  });
+  ipcMain.handle("support:reset", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return resetSupport(h.host);
   });
   ipcMain.handle("statusline:install", (event) => {
     const h = hostFromEvent(event);
