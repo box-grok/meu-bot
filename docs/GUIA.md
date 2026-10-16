@@ -1240,6 +1240,28 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   gerência do tutorial concluído repete o botão em "Onde aparece". `backend-vm/services/account-status.js` é cópia.
   O rótulo da barra no terminal passou de "Sessão diaria" (herdado do script original; a janela é de 5 h, não
   diária) para "Sessão:", o mesmo do rodapé do app e da prévia do passo 2.
+- Trilha numerada e tutorial 1 · Entrar no Claude Code (16 out): cada tutorial tem `number` fixo (1 Claude,
+  2 WhatsApp, 3 Status line, 4 xAI/Grok, 5 Fallback, 6 Suporte, 7 Objetivo): selo "TUTORIAL 3 · 4 PASSOS · 3 MIN",
+  aba "3 · Status line 2/4", paleta "Tutorial 3: …", admin "3 · Status line do Claude: 2 de 4" (`tutorialNumber`
+  pelo id; o payload do progresso não mudou). `Tutorial.after` (id) esconde o tutorial até o anterior ser
+  concluído — `visibleTutorials(ctx, finished)` — e `needsSupport` substitui `requires: "support"`: 3 e 4 só
+  depois do 1, 5 só depois do 4 (4 e 5 continuam "Em breve"; o cartão Fallback sumiu de quem não chegou lá).
+  Tutorial 1 (3 passos): *Entrar na conta* (corpo `claude-login`: os controles do login vivem dentro do guia,
+  `clGuide`, criados uma vez e reanexados a cada repintura para o campo do código sobreviver; o modal
+  `#cl-dialog` usa o mesmo `clState`/`paintClaudeLogin` e fica para trocar de conta depois de concluído;
+  `enterClaude()` é a porta única: paleta, aviso de deslogado, boas-vindas, botão da lateral e `ui:claude-login`),
+  *Conferir quem está logado* (e-mail de `claudeAuth`; "Vi minha conta" = `GuideFlags.claudeSeen` se o e-mail
+  não vier), *Primeira resposta do agente* (alvo `chat` com 3-2-1; conclui quando o `index` desta máquina tem
+  uma mensagem `assistant` — checado em `chat:done`). `refreshClaudeLine` repinta o guia; `logoutClaude(relogin)`
+  serve ao botão "sair", ao painel de gerência ("Sair e entrar com outra conta") e ao "Refazer do zero". O guia
+  só espera o WhatsApp (`st === null`) em tutoriais com alvo `wa-*`.
+- Selo da lateral com duas notificações (16 out): o **número** são as pendências (interruptor "avisar na
+  lateral" desliga); o **pulso** é novidade — tutorial visível, pendente e nunca visto (`localStorage
+  tutVisto:<host>`, só cresce; abrir Tutoriais marca tudo que está à vista). A novidade não obedece ao
+  interruptor: desligado, o selo mostra só as novidades, pulsando, até a pessoa abrir Tutoriais (`sidebarBadge`
+  em tutoriais.ts, testado). Cartão de novidade ganha "NOVO ·" no selo durante aquela visita. Reaparecer (Refazer
+  do 1 esconde 3/4; relogar mostra de novo) não é novidade. Resumo do topo: "Você fez 2 de 6 · próximo: 3 ·
+  Status line · 1 novo · 2 em breve".
 - Limites sem Claude Code interativo (16 out): o backend roda `claude -p`, e nesse modo a status line não
   executa, então mandar mensagem pelo meu-bot nunca gravava `ratelimits.json` (o passo "Ver os limites na
   conversa" não concluía). `account-status.js` ganhou `refreshRateLimits`: em `GET /v1/meu-bot/status`, se o
