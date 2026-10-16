@@ -260,7 +260,7 @@ export interface SupportInfo {
  * conversas) e registros (journal). O app do admin respeita; o acesso SSH em si continua enquanto o suporte
  * está ligado (desligar o interruptor corta tudo). Fica na máquina dela, em ~/.local/share/meu-bot.
  */
-export interface SupportShare { progress: boolean; whatsapp: boolean; logs: boolean }
+export interface SupportShare { progress: boolean; whatsapp: boolean; logs: boolean; chat: boolean }
 
 /** Suporte, lado do admin: uma pessoa (uma máquina) que entregou ou colou o código. */
 export interface SupportPerson {
@@ -281,6 +281,18 @@ export interface SupportPerson {
   /** O admin tirou da lista (continua com suporte; o interruptor "arquivadas" mostra de volta). */
   archived: boolean;
 }
+/** Uma conversa da pessoa com o meu-bot, vista pela transcrição do Claude Code na máquina dela (meu-bot-admin). */
+export interface BotChat {
+  /** Sessão do Claude Code (nome do .jsonl). */
+  sessionId: string;
+  /** Pasta do projeto em ~/.claude/projects (diz o modo: agent-workspace = agente, chat-workspace = chat). */
+  project: string;
+  title: string;
+  updatedAt: string;
+  /** Quantas respostas o meu-bot deu. */
+  replies: number;
+}
+export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
 export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
@@ -689,6 +701,9 @@ export interface MeuBotAdminApi {
   adminHealth(): Promise<AdminHealth>;
   adminLogs(): Promise<string>;
   adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
+  /** Conversas dela com o meu-bot (transcrições do Claude Code na máquina), só leitura. */
+  adminBotChats(): Promise<BotChat[]>;
+  adminBotThread(sessionId: string): Promise<BotMessage[]>;
 }
 
 /** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */

@@ -105,10 +105,10 @@ test("código com o apelido da máquina (machine): vai e volta; inválido cai fo
 });
 
 test("parseSupportShare: tudo compartilhado por padrão; só false desliga", () => {
-  assert.deepEqual(m.parseSupportShare(undefined), { progress: true, whatsapp: true, logs: true });
-  assert.deepEqual(m.parseSupportShare({ whatsapp: false }), { progress: true, whatsapp: false, logs: true });
-  assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0 }), { progress: true, whatsapp: true, logs: true });
-  assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true });
+  assert.deepEqual(m.parseSupportShare(undefined), { progress: true, whatsapp: true, logs: true, chat: true });
+  assert.deepEqual(m.parseSupportShare({ whatsapp: false, chat: false }), { progress: true, whatsapp: false, logs: true, chat: false });
+  assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0 }), { progress: true, whatsapp: true, logs: true, chat: true });
+  assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true, chat: true });
 });
 
 test("parseSupportProgress: `app` opcional (versão e abertura); inválido some, o resto vale", () => {

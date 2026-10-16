@@ -3,6 +3,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
+import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
@@ -47,6 +48,8 @@ const form = $<HTMLFormElement>("settings-form");
 let windowHost = "";
 /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
 /** O que esta variante pode fazer (vem do main em window:info); até lá, o padrão do meu-bot normal. */
+/** meu-bot-admin: espelho das conversas dela com o meu-bot (admin/bot-mirror.ts); null no meu-bot normal. */
+let adminBotMirror: BotMirror | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
 const sessionOpenedAt = new Date().toISOString();
@@ -482,6 +485,8 @@ function renderSidebar(): void {
 function paintSidebar(): void {
   const query = sidebarSearch.value;
   if (getListMode() === "whatsapp") { paintWaSidebar(query); return; }
+  // meu-bot-admin: no modo "meu-bot" a lista são as conversas dela, lidas da máquina (não há conversas locais).
+  if (adminBotMirror !== null) { adminBotMirror.paintList(sidebarList, query); return; }
   const showArchived = sidebarArchived.checked;
   const rows: (SidebarConversation & { view: StoredConversationView })[] = [...index.values()]
     .filter((c) => c.messages.length > 0 && (showArchived || !c.archived))
@@ -1840,11 +1845,10 @@ const listModeKey = (): string => `listMode:${windowHost}`;
 const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
 function getListMode(): ListMode {
   if (!waMirrorAvailable()) return "bot";
-  if (!caps.chat) return "whatsapp"; // sem chat (o admin) só há o espelho do WhatsApp
   try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }
 }
 function paintListMode(): void {
-  listModeEl.hidden = !waMirrorAvailable() || !caps.chat;
+  listModeEl.hidden = !waMirrorAvailable();
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
@@ -3072,6 +3076,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       { key: "progress", label: "Meu progresso nos tutoriais" },
       { key: "whatsapp", label: "O WhatsApp (estado e conversas, só leitura)" },
       { key: "logs", label: "Os registros do gateway e do backend" },
+      { key: "chat", label: "Minhas conversas com o meu-bot (só leitura)" },
     ];
     const list = el("div", "support-share");
     for (const o of SHARE_LABELS) {
@@ -3500,6 +3505,8 @@ void (async () => {
         paintWhatsapp(); renderSidebar();
       },
     }).open();
+    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar() });
+    renderSidebar();
     tabsReady = true;
     return;
   }

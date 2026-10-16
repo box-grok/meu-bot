@@ -40,7 +40,7 @@ test("o que escreve na máquina da pessoa é só do cliente; o admin só tem o s
     "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
   ];
   for (const c of writes) assert.ok(client.has(c), `${c} devia ser só do cliente`);
-  assert.deepEqual([...admin].sort(), ["admin:action", "admin:health", "admin:logs", "picker:support-add", "picker:support-archive", "picker:support-refresh"]);
+  assert.deepEqual([...admin].sort(), ["admin:action", "admin:bot-chats", "admin:bot-thread", "admin:health", "admin:logs", "picker:support-add", "picker:support-archive", "picker:support-refresh"]);
   assert.match(ADMIN_READONLY_MSG, /só lê/);
 });
 

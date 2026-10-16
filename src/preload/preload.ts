@@ -119,6 +119,8 @@ const adminApi: MeuBotAdminApi = {
   adminHealth: () => ipcRenderer.invoke("admin:health", {}),
   adminLogs: () => ipcRenderer.invoke("admin:logs", {}),
   adminAction: (action: AdminAction) => ipcRenderer.invoke("admin:action", { action }),
+  adminBotChats: () => ipcRenderer.invoke("admin:bot-chats", {}),
+  adminBotThread: (sessionId: string) => ipcRenderer.invoke("admin:bot-thread", { sessionId }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

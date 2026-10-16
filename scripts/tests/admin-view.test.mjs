@@ -4,7 +4,7 @@ import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, healthLines,
 
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
-const share = { progress: true, whatsapp: true, logs: true };
+const share = { progress: true, whatsapp: true, logs: true, chat: true };
 const V = "0.1.0";
 
 test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {

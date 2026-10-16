@@ -8,7 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
@@ -168,6 +169,36 @@ export async function adminLogs(host: string): Promise<string> {
   if (!(await readShare(host)).logs) throw new Error("a pessoa preferiu não compartilhar os registros");
   const r = await runSsh(host, "journalctl --user -u openclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200\n", 30_000);
   return r.stdout.trim() || r.stderr.trim() || "sem registros";
+}
+
+/**
+ * Conversas dela com o meu-bot: as sessões do Claude Code que o backend abre (pastas *chat-workspace e
+ * *agent-workspace em ~/.claude/projects). Só se ela compartilha. Uma linha por sessão; o parse é puro.
+ */
+export async function adminBotChats(host: string): Promise<BotChat[]> {
+  if (!(await readShare(host)).chat) throw new Error("a pessoa preferiu não compartilhar as conversas com o meu-bot");
+  const r = await runSsh(host, `for d in "$HOME/.claude/projects/"*chat-workspace "$HOME/.claude/projects/"*agent-workspace; do
+  [ -d "$d" ] || continue
+  for f in "$d"/*.jsonl; do
+    [ -f "$f" ] || continue
+    printf 'F\t%s\t%s\t%s\t%s\t' "$(basename "$f" .jsonl)" "$(stat -c %Y "$f")" "$(basename "$d")" "$(grep -c '"type":"assistant"' "$f")"
+    grep -m1 '"type":"user"' "$f" | head -c 2000 | tr -d '\n\t'
+    echo
+  done
+done
+`, 30_000);
+  if (r.code !== 0 && r.stdout.trim() === "") throw new Error(r.stderr.trim() || "não consegui ler as conversas na máquina");
+  return parseBotChatList(r.stdout);
+}
+
+/** Uma conversa: só as linhas user/assistant do jsonl (o resto é ruído), cada uma cortada em 30 KB. */
+export async function adminBotThread(host: string, sessionId: string): Promise<BotMessage[]> {
+  if (!SESSION_ID_RE.test(sessionId)) throw new Error("conversa inválida");
+  if (!(await readShare(host)).chat) throw new Error("a pessoa preferiu não compartilhar as conversas com o meu-bot");
+  const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
+  if (chat === undefined || !PROJECT_DIR_RE.test(chat.project)) return [];
+  const r = await runSsh(host, `grep -E '"type":"(user|assistant)"' "$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl" | cut -c1-30000\n`, 30_000);
+  return parseClaudeTranscript(r.stdout);
 }
 
 const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
