@@ -1118,8 +1118,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 
 - Variante: `scripts/package.mjs --admin` (nome, bundle id `local.meu-bot-admin`, ícone, `variant.json` em
   Resources; userData separado, os dois apps convivem) e `scripts/fuses.mjs --admin` (instala
-  `~/Applications/meu-bot-admin.app` + atalho na mesa). `src/main/variant.ts` (`isAdmin`, dev:
-  `MEU_BOT_VARIANT=admin`). Ícones: `npm run icons` (`scripts/icon.mjs`: qlmanage → sips → iconutil).
+  `~/Applications/meu-bot-admin.app` + atalho na mesa). `src/main/variant-core.ts` decide (puro, testado:
+  `resolveVariant`, `capsFor`) e `src/main/variant.ts` só lê o arquivo (`appVariant`, `caps`, `isAdmin`,
+  `appTitle`; dev: `MEU_BOT_VARIANT=admin`). Ver "Mapa de variantes" abaixo. Ícones: `npm run icons`
+  (`scripts/icon.mjs`: qlmanage → sips → iconutil).
 - Preparo, uma vez: `node scripts/suporte-setup.mjs [--caixa agente-box] [--nome Lucas]`. Cria
   `~/.ssh/meu-bot-admin` (a chave do suporte), `build/suporte/entrega` (chave SÓ de entrega, gitignored),
   instala a caixa de entrada na máquina do admin (`backend-colima/meu-bot-suporte-inbox` em
@@ -1129,22 +1131,26 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Pacotes: `npm run dmg -- --suporte` (pessoas: pública do admin, chave de entrega e a chave do servidor da
   caixa; nenhuma máquina do admin) e `npm run dmg:admin` (admin; leva só o `suporte.json` público).
 - Código de suporte (`src/main/support-code.ts`, testado): `MBS1.<base64url(JSON)>` com nome, endereço
-  (`ssh -G` do Mac da pessoa), usuário, porta, chave pública do servidor dela, estado on/off e data. Sem
-  segredo. Alias no admin: `suporte-<nome>-<4 hex do hash da chave do servidor>`.
-- Pessoa (`src/main/support.ts`; Configurações › Suporte, vale na hora): ligar = nome + chave do admin no
+  (`ssh -G` do Mac da pessoa), usuário, porta, chave pública do servidor dela, estado on/off, data e (desde
+  16 out) `machine`, o apelido que ela usa para a máquina no `~/.ssh/config` dela ("colima"; opcional, código
+  antigo vale). Sem segredo. Alias no admin: `suporte-<nome>-<4 hex do hash da chave do servidor>`; a página
+  Suporte e o seletor de pessoas mostram o `machine` em vez do alias.
+- Pessoa (`src/main/client/support.ts`; só no tutorial "Ligar o suporte", vale na hora): ligar = nome + chave do admin no
   authorized_keys (`no-agent-forwarding,no-X11-forwarding … meu-bot-admin`) + entregador na máquina dela
   (`~/.local/share/meu-bot/suporte/`, timer systemd --user de 30 min ou cron) que manda o código para a
   caixa por SSH (máquina com máquina; se a máquina não sai, o Mac entrega). Desligar = tira a chave, entrega
   "off", remove timer e arquivos. "Copiar código de suporte" é o plano B. Tudo vai para
   `~/.local/share/meu-bot/suporte.log`, mostrado como "O que o suporte fez nesta máquina".
-- Admin (`src/main/support-admin.ts`): o seletor lê a caixa (`~/suporte-inbox/<id>.code`; o id tem de bater
+- Admin (`src/main/admin/support-admin.ts`): o seletor lê a caixa (`~/suporte-inbox/<id>.code`; o id tem de bater
   com a chave do servidor do código) e lista as pessoas com "visto há"; "Adicionar pessoa" cola o código.
   As pessoas viram `~/.ssh/meu-bot-suporte.conf` (gerado; `Include` no topo do `~/.ssh/config`, backup em
   `config.antes-do-meu-bot-admin`) com `IdentityFile ~/.ssh/meu-bot-admin` e known_hosts próprio
   (`StrictHostKeyChecking yes`). Janela da pessoa: página "Suporte" (saúde = sondagem + WhatsApp; ações com
   confirmação de 2 cliques: reiniciar gateway, reiniciar backend, ativar transcrição; registros do
   journalctl) e o espelho do WhatsApp na lateral (menu "…" só Exportar/Arquivar). Sem compositor, sem túnel;
-  o main recusa no admin tudo que escreve (pareamento, política, logins, pausar, limpar, chat).
+  o build admin nem registra os canais de cliente (`src/main/ipc/client.ts`: chat, pareamento, política,
+  logins, instalar, suporte lado da pessoa), só stubs que recusam ("o meu-bot-admin só lê; use as ações de
+  suporte"); ver `src/main/ipc-policy.ts` e o teste `ipc-policy`.
 - Máquina de endereço local (VM do Colima: `127.0.0.1:<porta>`) pode ligar o suporte: só um admin no mesmo
   Mac a alcança, e o admin mostra "só alcançável deste Mac" (`SupportPerson.local`). Serve para testar o
   admin sem outra máquina. Limite geral: o aviso periódico reenvia o código gerado ao ligar; se o endereço
@@ -1157,15 +1163,27 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   com Copiar (plano B da entrega automática). Registros no admin: recolhidos por padrão; só leem o journal
   quando abertos.
 - Tutorial "Ligar o suporte" (3 passos, depois do WhatsApp; `requires: "support"`, só aparece com o pacote
-  de suporte, em máquina por SSH e fora do admin): dizer o nome → permitir → "{admin} recebe o aviso". Os
+  de suporte, em máquina por SSH e fora do admin): dizer o nome → permitir → "O que o admin recebe". Os
   passos leem o estado real pelo `GuideContext` (`guideView(t, status, flags, ctx)`, `visibleTutorials`). No
   app da pessoa nunca aparece o nome de quem dá o suporte: os textos dizem "o admin" (pedido do usuário), e o
   registro da máquina anota as ações como "admin". Conclui sozinho: o `entregar.sh` grava
   `~/.local/share/meu-bot/suporte/ultima-entrega` quando a entrega na caixa dá certo (a entrega pelo Mac
   também grava) e `supportInfo` devolve `deliveredAt`. Enquanto o aviso não chega, a tela confere a cada
   10 s e oferece "Tentar de novo" (`support:deliver`); o código visível fica recolhido em "Não chegou?
-  Mostrar código de suporte". As peças (nome, interruptor, aviso/código, registro) são as mesmas das
-  Configurações › Suporte (`renderSupportParts`). O progresso dele vai para o admin como os outros.
+  Mostrar código de suporte". As peças (nome, interruptor, escolha, aviso/código, registro) estão em
+  `renderSupportParts`; o modal de Configurações não tem mais seção Suporte (16 out: o tutorial é o único
+  lugar). O progresso dele vai para o admin como os outros.
+- Tutorial do suporte, ajustes de 16 out (pedidos do usuário): o nome fica sempre editável (ligado, "Salvar
+  nome" regrava o aviso com o nome novo); o interruptor "Permitir o acesso do admin" já vem marcado
+  (`supportWantOn`) e "Salvar nome" liga o suporte no mesmo clique (ainda é a pessoa quem confirma; desmarcar
+  antes salva só o nome); o passo "O que o admin recebe" tem a escolha do que o app do admin pode ver
+  (`SupportShare`: progresso nos tutoriais, WhatsApp, registros; `support:share` grava
+  `~/.local/share/meu-bot/compartilha.json` na máquina dela, fora da pasta do suporte para sobreviver a
+  desligar/ligar; tirar o progresso apaga o `progresso.json`) e mostra o registro "O que o suporte fez nesta
+  máquina". O app do admin respeita a escolha (`adminHealth` devolve `share` e nem consulta o WhatsApp/
+  progresso não compartilhados; `adminLogs` recusa; a lateral do admin só mostra o WhatsApp se a saúde o
+  trouxer). Limite dito na tela: enquanto o suporte está ligado, o admin ainda entra por SSH; desligar o
+  interruptor corta tudo.
 - "Renomear" (seletor, máquina selecionada; não "este Mac" nem no admin): apelido guardado em
   `settings.hostNames` (host → nome, 1–40 caracteres, `normalizeHostNames`). A chave SSH não muda; o apelido
   entra em `hostLabel` (`lib/probe-text.ts`, com `setHostNicknames`), então seletor, título da janela e
@@ -1184,6 +1202,46 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Verificado de ponta a ponta (16 out, Electron rodando as funções do app): ligar → timer ativo e código na
   caixa → admin vê a pessoa, saúde, WhatsApp e 200 linhas de registro → desligar → a chave do admin passa a
   ser recusada e o timer/arquivos somem.
+
+## Mapa de variantes: meu-bot e meu-bot-admin (16 out 2026)
+
+Um código, dois apps. O que muda por variante mora em lugares conhecidos; o resto é comum. Pergunta que o
+mapa responde ao abrir um arquivo: isto é admin, cliente ou dos dois?
+
+| Onde | Variante | O quê |
+|---|---|---|
+| `src/main/variant-core.ts` | comum (puro) | `resolveVariant` (variant.json / `MEU_BOT_VARIANT`) e `capsFor` → `Capabilities` (`chat`, `pair`, `login`, `manageWa`, `tunnel`, `install`, `supportClient`, `supportAdmin`). Testado. |
+| `src/main/variant.ts` | comum | `appVariant()`, `caps()`, `isAdmin()`, `appTitle()`: só a leitura do arquivo e o cache. `isAdmin()` não aparece em mais nenhum lugar do main. |
+| `src/main/ipc-policy.ts` | comum (puro) | `SHARED_CHANNELS`, `CLIENT_CHANNELS`, `ADMIN_CHANNELS`: todo canal IPC está em exatamente uma lista. Testado contra os quatro preloads. |
+| `src/main/ipc/registry.ts` | comum | `handleShared` / `handleClient` / `handleAdmin` / `onShared`, tipados pelas listas: canal sem lista não compila. No admin, canal de cliente vira stub que recusa; no cliente, canal de admin recusa. Registro duplicado acusa na subida. |
+| `src/main/ipc/{context,shared,client,index}.ts` | comum e cliente | helpers de origem (`hostFromEvent`, `ownedConversation`); handlers comuns (leituras, configurações, memória, menu do WhatsApp, terminal); handlers só do cliente (chat, parear, logins, instalar, suporte lado da pessoa). `registerIpc(deps)` registra os três grupos. |
+| `src/main/admin/` | admin | `ipc.ts` (`admin:*`), `picker-source.ts` (seletor de pessoas), `support-admin.ts`. Só `main.ts`, `ipc/index.ts` e `picker.ts` importam daqui. |
+| `src/main/client/support.ts` | cliente | suporte do lado da pessoa. |
+| `src/main/picker.ts` | comum | `initPicker(source: PickerSource)`; `clientPickerSource` mora aqui; os canais comuns do seletor também. |
+| `src/main/wa-menu.ts` | comum (puro) | itens do menu "…" do WhatsApp por capacidade. Testado. |
+| `src/renderer/renderer.ts` | comum | `caps` (de `window:info`) no lugar de "é admin?": `caps.chat`, `caps.login`, `caps.install`, `caps.supportClient`; o arranque do admin chama `mountSuportePage`. |
+| `src/renderer/admin/` | admin | `suporte-page.ts` (fábrica com dependências explícitas, como `snake.ts`), `picker-chrome.ts` (seletor de pessoas). |
+| `src/renderer/lib/admin-view.ts` | admin (puro) | textos e linhas da página Suporte e do seletor. Testado. |
+| `src/renderer/admin.css` | admin | `body.admin-mode`, `body.admin`, `.admin-*`; linkado em `index.html` e `picker.html`, copiado no `build:renderer`. |
+| `src/shared/ipc.ts` | tipos | `MeuBotApi = MeuBotSharedApi & MeuBotClientApi & MeuBotAdminApi` (idem `PickerApi`); os preloads expõem `sharedApi`, `clientApi` e `adminApi` num só objeto. |
+
+Regras:
+
+- Arquivo exclusivo de uma variante começa o cabeçalho com `Variante: admin` ou `Variante: cliente`.
+- Canal IPC novo: entra numa lista de `ipc-policy.ts`, no grupo certo do preload (`sharedApi`/`clientApi`/
+  `adminApi`) e na interface `*Api` correspondente. O teste `scripts/tests/ipc-policy.test.mjs` confere que
+  todo canal dos preloads tem política, que cada grupo do preload só usa canais da própria lista e que o que
+  escreve na máquina da pessoa é só do cliente.
+- `src/shared/` fica só com tipos: o `build:renderer` sobrescreve `dist/shared/ipc.js` com ESM, e o main
+  (CJS) quebraria se houvesse valor lá. Lógica pura comum vive em `src/main/*-core.ts` ou
+  `src/renderer/lib/`.
+- `admin/` pode importar do resto; o resto não importa de `admin/` (só os pontos de composição acima).
+- No renderer, decidir por capacidade (`caps.x`), nunca por variante: uma terceira variante um dia não exige
+  novos `if`.
+- Dev: `npm run dev` (cliente) e `MEU_BOT_VARIANT=admin npm run dev` (admin). Com o app instalado aberto, a
+  trava de instância única (pelo userData) faz um dev sair calado; para testar ao lado dele:
+  `./node_modules/.bin/electron . --user-data-dir=<pasta> --remote-debugging-port=9333` e `curl
+  127.0.0.1:9333/json` lista as janelas.
 
 ## Terminal na aba (16 out 2026)
 
