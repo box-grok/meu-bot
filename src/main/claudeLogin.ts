@@ -107,7 +107,7 @@ export function startClaudeLogin(host: string, send: (ev: ClaudeLoginEvent) => v
       }
       if (/paste code here/i.test(buf) && urlSent) { send({ kind: "waiting-code" }); buf = buf.replace(/paste code here[^\n]*/gi, ""); }
       const lines = buf.split("\n"); buf = lines.pop() ?? "";
-      for (const line of lines) { const t = line.trim(); if (t !== "" && !URL_RE.test(t) && !/opening browser|if the browser didn't open/i.test(t)) send({ kind: "log", text: t }); }
+      for (const line of lines) { const t = line.trim(); if (t !== "" && !URL_RE.test(t) && !/opening browser|if the browser didn't open|^Connection to .+ closed/i.test(t)) send({ kind: "log", text: t }); }
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);

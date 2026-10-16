@@ -119,3 +119,9 @@ test("parseSupportProgress: `app` opcional (versão e abertura); inválido some,
   assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0; rm -rf", openedAt: "2026-10-16T11:00:00Z" } }), false);
   assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "ontem" } }), false);
 });
+
+test("removeDeliverySh: entrega o off uma última vez, derruba timer e cron, apaga a pasta", () => {
+  const sh = m.removeDeliverySh("116367d39cee", "MBS1.abc");
+  assert.ok(sh.includes("printf '%s\\n%s\\n' '116367d39cee' 'MBS1.abc'"), sh);
+  assert.ok(sh.includes("systemctl --user disable --now meu-bot-suporte.timer") && sh.includes("grep -v meu-bot-suporte") && sh.includes(`rm -rf "${m.SUPPORT_DIR}"`));
+});

@@ -10,9 +10,10 @@ import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
 import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import { SHARE_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
+import { xaiAuthInfo } from "../xaiLogin";
 import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
@@ -149,12 +150,13 @@ async function readShare(host: string): Promise<SupportShare> {
 /** Saúde da máquina da pessoa: a sondagem do seletor + (se ela deixa) o WhatsApp e o progresso nos tutoriais. */
 export async function adminHealth(host: string): Promise<AdminHealth> {
   const share = await readShare(host);
-  const [probe, wa, progress] = await Promise.all([
+  const [probe, wa, progress, xai] = await Promise.all([
     probeHost(host, getBackendPort()),
     share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
     share.progress ? readProgress(host) : Promise.resolve(null),
+    xaiAuthInfo(host).catch(() => null),
   ]);
-  return { probe, whatsapp: wa, progress, share };
+  return { probe, whatsapp: wa, progress, share, xai };
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
@@ -206,11 +208,30 @@ const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
   "restart-backend": { what: "reiniciou o backend do meu-bot", sh: "systemctl --user restart meu-bot-backend 2>&1" },
   transcription: { what: "ativou a transcrição de áudio", sh: "" },
   "transcription-off": { what: "desativou a transcrição de áudio", sh: "" },
+  "support-off": { what: "desligou o suporte", sh: "" },
 };
+
+/**
+ * Só o admin desliga o suporte (a pessoa não tem interruptor): na máquina dela, o mesmo script do antigo
+ * "desligar" (tira a chave do admin do authorized_keys, entrega "off" na caixa, apaga timer e pasta) e, aqui,
+ * a pessoa fica "off" (sai do ~/.ssh/meu-bot-suporte.conf). Ela volta se salvar o nome de novo no tutorial.
+ */
+async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: string }> {
+  const m = load();
+  const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
+  if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
+  const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
+  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off.hostKey), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\n`, 60_000);
+  if (r.code !== 0) return { ok: false, detail: (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou" };
+  entry.code = off; save(m); writeSshFiles(m);
+  log(`[suporte] ${host}: suporte desligado pelo admin`);
+  return { ok: true, detail: "o acesso a esta máquina acabou; a janela pode ser fechada" };
+}
 
 /** Ação de suporte: roda na máquina da pessoa e fica no registro que ela vê. */
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
+  if (action === "support-off") return turnSupportOff(host);
   // No registro que a pessoa vê, quem fez é "admin" (sem o nome de quem dá o suporte).
   const who = "admin";
   if (action === "transcription" || action === "transcription-off") {

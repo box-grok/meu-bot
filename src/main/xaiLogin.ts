@@ -69,7 +69,7 @@ export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void
         }
       }
       const lines = buf.split("\n"); buf = lines.pop() ?? "";
-      for (const line of lines) { const t = line.trim(); if (t !== "" && !URL_RE.test(t) && !/^\d\.\s|To continue:|If prompted/i.test(t)) send({ kind: "log", text: t }); }
+      for (const line of lines) { const t = line.trim(); if (t !== "" && !URL_RE.test(t) && !/^\d\.\s|To continue:|If prompted|^Connection to .+ closed/i.test(t)) send({ kind: "log", text: t }); }
     };
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);

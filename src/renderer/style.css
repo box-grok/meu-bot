@@ -664,3 +664,28 @@ body.topbar-hidden .topbar { display: none; }
 /* Atualização automática: faixa fina acima da barra do topo. */
 .update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px; font-size: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-bottom: 1px solid var(--line); }
 .update-bar[hidden] { display: none; }
+
+/* Login da xAI e do Claude como passo a passo (lib/login-steps.ts): bolinha por estado, código em destaque,
+   detalhes técnicos recolhidos. O mesmo desenho no modal e no tutorial. */
+.login-steps-box { display: flex; flex-direction: column; gap: 10px; }
+.login-steps-box[hidden] { display: none; }
+.login-steps { list-style: none; margin: 0; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); font-size: 13px; }
+.login-step { display: flex; align-items: baseline; gap: 10px; color: var(--muted); }
+.login-step .ls-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--line); transform: translateY(1px); }
+.login-step.active { color: var(--fg); }
+.login-step.active .ls-dot { background: var(--accent); animation: wa-pulse 1.6s ease-in-out infinite; }
+.login-step.done .ls-dot { background: var(--ok); }
+.login-step.done .ls-title::after { content: " ✓"; color: var(--ok); }
+.login-step.bad { color: var(--fg); }
+.login-step.bad .ls-dot { background: var(--bad); }
+.login-step .ls-detail { font-size: 12px; color: var(--muted); }
+.login-code { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border: 1px dashed var(--accent); border-radius: 10px; background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+.login-code .lc-label { font-size: 12px; color: var(--muted); }
+.login-code .lc-value { font: 600 20px/1 var(--mono); letter-spacing: 2px; color: var(--fg); flex: 1; }
+.login-details { font-size: 12px; }
+.login-details > summary { cursor: pointer; color: var(--muted); list-style: none; }
+.login-details > summary::-webkit-details-marker { display: none; }
+.login-details > summary::before { content: "▸ "; }
+.login-details[open] > summary::before { content: "▾ "; }
+.login-details pre { margin: 6px 0 0; max-height: 120px; overflow: auto; font: 11px/1.4 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .login-step.active .ls-dot { animation: none; } }

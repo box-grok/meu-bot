@@ -116,21 +116,15 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "suporte",
     title: "Ligar o suporte",
     short: "Suporte",
-    summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você liga, desliga e vê tudo o que ele fizer.",
+    summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você escolhe o que ele vê e acompanha tudo o que ele fizer; só o admin desliga.",
     minutes: 1,
     icon: "target",
     requires: "support",
-    reset: { what: "desliga o acesso do admin a esta máquina e esquece o seu nome" },
     steps: [
       {
         id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
-        text: "Como você prefere ser chamado.",
-        done: (_st, _f, c) => (c.support?.name ?? "") !== "",
-      },
-      {
-        id: "permitir", title: "Permitir o acesso do admin", target: "none", body: "support-switch",
-        text: "Já vem marcado: ao salvar seu nome, a máquina passa a aceitar o admin. Ligado, ele consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece no passo seguinte. Você desliga quando quiser.",
-        done: (_st, _f, c) => c.support?.on === true,
+        text: "Como você prefere ser chamado. Ao salvar, o admin passa a poder entrar nesta máquina para ver a saúde, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece no passo seguinte.",
+        done: (_st, _f, c) => (c.support?.name ?? "") !== "" && c.support?.on === true,
       },
       {
         id: "entrega", title: "O que o admin recebe", target: "none", body: "support-delivery",

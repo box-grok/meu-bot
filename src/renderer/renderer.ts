@@ -4,6 +4,7 @@ import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
+import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
@@ -1019,12 +1020,45 @@ const xaiLineBtn = $<HTMLButtonElement>("xai-line-btn");
 const xaiDialog = $<HTMLDialogElement>("xai-dialog");
 const xaiStatus = $<HTMLParagraphElement>("xai-status");
 const xaiOpen = $<HTMLButtonElement>("xai-open");
-const xaiLog = $<HTMLPreElement>("xai-log");
+const xaiSteps = $<HTMLElement>("xai-steps");
 const xaiStart = $<HTMLButtonElement>("xai-start");
 const xaiClose = $<HTMLButtonElement>("xai-close");
 let xaiAuth: ClaudeAuthInfo | null = null;
 let xaiRunning = false;
 let xaiUrl: string | null = null;
+let xaiEvents: ClaudeLoginEvent[] = [];
+
+/** Desenha um LoginView (lib/login-steps.ts): passos com estado, código do dispositivo em destaque, detalhes técnicos recolhidos. */
+function paintLoginSteps(box: HTMLElement, view: LoginView, show: boolean): void {
+  box.hidden = !show;
+  box.replaceChildren();
+  if (!show) return;
+  const ol = el("ol", "login-steps");
+  for (const st of view.steps) {
+    const li = el("li", `login-step ${st.state}`);
+    li.append(el("span", "ls-dot"), el("span", "ls-title", st.title));
+    if (st.detail !== null) li.append(el("span", "ls-detail", st.detail));
+    ol.append(li);
+  }
+  box.append(ol);
+  if (view.code !== null) {
+    const chip = el("div", "login-code");
+    const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
+    copy.addEventListener("click", () => { void navigator.clipboard.writeText(view.code ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+    chip.append(el("span", "lc-label", "Código do dispositivo"), el("span", "lc-value", view.code), copy);
+    box.append(chip);
+  }
+  if (view.details.length > 0) {
+    const d = el("details", "login-details"); d.append(el("summary", "", "detalhes técnicos"), el("pre", "", view.details.slice(-12).join("\n")));
+    box.append(d);
+  }
+}
+const loginViewOf = (provider: LoginProvider, events: readonly ClaudeLoginEvent[], running: boolean): LoginView => loginView(provider, events, { machine: hostLabel(windowHost), running });
+function paintXaiLogin(): void {
+  const view = loginViewOf("xai", xaiEvents, xaiRunning);
+  if (xaiEvents.length > 0 || xaiRunning) xaiStatus.textContent = view.headline;
+  paintLoginSteps(xaiSteps, view, xaiEvents.length > 0 || xaiRunning);
+}
 
 function paintXaiLine(): void {
   if (xaiAuth === null) {
@@ -1048,7 +1082,8 @@ async function refreshXaiLine(): Promise<void> {
   paintXaiLine();
 }
 function openXai(): void {
-  xaiLog.hidden = true; xaiLog.textContent = ""; xaiOpen.hidden = true;
+  if (!xaiRunning) xaiEvents = [];
+  paintXaiLogin(); xaiOpen.hidden = true;
   xaiStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
   xaiStart.hidden = xaiRunning; xaiStart.textContent = "Começar"; xaiClose.textContent = xaiRunning ? "Cancelar" : "Fechar";
   if (!xaiDialog.open) xaiDialog.showModal();
@@ -1056,7 +1091,7 @@ function openXai(): void {
 /** Máquina sem Hermes: instala Hermes + proxy da xAI (como no grokbot) e segue para o login OAuth. */
 async function prepareAndLoginXai(): Promise<void> {
   if (xaiRunning) return;
-  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
+  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiEvents = []; paintLoginSteps(xaiSteps, loginViewOf("xai", [], false), false);
   xaiStatus.textContent = `Preparando o Grok por OAuth em ${hostLabel(windowHost)} (Hermes + proxy local; na primeira vez baixa o Hermes)…`;
   try {
     const r = await window.meuBot.xaiPrepare();
@@ -1070,19 +1105,18 @@ async function prepareAndLoginXai(): Promise<void> {
 }
 async function runXaiLogin(): Promise<void> {
   if (xaiRunning) return;
-  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
-  xaiStatus.textContent = "Pedindo o login OAuth da xAI à máquina…";
+  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiEvents = []; paintXaiLogin();
   try { await window.meuBot.xaiLogin(); } catch (err) { xaiStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
-  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
+  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; paintXaiLogin(); }
 }
 window.meuBot.on("xai-login:event", (ev: ClaudeLoginEvent) => {
-  const appendLog = (t: string): void => { xaiLog.hidden = false; xaiLog.textContent = `${xaiLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); };
+  xaiEvents = [...xaiEvents, ev].slice(-60);
+  paintXaiLogin();
   switch (ev.kind) {
-    case "url": xaiUrl = ev.url; xaiOpen.hidden = false; xaiStatus.textContent = "Abri o link no navegador. Entre na conta da xAI e aprove o dispositivo; esperando a aprovação…"; break;
+    case "url": xaiUrl = ev.url; xaiOpen.hidden = false; break;
     case "waiting-code": break;
-    case "log": appendLog(ev.text); break;
+    case "log": break;
     case "done":
-      xaiStatus.textContent = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
       xaiStart.hidden = ev.ok; xaiStart.textContent = "Tentar de novo";
       if (ev.ok) {
         // Verde na hora, com o rótulo que veio no texto; a consulta de confirmação roda em segundo plano.
@@ -1403,7 +1437,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       } else if (step.body === "statusline-test") {
         renderStatusLineTest(txt);
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
-        renderSupportParts(txt, step.body === "support-name" ? ["name"] : step.body === "support-switch" ? ["switch"] : ["share", "delivery", "log"]);
+        renderSupportParts(txt, step.body === "support-name" ? ["name"] : ["share", "delivery", "log"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
@@ -1451,7 +1485,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     } else if (t.id === "suporte") {
       const manage = el("div", "guide-manage");
       manage.append(el("p", "hint strong-hint", "Suporte nesta máquina"));
-      renderSupportParts(manage, ["name", "switch", "delivery", "log"]);
+      renderSupportParts(manage, ["name", "share", "delivery", "log"]);
       panel.append(manage);
     }
   }
@@ -2919,8 +2953,6 @@ let supportBusy = false;
 let supportMsg: { text: string; bad: boolean } | null = null;
 /** Código de suporte revelado (plano B; some ao fechar as Configurações ou esconder). */
 let supportCodeShown: string | null = null;
-/** Interruptor "Permitir o acesso do admin" já marcado antes de ligar: ao salvar o nome, liga junto. */
-let supportWantOn = true;
 let supportPoll: number | null = null;
 /** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
 let statusLineState: boolean | null = null;
@@ -3038,7 +3070,7 @@ async function supportDo(run: () => Promise<SupportInfo>, ok: string | null): Pr
   finally { supportBusy = false; repaintSupport(); }
 }
 
-type SupportPart = "name" | "switch" | "share" | "delivery" | "log";
+type SupportPart = "name" | "share" | "delivery" | "log";
 function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[]): void {
   const s = supportState;
   if (s === null || !s.available) return;
@@ -3047,28 +3079,12 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name; name.maxLength = 40;
     name.disabled = supportBusy;
     const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
-    // Ligado: regrava o aviso com o nome novo (o admin vê o nome que vai no código). Desligado com o
-    // interruptor marcado (o padrão): salvar o nome liga o suporte no mesmo clique.
-    save.addEventListener("click", () => {
-      const turnOn = s.on || supportWantOn;
-      void supportDo(() => (turnOn ? window.meuBot.setSupport(true, name.value) : window.meuBot.setSupportName(name.value)), turnOn && !s.on ? "Suporte ligado. Avisando o admin…" : null);
-    });
+    // Salvar o nome liga o suporte (ligado, só regrava o aviso com o nome novo). Não há interruptor para a pessoa
+    // desligar: quem desliga é o admin, pela página Suporte.
+    save.addEventListener("click", () => { void supportDo(() => window.meuBot.setSupport(true, name.value), s.on ? null : "Suporte ligado. Avisando o admin…"); });
     name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
     row.append(name, save);
     container.append(row);
-  }
-  if (parts.includes("switch")) {
-    const sw = el("label", "switch switch-row");
-    const box = el("input"); box.type = "checkbox"; box.checked = s.on || supportWantOn; box.disabled = supportBusy;
-    sw.append(box, el("span", "track"), el("span", "switch-label", supportBusy ? "aplicando…" : "Permitir o acesso do admin"));
-    box.addEventListener("change", () => {
-      const on = box.checked;
-      // Sem nome ainda não dá para ligar (o admin precisa saber quem é): só guarda a vontade; "Salvar nome" liga.
-      if (!s.on && s.name === "") { supportWantOn = on; repaintSupport(); return; }
-      void supportDo(() => window.meuBot.setSupport(on, s.name), on ? "Suporte ligado. Avisando o admin…" : "Suporte desligado. O acesso saiu desta máquina.");
-    });
-    container.append(sw);
-    if (!s.on && s.name === "" && supportWantOn) container.append(el("p", "hint", "Já vem marcado: ao salvar seu nome, o suporte liga."));
   }
   if (parts.includes("share") && s.on) {
     container.append(el("p", "hint strong-hint", "O que o app do admin pode ver"));

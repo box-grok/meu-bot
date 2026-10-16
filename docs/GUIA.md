@@ -1184,6 +1184,20 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   progresso não compartilhados; `adminLogs` recusa; a lateral do admin só mostra o WhatsApp se a saúde o
   trouxer). Limite dito na tela: enquanto o suporte está ligado, o admin ainda entra por SSH; desligar o
   interruptor corta tudo.
+- Só o admin desliga (16 out, pedido do usuário): o interruptor "Permitir o acesso do admin" saiu do tutorial da
+  pessoa; "Salvar nome" liga o suporte (o passo "Dizer seu nome" conclui com o nome gravado e o suporte ligado) e
+  não há como ela desligar pelo app (nem "Refazer do zero" nesse tutorial). Quem desliga é o admin, pela ação
+  "Desligar o suporte desta pessoa" (`AdminAction "support-off"`, `turnSupportOff`): roda na máquina dela o
+  mesmo script do antigo desligar (tira a chave, entrega "off" na caixa, apaga timer e pasta;
+  `removeDeliverySh` agora é puro em support-code.ts), marca a pessoa "off" e a tira do conf. Caso de uso:
+  deixou de pagar. Ela volta se salvar o nome de novo; aí o admin arquiva ou desliga outra vez.
+- Login da xAI como passo a passo (16 out): `src/renderer/lib/login-steps.ts` (puro, testado com a sequência
+  real) transforma os eventos url/log/done em quatro passos com estado (conectar, pedir, aprovar no navegador,
+  guardar a credencial), código do dispositivo em destaque com Copiar, e o que sobrar em "detalhes técnicos"
+  recolhido; o main já não repassa "Connection to … closed". O mesmo componente está pronto para o login do
+  Claude (passos conectar, link, código, conferir), a ligar quando o bloco de login do tutorial estabilizar.
+- xAI na saúde do admin (16 out): `AdminHealth.xai` (via `xaiAuthInfo`): "xAI (Grok) logada (e-mail)",
+  "deslogada: o grok-4 não responde" ou "sem Hermes nesta máquina".
 - Versão e atividade dela no admin (16 out): o progresso que o meu-bot dela grava leva `app: { version,
   openedAt }` (versão do app e quando a sessão abriu; `WindowInfo.version`). A saúde mostra "meu-bot X no Mac
   dela · aberto há N" e acusa em vermelho quando está atrás da versão do admin (`compareVersions`): ela ainda

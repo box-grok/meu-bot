@@ -62,11 +62,13 @@ test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui q
   assert.ok(!visibleTutorials(s({ available: false })).includes(sup));
   assert.ok(visibleTutorials(s({})).includes(sup));
   const wa0 = wa();
+  // Dois passos: "Dizer seu nome" (salvar liga; só o admin desliga) e "O que o admin recebe" (conclui com a entrega).
+  assert.equal(sup.steps.length, 2);
   assert.equal(guideView(sup, wa0, emptyFlags(), s({})).current, 0);
-  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia" })).current, 1);
-  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true })).current, 2, "ligado, falta a entrega");
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia" })).current, 0, "nome sem suporte ligado ainda é o passo 1");
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true })).current, 1, "ligado, falta a entrega");
   assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true, deliveredAt: "2026-10-16T12:00:00Z" })).finished, true);
-  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: false, deliveredAt: "2026-10-16T12:00:00Z" })).current, 1, "desligado volta");
+  assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: false, deliveredAt: "2026-10-16T12:00:00Z" })).current, 0, "desligado pelo admin volta ao começo");
   for (const st of sup.steps) assert.doesNotMatch(`${st.title} ${st.text}`, /Lucas|\{admin\}/, "sem o nome de quem dá o suporte");
 });
 

@@ -13,7 +13,7 @@ import type { SupportInfo, SupportShare } from "../../shared/ipc";
 import { LOCAL_HOST } from "../localBackend";
 import { isValidHost } from "../settings";
 import { log } from "../backend";
-import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
+import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_DIR, SUPPORT_LOG, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh } from "../whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
@@ -63,7 +63,7 @@ function saveSupportName(name: string): void {
 }
 
 const LOG = SUPPORT_LOG;
-const D = "$HOME/.local/share/meu-bot/suporte";
+const D = SUPPORT_DIR;
 
 /** Como o Mac dela chega na máquina (o que o ssh dela resolve para o alias), para o admin chegar igual. */
 function resolveSsh(host: string): Promise<{ hostname: string; user: string; port: number }> {
@@ -120,18 +120,6 @@ else
   ( crontab -l 2>/dev/null | grep -v meu-bot-suporte; echo "*/30 * * * * \\$HOME/.local/share/meu-bot/suporte/entregar.sh >/dev/null 2>&1 # meu-bot-suporte" ) | crontab - || echo TIMER=0
 fi
 "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0
-`;
-}
-
-/** Script remoto ao desligar: entrega "desligado" uma última vez e apaga timer, chave e código. */
-function removeDeliverySh(id: string, offText: string): string {
-  return `umask 077
-if [ -x "${D}/entregar.sh" ]; then printf '%s\\n%s\\n' '${id}' '${offText}' > "${D}/codigo"; "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0; fi
-systemctl --user disable --now meu-bot-suporte.timer >/dev/null 2>&1 || true
-rm -f "$HOME/.config/systemd/user/meu-bot-suporte.service" "$HOME/.config/systemd/user/meu-bot-suporte.timer"
-systemctl --user daemon-reload >/dev/null 2>&1 || true
-( crontab -l 2>/dev/null | grep -v meu-bot-suporte ) | crontab - 2>/dev/null || true
-rm -rf "${D}"
 `;
 }
 

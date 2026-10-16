@@ -126,6 +126,19 @@ export const knownHostsLine = (c: SupportCode): string => `${supportAlias(c)} ${
 /** É um alias de pessoa do suporte (os `Host suporte-…` que o meu-bot-admin põe no ~/.ssh)? */
 export const isSupportAlias = (h: string): boolean => /^suporte-[a-z0-9-]+-[0-9a-f]{4}$/.test(h);
 
+/** Pasta do suporte na máquina dela: chave só de entrega, known_hosts da caixa, código e entregador. */
+export const SUPPORT_DIR = "$HOME/.local/share/meu-bot/suporte";
+/** Script remoto ao desligar: entrega "desligado" uma última vez e apaga timer, chave e código. */
+export function removeDeliverySh(id: string, offText: string): string {
+  return `umask 077
+if [ -x "${SUPPORT_DIR}/entregar.sh" ]; then printf '%s\\n%s\\n' '${id}' '${offText}' > "${SUPPORT_DIR}/codigo"; "${SUPPORT_DIR}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0; fi
+systemctl --user disable --now meu-bot-suporte.timer >/dev/null 2>&1 || true
+rm -f "$HOME/.config/systemd/user/meu-bot-suporte.service" "$HOME/.config/systemd/user/meu-bot-suporte.timer"
+systemctl --user daemon-reload >/dev/null 2>&1 || true
+( crontab -l 2>/dev/null | grep -v meu-bot-suporte ) | crontab - 2>/dev/null || true
+rm -rf "${SUPPORT_DIR}"
+`;
+}
 /** Registro de suporte na máquina da pessoa (ela vê nas Configurações; o admin anota as ações dele aqui). */
 export const SUPPORT_LOG = "$HOME/.local/share/meu-bot/suporte.log";
 /** Linha do registro de suporte: "2026-10-16T12:00:00Z|quem|o quê" (o texto é só letras, números e " .,:()-"). */

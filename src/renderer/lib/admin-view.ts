@@ -9,6 +9,7 @@ export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: 
   { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
   { id: "transcription-off", label: "Desativar a transcrição de áudio", confirm: "Confirmar? o agente dela deixa de entender áudios" },
+  { id: "support-off", label: "Desligar o suporte desta pessoa", confirm: "Confirmar? o seu acesso a esta máquina acaba agora" },
 ];
 
 /** Compara versões "a.b.c" (números); negativo = a é mais antiga. Partes que não são número contam como 0. */
@@ -36,6 +37,9 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
     { text: p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, ok: p.reachable },
     { text: p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", ok: p.backendListening },
     { text: p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado", ok: p.claudeLoggedIn },
+    h.xai === null ? { text: "xAI (Grok): sem Hermes nesta máquina", ok: null }
+      : h.xai.loggedIn ? { text: `xAI (Grok) logada${h.xai.email !== null ? ` (${h.xai.email})` : ""}`, ok: true }
+        : { text: "xAI (Grok) deslogada: o grok-4 não responde", ok: false },
     { text: p.statusLine ? "status line instalada" : "sem status line", ok: p.statusLine },
   );
   const wa = h.whatsapp;

@@ -294,7 +294,7 @@ export interface BotChat {
 }
 export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
-export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare }
+export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI no Hermes da máquina; null = sem Hermes. */ xai: ClaudeAuthInfo | null }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
 export interface SupportProgress {
   at: string;
@@ -303,7 +303,8 @@ export interface SupportProgress {
   /** O meu-bot dela: versão e quando esta sessão do app abriu (o admin vê se ela está atualizada e ativa). */
   app?: { version: string; openedAt: string };
 }
-export type AdminAction = "restart-gateway" | "restart-backend" | "transcription" | "transcription-off";
+/** Ações do admin na máquina da pessoa. "support-off" tira o próprio acesso (ex.: deixou de pagar); só o admin desliga. */
+export type AdminAction = "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off";
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
 export type VoiceReplyMode = "off" | "inbound" | "always";
