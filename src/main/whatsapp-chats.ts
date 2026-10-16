@@ -54,10 +54,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
     }
   }
   return [...byNumber.entries()]
-    .map(([number, v]) => ({
-      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys,
-      deletable: v.keys.some((k) => peerOfSessionKey(k) === number), updatedAt: new Date(v.updated).toISOString(),
-    }))
+    .map(([number, v]) => ({ number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, updatedAt: new Date(v.updated).toISOString() }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
@@ -148,14 +145,18 @@ export function whatsappContextNote(contact: string, number: string, messages: r
 export const ownSessionKeys = (number: string, keys: readonly string[]): string[] =>
   keys.filter((k) => peerOfSessionKey(k) === digits(number));
 
-/** Resultado do `openclaw sessions delete --json`: quais chaves não saíram (vazio = tudo apagado). */
-export function deleteFailures(out: string, keys: readonly string[]): string[] {
-  let r: unknown;
-  try { r = JSON.parse(out.slice(out.indexOf("{"))); } catch { return [...keys]; }
-  if (!isObj(r)) return [...keys];
-  const results = Array.isArray(r.results) ? r.results.filter(isObj) : [];
-  const ok = new Set(results.filter((x) => x.ok === true && typeof x.key === "string").map((x) => x.key as string));
-  return r.ok === true && results.length === 0 ? [] : keys.filter((k) => !ok.has(k));
+/**
+ * Saída do script de limpeza: uma linha `R<TAB>chave<TAB>json` por `gateway call sessions.reset`.
+ * Devolve as chaves que não voltaram com `ok: true` (vazio = todas limpas).
+ */
+export function resetFailures(out: string, keys: readonly string[]): string[] {
+  const ok = new Set<string>();
+  for (const line of out.split("\n")) {
+    const parts = line.split("\t");
+    if (parts[0] !== "R" || parts.length < 3) continue;
+    try { const r = JSON.parse(parts.slice(2).join("\t")) as unknown; if (isObj(r) && r.ok === true) ok.add(parts[1]!); } catch { /* falhou */ }
+  }
+  return keys.filter((k) => !ok.has(k));
 }
 
 /** Markdown legível da conversa inteira do WhatsApp (exportar). */

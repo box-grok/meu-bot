@@ -193,8 +193,6 @@ export interface WhatsappChat {
   isSelf: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
-  /** Tem sessão só dele (por contato), que dá para apagar na máquina sem tocar nos outros contatos. */
-  deletable: boolean;
   /** ISO da atividade mais recente. */
   updatedAt: string;
 }
@@ -202,7 +200,11 @@ export interface WhatsappChat {
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
 /** De onde veio uma conversa do meu-bot criada a partir do WhatsApp: contato, quantas mensagens e até quando. */
-export interface WhatsappOrigin { number: string; name: string; count: number; until: string }
+export interface WhatsappOrigin {
+  number: string; name: string; count: number; until: string;
+  /** As mensagens trazidas, para a aba mostrar a conversa do WhatsApp antes da conversa com o meu-bot. */
+  messages?: WhatsappThreadMessage[];
+}
 /** O que o app oferece: "self" = só você (allowlist + selfChatMode); "open" = todo mundo (open + allowFrom *). */
 export type WhatsappReplyChoice = "self" | "open";
 
@@ -355,7 +357,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "hide" | "unhide" | "delete";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "hide" | "unhide" | "clear";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "archive" | "unarchive" | "close" | "delete";
 export type ExportFormat = "md" | "json";
 
@@ -444,14 +446,14 @@ export interface MeuBotApi {
   whatsappChats(): Promise<WhatsappChat[]>;
   /** Histórico de um contato (número só com dígitos). Só leitura. */
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
-  /** Conversa nova do meu-bot com o trecho do WhatsApp até a mensagem `upTo` (hora ISO; null = tudo). */
-  whatsappBranch(number: string, upTo: string | null): Promise<StoredConversationView>;
+  /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
+  whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { deletable: boolean; hidden: boolean }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { hidden: boolean }): Promise<WhatsappMenuAction | null>;
   /** Salva a conversa toda num arquivo; null = cancelado. */
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
-  /** Apaga na máquina as sessões só deste contato (pede confirmação); false = cancelado. */
-  deleteWhatsapp(number: string): Promise<boolean>;
+  /** Limpa na máquina o histórico do agente com este contato (pede confirmação); false = cancelado. */
+  clearWhatsapp(number: string): Promise<boolean>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
   claudeLogin(): Promise<void>;
   /** Código colado pela pessoa; false se não há login em andamento. */

@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
-import { chatsFromSessions, deleteFailures, ownSessionKeys, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { chatsFromSessions, ownSessionKeys, resetFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
@@ -380,17 +380,17 @@ export async function whatsappThread(host: string, number: string): Promise<What
 }
 
 /**
- * "Ramificar daqui" no espelho: conversa nova do meu-bot nesta máquina com o trecho do WhatsApp até `upTo`
- * (inclusive). Relê o histórico aqui (a fonte é o gateway, não o que o renderer mostrou).
+ * "Conversar com o meu-bot" (menu "…"): conversa nova do meu-bot nesta máquina com a conversa do WhatsApp
+ * como contexto. Relê o histórico aqui (a fonte é o gateway, não o que o renderer mostrou).
  */
-export async function whatsappBranch(host: string, number: string, upTo: string | null): Promise<StoredConversation> {
+export async function whatsappBranch(host: string, number: string): Promise<StoredConversation> {
   const want = number.replace(/\D/g, "");
-  const all = await whatsappThread(host, want);
-  const msgs = upTo === null ? all : all.filter((m) => m.at <= upTo);
+  const msgs = await whatsappThread(host, want);
   if (msgs.length === 0) throw new Error("não há mensagens para levar");
   const name = namesOf(host).get(want) ?? `+${want}`;
   const ctx = whatsappContextNote(name, want, msgs);
-  return createFromWhatsapp(host, { number: want, name, count: ctx.count, until: msgs.at(-1)!.at }, ctx.note);
+  log(`whatsapp: conversa nova do meu-bot com ${ctx.count} mensagens de +${want} em ${host}`);
+  return createFromWhatsapp(host, { number: want, name, count: ctx.count, until: msgs.at(-1)!.at, messages: msgs.slice(msgs.length - ctx.count) }, ctx.note);
 }
 
 
@@ -406,20 +406,29 @@ export async function whatsappExportBody(host: string, number: string, format: "
   return { name, body };
 }
 
-/**
- * Apaga na máquina as sessões só deste contato (`openclaw sessions delete`, com arquivamento do OpenClaw)
- * e as memórias tiradas delas. A sessão principal, compartilhada com os outros contatos, nunca é tocada.
- */
-export async function whatsappDeleteChat(host: string, number: string): Promise<void> {
+/** O que "Limpar histórico" vai zerar: sessões só do contato e, se houver, a principal (de todos). */
+export async function whatsappClearPlan(host: string, number: string): Promise<{ own: string[]; shared: string[] }> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const want = number.replace(/\D/g, "");
-  const chat = (await whatsappChats(host)).find((c) => c.number === want);
-  const keys = ownSessionKeys(want, chat?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
-  if (keys.length === 0) throw new Error("esta conversa está só na sessão principal do agente, junto com outros contatos; dá para tirar só da lista");
-  const quoted = keys.map((k) => `'${k}'`).join(" ");
-  const forget = keys.map((k) => `timeout 60 openclaw memory forget --agent '${k.split(":")[1]}' --session '${k}' >/dev/null 2>&1 || true`).join("\n");
-  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\ntimeout 60 openclaw sessions delete ${quoted} --yes --json 2>/dev/null\n${forget}\n`, 150_000);
-  const failed = deleteFailures(r.stdout, keys);
-  if (failed.length > 0) throw new Error(`o OpenClaw não apagou ${failed.length === keys.length ? "a conversa" : `${failed.length} de ${keys.length} sessões`}`);
-  log(`whatsapp: apagadas ${keys.length} sessão(ões) de +${want} em ${host}`);
+  const keys = ((await whatsappChats(host)).find((c) => c.number === want)?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
+  const own = ownSessionKeys(want, keys);
+  return { own, shared: keys.filter((k) => !own.includes(k)) };
+}
+
+/**
+ * Zera as sessões com `gateway call sessions.reset` (o mesmo "/reset" do OpenClaw: sessão nova, o
+ * transcript antigo vai para o arquivo dele) e esquece as memórias tiradas delas.
+ */
+export async function whatsappClearSessions(host: string, keys: readonly string[]): Promise<void> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  const safe = keys.filter((k) => SAFE_KEY.test(k));
+  if (safe.length === 0) throw new Error("não há histórico desta conversa na máquina");
+  const lines = safe.map((k) => [
+    `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.reset --json --params '{"key":"${k}","reason":"reset"}' 2>/dev/null | tr -d '\n'; echo`,
+    `timeout 60 openclaw memory forget --agent '${k.split(":")[1]}' --session '${k}' >/dev/null 2>&1 || true`,
+  ].join("\n")).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 180_000);
+  const failed = resetFailures(r.stdout, safe);
+  if (failed.length > 0) throw new Error(`o OpenClaw não limpou ${failed.length === safe.length ? "o histórico" : `${failed.length} de ${safe.length} sessões`}`);
+  log(`whatsapp: histórico limpo em ${host}: ${safe.join(", ")}`);
 }

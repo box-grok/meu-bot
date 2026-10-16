@@ -6,7 +6,7 @@ import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappChats, whatsappBranch, whatsappDeleteChat, whatsappExportBody, whatsappStatus, whatsappThread } from "./whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappChats, whatsappBranch, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappStatus, whatsappThread } from "./whatsapp";
 import { cancelClaudeLogin, claudeAuthInfo, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "./claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiAuthInfo, xaiLogout } from "./xaiLogin";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
@@ -139,22 +139,20 @@ function registerIpc(): void {
     if (typeof number !== "string") throw new Error("número inválido");
     return whatsappThread(h.host, number);
   });
-  ipcMain.handle("whatsapp:branch", (event, payload: unknown) => {
-    const h = hostFromEvent(event);
-    if (h === null) throw new Error("origem inválida");
-    const p = payload as { number?: unknown; upTo?: unknown } | null;
-    if (typeof p?.number !== "string" || (p.upTo !== null && typeof p.upTo !== "string")) throw new Error("pedido inválido");
-    return whatsappBranch(h.host, p.number, p.upTo);
-  });
   const waNumber = (payload: unknown): string => {
     const n = (payload as { number?: unknown } | null)?.number;
     if (typeof n !== "string" || !/^\+?\d{8,15}$/.test(n)) throw new Error("número inválido");
     return n.replace(/\D/g, "");
   };
+  ipcMain.handle("whatsapp:branch", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappBranch(h.host, waNumber(payload));
+  });
   ipcMain.handle("ui:wa-menu", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) return null;
-    const state = (payload as { state?: { deletable?: unknown; hidden?: unknown } } | null)?.state ?? {};
+    const state = (payload as { state?: { hidden?: unknown } } | null)?.state ?? {};
     return new Promise<WhatsappMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
@@ -165,9 +163,7 @@ function registerIpc(): void {
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
         { type: "separator" },
         state.hidden === true ? item("Voltar para a lista", "unhide") : item("Remover da lista", "hide"),
-        state.deletable === true
-          ? item("Apagar na máquina…", "delete")
-          : { label: "Apagar na máquina (está na sessão principal)", enabled: false },
+        item("Limpar histórico…", "clear"),
       ]);
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
@@ -188,18 +184,22 @@ function registerIpc(): void {
     fs.writeFileSync(result.filePath, body, { mode: 0o600 });
     return { path: result.filePath };
   });
-  ipcMain.handle("whatsapp:delete", async (event, payload: unknown) => {
+  ipcMain.handle("whatsapp:clear", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    const number = waNumber(payload);
+    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
+    if (own.length + shared.length === 0) throw new Error("não há histórico desta conversa na máquina");
+    // A sessão principal não se separa por contato: limpar zera ela inteira, e isso precisa estar dito.
     const { response } = await dialog.showMessageBox(h.win, {
       type: "warning",
-      message: "Apagar esta conversa na máquina?",
-      detail: "O histórico e a memória do agente com este contato são apagados no OpenClaw. Se a pessoa escrever de novo, o agente começa do zero. Exporte antes se quiser guardar.",
-      buttons: ["Apagar", "Cancelar"], defaultId: 1, cancelId: 1,
+      message: shared.length === 0 ? "Limpar o histórico desta conversa?" : "Limpar também a sessão principal do agente?",
+      detail: shared.length === 0
+        ? "O agente esquece tudo o que conversou com este contato. Se a pessoa escrever de novo, ele começa do zero. Exporte antes se quiser guardar."
+        : "Esta conversa está na sessão principal do agente, que não se separa por contato. Limpar zera a sessão principal inteira: as conversas de outros contatos que estão nela e o que foi conversado direto com o agente. Contatos com sessão própria não são afetados. Exporte antes se quiser guardar.",
+      buttons: [shared.length === 0 ? "Limpar" : "Limpar tudo", "Cancelar"], defaultId: 1, cancelId: 1,
     });
     if (response !== 0) return false;
-    await whatsappDeleteChat(h.host, number);
+    await whatsappClearSessions(h.host, [...own, ...shared]);
     return true;
   });
   ipcMain.handle("whatsapp:cancel", (event) => {

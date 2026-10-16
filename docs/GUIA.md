@@ -441,14 +441,26 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   de sessão validadas antes de entrar no script).
 - Isolamento: `session.dmScope = per-channel-peer` nas duas políticas (cada contato com memória própria;
   sem reinício do gateway). Antes disso, todos os contatos dividiam o contexto do agente.
-- Levar ao meu-bot: cada bolha tem no hover Copiar e "Ramificar daqui" (como as conversas do meu-bot), e
-  o cabeçalho tem "Conversar com o meu-bot sobre isto" (a conversa toda). `whatsapp:branch` relê o
-  histórico no main (a fonte é o gateway), corta até a hora da bolha e cria uma conversa nova
+- Levar ao meu-bot: só pelo menu "…" do contato ("Conversar com o meu-bot sobre isto"; o ícone de ramo nas
+  bolhas e o botão no cabeçalho foram tirados a pedido, as bolhas ficam só com Copiar). `whatsapp:branch`
+  relê o histórico no main (a fonte é o gateway) e cria uma conversa nova
   ("WhatsApp: <nome>", `fromWhatsapp`) com o trecho em `pendingNote`. O trecho
   (`whatsappContextNote`, testado; últimas mensagens até 24 mil caracteres, as antigas viram contagem) vai
   como `note` da primeira mensagem da pessoa, igual à nota de troca de modelo: o agente sabe que é contexto
   trazido e não fala do usuário. `pendingNote` só some quando essa mensagem fica no histórico (erro ou
-  Parar sem resposta devolvem o pendente). Nada vai ao WhatsApp.
+  Parar sem resposta devolvem o pendente). Nada vai ao WhatsApp. Ao abrir, a lista volta para "meu-bot"
+  e o cursor vai para o campo (antes a aba abria, mas a lista seguia no WhatsApp e parecia que nada mudou).
+  A aba mostra no topo a conversa trazida com as mesmas bolhas do espelho (`renderWaQuote`; as mensagens
+  ficam gravadas em `fromWhatsapp.messages`) e, abaixo, a conversa com o meu-bot segue normal.
+- Menu "…" de cada contato (`ui:wa-menu`): Conversar com o meu-bot, Exportar (.md legível por dia, ou
+  .json com contato, máquina e mensagens; `threadToMarkdown`), Remover da lista e Limpar histórico.
+  "Remover da lista" é só deste app (`localStorage waHidden:<host>`, número → `updatedAt` da saída) e a
+  conversa volta sozinha se chegar mensagem nova; o interruptor do rodapé vira "removidas" no modo
+  WhatsApp. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
+  transcript antigo arquivado) e `memory forget` nas sessões do contato (`whatsappClearPlan`). O OpenClaw
+  recusa apagar `agent:main:main` ("Cannot delete the main session"), mas zera; como a principal não se
+  separa por contato, o diálogo (Cancelar como padrão) avisa que ela inteira vai junto, com os outros
+  contatos e as conversas diretas com o agente.
 - Depois: responder pelo app (`openclaw message send`), tempo real pelo WebSocket do gateway, mídia.
 
 ### Acervo (biblioteca de skills)

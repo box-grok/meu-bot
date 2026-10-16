@@ -104,19 +104,16 @@ test("whatsappContextNote: trecho rotulado, contato e agente, e corta as mais an
   assert.equal(huge.count, 1); assert.ok(huge.note.length < CONTEXT_MAX_CHARS + 1000);
 });
 
-test("apagar: só sessões do próprio contato; a principal nunca; deletable acompanha", () => {
-  const { ownSessionKeys, deleteFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
-  const chats = chatsFromSessions(list, SELF);
-  const ana = chats.find((c) => c.number === ANA.slice(1));
-  assert.equal(ana.deletable, true);
+test("limpar: separa as sessões do contato da principal; lê o resultado de cada reset", () => {
+  const { ownSessionKeys, resetFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const ana = chatsFromSessions(list, SELF).find((c) => c.number === ANA.slice(1));
   assert.deepEqual(ownSessionKeys(ANA, ana.sessionKeys), [`agent:main:whatsapp:default:direct:${ANA}`]);
-  const soPrincipal = chatsFromSessions({ sessions: [list.sessions[0]] }, SELF);
-  assert.equal(soPrincipal[0].deletable, false);
   assert.deepEqual(ownSessionKeys(ANA, ["agent:main:main"]), []);
   const k = `agent:main:whatsapp:default:direct:${ANA}`;
-  assert.deepEqual(deleteFailures(`aviso\n${JSON.stringify({ ok: true, results: [{ key: k, ok: true }] })}`, [k]), []);
-  assert.deepEqual(deleteFailures(JSON.stringify({ ok: false, results: [{ key: k, ok: false, status: "not_found" }] }), [k]), [k]);
-  assert.deepEqual(deleteFailures("lixo", [k]), [k]);
+  const ok = (key) => `R\t${key}\t${JSON.stringify({ ok: true, key })}`;
+  assert.deepEqual(resetFailures(`${ok(k)}\n${ok("agent:main:main")}\n`, [k, "agent:main:main"]), []);
+  assert.deepEqual(resetFailures(`${ok(k)}\nR\tagent:main:main\t\n`, [k, "agent:main:main"]), ["agent:main:main"]);
+  assert.deepEqual(resetFailures("lixo", [k]), [k]);
 });
 
 test("exportar: Markdown com contato, máquina, período, dias e falas", () => {

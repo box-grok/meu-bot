@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
@@ -811,9 +811,12 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   tabEl.addEventListener("contextmenu", (ev) => { ev.preventDefault(); void showTabMenu(tab); });
   if (restored?.fromWhatsapp !== undefined) {
     const w = restored.fromWhatsapp;
-    const until = new Date(w.until).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    addNote(tab, `Trazida do WhatsApp: ${w.name} · ${w.count} ${w.count === 1 ? "mensagem" : "mensagens"} até ${until}`);
-    if (restored.pendingNote !== undefined) addNotice(tab, "O agente recebe esse trecho junto da sua primeira mensagem. Pergunte o que quiser: resumir, sugerir uma resposta, achar o que foi pedido… Nada daqui é enviado ao WhatsApp.");
+    if (w.messages !== undefined && w.messages.length > 0) renderWaQuote(tab, w, restored.pendingNote !== undefined);
+    else {
+      // Conversas trazidas antes de a aba guardar as mensagens: só a nota.
+      const until = new Date(w.until).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+      addNote(tab, `Trazida do WhatsApp: ${w.name} · ${w.count} ${w.count === 1 ? "mensagem" : "mensagens"} até ${until}`);
+    }
   }
   if (restored !== undefined && restored.messages.length > 0) {
     if (restored.branchedFrom !== undefined) {
@@ -1637,10 +1640,15 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `${what}: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`));
   };
   switch (action) {
-    case "talk":
-      try { const view = await window.meuBot.whatsappBranch(row.number, null); upsertIndex(view); buildTab(view.id, view.model, view.host, view); activate(view.id); }
+    case "talk": {
+      // Relê o histórico pela máquina (alguns segundos): o contato pisca até a aba nova abrir.
+      const item = [...sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
+      item?.classList.add("wa-busy");
+      try { await openWaBranch(row.number); }
       catch (err) { fail("Não deu para levar ao meu-bot", err); }
+      finally { item?.classList.remove("wa-busy"); }
       break;
+    }
     case "export-md": case "export-json":
       try { await window.meuBot.exportWhatsapp(row.number, action === "export-md" ? "md" : "json"); }
       catch (err) { fail("Não deu para exportar", err); }
@@ -1653,14 +1661,13 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     case "unhide":
       setWaHidden(row.number, null); paintListMode(); renderSidebar();
       break;
-    case "delete":
+    case "clear":
       try {
-        if (!(await window.meuBot.deleteWhatsapp(row.number))) return;
+        if (!(await window.meuBot.clearWhatsapp(row.number))) return;
         setWaHidden(row.number, null);
         { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
-        waChats = waChats.filter((c) => c.number !== row.number || !c.deletable);
-        renderSidebar(); void refreshWaChats();
-      } catch (err) { fail("Não deu para apagar", err); }
+        void refreshWaChats();
+      } catch (err) { fail("Não deu para limpar o histórico", err); }
       break;
   }
 }
@@ -1682,11 +1689,12 @@ function paintWaSidebar(query: string): void {
     for (const row of group.items) {
       const hidden = isWaHidden(row);
       const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${hidden ? " archived" : ""}`);
+      item.dataset["number"] = row.number;
       const menu = el("button", "si-menu", "…");
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { deletable: row.deletable, hidden }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { hidden }).then((a) => waMenuAction(row, a));
       });
       item.append(el("span", "wa-item-dot"), el("span", "si-title", waChatTitle(row)), el("span", "si-date", shortDate(row.updatedAt)), menu);
       item.title = row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number);
@@ -1729,16 +1737,38 @@ function refreshWaThread(g: WaChatPage): Promise<void> {
   return g.inflight;
 }
 const hhmm = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
+/** Bolha do WhatsApp: contato à esquerda, agente à direita (markdown), hora embaixo. */
+function waBubble(m: WhatsappThreadMessage): HTMLElement {
+  const bubble = el("div", `msg wa-msg ${m.role === "contact" ? "wa-in" : "wa-out"}`);
+  const body = el("div", "wa-body");
+  if (m.role === "agent") body.append(renderMarkdown(m.text)); else body.textContent = m.text;
+  bubble.dataset["waAt"] = m.at;
+  bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`));
+  return bubble;
+}
+/** Conversa do WhatsApp trazida, no topo da aba do meu-bot: o mesmo visual do espelho, só para ler. */
+function renderWaQuote(tab: Tab, w: WhatsappOrigin, pending: boolean): void {
+  const box = el("div", "wa-quote");
+  const head = el("div", "wa-quote-head");
+  head.append(el("strong", "", `WhatsApp · ${w.name}`), el("span", "", `${w.count} ${w.count === 1 ? "mensagem" : "mensagens"}`));
+  box.append(head);
+  let lastDay = "";
+  for (const m of w.messages ?? []) {
+    const day = new Date(m.at).toLocaleDateString("pt-BR");
+    if (day !== lastDay) { box.append(el("div", "wa-day", day)); lastDay = day; }
+    box.append(waBubble(m));
+  }
+  box.append(el("div", "wa-quote-foot", pending
+    ? "Daqui para baixo é a conversa com o meu-bot: ele recebe o trecho acima junto da sua primeira mensagem. Nada daqui vai para o WhatsApp."
+    : "Daqui para baixo, conversa com o meu-bot. Nada daqui vai para o WhatsApp."));
+  tab.messagesEl.appendChild(box);
+}
 function renderWaChat(g: WaChatPage): void {
   const panel = g.page.panel;
   const atEnd = panel.dataset["rendered"] !== "1" || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
   panel.replaceChildren();
   const head = el("div", "wa-chat-head");
-  const talk = el("button", "wa-chat-talk", "Conversar com o meu-bot sobre isto");
-  talk.type = "button"; talk.dataset["waBranch"] = "all";
-  talk.title = "Abre uma conversa nova com o meu-bot levando esta conversa do WhatsApp como contexto";
-  talk.disabled = g.msgs.length === 0;
-  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)), el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"), talk);
+  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)), el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"));
   const list = el("div", "wa-chat-msgs");
   if (!g.loaded) {
     const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Carregando a conversa…"));
@@ -1749,13 +1779,10 @@ function renderWaChat(g: WaChatPage): void {
   for (const m of g.msgs) {
     const day = new Date(m.at).toLocaleDateString("pt-BR");
     if (day !== lastDay) { list.append(el("div", "wa-day", day)); lastDay = day; }
-    const bubble = el("div", `msg wa-msg ${m.role === "contact" ? "wa-in" : "wa-out"}`);
-    const body = el("div", "wa-body");
-    if (m.role === "agent") body.append(renderMarkdown(m.text)); else body.textContent = m.text;
-    bubble.dataset["waAt"] = m.at;
+    const bubble = waBubble(m);
     const actions = el("div", "msg-actions");
-    actions.append(iconButton("wa-copy", "Copiar", ICON_COPY), iconButton("wa-branch", "Ramificar daqui: conversar com o meu-bot até esta mensagem", ICON_BRANCH));
-    bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`), actions);
+    actions.append(iconButton("wa-copy", "Copiar", ICON_COPY));
+    bubble.append(actions);
     list.append(bubble);
   }
   panel.append(head, list);
@@ -1764,32 +1791,26 @@ function renderWaChat(g: WaChatPage): void {
   // Voltou para a frente sem consulta agendada: retoma o ciclo.
   if (pageActive === g.page && g.inflight === null && g.timer === null) void refreshWaThread(g);
 }
-/** Ações do espelho: Copiar o texto da bolha, ou levar a conversa (até a bolha, ou toda) para o meu-bot. */
-async function waAction(btn: HTMLButtonElement): Promise<void> {
+/** Copiar o texto de uma bolha do espelho. */
+function waCopy(btn: HTMLButtonElement): void {
   const g = [...waChatPages.values()].find((p) => p.page === pageActive);
   if (g === undefined) return;
   const bubble = btn.closest<HTMLElement>(".wa-msg");
   const at = bubble?.dataset["waAt"] ?? null;
-  if (btn.dataset["action"] === "wa-copy") {
-    const m = g.msgs.find((x) => x.at === at);
-    void navigator.clipboard.writeText(m?.text ?? bubble?.querySelector(".wa-body")?.textContent ?? "").then(() => {
-      btn.replaceChildren(svgIcon(ICON_CHECK)); btn.title = "Copiado"; btn.classList.add("done");
-      window.setTimeout(() => { btn.replaceChildren(svgIcon(ICON_COPY)); btn.title = "Copiar"; btn.classList.remove("done"); }, 1500);
-    });
-    return;
-  }
-  if (btn.disabled) return;
-  btn.disabled = true;
-  try {
-    const view = await window.meuBot.whatsappBranch(g.chat.number, btn.dataset["waBranch"] === "all" ? null : at);
-    upsertIndex(view);
-    buildTab(view.id, view.model, view.host, view);
-    activate(view.id);
-  } catch (err) {
-    btn.title = `Não deu para levar ao meu-bot: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`;
-    btn.classList.add("wa-fail");
-    window.setTimeout(() => btn.classList.remove("wa-fail"), 2500);
-  } finally { btn.disabled = false; }
+  const m = g.msgs.find((x) => x.at === at);
+  void navigator.clipboard.writeText(m?.text ?? bubble?.querySelector(".wa-body")?.textContent ?? "").then(() => {
+    btn.replaceChildren(svgIcon(ICON_CHECK)); btn.title = "Copiado"; btn.classList.add("done");
+    window.setTimeout(() => { btn.replaceChildren(svgIcon(ICON_COPY)); btn.title = "Copiar"; btn.classList.remove("done"); }, 1500);
+  });
+}
+/** Abre a conversa nova do meu-bot com o trecho do WhatsApp: aba na frente, lista no meu-bot, cursor no campo. */
+async function openWaBranch(number: string): Promise<void> {
+  const view = await window.meuBot.whatsappBranch(number);
+  upsertIndex(view);
+  buildTab(view.id, view.model, view.host, view);
+  activate(view.id);
+  if (getListMode() === "whatsapp") setListMode("bot");
+  inputEl.focus();
 }
 let waPairing = false;
 /** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
@@ -2269,8 +2290,8 @@ panelsEl.addEventListener("click", (ev) => {
     void window.meuBot.openExternal(link.href);
     return;
   }
-  const waBtn = target.closest<HTMLButtonElement>(".wa-msg .msg-actions button, .wa-chat-talk");
-  if (waBtn !== null) { void waAction(waBtn); return; }
+  const waBtn = target.closest<HTMLButtonElement>(".wa-msg .msg-actions button");
+  if (waBtn !== null) { waCopy(waBtn); return; }
   const actionBtn = target.closest<HTMLButtonElement>(".msg-actions button");
   if (actionBtn !== null) {
     const msg = actionBtn.closest<HTMLElement>(".msg");

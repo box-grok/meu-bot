@@ -1,7 +1,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendModel, WhatsappOrigin } from "../shared/ipc";
+import type { BackendModel, WhatsappOrigin, WhatsappThreadMessage } from "../shared/ipc";
 import { getBackendModel, getLastHost, isBackendModel, isValidHost } from "./settings";
 import { LOCAL_HOST } from "./localBackend";
 import { nextOrderAmong, reorderWithin } from "./order";
@@ -134,6 +134,15 @@ export function persistConversations(): void {
   }
 }
 
+/** Mensagens do WhatsApp gravadas na conversa; formato inválido fica de fora (a aba só não mostra o trecho). */
+function waMessages(v: unknown): { messages?: WhatsappThreadMessage[] } {
+  if (!Array.isArray(v)) return {};
+  const messages = v.filter((m): m is WhatsappThreadMessage => m !== null && typeof m === "object"
+    && (m.role === "contact" || m.role === "agent") && typeof m.text === "string" && typeof m.at === "string")
+    .map((m) => ({ role: m.role, text: m.text, at: m.at }));
+  return { messages };
+}
+
 /** Carrega o que foi salvo na última execução. Chamar uma vez, após app.whenReady(). */
 export function loadConversations(): void {
   try {
@@ -165,7 +174,7 @@ export function loadConversations(): void {
         ...((): { fromWhatsapp?: WhatsappOrigin } => {
           const w = item.fromWhatsapp as Partial<WhatsappOrigin> | undefined;
           return w !== undefined && w !== null && typeof w.number === "string" && typeof w.name === "string" && typeof w.count === "number" && typeof w.until === "string"
-            ? { fromWhatsapp: { number: w.number, name: w.name, count: w.count, until: w.until } } : {};
+            ? { fromWhatsapp: { number: w.number, name: w.name, count: w.count, until: w.until, ...waMessages(w.messages) } } : {};
         })(),
         ...(typeof item.pendingNote === "string" && item.pendingNote !== "" ? { pendingNote: item.pendingNote } : {}),
         ...((): { summary?: SummaryState } => { const sm = validSummary(item.summary, messages.length); return sm === undefined ? {} : { summary: sm }; })(),
