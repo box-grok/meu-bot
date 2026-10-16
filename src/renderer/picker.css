@@ -115,14 +115,3 @@ body.arrive .row { animation: arrive-row .26s ease-out both; animation-delay: ca
 .ts-hint { margin: 0; font-size: 12px; color: var(--muted); }
 .btn-small { padding: 4px 10px; font-size: 12px; }
 
-/* meu-bot-admin: rodapé sem o que é do meu-bot normal; pessoas com endereço e "visto há". */
-body.admin .foot-caption, body.admin #pk-sync, body.admin .foot .switch { display: none; }
-.row .seen { color: var(--muted, #8a94a6); font-weight: 400; font-size: 12px; }
-.row.empty { color: var(--muted, #8a94a6); font-size: 13px; cursor: default; white-space: normal; }
-.add-person { display: flex; flex-direction: column; gap: 6px; padding: 6px 16px 0; }
-.add-form { display: flex; flex-direction: column; gap: 6px; }
-.add-person > .btn, .add-form > .btn { align-self: flex-start; }
-.add-msg { margin: 0; font-size: 12px; color: var(--muted, #8a94a6); }
-body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
-.add-form input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
-.add-form textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; resize: vertical; }

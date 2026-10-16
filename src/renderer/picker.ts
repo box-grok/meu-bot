@@ -1,6 +1,9 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
 import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { el } from "./lib/dom.js";
+import { personSuffix } from "./lib/admin-view.js";
+import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { describeProbe, hostLabel, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
 
@@ -75,22 +78,12 @@ let support: PickerInit["support"] = null;
 const personOf = (host: string): SupportPerson | undefined => support?.people.find((p) => p.alias === host);
 /** Nome na lista: a pessoa (admin) ou a máquina. */
 const rowLabel = (host: string): string => personOf(host)?.name ?? hostLabel(host);
-const ago = (iso: string): string => {
-  const min = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  return Number.isNaN(min) ? "" : min < 1 ? "visto agora" : min < 60 ? `visto há ${min} min` : min < 48 * 60 ? `visto há ${Math.round(min / 60)} h` : `visto há ${Math.round(min / 1440)} dias`;
-};
 let openHosts = new Set<string>();
 let selected: string | null = null;
 const rows = new Map<string, Row>();
 const results = new Map<string, ProbeText>();
 let installing = false;
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const n = document.createElement(tag);
-  if (cls !== undefined) n.className = cls;
-  if (text !== undefined) n.textContent = text;
-  return n;
-}
 
 
 function showError(prefix: string, err: unknown): void {
@@ -108,7 +101,7 @@ function buildRows(): void {
     dot.style.background = hostAccent(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
-    if (person !== undefined) name.append(el("span", "seen", ` · ${person.hostname}${person.port !== 22 ? `:${person.port}` : ""}${person.local ? " · só alcançável deste Mac" : ""}${person.seenAt !== "" ? ` · ${ago(person.seenAt)}` : ""}`));
+    if (person !== undefined) name.append(el("span", "seen", personSuffix(person)));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);
     // Só num computador do Grok Bot: aliviar agora (abre a janela de alívio e fecha o seletor).
@@ -351,52 +344,14 @@ async function syncSsh(): Promise<void> {
   }
 }
 
-/** meu-bot-admin: textos, rodapé e o "Adicionar pessoa" no lugar do que é do meu-bot normal. */
-const addBox = document.createElement("div");
-function paintAdminChrome(): void {
-  document.body.classList.add("admin");
-  const h1 = document.querySelector("h1"); if (h1 !== null) h1.textContent = "Suporte: escolha uma pessoa";
-  const sub = document.querySelector(".sub"); if (sub !== null) sub.textContent = "Cada pessoa é uma janela, só leitura + ações de suporte. ↑↓ escolhe · Enter abre · Esc fecha";
-  filterEl.placeholder = "filtrar pessoas…";
-  document.title = "meu-bot-admin · escolher pessoa";
-  if (addBox.isConnected) return;
-  addBox.className = "add-person";
-  const open = el("button", "btn btn-ghost btn-small", "Adicionar pessoa"); open.type = "button";
-  const form = el("div", "add-form"); form.hidden = true;
-  const input = el("textarea"); input.rows = 2; input.placeholder = "Cole aqui o código de suporte (MBS1.…) que a pessoa mandou";
-  const add = el("button", "btn btn-primary btn-small", "Adicionar"); add.type = "button";
-  const msg = el("p", "add-msg"); msg.hidden = true;
-  open.addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) input.focus(); });
-  add.addEventListener("click", () => {
-    add.disabled = true;
-    void window.picker.supportAdd(input.value).then(async (p) => {
-      msg.hidden = false; msg.textContent = `✓ ${p.name} adicionada`; input.value = ""; form.hidden = true;
-      init(await window.picker.list(), p.alias);
-    }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
-  });
-  form.append(input, add);
-  addBox.append(open, form, msg);
-  listEl.after(addBox);
-}
-let peopleRefreshed = false;
-/** Lê a caixa de entrada (pessoas que ligaram o suporte aparecem sozinhas) e redesenha a lista. */
-async function refreshPeople(): Promise<void> {
-  try {
-    const r = await window.picker.supportRefresh();
-    if (r.warning !== null) { noteEl.hidden = false; noteEl.textContent = `⚠ ${r.warning}`; }
-    init(await window.picker.list(), selected);
-  } catch (err) { showError("caixa de entrada", err); }
-}
+/** Variante: admin. O que o seletor de pessoas tem a mais (admin/picker-chrome.ts). */
+const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError });
 
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
   support = payload.support;
   setHostNicknames(payload.names);
-  if (support !== null) {
-    paintAdminChrome();
-    if (!support.adminKey) { noteEl.hidden = false; noteEl.textContent = "⚠ falta a chave ~/.ssh/meu-bot-admin neste Mac: rode node scripts/suporte-setup.mjs no projeto."; }
-    if (!peopleRefreshed) { peopleRefreshed = true; void refreshPeople(); }
-  }
+  if (support !== null) { adminChrome.paint(support); adminChrome.refreshPeopleOnce(); }
   if (firstInit) { firstInit = false; arrive(payload.arrival); }
   paintGlow(keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect);
   openHosts = new Set(payload.open);
@@ -409,7 +364,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
   buildRows();
-  if (support !== null && hosts.length === 0) listEl.replaceChildren(el("li", "row empty", "Ninguém ainda. Quando uma pessoa ligar \"Permitir suporte\" no meu-bot dela, ela aparece aqui sozinha. Ou use Adicionar pessoa com o código dela."));
+  if (support !== null && hosts.length === 0) listEl.replaceChildren(adminChrome.emptyRow());
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
   // Todas em paralelo: a lista nunca espera a máquina lenta.

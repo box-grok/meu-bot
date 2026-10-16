@@ -1,5 +1,8 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, Capabilities, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
+import { el } from "./lib/dom.js";
+import type { PageTab } from "./lib/pages-types.js";
+import { mountSuportePage } from "./admin/suporte-page.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
@@ -40,8 +43,8 @@ const form = $<HTMLFormElement>("settings-form");
 /** Máquina desta janela; vem do main em window:info e não muda. */
 let windowHost = "";
 /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
-let windowAdmin = false;
-let windowPerson: string | null = null;
+/** O que esta variante pode fazer (vem do main em window:info); até lá, o padrão do meu-bot normal. */
+let caps: Capabilities = { variant: "client", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -114,12 +117,6 @@ let tabCount = 0;
 let draggingId: string | null = null;
 let settings: SettingsView | null = null;
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className !== undefined) node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
-}
 
 const active = (): Tab | null => (activeId === null ? null : (tabs.get(activeId) ?? null));
 /** Rola até o fim. Sem `force`, só se a pessoa já estava acompanhando o fim (não puxa quem rolou para cima para ler). */
@@ -874,7 +871,7 @@ async function restoreTabs(): Promise<void> {
 function applySettings(view: SettingsView): void {
   settings = view;
   setHostNicknames(view.hostNames);
-  if (windowHost !== "" && !windowAdmin) document.title = `meu-bot · ${hostLabel(windowHost)}`;
+  if (windowHost !== "" && caps.chat) document.title = `meu-bot · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
@@ -1031,7 +1028,7 @@ function paintXaiLine(): void {
 let xaiKey: XaiKeyStatus | null = null;
 async function refreshXaiLine(): Promise<void> {
   try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
-  if (xaiAuth === null && !windowAdmin && windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
+  if (xaiAuth === null && caps.login && windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
   paintXaiLine();
 }
 const xaiKeyDialog = $<HTMLDialogElement>("xai-key-dialog");
@@ -1142,7 +1139,6 @@ xaiLineBtn.addEventListener("click", () => {
 // ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
 // ---- Páginas em aba própria (Acervo, Tutoriais…): não são conversas. Uma de cada vez na frente; o compositor
 // desliga; qualquer conversa ativada manda a página para trás; fechar volta à conversa de antes.
-interface PageTab { id: string; title: string; panel: HTMLElement; render: () => void; tabEl: HTMLElement | null }
 const pages = new Map<string, PageTab>();
 let pageActive: PageTab | null = null;
 /** Conversa que estava ativa quando a página tomou a frente; volta a ela ao fechar. */
@@ -1340,7 +1336,7 @@ function restorePairNodes(): void {
  */
 let progressTimer: number | null = null;
 function reportProgress(): void {
-  if (windowAdmin || windowHost === "" || windowHost === "local" || settings === null) return;
+  if (!caps.supportClient || windowHost === "" || windowHost === "local" || settings === null) return;
   if (progressTimer !== null) clearTimeout(progressTimer);
   progressTimer = window.setTimeout(() => {
     progressTimer = null;
@@ -1768,11 +1764,11 @@ const listModeKey = (): string => `listMode:${windowHost}`;
 const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
 function getListMode(): ListMode {
   if (!waMirrorAvailable()) return "bot";
-  if (windowAdmin) return "whatsapp"; // o admin não tem conversas do meu-bot com a máquina da pessoa
+  if (!caps.chat) return "whatsapp"; // sem chat (o admin) só há o espelho do WhatsApp
   try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }
 }
 function paintListMode(): void {
-  listModeEl.hidden = !waMirrorAvailable() || windowAdmin;
+  listModeEl.hidden = !waMirrorAvailable() || !caps.chat;
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
@@ -2840,7 +2836,7 @@ let statusLineMsg: { text: string; bad: boolean } | null = null;
 const accountHasLimits = (): boolean => account !== null && (account.sessionPct !== null || account.weeklyPct !== null);
 const guideCtx = (): GuideContext => ({ support: supportState, statusLine: { installed: statusLineState, limits: accountHasLimits() } });
 async function refreshStatusLine(): Promise<void> {
-  if (windowAdmin || windowHost === "") return;
+  if (!caps.install || windowHost === "") return;
   try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }
   paintGuide();
 }
@@ -2871,7 +2867,7 @@ function renderStatusLineInstall(container: HTMLElement): void {
 }
 
 async function refreshSupportState(): Promise<void> {
-  if (windowHost === "" || windowHost === "local" || windowAdmin) return;
+  if (windowHost === "" || windowHost === "local" || !caps.supportClient) return;
   try { supportState = await window.meuBot.supportInfo(); } catch { /* sem resposta: fica o que havia */ }
   repaintSupport();
 }
@@ -2961,7 +2957,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
 }
 async function loadSupport(): Promise<void> {
   supportCodeShown = null;
-  if (windowHost === "local" || windowAdmin) { supportGroup.hidden = true; return; }
+  if (windowHost === "local" || !caps.supportClient) { supportGroup.hidden = true; return; }
   await refreshSupportState();
 }
 function paintSupport(): void {
@@ -2973,135 +2969,6 @@ function paintSupport(): void {
     ? `Ligado: o admin consegue entrar em ${hostLabel(windowHost)} para ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece abaixo. Desligar tira o acesso na hora.`
     : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda do admin.`));
   renderSupportParts(supportBody, ["name", "switch", "delivery", "log"]);
-}
-
-/* ---------- meu-bot-admin: página "Suporte" da máquina da pessoa ---------- */
-interface AdminState { health: AdminHealth | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }
-const adminState: AdminState = { health: null, healthErr: null, logs: null, busy: null, msg: null };
-let adminPage: PageTab | null = null;
-/** Registros recolhidos por padrão: só lê o journal da máquina quando a pessoa abre. */
-let adminLogsOpen = false;
-const ADMIN_ACTIONS: { id: AdminAction; label: string; confirm: string }[] = [
-  { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
-  { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
-  { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
-];
-function openAdminPage(): void {
-  if (adminPage === null) {
-    const panel = el("section", "acervo-panel admin-panel"); panel.hidden = true;
-    panelsEl.append(panel);
-    adminPage = definePage("suporte", `Suporte · ${windowPerson ?? windowHost}`, panel, renderAdminPage);
-    void adminRefreshHealth();
-  }
-  openPage(adminPage);
-}
-async function adminRefreshHealth(): Promise<void> {
-  adminState.busy = "health"; renderAdminPage();
-  try { adminState.health = await window.meuBot.adminHealth(); adminState.healthErr = null; if (adminState.health.whatsapp !== null) { waStatus = adminState.health.whatsapp; paintWhatsapp(); renderSidebar(); } }
-  catch (err) { adminState.healthErr = ipcErrorText(err); }
-  finally { adminState.busy = null; renderAdminPage(); }
-}
-async function adminRefreshLogs(): Promise<void> {
-  adminState.busy = "logs"; renderAdminPage();
-  try { adminState.logs = await window.meuBot.adminLogs(); } catch (err) { adminState.logs = `não consegui ler: ${err instanceof Error ? err.message : String(err)}`; }
-  finally { adminState.busy = null; renderAdminPage(); }
-}
-function renderAdminPage(): void {
-  if (adminPage === null) return;
-  const panel = adminPage.panel;
-  panel.replaceChildren();
-  const who = windowPerson ?? windowHost;
-  const head = el("div", "guide-head");
-  const body = el("div", "tut-body");
-  body.append(el("span", "tut-badge", "suporte · espelho só leitura"), el("h2", "", who), el("p", "", `Máquina ${windowHost}. As ações abaixo ficam registradas para ${who} ver nas Configurações dela. Se ela desligar o suporte, o acesso acaba na hora.`));
-  head.append(body);
-  panel.append(head);
-  // Saúde
-  const h = el("div", "admin-card");
-  const hHead = el("div", "admin-card-head"); hHead.append(el("strong", "", "Saúde da máquina"));
-  const hBtn = el("button", "btn btn-ghost btn-small", adminState.busy === "health" ? "Consultando…" : "Atualizar"); hBtn.type = "button"; hBtn.disabled = adminState.busy !== null;
-  hBtn.addEventListener("click", () => { void adminRefreshHealth(); });
-  hHead.append(hBtn); h.append(hHead);
-  const hp = adminState.health;
-  if (adminState.healthErr !== null) h.append(el("p", "hint guide-pair-note", adminState.healthErr));
-  else if (hp === null) h.append(el("p", "hint", "Consultando…"));
-  else {
-    const p = hp.probe;
-    const lines: [string, boolean | null][] = [
-      [p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, p.reachable],
-      [p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", p.backendListening],
-      [p.claudeLoggedIn ? "Claude Code logado" : "Claude Code deslogado", p.claudeLoggedIn],
-      [p.statusLine ? "status line instalada" : "sem status line", p.statusLine],
-    ];
-    const wa = hp.whatsapp;
-    if (wa !== null && wa.present) {
-      lines.push([wa.connected ? `WhatsApp conectado${wa.number !== null ? ` (${fmtPhone(wa.number)})` : ""}` : `WhatsApp: ${wa.detail}`, wa.connected]);
-      if (wa.dmPolicy !== null) lines.push([`responde: ${wa.dmPolicy === "open" ? "todo mundo" : wa.dmPolicy === "allowlist" ? "só a dona do número" : wa.dmPolicy}`, null]);
-      if (wa.audioIn !== undefined) lines.push([wa.audioIn ? "entende áudios" : "não entende áudios (sem transcrição)", wa.audioIn]);
-      if (wa.audioOut !== undefined) lines.push([`responde em áudio: ${wa.audioOut === "inbound" ? "quando recebe áudio" : wa.audioOut === "always" ? "sempre" : "nunca"}`, null]);
-    }
-    const ul = el("ul", "admin-health");
-    for (const [t, ok] of lines) ul.append(el("li", ok === null ? "" : ok ? "ok" : "bad", t));
-    h.append(ul);
-  }
-  panel.append(h);
-  // Progresso nos tutoriais (onde a pessoa está e onde travou)
-  const pg = el("div", "admin-card");
-  pg.append(el("strong", "", "Progresso nos tutoriais"));
-  const prog = hp?.progress ?? null;
-  if (hp === null) pg.append(el("p", "hint", "Consultando…"));
-  else if (prog === null) pg.append(el("p", "hint", `Ainda sem dados: o meu-bot de ${who} grava o progresso na máquina quando ela abre o app com o suporte ligado.`));
-  else {
-    const ul = el("ul", "admin-health");
-    ul.append(el("li", prog.tour === "done" ? "ok" : "bad", prog.tour === "done" ? "Tour do meu-bot: feito" : prog.tour === "skipped" ? "Tour do meu-bot: pulado" : "Tour do meu-bot: não feito"));
-    for (const t of prog.tutorials) {
-      if (t.comingSoon) { ul.append(el("li", "", `${t.title}: em breve`)); continue; }
-      const li = el("li", t.finished ? "ok" : t.done > 0 ? "" : "bad", `${t.title}: ${t.finished ? "concluído" : `${t.done} de ${t.total}`}`);
-      if (!t.finished && t.current !== null) li.append(el("span", "admin-step", ` · parou em "${t.current}"`));
-      ul.append(li);
-    }
-    pg.append(ul, el("p", "hint", `Atualizado ${new Date(prog.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}, quando o meu-bot dela estava aberto.`));
-  }
-  panel.append(pg);
-  // Ações
-  const a = el("div", "admin-card");
-  a.append(el("strong", "", "Ações de suporte"));
-  const acts = el("div", "admin-actions");
-  for (const o of ADMIN_ACTIONS) {
-    if (o.id === "transcription" && hp?.whatsapp?.audioIn === true) continue;
-    const b = el("button", "btn btn-ghost btn-small", adminState.busy === o.id ? "Rodando…" : o.label); b.type = "button"; b.disabled = adminState.busy !== null;
-    b.addEventListener("click", () => armConfirm(b, o.confirm, () => {
-      adminState.busy = o.id; adminState.msg = null; renderAdminPage();
-      void window.meuBot.adminAction(o.id)
-        .then((r) => { adminState.msg = { text: `${o.label}: ${r.ok ? "feito" : "falhou"}${r.detail !== "" ? ` · ${r.detail}` : ""}`, bad: !r.ok }; })
-        .catch((err: unknown) => { adminState.msg = { text: ipcErrorText(err), bad: true }; })
-        .finally(() => { adminState.busy = null; void adminRefreshHealth(); if (adminLogsOpen) void adminRefreshLogs(); });
-    }));
-    acts.append(b);
-  }
-  a.append(acts);
-  if (adminState.msg !== null) a.append(el("p", `hint ${adminState.msg.bad ? "guide-pair-note" : "audio-ok"}`, adminState.msg.text));
-  panel.append(a);
-  // Registros: recolhido por padrão (é o que menos se olha e o mais pesado de ler).
-  const r = el("details", "admin-card admin-logs-card");
-  r.open = adminLogsOpen;
-  const sum = el("summary", "admin-card-head");
-  sum.append(el("strong", "", "Registros (gateway e backend)"), el("span", "hint", adminLogsOpen ? "" : "clique para abrir"));
-  r.append(sum);
-  r.addEventListener("toggle", () => {
-    if (r.open === adminLogsOpen) return;
-    adminLogsOpen = r.open;
-    if (adminLogsOpen && adminState.logs === null) void adminRefreshLogs(); else renderAdminPage();
-  });
-  if (adminLogsOpen) {
-    const rBtn = el("button", "btn btn-ghost btn-small", adminState.busy === "logs" ? "Lendo…" : "Atualizar"); rBtn.type = "button"; rBtn.disabled = adminState.busy !== null;
-    rBtn.addEventListener("click", () => { void adminRefreshLogs(); });
-    const pre = el("pre", "admin-logs", adminState.logs ?? "Lendo…");
-    r.append(rBtn, pre);
-    requestAnimationFrame(() => { pre.scrollTop = pre.scrollHeight; });
-  }
-  panel.append(r);
-  panel.append(el("p", "hint", "As conversas do WhatsApp dela estão na lateral (só leitura)."));
 }
 
 function openSettings(): void {
@@ -3168,17 +3035,19 @@ void (async () => {
   const info = await window.meuBot.getWindowInfo();
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
-  windowAdmin = info.admin;
-  windowPerson = info.person;
-  if (windowAdmin) {
+  caps = info.caps;
+  if (caps.supportAdmin) {
     // meu-bot-admin: espelho da máquina da pessoa (saúde, WhatsApp, registros) + ações de suporte. Sem compositor,
-    // sem conversas com o agente, sem logins nem pareamento (o main também recusa esses pedidos).
+    // sem conversas com o agente, sem logins nem pareamento (o main nem registra esses canais no admin).
     document.body.classList.add("admin-mode");
-    document.title = `${windowPerson ?? windowHost} · suporte`;
+    document.title = `${info.person ?? windowHost} · suporte`;
     document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
     applySettings(await window.meuBot.getSettings());
     void refreshWhatsapp();
-    openAdminPage();
+    mountSuportePage({
+      who: { host: windowHost, person: info.person }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
+      onWhatsapp: (st) => { waStatus = st; paintWhatsapp(); renderSidebar(); },
+    }).open();
     tabsReady = true;
     return;
   }

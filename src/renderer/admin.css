@@ -1,0 +1,36 @@
+/* Variante: admin. O que só o meu-bot-admin desenha: na janela principal (body.admin-mode) esconde o que é do
+   meu-bot normal e estiliza a página "Suporte"; no seletor (body.admin) o rodapé sem o que é do cliente, as
+   pessoas com endereço e "visto há", e o "Adicionar pessoa". Carregado depois de style.css / picker.css. */
+
+/* ---------- janela principal ---------- */
+body.admin-mode .composer, body.admin-mode #tab-plus, body.admin-mode #btn-new, body.admin-mode #list-mode,
+body.admin-mode #cl-line, body.admin-mode #xai-line, body.admin-mode #acervo-line, body.admin-mode #tutoriais-line,
+body.admin-mode #wa-line, body.admin-mode #rest { display: none !important; }
+/* O rodapé "arquivadas" (.sidebar-foot) fica: o admin arquiva pelo menu "…" e precisa ver o que arquivou. */
+.admin-panel { display: flex; flex-direction: column; gap: 14px; }
+.admin-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
+.admin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-health { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.admin-health li::before { content: "•"; margin-right: 8px; color: var(--muted); }
+.admin-health li.ok::before { content: "✓"; color: var(--ok); }
+.admin-health li.bad::before { content: "✗"; color: var(--bad); }
+.admin-logs-card > summary { cursor: pointer; list-style: none; }
+.admin-logs-card > summary::-webkit-details-marker { display: none; }
+.admin-logs-card > summary strong::before { content: "▸"; display: inline-block; width: 16px; color: var(--muted); transition: transform .15s; }
+.admin-logs-card[open] > summary strong::before { transform: rotate(90deg); }
+.admin-logs-card > .btn { align-self: flex-start; }
+.admin-step { color: var(--muted); }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-logs { margin: 0; max-height: 320px; overflow: auto; font-size: 11px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+
+/* ---------- seletor de pessoas ---------- */
+body.admin .foot-caption, body.admin #pk-sync, body.admin .foot .switch { display: none; }
+body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
+.row .seen { color: var(--muted, #8a94a6); font-weight: 400; font-size: 12px; }
+.row.empty { color: var(--muted, #8a94a6); font-size: 13px; cursor: default; white-space: normal; }
+.add-person { display: flex; flex-direction: column; gap: 6px; padding: 6px 16px 0; }
+.add-form { display: flex; flex-direction: column; gap: 6px; }
+.add-person > .btn, .add-form > .btn { align-self: flex-start; }
+.add-msg { margin: 0; font-size: 12px; color: var(--muted, #8a94a6); }
+.add-form input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
+.add-form textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; resize: vertical; }
