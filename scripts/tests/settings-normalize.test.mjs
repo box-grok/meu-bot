@@ -35,3 +35,11 @@ test("openDirect: true por padrão, respeita false", () => {
   assert.equal(normalizeSettings({ openDirect: false }).openDirect, false);
   assert.equal(normalizeSettings({ openDirect: "x" }).openDirect, true);
 });
+
+test("hostNames: apelidos válidos por host; lixo fora", async () => {
+  const { normalizeHostNames } = await import("../../dist/main/settings-normalize.js");
+  assert.deepEqual(normalizeHostNames({ colima: "  VM de  teste ", "a b": "x", agente: "", n: 3 }), { colima: "VM de teste" });
+  assert.deepEqual(normalizeHostNames(["colima"]), {});
+  assert.equal(normalizeHostNames({ vm: "x".repeat(80) }).vm.length, 40);
+  assert.deepEqual(normalizeSettings({}).hostNames, {});
+});

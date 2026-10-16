@@ -1086,6 +1086,27 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   mostrando máquina · modelo · estado do túnel. Lista e barra começam recolhidas por padrão
   (`localStorage.sidebarShown` / `topbarShown`).
 
+## Grok (xAI) em máquinas sem Hermes (16 out 2026)
+
+- O login por conta da xAI (OAuth) é do Hermes: `hermes auth add xai-oauth --type oauth --no-browser` (link
+  de código de dispositivo) e `hermes proxy start --provider xai` (127.0.0.1:8645, aceita qualquer bearer e
+  usa o OAuth). Era assim no grokbot. Em colima/agente-box não havia Hermes, então a linha "xAI (Grok)" não
+  aparecia e o grok-4 não existia no modo nem no fallback.
+- `backend-colima/install-grok-oauth.sh` (idempotente) reproduz o arranjo em qualquer máquina com o backend
+  do meu-bot: instala `hermes-agent@0.22.2` (npm, `--prefix ~/.local`, com o node do backend), grava
+  `providers.json` com o grok-4 em `http://127.0.0.1:8645/v1` (endpoint local dispensa chave; um
+  providers.json alheio vai para `.antes-do-grok-oauth`), cria `hermes-xai-proxy.service` (systemd --user,
+  `RestartSec=15`: antes do login o proxy sai com "Not logged in" e volta sozinho depois), liga linger e
+  reinicia o backend. Exige `providers.js` no backend: um backend antigo (caso da colima, 16 out) não tem
+  fallback nem grok-4, e "Reinstalar backend" no seletor resolve.
+- App: a linha "xAI (Grok)" aparece também sem Hermes quando há backend (`xaiKeyStatus`); "entrar" roda o
+  instalador pela janela (`xai-login:prepare`, progresso no diálogo) e emenda no login OAuth de sempre
+  (`xaiLogin.ts`). Alternativa no mesmo diálogo: "usar chave de API" (`src/main/xaiKey.ts`: grava
+  `XAI_API_KEY` no .env do backend pelo stdin do ssh, reinicia e devolve os modelos listados; nunca em log).
+- Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Tutorial
+  "Fallback: Claude e Grok logados" deixado como "Em breve" (pedido do usuário: fazer quando o login da xAI
+  estiver redondo).
+
 ## Suporte: meu-bot-admin (16 out 2026)
 
 Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bot** (de cada pessoa) e o
@@ -1141,6 +1162,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   10 s e oferece "Tentar de novo" (`support:deliver`); o código visível fica recolhido em "Não chegou?
   Mostrar código de suporte". As peças (nome, interruptor, aviso/código, registro) são as mesmas das
   Configurações › Suporte (`renderSupportParts`). O progresso dele vai para o admin como os outros.
+- "Renomear" (seletor, máquina selecionada; não "este Mac" nem no admin): apelido guardado em
+  `settings.hostNames` (host → nome, 1–40 caracteres, `normalizeHostNames`). A chave SSH não muda; o apelido
+  entra em `hostLabel` (`lib/probe-text.ts`, com `setHostNicknames`), então seletor, título da janela e
+  textos mostram o apelido. Janelas abertas retitulam pelo `settings:changed`. Vazio tira o apelido.
 - "Remover do seletor" (botão na máquina selecionada, dois cliques; nunca "este Mac" nem no admin): tira o
   Host do ~/.ssh/config com `removeSshHost` (`src/main/ssh-sync.ts`, testado: bloco só dele sai inteiro; em
   `Host a b` sai só o nome; o resto do arquivo fica igual) e backup em `config.antes-de-remover-<host>`.

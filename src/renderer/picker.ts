@@ -1,7 +1,7 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
 import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
-import { describeProbe, hostLabel, type ProbeText } from "./lib/probe-text.js";
+import { describeProbe, hostLabel, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
 
 declare global { interface Window { picker: PickerApi } }
 
@@ -14,6 +14,7 @@ const statusEl = $<HTMLParagraphElement>("pk-status");
 const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const removeBtn = $<HTMLButtonElement>("pk-remove");
+const renameBtn = $<HTMLButtonElement>("pk-rename");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
@@ -211,6 +212,8 @@ function paintDetail(): void {
   const t = results.get(selected);
   installBtn.hidden = true;
   removeBtn.hidden = selected === "local" || support !== null;
+  renameBtn.hidden = selected === "local" || support !== null;
+  if (renameBtn.hidden) renameForm.hidden = true;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
   // Pod inacessível: o alívio não alcança; o que resolve é o reset pelo app do Grok Bot.
@@ -389,6 +392,7 @@ async function refreshPeople(): Promise<void> {
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
   support = payload.support;
+  setHostNicknames(payload.names);
   if (support !== null) {
     paintAdminChrome();
     if (!support.adminKey) { noteEl.hidden = false; noteEl.textContent = "⚠ falta a chave ~/.ssh/meu-bot-admin neste Mac: rode node scripts/suporte-setup.mjs no projeto."; }
@@ -426,6 +430,28 @@ window.picker.on("picker:install-progress", (p) => {
 filterEl.addEventListener("input", () => applyFilter());
 installBtn.addEventListener("click", () => { void install(); });
 reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut(); });
+/** "Renomear": campo inline com o apelido; Enter ou Salvar grava (vazio tira o apelido). */
+const renameForm = el("div", "add-form"); renameForm.hidden = true;
+const renameInput = el("input"); renameInput.type = "text"; renameInput.maxLength = 40; renameInput.placeholder = "Apelido (vazio volta ao nome SSH)";
+const renameSave = el("button", "btn btn-primary btn-small", "Salvar"); renameSave.type = "button";
+renameForm.append(renameInput, renameSave);
+detailEl.append(renameForm);
+renameBtn.addEventListener("click", () => {
+  if (selected === null) return;
+  renameForm.hidden = !renameForm.hidden;
+  if (!renameForm.hidden) { renameInput.value = hostLabel(selected) === selected ? "" : hostLabel(selected); renameInput.focus(); renameInput.select(); }
+});
+async function saveRename(): Promise<void> {
+  if (selected === null) return;
+  const host = selected;
+  renameSave.disabled = true;
+  try { await window.picker.renameHost(host, renameInput.value); renameForm.hidden = true; init(await window.picker.list(), host); }
+  catch (err) { showError("renomear", err); }
+  finally { renameSave.disabled = false; }
+}
+renameSave.addEventListener("click", () => { void saveRename(); });
+renameInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); void saveRename(); } if (ev.key === "Escape") { ev.stopPropagation(); renameForm.hidden = true; } });
+
 /**
  * "Remover do seletor": dois cliques (o primeiro arma por 4 s, como no resto do app). Sai do ~/.ssh/config com
  * backup; a lista é refeita.

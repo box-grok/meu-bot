@@ -72,6 +72,17 @@ export function setOpenDirect(value: boolean): void {
   persist();
 }
 
+export const getHostNames = (): Record<string, string> => ({ ...file.hostNames });
+/** "Renomear" no seletor: apelido da máquina no app (vazio tira). A chave SSH continua a mesma. */
+export function setHostName(host: string, name: string): void {
+  if (!isValidHost(host)) return;
+  const clean = name.replace(/\s+/g, " ").trim().slice(0, 40);
+  const next = { ...file.hostNames };
+  if (clean === "") delete next[host]; else next[host] = clean;
+  file.hostNames = next;
+  persist();
+}
+
 export const isPodHost = (host: string): boolean => file.podHosts.includes(host);
 /** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
 export function setPodHost(host: string, isPod: boolean): void {
@@ -96,6 +107,7 @@ export const settingsView = (host?: string): SettingsView => ({
   quickEntryStatus: quickEntryStatusProvider(),
   onboarding: file.onboarding,
   openDirect: file.openDirect,
+  hostNames: { ...file.hostNames },
 });
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */

@@ -39,6 +39,8 @@ export interface SettingsFile {
   onboarding: Onboarding;
   /** Abrir a janela direto (padrão) ou com a abertura animada toda vez; caixinha no seletor. */
   openDirect: boolean;
+  /** Apelido de cada máquina no app ("Renomear" no seletor); a chave SSH não muda. */
+  hostNames: Record<string, string>;
 }
 
 export type Onboarding = "pending" | "done" | "skipped";
@@ -72,7 +74,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], onboarding: "pending", openDirect: true,
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], onboarding: "pending", openDirect: true, hostNames: {},
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -106,5 +108,18 @@ export function normalizeSettings(input: unknown): SettingsFile {
     onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",
     openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
+    hostNames: normalizeHostNames(p["hostNames"]),
   };
+}
+
+/** Apelidos válidos: chave = host SSH válido; valor = texto de 1 a 40 caracteres, sem quebras. */
+export function normalizeHostNames(v: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return out;
+  for (const [host, name] of Object.entries(v as Record<string, unknown>)) {
+    if (!isValidHost(host) || typeof name !== "string") continue;
+    const clean = name.replace(/\s+/g, " ").trim().slice(0, 40);
+    if (clean !== "") out[host] = clean;
+  }
+  return out;
 }

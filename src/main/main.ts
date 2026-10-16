@@ -18,7 +18,8 @@ import {
 import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBackendModel, loadSettings, setLastHost, setQuickEntryStatusProvider, settingsView, updateSettings } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
-import { installAudio, installStatusLine, statusLineInstalled } from "./hostProbe";
+import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "./hostProbe";
+import { setXaiKey, xaiKeyStatus } from "./xaiKey";
 import { isAdmin } from "./variant";
 import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
 import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
@@ -89,6 +90,23 @@ function registerIpc(): void {
     const h = hostFromEvent(event);
     if (h === null || isAdmin()) return;
     await reportSupportProgress(h.host, payload).catch(() => undefined);
+  });
+  // Grok por chave de API (máquinas sem Hermes). A chave só passa pelo IPC e pelo stdin do ssh; nunca em log.
+  ipcMain.handle("xai-login:prepare", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return prepareGrokOauth(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("xai-login:event", { kind: "log", text: line }); });
+  });
+  ipcMain.handle("xai-key:status", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return xaiKeyStatus(h.host);
+  });
+  ipcMain.handle("xai-key:set", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    const k = (payload as { key?: unknown } | null)?.key;
+    return setXaiKey(h.host, k === null ? null : typeof k === "string" ? k.trim() : "");
   });
   // Status line do Claude (tutorial): checar e instalar na máquina desta janela.
   ipcMain.handle("statusline:status", (event) => {

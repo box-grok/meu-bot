@@ -155,6 +155,20 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
+    id: "fallback-contas",
+    title: "Fallback: Claude e Grok logados",
+    short: "Fallback",
+    summary: "Com as duas contas logadas nesta máquina, se uma falhar a outra responde. Entre na xAI além do Claude e escolha a ordem.",
+    minutes: 2,
+    icon: "chat",
+    comingSoon: true,
+    steps: [
+      { id: "claude", title: "Entrar no Claude Code", text: "", target: "none", done: () => false },
+      { id: "xai", title: "Entrar na xAI (Grok)", text: "", target: "none", done: () => false },
+      { id: "ordem", title: "Escolher primário e reserva", text: "", target: "none", done: () => false },
+    ],
+  },
+  {
     id: "whatsapp-objetivo",
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",

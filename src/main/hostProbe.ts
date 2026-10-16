@@ -235,6 +235,20 @@ export async function statusLineInstalled(host: string): Promise<boolean> {
   return r.stdout.includes("statusline=1");
 }
 
+/** Grok por OAuth (Hermes + proxy local + providers.json): manda install-grok-oauth.sh e roda no host. */
+export async function prepareGrokOauth(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  if (host === LOCAL_HOST) return { ok: false, log: ["o Grok por OAuth vale para máquinas por SSH"] };
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), "install-grok-oauth.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-grok-oauth.sh 2>&1`], 10 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, lines.at(-1) ?? `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh"];
 
 /** Instala a status line do Claude Code no host (ou neste Mac): manda os dois arquivos e roda o instalador. */

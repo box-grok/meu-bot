@@ -4,7 +4,10 @@ import type { HostProbe } from "../../shared/ipc";
 export type ProbeKind = "ok" | "warn" | "bad";
 export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
 
-export const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
+let nicknames: Record<string, string> = {};
+/** Apelidos ("Renomear" no seletor): a partir daqui, hostLabel mostra o apelido no lugar da chave SSH. */
+export const setHostNicknames = (names: Record<string, string>): void => { nicknames = { ...names }; };
+export const hostLabel = (h: string): string => nicknames[h] ?? (h === "local" ? "este Mac (sem SSH)" : h);
 
 /**
  * O que falta de opcional numa máquina que abre: a status line do Claude (cache de limites) e, com OpenClaw, a

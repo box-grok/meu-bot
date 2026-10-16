@@ -27,6 +27,8 @@ export interface SettingsView {
   onboarding: "pending" | "done" | "skipped";
   /** true = a janela abre direto; false = abertura animada toda vez (caixinha do seletor). */
   openDirect: boolean;
+  /** Apelido de cada máquina ("Renomear" no seletor). */
+  hostNames: Record<string, string>;
 }
 
 export interface SettingsUpdate {
@@ -154,6 +156,8 @@ export interface PickerInit {
   /** Máquinas com o botão "aliviar <host>.app" na área de trabalho. */
   reliefShortcuts: string[];
   /** Caixinha "abrir direto": marcada = sem a abertura animada. */
+  /** Apelidos das máquinas (host → nome mostrado). */
+  names: Record<string, string>;
   openDirect: boolean;
   /** Primeira abertura do seletor nesta sessão do app: toca a chegada animada (logo que nasce grande e vai para o cabeçalho). */
   arrival: boolean;
@@ -192,6 +196,9 @@ export interface WhatsappStatus {
   /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
 }
+
+/** Grok por chave de API (máquinas sem Hermes): há backend? há XAI_API_KEY no .env dele? */
+export interface XaiKeyStatus { backend: boolean; hasKey: boolean }
 
 /** Suporte (meu-bot-admin), lado da pessoa: estado na máquina desta janela. */
 export interface SupportInfo {
@@ -339,6 +346,8 @@ export interface PickerApi {
   installTranscription(host: string): Promise<InstallBackendResult>;
   /** Tira a máquina do seletor e do ~/.ssh/config (backup em `backup`). */
   removeHost(host: string): Promise<{ backup: string }>;
+  /** Apelido da máquina no app (vazio tira); a chave SSH não muda. */
+  renameHost(host: string, name: string): Promise<void>;
   /** meu-bot-admin: lê a caixa de entrada e devolve as pessoas (warning se a caixa não respondeu). */
   supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
   /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
@@ -516,6 +525,11 @@ export interface MeuBotApi {
   supportInfo(): Promise<SupportInfo>;
   setSupport(on: boolean, name: string): Promise<SupportInfo>;
   supportCode(): Promise<string>;
+  /** Grok por chave de API da xAI no backend desta máquina (sem Hermes). `setXaiKey(null)` tira; devolve os modelos listados. */
+  /** Prepara o Grok por OAuth na máquina (Hermes + proxy local); progresso em xai-login:event (log). */
+  xaiPrepare(): Promise<InstallBackendResult>;
+  xaiKeyStatus(): Promise<XaiKeyStatus>;
+  setXaiKey(key: string | null): Promise<string[]>;
   /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
   statusLineInstalled(): Promise<boolean>;
   installStatusLine(): Promise<InstallBackendResult>;

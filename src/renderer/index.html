@@ -182,6 +182,23 @@
       </div>
     </div>
   </dialog>
+  <!-- Grok por chave de API (máquinas sem Hermes): a chave vai para o .env do backend da máquina; nunca fica neste Mac. -->
+  <dialog id="xai-key-dialog">
+    <div class="wa-box">
+      <h2>Grok (xAI) nesta máquina</h2>
+      <p id="xai-key-status" class="hint"></p>
+      <input id="xai-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Cole a chave da xAI (xai-…)" />
+      <p class="hint">A chave é gravada só no backend desta máquina e dá ao modelo grok-4 acesso à sua conta da xAI. Crie uma em console.x.ai › API Keys.</p>
+      <div class="actions"><button type="button" id="xai-key-console" class="btn btn-ghost btn-small">abrir console.x.ai no navegador</button></div>
+      <p id="xai-key-msg" class="hint" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" id="xai-key-save" class="btn btn-primary">Salvar e reiniciar o backend</button>
+        <button type="button" id="xai-key-clear" class="btn btn-ghost" hidden>Remover chave</button>
+        <div class="spacer"></div>
+        <button type="button" id="xai-key-close" class="btn btn-ghost">Fechar</button>
+      </div>
+    </div>
+  </dialog>
   <dialog id="xai-dialog">
     <div class="wa-box">
       <h2>Entrar na xAI (Grok)</h2>
@@ -190,6 +207,7 @@
       <pre id="xai-log" class="log" hidden></pre>
       <div class="dialog-actions">
         <button type="button" id="xai-start" class="btn btn-primary">Começar</button>
+        <button type="button" id="xai-use-key" class="btn btn-ghost btn-small" title="Em vez do login por conta: uma chave de API da xAI gravada no backend desta máquina">usar chave de API</button>
         <div class="spacer"></div>
         <button type="button" id="xai-close" class="btn btn-ghost">Fechar</button>
       </div>

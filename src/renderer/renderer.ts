@@ -1,8 +1,9 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
+import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -830,7 +831,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
     const first = restored.messages.find((m) => m.role === "user");
     if (first !== undefined) setTitle(tab, first.content);
   } else if (restored?.fromWhatsapp === undefined) {
-    addNotice(tab, host === "local" ? "Nova conversa neste Mac. Suas mensagens vão pro backend local, que roda o Claude Code daqui por baixo." : `Nova conversa na máquina ${host}. Suas mensagens vão pro backend dela, que roda o Claude Code por baixo.`);
+    addNotice(tab, host === "local" ? "Nova conversa neste Mac. Suas mensagens vão pro backend local, que roda o Claude Code daqui por baixo." : `Nova conversa na máquina ${hostLabel(host)}. Suas mensagens vão pro backend dela, que roda o Claude Code por baixo.`);
   }
   if (restored?.title !== undefined && restored.title !== "") applyCustomTitle(tab, restored.title);
   return tab;
@@ -871,6 +872,8 @@ async function restoreTabs(): Promise<void> {
 
 function applySettings(view: SettingsView): void {
   settings = view;
+  setHostNicknames(view.hostNames);
+  if (windowHost !== "" && !windowAdmin) document.title = `meu-bot · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
@@ -1010,21 +1013,85 @@ let xaiRunning = false;
 let xaiUrl: string | null = null;
 
 function paintXaiLine(): void {
-  if (xaiAuth === null) { xaiLine.hidden = true; return; }
+  if (xaiAuth === null) {
+    // Sem Hermes: o Grok entra por chave de API no backend da máquina (nada em "este Mac" por enquanto).
+    if (xaiKey === null || !xaiKey.backend) { xaiLine.hidden = true; return; }
+    xaiLine.hidden = false;
+    xaiLine.className = `wa-line cl-line ${xaiKey.hasKey ? "on" : "off"}`;
+    xaiLineText.textContent = xaiKey.hasKey ? "xAI (Grok) · chave de API configurada" : "xAI (Grok) · deslogada · o grok-4 não responde";
+    xaiLineBtn.textContent = xaiKey.hasKey ? "chave" : "entrar";
+    return;
+  }
   xaiLine.hidden = false;
   xaiLine.className = `wa-line cl-line ${xaiAuth.loggedIn ? "on" : "off"}`;
   xaiLineText.textContent = xaiAuth.loggedIn ? `xAI (Grok) · ${xaiAuth.email ?? "logada"}` : "xAI (Grok) · deslogada · o grok-4 não responde";
   xaiLineBtn.textContent = xaiAuth.loggedIn ? "sair" : "entrar";
 }
+let xaiKey: XaiKeyStatus | null = null;
 async function refreshXaiLine(): Promise<void> {
   try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
+  if (xaiAuth === null && !windowAdmin && windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
   paintXaiLine();
 }
+const xaiKeyDialog = $<HTMLDialogElement>("xai-key-dialog");
+const xaiKeyStatusEl = $<HTMLElement>("xai-key-status");
+const xaiKeyInput = $<HTMLInputElement>("xai-key-input");
+const xaiKeyMsg = $<HTMLElement>("xai-key-msg");
+const xaiKeySave = $<HTMLButtonElement>("xai-key-save");
+const xaiKeyClear = $<HTMLButtonElement>("xai-key-clear");
+function openXaiKey(): void {
+  xaiKeyInput.value = ""; xaiKeyMsg.hidden = true;
+  xaiKeyStatusEl.textContent = `Máquina: ${hostLabel(windowHost)}. ${xaiKey?.hasKey ? "Já há uma chave da xAI no backend; colar outra substitui." : "Sem chave da xAI: o grok-4 não aparece nos modos nem no fallback."}`;
+  xaiKeyClear.hidden = xaiKey?.hasKey !== true;
+  xaiKeyDialog.showModal();
+  xaiKeyInput.focus();
+}
+/** Grava ou tira a chave; os modelos que o backend passa a listar atualizam o modo e o fallback na hora. */
+async function applyXaiKey(key: string | null): Promise<void> {
+  xaiKeySave.disabled = true; xaiKeyClear.disabled = true; xaiKeyMsg.hidden = false; xaiKeyMsg.className = "hint";
+  xaiKeyMsg.textContent = key === null ? "Tirando a chave e reiniciando o backend…" : "Gravando a chave e reiniciando o backend…";
+  try {
+    const models = await window.meuBot.setXaiKey(key);
+    xaiKeyInput.value = "";
+    if (models.length > 0) hostModels.set(windowHost, models);
+    applyModelAvailability(modelSelect, windowHost); applyModelAvailability(backendModelSelect, windowHost); paintFallbackOrder();
+    void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); });
+    await refreshXaiLine();
+    const grok = models.includes("grok-4");
+    xaiKeyMsg.className = `hint ${grok || key === null ? "audio-ok" : "guide-pair-note"}`;
+    xaiKeyMsg.textContent = key === null ? "Chave removida. O grok-4 saiu dos modelos desta máquina."
+      : grok ? "Pronto: o grok-4 já aparece nos modos e no fallback desta máquina." : `A chave foi gravada, mas o backend ainda não lista o grok-4 (modelos: ${models.join(", ") || "nenhum"}). Confira a chave em console.x.ai.`;
+    xaiKeyClear.hidden = xaiKey?.hasKey !== true;
+  } catch (err) {
+    xaiKeyMsg.className = "hint guide-pair-note"; xaiKeyMsg.textContent = errMsg(err);
+  } finally { xaiKeySave.disabled = false; xaiKeyClear.disabled = false; }
+}
+xaiKeySave.addEventListener("click", () => { const k = xaiKeyInput.value.trim(); if (k === "") { xaiKeyInput.focus(); return; } void applyXaiKey(k); });
+xaiKeyInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); xaiKeySave.click(); } });
+xaiKeyClear.addEventListener("click", () => armConfirm(xaiKeyClear, "Confirmar? o grok-4 para", () => { void applyXaiKey(null); }));
+$<HTMLButtonElement>("xai-key-console").addEventListener("click", () => { void window.meuBot.openExternal("https://console.x.ai/"); });
+$<HTMLButtonElement>("xai-key-close").addEventListener("click", () => xaiKeyDialog.close());
+$<HTMLButtonElement>("xai-use-key").addEventListener("click", () => { if (xaiRunning) return; xaiDialog.close(); openXaiKey(); });
 function openXai(): void {
   xaiLog.hidden = true; xaiLog.textContent = ""; xaiOpen.hidden = true;
   xaiStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
   xaiStart.hidden = xaiRunning; xaiStart.textContent = "Começar"; xaiClose.textContent = xaiRunning ? "Cancelar" : "Fechar";
   if (!xaiDialog.open) xaiDialog.showModal();
+}
+/** Máquina sem Hermes: instala Hermes + proxy da xAI (como no grokbot) e segue para o login OAuth. */
+async function prepareAndLoginXai(): Promise<void> {
+  if (xaiRunning) return;
+  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
+  xaiStatus.textContent = `Preparando o Grok por OAuth em ${hostLabel(windowHost)} (Hermes + proxy local; na primeira vez baixa o Hermes)…`;
+  try {
+    const r = await window.meuBot.xaiPrepare();
+    if (!r.ok) { xaiStatus.textContent = `✗ ${r.log.at(-1) ?? "não deu para preparar"}`; return; }
+    await refreshXaiLine();
+    if (xaiAuth === null) { xaiStatus.textContent = "✗ o Hermes foi instalado mas o app ainda não o enxerga; feche e abra a janela desta máquina."; return; }
+    if (xaiAuth.loggedIn) { xaiStatus.textContent = "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy."; return; }
+  } catch (err) { xaiStatus.textContent = `✗ ${errMsg(err)}`; return; }
+  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
+  await runXaiLogin();
 }
 async function runXaiLogin(): Promise<void> {
   if (xaiRunning) return;
@@ -1057,6 +1124,10 @@ xaiStart.addEventListener("click", () => { void runXaiLogin(); });
 xaiOpen.addEventListener("click", () => { if (xaiUrl !== null) void window.meuBot.openExternal(xaiUrl); });
 xaiClose.addEventListener("click", () => { if (xaiRunning) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
 xaiLineBtn.addEventListener("click", () => {
+  if (xaiAuth === null) {
+    if (xaiKey?.hasKey === true) { openXaiKey(); return; } // já está por chave de API: gerir a chave
+    openXai(); void prepareAndLoginXai(); return; // sem Hermes: prepara (Hermes + proxy) e entra por OAuth
+  }
   if (xaiAuth !== null && xaiAuth.loggedIn) {
     if (!window.confirm("Sair da conta da xAI no Hermes desta máquina? O grok-4 para de responder até entrar de novo.")) return;
     xaiLineBtn.disabled = true;
@@ -2443,8 +2514,6 @@ function onboardEvent(ev: OnboardEvent): void {
 
 obSkip.addEventListener("click", () => { void finishOnboarding("skipped"); });
 
-/** Rótulo amigável da máquina (o seletor usa o mesmo, em lib/probe-text). */
-const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
 
 async function sendText(tab: Tab, raw: string): Promise<void> {
   const text = raw.trim();

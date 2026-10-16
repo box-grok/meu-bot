@@ -19,13 +19,13 @@ import { shell } from "electron";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
-import { getBackendPort, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
+import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
 import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
 } from "./shortcuts";
-import { backgroundColor, openMainWindow, sendWhenLoaded, windowForHost } from "./windows";
+import { backgroundColor, broadcast, openMainWindow, sendWhenLoaded, windowForHost } from "./windows";
 
 let pickerWin: BrowserWindow | null = null;
 let lastError: string | null = null;
@@ -74,6 +74,7 @@ function initPayload(): PickerInit {
     pods: hosts.filter(isPodHost),
     reliefShortcuts: hosts.filter(hasReliefShortcut),
     openDirect: getOpenDirect(),
+    names: getHostNames(),
     onboardingDone: isOnboardingDone(),
     error: lastError,
     arrival,
@@ -171,6 +172,13 @@ export function initPicker(): void {
     const create = (payload as { create?: unknown } | null)?.create === true;
     if (create) await createReliefShortcut(host); else removeReliefShortcut(host);
     return { has: hasReliefShortcut(host) };
+  });
+  ipcMain.handle("picker:rename-host", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    setHostName(host, String((payload as { name?: unknown } | null)?.name ?? ""));
+    // As janelas abertas trocam o título na hora (settings:changed já leva hostNames).
+    broadcast("settings:changed", settingsView());
   });
   ipcMain.handle("picker:open-direct", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
