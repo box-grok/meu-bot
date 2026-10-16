@@ -6,9 +6,12 @@
  */
 import type { SupportInfo, WhatsappStatus } from "../../shared/ipc";
 
-/** O que mais o guia sabe além do WhatsApp: o estado do suporte nesta máquina (null = ainda não consultado). */
-export interface GuideContext { support: SupportInfo | null }
-export const emptyContext = (): GuideContext => ({ support: null });
+/**
+ * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado) e a status
+ * line do Claude (instalada? null = não consultado; `limits` = a conta já mostra Sessão/Semanal).
+ */
+export interface GuideContext { support: SupportInfo | null; statusLine: { installed: boolean | null; limits: boolean } }
+export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false } });
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "none";
@@ -35,8 +38,8 @@ export interface GuideStep {
   /** Instrução curta de uma ação. */
   text: string;
   target: GuideTarget;
-  /** Corpo especial do passo no guia: cartões de quem responder, controles de áudio, ou os do suporte. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery";
+  /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -109,25 +112,45 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "suporte",
     title: "Ligar o suporte",
     short: "Suporte",
-    summary: "Deixe quem cuida do seu meu-bot ver a sua máquina e te ajudar. Você liga, desliga e vê tudo o que ele fizer.",
+    summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você liga, desliga e vê tudo o que ele fizer.",
     minutes: 1,
     icon: "target",
     requires: "support",
     steps: [
       {
         id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
-        text: "É como {admin} vai te ver na lista dele.",
+        text: "Como você prefere ser chamado.",
         done: (_st, _f, c) => (c.support?.name ?? "") !== "",
       },
       {
-        id: "permitir", title: "Permitir o suporte de {admin}", target: "none", body: "support-switch",
-        text: "Ligado, {admin} consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer fica registrado nas Configurações. Você desliga quando quiser.",
+        id: "permitir", title: "Permitir o acesso do admin", target: "none", body: "support-switch",
+        text: "Ligado, o admin consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer fica registrado nas Configurações. Você desliga quando quiser.",
         done: (_st, _f, c) => c.support?.on === true,
       },
       {
-        id: "entrega", title: "{admin} recebe o aviso", target: "none", body: "support-delivery",
-        text: "A sua máquina avisa {admin} sozinha, sem você precisar mandar nada. Este passo se marca quando o aviso chegar.",
+        id: "entrega", title: "O admin recebe o aviso", target: "none", body: "support-delivery",
+        text: "A sua máquina avisa o admin sozinha, sem você precisar mandar nada. Este passo se marca quando o aviso chegar.",
         done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
+      },
+    ],
+  },
+  {
+    id: "statusline",
+    title: "Status line do Claude",
+    short: "Status line",
+    summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou.",
+    minutes: 1,
+    icon: "target",
+    steps: [
+      {
+        id: "instalar", title: "Instalar a status line nesta máquina", target: "none", body: "statusline-install",
+        text: "É um pequeno script do Claude Code que anota os seus limites de uso. O meu-bot lê essa anotação e mostra no rodapé.",
+        done: (_st, _f, c) => c.statusLine.installed === true,
+      },
+      {
+        id: "limites", title: "Ver os limites no rodapé", target: "none",
+        text: "Os números aparecem depois que o Claude Code roda uma vez nesta máquina. Mande uma mensagem ao agente; em seguida o rodapé mostra Sessão e Semanal.",
+        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
       },
     ],
   },
@@ -181,6 +204,3 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
 /** Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível. */
 export const visibleTutorials = (ctx: GuideContext): Tutorial[] =>
   TUTORIAIS.filter((t) => t.requires !== "support" || ctx.support?.available === true);
-
-/** "{admin}" nos textos vira o nome de quem dá o suporte. */
-export const withAdmin = (text: string, ctx: GuideContext): string => text.replace(/\{admin\}/g, ctx.support?.admin || "o suporte");

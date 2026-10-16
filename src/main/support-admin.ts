@@ -95,7 +95,8 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
   return null;
 }
 
-const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, hostname: s.code.hostname, on: s.code.state === "on", seenAt: s.seenAt, source: s.source });
+const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
+const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source });
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
@@ -157,7 +158,8 @@ const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
 /** Ação de suporte: roda na máquina da pessoa e fica no registro que ela vê. */
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
-  const who = adminName();
+  // No registro que a pessoa vê, quem fez é "admin" (sem o nome de quem dá o suporte).
+  const who = "admin";
   if (action === "transcription") {
     const r = await installAudio(host, { kind: "in" });
     await runSsh(host, `${supportLogSh(who, a.what)}\n`, 15_000);

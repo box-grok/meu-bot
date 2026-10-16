@@ -227,6 +227,14 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   return { ok: true, log: lines };
 }
 
+/** A status line nossa está instalada no host (a mesma checagem da sondagem; neste Mac, com as settings gerenciadas)? */
+export async function statusLineInstalled(host: string): Promise<boolean> {
+  if (host === LOCAL_HOST) return localStatusLine();
+  const r = await run("ssh", [...sshBase(host), "--", host, `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`], 25_000);
+  if (r.code !== 0) throw new Error(lastLine(r.stderr) || "não consegui entrar na máquina");
+  return r.stdout.includes("statusline=1");
+}
+
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh"];
 
 /** Instala a status line do Claude Code no host (ou neste Mac): manda os dois arquivos e roda o instalador. */

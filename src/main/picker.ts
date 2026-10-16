@@ -9,7 +9,7 @@ import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
 import { approveTailscaleCheck, installAudio, installBackend, installStatusLine, probeHost } from "./hostProbe";
 import { isAdmin } from "./variant";
-import { addSupportCode, adminKeyExists, knownPeople, supportPeople } from "./support-admin";
+import { addSupportCode, adminKeyExists, isSupportAlias, knownPeople, supportPeople } from "./support-admin";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
@@ -21,7 +21,7 @@ import { shell } from "electron";
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
 import { getBackendPort, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
-import { syncSshConfig } from "./sshSync";
+import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
 import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
 } from "./shortcuts";
@@ -54,7 +54,9 @@ function probeCached(host: string): Promise<HostProbe> {
 }
 
 // No meu-bot-admin a lista são as pessoas com suporte ligado (os aliases do ~/.ssh/meu-bot-suporte.conf).
-const hostsList = (): string[] => (isAdmin() ? knownPeople().filter((p) => p.on).map((p) => p.alias) : [LOCAL_HOST, ...listSshHosts()]);
+// No meu-bot normal, os aliases `suporte-*` (do meu-bot-admin, via Include no ~/.ssh/config) ficam de fora:
+// são as máquinas das pessoas que o admin atende, não máquinas desta pessoa.
+const hostsList = (): string[] => (isAdmin() ? knownPeople().filter((p) => p.on).map((p) => p.alias) : [LOCAL_HOST, ...listSshHosts().filter((h) => !isSupportAlias(h))]);
 
 /** A chegada animada do seletor toca uma vez por sessão do app; depois a lista aparece seca. */
 let arrivalShown = false;
@@ -149,6 +151,19 @@ export function initPicker(): void {
     if (!isPodHost(host)) throw new Error(`${host} não foi reconhecida como computador do Grok Bot.`);
     showRelief(host);
     pickerWin?.close();
+  });
+  // "Remover do seletor": sai do ~/.ssh/config (com backup) e os atalhos da mesa dela vão junto.
+  ipcMain.handle("picker:remove-host", (event, payload: unknown) => {
+    if (!fromPicker(event) || isAdmin()) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    if (host === LOCAL_HOST) throw new Error("este Mac não sai da lista");
+    if (windowForHost(host) !== undefined) throw new Error(`feche a janela de ${host} antes de remover`);
+    const r = removeHostFromSshConfig(host);
+    if (hasShortcut(host)) removeShortcut(host);
+    if (hasReliefShortcut(host)) removeReliefShortcut(host);
+    probes.delete(host);
+    if (getLastHost() === host) setLastHost(LOCAL_HOST);
+    return { backup: r.backup };
   });
   ipcMain.handle("picker:relief-shortcut", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");

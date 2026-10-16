@@ -6,18 +6,22 @@
 # dependências quando faltam e encerra uma cópia em execução, porque a instalação apaga e
 # reescreve o .app — trocar o bundle debaixo de um processo vivo deixa o Finder com o ícone velho.
 #
-#   ./instalar.sh          gera e instala
-#   ./instalar.sh --abrir  gera, instala e abre o seletor
+#   ./instalar.sh               gera e instala
+#   ./instalar.sh --abrir       gera, instala e abre o seletor
+#   ./instalar.sh --sem-suporte sem o pacote de suporte (por padrão ele entra quando build/suporte existe,
+#                               para este Mac também ver Configurações › Suporte e o tutorial "Ligar o suporte")
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 abrir=0
+suporte=0; [ -f build/suporte/suporte.json ] && suporte=1
 for a in "$@"; do
   case "$a" in
     --abrir) abrir=1 ;;
+    --sem-suporte) suporte=0 ;;
     -h|--help) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "argumento desconhecido: $a (use --abrir ou --help)" >&2; exit 2 ;;
+    *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte ou --help)" >&2; exit 2 ;;
   esac
 done
 
@@ -39,8 +43,8 @@ if pgrep -f "meu-bot.app/Contents/MacOS/meu-bot" >/dev/null 2>&1; then
   pkill -f "meu-bot.app/Contents/MacOS/meu-bot" >/dev/null 2>&1 || true
 fi
 
-echo "▸ compilando e empacotando…"
-npm run dist
+echo "▸ compilando e empacotando…$([ "$suporte" -eq 1 ] && echo " (com o pacote de suporte)")"
+MEU_BOT_SUPORTE=$suporte npm run dist
 
 mesa="$HOME/Desktop/meu-bot.app"
 [ -d "$mesa" ] || { echo "a instalação terminou mas $mesa não apareceu." >&2; exit 1; }

@@ -53,12 +53,12 @@ test("guia é sequencial: marcações antigas não acendem passos à frente de u
 });
 
 test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui quando a entrega chega", async () => {
-  const { visibleTutorials, withAdmin } = await import("../../dist/renderer/lib/tutoriais.js");
+  const { visibleTutorials } = await import("../../dist/renderer/lib/tutoriais.js");
   const sup = TUTORIAIS.find((x) => x.id === "suporte");
   const idx = TUTORIAIS.indexOf(sup);
   assert.equal(TUTORIAIS[idx - 1].id, "whatsapp-openclaw", "depois do WhatsApp");
-  const s = (over) => ({ support: { available: true, admin: "Lucas", on: false, name: "", log: [], deliveredAt: null, ...over } });
-  assert.ok(!visibleTutorials({ support: null }).includes(sup));
+  const s = (over) => ({ support: { available: true, admin: "Lucas", on: false, name: "", log: [], deliveredAt: null, ...over }, statusLine: { installed: null, limits: false } });
+  assert.ok(!visibleTutorials({ support: null, statusLine: { installed: null, limits: false } }).includes(sup));
   assert.ok(!visibleTutorials(s({ available: false })).includes(sup));
   assert.ok(visibleTutorials(s({})).includes(sup));
   const wa0 = wa();
@@ -67,5 +67,17 @@ test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui q
   assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true })).current, 2, "ligado, falta a entrega");
   assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: true, deliveredAt: "2026-10-16T12:00:00Z" })).finished, true);
   assert.equal(guideView(sup, wa0, emptyFlags(), s({ name: "Bia", on: false, deliveredAt: "2026-10-16T12:00:00Z" })).current, 1, "desligado volta");
-  assert.equal(withAdmin("Permitir o suporte de {admin}", s({})), "Permitir o suporte de Lucas");
+  for (const st of sup.steps) assert.doesNotMatch(`${st.title} ${st.text}`, /Lucas|\{admin\}/, "sem o nome de quem dá o suporte");
+});
+
+test("tutorial da status line: sempre visível; instalar, depois os limites no rodapé", async () => {
+  const { visibleTutorials, emptyContext } = await import("../../dist/renderer/lib/tutoriais.js");
+  const sl = TUTORIAIS.find((x) => x.id === "statusline");
+  assert.equal(TUTORIAIS[TUTORIAIS.indexOf(sl) - 1].id, "suporte", "depois do suporte");
+  assert.ok(visibleTutorials(emptyContext()).includes(sl));
+  const c = (installed, limits) => ({ ...emptyContext(), statusLine: { installed, limits } });
+  assert.equal(guideView(sl, null, emptyFlags(), c(null, false)).current, 0, "ainda não consultado");
+  assert.equal(guideView(sl, null, emptyFlags(), c(false, true)).current, 0);
+  assert.equal(guideView(sl, null, emptyFlags(), c(true, false)).current, 1);
+  assert.equal(guideView(sl, null, emptyFlags(), c(true, true)).finished, true);
 });

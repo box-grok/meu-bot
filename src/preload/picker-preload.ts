@@ -10,6 +10,7 @@ const api: PickerApi = {
   installStatusLine: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-statusline", { host }),
   installTranscription: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-transcricao", { host }),
   supportRefresh: () => ipcRenderer.invoke("picker:support-refresh", {}),
+  removeHost: (host: string) => ipcRenderer.invoke("picker:remove-host", { host }),
   supportAdd: (code: string) => ipcRenderer.invoke("picker:support-add", { code }),
   choose: (host: string): Promise<void> => ipcRenderer.invoke("picker:choose", { host }),
   setShortcut: (host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }> => ipcRenderer.invoke("picker:shortcut", { host, create }),

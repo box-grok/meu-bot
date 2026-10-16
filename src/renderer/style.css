@@ -595,7 +595,9 @@ body.admin-mode #wa-line, body.admin-mode #rest, body.admin-mode #sidebar-foot {
 .admin-logs-card[open] > summary strong::before { transform: rotate(90deg); }
 .admin-logs-card > .btn { align-self: flex-start; }
 .support-name { display: flex; gap: 8px; align-items: center; }
-.support-name input { flex: 1; min-width: 0; }
+.support-name input { flex: 1; min-width: 0; max-width: 320px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; }
+.support-name input:focus { outline: none; border-color: var(--accent); }
+.support-name input:disabled { opacity: .6; }
 .support-delivery { display: flex; flex-direction: column; gap: 8px; }
 .support-delivery > .btn { align-self: flex-start; }
 .support-more > summary { cursor: pointer; font-size: 12px; color: var(--muted); }

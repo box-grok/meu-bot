@@ -3,7 +3,7 @@ import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
-import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, withAdmin, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -929,7 +929,7 @@ window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {
       if (ev.ok) {
         const tab = active();
         if (tab !== null) addNotice(tab, "✓ Claude Code logado nesta máquina. Pode mandar a próxima mensagem.", "info");
-        void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); });
+        void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintGuide(); });
         clAuth = { loggedIn: true, email: clAuth?.email ?? null }; paintClaudeLine();
         void refreshClaudeLine();
         // Deu certo: o modal se fecha sozinho; o aviso fica na conversa.
@@ -1322,10 +1322,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     const li = el("li", done ? "done" : cur ? "current" : "pending");
     const num = el("span", "tut-num", done ? "✓" : String(i + 1));
     const txt = el("div", "tut-step");
-    txt.append(el("strong", "", withAdmin(step.title, guideCtx())));
+    txt.append(el("strong", "", step.title));
     if (done) txt.append(el("p", "", "concluído"));
     if (cur) {
-      txt.append(el("p", "", withAdmin(step.text, guideCtx())));
+      txt.append(el("p", "", step.text));
       if (step.body === "reply-choice") {
         const cards = el("div", "reply-cards guide-cards");
         renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
@@ -1333,6 +1333,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderChannelEditor(txt);
       } else if (step.body === "audio") {
         renderAudioControls(txt);
+      } else if (step.body === "statusline-install") {
+        renderStatusLineInstall(txt);
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
         renderSupportParts(txt, [step.body === "support-name" ? "name" : step.body === "support-switch" ? "switch" : "delivery"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
@@ -1364,8 +1366,9 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     steps.append(li);
   });
   panel.append(steps);
-  // Conectado: a própria aba vira o painel de gerência (quem responde, editar config, atualizar, desconectar) — sem modal.
-  if (st.connected) {
+  // Conectado: a aba do guia do WhatsApp vira o painel de gerência (quem responde, áudio, atualizar,
+  // desconectar) — sem modal. Só nos guias do WhatsApp: o do suporte não tem nada a ver com isso.
+  if (st.connected && t.steps.some((x) => x.target.startsWith("wa-"))) {
     const manage = el("div", "guide-manage");
     manage.append(el("span", "tut-finished-line", "✓ Conectado. Ajuste aqui quando quiser."));
     manage.append(el("p", "hint strong-hint", "Quem o agente responde no WhatsApp"));
@@ -2760,7 +2763,43 @@ let supportMsg: { text: string; bad: boolean } | null = null;
 /** Código de suporte revelado (plano B; some ao fechar as Configurações ou esconder). */
 let supportCodeShown: string | null = null;
 let supportPoll: number | null = null;
-const guideCtx = (): GuideContext => ({ support: supportState });
+/** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
+let statusLineState: boolean | null = null;
+let statusLineBusy = false;
+let statusLineLog: string[] = [];
+let statusLineMsg: { text: string; bad: boolean } | null = null;
+const accountHasLimits = (): boolean => account !== null && (account.sessionPct !== null || account.weeklyPct !== null);
+const guideCtx = (): GuideContext => ({ support: supportState, statusLine: { installed: statusLineState, limits: accountHasLimits() } });
+async function refreshStatusLine(): Promise<void> {
+  if (windowAdmin || windowHost === "") return;
+  try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }
+  paintGuide();
+}
+window.meuBot.on("statusline:progress", ({ line }) => {
+  statusLineLog = [...statusLineLog, line].slice(-6);
+  paintGuide();
+});
+/** Passo "Instalar a status line": Instalar (ou ✓ + Reinstalar), progresso do instalador e erro no próprio passo. */
+function renderStatusLineInstall(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const row = el("div", "audio-row");
+  if (statusLineState === true && !statusLineBusy) row.append(el("span", "audio-ok", "✓ instalada nesta máquina"));
+  const b = el("button", `btn ${statusLineState === true ? "btn-ghost" : "btn-primary"} btn-small`, statusLineBusy ? "Instalando…" : statusLineState === true ? "Reinstalar" : "Instalar");
+  b.type = "button"; b.disabled = statusLineBusy || statusLineState === null;
+  b.addEventListener("click", () => {
+    statusLineBusy = true; statusLineLog = []; statusLineMsg = null; paintGuide();
+    void window.meuBot.installStatusLine()
+      .then((r) => { statusLineMsg = r.ok ? { text: "Status line instalada.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
+      .catch((err: unknown) => { statusLineMsg = { text: errMsg(err), bad: true }; })
+      .finally(() => { statusLineBusy = false; void refreshStatusLine(); });
+  });
+  row.append(b);
+  box.append(row);
+  if (statusLineState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (statusLineBusy && statusLineLog.length > 0) box.append(el("pre", "admin-logs", statusLineLog.join("\n")));
+  if (statusLineMsg !== null) box.append(el("p", `hint ${statusLineMsg.bad ? "guide-pair-note" : "audio-ok"}`, statusLineMsg.text));
+  container.append(box);
+}
 const errMsg = (err: unknown): string => (err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err));
 
 async function refreshSupportState(): Promise<void> {
@@ -2788,12 +2827,15 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
   if (s === null || !s.available) return;
   if (parts.includes("name")) {
     const row = el("div", "support-name");
-    const name = el("input"); name.type = "text"; name.placeholder = `Seu nome (${s.admin} vê)`; name.value = s.name; name.maxLength = 40;
-    name.disabled = s.on || supportBusy;
+    const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name; name.maxLength = 40;
+    // Com o suporte ligado o nome fica fixo; se ainda está vazio (ligado por outro Mac, por exemplo), dá para pôr.
+    const editable = !s.on || s.name === "";
+    name.disabled = !editable || supportBusy;
     row.append(name);
-    if (!s.on) {
+    if (editable) {
       const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
-      save.addEventListener("click", () => { void supportDo(() => window.meuBot.setSupportName(name.value), null); });
+      // Ligado: regrava o aviso com o nome novo (o admin vê o nome que vai no código).
+      save.addEventListener("click", () => { void supportDo(() => (s.on ? window.meuBot.setSupport(true, name.value) : window.meuBot.setSupportName(name.value)), null); });
       name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
       row.append(save);
     }
@@ -2802,19 +2844,19 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
   if (parts.includes("switch")) {
     const sw = el("label", "switch switch-row");
     const box = el("input"); box.type = "checkbox"; box.checked = s.on; box.disabled = supportBusy || (!s.on && s.name === "");
-    sw.append(box, el("span", "track"), el("span", "switch-label", supportBusy ? "aplicando…" : `Permitir suporte de ${s.admin}`));
+    sw.append(box, el("span", "track"), el("span", "switch-label", supportBusy ? "aplicando…" : "Permitir o acesso do admin"));
     if (!s.on && s.name === "") sw.title = "Diga seu nome antes";
     box.addEventListener("change", () => {
       const on = box.checked;
-      void supportDo(() => window.meuBot.setSupport(on, s.name), on ? `Suporte ligado. Avisando ${s.admin}…` : "Suporte desligado. O acesso saiu desta máquina.");
+      void supportDo(() => window.meuBot.setSupport(on, s.name), on ? "Suporte ligado. Avisando o admin…" : "Suporte desligado. O acesso saiu desta máquina.");
     });
     container.append(sw);
   }
   if (parts.includes("delivery") && s.on) {
     const box = el("div", "support-delivery");
-    if (s.deliveredAt !== null) box.append(el("p", "audio-ok", `✓ ${s.admin} recebeu o aviso (${new Date(s.deliveredAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). A máquina avisa de novo sozinha a cada 30 min.`));
+    if (s.deliveredAt !== null) box.append(el("p", "audio-ok", `✓ O admin recebeu o aviso (${new Date(s.deliveredAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). A máquina avisa de novo sozinha a cada 30 min.`));
     else {
-      const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", `Avisando ${s.admin}…`));
+      const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Avisando o admin…"));
       const retry = el("button", "btn btn-ghost btn-small", "Tentar de novo"); retry.type = "button"; retry.disabled = supportBusy;
       retry.addEventListener("click", () => { void supportDo(() => window.meuBot.supportDeliver(), null); });
       box.append(wait, retry);
@@ -2836,7 +2878,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       code.addEventListener("focus", () => code.select());
       const copy = el("button", "btn btn-primary btn-small", "Copiar"); copy.type = "button";
       copy.addEventListener("click", () => { void navigator.clipboard.writeText(supportCodeShown ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
-      more.append(code, copy, el("p", "hint", `Mande para ${s.admin} (WhatsApp, e-mail); ele cola em "Adicionar pessoa". Não é senha: mostra só como ele chega nesta máquina.`));
+      more.append(code, copy, el("p", "hint", "Mande para o admin (WhatsApp, e-mail). Não é senha: mostra só como o admin chega nesta máquina."));
     }
     box.append(more);
     container.append(box);
@@ -2860,8 +2902,8 @@ function paintSupport(): void {
   if (s === null || !s.available) return;
   supportBody.replaceChildren();
   supportBody.append(el("p", "hint", s.on
-    ? `Ligado: ${s.admin} consegue entrar em ${hostLabel(windowHost)} para ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece abaixo. Desligar tira o acesso na hora.`
-    : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda de ${s.admin}.`));
+    ? `Ligado: o admin consegue entrar em ${hostLabel(windowHost)} para ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece abaixo. Desligar tira o acesso na hora.`
+    : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda do admin.`));
   renderSupportParts(supportBody, ["name", "switch", "delivery", "log"]);
 }
 
@@ -3013,6 +3055,7 @@ window.meuBot.on("chat:account", ({ host, status }) => {
   paintContext(active());
   paintFallbackOrder();
   checkSessionThreshold();
+  paintGuide(); // o passo "Ver os limites no rodapé" se marca quando a conta traz números
 });
 cancelBtn.addEventListener("click", () => dialog.close());
 dialog.addEventListener("close", () => onboardEvent("settings-closed"));
@@ -3075,7 +3118,8 @@ void (async () => {
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
-  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); });
+  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
+  void refreshStatusLine();
   void refreshWhatsapp();
   void refreshSupportState();
   void refreshClaudeLine();

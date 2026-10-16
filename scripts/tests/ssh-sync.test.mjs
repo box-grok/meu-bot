@@ -60,3 +60,17 @@ test("normalizeInclude: ~, relativo a ~/.ssh e absoluto", () => {
 test("identityFiles lista as chaves do modelo sem repetir, com ~ expandido", () => {
   assert.deepEqual(identityFiles(template, HOME), [`${HOME}/.ssh/id_ed25519`]);
 });
+
+test("remover do seletor: bloco inteiro, só o alias, ou nada (Include não é mexido)", () => {
+  const { removeSshHost } = createRequire(import.meta.url)("../../dist/main/ssh-sync.js");
+  const cfg = ["Include ~/.colima/ssh_config", "", "# minhas máquinas", "Host vm-a", "    HostName 1.2.3.4", "    User eu", "", "Host vm-b vm-b2", "    HostName 5.6.7.8", "", "Host *", "    ServerAliveInterval 30", ""].join("\n");
+  const a = removeSshHost(cfg, "vm-a");
+  assert.equal(a.removed, "block");
+  assert.ok(!a.text.includes("vm-a") && !a.text.includes("1.2.3.4"));
+  assert.ok(a.text.includes("Include ~/.colima/ssh_config") && a.text.includes("Host vm-b vm-b2") && a.text.includes("ServerAliveInterval 30"));
+  const b = removeSshHost(cfg, "vm-b2");
+  assert.equal(b.removed, "alias");
+  assert.ok(b.text.includes("Host vm-b\n    HostName 5.6.7.8"));
+  assert.deepEqual(removeSshHost(cfg, "colima"), { text: cfg, removed: null });
+  assert.equal(removeSshHost("Host=vm-c\n  HostName x\n", "vm-c").removed, "block");
+});

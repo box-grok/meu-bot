@@ -100,3 +100,33 @@ export function identityFiles(templateText: string, home: string): string[] {
   }
   return [...out];
 }
+
+/**
+ * Tira um host do texto do ~/.ssh/config ("Remover do seletor"). Bloco só dele: sai o bloco inteiro (da linha
+ * Host até a próxima Host/Match). Bloco com vários nomes (`Host a b`): sai só o nome. O resto do arquivo fica
+ * igual, comentários e Include inclusive. `removed: null` = o host não está neste arquivo (pode vir de um
+ * Include, que não é mexido).
+ */
+export function removeSshHost(text: string, host: string): { text: string; removed: "block" | "alias" | null } {
+  const lines = text.split(/\r?\n/);
+  const isHeader = (l: string): RegExpExecArray | null => /^\s*(host|match)(\s*=\s*|\s+)(.*)$/i.exec(l);
+  let start = -1;
+  let aliases: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = isHeader(lines[i]!);
+    if (m === null || m[1]!.toLowerCase() !== "host") continue;
+    const list = m[3]!.trim().split(/\s+/).filter((a) => a !== "");
+    if (list.includes(host)) { start = i; aliases = list; break; }
+  }
+  if (start < 0) return { text, removed: null };
+  if (aliases.length > 1) {
+    const m = isHeader(lines[start]!)!;
+    const indent = /^\s*/.exec(lines[start]!)![0];
+    lines[start] = `${indent}${m[1]} ${aliases.filter((a) => a !== host).join(" ")}`;
+    return { text: lines.join("\n"), removed: "alias" };
+  }
+  let end = start + 1;
+  while (end < lines.length && isHeader(lines[end]!) === null) end++;
+  const out = [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n");
+  return { text: out, removed: "block" };
+}

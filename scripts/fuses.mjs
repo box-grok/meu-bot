@@ -1,6 +1,7 @@
 import { flipFuses, FuseVersion, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync } from "node:fs";
+import path from "node:path";
 
 // `--admin`: o meu-bot-admin (ver scripts/package.mjs).
 const name = process.argv.includes("--admin") ? "meu-bot-admin" : "meu-bot";
@@ -9,6 +10,16 @@ const app = `out/${name}-darwin-${process.arch === "arm64" ? "arm64" : "x64"}/${
 if (!existsSync(app)) {
   console.error(`App não encontrado em ${app}. Rode npm run package primeiro.`);
   process.exit(1);
+}
+// Pacote de suporte (build/suporte, de scripts/suporte-setup.mjs) no meu-bot instalado: só no meu-bot normal,
+// com MEU_BOT_SUPORTE=1 (o ./instalar.sh liga quando build/suporte existe). Antes da assinatura.
+if (name === "meu-bot" && process.env.MEU_BOT_SUPORTE === "1" && existsSync("build/suporte/suporte.json")) {
+  const cfg = path.join(app, "Contents", "Resources", "config");
+  copyFileSync("build/suporte/suporte.json", path.join(cfg, "suporte.json"));
+  copyFileSync("build/suporte/known_hosts", path.join(cfg, "suporte-known_hosts"));
+  copyFileSync("build/suporte/entrega", path.join(cfg, "suporte-entrega"));
+  chmodSync(path.join(cfg, "suporte-entrega"), 0o600);
+  console.log("Pacote de suporte incluído");
 }
 await flipFuses(app, {
   version: FuseVersion.V1,
@@ -33,7 +44,6 @@ console.log("Assinatura ad-hoc aplicada em", app);
 // Instala em ~/Applications e garante o atalho na área de trabalho.
 import { rmSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import path from "node:path";
 const installed = path.join(homedir(), "Applications", `${name}.app`);
 mkdirSync(path.dirname(installed), { recursive: true });
 rmSync(installed, { recursive: true, force: true });

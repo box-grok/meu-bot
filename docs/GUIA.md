@@ -1120,6 +1120,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   confirmação de 2 cliques: reiniciar gateway, reiniciar backend, ativar transcrição; registros do
   journalctl) e o espelho do WhatsApp na lateral (menu "…" só Exportar/Arquivar). Sem compositor, sem túnel;
   o main recusa no admin tudo que escreve (pareamento, política, logins, pausar, limpar, chat).
+- Máquina de endereço local (VM do Colima: `127.0.0.1:<porta>`) pode ligar o suporte: só um admin no mesmo
+  Mac a alcança, e o admin mostra "só alcançável deste Mac" (`SupportPerson.local`). Serve para testar o
+  admin sem outra máquina. Limite geral: o aviso periódico reenvia o código gerado ao ligar; se o endereço
+  da máquina mudar (porta do Colima após reiniciar, IP novo), é preciso desligar e ligar de novo.
 - Progresso nos tutoriais: com o suporte ligado, o meu-bot da pessoa grava `~/.local/share/meu-bot/
   progresso.json` (tour feito/pulado, cada tutorial com passos feitos, total e onde parou; validado por
   `parseSupportProgress`) 3 s depois de cada mudança do guia, só quando algo mudou. O admin mostra o quadro
@@ -1129,13 +1133,25 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   quando abertos.
 - Tutorial "Ligar o suporte" (3 passos, depois do WhatsApp; `requires: "support"`, só aparece com o pacote
   de suporte, em máquina por SSH e fora do admin): dizer o nome → permitir → "{admin} recebe o aviso". Os
-  passos leem o estado real pelo `GuideContext` (`guideView(t, status, flags, ctx)`, `visibleTutorials`,
-  `withAdmin` troca "{admin}" pelo nome). Conclui sozinho: o `entregar.sh` grava
+  passos leem o estado real pelo `GuideContext` (`guideView(t, status, flags, ctx)`, `visibleTutorials`). No
+  app da pessoa nunca aparece o nome de quem dá o suporte: os textos dizem "o admin" (pedido do usuário), e o
+  registro da máquina anota as ações como "admin". Conclui sozinho: o `entregar.sh` grava
   `~/.local/share/meu-bot/suporte/ultima-entrega` quando a entrega na caixa dá certo (a entrega pelo Mac
   também grava) e `supportInfo` devolve `deliveredAt`. Enquanto o aviso não chega, a tela confere a cada
   10 s e oferece "Tentar de novo" (`support:deliver`); o código visível fica recolhido em "Não chegou?
   Mostrar código de suporte". As peças (nome, interruptor, aviso/código, registro) são as mesmas das
   Configurações › Suporte (`renderSupportParts`). O progresso dele vai para o admin como os outros.
+- "Remover do seletor" (botão na máquina selecionada, dois cliques; nunca "este Mac" nem no admin): tira o
+  Host do ~/.ssh/config com `removeSshHost` (`src/main/ssh-sync.ts`, testado: bloco só dele sai inteiro; em
+  `Host a b` sai só o nome; o resto do arquivo fica igual) e backup em `config.antes-de-remover-<host>`.
+  Host que vem de um Include (Colima, suporte) não é mexido e o erro diz isso. Recusa com a janela da
+  máquina aberta; os atalhos da mesa dela saem junto. Ela volta se estiver no modelo do projeto e alguém
+  usar "sincronizar ssh".
+- Tutorial "Status line do Claude" (2 passos, depois do "Ligar o suporte"; em toda janela, nunca no admin):
+  instalar (o mesmo `installStatusLine` do seletor, agora também pela janela: IPC `statusline:status` com a
+  checagem da sondagem e `statusline:install` com progresso em `statusline:progress`) e ver os limites no
+  rodapé (conclui quando a conta da máquina traz `sessionPct`/`weeklyPct`, que só nascem depois que o
+  Claude Code roda uma vez lá). `GuideContext.statusLine`. O seletor continua oferecendo instalar.
 - Verificado de ponta a ponta (16 out, Electron rodando as funções do app): ligar → timer ativo e código na
   caixa → admin vê a pessoa, saúde, WhatsApp e 200 linhas de registro → desligar → a chave do admin passa a
   ser recusada e o timer/arquivos somem.

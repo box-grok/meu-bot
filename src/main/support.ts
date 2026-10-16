@@ -69,8 +69,9 @@ function resolveSsh(host: string): Promise<{ hostname: string; user: string; por
     execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => {
       if (err) { reject(new Error(`não consegui ler o endereço de ${host}`)); return; }
       const kv = new Map(stdout.split("\n").map((l) => { const i = l.indexOf(" "); return [l.slice(0, i), l.slice(i + 1).trim()] as const; }));
+      // Endereço local (VM do Colima, por exemplo) vale: só um admin neste mesmo Mac a alcança, e o admin
+      // vê isso ao lado do endereço. Serve para testar o suporte sem outra máquina.
       const hostname = kv.get("hostname") ?? "";
-      if (/^(localhost|127\.|::1$)/.test(hostname)) { reject(new Error("esta máquina só é acessível deste Mac (endereço local); o suporte não chega nela")); return; }
       resolve({ hostname, user: kv.get("user") ?? "", port: Number(kv.get("port") ?? "22") });
     });
   });
@@ -180,8 +181,8 @@ export async function setSupport(host: string, on: boolean, name: string): Promi
   if (who !== "") saveSupportName(who);
   const built = await buildCode(host, who || "pessoa", on ? "on" : "off");
   const script = on
-    ? `${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, `ligou o suporte de ${b.admin}`)}\n${installDeliverySh(b, built.id, built.text)}`
-    : `${authorizedKeysScript(null)}\n${supportLogSh(who || "pessoa", `desligou o suporte de ${b.admin}`)}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
+    ? `${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, "ligou o acesso do admin")}\n${installDeliverySh(b, built.id, built.text)}`
+    : `${authorizedKeysScript(null)}\n${supportLogSh(who || "pessoa", "desligou o acesso do admin")}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
   lastProgress.delete(host);
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ${on ? "ligar" : "desligar"} o suporte: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
@@ -218,7 +219,7 @@ export async function deliverNow(host: string): Promise<SupportInfo> {
   const r = await runSsh(host, `[ -x "${D}/entregar.sh" ] && "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0\n`, 60_000);
   if (!r.stdout.includes("ENTREGUE=1")) {
     const built = await buildCode(host, supportName() || "pessoa", "on");
-    if (!(await deliverFromMacAndMark(host, b, built.id, built.text, true))) throw new Error(`não consegui avisar ${b.admin}: nem a máquina nem este Mac alcançaram a caixa de entrada dele`);
+    if (!(await deliverFromMacAndMark(host, b, built.id, built.text, true))) throw new Error("não consegui avisar o admin: nem a máquina nem este Mac alcançaram a caixa de entrada dele");
   }
   return supportInfo(host);
 }

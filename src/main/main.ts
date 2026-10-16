@@ -18,7 +18,7 @@ import {
 import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBackendModel, loadSettings, setLastHost, setQuickEntryStatusProvider, settingsView, updateSettings } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
-import { installAudio } from "./hostProbe";
+import { installAudio, installStatusLine, statusLineInstalled } from "./hostProbe";
 import { isAdmin } from "./variant";
 import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
 import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
@@ -89,6 +89,17 @@ function registerIpc(): void {
     const h = hostFromEvent(event);
     if (h === null || isAdmin()) return;
     await reportSupportProgress(h.host, payload).catch(() => undefined);
+  });
+  // Status line do Claude (tutorial): checar e instalar na máquina desta janela.
+  ipcMain.handle("statusline:status", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return statusLineInstalled(h.host);
+  });
+  ipcMain.handle("statusline:install", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || isAdmin()) throw new Error("origem inválida");
+    return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("statusline:progress", { line }); });
   });
   ipcMain.handle("support:name", (event, payload: unknown) => {
     const h = hostFromEvent(event);

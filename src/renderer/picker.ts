@@ -13,6 +13,7 @@ const detailEl = $<HTMLElement>("pk-detail");
 const statusEl = $<HTMLParagraphElement>("pk-status");
 const installBtn = $<HTMLButtonElement>("pk-install");
 const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
+const removeBtn = $<HTMLButtonElement>("pk-remove");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
@@ -107,7 +108,7 @@ function buildRows(): void {
     dot.style.background = hostAccent(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
-    if (person !== undefined) name.append(el("span", "seen", ` · ${person.hostname}${person.seenAt !== "" ? ` · ${ago(person.seenAt)}` : ""}`));
+    if (person !== undefined) name.append(el("span", "seen", ` · ${person.hostname}${person.port !== 22 ? `:${person.port}` : ""}${person.local ? " · só alcançável deste Mac" : ""}${person.seenAt !== "" ? ` · ${ago(person.seenAt)}` : ""}`));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);
     // Só num computador do Grok Bot: aliviar agora (abre a janela de alívio e fecha o seletor).
@@ -209,6 +210,7 @@ function paintDetail(): void {
   detailEl.hidden = false;
   const t = results.get(selected);
   installBtn.hidden = true;
+  removeBtn.hidden = selected === "local" || support !== null;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
   // Pod inacessível: o alívio não alcança; o que resolve é o reset pelo app do Grok Bot.
@@ -424,6 +426,26 @@ window.picker.on("picker:install-progress", (p) => {
 filterEl.addEventListener("input", () => applyFilter());
 installBtn.addEventListener("click", () => { void install(); });
 reliefShortcutBtn.addEventListener("click", () => { void toggleReliefShortcut(); });
+/**
+ * "Remover do seletor": dois cliques (o primeiro arma por 4 s, como no resto do app). Sai do ~/.ssh/config com
+ * backup; a lista é refeita.
+ */
+removeBtn.addEventListener("click", () => {
+  if (selected === null) return;
+  const host = selected;
+  if (removeBtn.dataset["armed"] !== "1") {
+    removeBtn.dataset["armed"] = "1"; removeBtn.textContent = "Confirmar? sai também do ~/.ssh/config";
+    window.setTimeout(() => { if (removeBtn.dataset["armed"] === "1") { removeBtn.dataset["armed"] = ""; removeBtn.textContent = "Remover do seletor"; } }, 4000);
+    return;
+  }
+  removeBtn.dataset["armed"] = ""; removeBtn.textContent = "Removendo…"; removeBtn.disabled = true;
+  void window.picker.removeHost(host).then(async (r) => {
+    noteEl.hidden = false; noteEl.className = "note ok";
+    noteEl.textContent = `✓ ${host} saiu do seletor e do ~/.ssh/config (backup em ${r.backup.replace(/^.*\//, "")}).`;
+    init(await window.picker.list());
+  }).catch((err: unknown) => { showError("remover", err); })
+    .finally(() => { removeBtn.disabled = false; removeBtn.textContent = "Remover do seletor"; });
+});
 tailscaleBtn.addEventListener("click", () => {
   if (selected === null) return;
   const host = selected;

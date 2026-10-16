@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { SshSyncResult } from "../shared/ipc";
-import { identityFiles, planSshSync, renderSshAppend } from "./ssh-sync";
+import { identityFiles, planSshSync, removeSshHost, renderSshAppend } from "./ssh-sync";
 
 /** config/ssh-hosts.conf: Resources/config no .app; raiz do projeto no dev. */
 export function sshHostsTemplatePath(): string {
@@ -48,4 +48,20 @@ export function syncSshConfig(): SshSyncResult {
     backup,
     missingKeys: identityFiles(template, home).filter((p) => !fs.existsSync(p)),
   };
+}
+
+/**
+ * "Remover do seletor": tira o host do ~/.ssh/config (backup antes; o Cursor e o ssh deixam de ver a
+ * máquina também). Host que vem de um Include não é mexido: diz de onde ele vem.
+ */
+export function removeHostFromSshConfig(host: string): { backup: string; removed: "block" | "alias" } {
+  const configPath = path.join(os.homedir(), ".ssh", "config");
+  let current = "";
+  try { current = fs.readFileSync(configPath, "utf8"); } catch { throw new Error("não há ~/.ssh/config neste Mac"); }
+  const r = removeSshHost(current, host);
+  if (r.removed === null) throw new Error(`${host} não está escrito no ~/.ssh/config: vem de um arquivo incluído (Include). Remova lá.`);
+  const backup = `${configPath}.antes-de-remover-${host}`;
+  fs.copyFileSync(configPath, backup);
+  fs.writeFileSync(configPath, r.text, { mode: 0o600 });
+  return { backup, removed: r.removed };
 }

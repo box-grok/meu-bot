@@ -215,6 +215,9 @@ export interface SupportPerson {
   alias: string;
   name: string;
   hostname: string;
+  port: number;
+  /** Endereço local (127.0.0.1/localhost): só alcançável do próprio Mac onde a pessoa está (teste com VM). */
+  local: boolean;
   /** A pessoa deixou o suporte ligado (desligado = sem acesso). */
   on: boolean;
   /** Última entrega na caixa (ISO): o "visto há". */
@@ -334,6 +337,8 @@ export interface PickerApi {
   installStatusLine(host: string): Promise<InstallBackendResult>;
   /** Liga a transcrição de áudio do agente do WhatsApp (OpenClaw) na máquina; mesmo log de progresso. */
   installTranscription(host: string): Promise<InstallBackendResult>;
+  /** Tira a máquina do seletor e do ~/.ssh/config (backup em `backup`). */
+  removeHost(host: string): Promise<{ backup: string }>;
   /** meu-bot-admin: lê a caixa de entrada e devolve as pessoas (warning se a caixa não respondeu). */
   supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
   /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
@@ -447,6 +452,8 @@ export interface MainEvents {
   "chat:account": { host: string; status: AccountStatus | null };
   /** Pareamento do WhatsApp do Hermes em andamento. */
   "whatsapp:event": WhatsappEvent;
+  /** Linha de progresso do instalador da status line (tutorial). */
+  "statusline:progress": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
@@ -509,6 +516,9 @@ export interface MeuBotApi {
   supportInfo(): Promise<SupportInfo>;
   setSupport(on: boolean, name: string): Promise<SupportInfo>;
   supportCode(): Promise<string>;
+  /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
+  statusLineInstalled(): Promise<boolean>;
+  installStatusLine(): Promise<InstallBackendResult>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;
   /** "Tentar de novo": entrega o aviso na caixa do admin agora. */
