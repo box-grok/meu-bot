@@ -8,6 +8,7 @@ const api: PickerApi = {
   probe: (host: string): Promise<HostProbe> => ipcRenderer.invoke("picker:probe", { host }),
   install: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install", { host }),
   installStatusLine: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-statusline", { host }),
+  installTranscription: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-transcricao", { host }),
   choose: (host: string): Promise<void> => ipcRenderer.invoke("picker:choose", { host }),
   setShortcut: (host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }> => ipcRenderer.invoke("picker:shortcut", { host, create }),
   syncSsh: (): Promise<SshSyncResult> => ipcRenderer.invoke("picker:sync-ssh", {}),

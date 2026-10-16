@@ -2,13 +2,16 @@
 import type { HostProbe } from "../../shared/ipc";
 
 export type ProbeKind = "ok" | "warn" | "bad";
-export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
+export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
 
 export const hostLabel = (h: string): string => (h === "local" ? "este Mac (sem SSH)" : h);
 
-/** Status line do Claude que grava o cache de limites: quando falta, a máquina abre igual, mas o seletor oferece instalar. */
-const slNote = (p: HostProbe): string => (p.statusLine ? "" : " · sem status line do Claude");
-const slInstall = (p: HostProbe): "statusline" | null => (p.statusLine ? null : "statusline");
+/**
+ * O que falta de opcional numa máquina que abre: a status line do Claude (cache de limites) e, com OpenClaw, a
+ * transcrição de áudio do agente do WhatsApp. A máquina abre igual; o seletor oferece instalar um por vez.
+ */
+const slNote = (p: HostProbe): string => `${p.statusLine ? "" : " · sem status line do Claude"}${p.audioIn === false ? " · sem transcrição de áudio" : ""}`;
+const slInstall = (p: HostProbe): "statusline" | "transcricao" | null => (!p.statusLine ? "statusline" : p.audioIn === false ? "transcricao" : null);
 
 export function describeProbe(p: HostProbe): ProbeText {
   const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : ""}`;

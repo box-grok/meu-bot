@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, Notification, powerMonitor, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { ExportFormat, SettingsUpdate, TabMenuAction, WhatsappMenuAction } from "../shared/ipc";
+import type { AudioSetup, ExportFormat, SettingsUpdate, TabMenuAction, WhatsappMenuAction } from "../shared/ipc";
 import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
@@ -18,6 +18,7 @@ import {
 import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBackendModel, loadSettings, setLastHost, setQuickEntryStatusProvider, settingsView, updateSettings } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
+import { installAudio } from "./hostProbe";
 import { installAppMenu } from "./menu";
 import { initPicker, knownModels, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
@@ -89,6 +90,15 @@ function registerIpc(): void {
     const reset = (payload as { reset?: unknown } | null)?.reset === true;
     return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
   });
+  ipcMain.handle("whatsapp:audio", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = payload as { kind?: unknown; mode?: unknown } | null;
+    const setup: AudioSetup | null = p?.kind === "in" ? { kind: "in" }
+      : p?.kind === "out" && (p.mode === "off" || p.mode === "inbound" || p.mode === "always") ? { kind: "out", mode: p.mode } : null;
+    if (setup === null) throw new Error("pedido inválido");
+    return installAudio(h.host, setup);
+  });
   ipcMain.handle("whatsapp:logout", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
@@ -157,7 +167,7 @@ function registerIpc(): void {
   ipcMain.handle("ui:wa-menu", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) return null;
-    const state = (payload as { state?: { hidden?: unknown; paused?: unknown; ownSession?: unknown } } | null)?.state ?? {};
+    const state = (payload as { state?: { archived?: unknown; paused?: unknown; ownSession?: unknown } } | null)?.state ?? {};
     return new Promise<WhatsappMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
@@ -167,7 +177,7 @@ function registerIpc(): void {
         item("Conversar com o meu-bot sobre isto", "talk"),
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
         { type: "separator" },
-        state.hidden === true ? item("Voltar para a lista", "unhide") : item("Remover da lista", "hide"),
+        state.archived === true ? item("Desarquivar", "unarchive") : item("Arquivar", "archive"),
         state.paused === true
           ? item("Retomar respostas do agente", "resume")
           : state.ownSession === true

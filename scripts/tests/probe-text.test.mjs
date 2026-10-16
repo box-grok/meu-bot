@@ -41,4 +41,14 @@ test("status line do Claude: oferecida quando falta, sem bloquear a máquina", (
   assert.deepEqual(pick(describeProbe(local)), { kind: "ok", install: null, canOpen: true });
 });
 
+test("transcrição de áudio (OpenClaw): oferecida depois da status line; sem OpenClaw, nada", () => {
+  const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"], gateway: "openclaw" };
+  const sem = describeProbe({ ...up, audioIn: false });
+  assert.deepEqual(pick(sem), { kind: "ok", install: "transcricao", canOpen: true });
+  assert.match(sem.text, /sem transcrição de áudio/);
+  assert.deepEqual(pick(describeProbe({ ...up, audioIn: false, statusLine: false })).install, "statusline", "um opcional por vez");
+  assert.deepEqual(pick(describeProbe({ ...up, audioIn: true })).install, null);
+  assert.doesNotMatch(describeProbe({ ...up, audioIn: null }).text, /transcrição/);
+});
+
 function pick(t) { return { kind: t.kind, install: t.install, canOpen: t.canOpen }; }

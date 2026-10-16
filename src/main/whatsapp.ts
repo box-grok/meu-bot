@@ -12,7 +12,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
-import type { Gateway, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
+import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -51,6 +51,16 @@ if command -v openclaw >/dev/null 2>&1; then
   [ -f "$HOME/.openclaw/openclaw.json" ] || exit 0
   echo "dmpolicy=$(timeout 15 openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"' | head -1)"
   echo "channel=$(timeout 15 openclaw config get channels.whatsapp --json 2>/dev/null | tr -d '\n' | tr -s ' ')"
+  # Áudio: transcritor em tools.media.models e quando a voz responde (tts.auto; sem provedor = sem voz).
+  python3 -c 'import json,os
+try:
+  c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+except Exception:
+  raise SystemExit
+m=(c.get("tools") or {}).get("media") or {}
+print("audioin=%d" % any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x, dict)))
+t=c.get("tts") or {}
+print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))' 2>/dev/null
   echo "oc=$(timeout 25 openclaw channels status --channel whatsapp --json 2>/dev/null | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
@@ -130,7 +140,9 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const dmPolicy: WhatsappDmPolicy | null = dm === "pairing" || dm === "allowlist" || dm === "open" || dm === "disabled" ? dm : dm === "" ? "pairing" : null; // sem valor autorado, o OpenClaw usa pairing
   let channelConfig: string | null = null;
   try { const raw = kv.get("channel") ?? ""; if (raw !== "") channelConfig = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* sem bloco ainda */ }
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail, dmPolicy, channelConfig };
+  const voz = kv.get("voz");
+  const audioOut: VoiceReplyMode | null = voz === "inbound" || voz === "always" ? voz : voz === undefined || voz === "" ? null : "off";
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail, dmPolicy, channelConfig, audioIn: kv.get("audioin") === "1", audioOut };
 }
 
 /**
@@ -146,10 +158,16 @@ async function readSelfNumber(host: string): Promise<string | null> {
   return phoneOf(r.stdout.trim());
 }
 
+/** " && <trava>" com o número pareado; sem número (ainda não pareou), nada. */
+async function ownerLockFor(host: string): Promise<string> {
+  const n = await readSelfNumber(host);
+  return n === null ? "" : ` && ${ownerLockSh(n)}`;
+}
+
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const script = policy === "open"
-    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`
+    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${await ownerLockFor(host)}`
     : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
   const r = await runSsh(host, `${script}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
@@ -162,7 +180,20 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Pr
 /** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
 export const SELF_POLICY_SH = `openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`;
 /** Com o número já conhecido, ele entra no allowFrom: tira o aviso "allowFrom vazio" e deixa explícito quem é "você". */
-const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`);
+const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : `${SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`)} && ${ownerLockSh(number)}`;
+
+/** O que um contato que não é o dono não pode usar: gravar, editar, rodar comandos, agendar, mexer no gateway. */
+export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"] as const;
+/**
+ * Trava do dono (`tools.toolsBySender`): o número pareado sem restrição; qualquer outro remetente sem as
+ * ferramentas que mudam a máquina ou o próprio agente (nome, personalidade, arquivos). Sem isso, um contato
+ * pedia e o agente reescrevia o IDENTITY.md. O claude-cli aplica por argv (`nativeToolMode: selectable`).
+ * Só grava se estiver vazio ou já for a do meu-bot (tem `apply_patch`): uma regra feita à mão fica.
+ */
+export const ownerLockSh = (number: string): string => {
+  const lock = JSON.stringify({ [`e164:+${number}`]: {}, "*": { deny: NON_OWNER_DENY } });
+  return `{ cur=$(openclaw config get tools.toolsBySender 2>&1 || true); case "$cur" in *unset*|*apply_patch*) openclaw config set tools.toolsBySender '${lock}' --strict-json >/dev/null ;; esac; }`;
+};
 
 const PAIR_SCRIPT = `
 set -u

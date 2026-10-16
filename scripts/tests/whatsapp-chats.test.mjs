@@ -163,3 +163,12 @@ test("pausa: envio negado na sessão do contato marca paused; a principal não c
   assert.equal(p.paused, true); assert.equal(p.ownSession, true);
   assert.equal(ana.paused, false); assert.equal(ana.ownSession, false);
 });
+
+test("trava do dono: só o número pareado sem restrição; o resto sem gravar, editar nem rodar comandos", () => {
+  const { ownerLockSh, NON_OWNER_DENY } = createRequire(import.meta.url)("../../dist/main/whatsapp.js");
+  const sh = ownerLockSh("5521900000001");
+  const lock = JSON.parse(/'(\{.*\})'/.exec(sh)[1]);
+  assert.deepEqual(lock, { "e164:+5521900000001": {}, "*": { deny: [...NON_OWNER_DENY] } });
+  for (const t of ["write", "edit", "exec"]) assert.ok(NON_OWNER_DENY.includes(t));
+  assert.match(sh, /\*unset\*\|\*apply_patch\*\)/, "só grava se vazio ou já for a do meu-bot");
+});

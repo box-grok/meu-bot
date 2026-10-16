@@ -449,6 +449,10 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   nas atualizações (8 s) o cabeçalho muda no lugar e só as mensagens novas entram, com rolagem suave se a
   pessoa estava no fim (`WaChatPage.shown` guarda as chaves já na tela). Histórico limpo ou mudado no meio
   redesenha. `prefers-reduced-motion` desliga as animações.
+- "Digitando…" (simulação, `waAgentTyping`): balão do agente com três pontinhos quando a última mensagem é
+  do contato, tem menos de 3 min, o WhatsApp está conectado, a conversa não está pausada e a política
+  responde essa pessoa ("todo mundo", ou "só eu" na conversa consigo mesmo). Fica sempre por último, sai
+  quando a resposta entra; enquanto aparece, a conversa é consultada a cada 3 s em vez de 8 s.
 - Levar ao meu-bot: só pelo menu "…" do contato ("Conversar com o meu-bot sobre isto"; o ícone de ramo nas
   bolhas e o botão no cabeçalho foram tirados a pedido, as bolhas ficam só com Copiar). `whatsapp:branch`
   relê o histórico no main (a fonte é o gateway) e cria uma conversa nova
@@ -461,11 +465,12 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   A aba mostra no topo a conversa trazida com as mesmas bolhas do espelho (`renderWaQuote`; as mensagens
   ficam gravadas em `fromWhatsapp.messages`) e, abaixo, a conversa com o meu-bot segue normal.
 - Menu "…" de cada contato (`ui:wa-menu`): Conversar com o meu-bot, Exportar (.md legível por dia, ou
-  .json com contato, máquina e mensagens; `threadToMarkdown`), Remover da lista e Limpar histórico.
-  "Remover da lista" é só deste app (`localStorage waHidden:<host>`) e vale até "Voltar para a lista" (antes
+  .json com contato, máquina e mensagens; `threadToMarkdown`), Arquivar e Limpar histórico.
+  "Arquivar" (mesmo termo das conversas do meu-bot; antes "Remover da lista") é só deste app
+  (`localStorage waHidden:<host>`, chave antiga mantida) e vale até "Desarquivar" (antes
   voltava sozinha com atividade nova, mas a sessão principal muda a hora de todos os participantes e o
-  contato reaparecia sem mensagem nova); o interruptor do rodapé vira "removidas" no modo
-  WhatsApp. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
+  contato reaparecia sem mensagem nova); o interruptor "arquivadas" do rodapé aparece no modo WhatsApp
+  quando há alguma arquivada. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
   transcript antigo arquivado) e `memory forget` nas sessões do contato (`whatsappClearPlan`). O OpenClaw
   recusa apagar `agent:main:main` ("Cannot delete the main session"), mas zera; como a principal não se
   separa por contato, a confirmação avisa que ela inteira vai junto, com os outros contatos e as
@@ -483,6 +488,29 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - Contagem do QR: o baileys (biblioteca do WhatsApp no OpenClaw, `lib/Socket/socket.js`) dá 60 s ao 1º QR
   e 20 s aos seguintes. A contagem usa isso (`WA_QR_FIRST`), mede o ciclo só do 2º em diante e, passado o
   tempo, mostra "renovando…" em vez de travar em "0 s" (o QR chega pelo texto do CLI, com atraso).
+- Áudio no WhatsApp (OpenClaw). Sem transcritor, áudio chega ao agente como "Audio attachment not analyzed:
+  no audio-understanding model is configured" e ele responde que não ouviu (caso da Bianca, 16 out).
+  - Ouvir: `backend-colima/install-transcricao.sh`. faster-whisper 1.1.1 (+ `requests`, que o
+    huggingface_hub novo não puxa) num venv em `~/.local/share/meu-bot/transcricao`, modelo `small` int8
+    em CPU (12 s de áudio em ~9 s na agente-box; o `base` é 2x mais rápido mas erra muito em pt-BR). O
+    ffmpeg decodifica (o PyAV 15+ quebra o faster-whisper 1.1.1 e o PyAV antigo não tem roda para Python
+    3.13). OpenClaw: `tools.media.models` = entrada `cli` com `{{MediaPath}}` (vale da 2026.7 à 2026.9;
+    `{{AttachmentPath}}` só nas novas) + `tools.media.audio.enabled`, sem reiniciar o gateway. Teste:
+    `openclaw capability audio transcribe` (tom puro dá "No transcript returned", que também prova).
+  - Falar: `backend-colima/install-voz.sh off|inbound|always`. Piper 2023.11.14-2 + voz pt_BR faber medium
+    (piper-voices v1.0.0) em `~/.local/share/meu-bot/voz`, chamado pela extensão `tts-local-cli` que já vem
+    no OpenClaw 2026.9 (texto na entrada, WAV em `{{OutputPath}}`; o OpenClaw converte em nota de voz):
+    sem o shim HTTP, o Bun e o serviço systemd do guia antigo. Na 2026.9 a chave é `tts` (o
+    `messages.tts` das versões antigas foi migrado). `tts.auto` = quando: off | inbound | always.
+  - Os dois respeitam configuração alheia (outro transcritor/voz: avisam e saem com 3). App: status lê o
+    openclaw.json (JSON puro) numa linha de Python (`audioIn`, `audioOut`); seletor mostra "sem transcrição
+    de áudio" + "Ativar transcrição de áudio" (depois da status line); passo 4 do tutorial do WhatsApp
+    ("Fazer o agente entender áudios", `body: "audio"`) e seção "Áudio no WhatsApp" no painel conectado,
+    com "Ativar transcrição" e os cartões Nunca / Quando receber áudio / Sempre (`installAudio`).
+- Trava do dono (`tools.toolsBySender`): o número pareado (`e164:+N`) sem restrição; `"*"` sem write, edit,
+  apply_patch, exec, process, cron e gateway. Sem ela, uma contato nomeou o agente (reescreveu o
+  IDENTITY.md). O claude-cli aplica por argv (`nativeToolMode: selectable`, `execution-args`). Gravada nas
+  duas políticas quando o número é conhecido, só se o campo estiver vazio ou já for a do meu-bot.
 - Pausar o agente para uma pessoa (menu "…"): `gateway call sessions.patch` com `sendPolicy: "deny"` na
   sessão só do contato (`null` retoma). O OpenClaw ainda recebe e grava a mensagem (e pode rodar o turno),
   mas não entrega a resposta nem mostra "digitando". Só com sessão própria (`WhatsappChat.ownSession`):

@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
@@ -1307,6 +1307,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
         renderChannelEditor(txt);
+      } else if (step.body === "audio") {
+        renderAudioControls(txt);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
@@ -1345,6 +1347,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
     manage.append(cards);
     renderChannelEditor(manage);
+    manage.append(el("p", "hint strong-hint", "Áudio no WhatsApp"));
+    renderAudioControls(manage);
     const acts = el("div", "dialog-actions");
     const refresh = el("button", "btn btn-ghost btn-small", "Atualizar"); refresh.type = "button";
     refresh.addEventListener("click", () => { refresh.disabled = true; void refreshWhatsapp().finally(() => { refresh.disabled = false; }); });
@@ -1510,6 +1514,65 @@ function renderReplyCards(container: HTMLElement, current: "self" | "open" | nul
     container.append(card);
   }
 }
+/** Quando o agente responde em áudio (os três cartões). */
+const VOICE_OPTIONS: readonly { id: VoiceReplyMode; title: string; text: string; isDefault: boolean }[] = [
+  { id: "off", title: "Nunca", text: "Responde sempre em texto.", isDefault: true },
+  { id: "inbound", title: "Quando receber áudio", text: "Áudio vira áudio; texto continua texto.", isDefault: false },
+  { id: "always", title: "Sempre", text: "Toda resposta vira nota de voz.", isDefault: false },
+];
+/** O que está sendo aplicado agora ("in" = transcrição; um modo = voz) e o último recado (erro ou aviso). */
+let waAudioBusy: "in" | VoiceReplyMode | null = null;
+let waAudioMsg: { text: string; bad: boolean } | null = null;
+/**
+ * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
+ * responder em áudio. Usado no passo do tutorial e no painel de gerência; os instaladores rodam na máquina.
+ */
+function renderAudioControls(container: HTMLElement): void {
+  const st = waStatus;
+  const box = el("div", "audio-controls");
+  const hear = el("div", "audio-row");
+  hear.append(el("strong", "", "Ouvir áudios"));
+  if (st?.audioIn === true) hear.append(el("span", "audio-ok", "✓ ativo: a transcrição roda na própria máquina"));
+  else {
+    const b = el("button", "btn btn-primary btn-small", waAudioBusy === "in" ? "Ativando… (na primeira vez baixa ~500 MB)" : "Ativar transcrição");
+    b.type = "button"; b.disabled = waAudioBusy !== null || st === null || !st.connected;
+    b.addEventListener("click", () => { void runAudioSetup({ kind: "in" }); });
+    hear.append(b);
+  }
+  box.append(hear);
+  box.append(el("p", "hint strong-hint", "Responder em áudio"));
+  const cards = el("div", "reply-cards voice-cards");
+  const current = st?.audioOut ?? "off";
+  const marked = waAudioBusy !== null && waAudioBusy !== "in" ? waAudioBusy : current;
+  for (const o of VOICE_OPTIONS) {
+    const saving = waAudioBusy === o.id;
+    const card = el("button", `reply-card${marked === o.id ? " on" : ""}${saving ? " saving" : ""}`);
+    card.type = "button"; card.disabled = waAudioBusy !== null || st === null || !st.connected;
+    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marked === o.id));
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
+    if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
+    if (saving) title.append(el("span", "reply-saving", o.id === "off" ? "aplicando…" : "instalando a voz…"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id }); });
+    cards.append(card);
+  }
+  box.append(cards, el("div", "guide-note", "Voz local em português (Piper), sem custo. Na primeira vez baixa ~70 MB."));
+  if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
+  container.append(box);
+}
+async function runAudioSetup(setup: AudioSetup): Promise<void> {
+  if (waAudioBusy !== null) return;
+  waAudioBusy = setup.kind === "in" ? "in" : setup.mode; waAudioMsg = null;
+  paintGuide();
+  try {
+    const r = await window.meuBot.whatsappAudio(setup);
+    waAudioMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok };
+    await refreshWhatsapp();
+  } catch (err) {
+    waAudioMsg = { text: err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err), bad: true };
+  } finally { waAudioBusy = null; paintGuide(); }
+}
 function chooseReply(choice: "self" | "open"): void {
   if (waPolicySaving) return;
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
@@ -1610,10 +1673,10 @@ function paintListMode(): void {
   listModeEl.hidden = !waMirrorAvailable();
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
-  // No WhatsApp o interruptor vira "removidas" e só aparece quando há alguma tirada da lista.
-  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some(isWaHidden);
+  // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
+  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some(isWaArchived);
   const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
-  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = mode === "whatsapp" ? "removidas" : "arquivadas";
+  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = "arquivadas";
   sidebarSearch.placeholder = mode === "whatsapp" ? "Buscar no WhatsApp…" : "Buscar conversas…";
   if (mode === "whatsapp" && waChatsInflight === null && waChatsTimer === null) void refreshWaChats();
 }
@@ -1640,19 +1703,20 @@ function refreshWaChats(): Promise<void> {
   return waChatsInflight;
 }
 /**
- * Conversas tiradas da lista (só neste app) até "Voltar para a lista". Não voltam sozinhas: a sessão
+ * Conversas arquivadas (só neste app) até "Desarquivar". Não voltam sozinhas: a sessão
  * principal muda a hora de todos os participantes a cada conversa, e isso trazia de volta quem saiu.
  */
-const waHiddenKey = (): string => `waHidden:${windowHost}`;
-function waHidden(): Record<string, string> {
-  try { const v = JSON.parse(localStorage.getItem(waHiddenKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+// Chave antiga ("waHidden") mantida: quem já tinha arquivado não perde a escolha.
+const waArchivedKey = (): string => `waHidden:${windowHost}`;
+function waArchived(): Record<string, string> {
+  try { const v = JSON.parse(localStorage.getItem(waArchivedKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
 }
-function setWaHidden(number: string, at: string | null): void {
-  const h = waHidden();
+function setWaArchived(number: string, at: string | null): void {
+  const h = waArchived();
   if (at === null) delete h[number]; else h[number] = at;
-  try { localStorage.setItem(waHiddenKey(), JSON.stringify(h)); } catch { /* opcional */ }
+  try { localStorage.setItem(waArchivedKey(), JSON.stringify(h)); } catch { /* opcional */ }
 }
-const isWaHidden = (c: WhatsappChat): boolean => waHidden()[c.number] !== undefined;
+const isWaArchived = (c: WhatsappChat): boolean => waArchived()[c.number] !== undefined;
 
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
@@ -1673,13 +1737,13 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       try { await window.meuBot.exportWhatsapp(row.number, action === "export-md" ? "md" : "json"); }
       catch (err) { fail("Não deu para exportar", err); }
       break;
-    case "hide":
-      setWaHidden(row.number, row.updatedAt);
+    case "archive":
+      setWaArchived(row.number, row.updatedAt);
       { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
       paintListMode(); renderSidebar();
       break;
-    case "unhide":
-      setWaHidden(row.number, null); paintListMode(); renderSidebar();
+    case "unarchive":
+      setWaArchived(row.number, null); paintListMode(); renderSidebar();
       break;
     case "pause": case "resume": {
       const item = [...sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
@@ -1725,7 +1789,7 @@ async function runWaClear(c: WaClear): Promise<void> {
   try {
     await window.meuBot.clearWhatsapp(c.number, c.shared);
     waClear = null;
-    setWaHidden(c.number, null);
+    setWaArchived(c.number, null);
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
     void refreshWaChats();
   } catch (err) { waClear = { ...c, phase: "confirm", err: errText(err) }; }
@@ -1756,7 +1820,7 @@ function paintWaSidebar(query: string): void {
   sidebarList.replaceChildren();
   const q = normalize(query.trim());
   const showHidden = sidebarArchived.checked;
-  const rows = waChats.filter((c) => (showHidden || !isWaHidden(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
+  const rows = waChats.filter((c) => (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
   if (rows.length === 0) {
     const msg = waChatsErr !== null && waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
       : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"
@@ -1767,14 +1831,14 @@ function paintWaSidebar(query: string): void {
   for (const group of groupByDate(rows)) {
     sidebarList.appendChild(el("div", "sidebar-group", group.label));
     for (const row of group.items) {
-      const hidden = isWaHidden(row);
-      const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${hidden ? " archived" : ""}`);
+      const archived = isWaArchived(row);
+      const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${archived ? " archived" : ""}`);
       item.dataset["number"] = row.number;
       const menu = el("button", "si-menu", "…");
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { hidden, paused: row.paused, ownSession: row.ownSession }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, ownSession: row.ownSession }).then((a) => waMenuAction(row, a));
       });
       item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
       if (row.paused) item.append(el("span", "si-tab", "pausado"));
@@ -1819,7 +1883,7 @@ function refreshWaThread(g: WaChatPage): Promise<void> {
     try { g.msgs = await window.meuBot.whatsappThread(g.chat.number); g.err = null; }
     catch (err) { g.err = err instanceof Error ? err.message : String(err); }
     finally { g.loaded = true; g.inflight = null; }
-    if (pageActive === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, 8_000); renderWaChat(g); }
+    if (pageActive === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, waAgentTyping(g) ? 3_000 : 8_000); renderWaChat(g); }
   })();
   return g.inflight;
 }
@@ -1851,6 +1915,27 @@ function renderWaQuote(tab: Tab, w: WhatsappOrigin, pending: boolean): void {
   tab.messagesEl.appendChild(box);
 }
 const waMsgKey = (m: WhatsappThreadMessage): string => `${m.role}|${m.at}|${m.text}`;
+/** Por quanto tempo depois da última mensagem do contato o "digitando…" ainda faz sentido. */
+const WA_TYPING_WINDOW = 3 * 60_000;
+/**
+ * O agente vai responder a última mensagem? Só uma simulação para quem acompanha: a última é do contato,
+ * recente, o WhatsApp está conectado, a conversa não está pausada e a política responde essa pessoa
+ * ("todo mundo", ou "só eu" na conversa consigo mesmo).
+ */
+function waAgentTyping(g: WaChatPage): boolean {
+  const last = g.msgs.at(-1);
+  const st = waStatus;
+  if (last === undefined || last.role !== "contact" || g.chat.paused || st === null || !st.connected) return false;
+  if (!(st.dmPolicy === "open" || (st.dmPolicy === "allowlist" && g.chat.isSelf))) return false;
+  return Date.now() - new Date(last.at).getTime() < WA_TYPING_WINDOW;
+}
+/** Balão do agente com três pontinhos. */
+function waTypingBubble(): HTMLElement {
+  const b = el("div", "msg wa-msg wa-out wa-typing wa-enter");
+  b.setAttribute("aria-label", "o agente está digitando");
+  b.append(el("span", "wa-dot"), el("span", "wa-dot"), el("span", "wa-dot"));
+  return b;
+}
 /** Bolhas "esqueleto" enquanto a conversa carrega (alternando lados, larguras variadas). */
 function waSkeleton(): HTMLElement {
   const box = el("div", "wa-skeleton");
@@ -1889,6 +1974,10 @@ function renderWaChat(g: WaChatPage): void {
     else if (g.msgs.length === 0) list.append(el("p", "hint wa-fade", "Sem mensagens ainda."));
   }
   const from = g.shown?.length ?? 0;
+  // O "digitando…" fica sempre por último: sai antes de entrar mensagem nova e volta se ainda couber.
+  const typingEl = list.querySelector(".wa-typing");
+  const typing = g.loaded && waAgentTyping(g);
+  if (typingEl !== null && (!typing || from < g.msgs.length)) typingEl.remove();
   if (g.loaded && from < g.msgs.length) {
     const cascade = from === 0; // primeira vez com mensagens: as últimas entram em sequência
     let lastDay = from === 0 ? "" : new Date(g.msgs[from - 1]!.at).toLocaleDateString("pt-BR");
@@ -1905,7 +1994,11 @@ function renderWaChat(g: WaChatPage): void {
       list!.append(bubble);
     });
     g.shown = keys;
-    if (atEnd) panel.scrollTo({ top: panel.scrollHeight, behavior: cascade ? "auto" : "smooth" });
+  }
+  const typingNow = typing && list.querySelector(".wa-typing") === null;
+  if (typingNow) list.append(waTypingBubble());
+  if ((g.loaded && from < g.msgs.length) || typingNow) {
+    if (atEnd) panel.scrollTo({ top: panel.scrollHeight, behavior: from === 0 ? "auto" : "smooth" });
   }
   // Voltou para a frente sem consulta agendada: retoma o ciclo.
   if (pageActive === g.page && g.inflight === null && g.timer === null) void refreshWaThread(g);

@@ -31,8 +31,8 @@ export interface GuideStep {
   /** Instrução curta de uma ação. */
   text: string;
   target: GuideTarget;
-  /** Corpo especial do passo no guia (os cartões de quem responder). */
-  body?: "reply-choice";
+  /** Corpo especial do passo no guia: os cartões de quem responder, ou os controles de áudio. */
+  body?: "reply-choice" | "audio";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -75,8 +75,13 @@ const WHATSAPP_STEPS: GuideStep[] = [
     done: (st, f) => f.policyChosen || (st !== null && st.dmPolicy === "open"),
   },
   {
-    id: "teste", title: "Testar com uma mensagem real", target: "none",
-    text: "Com \"só eu\", mande uma mensagem para o seu próprio número. Com \"todo mundo\", mande de outro celular. O agente responde na conversa do WhatsApp.",
+    id: "audio", title: "Fazer o agente entender áudios", target: "none", body: "audio",
+    text: "Sem isso, quem manda áudio ouve do agente que ele não consegue escutar. A transcrição roda na própria máquina: sem custo e sem mandar o áudio para fora. Se quiser, escolha também quando ele responde em áudio.",
+    done: (st) => st !== null && st.audioIn === true,
+  },
+  {
+    id: "teste", title: "Testar com uma mensagem e um áudio", target: "none",
+    text: "Com \"só eu\", mande para o seu próprio número; com \"todo mundo\", mande de outro celular. Mande um texto e depois um áudio curto: o agente deve responder sobre o que você falou.",
     done: (_st, f) => f.tested,
     manual: { label: "Testei, funcionou", flag: "tested" },
   },
@@ -88,8 +93,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "whatsapp-openclaw",
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
-    summary: "Conecte um número ao agente da máquina, decida quem ele responde e teste com uma mensagem real.",
-    minutes: 3,
+    summary: "Conecte um número ao agente da máquina, decida quem ele responde, faça ele entender áudios e teste de verdade.",
+    minutes: 4,
     badge: "Próximo",
     icon: "target",
     steps: WHATSAPP_STEPS,

@@ -108,6 +108,8 @@ export interface HostProbe {
   tailscaleCheck: boolean;
   /** ~/.claude/statusline.sh é o nosso: grava ~/.cache/claude-statusline/ratelimits.json, que a status line do app lê. */
   statusLine: boolean;
+  /** OpenClaw: o agente do WhatsApp entende áudio (transcritor configurado); null = sem OpenClaw. */
+  audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
   gateway: Gateway | null;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
@@ -179,7 +181,16 @@ export interface WhatsappStatus {
   dmPolicy: WhatsappDmPolicy | null;
   /** OpenClaw: o bloco `channels.whatsapp` como está no openclaw.json (JSON), para "Ver configuração do canal". */
   channelConfig: string | null;
+  /** OpenClaw: o agente entende áudio (há transcritor em `tools.media.models`). Ausente = não se sabe (Hermes). */
+  audioIn?: boolean;
+  /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
+  audioOut?: VoiceReplyMode | null;
 }
+
+/** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
+export type VoiceReplyMode = "off" | "inbound" | "always";
+/** Instaladores de áudio do agente do WhatsApp: ouvir (transcrição) ou falar (voz, com o modo). */
+export type AudioSetup = { kind: "in" } | { kind: "out"; mode: VoiceReplyMode };
 
 export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 
@@ -278,6 +289,8 @@ export interface PickerApi {
   install(host: string): Promise<InstallBackendResult>;
   /** Instala a status line do Claude Code na máquina (statusline.sh + statusLine no settings.json); mesmo log de progresso. */
   installStatusLine(host: string): Promise<InstallBackendResult>;
+  /** Liga a transcrição de áudio do agente do WhatsApp (OpenClaw) na máquina; mesmo log de progresso. */
+  installTranscription(host: string): Promise<InstallBackendResult>;
   choose(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
   setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
@@ -361,7 +374,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "hide" | "unhide" | "clear" | "pause" | "resume";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "archive" | "unarchive" | "clear" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "archive" | "unarchive" | "close" | "delete";
 export type ExportFormat = "md" | "json";
 
@@ -445,6 +458,8 @@ export interface MeuBotApi {
   whatsappPair(reset: boolean): Promise<void>;
   /** Desconecta o número da máquina (sem gerar QR novo). */
   whatsappLogout(): Promise<void>;
+  /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
+  whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo. Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;
@@ -455,7 +470,7 @@ export interface MeuBotApi {
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { hidden: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** Salva a conversa toda num arquivo; null = cancelado. */

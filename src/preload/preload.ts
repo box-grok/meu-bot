@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { BackendModel, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
+import type { AudioSetup, BackendModel, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -53,13 +53,14 @@ const api: MeuBotApi = {
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
   whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
   whatsappLogout: () => ipcRenderer.invoke("whatsapp:logout", {}),
+  whatsappAudio: (setup: AudioSetup) => ipcRenderer.invoke("whatsapp:audio", setup),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
   whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
-  showWhatsappMenu: (number: string, state: { hidden: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
+  showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
   whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
   clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),

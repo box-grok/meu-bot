@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app, shell } from "electron";
 import os from "node:os";
-import type { HostProbe, InstallBackendResult } from "../shared/ipc";
+import type { AudioSetup, HostProbe, InstallBackendResult } from "../shared/ipc";
 import { claudeLoggedIn, findClaude, findNode, LOCAL_HOST, localBackendAlive } from "./localBackend";
 
 const BACKEND_DIR = "~/.hermes/agente-rene/backend-sdk-claude";
@@ -87,6 +87,8 @@ function probeScript(port: number): string {
     `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
     // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
     `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
+    // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
+    `[ "$G" = openclaw ] && echo "audioin=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));m=(c.get("tools") or {}).get("media") or {};print(int(any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x,dict))))' 2>/dev/null)"`,
     `echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"`,
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
@@ -108,7 +110,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -139,6 +141,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     systemd: kv.get("systemd") === "1",
     grokPod: kv.get("grokpod") === "1",
     statusLine: kv.get("statusline") === "1",
+    audioIn: kv.get("gateway") === "openclaw" ? kv.get("audioin") === "1" : null,
     gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : null,
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
   };
@@ -170,7 +173,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 
@@ -203,6 +206,26 @@ export async function installBackend(host: string, port: number, onLine?: (line:
   return { ok: true, log: lines };
 }
 
+
+/**
+ * Áudio do agente do WhatsApp (OpenClaw): "in" = transcrição local (install-transcricao.sh), "out" = voz local
+ * com o modo (install-voz.sh off|inbound|always). Mesmo molde da status line: manda o script e roda no host.
+ */
+export async function installAudio(host: string, setup: AudioSetup, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
+  const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
+  const arg = setup.kind === "out" ? ` ${setup.mode}` : "";
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), file), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
+  // A transcrição baixa ~500 MB na primeira vez (faster-whisper + modelo): tempo de sobra.
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/${file}${arg} 2>&1`], 20 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, lines.at(-1) ?? `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh"];
 
