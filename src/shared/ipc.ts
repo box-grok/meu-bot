@@ -443,6 +443,8 @@ export interface MeuBotApi {
   whatsappStatus(): Promise<WhatsappStatus>;
   /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
   whatsappPair(reset: boolean): Promise<void>;
+  /** Desconecta o número da máquina (sem gerar QR novo). */
+  whatsappLogout(): Promise<void>;
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo. Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;

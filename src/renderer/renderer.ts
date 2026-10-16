@@ -1230,14 +1230,23 @@ function paintGuideTargets(): void {
 }
 /** Guia que está mostrando o pareamento dentro da própria aba (os nós do QR/progresso são movidos para lá). */
 let waInlineGuide: Tutorial | null = null;
+/** Como o último "Gerar QR" do guia terminou sem conectar; fica no passo (os nós de progresso voltam ao modal). */
+let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
   if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
   if (target === "wa-agent") { requestAgentPrepare(); return; }
   if (target === "wa-pair") {
-    if (!waStatus.ready || waStatus.connected || waPairing) return;
+    if (waPairing) return;
+    if (!waStatus.ready) { waGuidePairNote = "O WhatsApp desta máquina ainda não está pronto; faça o passo anterior."; paintGuide(); return; }
+    if (waStatus.connected) { waGuidePairNote = null; void refreshWhatsapp(); return; }
     waInlineGuide = t;
-    void pairWhatsapp(false).finally(() => { waInlineGuide = null; restorePairNodes(); paintGuide(); });
+    waGuidePairNote = null;
+    void pairWhatsapp(false).finally(() => {
+      waInlineGuide = null;
+      if (!waConnected) waGuidePairNote = (waProgressText.textContent ?? "").trim() || "O QR não foi lido. Gere outro quando quiser.";
+      restorePairNodes(); paintGuide();
+    });
     paintGuide();
     return;
   }
@@ -1314,6 +1323,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         const target = step.target;
         b.addEventListener("click", () => runGuideAction(target, t));
         txt.append(b);
+        if (target === "wa-pair" && waGuidePairNote !== null) txt.append(el("p", "hint guide-pair-note", waGuidePairNote));
       }
       if (step.manual !== undefined) {
         const b = el("button", "btn btn-ghost btn-small", step.manual.label); b.type = "button";
@@ -1339,11 +1349,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     const refresh = el("button", "btn btn-ghost btn-small", "Atualizar"); refresh.type = "button";
     refresh.addEventListener("click", () => { refresh.disabled = true; void refreshWhatsapp().finally(() => { refresh.disabled = false; }); });
     const disc = el("button", "btn btn-ghost btn-small", "Desconectar"); disc.type = "button";
-    disc.addEventListener("click", () => armConfirm(disc, "Confirmar? apaga a sessão", () => {
-      waInlineGuide = t;
-      void pairWhatsapp(true).finally(() => { waInlineGuide = null; restorePairNodes(); paintGuide(); });
-      paintGuide();
-    }));
+    disc.addEventListener("click", () => armConfirm(disc, "Confirmar? desconecta o número", () => { void disconnectWhatsapp(disc); }));
     const spacer = el("span", "spacer");
     const close = el("button", "btn btn-ghost btn-small", "Fechar"); close.type = "button";
     close.addEventListener("click", () => { const g = guidePages.get(`tut-${t.id}`); if (g !== undefined) closePage(g.page); });
@@ -1428,7 +1434,12 @@ const waSuccessText = $<HTMLElement>("wa-success-text");
 const waProgress = $<HTMLElement>("wa-progress");
 const waProgressText = $<HTMLElement>("wa-progress-text");
 const waProgressMeta = $<HTMLElement>("wa-progress-meta");
-/** QR da vez: quantos já vieram, quando chegou o último e o intervalo medido entre eles (o WhatsApp renova ~20 s). */
+/**
+ * QR da vez: quantos já vieram, quando chegou o último e quanto os próximos duram. O WhatsApp Web dá ~60 s ao
+ * primeiro QR e ~20 s aos seguintes; o ciclo é medido só entre QRs seguintes (medir o 1º→2º, de 60 s, fazia
+ * a contagem do 2º trocar de imagem no meio). A previsão nunca é exata: passou do tempo, mostra "renovando…".
+ */
+const WA_QR_FIRST = 60_000;
 let waQrCount = 0; let waQrAt = 0; let waQrEvery = 20_000;
 let waTick: ReturnType<typeof setInterval> | null = null;
 function setWaProgress(text: string, tone: "run" | "ok" | "bad" = "run"): void {
@@ -1438,8 +1449,8 @@ function setWaProgress(text: string, tone: "run" | "ok" | "bad" = "run"): void {
 }
 function paintWaMeta(): void {
   if (waQrCount === 0 || !waPairing || waConnected) { waProgressMeta.textContent = ""; return; }
-  const left = Math.max(0, Math.round((waQrAt + waQrEvery - Date.now()) / 1000));
-  waProgressMeta.textContent = `QR ${waQrCount} · renova em ${left} s`;
+  const left = Math.ceil((waQrAt + (waQrCount === 1 ? WA_QR_FIRST : waQrEvery) - Date.now()) / 1000);
+  waProgressMeta.textContent = left > 0 ? `QR ${waQrCount} · renova em ${left} s` : `QR ${waQrCount} · renovando…`;
 }
 function resetWaProgress(): void {
   waQrCount = 0; waQrAt = 0; waQrEvery = 20_000;
@@ -1776,7 +1787,11 @@ function paintWaSidebar(query: string): void {
   }
 }
 
-interface WaChatPage { page: PageTab; chat: WhatsappChat; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null }
+interface WaChatPage {
+  page: PageTab; chat: WhatsappChat; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null;
+  /** Chaves das mensagens já na tela (para só acrescentar as novas). */
+  shown?: string[];
+}
 const waChatPages = new Map<string, WaChatPage>();
 function paintWaChatTab(g: WaChatPage): void {
   g.page.title = waChatTitle(g.chat);
@@ -1835,32 +1850,63 @@ function renderWaQuote(tab: Tab, w: WhatsappOrigin, pending: boolean): void {
     : "Daqui para baixo, conversa com o meu-bot. Nada daqui vai para o WhatsApp."));
   tab.messagesEl.appendChild(box);
 }
+const waMsgKey = (m: WhatsappThreadMessage): string => `${m.role}|${m.at}|${m.text}`;
+/** Bolhas "esqueleto" enquanto a conversa carrega (alternando lados, larguras variadas). */
+function waSkeleton(): HTMLElement {
+  const box = el("div", "wa-skeleton");
+  box.setAttribute("aria-label", "Carregando a conversa…");
+  for (const [side, w] of [["in", 46], ["out", 62], ["in", 34], ["out", 54], ["in", 58]] as const) {
+    const b = el("div", `wa-skel ${side}`); b.style.width = `${w}%`; box.append(b);
+  }
+  return box;
+}
+/**
+ * Desenha a conversa sem piscar: o cabeçalho é atualizado no lugar e, se as mensagens novas só continuam as
+ * que já estão na tela, elas entram no fim com animação (rolagem suave se a pessoa estava no fim). Primeira
+ * carga: as últimas bolhas entram em cascata. Qualquer outra mudança (histórico limpo, sessão nova) redesenha.
+ */
 function renderWaChat(g: WaChatPage): void {
   const panel = g.page.panel;
-  const atEnd = panel.dataset["rendered"] !== "1" || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
-  panel.replaceChildren();
-  const head = el("div", "wa-chat-head");
-  head.append(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)),
-    el("span", "wa-chat-hint", g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
-  const list = el("div", "wa-chat-msgs");
-  if (!g.loaded) {
-    const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Carregando a conversa…"));
-    list.append(wait);
-  } else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint", `Não consegui ler a conversa: ${g.err}`));
-  else if (g.msgs.length === 0) list.append(el("p", "hint", "Sem mensagens ainda."));
-  let lastDay = "";
-  for (const m of g.msgs) {
-    const day = new Date(m.at).toLocaleDateString("pt-BR");
-    if (day !== lastDay) { list.append(el("div", "wa-day", day)); lastDay = day; }
-    const bubble = waBubble(m);
-    const actions = el("div", "msg-actions");
-    actions.append(iconButton("wa-copy", "Copiar", ICON_COPY));
-    bubble.append(actions);
-    list.append(bubble);
+  const first = panel.dataset["rendered"] !== "1";
+  const atEnd = first || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
+  let head = panel.querySelector<HTMLElement>(".wa-chat-head");
+  let list = panel.querySelector<HTMLElement>(".wa-chat-msgs");
+  if (head === null || list === null) {
+    head = el("div", "wa-chat-head"); list = el("div", "wa-chat-msgs");
+    panel.replaceChildren(head, list);
   }
-  panel.append(head, list);
+  head.replaceChildren(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)),
+    el("span", "wa-chat-hint", g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
   panel.dataset["rendered"] = "1";
-  if (atEnd) panel.scrollTop = panel.scrollHeight;
+  const keys = g.msgs.map(waMsgKey);
+  const shown = g.shown ?? [];
+  const appendOnly = g.loaded && shown.length > 0 && shown.length <= keys.length && shown.every((k, i) => keys[i] === k);
+  if (!g.loaded || g.msgs.length === 0 || !appendOnly) {
+    list.replaceChildren();
+    g.shown = [];
+    if (!g.loaded) list.append(waSkeleton());
+    else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa: ${g.err}`));
+    else if (g.msgs.length === 0) list.append(el("p", "hint wa-fade", "Sem mensagens ainda."));
+  }
+  const from = g.shown?.length ?? 0;
+  if (g.loaded && from < g.msgs.length) {
+    const cascade = from === 0; // primeira vez com mensagens: as últimas entram em sequência
+    let lastDay = from === 0 ? "" : new Date(g.msgs[from - 1]!.at).toLocaleDateString("pt-BR");
+    const total = g.msgs.length - from;
+    g.msgs.slice(from).forEach((m, i) => {
+      const day = new Date(m.at).toLocaleDateString("pt-BR");
+      if (day !== lastDay) { list!.append(el("div", "wa-day", day)); lastDay = day; }
+      const bubble = waBubble(m);
+      const actions = el("div", "msg-actions");
+      actions.append(iconButton("wa-copy", "Copiar", ICON_COPY));
+      bubble.append(actions);
+      const rank = total - 1 - i; // 0 = a mais nova
+      if (!cascade || rank < 10) { bubble.classList.add("wa-enter"); bubble.style.animationDelay = cascade ? `${(9 - Math.min(rank, 9)) * 35}ms` : "0ms"; }
+      list!.append(bubble);
+    });
+    g.shown = keys;
+    if (atEnd) panel.scrollTo({ top: panel.scrollHeight, behavior: cascade ? "auto" : "smooth" });
+  }
   // Voltou para a frente sem consulta agendada: retoma o ciclo.
   if (pageActive === g.page && g.inflight === null && g.timer === null) void refreshWaThread(g);
 }
@@ -1963,6 +2009,25 @@ function openWhatsapp(): void {
   if (!waDialog.open) waDialog.showModal();
 }
 
+/**
+ * Só desconecta (antes chamava o pareamento com reset, que já gerava outro QR: a tela ficava em "escaneie"
+ * e terminava em "QR expirou", parecendo que não tinha desconectado). Depois o status volta a "desconectado"
+ * e o guia volta ao passo de conectar.
+ */
+async function disconnectWhatsapp(btn: HTMLButtonElement): Promise<void> {
+  const label = btn.dataset.label ?? btn.textContent ?? "Desconectar";
+  btn.disabled = true; btn.textContent = "Desconectando…";
+  try {
+    await window.meuBot.whatsappLogout();
+    await refreshWhatsapp();
+  } catch (err) {
+    btn.textContent = `Não desconectou: ${err instanceof Error ? err.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, "") : String(err)}`;
+    btn.classList.add("btn-bad");
+    window.setTimeout(() => { btn.textContent = label; btn.classList.remove("btn-bad"); }, 5000);
+    return;
+  } finally { btn.disabled = false; }
+  btn.textContent = label;
+}
 async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
   waPairing = true; waConnected = false;
@@ -2012,7 +2077,7 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
     case "qr": {
       if (waConnected) break; // já pareou nesta rodada: nenhum QR atrasado volta por cima do ✓
       const now = Date.now();
-      if (waQrCount > 0 && now - waQrAt > 5_000) waQrEvery = now - waQrAt; // mede o ciclo real do WhatsApp
+      if (waQrCount >= 2 && now - waQrAt > 5_000) waQrEvery = now - waQrAt; // mede o ciclo real (do 2º em diante)
       waQrCount += 1; waQrAt = now;
       waQr.src = ev.dataUrl; waQr.hidden = false; waHow.hidden = false;
       waStatusEl.textContent = "Leia o QR com o WhatsApp do número do agente.";
@@ -2033,7 +2098,7 @@ waLine.addEventListener("click", () => {
   openWhatsapp();
 });
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
-waResetBtn.addEventListener("click", () => armConfirm(waResetBtn, "Confirmar? apaga a sessão", () => { void pairWhatsapp(true); }));
+waResetBtn.addEventListener("click", () => armConfirm(waResetBtn, "Confirmar? desconecta o número", () => { void disconnectWhatsapp(waResetBtn); }));
 const waCancelIfPairing = (): void => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); };
 waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close(); });
 // Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.

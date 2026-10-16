@@ -556,6 +556,18 @@ body.topbar-hidden .topbar { display: none; }
 .wa-quote-head span { color: var(--muted); font-size: 12px; }
 .wa-quote .wa-msg { max-width: 82%; }
 .wa-quote-foot { align-self: center; text-align: center; max-width: 520px; margin-top: 4px; font-size: 12px; color: var(--muted); }
+.guide-pair-note { margin-top: 8px; color: var(--bad); }
+.wa-skeleton { display: flex; flex-direction: column; gap: 10px; padding-top: 4px; }
+.wa-skel { height: 38px; border-radius: 12px; background: linear-gradient(90deg, color-mix(in srgb, var(--line) 70%, transparent) 0%, color-mix(in srgb, var(--line) 30%, transparent) 50%, color-mix(in srgb, var(--line) 70%, transparent) 100%); background-size: 220% 100%; animation: wa-shimmer 1.3s ease-in-out infinite; }
+.wa-skel.in { align-self: flex-start; }
+.wa-skel.out { align-self: flex-end; background-color: color-mix(in srgb, var(--ok) 8%, transparent); }
+.wa-skel:nth-child(2) { animation-delay: .12s; } .wa-skel:nth-child(3) { animation-delay: .24s; } .wa-skel:nth-child(4) { animation-delay: .36s; } .wa-skel:nth-child(5) { animation-delay: .48s; }
+@keyframes wa-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.wa-enter { animation: wa-enter .32s cubic-bezier(.2, .8, .2, 1) both; }
+.wa-in.wa-enter { --wa-from: -10px; } .wa-out.wa-enter { --wa-from: 10px; }
+@keyframes wa-enter { from { opacity: 0; translate: var(--wa-from, 0) 6px; scale: .98; } to { opacity: 1; translate: 0 0; scale: 1; } }
+.wa-fade { animation: ob-rise .3s ease both; }
+@media (prefers-reduced-motion: reduce) { .wa-skel, .wa-enter, .wa-fade { animation: none; } }
 .wa-clear { display: flex; flex-direction: column; gap: 6px; margin: 2px 8px 8px 12px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line)); border-radius: 10px; background: color-mix(in srgb, var(--bad) 6%, var(--card)); font-size: 12px; cursor: default; }
 .wa-clear strong { font-size: 13px; }
 .wa-clear-text { color: var(--muted); line-height: 1.4; }

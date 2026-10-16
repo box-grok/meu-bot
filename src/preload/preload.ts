@@ -52,6 +52,7 @@ const api: MeuBotApi = {
   restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
   whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
+  whatsappLogout: () => ipcRenderer.invoke("whatsapp:logout", {}),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),

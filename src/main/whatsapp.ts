@@ -204,6 +204,9 @@ if command -v openclaw >/dev/null 2>&1; then
   # O CLI pode ficar pendurado depois de vincular (sincronizando); a janela não deve esperar por isso.
   # Um vigia lê a saída: viu "linked/paired/…", dá 4 s para o CLI guardar as credenciais e o encerra.
   LOG=$(mktemp); rm -f "$LOG.linked"
+  # O app só faz um pareamento por vez: um login que ainda roda aqui é órfão (app fechado ou reinstalado no
+  # meio do QR; sem terminal o ssh caído não manda HUP) e faz o novo falhar na hora.
+  pkill -u "$(id -u)" -f "openclaw channels login" 2>/dev/null && sleep 1
   openclaw channels login --channel whatsapp >"$LOG" 2>&1 &
   P=$!
   tail -n +1 -F --pid=$P "$LOG" 2>/dev/null & TAIL=$!
@@ -300,7 +303,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           break;
         case "disconnected": send({ kind: "log", text: `desconectado (${String(ev.reason ?? "?")}); tentando de novo…` }); break;
         case "connected": connected = true; send({ kind: "connected", number: phoneOf(ev.user?.id ?? "") }); break;
-        case "error": send({ kind: "error", text: ev.error === "logged_out" ? "o WhatsApp recusou a sessão (logged out). Use \"Reparear\" para apagar a sessão e gerar um QR novo." : (ev.error ?? "erro no bridge") }); break;
+        case "error": send({ kind: "error", text: ev.error === "logged_out" ? "o WhatsApp recusou a sessão (logged out). Use \"Desconectar\" e depois conecte de novo para gerar um QR novo." : (ev.error ?? "erro no bridge") }); break;
         default: send({ kind: "log", text: line });
       }
     };
@@ -446,4 +449,31 @@ export async function whatsappPause(host: string, number: string, paused: boolea
   const failed = gatewayFailures(r.stdout, own);
   if (failed.length > 0) throw new Error(`o OpenClaw não ${paused ? "pausou" : "retomou"} a conversa`);
   log(`whatsapp: ${paused ? "pausado" : "retomado"} +${number.replace(/\D/g, "")} em ${host}`);
+}
+
+/**
+ * Desconecta o número desta máquina sem parear de novo. OpenClaw: `channels logout` (apaga as credenciais;
+ * o gateway para o canal). Hermes: guarda a sessão como session.loggedout-… com o gateway parado.
+ */
+export async function whatsappLogout(host: string): Promise<void> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (current !== null) throw new Error("há um pareamento em andamento; feche o QR antes de desconectar");
+  const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
+S=$HOME/.hermes/whatsapp
+if [ -d "$S" ]; then
+  pm2 stop hermes-gateway >/dev/null 2>&1
+  [ -d "$S/session" ] && mv "$S/session" "$S/session.loggedout-$(date +%s)"
+  pm2 start hermes-gateway >/dev/null 2>&1
+  echo OUT=hermes; exit 0
+fi
+command -v openclaw >/dev/null 2>&1 || { echo OUT=none; exit 0; }
+pkill -u "$(id -u)" -f "openclaw channels login" 2>/dev/null
+timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1
+[ -s "$HOME/.openclaw/credentials/whatsapp/default/creds.json" ] && echo OUT=still || echo OUT=openclaw
+`;
+  const r = await runSsh(host, script, 90_000);
+  const out = /OUT=(\w+)/.exec(r.stdout)?.[1];
+  if (out === "none") throw new Error("não achei WhatsApp configurado nesta máquina");
+  if (out === "still" || out === undefined) throw new Error(`não consegui desconectar${r.stderr.trim() !== "" ? `: ${r.stderr.trim().split("\n").pop()}` : ""}`);
+  log(`[whatsapp] desconectado em ${host} (${out})`);
 }

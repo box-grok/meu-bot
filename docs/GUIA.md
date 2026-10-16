@@ -444,6 +444,11 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   de sessão validadas antes de entrar no script).
 - Isolamento: `session.dmScope = per-channel-peer` nas duas políticas (cada contato com memória própria;
   sem reinício do gateway). Antes disso, todos os contatos dividiam o contexto do agente.
+- Conversa aberta sem piscar (`renderWaChat`): enquanto carrega, bolhas "esqueleto" com brilho correndo;
+  na primeira carga as últimas 10 bolhas entram em cascata (deslize do lado delas, 35 ms entre uma e outra);
+  nas atualizações (8 s) o cabeçalho muda no lugar e só as mensagens novas entram, com rolagem suave se a
+  pessoa estava no fim (`WaChatPage.shown` guarda as chaves já na tela). Histórico limpo ou mudado no meio
+  redesenha. `prefers-reduced-motion` desliga as animações.
 - Levar ao meu-bot: só pelo menu "…" do contato ("Conversar com o meu-bot sobre isto"; o ícone de ramo nas
   bolhas e o botão no cabeçalho foram tirados a pedido, as bolhas ficam só com Copiar). `whatsapp:branch`
   relê o histórico no main (a fonte é o gateway) e cria uma conversa nova
@@ -467,6 +472,17 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   conversas diretas com o agente. A confirmação abre na própria lista, logo abaixo do contato
   (`waClearBox`, Cancelar + Limpar em vermelho; nada de caixa nativa por cima). `whatsapp:clear-plan`
   conta as sessões; `whatsapp:clear` refaz o plano e só zera a principal com `includeShared`.
+- "Desconectar" (guia e janela do WhatsApp) só desconecta: `whatsapp:logout` → `openclaw channels logout
+  --channel whatsapp` (Hermes: sessão vira session.loggedout-… com o gateway parado) e confere que o
+  creds.json sumiu; depois o status volta a "desconectado". Antes chamava o pareamento com reset, que já
+  gerava outro QR: desconectava, mas a tela ficava em "escaneie" e acabava em "QR expirou".
+  O pareamento e o desconectar encerram antes um `openclaw channels login` que tenha ficado órfão na
+  máquina (app fechado/reinstalado no meio do QR; sem terminal o ssh caído não manda HUP): com ele vivo, o
+  "Gerar QR" novo falhava na hora. Quando o "Gerar QR" do guia termina sem conectar, o motivo fica no
+  próprio passo (`waGuidePairNote`), em vez de sumir junto com a linha de progresso devolvida ao modal.
+- Contagem do QR: o baileys (biblioteca do WhatsApp no OpenClaw, `lib/Socket/socket.js`) dá 60 s ao 1º QR
+  e 20 s aos seguintes. A contagem usa isso (`WA_QR_FIRST`), mede o ciclo só do 2º em diante e, passado o
+  tempo, mostra "renovando…" em vez de travar em "0 s" (o QR chega pelo texto do CLI, com atraso).
 - Pausar o agente para uma pessoa (menu "…"): `gateway call sessions.patch` com `sendPolicy: "deny"` na
   sessão só do contato (`null` retoma). O OpenClaw ainda recebe e grava a mensagem (e pode rodar o turno),
   mas não entrega a resposta nem mostra "digitando". Só com sessão própria (`WhatsappChat.ownSession`):

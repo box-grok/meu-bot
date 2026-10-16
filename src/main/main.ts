@@ -6,7 +6,7 @@ import { LOCAL_HOST } from "./localBackend";
 import { conversationToMarkdown, conversationTitle, slugify } from "./export";
 import { fetchAccountStatus, runBackendTurn } from "./backend";
 import { disableSshCheck, restoreLastPolicy } from "./tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappChats, whatsappBranch, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappPause, whatsappStatus, whatsappThread } from "./whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappChats, whatsappBranch, whatsappLogout, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappPause, whatsappStatus, whatsappThread } from "./whatsapp";
 import { cancelClaudeLogin, claudeAuthInfo, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "./claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiAuthInfo, xaiLogout } from "./xaiLogin";
 import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
@@ -88,6 +88,11 @@ function registerIpc(): void {
     if (h === null) throw new Error("origem inválida");
     const reset = (payload as { reset?: unknown } | null)?.reset === true;
     return startPairing(h.host, reset, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); });
+  });
+  ipcMain.handle("whatsapp:logout", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappLogout(h.host);
   });
   ipcMain.handle("claude-login:start", (event) => {
     const h = hostFromEvent(event);
