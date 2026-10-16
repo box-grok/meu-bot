@@ -352,6 +352,8 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .acervo-line .grow { flex: 1; }
 .acervo-icon { color: var(--accent); font-size: 12px; }
 .acervo-count { font-size: 11px; color: var(--muted); }
+/* Aviso de tutoriais na lateral: número num selo, como notificação; some quando não falta nada ou quando a pessoa desliga. */
+.acervo-count.tut-badge-n { min-width: 18px; height: 18px; padding: 0 6px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-fg); font-weight: 700; }
 .acervo-panel { position: absolute; inset: 0; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 10px; }
 .acervo-panel[hidden] { display: none; }
 .acervo-panel h2 { margin: 0; font-size: 16px; }

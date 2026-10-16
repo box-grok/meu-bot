@@ -601,7 +601,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   for (const t of visibleTutorials(guideCtx())) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
-  add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: `${visibleTutorials(guideCtx()).length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
+  add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
@@ -1217,9 +1217,23 @@ var tutorialsReady = true; // applySettings pode rodar antes deste trecho; var e
 try { tutArchivedEl.checked = localStorage.getItem("tutArchived") === "1"; } catch { /* opcional */ }
 const tourDone = (): boolean => settings?.onboarding === "done";
 const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t), guideCtx()).finished;
+/** Contagem dos tutoriais: para fazer (inclui o tour), arquivados (concluídos) e "em breve" (não contam como pendência). */
+function tutCounts(): { todo: number; archived: number; soon: number } {
+  const all = visibleTutorials(guideCtx());
+  const soon = all.filter((t) => t.comingSoon === true).length;
+  const done = all.filter((t) => tutorialDone(t)).length;
+  return { todo: (tourDone() ? 0 : 1) + all.length - soon - done, archived: (tourDone() ? 1 : 0) + done, soon };
+}
+/** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral". */
+const tutBadgeEl = $<HTMLInputElement>("tut-badge");
+try { tutBadgeEl.checked = localStorage.getItem("tutBadge") !== "0"; } catch { /* opcional */ }
 function paintTutCount(): void {
-  const active = (tourDone() ? 0 : 1) + visibleTutorials(guideCtx()).filter((t) => !tutorialDone(t)).length;
-  $<HTMLElement>("tutoriais-count").textContent = active === 0 ? "tudo feito" : active === 1 ? "1 tutorial" : `${active} tutoriais`;
+  const { todo } = tutCounts();
+  const n = $<HTMLElement>("tutoriais-count");
+  const show = tutBadgeEl.checked && todo > 0;
+  n.textContent = show ? String(todo) : "";
+  n.classList.toggle("tut-badge-n", show);
+  n.title = show ? (todo === 1 ? "1 tutorial para fazer" : `${todo} tutoriais para fazer`) : "";
 }
 const TUT_ICONS = {
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
@@ -1564,6 +1578,12 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     }
     (done ? archived : active).push(card);
   }
+  // Resumo: quantos faltam, quantos já foram (arquivados) e quantos ainda não existem ("em breve").
+  const c = tutCounts();
+  const plural = (n: number, um: string, varios: string): string => `${n} ${n === 1 ? um : varios}`;
+  $<HTMLElement>("tutoriais-summary").textContent = [
+    c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`, plural(c.archived, "arquivado", "arquivados"), ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
+  ].join(" · ");
   if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
   tutList.append(...active);
   if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived); }
@@ -1571,6 +1591,10 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
 tutArchivedEl.addEventListener("change", () => {
   try { localStorage.setItem("tutArchived", tutArchivedEl.checked ? "1" : "0"); } catch { /* opcional */ }
   tutoriaisPage.render();
+});
+tutBadgeEl.addEventListener("change", () => {
+  try { localStorage.setItem("tutBadge", tutBadgeEl.checked ? "1" : "0"); } catch { /* opcional */ }
+  paintTutCount();
 });
 $<HTMLButtonElement>("tutoriais-line").addEventListener("click", () => openPage(tutoriaisPage));
 

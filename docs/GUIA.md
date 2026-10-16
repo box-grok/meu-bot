@@ -1215,6 +1215,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   gerência do tutorial concluído repete o botão em "Onde aparece". `backend-vm/services/account-status.js` é cópia.
   O rótulo da barra no terminal passou de "Sessão diaria" (herdado do script original; a janela é de 5 h, não
   diária) para "Sessão:", o mesmo do rodapé do app e da prévia do passo 2.
+- Aviso de tutoriais na lateral (16 out): o "N tutoriais" ao lado de "Tutoriais" virou um selo com o número
+  do que **falta fazer** (tour pendente + tutoriais não concluídos; arquivados e "Em breve" não contam;
+  `tutCounts`). Some com zero. Em Tutoriais há o interruptor "avisar na lateral" (`localStorage tutBadge`,
+  ligado por padrão) que desliga o selo, e o resumo "N para fazer · M arquivados · K em breve" no topo.
 - "Refazer do zero" (16 out): tutorial concluído ganha, no cartão arquivado, um botão de dois cliques que
   desfaz na máquina o que o tutorial fez e esquece as marcações (`localStorage guia:<id>:<host>`), voltando
   ao passo 1: é o "excluir" do CRUD dos tutoriais. `Tutorial.reset.what` descreve o que é desfeito; a ação
