@@ -62,6 +62,9 @@ const INCLUDE = "Include ~/.ssh/meu-bot-suporte.conf";
  * Include no topo do ~/.ssh/config (antes de qualquer Host, senão vale só dentro do bloco anterior).
  */
 function writeSshFiles(m: Map<string, Stored>): void {
+  // Sem ninguém conhecido e sem caixa de entrada configurada (um admin ainda não preparado, ou um dev de teste com
+  // userData novo), não há o que escrever: apagar o conf de um admin de verdade neste mesmo Mac derrubaria as pessoas dele.
+  if (m.size === 0 && adminConfig().inbox.alias === "") return;
   fs.mkdirSync(SSH_DIR, { recursive: true, mode: 0o700 });
   const on = [...m.values()].filter((s) => s.code.state === "on");
   const blocks = on.map((s) => adminSshBlock(s.code, "~/.ssh/meu-bot-admin").replace(/\n$/, `\n    UserKnownHostsFile ~/.ssh/meu-bot-suporte_known_hosts\n    StrictHostKeyChecking yes\n`));
