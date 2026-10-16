@@ -1104,7 +1104,10 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   (`xaiLogin.ts`). A opção de chave de API foi retirada a pedido do usuário (só OAuth); `src/main/xaiKey.ts`
   ficou só com a checagem "há backend?" que decide se a linha aparece. `install-statusline.sh` instala o
   `jq` sozinho quando há `sudo` sem senha (caso da colima).
-- Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Tutorial
+- Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Verificado na
+  colima (16 out): login OAuth concluído pelo app; o proxy aceita o id `grok-4` (responde com `grok-4.3`; lista
+  também 4.5/4.6/4.7 e os de imagem) e o backend respondeu `X-Provider: grok-4`. O `hermes` precisa do node no
+  PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`. Tutorial
   "Fallback: Claude e Grok logados" deixado como "Em breve" (pedido do usuário: fazer quando o login da xAI
   estiver redondo).
 
