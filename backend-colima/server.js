@@ -22,7 +22,7 @@ const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
 const providers = require('./providers');
-const { readClaudeStatus } = require('./account-status');
+const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -61,6 +61,7 @@ function loadEnv(file) {
 }
 
 function log(...a) { console.log(new Date().toISOString(), '[backend]', ...a); }
+let lastLimitsWhy = null;
 
 function json(res, status, body, extraHeaders = {}) {
   const data = JSON.stringify(body);
@@ -365,8 +366,15 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id) });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
-  // Status line do app: conta e limites do Claude Code desta máquina (cache do statusline.sh).
-  if (url.pathname === '/v1/meu-bot/status' && req.method === 'GET') return json(res, 200, { claude: readClaudeStatus(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
+  // Status line do app: conta e limites do Claude Code desta máquina. O cache de limites é renovado aqui
+  // quando está velho (o claude -p não roda a status line); o motivo de não renovar vai ao log quando muda.
+  if (url.pathname === '/v1/meu-bot/status' && req.method === 'GET') {
+    refreshRateLimits().then((why) => {
+      if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta: ${why}`); }
+      json(res, 200, { claude: readClaudeStatus(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
+    });
+    return;
+  }
   if (url.pathname === '/v1/models' && req.method === 'GET') {
     return json(res, 200, { object: 'list', data: listedModels() });
   }

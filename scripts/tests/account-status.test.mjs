@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { readClaudeStatus } = require("../../backend-colima/account-status.js");
+const { readClaudeStatus, refreshRateLimits } = require("../../backend-colima/account-status.js");
 
 /** HOME descartável com os arquivos dados em ~/.cache/claude-statusline/. */
 function home(files) {
@@ -38,4 +38,55 @@ test("backend-colima e backend-vm têm o mesmo account-status.js (copiar, não e
   const a = readFileSync(new URL("../../backend-colima/account-status.js", import.meta.url), "utf8");
   const b = readFileSync(new URL("../../backend-vm/services/account-status.js", import.meta.url), "utf8");
   assert.equal(a, b);
+});
+
+/** HOME com credenciais do Claude Code (token "tok", vence em 1 h) e, opcionalmente, um ratelimits.json. */
+function homeWithLogin(now, limits = null) {
+  const h = home(limits ? { "ratelimits.json": limits } : {});
+  mkdirSync(path.join(h, ".claude"), { recursive: true });
+  writeFileSync(path.join(h, ".claude", ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "tok", expiresAt: now + 3600_000 } }));
+  return h;
+}
+const USAGE = { five_hour: { utilization: 74.0, resets_at: "2026-10-16T20:40:00.156750+00:00" }, seven_day: { utilization: 23.4, resets_at: "2026-10-23T09:00:00.156768+00:00" } };
+const fakeFetch = (calls, body = USAGE, status = 200) => async (url, init) => { calls.push({ url, auth: init.headers.Authorization }); return { ok: status === 200, status, json: async () => body }; };
+
+test("refreshRateLimits: sem cache busca o uso da conta e grava no formato do statusline.sh", async () => {
+  const now = Date.parse("2026-10-16T18:00:00Z");
+  const h = homeWithLogin(now);
+  const calls = [];
+  try {
+    assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls), now }), "updated");
+    assert.equal(calls.length, 1); assert.equal(calls[0].auth, "Bearer tok"); assert.match(calls[0].url, /\/api\/oauth\/usage$/);
+    const saved = JSON.parse(readFileSync(path.join(h, ".cache", "claude-statusline", "ratelimits.json"), "utf8"));
+    assert.deepEqual(saved, { session_pct: 74, session_resets: 1792183200, weekly_pct: 23, weekly_resets: 1792746000, updated: Math.floor(now / 1000) });
+    const s = readClaudeStatus(h);
+    assert.deepEqual([s.sessionPct, s.weeklyPct, s.sessionResets], [74, 23, 1792183200]);
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+test("refreshRateLimits: cache novo não vai à API; velho vai; falha HTTP mantém o cache", async () => {
+  const now = Date.parse("2026-10-16T18:00:00Z");
+  const fresh = { session_pct: 5, session_resets: null, weekly_pct: 6, weekly_resets: null, updated: Math.floor(now / 1000) - 30 };
+  const h = homeWithLogin(now, fresh);
+  const calls = [];
+  try {
+    assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls), now }), "fresh");
+    assert.equal(calls.length, 0);
+    assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls, {}, 500), now: now + 120_000 }), "http-500");
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(readFileSync(path.join(h, ".cache", "claude-statusline", "ratelimits.json"), "utf8")), fresh, "cache antigo fica");
+    assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls), now: now + 120_000 }), "updated");
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+test("refreshRateLimits: sem login ou token vencido não chama a API", async () => {
+  const now = Date.parse("2026-10-16T18:00:00Z");
+  const calls = [];
+  const semLogin = home({});
+  // keychain: false — neste Mac o Keychain tem o login do Claude Code, e o teste é sobre a máquina sem login.
+  try { assert.equal(await refreshRateLimits({ home: semLogin, fetchImpl: fakeFetch(calls), now, keychain: false }), "no-token"); }
+  finally { rmSync(semLogin, { recursive: true, force: true }); }
+  const vencido = homeWithLogin(now - 7200_000);
+  try { assert.equal(await refreshRateLimits({ home: vencido, fetchImpl: fakeFetch(calls), now }), "no-token"); assert.equal(calls.length, 0); }
+  finally { rmSync(vencido, { recursive: true, force: true }); }
 });

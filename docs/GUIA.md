@@ -1229,6 +1229,14 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   gerência do tutorial concluído repete o botão em "Onde aparece". `backend-vm/services/account-status.js` é cópia.
   O rótulo da barra no terminal passou de "Sessão diaria" (herdado do script original; a janela é de 5 h, não
   diária) para "Sessão:", o mesmo do rodapé do app e da prévia do passo 2.
+- Limites sem Claude Code interativo (16 out): o backend roda `claude -p`, e nesse modo a status line não
+  executa, então mandar mensagem pelo meu-bot nunca gravava `ratelimits.json` (o passo "Ver os limites na
+  conversa" não concluía). `account-status.js` ganhou `refreshRateLimits`: em `GET /v1/meu-bot/status`, se o
+  cache tem mais de 60 s, busca `GET https://api.anthropic.com/api/oauth/usage` com o token OAuth do Claude
+  Code da máquina (`~/.claude/.credentials.json`; Keychain no macOS; vencido = não chama) e grava o mesmo
+  formato do statusline.sh (atômico, 0600; falha mantém o cache). O app consulta o status a cada resposta
+  (`chat:account`), então o rodapé e o passo 4 atualizam logo depois da resposta. Motivo de não renovar vai
+  ao log do backend quando muda ("limites da conta: no-token"). Testes em `scripts/tests/account-status.test.mjs`.
 - Aviso de tutoriais na lateral (16 out): o "N tutoriais" ao lado de "Tutoriais" virou um selo com o número
   do que **falta fazer** (tour pendente + tutoriais não concluídos; arquivados e "Em breve" não contam;
   `tutCounts`). Some com zero. Em Tutoriais há o interruptor "avisar na lateral" (`localStorage tutBadge`,
