@@ -368,8 +368,12 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   para o próprio número entram; mais ninguém recebe resposta nem código; `SELF_POLICY_SH`) e "todo mundo" =
   `open` + `allowFrom ["*"]`. Grupos sempre desativados. O `PAIR_SCRIPT` grava "só você" antes do login quando
   não há valor autorado (allowFrom vazio, com aviso do OpenClaw) e, ao vincular, põe o número no allowFrom. O
-  status lê `dmPolicy` (vazio = pairing) e o bloco `channels.whatsapp` em JSON (`channelConfig`, "Ver
-  configuração do canal"). `whatsapp:dm-policy` → `setDmPolicy`; vale sem reiniciar o gateway.
+  status lê `dmPolicy` (vazio = pairing) e o bloco `channels.whatsapp` em JSON (`channelConfig`).
+  `whatsapp:dm-policy` → `setDmPolicy`; vale sem reiniciar o gateway. Ajustes finos (lista de números,
+  grupos, limite de mídia) são por conversa: "Ajustar pelo chat" (`waChannelPrompt`) abre uma conversa e
+  dá ao agente o estado atual + como editar com `openclaw config set --strict-json`; nada de editor de JSON
+  na interface. Conectado, a gerência (quem responde, ajustar pelo chat, atualizar, desconectar) fica na
+  aba do guia, não em modal; a linha lateral do WhatsApp sempre abre essa aba (OpenClaw).
 - Plug and play pelo próprio agente: no modal, "Pedir ao agente para preparar" (`waAgentPrompt` em
   `renderer.ts`) abre uma conversa nova e manda ao Claude Code em bypass da máquina o pedido pronto
   (onboard não interativo com `--auth-choice anthropic-cli`, plugin do ClawHub, conferência do gateway e

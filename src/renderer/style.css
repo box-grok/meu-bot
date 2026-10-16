@@ -293,6 +293,7 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 @keyframes ob-ripple { from { clip-path: circle(0px at var(--cx, 50%) var(--cy, 50%)); opacity: .5; } 60% { opacity: .22; } to { clip-path: circle(160% at var(--cx, 50%) var(--cy, 50%)); opacity: 0; } }
 /* Onboarding: o botão do passo atual (☰, ⌘K, Configurações ou Novo) pulsa até ser usado. */
 .btn.attention { color: var(--accent); border-color: var(--accent); animation: attention-pulse 1.5s ease-out infinite; }
+.btn-primary.attention { color: var(--accent-fg); } /* fundo já é azul: o texto não pode ficar azul também */
 @keyframes attention-pulse {
   0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
   70% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); }
@@ -492,20 +493,37 @@ body.topbar-hidden .topbar { display: none; }
 .reply-title strong { font-size: 14px; }
 .reply-default { font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--line); color: var(--muted); }
 .reply-body p { margin: 0; font-size: 13px; color: var(--muted); }
-/* Guia: a tela de um passo (referência): barra de segmentos, pílula do canal, pergunta grande, texto, corpo. */
-.guide-progress { display: flex; gap: 6px; }
-.guide-progress .seg { flex: 1; height: 4px; border-radius: 2px; background: var(--line); }
-.guide-progress .seg.on { background: var(--ok); }
-.guide-meta { display: flex; align-items: center; gap: 10px; }
-.guide-pill { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
-.guide-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
-.guide-pill.on .dot { background: var(--ok); }
-.guide-count { margin-left: auto; font-size: 12px; color: var(--muted); }
-.guide-panel h1 { margin: 4px 0 0; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
-.guide-text { margin: 0; font-size: 14px; color: var(--muted); max-width: 720px; }
-.guide-cards .reply-card { padding: 16px 18px; }
+.reply-saving { font-size: 11px; color: var(--ok); margin-left: 2px; }
+.reply-card.saving { border-color: var(--ok); }
+.reply-spin { width: 18px; height: 18px; flex: none; margin-top: 2px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--ok) 30%, transparent); border-top-color: var(--ok); animation: reply-spin .7s linear infinite; }
+@keyframes reply-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .reply-spin { animation: none; } }
+/* Guia: cabeçalho do tutorial (ícone, selo, título, resumo) e a lista dos passos abaixo, numerados. */
+.guide-head { display: flex; align-items: center; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.guide-head h2 { margin: 0; font-size: 22px; font-weight: 700; }
+.tut-icon.ok { background: var(--ok); color: #fff; }
+.guide-panel .tut-steps { margin: 0; padding: 4px 0 0; border-top: none; gap: 18px; }
+.guide-panel .tut-step { gap: 8px; max-width: 760px; }
+.guide-panel .tut-step > p { font-size: 14px; }
+.guide-cards { width: 100%; }
+.guide-cards .reply-card { padding: 14px 16px; }
+.tut-finished { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Painel de gerência na aba (substitui o modal de estado): aparece abaixo dos passos quando conectado. */
+.guide-manage { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); max-width: 760px; }
+.tut-finished-line { font-size: 14px; font-weight: 600; color: var(--ok); }
+.strong-hint { font-weight: 600; color: var(--fg); }
+.guide-manage .dialog-actions { margin-top: 4px; }
 .guide-note { padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); font-size: 13px; color: var(--muted); }
 .guide-details { border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 10px 16px; font-size: 13px; }
 .guide-details summary { cursor: pointer; }
 .guide-config { margin: 10px 0 0; font: 12px var(--mono); color: var(--muted); white-space: pre-wrap; }
-.guide-panel > .btn { align-self: flex-start; }
+/* Ajuste do canal pelo chat (no lugar do editor técnico): botão + uma dica curta. */
+.channel-chat { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.guide-note, .guide-details { width: 100%; }
+/* Pareamento dentro da aba do guia: QR à esquerda, como ler à direita, linha de progresso e Cancelar embaixo. */
+.pair-inline { display: flex; gap: 28px; align-items: center; flex-wrap: wrap; width: 100%; margin-top: 4px; }
+.pair-side { flex: none; display: flex; flex-direction: column; align-items: center; }
+.pair-inline .wa-qr { width: 260px; height: 260px; }
+.pair-inline .wa-success { width: 260px; height: 220px; }
+.pair-foot { display: flex; align-items: center; gap: 10px; width: 100%; }
+.pair-foot .wa-progress { flex: 1; }

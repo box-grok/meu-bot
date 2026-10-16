@@ -1175,9 +1175,20 @@ function loadGuideFlags(t: Tutorial): GuideFlags {
   try { const raw = localStorage.getItem(guideFlagsKey(t)); if (raw !== null) return { ...emptyFlags(), ...(JSON.parse(raw) as Partial<GuideFlags>) }; } catch { /* opcional */ }
   return emptyFlags();
 }
-function saveGuideFlag(t: Tutorial, flag: keyof GuideFlags): void {
-  const f = loadGuideFlags(t); f[flag] = true;
+function saveGuideFlag(t: Tutorial, flag: "policyChosen" | "tested"): void {
+  const f = loadGuideFlags(t); f[flag] = true; f.number = waStatus?.number ?? f.number;
   try { localStorage.setItem(guideFlagsKey(t), JSON.stringify(f)); } catch { /* opcional */ }
+}
+/** As marcações manuais ("escolhi", "testei") valem para o número pareado na hora. Trocou o número, zeram. */
+function reconcileGuideFlags(t: Tutorial): void {
+  const num = waStatus?.connected === true ? waStatus.number : null;
+  if (num === null) return;
+  const f = loadGuideFlags(t);
+  if (f.number !== num && (f.policyChosen || f.tested)) {
+    try { localStorage.setItem(guideFlagsKey(t), JSON.stringify({ policyChosen: false, tested: false, number: num })); } catch { /* opcional */ }
+  } else if (f.number !== num) {
+    try { localStorage.setItem(guideFlagsKey(t), JSON.stringify({ ...f, number: num })); } catch { /* opcional */ }
+  }
 }
 /** O guia na frente, se a aba ativa é de um tutorial. */
 function activeGuide(): Tutorial | null {
@@ -1199,15 +1210,30 @@ function paintGuideTargets(): void {
   }
   for (const e of all) e.classList.toggle("attention", want.has(e));
 }
-function runGuideAction(target: GuideTarget): void {
+/** Guia que está mostrando o pareamento dentro da própria aba (os nós do QR/progresso são movidos para lá). */
+let waInlineGuide: Tutorial | null = null;
+function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
-  void refreshWhatsapp();
-  if (waStatus === null || !waStatus.present) { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
+  if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
+  if (target === "wa-agent") { requestAgentPrepare(); return; }
+  if (target === "wa-pair") {
+    if (!waStatus.ready || waStatus.connected || waPairing) return;
+    waInlineGuide = t;
+    void pairWhatsapp(false).finally(() => { waInlineGuide = null; restorePairNodes(); paintGuide(); });
+    paintGuide();
+    return;
+  }
   openWhatsapp();
-  if (target === "wa-pair" && waStatus.ready && !waStatus.connected) void pairWhatsapp(false);
+}
+/** Devolve ao modal os nós do pareamento (QR, ✓ e linha de progresso) na ordem original. */
+function restorePairNodes(): void {
+  const box = waDialog.querySelector(".wa-box");
+  if (box === null) return;
+  box.insertBefore(waQr, waPolicyBox); box.insertBefore(waSuccess, waPolicyBox); box.insertBefore(waProgress, waDialog.querySelector(".dialog-actions"));
 }
 /** Chamado sempre que o estado do WhatsApp muda: redesenha o guia da frente, os títulos das abas e o catálogo. */
 function paintGuide(): void {
+  for (const { tutorial } of guidePages.values()) reconcileGuideFlags(tutorial);
   for (const { page, tutorial } of guidePages.values()) {
     const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial));
     const title = page.tabEl?.querySelector(".tab-title"); if (title !== null && title !== undefined) title.textContent = guideTabTitle(tutorial, v);
@@ -1218,60 +1244,93 @@ function paintGuide(): void {
 }
 function renderGuide(t: Tutorial, panel: HTMLElement): void {
   const flags = loadGuideFlags(t);
-  const view = guideView(t, waStatus, flags);
+  const st = waStatus;
+  const view = guideView(t, st, flags);
   panel.replaceChildren();
-  // Sem o estado da máquina ainda, não há como saber em que passo a pessoa está: mostrar isso, não o passo 1.
-  if (waStatus === null) {
-    const bar0 = el("div", "guide-progress");
-    t.steps.forEach(() => bar0.append(el("span", "seg")));
+  // Cabeçalho: ícone, selo "0 de 4 · 4 passos · 3 min", título e resumo (o mesmo cartão do catálogo, sem botão).
+  const head = el("div", "guide-head");
+  const icon = el("span", `tut-icon${view.finished ? " ok" : ""}`); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
+  const body = el("div", "tut-body");
+  const doneN = view.done.filter(Boolean).length;
+  body.append(el("span", "tut-badge", view.finished ? "Concluído" : `${doneN} de ${t.steps.length} · ${tutorialBadge(t, false)}`), el("h2", "", t.title), el("p", "", t.summary));
+  head.append(icon, body);
+  panel.append(head);
+  // Sem o estado da máquina ainda, não há como saber em que passo a pessoa está: dizer isso, não chutar o passo 1.
+  if (st === null) {
     const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Consultando o WhatsApp desta máquina…"));
-    panel.append(bar0, el("h1", "", t.title), wait);
+    panel.append(wait);
     void refreshWhatsapp();
     return;
   }
-  // Barra de progresso em segmentos: um por passo; concluídos e o atual em verde.
-  const bar = el("div", "guide-progress");
-  t.steps.forEach((_, i) => bar.append(el("span", `seg${view.done[i] === true || i === view.current ? " on" : ""}`)));
-  panel.append(bar);
-  const meta = el("div", "guide-meta");
-  const st = waStatus;
-  if (st !== null && st.present) {
-    const pill = el("span", `guide-pill${st.connected ? " on" : ""}`);
-    pill.append(el("span", "dot"), document.createTextNode(`Canal WhatsApp (${st.gateway === "openclaw" ? "OpenClaw" : "Hermes"})${st.number !== null ? ` · ${fmtPhone(st.number)}` : ""}`));
-    meta.append(pill);
-  }
-  meta.append(el("span", "guide-count", view.finished ? "Concluído" : `Passo ${view.current + 1} de ${t.steps.length}`));
-  panel.append(meta);
-  if (view.finished) {
-    panel.append(el("h1", "", "Tudo feito"), el("p", "guide-text", "O WhatsApp desta máquina está conectado e configurado do seu jeito. Para mudar quem o agente responde, abra a linha WhatsApp na lateral."));
-    const close = el("button", "btn btn-primary", "Fechar"); close.type = "button";
-    close.addEventListener("click", () => { const g = guidePages.get(`tut-${t.id}`); if (g !== undefined) closePage(g.page); });
-    panel.append(close);
-    return;
-  }
-  const step = t.steps[view.current]!;
-  panel.append(el("h1", "", step.title), el("p", "guide-text", step.text));
-  if (step.body === "reply-choice") {
-    const cards = el("div", "reply-cards guide-cards");
-    renderReplyCards(cards, replyChoiceOf(st?.dmPolicy ?? null), waPolicySaving || st === null || !st.connected, chooseReply);
-    panel.append(cards, el("div", "guide-note", REPLY_NOTE));
-    if (st !== null && st.channelConfig !== null) {
-      const det = el("details", "guide-details");
-      det.append(el("summary", "", "Ver configuração do canal"), el("pre", "guide-config", st.channelConfig));
-      panel.append(det);
+  // Lista dos passos: concluídos com ✓, o atual aberto (texto, corpo e botões), os futuros recolhidos.
+  const steps = el("ol", "tut-steps");
+  t.steps.forEach((step, i) => {
+    const done = view.done[i] === true;
+    const cur = i === view.current;
+    const li = el("li", done ? "done" : cur ? "current" : "pending");
+    const num = el("span", "tut-num", done ? "✓" : String(i + 1));
+    const txt = el("div", "tut-step");
+    txt.append(el("strong", "", step.title));
+    if (done) txt.append(el("p", "", "concluído"));
+    if (cur) {
+      txt.append(el("p", "", step.text));
+      if (step.body === "reply-choice") {
+        const cards = el("div", "reply-cards guide-cards");
+        renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
+        txt.append(cards, el("div", "guide-note", REPLY_NOTE));
+        renderChannelEditor(txt);
+      } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
+        // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
+        const pair = el("div", "pair-inline");
+        const side = el("div", "pair-side");
+        side.append(waQr, waSuccess);
+        pair.append(side);
+        const foot = el("div", "pair-foot");
+        const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button";
+        cancel.addEventListener("click", () => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); });
+        foot.append(waProgress, cancel);
+        txt.append(pair, foot);
+      } else if (step.target !== "none") {
+        const b = el("button", "btn btn-primary btn-small", GUIDE_ACTION_LABEL[step.target]); b.type = "button";
+        const target = step.target;
+        b.addEventListener("click", () => runGuideAction(target, t));
+        txt.append(b);
+      }
+      if (step.manual !== undefined) {
+        const b = el("button", "btn btn-ghost btn-small", step.manual.label); b.type = "button";
+        const flag = step.manual.flag;
+        b.addEventListener("click", () => { saveGuideFlag(t, flag); paintGuide(); });
+        txt.append(b);
+      }
     }
-    if (st === null || !st.connected) panel.append(el("p", "hint", "Conecte o número primeiro: a escolha é gravada no OpenClaw da máquina."));
-  } else if (step.target !== "none") {
-    const b = el("button", "btn btn-primary", GUIDE_ACTION_LABEL[step.target]); b.type = "button";
-    const target = step.target;
-    b.addEventListener("click", () => runGuideAction(target));
-    panel.append(b);
-  }
-  if (step.manual !== undefined) {
-    const b = el("button", "btn btn-ghost", step.manual.label); b.type = "button";
-    const flag = step.manual.flag;
-    b.addEventListener("click", () => { saveGuideFlag(t, flag); paintGuide(); });
-    panel.append(b);
+    li.append(num, txt);
+    steps.append(li);
+  });
+  panel.append(steps);
+  // Conectado: a própria aba vira o painel de gerência (quem responde, editar config, atualizar, desconectar) — sem modal.
+  if (st.connected) {
+    const manage = el("div", "guide-manage");
+    manage.append(el("span", "tut-finished-line", "✓ Conectado. Ajuste aqui quando quiser."));
+    manage.append(el("p", "hint strong-hint", "Quem o agente responde no WhatsApp"));
+    const cards = el("div", "reply-cards guide-cards");
+    renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
+    manage.append(cards);
+    renderChannelEditor(manage);
+    const acts = el("div", "dialog-actions");
+    const refresh = el("button", "btn btn-ghost btn-small", "Atualizar"); refresh.type = "button";
+    refresh.addEventListener("click", () => { refresh.disabled = true; void refreshWhatsapp().finally(() => { refresh.disabled = false; }); });
+    const disc = el("button", "btn btn-ghost btn-small", "Desconectar"); disc.type = "button";
+    disc.addEventListener("click", () => armConfirm(disc, "Confirmar? apaga a sessão", () => {
+      waInlineGuide = t;
+      void pairWhatsapp(true).finally(() => { waInlineGuide = null; restorePairNodes(); paintGuide(); });
+      paintGuide();
+    }));
+    const spacer = el("span", "spacer");
+    const close = el("button", "btn btn-ghost btn-small", "Fechar"); close.type = "button";
+    close.addEventListener("click", () => { const g = guidePages.get(`tut-${t.id}`); if (g !== undefined) closePage(g.page); });
+    acts.append(refresh, disc, spacer, close);
+    manage.append(acts);
+    panel.append(manage);
   }
 }
 /** Abre (ou traz para a frente) a aba do guia de um tutorial. */
@@ -1347,17 +1406,47 @@ const waRefreshBtn = $<HTMLButtonElement>("wa-refresh");
 const waPolicyBox = $<HTMLElement>("wa-policy");
 const waPolicyHint = $<HTMLElement>("wa-policy-hint");
 const waPolicyCards = $<HTMLElement>("wa-policy-cards");
+const waPolicyEditor = $<HTMLElement>("wa-policy-editor");
 let waPolicySaving = false;
+/** Pedido ao agente da máquina para ajustar o canal do WhatsApp por conversa, em vez do editor técnico de JSON. */
+function waChannelPrompt(st: WhatsappStatus): string {
+  return [
+    "Quero ajustar o WhatsApp (OpenClaw) desta máquina conversando, sem eu editar JSON.",
+    st.number !== null ? `Número conectado: ${fmtPhone(st.number)}.` : "",
+    "Config atual do canal:",
+    "```json\n" + (st.channelConfig ?? "{}") + "\n```",
+    "Você pode alterar `channels.whatsapp` com `openclaw config set <caminho> <valor> --strict-json` (valide antes com `--dry-run`; nunca reinicie o gateway na mão, as mudanças valem sozinhas).",
+    "Me diga em uma frase o que dá para mudar (quem o agente responde, lista de números permitidos, grupos, limite de mídia) e espere eu pedir. Não mude nada antes de eu confirmar.",
+  ].filter((l) => l !== "").join("\n");
+}
+/** Botão que leva ao chat para ajustar o canal em linguagem natural (reaproveitado no guia e no modal). */
+function renderChannelEditor(host: HTMLElement): void {
+  const st = waStatus;
+  if (st === null || !st.connected) return;
+  const row = el("div", "channel-chat");
+  const btn = el("button", "btn btn-ghost btn-small", "Ajustar pelo chat"); btn.type = "button";
+  btn.title = "Abre uma conversa com o agente desta máquina para mudar a configuração do WhatsApp pedindo em português";
+  btn.addEventListener("click", () => {
+    void (async () => { const tab = await newTab(); await sendText(tab, waChannelPrompt(st)); })();
+  });
+  row.append(btn, el("span", "hint", "Peça em português: quem responde, números permitidos, grupos…"));
+  host.append(row);
+}
 /** Os dois cartões de rádio (só você / todo mundo), iguais no modal e no guia; o escolhido fica verde. */
+/** Cartão sendo gravado nesta hora (mostra o spinner e a seleção otimista); null = nenhum. */
+let waPolicyTarget: "self" | "open" | null = null;
 function renderReplyCards(container: HTMLElement, current: "self" | "open" | null, disabled: boolean, onChoose: (c: "self" | "open") => void): void {
   container.replaceChildren();
+  const marked = waPolicyTarget ?? current; // otimista: enquanto grava, o cartão clicado já aparece marcado
   for (const o of REPLY_OPTIONS) {
-    const card = el("button", `reply-card${current === o.id ? " on" : ""}`);
-    card.type = "button"; card.disabled = disabled; card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(current === o.id));
+    const saving = waPolicyTarget === o.id;
+    const card = el("button", `reply-card${marked === o.id ? " on" : ""}${saving ? " saving" : ""}`);
+    card.type = "button"; card.disabled = disabled; card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marked === o.id));
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
+    if (saving) title.append(el("span", "reply-saving", "aplicando…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
-    card.append(el("span", "reply-radio"), body);
+    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
     card.addEventListener("click", () => onChoose(o.id));
     container.append(card);
   }
@@ -1366,18 +1455,19 @@ function chooseReply(choice: "self" | "open"): void {
   if (waPolicySaving) return;
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
   if (replyChoiceOf(waStatus?.dmPolicy ?? null) === choice) { paintWhatsapp(); return; }
-  waPolicySaving = true; paintWhatsapp();
+  waPolicySaving = true; waPolicyTarget = choice; paintWhatsapp(); // seleção na hora + spinner no cartão
   void window.meuBot.whatsappSetDmPolicy(choice)
     .then((st) => { waStatus = st; })
     .catch((err: unknown) => { waStatusEl.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; })
-    .finally(() => { waPolicySaving = false; paintWhatsapp(); });
+    .finally(() => { waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); });
 }
 function paintWaPolicy(): void {
   const st = waStatus;
-  const show = st !== null && st.gateway === "openclaw" && st.ready && st.dmPolicy !== null && !waPairing;
+  const show = st !== null && st.gateway === "openclaw" && st.ready && st.connected && st.dmPolicy !== null && !waPairing;
   waPolicyBox.hidden = !show;
   if (!show || st === null) return;
   renderReplyCards(waPolicyCards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
+  waPolicyEditor.replaceChildren(); renderChannelEditor(waPolicyEditor);
   waPolicyHint.textContent = waPolicySaving ? "Aplicando na máquina…"
     : st.dmPolicy === "pairing" ? "Hoje está no padrão do OpenClaw: quem manda mensagem recebe um código de pareamento e espera aprovação. Escolha uma das opções para mudar."
     : st.dmPolicy === "disabled" ? "Hoje está tudo desligado, inclusive suas próprias mensagens. Escolha uma das opções."
@@ -1418,15 +1508,27 @@ function waAgentPrompt(st: WhatsappStatus): string {
     "No fim, resuma o que fez e o que ainda falta. Não rode `openclaw channels login`; não pareie o WhatsApp.",
   ].join("\n");
 }
-waAgentBtn.addEventListener("click", () => {
+/** Pede ao agente da máquina para preparar (modal ou guia): fecha o modal se aberto, abre uma conversa e manda o pedido. */
+/** Confirmação sem caixa sobreposta: o 1º clique arma o botão ("Confirmar?"), o 2º em até 4 s executa. */
+function armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void {
+  const armed = btn.dataset.armed === "1";
+  if (armed) { btn.dataset.armed = ""; btn.textContent = btn.dataset.label ?? btn.textContent; btn.classList.remove("btn-bad"); run(); return; }
+  btn.dataset.label = btn.textContent ?? "";
+  btn.dataset.armed = "1"; btn.textContent = label; btn.classList.add("btn-bad");
+  const reset = (): void => { if (btn.dataset.armed === "1") { btn.dataset.armed = ""; btn.textContent = btn.dataset.label ?? ""; btn.classList.remove("btn-bad"); } };
+  window.setTimeout(reset, 4000);
+}
+
+function requestAgentPrepare(): void {
   const st = waStatus;
   if (st === null) return;
   void (async () => {
-    waDialog.close();
+    if (waDialog.open) waDialog.close();
     const tab = await newTab();
     await sendText(tab, waAgentPrompt(st));
   })();
-});
+}
+waAgentBtn.addEventListener("click", () => requestAgentPrepare());
 let waStatus: WhatsappStatus | null = null;
 let waPairing = false;
 /** O pareamento em curso já vinculou: o resto (gateway voltando) é pano de fundo. */
@@ -1443,11 +1545,12 @@ function paintWhatsapp(): void {
   const st = waStatus;
   if (st === null || !st.present) { waLine.hidden = true; return; }
   waLine.hidden = false;
-  waLine.className = `wa-line ${st.connected ? "on" : "off"}`;
+  // Ponto verde conectado; cinza no resto (limpo: vermelho só assusta, e o clique já leva à solução).
+  waLine.className = `wa-line ${st.connected ? "on" : ""}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
   const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : "WhatsApp";
   if (!st.ready) {
-    waLine.replaceChildren(el("span", "dot"), el("span", "", `${via} · ${st.detail} · clique para resolver`));
+    waLine.replaceChildren(el("span", "dot"), el("span", "", `${via} · sem configurar`));
     waStatusEl.textContent = `${st.agent}.\nFalta:\n${(st.missing ?? "?").split("\n").map((l) => `• ${l}`).join("\n")}`;
     waPairBtn.hidden = true; waResetBtn.hidden = true; waCloseBtn.textContent = "Fechar";
     waAgentBtn.hidden = waPairing;
@@ -1458,8 +1561,10 @@ function paintWhatsapp(): void {
   waAgentBtn.hidden = true;
   paintWaPolicy();
   const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? "só você" : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
-  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who} · conectado${responde}` : `${via} · ${who} · ${st.loggedOut || st.number === null ? "desconectado · clique para parear" : st.detail}`));
-  waStatusEl.textContent = `${st.connected ? `Conectado como ${who}.` : `${st.detail}.${st.number !== null ? ` Última sessão: ${who}.` : ""}`} ${st.agent}.`;
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who}${responde}` : `${via} · desconectado`));
+  // Conectado: só o número. Desconectado: nada (o QR e a linha de progresso dizem o resto). A ficha técnica fica no title.
+  waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : "";
+  waStatusEl.title = st.agent;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
   waResetBtn.hidden = waPairing || st.number === null;
@@ -1565,9 +1670,14 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
       break;
   }
 });
-waLine.addEventListener("click", () => openWhatsapp());
+// A linha sempre leva à aba do guia (tudo na aba, sem modal); só cai no modal se a máquina não é OpenClaw.
+waLine.addEventListener("click", () => {
+  const guide = TUTORIAIS.find((t) => t.id === "whatsapp-openclaw");
+  if (guide !== undefined && waStatus !== null && waStatus.present && waStatus.gateway === "openclaw") { openGuide(guide); return; }
+  openWhatsapp();
+});
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
-waResetBtn.addEventListener("click", () => { void pairWhatsapp(true); });
+waResetBtn.addEventListener("click", () => armConfirm(waResetBtn, "Confirmar? apaga a sessão", () => { void pairWhatsapp(true); }));
 const waCancelIfPairing = (): void => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); };
 waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close(); });
 // Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.

@@ -178,6 +178,7 @@
         <p class="hint"><strong>Quem o agente responde no WhatsApp</strong></p>
         <div id="wa-policy-cards" class="reply-cards"></div>
         <p id="wa-policy-hint" class="hint"></p>
+        <div id="wa-policy-editor"></div>
       </div>
       <p id="wa-how" class="hint" hidden>No celular: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. Ele renova sozinho até você ler.</p>
       <!-- Progresso do pareamento: ponto pulsando + passo atual + QR nº e contagem da renovação; o log cru fica em "detalhes". -->
@@ -190,7 +191,7 @@
         <button type="button" id="wa-agent" class="btn btn-primary" hidden title="Abre uma conversa nova e pede ao agente desta máquina (bypass) para configurar o OpenClaw e instalar o plugin do WhatsApp; o QR continua sendo pelo app">Pedir ao agente para preparar</button>
         <button type="button" id="wa-refresh" class="btn btn-ghost" title="Consulta de novo o estado nesta máquina (sem fechar)">Atualizar</button>
         <button type="button" id="wa-pair" class="btn btn-primary">Gerar QR</button>
-        <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Desfaz a sessão atual (Hermes: guarda como session.loggedout-…; OpenClaw: channels logout) e gera um QR novo">Reparear (apaga a sessão)</button>
+        <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Apaga a sessão do WhatsApp nesta máquina e abre um QR novo para parear outro número">Desconectar</button>
         <div class="spacer"></div>
         <button type="button" id="wa-close" class="btn btn-ghost">Fechar</button>
       </div>

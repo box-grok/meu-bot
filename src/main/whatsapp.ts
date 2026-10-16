@@ -137,16 +137,25 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
  * resposta nem código). "open" = todo mundo: `dmPolicy open` + `allowFrom ["*"]`. Grupos ficam desativados nos
  * dois. O OpenClaw aplica sem reiniciar o gateway.
  */
+/** Número pareado lido direto do creds.json (barato); evita o `channels status` caro só para montar o allowFrom. */
+async function readSelfNumber(host: string): Promise<string | null> {
+  const script = `python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null\n`;
+  const r = await runSsh(host, script, 15_000);
+  return phoneOf(r.stdout.trim());
+}
+
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const script = policy === "open"
     ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`
-    : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh((await whatsappStatus(host)).number)}`;
+    : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
   const r = await runSsh(host, `${script}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   log(`[whatsapp] ${host}: dmPolicy=${policy}`);
   return whatsappStatus(host);
 }
+
+
 
 /** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
 export const SELF_POLICY_SH = `openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled`;

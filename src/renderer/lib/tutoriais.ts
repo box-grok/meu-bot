@@ -22,8 +22,8 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, number: null });
 
 export interface GuideStep {
   id: string;
@@ -36,7 +36,7 @@ export interface GuideStep {
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
-  manual?: { label: string; flag: keyof GuideFlags };
+  manual?: { label: string; flag: "policyChosen" | "tested" };
 }
 
 export interface Tutorial {
