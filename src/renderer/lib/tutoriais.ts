@@ -7,11 +7,16 @@
 import type { StatusLineSegments, SupportInfo, WhatsappStatus } from "../../shared/ipc";
 
 /**
- * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado) e a status
- * line do Claude (instalada? null = não consultado; `limits` = a conta já mostra Sessão/Semanal).
+ * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
+ * line do Claude (instalada? null = não consultado; `limits` = a conta já mostra Sessão/Semanal) e a conta do
+ * Claude Code (`loggedIn` null = não consultado; `firstReply` = alguma conversa desta máquina já teve resposta).
  */
-export interface GuideContext { support: SupportInfo | null; statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null } }
-export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false, segments: null } });
+export interface GuideContext {
+  support: SupportInfo | null;
+  statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null };
+  claude: { loggedIn: boolean | null; email: string | null; firstReply: boolean };
+}
+export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false, segments: null }, claude: { loggedIn: null, email: null, firstReply: false } });
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 /** `chat` leva à conversa do meu-bot (passo que se conclui vendo algo no rodapé). */
@@ -30,8 +35,10 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, number: null });
+/** Marcações manuais que um passo pode pedir ("Testei, funcionou"). */
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen";
 
 export interface GuideStep {
   id: string;
@@ -40,16 +47,18 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
-  manual?: { label: string; flag: "policyChosen" | "tested" | "statusTested" };
+  manual?: { label: string; flag: GuideFlagName };
 }
 
 export interface Tutorial {
   /** Identificador estável (kebab-case). */
   id: string;
+  /** Número fixo do tutorial ("tutorial 3" é o mesmo no app da pessoa, no admin e no GUIA), na ordem da trilha. */
+  number: number;
   title: string;
   /** Nome curto para a aba do guia ("WhatsApp"). */
   short: string;
@@ -64,7 +73,9 @@ export interface Tutorial {
   /** Ainda não existe: o cartão aparece com "Em breve" e não abre guia. */
   comingSoon?: boolean;
   /** Só aparece quando o meu-bot veio com o pacote de suporte (e a janela é de máquina por SSH). */
-  requires?: "support";
+  needsSupport?: true;
+  /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
+  after?: string;
   /** "Refazer do zero" (tutorial concluído): o que é desfeito na máquina antes de voltar ao passo 1. */
   reset?: { what: string };
   steps: GuideStep[];
@@ -99,42 +110,51 @@ const WHATSAPP_STEPS: GuideStep[] = [
   },
 ];
 
-/** Os tutoriais, na ordem em que aparecem. */
+/** Os tutoriais, na ordem em que aparecem (e dos números). */
 export const TUTORIAIS: readonly Tutorial[] = [
   {
+    id: "claude-login",
+    number: 1,
+    title: "Entrar no Claude Code",
+    short: "Claude",
+    summary: "O agente desta máquina responde pela sua conta do Claude. Entre nela, confira quem está logado e receba a primeira resposta.",
+    minutes: 2,
+    icon: "chat",
+    reset: { what: "sai da conta do Claude Code nesta máquina (o agente para de responder até entrar de novo)" },
+    steps: [
+      {
+        id: "entrar", title: "Entrar na conta do Claude", target: "none", body: "claude-login",
+        text: "Clique em Entrar: o link de autorização abre no navegador, você entra na conta e cola aqui o código que a página mostra. Leva um minuto.",
+        done: (_st, _f, c) => c.claude.loggedIn === true,
+      },
+      {
+        id: "conferir", title: "Conferir quem está logado", target: "none",
+        text: "Na lateral, a linha \"Claude Code\" passa a mostrar o e-mail da conta. É essa conta que paga as respostas do agente nesta máquina.",
+        done: (_st, f, c) => c.claude.loggedIn === true && (c.claude.email !== null || f.claudeSeen),
+        manual: { label: "Vi minha conta", flag: "claudeSeen" },
+      },
+      {
+        id: "resposta", title: "Primeira resposta do agente", target: "chat",
+        text: "Vá para a conversa e mande uma mensagem: a resposta vem da sua conta do Claude, nesta máquina.",
+        done: (_st, _f, c) => c.claude.loggedIn === true && c.claude.firstReply,
+      },
+    ],
+  },
+  {
     id: "whatsapp-openclaw",
+    number: 2,
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
     summary: "Conecte um número ao agente da máquina, decida quem ele responde, faça ele entender áudios e teste de verdade.",
     minutes: 4,
-    badge: "Próximo",
     icon: "target",
     reset: { what: "desconecta o número desta máquina (o agente para de responder no WhatsApp) e esquece \"escolhi\" e \"testei\"" },
     steps: WHATSAPP_STEPS,
   },
   {
-    id: "suporte",
-    title: "Ligar o suporte",
-    short: "Suporte",
-    summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você escolhe o que ele vê e acompanha tudo o que ele fizer; só o admin desliga.",
-    minutes: 1,
-    icon: "target",
-    requires: "support",
-    steps: [
-      {
-        id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
-        text: "Como você prefere ser chamado. Ao salvar, o admin passa a poder entrar nesta máquina para ver a saúde, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece no passo seguinte.",
-        done: (_st, _f, c) => (c.support?.name ?? "") !== "" && c.support?.on === true,
-      },
-      {
-        id: "entrega", title: "O que o admin recebe", target: "none", body: "support-delivery",
-        text: "Escolha o que o app do admin pode ver. A sua máquina avisa o admin sozinha, sem você precisar mandar nada; este passo se marca quando o aviso chegar. Abaixo, tudo o que o suporte fez aqui.",
-        done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
-      },
-    ],
-  },
-  {
     id: "statusline",
+    number: 3,
+    after: "claude-login",
     title: "Status line do Claude",
     short: "Status line",
     summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
@@ -166,21 +186,60 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "fallback-contas",
-    title: "Fallback: Claude e Grok logados",
-    short: "Fallback",
-    summary: "Com as duas contas logadas nesta máquina, se uma falhar a outra responde. Entre na xAI além do Claude e escolha a ordem.",
+    id: "xai-login",
+    number: 4,
+    after: "claude-login",
+    title: "Entrar na xAI (Grok)",
+    short: "Grok",
+    summary: "Com a conta da xAI logada nesta máquina, o modelo grok-4 responde e pode servir de reserva do Claude.",
     minutes: 2,
     icon: "chat",
     comingSoon: true,
     steps: [
-      { id: "claude", title: "Entrar no Claude Code", text: "", target: "none", done: () => false },
-      { id: "xai", title: "Entrar na xAI (Grok)", text: "", target: "none", done: () => false },
+      { id: "entrar", title: "Entrar na conta da xAI", text: "", target: "none", done: () => false },
+      { id: "conferir", title: "Conferir o grok-4 respondendo", text: "", target: "none", done: () => false },
+    ],
+  },
+  {
+    id: "fallback-contas",
+    number: 5,
+    after: "xai-login",
+    title: "Fallback: Claude e Grok",
+    short: "Fallback",
+    summary: "Com as duas contas logadas nesta máquina, se uma falhar a outra responde. Escolha a ordem.",
+    minutes: 2,
+    icon: "chat",
+    comingSoon: true,
+    steps: [
       { id: "ordem", title: "Escolher primário e reserva", text: "", target: "none", done: () => false },
+      { id: "testar", title: "Ver a reserva assumir", text: "", target: "none", done: () => false },
+    ],
+  },
+  {
+    id: "suporte",
+    number: 6,
+    title: "Ligar o suporte",
+    short: "Suporte",
+    summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você escolhe o que ele vê e acompanha tudo o que ele fizer; só o admin desliga.",
+    minutes: 1,
+    icon: "target",
+    needsSupport: true,
+    steps: [
+      {
+        id: "nome", title: "Dizer seu nome", target: "none", body: "support-name",
+        text: "Como você prefere ser chamado. Ao salvar, o admin passa a poder entrar nesta máquina para ver a saúde, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece no passo seguinte.",
+        done: (_st, _f, c) => (c.support?.name ?? "") !== "" && c.support?.on === true,
+      },
+      {
+        id: "entrega", title: "O que o admin recebe", target: "none", body: "support-delivery",
+        text: "Escolha o que o app do admin pode ver. A sua máquina avisa o admin sozinha, sem você precisar mandar nada; este passo se marca quando o aviso chegar. Abaixo, tudo o que o suporte fez aqui.",
+        done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
+      },
     ],
   },
   {
     id: "whatsapp-objetivo",
+    number: 7,
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
     summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo.",
@@ -195,20 +254,22 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
 ];
 
-/** Selo do cartão: "COMECE POR AQUI · 4 PASSOS · 3 MIN" (o renderer põe em caixa alta). */
-export function tutorialBadge(t: Tutorial, withBadge = true): string {
+/** Selo do cartão: "TUTORIAL 3 · 4 PASSOS · 3 MIN" (o renderer põe em caixa alta); sem número, só passos e minutos. */
+export function tutorialBadge(t: Tutorial, withNumber = true): string {
   const n = t.steps.length;
-  return [withBadge ? t.badge : undefined, `${n} ${n === 1 ? "passo" : "passos"}`, `${t.minutes} min`].filter((x): x is string => x !== undefined && x !== "").join(" · ");
+  return [withNumber ? `Tutorial ${t.number}` : undefined, t.badge, `${n} ${n === 1 ? "passo" : "passos"}`, `${t.minutes} min`].filter((x): x is string => x !== undefined && x !== "").join(" · ");
 }
+/** Número fixo de um tutorial pelo id (o admin recebe só ids); null para id desconhecido. */
+export const tutorialNumber = (id: string): number | null => TUTORIAIS.find((t) => t.id === id)?.number ?? null;
 
 /** Rótulo do botão do passo atual, por alvo: o guia leva a pessoa ao lugar certo em vez de pedir para procurar. */
 export const GUIDE_ACTION_LABEL: Record<Exclude<GuideTarget, "none">, string> = {
   "wa-line": "Abrir o WhatsApp", "wa-agent": "Abrir o WhatsApp", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp", "chat": "Ir para a conversa",
 };
 
-/** Título da aba do guia: "WhatsApp 2/4", ou "WhatsApp ✓" quando tudo está feito. */
+/** Título da aba do guia: "2 · WhatsApp 2/4", ou "2 · WhatsApp ✓" quando tudo está feito. */
 export function guideTabTitle(t: Tutorial, v: GuideView): string {
-  return v.finished ? `${t.short} ✓` : `${t.short} ${v.done.filter(Boolean).length}/${t.steps.length}`;
+  return v.finished ? `${t.number} · ${t.short} ✓` : `${t.number} · ${t.short} ${v.done.filter(Boolean).length}/${t.steps.length}`;
 }
 
 export interface GuideView { done: boolean[]; current: number; finished: boolean }
@@ -226,6 +287,25 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
   return { done, current, finished: current === -1 };
 }
 
-/** Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível. */
-export const visibleTutorials = (ctx: GuideContext): Tutorial[] =>
-  TUTORIAIS.filter((t) => t.requires !== "support" || ctx.support?.available === true);
+/**
+ * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; os da trilha (`after`) só
+ * depois que o anterior foi concluído (`finished` é do chamador: concluir depende de flags e da máquina).
+ */
+export const visibleTutorials = (ctx: GuideContext, finished: (t: Tutorial) => boolean = () => false): Tutorial[] =>
+  TUTORIAIS.filter((t) => {
+    if (t.needsSupport === true && ctx.support?.available !== true) return false;
+    if (t.after === undefined) return true;
+    const prev = TUTORIAIS.find((x) => x.id === t.after);
+    return prev !== undefined && finished(prev);
+  });
+
+/**
+ * Selo ao lado de "Tutoriais" na lateral. Duas notificações distintas: o número são as pendências (tutoriais
+ * disponíveis não concluídos; o interruptor "avisar na lateral" desliga isso) e o pulso é novidade (tutorial
+ * que apareceu depois da última vez que a pessoa abriu Tutoriais). A novidade não obedece ao interruptor:
+ * com o aviso desligado, o selo mostra só as novidades, pulsando, até a pessoa abrir Tutoriais. null = nada.
+ */
+export function sidebarBadge(c: { todo: number; novos: number; avisar: boolean }): { text: string; pulse: boolean } | null {
+  if (c.avisar) return c.todo > 0 ? { text: String(c.todo), pulse: c.novos > 0 } : null;
+  return c.novos > 0 ? { text: String(c.novos), pulse: true } : null;
+}

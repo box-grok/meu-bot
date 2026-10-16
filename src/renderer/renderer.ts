@@ -11,7 +11,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -609,11 +609,11 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
-  for (const t of visibleTutorials(guideCtx())) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
+  for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
-  add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "claude auth login por SSH: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => { openClaudeLogin(); void runClaudeLogin(); });
+  add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "tutorial 1: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => enterClaude());
   add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes ou OpenClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
@@ -906,65 +906,120 @@ function applySettings(view: SettingsView): void {
   syncComposer();
 }
 
-// ---- Entrar no Claude Code: modal que roda `claude auth login` na máquina, abre o link e recebe o código.
+// ---- Entrar no Claude Code: roda `claude auth login` na máquina, abre o link e recebe o código. Um estado só
+// (clState) pintado em dois conjuntos de controles: o passo 1 do tutorial "Entrar no Claude Code" (dentro da
+// aba, criado uma vez e reanexado a cada repintura, para o campo do código não perder o que foi digitado) e o
+// modal #cl-dialog, que fica para quem já concluiu o tutorial e quer trocar de conta.
 const clDialog = $<HTMLDialogElement>("cl-dialog");
-const clStatus = $<HTMLParagraphElement>("cl-status");
-const clOpen = $<HTMLButtonElement>("cl-open");
-const clCodeRow = $<HTMLDivElement>("cl-code-row");
-const clCode = $<HTMLInputElement>("cl-code");
-const clSend = $<HTMLButtonElement>("cl-send");
-const clLog = $<HTMLPreElement>("cl-log");
-const clStart = $<HTMLButtonElement>("cl-start");
 const clClose = $<HTMLButtonElement>("cl-close");
-let clRunning = false;
-let clUrl: string | null = null;
-
-function openClaudeLogin(): void {
-  clLog.hidden = true; clLog.textContent = ""; clCodeRow.hidden = true; clOpen.hidden = true; clCode.value = "";
-  clStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link de autorização no navegador; você entra na conta e cola aqui o código que aparece.`;
-  clStart.hidden = clRunning; clStart.textContent = "Começar"; clClose.textContent = clRunning ? "Cancelar" : "Fechar";
-  if (!clDialog.open) clDialog.showModal();
+interface LoginControls { box: HTMLElement; status: HTMLElement; open: HTMLButtonElement; codeRow: HTMLElement; code: HTMLInputElement; send: HTMLButtonElement; log: HTMLElement; start: HTMLButtonElement; cancel: HTMLButtonElement | null }
+const clState = { running: false, url: null as string | null, needCode: false, status: "", log: [] as string[], result: null as "ok" | "fail" | null };
+const clModal: LoginControls = { box: clDialog, status: $<HTMLElement>("cl-status"), open: $<HTMLButtonElement>("cl-open"), codeRow: $<HTMLElement>("cl-code-row"), code: $<HTMLInputElement>("cl-code"), send: $<HTMLButtonElement>("cl-send"), log: $<HTMLElement>("cl-log"), start: $<HTMLButtonElement>("cl-start"), cancel: null };
+function buildLoginControls(): LoginControls {
+  const box = el("div", "guide-login");
+  const status = el("p", "hint");
+  const start = el("button", "btn btn-primary btn-small", "Entrar"); start.type = "button";
+  const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button";
+  const open = el("button", "btn btn-ghost btn-small", "abrir o link de novo"); open.type = "button";
+  const actions = el("div", "actions"); actions.append(start, cancel, open);
+  const codeRow = el("div", "row"); codeRow.hidden = true;
+  const code = el("input") as HTMLInputElement; code.type = "text"; code.autocomplete = "off"; code.spellcheck = false; code.placeholder = "cole o código aqui";
+  const send = el("button", "btn btn-primary btn-small", "Enviar código"); send.type = "button";
+  const label = el("label", "grow", "Código de autorização"); label.append(code);
+  codeRow.append(label, send);
+  const log = el("pre", "log"); log.hidden = true;
+  box.append(status, actions, codeRow, log);
+  return { box, status, start, cancel, open, codeRow, code, send, log };
 }
+const clGuide: LoginControls = buildLoginControls();
+const CL_INTRO = (): string => `Máquina: ${hostLabel(windowHost)}. Abre o link de autorização no navegador; você entra na conta e cola aqui o código que aparece.`;
+
+/** Pinta um conjunto de controles a partir do clState; só textos, hidden e classes (nunca cria nós). */
+function paintLoginControls(c: LoginControls, variant: "modal" | "guide"): void {
+  c.status.textContent = clState.status === "" ? CL_INTRO() : clState.status;
+  c.open.hidden = clState.url === null || clState.result === "ok";
+  c.codeRow.hidden = !clState.needCode;
+  c.log.hidden = clState.log.length === 0; c.log.textContent = clState.log.join("\n");
+  c.start.hidden = clState.running || clState.result === "ok";
+  c.start.textContent = clState.result === "fail" ? "Tentar de novo" : variant === "guide" ? "Entrar" : "Começar";
+  c.start.classList.toggle("pulse", variant === "guide" && !c.start.hidden);
+  if (c.cancel !== null) c.cancel.hidden = !clState.running;
+  if (variant === "modal") clClose.textContent = clState.running ? "Cancelar" : "Fechar";
+}
+function paintClaudeLogin(): void { paintLoginControls(clModal, "modal"); paintLoginControls(clGuide, "guide"); }
 
 async function runClaudeLogin(): Promise<void> {
-  if (clRunning) return;
-  clRunning = true; clStart.hidden = true; clClose.textContent = "Cancelar"; clLog.hidden = false; clLog.textContent = "";
-  clStatus.textContent = "Iniciando o login na máquina…";
-  try { await window.meuBot.claudeLogin(); } catch (err) { clStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
-  finally { clRunning = false; clClose.textContent = "Fechar"; clCodeRow.hidden = true; }
+  if (clState.running) return;
+  clState.running = true; clState.result = null; clState.url = null; clState.needCode = false; clState.log = []; clState.status = "Iniciando o login na máquina…";
+  paintClaudeLogin();
+  try { await window.meuBot.claudeLogin(); } catch (err) { clState.status = `✗ ${ipcErrorText(err)}`; clState.result = "fail"; }
+  finally { clState.running = false; clState.needCode = false; paintClaudeLogin(); }
+}
+function submitClaudeCode(c: LoginControls): void {
+  const code = c.code.value.trim();
+  if (code === "") return;
+  c.send.disabled = true;
+  void window.meuBot.claudeLoginCode(code).then((ok) => {
+    if (ok) { clState.status = "Código enviado; conferindo o login…"; clModal.code.value = ""; clGuide.code.value = ""; }
+    else clState.status = "✗ não há login em andamento; clique em Entrar.";
+  }).finally(() => { c.send.disabled = false; paintClaudeLogin(); });
+}
+function wireLogin(c: LoginControls): void {
+  c.start.addEventListener("click", () => { void runClaudeLogin(); });
+  c.send.addEventListener("click", () => submitClaudeCode(c));
+  // Enter manda o código; stopPropagation para os atalhos globais (Cmd+K, Esc…) não dispararem enquanto digita.
+  c.code.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); submitClaudeCode(c); } ev.stopPropagation(); });
+  c.open.addEventListener("click", () => { if (clState.url !== null) void window.meuBot.openExternal(clState.url); });
+  if (c.cancel !== null) c.cancel.addEventListener("click", () => { if (clState.running) void window.meuBot.claudeLoginCancel(); });
+}
+wireLogin(clModal); wireLogin(clGuide);
+
+/** Modal do login (trocar de conta quando o tutorial 1 já foi concluído). */
+function openClaudeLogin(): void {
+  if (!clState.running) { clState.status = ""; clState.log = []; clState.url = null; clState.needCode = false; clState.result = null; clModal.code.value = ""; }
+  paintClaudeLogin();
+  if (!clDialog.open) clDialog.showModal();
+}
+const CLAUDE_TUTORIAL = TUTORIAIS.find((t) => t.id === "claude-login") as Tutorial;
+/**
+ * Porta única para "Entrar no Claude Code": enquanto o tutorial 1 não foi concluído, abre o guia (o botão
+ * Entrar pulsa no passo 1; nada roda sozinho); concluído, é trocar de conta: o modal, que já começa o login.
+ */
+function enterClaude(): void {
+  if (caps.install && !tutorialDone(CLAUDE_TUTORIAL)) { tutNext = false; openGuide(CLAUDE_TUTORIAL); return; }
+  openClaudeLogin(); void runClaudeLogin();
 }
 
 window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {
-  const appendLog = (t: string): void => { clLog.hidden = false; clLog.textContent = `${clLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); };
+  const appendLog = (t: string): void => { clState.log = [...clState.log, t].slice(-8); };
   switch (ev.kind) {
-    case "url": clUrl = ev.url; clOpen.hidden = false; clStatus.textContent = "Abri o link no navegador. Entre na conta e copie o código que a página mostra."; appendLog("▸ link aberto no navegador"); break;
-    case "waiting-code": clCodeRow.hidden = false; clCode.focus(); clStatus.textContent = "Cole o código da página e clique em Enviar código."; break;
+    case "url": clState.url = ev.url; clState.status = "Abri o link no navegador. Entre na conta e copie o código que a página mostra."; appendLog("▸ link aberto no navegador"); break;
+    case "waiting-code": {
+      clState.needCode = true; clState.status = "Cole o código da página e clique em Enviar código.";
+      paintClaudeLogin();
+      // Foco no campo que está à vista: o do guia (aba do tutorial 1 aberta) ou o do modal.
+      const guideOpen = pageActive !== null && pageActive.id === `tut-${CLAUDE_TUTORIAL.id}`;
+      if (guideOpen) clGuide.code.focus(); else if (clDialog.open) clModal.code.focus();
+      break;
+    }
     case "log": appendLog(ev.text); break;
     case "done":
-      clStatus.textContent = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
+      clState.result = ev.ok ? "ok" : "fail"; clState.needCode = false;
+      clState.status = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
       appendLog(ev.ok ? "✓ logado" : "não concluiu");
-      clStart.hidden = ev.ok; clStart.textContent = "Tentar de novo";
       if (ev.ok) {
         const tab = active();
         if (tab !== null) addNotice(tab, "✓ Claude Code logado nesta máquina. Pode mandar a próxima mensagem.", "info");
         void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintGuide(); });
-        clAuth = { loggedIn: true, email: clAuth?.email ?? null }; paintClaudeLine();
+        clAuth = { loggedIn: true, email: clAuth?.email ?? null }; paintClaudeLine(); paintGuide(); // otimista: o ✓ do passo 1 não espera o SSH
         void refreshClaudeLine();
         // Deu certo: o modal se fecha sozinho; o aviso fica na conversa.
         setTimeout(() => { if (clDialog.open) clDialog.close(); }, 1200);
       }
       break;
   }
+  paintClaudeLogin();
 });
-clStart.addEventListener("click", () => { void runClaudeLogin(); });
-clSend.addEventListener("click", () => {
-  const code = clCode.value.trim();
-  if (code === "") return;
-  clSend.disabled = true;
-  void window.meuBot.claudeLoginCode(code).then((ok) => { if (ok) { clStatus.textContent = "Código enviado; conferindo o login…"; clCode.value = ""; } else clStatus.textContent = "✗ não há login em andamento; clique em Começar."; }).finally(() => { clSend.disabled = false; });
-});
-clCode.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); clSend.click(); } ev.stopPropagation(); });
-clOpen.addEventListener("click", () => { if (clUrl !== null) void window.meuBot.openExternal(clUrl); });
 
 /** Erro/aviso que indica Claude Code deslogado: a notice ganha o botão "Entrar no Claude Code". */
 const LOGGED_OUT_RE = /not logged in|please run \/?login|deslogad|não está logado/i;
@@ -974,13 +1029,13 @@ function offerClaudeLogin(tab: Tab, text: string): void {
   box.append(el("span", "", "O Claude Code desta máquina está deslogado. "));
   const btn = el("button", "btn btn-ghost btn-small", "Entrar no Claude Code");
   btn.type = "button";
-  btn.addEventListener("click", () => { openClaudeLogin(); void runClaudeLogin(); });
+  btn.addEventListener("click", () => enterClaude());
   box.append(btn);
   tab.messagesEl.appendChild(box);
   scrollToBottom(tab, false);
 }
-clClose.addEventListener("click", () => { if (clRunning) void window.meuBot.claudeLoginCancel(); clDialog.close(); });
-window.meuBot.on("ui:claude-login", () => { openClaudeLogin(); void runClaudeLogin(); });
+clClose.addEventListener("click", () => { if (clState.running) void window.meuBot.claudeLoginCancel(); clDialog.close(); });
+window.meuBot.on("ui:claude-login", () => enterClaude());
 
 // ---- Linha "Claude Code" na lista de conversas: conta logada, sair (para entrar com outra) ou entrar.
 const clLine = $<HTMLDivElement>("cl-line");
@@ -997,20 +1052,27 @@ function paintClaudeLine(): void {
   clLineBtn.title = clAuth.loggedIn ? "Sai da conta do Claude Code nesta máquina e abre o login para entrar com outra" : "Abre o login do Claude Code nesta máquina";
 }
 
+/** Consulta a conta na máquina; o tutorial 1 e a lateral seguem o resultado (é aqui que o e-mail chega). */
 async function refreshClaudeLine(): Promise<void> {
   try { clAuth = await window.meuBot.claudeAuth(); } catch { clAuth = null; }
   paintClaudeLine();
+  if (tutorialsReady) paintGuide();
+}
+
+/** Sai da conta do Claude Code nesta máquina; com `relogin`, já leva ao login (tutorial 1 ou modal). */
+async function logoutClaude(relogin: boolean): Promise<void> {
+  clLineBtn.disabled = true;
+  try { clAuth = await window.meuBot.claudeLogout(); paintClaudeLine(); paintGuide(); if (relogin) enterClaude(); }
+  finally { clLineBtn.disabled = false; }
 }
 
 clLineBtn.addEventListener("click", () => {
   if (clAuth !== null && clAuth.loggedIn) {
     if (!window.confirm(`Sair da conta ${clAuth.email ?? "do Claude Code"} nesta máquina? O agente para de responder pelo Claude até entrar de novo (o grok-4 continua).`)) return;
-    clLineBtn.disabled = true;
-    void window.meuBot.claudeLogout().then((st) => { clAuth = st; paintClaudeLine(); openClaudeLogin(); void runClaudeLogin(); }).finally(() => { clLineBtn.disabled = false; });
+    void logoutClaude(true);
     return;
   }
-  openClaudeLogin();
-  void runClaudeLogin();
+  enterClaude();
 });
 
 // ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude.
@@ -1259,23 +1321,47 @@ var tutorialsReady = true; // applySettings pode rodar antes deste trecho; var e
 try { tutArchivedEl.checked = localStorage.getItem("tutArchived") === "1"; } catch { /* opcional */ }
 const tourDone = (): boolean => settings?.onboarding === "done";
 const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t), guideCtx()).finished;
-/** Contagem dos tutoriais: para fazer (inclui o tour), arquivados (concluídos) e "em breve" (não contam como pendência). */
-function tutCounts(): { todo: number; archived: number; soon: number } {
-  const all = visibleTutorials(guideCtx());
+/** Os tutoriais desta janela agora (pacote de suporte e trilha: o 3 e o 4 só depois do 1 concluído). */
+const visibleNow = (): Tutorial[] => visibleTutorials(guideCtx(), tutorialDone);
+/**
+ * Tutoriais já vistos nesta máquina (ids), só cresce: a pessoa "vê" ao abrir Tutoriais. Novidade = visível,
+ * pendente e nunca visto (novo numa atualização, ou recém-destravado na trilha). Um que some e volta
+ * (Refazer do 1 esconde 3/4; relogar mostra de novo) continua visto: reaparecer não é novidade.
+ */
+const tutSeenKey = (): string => `tutVisto:${windowHost}`;
+function loadTutSeen(): Set<string> {
+  try { const raw = localStorage.getItem(tutSeenKey()); if (raw !== null) return new Set((JSON.parse(raw) as unknown[]).filter((x): x is string => typeof x === "string")); } catch { /* opcional */ }
+  return new Set();
+}
+function markTutSeen(ids: string[]): void {
+  const seen = loadTutSeen(); for (const id of ids) seen.add(id);
+  try { localStorage.setItem(tutSeenKey(), JSON.stringify([...seen])); } catch { /* opcional */ }
+}
+/** Ids que eram novidade quando Tutoriais abriu desta vez: ganham "Novo" no cartão enquanto a página está à vista. */
+let tutNovoLabels = new Set<string>();
+/** Contagem dos tutoriais: para fazer (inclui o tour), arquivados (concluídos), "em breve", total, novidades e o próximo. */
+function tutCounts(): { todo: number; archived: number; soon: number; total: number; novos: number; next: Tutorial | null } {
+  const all = visibleNow();
+  const seen = loadTutSeen();
   const soon = all.filter((t) => t.comingSoon === true).length;
   const done = all.filter((t) => tutorialDone(t)).length;
-  return { todo: (tourDone() ? 0 : 1) + all.length - soon - done, archived: (tourDone() ? 1 : 0) + done, soon };
+  const pending = all.filter((t) => t.comingSoon !== true && !tutorialDone(t));
+  const todo = (tourDone() ? 0 : 1) + pending.length;
+  const archived = (tourDone() ? 1 : 0) + done;
+  return { todo, archived, soon, total: todo + archived, novos: pending.filter((t) => !seen.has(t.id)).length, next: pending[0] ?? null };
 }
-/** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral". */
+/** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral"; a novidade pulsa mesmo assim. */
 const tutBadgeEl = $<HTMLInputElement>("tut-badge");
 try { tutBadgeEl.checked = localStorage.getItem("tutBadge") !== "0"; } catch { /* opcional */ }
 function paintTutCount(): void {
-  const { todo } = tutCounts();
+  const c = tutCounts();
+  const b = sidebarBadge({ todo: c.todo, novos: c.novos, avisar: tutBadgeEl.checked });
   const n = $<HTMLElement>("tutoriais-count");
-  const show = tutBadgeEl.checked && todo > 0;
-  n.textContent = show ? String(todo) : "";
-  n.classList.toggle("tut-badge-n", show);
-  n.title = show ? (todo === 1 ? "1 tutorial para fazer" : `${todo} tutoriais para fazer`) : "";
+  n.textContent = b?.text ?? "";
+  n.classList.toggle("tut-badge-n", b !== null);
+  n.classList.toggle("pulse", b?.pulse === true);
+  n.title = b === null ? "" : b.pulse ? `${c.novos === 1 ? "1 tutorial novo" : `${c.novos} tutoriais novos`} · ${c.todo} para fazer` : (c.todo === 1 ? "1 tutorial para fazer" : `${c.todo} tutoriais para fazer`);
+  if (pageActive !== tutoriaisPage) tutNovoLabels = new Set();
 }
 const TUT_ICONS = {
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
@@ -1292,7 +1378,7 @@ function loadGuideFlags(t: Tutorial): GuideFlags {
   try { const raw = localStorage.getItem(guideFlagsKey(t)); if (raw !== null) return { ...emptyFlags(), ...(JSON.parse(raw) as Partial<GuideFlags>) }; } catch { /* opcional */ }
   return emptyFlags();
 }
-function saveGuideFlag(t: Tutorial, flag: "policyChosen" | "tested" | "statusTested"): void {
+function saveGuideFlag(t: Tutorial, flag: GuideFlagName): void {
   const f = loadGuideFlags(t); f[flag] = true; f.number = waStatus?.number ?? f.number;
   try { localStorage.setItem(guideFlagsKey(t), JSON.stringify(f)); } catch { /* opcional */ }
 }
@@ -1333,7 +1419,11 @@ let waInlineGuide: Tutorial | null = null;
 let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
-  if (target === "chat") { void goToChatForStatusLine(); return; }
+  if (target === "chat") {
+    if (t.id === "claude-login") void goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");
+    else void goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
+    return;
+  }
   if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
   if (target === "wa-agent") { requestAgentPrepare(); return; }
   if (target === "wa-pair") {
@@ -1369,7 +1459,7 @@ function reportProgress(): void {
   if (progressTimer !== null) clearTimeout(progressTimer);
   progressTimer = window.setTimeout(() => {
     progressTimer = null;
-    const tutorials = visibleTutorials(guideCtx()).map((t) => {
+    const tutorials = visibleNow().map((t) => {
       const v = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
       const done = v.done.filter(Boolean).length;
       return { id: t.id, title: t.title, done, total: t.steps.length, current: v.finished ? null : (t.steps[v.current]?.title ?? null), finished: v.finished && t.comingSoon !== true, comingSoon: t.comingSoon === true };
@@ -1401,11 +1491,12 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   const icon = el("span", `tut-icon${view.finished ? " ok" : ""}`); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
   const body = el("div", "tut-body");
   const doneN = view.done.filter(Boolean).length;
-  body.append(el("span", "tut-badge", view.finished ? "Concluído" : `${doneN} de ${t.steps.length} · ${tutorialBadge(t, false)}`), el("h2", "", t.title), el("p", "", t.summary));
+  body.append(el("span", "tut-badge", `Tutorial ${t.number} · ${view.finished ? "Concluído" : `${doneN} de ${t.steps.length} · ${t.minutes} min`}`), el("h2", "", t.title), el("p", "", t.summary));
   head.append(icon, body);
   panel.append(head);
-  // Sem o estado da máquina ainda, não há como saber em que passo a pessoa está: dizer isso, não chutar o passo 1.
-  if (st === null) {
+  // Guia do WhatsApp sem o estado da máquina ainda: não há como saber em que passo a pessoa está; dizer isso,
+  // não chutar o passo 1. Os outros tutoriais não dependem do WhatsApp e abrem direto.
+  if (st === null && t.steps.some((x) => x.target.startsWith("wa-"))) {
     const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Consultando o WhatsApp desta máquina…"));
     panel.append(wait);
     void refreshWhatsapp();
@@ -1423,7 +1514,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     if (done) txt.append(el("p", "", "concluído"));
     if (cur) {
       txt.append(el("p", "", step.text));
-      if (step.body === "reply-choice") {
+      if (step.body === "reply-choice" && st !== null) {
         const cards = el("div", "reply-cards guide-cards");
         renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
@@ -1436,6 +1527,13 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
         renderStatusLineTest(txt);
+      } else if (step.body === "claude-login") {
+        // Os controles são os mesmos de sempre (reanexados): o código digitado sobrevive à repintura; o foco volta.
+        const refocus = document.activeElement === clGuide.code;
+        const sel: [number, number] = [clGuide.code.selectionStart ?? 0, clGuide.code.selectionEnd ?? 0];
+        txt.append(clGuide.box);
+        paintLoginControls(clGuide, "guide");
+        if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
         renderSupportParts(txt, step.body === "support-name" ? ["name"] : ["share", "delivery", "log"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
@@ -1478,7 +1576,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       renderStatusLineTest(manage);
       manage.append(el("p", "hint strong-hint", "Onde aparece"));
       const go = el("button", "btn btn-ghost btn-small", GUIDE_ACTION_LABEL.chat); go.type = "button";
-      go.addEventListener("click", () => { void goToChatForStatusLine(); });
+      go.addEventListener("click", () => { void goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali."); });
       const where = el("div", "guide-note"); where.append("No rodapé de cada conversa do meu-bot, a cada resposta do agente. ", go);
       manage.append(where);
       panel.append(manage);
@@ -1486,6 +1584,15 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       const manage = el("div", "guide-manage");
       manage.append(el("p", "hint strong-hint", "Suporte nesta máquina"));
       renderSupportParts(manage, ["name", "share", "delivery", "log"]);
+      panel.append(manage);
+    } else if (t.id === "claude-login") {
+      const manage = el("div", "guide-manage");
+      manage.append(el("p", "hint strong-hint", "Conta do Claude nesta máquina"));
+      const row = el("div", "guide-note");
+      const swap = el("button", "btn btn-ghost btn-small", "Sair e entrar com outra conta"); swap.type = "button";
+      swap.addEventListener("click", () => armConfirm(swap, "Confirmar? o agente para até entrar de novo", () => { void logoutClaude(true); }));
+      row.append(`Claude Code · ${clAuth?.email ?? "logado"}. `, swap);
+      manage.append(row);
       panel.append(manage);
     }
   }
@@ -1501,7 +1608,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   }
   // Conectado: a aba do guia do WhatsApp vira o painel de gerência (quem responde, áudio, atualizar,
   // desconectar) — sem modal. Só nos guias do WhatsApp: o do suporte não tem nada a ver com isso.
-  if (st.connected && t.steps.some((x) => x.target.startsWith("wa-"))) {
+  if (st !== null && st.connected && t.steps.some((x) => x.target.startsWith("wa-"))) {
     const manage = el("div", "guide-manage");
     manage.append(el("span", "tut-finished-line", "✓ Conectado. Ajuste aqui quando quiser."));
     manage.append(el("p", "hint strong-hint", "Quem o agente responde no WhatsApp"));
@@ -1536,6 +1643,7 @@ function openGuide(t: Tutorial): void {
   }
   openPage(g.page);
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
+  if (t.id === "claude-login") void refreshClaudeLine();
   paintGuide();
 }
 
@@ -1563,6 +1671,8 @@ async function resetTutorial(t: Tutorial): Promise<void> {
     } else if (t.id === "whatsapp-openclaw") {
       if (waStatus?.connected === true) await window.meuBot.whatsappLogout();
       await refreshWhatsapp();
+    } else if (t.id === "claude-login") {
+      await logoutClaude(false);
     }
     try { localStorage.removeItem(guideFlagsKey(t)); } catch { /* opcional */ }
     const g = guidePages.get(`tut-${t.id}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
@@ -1574,8 +1684,12 @@ async function resetTutorial(t: Tutorial): Promise<void> {
 const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
   tutList.replaceChildren();
   let nextMarked = false;
-  paintTutCount();
   const showArchived = tutArchivedEl.checked;
+  // Abrir a página é o "visto": o que está à vista agora deixa de ser novidade (a etiqueta "Novo" fica só nesta visita).
+  const vis = visibleNow();
+  const seen = loadTutSeen();
+  const unseen = vis.filter((t) => !seen.has(t.id)).map((t) => t.id);
+  if (unseen.length > 0) { markTutSeen(unseen); for (const id of unseen) tutNovoLabels.add(id); }
   const active: HTMLElement[] = [];
   const archived: HTMLElement[] = [];
   // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela.
@@ -1592,18 +1706,21 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     card.append(head);
     (done ? archived : active).push(card);
   }
-  for (const t of visibleTutorials(guideCtx())) {
+  for (const t of vis) {
     const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
     const started = view.done.some(Boolean);
     const soon = t.comingSoon === true;
     const done = !soon && view.finished;
     const next = tutNext && !nextMarked && !soon && !done && tourDone();
     if (next) nextMarked = true;
+    const novo = !done && tutNovoLabels.has(t.id);
     const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
     const body = el("div", "tut-body");
-    const badge = done ? "Concluído" : started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${tutorialBadge(t, false)}` : tutorialBadge(t);
-    body.append(el("span", "tut-badge", next ? `Seu próximo passo · ${started ? badge : tutorialBadge(t, false)}` : badge), el("h3", "", t.title), el("p", "", t.summary));
+    // "NOVO · SEU PRÓXIMO PASSO · TUTORIAL 3 · 2 DE 4 · 3 MIN": número sempre; progresso quando começou.
+    const badge = done ? `Tutorial ${t.number} · Concluído`
+      : [novo ? "Novo" : null, next ? "Seu próximo passo" : null, `Tutorial ${t.number}`, started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${t.minutes} min` : tutorialBadge(t, false)].filter((x): x is string => x !== null).join(" · ");
+    body.append(el("span", "tut-badge", badge), el("h3", "", t.title), el("p", "", t.summary));
     const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
     if (soon) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
     const head = el("div", "tut-head"); head.append(icon, body, start);
@@ -1620,12 +1737,15 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     }
     (done ? archived : active).push(card);
   }
-  // Resumo: quantos faltam, quantos já foram (arquivados) e quantos ainda não existem ("em breve").
+  // Resumo: "Você fez 2 de 6 · próximo: 3 · Status line · 1 novo · 2 em breve" (o tour conta; "em breve" não).
   const c = tutCounts();
-  const plural = (n: number, um: string, varios: string): string => `${n} ${n === 1 ? um : varios}`;
   $<HTMLElement>("tutoriais-summary").textContent = [
-    c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`, plural(c.archived, "arquivado", "arquivados"), ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
+    c.todo === 0 ? `Você fez ${c.total} de ${c.total}: tudo feito` : `Você fez ${c.archived} de ${c.total}`,
+    ...(c.next !== null ? [`próximo: ${c.next.number} · ${c.next.short}`] : []),
+    ...(c.novos > 0 ? [`${c.novos} ${c.novos === 1 ? "novo" : "novos"}`] : []),
+    ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
   ].join(" · ");
+  paintTutCount();
   if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
   tutList.append(...active);
   if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived); }
@@ -2596,7 +2716,7 @@ async function showWelcome(tab: Tab): Promise<void> {
   if (loggedIn === false) {
     const btn = el("button", "btn btn-primary btn-small", "Entrar no Claude Code");
     btn.type = "button";
-    btn.addEventListener("click", () => { openClaudeLogin(); void runClaudeLogin(); });
+    btn.addEventListener("click", () => enterClaude());
     bubble.append(btn);
   }
   bubble.append(el("span", "msg-welcome-tag", "boas-vindas do meu-bot · não enviada ao agente"));
@@ -2694,7 +2814,9 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
   }
   if (tab.pendingText !== "") {
     const cur = index.get(tab.id);
+    const had = firstReplyOnHost();
     patchIndex(tab.id, { messages: [...(cur?.messages ?? []), { role: "assistant", content: tab.pendingText }] });
+    if (!had) paintGuide(); // primeira resposta nesta máquina: conclui o tutorial 1
   }
   markUnread(tab);
   maybeNotify(tab, tab.pendingText);
@@ -2964,7 +3086,13 @@ const accountHasLimits = (): boolean => account !== null && (account.sessionPct 
 let statusLineSegs: StatusLineSegments | null = null;
 let statusLineSegsBusy = false;
 let statusLineSegsMsg: string | null = null;
-const guideCtx = (): GuideContext => ({ support: supportState, statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: statusLineSegs } });
+/** Alguma conversa desta máquina já teve resposta do agente (o index só tem conversas do windowHost). */
+const firstReplyOnHost = (): boolean => [...index.values()].some((c) => c.messages.some((m) => m.role === "assistant"));
+const guideCtx = (): GuideContext => ({
+  support: supportState,
+  statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: statusLineSegs },
+  claude: { loggedIn: clAuth?.loggedIn ?? null, email: clAuth?.email ?? null, firstReply: firstReplyOnHost() },
+});
 async function refreshStatusLine(): Promise<void> {
   if (!caps.install || windowHost === "") return;
   try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }
@@ -3299,11 +3427,11 @@ async function backToChat(): Promise<Tab | null> {
  * Passo "Ver os limites na conversa" do tutorial da status line: leva à conversa com uma mensagem pronta no
  * compositor (nada é enviado sozinho) e diz onde olhar. O passo se conclui sozinho quando a conta traz os limites.
  */
-async function goToChatForStatusLine(): Promise<void> {
+async function goToChatFromGuide(message: string, hint: string): Promise<void> {
   const tab = await backToChat();
   if (tab === null) return;
-  if (inputEl.value.trim() === "") inputEl.value = "Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.";
-  addNotice(tab, "Vou enviar em 3, 2, 1 para você ver acontecendo (digitar ou Esc cancela; Enviar manda já). Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
+  if (inputEl.value.trim() === "") inputEl.value = message;
+  addNotice(tab, `Vou enviar em 3, 2, 1 para você ver acontecendo (digitar ou Esc cancela; Enviar manda já). ${hint}`);
   inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
   syncComposer();
   if (!tab.busy) startAutoSend(tab);

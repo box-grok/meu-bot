@@ -31,7 +31,7 @@ export const ONBOARD_STEPS: readonly OnboardStep[] = [
 export function welcomeMessage(machine: string, loggedIn: boolean | null): string {
   const head = `**Bem-vindo ao meu-bot.** Esta conversa roda na máquina **${machine}**: o agente de lá lê, escreve e executa por você.`;
   if (loggedIn === false) {
-    return `${head}\n\nPara o agente responder, falta **entrar no Claude Code** desta máquina. O link abre no navegador e você cola o código aqui; leva um minuto.`;
+    return `${head}\n\nPara o agente responder, falta **entrar no Claude Code** desta máquina: é o **tutorial 1**. O link abre no navegador e você cola o código no passo 1; leva um minuto.`;
   }
   return [
     head, "",

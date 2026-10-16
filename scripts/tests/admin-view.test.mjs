@@ -32,7 +32,7 @@ test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
 test("progressLines: tour e tutoriais, com onde parou", () => {
   const prog = { at: "2026-10-16T12:00:00Z", tour: "skipped", tutorials: [
     { id: "a", title: "Ligar o suporte", done: 2, total: 2, current: null, finished: true, comingSoon: false },
-    { id: "b", title: "Status line", done: 1, total: 2, current: "instalar", finished: false, comingSoon: false },
+    { id: "statusline", title: "Status line", done: 1, total: 2, current: "instalar", finished: false, comingSoon: false },
     { id: "c", title: "Voz", done: 0, total: 3, current: null, finished: false, comingSoon: true },
     { id: "d", title: "WhatsApp", done: 0, total: 4, current: null, finished: false, comingSoon: false },
   ] };
@@ -40,7 +40,7 @@ test("progressLines: tour e tutoriais, com onde parou", () => {
   assert.deepEqual(l.map((x) => [x.text, x.ok, x.step]), [
     ["Tour do meu-bot: pulado", false, undefined],
     ["Ligar o suporte: concluído", true, undefined],
-    ["Status line: 1 de 2", null, ' · parou em "instalar"'],
+    ["3 · Status line: 1 de 2", null, ' · parou em "instalar"'],
     ["Voz: em breve", null, undefined],
     ["WhatsApp: 0 de 4", false, undefined],
   ]);

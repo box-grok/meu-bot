@@ -3,6 +3,7 @@
  * Puro: testável com node --test. O desenho fica em admin/suporte-page.ts e admin/picker-chrome.ts.
  */
 import type { AdminAction, AdminHealth, SupportPerson, SupportProgress } from "../../shared/ipc";
+import { tutorialNumber } from "./tutoriais.js";
 
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
   { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
@@ -57,8 +58,11 @@ export function progressLines(prog: SupportProgress): HealthLine[] {
     { text: prog.tour === "done" ? "Tour do meu-bot: feito" : prog.tour === "skipped" ? "Tour do meu-bot: pulado" : "Tour do meu-bot: não feito", ok: prog.tour === "done" },
   ];
   for (const t of prog.tutorials) {
-    if (t.comingSoon) { lines.push({ text: `${t.title}: em breve`, ok: null }); continue; }
-    const line: HealthLine = { text: `${t.title}: ${t.finished ? "concluído" : `${t.done} de ${t.total}`}`, ok: t.finished ? true : t.done > 0 ? null : false };
+    // O payload traz só o id; o número fixo vem da trilha ("3 · Status line do Claude"), para o suporte dizer "faz o 3".
+    const n = tutorialNumber(t.id);
+    const name = n === null ? t.title : `${n} · ${t.title}`;
+    if (t.comingSoon) { lines.push({ text: `${name}: em breve`, ok: null }); continue; }
+    const line: HealthLine = { text: `${name}: ${t.finished ? "concluído" : `${t.done} de ${t.total}`}`, ok: t.finished ? true : t.done > 0 ? null : false };
     if (!t.finished && t.current !== null) line.step = ` · parou em "${t.current}"`;
     lines.push(line);
   }
