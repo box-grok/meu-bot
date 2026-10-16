@@ -35,9 +35,10 @@ export const CLIENT_CHANNELS = [
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   // instalar e configurar a máquina
-  "statusline:status", "statusline:install", "tailscale:disable-check", "tailscale:restore",
+  "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
+  "tailscale:disable-check", "tailscale:restore",
   // suporte, lado da pessoa
-  "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share",
+  "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share", "support:reset",
   // seletor
   "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:remove-host", "picker:rename-host",
   "picker:sync-ssh", "picker:open-direct", "picker:onboarding-done", "picker:claude-login",

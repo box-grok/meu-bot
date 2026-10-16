@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildSegments, fmtK, timeUntil, ageText, thresholdToWarn } from "../../dist/renderer/lib/status-line.js";
+import { buildSegments, fmtK, timeUntil, ageText, thresholdToWarn, previewLine } from "../../dist/renderer/lib/status-line.js";
 
 const NOW = 1_792_037_681_000; // 2026-10-15 ~01:14 BRT em ms
 const account = { email: "m6@databutton.com.br", assento: "Premium", sessionPct: 37, weeklyPct: 37, sessionResets: 1_792_043_400, weeklyResets: 1_792_472_400, updated: 1_792_037_681, providers: [] };
@@ -37,4 +37,14 @@ test("thresholdToWarn avisa 80, 90 e 95 uma vez cada, na ordem", () => {
   assert.equal(thresholdToWarn(82, 80), null);
   assert.equal(thresholdToWarn(96, 80), 95);
   assert.equal(thresholdToWarn(null, 0), null);
+});
+
+test("segmentos escolhidos filtram o rodapé (turno e idade ficam); prévia acompanha", () => {
+  const base = { model: "agente", ctx: { tokens: 1000, budget: 24000 }, turn: { ms: 1500, completion: 300 }, account, nowMs: NOW };
+  const all = buildSegments(base).map((s) => s.kind);
+  assert.deepEqual(all, ["model", "ctx", "turn", "account", "session", "weekly", "age"]);
+  const some = buildSegments({ ...base, segments: { model: true, ctx: false, account: false, session: true, weekly: false } }).map((s) => s.kind);
+  assert.deepEqual(some, ["model", "turn", "session", "age"]);
+  assert.equal(previewLine(null), "Opus 4.8 | Ctx: 12% · 24.0k/200.0k | você@exemplo.com (Premium) | Sessão: 57% · 1h4m | Semanal: 12% · 3d");
+  assert.equal(previewLine({ model: true, ctx: false, account: false, session: false, weekly: true }), "Opus 4.8 | Semanal: 12% · 3d");
 });

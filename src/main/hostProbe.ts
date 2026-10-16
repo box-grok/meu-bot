@@ -186,7 +186,7 @@ export function backendBundleDir(): string {
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
   "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "meu-bot-backend.service", "install.sh",
-  "statusline.sh", "install-statusline.sh",
+  "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 
 /** Copia o bundle para o host e roda o instalador; `onLine` recebe o progresso linha a linha. */
@@ -249,7 +249,20 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
   return { ok: true, log: lines };
 }
 
-const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh"];
+const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
+
+/** "Refazer do zero" da status line: desfaz o install-statusline.sh na máquina (ou neste Mac). */
+export async function uninstallStatusLine(host: string): Promise<InstallBackendResult> {
+  const dir = backendBundleDir();
+  if (host === LOCAL_HOST) {
+    const r = await run("bash", [path.join(dir, "uninstall-statusline.sh")], 60_000);
+    return r.code === 0 ? { ok: true, log: r.stdout.trim().split("\n") } : { ok: false, log: [lastLine(r.stderr) || `saiu com código ${r.code ?? "timeout"}`] };
+  }
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-statusline.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [`scp falhou: ${lastLine(scp.stderr)}`] };
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-statusline.sh 2>&1`], 60_000);
+  return r.code === 0 ? { ok: true, log: r.stdout.trim().split("\n") } : { ok: false, log: [lastLine(r.stdout) || `saiu com código ${r.code ?? "timeout"}`] };
+}
 
 /** Instala a status line do Claude Code no host (ou neste Mac): manda os dois arquivos e roda o instalador. */
 export async function installStatusLine(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {

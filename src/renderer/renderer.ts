@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
@@ -13,7 +13,7 @@ import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, g
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
-import { buildSegments, thresholdToWarn, timeUntil } from "./lib/status-line.js";
+import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -26,6 +26,8 @@ const tabsEl = $<HTMLElement>("tabs");
 const panelsEl = $<HTMLElement>("panels");
 const inputEl = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("btn-send");
+/** Contagem "Enviando em 3…" em andamento (startAutoSend); null fora dela. */
+let autoSend: { timer: number; tab: Tab } | null = null;
 /** Fase do botão Enviar por conversa: ausente = parado. "sending" até a resposta começar, "streaming" enquanto chega, "done" por 900 ms. */
 const sendPhase = new Map<string, "sending" | "streaming" | "done">();
 function setSendPhase(tab: Tab, phase: "sending" | "streaming" | "done" | null): void {
@@ -160,6 +162,7 @@ function syncComposer(): void {
   // Enviar (shot "cred-button-loading-to-tick"): clique → ponto pulsando até a resposta começar; aí Parar; ao terminar, ✓.
   const phase = tab === null ? "idle" : (sendPhase.get(tab.id) ?? (busy ? "streaming" : "idle"));
   sendBtn.disabled = tab === null;
+  if (autoSend !== null && phase === "idle") return; // contagem "Enviando em 3…" no botão; sai com cancelAutoSend
   sendBtn.textContent = phase === "streaming" ? "Parar" : "Enviar";
   sendBtn.classList.toggle("btn-bad", phase === "streaming");
   sendBtn.classList.toggle("is-sending", phase === "sending");
@@ -192,7 +195,7 @@ let warnedThreshold = 0;
 function paintContext(tab: Tab | null): void {
   if (tab === null) { ctxLine.hidden = true; return; }
   const ctx = tab.context !== null && tab.context.tokens !== undefined && tab.context.budget !== undefined ? { tokens: tab.context.tokens, budget: tab.context.budget } : null;
-  const segs = buildSegments({ model: tab.model, ctx, turn: tab.lastTurn, account });
+  const segs = buildSegments({ model: tab.model, ctx, turn: tab.lastTurn, account, segments: statusLineSegs ?? account?.segments ?? null });
   ctxLine.hidden = false;
   ctxLine.replaceChildren(...segs.flatMap((s, i) => {
     const span = el("span", `seg seg-${s.kind}`, s.text);
@@ -597,6 +600,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
+  for (const t of visibleTutorials(guideCtx())) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: `${visibleTutorials(guideCtx()).length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
@@ -1232,7 +1236,7 @@ function loadGuideFlags(t: Tutorial): GuideFlags {
   try { const raw = localStorage.getItem(guideFlagsKey(t)); if (raw !== null) return { ...emptyFlags(), ...(JSON.parse(raw) as Partial<GuideFlags>) }; } catch { /* opcional */ }
   return emptyFlags();
 }
-function saveGuideFlag(t: Tutorial, flag: "policyChosen" | "tested"): void {
+function saveGuideFlag(t: Tutorial, flag: "policyChosen" | "tested" | "statusTested"): void {
   const f = loadGuideFlags(t); f[flag] = true; f.number = waStatus?.number ?? f.number;
   try { localStorage.setItem(guideFlagsKey(t), JSON.stringify(f)); } catch { /* opcional */ }
 }
@@ -1253,7 +1257,7 @@ function activeGuide(): Tutorial | null {
   return guidePages.get(pageActive.id)?.tutorial ?? null;
 }
 const guideTargets = (): Record<Exclude<GuideTarget, "none">, HTMLElement[]> => ({
-  "wa-line": [], "wa-agent": [waAgentBtn], "wa-pair": [waPairBtn], "wa-policy": [waPolicyCards],
+  "wa-line": [], "wa-agent": [waAgentBtn], "wa-pair": [waPairBtn], "wa-policy": [waPolicyCards], "chat": [],
 });
 /** Só os botões do modal do passo atual pulsam (nada na lateral). */
 function paintGuideTargets(): void {
@@ -1273,6 +1277,7 @@ let waInlineGuide: Tutorial | null = null;
 let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
+  if (target === "chat") { void goToChatForStatusLine(); return; }
   if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
   if (target === "wa-agent") { requestAgentPrepare(); return; }
   if (target === "wa-pair") {
@@ -1371,6 +1376,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderAudioControls(txt);
       } else if (step.body === "statusline-install") {
         renderStatusLineInstall(txt);
+      } else if (step.body === "statusline-segments") {
+        renderStatusLineSegments(txt);
+      } else if (step.body === "statusline-test") {
+        renderStatusLineTest(txt);
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
         renderSupportParts(txt, step.body === "support-name" ? ["name"] : step.body === "support-switch" ? ["switch"] : ["share", "delivery", "log"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
@@ -1402,6 +1411,38 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     steps.append(li);
   });
   panel.append(steps);
+  // Concluído: o guia vira painel de gerência (o "editar" do CRUD): o que foi escolhido nos passos continua
+  // ajustável aqui, sem refazer nada.
+  if (view.finished && caps.install) {
+    if (t.id === "statusline") {
+      const manage = el("div", "guide-manage");
+      manage.append(el("p", "hint strong-hint", "O que aparece na status line"));
+      renderStatusLineSegments(manage);
+      manage.append(el("p", "hint strong-hint", "Conferir no terminal"));
+      renderStatusLineTest(manage);
+      manage.append(el("p", "hint strong-hint", "Onde aparece"));
+      const go = el("button", "btn btn-ghost btn-small", GUIDE_ACTION_LABEL.chat); go.type = "button";
+      go.addEventListener("click", () => { void goToChatForStatusLine(); });
+      const where = el("div", "guide-note"); where.append("No rodapé de cada conversa do meu-bot, a cada resposta do agente. ", go);
+      manage.append(where);
+      panel.append(manage);
+    } else if (t.id === "suporte") {
+      const manage = el("div", "guide-manage");
+      manage.append(el("p", "hint strong-hint", "Suporte nesta máquina"));
+      renderSupportParts(manage, ["name", "switch", "delivery", "log"]);
+      panel.append(manage);
+    }
+  }
+  // Concluído: o mesmo "Refazer do zero" dos cartões arquivados, aqui no fim do guia (dois cliques).
+  if (view.finished && t.reset !== undefined && caps.install) {
+    const foot = el("div", "tut-reset guide-reset");
+    const btn = el("button", "btn btn-ghost btn-small", tutResetting === t.id ? "Desfazendo…" : "Refazer do zero"); btn.type = "button"; btn.disabled = tutResetting !== null;
+    btn.title = `Desfaz: ${t.reset.what}. Depois o tutorial volta ao passo 1.`;
+    btn.addEventListener("click", () => armConfirm(btn, "Confirmar? desfaz na máquina", () => { void resetTutorial(t); }));
+    foot.append(el("span", "tut-finished-line", "✓ Concluído."), btn, el("span", "hint", t.reset.what));
+    if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
+    panel.append(foot);
+  }
   // Conectado: a aba do guia do WhatsApp vira o painel de gerência (quem responde, áudio, atualizar,
   // desconectar) — sem modal. Só nos guias do WhatsApp: o do suporte não tem nada a ver com isso.
   if (st.connected && t.steps.some((x) => x.target.startsWith("wa-"))) {
@@ -1444,6 +1485,36 @@ function openGuide(t: Tutorial): void {
 
 /** Acabou de concluir o tour: Tutoriais destaca o próximo (o primeiro pendente) até a pessoa começar algum. */
 let tutNext = false;
+/** "Refazer do zero" em andamento (id do tutorial) e o último recado por tutorial. */
+let tutResetting: string | null = null;
+let tutResetMsg: { id: string; text: string; bad: boolean } | null = null;
+/**
+ * Desfaz na máquina o que o tutorial fez (status line: desinstala; suporte: desliga e esquece o nome;
+ * WhatsApp: desconecta), esquece as marcações manuais e volta ao passo 1. É o "excluir" do CRUD dos tutoriais.
+ */
+async function resetTutorial(t: Tutorial): Promise<void> {
+  if (tutResetting !== null) return;
+  tutResetting = t.id; tutResetMsg = null; tutoriaisPage.render();
+  try {
+    if (t.id === "statusline") {
+      const r = await window.meuBot.uninstallStatusLine();
+      if (!r.ok) throw new Error(r.log.at(-1) ?? "não deu para desinstalar");
+      statusLineSegs = null;
+      await refreshStatusLine();
+    } else if (t.id === "suporte") {
+      supportState = await window.meuBot.resetSupport();
+      repaintSupport();
+    } else if (t.id === "whatsapp-openclaw") {
+      if (waStatus?.connected === true) await window.meuBot.whatsappLogout();
+      await refreshWhatsapp();
+    }
+    try { localStorage.removeItem(guideFlagsKey(t)); } catch { /* opcional */ }
+    const g = guidePages.get(`tut-${t.id}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
+    tutResetMsg = { id: t.id, text: "Desfeito. O tutorial voltou ao passo 1.", bad: false };
+  } catch (err) {
+    tutResetMsg = { id: t.id, text: ipcErrorText(err), bad: true };
+  } finally { tutResetting = null; paintGuide(); tutoriaisPage.render(); }
+}
 const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
   tutList.replaceChildren();
   let nextMarked = false;
@@ -1481,6 +1552,16 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     if (soon) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
     const head = el("div", "tut-head"); head.append(icon, body, start);
     card.append(head);
+    // Concluído: "Refazer do zero" desfaz na máquina o que o tutorial fez e volta ao passo 1 (dois cliques).
+    if (done && t.reset !== undefined && caps.install) {
+      const foot = el("div", "tut-reset");
+      const btn = el("button", "btn btn-ghost btn-small", tutResetting === t.id ? "Desfazendo…" : "Refazer do zero"); btn.type = "button"; btn.disabled = tutResetting !== null;
+      btn.title = `Desfaz: ${t.reset.what}. Depois o tutorial volta ao passo 1.`;
+      btn.addEventListener("click", () => armConfirm(btn, "Confirmar? desfaz na máquina", () => { void resetTutorial(t); }));
+      foot.append(btn, el("span", "hint", t.reset.what));
+      if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
+      card.append(foot);
+    }
     (done ? archived : active).push(card);
   }
   if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
@@ -2728,12 +2809,15 @@ modelSelect.addEventListener("change", () => {
 sendBtn.addEventListener("click", () => {
   const tab = active();
   if (tab !== null && tab.busy) { void window.meuBot.cancel(tab.id); return; }
+  cancelAutoSend();
   void sendMessage();
 });
-inputEl.addEventListener("input", () => { const t = active(); sendBtn.classList.toggle("shine", t !== null && !t.busy && (sendPhase.get(t.id) ?? "idle") === "idle" && inputEl.value.trim().length >= 2); });
+inputEl.addEventListener("input", () => { cancelAutoSend(); const t = active(); sendBtn.classList.toggle("shine", t !== null && !t.busy && (sendPhase.get(t.id) ?? "idle") === "idle" && inputEl.value.trim().length >= 2); });
 inputEl.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && autoSend !== null) { ev.preventDefault(); cancelAutoSend(); return; }
   if (ev.key === "Enter" && !ev.shiftKey) {
     ev.preventDefault();
+    cancelAutoSend();
     void sendMessage();
   }
 });
@@ -2813,11 +2897,71 @@ let statusLineBusy = false;
 let statusLineLog: string[] = [];
 let statusLineMsg: { text: string; bad: boolean } | null = null;
 const accountHasLimits = (): boolean => account !== null && (account.sessionPct !== null || account.weeklyPct !== null);
-const guideCtx = (): GuideContext => ({ support: supportState, statusLine: { installed: statusLineState, limits: accountHasLimits() } });
+/** Segmentos escolhidos (arquivo na máquina); null = todos. O rodapé e a barra do terminal seguem a mesma escolha. */
+let statusLineSegs: StatusLineSegments | null = null;
+let statusLineSegsBusy = false;
+let statusLineSegsMsg: string | null = null;
+const guideCtx = (): GuideContext => ({ support: supportState, statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: statusLineSegs } });
 async function refreshStatusLine(): Promise<void> {
   if (!caps.install || windowHost === "") return;
   try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }
+  try { statusLineSegs = await window.meuBot.statusLineSegments(); } catch { /* idem */ }
+  paintContext(active());
   paintGuide();
+}
+const SEGMENT_LABELS: { key: keyof StatusLineSegments; label: string; hint: string }[] = [
+  { key: "model", label: "Modelo", hint: "qual modelo está respondendo" },
+  { key: "ctx", label: "Contexto", hint: "quanto da janela de contexto já foi usado" },
+  { key: "account", label: "Conta", hint: "e-mail e plano (Premium/Padrão)" },
+  { key: "session", label: "Sessão", hint: "limite de 5 horas e quando reinicia" },
+  { key: "weekly", label: "Semanal", hint: "limite de 7 dias e quando reinicia" },
+];
+/** Passo "Escolher o que aparece": cinco interruptores, prévia da linha, gravação na máquina a cada troca. */
+function renderStatusLineSegments(container: HTMLElement): void {
+  const cur: StatusLineSegments = statusLineSegs ?? { model: true, ctx: true, account: true, session: true, weekly: true };
+  const box = el("div", "audio-controls");
+  box.append(el("code", "sl-preview", previewLine(cur) || "(nada ligado)"));
+  const list = el("div", "sl-switches");
+  for (const s of SEGMENT_LABELS) {
+    const sw = el("label", "switch switch-row"); sw.title = s.hint;
+    const inp = el("input"); inp.type = "checkbox"; inp.checked = cur[s.key]; inp.disabled = statusLineSegsBusy || statusLineState !== true;
+    sw.append(inp, el("span", "track"), el("span", "switch-label", s.label));
+    inp.addEventListener("change", () => {
+      const next = { ...cur, [s.key]: inp.checked };
+      if (!Object.values(next).some(Boolean)) { inp.checked = true; statusLineSegsMsg = "Deixe pelo menos um ligado."; paintGuide(); return; }
+      statusLineSegsBusy = true; statusLineSegsMsg = null; statusLineSegs = next; paintContext(active()); paintGuide();
+      void window.meuBot.setStatusLineSegments(next)
+        .then((saved) => { statusLineSegs = saved; })
+        .catch((err: unknown) => { statusLineSegsMsg = ipcErrorText(err); })
+        .finally(() => { statusLineSegsBusy = false; paintContext(active()); paintGuide(); });
+    });
+    list.append(sw);
+  }
+  box.append(list);
+  // Nunca gravou nada (está no padrão): o passo só conclui quando a escolha vai para a máquina. O botão
+  // grava a escolha atual, mesmo que seja o padrão; pulsa para dizer "é aqui".
+  if (statusLineSegs === null && statusLineState === true) {
+    const done = el("button", "btn btn-primary btn-small attention", statusLineSegsBusy ? "Gravando…" : "Concluir com esta escolha"); done.type = "button"; done.disabled = statusLineSegsBusy;
+    done.title = "Grava a escolha nesta máquina e conclui o passo";
+    done.addEventListener("click", () => {
+      statusLineSegsBusy = true; statusLineSegsMsg = null; paintGuide();
+      void window.meuBot.setStatusLineSegments(cur)
+        .then((saved) => { statusLineSegs = saved; })
+        .catch((err: unknown) => { statusLineSegsMsg = ipcErrorText(err); })
+        .finally(() => { statusLineSegsBusy = false; paintContext(active()); paintGuide(); });
+    });
+    box.append(done);
+  }
+  if (statusLineState !== true) box.append(el("p", "hint", "Instale a status line (passo 1) para escolher."));
+  if (statusLineSegsBusy) box.append(el("p", "hint", "gravando na máquina…"));
+  if (statusLineSegsMsg !== null) box.append(el("p", "hint guide-pair-note", statusLineSegsMsg));
+  container.append(box);
+}
+/** Passo "Conferir no terminal": digita o teste do script num terminal desta máquina; a pessoa dá Enter. */
+function renderStatusLineTest(container: HTMLElement): void {
+  const b = el("button", "btn btn-primary btn-small", "Testar no terminal"); b.type = "button";
+  b.addEventListener("click", () => { void runInTerminal(SL_TEST_COMMAND, "bash", true); });
+  container.append(b);
 }
 window.meuBot.on("statusline:progress", ({ line }) => {
   statusLineLog = [...statusLineLog, line].slice(-6);
@@ -3094,14 +3238,60 @@ function lastTermLines(t: TermTab, n: number): string {
 }
 
 /** Integração A: o trecho vai para o compositor da conversa (atual ou nova) em bloco de código; a pessoa escreve a pergunta e envia. */
+/** Volta à conversa: a que estava aberta antes da página, senão a última aba; sem nenhuma, cria uma. */
+async function backToChat(): Promise<Tab | null> {
+  const cur = active();
+  if (cur !== null) return cur;
+  const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1);
+  if (back !== undefined) { activate(back); return active(); }
+  return newTab();
+}
+
+/**
+ * Passo "Ver os limites na conversa" do tutorial da status line: leva à conversa com uma mensagem pronta no
+ * compositor (nada é enviado sozinho) e diz onde olhar. O passo se conclui sozinho quando a conta traz os limites.
+ */
+async function goToChatForStatusLine(): Promise<void> {
+  const tab = await backToChat();
+  if (tab === null) return;
+  if (inputEl.value.trim() === "") inputEl.value = "Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.";
+  addNotice(tab, "Vou enviar em 3, 2, 1 para você ver acontecendo (digitar ou Esc cancela; Enviar manda já). Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
+  inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+  syncComposer();
+  if (!tab.busy) startAutoSend(tab);
+}
+
+/**
+ * Contagem regressiva no botão Enviar ("Enviando em 3 → 2 → 1") e envio sozinho, para a pessoa ver o fluxo
+ * acontecer. Qualquer gesto dela manda: digitar ou Esc cancela, clicar em Enviar manda na hora; trocar de
+ * aba ou esvaziar o compositor também cancela.
+ */
+function startAutoSend(tab: Tab): void {
+  cancelAutoSend();
+  let n = 3;
+  const paint = (): void => { sendBtn.textContent = `Enviando em ${n}`; sendBtn.classList.add("countdown"); sendBtn.classList.remove("shine"); };
+  paint();
+  const timer = window.setInterval(() => {
+    if (active() !== tab || tab.busy || inputEl.value.trim() === "") { cancelAutoSend(); return; }
+    n -= 1;
+    if (n > 0) { paint(); return; }
+    cancelAutoSend();
+    void sendMessage();
+  }, 1000);
+  autoSend = { timer, tab };
+}
+function cancelAutoSend(): void {
+  if (autoSend === null) return;
+  window.clearInterval(autoSend.timer);
+  autoSend = null;
+  sendBtn.classList.remove("countdown");
+  syncComposer();
+}
+
 async function askAgentAbout(text: string): Promise<void> {
   const trecho = text.replace(/\s+$/, "");
   if (trecho === "") return;
-  let tab = active();
-  if (tab === null) {
-    const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1);
-    if (back !== undefined) { activate(back); tab = active(); } else tab = await newTab();
-  }
+  const tab = await backToChat();
   if (tab === null) return;
   const cur = inputEl.value.trim();
   const fence = "```";
@@ -3110,11 +3300,15 @@ async function askAgentAbout(text: string): Promise<void> {
   syncComposer();
 }
 
-/** Integração B: "Rodar no terminal" digita o comando (bracketed paste, sem Enter) num terminal desta máquina. */
-async function runInTerminal(code: string, lang: string): Promise<void> {
+/**
+ * Integração B: "Rodar no terminal" digita o comando (bracketed paste) num terminal desta máquina. Por
+ * padrão sem Enter (a pessoa confirma); `enter` só para comandos do próprio app, inofensivos e conhecidos.
+ */
+async function runInTerminal(code: string, lang: string, enter = false): Promise<void> {
   const t = await openTerminalTab("focus");
   if (t === null || t.id === null) return;
   window.meuBot.termInput(t.id, shellBlockToPaste(code, lang));
+  if (enter) window.meuBot.termInput(t.id, "\r");
   t.term?.focus();
 }
 

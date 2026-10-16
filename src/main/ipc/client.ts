@@ -19,8 +19,9 @@ import {
 } from "../conversation";
 import { isBackendModel } from "../settings";
 import { toggleQuickEntry } from "../quickEntry";
-import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "../hostProbe";
-import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
+import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallStatusLine } from "../hostProbe";
+import { readSegments, writeSegments } from "../statusLine";
+import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient } from "./registry";
@@ -63,6 +64,12 @@ export function registerClientIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return setSupportShare(h.host, payload);
   });
+  // "Refazer do zero" do tutorial de suporte: desliga e esquece o nome.
+  handleClient("support:reset", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return resetSupport(h.host);
+  });
 
   // Grok por chave de API (máquinas sem Hermes). A chave só passa pelo IPC e pelo stdin do ssh; nunca em log.
   handleClient("xai-login:prepare", (event) => {
@@ -80,6 +87,22 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("statusline:progress", { line }); });
+  });
+  // Segmentos da status line (preferência na máquina) e "Refazer do zero".
+  handleClient("statusline:segments", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return readSegments(h.host);
+  });
+  handleClient("statusline:set-segments", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return writeSegments(h.host, payload);
+  });
+  handleClient("statusline:uninstall", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return uninstallStatusLine(h.host);
   });
   handleClient("tailscale:disable-check", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");

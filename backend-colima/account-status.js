@@ -21,7 +21,18 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch (_) { return null; }
 }
 
-/** {email, assento, sessionPct, weeklyPct, sessionResets, weeklyResets, updated} com null onde não há dado. */
+/** Segmentos da status line (ligar/desligar no meu-bot); a mesma lista do statusline.sh e do rodapé do app. */
+const SEGMENT_KEYS = ['model', 'ctx', 'account', 'session', 'weekly'];
+/** ~/.claude/statusline-segments.json validado (cada chave vale true salvo `false` explícito); null sem arquivo. */
+function readSegments(home = os.homedir()) {
+  const raw = readJson(path.join(home, '.claude', 'statusline-segments.json'));
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
+  for (const k of SEGMENT_KEYS) out[k] = raw[k] !== false;
+  return out;
+}
+
+/** {email, assento, sessionPct, weeklyPct, sessionResets, weeklyResets, updated, segments} com null onde não há dado. */
 function readClaudeStatus(home = os.homedir()) {
   const dir = path.join(home, '.cache', 'claude-statusline');
   const profile = readJson(path.join(dir, 'profile.json')) || {};
@@ -35,7 +46,8 @@ function readClaudeStatus(home = os.homedir()) {
     sessionResets: num(limits.session_resets),
     weeklyResets: num(limits.weekly_resets),
     updated: num(limits.updated),
+    segments: readSegments(home),
   };
 }
 
-module.exports = { readClaudeStatus };
+module.exports = { readClaudeStatus, readSegments, SEGMENT_KEYS };

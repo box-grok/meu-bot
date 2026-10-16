@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
+import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo, StatusLineSegments } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -88,6 +88,10 @@ const clientApi: MeuBotClientApi = {
   xaiPrepare: () => ipcRenderer.invoke("xai-login:prepare", {}),
   statusLineInstalled: () => ipcRenderer.invoke("statusline:status", {}),
   installStatusLine: () => ipcRenderer.invoke("statusline:install", {}),
+  uninstallStatusLine: () => ipcRenderer.invoke("statusline:uninstall", {}),
+  statusLineSegments: () => ipcRenderer.invoke("statusline:segments", {}),
+  setStatusLineSegments: (prefs: StatusLineSegments) => ipcRenderer.invoke("statusline:set-segments", prefs),
+  resetSupport: () => ipcRenderer.invoke("support:reset", {}),
   setSupportName: (name: string) => ipcRenderer.invoke("support:name", { name }),
   supportDeliver: () => ipcRenderer.invoke("support:deliver", {}),
   reportProgress: (p: SupportProgress) => ipcRenderer.invoke("support:progress", p),

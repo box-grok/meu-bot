@@ -51,6 +51,13 @@ export function supportName(): string {
   try { const v = JSON.parse(fs.readFileSync(namePath(), "utf8")) as { name?: unknown }; if (typeof v.name === "string") return v.name; } catch { /* ainda não deu nome */ }
   return "";
 }
+/** "Refazer do zero" do tutorial de suporte: desliga (se ligado) e esquece o nome guardado neste Mac. */
+export async function resetSupport(host: string): Promise<SupportInfo> {
+  const cur = await supportInfo(host).catch(() => null);
+  if (cur?.on === true) await setSupport(host, false, cur.name);
+  try { fs.unlinkSync(namePath()); } catch { /* já não havia */ }
+  return supportInfo(host);
+}
 function saveSupportName(name: string): void {
   try { fs.writeFileSync(namePath(), JSON.stringify({ name }), { mode: 0o600 }); } catch { /* cortesia */ }
 }

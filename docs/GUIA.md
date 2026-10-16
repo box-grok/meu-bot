@@ -1194,7 +1194,36 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   Host que vem de um Include (Colima, suporte) não é mexido e o erro diz isso. Recusa com a janela da
   máquina aberta; os atalhos da mesa dela saem junto. Ela volta se estiver no modelo do projeto e alguém
   usar "sincronizar ssh".
-- Tutorial "Status line do Claude" (2 passos, depois do "Ligar o suporte"; em toda janela, nunca no admin):
+- Status line, personalizar (16 out): preferência por máquina em `~/.claude/statusline-segments.json`
+  (`{model, ctx, account, session, weekly}`; ausente = todos; o app exige pelo menos um ligado), lida pelo
+  `statusline.sh` (`seg_on`, com `if has($k) then .[$k] else true end`: o `// true` do jq trocaria false por
+  true) e pelo backend (`account-status.js` → `segments` no `/v1/meu-bot/status`), então barra do terminal e
+  rodapé do app (`buildSegments` filtra model/ctx/account/session/weekly; `turn` e `age` ficam) combinam.
+  Gravação pela janela: `src/main/statusLine.ts` (`statusline:segments` / `statusline:set-segments`, ssh ou
+  fs local, atômico 0600). Correções no script: `stat -c %Y` antes de `stat -f %m` (no Linux o `-f` devolvia
+  lixo e o cache de perfil nunca valia: uma chamada à API da Anthropic por atualização; agente-box e colima
+  estavam assim), segmento **Semanal** (magenta) na barra, e sem o segmento Conta o script nem vai à API.
+  Teste real do script em `scripts/tests/statusline-sh.test.mjs` (bash + jq, HOME temporário, `curl` falso
+  que acusa chamada). Tutorial com 4 passos: Instalar → **Escolher o que aparece** (interruptores + prévia
+  `previewLine`) → **Conferir no terminal** (digita `SL_TEST_COMMAND` num terminal do app; "Apareceu certo"
+  marca `GuideFlags.statusTested`) → **Ver os limites na conversa** (alvo `chat`: botão "Ir para a conversa"
+  volta à aba de conversa com uma mensagem pronta no compositor e um aviso de onde olhar; o botão Enviar faz
+  uma contagem "Enviando em 3 → 2 → 1" e manda sozinho, para a pessoa ver o fluxo acontecer (`startAutoSend`;
+  digitar ou Esc cancela, clicar em Enviar manda na hora, trocar de aba ou esvaziar o compositor cancela;
+  `syncComposer` não repinta o botão durante a contagem); o passo se conclui sozinho quando a conta traz os limites). `GuideTarget` ganhou `chat`
+  (`goToChatForStatusLine`, `backToChat` compartilhado com "Perguntar ao agente" do terminal); o painel de
+  gerência do tutorial concluído repete o botão em "Onde aparece". `backend-vm/services/account-status.js` é cópia.
+  O rótulo da barra no terminal passou de "Sessão diaria" (herdado do script original; a janela é de 5 h, não
+  diária) para "Sessão:", o mesmo do rodapé do app e da prévia do passo 2.
+- "Refazer do zero" (16 out): tutorial concluído ganha, no cartão arquivado, um botão de dois cliques que
+  desfaz na máquina o que o tutorial fez e esquece as marcações (`localStorage guia:<id>:<host>`), voltando
+  ao passo 1: é o "excluir" do CRUD dos tutoriais. `Tutorial.reset.what` descreve o que é desfeito; a ação
+  fica em `resetTutorial` (renderer). Status line → `backend-colima/uninstall-statusline.sh` (tira o nosso
+  statusline.sh restaurando o `.antes-do-meu-bot`, volta o settings.json do backup ou tira só a chave
+  `statusLine`, apaga `statusline-segments.json`; o cache de limites fica) via `uninstallStatusLine`
+  (`statusline:uninstall`); suporte → `resetSupport` (desliga se ligado e esquece o nome, `support:reset`);
+  WhatsApp → `whatsappLogout`. O tour já tinha "Rever". Nada disso no admin.
+- Tutorial "Status line do Claude" (antes 2 passos, depois do "Ligar o suporte"; em toda janela, nunca no admin):
   instalar (o mesmo `installStatusLine` do seletor, agora também pela janela: IPC `statusline:status` com a
   checagem da sondagem e `statusline:install` com progresso em `statusline:progress`) e ver os limites no
   rodapé (conclui quando a conta da máquina traz `sessionPct`/`weeklyPct`, que só nascem depois que o

@@ -1,5 +1,5 @@
 /** Status line do chat (modelo da box: modelo | Ctx | conta | Sessão | Semanal). Puro: testável. */
-import type { AccountStatus } from "../../shared/ipc";
+import type { AccountStatus, StatusLineSegments } from "../../shared/ipc";
 
 export interface Segment { kind: "model" | "ctx" | "turn" | "account" | "session" | "weekly" | "age"; text: string; title?: string }
 
@@ -44,12 +44,28 @@ export interface StatusInput {
   turn: { ms: number; completion: number } | null;
   account: AccountStatus | null;
   nowMs?: number;
+  /** Segmentos ligados (Tutoriais › Status line); ausente/null = todos. `turn` e `age` não entram na escolha. */
+  segments?: StatusLineSegments | null;
+}
+
+/** Prévia do que a barra mostra com uma escolha de segmentos (texto de exemplo, como o do teste do script). */
+export function previewLine(segments: StatusLineSegments | null): string {
+  const on = (k: keyof StatusLineSegments): boolean => segments === null || segments[k] !== false;
+  const parts: string[] = [];
+  if (on("model")) parts.push("Opus 4.8");
+  if (on("ctx")) parts.push("Ctx: 12% · 24.0k/200.0k");
+  if (on("account")) parts.push("você@exemplo.com (Premium)");
+  if (on("session")) parts.push("Sessão: 57% · 1h4m");
+  if (on("weekly")) parts.push("Semanal: 12% · 3d");
+  return parts.join(" | ");
 }
 
 export function buildSegments(input: StatusInput): Segment[] {
   const now = input.nowMs ?? Date.now();
-  const out: Segment[] = [{ kind: "model", text: input.model }];
-  if (input.ctx !== null && input.ctx.budget > 0) {
+  const segs = input.segments ?? null;
+  const on = (k: keyof StatusLineSegments): boolean => segs === null || segs[k] !== false;
+  const out: Segment[] = on("model") ? [{ kind: "model", text: input.model }] : [];
+  if (on("ctx") && input.ctx !== null && input.ctx.budget > 0) {
     const pct = Math.min(999, Math.round((input.ctx.tokens / input.ctx.budget) * 100));
     out.push({ kind: "ctx", text: `Ctx: ${pct}% · ${fmtK(input.ctx.tokens)}/${fmtK(input.ctx.budget)}`, title: "tokens estimados enviados ao backend / orçamento de contexto" });
   }
@@ -59,11 +75,14 @@ export function buildSegments(input: StatusInput): Segment[] {
   }
   const a = input.account;
   if (a !== null && isClaudeModel(input.model)) {
-    if (a.email !== null) out.push({ kind: "account", text: a.assento !== null ? `${a.email} (${a.assento})` : a.email });
-    if (a.sessionPct !== null) out.push({ kind: "session", text: `Sessão: ${Math.round(a.sessionPct)}%${a.sessionResets !== null ? ` · ${timeUntil(a.sessionResets, now)}` : ""}`, title: "limite de 5 horas do Claude" });
-    if (a.weeklyPct !== null) out.push({ kind: "weekly", text: `Semanal: ${Math.round(a.weeklyPct)}%${a.weeklyResets !== null ? ` · ${timeUntil(a.weeklyResets, now)}` : ""}`, title: "limite de 7 dias do Claude" });
+    if (on("account") && a.email !== null) out.push({ kind: "account", text: a.assento !== null ? `${a.email} (${a.assento})` : a.email });
+    if (on("session") && a.sessionPct !== null) out.push({ kind: "session", text: `Sessão: ${Math.round(a.sessionPct)}%${a.sessionResets !== null ? ` · ${timeUntil(a.sessionResets, now)}` : ""}`, title: "limite de 5 horas do Claude" });
+    if (on("weekly") && a.weeklyPct !== null) out.push({ kind: "weekly", text: `Semanal: ${Math.round(a.weeklyPct)}%${a.weeklyResets !== null ? ` · ${timeUntil(a.weeklyResets, now)}` : ""}`, title: "limite de 7 dias do Claude" });
     const age = ageText(a.updated, now);
     if (age !== "" && (a.sessionPct !== null || a.weeklyPct !== null)) out.push({ kind: "age", text: age, title: "idade do cache do statusline.sh na máquina" });
   }
   return out;
 }
+
+/** O teste do statusline.sh (JSON simulado do Claude Code), digitado no terminal pelo tutorial. */
+export const SL_TEST_COMMAND = `MEU_BOT_STATUSLINE_TEST=1; export MEU_BOT_STATUSLINE_TEST; echo '{"model":{"display_name":"Opus 4.8"},"context_window":{"used_percentage":12,"context_window_size":200000,"current_usage":{"input_tokens":24000}},"rate_limits":{"five_hour":{"used_percentage":57},"seven_day":{"used_percentage":12}}}' | bash ~/.claude/statusline.sh`;
