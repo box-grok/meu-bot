@@ -1,10 +1,11 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, AdminHealth, AdminAction, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
+import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -597,6 +598,8 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
+  add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
+  add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: `${visibleTutorials(guideCtx()).length} tutoriais`, keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
@@ -874,6 +877,7 @@ async function restoreTabs(): Promise<void> {
 function applySettings(view: SettingsView): void {
   settings = view;
   setHostNicknames(view.hostNames);
+  rethemeTerminals();
   if (windowHost !== "" && !windowAdmin) document.title = `meu-bot · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
@@ -1015,12 +1019,12 @@ let xaiUrl: string | null = null;
 
 function paintXaiLine(): void {
   if (xaiAuth === null) {
-    // Sem Hermes: o Grok entra por chave de API no backend da máquina (nada em "este Mac" por enquanto).
+    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" instala o Hermes e faz o login OAuth.
     if (xaiKey === null || !xaiKey.backend) { xaiLine.hidden = true; return; }
     xaiLine.hidden = false;
-    xaiLine.className = `wa-line cl-line ${xaiKey.hasKey ? "on" : "off"}`;
-    xaiLineText.textContent = xaiKey.hasKey ? "xAI (Grok) · chave de API configurada" : "xAI (Grok) · deslogada · o grok-4 não responde";
-    xaiLineBtn.textContent = xaiKey.hasKey ? "chave" : "entrar";
+    xaiLine.className = "wa-line cl-line off";
+    xaiLineText.textContent = "xAI (Grok) · deslogada · o grok-4 não responde";
+    xaiLineBtn.textContent = "entrar";
     return;
   }
   xaiLine.hidden = false;
@@ -1034,45 +1038,6 @@ async function refreshXaiLine(): Promise<void> {
   if (xaiAuth === null && !windowAdmin && windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
   paintXaiLine();
 }
-const xaiKeyDialog = $<HTMLDialogElement>("xai-key-dialog");
-const xaiKeyStatusEl = $<HTMLElement>("xai-key-status");
-const xaiKeyInput = $<HTMLInputElement>("xai-key-input");
-const xaiKeyMsg = $<HTMLElement>("xai-key-msg");
-const xaiKeySave = $<HTMLButtonElement>("xai-key-save");
-const xaiKeyClear = $<HTMLButtonElement>("xai-key-clear");
-function openXaiKey(): void {
-  xaiKeyInput.value = ""; xaiKeyMsg.hidden = true;
-  xaiKeyStatusEl.textContent = `Máquina: ${hostLabel(windowHost)}. ${xaiKey?.hasKey ? "Já há uma chave da xAI no backend; colar outra substitui." : "Sem chave da xAI: o grok-4 não aparece nos modos nem no fallback."}`;
-  xaiKeyClear.hidden = xaiKey?.hasKey !== true;
-  xaiKeyDialog.showModal();
-  xaiKeyInput.focus();
-}
-/** Grava ou tira a chave; os modelos que o backend passa a listar atualizam o modo e o fallback na hora. */
-async function applyXaiKey(key: string | null): Promise<void> {
-  xaiKeySave.disabled = true; xaiKeyClear.disabled = true; xaiKeyMsg.hidden = false; xaiKeyMsg.className = "hint";
-  xaiKeyMsg.textContent = key === null ? "Tirando a chave e reiniciando o backend…" : "Gravando a chave e reiniciando o backend…";
-  try {
-    const models = await window.meuBot.setXaiKey(key);
-    xaiKeyInput.value = "";
-    if (models.length > 0) hostModels.set(windowHost, models);
-    applyModelAvailability(modelSelect, windowHost); applyModelAvailability(backendModelSelect, windowHost); paintFallbackOrder();
-    void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); });
-    await refreshXaiLine();
-    const grok = models.includes("grok-4");
-    xaiKeyMsg.className = `hint ${grok || key === null ? "audio-ok" : "guide-pair-note"}`;
-    xaiKeyMsg.textContent = key === null ? "Chave removida. O grok-4 saiu dos modelos desta máquina."
-      : grok ? "Pronto: o grok-4 já aparece nos modos e no fallback desta máquina." : `A chave foi gravada, mas o backend ainda não lista o grok-4 (modelos: ${models.join(", ") || "nenhum"}). Confira a chave em console.x.ai.`;
-    xaiKeyClear.hidden = xaiKey?.hasKey !== true;
-  } catch (err) {
-    xaiKeyMsg.className = "hint guide-pair-note"; xaiKeyMsg.textContent = ipcErrorText(err);
-  } finally { xaiKeySave.disabled = false; xaiKeyClear.disabled = false; }
-}
-xaiKeySave.addEventListener("click", () => { const k = xaiKeyInput.value.trim(); if (k === "") { xaiKeyInput.focus(); return; } void applyXaiKey(k); });
-xaiKeyInput.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); xaiKeySave.click(); } });
-xaiKeyClear.addEventListener("click", () => armConfirm(xaiKeyClear, "Confirmar? o grok-4 para", () => { void applyXaiKey(null); }));
-$<HTMLButtonElement>("xai-key-console").addEventListener("click", () => { void window.meuBot.openExternal("https://console.x.ai/"); });
-$<HTMLButtonElement>("xai-key-close").addEventListener("click", () => xaiKeyDialog.close());
-$<HTMLButtonElement>("xai-use-key").addEventListener("click", () => { if (xaiRunning) return; xaiDialog.close(); openXaiKey(); });
 function openXai(): void {
   xaiLog.hidden = true; xaiLog.textContent = ""; xaiOpen.hidden = true;
   xaiStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
@@ -1125,10 +1090,7 @@ xaiStart.addEventListener("click", () => { void runXaiLogin(); });
 xaiOpen.addEventListener("click", () => { if (xaiUrl !== null) void window.meuBot.openExternal(xaiUrl); });
 xaiClose.addEventListener("click", () => { if (xaiRunning) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
 xaiLineBtn.addEventListener("click", () => {
-  if (xaiAuth === null) {
-    if (xaiKey?.hasKey === true) { openXaiKey(); return; } // já está por chave de API: gerir a chave
-    openXai(); void prepareAndLoginXai(); return; // sem Hermes: prepara (Hermes + proxy) e entra por OAuth
-  }
+  if (xaiAuth === null) { openXai(); void prepareAndLoginXai(); return; } // sem Hermes: prepara (Hermes + proxy) e entra por OAuth
   if (xaiAuth !== null && xaiAuth.loggedIn) {
     if (!window.confirm("Sair da conta da xAI no Hermes desta máquina? O grok-4 para de responder até entrar de novo.")) return;
     xaiLineBtn.disabled = true;
@@ -1183,7 +1145,7 @@ function deactivatePage(): void {
   paintGuideTargets();
 }
 
-function openPage(page: PageTab): void {
+function openPage(page: PageTab, activateIt = true): void {
   if (page.tabEl === null) {
     const tabEl = el("div", `tab tab-page tab-${page.id}`);
     const titleEl = el("span", "tab-title", page.title);
@@ -1191,16 +1153,22 @@ function openPage(page: PageTab): void {
     closeBtn.type = "button"; closeBtn.title = "Fechar aba";
     tabEl.append(titleEl, closeBtn);
     tabEl.addEventListener("click", () => activatePage(page));
-    closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); closePage(page); });
+    closeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      // Terminal com shell vivo: dois cliques (fechar mata o shell).
+      if (page.id.startsWith("term-") && termAlive(page.id)) { armConfirm(closeBtn, "fechar?", () => closePage(page)); return; }
+      closePage(page);
+    });
     tabsEl.appendChild(tabEl);
     page.tabEl = tabEl;
   }
-  activatePage(page);
+  if (activateIt) activatePage(page);
 }
 
 function closePage(page: PageTab): void {
   if (page.tabEl === null) return;
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
+  if (page.id.startsWith("term-")) disposeTerminal(page.id);
   const wasActive = pageActive === page;
   if (wasActive) deactivatePage();
   page.tabEl.remove();
@@ -2614,6 +2582,13 @@ window.meuBot.on("settings:changed", (view: SettingsView) => {
 panelsEl.addEventListener("click", (ev) => {
   const target = ev.target as HTMLElement | null;
   if (target === null) return;
+  const run = target.closest<HTMLButtonElement>(".btn-run");
+  if (run !== null) {
+    const block = run.closest<HTMLElement>(".code-block");
+    const code = block?.querySelector("pre")?.textContent ?? "";
+    void runInTerminal(code, block?.dataset["lang"] ?? "bash");
+    return;
+  }
   const copy = target.closest<HTMLButtonElement>(".btn-copy");
   if (copy !== null) {
     const code = copy.closest(".code-block")?.querySelector("pre")?.textContent ?? "";
@@ -2768,6 +2743,10 @@ inputEl.addEventListener("keydown", (ev) => {
 });
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && !modeMenu.hidden) { modeMenu.hidden = true; return; }
+  // Com o terminal focado, Ctrl+* é do shell (Ctrl+C, Ctrl+W, Ctrl+N…); só Cmd+* continua do app.
+  const inTerm = (ev.target as HTMLElement | null)?.closest?.(".term-panel") != null;
+  if (inTerm && ev.ctrlKey && !ev.metaKey) return;
+  if (ev.metaKey && (ev.key === "j" || ev.key === "J")) { ev.preventDefault(); void openTerminalTab(ev.shiftKey ? "new" : "focus"); return; }
   const mod = ev.metaKey || ev.ctrlKey;
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
@@ -2974,6 +2953,238 @@ function paintSupport(): void {
     : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda do admin.`));
   renderSupportParts(supportBody, ["name", "switch", "delivery", "log"]);
 }
+
+/* ---------- Terminal: abas com xterm.js; o PTY roda na máquina da janela (pty-broker.py por ssh) ---------- */
+type XTermCtor = typeof import("@xterm/xterm").Terminal;
+/** A classe Terminal do xterm: o UMD no navegador expõe a classe direto; o tipo cobre também o namespace. */
+const xtermClass = (): XTermCtor => (typeof window.Terminal === "function" ? window.Terminal : (window.Terminal as { Terminal: XTermCtor }).Terminal);
+interface TermTab {
+  page: PageTab;
+  term: InstanceType<XTermCtor> | null;
+  fit: InstanceType<typeof window.FitAddon.FitAddon> | null;
+  search: InstanceType<typeof window.SearchAddon.SearchAddon> | null;
+  box: HTMLElement;
+  head: HTMLElement;
+  bar: HTMLElement;
+  id: string | null;          // sessão no main (null = ainda não abriu / encerrada)
+  exited: { code: number; detail: string | null } | null;
+  opening: boolean;
+  n: number;
+  resizeTimer: number | null;
+}
+const terminals = new Map<string, TermTab>();
+let termCounter = 0;
+const termAlive = (pageId: string): boolean => { const t = terminals.get(pageId); return t !== undefined && t.id !== null && t.exited === null; };
+const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const isDark = (): boolean => document.documentElement.dataset["theme"] === "dark" || (document.documentElement.dataset["theme"] !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+const themeNow = (): Record<string, string> => xtermTheme({ bg: cssVar("--bg"), fg: cssVar("--fg"), muted: cssVar("--muted"), accent: cssVar("--accent"), dark: isDark() });
+function rethemeTerminals(): void { for (const t of terminals.values()) if (t.term !== null) t.term.options.theme = themeNow(); }
+function paintTerminalCount(): void {
+  const n = [...terminals.values()].filter((t) => t.id !== null && t.exited === null).length;
+  $<HTMLElement>("terminal-count").textContent = n === 0 ? "" : n === 1 ? "1 aberto" : `${n} abertos`;
+}
+
+/** Abre um terminal novo ("new"), ou foca o último vivo ("focus"; abre um se não há). Devolve a aba. */
+async function openTerminalTab(mode: "new" | "focus" = "new"): Promise<TermTab | null> {
+  if (mode === "focus") {
+    const live = [...terminals.values()].filter((t) => t.exited === null && t.id !== null).at(-1);
+    if (live !== undefined) { openPage(live.page); live.term?.focus(); return live; }
+  }
+  const n = ++termCounter;
+  const pageId = `term-${n}`;
+  const panel = el("section", "term-panel"); panel.hidden = true;
+  const head = el("div", "term-head");
+  const box = el("div", "term-box");
+  const bar = el("div", "term-selbar"); bar.hidden = true;
+  panel.append(head, box, bar);
+  panelsEl.append(panel);
+  const t: TermTab = { page: null as unknown as PageTab, term: null, fit: null, search: null, box, head, bar, id: null, exited: null, opening: false, n, resizeTimer: null };
+  t.page = definePage(pageId, `Terminal ${n} · ${hostLabel(windowHost)}`, panel, () => renderTerminal(t));
+  terminals.set(pageId, t);
+  openPage(t.page);
+  await connectTerminal(t);
+  return t;
+}
+
+function renderTerminal(t: TermTab): void {
+  if (t.term === null) {
+    const Term = xtermClass();
+    const term = new Term({ fontFamily: cssVar("--mono") || "ui-monospace, Menlo, monospace", fontSize: 13, lineHeight: 1.15, cursorBlink: true, scrollback: 10_000, allowProposedApi: true, theme: themeNow(), macOptionIsMeta: false });
+    const fit = new window.FitAddon.FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new window.Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = "11";
+    term.loadAddon(new window.WebLinksAddon.WebLinksAddon((_ev: MouseEvent, uri: string) => { void window.meuBot.openExternal(uri); }));
+    const search = new window.SearchAddon.SearchAddon(); term.loadAddon(search);
+    term.open(t.box);
+    try { const gl = new window.WebglAddon.WebglAddon(); gl.onContextLoss(() => gl.dispose()); term.loadAddon(gl); } catch { /* fica no renderer DOM */ }
+    // Cmd+K/N/B/W/J/F são do app; o resto (inclusive Ctrl+*) é do shell. Cmd+C sem seleção vira ^C.
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.metaKey && ["k", "n", "b", "w", "j", "f"].includes(ev.key.toLowerCase())) { if (ev.key.toLowerCase() === "f" && ev.type === "keydown") { ev.preventDefault(); termSearch(t); } return false; }
+      return true;
+    });
+    term.onData((d) => { if (t.id !== null) window.meuBot.termInput(t.id, d); });
+    term.onBinary((d) => { if (t.id !== null) window.meuBot.termInput(t.id, Uint8Array.from(d, (c) => c.charCodeAt(0))); });
+    term.onResize(({ cols, rows }) => { if (t.id !== null) window.meuBot.termResize(t.id, cols, rows); });
+    term.onSelectionChange(() => { const sel = term.getSelection(); t.bar.hidden = sel.trim() === ""; });
+    t.term = term; t.fit = fit; t.search = search;
+    new ResizeObserver(() => {
+      if (t.resizeTimer !== null) clearTimeout(t.resizeTimer);
+      t.resizeTimer = window.setTimeout(() => { t.resizeTimer = null; if (!t.page.panel.hidden) t.fit?.fit(); }, 60);
+    }).observe(t.box);
+    // Barra de seleção: Copiar / Perguntar ao agente (pré-preenche o compositor; nada é enviado sozinho).
+    const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
+    copy.addEventListener("click", () => { void navigator.clipboard.writeText(term.getSelection()); term.clearSelection(); term.focus(); });
+    const ask = el("button", "btn btn-primary btn-small", "Perguntar ao agente"); ask.type = "button";
+    ask.addEventListener("click", () => { void askAgentAbout(term.getSelection()); term.clearSelection(); });
+    t.bar.append(copy, ask);
+  }
+  paintTermHead(t);
+  requestAnimationFrame(() => { t.fit?.fit(); t.term?.focus(); });
+}
+
+function paintTermHead(t: TermTab): void {
+  t.head.replaceChildren();
+  t.head.append(el("span", "term-where", `${hostLabel(windowHost)}${windowHost === "local" ? " · shell deste Mac" : " · shell por SSH"}`));
+  if (t.opening) t.head.append(el("span", "hint", "conectando…"));
+  if (t.exited !== null) {
+    t.head.append(el("span", "term-exit", `sessão encerrada (código ${t.exited.code})${t.exited.detail !== null ? ` · ${t.exited.detail}` : ""}`));
+    const again = el("button", "btn btn-primary btn-small", "Reconectar"); again.type = "button";
+    again.addEventListener("click", () => { t.term?.reset(); void connectTerminal(t); });
+    t.head.append(again);
+  }
+  const spacer = el("span", "spacer"); t.head.append(spacer);
+  const find = el("button", "btn btn-ghost btn-small", "Buscar"); find.type = "button"; find.title = "Buscar no terminal (Cmd+F)";
+  find.addEventListener("click", () => termSearch(t));
+  const toChat = el("button", "btn btn-ghost btn-small", "Últimas linhas → conversa"); toChat.type = "button"; toChat.title = "Leva as últimas 50 linhas do terminal para o compositor da conversa";
+  toChat.addEventListener("click", () => { void askAgentAbout(lastTermLines(t, 50)); });
+  t.head.append(find, toChat);
+}
+
+async function connectTerminal(t: TermTab): Promise<void> {
+  if (t.opening) return;
+  t.opening = true; t.exited = null; t.id = null; paintTermHead(t);
+  try {
+    t.fit?.fit();
+    const { id } = await window.meuBot.termOpen(t.term?.cols ?? 80, t.term?.rows ?? 24);
+    t.id = id;
+  } catch (err) {
+    t.exited = { code: -1, detail: ipcErrorText(err) };
+  } finally { t.opening = false; paintTermHead(t); paintTerminalCount(); t.term?.focus(); }
+}
+
+function disposeTerminal(pageId: string): void {
+  const t = terminals.get(pageId);
+  if (t === undefined) return;
+  if (t.id !== null && t.exited === null) void window.meuBot.termClose(t.id);
+  t.term?.dispose();
+  t.page.panel.remove();
+  terminals.delete(pageId);
+  paintTerminalCount();
+}
+
+function termSearch(t: TermTab): void {
+  const q = window.prompt("Buscar no terminal:", "");
+  if (q === null || q === "" || t.search === null) return;
+  t.search.findNext(q, { caseSensitive: false, incremental: false });
+}
+
+/** Últimas `n` linhas não vazias do buffer do terminal, como texto. */
+function lastTermLines(t: TermTab, n: number): string {
+  const term = t.term; if (term === null) return "";
+  const buf = term.buffer.active; const lines: string[] = [];
+  for (let i = buf.length - 1; i >= 0 && lines.length < n; i--) { const l = buf.getLine(i)?.translateToString(true) ?? ""; if (l.trim() !== "" || lines.length > 0) lines.unshift(l); }
+  return lines.join("\n").trim();
+}
+
+/** Integração A: o trecho vai para o compositor da conversa (atual ou nova) em bloco de código; a pessoa escreve a pergunta e envia. */
+async function askAgentAbout(text: string): Promise<void> {
+  const trecho = text.replace(/\s+$/, "");
+  if (trecho === "") return;
+  let tab = active();
+  if (tab === null) {
+    const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1);
+    if (back !== undefined) { activate(back); tab = active(); } else tab = await newTab();
+  }
+  if (tab === null) return;
+  const cur = inputEl.value.trim();
+  const fence = "```";
+  inputEl.value = `${cur === "" ? "" : `${cur}\n\n`}Sobre esta saída do terminal:\n\n${fence}\n${trecho}\n${fence}\n\n`;
+  inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);
+  syncComposer();
+}
+
+/** Integração B: "Rodar no terminal" digita o comando (bracketed paste, sem Enter) num terminal desta máquina. */
+async function runInTerminal(code: string, lang: string): Promise<void> {
+  const t = await openTerminalTab("focus");
+  if (t === null || t.id === null) return;
+  window.meuBot.termInput(t.id, shellBlockToPaste(code, lang));
+  t.term?.focus();
+}
+
+window.meuBot.on("term:data", ({ id, data }) => {
+  for (const t of terminals.values()) if (t.id === id) { t.term?.write(data); return; }
+});
+window.meuBot.on("term:exit", ({ id, code, detail }) => {
+  for (const t of terminals.values()) if (t.id === id) { t.exited = { code, detail }; paintTermHead(t); paintTerminalCount(); return; }
+});
+$<HTMLButtonElement>("terminal-line").addEventListener("click", () => { void openTerminalTab("focus"); });
+
+/* ---------- Atividade do agente: o que o modo agente roda (chat:tool), na conversa e numa aba só leitura ---------- */
+let activity: { page: PageTab; term: InstanceType<XTermCtor> | null; fit: InstanceType<typeof window.FitAddon.FitAddon> | null; box: HTMLElement; pending: string[] } | null = null;
+function activityPage(): PageTab {
+  if (activity !== null) return activity.page;
+  const panel = el("section", "term-panel"); panel.hidden = true;
+  const head = el("div", "term-head");
+  head.append(el("span", "term-where", `${hostLabel(windowHost)} · atividade do agente`), el("span", "hint", "só leitura: cada ferramenta que o modo agente usa aparece aqui ao vivo"));
+  const box = el("div", "term-box");
+  panel.append(head, box);
+  panelsEl.append(panel);
+  const a = { page: null as unknown as PageTab, term: null as InstanceType<XTermCtor> | null, fit: null as InstanceType<typeof window.FitAddon.FitAddon> | null, box, pending: [] as string[] };
+  a.page = definePage("atividade", `Agente · atividade`, panel, () => {
+    if (a.term === null) {
+      const Term = xtermClass();
+      const term = new Term({ fontFamily: cssVar("--mono") || "ui-monospace, Menlo, monospace", fontSize: 12.5, lineHeight: 1.2, scrollback: 20_000, disableStdin: true, cursorBlink: false, cursorStyle: "underline", theme: themeNow(), allowProposedApi: true });
+      const fit = new window.FitAddon.FitAddon(); term.loadAddon(fit);
+      term.loadAddon(new window.WebLinksAddon.WebLinksAddon((_ev: MouseEvent, uri: string) => { void window.meuBot.openExternal(uri); }));
+      term.open(box);
+      a.term = term; a.fit = fit;
+      new ResizeObserver(() => { if (!panel.hidden) fit.fit(); }).observe(box);
+      for (const line of a.pending.splice(0)) term.write(line);
+    }
+    requestAnimationFrame(() => a.fit?.fit());
+  });
+  activity = a;
+  return a.page;
+}
+function activityWrite(text: string): void {
+  const page = activityPage();
+  if (page.tabEl === null) openPage(page, false); // a aba nasce atrás da conversa; a pessoa abre quando quiser
+  if (activity!.term === null) activity!.pending.push(text); else activity!.term.write(text);
+}
+const ANSI = { dim: "\u001b[2m", bold: "\u001b[1m", yellow: "\u001b[33m", cyan: "\u001b[36m", red: "\u001b[31m", green: "\u001b[32m", reset: "\u001b[0m" };
+/** Linha recolhível na conversa + eco na aba de atividade. */
+function showTool(tab: Tab, tool: ToolEvent): void {
+  const host = tab.currentAssistant ?? tab.messagesEl;
+  if (tool.kind === "use") {
+    const d = el("details", "tool-line");
+    const s = el("summary"); s.append(el("span", "tool-name", tool.name === "Bash" ? "rodou" : tool.name), el("code", "", tool.summary || "(sem detalhes)"));
+    d.append(s);
+    d.dataset["tool"] = tool.name;
+    (tab.currentAssistant === null ? tab.messagesEl : host).insertAdjacentElement(tab.currentAssistant === null ? "beforeend" : "beforebegin", d);
+    const when = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    activityWrite(`\r\n${ANSI.dim}${when}${ANSI.reset} ${tool.name === "Bash" ? `${ANSI.bold}${ANSI.yellow}$ ${tool.summary}` : `${ANSI.cyan}• ${tool.name} ${tool.summary}`}${ANSI.reset}\r\n`);
+  } else {
+    const lines = [...tab.messagesEl.querySelectorAll<HTMLDetailsElement>(".tool-line")];
+    const target = [...lines].reverse().find((d) => !d.classList.contains("done") && (tool.name === null || d.dataset["tool"] === tool.name));
+    if (target !== undefined) {
+      target.classList.add("done", tool.ok ? "ok" : "bad");
+      if (tool.text.trim() !== "") target.append(el("pre", "tool-result", tool.text));
+    }
+    if (tool.text.trim() !== "") activityWrite(`${tool.ok ? "" : ANSI.red}${tool.text.replace(/\n/g, "\r\n")}${ANSI.reset}\r\n`);
+  }
+  scrollToBottom(tab, false);
+}
+window.meuBot.on("chat:tool", ({ conversationId, tool }) => { const tab = tabs.get(conversationId); if (tab !== undefined) showTool(tab, tool); });
 
 /* ---------- meu-bot-admin: página "Suporte" da máquina da pessoa ---------- */
 interface AdminState { health: AdminHealth | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }

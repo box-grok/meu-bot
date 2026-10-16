@@ -1,3 +1,4 @@
+import { isShellLang } from "./terminal.js";
 import { marked, type Tokens } from "../vendor/marked.esm.js";
 import DOMPurify from "../vendor/purify.es.mjs";
 import hljs from "../vendor/hljs-core.js";
@@ -43,7 +44,8 @@ function highlight(code: string, lang: string): { html: string; language: string
 const renderer = new marked.Renderer();
 renderer.code = ({ text, lang }: Tokens.Code): string => {
   const { html, language } = highlight(text, lang ?? "");
-  return `<div class="code-block" data-lang="${escapeHtml(language)}"><div class="code-head"><span>${escapeHtml(language)}</span><button type="button" class="btn-copy">Copiar</button></div><pre><code class="hljs language-${escapeHtml(language)}">${html}</code></pre></div>\n`;
+  const run = isShellLang(lang ?? "") || isShellLang(language) ? `<button type="button" class="btn-copy btn-run" title="Digita o comando num terminal desta máquina; você confirma com Enter">Rodar no terminal</button>` : "";
+  return `<div class="code-block" data-lang="${escapeHtml(language)}"><div class="code-head"><span>${escapeHtml(language)}</span>${run}<button type="button" class="btn-copy">Copiar</button></div><pre><code class="hljs language-${escapeHtml(language)}">${html}</code></pre></div>\n`;
 };
 marked.setOptions({ gfm: true, breaks: true, renderer });
 

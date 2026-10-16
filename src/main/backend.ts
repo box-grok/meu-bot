@@ -2,7 +2,7 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { AccountStatus, BackendModel } from "../shared/ipc";
+import type { AccountStatus, BackendModel, ToolEvent } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
@@ -84,6 +84,8 @@ interface PostOptions {
   onDelta?: ((text: string) => void) | undefined;
   /** Aviso do backend no meio do stream (fallback de provedor). */
   onNotice?: ((text: string) => void) | undefined;
+  /** Atividade do agente (ferramenta usada / resultado), chunk x_meu_bot.tool. */
+  onTool?: ((tool: ToolEvent) => void) | undefined;
   extraHeaders?: Record<string, string> | undefined;
 }
 
@@ -117,10 +119,12 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
             if (!line.startsWith("data:")) continue;
             const data = line.slice(5).trim();
             if (data === "[DONE]") return;
-            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string } }; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string }; tool?: ToolEvent }; usage?: { prompt_tokens?: number; completion_tokens?: number } };
             try { chunk = JSON.parse(data) as typeof chunk; } catch { continue; }
             const fb = chunk.x_meu_bot?.fallback;
             if (fb !== undefined) opts.onNotice?.(`${fb.from} falhou (${fb.reason}); respondendo com ${fb.to}`);
+            const tool = chunk.x_meu_bot?.tool;
+            if (tool !== undefined && (tool.kind === "use" || tool.kind === "result")) opts.onTool?.(tool);
             const choice = chunk.choices?.[0];
             if (typeof choice?.delta?.content === "string" && choice.delta.content !== "") {
               streamed += choice.delta.content;
@@ -164,9 +168,9 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
 
 const IDLE_MS = 60_000;
 
-async function postWithReconnect(host: string, localPort: number, apiKey: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void): Promise<HttpReply> {
+async function postWithReconnect(host: string, localPort: number, apiKey: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void, onTool?: (tool: ToolEvent) => void): Promise<HttpReply> {
   const body = JSON.stringify({ model, messages: toWire(messages), stream: true });
-  const opts: PostOptions = { overallMs: timeoutFor(model), idleMs: IDLE_MS, signal, onDelta, onNotice, extraHeaders };
+  const opts: PostOptions = { overallMs: timeoutFor(model), idleMs: IDLE_MS, signal, onDelta, onNotice, onTool, extraHeaders };
   const started = Date.now();
   try {
     return await httpPostStream(localPort, "/v1/chat/completions", apiKey, body, opts);
@@ -247,11 +251,11 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
 }
 
 /** Uma chamada completa ao backend (túnel pronto + POST + parse). Reutilizada pelo chat e pelas tarefas de fundo. */
-export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
+export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void, onTool?: (tool: ToolEvent) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
   const tunnel = await readyTunnel(host, out, signal);
   out?.send("backend:status", { host, state: "ready", detail: `túnel ativo · ${model}` });
   const t0 = Date.now();
-  const res = await postWithReconnect(host, tunnel.localPort, tunnel.apiKey, model, messages, out, signal, onDelta, extraHeaders, onNotice);
+  const res = await postWithReconnect(host, tunnel.localPort, tunnel.apiKey, model, messages, out, signal, onDelta, extraHeaders, onNotice, onTool);
   const streamed = res.body === "";
   const resumed = String(res.headers["x-session-resumed"] ?? "") === "true";
   // Quem respondeu de fato (X-Provider do backend): a prova é o cabeçalho, não o que o modelo diz de si.
@@ -399,7 +403,7 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
       if (cancelled()) return;
       out.send("chat:notice", { conversationId, text: `⚠ ${notice}` });
       out.send("backend:status", { host, state: "degraded", detail: notice });
-    });
+    }, (tool) => { if (!cancelled()) out.send("chat:tool", { conversationId, tool }); });
     if (cancelled()) return;
     conv.backendMessages.push({ role: "assistant", content: text });
     conv.serverSeen = conv.backendMessages.length;

@@ -148,6 +148,12 @@ async function ensureMaster(host: string): Promise<void> {
   if (!(await masterAlive(host))) throw new Error("Master SSH subiu mas não responde ao -O check.");
 }
 
+/** Para o terminal: garante o master e devolve os argumentos de um `ssh` que pega carona nele (termina em `-- host`). */
+export async function sshMuxArgs(host: string): Promise<string[]> {
+  await ensureMaster(host);
+  return ["-o", "ControlMaster=no", ...muxOpts(host)];
+}
+
 /** Executa um comando remoto pelo master. */
 async function execViaMux(host: string, command: string, timeoutMs: number): Promise<RunResult> {
   return runSsh(["-o", "ControlMaster=no", ...muxOpts(host), command], timeoutMs);

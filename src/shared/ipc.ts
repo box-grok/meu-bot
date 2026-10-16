@@ -436,6 +436,11 @@ export interface ConversationRef {
   conversationId: string;
 }
 
+/** Atividade do agente vinda do backend (x_meu_bot.tool): uso de ferramenta ou resultado. */
+export type ToolEvent =
+  | { kind: "use"; name: string; summary: string }
+  | { kind: "result"; name: string | null; ok: boolean; text: string };
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
@@ -485,6 +490,8 @@ export interface MainEvents {
   "ui:toggle-settings": Record<string, never>;
   /** Aviso do backend no meio de um turno (ex.: caiu para outro provedor). */
   "chat:notice": { conversationId: string; text: string };
+  /** O agente usou uma ferramenta (modo agente): o que rodou/leu e o resultado resumido. */
+  "chat:tool": { conversationId: string; tool: ToolEvent };
   /** Conta e limites do Claude na máquina, depois de cada turno. */
   "chat:account": { host: string; status: AccountStatus | null };
   /** Pareamento do WhatsApp do Hermes em andamento. */
@@ -495,6 +502,9 @@ export interface MainEvents {
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
   "xai-login:event": ClaudeLoginEvent;
+  /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
+  "term:data": { id: string; data: Uint8Array };
+  "term:exit": { id: string; code: number; detail: string | null };
   /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
   "ui:claude-login": Record<string, never>;
 }
@@ -553,11 +563,16 @@ export interface MeuBotApi {
   supportInfo(): Promise<SupportInfo>;
   setSupport(on: boolean, name: string): Promise<SupportInfo>;
   supportCode(): Promise<string>;
-  /** Grok por chave de API da xAI no backend desta máquina (sem Hermes). `setXaiKey(null)` tira; devolve os modelos listados. */
+  /** Há backend do meu-bot nesta máquina? (decide se a linha "xAI (Grok)" aparece sem Hermes; o login é OAuth pelo Hermes). */
   /** Prepara o Grok por OAuth na máquina (Hermes + proxy local); progresso em xai-login:event (log). */
   xaiPrepare(): Promise<InstallBackendResult>;
+  /** Terminal na máquina desta janela (pty-broker por ssh; neste Mac, local). */
+  termOpen(cols: number, rows: number): Promise<{ id: string }>;
+  termInput(id: string, data: string | Uint8Array): void;
+  termResize(id: string, cols: number, rows: number): void;
+  termClose(id: string): Promise<void>;
+  termReplay(id: string): Promise<Uint8Array>;
   xaiKeyStatus(): Promise<XaiKeyStatus>;
-  setXaiKey(key: string | null): Promise<string[]>;
   /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
   statusLineInstalled(): Promise<boolean>;
   installStatusLine(): Promise<InstallBackendResult>;

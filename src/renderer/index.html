@@ -3,12 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+        content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'" />
+  <!-- style-src 'unsafe-inline' só por causa do xterm.js, que injeta <style> para o renderer DOM (e volta a ele se o WebGL cair). Scripts seguem 'self'. -->
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>meu-bot</title>
   <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="vendor/hljs-github.css" media="(prefers-color-scheme: light)" />
   <link rel="stylesheet" href="vendor/hljs-github-dark.css" media="(prefers-color-scheme: dark)" />
+  <link rel="stylesheet" href="vendor/xterm.css" />
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/xterm-addon-fit.js"></script>
+  <script src="vendor/xterm-addon-webgl.js"></script>
+  <script src="vendor/xterm-addon-web-links.js"></script>
+  <script src="vendor/xterm-addon-search.js"></script>
+  <script src="vendor/xterm-addon-unicode11.js"></script>
 </head>
 <body>
   <div id="intro" class="intro" hidden aria-hidden="true">
@@ -48,6 +56,7 @@
         <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
         <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
         <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
+        <button type="button" id="terminal-line" class="wa-line acervo-line" title="Terminal nesta máquina (Cmd+J; Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
         <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count">0 tutoriais</span></button>
         <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
         <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>
@@ -182,23 +191,6 @@
       </div>
     </div>
   </dialog>
-  <!-- Grok por chave de API (máquinas sem Hermes): a chave vai para o .env do backend da máquina; nunca fica neste Mac. -->
-  <dialog id="xai-key-dialog">
-    <div class="wa-box">
-      <h2>Grok (xAI) nesta máquina</h2>
-      <p id="xai-key-status" class="hint"></p>
-      <input id="xai-key-input" type="password" autocomplete="off" spellcheck="false" placeholder="Cole a chave da xAI (xai-…)" />
-      <p class="hint">A chave é gravada só no backend desta máquina e dá ao modelo grok-4 acesso à sua conta da xAI. Crie uma em console.x.ai › API Keys.</p>
-      <div class="actions"><button type="button" id="xai-key-console" class="btn btn-ghost btn-small">abrir console.x.ai no navegador</button></div>
-      <p id="xai-key-msg" class="hint" hidden></p>
-      <div class="dialog-actions">
-        <button type="button" id="xai-key-save" class="btn btn-primary">Salvar e reiniciar o backend</button>
-        <button type="button" id="xai-key-clear" class="btn btn-ghost" hidden>Remover chave</button>
-        <div class="spacer"></div>
-        <button type="button" id="xai-key-close" class="btn btn-ghost">Fechar</button>
-      </div>
-    </div>
-  </dialog>
   <dialog id="xai-dialog">
     <div class="wa-box">
       <h2>Entrar na xAI (Grok)</h2>
@@ -207,7 +199,6 @@
       <pre id="xai-log" class="log" hidden></pre>
       <div class="dialog-actions">
         <button type="button" id="xai-start" class="btn btn-primary">Começar</button>
-        <button type="button" id="xai-use-key" class="btn btn-ghost btn-small" title="Em vez do login por conta: uma chave de API da xAI gravada no backend desta máquina">usar chave de API</button>
         <div class="spacer"></div>
         <button type="button" id="xai-close" class="btn btn-ghost">Fechar</button>
       </div>

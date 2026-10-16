@@ -19,7 +19,10 @@ import { getBackendPort, getFontSize, getLastHost, getQuickEntry, getTheme, isBa
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus, toggleQuickEntry } from "./quickEntry";
 import { getMemory, loadMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "./memory";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "./hostProbe";
-import { setXaiKey, xaiKeyStatus } from "./xaiKey";
+import { xaiKeyStatus } from "./xaiKey";
+import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "./terminal";
+import { runSsh } from "./whatsapp";
+import { supportLogSh } from "./support-code";
 import { caps, isAdmin } from "./variant";
 import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "./support";
 import { adminAction, adminHealth, adminLogs, isSupportAlias, personName } from "./support-admin";
@@ -91,7 +94,34 @@ function registerIpc(): void {
     if (h === null || isAdmin()) return;
     await reportSupportProgress(h.host, payload).catch(() => undefined);
   });
-  // Grok por chave de API (máquinas sem Hermes). A chave só passa pelo IPC e pelo stdin do ssh; nunca em log.
+  // Terminal: sessões presas à janela que as abriu. Entrada e resize sem resposta (uma por tecla).
+  ipcMain.handle("term:open", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = payload as { cols?: unknown; rows?: unknown } | null;
+    const id = await openTerminal(h.win, h.host, typeof p?.cols === "number" ? p.cols : 80, typeof p?.rows === "number" ? p.rows : 24);
+    // No admin, a pessoa vê no registro dela que o suporte abriu um terminal.
+    if (isAdmin() && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", "abriu um terminal")}\n`, 15_000);
+    return { id };
+  });
+  const termOf = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent, payload: unknown) => {
+    const win = windowFromEvent(event);
+    const id = (payload as { id?: unknown } | null)?.id;
+    return win === null || typeof id !== "string" ? null : ownedTerminal(id, win.id);
+  };
+  ipcMain.on("term:input", (event, payload: unknown) => {
+    const s = termOf(event, payload);
+    const data = (payload as { data?: unknown }).data;
+    if (s !== null && (typeof data === "string" || data instanceof Uint8Array)) writeTerminal(s, data);
+  });
+  ipcMain.on("term:resize", (event, payload: unknown) => {
+    const s = termOf(event, payload);
+    const p = payload as { cols?: unknown; rows?: unknown };
+    if (s !== null && typeof p.cols === "number" && typeof p.rows === "number") resizeTerminal(s, p.cols, p.rows);
+  });
+  ipcMain.handle("term:close", (event, payload: unknown) => { const s = termOf(event, payload); if (s !== null) closeTerminal(s); });
+  ipcMain.handle("term:replay", (event, payload: unknown) => { const s = termOf(event, payload); return s === null ? new Uint8Array() : replayTerminal(s); });
+  // Sem Hermes, a linha da xAI depende de haver backend na máquina (o login em si é OAuth, pelo Hermes).
   ipcMain.handle("xai-login:prepare", (event) => {
     const h = hostFromEvent(event);
     if (h === null || isAdmin()) throw new Error("origem inválida");
@@ -101,12 +131,6 @@ function registerIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return xaiKeyStatus(h.host);
-  });
-  ipcMain.handle("xai-key:set", (event, payload: unknown) => {
-    const h = hostFromEvent(event);
-    if (h === null || isAdmin()) throw new Error("origem inválida");
-    const k = (payload as { key?: unknown } | null)?.key;
-    return setXaiKey(h.host, k === null ? null : typeof k === "string" ? k.trim() : "");
   });
   // Status line do Claude (tutorial): checar e instalar na máquina desta janela.
   ipcMain.handle("statusline:status", (event) => {

@@ -12,7 +12,13 @@ CLAUDE_DIR=$HOME/.claude
 DEST=$CLAUDE_DIR/statusline.sh
 SETTINGS=$CLAUDE_DIR/settings.json
 
-command -v jq >/dev/null 2>&1 || { echo "jq não encontrado: a status line precisa dele (apt install jq / brew install jq)"; exit 1; }
+if ! command -v jq >/dev/null 2>&1; then
+  # Linux com sudo sem senha (VM do Colima, nuvem): instala o jq na hora; senão, explica.
+  if command -v apt-get >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+    echo "instalando o jq (apt)…"; sudo -n apt-get install -y -qq jq >/dev/null 2>&1 || true
+  fi
+  command -v jq >/dev/null 2>&1 || { echo "jq não encontrado: a status line precisa dele (apt install jq / brew install jq)"; exit 1; }
+fi
 [ -f "$HERE/statusline.sh" ] || { echo "statusline.sh não está ao lado deste script"; exit 1; }
 
 for M in "/Library/Application Support/ClaudeCode/managed-settings.json" /etc/claude-code/managed-settings.json; do
