@@ -166,7 +166,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "limites", title: "Ver os limites na conversa", target: "chat",
-        text: "Os números aparecem depois que o Claude Code roda uma vez nesta máquina. Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal.",
+        text: "Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal, os limites da sua conta do Claude nesta máquina.",
         done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
       },
     ],
