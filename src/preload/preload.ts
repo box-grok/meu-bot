@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
+import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -84,6 +84,7 @@ const clientApi: MeuBotClientApi = {
   setSupportName: (name: string) => ipcRenderer.invoke("support:name", { name }),
   supportDeliver: () => ipcRenderer.invoke("support:deliver", {}),
   reportProgress: (p: SupportProgress) => ipcRenderer.invoke("support:progress", p),
+  setSupportShare: (share: SupportShare) => ipcRenderer.invoke("support:share", share),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),

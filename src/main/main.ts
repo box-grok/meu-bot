@@ -11,7 +11,7 @@ import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLas
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
 import { caps } from "./variant";
-import { personName } from "./admin/support-admin";
+import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { registerIpc } from "./ipc";
 import { installAppMenu } from "./menu";
@@ -44,7 +44,7 @@ app.whenReady().then(() => {
   nativeTheme.themeSource = getTheme();
   loadMemory();
   loadConversations();
-  registerIpc({ personName });
+  registerIpc({ person: personInfo });
   installAppMenu({
     openPicker: () => showPicker(),
     toggleSettings: () => {

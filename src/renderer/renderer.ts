@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, Capabilities, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
@@ -1404,7 +1404,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       } else if (step.body === "statusline-install") {
         renderStatusLineInstall(txt);
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
-        renderSupportParts(txt, [step.body === "support-name" ? "name" : step.body === "support-switch" ? "switch" : "delivery"]);
+        renderSupportParts(txt, step.body === "support-name" ? ["name"] : step.body === "support-switch" ? ["switch"] : ["share", "delivery", "log"]);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
@@ -2820,13 +2820,13 @@ backendModelSelect.addEventListener("change", () => { syncPrimaryFromModel(); pa
  * nos passos do tutorial "Ligar o suporte": nome, interruptor, aviso entregue/código (plano B) e o registro do
  * que o suporte fez aqui. Tudo vale na hora; depois de cada ação as duas telas repintam.
  */
-const supportGroup = $<HTMLDetailsElement>("support-group");
-const supportBody = $<HTMLElement>("support-body");
 let supportState: SupportInfo | null = null;
 let supportBusy = false;
 let supportMsg: { text: string; bad: boolean } | null = null;
 /** Código de suporte revelado (plano B; some ao fechar as Configurações ou esconder). */
 let supportCodeShown: string | null = null;
+/** Interruptor "Permitir o acesso do admin" já marcado antes de ligar: ao salvar o nome, liga junto. */
+let supportWantOn = true;
 let supportPoll: number | null = null;
 /** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
 let statusLineState: boolean | null = null;
@@ -2872,7 +2872,6 @@ async function refreshSupportState(): Promise<void> {
   repaintSupport();
 }
 function repaintSupport(): void {
-  if (dialog.open) paintSupport();
   paintGuide();
   // Ligado e o aviso ainda não chegou: confere de novo em 10 s (a máquina entrega sozinha).
   if (supportPoll !== null) { clearTimeout(supportPoll); supportPoll = null; }
@@ -2885,36 +2884,54 @@ async function supportDo(run: () => Promise<SupportInfo>, ok: string | null): Pr
   finally { supportBusy = false; repaintSupport(); }
 }
 
-type SupportPart = "name" | "switch" | "delivery" | "log";
+type SupportPart = "name" | "switch" | "share" | "delivery" | "log";
 function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[]): void {
   const s = supportState;
   if (s === null || !s.available) return;
   if (parts.includes("name")) {
     const row = el("div", "support-name");
     const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name; name.maxLength = 40;
-    // Com o suporte ligado o nome fica fixo; se ainda está vazio (ligado por outro Mac, por exemplo), dá para pôr.
-    const editable = !s.on || s.name === "";
-    name.disabled = !editable || supportBusy;
-    row.append(name);
-    if (editable) {
-      const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
-      // Ligado: regrava o aviso com o nome novo (o admin vê o nome que vai no código).
-      save.addEventListener("click", () => { void supportDo(() => (s.on ? window.meuBot.setSupport(true, name.value) : window.meuBot.setSupportName(name.value)), null); });
-      name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
-      row.append(save);
-    }
+    name.disabled = supportBusy;
+    const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
+    // Ligado: regrava o aviso com o nome novo (o admin vê o nome que vai no código). Desligado com o
+    // interruptor marcado (o padrão): salvar o nome liga o suporte no mesmo clique.
+    save.addEventListener("click", () => {
+      const turnOn = s.on || supportWantOn;
+      void supportDo(() => (turnOn ? window.meuBot.setSupport(true, name.value) : window.meuBot.setSupportName(name.value)), turnOn && !s.on ? "Suporte ligado. Avisando o admin…" : null);
+    });
+    name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
+    row.append(name, save);
     container.append(row);
   }
   if (parts.includes("switch")) {
     const sw = el("label", "switch switch-row");
-    const box = el("input"); box.type = "checkbox"; box.checked = s.on; box.disabled = supportBusy || (!s.on && s.name === "");
+    const box = el("input"); box.type = "checkbox"; box.checked = s.on || supportWantOn; box.disabled = supportBusy;
     sw.append(box, el("span", "track"), el("span", "switch-label", supportBusy ? "aplicando…" : "Permitir o acesso do admin"));
-    if (!s.on && s.name === "") sw.title = "Diga seu nome antes";
     box.addEventListener("change", () => {
       const on = box.checked;
+      // Sem nome ainda não dá para ligar (o admin precisa saber quem é): só guarda a vontade; "Salvar nome" liga.
+      if (!s.on && s.name === "") { supportWantOn = on; repaintSupport(); return; }
       void supportDo(() => window.meuBot.setSupport(on, s.name), on ? "Suporte ligado. Avisando o admin…" : "Suporte desligado. O acesso saiu desta máquina.");
     });
     container.append(sw);
+    if (!s.on && s.name === "" && supportWantOn) container.append(el("p", "hint", "Já vem marcado: ao salvar seu nome, o suporte liga."));
+  }
+  if (parts.includes("share") && s.on) {
+    container.append(el("p", "hint strong-hint", "O que o app do admin pode ver"));
+    const SHARE_LABELS: { key: keyof SupportShare; label: string }[] = [
+      { key: "progress", label: "Meu progresso nos tutoriais" },
+      { key: "whatsapp", label: "O WhatsApp (estado e conversas, só leitura)" },
+      { key: "logs", label: "Os registros do gateway e do backend" },
+    ];
+    const list = el("div", "support-share");
+    for (const o of SHARE_LABELS) {
+      const sw = el("label", "switch switch-row");
+      const box = el("input"); box.type = "checkbox"; box.checked = s.share[o.key]; box.disabled = supportBusy;
+      sw.append(box, el("span", "track"), el("span", "switch-label", o.label));
+      box.addEventListener("change", () => { void supportDo(() => window.meuBot.setSupportShare({ ...s.share, [o.key]: box.checked }), null); });
+      list.append(sw);
+    }
+    container.append(list, el("p", "hint", "O app do admin respeita estas escolhas. Enquanto o suporte estiver ligado ele ainda entra por SSH; para cortar tudo, desligue o interruptor acima."));
   }
   if (parts.includes("delivery") && s.on) {
     const box = el("div", "support-delivery");
@@ -2955,24 +2972,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     container.append(ul);
   }
 }
-async function loadSupport(): Promise<void> {
-  supportCodeShown = null;
-  if (windowHost === "local" || !caps.supportClient) { supportGroup.hidden = true; return; }
-  await refreshSupportState();
-}
-function paintSupport(): void {
-  const s = supportState;
-  supportGroup.hidden = s === null || !s.available;
-  if (s === null || !s.available) return;
-  supportBody.replaceChildren();
-  supportBody.append(el("p", "hint", s.on
-    ? `Ligado: o admin consegue entrar em ${hostLabel(windowHost)} para ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece abaixo. Desligar tira o acesso na hora.`
-    : `Desligado: ninguém além de você entra em ${hostLabel(windowHost)}. Ligue quando precisar de ajuda do admin.`));
-  renderSupportParts(supportBody, ["name", "switch", "delivery", "log"]);
-}
-
 function openSettings(): void {
-  void loadSupport();
   if (dialog.open) return;
   syncPrimaryFromModel();
   paintFallbackOrder();
@@ -3043,10 +3043,14 @@ void (async () => {
     document.title = `${info.person ?? windowHost} · suporte`;
     document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
     applySettings(await window.meuBot.getSettings());
-    void refreshWhatsapp();
+    // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
-      who: { host: windowHost, person: info.person }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
-      onWhatsapp: (st) => { waStatus = st; paintWhatsapp(); renderSidebar(); },
+      who: { host: windowHost, person: info.person, machine: info.machine }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
+      onWhatsapp: (st) => {
+        if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
+        else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }
+        paintWhatsapp(); renderSidebar();
+      },
     }).open();
     tabsReady = true;
     return;

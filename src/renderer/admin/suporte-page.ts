@@ -12,7 +12,7 @@ import { actionResultText, healthLines, progressEmptyText, progressLines, progre
 
 export interface SuportePageDeps {
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
-  who: { host: string; person: string | null };
+  who: { host: string; person: string | null; machine: string | null };
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
@@ -20,8 +20,8 @@ export interface SuportePageDeps {
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   fmtPhone(digits: string | null): string;
   api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction">;
-  /** A saúde trouxe o WhatsApp da máquina: o renderer atualiza a lateral. */
-  onWhatsapp(status: WhatsappStatus): void;
+  /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
+  onWhatsapp(status: WhatsappStatus | null): void;
 }
 
 export interface SuportePage {
@@ -43,7 +43,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     state.busy = "health"; render();
     try {
       state.health = await deps.api.adminHealth(); state.healthErr = null;
-      if (state.health.whatsapp !== null) deps.onWhatsapp(state.health.whatsapp);
+      deps.onWhatsapp(state.health.whatsapp);
     } catch (err) { state.healthErr = ipcErrorText(err); }
     finally { state.busy = null; render(); }
   }
@@ -74,7 +74,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     panel.replaceChildren();
     const head = el("div", "guide-head");
     const body = el("div", "tut-body");
-    body.append(el("span", "tut-badge", "suporte · espelho só leitura"), el("h2", "", who), el("p", "", `Máquina ${deps.who.host}. As ações abaixo ficam registradas para ${who} ver nas Configurações dela. Se ela desligar o suporte, o acesso acaba na hora.`));
+    body.append(el("span", "tut-badge", "suporte · espelho só leitura"), el("h2", "", who), el("p", "", `Máquina ${deps.who.machine ?? deps.who.host}. As ações abaixo ficam registradas para ${who} ver nas Configurações dela. Se ela desligar o suporte, o acesso acaba na hora.`));
     head.append(body);
     panel.append(head);
 
@@ -86,7 +86,11 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     const hp = state.health;
     if (state.healthErr !== null) h.append(el("p", "hint guide-pair-note", state.healthErr));
     else if (hp === null) h.append(el("p", "hint", "Consultando…"));
-    else h.append(list(healthLines(hp, deps.fmtPhone)));
+    else {
+      const lines = healthLines(hp, deps.fmtPhone);
+      if (!hp.share.whatsapp) lines.push({ text: `WhatsApp: ${who} preferiu não compartilhar`, ok: null });
+      h.append(list(lines));
+    }
     panel.append(h);
 
     // Progresso nos tutoriais (onde a pessoa está e onde travou)
@@ -94,6 +98,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     pg.append(el("strong", "", "Progresso nos tutoriais"));
     const prog = hp?.progress ?? null;
     if (hp === null) pg.append(el("p", "hint", "Consultando…"));
+    else if (!hp.share.progress) pg.append(el("p", "hint", `${who} preferiu não compartilhar o progresso nos tutoriais.`));
     else if (prog === null) pg.append(el("p", "hint", progressEmptyText(who)));
     else pg.append(list(progressLines(prog)), el("p", "hint", progressUpdatedText(prog.at)));
     panel.append(pg);
@@ -117,7 +122,12 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     if (state.msg !== null) a.append(el("p", `hint ${state.msg.bad ? "guide-pair-note" : "audio-ok"}`, state.msg.text));
     panel.append(a);
 
-    // Registros: recolhido por padrão (é o que menos se olha e o mais pesado de ler).
+    // Registros: recolhido por padrão (é o que menos se olha e o mais pesado de ler). Só se ela compartilha.
+    if (hp !== null && !hp.share.logs) {
+      const nr = el("div", "admin-card"); nr.append(el("strong", "", "Registros (gateway e backend)"), el("p", "hint", `${who} preferiu não compartilhar os registros.`));
+      panel.append(nr, el("p", "hint", "As conversas do WhatsApp dela estão na lateral (só leitura)."));
+      return;
+    }
     const r = el("details", "admin-card admin-logs-card");
     r.open = logsOpen;
     const sum = el("summary", "admin-card-head");

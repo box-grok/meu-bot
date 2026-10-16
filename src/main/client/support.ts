@@ -9,11 +9,11 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import type { SupportInfo } from "../../shared/ipc";
+import type { SupportInfo, SupportShare } from "../../shared/ipc";
 import { LOCAL_HOST } from "../localBackend";
 import { isValidHost } from "../settings";
 import { log } from "../backend";
-import { SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
+import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh } from "../whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
@@ -77,7 +77,8 @@ async function buildCode(host: string, name: string, state: "on" | "off"): Promi
   const r = await runSsh(host, "cat /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || cat /etc/ssh/ssh_host_ecdsa_key.pub\n", 20_000);
   const hostKey = r.stdout.trim().split(" ").slice(0, 2).join(" ");
   if (r.code !== 0 || hostKey === "") throw new Error("não consegui ler a chave do servidor desta máquina");
-  const code: SupportCode = { v: 1, name, hostname: addr.hostname, user: addr.user, port: addr.port, hostKey, state, at: new Date().toISOString() };
+  // `machine` é o apelido dela para a máquina (o host desta janela): o admin mostra "colima", não o alias dele.
+  const code: SupportCode = { v: 1, name, hostname: addr.hostname, user: addr.user, port: addr.port, hostKey, state, at: new Date().toISOString(), machine: host };
   return { id: machineId(hostKey), code, text: encodeSupportCode(code) };
 }
 
@@ -129,6 +130,8 @@ rm -rf "${D}"
 
 /** Suporte ligado por máquina (da última consulta): o progresso só é gravado com o suporte ligado. */
 const supportOn = new Map<string, boolean>();
+/** O que ela compartilha, por máquina (da última consulta): o progresso só é gravado se ela deixa. */
+const shareOf = new Map<string, SupportShare>();
 const PROGRESS = "$HOME/.local/share/meu-bot/progresso.json";
 const lastProgress = new Map<string, string>();
 
@@ -143,7 +146,7 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
   const body = JSON.stringify(p);
   if (lastProgress.get(host) === JSON.stringify({ ...p, at: "" })) return;
   if (!supportOn.has(host)) await supportInfo(host).catch(() => undefined);
-  if (supportOn.get(host) !== true) return;
+  if (supportOn.get(host) !== true || shareOf.get(host)?.progress === false) return;
   const b64 = Buffer.from(body, "utf8").toString("base64");
   const r = await runSsh(host, `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s' '${b64}' | base64 -d > "${PROGRESS}.tmp" && mv "${PROGRESS}.tmp" "${PROGRESS}"\n`, 20_000);
   if (r.code === 0) lastProgress.set(host, JSON.stringify({ ...p, at: "" }));
@@ -152,8 +155,8 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
 /** Estado do suporte na máquina desta janela: chave do admin presente + últimas linhas do registro. */
 export async function supportInfo(host: string): Promise<SupportInfo> {
   const b = supportBundle();
-  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), log: [], deliveredAt: null };
-  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\n`, 20_000);
+  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), log: [], deliveredAt: null, share: DEFAULT_SHARE };
+  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
   const lines = r.stdout.split("\n");
   const entries = lines.filter((l) => l.startsWith("L=")).map((l) => {
@@ -163,7 +166,10 @@ export async function supportInfo(host: string): Promise<SupportInfo> {
   supportOn.set(host, lines.includes("ON=1"));
   const e = (lines.find((l) => l.startsWith("E=")) ?? "E=").slice(2).trim();
   const deliveredAt = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(e) ? e : null;
-  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), log: entries, deliveredAt };
+  let share = DEFAULT_SHARE;
+  try { share = parseSupportShare(JSON.parse((lines.find((l) => l.startsWith("S=")) ?? "S=").slice(2))); } catch { /* sem escolha gravada: tudo compartilhado */ }
+  shareOf.set(host, share);
+  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), log: entries, deliveredAt, share };
 }
 
 /** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */
@@ -204,6 +210,20 @@ export function setSupportNameOnly(host: string, name: string): Promise<SupportI
   const who = name.replace(/\s+/g, " ").trim().slice(0, 40);
   if (who === "") throw new Error("escreva seu nome");
   saveSupportName(who);
+  return supportInfo(host);
+}
+
+/** O que o app do admin pode ver: grava a escolha na máquina; tirar o progresso apaga o que já estava lá. */
+export async function setSupportShare(host: string, raw: unknown): Promise<SupportInfo> {
+  if (supportBundle() === null) throw new Error("este meu-bot não veio com suporte");
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("o suporte vale para máquinas por SSH, não para este Mac");
+  const share = parseSupportShare(raw);
+  const b64 = Buffer.from(JSON.stringify(share), "utf8").toString("base64");
+  const r = await runSsh(host, `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s' '${b64}' | base64 -d > "${SHARE_FILE}.tmp" && mv "${SHARE_FILE}.tmp" "${SHARE_FILE}"${share.progress ? "" : ` && rm -f "${PROGRESS}"`}\n`, 20_000);
+  if (r.code !== 0) throw new Error("não consegui gravar a escolha nesta máquina");
+  shareOf.set(host, share);
+  if (!share.progress) lastProgress.delete(host);
+  log(`[suporte] ${host}: compartilha progresso=${share.progress} whatsapp=${share.whatsapp} registros=${share.logs}`);
   return supportInfo(host);
 }
 

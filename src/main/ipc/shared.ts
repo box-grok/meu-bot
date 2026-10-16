@@ -24,8 +24,8 @@ import { EXTERNAL_URL, hostFromEvent, waNumber } from "./context";
 import { handleShared } from "./registry";
 
 export interface SharedIpcDeps {
-  /** No meu-bot-admin: nome da pessoa dona da máquina (vem de admin/support-admin.ts; aqui só se injeta). */
-  personName: (host: string) => string | null;
+  /** No meu-bot-admin: a pessoa dona da máquina e o apelido dela para ela (vem de admin/support-admin.ts; aqui só se injeta). */
+  person: (host: string) => { name: string; machine: string | null } | null;
 }
 
 export function registerSharedIpc(deps: SharedIpcDeps): void {
@@ -33,7 +33,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const ctx = hostFromEvent(event);
     if (ctx === null) return null;
     const c = caps();
-    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: c.supportAdmin ? deps.personName(ctx.host) : null };
+    const p = c.supportAdmin ? deps.person(ctx.host) : null;
+    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null };
   });
   handleShared("ui:open-picker", () => showPicker());
   handleShared("shell:open-external", (_event, payload: unknown) => {

@@ -8,8 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, SupportPerson, SupportProgress } from "../../shared/ipc";
-import { adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import type { AdminAction, AdminHealth, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import { SHARE_FILE, adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
 import { getBackendPort, isValidHost } from "../settings";
@@ -95,7 +95,7 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
 }
 
 const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
-const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source });
+const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source });
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
@@ -121,17 +121,28 @@ export function addSupportCode(text: string): SupportPerson {
   return toPerson(s);
 }
 
-/** Nome da pessoa pelo alias (para títulos e o seletor). */
-export function personName(alias: string): string | null {
-  for (const s of load().values()) if (supportAlias(s.code) === alias) return s.code.name;
+/** Nome da pessoa e o apelido dela para a máquina, pelo alias (títulos e a página Suporte). */
+export function personInfo(alias: string): { name: string; machine: string | null } | null {
+  for (const s of load().values()) if (supportAlias(s.code) === alias) return { name: s.code.name, machine: s.code.machine ?? null };
   return null;
 }
 export const adminKeyExists = (): boolean => fs.existsSync(ADMIN_KEY);
 
-/** Saúde da máquina da pessoa: a sondagem do seletor + o WhatsApp + o progresso dela nos tutoriais. */
+/** O que ela deixa este app ver (compartilha.json na máquina dela); sem arquivo, tudo. */
+async function readShare(host: string): Promise<SupportShare> {
+  const r = await runSsh(host, `cat "${SHARE_FILE}" 2>/dev/null\n`, 15_000).catch(() => null);
+  try { return parseSupportShare(JSON.parse(r?.stdout ?? "")); } catch { return parseSupportShare({}); }
+}
+
+/** Saúde da máquina da pessoa: a sondagem do seletor + (se ela deixa) o WhatsApp e o progresso nos tutoriais. */
 export async function adminHealth(host: string): Promise<AdminHealth> {
-  const [probe, wa, progress] = await Promise.all([probeHost(host, getBackendPort()), whatsappStatus(host).catch(() => null), readProgress(host)]);
-  return { probe, whatsapp: wa, progress };
+  const share = await readShare(host);
+  const [probe, wa, progress] = await Promise.all([
+    probeHost(host, getBackendPort()),
+    share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
+    share.progress ? readProgress(host) : Promise.resolve(null),
+  ]);
+  return { probe, whatsapp: wa, progress, share };
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
@@ -143,6 +154,7 @@ async function readProgress(host: string): Promise<SupportProgress | null> {
 
 /** Últimos registros do gateway e do backend (só leitura). */
 export async function adminLogs(host: string): Promise<string> {
+  if (!(await readShare(host)).logs) throw new Error("a pessoa preferiu não compartilhar os registros");
   const r = await runSsh(host, "journalctl --user -u openclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200\n", 30_000);
   return r.stdout.trim() || r.stderr.trim() || "sem registros";
 }

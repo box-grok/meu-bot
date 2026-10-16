@@ -35,7 +35,7 @@ export const CLIENT_CHANNELS = [
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "tailscale:disable-check", "tailscale:restore",
   // suporte, lado da pessoa
-  "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code",
+  "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share",
   // seletor
   "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:remove-host", "picker:rename-host",
   "picker:sync-ssh", "picker:open-direct", "picker:onboarding-done", "picker:claude-login",

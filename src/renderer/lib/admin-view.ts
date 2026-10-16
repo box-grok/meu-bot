@@ -65,7 +65,7 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 
 /** O que vai depois do nome da pessoa na lista do seletor: endereço, alcance e "visto há". */
 export const personSuffix = (p: SupportPerson, now: number = Date.now()): string =>
-  ` · ${p.hostname}${p.port !== 22 ? `:${p.port}` : ""}${p.local ? " · só alcançável deste Mac" : ""}${p.seenAt !== "" ? ` · ${timeAgo(p.seenAt, now)}` : ""}`;
+  ` · ${p.machine !== null ? `${p.machine} · ` : ""}${p.hostname}${p.port !== 22 ? `:${p.port}` : ""}${p.local ? " · só alcançável deste Mac" : ""}${p.seenAt !== "" ? ` · ${timeAgo(p.seenAt, now)}` : ""}`;
 
 export const EMPTY_PEOPLE_TEXT = "Ninguém ainda. Quando uma pessoa ligar \"Permitir suporte\" no meu-bot dela, ela aparece aqui sozinha. Ou use Adicionar pessoa com o código dela.";
 export const MISSING_ADMIN_KEY_TEXT = "⚠ falta a chave ~/.ssh/meu-bot-admin neste Mac: rode node scripts/suporte-setup.mjs no projeto.";

@@ -21,7 +21,7 @@ import { isBackendModel } from "../settings";
 import { toggleQuickEntry } from "../quickEntry";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "../hostProbe";
 import { setXaiKey } from "../xaiKey";
-import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "../client/support";
+import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient } from "./registry";
@@ -58,6 +58,11 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return supportCodeText(h.host);
+  });
+  handleClient("support:share", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return setSupportShare(h.host, payload);
   });
 
   // Grok por chave de API (máquinas sem Hermes). A chave só passa pelo IPC e pelo stdin do ssh; nunca em log.

@@ -124,12 +124,12 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "permitir", title: "Permitir o acesso do admin", target: "none", body: "support-switch",
-        text: "Ligado, o admin consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer fica registrado nas Configurações. Você desliga quando quiser.",
+        text: "Já vem marcado: ao salvar seu nome, a máquina passa a aceitar o admin. Ligado, ele consegue ver a saúde da máquina, o WhatsApp e os registros, e fazer ajustes de suporte. Tudo o que ele fizer aparece no passo seguinte. Você desliga quando quiser.",
         done: (_st, _f, c) => c.support?.on === true,
       },
       {
-        id: "entrega", title: "O admin recebe o aviso", target: "none", body: "support-delivery",
-        text: "A sua máquina avisa o admin sozinha, sem você precisar mandar nada. Este passo se marca quando o aviso chegar.",
+        id: "entrega", title: "O que o admin recebe", target: "none", body: "support-delivery",
+        text: "Escolha o que o app do admin pode ver. A sua máquina avisa o admin sozinha, sem você precisar mandar nada; este passo se marca quando o aviso chegar. Abaixo, tudo o que o suporte fez aqui.",
         done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
       },
     ],

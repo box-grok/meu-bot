@@ -162,6 +162,8 @@ export interface WindowInfo {
   caps: Capabilities;
   /** No admin: nome da pessoa dona da máquina. */
   person: string | null;
+  /** No admin: apelido que a pessoa usa para a máquina ("colima"); null se o código não trouxe. */
+  machine: string | null;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
   models: string[];
 }
@@ -240,13 +242,23 @@ export interface SupportInfo {
   log: { at: string; who: string; what: string }[];
   /** Última entrega do aviso na caixa do admin que deu certo (ISO); null = ainda nenhuma. */
   deliveredAt: string | null;
+  /** O que a pessoa deixa o app do admin ver. */
+  share: SupportShare;
 }
+/**
+ * O que a pessoa escolhe compartilhar com o app do admin: progresso nos tutoriais, WhatsApp (estado e
+ * conversas) e registros (journal). O app do admin respeita; o acesso SSH em si continua enquanto o suporte
+ * está ligado (desligar o interruptor corta tudo). Fica na máquina dela, em ~/.local/share/meu-bot.
+ */
+export interface SupportShare { progress: boolean; whatsapp: boolean; logs: boolean }
 
 /** Suporte, lado do admin: uma pessoa (uma máquina) que entregou ou colou o código. */
 export interface SupportPerson {
   /** Alias no ~/.ssh do admin (`suporte-<nome>-<4 hex>`): é o "host" da janela. */
   alias: string;
   name: string;
+  /** Apelido que a pessoa usa para a máquina no ~/.ssh/config dela ("colima"); null em códigos antigos. */
+  machine: string | null;
   hostname: string;
   port: number;
   /** Endereço local (127.0.0.1/localhost): só alcançável do próprio Mac onde a pessoa está (teste com VM). */
@@ -257,7 +269,8 @@ export interface SupportPerson {
   seenAt: string;
   source: "caixa" | "colado";
 }
-export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null }
+/** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
+export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
 export interface SupportProgress {
   at: string;
@@ -598,6 +611,8 @@ export interface MeuBotClientApi {
   supportDeliver(): Promise<SupportInfo>;
   /** Progresso nos tutoriais desta pessoa (vai para a máquina só com o suporte ligado). */
   reportProgress(p: SupportProgress): Promise<void>;
+  /** O que o app do admin pode ver desta máquina (vale na hora). */
+  setSupportShare(share: SupportShare): Promise<SupportInfo>;
   /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
   whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
   whatsappCancel(): Promise<void>;

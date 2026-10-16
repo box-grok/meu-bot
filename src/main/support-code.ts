@@ -6,9 +6,9 @@
  * Formato: `MBS1.<base64url(JSON)>`. `state: "off"` = a pessoa desligou o suporte.
  */
 import { createHash } from "node:crypto";
-import type { SupportProgress } from "../shared/ipc";
+import type { SupportProgress, SupportShare } from "../shared/ipc";
 
-export type { SupportProgress };
+export type { SupportProgress, SupportShare };
 
 export const SUPPORT_PREFIX = "MBS1.";
 /** Teto do código (a caixa de entrada na agente-box também corta em 4 KB). */
@@ -31,9 +31,12 @@ export interface SupportCode {
   state: "on" | "off";
   /** Quando foi gerado (ISO). */
   at: string;
+  /** Apelido que ela usa para a máquina no ~/.ssh/config dela ("colima"); o admin mostra em vez do alias. */
+  machine?: string;
 }
 
 const HOSTNAME_RE = /^[A-Za-z0-9._:-]{1,253}$/;
+const MACHINE_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const USER_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/;
 const HOSTKEY_RE = /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]+={0,3}$/;
 const PUBKEY_RE = /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]+={0,3}( .*)?$/;
@@ -64,7 +67,8 @@ export function decodeSupportCode(raw: string): DecodeResult {
   if (typeof o.hostKey !== "string" || !HOSTKEY_RE.test(o.hostKey)) return { ok: false, reason: "chave do servidor inválida" };
   if (o.state !== "on" && o.state !== "off") return { ok: false, reason: "estado inválido" };
   if (typeof o.at !== "string" || Number.isNaN(Date.parse(o.at))) return { ok: false, reason: "data inválida" };
-  return { ok: true, code: { v: 1, name, hostname: o.hostname, user: o.user, port: o.port, hostKey: o.hostKey, state: o.state, at: o.at } };
+  const machine = typeof o.machine === "string" && MACHINE_RE.test(o.machine) ? o.machine : undefined;
+  return { ok: true, code: { v: 1, name, hostname: o.hostname, user: o.user, port: o.port, hostKey: o.hostKey, state: o.state, at: o.at, ...(machine === undefined ? {} : { machine }) } };
 }
 
 /** Identidade estável da máquina: o hash da chave do servidor (nome e endereço podem mudar). */
@@ -155,4 +159,13 @@ export function parseSupportProgress(raw: unknown): SupportProgress | null {
     tutorials.push({ id, title, done, total, current, finished: r.finished === true, comingSoon: r.comingSoon === true });
   }
   return { at, tour: o.tour, tutorials };
+}
+
+/** Onde a escolha do que compartilhar fica na máquina dela (fora da pasta do suporte: sobrevive a desligar/ligar). */
+export const SHARE_FILE = "$HOME/.local/share/meu-bot/compartilha.json";
+export const DEFAULT_SHARE: SupportShare = { progress: true, whatsapp: true, logs: true };
+/** Lê a escolha gravada (ou vinda do renderer); o que falta ou não é booleano conta como compartilhado. */
+export function parseSupportShare(raw: unknown): SupportShare {
+  const o = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  return { progress: o.progress !== false, whatsapp: o.whatsapp !== false, logs: o.logs !== false };
 }

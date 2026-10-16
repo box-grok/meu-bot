@@ -53,7 +53,8 @@ test("timeAgo e personSuffix", () => {
   assert.equal(timeAgo("2026-10-16T09:00:00Z", now), "visto há 3 h");
   assert.equal(timeAgo("2026-10-13T12:00:00Z", now), "visto há 3 dias");
   assert.equal(timeAgo("lixo", now), "");
-  const p = { alias: "suporte-bia-ab12", name: "Bia", hostname: "203.0.113.7", port: 2222, local: false, on: true, seenAt: "2026-10-16T11:30:00Z", source: "caixa" };
+  const p = { alias: "suporte-bia-ab12", name: "Bia", machine: null, hostname: "203.0.113.7", port: 2222, local: false, on: true, seenAt: "2026-10-16T11:30:00Z", source: "caixa" };
   assert.equal(personSuffix(p, now), " · 203.0.113.7:2222 · visto há 30 min");
   assert.equal(personSuffix({ ...p, port: 22, local: true, seenAt: "" }, now), " · 203.0.113.7 · só alcançável deste Mac");
+  assert.equal(personSuffix({ ...p, machine: "colima", port: 22, seenAt: "" }, now), " · colima · 203.0.113.7");
 });

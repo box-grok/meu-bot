@@ -94,3 +94,19 @@ test("supportLogSh: linha no registro da pessoa, texto limpo e curto", () => {
   assert.ok(!sh.includes("$(x)") && !sh.includes(";"), "sem $, ; nem aspas no texto");
   assert.ok(m.supportLogSh("a".repeat(300), "b").includes(`'${"a".repeat(120)}'`), "corta em 120");
 });
+
+test("código com o apelido da máquina (machine): vai e volta; inválido cai fora; antigo sem ele vale", () => {
+  const d = m.decodeSupportCode(m.encodeSupportCode({ ...code, machine: "colima" }));
+  assert.ok(d.ok); assert.equal(d.code.machine, "colima");
+  const old = m.decodeSupportCode(m.encodeSupportCode(code));
+  assert.ok(old.ok); assert.equal("machine" in old.code, false);
+  const bad = m.decodeSupportCode(m.encodeSupportCode({ ...code, machine: "tem espaço; e ponto-e-vírgula" }));
+  assert.ok(bad.ok); assert.equal("machine" in bad.code, false, "apelido inválido é ignorado, não derruba o código");
+});
+
+test("parseSupportShare: tudo compartilhado por padrão; só false desliga", () => {
+  assert.deepEqual(m.parseSupportShare(undefined), { progress: true, whatsapp: true, logs: true });
+  assert.deepEqual(m.parseSupportShare({ whatsapp: false }), { progress: true, whatsapp: false, logs: true });
+  assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0 }), { progress: true, whatsapp: true, logs: true });
+  assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true });
+});

@@ -584,6 +584,7 @@ body.topbar-hidden .topbar { display: none; }
 .support-name input:focus { outline: none; border-color: var(--accent); }
 .support-name input:disabled { opacity: .6; }
 .support-delivery { display: flex; flex-direction: column; gap: 8px; }
+.support-share { display: flex; flex-direction: column; gap: 4px; }
 .support-delivery > .btn { align-self: flex-start; }
 .support-more > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .support-more[open] { display: flex; flex-direction: column; gap: 6px; }
