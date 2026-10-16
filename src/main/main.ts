@@ -11,10 +11,11 @@ import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLas
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
 import { caps } from "./variant";
-import { personName } from "./support-admin";
+import { personName } from "./admin/support-admin";
+import { adminPickerSource } from "./admin/picker-source";
 import { registerIpc } from "./ipc";
 import { installAppMenu } from "./menu";
-import { initPicker, showPicker } from "./picker";
+import { clientPickerSource, initPicker, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
 import { initRelief, showRelief } from "./relief";
 import { listSshHosts } from "./sshConfig";
@@ -52,7 +53,7 @@ app.whenReady().then(() => {
       if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:toggle-settings", {});
     },
   });
-  initPicker();
+  initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   initRelief();
   // A entrada rápida é do chat: o meu-bot-admin não a sobe nem registra o atalho global.
   if (caps().chat) {

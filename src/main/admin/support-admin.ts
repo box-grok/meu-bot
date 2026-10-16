@@ -1,5 +1,5 @@
 /**
- * Suporte, lado do admin (meu-bot-admin). Sem servidor: as pessoas aparecem pela caixa de entrada na máquina
+ * Variante: admin. Suporte, lado do admin (meu-bot-admin). Sem servidor: as pessoas aparecem pela caixa de entrada na máquina
  * do admin (entregue máquina com máquina) ou colando o código. Cada pessoa vira um `Host suporte-…` num
  * arquivo só do suporte (~/.ssh/meu-bot-suporte.conf, incluído no topo do ~/.ssh/config) com known_hosts
  * próprio: o admin entra pela chave ~/.ssh/meu-bot-admin, que só funciona enquanto a pessoa deixar.
@@ -8,12 +8,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, SupportPerson, SupportProgress } from "../shared/ipc";
-import { adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, supportAlias, supportLogSh, type SupportCode } from "./support-code";
-import { runSsh, whatsappStatus } from "./whatsapp";
-import { installAudio, probeHost } from "./hostProbe";
-import { getBackendPort, isValidHost } from "./settings";
-import { log } from "./backend";
+import type { AdminAction, AdminHealth, SupportPerson, SupportProgress } from "../../shared/ipc";
+import { adminSshBlock, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import { runSsh, whatsappStatus } from "../whatsapp";
+import { installAudio, probeHost } from "../hostProbe";
+import { getBackendPort, isValidHost } from "../settings";
+import { log } from "../backend";
 
 interface AdminConfig { admin: string; inbox: { alias: string } }
 interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado" }
@@ -126,7 +126,6 @@ export function personName(alias: string): string | null {
   for (const s of load().values()) if (supportAlias(s.code) === alias) return s.code.name;
   return null;
 }
-export const isSupportAlias = (h: string): boolean => /^suporte-[a-z0-9-]+-[0-9a-f]{4}$/.test(h);
 export const adminKeyExists = (): boolean => fs.existsSync(ADMIN_KEY);
 
 /** Saúde da máquina da pessoa: a sondagem do seletor + o WhatsApp + o progresso dela nos tutoriais. */

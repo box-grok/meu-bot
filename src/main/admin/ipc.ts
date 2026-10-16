@@ -3,7 +3,8 @@
  * registros, ações). Só valem numa janela de pessoa do suporte (alias `suporte-…`); no meu-bot normal o
  * registro vira recusa (ipc/registry.ts).
  */
-import { adminAction, adminHealth, adminLogs, isSupportAlias } from "../support-admin";
+import { isSupportAlias } from "../support-code";
+import { adminAction, adminHealth, adminLogs } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 

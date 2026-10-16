@@ -119,6 +119,8 @@ export function adminSshBlock(c: SupportCode, identityFile: string): string {
 
 /** Linha do known_hosts do admin (pelo HostKeyAlias: endereço pode mudar sem quebrar a confiança). */
 export const knownHostsLine = (c: SupportCode): string => `${supportAlias(c)} ${c.hostKey}`;
+/** É um alias de pessoa do suporte (os `Host suporte-…` que o meu-bot-admin põe no ~/.ssh)? */
+export const isSupportAlias = (h: string): boolean => /^suporte-[a-z0-9-]+-[0-9a-f]{4}$/.test(h);
 
 /** Registro de suporte na máquina da pessoa (ela vê nas Configurações; o admin anota as ações dele aqui). */
 export const SUPPORT_LOG = "$HOME/.local/share/meu-bot/suporte.log";

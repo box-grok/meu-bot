@@ -21,7 +21,7 @@ import { isBackendModel } from "../settings";
 import { toggleQuickEntry } from "../quickEntry";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled } from "../hostProbe";
 import { setXaiKey } from "../xaiKey";
-import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "../support";
+import { deliverNow, reportSupportProgress, setSupport, setSupportNameOnly, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient } from "./registry";

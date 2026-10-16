@@ -1,5 +1,5 @@
 /**
- * Suporte, lado da pessoa (meu-bot normal com o pacote de suporte no .dmg: `scripts/dmg.mjs --suporte`).
+ * Variante: cliente. Suporte, lado da pessoa (meu-bot normal com o pacote de suporte no .dmg: `scripts/dmg.mjs --suporte`).
  * "Permitir suporte" põe a chave pública do admin no authorized_keys da máquina dela e instala lá um timer
  * que entrega o código de suporte na caixa de entrada do admin a cada 30 min (máquina com máquina, por SSH,
  * com a chave só de entrega). Desligar tira a chave, entrega "desligado" e remove o timer. Tudo que o
@@ -9,12 +9,12 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import type { SupportInfo } from "../shared/ipc";
-import { LOCAL_HOST } from "./localBackend";
-import { isValidHost } from "./settings";
-import { log } from "./backend";
-import { SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, supportLogSh, type SupportCode } from "./support-code";
-import { runSsh } from "./whatsapp";
+import type { SupportInfo } from "../../shared/ipc";
+import { LOCAL_HOST } from "../localBackend";
+import { isValidHost } from "../settings";
+import { log } from "../backend";
+import { SUPPORT_LOG, authorizedKeysScript, encodeSupportCode, machineId, parseSupportProgress, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
+import { runSsh } from "../whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
 interface SupportBundle {
