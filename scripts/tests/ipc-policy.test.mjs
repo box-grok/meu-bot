@@ -43,3 +43,17 @@ test("o que escreve na máquina da pessoa é só do cliente; o admin só tem o s
   assert.deepEqual([...admin].sort(), ["admin:action", "admin:health", "admin:logs", "picker:support-add", "picker:support-refresh"]);
   assert.match(ADMIN_READONLY_MSG, /só lê/);
 });
+
+test("os grupos sharedApi/clientApi/adminApi dos preloads batem com as listas de canais", () => {
+  for (const file of ["preload.js", "picker-preload.js"]) {
+    const src = readFileSync(join(here, "..", "..", "dist", "preload", file), "utf8");
+    const groups = [...src.matchAll(/const (shared|client|admin)Api[\s\S]*?\n\};/g)];
+    assert.equal(groups.length, 3, `${file}: três grupos`);
+    const lists = { shared, client, admin };
+    for (const g of groups) {
+      const chans = [...g[0].matchAll(/ipcRenderer\.(?:invoke|send)\("([a-z:-]+)"/g)].map((m) => m[1]);
+      assert.ok(chans.length > 0, `${file}: ${g[1]}Api vazio`);
+      for (const c of chans) assert.ok(lists[g[1]].has(c), `${file}: ${c} está em ${g[1]}Api mas não em ${g[1].toUpperCase()}_CHANNELS`);
+    }
+  }
+});

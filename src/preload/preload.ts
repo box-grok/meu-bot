@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
+import type { AdminAction, AudioSetup, BackendModel, SupportProgress, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -23,71 +23,22 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "ui:claude-login",
 ];
 
-const api: MeuBotApi = {
-  send: (conversationId: string, text: string) => ipcRenderer.invoke("chat:send", { conversationId, text }),
-  cancel: (conversationId: string) => ipcRenderer.invoke("chat:cancel", { conversationId }),
-  newConversation: (): Promise<ConversationRef> => ipcRenderer.invoke("chat:new", {}),
-  closeConversation: (conversationId: string) => ipcRenderer.invoke("chat:close", { conversationId }),
-  listConversations: (): Promise<StoredConversationView[]> => ipcRenderer.invoke("chat:list", {}),
-  renameConversation: (conversationId: string, title: string) => ipcRenderer.invoke("chat:rename", { conversationId, title }),
-  reorderConversations: (conversationIds: string[]) => ipcRenderer.invoke("chat:reorder", { conversationIds }),
-  setConversationModel: (conversationId: string, model: BackendModel) => ipcRenderer.invoke("chat:set-model", { conversationId, model }),
+/** Os dois apps. */
+const sharedApi: MeuBotSharedApi = {
   openExternal: (url: string) => ipcRenderer.invoke("shell:open-external", { url }),
-  openConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:open", { conversationId }),
-  deleteConversation: (conversationId: string) => ipcRenderer.invoke("chat:delete", { conversationId }),
-  archiveConversation: (conversationId: string, archived: boolean) => ipcRenderer.invoke("chat:archive", { conversationId, archived }),
-  duplicateConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:duplicate", { conversationId }),
-  branchConversation: (conversationId: string, index: number): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:branch", { conversationId, index }),
-  exportConversation: (conversationId: string, format: ExportFormat): Promise<{ path: string } | null> => ipcRenderer.invoke("chat:export", { conversationId, format }),
-  showTabMenu: (conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null> => ipcRenderer.invoke("ui:tab-menu", { conversationId, state }),
-  notify: (conversationId: string, title: string, body: string) => ipcRenderer.invoke("ui:notify", { conversationId, title, body }),
   getMemory: (): Promise<MemoryView> => ipcRenderer.invoke("memory:get", {}),
-  toggleQuickEntry: () => ipcRenderer.invoke("ui:quick-toggle", {}),
-  quickAck: (correlationId: string, ok: boolean, message?: string): void => ipcRenderer.send("quick:ack", { correlationId, ok, ...(message === undefined ? {} : { message }) }),
   setMemory: (update: { notas?: string; perfil?: string }): Promise<MemoryView> => ipcRenderer.invoke("memory:set", update),
   getSettings: (): Promise<SettingsView> => ipcRenderer.invoke("settings:get", {}),
   getWindowInfo: (): Promise<WindowInfo | null> => ipcRenderer.invoke("window:info", {}),
   openPicker: () => ipcRenderer.invoke("ui:open-picker", {}),
-  getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
-  disableTailscaleCheck: () => ipcRenderer.invoke("tailscale:disable-check", {}),
-  restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
-  whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
-  whatsappLogout: () => ipcRenderer.invoke("whatsapp:logout", {}),
-  whatsappAudio: (setup: AudioSetup) => ipcRenderer.invoke("whatsapp:audio", setup),
-  supportInfo: () => ipcRenderer.invoke("support:info", {}),
-  setSupport: (on: boolean, name: string) => ipcRenderer.invoke("support:set", { on, name }),
-  supportCode: () => ipcRenderer.invoke("support:code", {}),
-  xaiPrepare: () => ipcRenderer.invoke("xai-login:prepare", {}),
   xaiKeyStatus: () => ipcRenderer.invoke("xai-key:status", {}),
-  setXaiKey: (key: string | null) => ipcRenderer.invoke("xai-key:set", { key }),
-  statusLineInstalled: () => ipcRenderer.invoke("statusline:status", {}),
-  installStatusLine: () => ipcRenderer.invoke("statusline:install", {}),
-  setSupportName: (name: string) => ipcRenderer.invoke("support:name", { name }),
-  supportDeliver: () => ipcRenderer.invoke("support:deliver", {}),
-  reportProgress: (p: SupportProgress) => ipcRenderer.invoke("support:progress", p),
-  adminHealth: () => ipcRenderer.invoke("admin:health", {}),
-  adminLogs: () => ipcRenderer.invoke("admin:logs", {}),
-  adminAction: (action: AdminAction) => ipcRenderer.invoke("admin:action", { action }),
-  whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
-  whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
-  whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
-  pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
   showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
-  whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
-  clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
-  claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
-  claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),
-  claudeLoginCancel: () => ipcRenderer.invoke("claude-login:cancel", {}),
   claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),
-  claudeLogout: () => ipcRenderer.invoke("claude-login:logout", {}),
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
-  xaiLogin: () => ipcRenderer.invoke("xai-login:start", {}),
-  xaiLoginCancel: () => ipcRenderer.invoke("xai-login:cancel", {}),
-  xaiLogout: () => ipcRenderer.invoke("xai-login:logout", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);
@@ -96,5 +47,65 @@ const api: MeuBotApi = {
     return () => ipcRenderer.removeListener(channel, listener);
   },
 };
+
+/** Só o meu-bot normal (no admin, o main recusa). */
+const clientApi: MeuBotClientApi = {
+  send: (conversationId: string, text: string) => ipcRenderer.invoke("chat:send", { conversationId, text }),
+  cancel: (conversationId: string) => ipcRenderer.invoke("chat:cancel", { conversationId }),
+  newConversation: (): Promise<ConversationRef> => ipcRenderer.invoke("chat:new", {}),
+  closeConversation: (conversationId: string) => ipcRenderer.invoke("chat:close", { conversationId }),
+  listConversations: (): Promise<StoredConversationView[]> => ipcRenderer.invoke("chat:list", {}),
+  renameConversation: (conversationId: string, title: string) => ipcRenderer.invoke("chat:rename", { conversationId, title }),
+  reorderConversations: (conversationIds: string[]) => ipcRenderer.invoke("chat:reorder", { conversationIds }),
+  setConversationModel: (conversationId: string, model: BackendModel) => ipcRenderer.invoke("chat:set-model", { conversationId, model }),
+  openConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:open", { conversationId }),
+  deleteConversation: (conversationId: string) => ipcRenderer.invoke("chat:delete", { conversationId }),
+  archiveConversation: (conversationId: string, archived: boolean) => ipcRenderer.invoke("chat:archive", { conversationId, archived }),
+  duplicateConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:duplicate", { conversationId }),
+  branchConversation: (conversationId: string, index: number): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:branch", { conversationId, index }),
+  exportConversation: (conversationId: string, format: ExportFormat): Promise<{ path: string } | null> => ipcRenderer.invoke("chat:export", { conversationId, format }),
+  showTabMenu: (conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null> => ipcRenderer.invoke("ui:tab-menu", { conversationId, state }),
+  notify: (conversationId: string, title: string, body: string) => ipcRenderer.invoke("ui:notify", { conversationId, title, body }),
+  toggleQuickEntry: () => ipcRenderer.invoke("ui:quick-toggle", {}),
+  quickAck: (correlationId: string, ok: boolean, message?: string): void => ipcRenderer.send("quick:ack", { correlationId, ok, ...(message === undefined ? {} : { message }) }),
+  getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
+  disableTailscaleCheck: () => ipcRenderer.invoke("tailscale:disable-check", {}),
+  restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
+  whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
+  whatsappLogout: () => ipcRenderer.invoke("whatsapp:logout", {}),
+  whatsappAudio: (setup: AudioSetup) => ipcRenderer.invoke("whatsapp:audio", setup),
+  supportInfo: () => ipcRenderer.invoke("support:info", {}),
+  setSupport: (on: boolean, name: string) => ipcRenderer.invoke("support:set", { on, name }),
+  supportCode: () => ipcRenderer.invoke("support:code", {}),
+  xaiPrepare: () => ipcRenderer.invoke("xai-login:prepare", {}),
+  setXaiKey: (key: string | null) => ipcRenderer.invoke("xai-key:set", { key }),
+  statusLineInstalled: () => ipcRenderer.invoke("statusline:status", {}),
+  installStatusLine: () => ipcRenderer.invoke("statusline:install", {}),
+  setSupportName: (name: string) => ipcRenderer.invoke("support:name", { name }),
+  supportDeliver: () => ipcRenderer.invoke("support:deliver", {}),
+  reportProgress: (p: SupportProgress) => ipcRenderer.invoke("support:progress", p),
+  whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
+  whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
+  whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
+  pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
+  whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
+  clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
+  claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
+  claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),
+  claudeLoginCancel: () => ipcRenderer.invoke("claude-login:cancel", {}),
+  claudeLogout: () => ipcRenderer.invoke("claude-login:logout", {}),
+  xaiLogin: () => ipcRenderer.invoke("xai-login:start", {}),
+  xaiLoginCancel: () => ipcRenderer.invoke("xai-login:cancel", {}),
+  xaiLogout: () => ipcRenderer.invoke("xai-login:logout", {}),
+};
+
+/** Só o meu-bot-admin. */
+const adminApi: MeuBotAdminApi = {
+  adminHealth: () => ipcRenderer.invoke("admin:health", {}),
+  adminLogs: () => ipcRenderer.invoke("admin:logs", {}),
+  adminAction: (action: AdminAction) => ipcRenderer.invoke("admin:action", { action }),
+};
+
+const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };
 
 contextBridge.exposeInMainWorld("meuBot", api);

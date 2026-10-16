@@ -158,9 +158,7 @@ export interface Capabilities {
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */
 export interface WindowInfo {
   host: string;
-  /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
-  admin: boolean;
-  /** O que esta variante pode fazer (ver Capabilities). */
+  /** O que esta variante pode fazer (ver Capabilities); o admin é `caps.supportAdmin`. */
   caps: Capabilities;
   /** No admin: nome da pessoa dona da máquina. */
   person: string | null;
@@ -364,9 +362,29 @@ export type ReliefEvent =
   | { kind: "done"; ok: boolean; text: string };
 
 /** API exposta ao seletor de máquinas como window.picker. */
-export interface PickerApi {
+/** Seletor, os dois apps. */
+export interface PickerSharedApi {
   list(): Promise<PickerInit>;
   probe(host: string): Promise<HostProbe>;
+  choose(host: string): Promise<void>;
+  /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
+  setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
+  /** Abre a janela de alívio da máquina (computador do Grok Bot) e fecha o seletor. */
+  relieve(host: string): Promise<void>;
+  /** Cria (true) ou remove (false) o botão "aliviar <host>.app" na área de trabalho. */
+  setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
+  /** Abre o app do Grok Bot no card "Reset computer" (pod congelado). false se não há quem atenda grokbot://. */
+  openGrokbotReset(): Promise<boolean>;
+  /** Estado da credencial do OAuth client do Tailscale (nunca o valor). */
+  tailscaleCredential(): Promise<TailscaleCredentialState>;
+  /** Abre no navegador uma página fixa (allowlist no main): "tailscale-keys". */
+  openKnownUrl(which: "tailscale-keys"): Promise<void>;
+  cancel(): void;
+  on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
+}
+
+/** Variante: cliente. Seletor do meu-bot normal: instalar, sincronizar o ~/.ssh/config, renomear, remover, Tailscale. */
+export interface PickerClientApi {
   install(host: string): Promise<InstallBackendResult>;
   /** Instala a status line do Claude Code na máquina (statusline.sh + statusLine no settings.json); mesmo log de progresso. */
   installStatusLine(host: string): Promise<InstallBackendResult>;
@@ -376,40 +394,32 @@ export interface PickerApi {
   removeHost(host: string): Promise<{ backup: string }>;
   /** Apelido da máquina no app (vazio tira); a chave SSH não muda. */
   renameHost(host: string, name: string): Promise<void>;
-  /** meu-bot-admin: lê a caixa de entrada e devolve as pessoas (warning se a caixa não respondeu). */
-  supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
-  /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
-  supportAdd(code: string): Promise<SupportPerson>;
-  choose(host: string): Promise<void>;
-  /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
-  setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
   /** Acrescenta ao ~/.ssh/config as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo). */
   syncSsh(): Promise<SshSyncResult>;
-  /** Abre a janela de alívio da máquina (computador do Grok Bot) e fecha o seletor. */
-  relieve(host: string): Promise<void>;
-  /** Cria (true) ou remove (false) o botão "aliviar <host>.app" na área de trabalho. */
-  setReliefShortcut(host: string, create: boolean): Promise<{ has: boolean }>;
   /** Caixinha "abrir direto" do rodapé. */
   setOpenDirect(value: boolean): Promise<void>;
   /** Caixinha "onboarding feito" do rodapé. */
   setOnboardingDone(value: boolean): Promise<void>;
-  /** Abre o app do Grok Bot no card "Reset computer" (pod congelado). false se não há quem atenda grokbot://. */
-  openGrokbotReset(): Promise<boolean>;
   /** Verificação do Tailscale SSH: abre um ssh que espera, leva o link ao navegador e resolve quando a pessoa aprovar. */
   approveTailscale(host: string): Promise<{ ok: boolean; detail: string }>;
-  /** Estado da credencial do OAuth client do Tailscale (nunca o valor). */
-  tailscaleCredential(): Promise<TailscaleCredentialState>;
   saveTailscaleCredential(clientId: string, clientSecret: string): Promise<TailscaleCredentialState>;
   forgetTailscaleCredential(): Promise<TailscaleCredentialState>;
   /** Edita a política do tailnet (ssh: check → accept); `host` só invalida a sondagem em cache. */
   disableTailscaleCheck(host: string): Promise<TailscaleSshResult>;
-  /** Abre no navegador uma página fixa (allowlist no main): "tailscale-keys". */
-  openKnownUrl(which: "tailscale-keys"): Promise<void>;
   /** Abre a janela da máquina já no modal "Entrar no Claude Code". */
   claudeLogin(host: string): Promise<void>;
-  cancel(): void;
-  on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
+
+/** Variante: admin. Seletor de pessoas do meu-bot-admin. */
+export interface PickerAdminApi {
+  /** meu-bot-admin: lê a caixa de entrada e devolve as pessoas (warning se a caixa não respondeu). */
+  supportRefresh(): Promise<{ people: SupportPerson[]; warning: string | null }>;
+  /** meu-bot-admin: "Adicionar pessoa" colando o código de suporte. */
+  supportAdd(code: string): Promise<SupportPerson>;
+}
+
+/** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */
+export type PickerApi = PickerSharedApi & PickerClientApi & PickerAdminApi;
 
 export interface DoneEvent {
   conversationId: string;
@@ -502,7 +512,38 @@ export interface MainEvents {
 export type MainEventChannel = keyof MainEvents;
 
 /** API exposta ao renderer via contextBridge como window.meuBot. */
-export interface MeuBotApi {
+/** Janela principal, os dois apps: leituras da máquina e o que é só deste Mac. */
+export interface MeuBotSharedApi {
+  getMemory(): Promise<MemoryView>;
+  setMemory(update: { notas?: string; perfil?: string }): Promise<MemoryView>;
+  getSettings(): Promise<SettingsView>;
+  /** Máquina desta janela; null se a janela não está registrada (não deveria acontecer). */
+  getWindowInfo(): Promise<WindowInfo | null>;
+  /** Abre o seletor de máquinas (nova janela em outra máquina). */
+  openPicker(): Promise<void>;
+  /** WhatsApp do Hermes na máquina desta janela. */
+  whatsappStatus(): Promise<WhatsappStatus>;
+  xaiKeyStatus(): Promise<XaiKeyStatus>;
+  /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
+  whatsappChats(): Promise<WhatsappChat[]>;
+  /** Histórico de um contato (número só com dígitos). Só leitura. */
+  whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
+  /** Menu "…" de uma conversa do WhatsApp na lista. */
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  /** Salva a conversa toda num arquivo; null = cancelado. */
+  exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
+  /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
+  claudeAuth(): Promise<ClaudeAuthInfo | null>;
+  /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
+  xaiAuth(): Promise<ClaudeAuthInfo | null>;
+  setSettings(update: SettingsUpdate): Promise<SettingsView>;
+  /** Abre um link http(s) no navegador do sistema. */
+  openExternal(url: string): Promise<void>;
+  on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void;
+}
+
+/** Variante: cliente. Só o meu-bot normal: conversar com o agente, parear e mexer no WhatsApp, logins, instalar, suporte do lado da pessoa. */
+export interface MeuBotClientApi {
   send(conversationId: string, text: string): Promise<void>;
   /** Interrompe a resposta em andamento desta conversa. */
   cancel(conversationId: string): Promise<void>;
@@ -527,24 +568,15 @@ export interface MeuBotApi {
   /** Menu de contexto nativo da aba; null se fechado sem escolher. */
   showTabMenu(conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null>;
   notify(conversationId: string, title: string, body: string): Promise<void>;
-  getMemory(): Promise<MemoryView>;
   quickAck(correlationId: string, ok: boolean, message?: string): void;
   /** Mostra/esconde a janela de entrada rápida (mesmo efeito do atalho global). */
   toggleQuickEntry(): Promise<void>;
-  setMemory(update: { notas?: string; perfil?: string }): Promise<MemoryView>;
-  getSettings(): Promise<SettingsView>;
-  /** Máquina desta janela; null se a janela não está registrada (não deveria acontecer). */
-  getWindowInfo(): Promise<WindowInfo | null>;
-  /** Abre o seletor de máquinas (nova janela em outra máquina). */
-  openPicker(): Promise<void>;
   /** Conta e limites do Claude na máquina desta janela (null se o backend não tem o endpoint). */
   getAccountStatus(): Promise<AccountStatus | null>;
   /** Tailscale: ssh check → accept na política do tailnet (precisa da credencial salva no seletor). */
   disableTailscaleCheck(): Promise<TailscaleSshResult>;
   /** Tailscale: volta a política para o backup mais novo. */
   restoreTailscalePolicy(): Promise<TailscaleSshResult>;
-  /** WhatsApp do Hermes na máquina desta janela. */
-  whatsappStatus(): Promise<WhatsappStatus>;
   /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
   whatsappPair(reset: boolean): Promise<void>;
   /** Desconecta o número da máquina (sem gerar QR novo). */
@@ -556,7 +588,6 @@ export interface MeuBotApi {
   /** Grok por chave de API da xAI no backend desta máquina (sem Hermes). `setXaiKey(null)` tira; devolve os modelos listados. */
   /** Prepara o Grok por OAuth na máquina (Hermes + proxy local); progresso em xai-login:event (log). */
   xaiPrepare(): Promise<InstallBackendResult>;
-  xaiKeyStatus(): Promise<XaiKeyStatus>;
   setXaiKey(key: string | null): Promise<string[]>;
   /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
   statusLineInstalled(): Promise<boolean>;
@@ -567,27 +598,15 @@ export interface MeuBotApi {
   supportDeliver(): Promise<SupportInfo>;
   /** Progresso nos tutoriais desta pessoa (vai para a máquina só com o suporte ligado). */
   reportProgress(p: SupportProgress): Promise<void>;
-  /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
-  adminHealth(): Promise<AdminHealth>;
-  adminLogs(): Promise<string>;
-  adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
   /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
   whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo. Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;
-  /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
-  whatsappChats(): Promise<WhatsappChat[]>;
-  /** Histórico de um contato (número só com dígitos). Só leitura. */
-  whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
-  /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
-  /** Salva a conversa toda num arquivo; null = cancelado. */
-  exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). */
   whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
   /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
@@ -597,18 +616,21 @@ export interface MeuBotApi {
   /** Código colado pela pessoa; false se não há login em andamento. */
   claudeLoginCode(code: string): Promise<boolean>;
   claudeLoginCancel(): Promise<void>;
-  /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
-  claudeAuth(): Promise<ClaudeAuthInfo | null>;
   /** `claude auth logout` na máquina; devolve o estado depois. */
   claudeLogout(): Promise<ClaudeAuthInfo | null>;
-  /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
-  xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** `hermes auth add xai-oauth --type oauth --no-browser` (eventos em xai-login:event). */
   xaiLogin(): Promise<void>;
   xaiLoginCancel(): Promise<void>;
   xaiLogout(): Promise<ClaudeAuthInfo | null>;
-  setSettings(update: SettingsUpdate): Promise<SettingsView>;
-  /** Abre um link http(s) no navegador do sistema. */
-  openExternal(url: string): Promise<void>;
-  on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void;
 }
+
+/** Variante: admin. Só o meu-bot-admin: a página "Suporte" da máquina da pessoa. */
+export interface MeuBotAdminApi {
+  /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
+  adminHealth(): Promise<AdminHealth>;
+  adminLogs(): Promise<string>;
+  adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
+}
+
+/** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */
+export type MeuBotApi = MeuBotSharedApi & MeuBotClientApi & MeuBotAdminApi;
