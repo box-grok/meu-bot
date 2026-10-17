@@ -1,7 +1,7 @@
 /**
  * Variante: admin. O seletor do meu-bot-admin lista pessoas, não máquinas: os aliases `suporte-…` das pessoas
  * com suporte ligado (admin/support-admin.ts). Os handlers só dele: atualizar pela caixa de entrada e
- * "Adicionar pessoa" colando o código, arquivar, apelido e "Excluir pessoa" (limpa o WhatsApp dela e desliga o
+ * "Adicionar pessoa" colando o código, arquivar, apelido e "Excluir máquina" (limpa o WhatsApp dela e desliga o
  * suporte). Nada de instalar nem de mexer no ~/.ssh/config: a máquina é dela.
  */
 import type { PickerSource } from "../picker";

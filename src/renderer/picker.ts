@@ -363,11 +363,11 @@ archiveBtn.addEventListener("click", () => {
 });
 
 /**
- * "Excluir pessoa" (só o admin): dois cliques (o primeiro arma por 4 s). Na máquina dela limpa todo o histórico do
+ * "Excluir máquina" (só o admin): dois cliques (o primeiro arma por 4 s). Na máquina dela limpa todo o histórico do
  * WhatsApp e desliga o suporte; aqui ela sai da lista. Se a máquina não responder, o botão vira "Excluir mesmo
  * assim", que só tira da lista.
  */
-const REMOVE_PERSON_LABEL = "Excluir pessoa";
+const REMOVE_PERSON_LABEL = "Excluir máquina";
 function resetRemovePerson(): void {
   removePersonBtn.dataset["armed"] = ""; removePersonBtn.dataset["host"] = selected ?? ""; removePersonBtn.textContent = REMOVE_PERSON_LABEL; removePersonBtn.disabled = false;
 }
@@ -376,21 +376,21 @@ removePersonBtn.addEventListener("click", () => {
   if (alias === null || person === undefined) return;
   const armed = removePersonBtn.dataset["armed"];
   if (armed !== "1" && armed !== "force") {
-    removePersonBtn.dataset["armed"] = "1"; removePersonBtn.textContent = "Confirmar? limpa o WhatsApp dela e desliga o suporte";
+    removePersonBtn.dataset["armed"] = "1"; removePersonBtn.textContent = "Confirmar? limpa o WhatsApp da máquina e desliga o suporte";
     window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "1") resetRemovePerson(); }, 4000);
     return;
   }
   const force = armed === "force";
-  removePersonBtn.dataset["armed"] = ""; removePersonBtn.textContent = force ? "Tirando da lista…" : "Limpando o WhatsApp dela…"; removePersonBtn.disabled = true;
+  removePersonBtn.dataset["armed"] = ""; removePersonBtn.textContent = force ? "Tirando da lista…" : "Limpando o WhatsApp da máquina…"; removePersonBtn.disabled = true;
   void window.picker.supportRemove(alias, force).then(async (r) => {
     noteEl.hidden = false; noteEl.className = "note ok";
-    noteEl.textContent = `✓ ${person.name} saiu da lista: ${r.detail}.`;
+    noteEl.textContent = `✓ máquina de ${person.name} excluída: ${r.detail}.`;
     resetRemovePerson();
     init(await window.picker.list());
   }).catch((err: unknown) => {
     showError("excluir", err);
     // A máquina não respondeu: o segundo caminho só tira da lista (10 s para decidir).
-    removePersonBtn.disabled = false; removePersonBtn.dataset["armed"] = "force"; removePersonBtn.textContent = "Excluir mesmo assim (só tira da lista)";
+    removePersonBtn.disabled = false; removePersonBtn.dataset["armed"] = "force"; removePersonBtn.textContent = "Excluir máquina mesmo assim (só tira da lista)";
     window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "force") resetRemovePerson(); }, 10_000);
   });
 });

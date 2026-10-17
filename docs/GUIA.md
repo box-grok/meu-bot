@@ -1259,13 +1259,14 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   `sessions.list` continua listando a sessão depois do reset, a conversa só volta se `updatedAt` ficar maior que a
   hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na máquina, excluir só tira da lista.
   No admin a limpeza fica no registro da pessoa, como o "Limpar histórico…".
-- Excluir pessoa no seletor do admin (17 out): "Excluir pessoa" (dois cliques) na pessoa selecionada faz tudo de uma
+- Excluir máquina no seletor do admin (17 out): "Excluir máquina" (dois cliques; é máquina, não pessoa: cada linha é
+  uma VM) na pessoa selecionada faz tudo de uma
   vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via
   `whatsappClearSessions`, o mesmo "Limpar histórico" de cada conversa) e desliga o suporte (mesmo script do
   `support-off`: tira a chave do admin, entrega "off", apaga timer/pasta, marca o bloqueio), e aqui ela sai de
   pessoas.json, do ~/.ssh/meu-bot-suporte.conf e do arquivo dela na caixa de entrada (senão a próxima leitura a
   traria de volta). A janela dela, se aberta, fecha. Máquina fora do ar: nada é limpo, ela fica na lista e o botão
-  vira "Excluir mesmo assim (só tira da lista)" por 10 s (`force`). `removePerson` em `admin/support-admin.ts`,
+  vira "Excluir máquina mesmo assim (só tira da lista)" por 10 s (`force`). `removePerson` em `admin/support-admin.ts`,
   `picker:support-remove`. Ela volta ao suporte só se salvar o nome de novo no tutorial (o bloqueio do admin
   impede o religar automático).
 - "Renomear" (seletor, máquina selecionada; não "este Mac" nem no admin): apelido guardado em

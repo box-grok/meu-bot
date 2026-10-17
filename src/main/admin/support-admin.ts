@@ -262,7 +262,7 @@ async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: stri
 }
 
 /**
- * "Excluir pessoa" no seletor do admin: na máquina dela, limpa todo o histórico do WhatsApp (todas as sessões do
+ * "Excluir máquina" no seletor do admin: na máquina dela, limpa todo o histórico do WhatsApp (todas as sessões do
  * OpenClaw, o mesmo "Limpar histórico" de cada conversa, de uma vez) e desliga o suporte (o mesmo do `support-off`);
  * aqui ela sai de pessoas.json, do ~/.ssh/meu-bot-suporte.conf e do arquivo dela na caixa de entrada. Com a máquina
  * fora do ar nada é limpo e ela fica na lista; `force` é o "excluir mesmo assim", que só tira da lista.
@@ -284,11 +284,11 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
       detail = cleared === 0 ? "não havia histórico do WhatsApp para limpar; o suporte foi desligado" : `histórico do WhatsApp limpo (${cleared} ${cleared === 1 ? "conversa" : "conversas"}) e suporte desligado`;
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
-      if (!force) throw new Error(`a máquina dela não respondeu (${why}); nada foi limpo e ela continua na lista`);
-      detail = `a máquina não respondeu (${why}); ela só saiu da lista`;
+      if (!force) throw new Error(`a máquina não respondeu (${why}); nada foi limpo e ela continua na lista`);
+      detail = `a máquina não respondeu (${why}); só saiu da lista`;
     }
   } else {
-    detail = "o suporte dela já estava desligado; ela só saiu da lista";
+    detail = "o suporte já estava desligado; a máquina só saiu da lista";
   }
   // O arquivo dela na caixa de entrada sai também (o "off" recém-entregue inclusive), senão a próxima leitura a traz de volta.
   const inbox = adminConfig().inbox.alias;
