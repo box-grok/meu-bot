@@ -3278,7 +3278,8 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
   if (s === null || !s.available) return;
   if (parts.includes("name")) {
     const row = el("div", "support-name");
-    const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name; name.maxLength = 40;
+    // Vazio, já vem com a sugestão (git/usuário do Mac): salvar liga o suporte com um clique.
+    const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name !== "" ? s.name : s.suggestedName; name.maxLength = 40;
     name.disabled = supportBusy;
     const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
     // Salvar o nome liga o suporte (ligado, só regrava o aviso com o nome novo). Não há interruptor para a pessoa
@@ -3286,7 +3287,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     save.addEventListener("click", () => { void supportDo(() => window.meuBot.setSupport(true, name.value), s.on ? null : "Suporte ligado. Avisando o admin…"); });
     name.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); save.click(); } });
     row.append(name, save);
-    container.append(row);
+    container.append(row, el("p", "hint", "É assim que o admin vai te ver (não é o nome da máquina)."));
   }
   if (parts.includes("share") && s.on) {
     container.append(el("p", "hint strong-hint", "O que o app do admin pode ver"));

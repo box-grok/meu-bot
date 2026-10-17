@@ -248,6 +248,8 @@ export interface SupportInfo {
   on: boolean;
   /** Nome que a pessoa deu para si. */
   name: string;
+  /** Sugestão para o campo vazio (nome do git ou do usuário do Mac): salvar liga com um clique. */
+  suggestedName: string;
   /** Últimas linhas do registro de suporte da máquina (mais nova primeiro). */
   log: { at: string; who: string; what: string }[];
   /** Última entrega do aviso na caixa do admin que deu certo (ISO); null = ainda nenhuma. */

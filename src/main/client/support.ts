@@ -5,7 +5,7 @@
  * com a chave só de entrega). Desligar tira a chave, entrega "desligado" e remove o timer. Tudo que o
  * suporte faz na máquina fica em ~/.local/share/meu-bot/suporte.log, que a pessoa vê nas Configurações.
  */
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
@@ -43,6 +43,17 @@ export function supportBundle(): SupportBundle | null {
   } catch {
     return null;
   }
+}
+
+/** Sugestão de nome quando ela ainda não disse (git user.name ou o nome do usuário do Mac): salvar liga com um clique. */
+let suggested: string | null = null;
+export function suggestedName(): string {
+  if (suggested !== null) return suggested;
+  const tryCmd = (cmd: string, args: string[]): string => { try { return execFileSync(cmd, args, { encoding: "utf8", timeout: 3000 }).trim(); } catch { return ""; } };
+  const git = tryCmd("git", ["config", "--global", "user.name"]);
+  const full = git !== "" ? git : tryCmd("id", ["-F"]);
+  suggested = full.replace(/\s+/g, " ").trim().slice(0, 40);
+  return suggested;
 }
 
 /** Nome que a pessoa deu para si (aparece para o admin); fica no userData deste Mac. */
@@ -150,7 +161,7 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
 /** Estado do suporte na máquina desta janela: chave do admin presente + últimas linhas do registro. */
 export async function supportInfo(host: string): Promise<SupportInfo> {
   const b = supportBundle();
-  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), log: [], deliveredAt: null, share: DEFAULT_SHARE };
+  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE };
   const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
   const lines = r.stdout.split("\n");
@@ -164,7 +175,7 @@ export async function supportInfo(host: string): Promise<SupportInfo> {
   let share = DEFAULT_SHARE;
   try { share = parseSupportShare(JSON.parse((lines.find((l) => l.startsWith("S=")) ?? "S=").slice(2))); } catch { /* sem escolha gravada: tudo compartilhado */ }
   shareOf.set(host, share);
-  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), log: entries, deliveredAt, share };
+  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share };
 }
 
 /** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */
