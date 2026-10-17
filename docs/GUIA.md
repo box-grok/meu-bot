@@ -1291,6 +1291,18 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   ("arquivou/desarquivou/excluiu a conversa do WhatsApp de +55…"); a migração não registra. Sem python3 na VM, a
   marcação falha com aviso claro (o app já depende dele para ler o número próprio). Testado na agente-box: arquivo
   corrompido + ajuste, merge de dois ajustes, `at` respeitado.
+- "Copiar referência" nos três pontinhos (17 out, os dois apps): uma linha para colar numa IA dizendo onde a
+  conversa mora. Três formas (`src/renderer/lib/reference.ts`, puro, testado): espelho do meu-bot no admin →
+  `meu-bot · <máquina> · ~/.claude/projects/<pasta>/<uuid>.jsonl` (botão "…" na linha via `ui:bot-menu`, canal
+  admin, e botão no cabeçalho da conversa); aba do meu-bot → o mesmo caminho, vindo do backend
+  (`GET /v1/meu-bot/session?conv=` em `backend-colima/server.js`, lista `{profile, sessionId, cwd, file}` do
+  session-map), guardado em `StoredConversation.claude` ao fim de cada turno (`rememberClaudeSession` em
+  `ipc/client.ts`) para valer depois do TTL de 6 h do mapa; sem sessão ainda (conversa nova, backend antigo ou
+  sem túnel) o plano B é `meu-bot · <máquina> · conversa <id do app> (ainda sem transcrição…)`; WhatsApp →
+  `whatsapp · <máquina> · +55… · <chave da sessão> · sessão <uuid>`, uma linha por sessão (a principal inclusive),
+  porque a chave é estável e o UUID (`WhatsappChat.sessionIds`, do `sessions.list`) troca a cada "Limpar". A cópia
+  é só do que a lista já tem (sem SSH); aviso "✓ Referência copiada" por 1,5 s na lateral (`sidebar-notice`).
+  Canais novos: `chat:reference` (cliente), `ui:bot-menu` (admin). Backend atualizado no colima em 17 out.
 - Excluir máquina no seletor do admin (17 out): "Excluir máquina" (um clique, sem confirmação; é máquina, não pessoa: cada
   linha é uma VM) na pessoa selecionada faz tudo de uma
   vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via
