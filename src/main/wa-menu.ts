@@ -29,7 +29,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
   if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
   return [
-    item("Conversar com o meu-bot sobre isto", "talk"),
+    item("Conversar", "talk"),
     exportar,
     referencia,
     { separator: true },

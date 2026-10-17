@@ -17,7 +17,7 @@ test("sem manageWa (admin): exportar, arquivar, pausar, limpar e excluir (sem co
 
 test("com manageWa (cliente): conversar, pausar/retomar, limpar e excluir", () => {
   const own = waMenuTemplate({ archived: false, paused: false, ownSession: true }, { manageWa: true });
-  assert.deepEqual(labels(own), ["Conversar com o meu-bot sobre isto", "Exportar", "Copiar ID", "---", "Renomear", "Arquivar", "Pausar", "Limpar histórico…", "Excluir conversa"]);
+  assert.deepEqual(labels(own), ["Conversar", "Exportar", "Copiar ID", "---", "Renomear", "Arquivar", "Pausar", "Limpar histórico…", "Excluir conversa"]);
   assert.ok(actions(own).includes("pause") && actions(own).includes("clear") && actions(own).includes("talk"));
   const paused = waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: true });
   assert.ok(labels(paused).includes("Retomar"));
