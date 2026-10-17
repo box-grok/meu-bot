@@ -11,7 +11,7 @@ export const SHARED_CHANNELS = [
   "window:info", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
   // limpar o histórico, pausar o agente e arquivar/excluir por contato: a pessoa e o admin (no admin fica no registro da máquina dela)
-  "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark",
+  "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark", "whatsapp:names",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",

@@ -16,6 +16,8 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   // Referência = número + chave da sessão do OpenClaw (+ UUID atual), uma linha para colar numa IA.
   const referencia = item("Copiar referência", "copy-ref");
+  // Apelido guardado na máquina (vale na lista e no título dos dois apps; o nome original fica dentro da conversa).
+  const renomear = item("Renomear", "rename");
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");
   const pausa = state.paused
     ? item("Retomar respostas do agente", "resume")
@@ -25,12 +27,13 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   // Excluir = limpar o histórico na máquina e tirar da lista deste app, sem confirmação (volta se o contato mandar outra mensagem).
   const excluir = item("Excluir conversa", "delete");
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
-  if (!caps.manageWa) return [exportar, referencia, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
+  if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
   return [
     item("Conversar com o meu-bot sobre isto", "talk"),
     exportar,
     referencia,
     { separator: true },
+    renomear,
     arquivo,
     pausa,
     item("Limpar histórico…", "clear"),

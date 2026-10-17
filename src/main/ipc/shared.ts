@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
+import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
 import { parseWaMarkPatches, waMarkLogText } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
@@ -150,6 +150,15 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     await whatsappSetMarks(h.host, patches);
     const what = waMarkLogText(patches);
     if (what !== null && caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", what)}\n`, 15_000);
+  });
+
+  // Nomes dos contatos sem nome: lê o histórico deles de uma vez e guarda na máquina (cache; não é ação de suporte).
+  handleShared("whatsapp:names", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const list = (payload as { numbers?: unknown } | null)?.numbers;
+    if (!Array.isArray(list) || list.length === 0 || list.length > 20 || !list.every((n) => typeof n === "string")) throw new Error("números inválidos");
+    return whatsappLearnNames(h.host, list as string[]);
   });
 
   // Terminal: sessões presas à janela que as abriu. Entrada e resize sem resposta (uma por tecla). Os dois

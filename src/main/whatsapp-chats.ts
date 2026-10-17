@@ -64,8 +64,8 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
     .map(([number, v]) => ({
       number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
       ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused, updatedAt: new Date(v.updated).toISOString(),
-      // Arquivado/excluído vêm do whatsapp-lista.json da máquina (whatsapp-marks.ts aplica depois).
-      archived: false, deleted: false,
+      // Arquivado/excluído/apelido vêm do whatsapp-lista.json da máquina (whatsapp-marks.ts aplica depois).
+      alias: null, archived: false, deleted: false,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }

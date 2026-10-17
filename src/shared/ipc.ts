@@ -325,8 +325,10 @@ export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 export interface WhatsappChat {
   /** Só dígitos, com DDI. */
   number: string;
-  /** Último nome que o contato mandou (pushname), quando já se leu o histórico. */
+  /** Último nome que o contato mandou (pushname): da leitura do histórico ou do cache na máquina (whatsapp-lista.json). */
   name: string | null;
+  /** Apelido dado na tela ("Renomear"), guardado na máquina: vence o nome na lista e no título. */
+  alias: string | null;
   /** O próprio número do aparelho (mensagens para si mesmo). */
   isSelf: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
@@ -345,8 +347,8 @@ export interface WhatsappChat {
   deleted: boolean;
 }
 
-/** Um ajuste de arquivado/excluído de uma conversa do WhatsApp, gravado na máquina (`at` só na migração). */
-export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; at?: string }
+/** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
+export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
@@ -544,7 +546,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
 export type BotMenuAction = "copy-ref";
@@ -629,6 +631,8 @@ export interface MeuBotSharedApi {
   clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
   markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
+  /** Descobre o nome (pushname) de contatos sem nome lendo o histórico deles de uma vez (até 20) e guarda na máquina. Devolve só os achados. */
+  learnWhatsappNames(numbers: string[]): Promise<Record<string, string>>;
   /** Salva a conversa toda num arquivo; null = cancelado. */
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
   /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */

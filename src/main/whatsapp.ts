@@ -13,7 +13,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
-import { chatsFromSessions, ownSessionKeys, gatewayFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
 import { localWhenText, pauseInjectSh, pauseNoteText, pauseRuleSh, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
@@ -391,10 +391,54 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
   let list: unknown = null;
   try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error("o gateway do OpenClaw não respondeu à lista de conversas"); }
-  // Arquivado/excluído moram na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
+  // Arquivado/excluído/nomes moram na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
   let marks: unknown = null;
   try { marks = JSON.parse(kv.get("marks") || "null"); } catch { /* arquivo corrompido = sem marcas; a próxima gravação o refaz */ }
-  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), namesOf(host)), parseWaMarks(marks));
+  const parsed = parseWaMarks(marks);
+  // O cache de nomes semeia a memória (o pushname lido nesta sessão, se houver, continua valendo mais).
+  const names = namesOf(host);
+  for (const [n, e] of Object.entries(parsed.names)) if (e.name !== null && !names.has(n)) names.set(n, e.name);
+  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names), parsed);
+}
+
+/**
+ * Nomes dos contatos ainda sem nome, de uma vez: lê o histórico recente de cada um (a sessão própria; sem ela, a
+ * principal, uma vez só), tira o pushname com `threadFor` e guarda na máquina para as próximas aberturas, dos dois
+ * apps. Devolve só os achados. Quem não escreveu ainda fica sem nome (a tela não insiste nesta abertura).
+ */
+export async function whatsappLearnNames(host: string, numbers: readonly string[]): Promise<Record<string, string>> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  const want = [...new Set(numbers.map((n) => n.replace(/\D/g, "")))].filter((n) => /^\d{8,15}$/.test(n)).slice(0, 20);
+  if (want.length === 0) return {};
+  const chats = await whatsappChats(host);
+  const keys = new Set<string>();
+  for (const n of want) {
+    const chat = chats.find((c) => c.number === n);
+    if (chat === undefined) continue;
+    const own = chat.sessionKeys.filter((k) => SAFE_KEY.test(k) && peerOfSessionKey(k) === n);
+    for (const k of (own.length > 0 ? own : chat.sessionKeys.filter((k) => SAFE_KEY.test(k)))) keys.add(k);
+  }
+  if (keys.size === 0) return {};
+  const lines = [...keys].map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":40}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 120_000);
+  if (r.code !== 0) throw new Error(`não consegui ler os nomes: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const histories: SessionHistory[] = [];
+  for (const line of r.stdout.split("\n")) {
+    const parts = line.split("\t");
+    if (parts[0] !== "H" || parts.length < 3) continue;
+    try { histories.push({ sessionKey: parts[1]!, history: JSON.parse(parts.slice(2).join("\t")) }); } catch { /* sessão sem resposta */ }
+  }
+  const found: Record<string, string> = {};
+  const names = namesOf(host);
+  for (const n of want) {
+    const t = threadFor(n, histories);
+    if (t.name === null) continue;
+    found[n] = t.name; names.set(n, t.name);
+  }
+  const patches = Object.entries(found).map(([number, name]) => ({ number, name }));
+  if (patches.length > 0) await whatsappSetMarks(host, patches).catch((e: unknown) => log(`whatsapp: nomes não gravados em ${host}: ${e instanceof Error ? e.message : String(e)}`));
+  log(`whatsapp: nomes descobertos em ${host}: ${patches.length} de ${want.length}`);
+  return found;
 }
 
 /** Grava na máquina os ajustes de arquivado/excluído (merge lá, para o admin e a pessoa não se sobrescreverem). */
@@ -423,7 +467,11 @@ export async function whatsappThread(host: string, number: string): Promise<What
     try { histories.push({ sessionKey: parts[1]!, history: JSON.parse(parts.slice(2).join("\t")) }); } catch { /* sessão sem resposta: fica de fora */ }
   }
   const t = threadFor(want, histories);
-  if (t.name !== null) namesOf(host).set(want, t.name);
+  // Pushname novo ou mudado: memória e cache na máquina acompanham (em segundo plano; a conversa já está lida).
+  if (t.name !== null && namesOf(host).get(want) !== t.name) {
+    namesOf(host).set(want, t.name);
+    void whatsappSetMarks(host, [{ number: want, name: t.name }]).catch(() => { /* cache é opcional */ });
+  }
   return t.messages;
 }
 
@@ -435,7 +483,9 @@ export async function whatsappBranch(host: string, number: string): Promise<Stor
   const want = number.replace(/\D/g, "");
   const msgs = await whatsappThread(host, want);
   if (msgs.length === 0) throw new Error("não há mensagens para levar");
-  const name = namesOf(host).get(want) ?? `+${want}`;
+  // O título da conversa nova usa o apelido que a pessoa deu, se houver; senão o pushname; senão o número.
+  const chat = (await whatsappChats(host).catch(() => [] as WhatsappChat[])).find((c) => c.number === want);
+  const name = chat?.alias ?? namesOf(host).get(want) ?? `+${want}`;
   const ctx = whatsappContextNote(name, want, msgs);
   log(`whatsapp: conversa nova do meu-bot com ${ctx.count} mensagens de +${want} em ${host}`);
   return createFromWhatsapp(host, { number: want, name, count: ctx.count, until: msgs.at(-1)!.at, messages: msgs.slice(msgs.length - ctx.count) }, ctx.note);
