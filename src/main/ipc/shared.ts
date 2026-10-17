@@ -12,6 +12,7 @@ import { parseWaMarkPatches, waMarkLogText } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
 import { applyUpdate, checkNow, updateState } from "../updater";
+import { checkNow as netCheckNow, hostIsLocalAddr } from "../net";
 import { claudeAuthInfo } from "../claudeLogin";
 import { xaiAuthInfo } from "../xaiLogin";
 import { xaiKeyStatus } from "../xaiKey";
@@ -192,6 +193,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   // Atualização automática do próprio app.
   handleShared("update:state", () => updateState());
   handleShared("update:check", () => checkNow());
+  handleShared("net:check", (_event, payload: unknown) => netCheckNow((payload as { force?: unknown } | null)?.force === true));
+  handleShared("host:local-addr", (event) => { const h = hostFromEvent(event)?.host; return h === undefined ? false : hostIsLocalAddr(h); });
   handleShared("update:apply", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); applyUpdate(); });
 
   // Configurações e memória: deste Mac, valem para os dois apps.

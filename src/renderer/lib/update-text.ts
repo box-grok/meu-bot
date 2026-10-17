@@ -22,7 +22,9 @@ export function updateStateText(u: UpdateState, appName: string, now: number = D
     case "up-to-date": { const a = ago(u.checkedAt, now); return { text: `Você está na versão mais recente${a === "" ? "" : ` (${a})`}.`, kind: "ok", showApply: false }; }
     case "available": return { text: `Nova versão ${u.available ?? ""} disponível, baixando…`, kind: "warn", showApply: false };
     case "ready": return { text: `${appName} ${u.ready ?? ""} pronta para instalar.`, kind: "warn", showApply: true };
-    case "error": return { text: `Não consegui verificar atualizações: ${u.error ?? "erro"}.`, kind: "bad", showApply: false };
+    case "error": return u.error === "sem internet"
+      ? { text: "Sem internet; verifico as atualizações de novo quando a conexão voltar.", kind: "warn", showApply: false }
+      : { text: `Não consegui verificar atualizações: ${u.error ?? "erro"}.`, kind: "bad", showApply: false };
     default: return { text: "Atualização automática só no app instalado.", kind: "muted", showApply: false };
   }
 }

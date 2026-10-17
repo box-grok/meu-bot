@@ -6,7 +6,8 @@
 import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../support-code";
-import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs } from "./support-admin";
+import type { LicensePatch } from "../../shared/ipc";
+import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, setLicense } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 
@@ -40,5 +41,15 @@ export function registerAdminIpc(): void {
     const a = (payload as { action?: unknown } | null)?.action;
     if (a !== "restart-gateway" && a !== "restart-backend" && a !== "transcription" && a !== "transcription-off" && a !== "support-off") throw new Error("ação inválida");
     return adminAction(host, a);
+  });
+  // Licença da conta: o admin é o dono e grava por SSH (plano/status/validade/limite e liberar device pendente).
+  handleAdmin("admin:license-set", (event, payload: unknown) => {
+    const patch = (payload as { patch?: unknown } | null)?.patch;
+    if (patch === null || typeof patch !== "object" || Array.isArray(patch)) throw new Error("mudança inválida");
+    return setLicense(adminHost(event), patch as LicensePatch);
+  });
+  handleAdmin("admin:license-approve", (event, payload: unknown) => {
+    const id = String((payload as { deviceId?: unknown } | null)?.deviceId ?? "");
+    return approveDevice(adminHost(event), id);
   });
 }

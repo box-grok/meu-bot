@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, log, runBackendTurn, saveAlertPrefs } from "../backend";
+import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
 import { pauseRuleSh } from "../whatsapp-pause";
@@ -378,6 +378,8 @@ export function registerClientIpc(): void {
     n.on("click", () => { h.win.show(); h.win.focus(); });
     n.show();
   });
+  // Licença e devices desta conta (licenca.json + maquinas.json, via backend): plano, status e máquinas.
+  handleClient("license:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchLicense(h.host); });
   // Avisos de segurança desta máquina (alertas.json, via backend): um Mac novo usou o meu-bot dela.
   handleClient("alerts:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchAlertPrefs(h.host); });
   handleClient("alerts:set", (event, payload: unknown) => {

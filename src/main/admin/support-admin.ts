@@ -8,7 +8,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import { applyLicensePatch, buildLicenseView } from "../licenca";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
@@ -167,13 +168,75 @@ async function readShare(host: string): Promise<SupportShare> {
 /** Saúde da máquina da pessoa: a sondagem do seletor + (se ela deixa) o WhatsApp e o progresso nos tutoriais. */
 export async function adminHealth(host: string): Promise<AdminHealth> {
   const share = await readShare(host);
-  const [probe, wa, progress, xai] = await Promise.all([
+  const [probe, wa, progress, xai, license] = await Promise.all([
     probeHost(host, getBackendPort()),
     share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
     share.progress ? readProgress(host) : Promise.resolve(null),
     xaiAuthInfo(host).catch(() => null),
+    readLicenseView(host).catch(() => null),
   ]);
-  return { probe, whatsapp: wa, progress, share, xai };
+  return { probe, whatsapp: wa, progress, share, xai, license };
+}
+
+/** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
+const LICENSE_PATH = "$HOME/.local/share/meu-bot/licenca.json";
+const MACHINES_PATH = "$HOME/.local/share/meu-bot/maquinas.json";
+
+/** Licença + devices da conta, como o admin vê. null = máquina fora do ar; arquivos ausentes viram defaults. */
+async function readLicenseView(host: string): Promise<LicenseView | null> {
+  const r = await runSsh(host, `cat "${LICENSE_PATH}" 2>/dev/null; echo "<<<REA-SEP>>>"; cat "${MACHINES_PATH}" 2>/dev/null; echo\n`, 20_000).catch(() => null);
+  if (r === null || r.code !== 0) return null;
+  const [licPart = "", maqPart = ""] = r.stdout.split("<<<REA-SEP>>>");
+  let licRaw: unknown = null; let maqRaw: unknown = null;
+  try { licRaw = JSON.parse(licPart.trim() || "null"); } catch { licRaw = null; }
+  try { maqRaw = JSON.parse(maqPart.trim() || "null"); } catch { maqRaw = null; }
+  return buildLicenseView(licRaw, maqRaw);
+}
+
+/** Lê um JSON cru (preservando todos os campos, ex.: ips) para alterar e regravar; lança se a máquina não responde. */
+async function fetchJson(host: string, remotePath: string): Promise<Record<string, unknown>> {
+  const r = await runSsh(host, `cat "${remotePath}" 2>/dev/null; echo\n`, 15_000);
+  if (r.code !== 0) throw new Error(`máquina fora do ar: ${lastLine(r)}`);
+  try { const v = JSON.parse(r.stdout.trim() || "null"); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; } catch { return {}; }
+}
+
+/** Grava um JSON na máquina da pessoa de forma atômica (base64 pela stdin do bash, 700/600 como o backend). */
+async function writeJson(host: string, remotePath: string, value: unknown): Promise<void> {
+  const b64 = Buffer.from(JSON.stringify(value, null, 1), "utf8").toString("base64");
+  const script = `set -e\numask 077\nmkdir -p "$HOME/.local/share/meu-bot"\nprintf '%s' '${b64}' | base64 -d > "${remotePath}.tmp"\nchmod 600 "${remotePath}.tmp"\nmv "${remotePath}.tmp" "${remotePath}"\n`;
+  const r = await runSsh(host, script, 20_000);
+  if (r.code !== 0) throw new Error(`não consegui gravar na máquina: ${lastLine(r)}`);
+}
+
+/** meu-bot-admin: muda a licença da pessoa (plano, status, validade, limite). Grava licenca.json por SSH. */
+export async function setLicense(host: string, patch: LicensePatch): Promise<LicenseView> {
+  const current = await fetchJson(host, LICENSE_PATH);
+  const next = applyLicensePatch(Object.keys(current).length ? current : null, patch);
+  await writeJson(host, LICENSE_PATH, next);
+  await runSsh(host, `${supportLogSh(adminName(), "licença atualizada pelo admin")}\n`, 15_000).catch(() => null);
+  const view = await readLicenseView(host);
+  if (view === null) throw new Error("gravei, mas a máquina não respondeu ao reler");
+  return view;
+}
+
+/** meu-bot-admin: libera um device pendente (marca ativo no maquinas.json e sobe o limite se preciso). */
+export async function approveDevice(host: string, deviceId: string): Promise<LicenseView> {
+  if (!/^[a-f0-9]{12}$/.test(deviceId)) throw new Error("device inválido");
+  const machines = await fetchJson(host, MACHINES_PATH);
+  const entry = machines[deviceId] as Record<string, unknown> | undefined;
+  if (entry === undefined) throw new Error("device não encontrado na máquina");
+  entry.status = "active";
+  delete entry.requestedAt;
+  await writeJson(host, MACHINES_PATH, machines);
+  const activeNow = Object.values(machines).filter((e) => e !== null && typeof e === "object" && (e as { status?: unknown }).status !== "pending").length;
+  const curLic = await fetchJson(host, LICENSE_PATH);
+  const curLimit = Number.isInteger((curLic as { deviceLimit?: unknown }).deviceLimit) ? (curLic.deviceLimit as number) : 1;
+  const nextLic = applyLicensePatch(Object.keys(curLic).length ? curLic : null, { deviceLimit: Math.max(activeNow, curLimit) });
+  await writeJson(host, LICENSE_PATH, nextLic);
+  await runSsh(host, `${supportLogSh(adminName(), "device liberado pelo admin")}\n`, 15_000).catch(() => null);
+  const view = await readLicenseView(host);
+  if (view === null) throw new Error("liberei, mas a máquina não respondeu ao reler");
+  return view;
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */

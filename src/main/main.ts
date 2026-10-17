@@ -5,7 +5,7 @@
  */
 import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
 import { LOCAL_HOST } from "./localBackend";
-import { closeTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
+import { closeTunnel, ensureTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
@@ -15,13 +15,15 @@ import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { useAdminUserData } from "./admin/user-data";
 import { registerIpc } from "./ipc";
-import { applyStagedOnQuit, disposeUpdater, initUpdater } from "./updater";
+import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
+import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
+import { getBackendPort } from "./settings";
 import { installAppMenu } from "./menu";
 import { clientPickerSource, initPicker, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
 import { initRelief, showRelief } from "./relief";
 import { listSshHosts } from "./sshConfig";
-import { disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
+import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
 
 // O meu-bot-admin tem userData próprio (senão dividiria pasta e trava de instância com o meu-bot normal). Antes de tudo.
 if (caps().supportAdmin) useAdminUserData();
@@ -61,6 +63,15 @@ app.whenReady().then(() => {
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   initRelief();
   initUpdater();
+  // Internet deste Mac (faixa OFFLINE). Quando volta: revalida os túneis, reabre o das janelas abertas que
+  // caíram e refaz a checagem de atualização se ela falhou por rede.
+  initNet();
+  onBackOnline(() => {
+    markSuspect(); void revalidate();
+    const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));
+    for (const h of hosts) void ensureTunnel(h, getBackendPort()).catch(() => { /* a próxima mensagem tenta de novo */ });
+    if (lastUpdateErrorWasNetwork()) void checkUpdateNow();
+  });
   // A entrada rápida é do chat: o meu-bot-admin não a sobe nem registra o atalho global.
   if (caps().chat) {
     setQuickEntryStatusProvider(quickEntryStatus);
@@ -90,8 +101,8 @@ app.whenReady().then(() => {
     resumeTimer = setTimeout(() => { resumeTimer = null; void revalidate(); }, 2000);
   };
   powerMonitor.on("suspend", () => markSuspect());
-  powerMonitor.on("resume", scheduleRevalidate);
-  powerMonitor.on("unlock-screen", scheduleRevalidate);
+  powerMonitor.on("resume", () => { scheduleRevalidate(); void checkNetNow(true); });
+  powerMonitor.on("unlock-screen", () => { scheduleRevalidate(); void checkNetNow(true); });
 });
 
 app.on("window-all-closed", () => {
@@ -99,4 +110,4 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("will-quit", () => { disposeUpdater(); disposeQuickEntry(); disposeWindows(); closeTunnel(); applyStagedOnQuit(); });
+app.on("will-quit", () => { disposeNet(); disposeUpdater(); disposeQuickEntry(); disposeWindows(); closeTunnel(); applyStagedOnQuit(); });

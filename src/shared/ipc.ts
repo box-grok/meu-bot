@@ -81,6 +81,53 @@ export interface UpdateState {
 /** Avisos de segurança gravados na máquina (o backend envia): um Mac novo usou o meu-bot desta máquina. */
 export interface AlertPrefs { whatsapp: boolean; email: string }
 
+/**
+ * Licença da conta (a máquina da pessoa): plano, status, validade e limite de devices. Mora em licenca.json na
+ * máquina; o admin é o dono e grava por SSH. Mesmo esquema do backend-colima/licenca.js e do src/main/licenca.ts.
+ */
+export interface License {
+  plan: "free" | "pro";
+  status: "free" | "trialing" | "active" | "expired";
+  /** Ciclo de cobrança; null (ex.: em trial) vira "-" na tela. */
+  interval: "month" | "year" | null;
+  /** "Membro desde" (ISO), carimbado na 1ª vez. */
+  memberSince: string;
+  trialEnd: string | null;
+  expiresAt: string | null;
+  deviceLimit: number;
+  updatedAt: string;
+  updatedBy: "admin" | "system";
+}
+/** Um device registrado na conta (uma entrada do maquinas.json). Pendente = a pessoa "levantou a mão". */
+export interface LicenseDevice {
+  id: string;
+  name: string;
+  user: string;
+  platform: string;
+  app: string;
+  firstSeen: string;
+  lastSeen: string;
+  status: "active" | "pending";
+  requestedAt: string | null;
+}
+/** Licença + devices de uma conta, como o app da pessoa e o admin veem. */
+export interface LicenseView {
+  license: License;
+  devices: LicenseDevice[];
+  activeCount: number;
+  pendingCount: number;
+  deviceLimit: number;
+}
+/** O que o admin pode mudar na licença de uma pessoa (campos omitidos ficam como estão). */
+export interface LicensePatch {
+  plan?: "free" | "pro";
+  status?: "free" | "trialing" | "active" | "expired";
+  interval?: "month" | "year" | null;
+  trialEnd?: string | null;
+  expiresAt?: string | null;
+  deviceLimit?: number;
+}
+
 /** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
 export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean }
 
@@ -327,7 +374,7 @@ export interface BotChat {
 }
 export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string; /** Quem respondeu (só no diário). */ provider?: string }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
-export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI no Hermes da máquina; null = sem Hermes. */ xai: ClaudeAuthInfo | null }
+export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI no Hermes da máquina; null = sem Hermes. */ xai: ClaudeAuthInfo | null; /** Licença e devices da conta; null = máquina fora do ar ou backend antigo sem a rota. */ license: LicenseView | null }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
 export interface SupportProgress {
   at: string;
@@ -608,6 +655,12 @@ export type BotMenuAction = "copy-ref";
 export interface ClaudeSessionRef { sessionId: string; file: string; profile: string }
 export type ExportFormat = "md" | "json";
 
+/**
+ * Internet deste Mac (faixa OFFLINE): `online` null = ainda não sondado; `since` = desde quando está fora
+ * (ms); `checkedAt` = última sondagem (ms).
+ */
+export interface NetState { online: boolean | null; checking: boolean; since: number | null; checkedAt: number | null }
+
 export interface MainEvents {
   "chat:assistant-start": ConversationRef;
   "chat:delta": ConversationRef & { text: string };
@@ -647,6 +700,8 @@ export interface MainEvents {
   "update:state": UpdateState;
   /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
   "ui:claude-login": Record<string, never>;
+  /** Internet deste Mac mudou ou foi sondada (faixa OFFLINE em todas as janelas). */
+  "net:state": NetState;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -675,6 +730,10 @@ export interface MeuBotSharedApi {
   /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
   checkUpdate(): Promise<UpdateState>;
   applyUpdate(): Promise<void>;
+  /** Internet deste Mac: sonda (com `force`, mesmo com resultado fresco) e devolve o estado. */
+  netCheck(force?: boolean): Promise<NetState>;
+  /** A máquina desta janela é este próprio Mac (colima)? O túnel para ela não precisa de internet. */
+  hostLocalAddr(): Promise<boolean>;
   /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
   whatsappChats(): Promise<WhatsappChat[]>;
   /** Histórico de um contato (número só com dígitos). Só leitura. */
@@ -741,6 +800,8 @@ export interface MeuBotClientApi {
   toggleQuickEntry(): Promise<void>;
   /** Conta e limites do Claude na máquina desta janela (null se o backend não tem o endpoint). */
   getAccountStatus(): Promise<AccountStatus | null>;
+  /** Licença e devices desta conta (plano, status, membro desde, máquinas); null se o backend é antigo/fora do ar. */
+  getLicense(): Promise<LicenseView | null>;
   /** Tailscale: ssh check → accept na política do tailnet (precisa da credencial salva no seletor). */
   disableTailscaleCheck(): Promise<TailscaleSshResult>;
   /** Tailscale: volta a política para o backup mais novo. */
@@ -815,6 +876,10 @@ export interface MeuBotAdminApi {
   adminBotDelete(sessionId: string): Promise<void>;
   /** Menu "…" de uma conversa dela com o meu-bot no espelho. */
   showBotMenu(sessionId: string): Promise<BotMenuAction | null>;
+  /** meu-bot-admin: muda a licença da pessoa (plano, status, validade, limite); grava licenca.json por SSH. */
+  setLicense(patch: LicensePatch): Promise<LicenseView>;
+  /** meu-bot-admin: libera um device pendente (sobe o limite se preciso e marca o device como ativo). */
+  approveDevice(deviceId: string): Promise<LicenseView>;
 }
 
 /** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */

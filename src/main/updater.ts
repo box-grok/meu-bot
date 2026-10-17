@@ -14,6 +14,8 @@ import { log } from "./backend";
 import { appTitle } from "./variant";
 import { broadcast } from "./windows";
 import { UPDATE_REPO, pickUpdate, type UpdateCandidate } from "./updater-core";
+import { noteNetworkError } from "./net";
+import { offlineMessage } from "./net-core";
 
 import type { UpdateState } from "../shared/ipc";
 
@@ -25,6 +27,8 @@ let stagedApp: string | null = null;
 let timer: NodeJS.Timeout | null = null;
 
 export const updateState = (): UpdateState => ({ ...state });
+/** A última verificação falhou por falta de internet (a faixa OFFLINE refaz quando a conexão voltar). */
+export const lastUpdateErrorWasNetwork = (): boolean => state.phase === "error" && state.error === offlineMessage("update");
 /** Fase nova → todas as janelas (Configurações → "Sobre e atualização" e o ponto da barra de cima). */
 function setPhase(phase: UpdateState["phase"]): void { state.phase = phase; broadcast("update:state", { ...state }); }
 /** "Verificar agora": fora do ciclo; devolve o estado ao fim (ou o atual, se já está verificando). */
@@ -68,7 +72,8 @@ async function check(): Promise<void> {
     await stage(cand);
     setPhase("ready");
   } catch (e) {
-    state.error = e instanceof Error ? e.message : String(e);
+    // Sem internet, a culpa não é do GitHub nem do app: a frase diz isso (e a volta da rede refaz a checagem).
+    state.error = (await noteNetworkError(e)) ? offlineMessage("update") : e instanceof Error ? e.message : String(e);
     log(`[atualização] ${state.error}`);
     setPhase("error");
   } finally {

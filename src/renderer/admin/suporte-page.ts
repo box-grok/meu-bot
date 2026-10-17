@@ -9,7 +9,8 @@ import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, healthLines, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
+import { actionResultText, deviceLine, healthLines, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
+import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
@@ -22,7 +23,7 @@ export interface SuportePageDeps {
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   fmtPhone(digits: string | null): string;
-  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction">;
+  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
   /** Cache desta janela (lib/cache.ts, por máquina): a saúde da última vez aparece na hora, com "há X min". */
@@ -35,10 +36,10 @@ export interface SuportePage {
   refreshHealth(): Promise<void>;
 }
 
-interface State { health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }
+interface State { health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null; /** Mudança de licença em andamento. */ licBusy: boolean; licMsg: { text: string; bad: boolean } | null }
 
 export function mountSuportePage(deps: SuportePageDeps): SuportePage {
-  const state: State = { health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null };
+  const state: State = { health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null };
   // A saúde da última vez aparece na hora (com a idade); a consulta real troca por baixo.
   const cachedHealth = deps.cache.read<AdminHealth>("health");
   if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); }
@@ -59,6 +60,17 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     state.busy = "logs"; render();
     try { state.logs = await deps.api.adminLogs(); } catch (err) { state.logs = `não consegui ler: ${err instanceof Error ? err.message : String(err)}`; }
     finally { state.busy = null; render(); }
+  }
+  /** Roda uma mudança de licença (setLicense/approveDevice), atualiza a visão na tela e o cache. */
+  async function runLicense(label: string, op: () => Promise<LicenseView>): Promise<void> {
+    if (state.licBusy) return;
+    state.licBusy = true; state.licMsg = null; render();
+    try {
+      const view = await op();
+      if (state.health !== null) { state.health.license = view; deps.cache.write("health", state.health); }
+      state.licMsg = { text: `${label}: feito`, bad: false };
+    } catch (err) { state.licMsg = { text: ipcErrorText(err), bad: true }; }
+    finally { state.licBusy = false; render(); }
   }
 
   const list = (lines: HealthLine[]): HTMLUListElement => {
@@ -101,6 +113,45 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       h.append(list(lines));
     }
     panel.append(h);
+
+    // Conta e licença: plano, status, membro desde, ciclo e os devices (a visão por conta, como o Rambox).
+    const lc = el("div", "admin-card");
+    lc.append(el("strong", "", "Conta e licença"));
+    const view = hp?.license ?? null;
+    if (hp === null) lc.append(el("p", "hint", "Consultando…"));
+    else if (view === null) lc.append(el("p", "hint", "Máquina fora do ar ou backend antigo (sem a rota de licença)."));
+    else {
+      lc.append(list(licenseSummary(view)));
+      const licBtn = (label: string, run: () => void): HTMLButtonElement => {
+        const b = el("button", "btn btn-ghost btn-small", label); b.type = "button"; b.disabled = state.licBusy;
+        b.addEventListener("click", run);
+        return b;
+      };
+      // Devices da conta, com "Aprovar" nos que levantaram a mão.
+      const devs = el("div", "admin-devices");
+      for (const d of view.devices) {
+        const row = el("div", "admin-device-row");
+        const dl = deviceLine(d);
+        row.append(el("span", d.status === "pending" ? "bad" : "ok", dl.text));
+        if (d.status === "pending") row.append(licBtn(state.licBusy ? "Liberando…" : "Aprovar", () => { void runLicense(`device ${d.name || d.id} liberado`, () => deps.api.approveDevice(d.id)); }));
+        devs.append(row);
+      }
+      if (view.devices.length === 0) devs.append(el("p", "hint", "Nenhum device registrado ainda."));
+      lc.append(devs);
+      // Controles do admin: plano, status e limite de devices.
+      const ctl = el("div", "admin-actions");
+      const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
+      ctl.append(
+        view.license.plan === "pro" ? licBtn("Mudar para Free", () => setLic("plano Free", { plan: "free", status: "free" })) : licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" })),
+        licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: "pro", status: "trialing" })),
+        licBtn("Marcar Active", () => setLic("status Active", { plan: "pro", status: "active" })),
+        licBtn("Marcar Expired", () => setLic("status Expired", { status: "expired" })),
+        licBtn("Limite +1 device", () => setLic("limite de devices", { deviceLimit: view.deviceLimit + 1 })),
+      );
+      lc.append(ctl);
+      if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
+    }
+    panel.append(lc);
 
     // Progresso nos tutoriais (onde a pessoa está e onde travou)
     const pg = el("div", "admin-card");

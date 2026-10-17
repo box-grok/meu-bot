@@ -1,6 +1,7 @@
-import type { UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
+import { deviceLine, licenseSummary } from "./lib/admin-view.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
@@ -18,6 +19,7 @@ import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "
 import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
+import { offlineBarText } from "./lib/offline-text.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -353,6 +355,8 @@ function applyModelAvailability(select: HTMLSelectElement, host: string | null):
 const hostStatus = new Map<string, BackendStatusEvent>();
 function paintStatus(host: string | null): void {
   paintMini();
+  // Sem internet, a pill diz isso e nada mais: o estado do túnel não explica o que a pessoa está vendo.
+  if (net.online === false) { statusPill.hidden = false; statusPill.textContent = "sem internet"; statusPill.className = "pill pill-off"; sidebarStatus.hidden = false; return; }
   const st = host === null ? undefined : hostStatus.get(host);
   if (st === undefined) { statusPill.hidden = true; sidebarStatus.hidden = true; return; }
   statusPill.hidden = false;
@@ -552,8 +556,9 @@ function paintMini(): void {
   if (topbarMini.hidden) return;
   const st = hostStatus.get(windowHost);
   const tab = active();
-  miniDot.className = `mini-dot ${st === undefined ? "" : st.state === "ready" ? "ok" : st.state === "error" ? "bad" : "warn"}`;
-  miniText.textContent = `${hostLabel(windowHost)}${tab !== null ? ` · ${tab.model}` : ""}${st !== undefined ? ` · ${st.detail}` : ""}`;
+  const off = net.online === false;
+  miniDot.className = `mini-dot ${off ? "bad" : st === undefined ? "" : st.state === "ready" ? "ok" : st.state === "error" ? "bad" : "warn"}`;
+  miniText.textContent = `${hostLabel(windowHost)}${tab !== null ? ` · ${tab.model}` : ""}${off ? " · sem internet" : st !== undefined ? ` · ${st.detail}` : ""}`;
 }
 
 /** Botão e menu "Modos do agente", espelhando o <select> escondido (que continua sendo a fonte do valor). */
@@ -3998,6 +4003,49 @@ function openSettings(): void {
 settingsBtn.addEventListener("click", () => openSettings());
 window.meuBot.on("ui:toggle-settings", () => { if (dialog.open) dialog.close(); else openSettings(); });
 
+/* ---------- Internet deste Mac: faixa OFFLINE (como no Rambox), para a pessoa saber que o problema é na conexão dela ---------- */
+const offlineBar = $<HTMLElement>("offline-bar");
+const offlineText = $<HTMLElement>("offline-text");
+const offlineCheck = $<HTMLButtonElement>("offline-check");
+let net: NetState = { online: null, checking: false, since: null, checkedAt: null };
+/** A máquina desta janela é este próprio Mac (colima): sem internet o túnel segue, só o Claude não responde. */
+let hostLocalAddr = false;
+/** Última vez que a pessoa clicou em "Verificar agora" (a faixa diz "ainda sem internet (verificado agora)"). */
+let netManualAt: number | null = null;
+let netTick: ReturnType<typeof setInterval> | null = null;
+function paintNet(): void {
+  const off = net.online === false;
+  offlineBar.hidden = !off;
+  if (off) {
+    offlineText.textContent = offlineBarText({ localAddr: hostLocalAddr, checking: net.checking, since: net.since, checkedAt: net.checkedAt, manual: netManualAt !== null && net.checkedAt !== null && net.checkedAt >= netManualAt, now: Date.now() });
+    offlineCheck.disabled = net.checking;
+    offlineCheck.textContent = net.checking ? "verificando…" : "Verificar agora";
+  }
+  // "há N min" precisa andar enquanto a faixa está à vista; online, nenhum timer.
+  if (off && netTick === null) netTick = setInterval(paintNet, 30_000);
+  if (!off && netTick !== null) { clearInterval(netTick); netTick = null; }
+  const tab = active();
+  paintStatus(tab !== null ? tab.host : null);
+}
+function setNet(st: NetState): void {
+  const was = net.online;
+  net = st;
+  paintNet();
+  if (was === false && st.online === true) {
+    netManualAt = null;
+    const tab = active();
+    if (tab !== null) addNotice(tab, hostLocalAddr ? "✓ internet de volta; o Claude já responde de novo." : "✓ internet de volta; reabrindo o túnel da máquina…", "info");
+  }
+}
+window.meuBot.on("net:state", setNet);
+// A interface de rede caiu/voltou (Wi-Fi desligado): reação imediata; a sondagem do main confirma.
+window.addEventListener("offline", () => { void window.meuBot.netCheck(true).then(setNet).catch(() => { /* a sondagem periódica cobre */ }); });
+window.addEventListener("online", () => { void window.meuBot.netCheck(true).then(setNet).catch(() => { /* idem */ }); });
+offlineCheck.addEventListener("click", () => {
+  netManualAt = Date.now(); offlineCheck.disabled = true; offlineCheck.textContent = "verificando…";
+  void window.meuBot.netCheck(true).then(setNet).catch(() => { offlineCheck.disabled = false; offlineCheck.textContent = "Verificar agora"; });
+});
+
 /* ---------- Atualização automática: a faixa só aparece com a versão nova já pronta ---------- */
 const updateBar = $<HTMLElement>("update-bar");
 const updateText = $<HTMLElement>("update-text");
@@ -4054,7 +4102,29 @@ const alertWa = $<HTMLInputElement>("alert-wa");
 const alertEmail = $<HTMLInputElement>("alert-email");
 const alertsHint = $<HTMLElement>("alerts-hint");
 let alertPrefsLoaded: { whatsapp: boolean; email: string } | null = null;
+/**
+ * Painel "Conta" (lado da pessoa): plano, status, membro desde, ciclo e os devices da conta, só leitura, como as
+ * telas de billing do Rambox. Quem muda isso é o admin (pela página Suporte). Montado dinâmico antes dos avisos.
+ */
+async function loadLicensePanel(): Promise<void> {
+  if (!caps.chat || windowHost === "local") return;
+  let box = document.getElementById("license-panel");
+  if (box === null) { box = el("div", "settings-group"); box.id = "license-panel"; alertsGroup.parentElement?.insertBefore(box, alertsGroup); }
+  box.replaceChildren(el("p", "hint strong-hint", "Sua conta"));
+  let view: Awaited<ReturnType<typeof window.meuBot.getLicense>> = null;
+  try { view = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar */ }
+  if (view === null) { box.append(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
+  const ul = el("ul", "admin-health");
+  for (const l of licenseSummary(view)) ul.append(el("li", l.ok === null ? "" : l.ok ? "ok" : "bad", l.text));
+  box.append(ul);
+  box.append(el("p", "hint strong-hint", "Seus devices"));
+  const devs = el("ul", "admin-health");
+  for (const d of view.devices) { const dl = deviceLine(d); devs.append(el("li", d.status === "pending" ? "bad" : "ok", d.status === "pending" ? `${dl.text} · pedido enviado ao admin` : dl.text)); }
+  if (view.devices.length === 0) devs.append(el("li", "", "Nenhum device ainda."));
+  box.append(devs);
+}
 async function loadAlertPrefs(): Promise<void> {
+  void loadLicensePanel();
   if (!caps.chat || windowHost === "local") { alertsGroup.hidden = true; return; }
   alertsGroup.hidden = false;
   try {
@@ -4134,6 +4204,9 @@ void (async () => {
   windowHost = info.host;
   caps = info.caps;
   appVersion = info.version;
+  // Faixa OFFLINE nos dois apps: estado atual da internet e se a máquina desta janela é este próprio Mac.
+  void window.meuBot.netCheck().then(setNet).catch(() => { /* a próxima sondagem avisa */ });
+  void window.meuBot.hostLocalAddr().then((v) => { hostLocalAddr = v; paintNet(); }).catch(() => { /* fica como remota */ });
   if (caps.supportAdmin) {
     // meu-bot-admin: espelho da máquina da pessoa (saúde, WhatsApp, registros) + ações de suporte. Sem compositor,
     // sem conversas com o agente, sem logins nem pareamento (o main nem registra esses canais no admin).

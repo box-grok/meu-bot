@@ -17,6 +17,8 @@ export const SHARED_CHANNELS = [
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // atualização automática do próprio app
   "update:state", "update:apply", "update:check",
+  // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
+  "net:check", "host:local-addr",
   // seletor
   "picker:list", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
@@ -28,7 +30,7 @@ export const SHARED_CHANNELS = [
 export const CLIENT_CHANNELS = [
   // conversas com o agente
   "chat:send", "chat:cancel", "chat:new", "chat:list", "chat:rename", "chat:set-model", "chat:reorder", "chat:close",
-  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify", "ui:notify-test", "alerts:get", "alerts:set",
+  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify", "ui:notify-test", "alerts:get", "alerts:set", "license:get",
   "backend:account",
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
@@ -52,7 +54,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

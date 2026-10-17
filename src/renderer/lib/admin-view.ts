@@ -2,7 +2,7 @@
  * Variante: admin. Textos e linhas da página "Suporte" do meu-bot-admin e do seletor de pessoas, sem DOM.
  * Puro: testável com node --test. O desenho fica em admin/suporte-page.ts e admin/picker-chrome.ts.
  */
-import type { AdminAction, AdminHealth, SupportPerson, SupportProgress } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, SupportPerson, SupportProgress } from "../../shared/ipc";
 import { tutorialNumber } from "./tutoriais.js";
 
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
@@ -61,6 +61,43 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
     if (wa.audioOut !== undefined) lines.push({ text: `responde em áudio: ${wa.audioOut === "inbound" ? "quando recebe áudio" : wa.audioOut === "always" ? "sempre" : "nunca"}`, ok: null });
   }
   return lines;
+}
+
+/** Rótulos do plano/status, como as telas de billing do Rambox. */
+export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro" };
+export const STATUS_LABEL: Record<LicenseView["license"]["status"], string> = { free: "Free", trialing: "Trialing", active: "Active", expired: "Expired" };
+/** Ciclo de cobrança legível; "-" quando não há (ex.: em trial), como a tela colada. */
+export const billingCycleText = (interval: LicenseView["license"]["interval"]): string => (interval === "month" ? "mensal" : interval === "year" ? "anual" : "-");
+
+/** "15 de out. de 2026" a partir de um ISO; "-" se a data não vale. */
+export function fmtDate(iso: string | null): string {
+  if (iso === null || iso === "") return "-";
+  const t = Date.parse(iso);
+  return Number.isNaN(t) ? "-" : new Date(t).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** O resumo da conta (plano, status, membro desde, ciclo, validade, devices), como o painel do Rambox. */
+export function licenseSummary(view: LicenseView, now: number = Date.now()): HealthLine[] {
+  const l = view.license;
+  const lines: HealthLine[] = [
+    { text: `Plano: ${PLAN_LABEL[l.plan]}`, ok: l.plan === "pro" ? true : null },
+    { text: `Status: ${STATUS_LABEL[l.status]}`, ok: l.status === "active" ? true : l.status === "expired" ? false : null },
+    { text: `Membro desde: ${fmtDate(l.memberSince)}`, ok: null },
+    { text: `Ciclo de cobrança: ${billingCycleText(l.interval)}`, ok: null },
+  ];
+  if (l.status === "trialing" && l.trialEnd !== null) lines.push({ text: `Trial termina: ${fmtDate(l.trialEnd)}`, ok: null });
+  if (l.expiresAt !== null) lines.push({ text: `Expira: ${fmtDate(l.expiresAt)}`, ok: Date.parse(l.expiresAt) < now ? false : null });
+  lines.push({ text: `Devices: ${view.activeCount}/${view.deviceLimit} ativos${view.pendingCount > 0 ? ` · ${view.pendingCount} pedido(s) de device` : ""}`, ok: view.pendingCount > 0 ? false : null });
+  return lines;
+}
+
+/** Rótulo de status de um device. */
+export const deviceStatusLabel = (s: LicenseDevice["status"]): string => (s === "pending" ? "Pendente" : "Ativo");
+/** Uma linha de device para a tabela de máquinas (nome + sistema + versão + status + visto há). */
+export function deviceLine(d: LicenseDevice, now: number = Date.now()): HealthLine {
+  const seen = d.status === "pending" ? "mão levantada" : d.lastSeen !== "" ? timeAgo(d.lastSeen, now) : "";
+  const name = d.name !== "" ? d.name : d.id;
+  return { text: `${name} · ${d.platform !== "" ? d.platform : "?"} · ${d.app !== "" ? d.app : "?"} · ${deviceStatusLabel(d.status)}${seen !== "" ? ` · ${seen}` : ""}`, ok: d.status === "pending" ? false : true };
 }
 
 export function progressLines(prog: SupportProgress): HealthLine[] {

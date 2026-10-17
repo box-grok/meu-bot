@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -26,6 +26,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "ui:claude-login",
   "update:ready",
   "update:state",
+  "net:state",
 ];
 
 /** Os dois apps. */
@@ -46,6 +47,8 @@ const sharedApi: MeuBotSharedApi = {
   updateState: () => ipcRenderer.invoke("update:state", {}),
   checkUpdate: () => ipcRenderer.invoke("update:check", {}),
   applyUpdate: () => ipcRenderer.invoke("update:apply", {}),
+  netCheck: (force?: boolean) => ipcRenderer.invoke("net:check", { force: force === true }),
+  hostLocalAddr: () => ipcRenderer.invoke("host:local-addr", {}),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
   showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
@@ -91,6 +94,7 @@ const clientApi: MeuBotClientApi = {
   toggleQuickEntry: () => ipcRenderer.invoke("ui:quick-toggle", {}),
   quickAck: (correlationId: string, ok: boolean, message?: string): void => ipcRenderer.send("quick:ack", { correlationId, ok, ...(message === undefined ? {} : { message }) }),
   getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
+  getLicense: () => ipcRenderer.invoke("license:get", {}),
   disableTailscaleCheck: () => ipcRenderer.invoke("tailscale:disable-check", {}),
   restoreTailscalePolicy: () => ipcRenderer.invoke("tailscale:restore", {}),
   whatsappPair: (reset: boolean) => ipcRenderer.invoke("whatsapp:pair", { reset }),
@@ -135,6 +139,8 @@ const adminApi: MeuBotAdminApi = {
   adminBotThread: (sessionId: string) => ipcRenderer.invoke("admin:bot-thread", { sessionId }),
   adminBotDelete: (sessionId: string) => ipcRenderer.invoke("admin:bot-delete", { sessionId }),
   showBotMenu: (sessionId: string) => ipcRenderer.invoke("ui:bot-menu", { sessionId }),
+  setLicense: (patch: LicensePatch) => ipcRenderer.invoke("admin:license-set", { patch }),
+  approveDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-approve", { deviceId }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

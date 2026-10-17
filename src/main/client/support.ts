@@ -5,6 +5,8 @@
  * com a chave só de entrega). Desligar tira a chave, entrega "desligado" e remove o timer. Tudo que o
  * suporte faz na máquina fica em ~/.local/share/meu-bot/suporte.log, que a pessoa vê nas Configurações.
  */
+import { checkNow as netCheckNow } from "../net";
+import { offlineMessage } from "../net-core";
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -246,7 +248,7 @@ export async function deliverNow(host: string): Promise<SupportInfo> {
   const r = await runSsh(host, `[ -x "${D}/entregar.sh" ] && "${D}/entregar.sh" >/dev/null 2>&1 && echo ENTREGUE=1 || echo ENTREGUE=0\n`, 60_000);
   if (!r.stdout.includes("ENTREGUE=1")) {
     const built = await buildCode(host, supportName() || "pessoa", "on");
-    if (!(await deliverFromMacAndMark(host, b, built.id, built.text, true))) throw new Error("não consegui avisar o admin: nem a máquina nem este Mac alcançaram a caixa de entrada dele");
+    if (!(await deliverFromMacAndMark(host, b, built.id, built.text, true))) throw new Error((await netCheckNow()).online === false ? offlineMessage("support") : "não consegui avisar o admin: nem a máquina nem este Mac alcançaram a caixa de entrada dele");
   }
   return supportInfo(host);
 }

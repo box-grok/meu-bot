@@ -14,4 +14,5 @@ test("cada fase vira uma frase, como no Rambox", () => {
   assert.deepEqual(updateStateText({ ...base, phase: "available", available: "0.2.0" }, "meu-bot", NOW), { text: "Nova versão 0.2.0 disponível, baixando…", kind: "warn", showApply: false });
   assert.deepEqual(updateStateText({ ...base, phase: "ready", available: "0.2.0", ready: "0.2.0" }, "meu-bot-admin", NOW), { text: "meu-bot-admin 0.2.0 pronta para instalar.", kind: "warn", showApply: true });
   assert.deepEqual(updateStateText({ ...base, phase: "error", error: "GitHub respondeu 503" }, "meu-bot", NOW), { text: "Não consegui verificar atualizações: GitHub respondeu 503.", kind: "bad", showApply: false });
+  assert.deepEqual(updateStateText({ ...base, phase: "error", error: "sem internet" }, "meu-bot", NOW), { text: "Sem internet; verifico as atualizações de novo quando a conexão voltar.", kind: "warn", showApply: false });
 });

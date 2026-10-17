@@ -5,13 +5,15 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, ToolEvent } from "../shared/ipc";
+import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, LicenseView, ToolEvent } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
 import { applyOps, buildMemoryRequest, getMemory, memorySystemMessage, NOTAS_MAX, parseOps, PERFIL_MAX, setMemory } from "./memory";
 import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "./settings";
 import { ensureTunnel, markDegraded, TunnelFatalError } from "./tunnel";
+import { netState, noteNetworkError } from "./net";
+import { looksLikeOffline, offlineMessage } from "./net-core";
 import { broadcast, sendToHost } from "./windows";
 
 /** Entrega eventos à janela da máquina, resolvida a cada envio: a janela pode fechar no meio do turno. */
@@ -55,6 +57,7 @@ const errCode = (err: unknown): string =>
 /** Explica o erro de rede com a causa por trás e o código, para diagnóstico. */
 function describeFetchError(err: unknown, model: BackendModel): string {
   const code = errCode(err);
+  if (looksLikeOffline({ code, text: err instanceof Error ? err.message : null })) return offlineMessage("chat");
   if (code === "ETIMEDOUT_LOCAL" || (err instanceof Error && err.name === "AbortError")) return `O backend não respondeu em ${timeoutFor(model) / 1000}s.`;
   if (code === "ECONNREFUSED") return "O túnel SSH caiu (conexão recusada na porta local). Vou reabrir na próxima mensagem.";
   if (code === "ECONNRESET" || code === "UND_ERR_SOCKET" || code === "EPIPE") {
@@ -240,6 +243,9 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
     }
     attempt += 1;
     markDegraded(host, "preflight");
+    // Sem internet não adianta insistir 75 s culpando a VM: a faixa OFFLINE explica, e a volta da rede reabre.
+    if (lastErr !== null && (await noteNetworkError(lastErr))) throw Object.assign(new Error(offlineMessage("tunnel")), { code: "OFFLINE" });
+    if (netState().online === false) throw Object.assign(new Error(offlineMessage("tunnel")), { code: "OFFLINE" });
     const left = deadline - Date.now();
     if (!interactive ? attempt >= 2 : left <= 0) break;
     const wait = Math.min(RECONNECT_DELAYS_MS[Math.min(attempt - 1, RECONNECT_DELAYS_MS.length - 1)]!, Math.max(left, 1_000));
@@ -321,6 +327,16 @@ async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT", path
   });
 }
 
+/** Identidade deste Mac para o backend (12 hex de sha256(nome\nusuário)); igual ao id enviado no hello. */
+export function deviceId(): string {
+  const name = os.hostname().replace(/\.local$/, "");
+  const user = os.userInfo().username;
+  return createHash("sha256").update(`${name}\n${user}`).digest("hex").slice(0, 12);
+}
+
+/** Licença e devices desta conta (plano, status, membro desde, máquinas); null = backend antigo/fora do ar. */
+export const fetchLicense = (host: string): Promise<LicenseView | null> => backendJson<LicenseView>(host, "GET", "/v1/meu-bot/license");
+
 /** Avisos de segurança gravados na máquina (alertas.json): null = backend antigo/fora do ar. */
 export const fetchAlertPrefs = (host: string): Promise<AlertPrefs | null> => backendJson<AlertPrefs>(host, "GET", "/v1/meu-bot/alerts");
 export async function saveAlertPrefs(host: string, prefs: AlertPrefs): Promise<void> {
@@ -339,9 +355,9 @@ export function announceMachine(host: string): void {
   announced.add(host);
   const name = os.hostname().replace(/\.local$/, "");
   const user = os.userInfo().username;
-  const id = createHash("sha256").update(`${name}\n${user}`).digest("hex").slice(0, 12);
-  void backendJson<{ fresh?: boolean }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion() })
-    .then((r) => { if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend: a pessoa foi avisada`); });
+  const id = deviceId();
+  void backendJson<{ fresh?: boolean; status?: string }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion() })
+    .then((r) => { if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend (status=${r.status ?? "?"}): a pessoa foi avisada`); });
 }
 
 /**
@@ -488,7 +504,7 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     const t0 = Date.now();
     // Retomada de sessão no backend: diz quantas mensagens do começo ele já conhece.
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
-    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen) };
+    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId() };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
     let fallbackNote: string | undefined;
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {
@@ -530,9 +546,10 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     } else if (conv.backendMessages.at(-1)?.role === "user") {
       conv.backendMessages.pop();
     }
-    const message = describeFetchError(err, model);
+    const offline = errCode(err) === "OFFLINE" || (isConnectionError(err) && (await noteNetworkError(err)));
+    const message = offline ? offlineMessage("chat") : describeFetchError(err, model);
     if (isConnectionError(err)) markDegraded(host, errCode(err));
-    out.send("backend:status", { host, state: "error", detail: message });
+    out.send("backend:status", { host, state: "error", detail: offline ? "sem internet" : message });
     if (!cancelled()) out.send("chat:error", { conversationId, kind: "backend", message });
   } finally {
     delete conv.abort;

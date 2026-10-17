@@ -1445,6 +1445,23 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   uma mensagem `assistant` — checado em `chat:done`). `refreshClaudeLine` repinta o guia; `logoutClaude(relogin)`
   serve ao botão "sair", ao painel de gerência ("Sair e entrar com outra conta") e ao "Refazer do zero". O guia
   só espera o WhatsApp (`st === null`) em tutoriais com alvo `wa-*`.
+- Faixa OFFLINE (17 out): como no Rambox, para a pessoa saber que **o problema é na conexão dela, não no
+  app**. `src/main/net.ts` sonda a internet (HEAD em `captive.apple.com/hotspot-detect.html` e
+  `gstatic.com/generate_204`, 5 s; offline só se as duas falharem com erro de rede; qualquer resposta HTTP
+  prova saída), ao abrir, por `net:check` (botão "Verificar agora", eventos `online`/`offline` do renderer),
+  ao acordar o Mac e em qualquer erro de conexão do túnel/backend/GitHub/caixa do suporte
+  (`noteNetworkError`); offline, resonda a cada 10 s; online, sem timer. `broadcast("net:state")` chega a
+  todas as janelas (admin incluído). `src/main/net-core.ts` (puro, testado): `looksLikeOffline` (ENOTFOUND,
+  EAI_AGAIN, ENETUNREACH… e o texto do ssh "Could not resolve hostname"/"Network is unreachable"),
+  `isConnectionCode`, `isLocalAddr`, `offlineMessage`. Consequências: `readyTunnel` sai na hora com "Você está
+  sem internet…" em vez de insistir 75 s culpando a VM; o erro da conversa e o `backend:status` dizem "sem
+  internet"; o updater mostra "Sem internet; verifico de novo quando a conexão voltar" e refaz a checagem na
+  volta (`onBackOnline`), que também revalida/reabre os túneis das janelas abertas. Renderer: `#offline-bar`
+  (mesmo estilo da update-bar, fundo `--warn`, sem animação) com texto de `lib/offline-text.ts` (remoto; colima
+  = "a máquina local responde, mas o Claude não", via `host:local-addr` = `ssh -G` + `isLocalAddr`; "há N min";
+  "ainda sem internet (verificado agora)" depois do botão); pill "sem internet" e barra mini vermelha enquanto
+  offline; aviso "✓ internet de volta" na conversa ativa. O grid do `body` ganhou linhas fixas por elemento
+  (`grid-row`): antes, com a barra recolhida e a update-bar visível, o `1fr` caía na update-bar.
 - Tutorial 4 · Entrar na xAI (Grok) (16 out): deixou de ser "Em breve". `needsXai` esconde o 4 (e o 5, que
   depende dele: `visibleTutorials` é recursiva no `after`) onde o Grok não é possível — este Mac ou máquina sem o
   backend (`GuideContext.xai.possible`; null = ainda não consultado = mostra). Passos: *Preparar o Grok nesta

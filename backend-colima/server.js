@@ -25,6 +25,7 @@ const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
+const licenca = require('./licenca');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -51,6 +52,8 @@ const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'con
 const MEU_BOT_DIR = path.join(os.homedir(), '.local', 'share', 'meu-bot');
 const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
 const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
+/** Licença da conta (plano, status, validade, limite de devices): o admin é dono e grava por SSH; o app só lê. */
+const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
 const SUPPORT_LOG = path.join(MEU_BOT_DIR, 'suporte.log');
 const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
 function writeJson(f, v) { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
@@ -89,23 +92,57 @@ function sendEmail(to, subject, text) {
 function sshPeers() {
   try { return [...new Set(require('child_process').execSync("ss -Htn state established '( sport = :22 )' 2>/dev/null | awk '{print $NF}' | sed 's/:[0-9]*$//'", { encoding: 'utf8', timeout: 3000 }).split('\n').map((s) => s.trim()).filter(Boolean))]; } catch (_) { return []; }
 }
+/** Licença da conta, criando o arquivo com os defaults (e carimbando "membro desde") na 1ª vez. */
+function ensureLicense() {
+  const raw = readJson(LICENSE_FILE, null);
+  if (raw === null) { const lic = licenca.defaultLicense(); writeJson(LICENSE_FILE, lic); return lic; }
+  return licenca.parseLicense(raw);
+}
+/** Licença + devices (ativos/pendentes) da conta, como o app e o admin veem. */
+function licenseView() {
+  const license = ensureLicense();
+  const all = readJson(MACHINES_FILE, {}) || {};
+  const devices = Object.entries(all).map(([id, v]) => ({
+    id, name: v.name, user: v.user, platform: v.platform, app: v.app,
+    firstSeen: v.firstSeen, lastSeen: v.lastSeen,
+    status: licenca.deviceStatus(v), requestedAt: typeof v.requestedAt === 'string' ? v.requestedAt : null,
+  })).sort((a, b) => (Date.parse(b.lastSeen) || 0) - (Date.parse(a.lastSeen) || 0));
+  const activeCount = devices.filter((d) => d.status === 'active').length;
+  const pendingCount = devices.filter((d) => d.status === 'pending').length;
+  return { license, devices, activeCount, pendingCount, deviceLimit: license.deviceLimit };
+}
 async function announceMachine(m) {
   const machines = readJson(MACHINES_FILE, null);
   const first = machines === null; // primeiro Mac de todos: a própria instalação, sem aviso
   const all = machines || {};
   const now = new Date().toISOString();
   const known = all[m.id];
-  all[m.id] = { name: m.name, user: m.user, platform: m.platform, app: m.app, firstSeen: known ? known.firstSeen : now, lastSeen: now, ips: sshPeers().slice(0, 5) };
+  const license = ensureLicense();
+  // Device conhecido mantém o status; device novo entra ativo se cabe no limite, senão "pending" (mão levantada).
+  const status = licenca.admitDevice(license, all, m.id);
+  const prev = known || {};
+  all[m.id] = {
+    name: m.name, user: m.user, platform: m.platform, app: m.app,
+    firstSeen: known ? known.firstSeen : now, lastSeen: now, ips: sshPeers().slice(0, 5),
+    status,
+    ...(status === 'pending' ? { requestedAt: prev.requestedAt || now } : {}),
+  };
   writeJson(MACHINES_FILE, all);
-  if (known || first) return false;
+  if (known || first) return { fresh: false, status, deviceLimit: license.deviceLimit };
   const when = new Date().toLocaleString('pt-BR', { timeZone: process.env.TZ || 'America/Sao_Paulo' });
   const ips = all[m.id].ips.length ? ` · IP ${all[m.id].ips.join(', ')}` : '';
-  const text = `meu-bot: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\nmeu-bot ${m.app}${ips}\nQuando: ${when}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
-  supportLogLine('sistema', `um Mac novo usou o meu-bot: ${m.name} (${m.user}, ${m.platform})`);
+  const extra = status === 'pending'
+    ? `\n\nEste device passou do limite do seu plano (${license.deviceLimit}). O pedido foi enviado ao admin para liberar um device a mais.`
+    : '';
+  const text = `meu-bot: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\nmeu-bot ${m.app}${ips}\nQuando: ${when}${extra}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
+  supportLogLine('sistema', status === 'pending'
+    ? `pedido de device a mais (mão levantada): ${m.name} (${m.user}, ${m.platform})`
+    : `um Mac novo usou o meu-bot: ${m.name} (${m.user}, ${m.platform})`);
   const prefs = alertPrefs();
-  const results = await Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, 'meu-bot: um Mac novo usou a sua máquina', text) : Promise.resolve(null)]);
-  log(`máquina nova ${m.name} (${m.id}): whatsapp=${results[0]} email=${results[1]}`);
-  return true;
+  const subject = status === 'pending' ? 'meu-bot: um device a mais pediu acesso' : 'meu-bot: um Mac novo usou a sua máquina';
+  const results = await Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, subject, text) : Promise.resolve(null)]);
+  log(`máquina nova ${m.name} (${m.id}) status=${status}: whatsapp=${results[0]} email=${results[1]}`);
+  return { fresh: true, status, deviceLimit: license.deviceLimit };
 }
 const MACHINE_FIELD_RE = /^[\p{L}\p{N} ._()-]{1,60}$/u;
 const appConvFile = (convId) => path.join(APP_CONVERSAS, `${convId}.jsonl`);
@@ -479,9 +516,11 @@ const server = http.createServer(async (req, res) => {
     try { m = JSON.parse(await readBody(req, 64 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
     const ok = m && /^[a-f0-9]{12}$/.test(m.id) && [m.name, m.user, m.platform, m.app].every((v) => typeof v === 'string' && MACHINE_FIELD_RE.test(v));
     if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
-    const fresh = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app });
-    return json(res, 200, { fresh });
+    const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app });
+    return json(res, 200, r);
   }
+  // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.
+  if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {
     let p;
@@ -523,6 +562,14 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { removed });
   }
   if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
+    // Limite de devices: um device "pending" (passou do limite, aguarda o admin) não usa o agente ainda.
+    const devId = String(req.headers['x-device-id'] || '');
+    if (/^[a-f0-9]{12}$/.test(devId)) {
+      const entry = (readJson(MACHINES_FILE, {}) || {})[devId];
+      if (entry && licenca.deviceStatus(entry) === 'pending') {
+        return json(res, 403, { error: { message: 'device aguardando liberação do admin (limite do plano)', type: 'forbidden', code: 'device_pending' } });
+      }
+    }
     chatCompletions(req, res).catch((e) => { log(`falha inesperada: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); else { try { res.end(); } catch (_) {} } });
     return;
   }
