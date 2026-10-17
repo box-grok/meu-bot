@@ -14,6 +14,7 @@ import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
+import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
 import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
@@ -2080,6 +2081,33 @@ let waChats: WhatsappChat[] = [];
 let waChatsErr: string | null = null;
 let waChatsInflight: Promise<void> | null = null;
 let waChatsTimer: number | null = null;
+/** Já tentou pintar a lista pelo cache nesta janela (uma vez; depois a leitura real manda). */
+let waChatsFromCache = false;
+/** Contatos cujo nome já se tentou descobrir nesta abertura (quem não tem pushname fica com o número, sem insistir). */
+const waNamesTried = new Set<string>();
+let waNamesInflight: Promise<void> | null = null;
+/**
+ * Nomes dos contatos sem nome, em segundo plano e uma vez por contato por abertura: o main lê o histórico deles de
+ * uma vez e guarda na máquina; aqui só se aplica o resultado. Mais de 20: o resto vai na próxima lista.
+ */
+function learnMissingWaNames(): Promise<void> {
+  if (waNamesInflight !== null) return waNamesInflight;
+  const missing = waChats.filter((c) => c.name === null && c.alias === null && !c.isSelf && !c.deleted && !waNamesTried.has(c.number)).map((c) => c.number).slice(0, 20);
+  if (missing.length === 0) return Promise.resolve();
+  for (const n of missing) waNamesTried.add(n);
+  waNamesInflight = (async () => {
+    try {
+      const names = await window.meuBot.learnWhatsappNames(missing);
+      if (Object.keys(names).length === 0) return;
+      waChats = waChats.map((c) => (names[c.number] !== undefined && c.name === null ? { ...c, name: names[c.number]! } : c));
+      for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageActive === g.page) renderWaChat(g); } }
+      cacheWrite("waChats", waChats);
+      if (getListMode() === "whatsapp") renderSidebar();
+    } catch (err) { console.warn("nomes do WhatsApp:", err); }
+    finally { waNamesInflight = null; }
+  })();
+  return waNamesInflight;
+}
 const listModeKey = (): string => `listMode:${windowHost}`;
 const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
 function getListMode(): ListMode {
@@ -2110,8 +2138,10 @@ listModeEl.addEventListener("click", (ev) => {
 function refreshWaChats(): Promise<void> {
   if (waChatsInflight !== null) return waChatsInflight;
   if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
+  // Primeira leitura: a lista da última vez aparece na hora (cache desta janela) e a leitura real troca por baixo.
+  if (waChats.length === 0 && !waChatsFromCache) { waChatsFromCache = true; const c = cacheRead<WhatsappChat[]>("waChats"); if (c !== null && c.value.length > 0) { waChats = c.value; if (getListMode() === "whatsapp") renderSidebar(); } }
   waChatsInflight = (async () => {
-    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); }
+    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); cacheWrite("waChats", waChats); void learnMissingWaNames(); }
     catch (err) { waChatsErr = err instanceof Error ? err.message : String(err); }
     finally { waChatsInflight = null; }
     for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); } }
@@ -2126,9 +2156,18 @@ function refreshWaChats(): Promise<void> {
  */
 const isWaArchived = (c: WhatsappChat): boolean => c.archived;
 const isWaDeleted = (c: WhatsappChat): boolean => c.deleted;
+/**
+ * Cache "stale-while-revalidate" desta janela (lib/cache.ts): pinta o último estado conhecido na hora e a leitura
+ * real troca por baixo. Chave por máquina; sem localStorage, segue sem cache.
+ */
+const cacheStore = (): CacheStore | null => { try { return window.localStorage; } catch { return null; } };
+function cacheRead<T>(name: string): Cached<T> | null { const st = cacheStore(); return st === null ? null : readCache<T>(st, windowHost, name); }
+function cacheWrite(name: string, value: unknown): void { const st = cacheStore(); if (st !== null) writeCache(st, windowHost, name, value); }
+function cacheDrop(name: string): void { const st = cacheStore(); if (st !== null) dropCache(st, windowHost, name); }
 /** Marca na máquina e aplica na lista local na hora (otimista); em erro, relê a lista e avisa. */
 async function markWa(patch: WaMarkPatch, what: string): Promise<boolean> {
-  waChats = waChats.map((c) => (c.number === patch.number ? { ...c, ...(patch.archived !== undefined ? { archived: patch.archived } : {}), ...(patch.deleted !== undefined ? { deleted: patch.deleted } : {}) } : c));
+  waChats = waChats.map((c) => (c.number === patch.number ? { ...c, ...(patch.archived !== undefined ? { archived: patch.archived } : {}), ...(patch.deleted !== undefined ? { deleted: patch.deleted } : {}), ...(patch.alias !== undefined ? { alias: patch.alias === "" ? null : patch.alias } : {}) } : c));
+  for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageActive === g.page) renderWaChat(g); } }
   paintListMode(); renderSidebar();
   try { await window.meuBot.markWhatsapp([patch]); return true; }
   catch (err) {
@@ -2175,6 +2214,9 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     case "export-md": case "export-json":
       try { await window.meuBot.exportWhatsapp(row.number, action === "export-md" ? "md" : "json"); }
       catch (err) { fail("Não deu para exportar", err); }
+      break;
+    case "rename":
+      waClear = null; waRename = row.number; renderSidebar();
       break;
     case "copy-ref":
       copyReference(waReferenceText(row, hostLabel(windowHost)));
@@ -2252,6 +2294,7 @@ async function runWaClear(c: WaClear): Promise<void> {
     if (c.mode === "delete") await window.meuBot.markWhatsapp([{ number: c.number, deleted: true, archived: false }]);
     else if (cur?.archived === true) await window.meuBot.markWhatsapp([{ number: c.number, archived: false }]);
     waClear = null;
+    cacheDrop(`waThread:${c.number}`);
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
     void refreshWaChats();
   } catch (err) { waClear = { ...c, phase: "confirm", err: ipcErrorText(err) }; }
@@ -2279,12 +2322,40 @@ function waClearBox(c: WaClear): HTMLElement {
   box.addEventListener("click", (ev) => ev.stopPropagation());
   return box;
 }
-const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.name ?? fmtPhone(c.number));
+/**
+ * "Renomear": apelido guardado na máquina (vale na lista e no título dos dois apps; o nome original fica dentro da
+ * conversa). Caixa inline abaixo do contato, como a do limpar; vazio tira o apelido.
+ */
+let waRename: string | null = null;
+function waRenameBox(row: WhatsappChat): HTMLElement {
+  const box = el("div", "wa-clear wa-rename");
+  box.append(el("strong", "", "Apelido desta conversa"));
+  const input = el("input"); input.type = "text"; input.maxLength = 80; input.value = row.alias ?? "";
+  input.placeholder = row.name !== null ? `Apelido (vazio volta a "${row.name}")` : "Apelido (vazio volta ao número)";
+  const cancel = el("button", "btn", "Cancelar"); cancel.type = "button";
+  const save = el("button", "btn btn-primary", "Salvar"); save.type = "button";
+  const close = (): void => { waRename = null; renderSidebar(); };
+  const commit = (): void => {
+    const alias = input.value.replace(/\s+/g, " ").trim();
+    if (alias === (row.alias ?? "")) { close(); return; }
+    waRename = null;
+    void markWa({ number: row.number, alias }, "Não deu para renomear");
+  };
+  cancel.addEventListener("click", (ev) => { ev.stopPropagation(); close(); });
+  save.addEventListener("click", (ev) => { ev.stopPropagation(); commit(); });
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); commit(); } if (ev.key === "Escape") { ev.stopPropagation(); close(); } });
+  const actions = el("div", "wa-clear-actions"); actions.append(cancel, save);
+  box.append(input, actions);
+  box.addEventListener("click", (ev) => ev.stopPropagation());
+  requestAnimationFrame(() => { input.focus(); input.select(); });
+  return box;
+}
+const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.alias ?? c.name ?? fmtPhone(c.number));
 function paintWaSidebar(query: string): void {
   sidebarList.replaceChildren();
   const q = normalize(query.trim());
   const showHidden = sidebarArchived.checked;
-  const rows = waChats.filter((c) => !isWaDeleted(c) && (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
+  const rows = waChats.filter((c) => !isWaDeleted(c) && (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.alias ?? ""} ${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
   if (rows.length === 0) {
     const msg = waChatsErr !== null && waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
       : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"
@@ -2311,6 +2382,7 @@ function paintWaSidebar(query: string): void {
       item.addEventListener("click", () => openWaChat(row));
       sidebarList.appendChild(item);
       if (waClear?.number === row.number) sidebarList.appendChild(waClearBox(waClear));
+      if (waRename === row.number) sidebarList.appendChild(waRenameBox(row));
     }
   }
 }
@@ -2319,6 +2391,8 @@ interface WaChatPage {
   page: PageTab; chat: WhatsappChat; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null;
   /** Chaves das mensagens já na tela (para só acrescentar as novas). */
   shown?: string[];
+  /** O que está na tela veio do cache desta janela; a leitura real ainda não chegou. */
+  stale?: boolean;
 }
 const waChatPages = new Map<string, WaChatPage>();
 function paintWaChatTab(g: WaChatPage): void {
@@ -2332,6 +2406,9 @@ function openWaChat(c: WhatsappChat): void {
     const panel = el("section", "wa-chat-panel"); panel.hidden = true;
     panelsEl.append(panel);
     const created: WaChatPage = { page: null as unknown as PageTab, chat: c, msgs: [], err: null, loaded: false, inflight: null, timer: null };
+    // A conversa da última vez aparece na hora (cache desta janela, até 200 mensagens); a leitura real troca por baixo.
+    const cached = cacheRead<WhatsappThreadMessage[]>(`waThread:${c.number}`);
+    if (cached !== null && cached.value.length > 0) { created.msgs = cached.value; created.loaded = true; created.stale = true; }
     created.page = definePage(id, waChatTitle(c), panel, () => renderWaChat(created));
     waChatPages.set(id, created);
     g = created;
@@ -2344,7 +2421,7 @@ function refreshWaThread(g: WaChatPage): Promise<void> {
   if (g.inflight !== null) return g.inflight;
   if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; }
   g.inflight = (async () => {
-    try { g.msgs = await window.meuBot.whatsappThread(g.chat.number); g.err = null; }
+    try { g.msgs = await window.meuBot.whatsappThread(g.chat.number); g.err = null; g.stale = false; cacheWrite(`waThread:${g.chat.number}`, g.msgs.slice(-200)); }
     catch (err) { g.err = err instanceof Error ? err.message : String(err); }
     finally { g.loaded = true; g.inflight = null; }
     if (pageActive === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, waAgentTyping(g) ? 3_000 : 8_000); renderWaChat(g); }
@@ -2424,8 +2501,10 @@ function renderWaChat(g: WaChatPage): void {
     head = el("div", "wa-chat-head"); list = el("div", "wa-chat-msgs");
     panel.replaceChildren(head, list);
   }
-  head.replaceChildren(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", fmtPhone(g.chat.number)),
-    el("span", "wa-chat-hint", g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
+  // Com apelido, o nome original (pushname) continua visível ao lado do número.
+  const sub = g.chat.alias !== null && g.chat.name !== null && !g.chat.isSelf ? `${g.chat.name} · ${fmtPhone(g.chat.number)}` : fmtPhone(g.chat.number);
+  head.replaceChildren(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", sub),
+    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
   panel.dataset["rendered"] = "1";
   const keys = g.msgs.map(waMsgKey);
   const shown = g.shown ?? [];
@@ -2548,7 +2627,7 @@ function refreshWhatsapp(): Promise<void> {
   waRefreshing = true;
   if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; }
   waInflight = (async () => {
-    try { waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); } catch { waStatus = null; }
+    try { waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); if (waStatus.present) cacheWrite("waStatus", waStatus); else cacheDrop("waStatus"); } catch { waStatus = null; }
     finally { waRefreshing = false; waInflight = null; }
     paintWhatsapp();
     if (waPairing && waStatus?.connected === true) waShowSuccess(waStatus.number);
@@ -3815,20 +3894,22 @@ void (async () => {
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
-      who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot,
+      who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
         else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }
         paintWhatsapp(); renderSidebar();
       },
     }).open();
-    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference });
+    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();
     tabsReady = true;
     return;
   }
   document.title = `meu-bot · ${hostLabel(windowHost)}`;
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
+  // Estado do WhatsApp da última vez: o modo WhatsApp e a lista em cache aparecem antes do SSH responder.
+  { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });

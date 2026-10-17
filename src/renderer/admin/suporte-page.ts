@@ -8,6 +8,7 @@ import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus } from "../../
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
+import { cacheAgeText, type Cached } from "../lib/cache.js";
 import { actionResultText, healthLines, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
 
 export interface SuportePageDeps {
@@ -24,6 +25,8 @@ export interface SuportePageDeps {
   api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
+  /** Cache desta janela (lib/cache.ts, por máquina): a saúde da última vez aparece na hora, com "há X min". */
+  cache: { read<T>(name: string): Cached<T> | null; write(name: string, value: unknown): void };
 }
 
 export interface SuportePage {
@@ -32,10 +35,13 @@ export interface SuportePage {
   refreshHealth(): Promise<void>;
 }
 
-interface State { health: AdminHealth | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }
+interface State { health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null }
 
 export function mountSuportePage(deps: SuportePageDeps): SuportePage {
-  const state: State = { health: null, healthErr: null, logs: null, busy: null, msg: null };
+  const state: State = { health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null };
+  // A saúde da última vez aparece na hora (com a idade); a consulta real troca por baixo.
+  const cachedHealth = deps.cache.read<AdminHealth>("health");
+  if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); }
   let page: PageTab | null = null;
   /** Registros recolhidos por padrão: só lê o journal da máquina quando a pessoa abre. */
   let logsOpen = false;
@@ -44,7 +50,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
   async function refreshHealth(): Promise<void> {
     state.busy = "health"; render();
     try {
-      state.health = await deps.api.adminHealth(); state.healthErr = null;
+      state.health = await deps.api.adminHealth(); state.healthErr = null; state.healthAt = Date.now(); deps.cache.write("health", state.health);
       deps.onWhatsapp(state.health.whatsapp);
     } catch (err) { state.healthErr = ipcErrorText(err); }
     finally { state.busy = null; render(); }
@@ -83,6 +89,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     // Saúde
     const h = el("div", "admin-card");
     const hHead = el("div", "admin-card-head"); hHead.append(el("strong", "", "Saúde da máquina"));
+    if (state.health !== null && state.healthAt !== null && (state.busy === "health" || Date.now() - state.healthAt > 90_000)) hHead.append(el("span", "hint", state.busy === "health" ? `como estava ${cacheAgeText(state.healthAt)} · atualizando…` : `como estava ${cacheAgeText(state.healthAt)}`));
     hHead.append(smallBtn(state.busy === "health" ? "Consultando…" : "Atualizar", () => { void refreshHealth(); }));
     h.append(hHead);
     const hp = state.health;

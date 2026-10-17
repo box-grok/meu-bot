@@ -3,18 +3,38 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { parseWaMarks, applyWaMarks, parseWaMarkPatches, waMarkSh, waMarkLogText, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp-marks.js");
 
-const chat = (number, updatedAt) => ({ number, name: null, isSelf: false, sessionKeys: [], ownSession: true, paused: false, updatedAt, archived: false, deleted: false });
+const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, isSelf: false, sessionKeys: [], sessionIds: {}, ownSession: true, paused: false, updatedAt, archived: false, deleted: false });
 
 test("parseWaMarks: só números de 8 a 15 dígitos com hora válida; lixo vira vazio", () => {
   const m = parseWaMarks({ archived: { "5511999990000": "2026-10-17T02:10:00Z", "abc": "2026-10-17T02:10:00Z", "5511999990001": "ontem" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, outro: 1 });
-  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" } });
-  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {} });
-  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {} });
-  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {} });
+  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {} });
+  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {} });
+  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {} });
+  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {} });
+});
+
+test("parseWaMarks: names com nome e/ou apelido saneados; entrada vazia ou lixo some", () => {
+  const m = parseWaMarks({ names: {
+    "595994402904": { name: "  Junior   Rezende ", alias: "Junior (cliente)", at: "2026-10-17T02:10:00Z" },
+    "5511999990000": { alias: "Só apelido" },
+    "5521988880000": { name: "", alias: null, at: "x" },
+    "abc": { name: "x" },
+    "5531977770000": { name: "a".repeat(81) },
+  } });
+  assert.deepEqual(m.names, {
+    "595994402904": { name: "Junior Rezende", alias: "Junior (cliente)", at: "2026-10-17T02:10:00Z" },
+    "5511999990000": { name: null, alias: "Só apelido", at: "" },
+  });
+});
+
+test("applyWaMarks: nome do cache só quando a memória não tem; apelido sempre do arquivo", () => {
+  const marks = { archived: {}, deleted: {}, names: { "595994402904": { name: "Junior Rezende", alias: "Junior (cliente)", at: "" }, "5511999990000": { name: "Do arquivo", alias: null, at: "" } } };
+  const out = applyWaMarks([chat("595994402904", "2026-10-17T03:00:00.000Z"), chat("5511999990000", "2026-10-17T03:00:00.000Z", "Fresco da sessão"), chat("5531977770000", "2026-10-17T03:00:00.000Z")], marks);
+  assert.deepEqual(out.map((c) => [c.name, c.alias]), [["Junior Rezende", "Junior (cliente)"], ["Fresco da sessão", null], [null, null]]);
 });
 
 test("applyWaMarks: arquivada marca; excluída só até chegar mensagem nova", () => {
-  const marks = { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00.000Z" } };
+  const marks = { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00.000Z" }, names: {} };
   const out = applyWaMarks([chat("5511999990000", "2026-10-17T03:00:00.000Z"), chat("5521988880000", "2026-10-17T02:00:00.000Z"), chat("5531977770000", "2026-10-17T02:00:00.000Z")], marks);
   assert.deepEqual(out.map((c) => [c.archived, c.deleted]), [[true, false], [false, true], [false, false]]);
   // mensagem depois da exclusão: volta
@@ -33,6 +53,9 @@ test("parseWaMarkPatches: saneia o payload da tela", () => {
   assert.throws(() => parseWaMarkPatches({ marks: new Array(201).fill({ number: "5511999990000", archived: true }) }), /inválidos/);
   // "at" inválido é ignorado, não derruba
   assert.deepEqual(parseWaMarkPatches({ marks: [{ number: "5511999990000", archived: true, at: "ontem" }] }), [{ number: "5511999990000", archived: true }]);
+  // nome e apelido: espaços colapsam, vazio = apagar, longo demais recusa
+  assert.deepEqual(parseWaMarkPatches({ marks: [{ number: "595994402904", name: " Junior  Rezende " }, { number: "595994402904", alias: "" }] }), [{ number: "595994402904", name: "Junior Rezende" }, { number: "595994402904", alias: "" }]);
+  assert.throws(() => parseWaMarkPatches({ marks: [{ number: "595994402904", alias: "a".repeat(81) }] }), /apelido longo/);
 });
 
 test("waMarkSh: embute os ajustes em base64, grava com tmp+mv e recusa número inválido", () => {
@@ -43,6 +66,10 @@ test("waMarkSh: embute os ajustes em base64, grava com tmp+mv e recusa número i
   assert.ok(sh.includes(WA_MARKS_FILE) && sh.includes("os.replace(tmp, f)") && sh.includes('print("MARKS=1")'));
   assert.ok(sh.includes("python3 >/dev/null 2>&1 ||"), "avisa quando não há python3");
   assert.throws(() => waMarkSh([{ number: "x'; rm -rf /", archived: true }]), /número inválido/);
+  const nomes = waMarkSh([{ number: "595994402904", name: "Junior Rezende", alias: "Junior (cliente)" }]);
+  assert.ok(nomes.includes(Buffer.from(JSON.stringify([{ number: "595994402904", name: "Junior Rezende", alias: "Junior (cliente)" }])).toString("base64")));
+  assert.ok(nomes.includes('"names": names') && nomes.includes("ensure_ascii=False"));
+  assert.throws(() => waMarkSh([{ number: "595994402904", alias: "linha\nnova" }]), /nome inválido/);
 });
 
 test("waMarkLogText: um ajuste da tela registra; migração (com at) e lote não", () => {
@@ -51,4 +78,7 @@ test("waMarkLogText: um ajuste da tela registra; migração (com at) e lote não
   assert.equal(waMarkLogText([{ number: "5511999990000", deleted: true, archived: false }]), "excluiu a conversa do WhatsApp de +5511999990000");
   assert.equal(waMarkLogText([{ number: "5511999990000", archived: true, at: "2026-10-17T02:10:00Z" }]), null);
   assert.equal(waMarkLogText([{ number: "1", archived: true }, { number: "2", archived: true }]), null);
+  assert.equal(waMarkLogText([{ number: "595994402904", alias: "Junior (cliente)" }]), 'renomeou a conversa do WhatsApp de +595994402904 para "Junior (cliente)"');
+  assert.equal(waMarkLogText([{ number: "595994402904", alias: "" }]), "tirou o apelido da conversa do WhatsApp de +595994402904");
+  assert.equal(waMarkLogText([{ number: "595994402904", name: "Junior" }]), null, "cache de nome não registra");
 });

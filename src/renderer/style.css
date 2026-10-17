@@ -641,6 +641,10 @@ body.topbar-hidden .topbar { display: none; }
 .wa-clear-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
 .wa-clear-actions .btn { padding: 4px 12px; font-size: 12px; }
 .wa-clear .btn-bad:hover { background: var(--bad); color: #fff; }
+/* "Renomear": mesma caixa inline, sem o tom de alerta; o campo ocupa a largura. */
+.wa-rename { border-color: var(--line); background: var(--card); }
+.wa-rename input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.wa-rename input:focus { outline: none; border-color: var(--accent); }
 .wa-busy { cursor: progress; animation: wa-busy .8s ease-in-out infinite alternate; }
 @keyframes wa-busy { to { opacity: .35; } }
 .wa-in { align-self: flex-start; background: var(--assistant); border: 1px solid var(--line); }

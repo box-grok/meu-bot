@@ -465,7 +465,8 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   A aba mostra no topo a conversa trazida com as mesmas bolhas do espelho (`renderWaQuote`; as mensagens
   ficam gravadas em `fromWhatsapp.messages`) e, abaixo, a conversa com o meu-bot segue normal.
 - Menu "…" de cada contato (`ui:wa-menu`): Conversar com o meu-bot, Exportar (.md legível por dia, ou
-  .json com contato, máquina e mensagens; `threadToMarkdown`), Arquivar e Limpar histórico.
+  .json com contato, máquina e mensagens; `threadToMarkdown`), Copiar referência, Renomear (apelido guardado na
+  máquina, ver 17 out), Arquivar, Pausar, Limpar histórico e Excluir conversa.
   "Arquivar" (mesmo termo das conversas do meu-bot; antes "Remover da lista") fica marcado na máquina
   (`whatsapp-lista.json`, ver "sincronizados pela máquina" em 17 out; antes era `localStorage waHidden:<host>`,
   migrado sozinho) e vale até "Desarquivar" (não volta sozinha com atividade nova: a sessão principal muda a hora
@@ -1276,6 +1277,25 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   excluída na máquina. Como o `sessions.list` continua listando a sessão depois do reset, a conversa só volta se
   `updatedAt` ficar maior que a hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na
   máquina, excluir só marca. No admin a limpeza e a exclusão ficam no registro da pessoa.
+- Nome do contato em cache na máquina + "Renomear" (17 out): o pushname só vinha ao abrir a conversa (`threadFor` →
+  `chatNames` em memória do main) e sumia ao fechar o app; agora `whatsapp-lista.json` guarda `names` por número
+  (`name` = pushname em cache, `alias` = apelido do "Renomear", `at`). `whatsappChats` semeia `namesOf(host)` com o
+  arquivo (a memória, mais fresca, vence) e `applyWaMarks` preenche `WhatsappChat.alias`; `whatsappThread` regrava o
+  cache quando o pushname muda. Contatos sem nome: `whatsapp:names` (compartilhado, ≤ 20) → `whatsappLearnNames` lê
+  o `chat.history` (limite 40) da sessão própria de cada um (sem ela, a principal) numa chamada só, tira o nome com
+  `threadFor` e grava; a tela chama em segundo plano depois de cada lista, uma vez por contato por abertura
+  (`waNamesTried`). "Renomear" no "…" (os dois apps): caixa inline abaixo do contato, `markWhatsapp([{number,
+  alias}])` (vazio tira); o apelido vence na lateral e no título (`waChatTitle`), e o cabeçalho da conversa mostra o
+  nome original ao lado do número; no admin entra no registro da pessoa ("renomeou a conversa … para «X»"); cache de
+  nome não registra.
+- Sensação de instantâneo (17 out): regra única "pinta o último estado conhecido, lê a máquina por baixo, troca sem
+  piscar" (stale-while-revalidate), com `src/renderer/lib/cache.ts` (puro, testado: envelope `{at, v}` em
+  `localStorage`, chave `cache:<host>:<nome>`, try/catch em tudo, `clearCache(host)`). Entram: lista do WhatsApp
+  (`waChats`, antes da primeira leitura), cada conversa (`waThread:<número>`, últimas 200, dica "atualizando…" até a
+  leitura real), estado do WhatsApp (`waStatus`: o modo WhatsApp aparece antes do SSH responder), e no admin a lista
+  e as conversas dela com o meu-bot (`botChats`, `botThread:<sessão>`) e a saúde (`health`, rótulo "como estava há X
+  min" quando passou de 90 s ou está consultando). Limpar/excluir/apagar conversa tira o cache dela. Nada que dispara
+  ação é cacheado.
 - Arquivado/excluído do WhatsApp sincronizados pela máquina (17 out): as marcações moram em
   `~/.local/share/meu-bot/whatsapp-lista.json` na VM (`{archived: {número: ISO}, deleted: {número: ISO da
   exclusão}}`), então o meu-bot da pessoa e o meu-bot-admin veem a mesma lista, como já acontece com a pausa (que

@@ -11,6 +11,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { groupByDate, normalize, shortDate } from "../lib/sidebar.js";
 import { botReferenceText } from "../lib/reference.js";
+import type { Cached } from "../lib/cache.js";
 
 export interface BotMirrorDeps {
   panelsEl: HTMLElement;
@@ -22,6 +23,8 @@ export interface BotMirrorDeps {
   machine(): string;
   /** Copia o texto e avisa de leve na lateral. */
   copyReference(text: string): void;
+  /** Cache desta janela (lib/cache.ts, por máquina): a lista e as conversas da última vez aparecem na hora. */
+  cache: { read<T>(name: string): Cached<T> | null; write(name: string, value: unknown): void; drop(name: string): void };
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   closePage(page: PageTab): void;
@@ -33,18 +36,20 @@ export interface BotMirror {
   paintList(container: HTMLElement, query: string): void;
   refresh(): Promise<void>;
 }
-interface ChatPage { page: PageTab; chat: BotChat; msgs: BotMessage[]; err: string | null; loaded: boolean; timer: number | null; inflight: Promise<void> | null }
+interface ChatPage { page: PageTab; chat: BotChat; msgs: BotMessage[]; err: string | null; loaded: boolean; timer: number | null; inflight: Promise<void> | null; /** Veio do cache; a leitura real ainda não chegou. */ stale?: boolean }
 
 const hhmm = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
 
 export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
   let chats: BotChat[] = []; let err: string | null = null; let loaded = false; let inflight: Promise<void> | null = null; let listTimer: number | null = null;
   const pages = new Map<string, ChatPage>();
+  // A lista da última vez aparece na hora; a leitura real troca por baixo.
+  { const c = deps.cache.read<BotChat[]>("botChats"); if (c !== null && c.value.length > 0) { chats = c.value; loaded = true; } }
 
   async function refresh(): Promise<void> {
     if (inflight !== null) return inflight;
     inflight = (async () => {
-      try { chats = await deps.api.adminBotChats(); err = null; } catch (e) { err = ipcErrorText(e); }
+      try { chats = await deps.api.adminBotChats(); err = null; deps.cache.write("botChats", chats); } catch (e) { err = ipcErrorText(e); }
       finally { loaded = true; inflight = null; deps.onListChanged(); }
       if (listTimer !== null) clearTimeout(listTimer);
       listTimer = window.setTimeout(() => { listTimer = null; void refresh(); }, 30_000);
@@ -66,13 +71,13 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     const atEnd = panel.dataset["rendered"] !== "1" || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
     panel.replaceChildren();
     const head = el("div", "wa-chat-head");
-    head.append(el("strong", "", g.chat.title), el("span", "wa-chat-num", `${g.chat.replies} resposta${g.chat.replies === 1 ? "" : "s"} · ${shortDate(g.chat.updatedAt)}`), el("span", "wa-chat-hint", "conversa dela com o meu-bot · somente leitura · atualiza sozinho"));
+    head.append(el("strong", "", g.chat.title), el("span", "wa-chat-num", `${g.chat.replies} resposta${g.chat.replies === 1 ? "" : "s"} · ${shortDate(g.chat.updatedAt)}`), el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : "conversa dela com o meu-bot · somente leitura · atualiza sozinho"));
     // Apagar (travou, ficou lixo): dois cliques; some da máquina dela e fica no registro que ela vê.
     const del = el("button", "btn btn-ghost btn-small btn-danger", "Apagar esta conversa"); del.type = "button";
     del.addEventListener("click", () => deps.armConfirm(del, "Confirmar? some da máquina dela", () => {
       del.disabled = true;
       void deps.api.adminBotDelete(g.chat.sessionId)
-        .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
+        .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.cache.drop(`botThread:${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
         .catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
     }));
     // "Copiar ID": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
@@ -94,7 +99,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     if (g.inflight !== null) return g.inflight;
     if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; }
     g.inflight = (async () => {
-      try { g.msgs = await deps.api.adminBotThread(g.chat.sessionId); g.err = null; } catch (e) { g.err = ipcErrorText(e); }
+      try { g.msgs = await deps.api.adminBotThread(g.chat.sessionId); g.err = null; g.stale = false; deps.cache.write(`botThread:${g.chat.sessionId}`, g.msgs.slice(-200)); } catch (e) { g.err = ipcErrorText(e); }
       finally { g.loaded = true; g.inflight = null; }
       if (deps.activePage() === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshThread(g); }, 8_000); render(g); }
     })();
@@ -108,6 +113,8 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
       const panel = el("section", "wa-chat-panel"); panel.hidden = true;
       deps.panelsEl.append(panel);
       const created: ChatPage = { page: null as unknown as PageTab, chat, msgs: [], err: null, loaded: false, timer: null, inflight: null };
+      const cached = deps.cache.read<BotMessage[]>(`botThread:${chat.sessionId}`);
+      if (cached !== null && cached.value.length > 0) { created.msgs = cached.value; created.loaded = true; created.stale = true; }
       created.page = deps.definePage(id, chat.title, panel, () => { render(created); void refreshThread(created); });
       pages.set(id, created); g = created;
     } else g.chat = chat;
