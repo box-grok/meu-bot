@@ -1350,6 +1350,21 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   porque a chave é estável e o UUID (`WhatsappChat.sessionIds`, do `sessions.list`) troca a cada "Limpar". A cópia
   é só do que a lista já tem (sem SSH); aviso "✓ ID copiado" por 1,5 s na lateral (`sidebar-notice`).
   Canais novos: `chat:reference` (cliente), `ui:bot-menu` (admin). Backend atualizado no colima em 17 out.
+- Tutorial 7 · O que você quer resolver pelo WhatsApp? (17 out): deixou de ser "Em breve". Tudo mora na máquina, como a
+  pausa: `~/.local/share/meu-bot/objetivo.json` (`{objective: {id, label, text}, level, savedAt}`) e uma skill de
+  verdade em `<workspace do OpenClaw>/skills/objetivo-whatsapp/SKILL.md` (o OpenClaw a lista como
+  `openclaw-workspace`, confirmado na agente-box). Passo 1 *Escolher o objetivo* (corpo `objective-choice`: cartões
+  Atender clientes / Vender / Marcar horários / Dar suporte / Outro + frase; "Outro" exige a frase; "Salvar objetivo"
+  → `objective:set`). Passo 2 *Dizer quanta liberdade* (`objective-level`: Só conversa / Consulta e organiza / Age
+  por mim, grava no clique). Passo 3 *Salvar como skill no Acervo* (`objective-skill` → `objective:save`: escreve o
+  SKILL.md com o objetivo e as regras do nível em português e aplica `tools.toolsBySender`: o dono conforme o nível
+  (conversa = sem write/edit/exec/…, consulta = sem exec/process/cron/gateway, age = tudo) e `*` sempre sem as
+  ferramentas que mudam a máquina; sem número pareado a trava fica para depois). Conclui quando `savedAt` existe e o
+  SKILL.md está na máquina. "Refazer do zero" (`objective:reset`) apaga a skill e o objetivo.json e devolve a
+  liberdade total ao dono. O Acervo passa a listar as skills do workspace da máquina (a do objetivo primeiro, com
+  "Ajustar no tutorial 7") além da biblioteca estática; o contador da lateral soma as duas. Puro e testado em
+  `src/main/objetivo-core.ts`; SSH em `src/main/objetivo.ts`; opções da tela em `lib/tutoriais.ts`
+  (`OBJECTIVE_OPTIONS`, `LEVEL_OPTIONS`); `GuideContext.objective`.
 - Excluir máquina no seletor do admin (17 out): "Excluir máquina" (um clique, sem confirmação; é máquina, não pessoa: cada
   linha é uma VM) na pessoa selecionada faz tudo de uma
   vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via

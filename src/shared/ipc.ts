@@ -354,6 +354,28 @@ export interface WhatsappChat {
 /** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
 export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string }
 
+/** Tutorial 7 · objetivo do WhatsApp: a escolha da pessoa (rótulo do cartão + frase livre; "outro" exige a frase). */
+export interface ObjectiveChoice { id: string; label: string; text: string }
+/** Quanta liberdade o agente tem: só conversa, consulta e organiza, ou age pelo dono. */
+export type FreedomLevel = "conversa" | "consulta" | "age";
+/** Uma skill do workspace do OpenClaw na máquina (`<workspace>/skills/<nome>/SKILL.md`); `objective` = a do tutorial 7. */
+export interface MachineSkill { name: string; description: string; objective: boolean }
+/** Estado do tutorial 7 na máquina (objetivo.json + skills do workspace). */
+export interface ObjectiveInfo {
+  /** Janela de máquina por SSH (neste Mac não há agente). */
+  available: boolean;
+  objective: ObjectiveChoice | null;
+  level: FreedomLevel | null;
+  /** Quando a skill foi salva pela última vez; null = ainda não. */
+  savedAt: string | null;
+  /** Nome fixo da skill do objetivo. */
+  skill: string;
+  /** O SKILL.md do objetivo existe no workspace. */
+  skillPresent: boolean;
+  /** Todas as skills do workspace (o Acervo lista; a do objetivo primeiro). */
+  skills: MachineSkill[];
+}
+
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
 /** De onde veio uma conversa do meu-bot criada a partir do WhatsApp: contato, quantas mensagens e até quando. */
@@ -715,6 +737,14 @@ export interface MeuBotClientApi {
   installStatusLine(): Promise<InstallBackendResult>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;
+  /** Tutorial 7: estado na máquina (objetivo, nível, skill salva, skills do workspace). */
+  objectiveInfo(): Promise<ObjectiveInfo>;
+  /** Tutorial 7, passos 1 e 2: grava o objetivo e/ou o nível em objetivo.json na máquina. */
+  setObjective(patch: { objective?: ObjectiveChoice; level?: FreedomLevel }): Promise<ObjectiveInfo>;
+  /** Tutorial 7, passo 3: escreve a skill no workspace do OpenClaw e aplica a trava do nível. */
+  saveObjectiveSkill(): Promise<ObjectiveInfo & { detail: string }>;
+  /** "Refazer do zero" do tutorial 7: apaga a skill e o objetivo; o dono volta à liberdade total. */
+  resetObjective(): Promise<ObjectiveInfo>;
   /** "Tentar de novo": entrega o aviso na caixa do admin agora. */
   supportDeliver(): Promise<SupportInfo>;
   /** Progresso nos tutoriais desta pessoa (vai para a máquina só com o suporte ligado). */

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
+import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -102,6 +102,10 @@ const clientApi: MeuBotClientApi = {
   setStatusLineSegments: (prefs: StatusLineSegments) => ipcRenderer.invoke("statusline:set-segments", prefs),
   resetSupport: () => ipcRenderer.invoke("support:reset", {}),
   setSupportName: (name: string) => ipcRenderer.invoke("support:name", { name }),
+  objectiveInfo: () => ipcRenderer.invoke("objective:info", {}),
+  setObjective: (patch: { objective?: ObjectiveChoice; level?: FreedomLevel }) => ipcRenderer.invoke("objective:set", patch),
+  saveObjectiveSkill: () => ipcRenderer.invoke("objective:save", {}),
+  resetObjective: () => ipcRenderer.invoke("objective:reset", {}),
   supportDeliver: () => ipcRenderer.invoke("support:deliver", {}),
   reportProgress: (p: SupportProgress) => ipcRenderer.invoke("support:progress", p),
   setSupportShare: (share: SupportShare) => ipcRenderer.invoke("support:share", share),

@@ -210,6 +210,7 @@ dialog label { display: flex; flex-direction: column; gap: 4px; font-size: 13px;
 dialog .row { display: flex; gap: 12px; }
 dialog select, dialog input { font: inherit; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .hint { margin: 0; font-size: 12px; color: var(--muted); }
+.hint.ok { color: var(--ok); } .hint.bad { color: var(--bad); }
 .error { margin: 0; font-size: 12px; color: var(--bad); }
 .dialog-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 
@@ -419,6 +420,7 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .acervo-item .grow { flex: 1; min-width: 0; }
 .acervo-item strong { display: block; font-size: 13px; }
 .acervo-item span { font-size: 12px; color: var(--muted); }
+.acervo-item.on { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--bg)); }
 .cl-line { cursor: default; }
 .cl-line .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-line .btn-small { padding: 2px 8px; font-size: 11px; }

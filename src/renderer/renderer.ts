@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
@@ -11,7 +11,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
@@ -1367,12 +1367,55 @@ function closePage(page: PageTab): void {
   syncRest();
 }
 
-// ---- Acervo: biblioteca de skills (lib/acervo.ts). Instalar = pedir ao agente, numa conversa nova.
+// ---- Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
+let objectiveState: ObjectiveInfo | null = null;
+let objectiveBusy = false;
+/** Último recado do tutorial 7 (erro ou "skill salva"). */
+let objectiveMsg: { text: string; bad: boolean } | null = null;
+/** Rascunho do passo 1 antes de "Salvar objetivo" (cartão marcado e frase digitada). */
+let objectiveDraft: { id: string; text: string } | null = null;
+async function refreshObjective(): Promise<void> {
+  if (windowHost === "" || windowHost === "local" || !caps.install) return;
+  try { objectiveState = await window.meuBot.objectiveInfo(); } catch { /* sem resposta: fica o que havia */ }
+  paintAcervoCount(); paintGuide();
+  if (pageActive === acervoPage) acervoPage.render();
+}
+async function objectiveDo(run: () => Promise<ObjectiveInfo>, okText: string | null): Promise<void> {
+  if (objectiveBusy) return;
+  objectiveBusy = true; objectiveMsg = null; paintGuide();
+  try { objectiveState = await run(); objectiveMsg = okText === null ? null : { text: okText, bad: false }; }
+  catch (err) { objectiveMsg = { text: ipcErrorText(err), bad: true }; }
+  finally { objectiveBusy = false; paintAcervoCount(); paintGuide(); if (pageActive === acervoPage) acervoPage.render(); }
+}
+function paintAcervoCount(): void {
+  const n = ACERVO_SKILLS.length + (objectiveState?.skills.length ?? 0);
+  $<HTMLElement>("acervo-count").textContent = n === 1 ? "1 skill" : `${n} skills`;
+}
+
+// ---- Acervo: biblioteca de skills (lib/acervo.ts) + as skills do workspace do agente nesta máquina (tutorial 7).
 const acervoList = $<HTMLElement>("acervo-list");
-$<HTMLElement>("acervo-count").textContent = ACERVO_SKILLS.length === 1 ? "1 skill" : `${ACERVO_SKILLS.length} skills`;
+paintAcervoCount();
 const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel"), () => {
   acervoList.replaceChildren();
-  if (ACERVO_SKILLS.length === 0) {
+  const machine = objectiveState?.skills ?? [];
+  if (objectiveState?.available === true) {
+    acervoList.append(el("div", "tut-group", `Skills do agente em ${hostLabel(windowHost)}`));
+    if (machine.length === 0) acervoList.append(el("div", "acervo-empty", "O agente desta máquina ainda não tem skills no workspace. O tutorial 7 cria a primeira: o objetivo dele no WhatsApp."));
+    for (const sk of machine) {
+      const info = el("div", "grow");
+      info.append(el("strong", "", sk.objective ? `${sk.name} · objetivo do WhatsApp` : sk.name), el("span", "", sk.description !== "" ? sk.description : "sem descrição"));
+      const item = el("div", `acervo-item${sk.objective ? " on" : ""}`);
+      item.append(info);
+      if (sk.objective) {
+        const go = el("button", "btn btn-ghost btn-small", "Ajustar no tutorial 7"); go.type = "button";
+        go.addEventListener("click", () => { const t = TUTORIAIS.find((x) => x.id === "whatsapp-objetivo"); if (t !== undefined) openGuide(t); });
+        item.append(go);
+      }
+      acervoList.append(item);
+    }
+    if (ACERVO_SKILLS.length > 0) acervoList.append(el("div", "tut-group", "Biblioteca do meu-bot"));
+  }
+  if (ACERVO_SKILLS.length === 0 && machine.length === 0 && objectiveState?.available !== true) {
     acervoList.append(el("div", "acervo-empty", "Nenhuma skill no acervo ainda. As mais usadas vão entrar aqui, cada uma com instalação pelo agente da máquina."));
   }
   for (const skill of ACERVO_SKILLS) {
@@ -1623,6 +1666,12 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
         renderSupportParts(txt, step.body === "support-name" ? ["name"] : ["share", "delivery", "log"]);
+      } else if (step.body === "objective-choice") {
+        renderObjectiveChoice(txt);
+      } else if (step.body === "objective-level") {
+        renderObjectiveLevel(txt);
+      } else if (step.body === "objective-skill") {
+        renderObjectiveSkill(txt);
       } else if (step.target === "wa-pair" && waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
@@ -1772,6 +1821,8 @@ async function resetTutorial(t: Tutorial): Promise<void> {
       await logoutClaude(false);
     } else if (t.id === "xai-login") {
       if (xaiAuth?.loggedIn === true) await logoutXai(false);
+    } else if (t.id === "whatsapp-objetivo") {
+      objectiveState = await window.meuBot.resetObjective(); objectiveDraft = null; objectiveMsg = null; paintAcervoCount();
     }
     try { localStorage.removeItem(guideFlagsKey(t)); } catch { /* opcional */ }
     const g = guidePages.get(`tut-${t.id}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
@@ -3326,7 +3377,84 @@ const guideCtx = (): GuideContext => ({
     loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null,
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
+  objective: objectiveState,
 });
+
+/** Tutorial 7, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
+function renderObjectiveChoice(container: HTMLElement): void {
+  const cur = objectiveState?.objective ?? null;
+  const draft = objectiveDraft ?? (cur === null ? null : { id: cur.id, text: cur.text });
+  const cards = el("div", "reply-cards guide-cards");
+  for (const o of OBJECTIVE_OPTIONS) {
+    const on = draft?.id === o.id;
+    const card = el("button", `reply-card${on ? " on" : ""}`); card.type = "button"; card.disabled = objectiveBusy;
+    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(on));
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.label));
+    if (cur?.id === o.id) title.append(el("span", "reply-default", "Salvo"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { objectiveDraft = { id: o.id, text: draft?.id === o.id ? draft.text : (cur?.id === o.id ? cur.text : "") }; paintGuide(); });
+    cards.append(card);
+  }
+  container.append(cards);
+  const row = el("div", "support-name");
+  const opt = OBJECTIVE_OPTIONS.find((o) => o.id === draft?.id) ?? null;
+  const input = el("input"); input.type = "text"; input.maxLength = 300; input.disabled = objectiveBusy || draft === null;
+  input.placeholder = opt?.needsText === true ? "Em uma frase: o que o agente deve resolver (obrigatório)" : "Complete em uma frase, se quiser";
+  input.value = draft?.text ?? "";
+  input.addEventListener("input", () => { if (objectiveDraft !== null) objectiveDraft.text = input.value; else if (draft !== null) objectiveDraft = { id: draft.id, text: input.value }; });
+  const save = el("button", "btn btn-primary btn-small", cur === null ? "Salvar objetivo" : "Salvar mudança"); save.type = "button";
+  save.disabled = objectiveBusy || draft === null || (opt?.needsText === true && input.value.trim() === "");
+  input.addEventListener("input", () => { save.disabled = objectiveBusy || (opt?.needsText === true && input.value.trim() === ""); });
+  save.addEventListener("click", () => {
+    if (draft === null || opt === null) return;
+    const choice: ObjectiveChoice = { id: opt.id, label: opt.label, text: input.value.trim() };
+    void objectiveDo(() => window.meuBot.setObjective({ objective: choice }), null).then(() => { objectiveDraft = null; paintGuide(); });
+  });
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !save.disabled) { ev.preventDefault(); save.click(); } });
+  row.append(input, save);
+  container.append(row);
+  if (objectiveMsg !== null && objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${objectiveMsg.text}`));
+}
+/** Tutorial 7, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
+function renderObjectiveLevel(container: HTMLElement): void {
+  const cur = objectiveState?.level ?? null;
+  const cards = el("div", "reply-cards guide-cards");
+  for (const o of LEVEL_OPTIONS) {
+    const on = cur === o.id;
+    const card = el("button", `reply-card${on ? " on" : ""}`); card.type = "button"; card.disabled = objectiveBusy;
+    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(on));
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
+    if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { if (cur !== o.id) void objectiveDo(() => window.meuBot.setObjective({ level: o.id }), null); });
+    cards.append(card);
+  }
+  container.append(cards);
+  if (objectiveMsg !== null && objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${objectiveMsg.text}`));
+}
+/** Tutorial 7, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
+function renderObjectiveSkill(container: HTMLElement): void {
+  const st = objectiveState;
+  const box = el("div", "audio-controls");
+  if (st?.objective !== null && st?.objective !== undefined && st.level !== null) {
+    const lv = LEVEL_OPTIONS.find((l) => l.id === st.level);
+    box.append(el("div", "hint", `🎯 ${st.objective.label}${st.objective.text !== "" ? `: ${st.objective.text}` : ""}`), el("div", "hint", `🔒 ${lv?.title ?? st.level}`));
+  }
+  const save = el("button", "btn btn-primary btn-small", objectiveBusy ? "Salvando…" : st?.savedAt === null || st?.savedAt === undefined ? "Salvar como skill no Acervo" : "Salvar de novo"); save.type = "button";
+  save.disabled = objectiveBusy || st?.objective === null || st?.level === null;
+  save.addEventListener("click", () => { void objectiveDo(async () => { const r = await window.meuBot.saveObjectiveSkill(); objectiveMsg = { text: r.detail, bad: false }; return r; }, "skill salva"); });
+  const row = el("div", "support-name"); row.append(save);
+  if (st?.savedAt !== null && st?.savedAt !== undefined) {
+    const open = el("button", "btn btn-ghost btn-small", "Abrir o Acervo"); open.type = "button";
+    open.addEventListener("click", () => openPage(acervoPage));
+    row.append(open);
+  }
+  box.append(row);
+  if (objectiveMsg !== null) box.append(el("p", `hint${objectiveMsg.bad ? " bad" : " ok"}`, `${objectiveMsg.bad ? "✗" : "✓"} ${objectiveMsg.text}`));
+  container.append(box);
+}
 /**
  * Passo "Escolher primário e reserva" (tutorial 5): a mesma escolha de Configurações › Fallback, salva na hora
  * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
@@ -3961,6 +4089,7 @@ void (async () => {
   void refreshStatusLine();
   void refreshWhatsapp();
   void refreshSupportState();
+  void refreshObjective();
   void refreshClaudeLine();
   void refreshXaiLine();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha

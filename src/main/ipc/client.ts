@@ -25,7 +25,8 @@ async function rememberClaudeSession(conv: { id: string; host: string; claude?: 
   if (ref !== null && (conv.claude === undefined || conv.claude.sessionId !== ref.sessionId)) { conv.claude = ref; persistConversations(); }
   return ref ?? conv.claude ?? null;
 }
-import { isBackendModel } from "../settings";
+import { getHostNames, isBackendModel } from "../settings";
+import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
 import { toggleQuickEntry } from "../quickEntry";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallStatusLine } from "../hostProbe";
 import { readSegments, writeSegments } from "../statusLine";
@@ -95,6 +96,27 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return setSupportShare(h.host, payload);
+  });
+  // Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace, trava do nível).
+  handleClient("objective:info", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return objectiveInfo(h.host);
+  });
+  handleClient("objective:set", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return setObjective(h.host, payload);
+  });
+  handleClient("objective:save", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return saveObjectiveSkill(h.host, getHostNames()[h.host] ?? h.host);
+  });
+  handleClient("objective:reset", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return resetObjective(h.host);
   });
   // "Refazer do zero" do tutorial de suporte: desliga e esquece o nome.
   handleClient("support:reset", (event) => {

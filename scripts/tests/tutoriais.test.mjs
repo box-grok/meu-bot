@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -173,4 +173,21 @@ test("tutorial da status line: sempre visível; instalar, depois os limites no r
   const { GUIDE_ACTION_LABEL } = await import("../../dist/renderer/lib/tutoriais.js");
   assert.equal(sl.steps.at(-1).target, "chat", "o último passo leva à conversa, onde a status line aparece");
   assert.equal(GUIDE_ACTION_LABEL.chat, "Ir para a conversa");
+});
+
+test("tutorial 7 · objetivo do WhatsApp: objetivo → nível → skill salva (tudo lido da máquina); deixou de ser Em breve", () => {
+  const t7 = byId("whatsapp-objetivo");
+  assert.ok(t7.comingSoon !== true); assert.equal(t7.number, 7); assert.ok(t7.reset !== undefined);
+  assert.deepEqual(t7.steps.map((s) => s.body), ["objective-choice", "objective-level", "objective-skill"]);
+  const c = (objective) => ({ ...emptyContext(), objective: objective === null ? null : { available: true, objective: null, level: null, savedAt: null, skill: "objetivo-whatsapp", skillPresent: false, skills: [], ...objective } });
+  assert.equal(guideView(t7, null, emptyFlags(), c(null)).current, 0, "não consultado");
+  assert.equal(guideView(t7, null, emptyFlags(), c({})).current, 0);
+  const obj = { id: "vendas", label: "Vender", text: "" };
+  assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj })).current, 1, "objetivo salvo: nível");
+  assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa" })).current, 2, "nível salvo: skill");
+  assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa", savedAt: "2026-10-17T03:00:00Z" })).finished, false, "savedAt sem o arquivo na máquina não conclui");
+  assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa", savedAt: "2026-10-17T03:00:00Z", skillPresent: true })).finished, true);
+  assert.equal(OBJECTIVE_OPTIONS.filter((o) => o.needsText).map((o) => o.id).join(), "outro");
+  assert.deepEqual(LEVEL_OPTIONS.map((l) => l.id), ["conversa", "consulta", "age"]);
+  assert.equal(LEVEL_OPTIONS.filter((l) => l.isDefault).length, 1);
 });

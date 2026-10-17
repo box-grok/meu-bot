@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { StatusLineSegments, SupportInfo, WhatsappStatus } from "../../shared/ipc";
+import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappStatus } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -25,6 +25,8 @@ export interface GuideContext {
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
    */
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
+  /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
+  objective: ObjectiveInfo | null;
 }
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
@@ -33,6 +35,7 @@ export const emptyContext = (): GuideContext => ({
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   fallback: { primary: null, chain: null },
+  objective: null,
 });
 
 /** Modelos que entram na corrente de fallback (os outros respondem sozinhos, sem reserva). */
@@ -79,7 +82,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -305,16 +308,44 @@ export const TUTORIAIS: readonly Tutorial[] = [
     number: 7,
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
-    summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo.",
+    summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo: o agente passa a trabalhar em cima disso.",
     minutes: 2,
     icon: "chat",
-    comingSoon: true,
+    reset: { what: "apaga a skill do objetivo no workspace do agente e devolve a liberdade total ao dono (os outros contatos continuam sem ferramentas)" },
     steps: [
-      { id: "objetivo", title: "Escolher o objetivo", text: "", target: "none", done: () => false },
-      { id: "liberdade", title: "Dizer quanta liberdade o agente tem", text: "", target: "none", done: () => false },
-      { id: "skill", title: "Salvar como skill no Acervo", text: "", target: "none", done: () => false },
+      {
+        id: "objetivo", title: "Escolher o objetivo", target: "none", body: "objective-choice",
+        text: "O que o agente resolve pelo WhatsApp. Escolha um cartão e, se quiser, complete em uma frase (em \"Outro\" a frase é obrigatória). Fica gravado na máquina.",
+        done: (_st, _f, c) => c.objective?.objective !== null && c.objective?.objective !== undefined,
+      },
+      {
+        id: "liberdade", title: "Dizer quanta liberdade o agente tem", target: "none", body: "objective-level",
+        text: "Até onde o agente vai sozinho. Vale para você, o dono do número; os outros contatos nunca têm ferramentas que mudem a máquina.",
+        done: (_st, _f, c) => c.objective?.level !== null && c.objective?.level !== undefined,
+      },
+      {
+        id: "skill", title: "Salvar como skill no Acervo", target: "none", body: "objective-skill",
+        text: "Grava uma skill de verdade no workspace do agente (o OpenClaw carrega sozinho) e ajusta as ferramentas ao nível escolhido. Ela aparece no Acervo; salvar de novo substitui.",
+        done: (_st, _f, c) => c.objective?.savedAt !== null && c.objective?.savedAt !== undefined && c.objective.skillPresent,
+      },
     ],
   },
+];
+
+/** Tutorial 7, passo 1: os cartões de objetivo (o rótulo vai para o SKILL.md; "outro" exige a frase). */
+export interface ObjectiveOption { id: string; label: string; text: string; needsText: boolean }
+export const OBJECTIVE_OPTIONS: readonly ObjectiveOption[] = [
+  { id: "atendimento", label: "Atender clientes", text: "Tirar dúvidas, dar informações e encaminhar o que não resolver.", needsText: false },
+  { id: "vendas", label: "Vender", text: "Apresentar produtos ou serviços, tirar objeções e fechar pedidos.", needsText: false },
+  { id: "agenda", label: "Marcar horários", text: "Agendar, confirmar e remarcar compromissos.", needsText: false },
+  { id: "suporte", label: "Dar suporte", text: "Ajudar quem já é cliente a resolver problemas passo a passo.", needsText: false },
+  { id: "outro", label: "Outro", text: "Descreva em uma frase o que você quer resolver.", needsText: true },
+];
+/** Tutorial 7, passo 2: os três níveis de liberdade (os mesmos ids do main, que grava a trava). */
+export const LEVEL_OPTIONS: readonly { id: FreedomLevel; title: string; text: string; isDefault: boolean }[] = [
+  { id: "conversa", title: "Só conversa", text: "Responde, orienta e combina coisas, mas não mexe em nada: não roda comandos, não grava arquivos, não agenda.", isDefault: true },
+  { id: "consulta", title: "Consulta e organiza", text: "Lê arquivos e a internet, anota e organiza no workspace dele, mas não roda comandos nem agenda.", isDefault: false },
+  { id: "age", title: "Age por mim", text: "Faz o que for preciso: roda comandos, mexe em arquivos e agenda, como se fosse você.", isDefault: false },
 ];
 
 /** Selo do cartão: "TUTORIAL 3 · 4 PASSOS · 3 MIN" (o renderer põe em caixa alta); sem número, só passos e minutos. */
