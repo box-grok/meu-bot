@@ -47,6 +47,8 @@ const sharedApi: MeuBotSharedApi = {
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
   showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
+  whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
+  clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
   claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
@@ -103,8 +105,6 @@ const clientApi: MeuBotClientApi = {
   whatsappSetDmPolicy: (policy: "self" | "open") => ipcRenderer.invoke("whatsapp:dm-policy", { policy }),
   whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
-  whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
-  clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
   claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
   claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),
   claudeLoginCancel: () => ipcRenderer.invoke("claude-login:cancel", {}),
@@ -121,6 +121,7 @@ const adminApi: MeuBotAdminApi = {
   adminAction: (action: AdminAction) => ipcRenderer.invoke("admin:action", { action }),
   adminBotChats: () => ipcRenderer.invoke("admin:bot-chats", {}),
   adminBotThread: (sessionId: string) => ipcRenderer.invoke("admin:bot-thread", { sessionId }),
+  adminBotDelete: (sessionId: string) => ipcRenderer.invoke("admin:bot-delete", { sessionId }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

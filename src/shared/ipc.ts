@@ -594,6 +594,10 @@ export interface MeuBotSharedApi {
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
   showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
+  whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
+  /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
+  clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** Salva a conversa toda num arquivo; null = cancelado. */
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
   /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
@@ -679,10 +683,6 @@ export interface MeuBotClientApi {
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
-  /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). */
-  whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
-  /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
-  clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
   claudeLogin(): Promise<void>;
   /** Código colado pela pessoa; false se não há login em andamento. */
@@ -705,6 +705,8 @@ export interface MeuBotAdminApi {
   /** Conversas dela com o meu-bot (transcrições do Claude Code na máquina), só leitura. */
   adminBotChats(): Promise<BotChat[]>;
   adminBotThread(sessionId: string): Promise<BotMessage[]>;
+  /** Apaga na máquina dela a transcrição de uma conversa com o meu-bot (travou, ficou lixo); fica no registro. */
+  adminBotDelete(sessionId: string): Promise<void>;
 }
 
 /** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */

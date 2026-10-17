@@ -203,6 +203,16 @@ export async function adminBotThread(host: string, sessionId: string): Promise<B
   return parseClaudeTranscript(r.stdout);
 }
 
+/** Apaga a transcrição de uma conversa na máquina dela (o backend abre outra sessão no próximo turno). Registrado. */
+export async function adminBotDelete(host: string, sessionId: string): Promise<void> {
+  if (!SESSION_ID_RE.test(sessionId)) throw new Error("conversa inválida");
+  const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
+  if (chat === undefined || !PROJECT_DIR_RE.test(chat.project)) throw new Error("conversa não encontrada");
+  const r = await runSsh(host, `rm -f "$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl"\n${supportLogSh("admin", "apagou uma conversa dela com o meu-bot")}\n`, 20_000);
+  if (r.code !== 0) throw new Error(r.stderr.trim() || "não consegui apagar na máquina");
+  log(`[suporte] ${host}: conversa ${sessionId} apagada pelo admin`);
+}
+
 const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
   "restart-gateway": { what: "reiniciou o gateway do OpenClaw", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
   "restart-backend": { what: "reiniciou o backend do meu-bot", sh: "systemctl --user restart meu-bot-backend 2>&1" },

@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { runSsh, whatsappChats, whatsappExportBody, whatsappStatus, whatsappThread } from "../whatsapp";
+import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappStatus, whatsappThread } from "../whatsapp";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
 import { applyUpdate, updateState } from "../updater";
@@ -107,6 +107,27 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (result.canceled || result.filePath === undefined || result.filePath === "") return null;
     fs.writeFileSync(result.filePath, body, { mode: 0o600 });
     return { path: result.filePath };
+  });
+
+  // Limpar o histórico de um contato (a confirmação é da tela, inline na lista).
+  handleShared("whatsapp:clear-plan", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
+    return { own: own.length, shared: shared.length };
+  });
+  // A confirmação é da tela (inline na lista). Zerar a principal só com `includeShared`: se ela apareceu
+  // depois que a pessoa confirmou só a sessão do contato, recusa em vez de zerar sem aviso.
+  handleShared("whatsapp:clear", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const includeShared = (payload as { includeShared?: unknown }).includeShared === true;
+    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
+    if (shared.length > 0 && !includeShared) throw new Error("a conversa mudou; abra Limpar histórico de novo");
+    if (own.length + shared.length === 0) throw new Error("não há histórico desta conversa na máquina");
+    await whatsappClearSessions(h.host, [...own, ...shared]);
+    // No meu-bot-admin, a pessoa vê no registro dela que o suporte limpou o histórico.
+    if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", `limpou o histórico do WhatsApp de ${waNumber(payload)}`)}\n`, 15_000);
   });
 
   // Terminal: sessões presas à janela que as abriu. Entrada e resize sem resposta (uma por tecla). Os dois

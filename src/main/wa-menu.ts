@@ -15,7 +15,8 @@ const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenu
 export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">): WaMenuEntry[] {
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");
-  if (!caps.manageWa) return [exportar, arquivo];
+  // Sem manageWa (o admin): exportar, arquivar e limpar (a limpeza fica no registro da máquina dela).
+  if (!caps.manageWa) return [exportar, arquivo, item("Limpar histórico…", "clear")];
   return [
     item("Conversar com o meu-bot sobre isto", "talk"),
     exportar,

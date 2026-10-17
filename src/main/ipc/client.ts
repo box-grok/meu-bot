@@ -10,7 +10,7 @@ import type { AudioSetup, ExportFormat, TabMenuAction, WhatsappEvent } from "../
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { fetchAccountStatus, runBackendTurn } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappClearPlan, whatsappClearSessions, whatsappPause, whatsappStatus } from "../whatsapp";
+import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappPause, whatsappStatus } from "../whatsapp";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../xaiLogin";
 import {
@@ -165,23 +165,6 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     await whatsappPause(h.host, waNumber(payload), (payload as { paused?: unknown }).paused === true);
-  });
-  handleClient("whatsapp:clear-plan", async (event, payload: unknown) => {
-    const h = hostFromEvent(event);
-    if (h === null) throw new Error("origem inválida");
-    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
-    return { own: own.length, shared: shared.length };
-  });
-  // A confirmação é da tela (inline na lista). Zerar a principal só com `includeShared`: se ela apareceu
-  // depois que a pessoa confirmou só a sessão do contato, recusa em vez de zerar sem aviso.
-  handleClient("whatsapp:clear", async (event, payload: unknown) => {
-    const h = hostFromEvent(event);
-    if (h === null) throw new Error("origem inválida");
-    const includeShared = (payload as { includeShared?: unknown }).includeShared === true;
-    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
-    if (shared.length > 0 && !includeShared) throw new Error("a conversa mudou; abra Limpar histórico de novo");
-    if (own.length + shared.length === 0) throw new Error("não há histórico desta conversa na máquina");
-    await whatsappClearSessions(h.host, [...own, ...shared]);
   });
   handleClient("whatsapp:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");

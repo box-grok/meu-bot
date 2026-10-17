@@ -16,7 +16,10 @@ export interface BotMirrorDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   activePage(): PageTab | null;
-  api: Pick<MeuBotApi, "adminBotChats" | "adminBotThread">;
+  api: Pick<MeuBotApi, "adminBotChats" | "adminBotThread" | "adminBotDelete">;
+  /** Botão de dois cliques (o segundo confirma). */
+  armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
+  closePage(page: PageTab): void;
   /** A lista mudou (chegou do servidor ou falhou): o renderer redesenha a lateral. */
   onListChanged(): void;
 }
@@ -59,6 +62,15 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     panel.replaceChildren();
     const head = el("div", "wa-chat-head");
     head.append(el("strong", "", g.chat.title), el("span", "wa-chat-num", `${g.chat.replies} resposta${g.chat.replies === 1 ? "" : "s"} · ${shortDate(g.chat.updatedAt)}`), el("span", "wa-chat-hint", "conversa dela com o meu-bot · somente leitura · atualiza sozinho"));
+    // Apagar (travou, ficou lixo): dois cliques; some da máquina dela e fica no registro que ela vê.
+    const del = el("button", "btn btn-ghost btn-small btn-danger", "Apagar esta conversa"); del.type = "button";
+    del.addEventListener("click", () => deps.armConfirm(del, "Confirmar? some da máquina dela", () => {
+      del.disabled = true;
+      void deps.api.adminBotDelete(g.chat.sessionId)
+        .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
+        .catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
+    }));
+    head.append(del);
     const list = el("div", "wa-chat-msgs");
     if (!g.loaded) list.append(el("p", "hint", "Lendo a conversa na máquina…"));
     else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa: ${g.err}`));

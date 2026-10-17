@@ -4,7 +4,7 @@
  * registro vira recusa (ipc/registry.ts).
  */
 import { isSupportAlias } from "../support-code";
-import { adminAction, adminBotChats, adminBotThread, adminHealth, adminLogs } from "./support-admin";
+import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 
@@ -20,6 +20,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:logs", (event) => adminLogs(adminHost(event)));
   handleAdmin("admin:bot-chats", (event) => adminBotChats(adminHost(event)));
   handleAdmin("admin:bot-thread", (event, payload: unknown) => adminBotThread(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
+  handleAdmin("admin:bot-delete", (event, payload: unknown) => adminBotDelete(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
   handleAdmin("admin:action", (event, payload: unknown) => {
     const host = adminHost(event);
     const a = (payload as { action?: unknown } | null)?.action;

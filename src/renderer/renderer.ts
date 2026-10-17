@@ -3725,7 +3725,7 @@ void (async () => {
         paintWhatsapp(); renderSidebar();
       },
     }).open();
-    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar() });
+    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar() });
     renderSidebar();
     tabsReady = true;
     return;

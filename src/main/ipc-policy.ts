@@ -10,6 +10,8 @@ export const SHARED_CHANNELS = [
   // janela principal
   "window:info", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
+  // limpar o histórico de um contato: a pessoa e o admin (no admin fica no registro da máquina dela)
+  "whatsapp:clear-plan", "whatsapp:clear",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
@@ -32,7 +34,7 @@ export const CLIENT_CHANNELS = [
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
   // WhatsApp: o que mexe na máquina ou no agente dela
   "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch", "whatsapp:pause",
-  "whatsapp:clear", "whatsapp:clear-plan", "whatsapp:cancel",
+  "whatsapp:cancel",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
@@ -48,7 +50,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "picker:support-refresh", "picker:support-add", "picker:support-archive"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

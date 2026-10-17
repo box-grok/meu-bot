@@ -1184,6 +1184,12 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   progresso não compartilhados; `adminLogs` recusa; a lateral do admin só mostra o WhatsApp se a saúde o
   trouxer). Limite dito na tela: enquanto o suporte está ligado, o admin ainda entra por SSH; desligar o
   interruptor corta tudo.
+- CRUD do admin sobre o que está na máquina dela (16 out): no espelho do WhatsApp o menu "…" do admin ganha
+  "Limpar histórico…" (mesma confirmação inline do cliente; `whatsapp:clear-plan`/`whatsapp:clear` viram
+  canais comuns e, no admin, a limpeza entra no registro que ela vê: "admin limpou o histórico do WhatsApp de
+  <número>"). No espelho das conversas com o meu-bot, "Apagar esta conversa" (dois cliques; `admin:bot-delete`
+  apaga o .jsonl da sessão na máquina e registra "apagou uma conversa dela com o meu-bot"; o backend abre
+  outra sessão no próximo turno). Para a pessoa, o meu-bot já tinha "Limpar histórico" e "Excluir conversa".
 - Só o admin desliga (16 out, pedido do usuário): o interruptor "Permitir o acesso do admin" saiu do tutorial da
   pessoa; "Salvar nome" liga o suporte (o passo "Dizer seu nome" conclui com o nome gravado e o suporte ligado) e
   não há como ela desligar pelo app (nem "Refazer do zero" nesse tutorial). Quem desliga é o admin, pela ação
