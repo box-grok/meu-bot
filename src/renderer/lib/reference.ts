@@ -12,7 +12,7 @@ export const botReferenceText = (chat: Pick<BotChat, "project" | "sessionId">, m
   `meu-bot · ${machine} · ~/.claude/projects/${chat.project}/${chat.sessionId}.jsonl`;
 
 /** Caminho absoluto da máquina (vem do backend) encurtado para ~ quando está na home. */
-const tildify = (file: string): string => file.replace(/^\/(?:home|Users|root)\/[^/]+(?=\/)/, "~").replace(/^\/root(?=\/)/, "~");
+const tildify = (file: string): string => file.replace(/^\/root(?=\/)/, "~").replace(/^\/(?:home|Users)\/[^/]+(?=\/)/, "~");
 
 /** Conversa deste app: a sessão do Claude Code quando o backend já a conhece; senão o plano B com o id do app. */
 export const conversationReferenceText = (conversationId: string, machine: string, claude: ClaudeSessionRef | null): string =>
