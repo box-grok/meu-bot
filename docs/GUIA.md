@@ -1269,6 +1269,19 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   uma mensagem `assistant` — checado em `chat:done`). `refreshClaudeLine` repinta o guia; `logoutClaude(relogin)`
   serve ao botão "sair", ao painel de gerência ("Sair e entrar com outra conta") e ao "Refazer do zero". O guia
   só espera o WhatsApp (`st === null`) em tutoriais com alvo `wa-*`.
+- Tutorial 4 · Entrar na xAI (Grok) (16 out): deixou de ser "Em breve". `needsXai` esconde o 4 (e o 5, que
+  depende dele: `visibleTutorials` é recursiva no `after`) onde o Grok não é possível — este Mac ou máquina sem o
+  backend (`GuideContext.xai.possible`; null = ainda não consultado = mostra). Passos: *Preparar o Grok nesta
+  máquina* (corpo `xai-prepare`: botão "Preparar" → `xaiPrepare()`/`install-grok-oauth.sh`, log no passo; conclui
+  quando `xaiAuth !== null`, ou seja, Hermes presente), *Entrar na conta da xAI* (corpo `xai-login`: os mesmos
+  `LoginControls` do tutorial 1 — `buildLoginControls()` — sem o campo de código, porque o OAuth da xAI é por
+  código de dispositivo aprovado no navegador; conclui com `loggedIn`), *Ver o grok-4 responder* (alvo `chat`:
+  `goToChatFromGuide(…, "grok-4")` troca o modelo da conversa e dispara o 3-2-1; conclui com
+  `GuideFlags.grokReplied`, gravado em `chat:done` quando `done.provider === "grok-4"` — o X-Provider, a mesma
+  prova da pill "respondeu grok-4"). `xaiState` + `paintXaiLogin()` pintam guia e modal `#xai-dialog`; `enterXai()`
+  é a porta única (lateral "entrar"; concluído → modal para trocar de conta); `logoutXai(relogin)` serve ao
+  "sair", ao painel ("Sair e entrar com outra conta") e ao "Refazer do zero". `XaiKeyStatus` ficou só com
+  `backend` (o `hasKey` da chave de API saiu).
 - Selo da lateral com duas notificações (16 out): o **número** são as pendências (interruptor "avisar na
   lateral" desliga); o **pulso** é novidade — tutorial visível, pendente e nunca visto (`localStorage
   tutVisto:<host>`, só cresce; abrir Tutoriais marca tudo que está à vista). A novidade não obedece ao

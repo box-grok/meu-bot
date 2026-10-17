@@ -83,7 +83,7 @@ export function registerClientIpc(): void {
     return resetSupport(h.host);
   });
 
-  // Grok por chave de API (máquinas sem Hermes). A chave só passa pelo IPC e pelo stdin do ssh; nunca em log.
+  // Grok por OAuth em máquina sem Hermes: instala Hermes + proxy (install-grok-oauth.sh); cada linha vai ao log do login.
   handleClient("xai-login:prepare", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");

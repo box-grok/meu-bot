@@ -15,8 +15,18 @@ export interface GuideContext {
   support: SupportInfo | null;
   statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null };
   claude: { loggedIn: boolean | null; email: string | null; firstReply: boolean };
+  /**
+   * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
+   * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
+   */
+  xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
 }
-export const emptyContext = (): GuideContext => ({ support: null, statusLine: { installed: null, limits: false, segments: null }, claude: { loggedIn: null, email: null, firstReply: false } });
+export const emptyContext = (): GuideContext => ({
+  support: null,
+  statusLine: { installed: null, limits: false, segments: null },
+  claude: { loggedIn: null, email: null, firstReply: false },
+  xai: { possible: null, hermes: null, loggedIn: null, label: null },
+});
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 /** `chat` leva à conversa do meu-bot (passo que se conclui vendo algo no rodapé). */
@@ -35,10 +45,10 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, number: null });
-/** Marcações manuais que um passo pode pedir ("Testei, funcionou"). */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen";
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, number: null });
+/** Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com X-Provider grok-4). */
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied";
 
 export interface GuideStep {
   id: string;
@@ -47,7 +57,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -74,6 +84,8 @@ export interface Tutorial {
   comingSoon?: boolean;
   /** Só aparece quando o meu-bot veio com o pacote de suporte (e a janela é de máquina por SSH). */
   needsSupport?: true;
+  /** Só aparece onde o Grok é possível (máquina por SSH com o backend do meu-bot); some neste Mac. */
+  needsXai?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
   /** "Refazer do zero" (tutorial concluído): o que é desfeito na máquina antes de voltar ao passo 1. */
@@ -189,15 +201,29 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "xai-login",
     number: 4,
     after: "claude-login",
+    needsXai: true,
     title: "Entrar na xAI (Grok)",
     short: "Grok",
     summary: "Com a conta da xAI logada nesta máquina, o modelo grok-4 responde e pode servir de reserva do Claude.",
-    minutes: 2,
+    minutes: 3,
     icon: "chat",
-    comingSoon: true,
+    reset: { what: "sai da conta da xAI no Hermes desta máquina (o Hermes e o proxy ficam) e esquece a resposta de teste" },
     steps: [
-      { id: "entrar", title: "Entrar na conta da xAI", text: "", target: "none", done: () => false },
-      { id: "conferir", title: "Conferir o grok-4 respondendo", text: "", target: "none", done: () => false },
+      {
+        id: "preparar", title: "Preparar o Grok nesta máquina", target: "none", body: "xai-prepare",
+        text: "O Grok responde pelo Hermes desta máquina, com a sua conta da xAI. Na primeira vez o app instala o Hermes e um proxy local; pode levar alguns minutos.",
+        done: (_st, _f, c) => c.xai.hermes === true,
+      },
+      {
+        id: "entrar", title: "Entrar na conta da xAI", target: "none", body: "xai-login",
+        text: "Clique em Entrar: a página da xAI abre no navegador com um código já preenchido; você aprova por lá e volta. Aqui não há nada para colar.",
+        done: (_st, _f, c) => c.xai.hermes === true && c.xai.loggedIn === true,
+      },
+      {
+        id: "resposta", title: "Ver o grok-4 responder", target: "chat",
+        text: "Vá para a conversa: ela muda para o modelo grok-4 e manda uma mensagem; a resposta vem da xAI, e a pill do túnel mostra \"respondeu grok-4\".",
+        done: (_st, f, c) => c.xai.loggedIn === true && f.grokReplied,
+      },
     ],
   },
   {
@@ -288,16 +314,21 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
 }
 
 /**
- * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; os da trilha (`after`) só
- * depois que o anterior foi concluído (`finished` é do chamador: concluir depende de flags e da máquina).
+ * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; o do Grok só onde ele é
+ * possível (null = ainda não consultado = mostra); os da trilha (`after`) só depois que o anterior foi
+ * concluído (`finished` é do chamador: concluir depende de flags e da máquina). Um `after` escondido esconde
+ * quem depende dele (o 5 some junto com o 4).
  */
-export const visibleTutorials = (ctx: GuideContext, finished: (t: Tutorial) => boolean = () => false): Tutorial[] =>
-  TUTORIAIS.filter((t) => {
+export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => boolean = () => false): Tutorial[] {
+  const visible = (t: Tutorial): boolean => {
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
+    if (t.needsXai === true && ctx.xai.possible === false) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
-    return prev !== undefined && finished(prev);
-  });
+    return prev !== undefined && visible(prev) && finished(prev);
+  };
+  return TUTORIAIS.filter(visible);
+}
 
 /**
  * Selo ao lado de "Tutoriais" na lateral. Duas notificações distintas: o número são as pendências (tutoriais
