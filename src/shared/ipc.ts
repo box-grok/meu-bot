@@ -272,6 +272,7 @@ export interface SupportShare { progress: boolean; whatsapp: boolean; logs: bool
 export interface SupportPerson {
   /** Alias no ~/.ssh do admin (`suporte-<nome>-<4 hex>`): é o "host" da janela. */
   alias: string;
+  /** Apelido do admin, se deu; senão o nome que ela escreveu. */
   name: string;
   /** Apelido que a pessoa usa para a máquina no ~/.ssh/config dela ("colima"); null em códigos antigos. */
   machine: string | null;
@@ -465,6 +466,8 @@ export interface PickerAdminApi {
   supportAdd(code: string): Promise<SupportPerson>;
   /** meu-bot-admin: arquiva/desarquiva uma pessoa na lista; devolve as pessoas. */
   supportArchive(alias: string, archived: boolean): Promise<SupportPerson[]>;
+  /** meu-bot-admin: apelido para a pessoa (vazio volta ao nome que ela deu); o alias não muda. */
+  supportRename(alias: string, name: string): Promise<SupportPerson[]>;
 }
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */

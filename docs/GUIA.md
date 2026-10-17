@@ -1195,6 +1195,9 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:
   atualizar com `scp backend-colima/* <host>:~/backend-colima/ && ssh <host> bash ~/backend-colima/install.sh`
   (ou "Instalar backend" no seletor).
+- Renomear pessoa no admin (16 out): "Renomear" no seletor, com pessoa selecionada, guarda um apelido do admin
+  (`nickname` em pessoas.json, `picker:support-rename`) que vence o nome do código na lista, no título da
+  janela e na página Suporte; vazio volta ao nome dela. O alias SSH não muda (ele vem do nome do código).
 - Identidade por conta na máquina (16 out): `machineId` passou a ser hash de chave do servidor + usuário + porta
   (antes só a chave: duas contas na mesma VM, root e box, se sobrescreviam na caixa, no pessoas.json e no
   alias). O admin aceita avisos com o id antigo (`legacyMachineId`) e guarda sob o novo; o `pessoas.json`

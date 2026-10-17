@@ -6,7 +6,7 @@
 import type { PickerSource } from "../picker";
 import { handleAdmin } from "../ipc/registry";
 import { isSupportAlias } from "../support-code";
-import { addSupportCode, adminKeyExists, archivePerson, knownPeople, supportPeople } from "./support-admin";
+import { addSupportCode, adminKeyExists, archivePerson, knownPeople, renamePerson, supportPeople } from "./support-admin";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin · escolher pessoa",
@@ -27,6 +27,13 @@ export const adminPickerSource: PickerSource = {
       const alias = String(p?.alias ?? "");
       if (!isSupportAlias(alias)) throw new Error("pessoa inválida");
       return archivePerson(alias, p?.archived === true);
+    });
+    handleAdmin("picker:support-rename", (event, payload: unknown) => {
+      if (!fromPicker(event)) throw new Error("origem inválida");
+      const p = payload as { alias?: unknown; name?: unknown } | null;
+      const alias = String(p?.alias ?? "");
+      if (!isSupportAlias(alias)) throw new Error("pessoa inválida");
+      return renamePerson(alias, String(p?.name ?? ""));
     });
   },
 };

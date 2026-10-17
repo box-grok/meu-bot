@@ -207,7 +207,8 @@ function paintDetail(): void {
   const t = results.get(selected);
   installBtn.hidden = true;
   removeBtn.hidden = selected === "local" || support !== null;
-  renameBtn.hidden = selected === "local" || support !== null;
+  renameBtn.hidden = selected === "local";
+  renameBtn.title = support !== null ? "Apelido para esta pessoa no admin (vazio volta ao nome que ela deu). O alias não muda." : "Apelido desta máquina no app (seletor, título da janela). A chave SSH não muda.";
   archiveBtn.hidden = support === null;
   archiveBtn.textContent = personOf(selected)?.archived === true ? "Desarquivar" : "Arquivar";
   if (renameBtn.hidden) renameForm.hidden = true;
@@ -404,13 +405,13 @@ detailEl.append(renameForm);
 renameBtn.addEventListener("click", () => {
   if (selected === null) return;
   renameForm.hidden = !renameForm.hidden;
-  if (!renameForm.hidden) { renameInput.value = hostLabel(selected) === selected ? "" : hostLabel(selected); renameInput.focus(); renameInput.select(); }
+  if (!renameForm.hidden) { renameInput.value = support !== null ? (personOf(selected)?.name ?? "") : hostLabel(selected) === selected ? "" : hostLabel(selected); renameInput.placeholder = support !== null ? "Apelido (vazio volta ao nome dela)" : "Apelido (vazio volta ao nome SSH)"; renameInput.focus(); renameInput.select(); }
 });
 async function saveRename(): Promise<void> {
   if (selected === null) return;
   const host = selected;
   renameSave.disabled = true;
-  try { await window.picker.renameHost(host, renameInput.value); renameForm.hidden = true; init(await window.picker.list(), host); }
+  try { if (support !== null) await window.picker.supportRename(host, renameInput.value); else await window.picker.renameHost(host, renameInput.value); renameForm.hidden = true; init(await window.picker.list(), host); }
   catch (err) { showError("renomear", err); }
   finally { renameSave.disabled = false; }
 }

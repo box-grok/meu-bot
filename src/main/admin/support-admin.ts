@@ -18,7 +18,7 @@ import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
 interface AdminConfig { admin: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
@@ -35,7 +35,7 @@ export const adminName = (): string => adminConfig().admin;
 const storePath = (): string => path.join(app.getPath("userData"), "pessoas.json");
 function load(): Map<string, Stored> {
   try {
-    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown }>;
+    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown }>;
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
@@ -44,7 +44,7 @@ function load(): Map<string, Stored> {
       const key = machineId(d.code);
       const prev = m.get(key);
       if (prev !== undefined && prev.seenAt >= (typeof v.seenAt === "string" ? v.seenAt : "")) continue;
-      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true });
+      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "" });
     }
     return m;
   } catch {
@@ -52,8 +52,8 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean }> = {};
-  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived };
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string }> = {};
+  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
 const encode = (c: SupportCode): string => `MBS1.${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
@@ -102,13 +102,13 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
     const key = machineId(d.code);
     const seenAt = new Date(Number(mtime) * 1000).toISOString();
     const prev = m.get(key);
-    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true });
+    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true, nickname: prev?.nickname ?? "" });
   }
   return null;
 }
 
 const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
-const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived });
+const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.nickname !== "" ? s.nickname : s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived });
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
@@ -127,11 +127,20 @@ export function addSupportCode(text: string): SupportPerson {
   const d = decodeSupportCode(text);
   if (!d.ok) throw new Error(d.reason);
   const m = load();
-  const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado", archived: false };
+  const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" };
   m.set(machineId(d.code), s);
   save(m);
   writeSshFiles(m);
   return toPerson(s);
+}
+
+/** Apelido do admin para a pessoa (vence o nome que veio no código; vazio tira). O alias não muda. */
+export function renamePerson(alias: string, nickname: string): SupportPerson[] {
+  const m = load();
+  const nick = nickname.replace(/\s+/g, " ").trim().slice(0, 40);
+  for (const s of m.values()) if (supportAlias(s.code) === alias) s.nickname = nick;
+  save(m);
+  return knownPeople();
 }
 
 /** Arquiva/desarquiva uma pessoa na lista do seletor (o acesso dela não muda). Devolve as pessoas. */
@@ -144,7 +153,7 @@ export function archivePerson(alias: string, archived: boolean): SupportPerson[]
 
 /** Nome da pessoa e o apelido dela para a máquina, pelo alias (títulos e a página Suporte). */
 export function personInfo(alias: string): { name: string; machine: string | null } | null {
-  for (const s of load().values()) if (supportAlias(s.code) === alias) return { name: s.code.name, machine: s.code.machine ?? null };
+  for (const s of load().values()) if (supportAlias(s.code) === alias) return { name: s.nickname !== "" ? s.nickname : s.code.name, machine: s.code.machine ?? null };
   return null;
 }
 export const adminKeyExists = (): boolean => fs.existsSync(ADMIN_KEY);
