@@ -477,7 +477,7 @@ async function runTabAction(id: string, action: TabMenuAction | null): Promise<v
       // A sessão do Claude Code (o .jsonl) vem guardada ou do backend; sem ela, plano B com o id do app.
       let claude = null;
       try { claude = (await window.meuBot.conversationReference(id)).claude; } catch { /* plano B */ }
-      copyReference(conversationReferenceText(id, hostLabel(windowHost), claude));
+      copyReference(conversationReferenceText(id, hostLabel(windowHost), claude, index.get(id)?.model ?? ""));
       break;
     }
     case "archive": await archive(id, true); break;
