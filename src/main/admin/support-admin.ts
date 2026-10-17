@@ -11,7 +11,7 @@ import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
 import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
-import { runSsh, whatsappStatus } from "../whatsapp";
+import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
 import { xaiAuthInfo } from "../xaiLogin";
 import { getBackendPort, isValidHost } from "../settings";
@@ -243,16 +243,59 @@ const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
  * "desligar" (tira a chave do admin do authorized_keys, entrega "off" na caixa, apaga timer e pasta) e, aqui,
  * a pessoa fica "off" (sai do ~/.ssh/meu-bot-suporte.conf). Ela volta se salvar o nome de novo no tutorial.
  */
+/** Script que desliga o suporte na máquina dela: tira a chave do admin, entrega "off" na caixa, apaga timer/pasta e marca o bloqueio. */
+function supportOffSh(off: SupportCode, what: string): string {
+  return `${authorizedKeysScript(null)}\n${supportLogSh("admin", what)}\n${removeDeliverySh(machineId(off), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`;
+}
+const lastLine = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou";
+
 async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: string }> {
   const m = load();
   const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
   if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
   const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
-  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`, 60_000);
-  if (r.code !== 0) return { ok: false, detail: (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou" };
+  const r = await runSsh(host, supportOffSh(off, "desligou o suporte"), 60_000);
+  if (r.code !== 0) return { ok: false, detail: lastLine(r) };
   entry.code = off; save(m); writeSshFiles(m);
   log(`[suporte] ${host}: suporte desligado pelo admin`);
   return { ok: true, detail: "o acesso a esta máquina acabou; a janela pode ser fechada" };
+}
+
+/**
+ * "Excluir pessoa" no seletor do admin: na máquina dela, limpa todo o histórico do WhatsApp (todas as sessões do
+ * OpenClaw, o mesmo "Limpar histórico" de cada conversa, de uma vez) e desliga o suporte (o mesmo do `support-off`);
+ * aqui ela sai de pessoas.json, do ~/.ssh/meu-bot-suporte.conf e do arquivo dela na caixa de entrada. Com a máquina
+ * fora do ar nada é limpo e ela fica na lista; `force` é o "excluir mesmo assim", que só tira da lista.
+ */
+export async function removePerson(alias: string, force: boolean): Promise<{ people: SupportPerson[]; cleared: number; detail: string }> {
+  const m = load();
+  const found = [...m.entries()].find(([, s]) => supportAlias(s.code) === alias);
+  if (found === undefined) throw new Error("pessoa desconhecida");
+  const [id, entry] = found;
+  let cleared = 0;
+  let detail = "";
+  if (entry.code.state === "on") {
+    try {
+      const keys = [...new Set((await whatsappChats(alias)).flatMap((c) => c.sessionKeys))];
+      if (keys.length > 0) { await whatsappClearSessions(alias, keys); cleared = keys.length; }
+      const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
+      const r = await runSsh(alias, supportOffSh(off, `excluiu esta máquina do suporte: limpou todo o histórico do WhatsApp (${cleared} ${cleared === 1 ? "conversa" : "conversas"}) e desligou o suporte`), 60_000);
+      if (r.code !== 0) throw new Error(lastLine(r));
+      detail = cleared === 0 ? "não havia histórico do WhatsApp para limpar; o suporte foi desligado" : `histórico do WhatsApp limpo (${cleared} ${cleared === 1 ? "conversa" : "conversas"}) e suporte desligado`;
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      if (!force) throw new Error(`a máquina dela não respondeu (${why}); nada foi limpo e ela continua na lista`);
+      detail = `a máquina não respondeu (${why}); ela só saiu da lista`;
+    }
+  } else {
+    detail = "o suporte dela já estava desligado; ela só saiu da lista";
+  }
+  // O arquivo dela na caixa de entrada sai também (o "off" recém-entregue inclusive), senão a próxima leitura a traz de volta.
+  const inbox = adminConfig().inbox.alias;
+  if (inbox !== "") await runSsh(inbox, `rm -f "$HOME/suporte-inbox/${id}.code" "$HOME/suporte-inbox/${legacyMachineId(entry.code.hostKey)}.code"\n`, 20_000).catch(() => null);
+  m.delete(id); save(m); writeSshFiles(m);
+  log(`[suporte] ${alias}: excluída pelo admin (${detail})`);
+  return { people: knownPeople(), cleared, detail };
 }
 
 /** Ação de suporte: roda na máquina da pessoa e fica no registro que ela vê. */

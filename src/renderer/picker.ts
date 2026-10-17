@@ -20,6 +20,7 @@ const reliefShortcutBtn = $<HTMLButtonElement>("pk-relief-shortcut");
 const removeBtn = $<HTMLButtonElement>("pk-remove");
 const renameBtn = $<HTMLButtonElement>("pk-rename");
 const archiveBtn = $<HTMLButtonElement>("pk-archive");
+const removePersonBtn = $<HTMLButtonElement>("pk-remove-person");
 const grokbotResetBtn = $<HTMLButtonElement>("pk-grokbot-reset");
 const tailscaleBtn = $<HTMLButtonElement>("pk-tailscale");
 const tailscaleOffBtn = $<HTMLButtonElement>("pk-tailscale-off");
@@ -211,6 +212,8 @@ function paintDetail(): void {
   renameBtn.title = support !== null ? "Apelido para esta pessoa no admin (vazio volta ao nome que ela deu). O alias não muda." : "Apelido desta máquina no app (seletor, título da janela). A chave SSH não muda.";
   archiveBtn.hidden = support === null;
   archiveBtn.textContent = personOf(selected)?.archived === true ? "Desarquivar" : "Arquivar";
+  removePersonBtn.hidden = support === null;
+  if (removePersonBtn.dataset["host"] !== selected) resetRemovePerson();
   if (renameBtn.hidden) renameForm.hidden = true;
   const isPod = pods.has(selected);
   reliefShortcutBtn.hidden = !isPod;
@@ -357,6 +360,39 @@ archiveBtn.addEventListener("click", () => {
   if (alias === null || person === undefined) return;
   archiveBtn.disabled = true;
   void window.picker.supportArchive(alias, !person.archived).then(async () => init(await window.picker.list(), alias)).catch((err: unknown) => showError("arquivar", err)).finally(() => { archiveBtn.disabled = false; });
+});
+
+/**
+ * "Excluir pessoa" (só o admin): dois cliques (o primeiro arma por 4 s). Na máquina dela limpa todo o histórico do
+ * WhatsApp e desliga o suporte; aqui ela sai da lista. Se a máquina não responder, o botão vira "Excluir mesmo
+ * assim", que só tira da lista.
+ */
+const REMOVE_PERSON_LABEL = "Excluir pessoa";
+function resetRemovePerson(): void {
+  removePersonBtn.dataset["armed"] = ""; removePersonBtn.dataset["host"] = selected ?? ""; removePersonBtn.textContent = REMOVE_PERSON_LABEL; removePersonBtn.disabled = false;
+}
+removePersonBtn.addEventListener("click", () => {
+  const alias = selected; const person = alias === null ? undefined : personOf(alias);
+  if (alias === null || person === undefined) return;
+  const armed = removePersonBtn.dataset["armed"];
+  if (armed !== "1" && armed !== "force") {
+    removePersonBtn.dataset["armed"] = "1"; removePersonBtn.textContent = "Confirmar? limpa o WhatsApp dela e desliga o suporte";
+    window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "1") resetRemovePerson(); }, 4000);
+    return;
+  }
+  const force = armed === "force";
+  removePersonBtn.dataset["armed"] = ""; removePersonBtn.textContent = force ? "Tirando da lista…" : "Limpando o WhatsApp dela…"; removePersonBtn.disabled = true;
+  void window.picker.supportRemove(alias, force).then(async (r) => {
+    noteEl.hidden = false; noteEl.className = "note ok";
+    noteEl.textContent = `✓ ${person.name} saiu da lista: ${r.detail}.`;
+    resetRemovePerson();
+    init(await window.picker.list());
+  }).catch((err: unknown) => {
+    showError("excluir", err);
+    // A máquina não respondeu: o segundo caminho só tira da lista (10 s para decidir).
+    removePersonBtn.disabled = false; removePersonBtn.dataset["armed"] = "force"; removePersonBtn.textContent = "Excluir mesmo assim (só tira da lista)";
+    window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "force") resetRemovePerson(); }, 10_000);
+  });
 });
 
 function init(payload: PickerInit, keepSelected: string | null = null): void {

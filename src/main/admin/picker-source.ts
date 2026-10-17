@@ -1,12 +1,14 @@
 /**
  * Variante: admin. O seletor do meu-bot-admin lista pessoas, não máquinas: os aliases `suporte-…` das pessoas
  * com suporte ligado (admin/support-admin.ts). Os handlers só dele: atualizar pela caixa de entrada e
- * "Adicionar pessoa" colando o código. Nada de instalar, renomear ou remover: a máquina é dela.
+ * "Adicionar pessoa" colando o código, arquivar, apelido e "Excluir pessoa" (limpa o WhatsApp dela e desliga o
+ * suporte). Nada de instalar nem de mexer no ~/.ssh/config: a máquina é dela.
  */
 import type { PickerSource } from "../picker";
 import { handleAdmin } from "../ipc/registry";
 import { isSupportAlias } from "../support-code";
-import { addSupportCode, adminKeyExists, archivePerson, knownPeople, renamePerson, supportPeople } from "./support-admin";
+import { windowForHost } from "../windows";
+import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin · escolher pessoa",
@@ -34,6 +36,15 @@ export const adminPickerSource: PickerSource = {
       const alias = String(p?.alias ?? "");
       if (!isSupportAlias(alias)) throw new Error("pessoa inválida");
       return renamePerson(alias, String(p?.name ?? ""));
+    });
+    handleAdmin("picker:support-remove", async (event, payload: unknown) => {
+      if (!fromPicker(event)) throw new Error("origem inválida");
+      const p = payload as { alias?: unknown; force?: unknown } | null;
+      const alias = String(p?.alias ?? "");
+      if (!isSupportAlias(alias)) throw new Error("pessoa inválida");
+      const r = await removePerson(alias, p?.force === true);
+      windowForHost(alias)?.close();
+      return r;
     });
   },
 };

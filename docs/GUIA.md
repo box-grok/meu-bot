@@ -1253,6 +1253,15 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Arquivar pessoa no seletor do admin (16 out): "Arquivar" na pessoa selecionada tira da lista sem mexer no
   suporte dela (`archived` em pessoas.json, `picker:support-archive`); o interruptor "mostrar arquivadas"
   aparece quando há alguém arquivado. Mesmo modelo das conversas.
+- Excluir pessoa no seletor do admin (17 out): "Excluir pessoa" (dois cliques) na pessoa selecionada faz tudo de uma
+  vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via
+  `whatsappClearSessions`, o mesmo "Limpar histórico" de cada conversa) e desliga o suporte (mesmo script do
+  `support-off`: tira a chave do admin, entrega "off", apaga timer/pasta, marca o bloqueio), e aqui ela sai de
+  pessoas.json, do ~/.ssh/meu-bot-suporte.conf e do arquivo dela na caixa de entrada (senão a próxima leitura a
+  traria de volta). A janela dela, se aberta, fecha. Máquina fora do ar: nada é limpo, ela fica na lista e o botão
+  vira "Excluir mesmo assim (só tira da lista)" por 10 s (`force`). `removePerson` em `admin/support-admin.ts`,
+  `picker:support-remove`. Ela volta ao suporte só se salvar o nome de novo no tutorial (o bloqueio do admin
+  impede o religar automático).
 - "Renomear" (seletor, máquina selecionada; não "este Mac" nem no admin): apelido guardado em
   `settings.hostNames` (host → nome, 1–40 caracteres, `normalizeHostNames`). A chave SSH não muda; o apelido
   entra em `hostLabel` (`lib/probe-text.ts`, com `setHostNicknames`), então seletor, título da janela e

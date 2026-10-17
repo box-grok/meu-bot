@@ -50,7 +50,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

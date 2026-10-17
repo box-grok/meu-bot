@@ -468,6 +468,11 @@ export interface PickerAdminApi {
   supportArchive(alias: string, archived: boolean): Promise<SupportPerson[]>;
   /** meu-bot-admin: apelido para a pessoa (vazio volta ao nome que ela deu); o alias não muda. */
   supportRename(alias: string, name: string): Promise<SupportPerson[]>;
+  /**
+   * meu-bot-admin: "Excluir pessoa": limpa todo o histórico do WhatsApp na máquina dela, desliga o suporte e tira da
+   * lista (e da caixa de entrada). Máquina fora do ar: erro e ela fica; `force` tira da lista mesmo assim.
+   */
+  supportRemove(alias: string, force: boolean): Promise<{ people: SupportPerson[]; cleared: number; detail: string }>;
 }
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */
