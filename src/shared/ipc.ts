@@ -290,16 +290,20 @@ export interface SupportPerson {
 }
 /** Uma conversa da pessoa com o meu-bot, vista pela transcrição do Claude Code na máquina dela (meu-bot-admin). */
 export interface BotChat {
-  /** Sessão do Claude Code (nome do .jsonl). */
+  /** Sessão do Claude Code (nome do .jsonl) ou, com `source: "app"`, o id da conversa do app (diário do backend). */
   sessionId: string;
-  /** Pasta do projeto em ~/.claude/projects (diz o modo: agent-workspace = agente, chat-workspace = chat). */
+  /** Pasta do projeto em ~/.claude/projects (diz o modo: agent-workspace = agente, chat-workspace = chat); "conversas" no diário. */
   project: string;
   title: string;
   updatedAt: string;
   /** Quantas respostas o meu-bot deu. */
   replies: number;
+  /** De onde vem: transcrição do Claude Code, ou o diário que o backend grava para Grok/Hermes (~/.local/share/meu-bot/conversas). */
+  source: "claude" | "app";
+  /** Último provedor que respondeu (só no diário): "grok-4"… */
+  provider?: string;
 }
-export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string }
+export interface BotMessage { role: "person" | "agent" | "tool"; text: string; at: string; /** Quem respondeu (só no diário). */ provider?: string }
 /** Saúde da máquina da pessoa; `whatsapp` e `progress` vêm null quando ela não compartilha (ver `share`). */
 export interface AdminHealth { probe: HostProbe; whatsapp: WhatsappStatus | null; progress: SupportProgress | null; share: SupportShare; /** Conta da xAI no Hermes da máquina; null = sem Hermes. */ xai: ClaudeAuthInfo | null }
 /** Progresso da pessoa nos tutoriais (o meu-bot dela grava na máquina com o suporte ligado). */
@@ -500,6 +504,8 @@ export interface DoneEvent {
   usage?: { prompt: number; completion: number };
   /** Quem respondeu de fato (X-Provider). */
   provider?: string;
+  /** Houve fallback de provedor neste turno (aviso do backend), para ficar gravado na mensagem. */
+  fallback?: string;
 }
 
 export type ErrorKind = "backend" | "unknown";
@@ -522,6 +528,10 @@ export type ToolEvent =
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  /** Quem produziu a resposta de fato (X-Provider do backend): "agente", "grok-4"… Só nas de assistant. */
+  provider?: string;
+  /** Houve fallback de provedor neste turno: o aviso do backend, guardado ("agente falhou (…); respondendo com grok-4"). */
+  fallback?: string;
 }
 
 export interface StoredConversationView {

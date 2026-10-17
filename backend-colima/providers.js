@@ -119,13 +119,15 @@ function openaiCompletion({ provider, env = process.env, messages, signal, onDel
   return new Promise((resolve, reject) => {
     const url = new URL(`${provider.base_url}/chat/completions`);
     const key = resolveKey(provider, env);
-    const body = JSON.stringify({
-      model: provider.model,
-      stream: true,
-      messages: messages
-        .filter((m) => m && typeof m.role === 'string' && messageText(m))
-        .map((m) => ({ role: m.role, content: messageText(m) })),
-    });
+    // O modelo sabe quem é: a pergunta "qual modelo é você?" não pode depender do que ele acha de si.
+    const vendor = /grok/i.test(provider.model) || /x\.ai/i.test(provider.base_url) ? 'xAI' : (() => { try { return new URL(provider.base_url).host; } catch (_) { return provider.name; } })();
+    const identity = `Você responde dentro do meu-bot como o modelo ${provider.model}, da ${vendor}. Se perguntarem qual modelo ou IA você é, diga exatamente isso.`;
+    const mapped = messages
+      .filter((m) => m && typeof m.role === 'string' && messageText(m))
+      .map((m) => ({ role: m.role, content: messageText(m) }));
+    if (mapped[0] && mapped[0].role === 'system') mapped[0] = { role: 'system', content: `${identity}\n\n${mapped[0].content}` };
+    else mapped.unshift({ role: 'system', content: identity });
+    const body = JSON.stringify({ model: provider.model, stream: true, messages: mapped });
     const mod = url.protocol === 'https:' ? https : http;
     let finished = false; let text = ''; let deltas = 0; let usage = null; let buf = ''; let idle = null;
     const fail = (code, msg) => { if (finished) return; finished = true; if (idle) clearTimeout(idle); const e = new Error(msg); e.code = code; reject(e); try { req.destroy(); } catch (_) {} };

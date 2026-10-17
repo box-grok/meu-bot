@@ -62,7 +62,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     const b = el("div", `msg wa-msg ${m.role === "person" ? "wa-in" : "wa-out"}`);
     const body = el("div", "wa-body");
     if (m.role === "agent") body.append(renderMarkdown(m.text)); else body.textContent = m.text;
-    b.append(body, el("span", "wa-time", `${m.role === "agent" ? "meu-bot · " : ""}${hhmm(m.at)}`));
+    b.append(body, el("span", "wa-time", `${m.role === "agent" ? `${m.provider ?? "meu-bot"} · ` : ""}${hhmm(m.at)}`));
     return b;
   }
 
@@ -145,8 +145,11 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
             ev.stopPropagation();
             void deps.api.showBotMenu(c.sessionId).then((a) => { if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine())); });
           });
-          item.append(el("span", "si-title", c.title), el("span", "si-date", shortDate(c.updatedAt)), menu);
-          item.title = `${c.replies} resposta${c.replies === 1 ? "" : "s"} do meu-bot · ${c.project.includes("agent") ? "modo agente" : "chat"}`;
+          item.append(el("span", "si-title", c.title));
+          // Conversa fora do Claude Code (diário do backend): o provedor aparece como etiqueta, como "pausado" no WhatsApp.
+          if (c.provider !== undefined) item.append(el("span", "si-tab", c.provider));
+          item.append(el("span", "si-date", shortDate(c.updatedAt)), menu);
+          item.title = `${c.replies} resposta${c.replies === 1 ? "" : "s"} do meu-bot · ${c.source === "app" ? `${c.provider ?? "provedor externo"} (sem Claude Code)` : c.project.includes("agent") ? "modo agente" : "chat"}`;
           item.addEventListener("click", () => open(c));
           container.append(item);
         }

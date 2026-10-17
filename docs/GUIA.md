@@ -1128,9 +1128,16 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
 - Depois do login, o backend lista o grok-4 e ele entra no modo e em Configurações › Fallback. Verificado na
   colima (16 out): login OAuth concluído pelo app; o proxy aceita o id `grok-4` (responde com `grok-4.3`; lista
   também 4.5/4.6/4.7 e os de imagem) e o backend respondeu `X-Provider: grok-4`. O `hermes` precisa do node no
-  PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`. Tutorial
-  "Fallback: Claude e Grok logados" deixado como "Em breve" (pedido do usuário: fazer quando o login da xAI
-  estiver redondo).
+  PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`.
+- Tutorial 5 · Fallback: Claude e Grok (17 out; antes "Em breve"): três passos. (1) "As duas contas nesta máquina":
+  conclui com `claude.loggedIn && xai.loggedIn` no `GuideContext`. (2) "Escolher primário e reserva" (corpo
+  `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o mesmo seletor de Configurações › Fallback
+  (Claude = agente, xAI = grok-4), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
+  (`fallbackOrderText`, pura em `lib/tutoriais.ts`, agora usada também pelas Configurações) e "Manter assim" quando o
+  primário já está na corrente; conclui com a flag `fallbackChosen` (também gravada ao escolher nas Configurações) e
+  o primário em `FALLBACK_PRIMARIES`. (3) "Ver a reserva assumir": a flag `fallbackSeen` é gravada sozinha quando um
+  `chat:done` traz `fallback` (a reserva respondeu de verdade) ou pelo botão "Entendi como funciona". `needsXai`
+  (some onde o Grok não é possível) e `after: "xai-login"`; "Refazer do zero" só esquece as duas flags.
 
 ## Suporte: meu-bot-admin (16 out 2026)
 
@@ -1314,6 +1321,23 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   ("arquivou/desarquivou/excluiu a conversa do WhatsApp de +55…"); a migração não registra. Sem python3 na VM, a
   marcação falha com aviso claro (o app já depende dele para ler o número próprio). Testado na agente-box: arquivo
   corrompido + ajuste, merge de dois ajustes, `at` respeitado.
+- Quem respondeu, sempre visível e rastreável (17 out): (A) `BackendMessage`/`ChatMessage` ganham `provider`
+  (X-Provider do backend) e `fallback` (o aviso "agente falhou (…); respondendo com grok-4", antes só um aviso que
+  sumia); `runBackendTurn` grava os dois na resposta, `chat:done` os leva à tela, e a bolha do assistente mostra o
+  rótulo `.msg-provider` (`lib/provider-label.ts`, puro: "grok-4", ou "respondeu grok-4 (fallback de agente) ⚠" em
+  cor de aviso, com o motivo no title); vale ao reabrir (restauração do disco) e no export .md ("Assistente
+  (grok-4)"). (B) Conversas fora do Claude Code (Grok, Hermes) não tinham arquivo na máquina: o backend passa a
+  gravar um diário `~/.local/share/meu-bot/conversas/<id da conversa>.jsonl` (uma linha JSON por mensagem
+  `{at, role, model, provider, text}`, 0600) só quando o provedor usado não é um perfil Claude (o `.jsonl` do
+  Claude Code segue sendo a transcrição deles, sem duplicar). `GET /v1/meu-bot/session` devolve `{profile: "app",
+  file}` quando o diário existe (então "Copiar ID" traz caminho real) e `DELETE` o apaga junto. O admin lista as
+  duas fontes no mesmo script (`adminBotChats`: linhas `F` do Claude e `A` do diário; `BotChat.source`
+  `"claude"|"app"` e `provider`), lê (`parseAppTranscript`, puro, testado) e apaga por fonte; no espelho a conversa
+  Grok leva a etiqueta do provedor na lista e na bolha ("grok-4 · 00:42"); `botReferenceText` aponta para o diário.
+  (C) O modelo sabe quem é: `providers.openaiCompletion` antepõe ao system "Você responde dentro do meu-bot como o
+  modelo grok-4, da xAI…", e os perfis Claude recebem o mesmo pelo `--append-system-prompt` ("pelo Claude Code,
+  perfil agente"), inclusive no refazer sem resume. Backend reinstalado no colima e na agente-box (17 out); provado:
+  turno grok-4 → diário com 2 linhas, GET traz o arquivo, DELETE apaga, resposta "Sou o modelo grok-4, da xAI."
 - "Copiar ID" nos três pontinhos (17 out, os dois apps): uma linha para colar numa IA dizendo onde a
   conversa mora. Três formas (`src/renderer/lib/reference.ts`, puro, testado): espelho do meu-bot no admin →
   `meu-bot · <máquina> · ~/.claude/projects/<pasta>/<uuid>.jsonl` (botão "…" na linha via `ui:bot-menu`, canal

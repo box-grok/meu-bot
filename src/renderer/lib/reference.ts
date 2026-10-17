@@ -7,9 +7,11 @@
  */
 import type { BotChat, ClaudeSessionRef, WhatsappChat } from "../../shared/ipc";
 
-/** Conversa dela com o meu-bot vista no espelho do admin: o .jsonl pela pasta do projeto e a sessão. */
-export const botReferenceText = (chat: Pick<BotChat, "project" | "sessionId">, machine: string): string =>
-  `meu-bot · ${machine} · ~/.claude/projects/${chat.project}/${chat.sessionId}.jsonl`;
+/** Conversa dela com o meu-bot vista no espelho do admin: o .jsonl do Claude Code, ou o diário do backend (Grok/Hermes). */
+export const botReferenceText = (chat: Pick<BotChat, "project" | "sessionId"> & { source?: BotChat["source"] }, machine: string): string =>
+  chat.source === "app"
+    ? `meu-bot · ${machine} · ~/.local/share/meu-bot/conversas/${chat.sessionId}.jsonl`
+    : `meu-bot · ${machine} · ~/.claude/projects/${chat.project}/${chat.sessionId}.jsonl`;
 
 /** Caminho absoluto da máquina (vem do backend) encurtado para ~ quando está na home. */
 const tildify = (file: string): string => file.replace(/^\/root(?=\/)/, "~").replace(/^\/(?:home|Users)\/[^/]+(?=\/)/, "~");

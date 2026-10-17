@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
-import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
+import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
@@ -205,6 +205,13 @@ export async function adminBotChats(host: string): Promise<BotChat[]> {
     echo
   done
 done
+# Diário do backend para provedores fora do Claude Code (Grok, Hermes): uma conversa por arquivo.
+for f in "${APP_CONVERSAS_DIR}"/*.jsonl; do
+  [ -f "$f" ] || continue
+  printf 'A\t%s\t%s\t%s\t%s\t' "$(basename "$f" .jsonl)" "$(stat -c %Y "$f")" "$(grep -o '"provider":"[^"]*"' "$f" | tail -n1 | cut -d'"' -f4)" "$(grep -c '"role":"assistant"' "$f")"
+  grep -m1 '"role":"user"' "$f" | head -c 2000 | tr -d '\n\t'
+  echo
+done
 `, 30_000);
   if (r.code !== 0 && r.stdout.trim() === "") throw new Error(r.stderr.trim() || "não consegui ler as conversas na máquina");
   return parseBotChatList(r.stdout);
@@ -212,20 +219,27 @@ done
 
 /** Uma conversa: só as linhas user/assistant do jsonl (o resto é ruído), cada uma cortada em 30 KB. */
 export async function adminBotThread(host: string, sessionId: string): Promise<BotMessage[]> {
-  if (!SESSION_ID_RE.test(sessionId)) throw new Error("conversa inválida");
+  if (!isBotChatId(sessionId)) throw new Error("conversa inválida");
   if (!(await readShare(host)).chat) throw new Error("a pessoa preferiu não compartilhar as conversas com o meu-bot");
   const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
-  if (chat === undefined || !PROJECT_DIR_RE.test(chat.project)) return [];
+  if (chat === undefined) return [];
+  if (chat.source === "app") {
+    if (!APP_CONV_ID_RE.test(sessionId)) return [];
+    const r = await runSsh(host, `cut -c1-30000 "${APP_CONVERSAS_DIR}/${sessionId}.jsonl"\n`, 30_000);
+    return parseAppTranscript(r.stdout);
+  }
+  if (!PROJECT_DIR_RE.test(chat.project) || !SESSION_ID_RE.test(sessionId)) return [];
   const r = await runSsh(host, `grep -E '"type":"(user|assistant)"' "$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl" | cut -c1-30000\n`, 30_000);
   return parseClaudeTranscript(r.stdout);
 }
 
 /** Apaga a transcrição de uma conversa na máquina dela (o backend abre outra sessão no próximo turno). Registrado. */
 export async function adminBotDelete(host: string, sessionId: string): Promise<void> {
-  if (!SESSION_ID_RE.test(sessionId)) throw new Error("conversa inválida");
+  if (!isBotChatId(sessionId)) throw new Error("conversa inválida");
   const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
-  if (chat === undefined || !PROJECT_DIR_RE.test(chat.project)) throw new Error("conversa não encontrada");
-  const r = await runSsh(host, `rm -f "$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl"\n${supportLogSh("admin", "apagou uma conversa dela com o meu-bot")}\n`, 20_000);
+  if (chat === undefined || (chat.source === "claude" && (!PROJECT_DIR_RE.test(chat.project) || !SESSION_ID_RE.test(sessionId))) || (chat.source === "app" && !APP_CONV_ID_RE.test(sessionId))) throw new Error("conversa não encontrada");
+  const file = chat.source === "app" ? `${APP_CONVERSAS_DIR}/${sessionId}.jsonl` : `$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl`;
+  const r = await runSsh(host, `rm -f "${file}"\n${supportLogSh("admin", "apagou uma conversa dela com o meu-bot")}\n`, 20_000);
   if (r.code !== 0) throw new Error(r.stderr.trim() || "não consegui apagar na máquina");
   log(`[suporte] ${host}: conversa ${sessionId} apagada pelo admin`);
 }

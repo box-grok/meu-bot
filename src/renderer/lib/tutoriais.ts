@@ -20,13 +20,32 @@ export interface GuideContext {
    * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
   xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
+  /**
+   * Fallback entre contas: `primary` = modelo padrão desta máquina (quem responde sempre); `chain` = a corrente de
+   * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
+   */
+  fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
 }
+export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
+  fallback: { primary: null, chain: null },
 });
+
+/** Modelos que entram na corrente de fallback (os outros respondem sozinhos, sem reserva). */
+export const FALLBACK_PRIMARIES: readonly string[] = ["agente", "grok-4"];
+/** A reserva de um primário: quem mais está disponível na corrente, em ordem (vazio = sem reserva). */
+export const fallbackReserve = (primary: string, chain: readonly FallbackProvider[]): string[] => chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
+/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 5, a partir do que o backend informa. */
+export function fallbackOrderText(primary: string, chain: readonly FallbackProvider[] | null): string {
+  if (chain === null || chain.length === 0) return "O backend desta máquina ainda não informa a corrente de provedores.";
+  if (!chain.some((p) => p.name === primary)) return `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`;
+  const reserve = fallbackReserve(primary, chain);
+  return reserve.length === 0 ? `Primário: ${primary}. Sem reserva disponível nesta máquina.` : `Primário: ${primary}. Reserva: ${reserve.join(" → ")}, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.`;
+}
 
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 /** `chat` leva à conversa do meu-bot (passo que se conclui vendo algo no rodapé). */
@@ -45,10 +64,13 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, number: null });
-/** Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com X-Provider grok-4). */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied";
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, number: null });
+/**
+ * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
+ * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
+ */
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen";
 
 export interface GuideStep {
   id: string;
@@ -57,7 +79,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -230,15 +252,30 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "fallback-contas",
     number: 5,
     after: "xai-login",
+    needsXai: true,
     title: "Fallback: Claude e Grok",
     short: "Fallback",
-    summary: "Com as duas contas logadas nesta máquina, se uma falhar a outra responde. Escolha a ordem.",
+    summary: "Com as duas contas logadas nesta máquina, se uma falhar a outra responde. Escolha quem é o primário e quem é a reserva.",
     minutes: 2,
     icon: "chat",
-    comingSoon: true,
+    reset: { what: "esquece a escolha do primário e a reserva vista (as contas continuam logadas; o modelo padrão não muda)" },
     steps: [
-      { id: "ordem", title: "Escolher primário e reserva", text: "", target: "none", done: () => false },
-      { id: "testar", title: "Ver a reserva assumir", text: "", target: "none", done: () => false },
+      {
+        id: "contas", title: "As duas contas nesta máquina", target: "none",
+        text: "O fallback precisa das duas contas logadas nesta máquina: Claude (tutorial 1) e xAI (tutorial 4). Se uma falhar antes de responder, a outra assume sem você fazer nada.",
+        done: (_st, _f, c) => c.claude.loggedIn === true && c.xai.loggedIn === true,
+      },
+      {
+        id: "ordem", title: "Escolher primário e reserva", target: "none", body: "fallback-order",
+        text: "O primário responde sempre e gasta o orçamento da conta dele. A reserva só entra se o primário falhar antes de começar a responder, e não gasta nada até lá. Escolha quem é o primário; a reserva é quem sobrar.",
+        done: (_st, f, c) => f.fallbackChosen && c.fallback.primary !== null && FALLBACK_PRIMARIES.includes(c.fallback.primary),
+      },
+      {
+        id: "reserva", title: "Ver a reserva assumir", target: "none",
+        text: "Nada a fazer agora. Na primeira vez que o primário falhar antes de responder, a conversa recebe um aviso amarelo e a resposta vem da reserva, com \"fallback\" no pé da mensagem. Este passo se marca sozinho quando isso acontecer; se preferir, marque que entendeu.",
+        done: (_st, f) => f.fallbackSeen,
+        manual: { label: "Entendi como funciona", flag: "fallbackSeen" },
+      },
     ],
   },
   {

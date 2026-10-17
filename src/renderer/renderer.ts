@@ -11,11 +11,12 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
 import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
+import { providerLabel } from "./lib/provider-label.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -759,11 +760,20 @@ function iconButton(action: string, label: string, iconPath: string): HTMLButton
 }
 
 /** Mensagem com índice no histórico e ações no hover (Copiar, Ramificar daqui). */
-function appendMessage(tab: Tab, role: "user" | "assistant", content: string, indexInHistory: number): HTMLElement {
+/** Rótulo "quem respondeu" no pé da bolha do assistente (grok-4; ou "respondeu grok-4 (fallback de agente)", em aviso). */
+function paintProviderLabel(node: HTMLElement, model: string, provider: string | undefined, fallback: string | undefined): void {
+  node.querySelector(":scope > .msg-provider")?.remove();
+  const text = providerLabel(model, provider, fallback);
+  if (text === "") return;
+  const tag = el("span", `msg-provider${provider !== undefined && provider !== model ? " fallback" : ""}`, text);
+  if (fallback !== undefined) tag.title = fallback;
+  node.appendChild(tag);
+}
+function appendMessage(tab: Tab, role: "user" | "assistant", content: string, indexInHistory: number, meta?: { provider?: string | undefined; fallback?: string | undefined }): HTMLElement {
   const node = el("div", role === "user" ? "msg msg-user" : "msg msg-assistant");
   node.dataset["index"] = String(indexInHistory);
   if (role === "user") node.textContent = content;
-  else renderAssistant(node, content);
+  else { renderAssistant(node, content); if (meta !== undefined) paintProviderLabel(node, tab.model, meta.provider, meta.fallback); }
   const actions = el("div", "msg-actions");
   const copy = iconButton("copy", "Copiar", ICON_COPY);
   const branch = iconButton("branch", "Ramificar daqui", ICON_BRANCH);
@@ -861,7 +871,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
       const origin = index.get(restored.branchedFrom.id);
       addNote(tab, `Ramificada de "${origin !== undefined ? titleOf(origin) : "outra conversa"}" (mensagem ${restored.branchedFrom.index + 1})`);
     }
-    restored.messages.forEach((m, i) => appendMessage(tab, m.role, m.content, i));
+    restored.messages.forEach((m, i) => appendMessage(tab, m.role, m.content, i, { provider: m.provider, fallback: m.fallback }));
     const first = restored.messages.find((m) => m.role === "user");
     if (first !== undefined) setTitle(tab, first.content);
   } else if (restored?.fromWhatsapp === undefined) {
@@ -1222,6 +1232,7 @@ async function runXaiLogin(): Promise<void> {
   finally { xaiState.running = false; paintXaiLogin(); }
 }
 const XAI_TUTORIAL = TUTORIAIS.find((t) => t.id === "xai-login") as Tutorial;
+const FALLBACK_TUTORIAL = TUTORIAIS.find((t) => t.id === "fallback-contas") as Tutorial;
 /**
  * Porta única para "Entrar na xAI": enquanto o tutorial 4 não foi concluído (e o Grok é possível aqui), abre o
  * guia (Preparar ou Entrar pulsando; nada roda sozinho); concluído, é trocar de conta: o modal já com o login.
@@ -1597,6 +1608,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
         renderStatusLineTest(txt);
+      } else if (step.body === "fallback-order") {
+        renderFallbackOrder(txt);
       } else if (step.body === "xai-prepare") {
         txt.append(xaiPrep.box); paintXaiLogin();
       } else if (step.body === "xai-login") {
@@ -3027,10 +3040,13 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
   if (tab.pendingText !== "") {
     const cur = index.get(tab.id);
     const had = firstReplyOnHost();
-    patchIndex(tab.id, { messages: [...(cur?.messages ?? []), { role: "assistant", content: tab.pendingText }] });
+    patchIndex(tab.id, { messages: [...(cur?.messages ?? []), { role: "assistant", content: tab.pendingText, ...(done.provider === undefined ? {} : { provider: done.provider }), ...(done.fallback === undefined ? {} : { fallback: done.fallback }) }] });
+    if (tab.currentAssistant !== null) paintProviderLabel(tab.currentAssistant, tab.model, done.provider, done.fallback);
     // Tutorial 4: a prova de que o grok-4 responde é o X-Provider da resposta, não o que o modelo diz de si.
     const grokNow = done.provider === "grok-4" && !loadGuideFlags(XAI_TUTORIAL).grokReplied;
     if (grokNow) saveGuideFlag(XAI_TUTORIAL, "grokReplied");
+    // A reserva assumiu de verdade: o passo 3 do tutorial 5 se marca sozinho.
+    if (done.fallback !== undefined && !loadGuideFlags(FALLBACK_TUTORIAL).fallbackSeen) { saveGuideFlag(FALLBACK_TUTORIAL, "fallbackSeen"); paintGuide(); }
     if (!had || grokNow) paintGuide(); // primeira resposta nesta máquina (tutorial 1) / primeira do grok-4 (tutorial 4)
   }
   markUnread(tab);
@@ -3266,17 +3282,10 @@ function syncPrimaryFromModel(): void {
   primarySelect.value = m === "grok-4" ? "xai" : m === "agente" ? "claude" : "other";
 }
 function paintFallbackOrder(): void {
-  const primary = backendModelSelect.value;
-  const chain = account?.providers ?? [];
-  const reserve = chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
-  const known = chain.some((p) => p.name === primary);
-  fallbackOrderEl.textContent = chain.length === 0
-    ? "O backend desta máquina ainda não informa a corrente de provedores."
-    : !known
-      ? `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`
-      : reserve.length === 0 ? `Primário: ${primary}. Sem reserva disponível nesta máquina.` : `Primário: ${primary}. Reserva: ${reserve.join(" → ")}, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.`;
+  fallbackOrderEl.textContent = fallbackOrderText(backendModelSelect.value, account?.providers ?? null);
 }
-primarySelect.addEventListener("change", () => { const m = PRIMARY_OF[primarySelect.value]; if (m !== undefined) backendModelSelect.value = m; paintFallbackOrder(); });
+// Escolher o primário nas Configurações também conta como "escolhi" no tutorial 5 (vale ao salvar; o select já reflete).
+primarySelect.addEventListener("change", () => { const m = PRIMARY_OF[primarySelect.value]; if (m !== undefined) { backendModelSelect.value = m; saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); } paintFallbackOrder(); });
 backendModelSelect.addEventListener("change", () => { syncPrimaryFromModel(); paintFallbackOrder(); });
 
 /** Abre as Configurações (botão ou Cmd+,): sempre com as seções recolhidas e a memória recém-lida. */
@@ -3316,7 +3325,43 @@ const guideCtx = (): GuideContext => ({
     hermes: xaiAuth !== null ? true : xaiKey === null ? null : false,
     loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null,
   },
+  fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
 });
+/**
+ * Passo "Escolher primário e reserva" (tutorial 5): a mesma escolha de Configurações › Fallback, salva na hora
+ * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
+ */
+function renderFallbackOrder(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const accounts = el("div", "sl-switches");
+  const line = (ok: boolean | null, text: string): HTMLElement => el("div", `hint${ok === true ? " ok" : ok === false ? " bad" : ""}`, `${ok === true ? "✓" : ok === false ? "✗" : "•"} ${text}`);
+  accounts.append(
+    line(clAuth?.loggedIn ?? null, `Claude Code${clAuth?.email ? `: ${clAuth.email}` : ""} → modelo agente`),
+    line(xaiAuth?.loggedIn ?? null, `xAI${xaiAuth?.email ? `: ${xaiAuth.email}` : ""} → modelo grok-4`),
+  );
+  const label = el("label", "", "Primário nesta máquina ");
+  const sel = el("select");
+  for (const [value, text] of [["claude", "Claude (agente)"], ["xai", "xAI (grok-4)"]] as const) { const o = el("option", "", text); o.value = value; sel.append(o); }
+  const cur = backendModelSelect.value;
+  if (cur === "grok-4") sel.value = "xai"; else if (cur === "agente") sel.value = "claude"; else { const o = el("option", "", `outro (${cur || "sem modelo"}): fora da corrente`); o.value = "other"; o.disabled = true; sel.append(o); sel.value = "other"; }
+  label.append(sel);
+  const hint = el("p", "hint", fallbackOrderText(cur, account?.providers ?? null));
+  sel.addEventListener("change", () => {
+    const m = PRIMARY_OF[sel.value];
+    if (m === undefined) return;
+    sel.disabled = true;
+    void window.meuBot.setSettings({ backendModelForHost: m }).then((view) => {
+      applySettings(view); backendModelSelect.value = m; syncPrimaryFromModel(); paintFallbackOrder();
+      saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); paintGuide();
+    }).catch((err: unknown) => { hint.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { sel.disabled = false; });
+  });
+  const keep = el("button", "btn btn-small", "Manter assim"); keep.type = "button";
+  keep.title = "A escolha atual já serve: o primário fica como está";
+  keep.hidden = !FALLBACK_PRIMARIES.includes(cur) || loadGuideFlags(FALLBACK_TUTORIAL).fallbackChosen;
+  keep.addEventListener("click", () => { saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); paintGuide(); });
+  box.append(accounts, label, hint, keep);
+  container.append(box);
+}
 async function refreshStatusLine(): Promise<void> {
   if (!caps.install || windowHost === "") return;
   try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }

@@ -5,6 +5,9 @@ import { botReferenceText, conversationReferenceText, waReferenceText } from "..
 test("espelho do meu-bot: caminho do .jsonl pela pasta do projeto", () => {
   assert.equal(botReferenceText({ project: "-home-box-chat-workspace", sessionId: "1b016dff-349c-41f0-90ee-ef1fae699c42" }, "colima"),
     "meu-bot · colima · ~/.claude/projects/-home-box-chat-workspace/1b016dff-349c-41f0-90ee-ef1fae699c42.jsonl");
+  // Diário do backend (Grok/Hermes): o arquivo em ~/.local/share/meu-bot/conversas.
+  assert.equal(botReferenceText({ project: "conversas", sessionId: "2026-10-17T03-41-42-337Z-1", source: "app" }, "agente-box"),
+    "meu-bot · agente-box · ~/.local/share/meu-bot/conversas/2026-10-17T03-41-42-337Z-1.jsonl");
 });
 
 test("aba do meu-bot: caminho vindo do backend com ~; sem sessão, plano B com o id do app", () => {

@@ -100,6 +100,9 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 
 /* Ações por mensagem */
 .msg { position: relative; }
+/* Quem respondeu, no pé da bolha do assistente; em aviso quando veio de fallback. */
+.msg-provider { display: block; margin-top: 6px; font-size: 11px; color: var(--muted); }
+.msg-provider.fallback { color: var(--warn); }
 .msg-actions { position: absolute; top: -12px; right: 8px; display: none; align-items: center; gap: 2px; width: max-content; padding: 2px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .msg:hover .msg-actions { display: flex; }
 .msg-actions .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; }

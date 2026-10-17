@@ -23,7 +23,8 @@ export function conversationToMarkdown(conv: StoredConversation): string {
   if (conv.branchedFrom !== undefined) lines.push(`- Ramificada da conversa ${conv.branchedFrom.id}, mensagem ${conv.branchedFrom.index + 1}`);
   lines.push("", "---", "");
   for (const m of conv.messages) {
-    lines.push(m.role === "user" ? "**Você:**" : "**Assistente:**", "", m.content.trim(), "", "---", "");
+    const who = m.role === "user" ? "**Você:**" : `**Assistente${m.provider !== undefined ? ` (${m.provider})` : ""}:**`;
+    lines.push(who, ...(m.fallback !== undefined ? [`_${m.fallback}_`] : []), "", m.content.trim(), "", "---", "");
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }

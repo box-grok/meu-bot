@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseBotChatList, parseClaudeTranscript, botChatTitle } = createRequire(import.meta.url)("../../dist/main/bot-chats.js");
+const { parseBotChatList, parseClaudeTranscript, parseAppTranscript, botChatTitle, APP_CONV_ID_RE } = createRequire(import.meta.url)("../../dist/main/bot-chats.js");
 
 const userLine = (text, ts = "2026-10-16T18:17:56.276Z") => JSON.stringify({ type: "user", message: { role: "user", content: text }, timestamp: ts });
 const asst = (content, ts = "2026-10-16T18:18:01.000Z") => JSON.stringify({ type: "assistant", message: { role: "assistant", content }, timestamp: ts });
@@ -38,4 +38,31 @@ test("parseClaudeTranscript: user/assistant em ordem, ferramentas como linhas pr
     ["person", "lista os arquivos"], ["tool", "Bash"], ["agent", "Tem um arquivo: a.txt"],
   ]);
   assert.equal(msgs[0].at, "2026-10-16T18:17:56.276Z");
+});
+
+test("lista: linhas A (diário do backend, Grok/Hermes) entram com source app e provedor; F continua claude", () => {
+  const first = JSON.stringify({ at: "2026-10-17T03:42:10.000Z", role: "user", model: "grok-4", provider: "grok-4", text: "Oi! Qual modelo está respondendo agora?" });
+  const out = parseBotChatList([
+    `A\t2026-10-17T03-41-42-337Z-1\t1760672530\tgrok-4\t1\t${first}`,
+    `A\tid curto\t1760672530\tgrok-4\t1\t${first}`,
+    `F\t1b016dff-349c-41f0-90ee-ef1fae699c42\t1760672000\t-home-box-chat-workspace\t2\t${JSON.stringify({ type: "user", message: { role: "user", content: "User: oi" } })}`,
+  ].join("\n"));
+  assert.deepEqual(out.map((c) => [c.sessionId, c.source, c.provider ?? null, c.project, c.title]), [
+    ["2026-10-17T03-41-42-337Z-1", "app", "grok-4", "conversas", "Oi! Qual modelo está respondendo agora?"],
+    ["1b016dff-349c-41f0-90ee-ef1fae699c42", "claude", null, "-home-box-chat-workspace", "oi"],
+  ]);
+  assert.ok(APP_CONV_ID_RE.test("2026-10-17T03-41-42-337Z-1") && !APP_CONV_ID_RE.test("a b"));
+});
+
+test("parseAppTranscript: user/assistant em ordem com o provedor na resposta; lixo ignorado", () => {
+  const msgs = parseAppTranscript([
+    JSON.stringify({ at: "2026-10-17T03:42:10.000Z", role: "user", model: "grok-4", provider: "grok-4", text: "Qual modelo?" }),
+    JSON.stringify({ at: "2026-10-17T03:42:13.000Z", role: "assistant", model: "grok-4", provider: "grok-4", text: "Grok, da xAI." }),
+    "{quebrado",
+    JSON.stringify({ role: "assistant", text: "" }),
+  ].join("\n"));
+  assert.deepEqual(msgs, [
+    { role: "person", text: "Qual modelo?", at: "2026-10-17T03:42:10.000Z" },
+    { role: "agent", text: "Grok, da xAI.", at: "2026-10-17T03:42:13.000Z", provider: "grok-4" },
+  ]);
 });

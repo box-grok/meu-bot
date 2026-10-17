@@ -34,6 +34,27 @@ const WORKSPACE = ENV.WORKSPACE || path.join(os.homedir(), 'chat-workspace');
 const TURN_TIMEOUT_MS = Number(ENV.TURN_TIMEOUT_MS || 10 * 60 * 1000);
 
 const AGENT_WORKSPACE = ENV.AGENT_WORKSPACE || path.join(os.homedir(), 'agent-workspace');
+/**
+ * Diário das conversas que não passam pelo Claude Code (Grok, Hermes): sem ele, elas só existiriam no app. Uma
+ * conversa por arquivo, uma linha JSON por mensagem ({at, role, model, provider, text}). O meu-bot-admin lista e lê;
+ * "Copiar ID" aponta para cá; "Excluir" no app apaga (rota DELETE abaixo).
+ */
+const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'conversas');
+const appConvFile = (convId) => path.join(APP_CONVERSAS, `${convId}.jsonl`);
+function appendAppTranscript(convId, messages, model, provider, text) {
+  try {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const at = new Date().toISOString();
+    const lines = [];
+    if (lastUser) lines.push(JSON.stringify({ at, role: 'user', model, provider, text: messageText(lastUser) }));
+    lines.push(JSON.stringify({ at, role: 'assistant', model, provider, text }));
+    fs.mkdirSync(APP_CONVERSAS, { recursive: true, mode: 0o700 });
+    const f = appConvFile(convId);
+    const fresh = !fs.existsSync(f);
+    fs.appendFileSync(f, `${lines.join('\n')}\n`, { mode: 0o600 });
+    if (fresh) fs.chmodSync(f, 0o600);
+  } catch (e) { log(`diário ${convId}: não gravei (${e.message})`); }
+}
 const MODELS = {
   claudecode: { maxTurns: 8, cwd: WORKSPACE, bypass: false, description: 'chat puro via Claude Code (assinatura)' },
   agente: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, description: 'agente com ferramentas, sem pedir permissão (--dangerously-skip-permissions), cwd ~/agent-workspace' },
@@ -281,6 +302,9 @@ async function chatCompletions(req, res) {
       const profile = MODELS[name];
       const key = convId ? `${name}:${convId}` : null;
       let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
+      // O modelo sabe quem é (a pergunta "qual modelo é você?" não depende do que ele acha de si).
+      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.`;
+      plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
       let out;
       try {
@@ -290,6 +314,7 @@ async function chatCompletions(req, res) {
           log(`resume falhou para ${key}; refazendo sem resume`);
           if (key) sessions.del(key);
           plan = { ...flatten(messages), resume: null }; resumed = false;
+          plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
           out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool });
         } else throw e;
       }
@@ -330,6 +355,8 @@ async function chatCompletions(req, res) {
 
     if (usedKey && out.sessionId) sessions.put(usedKey, { sessionId: out.sessionId, cwd: usedProfile.cwd, sysHash: hash, seen: convoCount(messages) + 1 });
     log(`${used}${used !== model ? ` (fallback de ${model})` : ''} ${live ? 'live' : stream ? 'stream' : 'json'} resumed=${resumed} first_delta_ms=${firstDeltaAt ? firstDeltaAt - t0 : '-'} total_ms=${Date.now() - t0} chars=${out.text.length} deltas=${out.deltas}`);
+    // Fora do Claude Code não há .jsonl: o diário é a transcrição desta conversa na máquina.
+    if (!MODELS[used] && convId) appendAppTranscript(convId, messages, model, used, out.text);
 
     if (live) {
       startSse();
@@ -390,6 +417,8 @@ const server = http.createServer((req, res) => {
       if (!entry || !entry.sessionId || !entry.cwd) continue;
       out.push({ profile: name, sessionId: entry.sessionId, cwd: entry.cwd, file: path.join(sessions.projectDir(entry.cwd), `${entry.sessionId}.jsonl`) });
     }
+    // Diário (Grok/Hermes): a conversa tem arquivo aqui mesmo sem sessão do Claude Code.
+    if (fs.existsSync(appConvFile(convId))) out.push({ profile: 'app', sessionId: convId, cwd: APP_CONVERSAS, file: appConvFile(convId) });
     return json(res, 200, { sessions: out });
   }
   if (url.pathname === '/v1/meu-bot/session' && req.method === 'DELETE') {
@@ -403,6 +432,7 @@ const server = http.createServer((req, res) => {
       try { fs.unlinkSync(path.join(sessions.projectDir(entry.cwd), `${entry.sessionId}.jsonl`)); removed++; } catch (_) { /* já não havia */ }
       sessions.del(key);
     }
+    try { fs.unlinkSync(appConvFile(convId)); removed++; } catch (_) { /* sem diário */ }
     if (removed) log(`conversa ${convId}: ${removed} transcrição(ões) apagada(s) a pedido do app`);
     return json(res, 200, { removed });
   }

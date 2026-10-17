@@ -63,7 +63,11 @@ test("openaiCompletion: stream SSE vira texto + deltas; erro HTTP vira upstream_
     req.on("data", (c) => { body += c; });
     req.on("end", () => {
       const j = JSON.parse(body);
-      if (j.messages[0].content === "falha") { res.writeHead(401, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "sem credencial" } })); return; }
+      // A primeira mensagem é a identidade ("você é o grok-4, da xAI"), para a pergunta "qual modelo?" não depender do modelo.
+      assert.equal(j.messages[0].role, "system");
+      assert.match(j.messages[0].content, /modelo grok-4, da xAI/);
+      const lastUser = [...j.messages].reverse().find((m) => m.role === "user");
+      if (lastUser.content === "falha") { res.writeHead(401, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "sem credencial" } })); return; }
       assert.equal(req.headers.authorization, "Bearer local");
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       res.write(`data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", content: "" } }] })}\n\n`);

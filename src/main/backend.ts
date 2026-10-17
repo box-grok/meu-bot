@@ -443,22 +443,25 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
     const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen) };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
+    let fallbackNote: string | undefined;
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {
       partial += delta;
       if (!cancelled()) out.send("chat:delta", { conversationId, text: delta });
     }, headers, (notice) => {
-      // Fallback de provedor no backend: aviso na conversa e no pill, sem interromper a resposta.
+      // Fallback de provedor no backend: aviso na conversa e no pill, sem interromper a resposta; fica gravado na mensagem.
       log(`fallback ${conversationId}: ${notice}`);
+      fallbackNote = notice;
       if (cancelled()) return;
       out.send("chat:notice", { conversationId, text: `⚠ ${notice}` });
       out.send("backend:status", { host, state: "degraded", detail: notice });
     }, (tool) => { if (!cancelled()) out.send("chat:tool", { conversationId, tool }); });
     if (cancelled()) return;
-    conv.backendMessages.push({ role: "assistant", content: text });
+    // Quem respondeu fica na mensagem (a bolha mostra, o export leva, e sobrevive ao fechar/abrir).
+    conv.backendMessages.push({ role: "assistant", content: text, provider, ...(fallbackNote === undefined ? {} : { fallback: fallbackNote }) });
     conv.serverSeen = conv.backendMessages.length;
     conv.lastResumed = resumed;
     if (!streamed) out.send("chat:delta", { conversationId, text });
-    out.send("chat:done", { conversationId, stopReason: finishReason, resumed, ms: Date.now() - t0, provider, ...(usage === undefined ? {} : { usage }) });
+    out.send("chat:done", { conversationId, stopReason: finishReason, resumed, ms: Date.now() - t0, provider, ...(fallbackNote === undefined ? {} : { fallback: fallbackNote }), ...(usage === undefined ? {} : { usage }) });
     // Status line: conta e limites do Claude, atualizados depois de cada turno.
     void fetchAccountStatus(host).then((status) => { if (!cancelled()) out.send("chat:account", { host, status }); });
     if (provider !== model) log(`provedor ${conversationId}: pedido ${model}, respondeu ${provider}`);

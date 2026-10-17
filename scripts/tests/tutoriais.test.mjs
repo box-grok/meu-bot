@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -71,6 +71,28 @@ test("tutorial 4 · Entrar na xAI (Grok): preparar → entrar → grok-4 respond
   assert.ok(!ids({ possible: false }).includes("xai-login"), "este Mac / sem backend: some");
   assert.ok(!ids({ possible: false }, (x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"), "o 5 some junto com o 4");
   assert.ok(ids({ possible: true }, (x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
+});
+
+test("tutorial 5 · Fallback: duas contas → escolher primário → ver a reserva assumir (ou \"Entendi\")", () => {
+  const t5 = byId("fallback-contas");
+  assert.equal(t5.after, "xai-login"); assert.equal(t5.needsXai, true); assert.ok(t5.comingSoon !== true, "não é mais 'em breve'");
+  const chain = [{ name: "agente", available: true }, { name: "grok-4", available: true }];
+  const c = (over) => ({ ...emptyContext(), claude: { loggedIn: true, email: "a@b", firstReply: true }, xai: { possible: true, hermes: true, loggedIn: true, label: "x" }, fallback: { primary: "agente", chain }, ...over });
+  assert.equal(guideView(t5, null, emptyFlags(), c({ xai: { possible: true, hermes: true, loggedIn: false, label: null } })).current, 0, "sem a xAI: passo 1");
+  assert.equal(guideView(t5, null, emptyFlags(), c({ claude: { loggedIn: false, email: null, firstReply: false } })).current, 0, "sem o Claude: passo 1");
+  assert.equal(guideView(t5, null, emptyFlags(), c({})).current, 1, "duas contas: escolher");
+  assert.equal(guideView(t5, null, { ...emptyFlags(), fallbackChosen: true }, c({ fallback: { primary: "claudecode", chain } })).current, 1, "primário fora da corrente não conta");
+  assert.equal(guideView(t5, null, { ...emptyFlags(), fallbackChosen: true }, c({ fallback: { primary: "grok-4", chain } })).current, 2, "escolheu grok-4: ver a reserva");
+  assert.equal(guideView(t5, null, { ...emptyFlags(), fallbackChosen: true, fallbackSeen: true }, c({})).finished, true);
+  assert.equal(t5.steps[1].body, "fallback-order"); assert.deepEqual(t5.steps[2].manual, { label: "Entendi como funciona", flag: "fallbackSeen" });
+  assert.equal(tutorialBadge(t5), "Tutorial 5 · 3 passos · 2 min");
+  // a linha da corrente, igual em Configurações e no guia
+  assert.deepEqual(fallbackReserve("agente", chain), ["grok-4"]);
+  assert.deepEqual(fallbackReserve("agente", [{ name: "agente", available: true }, { name: "grok-4", available: false }]), []);
+  assert.match(fallbackOrderText("agente", null), /ainda não informa/);
+  assert.match(fallbackOrderText("claudecode", chain), /fora da corrente/);
+  assert.match(fallbackOrderText("agente", [{ name: "agente", available: true }]), /Sem reserva/);
+  assert.equal(fallbackOrderText("agente", chain), "Primário: agente. Reserva: grok-4, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.");
 });
 
 test("selo da lateral: número = pendências (interruptor desliga); pulso = novidade (não obedece ao interruptor)", () => {

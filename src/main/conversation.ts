@@ -12,6 +12,10 @@ export interface BackendMessage {
   content: string;
   /** Linha de contexto injetada pelo app (ex.: troca de modelo). Vai ao backend junto do conteúdo; nunca aparece na tela. */
   note?: string;
+  /** Quem respondeu de fato (X-Provider). Só nas de assistant; não vai ao backend. */
+  provider?: string;
+  /** Aviso de fallback do backend neste turno, guardado para a tela. Não vai ao backend. */
+  fallback?: string;
 }
 
 export interface Conversation {
@@ -159,7 +163,12 @@ export function loadConversations(): void {
       fallbackOrder = Math.max(fallbackOrder, order) + 1;
       const messages = item.messages.filter(
         (m): m is BackendMessage => (m?.role === "user" || m?.role === "assistant") && typeof m.content === "string",
-      );
+      ).map((m): BackendMessage => ({
+        role: m.role, content: m.content,
+        ...(typeof m.note === "string" ? { note: m.note } : {}),
+        ...(typeof m.provider === "string" && m.provider !== "" ? { provider: m.provider } : {}),
+        ...(typeof m.fallback === "string" && m.fallback !== "" ? { fallback: m.fallback } : {}),
+      }));
       const now = new Date().toISOString();
       const host = typeof item.host === "string" && isValidHost(item.host) ? item.host : (getLastHost() ?? LOCAL_HOST);
       conversations.set(item.id, {
