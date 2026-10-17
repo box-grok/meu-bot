@@ -238,7 +238,7 @@ export function registerClientIpc(): void {
     }
     if (!conv.closed) void rememberClaudeSession(conv);
   });
-  // "Copiar referência": a sessão do Claude Code (o .jsonl na máquina); guardada, ou lida agora do backend.
+  // "Copiar ID": a sessão do Claude Code (o .jsonl na máquina); guardada, ou lida agora do backend.
   handleClient("chat:reference", async (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);
     if (owned === null) throw new Error("origem inválida");
@@ -335,7 +335,7 @@ export function registerClientIpc(): void {
         item("Renomear", "rename"),
         item("Duplicar", "duplicate", !busy),
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
-        item("Copiar referência", "copy-ref"),
+        item("Copiar ID", "copy-ref"),
         archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive", !busy),
         { type: "separator" },
         item("Fechar aba", "close"),

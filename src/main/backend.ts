@@ -299,7 +299,7 @@ export async function deleteBackendSession(host: string, conversationId: string)
 
 /**
  * Sessão do Claude Code por trás de uma conversa (GET /v1/meu-bot/session?conv=): o .jsonl na máquina, para
- * "Copiar referência". null = sem túnel, backend antigo (sem a rota) ou conversa ainda sem turno.
+ * "Copiar ID". null = sem túnel, backend antigo (sem a rota) ou conversa ainda sem turno.
  */
 export async function fetchBackendSession(host: string, conversationId: string): Promise<ClaudeSessionRef | null> {
   let tunnel: { localPort: number; apiKey: string };

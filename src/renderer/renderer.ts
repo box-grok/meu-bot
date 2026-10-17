@@ -454,7 +454,7 @@ async function showTabMenu(tab: Tab): Promise<void> {
   await runTabAction(tab.id, action);
 }
 
-/** Linha discreta no topo da lateral por 1,5 s ("✓ Referência copiada"). */
+/** Linha discreta no topo da lateral por 1,5 s ("✓ ID copiado"). */
 function sidebarNotice(text: string): void {
   const n = el("div", "sidebar-empty sidebar-notice", text);
   sidebarList.prepend(n);
@@ -462,7 +462,7 @@ function sidebarNotice(text: string): void {
 }
 /** Copia e avisa; em erro de clipboard, avisa também (sem caixa). */
 function copyReference(text: string): void {
-  void navigator.clipboard.writeText(text).then(() => sidebarNotice("✓ Referência copiada"), () => sidebarNotice("✗ Não deu para copiar"));
+  void navigator.clipboard.writeText(text).then(() => sidebarNotice("✓ ID copiado"), () => sidebarNotice("✗ Não deu para copiar"));
 }
 
 async function runTabAction(id: string, action: TabMenuAction | null): Promise<void> {

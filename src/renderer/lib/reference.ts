@@ -1,5 +1,5 @@
 /**
- * "Copiar referência": uma linha por conversa, legível por gente e por IA, apontando onde ela mora na máquina.
+ * "Copiar ID": uma linha por conversa, legível por gente e por IA, apontando onde ela mora na máquina.
  * Puro (sem DOM): o renderer copia e avisa. Três formas:
  *   meu-bot · colima · ~/.claude/projects/-home-box-chat-workspace/<uuid>.jsonl
  *   whatsapp · colima · +5516992294486 · agent:main:whatsapp:direct:+5516992294486 · sessão <uuid>

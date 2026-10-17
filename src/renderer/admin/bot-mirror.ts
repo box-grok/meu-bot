@@ -75,8 +75,8 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
         .catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
     }));
-    // "Copiar referência": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
-    const ref = el("button", "btn btn-ghost btn-small", "Copiar referência"); ref.type = "button";
+    // "Copiar ID": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
+    const ref = el("button", "btn btn-ghost btn-small", "Copiar ID"); ref.type = "button";
     ref.title = "Copia o caminho do .jsonl desta conversa na máquina dela";
     ref.addEventListener("click", () => deps.copyReference(botReferenceText(g.chat, deps.machine())));
     head.append(ref, del);
@@ -132,7 +132,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         container.append(el("div", "sidebar-group", group.label));
         for (const c of group.items) {
           const item = el("div", `sidebar-item${active?.id === `bot-${c.sessionId}` ? " active" : ""}`);
-          // Menu "…" (como no WhatsApp): hoje só "Copiar referência".
+          // Menu "…" (como no WhatsApp): hoje só "Copiar ID".
           const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações";
           menu.addEventListener("click", (ev) => {
             ev.stopPropagation();

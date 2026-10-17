@@ -15,7 +15,7 @@ const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenu
 export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">): WaMenuEntry[] {
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   // Referência = número + chave da sessão do OpenClaw (+ UUID atual), uma linha para colar numa IA.
-  const referencia = item("Copiar referência", "copy-ref");
+  const referencia = item("Copiar ID", "copy-ref");
   // Apelido guardado na máquina (vale na lista e no título dos dois apps; o nome original fica dentro da conversa).
   const renomear = item("Renomear", "rename");
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");

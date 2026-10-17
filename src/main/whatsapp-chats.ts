@@ -52,7 +52,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
     for (const n of numbers) {
       const cur = byNumber.get(n) ?? { keys: [], ids: {}, updated: 0, paused: false };
       if (!cur.keys.includes(s.key)) cur.keys.push(s.key);
-      // UUID interno da sessão (troca a cada "Limpar"): só para "Copiar referência".
+      // UUID interno da sessão (troca a cada "Limpar"): só para "Copiar ID".
       if (typeof s.sessionId === "string" && /^[A-Za-z0-9-]{8,80}$/.test(s.sessionId)) cur.ids[s.key] = s.sessionId;
       // Pausa = envio negado na sessão só do contato (a principal nunca é pausada pelo app).
       if (peer !== null && s.sendPolicy === "deny") cur.paused = true;

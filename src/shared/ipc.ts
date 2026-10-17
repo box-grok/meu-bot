@@ -333,7 +333,7 @@ export interface WhatsappChat {
   isSelf: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
-  /** Chave da sessão → UUID interno do OpenClaw (troca a cada "Limpar"); para "Copiar referência". */
+  /** Chave da sessão → UUID interno do OpenClaw (troca a cada "Limpar"); para "Copiar ID". */
   sessionIds: Record<string, string>;
   /** Tem sessão só dele (isolamento por contato): dá para pausar sem afetar os outros. */
   ownSession: boolean;
@@ -668,7 +668,7 @@ export interface MeuBotClientApi {
   branchConversation(conversationId: string, index: number): Promise<StoredConversationView | null>;
   /** Abre o diálogo de salvar; null se cancelado. */
   exportConversation(conversationId: string, format: ExportFormat): Promise<{ path: string } | null>;
-  /** Sessão do Claude Code desta conversa (o .jsonl na máquina), para "Copiar referência"; null = ainda não há. */
+  /** Sessão do Claude Code desta conversa (o .jsonl na máquina), para "Copiar ID"; null = ainda não há. */
   conversationReference(conversationId: string): Promise<{ claude: ClaudeSessionRef | null }>;
   /** Menu de contexto nativo da aba; null se fechado sem escolher. */
   showTabMenu(conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null>;

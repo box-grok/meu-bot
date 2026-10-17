@@ -37,7 +37,7 @@ test("lista: junta a sessão principal e a por contato no mesmo número, mais re
   const withSelf = chatsFromSessions({ sessions: [{ key: `agent:main:whatsapp:default:direct:${SELF}`, updatedAt: 7000 }] }, SELF);
   assert.equal(withSelf[0].isSelf, true, "conversa consigo mesmo, em sessão própria, aparece marcada");
   assert.equal(chats.find((c) => c.number === "5511900000003").name, null);
-  // UUID da sessão por chave (para "Copiar referência"); sessão sem sessionId não entra.
+  // UUID da sessão por chave (para "Copiar ID"); sessão sem sessionId não entra.
   assert.deepEqual(ana.sessionIds, { [`agent:main:whatsapp:default:direct:${ANA}`]: "5e6c65a1-1385-42a6-ac5c-065d3366f3e2" });
 });
 

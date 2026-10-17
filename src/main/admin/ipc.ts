@@ -23,14 +23,14 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:bot-chats", (event) => adminBotChats(adminHost(event)));
   handleAdmin("admin:bot-thread", (event, payload: unknown) => adminBotThread(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
   handleAdmin("admin:bot-delete", (event, payload: unknown) => adminBotDelete(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
-  // Menu "…" de uma conversa dela com o meu-bot (espelho): só "Copiar referência"; o apagar fica no cabeçalho.
+  // Menu "…" de uma conversa dela com o meu-bot (espelho): só "Copiar ID"; o apagar fica no cabeçalho.
   handleAdmin("ui:bot-menu", (event) => {
     const h = hostFromEvent(event);
     if (h === null || !isSupportAlias(h.host)) return null;
     return new Promise<BotMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: BotMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      const menu = Menu.buildFromTemplate([{ label: "Copiar referência", click: () => pick("copy-ref") }]);
+      const menu = Menu.buildFromTemplate([{ label: "Copiar ID", click: () => pick("copy-ref") }]);
       // O callback de fechamento corre antes do click; o adiamento deixa o click vencer.
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });

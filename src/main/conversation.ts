@@ -37,7 +37,7 @@ export interface Conversation {
   fromWhatsapp?: WhatsappOrigin;
   /** Contexto trazido que ainda não foi ao backend; vira nota da próxima mensagem da pessoa. */
   pendingNote?: string;
-  /** Sessão do Claude Code na máquina (o .jsonl), lida do backend depois de um turno; para "Copiar referência". */
+  /** Sessão do Claude Code na máquina (o .jsonl), lida do backend depois de um turno; para "Copiar ID". */
   claude?: ClaudeSessionRef;
   /** Resumo do meio da conversa, gerado em background. */
   summary?: SummaryState;
