@@ -23,6 +23,9 @@ export function compareVersions(a: string, b: string): number {
 /** Uma linha da lista de saúde/progresso: ✓ (ok), ✗ (bad) ou • (null). */
 export interface HealthLine { text: string; ok: boolean | null; step?: string }
 
+/** MB → "12 GB" / "820 MB" (uma casa só abaixo de 10 GB). */
+export const gb = (mb: number): string => (mb >= 10_240 ? `${Math.round(mb / 1024)} GB` : mb >= 1024 ? `${(mb / 1024).toFixed(1).replace(".", ",")} GB` : `${Math.round(mb)} MB`);
+
 export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string, adminVersion: string): HealthLine[] {
   const p = h.probe;
   const lines: HealthLine[] = [];
@@ -43,6 +46,13 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
         : { text: "xAI (Grok) deslogada: o grok-4 não responde", ok: false },
     { text: p.statusLine ? "status line instalada" : "sem status line", ok: p.statusLine },
   );
+  // Disco da home e memória (como o Rambox mede): o whisper baixa ~500 MB e o OpenClaw enche de transcripts.
+  if (typeof p.diskTotalMb === "number" && p.diskTotalMb > 0 && typeof p.diskFreeMb === "number") {
+    lines.push({ text: `disco: ${gb(p.diskFreeMb)} livres de ${gb(p.diskTotalMb)}${p.diskFreeMb < 2048 ? " · pouco espaço" : ""}`, ok: p.diskFreeMb >= 2048 });
+  }
+  if (typeof p.memTotalMb === "number" && p.memTotalMb > 0 && typeof p.memFreeMb === "number") {
+    lines.push({ text: `memória: ${gb(p.memFreeMb)} livres de ${gb(p.memTotalMb)}${p.memFreeMb < 512 ? " · apertada" : ""}`, ok: p.memFreeMb >= 512 ? null : false });
+  }
   const wa = h.whatsapp;
   if (wa !== null && wa.present) {
     lines.push({ text: wa.connected ? `WhatsApp conectado${wa.number !== null ? ` (${fmtPhone(wa.number)})` : ""}` : `WhatsApp: ${wa.detail}`, ok: wa.connected });

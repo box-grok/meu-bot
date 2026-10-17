@@ -16,7 +16,7 @@ export const SHARED_CHANNELS = [
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // atualização automática do próprio app
-  "update:state", "update:apply",
+  "update:state", "update:apply", "update:check",
   // seletor
   "picker:list", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
@@ -28,7 +28,7 @@ export const SHARED_CHANNELS = [
 export const CLIENT_CHANNELS = [
   // conversas com o agente
   "chat:send", "chat:cancel", "chat:new", "chat:list", "chat:rename", "chat:set-model", "chat:reorder", "chat:close",
-  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify",
+  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify", "ui:notify-test", "alerts:get", "alerts:set",
   "backend:account",
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",

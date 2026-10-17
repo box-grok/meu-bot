@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { deleteBackendSession, fetchAccountStatus, fetchBackendSession, log, runBackendTurn } from "../backend";
+import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, log, runBackendTurn, saveAlertPrefs } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
 import { pauseRuleSh } from "../whatsapp-pause";
@@ -369,6 +369,25 @@ export function registerClientIpc(): void {
   });
 
   const liveNotifications = new Set<Notification>();
+  // Notificação de teste (como no Rambox): a pessoa confirma que o macOS deixa as do meu-bot passarem; na primeira, o
+  // sistema pede a permissão junto. Clicar traz a janela.
+  handleClient("ui:notify-test", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || !Notification.isSupported()) throw new Error("este sistema não mostra notificações");
+    const n = new Notification({ title: "meu-bot", body: "As notificações estão funcionando. Até logo!", silent: false });
+    n.on("click", () => { h.win.show(); h.win.focus(); });
+    n.show();
+  });
+  // Avisos de segurança desta máquina (alertas.json, via backend): um Mac novo usou o meu-bot dela.
+  handleClient("alerts:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchAlertPrefs(h.host); });
+  handleClient("alerts:set", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = payload as { whatsapp?: unknown; email?: unknown } | null;
+    const email = typeof p?.email === "string" ? p.email.trim().slice(0, 120) : "";
+    if (email !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("e-mail inválido");
+    return saveAlertPrefs(h.host, { whatsapp: p?.whatsapp !== false, email });
+  });
   handleClient("ui:notify", (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);
     const p = payload as { title?: unknown; body?: unknown };

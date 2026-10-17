@@ -27,6 +27,10 @@ export interface SettingsView {
   onboarding: "pending" | "done" | "skipped";
   /** true = a janela abre direto; false = abertura animada toda vez (caixinha do seletor). */
   openDirect: boolean;
+  /** Abrir o app ao entrar no Mac (item de início do sistema; o sistema é a fonte da verdade). */
+  openAtLogin: boolean;
+  /** Só o app empacotado consegue se registrar como item de início. */
+  openAtLoginAvailable: boolean;
   /** Apelido de cada máquina ("Renomear" no seletor). */
   hostNames: Record<string, string>;
 }
@@ -45,6 +49,7 @@ export interface SettingsUpdate {
   quickEntryShortcut?: string;
   /** O renderer marca concluído/pulado; "pending" é a ação "Rever onboarding" da paleta. */
   onboarding?: "pending" | "done" | "skipped";
+  openAtLogin?: boolean;
 }
 
 export interface ContextEvent {
@@ -62,7 +67,19 @@ export interface ContextEvent {
 
 /** Conta e limites do Claude Code na máquina (cache do statusline.sh), via GET /v1/meu-bot/status. */
 /** Atualização automática do app (src/main/updater.ts). */
-export interface UpdateState { current: string; available: string | null; ready: string | null; checking: boolean; error: string | null }
+export interface UpdateState {
+  current: string;
+  available: string | null;
+  ready: string | null;
+  checking: boolean;
+  error: string | null;
+  /** Fase para a tela: idle (dev/desligado), checking, up-to-date, available (baixando), ready, error. */
+  phase: "idle" | "checking" | "up-to-date" | "available" | "ready" | "error";
+  /** Última consulta ao GitHub (ISO); null antes da primeira. */
+  checkedAt: string | null;
+}
+/** Avisos de segurança gravados na máquina (o backend envia): um Mac novo usou o meu-bot desta máquina. */
+export interface AlertPrefs { whatsapp: boolean; email: string }
 
 /** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
 export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean }
@@ -122,6 +139,11 @@ export interface HostProbe {
   audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
   gateway: Gateway | null;
+  /** Disco da home e memória da máquina, em MB (null quando a sondagem não trouxe). */
+  diskFreeMb: number | null;
+  diskTotalMb: number | null;
+  memFreeMb: number | null;
+  memTotalMb: number | null;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
@@ -621,6 +643,8 @@ export interface MainEvents {
   "term:exit": { id: string; code: number; detail: string | null };
   /** Uma versão nova do app foi baixada e preparada: "Reiniciar e atualizar" troca na hora. */
   "update:ready": { version: string };
+  /** Cada fase da verificação de atualização (verificando, mais recente, baixando, pronta, erro). */
+  "update:state": UpdateState;
   /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
   "ui:claude-login": Record<string, never>;
 }
@@ -648,6 +672,8 @@ export interface MeuBotSharedApi {
   termReplay(id: string): Promise<Uint8Array>;
   /** Atualização automática: estado (versão atual, disponível, pronta) e trocar + reiniciar. */
   updateState(): Promise<UpdateState>;
+  /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
+  checkUpdate(): Promise<UpdateState>;
   applyUpdate(): Promise<void>;
   /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
   whatsappChats(): Promise<WhatsappChat[]>;
@@ -705,6 +731,11 @@ export interface MeuBotClientApi {
   /** Menu de contexto nativo da aba; null se fechado sem escolher. */
   showTabMenu(conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null>;
   notify(conversationId: string, title: string, body: string): Promise<void>;
+  /** Notificação de teste do sistema ("as notificações estão funcionando"); o macOS pede a permissão junto, na primeira. */
+  notifyTest(): Promise<void>;
+  /** Avisos de segurança desta máquina (backend); null = backend sem a rota ou fora do ar. */
+  alertPrefs(): Promise<AlertPrefs | null>;
+  setAlertPrefs(prefs: AlertPrefs): Promise<void>;
   quickAck(correlationId: string, ok: boolean, message?: string): void;
   /** Mostra/esconde a janela de entrada rápida (mesmo efeito do atalho global). */
   toggleQuickEntry(): Promise<void>;

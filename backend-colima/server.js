@@ -17,6 +17,8 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const https = require('node:https');
+const { execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
@@ -40,6 +42,72 @@ const AGENT_WORKSPACE = ENV.AGENT_WORKSPACE || path.join(os.homedir(), 'agent-wo
  * "Copiar ID" aponta para cá; "Excluir" no app apaga (rota DELETE abaixo).
  */
 const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'conversas');
+/**
+ * Segurança: quais Macs já usaram o meu-bot desta máquina (maquinas.json) e como avisar quando aparece um novo
+ * (alertas.json: WhatsApp da própria pessoa, e e-mail se ela quiser). Como o aviso de "login numa máquina nova"
+ * do Rambox. O app se apresenta em POST /v1/meu-bot/hello a cada abertura; o primeiro Mac de todos não avisa
+ * (é a instalação), os seguintes avisam e ficam no registro que a pessoa e o admin veem (suporte.log).
+ */
+const MEU_BOT_DIR = path.join(os.homedir(), '.local', 'share', 'meu-bot');
+const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
+const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
+const SUPPORT_LOG = path.join(MEU_BOT_DIR, 'suporte.log');
+const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
+function writeJson(f, v) { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
+const alertPrefs = () => { const a = readJson(ALERTS_FILE, {}); return { whatsapp: a.whatsapp !== false, email: typeof a.email === 'string' ? a.email.slice(0, 120) : '' }; };
+function supportLogLine(who, what) {
+  try { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); fs.appendFileSync(SUPPORT_LOG, `${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}|${who}|${String(what).replace(/[^\p{L}\p{N} .,:()-]/gu, '').slice(0, 120)}\n`, { mode: 0o600 }); } catch (_) { /* registro é cortesia */ }
+}
+/** Número do próprio WhatsApp (creds do OpenClaw); null sem pareamento. */
+function selfWhatsappNumber() {
+  try { const c = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.openclaw', 'credentials', 'whatsapp', 'default', 'creds.json'), 'utf8')); const m = /^(\d{8,15})[:@]/.exec((c.me && c.me.id) || ''); return m ? m[1] : null; } catch (_) { return null; }
+}
+function sendWhatsappSelf(text) {
+  const num = selfWhatsappNumber();
+  if (!num) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const env = { ...process.env, PATH: `${os.homedir()}/.openclaw/bin:${os.homedir()}/.local/bin:${process.env.PATH || ''}` };
+    execFile('openclaw', ['message', 'send', '--channel', 'whatsapp', '--target', `+${num}`, '-m', text], { env, timeout: 60000 }, (err, _out, stderr) => {
+      if (err) log(`aviso WhatsApp falhou: ${(stderr || err.message).toString().trim().split('\n').pop()}`);
+      resolve(!err);
+    });
+  });
+}
+/** E-mail pela API do Resend (RESEND_API_KEY no .env; remetente ALERT_EMAIL_FROM ou o de teste do Resend). */
+function sendEmail(to, subject, text) {
+  const key = ENV.RESEND_API_KEY || process.env.RESEND_API_KEY || '';
+  if (!key || !to) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const body = JSON.stringify({ from: ENV.ALERT_EMAIL_FROM || 'meu-bot <onboarding@resend.dev>', to: [to], subject, text });
+    const req = https.request('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 15000 }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300)); });
+    req.on('error', (e) => { log(`aviso e-mail falhou: ${e.message}`); resolve(false); });
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end(body);
+  });
+}
+/** IPs com sessão SSH aberta agora (quem está entrando nesta máquina), melhor esforço. */
+function sshPeers() {
+  try { return [...new Set(require('child_process').execSync("ss -Htn state established '( sport = :22 )' 2>/dev/null | awk '{print $NF}' | sed 's/:[0-9]*$//'", { encoding: 'utf8', timeout: 3000 }).split('\n').map((s) => s.trim()).filter(Boolean))]; } catch (_) { return []; }
+}
+async function announceMachine(m) {
+  const machines = readJson(MACHINES_FILE, null);
+  const first = machines === null; // primeiro Mac de todos: a própria instalação, sem aviso
+  const all = machines || {};
+  const now = new Date().toISOString();
+  const known = all[m.id];
+  all[m.id] = { name: m.name, user: m.user, platform: m.platform, app: m.app, firstSeen: known ? known.firstSeen : now, lastSeen: now, ips: sshPeers().slice(0, 5) };
+  writeJson(MACHINES_FILE, all);
+  if (known || first) return false;
+  const when = new Date().toLocaleString('pt-BR', { timeZone: process.env.TZ || 'America/Sao_Paulo' });
+  const ips = all[m.id].ips.length ? ` · IP ${all[m.id].ips.join(', ')}` : '';
+  const text = `meu-bot: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\nmeu-bot ${m.app}${ips}\nQuando: ${when}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
+  supportLogLine('sistema', `um Mac novo usou o meu-bot: ${m.name} (${m.user}, ${m.platform})`);
+  const prefs = alertPrefs();
+  const results = await Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, 'meu-bot: um Mac novo usou a sua máquina', text) : Promise.resolve(null)]);
+  log(`máquina nova ${m.name} (${m.id}): whatsapp=${results[0]} email=${results[1]}`);
+  return true;
+}
+const MACHINE_FIELD_RE = /^[\p{L}\p{N} ._()-]{1,60}$/u;
 const appConvFile = (convId) => path.join(APP_CONVERSAS, `${convId}.jsonl`);
 function appendAppTranscript(convId, messages, model, provider, text) {
   try {
@@ -389,7 +457,7 @@ async function chatCompletions(req, res) {
   return run();
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id) });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
@@ -404,6 +472,24 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/v1/models' && req.method === 'GET') {
     return json(res, 200, { object: 'list', data: listedModels() });
+  }
+  // O app se apresenta: qual Mac está usando esta máquina. Novo → aviso à pessoa (WhatsApp/e-mail) e registro.
+  if (url.pathname === '/v1/meu-bot/hello' && req.method === 'POST') {
+    let m;
+    try { m = JSON.parse(await readBody(req, 64 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
+    const ok = m && /^[a-f0-9]{12}$/.test(m.id) && [m.name, m.user, m.platform, m.app].every((v) => typeof v === 'string' && MACHINE_FIELD_RE.test(v));
+    if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
+    const fresh = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app });
+    return json(res, 200, { fresh });
+  }
+  if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
+  if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {
+    let p;
+    try { p = JSON.parse(await readBody(req, 16 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
+    const email = typeof p.email === 'string' ? p.email.trim().slice(0, 120) : '';
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: { message: 'e-mail inválido', type: 'invalid_request_error' } });
+    writeJson(ALERTS_FILE, { whatsapp: p.whatsapp !== false, email });
+    return json(res, 200, { ok: true, ...alertPrefs() });
   }
   // A pessoa excluiu a conversa no app: a transcrição do Claude Code desta máquina vai junto (nos dois perfis),
   // e o mapa esquece a sessão. Mantém o histórico da máquina só com o que ainda existe no app.

@@ -1321,6 +1321,30 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   ("arquivou/desarquivou/excluiu a conversa do WhatsApp de +55…"); a migração não registra. Sem python3 na VM, a
   marcação falha com aviso claro (o app já depende dele para ler o número próprio). Testado na agente-box: arquivo
   corrompido + ajuste, merge de dois ajustes, `at` respeitado.
+- REA do Rambox: o que veio e o que ficou de fora (17 out). Analisado o Rambox 3.1.1 (`/Applications/Rambox.app`:
+  fuses, main.js, canais IPC e strings pt-BR). Veio: (A) verificação de atualização visível, como lá: `UpdateState`
+  ganhou `phase` (idle/checking/up-to-date/available/ready/error) e `checkedAt`, o `updater.ts` emite `update:state`
+  em cada fase (primeira consulta aos 3 s; sem release no GitHub a fase é up-to-date), `update:check` é o "Verificar
+  agora"; na tela, o ponto "verificando atualizações…" na barra de cima enquanto `checking` e o grupo "Sobre e
+  atualização" nas Configurações (versão, frase da fase por `lib/update-text.ts`, Verificar agora, Notas de lançamento,
+  Reiniciar e atualizar). (B) Notificação de teste ("Enviar uma notificação de teste" → "Você viu? Sim / Não, abrir
+  Ajustes do Sistema", `ui:notify-test`), e a primeira notificação desta instalação disparada no momento certo
+  (quando a pessoa marca "Testei, funcionou" no tutorial do WhatsApp, `maybeAskNotificationsOnce`): o macOS pede a
+  permissão junto. Sem `node-mac-permissions`: para notificações não há API de estado, e o Rambox também usa o teste.
+  (C) "Abrir ao entrar no Mac" (grupo Inicialização): `app.setLoginItemSettings` no `settings:set`, estado lido do
+  sistema em `settings:get` (`openAtLogin`/`openAtLoginAvailable`, só empacotado). (D) Disco e memória da máquina na
+  saúde do admin (`df -Pk $HOME`, `free -k` na sondagem → `HostProbe.disk*/mem*Mb`; `healthLines` avisa abaixo de
+  2 GB de disco e 512 MB de memória). (E) Aviso de "Mac novo usou o meu-bot desta máquina", como o e-mail de login
+  numa máquina nova do Rambox: o app se apresenta ao backend a cada abertura (`POST /v1/meu-bot/hello`, id =
+  sha256(hostname+usuário)[:12], `announceMachine` em `backend.ts`, uma vez por máquina por abertura); o backend guarda
+  `~/.local/share/meu-bot/maquinas.json`, e um Mac desconhecido (o primeiro de todos é a instalação, sem aviso) gera
+  linha no `suporte.log` ("sistema|um Mac novo usou o meu-bot: nome (usuário, sistema)"), mensagem no WhatsApp da
+  própria pessoa (`openclaw message send --channel whatsapp --target +<número dela>`) e e-mail opcional pela API do
+  Resend (`RESEND_API_KEY` e `ALERT_EMAIL_FROM` no .env do backend). Preferências em `alertas.json`
+  (`GET/PUT /v1/meu-bot/alerts`), editadas no grupo "Segurança" das Configurações (só no meu-bot, máquina por SSH).
+  Ficou de fora: bandeja, hibernação, workspaces, telemetria/Firebase, licença e permissões de câmera/microfone/tela/
+  localização/Bluetooth (sem uso; pedir assusta). Os fuses do Rambox (RunAsNode off, NodeOptions off, Inspect off,
+  cookie encryption, ASAR integrity, OnlyLoadAppFromAsar) são idênticos aos nossos (`scripts/fuses.mjs`).
 - Quem respondeu, sempre visível e rastreável (17 out): (A) `BackendMessage`/`ChatMessage` ganham `provider`
   (X-Provider do backend) e `fallback` (o aviso "agente falhou (…); respondendo com grok-4", antes só um aviso que
   sumia); `runBackendTurn` grava os dois na resposta, `chat:done` os leva à tela, e a bolha do assistente mostra o

@@ -107,6 +107,8 @@ export const settingsView = (host?: string): SettingsView => ({
   quickEntryStatus: quickEntryStatusProvider(),
   onboarding: file.onboarding,
   openDirect: file.openDirect,
+  // Preenchidos pelo handler settings:get/set (dependem do app empacotado e do sistema).
+  openAtLogin: false, openAtLoginAvailable: false,
   hostNames: { ...file.hostNames },
 });
 

@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
@@ -17,6 +17,7 @@ import { groupByDate, matches, normalize, shortDate, type SidebarConversation } 
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
 import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
+import { updateStateText } from "./lib/update-text.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -66,6 +67,8 @@ const themeSelect = $<HTMLSelectElement>("theme");
 const settingsError = $<HTMLParagraphElement>("settings-error");
 const cancelBtn = $<HTMLButtonElement>("btn-cancel");
 const notificationsInput = $<HTMLInputElement>("notifications");
+const openAtLoginInput = $<HTMLInputElement>("open-at-login");
+const openAtLoginHint = $<HTMLElement>("open-at-login-hint");
 const contextBudgetInput = $<HTMLInputElement>("context-budget");
 const memoryEveryInput = $<HTMLInputElement>("memory-every");
 const memoryPerfil = $<HTMLTextAreaElement>("memory-perfil");
@@ -930,6 +933,9 @@ function applySettings(view: SettingsView): void {
   memoryEveryInput.value = String(view.memoryEveryTurns);
   quickEnabled.checked = view.quickEntryEnabled;
   quickShortcut.value = view.quickEntryShortcut;
+  openAtLoginInput.checked = view.openAtLogin;
+  openAtLoginInput.disabled = !view.openAtLoginAvailable;
+  openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
   quickStatus.textContent = view.quickEntryStatus === "registered" ? "ativo" : view.quickEntryStatus === "taken" ? "em uso por outro app" : view.quickEntryStatus === "invalid" ? "inválido" : "desligado";
   document.documentElement.style.setProperty("--chat-font", `${view.fontSize}px`);
   document.documentElement.dataset["theme"] = view.theme;
@@ -1502,6 +1508,7 @@ function loadGuideFlags(t: Tutorial): GuideFlags {
   return emptyFlags();
 }
 function saveGuideFlag(t: Tutorial, flag: GuideFlagName): void {
+  if (flag === "tested") maybeAskNotificationsOnce();
   const f = loadGuideFlags(t); f[flag] = true; f.number = waStatus?.number ?? f.number;
   try { localStorage.setItem(guideFlagsKey(t), JSON.stringify(f)); } catch { /* opcional */ }
 }
@@ -3979,7 +3986,8 @@ window.meuBot.on("chat:tool", ({ conversationId, tool }) => { const tab = tabs.g
 
 function openSettings(): void {
   if (dialog.open) return;
-  paintSupport(); void refreshSupportState();
+  paintSupport(); void refreshSupportState(); void loadAlertPrefs();
+  void window.meuBot.updateState().then(paintUpdateState).catch(() => undefined);
   syncPrimaryFromModel();
   paintFallbackOrder();
   settingsError.hidden = true;
@@ -3998,12 +4006,78 @@ function showUpdateReady(version: string): void {
   updateText.textContent = `${caps.variant === "admin" ? "meu-bot-admin" : "meu-bot"} ${version} pronto para instalar (você está na ${appVersion}).`;
   updateBar.hidden = false;
 }
+/* ---------- Verificação visível (REA do Rambox): ponto na barra ao abrir + "Sobre e atualização" nas Configurações ---------- */
+const updateCheckDot = $<HTMLElement>("update-check-dot");
+const aboutVersion = $<HTMLElement>("about-version");
+const aboutSum = $<HTMLElement>("about-sum");
+const updateLine = $<HTMLElement>("update-line");
+const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
+const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
+const updateApply2 = $<HTMLButtonElement>("update-apply-2");
+function paintUpdateState(u: UpdateState): void {
+  const name = caps.variant === "admin" ? "meu-bot-admin" : "meu-bot";
+  const t = updateStateText(u, name);
+  updateCheckDot.hidden = u.phase !== "checking";
+  aboutVersion.textContent = `${name} ${u.current} · Apple Silicon`;
+  aboutSum.textContent = `versão ${u.current}`;
+  updateLine.textContent = t.text;
+  updateLine.className = `update-line ${t.kind === "muted" ? "" : t.kind}`.trim();
+  updateCheckBtn.disabled = u.phase === "checking" || u.phase === "idle";
+  updateApply2.hidden = !t.showApply;
+  if (u.phase === "ready" && u.ready !== null) showUpdateReady(u.ready);
+}
+updateCheckBtn.addEventListener("click", () => { updateCheckBtn.disabled = true; void window.meuBot.checkUpdate().then(paintUpdateState).catch(() => { updateCheckBtn.disabled = false; }); });
+updateNotesBtn.addEventListener("click", () => { void window.meuBot.openExternal("https://github.com/diegofornalha/meu-bot/releases"); });
+updateApply2.addEventListener("click", () => { updateApply2.disabled = true; void window.meuBot.applyUpdate().catch((err: unknown) => { updateApply2.disabled = false; updateLine.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; updateLine.className = "update-line bad"; }); });
+window.meuBot.on("update:state", paintUpdateState);
+
+/* ---------- Notificação de teste (REA do Rambox) e pedido no momento certo ---------- */
+const notifyTestBtn = $<HTMLButtonElement>("notify-test-btn");
+const notifyTestQ = $<HTMLElement>("notify-test-q");
+function sendTestNotification(): void {
+  notifyTestQ.hidden = true;
+  void window.meuBot.notifyTest().then(() => { notifyTestQ.hidden = false; }).catch((err: unknown) => { settingsError.textContent = ipcErrorText(err); settingsError.hidden = false; });
+}
+notifyTestBtn.addEventListener("click", sendTestNotification);
+$<HTMLButtonElement>("notify-yes").addEventListener("click", () => { notifyTestQ.hidden = true; try { localStorage.setItem("notif:ok", "1"); } catch { /* opcional */ } });
+$<HTMLButtonElement>("notify-no").addEventListener("click", () => { void window.meuBot.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension"); });
+/** Primeira notificação desta instalação no momento certo (WhatsApp pareado e testado): o macOS pede a permissão junto. */
+function maybeAskNotificationsOnce(): void {
+  if (!caps.chat || settings?.notifications !== true) return;
+  try { if (localStorage.getItem("notif:asked") === "1") return; localStorage.setItem("notif:asked", "1"); } catch { return; }
+  void window.meuBot.notifyTest().catch(() => undefined);
+}
+
+/* ---------- Segurança (REA do Rambox): aviso quando um Mac novo usar o meu-bot desta máquina ---------- */
+const alertsGroup = $<HTMLElement>("alerts-group");
+const alertWa = $<HTMLInputElement>("alert-wa");
+const alertEmail = $<HTMLInputElement>("alert-email");
+const alertsHint = $<HTMLElement>("alerts-hint");
+let alertPrefsLoaded: { whatsapp: boolean; email: string } | null = null;
+async function loadAlertPrefs(): Promise<void> {
+  if (!caps.chat || windowHost === "local") { alertsGroup.hidden = true; return; }
+  alertsGroup.hidden = false;
+  try {
+    alertPrefsLoaded = await window.meuBot.alertPrefs();
+    if (alertPrefsLoaded === null) { alertsHint.textContent = "A máquina ainda não tem o backend novo: reinstale o backend para ligar os avisos."; alertWa.disabled = true; alertEmail.disabled = true; return; }
+    alertWa.disabled = false; alertEmail.disabled = false;
+    alertWa.checked = alertPrefsLoaded.whatsapp; alertEmail.value = alertPrefsLoaded.email;
+    alertsHint.textContent = "O e-mail precisa de RESEND_API_KEY no .env do backend da máquina; o WhatsApp usa o seu próprio número já pareado.";
+  } catch (err) { alertsHint.textContent = `Não consegui ler: ${ipcErrorText(err)}`; }
+}
+async function saveAlertPrefs(): Promise<void> {
+  if (alertsGroup.hidden || alertPrefsLoaded === null || alertWa.disabled) return;
+  const next = { whatsapp: alertWa.checked, email: alertEmail.value.trim() };
+  if (next.whatsapp === alertPrefsLoaded.whatsapp && next.email === alertPrefsLoaded.email) return;
+  try { await window.meuBot.setAlertPrefs(next); alertPrefsLoaded = next; }
+  catch (err) { const tab = active(); if (tab !== null) addNotice(tab, `Avisos de segurança: ${ipcErrorText(err)}`, "warn"); }
+}
 updateApply.addEventListener("click", () => {
   updateApply.disabled = true; updateApply.textContent = "Reiniciando…";
   void window.meuBot.applyUpdate().catch((err: unknown) => { updateApply.disabled = false; updateApply.textContent = "Reiniciar e atualizar"; updateText.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; });
 });
 window.meuBot.on("update:ready", ({ version }) => showUpdateReady(version));
-void window.meuBot.updateState().then((u) => { if (u.ready !== null) showUpdateReady(u.ready); }).catch(() => undefined);
+void window.meuBot.updateState().then(paintUpdateState).catch(() => undefined);
 window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) { addNotice(tab, text, "warn"); offerClaudeLogin(tab, text); } });
 window.meuBot.on("chat:account", ({ host, status }) => {
   if (host !== windowHost) return;
@@ -4033,7 +4107,9 @@ form.addEventListener("submit", (ev) => {
     ...(Number.isInteger(every) ? { memoryEveryTurns: every } : {}),
     quickEntryEnabled: quickEnabled.checked,
     ...(quickShortcut.value.trim() === "" ? {} : { quickEntryShortcut: quickShortcut.value.trim() }),
+    ...(openAtLoginInput.disabled ? {} : { openAtLogin: openAtLoginInput.checked }),
   };
+  void saveAlertPrefs();
   window.meuBot.setSettings(update).then(
     (view) => {
       applySettings(view);

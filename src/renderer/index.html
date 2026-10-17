@@ -49,6 +49,8 @@
   <header class="topbar">
     <div class="drag-region"></div>
     <div class="spacer"></div>
+    <!-- Verificação de atualização ao abrir (como no Rambox): some quando termina. -->
+    <span id="update-check-dot" class="update-check" hidden>verificando atualizações…</span>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
     <button id="btn-topbar-hide" class="btn btn-ghost mini-btn" type="button" title="Recolher a barra (Cmd+Shift+B)">⌃</button>
@@ -303,6 +305,12 @@
             </select>
           </label>
         </div>
+        <!-- Notificação de teste (como no Rambox): confirma que o macOS deixa as do meu-bot passarem; na primeira, ele pede a permissão. -->
+        <div class="notify-test">
+          <button type="button" id="notify-test-btn" class="btn btn-ghost btn-small">Enviar uma notificação de teste</button>
+          <span class="hint">Confirme que o seu Mac deixa as do meu-bot passarem antes de depender delas.</span>
+          <p id="notify-test-q" class="notify-test-q" hidden>Você viu a notificação? <button type="button" id="notify-yes" class="btn btn-ghost btn-small">Sim</button> <button type="button" id="notify-no" class="btn btn-ghost btn-small">Não, abrir Ajustes do Sistema</button></p>
+        </div>
         <label class="switch switch-row"><input id="notifications" type="checkbox" /><span class="track"></span><span class="switch-label">Avisar com notificação quando uma resposta terminar em segundo plano</span></label>
       </details>
 
@@ -339,6 +347,37 @@
           </label>
         </div>
         <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
+      </details>
+
+      <!-- Inicialização (do REA do Rambox): item de início do macOS; o sistema é a fonte da verdade. -->
+      <details class="group" data-group="inicio">
+        <summary>Inicialização <span class="sum-hint">abrir ao entrar no Mac</span></summary>
+        <label class="switch switch-row"><input id="open-at-login" type="checkbox" /><span class="track"></span><span class="switch-label">Abrir ao entrar no Mac</span></label>
+        <p id="open-at-login-hint" class="hint">O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina.</p>
+      </details>
+
+      <!-- Segurança (do REA do Rambox: aviso de login numa máquina nova). Só no meu-bot; a máquina avisa. -->
+      <details class="group" data-group="seguranca" id="alerts-group">
+        <summary>Segurança <span class="sum-hint">aviso quando um Mac novo usar o seu meu-bot</span></summary>
+        <p class="hint">Quando um Mac que esta máquina nunca viu abrir o meu-bot dela, você é avisada. Fica também no registro do suporte.</p>
+        <label class="switch switch-row"><input id="alert-wa" type="checkbox" /><span class="track"></span><span class="switch-label">Avisar pelo meu WhatsApp (mensagem para o meu próprio número)</span></label>
+        <label>
+          Avisar também por e-mail (opcional)
+          <input id="alert-email" type="email" autocomplete="off" placeholder="voce@exemplo.com" />
+        </label>
+        <p id="alerts-hint" class="hint"></p>
+      </details>
+
+      <!-- Sobre e atualização (do REA do Rambox): versão instalada, estado da verificação, verificar agora, notas. -->
+      <details class="group" data-group="sobre">
+        <summary>Sobre e atualização <span class="sum-hint" id="about-sum"></span></summary>
+        <p id="about-version" class="hint"></p>
+        <p id="update-line" class="update-line"></p>
+        <div class="row">
+          <button type="button" id="update-check-btn" class="btn btn-ghost btn-small">Verificar agora</button>
+          <button type="button" id="update-notes-btn" class="btn btn-ghost btn-small">Notas de lançamento</button>
+          <button type="button" id="update-apply-2" class="btn btn-primary btn-small" hidden>Reiniciar e atualizar</button>
+        </div>
       </details>
 
       <!-- Suporte (só no meu-bot com o pacote de suporte, em máquina por SSH): liga sozinho; aqui o nome, "avisar o admin

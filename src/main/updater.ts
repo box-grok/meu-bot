@@ -15,23 +15,24 @@ import { appTitle } from "./variant";
 import { broadcast } from "./windows";
 import { UPDATE_REPO, pickUpdate, type UpdateCandidate } from "./updater-core";
 
-export interface UpdateState {
-  current: string;
-  /** Versão mais nova vista no GitHub (baixando ou pronta); null = nenhuma. */
-  available: string | null;
-  /** Versão já baixada e preparada: trocar é imediato. */
-  ready: string | null;
-  checking: boolean;
-  error: string | null;
-}
+import type { UpdateState } from "../shared/ipc";
 
 const CHECK_EVERY_MS = 6 * 3600_000;
-const FIRST_CHECK_MS = 20_000;
-const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null };
+/** Como no Rambox, a verificação aparece logo ao abrir ("verificando atualizações…"), sem segurar nada. */
+const FIRST_CHECK_MS = 3_000;
+const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, phase: "idle", checkedAt: null };
 let stagedApp: string | null = null;
 let timer: NodeJS.Timeout | null = null;
 
 export const updateState = (): UpdateState => ({ ...state });
+/** Fase nova → todas as janelas (Configurações → "Sobre e atualização" e o ponto da barra de cima). */
+function setPhase(phase: UpdateState["phase"]): void { state.phase = phase; broadcast("update:state", { ...state }); }
+/** "Verificar agora": fora do ciclo; devolve o estado ao fim (ou o atual, se já está verificando). */
+export async function checkNow(): Promise<UpdateState> {
+  if (!app.isPackaged || process.env.MEU_BOT_NO_UPDATE === "1" || runningBundle() === null) return updateState();
+  if (!state.checking) await check();
+  return updateState();
+}
 const arch = (): string => (process.arch === "arm64" ? "arm64" : "x64");
 const updateDir = (): string => path.join(app.getPath("userData"), "update");
 /** O .app que está rodando: …/X.app/Contents/MacOS/x → …/X.app. null fora de um bundle (dev). */
@@ -52,18 +53,24 @@ export function disposeUpdater(): void { if (timer !== null) { clearTimeout(time
 
 async function check(): Promise<void> {
   if (state.checking) return;
-  state.checking = true; state.error = null;
+  if (timer !== null) { clearTimeout(timer); timer = null; }
+  state.checking = true; state.error = null; setPhase("checking");
   try {
     const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" } });
-    if (res.status === 404) { state.available = null; return; } // ainda sem release
+    state.checkedAt = new Date().toISOString();
+    if (res.status === 404) { state.available = null; setPhase("up-to-date"); return; } // ainda sem release: a instalada é a mais recente
     if (!res.ok) throw new Error(`GitHub respondeu ${res.status}`);
     const cand = pickUpdate(await res.json(), { app: appTitle(), arch: arch(), current: state.current });
-    if (cand === null) { state.available = null; return; }
+    if (cand === null) { state.available = null; setPhase("up-to-date"); return; }
     state.available = cand.version;
-    if (state.ready !== cand.version) await stage(cand);
+    if (state.ready === cand.version) { setPhase("ready"); return; }
+    setPhase("available");
+    await stage(cand);
+    setPhase("ready");
   } catch (e) {
     state.error = e instanceof Error ? e.message : String(e);
     log(`[atualização] ${state.error}`);
+    setPhase("error");
   } finally {
     state.checking = false;
     timer = setTimeout(() => { void check(); }, CHECK_EVERY_MS);

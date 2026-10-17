@@ -1,8 +1,11 @@
+import { LOCAL_HOST } from "./localBackend";
+import os from "node:os";
+import { createHash } from "node:crypto";
 import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { AccountStatus, ClaudeSessionRef, BackendModel, ToolEvent } from "../shared/ipc";
+import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, ToolEvent } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
@@ -229,7 +232,7 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
     if (signal?.aborted) throw Object.assign(new Error("cancelado"), { code: "ABORTED" });
     try {
       const tunnel = await ensureTunnel(host, getBackendPort(), status);
-      if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) return tunnel;
+      if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) { if (!announced.has(host)) setTimeout(() => announceMachine(host), 0); return tunnel; }
       lastErr = null;
     } catch (err) {
       if (err instanceof TunnelFatalError) throw err;
@@ -295,6 +298,50 @@ export async function deleteBackendSession(host: string, conversationId: string)
     req.on("timeout", () => { req.destroy(); resolve(null); });
     req.end();
   });
+}
+
+/** Pedido JSON ao backend desta máquina pelo túnel; null se não há túnel, a rota não existe ou falhou. */
+async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT", pathname: string, body?: unknown): Promise<T | null> {
+  let tunnel: { localPort: number; apiKey: string };
+  try { tunnel = await readyTunnel(host, null); } catch { return null; }
+  const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), "utf8");
+  return new Promise((resolve) => {
+    const req = http.request({ host: "127.0.0.1", port: tunnel.localPort, path: pathname, method, headers: { Authorization: `Bearer ${tunnel.apiKey}`, ...(payload === null ? {} : { "Content-Type": "application/json", "Content-Length": String(payload.length) }) }, timeout: 8000 }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        try { resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T); } catch { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    if (payload !== null) req.write(payload);
+    req.end();
+  });
+}
+
+/** Avisos de segurança gravados na máquina (alertas.json): null = backend antigo/fora do ar. */
+export const fetchAlertPrefs = (host: string): Promise<AlertPrefs | null> => backendJson<AlertPrefs>(host, "GET", "/v1/meu-bot/alerts");
+export async function saveAlertPrefs(host: string, prefs: AlertPrefs): Promise<void> {
+  const r = await backendJson<{ ok?: boolean }>(host, "PUT", "/v1/meu-bot/alerts", prefs);
+  if (r === null) throw new Error("não consegui gravar na máquina (backend fora do ar ou sem a rota; reinstale o backend)");
+}
+
+/**
+ * "Este Mac usou o meu-bot desta máquina": o app se apresenta ao backend uma vez por abertura e por máquina
+ * (POST /v1/meu-bot/hello). Um Mac que o backend nunca viu vira aviso para a pessoa (WhatsApp dela, e e-mail se
+ * ela quiser) e uma linha no registro que ela e o admin veem. Como o aviso de "login numa máquina nova" do Rambox.
+ */
+const announced = new Set<string>();
+export function announceMachine(host: string): void {
+  if (host === LOCAL_HOST || announced.has(host)) return;
+  announced.add(host);
+  const name = os.hostname().replace(/\.local$/, "");
+  const user = os.userInfo().username;
+  const id = createHash("sha256").update(`${name}\n${user}`).digest("hex").slice(0, 12);
+  void backendJson<{ fresh?: boolean }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion() })
+    .then((r) => { if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend: a pessoa foi avisada`); });
 }
 
 /**

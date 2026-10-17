@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, healthLines, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
+import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, gb, healthLines, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
 
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
@@ -87,4 +87,18 @@ test("versão do meu-bot dela na saúde: atrás da do admin acusa; igual ou à f
   assert.equal(compareVersions("1.0.0", "0.9.9"), 1);
   assert.equal(compareVersions("0.1", "0.1.0"), 0);
   assert.equal(agoText(new Date(now - 20_000).toISOString(), now), "agora");
+});
+
+test("healthLines: disco e memória da máquina (REA do Rambox), com aviso de pouco espaço", () => {
+  assert.equal(gb(40_960), "40 GB"); assert.equal(gb(1536), "1,5 GB"); assert.equal(gb(820), "820 MB");
+  const base = { probe: { ...probe, diskTotalMb: 40_960, diskFreeMb: 12_288, memTotalMb: 4096, memFreeMb: 1536 }, whatsapp: null, progress: null, share: { ...share, progress: false }, xai: null };
+  const lines = healthLines(base, fmt, V);
+  const disk = lines.find((l) => l.text.startsWith("disco:")), mem = lines.find((l) => l.text.startsWith("memória:"));
+  assert.deepEqual([disk.text, disk.ok], ["disco: 12 GB livres de 40 GB", true]);
+  assert.deepEqual([mem.text, mem.ok], ["memória: 1,5 GB livres de 4,0 GB", null]);
+  const low = healthLines({ ...base, probe: { ...base.probe, diskFreeMb: 900, memFreeMb: 300 } }, fmt, V);
+  assert.deepEqual([low.find((l) => l.text.startsWith("disco:")).ok, low.find((l) => l.text.startsWith("memória:")).ok], [false, false]);
+  assert.match(low.find((l) => l.text.startsWith("disco:")).text, /pouco espaço/);
+  // sem os números (máquina antiga/sondagem sem df): nenhuma linha
+  assert.equal(healthLines({ ...base, probe }, fmt, V).some((l) => /^disco:|^memória:/.test(l.text)), false);
 });

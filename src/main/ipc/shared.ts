@@ -5,13 +5,13 @@
 import { app, dialog, Menu, nativeTheme, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SettingsUpdate, WhatsappMenuAction } from "../../shared/ipc";
+import type { SettingsUpdate, SettingsView, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
 import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
 import { parseWaMarkPatches, waMarkLogText } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
-import { applyUpdate, updateState } from "../updater";
+import { applyUpdate, checkNow, updateState } from "../updater";
 import { claudeAuthInfo } from "../claudeLogin";
 import { xaiAuthInfo } from "../xaiLogin";
 import { xaiKeyStatus } from "../xaiKey";
@@ -191,10 +191,13 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
 
   // Atualização automática do próprio app.
   handleShared("update:state", () => updateState());
+  handleShared("update:check", () => checkNow());
   handleShared("update:apply", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); applyUpdate(); });
 
   // Configurações e memória: deste Mac, valem para os dois apps.
-  handleShared("settings:get", (event) => settingsView(hostFromEvent(event)?.host));
+  // Abrir ao entrar no Mac: o sistema é a fonte da verdade (a pessoa pode mudar nos Ajustes); só o app empacotado se registra.
+  const withLogin = (v: SettingsView): SettingsView => ({ ...v, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, openAtLoginAvailable: app.isPackaged });
+  handleShared("settings:get", (event) => withLogin(settingsView(hostFromEvent(event)?.host)));
   handleShared("settings:set", (event, update: unknown) => {
     const host = hostFromEvent(event)?.host;
     const u = (update ?? {}) as SettingsUpdate;
@@ -205,6 +208,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.fontSize === "number" ? { fontSize: u.fontSize } : {}),
       ...(typeof u.theme === "string" ? { theme: u.theme } : {}),
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
+      ...(typeof u.openAtLogin === "boolean" ? { openAtLogin: u.openAtLogin } : {}),
       ...(typeof u.contextBudgetTokens === "number" ? { contextBudgetTokens: u.contextBudgetTokens } : {}),
       ...(typeof u.memoryEveryTurns === "number" ? { memoryEveryTurns: u.memoryEveryTurns } : {}),
       ...(typeof u.quickEntryEnabled === "boolean" ? { quickEntryEnabled: u.quickEntryEnabled } : {}),
@@ -223,7 +227,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (portChanges) closeTunnel();
     // Outras janelas (fonte, tema, notificações…): cada uma recebe a visão com o modelo da sua máquina.
     broadcast("settings:changed", settingsView());
-    return view;
+    if (clean.openAtLogin !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: clean.openAtLogin });
+    return withLogin(view);
   });
 
   const memoryView = () => ({ ...getMemory(), limits: { notas: NOTAS_MAX, perfil: PERFIL_MAX } });

@@ -90,11 +90,21 @@ function probeScript(port: number): string {
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
     `[ "$G" = openclaw ] && echo "audioin=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));m=(c.get("tools") or {}).get("media") or {};print(int(any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x,dict))))' 2>/dev/null)"`,
     `echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"`,
+    // Disco da home e memória (kB): o whisper da transcrição baixa ~500 MB e o OpenClaw enche de transcripts.
+    `echo "disk=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print $2" "$4}')"`,
+    `echo "mem=$(free -k 2>/dev/null | awk '/^Mem:/{print $2" "$7}')"`,
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
     `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
     `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:${port}/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
+}
+
+/** "total livre" em kB → MB (null quando a máquina não respondeu); mantém o mesmo nome de campo para disco e memória. */
+function sizePair(v: string | undefined, kind: "disk" | "mem"): { diskTotalMb: number | null; diskFreeMb: number | null } | { memTotalMb: number | null; memFreeMb: number | null } {
+  const m = /^(\d+)\s+(\d+)$/.exec((v ?? "").trim());
+  const total = m === null ? null : Math.round(Number(m[1]) / 1024), free = m === null ? null : Math.round(Number(m[2]) / 1024);
+  return kind === "disk" ? { diskTotalMb: total, diskFreeMb: free } : { memTotalMb: total, memFreeMb: free };
 }
 
 function parseKv(stdout: string): Map<string, string> {
@@ -110,7 +120,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, audioIn: null, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -138,6 +148,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     claudePath: kv.get("claude") || null,
     claudeLoggedIn: kv.get("login") === "1",
     node: kv.get("node") || null,
+    ...sizePair(kv.get("disk"), "disk"), ...sizePair(kv.get("mem"), "mem"),
     systemd: kv.get("systemd") === "1",
     grokPod: kv.get("grokpod") === "1",
     statusLine: kv.get("statusline") === "1",
@@ -173,7 +184,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -25,6 +25,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "term:exit",
   "ui:claude-login",
   "update:ready",
+  "update:state",
 ];
 
 /** Os dois apps. */
@@ -43,6 +44,7 @@ const sharedApi: MeuBotSharedApi = {
   termClose: (id: string) => ipcRenderer.invoke("term:close", { id }),
   termReplay: (id: string) => ipcRenderer.invoke("term:replay", { id }),
   updateState: () => ipcRenderer.invoke("update:state", {}),
+  checkUpdate: () => ipcRenderer.invoke("update:check", {}),
   applyUpdate: () => ipcRenderer.invoke("update:apply", {}),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
@@ -83,6 +85,9 @@ const clientApi: MeuBotClientApi = {
   conversationReference: (conversationId: string) => ipcRenderer.invoke("chat:reference", { conversationId }),
   showTabMenu: (conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null> => ipcRenderer.invoke("ui:tab-menu", { conversationId, state }),
   notify: (conversationId: string, title: string, body: string) => ipcRenderer.invoke("ui:notify", { conversationId, title, body }),
+  notifyTest: () => ipcRenderer.invoke("ui:notify-test", {}),
+  alertPrefs: () => ipcRenderer.invoke("alerts:get", {}),
+  setAlertPrefs: (prefs: AlertPrefs) => ipcRenderer.invoke("alerts:set", prefs),
   toggleQuickEntry: () => ipcRenderer.invoke("ui:quick-toggle", {}),
   quickAck: (correlationId: string, ok: boolean, message?: string): void => ipcRenderer.send("quick:ack", { correlationId, ok, ...(message === undefined ? {} : { message }) }),
   getAccountStatus: () => ipcRenderer.invoke("backend:account", {}),
