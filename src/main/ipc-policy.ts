@@ -10,8 +10,8 @@ export const SHARED_CHANNELS = [
   // janela principal
   "window:info", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
-  // limpar o histórico de um contato: a pessoa e o admin (no admin fica no registro da máquina dela)
-  "whatsapp:clear-plan", "whatsapp:clear",
+  // limpar o histórico e pausar o agente por contato: a pessoa e o admin (no admin fica no registro da máquina dela)
+  "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
@@ -33,7 +33,7 @@ export const CLIENT_CHANNELS = [
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
   // WhatsApp: o que mexe na máquina ou no agente dela
-  "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch", "whatsapp:pause",
+  "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch",
   "whatsapp:cancel",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",

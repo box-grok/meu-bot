@@ -15,18 +15,19 @@ const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenu
 export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">): WaMenuEntry[] {
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");
-  // Sem manageWa (o admin): exportar, arquivar e limpar (a limpeza fica no registro da máquina dela).
-  if (!caps.manageWa) return [exportar, arquivo, item("Limpar histórico…", "clear")];
+  const pausa = state.paused
+    ? item("Retomar respostas do agente", "resume")
+    : state.ownSession
+      ? item("Pausar o agente para esta pessoa", "pause")
+      : { label: "Pausar o agente (depois da próxima mensagem dela)", action: null, enabled: false } as WaMenuEntry;
+  // Sem manageWa (o admin): exportar, arquivar, pausar e limpar (pausar e limpar ficam no registro da máquina dela).
+  if (!caps.manageWa) return [exportar, arquivo, pausa, item("Limpar histórico…", "clear")];
   return [
     item("Conversar com o meu-bot sobre isto", "talk"),
     exportar,
     { separator: true },
     arquivo,
-    state.paused
-      ? item("Retomar respostas do agente", "resume")
-      : state.ownSession
-        ? item("Pausar o agente para esta pessoa", "pause")
-        : { label: "Pausar o agente (depois da próxima mensagem dela)", action: null, enabled: false },
+    pausa,
     item("Limpar histórico…", "clear"),
   ];
 }

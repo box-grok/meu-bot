@@ -603,6 +603,8 @@ export interface MeuBotSharedApi {
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
   showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
+  pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
   whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
   /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
@@ -690,8 +692,6 @@ export interface MeuBotClientApi {
   whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
-  /** Pausa (true) ou retoma (false) as respostas do agente a este contato. */
-  pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
   claudeLogin(): Promise<void>;
   /** Código colado pela pessoa; false se não há login em andamento. */

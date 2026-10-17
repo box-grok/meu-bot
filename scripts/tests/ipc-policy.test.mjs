@@ -31,10 +31,10 @@ test("todo canal dos preloads tem política", () => {
 });
 
 test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o WhatsApp, que o admin também faz, registrado); o admin só tem o suporte", () => {
-  assert.ok(shared.has("whatsapp:clear") && shared.has("whatsapp:clear-plan"));
+  assert.ok(shared.has("whatsapp:clear") && shared.has("whatsapp:clear-plan") && shared.has("whatsapp:pause"));
   const writes = [
     "chat:send", "chat:new", "chat:delete", "chat:duplicate", "chat:branch",
-    "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch", "whatsapp:pause",
+    "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch",
     "claude-login:start", "claude-login:code", "claude-login:logout", "xai-login:prepare", "xai-login:start", "xai-login:logout",
     "statusline:install", "statusline:set-segments", "statusline:uninstall", "tailscale:disable-check", "tailscale:restore", "support:set", "support:name", "support:deliver", "support:progress", "support:share", "support:reset",
     "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:remove-host", "picker:rename-host", "picker:sync-ssh",
