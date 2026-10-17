@@ -378,6 +378,22 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/v1/models' && req.method === 'GET') {
     return json(res, 200, { object: 'list', data: listedModels() });
   }
+  // A pessoa excluiu a conversa no app: a transcrição do Claude Code desta máquina vai junto (nos dois perfis),
+  // e o mapa esquece a sessão. Mantém o histórico da máquina só com o que ainda existe no app.
+  if (url.pathname === '/v1/meu-bot/session' && req.method === 'DELETE') {
+    const convId = url.searchParams.get('conv') || '';
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(convId)) return json(res, 400, { error: { message: 'conv inválido', type: 'invalid_request_error' } });
+    let removed = 0;
+    for (const name of Object.keys(MODELS)) {
+      const key = `${name}:${convId}`;
+      const entry = sessions.get(key);
+      if (!entry) continue;
+      try { fs.unlinkSync(path.join(sessions.projectDir(entry.cwd), `${entry.sessionId}.jsonl`)); removed++; } catch (_) { /* já não havia */ }
+      sessions.del(key);
+    }
+    if (removed) log(`conversa ${convId}: ${removed} transcrição(ões) apagada(s) a pedido do app`);
+    return json(res, 200, { removed });
+  }
   if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
     chatCompletions(req, res).catch((e) => { log(`falha inesperada: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); else { try { res.end(); } catch (_) {} } });
     return;

@@ -1190,6 +1190,11 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   <número>"). No espelho das conversas com o meu-bot, "Apagar esta conversa" (dois cliques; `admin:bot-delete`
   apaga o .jsonl da sessão na máquina e registra "apagou uma conversa dela com o meu-bot"; o backend abre
   outra sessão no próximo turno). Para a pessoa, o meu-bot já tinha "Limpar histórico" e "Excluir conversa".
+- Excluir conversa apaga também na máquina (16 out): `chat:delete` chama `DELETE /v1/meu-bot/session?conv=<id>`
+  no backend da máquina (`deleteBackendSession`, pelo túnel), que apaga o .jsonl da sessão do Claude Code nos
+  dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:
+  atualizar com `scp backend-colima/* <host>:~/backend-colima/ && ssh <host> bash ~/backend-colima/install.sh`
+  (ou "Instalar backend" no seletor).
 - Só o admin desliga (16 out, pedido do usuário): o interruptor "Permitir o acesso do admin" saiu do tutorial da
   pessoa; "Salvar nome" liga o suporte (o passo "Dizer seu nome" conclui com o nome gravado e o suporte ligado) e
   não há como ela desligar pelo app (nem "Refazer do zero" nesse tutorial). Quem desliga é o admin, pela ação

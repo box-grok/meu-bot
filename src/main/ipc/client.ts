@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AudioSetup, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { fetchAccountStatus, runBackendTurn } from "../backend";
+import { deleteBackendSession, fetchAccountStatus, log, runBackendTurn } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappPause, whatsappStatus } from "../whatsapp";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
@@ -258,7 +258,10 @@ export function registerClientIpc(): void {
   });
   handleClient("chat:delete", (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);
-    if (owned !== null) dropConversation(owned.conv.id);
+    if (owned === null) return;
+    dropConversation(owned.conv.id);
+    // A transcrição do Claude Code na máquina vai junto (o admin também deixa de vê-la). Backend antigo: ignora.
+    void deleteBackendSession(owned.host, owned.conv.id).then((n) => { if (n !== null && n > 0) log(`[${owned.host}] conversa ${owned.conv.id}: ${n} transcrição(ões) apagada(s) na máquina`); });
   });
   handleClient("chat:open", (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);

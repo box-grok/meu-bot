@@ -275,6 +275,28 @@ export async function chatCompletion(host: string, model: BackendModel, messages
 }
 
 /** GET /v1/meu-bot/status pelo túnel: conta e limites do Claude na máquina. null se o backend não tem o endpoint. */
+/**
+ * A pessoa excluiu a conversa: pede ao backend da máquina para apagar a transcrição do Claude Code dela (os
+ * dois perfis) e esquecer a sessão. Backend antigo (sem a rota) ou sem túnel: null, e nada mais acontece.
+ */
+export async function deleteBackendSession(host: string, conversationId: string): Promise<number | null> {
+  let tunnel: { localPort: number; apiKey: string };
+  try { tunnel = await readyTunnel(host, null); } catch { return null; }
+  return new Promise((resolve) => {
+    const req = http.request({ host: "127.0.0.1", port: tunnel.localPort, path: `/v1/meu-bot/session?conv=${encodeURIComponent(conversationId)}`, method: "DELETE", headers: { Authorization: `Bearer ${tunnel.apiKey}` }, timeout: 8000 }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        try { const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { removed?: unknown }; resolve(typeof j.removed === "number" ? j.removed : 0); } catch { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
 export async function fetchAccountStatus(host: string): Promise<AccountStatus | null> {
   let tunnel: { localPort: number; apiKey: string };
   try { tunnel = await readyTunnel(host, null); } catch { return null; }
