@@ -10,13 +10,18 @@ import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import { groupByDate, normalize, shortDate } from "../lib/sidebar.js";
+import { botReferenceText } from "../lib/reference.js";
 
 export interface BotMirrorDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   activePage(): PageTab | null;
-  api: Pick<MeuBotApi, "adminBotChats" | "adminBotThread" | "adminBotDelete">;
+  api: Pick<MeuBotApi, "adminBotChats" | "adminBotThread" | "adminBotDelete" | "showBotMenu">;
+  /** Apelido da máquina da janela (entra na referência). */
+  machine(): string;
+  /** Copia o texto e avisa de leve na lateral. */
+  copyReference(text: string): void;
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   closePage(page: PageTab): void;
@@ -70,7 +75,11 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
         .catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
     }));
-    head.append(del);
+    // "Copiar referência": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
+    const ref = el("button", "btn btn-ghost btn-small", "Copiar referência"); ref.type = "button";
+    ref.title = "Copia o caminho do .jsonl desta conversa na máquina dela";
+    ref.addEventListener("click", () => deps.copyReference(botReferenceText(g.chat, deps.machine())));
+    head.append(ref, del);
     const list = el("div", "wa-chat-msgs");
     if (!g.loaded) list.append(el("p", "hint", "Lendo a conversa na máquina…"));
     else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa: ${g.err}`));
@@ -123,7 +132,13 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         container.append(el("div", "sidebar-group", group.label));
         for (const c of group.items) {
           const item = el("div", `sidebar-item${active?.id === `bot-${c.sessionId}` ? " active" : ""}`);
-          item.append(el("span", "si-title", c.title), el("span", "si-date", shortDate(c.updatedAt)));
+          // Menu "…" (como no WhatsApp): hoje só "Copiar referência".
+          const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações";
+          menu.addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            void deps.api.showBotMenu(c.sessionId).then((a) => { if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine())); });
+          });
+          item.append(el("span", "si-title", c.title), el("span", "si-date", shortDate(c.updatedAt)), menu);
           item.title = `${c.replies} resposta${c.replies === 1 ? "" : "s"} do meu-bot · ${c.project.includes("agent") ? "modo agente" : "chat"}`;
           item.addEventListener("click", () => open(c));
           container.append(item);

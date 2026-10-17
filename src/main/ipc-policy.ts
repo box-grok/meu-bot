@@ -28,7 +28,7 @@ export const SHARED_CHANNELS = [
 export const CLIENT_CHANNELS = [
   // conversas com o agente
   "chat:send", "chat:cancel", "chat:new", "chat:list", "chat:rename", "chat:set-model", "chat:reorder", "chat:close",
-  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "ui:tab-menu", "ui:notify",
+  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify",
   "backend:account",
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
@@ -50,7 +50,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

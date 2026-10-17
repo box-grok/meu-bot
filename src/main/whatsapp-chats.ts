@@ -40,7 +40,7 @@ function participantNumbers(session: Record<string, unknown>): string[] {
  */
 export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
-  const byNumber = new Map<string, { keys: string[]; updated: number; paused: boolean }>();
+  const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; updated: number; paused: boolean }>();
   const selfN = self === null ? null : digits(self);
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string") continue;
@@ -50,8 +50,10 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
     const numbers = peer !== null ? [peer] : participantNumbers(s).filter((n) => n !== selfN);
     const updated = typeof s.updatedAt === "number" ? s.updatedAt : 0;
     for (const n of numbers) {
-      const cur = byNumber.get(n) ?? { keys: [], updated: 0, paused: false };
+      const cur = byNumber.get(n) ?? { keys: [], ids: {}, updated: 0, paused: false };
       if (!cur.keys.includes(s.key)) cur.keys.push(s.key);
+      // UUID interno da sessão (troca a cada "Limpar"): só para "Copiar referência".
+      if (typeof s.sessionId === "string" && /^[A-Za-z0-9-]{8,80}$/.test(s.sessionId)) cur.ids[s.key] = s.sessionId;
       // Pausa = envio negado na sessão só do contato (a principal nunca é pausada pelo app).
       if (peer !== null && s.sendPolicy === "deny") cur.paused = true;
       cur.updated = Math.max(cur.updated, updated);
@@ -60,7 +62,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
   }
   return [...byNumber.entries()]
     .map(([number, v]) => ({
-      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys,
+      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
       ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused, updatedAt: new Date(v.updated).toISOString(),
       // Arquivado/excluído vêm do whatsapp-lista.json da máquina (whatsapp-marks.ts aplica depois).
       archived: false, deleted: false,

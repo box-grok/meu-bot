@@ -1,7 +1,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendModel, WhatsappOrigin, WhatsappThreadMessage } from "../shared/ipc";
+import type { ClaudeSessionRef, BackendModel, WhatsappOrigin, WhatsappThreadMessage } from "../shared/ipc";
 import { getBackendModel, getLastHost, isBackendModel, isValidHost } from "./settings";
 import { LOCAL_HOST } from "./localBackend";
 import { nextOrderAmong, reorderWithin } from "./order";
@@ -37,6 +37,8 @@ export interface Conversation {
   fromWhatsapp?: WhatsappOrigin;
   /** Contexto trazido que ainda não foi ao backend; vira nota da próxima mensagem da pessoa. */
   pendingNote?: string;
+  /** Sessão do Claude Code na máquina (o .jsonl), lida do backend depois de um turno; para "Copiar referência". */
+  claude?: ClaudeSessionRef;
   /** Resumo do meio da conversa, gerado em background. */
   summary?: SummaryState;
   /** Turnos do usuário desde a última extração de memória. */
@@ -69,6 +71,7 @@ export interface StoredConversation {
   branchedFrom?: { id: string; index: number };
   fromWhatsapp?: WhatsappOrigin;
   pendingNote?: string;
+  claude?: ClaudeSessionRef;
   summary?: SummaryState;
   userTurnsSinceMemory?: number;
   serverSeen?: number;
@@ -88,6 +91,7 @@ const toStored = (c: Conversation): StoredConversation => ({
   ...(c.branchedFrom === undefined ? {} : { branchedFrom: c.branchedFrom }),
   ...(c.fromWhatsapp === undefined ? {} : { fromWhatsapp: c.fromWhatsapp }),
   ...(c.pendingNote === undefined ? {} : { pendingNote: c.pendingNote }),
+  ...(c.claude === undefined ? {} : { claude: c.claude }),
   ...(c.summary === undefined ? {} : { summary: c.summary }),
   userTurnsSinceMemory: c.userTurnsSinceMemory,
   serverSeen: c.serverSeen,
@@ -177,6 +181,10 @@ export function loadConversations(): void {
             ? { fromWhatsapp: { number: w.number, name: w.name, count: w.count, until: w.until, ...waMessages(w.messages) } } : {};
         })(),
         ...(typeof item.pendingNote === "string" && item.pendingNote !== "" ? { pendingNote: item.pendingNote } : {}),
+        ...((): { claude?: ClaudeSessionRef } => {
+          const c = item.claude as Partial<ClaudeSessionRef> | undefined;
+          return c !== undefined && c !== null && typeof c.sessionId === "string" && typeof c.file === "string" && typeof c.profile === "string" ? { claude: { sessionId: c.sessionId, file: c.file, profile: c.profile } } : {};
+        })(),
         ...((): { summary?: SummaryState } => { const sm = validSummary(item.summary, messages.length); return sm === undefined ? {} : { summary: sm }; })(),
         userTurnsSinceMemory: typeof item.userTurnsSinceMemory === "number" ? item.userTurnsSinceMemory : 0,
         serverSeen: typeof item.serverSeen === "number" && item.serverSeen <= messages.length ? item.serverSeen : 0,

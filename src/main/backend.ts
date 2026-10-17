@@ -2,7 +2,7 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { AccountStatus, BackendModel, ToolEvent } from "../shared/ipc";
+import type { AccountStatus, ClaudeSessionRef, BackendModel, ToolEvent } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
@@ -289,6 +289,33 @@ export async function deleteBackendSession(host: string, conversationId: string)
       res.on("end", () => {
         if (res.statusCode !== 200) { resolve(null); return; }
         try { const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { removed?: unknown }; resolve(typeof j.removed === "number" ? j.removed : 0); } catch { resolve(null); }
+      });
+    });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+
+/**
+ * Sessão do Claude Code por trás de uma conversa (GET /v1/meu-bot/session?conv=): o .jsonl na máquina, para
+ * "Copiar referência". null = sem túnel, backend antigo (sem a rota) ou conversa ainda sem turno.
+ */
+export async function fetchBackendSession(host: string, conversationId: string): Promise<ClaudeSessionRef | null> {
+  let tunnel: { localPort: number; apiKey: string };
+  try { tunnel = await readyTunnel(host, null); } catch { return null; }
+  return new Promise((resolve) => {
+    const req = http.request({ host: "127.0.0.1", port: tunnel.localPort, path: `/v1/meu-bot/session?conv=${encodeURIComponent(conversationId)}`, method: "GET", headers: { Authorization: `Bearer ${tunnel.apiKey}` }, timeout: 8000 }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => {
+        if (res.statusCode !== 200) { resolve(null); return; }
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { sessions?: unknown };
+          const list = Array.isArray(j.sessions) ? j.sessions as Array<{ profile?: unknown; sessionId?: unknown; file?: unknown }> : [];
+          const s = list.find((x) => typeof x.sessionId === "string" && typeof x.file === "string" && typeof x.profile === "string");
+          resolve(s === undefined ? null : { sessionId: s.sessionId as string, file: s.file as string, profile: s.profile as string });
+        } catch { resolve(null); }
       });
     });
     req.on("error", () => resolve(null));

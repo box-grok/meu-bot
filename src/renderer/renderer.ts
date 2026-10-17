@@ -14,6 +14,7 @@ import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { GUIDE_ACTION_LABEL, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
+import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -453,6 +454,17 @@ async function showTabMenu(tab: Tab): Promise<void> {
   await runTabAction(tab.id, action);
 }
 
+/** Linha discreta no topo da lateral por 1,5 s ("✓ Referência copiada"). */
+function sidebarNotice(text: string): void {
+  const n = el("div", "sidebar-empty sidebar-notice", text);
+  sidebarList.prepend(n);
+  window.setTimeout(() => n.remove(), 1500);
+}
+/** Copia e avisa; em erro de clipboard, avisa também (sem caixa). */
+function copyReference(text: string): void {
+  void navigator.clipboard.writeText(text).then(() => sidebarNotice("✓ Referência copiada"), () => sidebarNotice("✗ Não deu para copiar"));
+}
+
 async function runTabAction(id: string, action: TabMenuAction | null): Promise<void> {
   const tab = tabs.get(id);
   switch (action) {
@@ -460,6 +472,13 @@ async function runTabAction(id: string, action: TabMenuAction | null): Promise<v
     case "duplicate": await duplicate(id); break;
     case "export-md": await exportConversation(id, "md"); break;
     case "export-json": await exportConversation(id, "json"); break;
+    case "copy-ref": {
+      // A sessão do Claude Code (o .jsonl) vem guardada ou do backend; sem ela, plano B com o id do app.
+      let claude = null;
+      try { claude = (await window.meuBot.conversationReference(id)).claude; } catch { /* plano B */ }
+      copyReference(conversationReferenceText(id, hostLabel(windowHost), claude));
+      break;
+    }
     case "archive": await archive(id, true); break;
     case "unarchive": await archive(id, false); break;
     case "close": await closeTab(id); break;
@@ -2157,6 +2176,9 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       try { await window.meuBot.exportWhatsapp(row.number, action === "export-md" ? "md" : "json"); }
       catch (err) { fail("Não deu para exportar", err); }
       break;
+    case "copy-ref":
+      copyReference(waReferenceText(row, hostLabel(windowHost)));
+      break;
     case "archive":
       { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
       await markWa({ number: row.number, archived: true }, "Não deu para arquivar");
@@ -3800,7 +3822,7 @@ void (async () => {
         paintWhatsapp(); renderSidebar();
       },
     }).open();
-    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar() });
+    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference });
     renderSidebar();
     tabsReady = true;
     return;

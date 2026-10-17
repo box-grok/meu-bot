@@ -1,0 +1,27 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { botReferenceText, conversationReferenceText, waReferenceText } from "../../dist/renderer/lib/reference.js";
+
+test("espelho do meu-bot: caminho do .jsonl pela pasta do projeto", () => {
+  assert.equal(botReferenceText({ project: "-home-box-chat-workspace", sessionId: "1b016dff-349c-41f0-90ee-ef1fae699c42" }, "colima"),
+    "meu-bot · colima · ~/.claude/projects/-home-box-chat-workspace/1b016dff-349c-41f0-90ee-ef1fae699c42.jsonl");
+});
+
+test("aba do meu-bot: caminho vindo do backend com ~; sem sessão, plano B com o id do app", () => {
+  assert.equal(conversationReferenceText("2026-10-17T00-01-02-000Z-3", "colima", { sessionId: "abc", profile: "claudecode", file: "/home/box/.claude/projects/-home-box-chat-workspace/abc.jsonl" }),
+    "meu-bot · colima · ~/.claude/projects/-home-box-chat-workspace/abc.jsonl");
+  assert.equal(conversationReferenceText("x", "colima", { sessionId: "abc", profile: "agente", file: "/root/.claude/projects/-root-agent-workspace/abc.jsonl" }),
+    "meu-bot · colima · ~/.claude/projects/-root-agent-workspace/abc.jsonl");
+  assert.match(conversationReferenceText("conv-1", "colima", null), /^meu-bot · colima · conversa conv-1 \(ainda sem transcrição/);
+});
+
+test("whatsapp: número, chave e sessão; uma linha por sessão; sem UUID omite; sem sessão avisa", () => {
+  const k1 = "agent:main:whatsapp:direct:+5516992294486";
+  assert.equal(waReferenceText({ number: "5516992294486", sessionKeys: [k1], sessionIds: { [k1]: "5e6c65a1-1385-42a6-ac5c-065d3366f3e2" } }, "colima"),
+    `whatsapp · colima · +5516992294486 · ${k1} · sessão 5e6c65a1-1385-42a6-ac5c-065d3366f3e2`);
+  const two = waReferenceText({ number: "5516992294486", sessionKeys: [k1, "agent:main:main"], sessionIds: { "agent:main:main": "m-1" } }, "colima").split("\n");
+  assert.equal(two.length, 2);
+  assert.equal(two[0], `whatsapp · colima · +5516992294486 · ${k1}`);
+  assert.equal(two[1], "whatsapp · colima · +5516992294486 · agent:main:main · sessão m-1");
+  assert.match(waReferenceText({ number: "5516992294486", sessionKeys: [], sessionIds: {} }, "colima"), /sem sessão/);
+});

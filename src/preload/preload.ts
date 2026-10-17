@@ -79,6 +79,7 @@ const clientApi: MeuBotClientApi = {
   duplicateConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:duplicate", { conversationId }),
   branchConversation: (conversationId: string, index: number): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:branch", { conversationId, index }),
   exportConversation: (conversationId: string, format: ExportFormat): Promise<{ path: string } | null> => ipcRenderer.invoke("chat:export", { conversationId, format }),
+  conversationReference: (conversationId: string) => ipcRenderer.invoke("chat:reference", { conversationId }),
   showTabMenu: (conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null> => ipcRenderer.invoke("ui:tab-menu", { conversationId, state }),
   notify: (conversationId: string, title: string, body: string) => ipcRenderer.invoke("ui:notify", { conversationId, title, body }),
   toggleQuickEntry: () => ipcRenderer.invoke("ui:quick-toggle", {}),
@@ -123,6 +124,7 @@ const adminApi: MeuBotAdminApi = {
   adminBotChats: () => ipcRenderer.invoke("admin:bot-chats", {}),
   adminBotThread: (sessionId: string) => ipcRenderer.invoke("admin:bot-thread", { sessionId }),
   adminBotDelete: (sessionId: string) => ipcRenderer.invoke("admin:bot-delete", { sessionId }),
+  showBotMenu: (sessionId: string) => ipcRenderer.invoke("ui:bot-menu", { sessionId }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

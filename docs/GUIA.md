@@ -515,6 +515,23 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   sessão só do contato (`null` retoma). O OpenClaw ainda recebe e grava a mensagem (e pode rodar o turno),
   mas não entrega a resposta nem mostra "digitando". Só com sessão própria (`WhatsappChat.ownSession`):
   pausar a principal calaria todo mundo. Lista com "pausado" e ponto vazado; cabeçalho da conversa avisa.
+- O agente sabe que foi pausado e que voltou (17 out, `src/main/whatsapp-pause.ts`, puro e testado). Confirmado no
+  gateway 2026.9.9: com `deny` o agente roda igual e a entrega é descartada (`suppress / send-policy`); nada o
+  avisa, e o `sessions.patch` não tem system prompt por sessão. Então o meu-bot (quem pausa) dá o contexto em duas
+  peças, iguais em todas as máquinas: (1) `pauseInjectSh` → `gateway call chat.inject` (mensagem sintética no
+  transcript, sem disparar resposta; entra como linha do assistente rotulada `[meu-bot]`, por isso o texto começa
+  com "Nota do meu-bot:") ao pausar ("o agente foi pausado para este contato em <hora local do Mac, com fuso> pelo
+  dono do número/pelo suporte… nada do que você responder será entregue") e ao retomar ("pausa encerrada em …
+  Nada do que você respondeu desde a nota 'pausado' acima chegou… responda ao pendente de forma resumida"); a
+  de retomada aponta para a de pausa, então não há estado a guardar; (2) `pauseRuleSh` grava no `AGENTS.md` do
+  workspace (`openclaw config get agents.defaults.workspace`, reserva `~/.openclaw/workspace`) um bloco versionado
+  entre `<!-- meu-bot:pausa v1 inicio/fim -->` dizendo como agir (python3: acrescenta, troca versão antiga, não
+  duplica; `REGRA=1/0/erro`). Roda no pareamento (`ensurePauseRule`, junto da transcrição) e em toda pausa/retomada
+  dos dois apps (máquinas antigas e pausas do admin). O `whatsappPause(host, number, paused, by)` manda patch +
+  notas (chave prefixada `nota:` no `R\t` para o `gatewayFailures` separar) + regra num só SSH; só a falha do
+  patch é erro, nota/regra só vão ao log. Decisões: o agente continua rodando pausado (o dono quer que raciocine)
+  e não há mensagem proativa ao retomar. Testado na agente-box: sessão de teste com as duas notas no
+  `chat.history`, regra gravada e depois `REGRA=0`.
 - Chave por contato no OpenClaw 2026.9.9: `agent:main:whatsapp:direct:+N` (sem a conta); o parse aceita os
   dois formatos. Respostas no espelho: só as entregues. Com o backend claude-cli, a entregue é a do
   `runId`; as importadas do CLI sem `runId` (ferramentas, textos de meio de turno, `stopReason: tool_use`)
@@ -1185,7 +1202,8 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   trouxer). Limite dito na tela: enquanto o suporte está ligado, o admin ainda entra por SSH; desligar o
   interruptor corta tudo.
 - CRUD do admin sobre o que está na máquina dela (16 out): no espelho do WhatsApp o menu "…" do admin ganha
-  "Pausar o agente para esta pessoa"/"Retomar" (`whatsapp:pause` comum, registrado no admin) e
+  "Pausar o agente para esta pessoa"/"Retomar" (`whatsapp:pause` comum, registrado no admin; a nota na conversa
+  diz "pelo suporte") e
   "Limpar histórico…" (mesma confirmação inline do cliente; `whatsapp:clear-plan`/`whatsapp:clear` viram
   canais comuns e, no admin, a limpeza entra no registro que ela vê: "admin limpou o histórico do WhatsApp de
   <número>"). No espelho das conversas com o meu-bot, "Apagar esta conversa" (dois cliques; `admin:bot-delete`

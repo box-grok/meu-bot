@@ -96,6 +96,7 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .sidebar-item .si-menu { flex: none; border: none; background: transparent; color: var(--muted); cursor: pointer; font: 14px inherit; padding: 0 4px; border-radius: 6px; }
 .sidebar-item .si-menu:hover { background: var(--line); color: var(--fg); }
 .sidebar-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; }
+.sidebar-notice { padding: 8px 12px; color: var(--ok, var(--muted)); font-size: 12px; }
 
 /* Ações por mensagem */
 .msg { position: relative; }

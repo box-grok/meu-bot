@@ -6,17 +6,25 @@
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { AudioSetup, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
+import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { deleteBackendSession, fetchAccountStatus, log, runBackendTurn } from "../backend";
+import { deleteBackendSession, fetchAccountStatus, fetchBackendSession, log, runBackendTurn } from "../backend";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
-import { cancelPairing, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
+import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
+import { pauseRuleSh } from "../whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../xaiLogin";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
-  getStoredConversation, listConversationsForHost, openConversation, renameConversation, reorderConversations, setConversationModel,
+  getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
 } from "../conversation";
+
+/** Depois de um turno, guarda a sessão do Claude Code desta conversa (o .jsonl): a referência vale mesmo depois do TTL do backend. */
+async function rememberClaudeSession(conv: { id: string; host: string; claude?: ClaudeSessionRef }): Promise<ClaudeSessionRef | null> {
+  const ref = await fetchBackendSession(conv.host, conv.id);
+  if (ref !== null && (conv.claude === undefined || conv.claude.sessionId !== ref.sessionId)) { conv.claude = ref; persistConversations(); }
+  return ref ?? conv.claude ?? null;
+}
 import { isBackendModel } from "../settings";
 import { toggleQuickEntry } from "../quickEntry";
 import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallStatusLine } from "../hostProbe";
@@ -36,6 +44,18 @@ async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => vo
   send({ kind: "step", text: "ligando a transcrição de áudio (padrão do meu-bot; baixa ~500 MB só na primeira vez)…" });
   const r = await installAudio(host, { kind: "in" }, (line) => send({ kind: "log", text: line }));
   send({ kind: r.ok ? "step" : "log", text: r.ok ? "transcrição de áudio pronta: o agente entende áudios" : `a transcrição não ligou: ${r.log.at(-1) ?? "erro"}` });
+}
+
+/**
+ * Padrão do app: o agente sabe o que é a pausa do meu-bot. Depois de parear, grava no AGENTS.md do workspace a
+ * regra das notas de pausa (whatsapp-pause.ts); idempotente. Toda pausa confere de novo (máquinas antigas).
+ */
+async function ensurePauseRule(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
+  const st = await whatsappStatus(host).catch(() => null);
+  if (st === null || st.gateway !== "openclaw") return;
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${pauseRuleSh()}\n`, 30_000).catch(() => null);
+  const rule = r === null ? "erro" : (/REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "erro");
+  send({ kind: rule === "erro" ? "log" : "step", text: rule === "erro" ? "não deu para gravar a regra de pausa no AGENTS.md do agente" : rule === "1" ? "regra de pausa do meu-bot gravada no agente (AGENTS.md)" : "regra de pausa do meu-bot já estava no agente" });
 }
 
 export function registerClientIpc(): void {
@@ -133,7 +153,7 @@ export function registerClientIpc(): void {
     let connected = false;
     const send = (ev: WhatsappEvent): void => { if (ev.kind === "connected") connected = true; if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); };
     await startPairing(h.host, reset, send);
-    if (connected) void ensureTranscription(h.host, send);
+    if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); }
   });
   handleClient("whatsapp:audio", (event, payload: unknown) => {
     const h = hostFromEvent(event);
@@ -216,6 +236,13 @@ export function registerClientIpc(): void {
     } finally {
       conv.busy = false;
     }
+    if (!conv.closed) void rememberClaudeSession(conv);
+  });
+  // "Copiar referência": a sessão do Claude Code (o .jsonl na máquina); guardada, ou lida agora do backend.
+  handleClient("chat:reference", async (event, payload: unknown) => {
+    const owned = ownedConversation(event, payload);
+    if (owned === null) throw new Error("origem inválida");
+    return { claude: owned.conv.claude ?? await rememberClaudeSession(owned.conv) };
   });
   handleClient("chat:cancel", (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);
@@ -308,6 +335,7 @@ export function registerClientIpc(): void {
         item("Renomear", "rename"),
         item("Duplicar", "duplicate", !busy),
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
+        item("Copiar referência", "copy-ref"),
         archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive", !busy),
         { type: "separator" },
         item("Fechar aba", "close"),

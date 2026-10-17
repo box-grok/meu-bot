@@ -136,7 +136,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const paused = (payload as { paused?: unknown }).paused === true;
-    await whatsappPause(h.host, waNumber(payload), paused);
+    await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono");
     // No meu-bot-admin, a pessoa vê no registro dela que o suporte pausou/retomou o agente para o contato.
     if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", `${paused ? "pausou" : "retomou"} o agente do WhatsApp para ${waNumber(payload)}`)}\n`, 15_000);
   });

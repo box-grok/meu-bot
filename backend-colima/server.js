@@ -380,6 +380,18 @@ const server = http.createServer((req, res) => {
   }
   // A pessoa excluiu a conversa no app: a transcrição do Claude Code desta máquina vai junto (nos dois perfis),
   // e o mapa esquece a sessão. Mantém o histórico da máquina só com o que ainda existe no app.
+  // "Copiar referência" no app: a sessão do Claude Code (o .jsonl nesta máquina) por trás da conversa, por perfil.
+  if (url.pathname === '/v1/meu-bot/session' && req.method === 'GET') {
+    const convId = url.searchParams.get('conv') || '';
+    if (!/^[A-Za-z0-9_-]{1,80}$/.test(convId)) return json(res, 400, { error: { message: 'conv inválido', type: 'invalid_request_error' } });
+    const out = [];
+    for (const name of Object.keys(MODELS)) {
+      const entry = sessions.get(`${name}:${convId}`);
+      if (!entry || !entry.sessionId || !entry.cwd) continue;
+      out.push({ profile: name, sessionId: entry.sessionId, cwd: entry.cwd, file: path.join(sessions.projectDir(entry.cwd), `${entry.sessionId}.jsonl`) });
+    }
+    return json(res, 200, { sessions: out });
+  }
   if (url.pathname === '/v1/meu-bot/session' && req.method === 'DELETE') {
     const convId = url.searchParams.get('conv') || '';
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(convId)) return json(res, 400, { error: { message: 'conv inválido', type: 'invalid_request_error' } });

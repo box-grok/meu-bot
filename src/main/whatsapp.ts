@@ -15,6 +15,7 @@ import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
+import { localWhenText, pauseInjectSh, pauseNoteText, pauseRuleSh, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
@@ -482,17 +483,24 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
 
 /**
  * Pausa ou retoma o agente para um contato: `sendPolicy` da sessão só dele (`deny` = o OpenClaw não entrega
- * respostas nem mostra "digitando"; `null` volta à regra geral). A mensagem da pessoa continua chegando.
+ * respostas nem mostra "digitando"; `null` volta à regra geral). A mensagem da pessoa continua chegando e o agente
+ * segue rodando, então ele ganha uma nota na conversa dizendo que foi pausado/retomado (whatsapp-pause.ts), e o
+ * AGENTS.md da máquina ganha a regra do que fazer com essas notas. A nota e a regra não desfazem a pausa se falharem.
  */
-export async function whatsappPause(host: string, number: string, paused: boolean): Promise<void> {
+export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy): Promise<void> {
   const { own } = await whatsappClearPlan(host, number);
   if (own.length === 0) throw new Error("esta pessoa ainda não tem conversa própria com o agente; dá para pausar depois da próxima mensagem dela");
   const value = paused ? '"deny"' : "null";
-  const lines = own.map((k) => `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.patch --json --params '{"key":"${k}","sendPolicy":${value}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
-  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 120_000);
+  const note = pauseNoteText(paused ? "pause" : "resume", localWhenText(new Date()), by);
+  const patch = own.map((k) => `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.patch --json --params '{"key":"${k}","sendPolicy":${value}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
+  // A nota sai com a chave prefixada por "nota:" para o gatewayFailures separar o patch (essencial) da nota (contexto).
+  const inject = own.map((k) => pauseInjectSh(k, note).replace(`printf 'R\\t%s\\t' '${k}'`, `printf 'R\\tnota:%s\\t' '${k}'`)).join("\n");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${patch}\n${inject}\n${pauseRuleSh()}\n`, 120_000);
   const failed = gatewayFailures(r.stdout, own);
   if (failed.length > 0) throw new Error(`o OpenClaw não ${paused ? "pausou" : "retomou"} a conversa`);
-  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${number.replace(/\D/g, "")} em ${host}`);
+  const noteFailed = gatewayFailures(r.stdout, own.map((k) => `nota:${k}`));
+  const rule = /REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
+  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${number.replace(/\D/g, "")} em ${host} (${by}); nota ${noteFailed.length > 0 ? "NÃO entrou" : "na conversa"}; regra do AGENTS.md: ${rule}`);
 }
 
 /**

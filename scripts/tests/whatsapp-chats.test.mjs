@@ -11,7 +11,7 @@ const wa = (id) => ({ identity: { type: "observation", pluginId: "whatsapp", acc
 const list = {
   sessions: [
     { key: "agent:main:main", updatedAt: 1000, participants: [wa(SELF), wa(ANA)], kind: "direct" },
-    { key: `agent:main:whatsapp:default:direct:${ANA}`, updatedAt: 5000, participants: [wa(ANA)], kind: "direct" },
+    { key: `agent:main:whatsapp:default:direct:${ANA}`, updatedAt: 5000, participants: [wa(ANA)], kind: "direct", sessionId: "5e6c65a1-1385-42a6-ac5c-065d3366f3e2" },
     { key: `agent:main:whatsapp:default:direct:${BIA}`, updatedAt: 3000, participants: [wa(BIA)], kind: "direct" },
     { key: "agent:main:telegram:x", updatedAt: 9000, participants: [{ identity: { pluginId: "telegram", id: "123" } }] },
   ],
@@ -37,6 +37,8 @@ test("lista: junta a sessão principal e a por contato no mesmo número, mais re
   const withSelf = chatsFromSessions({ sessions: [{ key: `agent:main:whatsapp:default:direct:${SELF}`, updatedAt: 7000 }] }, SELF);
   assert.equal(withSelf[0].isSelf, true, "conversa consigo mesmo, em sessão própria, aparece marcada");
   assert.equal(chats.find((c) => c.number === "5511900000003").name, null);
+  // UUID da sessão por chave (para "Copiar referência"); sessão sem sessionId não entra.
+  assert.deepEqual(ana.sessionIds, { [`agent:main:whatsapp:default:direct:${ANA}`]: "5e6c65a1-1385-42a6-ac5c-065d3366f3e2" });
 });
 
 test("lista vazia ou malformada não quebra", () => {

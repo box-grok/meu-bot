@@ -3,6 +3,8 @@
  * registros, ações). Só valem numa janela de pessoa do suporte (alias `suporte-…`); no meu-bot normal o
  * registro vira recusa (ipc/registry.ts).
  */
+import { Menu } from "electron";
+import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../support-code";
 import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
@@ -21,6 +23,18 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:bot-chats", (event) => adminBotChats(adminHost(event)));
   handleAdmin("admin:bot-thread", (event, payload: unknown) => adminBotThread(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
   handleAdmin("admin:bot-delete", (event, payload: unknown) => adminBotDelete(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
+  // Menu "…" de uma conversa dela com o meu-bot (espelho): só "Copiar referência"; o apagar fica no cabeçalho.
+  handleAdmin("ui:bot-menu", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null || !isSupportAlias(h.host)) return null;
+    return new Promise<BotMenuAction | null>((resolve) => {
+      let settled = false;
+      const pick = (action: BotMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
+      const menu = Menu.buildFromTemplate([{ label: "Copiar referência", click: () => pick("copy-ref") }]);
+      // O callback de fechamento corre antes do click; o adiamento deixa o click vencer.
+      menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
+    });
+  });
   handleAdmin("admin:action", (event, payload: unknown) => {
     const host = adminHost(event);
     const a = (payload as { action?: unknown } | null)?.action;

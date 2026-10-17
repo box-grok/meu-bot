@@ -41,7 +41,7 @@ test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o Wha
     "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
   ];
   for (const c of writes) assert.ok(client.has(c), `${c} devia ser só do cliente`);
-  assert.deepEqual([...admin].sort(), ["admin:action", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:logs", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename"]);
+  assert.deepEqual([...admin].sort(), ["admin:action", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:logs", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename", "ui:bot-menu"]);
   assert.match(ADMIN_READONLY_MSG, /só lê/);
 });
 

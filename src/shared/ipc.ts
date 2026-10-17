@@ -331,6 +331,8 @@ export interface WhatsappChat {
   isSelf: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
+  /** Chave da sessão → UUID interno do OpenClaw (troca a cada "Limpar"); para "Copiar referência". */
+  sessionIds: Record<string, string>;
   /** Tem sessão só dele (isolamento por contato): dá para pausar sem afetar os outros. */
   ownSession: boolean;
   /** O agente está pausado para este contato (não responde). */
@@ -542,8 +544,12 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
-export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "archive" | "unarchive" | "close" | "delete";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
+export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
+/** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
+export type BotMenuAction = "copy-ref";
+/** Sessão do Claude Code por trás de uma conversa do app (vem do backend; é o .jsonl na máquina). */
+export interface ClaudeSessionRef { sessionId: string; file: string; profile: string }
 export type ExportFormat = "md" | "json";
 
 export interface MainEvents {
@@ -658,6 +664,8 @@ export interface MeuBotClientApi {
   branchConversation(conversationId: string, index: number): Promise<StoredConversationView | null>;
   /** Abre o diálogo de salvar; null se cancelado. */
   exportConversation(conversationId: string, format: ExportFormat): Promise<{ path: string } | null>;
+  /** Sessão do Claude Code desta conversa (o .jsonl na máquina), para "Copiar referência"; null = ainda não há. */
+  conversationReference(conversationId: string): Promise<{ claude: ClaudeSessionRef | null }>;
   /** Menu de contexto nativo da aba; null se fechado sem escolher. */
   showTabMenu(conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null>;
   notify(conversationId: string, title: string, body: string): Promise<void>;
@@ -730,6 +738,8 @@ export interface MeuBotAdminApi {
   adminBotThread(sessionId: string): Promise<BotMessage[]>;
   /** Apaga na máquina dela a transcrição de uma conversa com o meu-bot (travou, ficou lixo); fica no registro. */
   adminBotDelete(sessionId: string): Promise<void>;
+  /** Menu "…" de uma conversa dela com o meu-bot no espelho. */
+  showBotMenu(sessionId: string): Promise<BotMenuAction | null>;
 }
 
 /** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */
