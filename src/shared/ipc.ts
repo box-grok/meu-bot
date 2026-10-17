@@ -235,8 +235,8 @@ export interface WhatsappStatus {
   audioOut?: VoiceReplyMode | null;
 }
 
-/** Grok por chave de API (máquinas sem Hermes): há backend? há XAI_API_KEY no .env dele? */
-export interface XaiKeyStatus { backend: boolean; hasKey: boolean }
+/** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */
+export interface XaiKeyStatus { backend: boolean }
 
 /** Suporte (meu-bot-admin), lado da pessoa: estado na máquina desta janela. */
 export interface SupportInfo {

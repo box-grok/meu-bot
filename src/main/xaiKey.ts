@@ -9,10 +9,10 @@ import { runSsh } from "./whatsapp";
 
 const BACKEND_DIR = "$HOME/.hermes/agente-rene/backend-sdk-claude";
 
-/** Há backend do meu-bot na máquina? (`hasKey` fica por compatibilidade do tipo; sempre false.) */
+/** Há backend do meu-bot na máquina? */
 export async function xaiKeyStatus(host: string): Promise<XaiKeyStatus> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return { backend: false, hasKey: false };
+  if (host === LOCAL_HOST || !isValidHost(host)) return { backend: false };
   const r = await runSsh(host, `[ -f ${BACKEND_DIR}/.env ] && echo backend=1 || echo backend=0\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o backend desta máquina");
-  return { backend: r.stdout.includes("backend=1"), hasKey: false };
+  return { backend: r.stdout.includes("backend=1") };
 }

@@ -1074,23 +1074,55 @@ clLineBtn.addEventListener("click", () => {
   enterClaude();
 });
 
-// ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude.
+// ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude: um
+// estado (xaiState) pintado nos controles do passo 2 do tutorial 4 (xaiGuide, criados uma vez) e no modal
+// #xai-dialog (trocar de conta depois de concluído). O passo 1 (preparar: Hermes + proxy) tem seu bloco.
 const xaiLine = $<HTMLDivElement>("xai-line");
 const xaiLineText = $<HTMLSpanElement>("xai-line-text");
 const xaiLineBtn = $<HTMLButtonElement>("xai-line-btn");
 const xaiDialog = $<HTMLDialogElement>("xai-dialog");
-const xaiStatus = $<HTMLParagraphElement>("xai-status");
-const xaiOpen = $<HTMLButtonElement>("xai-open");
-const xaiLog = $<HTMLPreElement>("xai-log");
-const xaiStart = $<HTMLButtonElement>("xai-start");
 const xaiClose = $<HTMLButtonElement>("xai-close");
 let xaiAuth: ClaudeAuthInfo | null = null;
-let xaiRunning = false;
-let xaiUrl: string | null = null;
+let xaiKey: XaiKeyStatus | null = null;
+const xaiState = { running: false, preparing: false, url: null as string | null, status: "", log: [] as string[], result: null as "ok" | "fail" | null };
+const xaiModal: LoginControls = { box: xaiDialog, status: $<HTMLElement>("xai-status"), open: $<HTMLButtonElement>("xai-open"), codeRow: el("div"), code: el("input") as HTMLInputElement, send: el("button") as HTMLButtonElement, log: $<HTMLElement>("xai-log"), start: $<HTMLButtonElement>("xai-start"), cancel: null };
+const xaiGuide: LoginControls = buildLoginControls();
+const XAI_INTRO = (): string => `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
+/** Passo 1 do tutorial 4: preparar (Hermes + proxy). Status, botão e o mesmo log do estado. */
+const xaiPrep = (() => {
+  const box = el("div", "guide-login");
+  const status = el("p", "hint");
+  const start = el("button", "btn btn-primary btn-small", "Preparar"); start.type = "button";
+  const actions = el("div", "actions"); actions.append(start);
+  const log = el("pre", "log"); log.hidden = true;
+  box.append(status, actions, log);
+  start.addEventListener("click", () => { void prepareXai(); });
+  return { box, status, start, log };
+})();
+
+function paintXaiControls(c: LoginControls, variant: "modal" | "guide"): void {
+  c.status.textContent = xaiState.status === "" ? XAI_INTRO() : xaiState.status;
+  c.open.hidden = xaiState.url === null || xaiState.result === "ok";
+  c.codeRow.hidden = true;
+  c.log.hidden = xaiState.log.length === 0; c.log.textContent = xaiState.log.join("\n");
+  c.start.hidden = xaiState.running || xaiState.preparing || xaiState.result === "ok";
+  c.start.textContent = xaiState.result === "fail" ? "Tentar de novo" : variant === "guide" ? "Entrar" : "Começar";
+  c.start.classList.toggle("pulse", variant === "guide" && !c.start.hidden);
+  if (c.cancel !== null) c.cancel.hidden = !xaiState.running;
+  if (variant === "modal") xaiClose.textContent = xaiState.running || xaiState.preparing ? "Cancelar" : "Fechar";
+}
+function paintXaiLogin(): void {
+  paintXaiControls(xaiModal, "modal"); paintXaiControls(xaiGuide, "guide");
+  xaiPrep.status.textContent = xaiState.preparing ? xaiState.status : xaiAuth !== null ? "Hermes e proxy prontos nesta máquina." : xaiState.result === "fail" ? xaiState.status : "Instala o Hermes e o proxy da xAI nesta máquina; o backend reinicia no fim.";
+  xaiPrep.start.hidden = xaiState.preparing || xaiAuth !== null;
+  xaiPrep.start.textContent = xaiState.result === "fail" ? "Tentar de novo" : "Preparar";
+  xaiPrep.start.classList.toggle("pulse", !xaiPrep.start.hidden);
+  xaiPrep.log.hidden = !xaiState.preparing && xaiState.log.length === 0; xaiPrep.log.textContent = xaiState.log.join("\n");
+}
 
 function paintXaiLine(): void {
   if (xaiAuth === null) {
-    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" instala o Hermes e faz o login OAuth.
+    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" leva ao tutorial 4 (preparar + login).
     if (xaiKey === null || !xaiKey.backend) { xaiLine.hidden = true; return; }
     xaiLine.hidden = false;
     xaiLine.className = "wa-line cl-line off";
@@ -1103,73 +1135,92 @@ function paintXaiLine(): void {
   xaiLineText.textContent = xaiAuth.loggedIn ? `xAI (Grok) · ${xaiAuth.email ?? "logada"}` : "xAI (Grok) · deslogada · o grok-4 não responde";
   xaiLineBtn.textContent = xaiAuth.loggedIn ? "sair" : "entrar";
 }
-let xaiKey: XaiKeyStatus | null = null;
+/** Consulta a conta da xAI (e, sem Hermes, se há backend); o tutorial 4 e a lateral seguem o resultado. */
 async function refreshXaiLine(): Promise<void> {
   try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
   if (xaiAuth === null && caps.login && windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
   paintXaiLine();
+  if (tutorialsReady) { paintXaiLogin(); paintGuide(); }
 }
+/** Modal do login da xAI (trocar de conta quando o tutorial 4 já foi concluído). */
 function openXai(): void {
-  xaiLog.hidden = true; xaiLog.textContent = ""; xaiOpen.hidden = true;
-  xaiStatus.textContent = `Máquina: ${hostLabel(windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
-  xaiStart.hidden = xaiRunning; xaiStart.textContent = "Começar"; xaiClose.textContent = xaiRunning ? "Cancelar" : "Fechar";
+  if (!xaiState.running && !xaiState.preparing) { xaiState.status = ""; xaiState.log = []; xaiState.url = null; xaiState.result = null; }
+  paintXaiLogin();
   if (!xaiDialog.open) xaiDialog.showModal();
 }
-/** Máquina sem Hermes: instala Hermes + proxy da xAI (como no grokbot) e segue para o login OAuth. */
-async function prepareAndLoginXai(): Promise<void> {
-  if (xaiRunning) return;
-  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
-  xaiStatus.textContent = `Preparando o Grok por OAuth em ${hostLabel(windowHost)} (Hermes + proxy local; na primeira vez baixa o Hermes)…`;
+/** Máquina sem Hermes: instala Hermes + proxy da xAI (install-grok-oauth.sh). O passo 1 do tutorial 4. */
+async function prepareXai(): Promise<void> {
+  if (xaiState.running || xaiState.preparing) return;
+  xaiState.preparing = true; xaiState.result = null; xaiState.log = [];
+  xaiState.status = `Preparando o Grok em ${hostLabel(windowHost)} (Hermes + proxy local; na primeira vez baixa o Hermes)…`;
+  paintXaiLogin();
   try {
     const r = await window.meuBot.xaiPrepare();
-    if (!r.ok) { xaiStatus.textContent = `✗ ${r.log.at(-1) ?? "não deu para preparar"}`; return; }
+    if (!r.ok) { xaiState.status = `✗ ${r.log.at(-1) ?? "não deu para preparar"}`; xaiState.result = "fail"; return; }
+    xaiState.preparing = false;
     await refreshXaiLine();
-    if (xaiAuth === null) { xaiStatus.textContent = "✗ o Hermes foi instalado mas o app ainda não o enxerga; feche e abra a janela desta máquina."; return; }
-    if (xaiAuth.loggedIn) { xaiStatus.textContent = "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy."; return; }
-  } catch (err) { xaiStatus.textContent = `✗ ${ipcErrorText(err)}`; return; }
-  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
-  await runXaiLogin();
+    if (xaiAuth === null) { xaiState.status = "✗ o Hermes foi instalado mas o app ainda não o enxerga; feche e abra a janela desta máquina."; xaiState.result = "fail"; return; }
+    xaiState.status = xaiAuth.loggedIn ? "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy." : "✓ Hermes e proxy prontos. Agora é entrar na conta da xAI.";
+  } catch (err) { xaiState.status = `✗ ${ipcErrorText(err)}`; xaiState.result = "fail"; }
+  finally { xaiState.preparing = false; paintXaiLogin(); paintGuide(); }
 }
 async function runXaiLogin(): Promise<void> {
-  if (xaiRunning) return;
-  xaiRunning = true; xaiStart.hidden = true; xaiClose.textContent = "Cancelar"; xaiLog.hidden = false; xaiLog.textContent = "";
-  xaiStatus.textContent = "Pedindo o login OAuth da xAI à máquina…";
-  try { await window.meuBot.xaiLogin(); } catch (err) { xaiStatus.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; }
-  finally { xaiRunning = false; xaiClose.textContent = "Fechar"; }
+  if (xaiState.running || xaiState.preparing) return;
+  xaiState.running = true; xaiState.result = null; xaiState.url = null; xaiState.log = []; xaiState.status = "Pedindo o login OAuth da xAI à máquina…";
+  paintXaiLogin();
+  try { await window.meuBot.xaiLogin(); } catch (err) { xaiState.status = `✗ ${ipcErrorText(err)}`; xaiState.result = "fail"; }
+  finally { xaiState.running = false; paintXaiLogin(); }
+}
+const XAI_TUTORIAL = TUTORIAIS.find((t) => t.id === "xai-login") as Tutorial;
+/**
+ * Porta única para "Entrar na xAI": enquanto o tutorial 4 não foi concluído (e o Grok é possível aqui), abre o
+ * guia (Preparar ou Entrar pulsando; nada roda sozinho); concluído, é trocar de conta: o modal já com o login.
+ */
+function enterXai(): void {
+  if (caps.install && !tutorialDone(XAI_TUTORIAL)) { tutNext = false; openGuide(XAI_TUTORIAL); return; }
+  openXai(); void runXaiLogin();
+}
+/** Sai da conta da xAI no Hermes desta máquina; com `relogin`, já leva ao login (tutorial 4 ou modal). */
+async function logoutXai(relogin: boolean): Promise<void> {
+  xaiLineBtn.disabled = true;
+  try { xaiAuth = await window.meuBot.xaiLogout(); paintXaiLine(); paintGuide(); if (relogin) enterXai(); }
+  finally { xaiLineBtn.disabled = false; }
 }
 window.meuBot.on("xai-login:event", (ev: ClaudeLoginEvent) => {
-  const appendLog = (t: string): void => { xaiLog.hidden = false; xaiLog.textContent = `${xaiLog.textContent ?? ""}${t}\n`.split("\n").slice(-8).join("\n"); };
+  const appendLog = (t: string): void => { xaiState.log = [...xaiState.log, t].slice(-8); };
   switch (ev.kind) {
-    case "url": xaiUrl = ev.url; xaiOpen.hidden = false; xaiStatus.textContent = "Abri o link no navegador. Entre na conta da xAI e aprove o dispositivo; esperando a aprovação…"; break;
+    case "url": xaiState.url = ev.url; xaiState.status = "Abri o link no navegador. Entre na conta da xAI e aprove o dispositivo; esperando a aprovação…"; break;
     case "waiting-code": break;
     case "log": appendLog(ev.text); break;
     case "done":
-      xaiStatus.textContent = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
-      xaiStart.hidden = ev.ok; xaiStart.textContent = "Tentar de novo";
+      // O prepare também manda `log`; `done` é só do login.
+      xaiState.result = ev.ok ? "ok" : "fail";
+      xaiState.status = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
       if (ev.ok) {
         // Verde na hora, com o rótulo que veio no texto; a consulta de confirmação roda em segundo plano.
         xaiAuth = { loggedIn: true, email: /\(([^)]+)\)/.exec(ev.text)?.[1] ?? xaiAuth?.email ?? null };
-        paintXaiLine();
+        paintXaiLine(); paintGuide();
         const tab = active(); if (tab !== null) addNotice(tab, "✓ xAI logada no Hermes desta máquina; o grok-4 já usa a conta nova.", "info");
         void refreshXaiLine();
         setTimeout(() => { if (xaiDialog.open) xaiDialog.close(); }, 1200);
       }
       break;
   }
+  paintXaiLogin();
 });
-xaiStart.addEventListener("click", () => { void runXaiLogin(); });
-xaiOpen.addEventListener("click", () => { if (xaiUrl !== null) void window.meuBot.openExternal(xaiUrl); });
-xaiClose.addEventListener("click", () => { if (xaiRunning) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
+for (const c of [xaiModal, xaiGuide]) {
+  c.start.addEventListener("click", () => { void runXaiLogin(); });
+  c.open.addEventListener("click", () => { if (xaiState.url !== null) void window.meuBot.openExternal(xaiState.url); });
+  if (c.cancel !== null) c.cancel.addEventListener("click", () => { if (xaiState.running) void window.meuBot.xaiLoginCancel(); });
+}
+xaiClose.addEventListener("click", () => { if (xaiState.running) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
 xaiLineBtn.addEventListener("click", () => {
-  if (xaiAuth === null) { openXai(); void prepareAndLoginXai(); return; } // sem Hermes: prepara (Hermes + proxy) e entra por OAuth
   if (xaiAuth !== null && xaiAuth.loggedIn) {
     if (!window.confirm("Sair da conta da xAI no Hermes desta máquina? O grok-4 para de responder até entrar de novo.")) return;
-    xaiLineBtn.disabled = true;
-    void window.meuBot.xaiLogout().then((st) => { xaiAuth = st; paintXaiLine(); openXai(); void runXaiLogin(); }).finally(() => { xaiLineBtn.disabled = false; });
+    void logoutXai(true);
     return;
   }
-  openXai();
-  void runXaiLogin();
+  enterXai();
 });
 
 // ---- WhatsApp do agente da máquina (Hermes ou OpenClaw): linha no topo da lista de conversas e modal de pareamento por QR.
@@ -1386,7 +1437,8 @@ let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
   if (target === "chat") {
-    if (t.id === "claude-login") void goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");
+    if (t.id === "xai-login") void goToChatFromGuide("Oi! Qual modelo está respondendo agora? Uma linha.", "A conversa mudou para o grok-4: a resposta vem da xAI e a pill do túnel mostra \"respondeu grok-4\"; aí o tutorial se conclui sozinho.", "grok-4");
+    else if (t.id === "claude-login") void goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");
     else void goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
     return;
   }
@@ -1493,6 +1545,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
         renderStatusLineTest(txt);
+      } else if (step.body === "xai-prepare") {
+        txt.append(xaiPrep.box); paintXaiLogin();
+      } else if (step.body === "xai-login") {
+        txt.append(xaiGuide.box); paintXaiLogin();
       } else if (step.body === "claude-login") {
         // Os controles são os mesmos de sempre (reanexados): o código digitado sobrevive à repintura; o foco volta.
         const refocus = document.activeElement === clGuide.code;
@@ -1550,6 +1606,15 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       const manage = el("div", "guide-manage");
       manage.append(el("p", "hint strong-hint", "Suporte nesta máquina"));
       renderSupportParts(manage, ["name", "switch", "delivery", "log"]);
+      panel.append(manage);
+    } else if (t.id === "xai-login") {
+      const manage = el("div", "guide-manage");
+      manage.append(el("p", "hint strong-hint", "Conta da xAI nesta máquina"));
+      const row = el("div", "guide-note");
+      const swap = el("button", "btn btn-ghost btn-small", "Sair e entrar com outra conta"); swap.type = "button";
+      swap.addEventListener("click", () => armConfirm(swap, "Confirmar? o grok-4 para até entrar de novo", () => { void logoutXai(true); }));
+      row.append(`xAI (Grok) · ${xaiAuth?.email ?? "logada"}. `, swap);
+      manage.append(row, el("p", "hint", "Para o Grok assumir quando o Claude falhar: tutorial 5 · Fallback (em breve)."));
       panel.append(manage);
     } else if (t.id === "claude-login") {
       const manage = el("div", "guide-manage");
@@ -1610,6 +1675,7 @@ function openGuide(t: Tutorial): void {
   openPage(g.page);
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
   if (t.id === "claude-login") void refreshClaudeLine();
+  if (t.id === "xai-login") void refreshXaiLine();
   paintGuide();
 }
 
@@ -1639,6 +1705,8 @@ async function resetTutorial(t: Tutorial): Promise<void> {
       await refreshWhatsapp();
     } else if (t.id === "claude-login") {
       await logoutClaude(false);
+    } else if (t.id === "xai-login") {
+      if (xaiAuth?.loggedIn === true) await logoutXai(false);
     }
     try { localStorage.removeItem(guideFlagsKey(t)); } catch { /* opcional */ }
     const g = guidePages.get(`tut-${t.id}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
@@ -2782,7 +2850,10 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
     const cur = index.get(tab.id);
     const had = firstReplyOnHost();
     patchIndex(tab.id, { messages: [...(cur?.messages ?? []), { role: "assistant", content: tab.pendingText }] });
-    if (!had) paintGuide(); // primeira resposta nesta máquina: conclui o tutorial 1
+    // Tutorial 4: a prova de que o grok-4 responde é o X-Provider da resposta, não o que o modelo diz de si.
+    const grokNow = done.provider === "grok-4" && !loadGuideFlags(XAI_TUTORIAL).grokReplied;
+    if (grokNow) saveGuideFlag(XAI_TUTORIAL, "grokReplied");
+    if (!had || grokNow) paintGuide(); // primeira resposta nesta máquina (tutorial 1) / primeira do grok-4 (tutorial 4)
   }
   markUnread(tab);
   maybeNotify(tab, tab.pendingText);
@@ -3060,6 +3131,11 @@ const guideCtx = (): GuideContext => ({
   support: supportState,
   statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: statusLineSegs },
   claude: { loggedIn: clAuth?.loggedIn ?? null, email: clAuth?.email ?? null, firstReply: firstReplyOnHost() },
+  xai: {
+    possible: !caps.install || windowHost === "local" ? false : xaiAuth !== null ? true : xaiKey === null ? null : xaiKey.backend,
+    hermes: xaiAuth !== null ? true : xaiKey === null ? null : false,
+    loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null,
+  },
 });
 async function refreshStatusLine(): Promise<void> {
   if (!caps.install || windowHost === "") return;
@@ -3411,9 +3487,11 @@ async function backToChat(): Promise<Tab | null> {
  * Passo "Ver os limites na conversa" do tutorial da status line: leva à conversa com uma mensagem pronta no
  * compositor (nada é enviado sozinho) e diz onde olhar. O passo se conclui sozinho quando a conta traz os limites.
  */
-async function goToChatFromGuide(message: string, hint: string): Promise<void> {
+async function goToChatFromGuide(message: string, hint: string, model?: BackendModel): Promise<void> {
   const tab = await backToChat();
   if (tab === null) return;
+  // Tutorial 4: a conversa passa a usar o grok-4 (o backend recebe a nota de troca de modelo, como pela paleta).
+  if (model !== undefined && tab.model !== model) { if (!prefersReducedMotion) showModeToast(model); setTabModel(tab, model); void window.meuBot.setConversationModel(tab.id, model); }
   if (inputEl.value.trim() === "") inputEl.value = message;
   addNotice(tab, `Vou enviar em 3, 2, 1 para você ver acontecendo (digitar ou Esc cancela; Enviar manda já). ${hint}`);
   inputEl.focus(); inputEl.setSelectionRange(inputEl.value.length, inputEl.value.length);

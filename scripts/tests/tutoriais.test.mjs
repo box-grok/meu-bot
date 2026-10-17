@@ -51,6 +51,28 @@ test("tutorial 1 · Entrar no Claude Code: login → e-mail (ou \"Vi minha conta
   assert.equal(guideTabTitle(t1, guideView(t1, null, emptyFlags(), c({ loggedIn: true, email: "a@b" }))), "1 · Claude 2/3");
 });
 
+test("tutorial 4 · Entrar na xAI (Grok): preparar → entrar → grok-4 respondeu; some onde o Grok não é possível", () => {
+  const t4 = byId("xai-login");
+  assert.equal(t4.after, "claude-login"); assert.equal(t4.needsXai, true); assert.ok(t4.comingSoon !== true);
+  const c = (xai) => ({ ...emptyContext(), xai: { possible: null, hermes: null, loggedIn: null, label: null, ...xai } });
+  assert.equal(guideView(t4, null, emptyFlags(), c({})).current, 0, "não consultado: preparar");
+  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: false })).current, 0);
+  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: true, loggedIn: false })).current, 1, "Hermes pronto: entrar");
+  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: true, loggedIn: true })).current, 2, "logada: ver o grok-4 responder");
+  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ hermes: true, loggedIn: true })).finished, true);
+  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ hermes: true, loggedIn: false })).current, 1, "deslogou: volta a entrar");
+  assert.equal(t4.steps[0].body, "xai-prepare"); assert.equal(t4.steps[1].body, "xai-login"); assert.equal(t4.steps[2].target, "chat");
+  assert.equal(tutorialBadge(t4), "Tutorial 4 · 3 passos · 3 min");
+  assert.equal(guideTabTitle(t4, guideView(t4, null, emptyFlags(), c({ hermes: true }))), "4 · Grok 1/3");
+  const done1 = (x) => x.id === "claude-login";
+  const ids = (xai, fin = done1) => visibleTutorials(c(xai), fin).map((x) => x.id);
+  assert.ok(ids({ possible: null }).includes("xai-login"), "sem consultar ainda, mostra");
+  assert.ok(ids({ possible: true }).includes("xai-login"));
+  assert.ok(!ids({ possible: false }).includes("xai-login"), "este Mac / sem backend: some");
+  assert.ok(!ids({ possible: false }, (x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"), "o 5 some junto com o 4");
+  assert.ok(ids({ possible: true }, (x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
+});
+
 test("selo da lateral: número = pendências (interruptor desliga); pulso = novidade (não obedece ao interruptor)", () => {
   assert.deepEqual(sidebarBadge({ todo: 3, novos: 0, avisar: true }), { text: "3", pulse: false });
   assert.deepEqual(sidebarBadge({ todo: 3, novos: 2, avisar: true }), { text: "3", pulse: true });
