@@ -3338,10 +3338,10 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Avisando o admin…"), now);
       box.append(wait);
     }
-    // Último recurso (se a entrega automática não chegar): revelar o código para mandar a mão.
+    // O código de suporte, para colar no meu-bot-admin ("Adicionar pessoa") quando a entrega automática não serve.
     const more = el("details", "support-more");
     more.open = supportCodeShown !== null;
-    more.append(el("summary", "", "Não chegou? Mostrar código de suporte"));
+    more.append(el("summary", "", "Código de suporte (para colar no meu-bot-admin)"));
     if (supportCodeShown === null) {
       const reveal = el("button", "btn btn-ghost btn-small", "Mostrar código"); reveal.type = "button";
       reveal.addEventListener("click", () => {
@@ -3355,7 +3355,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       code.addEventListener("focus", () => code.select());
       const copy = el("button", "btn btn-primary btn-small", "Copiar"); copy.type = "button";
       copy.addEventListener("click", () => { void navigator.clipboard.writeText(supportCodeShown ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
-      more.append(code, copy, el("p", "hint", "Mande para o admin (WhatsApp, e-mail). Não é senha: mostra só como o admin chega nesta máquina."));
+      more.append(code, copy, el("p", "hint", "Mande para o admin (WhatsApp, e-mail); ele cola em \"Adicionar pessoa\" no meu-bot-admin. Não é senha: diz só como o admin chega nesta máquina."));
     }
     box.append(more);
     container.append(box);
