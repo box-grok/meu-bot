@@ -2173,7 +2173,7 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       void startWaClear(row.number, "clear");
       break;
     case "delete":
-      void startWaClear(row.number, "delete");
+      void deleteWaChat(row.number);
       break;
   }
 }
@@ -2197,6 +2197,20 @@ async function startWaClear(number: string, mode: WaClear["mode"]): Promise<void
     waClear = { number, mode, phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
   }
   renderSidebar();
+}
+/** "Excluir conversa": sem confirmação. Lê o plano e já limpa (a sessão principal inclusive) e tira da lista. */
+async function deleteWaChat(number: string): Promise<void> {
+  waClear = { number, mode: "delete", phase: "run", shared: false, empty: false, err: null };
+  renderSidebar();
+  try {
+    const plan = await window.meuBot.whatsappClearPlan(number);
+    if (waClear?.number !== number) return;
+    await runWaClear({ number, mode: "delete", phase: "run", shared: plan.shared > 0, empty: plan.own + plan.shared === 0, err: null });
+  } catch (err) {
+    if (waClear?.number !== number) return;
+    waClear = { number, mode: "delete", phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
+    renderSidebar();
+  }
 }
 async function runWaClear(c: WaClear): Promise<void> {
   waClear = { ...c, phase: "run" };

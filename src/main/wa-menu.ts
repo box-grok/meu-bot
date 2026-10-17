@@ -20,8 +20,8 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
     : state.ownSession
       ? item("Pausar o agente para esta pessoa", "pause")
       : { label: "Pausar o agente (depois da próxima mensagem dela)", action: null, enabled: false } as WaMenuEntry;
-  // Excluir = limpar o histórico na máquina e tirar da lista deste app (volta se o contato mandar outra mensagem).
-  const excluir = item("Excluir conversa…", "delete");
+  // Excluir = limpar o histórico na máquina e tirar da lista deste app, sem confirmação (volta se o contato mandar outra mensagem).
+  const excluir = item("Excluir conversa", "delete");
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
   if (!caps.manageWa) return [exportar, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
   return [

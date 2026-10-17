@@ -363,7 +363,7 @@ archiveBtn.addEventListener("click", () => {
 });
 
 /**
- * "Excluir máquina" (só o admin): dois cliques (o primeiro arma por 4 s). Na máquina dela limpa todo o histórico do
+ * "Excluir máquina" (só o admin): um clique, sem confirmação. Na máquina dela limpa todo o histórico do
  * WhatsApp e desliga o suporte; aqui ela sai da lista. Se a máquina não responder, o botão vira "Excluir mesmo
  * assim", que só tira da lista.
  */
@@ -374,13 +374,8 @@ function resetRemovePerson(): void {
 removePersonBtn.addEventListener("click", () => {
   const alias = selected; const person = alias === null ? undefined : personOf(alias);
   if (alias === null || person === undefined) return;
-  const armed = removePersonBtn.dataset["armed"];
-  if (armed !== "1" && armed !== "force") {
-    removePersonBtn.dataset["armed"] = "1"; removePersonBtn.textContent = "Confirmar? limpa o WhatsApp da máquina e desliga o suporte";
-    window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "1") resetRemovePerson(); }, 4000);
-    return;
-  }
-  const force = armed === "force";
+  if (removePersonBtn.disabled) return;
+  const force = removePersonBtn.dataset["armed"] === "force";
   removePersonBtn.dataset["armed"] = ""; removePersonBtn.textContent = force ? "Tirando da lista…" : "Limpando o WhatsApp da máquina…"; removePersonBtn.disabled = true;
   void window.picker.supportRemove(alias, force).then(async (r) => {
     noteEl.hidden = false; noteEl.className = "note ok";
