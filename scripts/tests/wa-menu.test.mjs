@@ -12,7 +12,7 @@ test("sem manageWa (admin): exportar, arquivar, pausar, limpar e excluir (sem co
   assert.deepEqual(actions(m), ["export-md", "export-json", "copy-ref", "rename", "archive", "pause", "clear", "delete"]);
   assert.equal(labels(waMenuTemplate({ archived: true, paused: false, ownSession: false }, { manageWa: false }))[3], "Desarquivar");
   assert.ok(!actions(m).includes("talk"));
-  assert.ok(labels(waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: false })).includes("Retomar respostas do agente"));
+  assert.ok(labels(waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: false })).includes("Retomar"));
 });
 
 test("com manageWa (cliente): conversar, pausar/retomar, limpar e excluir", () => {
@@ -20,7 +20,7 @@ test("com manageWa (cliente): conversar, pausar/retomar, limpar e excluir", () =
   assert.deepEqual(labels(own), ["Conversar com o meu-bot sobre isto", "Exportar", "Copiar ID", "---", "Renomear", "Arquivar", "Pausar o agente para esta pessoa", "Limpar histórico…", "Excluir conversa"]);
   assert.ok(actions(own).includes("pause") && actions(own).includes("clear") && actions(own).includes("talk"));
   const paused = waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: true });
-  assert.ok(labels(paused).includes("Retomar respostas do agente"));
+  assert.ok(labels(paused).includes("Retomar"));
   const noSession = waMenuTemplate({ archived: false, paused: false, ownSession: false }, { manageWa: true });
   const disabled = noSession.find((e) => "enabled" in e && !e.enabled);
   assert.ok(disabled !== undefined && disabled.action === null, "pausar sem sessão própria fica desabilitado");

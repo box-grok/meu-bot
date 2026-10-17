@@ -20,7 +20,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const renomear = item("Renomear", "rename");
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");
   const pausa = state.paused
-    ? item("Retomar respostas do agente", "resume")
+    ? item("Retomar", "resume")
     : state.ownSession
       ? item("Pausar o agente para esta pessoa", "pause")
       : { label: "Pausar o agente (depois da próxima mensagem dela)", action: null, enabled: false } as WaMenuEntry;
