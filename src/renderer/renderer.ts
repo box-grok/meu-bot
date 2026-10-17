@@ -3294,6 +3294,7 @@ async function supportDo(run: () => Promise<SupportInfo>, ok: string | null): Pr
 }
 
 type SupportPart = "name" | "share" | "delivery" | "log";
+const SHOW_SUPPORT_SHARE = false;
 function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[]): void {
   const s = supportState;
   if (s === null || !s.available) return;
@@ -3310,7 +3311,8 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     row.append(name, save);
     container.append(row, el("p", "hint", "É assim que o admin vai te ver (não é o nome da máquina)."));
   }
-  if (parts.includes("share") && s.on) {
+  // Escolha do que o admin vê: oculta por ora (poluía a tela); tudo segue compartilhado por padrão. SHOW_SUPPORT_SHARE religa.
+  if (SHOW_SUPPORT_SHARE && parts.includes("share") && s.on) {
     container.append(el("p", "hint strong-hint", "O que o app do admin pode ver"));
     const SHARE_LABELS: { key: keyof SupportShare; label: string }[] = [
       { key: "progress", label: "Meu progresso nos tutoriais" },
@@ -3326,7 +3328,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
       box.addEventListener("change", () => { void supportDo(() => window.meuBot.setSupportShare({ ...s.share, [o.key]: box.checked }), null); });
       list.append(sw);
     }
-    container.append(list, el("p", "hint", "O app do admin respeita estas escolhas. Enquanto o suporte estiver ligado ele ainda entra por SSH; para cortar tudo, desligue o interruptor acima."));
+    container.append(list);
   }
   if (parts.includes("delivery") && s.on) {
     const box = el("div", "support-delivery");

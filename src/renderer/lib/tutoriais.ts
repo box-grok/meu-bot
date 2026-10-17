@@ -258,7 +258,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "entrega", title: "O que o admin recebe", target: "none", body: "support-delivery",
-        text: "Escolha o que o app do admin pode ver. A sua máquina avisa o admin sozinha, sem você precisar mandar nada; este passo se marca quando o aviso chegar. Abaixo, tudo o que o suporte fez aqui.",
+        text: "A sua máquina avisa o admin sozinha, sem você precisar mandar nada; este passo se marca quando o aviso chegar. Abaixo, tudo o que o suporte fez aqui.",
         done: (_st, _f, c) => c.support?.on === true && (c.support.deliveredAt ?? null) !== null,
       },
     ],

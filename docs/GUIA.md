@@ -1195,6 +1195,8 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:
   atualizar com `scp backend-colima/* <host>:~/backend-colima/ && ssh <host> bash ~/backend-colima/install.sh`
   (ou "Instalar backend" no seletor).
+- Escolha do que o admin vê, oculta por ora (16 out, pedido do usuário: poluía): `SHOW_SUPPORT_SHARE = false` no
+  renderer; o código e o `support:share` ficam, tudo compartilhado por padrão.
 - Suporte ligado por padrão e seção nas Configurações (16 out): numa janela de máquina por SSH com o pacote, o
   app liga o suporte sozinho na primeira consulta (`refreshSupportState`, uma vez por janela, com o nome
   guardado ou o sugerido), a não ser que o admin tenha desligado: "Desligar o suporte desta pessoa" deixa
