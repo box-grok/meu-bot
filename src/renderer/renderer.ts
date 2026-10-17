@@ -1,4 +1,4 @@
-import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import type { PageTab } from "./lib/pages-types.js";
@@ -2092,7 +2092,7 @@ function refreshWaChats(): Promise<void> {
   if (waChatsInflight !== null) return waChatsInflight;
   if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
   waChatsInflight = (async () => {
-    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; }
+    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); }
     catch (err) { waChatsErr = err instanceof Error ? err.message : String(err); }
     finally { waChatsInflight = null; }
     for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); } }
@@ -2101,34 +2101,42 @@ function refreshWaChats(): Promise<void> {
   return waChatsInflight;
 }
 /**
- * Conversas arquivadas (só neste app) até "Desarquivar". Não voltam sozinhas: a sessão
- * principal muda a hora de todos os participantes a cada conversa, e isso trazia de volta quem saiu.
+ * Arquivada/excluída moram na máquina (whatsapp-lista.json, lidas junto com a lista): o meu-bot da pessoa e o
+ * meu-bot-admin veem a mesma coisa. Excluída some mesmo com "arquivadas" ligado e volta só se o contato mandar
+ * outra mensagem depois da exclusão (o main compara as horas).
  */
-// Chave antiga ("waHidden") mantida: quem já tinha arquivado não perde a escolha.
-const waArchivedKey = (): string => `waHidden:${windowHost}`;
-function waArchived(): Record<string, string> {
-  try { const v = JSON.parse(localStorage.getItem(waArchivedKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+const isWaArchived = (c: WhatsappChat): boolean => c.archived;
+const isWaDeleted = (c: WhatsappChat): boolean => c.deleted;
+/** Marca na máquina e aplica na lista local na hora (otimista); em erro, relê a lista e avisa. */
+async function markWa(patch: WaMarkPatch, what: string): Promise<boolean> {
+  waChats = waChats.map((c) => (c.number === patch.number ? { ...c, ...(patch.archived !== undefined ? { archived: patch.archived } : {}), ...(patch.deleted !== undefined ? { deleted: patch.deleted } : {}) } : c));
+  paintListMode(); renderSidebar();
+  try { await window.meuBot.markWhatsapp([patch]); return true; }
+  catch (err) {
+    void refreshWaChats();
+    sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `${what}: ${ipcErrorText(err)}`));
+    return false;
+  }
 }
-function setWaArchived(number: string, at: string | null): void {
-  const h = waArchived();
-  if (at === null) delete h[number]; else h[number] = at;
-  try { localStorage.setItem(waArchivedKey(), JSON.stringify(h)); } catch { /* opcional */ }
-}
-const isWaArchived = (c: WhatsappChat): boolean => waArchived()[c.number] !== undefined;
 /**
- * Conversas excluídas ("Excluir conversa…": limpa o histórico na máquina e some daqui, mesmo com "arquivadas"
- * ligado). Guarda a hora da exclusão: a conversa volta sozinha só se o contato mandar algo depois disso.
+ * Migração única: o que este app guardava só no localStorage (waHidden = arquivadas, com a hora de então;
+ * waDeleted = excluídas, com a hora da exclusão) vai para a máquina, e as chaves locais somem. Se a gravação
+ * falhar, as chaves ficam e a próxima lista tenta de novo: nada se perde.
  */
-const waDeletedKey = (): string => `waDeleted:${windowHost}`;
-function waDeleted(): Record<string, string> {
-  try { const v = JSON.parse(localStorage.getItem(waDeletedKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+async function migrateWaMarks(): Promise<void> {
+  const read = (key: string): Record<string, string> => {
+    try { const v = JSON.parse(localStorage.getItem(key) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+  };
+  const archKey = `waHidden:${windowHost}`, delKey = `waDeleted:${windowHost}`;
+  const patches: WaMarkPatch[] = [];
+  const iso = (v: string): string | undefined => (Number.isNaN(Date.parse(v)) ? undefined : v);
+  for (const [number, at] of Object.entries(read(archKey))) { const a = iso(at); patches.push({ number, archived: true, ...(a === undefined ? {} : { at: a }) }); }
+  for (const [number, at] of Object.entries(read(delKey))) { const a = iso(at); patches.push({ number, deleted: true, ...(a === undefined ? {} : { at: a }) }); }
+  if (patches.length === 0) return;
+  await window.meuBot.markWhatsapp(patches.slice(0, 200));
+  try { localStorage.removeItem(archKey); localStorage.removeItem(delKey); } catch { /* opcional */ }
+  waChats = await window.meuBot.whatsappChats();
 }
-function setWaDeleted(number: string, at: string | null): void {
-  const h = waDeleted();
-  if (at === null) delete h[number]; else h[number] = at;
-  try { localStorage.setItem(waDeletedKey(), JSON.stringify(h)); } catch { /* opcional */ }
-}
-const isWaDeleted = (c: WhatsappChat): boolean => { const at = waDeleted()[c.number]; return at !== undefined && c.updatedAt <= at; };
 
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
@@ -2150,12 +2158,11 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       catch (err) { fail("Não deu para exportar", err); }
       break;
     case "archive":
-      setWaArchived(row.number, row.updatedAt);
       { const g = waChatPages.get(`wa-${row.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
-      paintListMode(); renderSidebar();
+      await markWa({ number: row.number, archived: true }, "Não deu para arquivar");
       break;
     case "unarchive":
-      setWaArchived(row.number, null); paintListMode(); renderSidebar();
+      await markWa({ number: row.number, archived: false }, "Não deu para desarquivar");
       break;
     case "pause": case "resume": {
       const item = [...sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
@@ -2218,9 +2225,11 @@ async function runWaClear(c: WaClear): Promise<void> {
   try {
     // Excluir uma conversa sem histórico na máquina: só sai da lista.
     if (!(c.mode === "delete" && c.empty)) await window.meuBot.clearWhatsapp(c.number, c.shared);
+    // Na máquina: excluída fica marcada (some nos dois apps); limpar desarquiva, se estava arquivada.
+    const cur = waChats.find((x) => x.number === c.number);
+    if (c.mode === "delete") await window.meuBot.markWhatsapp([{ number: c.number, deleted: true, archived: false }]);
+    else if (cur?.archived === true) await window.meuBot.markWhatsapp([{ number: c.number, archived: false }]);
     waClear = null;
-    setWaArchived(c.number, null);
-    if (c.mode === "delete") setWaDeleted(c.number, new Date().toISOString());
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
     void refreshWaChats();
   } catch (err) { waClear = { ...c, phase: "confirm", err: ipcErrorText(err) }; }

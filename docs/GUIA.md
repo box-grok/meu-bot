@@ -466,11 +466,11 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   ficam gravadas em `fromWhatsapp.messages`) e, abaixo, a conversa com o meu-bot segue normal.
 - Menu "…" de cada contato (`ui:wa-menu`): Conversar com o meu-bot, Exportar (.md legível por dia, ou
   .json com contato, máquina e mensagens; `threadToMarkdown`), Arquivar e Limpar histórico.
-  "Arquivar" (mesmo termo das conversas do meu-bot; antes "Remover da lista") é só deste app
-  (`localStorage waHidden:<host>`, chave antiga mantida) e vale até "Desarquivar" (antes
-  voltava sozinha com atividade nova, mas a sessão principal muda a hora de todos os participantes e o
-  contato reaparecia sem mensagem nova); o interruptor "arquivadas" do rodapé aparece no modo WhatsApp
-  quando há alguma arquivada. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
+  "Arquivar" (mesmo termo das conversas do meu-bot; antes "Remover da lista") fica marcado na máquina
+  (`whatsapp-lista.json`, ver "sincronizados pela máquina" em 17 out; antes era `localStorage waHidden:<host>`,
+  migrado sozinho) e vale até "Desarquivar" (não volta sozinha com atividade nova: a sessão principal muda a hora
+  de todos os participantes e o contato reaparecia sem mensagem nova); o interruptor "arquivadas" do rodapé
+  aparece no modo WhatsApp quando há alguma arquivada. "Limpar histórico…" roda `gateway call sessions.reset` (o "/reset" do OpenClaw: sessão nova,
   transcript antigo arquivado) e `memory forget` nas sessões do contato (`whatsappClearPlan`). O OpenClaw
   recusa apagar `agent:main:main` ("Cannot delete the main session"), mas zera; como a principal não se
   separa por contato, a confirmação avisa que ela inteira vai junto, com os outros contatos e as
@@ -1253,12 +1253,26 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Arquivar pessoa no seletor do admin (16 out): "Arquivar" na pessoa selecionada tira da lista sem mexer no
   suporte dela (`archived` em pessoas.json, `picker:support-archive`); o interruptor "mostrar arquivadas"
   aparece quando há alguém arquivado. Mesmo modelo das conversas.
-- "Excluir conversa" no menu "…" do WhatsApp (17 out, os dois apps; sem confirmação, a pedido): limpa o histórico na máquina (o mesmo
-  `whatsapp:clear`, com o mesmo aviso quando a conversa está na sessão principal) e tira a conversa da lista deste
-  app, mesmo com "arquivadas" ligado (`waDeleted:<host>` no localStorage, número → hora da exclusão). Como o
-  `sessions.list` continua listando a sessão depois do reset, a conversa só volta se `updatedAt` ficar maior que a
-  hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na máquina, excluir só tira da lista.
-  No admin a limpeza fica no registro da pessoa, como o "Limpar histórico…".
+- "Excluir conversa" no menu "…" do WhatsApp (17 out, os dois apps; sem confirmação, a pedido): limpa o histórico na
+  máquina (o mesmo `whatsapp:clear`, sem o aviso da sessão principal: zera ela junto) e marca a conversa como
+  excluída na máquina. Como o `sessions.list` continua listando a sessão depois do reset, a conversa só volta se
+  `updatedAt` ficar maior que a hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na
+  máquina, excluir só marca. No admin a limpeza e a exclusão ficam no registro da pessoa.
+- Arquivado/excluído do WhatsApp sincronizados pela máquina (17 out): as marcações moram em
+  `~/.local/share/meu-bot/whatsapp-lista.json` na VM (`{archived: {número: ISO}, deleted: {número: ISO da
+  exclusão}}`), então o meu-bot da pessoa e o meu-bot-admin veem a mesma lista, como já acontece com a pausa (que
+  mora no OpenClaw). Leitura: `whatsappChats` lê o arquivo na mesma chamada SSH do `sessions.list` e
+  `applyWaMarks` (`src/main/whatsapp-marks.ts`, puro, testado) preenche `WhatsappChat.archived/deleted`
+  (excluída = há marca e `updatedAt <= deletedAt`). Escrita: canal compartilhado `whatsapp:mark`
+  (`{marks: [{number, archived?, deleted?, at?}]}`, até 200) → `whatsappSetMarks` roda `waMarkSh`: um python3 na
+  máquina lê o arquivo atual (corrompido = `{}`), aplica só os ajustes e grava tmp+mv com 0600, então o admin e a
+  pessoa não se sobrescrevem. A tela aplica otimista e, em erro, relê a lista e avisa. O outro app vê em até 20 s
+  (ciclo de `refreshWaChats`). Migração: na primeira lista que carrega, o que o app guardava no localStorage
+  (`waHidden:<host>` arquivadas, `waDeleted:<host>` excluídas) vai para a máquina com a hora de então (`at`) e as
+  chaves locais somem; se falhar, ficam e tenta na próxima. No admin, um ajuste da tela fica no registro da pessoa
+  ("arquivou/desarquivou/excluiu a conversa do WhatsApp de +55…"); a migração não registra. Sem python3 na VM, a
+  marcação falha com aviso claro (o app já depende dele para ler o número próprio). Testado na agente-box: arquivo
+  corrompido + ajuste, merge de dois ajustes, `at` respeitado.
 - Excluir máquina no seletor do admin (17 out): "Excluir máquina" (um clique, sem confirmação; é máquina, não pessoa: cada
   linha é uma VM) na pessoa selecionada faz tudo de uma
   vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via

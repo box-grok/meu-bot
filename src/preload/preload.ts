@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WindowInfo, StatusLineSegments } from "../shared/ipc";
+import type { AdminAction, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, MainEventChannel, MainEvents, MemoryView, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -50,6 +50,7 @@ const sharedApi: MeuBotSharedApi = {
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
   whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
   clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
+  markWhatsapp: (marks: WaMarkPatch[]) => ipcRenderer.invoke("whatsapp:mark", { marks }),
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
   claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),

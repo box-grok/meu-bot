@@ -14,6 +14,7 @@ import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
@@ -381,6 +382,7 @@ export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 echo "self=$(${CREDS_ME})"
 echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
 `;
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ler as conversas do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
@@ -388,7 +390,18 @@ echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"l
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
   let list: unknown = null;
   try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error("o gateway do OpenClaw não respondeu à lista de conversas"); }
-  return chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), namesOf(host));
+  // Arquivado/excluído moram na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
+  let marks: unknown = null;
+  try { marks = JSON.parse(kv.get("marks") || "null"); } catch { /* arquivo corrompido = sem marcas; a próxima gravação o refaz */ }
+  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), namesOf(host)), parseWaMarks(marks));
+}
+
+/** Grava na máquina os ajustes de arquivado/excluído (merge lá, para o admin e a pessoa não se sobrescreverem). */
+export async function whatsappSetMarks(host: string, patches: readonly WaMarkPatch[]): Promise<void> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  const r = await runSsh(host, waMarkSh(patches), 20_000);
+  if (r.code !== 0 || !r.stdout.includes("MARKS=1")) throw new Error(`não deu para gravar na máquina: ${r.stderr.trim().split("\n").pop() || "ssh falhou"}`);
+  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`).join(", ")}`);
 }
 
 export async function whatsappThread(host: string, number: string): Promise<WhatsappThreadMessage[]> {

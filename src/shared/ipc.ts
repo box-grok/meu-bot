@@ -337,7 +337,14 @@ export interface WhatsappChat {
   paused: boolean;
   /** ISO da atividade mais recente. */
   updatedAt: string;
+  /** Arquivada na máquina (whatsapp-lista.json): os dois apps veem igual. */
+  archived: boolean;
+  /** Excluída na máquina e sem mensagem nova desde então (some da lista; volta se o contato escrever). */
+  deleted: boolean;
 }
+
+/** Um ajuste de arquivado/excluído de uma conversa do WhatsApp, gravado na máquina (`at` só na migração). */
+export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; at?: string }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
@@ -614,6 +621,8 @@ export interface MeuBotSharedApi {
   whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
   /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
   clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
+  /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
+  markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
   /** Salva a conversa toda num arquivo; null = cancelado. */
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
   /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */

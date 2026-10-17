@@ -7,7 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappPause, whatsappStatus, whatsappThread } from "../whatsapp";
+import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
+import { parseWaMarkPatches, waMarkLogText } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias, supportLogSh } from "../support-code";
 import { applyUpdate, updateState } from "../updater";
@@ -138,6 +139,17 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     await whatsappPause(h.host, waNumber(payload), paused);
     // No meu-bot-admin, a pessoa vê no registro dela que o suporte pausou/retomou o agente para o contato.
     if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", `${paused ? "pausou" : "retomou"} o agente do WhatsApp para ${waNumber(payload)}`)}\n`, 15_000);
+  });
+
+  // Arquivar/desarquivar/excluir conversas: a marcação mora na máquina (whatsapp-lista.json), então o meu-bot da
+  // pessoa e o meu-bot-admin veem a mesma lista. No admin, a pessoa vê no registro dela (a migração não registra).
+  handleShared("whatsapp:mark", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const patches = parseWaMarkPatches(payload);
+    await whatsappSetMarks(h.host, patches);
+    const what = waMarkLogText(patches);
+    if (what !== null && caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", what)}\n`, 15_000);
   });
 
   // Terminal: sessões presas à janela que as abriu. Entrada e resize sem resposta (uma por tecla). Os dois
