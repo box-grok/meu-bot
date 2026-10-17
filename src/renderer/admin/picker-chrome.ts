@@ -24,13 +24,17 @@ export interface AdminPickerChromeDeps {
 export interface AdminPickerChrome {
   /** Textos, rodapé e "Adicionar pessoa"; idempotente. */
   paint(support: NonNullable<PickerInit["support"]>): void;
-  /** Lê a caixa de entrada uma vez por sessão (pessoas que ligaram o suporte aparecem sozinhas). */
+  /** Lê a caixa de entrada ao abrir e depois a cada 60 s (pessoas que ligaram o suporte aparecem sozinhas). */
   refreshPeopleOnce(): void;
   emptyRow(): HTMLLIElement;
 }
 
 export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPickerChrome {
   const addBox = document.createElement("div");
+  let refreshing = false;
+  const refreshBtn = el("button", "btn btn-ghost btn-small", "Atualizar pessoas"); refreshBtn.type = "button";
+  refreshBtn.title = "Lê agora a caixa de entrada (as máquinas avisam sozinhas a cada 30 min; \"Avisar o admin agora\" no meu-bot delas avisa na hora)";
+  refreshBtn.addEventListener("click", () => { void refreshPeople(); });
   const archivedSwitch = el("label", "switch switch-row");
   const archivedBox = el("input"); archivedBox.type = "checkbox";
   archivedSwitch.append(archivedBox, el("span", "track"), el("span", "switch-label", "mostrar arquivadas"));
@@ -38,11 +42,14 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
   let peopleRefreshed = false;
 
   async function refreshPeople(): Promise<void> {
+    if (refreshing) return;
+    refreshing = true; refreshBtn.disabled = true; refreshBtn.textContent = "Lendo a caixa…";
     try {
       const r = await deps.api.supportRefresh();
       if (r.warning !== null) { deps.noteEl.hidden = false; deps.noteEl.textContent = `⚠ ${r.warning}`; }
       deps.reinit(await deps.api.list(), deps.selected());
     } catch (err) { deps.showError("caixa de entrada", err); }
+    finally { refreshing = false; refreshBtn.disabled = false; refreshBtn.textContent = "Atualizar pessoas"; }
   }
 
   return {
@@ -71,10 +78,15 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
         }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
       });
       form.append(input, add);
-      addBox.append(open, form, msg, archivedSwitch);
+      const row = el("div", "add-actions"); row.append(open, refreshBtn);
+      addBox.append(row, form, msg, archivedSwitch);
       deps.listEl.after(addBox);
     },
-    refreshPeopleOnce: () => { if (!peopleRefreshed) { peopleRefreshed = true; void refreshPeople(); } },
+    refreshPeopleOnce: () => {
+      if (peopleRefreshed) return;
+      peopleRefreshed = true; void refreshPeople();
+      window.setInterval(() => { if (document.visibilityState === "visible") void refreshPeople(); }, 60_000);
+    },
     emptyRow: () => el("li", "row empty", EMPTY_PEOPLE_TEXT),
   };
 }
