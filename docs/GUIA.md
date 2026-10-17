@@ -519,9 +519,13 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - O agente sabe que foi pausado e que voltou (17 out, `src/main/whatsapp-pause.ts`, puro e testado). Confirmado no
   gateway 2026.9.9: com `deny` o agente roda igual e a entrega é descartada (`suppress / send-policy`); nada o
   avisa, e o `sessions.patch` não tem system prompt por sessão. Então o meu-bot (quem pausa) dá o contexto em duas
-  peças, iguais em todas as máquinas: (1) `pauseInjectSh` → `gateway call chat.inject` (mensagem sintética no
-  transcript, sem disparar resposta; entra como linha do assistente rotulada `[meu-bot]`, por isso o texto começa
-  com "Nota do meu-bot:") ao pausar ("o agente foi pausado para este contato em <hora local do Mac, com fuso> pelo
+  peças, iguais em todas as máquinas: (1) `pauseNoteSh` → `openclaw agent --session-key … --message-file …` em
+  segundo plano na máquina (nohup; a pausa volta na hora e a nota entra uns segundos depois; sem `--deliver`, nada
+  vai ao WhatsApp): um turno de verdade, porque com o runtime claude-cli o contexto do modelo é a sessão do
+  Claude Code e só um turno chega lá. Primeiro tentei `chat.inject`: grava uma linha "visível ao operador" no
+  transcript do gateway, mas o agente disse ao vivo que nenhum aviso chegou; com o turno, uma pergunta de controle
+  na sessão de teste devolveu a nota certa (~4 s por turno). A nota pede "registre com uma palavra", então a resposta
+  do agente a ela é um "Registrado." que ninguém recebe. Ao pausar ("o agente foi pausado para este contato em <hora local do Mac, com fuso> pelo
   dono do número/pelo suporte… nada do que você responder será entregue") e ao retomar ("pausa encerrada em …
   Nada do que você respondeu desde a nota 'pausado' acima chegou… responda ao pendente de forma resumida"); a
   de retomada aponta para a de pausa, então não há estado a guardar; (2) `pauseRuleSh` grava no `AGENTS.md` do
@@ -529,8 +533,7 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   entre `<!-- meu-bot:pausa v1 inicio/fim -->` dizendo como agir (python3: acrescenta, troca versão antiga, não
   duplica; `REGRA=1/0/erro`). Roda no pareamento (`ensurePauseRule`, junto da transcrição) e em toda pausa/retomada
   dos dois apps (máquinas antigas e pausas do admin). O `whatsappPause(host, number, paused, by)` manda patch +
-  notas (chave prefixada `nota:` no `R\t` para o `gatewayFailures` separar) + regra num só SSH; só a falha do
-  patch é erro, nota/regra só vão ao log. Decisões: o agente continua rodando pausado (o dono quer que raciocine)
+  nota (`NOTA=agendada`) + regra num só SSH; só a falha do patch é erro, nota/regra só vão ao log. Decisões: o agente continua rodando pausado (o dono quer que raciocine)
   e não há mensagem proativa ao retomar. Testado na agente-box: sessão de teste com as duas notas no
   `chat.history`, regra gravada e depois `REGRA=0`.
 - Chave por contato no OpenClaw 2026.9.9: `agent:main:whatsapp:direct:+N` (sem a conta); o parse aceita os

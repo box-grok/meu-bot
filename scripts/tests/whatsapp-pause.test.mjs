@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { pauseNoteText, pauseInjectSh, pauseRuleSh, localWhenText, PAUSE_RULE_BLOCK, PAUSE_RULE_VERSION } = createRequire(import.meta.url)("../../dist/main/whatsapp-pause.js");
-const { gatewayFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+const { pauseNoteText, pauseNoteSh, pauseRuleSh, localWhenText, PAUSE_RULE_BLOCK, PAUSE_RULE_VERSION } = createRequire(import.meta.url)("../../dist/main/whatsapp-pause.js");
 
 test("localWhenText: data e hora em pt-BR com o fuso por extenso", () => {
   const t = localWhenText(new Date("2026-10-17T03:20:00Z"), "America/Sao_Paulo");
@@ -16,20 +15,21 @@ test("pauseNoteText: começa com 'Nota do meu-bot', diz quem pausou e aponta a r
   const r = pauseNoteText("resume", "17/10/2026 09:00 (Horário de Brasília)", "admin");
   assert.ok(r.startsWith("Nota do meu-bot: pausa encerrada em 17/10/2026 09:00"));
   assert.ok(r.includes("pelo suporte") && r.includes('nota "pausado" acima') && r.includes("resumida"));
+  assert.ok(p.endsWith("registre com uma palavra.") && r.endsWith("registre com uma palavra."), "pede só um ok, que não é entregue");
 });
 
-test("pauseInjectSh: chat.inject com os parâmetros em base64 e a linha R para o gatewayFailures; recusa chave estranha", () => {
+test("pauseNoteSh: turno do agente em segundo plano com a nota por arquivo (base64), sem --deliver; recusa chave estranha", () => {
   const key = "agent:main:whatsapp:direct:+5511999990000";
-  const sh = pauseInjectSh(key, "Nota do meu-bot: teste 'com aspas' e acento ç");
-  assert.ok(sh.includes("chat.inject"));
-  assert.ok(sh.startsWith(`printf 'R\\t%s\\t' '${key}'`));
-  const b64 = /printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d/.exec(sh)[1];
-  assert.deepEqual(JSON.parse(Buffer.from(b64, "base64").toString("utf8")), { sessionKey: key, message: "Nota do meu-bot: teste 'com aspas' e acento ç", label: "meu-bot" });
+  const text = "Nota do meu-bot: teste 'com aspas' e acento ç";
+  const sh = pauseNoteSh(key, text);
+  assert.ok(sh.includes(`openclaw agent --session-key "$1" --message-file "$2"`) && sh.includes(`sh '${key}' "$F"`));
+  assert.ok(!sh.includes("--deliver"), "nada vai para o WhatsApp");
+  assert.ok(sh.includes("nohup") && sh.includes("mktemp") && sh.includes('rm -f "$2"'));
+  const b64 = /printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d > "\$F"/.exec(sh)[1];
+  assert.equal(Buffer.from(b64, "base64").toString("utf8"), text);
   assert.ok(!sh.includes("'com aspas'"), "o texto não vai cru para o shell");
-  assert.throws(() => pauseInjectSh("x'; rm -rf /", "t"), /chave/);
-  // a saída R\t<key>\t{"ok":true} satisfaz o gatewayFailures
-  assert.deepEqual(gatewayFailures(`R\t${key}\t{"ok":true,"messageId":"1"}\n`, [key]), []);
-  assert.deepEqual(gatewayFailures(`R\t${key}\t{"ok":false}\n`, [key]), [key]);
+  assert.ok(sh.includes('echo "NOTA=agendada"'));
+  assert.throws(() => pauseNoteSh("x'; rm -rf /", "t"), /chave/);
 });
 
 test("pauseRuleSh: bloco versionado em base64, workspace configurado com reserva, grava via tmp+mv e devolve REGRA=", () => {

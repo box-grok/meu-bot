@@ -3,8 +3,11 @@
  * o agente continua rodando e o gateway descarta a entrega, sem avisar ninguém. Aqui, as duas peças que dão o
  * contexto a ele, iguais em todas as máquinas (a regra é do meu-bot, que é quem pausa):
  *
- * 1. uma nota na própria conversa ao pausar e ao retomar (`chat.inject` do gateway: mensagem sintética no
- *    transcript, sem disparar resposta); a de retomada aponta para a de pausa, então não há estado a guardar;
+ * 1. uma nota na própria conversa ao pausar e ao retomar, como um turno de verdade do agente
+ *    (`openclaw agent --session-key … --message-file …`, sem entregar nada ao WhatsApp): com o runtime
+ *    claude-cli o contexto do modelo é a sessão do Claude Code, e só um turno chega lá. O `chat.inject` do
+ *    gateway grava uma linha "visível ao operador" no transcript, mas o modelo nunca a vê (testado: o agente
+ *    disse que nenhum aviso chegou). A de retomada aponta para a de pausa, então não há estado a guardar;
  * 2. um bloco padrão no AGENTS.md do workspace do agente explicando o que as notas significam e como agir.
  *
  * Puro (sem Electron): whatsapp.ts e ipc/client.ts rodam os scripts por SSH.
@@ -38,22 +41,27 @@ export function localWhenText(d: Date, timeZone?: string): string {
   return `${get("day")}/${get("month")}/${get("year")} ${get("hour")}:${get("minute")} (${get("timeZoneName")})`;
 }
 
-/** A nota que entra na conversa. Começa com "Nota do meu-bot:" porque o gateway grava o inject como linha do assistente. */
+/**
+ * A nota que entra na conversa como mensagem para o agente. Começa com "Nota do meu-bot:" (não é o contato
+ * falando) e pede uma resposta de uma palavra: a resposta não é entregue, só fecha o turno.
+ */
 export function pauseNoteText(kind: "pause" | "resume", whenText: string, by: PauseBy): string {
   const who = by === "admin" ? "pelo suporte" : "pelo dono do número";
+  const tail = " Não responda a esta nota ao contato; apenas registre com uma palavra.";
   return kind === "pause"
-    ? `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} ${who}. A partir daqui, nada do que você responder será entregue ao contato. Você pode continuar raciocinando; a resposta não chega.`
-    : `Nota do meu-bot: pausa encerrada em ${whenText} ${who}. Nada do que você respondeu desde a nota "pausado" acima chegou ao contato; ele só vê o que você mandar a partir de agora. Na próxima mensagem dele, responda ao que ficou pendente de forma resumida, sem repetir tudo.`;
+    ? `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} ${who}. A partir daqui, nada do que você responder será entregue ao contato. Você pode continuar raciocinando; a resposta não chega.${tail}`
+    : `Nota do meu-bot: pausa encerrada em ${whenText} ${who}. Nada do que você respondeu desde a nota "pausado" acima chegou ao contato; ele só vê o que você mandar a partir de agora. Na próxima mensagem dele, responda ao que ficou pendente de forma resumida, sem repetir tudo.${tail}`;
 }
 
 /**
- * `chat.inject` numa sessão: imprime `R\t<chave>\t<json>` como os outros chamados ao gateway, para o
- * `gatewayFailures` conferir. Os parâmetros vão em base64 (texto com aspas e acentos sem risco no shell).
+ * Um turno do agente na sessão com a nota, em segundo plano na máquina (a pausa em si volta na hora; a nota
+ * entra uns segundos depois). `openclaw agent` sem `--deliver` não manda nada ao WhatsApp; a mensagem vai por
+ * arquivo (base64 → mktemp) para texto com aspas e acentos não passar pelo shell. Imprime NOTA=agendada.
  */
-export function pauseInjectSh(key: string, text: string): string {
+export function pauseNoteSh(key: string, text: string): string {
   if (!SAFE_KEY.test(key)) throw new Error("chave de sessão inválida");
-  const b64 = Buffer.from(JSON.stringify({ sessionKey: key, message: text, label: "meu-bot" }), "utf8").toString("base64");
-  return `printf 'R\\t%s\\t' '${key}'; timeout 60 openclaw gateway call chat.inject --json --params "$(printf '%s' '${b64}' | base64 -d)" 2>/dev/null | tr -d '\\n'; echo`;
+  const b64 = Buffer.from(text, "utf8").toString("base64");
+  return `F=$(mktemp /tmp/meu-bot-nota.XXXXXX) && printf '%s' '${b64}' | base64 -d > "$F" && ( nohup sh -c 'timeout 180 openclaw agent --session-key "$1" --message-file "$2" >/dev/null 2>&1; rm -f "$2"' sh '${key}' "$F" >/dev/null 2>&1 & ) && echo "NOTA=agendada" || echo "NOTA=erro"`;
 }
 
 /**
