@@ -1253,6 +1253,12 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Arquivar pessoa no seletor do admin (16 out): "Arquivar" na pessoa selecionada tira da lista sem mexer no
   suporte dela (`archived` em pessoas.json, `picker:support-archive`); o interruptor "mostrar arquivadas"
   aparece quando há alguém arquivado. Mesmo modelo das conversas.
+- "Excluir conversa…" no menu "…" do WhatsApp (17 out, os dois apps): limpa o histórico na máquina (o mesmo
+  `whatsapp:clear`, com o mesmo aviso quando a conversa está na sessão principal) e tira a conversa da lista deste
+  app, mesmo com "arquivadas" ligado (`waDeleted:<host>` no localStorage, número → hora da exclusão). Como o
+  `sessions.list` continua listando a sessão depois do reset, a conversa só volta se `updatedAt` ficar maior que a
+  hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na máquina, excluir só tira da lista.
+  No admin a limpeza fica no registro da pessoa, como o "Limpar histórico…".
 - Excluir pessoa no seletor do admin (17 out): "Excluir pessoa" (dois cliques) na pessoa selecionada faz tudo de uma
   vez: na máquina dela limpa todo o histórico do WhatsApp (todas as `sessionKeys` de `whatsappChats`, via
   `whatsappClearSessions`, o mesmo "Limpar histórico" de cada conversa) e desliga o suporte (mesmo script do

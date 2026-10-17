@@ -1,6 +1,6 @@
 /**
  * Itens do menu "…" de uma conversa do WhatsApp na lista lateral. Puro (ipc/shared.ts converte para o Menu do
- * Electron): sem manageWa (o meu-bot-admin) só exporta e arquiva; arquivar é deste app, nada mexe na máquina.
+ * Electron): sem manageWa (o meu-bot-admin) não há "Conversar com o meu-bot"; arquivar é só deste app.
  */
 import type { Capabilities, WhatsappMenuAction } from "../shared/ipc";
 
@@ -20,8 +20,10 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
     : state.ownSession
       ? item("Pausar o agente para esta pessoa", "pause")
       : { label: "Pausar o agente (depois da próxima mensagem dela)", action: null, enabled: false } as WaMenuEntry;
-  // Sem manageWa (o admin): exportar, arquivar, pausar e limpar (pausar e limpar ficam no registro da máquina dela).
-  if (!caps.manageWa) return [exportar, arquivo, pausa, item("Limpar histórico…", "clear")];
+  // Excluir = limpar o histórico na máquina e tirar da lista deste app (volta se o contato mandar outra mensagem).
+  const excluir = item("Excluir conversa…", "delete");
+  // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
+  if (!caps.manageWa) return [exportar, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
   return [
     item("Conversar com o meu-bot sobre isto", "talk"),
     exportar,
@@ -29,6 +31,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
     arquivo,
     pausa,
     item("Limpar histórico…", "clear"),
+    excluir,
   ];
 }
 

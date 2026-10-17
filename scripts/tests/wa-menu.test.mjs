@@ -6,18 +6,18 @@ const { waMenuTemplate, waMenuState } = createRequire(import.meta.url)("../../di
 const labels = (entries) => entries.map((e) => ("separator" in e ? "---" : e.label));
 const actions = (entries) => entries.flatMap((e) => ("submenu" in e ? e.submenu.map((s) => s.action) : "action" in e ? [e.action] : []));
 
-test("sem manageWa (admin): exportar, arquivar, pausar e limpar (sem conversar)", () => {
+test("sem manageWa (admin): exportar, arquivar, pausar, limpar e excluir (sem conversar)", () => {
   const m = waMenuTemplate({ archived: false, paused: false, ownSession: true }, { manageWa: false });
-  assert.deepEqual(labels(m), ["Exportar", "Arquivar", "Pausar o agente para esta pessoa", "Limpar histórico…"]);
-  assert.deepEqual(actions(m), ["export-md", "export-json", "archive", "pause", "clear"]);
+  assert.deepEqual(labels(m), ["Exportar", "Arquivar", "Pausar o agente para esta pessoa", "Limpar histórico…", "Excluir conversa…"]);
+  assert.deepEqual(actions(m), ["export-md", "export-json", "archive", "pause", "clear", "delete"]);
   assert.equal(labels(waMenuTemplate({ archived: true, paused: false, ownSession: false }, { manageWa: false }))[1], "Desarquivar");
   assert.ok(!actions(m).includes("talk"));
   assert.ok(labels(waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: false })).includes("Retomar respostas do agente"));
 });
 
-test("com manageWa (cliente): conversar, pausar/retomar e limpar", () => {
+test("com manageWa (cliente): conversar, pausar/retomar, limpar e excluir", () => {
   const own = waMenuTemplate({ archived: false, paused: false, ownSession: true }, { manageWa: true });
-  assert.deepEqual(labels(own), ["Conversar com o meu-bot sobre isto", "Exportar", "---", "Arquivar", "Pausar o agente para esta pessoa", "Limpar histórico…"]);
+  assert.deepEqual(labels(own), ["Conversar com o meu-bot sobre isto", "Exportar", "---", "Arquivar", "Pausar o agente para esta pessoa", "Limpar histórico…", "Excluir conversa…"]);
   assert.ok(actions(own).includes("pause") && actions(own).includes("clear") && actions(own).includes("talk"));
   const paused = waMenuTemplate({ archived: false, paused: true, ownSession: true }, { manageWa: true });
   assert.ok(labels(paused).includes("Retomar respostas do agente"));

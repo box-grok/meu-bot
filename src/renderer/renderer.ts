@@ -2072,7 +2072,7 @@ function paintListMode(): void {
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
-  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some(isWaArchived);
+  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some((c) => isWaArchived(c) && !isWaDeleted(c));
   const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
   if (archLabel !== null && archLabel !== undefined) archLabel.textContent = "arquivadas";
   sidebarSearch.placeholder = mode === "whatsapp" ? "Buscar no WhatsApp…" : "Buscar conversas…";
@@ -2115,6 +2115,20 @@ function setWaArchived(number: string, at: string | null): void {
   try { localStorage.setItem(waArchivedKey(), JSON.stringify(h)); } catch { /* opcional */ }
 }
 const isWaArchived = (c: WhatsappChat): boolean => waArchived()[c.number] !== undefined;
+/**
+ * Conversas excluídas ("Excluir conversa…": limpa o histórico na máquina e some daqui, mesmo com "arquivadas"
+ * ligado). Guarda a hora da exclusão: a conversa volta sozinha só se o contato mandar algo depois disso.
+ */
+const waDeletedKey = (): string => `waDeleted:${windowHost}`;
+function waDeleted(): Record<string, string> {
+  try { const v = JSON.parse(localStorage.getItem(waDeletedKey()) ?? "{}") as unknown; return v !== null && typeof v === "object" ? v as Record<string, string> : {}; } catch { return {}; }
+}
+function setWaDeleted(number: string, at: string | null): void {
+  const h = waDeleted();
+  if (at === null) delete h[number]; else h[number] = at;
+  try { localStorage.setItem(waDeletedKey(), JSON.stringify(h)); } catch { /* opcional */ }
+}
+const isWaDeleted = (c: WhatsappChat): boolean => { const at = waDeleted()[c.number]; return at !== undefined && c.updatedAt <= at; };
 
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
@@ -2156,7 +2170,10 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       break;
     }
     case "clear":
-      void startWaClear(row.number);
+      void startWaClear(row.number, "clear");
+      break;
+    case "delete":
+      void startWaClear(row.number, "delete");
       break;
   }
 }
@@ -2164,20 +2181,20 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
  * "Limpar histórico" confirmado na própria lista, logo abaixo do contato (nada de caixa por cima).
  * Sobrevive às atualizações da lista porque o estado fica aqui, não no DOM.
  */
-type WaClear = { number: string; phase: "plan" | "confirm" | "run"; shared: boolean; err: string | null };
+type WaClear = { number: string; mode: "clear" | "delete"; phase: "plan" | "confirm" | "run"; shared: boolean; /** Sem histórico na máquina (excluir só tira da lista). */ empty: boolean; err: string | null };
 let waClear: WaClear | null = null;
-async function startWaClear(number: string): Promise<void> {
-  waClear = { number, phase: "plan", shared: false, err: null };
+async function startWaClear(number: string, mode: WaClear["mode"]): Promise<void> {
+  waClear = { number, mode, phase: "plan", shared: false, empty: false, err: null };
   renderSidebar();
   try {
     const plan = await window.meuBot.whatsappClearPlan(number);
     if (waClear?.number !== number) return;
     waClear = plan.own + plan.shared === 0
-      ? { number, phase: "confirm", shared: false, err: "Não há histórico desta conversa na máquina." }
-      : { number, phase: "confirm", shared: plan.shared > 0, err: null };
+      ? { number, mode, phase: "confirm", shared: false, empty: true, err: mode === "clear" ? "Não há histórico desta conversa na máquina." : null }
+      : { number, mode, phase: "confirm", shared: plan.shared > 0, empty: false, err: null };
   } catch (err) {
     if (waClear?.number !== number) return;
-    waClear = { number, phase: "confirm", shared: false, err: ipcErrorText(err) };
+    waClear = { number, mode, phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
   }
   renderSidebar();
 }
@@ -2185,9 +2202,11 @@ async function runWaClear(c: WaClear): Promise<void> {
   waClear = { ...c, phase: "run" };
   renderSidebar();
   try {
-    await window.meuBot.clearWhatsapp(c.number, c.shared);
+    // Excluir uma conversa sem histórico na máquina: só sai da lista.
+    if (!(c.mode === "delete" && c.empty)) await window.meuBot.clearWhatsapp(c.number, c.shared);
     waClear = null;
     setWaArchived(c.number, null);
+    if (c.mode === "delete") setWaDeleted(c.number, new Date().toISOString());
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
     void refreshWaChats();
   } catch (err) { waClear = { ...c, phase: "confirm", err: ipcErrorText(err) }; }
@@ -2195,17 +2214,20 @@ async function runWaClear(c: WaClear): Promise<void> {
 }
 function waClearBox(c: WaClear): HTMLElement {
   const box = el("div", "wa-clear");
+  const del = c.mode === "delete";
   if (c.phase === "plan") { box.append(el("span", "wa-clear-text", "Verificando o histórico na máquina…")); return box; }
-  if (c.phase === "run") { box.append(el("span", "wa-clear-text", "Limpando o histórico…")); return box; }
+  if (c.phase === "run") { box.append(el("span", "wa-clear-text", del ? "Excluindo a conversa…" : "Limpando o histórico…")); return box; }
   const cancel = el("button", "btn", c.err !== null && !c.shared ? "Fechar" : "Cancelar"); cancel.type = "button";
   cancel.addEventListener("click", (ev) => { ev.stopPropagation(); waClear = null; renderSidebar(); });
   if (c.err !== null && !c.shared && /não há histórico/.test(c.err)) { box.append(el("span", "wa-clear-text", c.err), el("div", "wa-clear-actions")); box.lastElementChild!.append(cancel); return box; }
-  box.append(el("strong", "", c.shared ? "Limpar o histórico de todos?" : "Limpar o histórico?"));
+  box.append(el("strong", "", del ? (c.shared ? "Excluir e limpar o histórico de todos?" : "Excluir a conversa?") : c.shared ? "Limpar o histórico de todos?" : "Limpar o histórico?"));
+  const tail = del ? " A conversa sai desta lista e volta só se o contato mandar outra mensagem." : "";
   box.append(el("span", "wa-clear-text", c.shared
-    ? "Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente."
-    : "O agente esquece o que conversou com este contato e recomeça do zero."));
+    ? `Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente.${tail}`
+    : del && c.empty ? "Não há histórico desta conversa na máquina: ela só sai desta lista (volta se o contato mandar outra mensagem)."
+    : `O agente esquece o que conversou com este contato e recomeça do zero.${tail}`));
   if (c.err !== null) box.append(el("span", "wa-clear-err", c.err));
-  const go = el("button", "btn btn-bad", c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
+  const go = el("button", "btn btn-bad", del ? (c.shared ? "Excluir e limpar tudo" : "Excluir") : c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
   go.addEventListener("click", (ev) => { ev.stopPropagation(); void runWaClear(c); });
   const actions = el("div", "wa-clear-actions"); actions.append(cancel, go);
   box.append(actions);
@@ -2217,7 +2239,7 @@ function paintWaSidebar(query: string): void {
   sidebarList.replaceChildren();
   const q = normalize(query.trim());
   const showHidden = sidebarArchived.checked;
-  const rows = waChats.filter((c) => (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
+  const rows = waChats.filter((c) => !isWaDeleted(c) && (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
   if (rows.length === 0) {
     const msg = waChatsErr !== null && waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
       : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"

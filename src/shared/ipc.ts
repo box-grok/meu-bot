@@ -535,7 +535,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "archive" | "unarchive" | "clear" | "pause" | "resume";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "archive" | "unarchive" | "close" | "delete";
 export type ExportFormat = "md" | "json";
 
