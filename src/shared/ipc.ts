@@ -256,6 +256,8 @@ export interface SupportInfo {
   deliveredAt: string | null;
   /** O que a pessoa deixa o app do admin ver. */
   share: SupportShare;
+  /** O admin desligou: o app não religa sozinho; "Ligar o suporte" pede de novo. */
+  blockedByAdmin: boolean;
 }
 /**
  * O que a pessoa escolhe compartilhar com o app do admin: progresso nos tutoriais, WhatsApp (estado e

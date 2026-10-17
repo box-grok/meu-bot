@@ -1195,6 +1195,14 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:
   atualizar com `scp backend-colima/* <host>:~/backend-colima/ && ssh <host> bash ~/backend-colima/install.sh`
   (ou "Instalar backend" no seletor).
+- Suporte ligado por padrão e seção nas Configurações (16 out): numa janela de máquina por SSH com o pacote, o
+  app liga o suporte sozinho na primeira consulta (`refreshSupportState`, uma vez por janela, com o nome
+  guardado ou o sugerido), a não ser que o admin tenha desligado: "Desligar o suporte desta pessoa" deixa
+  `~/.local/share/meu-bot/suporte-desligado-pelo-admin` na máquina (`SupportInfo.blockedByAdmin`), e aí a
+  pessoa vê "Desligado pelo admin" e só religa clicando em "Ligar o suporte" (ligar apaga a marca). A seção
+  "Suporte" voltou às Configurações com: nome (Salvar nome / Ligar o suporte), "Avisar o admin agora" (entrega
+  forçada, `support:deliver`, sempre visível), "Mostrar código de suporte" (copiar e mandar à mão), o que o
+  admin vê e o registro. O tutorial "Ligar o suporte" continua, concluindo sozinho.
 - Só o admin desliga (16 out, pedido do usuário): o interruptor "Permitir o acesso do admin" saiu do tutorial da
   pessoa; "Salvar nome" liga o suporte (o passo "Dizer seu nome" conclui com o nome gravado e o suporte ligado) e
   não há como ela desligar pelo app (nem "Refazer do zero" nesse tutorial). Quem desliga é o admin, pela ação

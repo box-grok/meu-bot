@@ -3141,6 +3141,10 @@ backendModelSelect.addEventListener("change", () => { syncPrimaryFromModel(); pa
  */
 let supportState: SupportInfo | null = null;
 let supportBusy = false;
+const supportGroup = $<HTMLDetailsElement>("support-group");
+const supportBody = $<HTMLElement>("support-body");
+/** Liga sozinho uma vez por janela (máquina por SSH com o pacote), a não ser que o admin tenha desligado. */
+let supportAutoTried = false;
 let supportMsg: { text: string; bad: boolean } | null = null;
 /** Código de suporte revelado (plano B; some ao fechar as Configurações ou esconder). */
 let supportCodeShown: string | null = null;
@@ -3258,8 +3262,25 @@ async function refreshSupportState(): Promise<void> {
   if (windowHost === "" || windowHost === "local" || !caps.supportClient) return;
   try { supportState = await window.meuBot.supportInfo(); } catch { /* sem resposta: fica o que havia */ }
   repaintSupport();
+  const s = supportState;
+  if (s !== null && s.available && !s.on && !s.blockedByAdmin && !supportBusy && !supportAutoTried) {
+    supportAutoTried = true;
+    void supportDo(() => window.meuBot.setSupport(true, s.name !== "" ? s.name : s.suggestedName), "Suporte ligado. Avisando o admin…");
+  }
+}
+function paintSupport(): void {
+  const s = supportState;
+  supportGroup.hidden = s === null || !s.available;
+  if (s === null || !s.available) return;
+  supportBody.replaceChildren();
+  supportBody.append(el("p", "hint", s.on
+    ? `Ligado: o admin consegue entrar em ${hostLabel(windowHost)} para te ajudar. Tudo o que ele fizer aparece abaixo. Só o admin desliga.`
+    : s.blockedByAdmin ? "Desligado pelo admin. Se quiser pedir suporte de novo, clique em Ligar o suporte."
+      : "Ligando o suporte…"));
+  renderSupportParts(supportBody, ["name", "share", "delivery", "log"]);
 }
 function repaintSupport(): void {
+  if (dialog.open) paintSupport();
   paintGuide();
   // Ligado e o aviso ainda não chegou: confere de novo em 10 s (a máquina entrega sozinha).
   if (supportPoll !== null) { clearTimeout(supportPoll); supportPoll = null; }
@@ -3281,7 +3302,7 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     // Vazio, já vem com a sugestão (git/usuário do Mac): salvar liga o suporte com um clique.
     const name = el("input"); name.type = "text"; name.placeholder = "Seu nome"; name.value = s.name !== "" ? s.name : s.suggestedName; name.maxLength = 40;
     name.disabled = supportBusy;
-    const save = el("button", "btn btn-ghost btn-small", "Salvar nome"); save.type = "button"; save.disabled = supportBusy;
+    const save = el("button", `btn ${s.on ? "btn-ghost" : "btn-primary"} btn-small`, s.on ? "Salvar nome" : "Ligar o suporte"); save.type = "button"; save.disabled = supportBusy;
     // Salvar o nome liga o suporte (ligado, só regrava o aviso com o nome novo). Não há interruptor para a pessoa
     // desligar: quem desliga é o admin, pela página Suporte.
     save.addEventListener("click", () => { void supportDo(() => window.meuBot.setSupport(true, name.value), s.on ? null : "Suporte ligado. Avisando o admin…"); });
@@ -3309,12 +3330,13 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
   }
   if (parts.includes("delivery") && s.on) {
     const box = el("div", "support-delivery");
-    if (s.deliveredAt !== null) box.append(el("p", "audio-ok", `✓ O admin recebeu o aviso (${new Date(s.deliveredAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). A máquina avisa de novo sozinha a cada 30 min.`));
+    // "Avisar o admin agora": entrega o aviso na hora e o admin sincroniza (a máquina também avisa sozinha a cada 30 min).
+    const now = el("button", "btn btn-ghost btn-small", supportBusy ? "Avisando…" : "Avisar o admin agora"); now.type = "button"; now.disabled = supportBusy;
+    now.addEventListener("click", () => { void supportDo(() => window.meuBot.supportDeliver(), "Aviso entregue: o admin já vê esta máquina."); });
+    if (s.deliveredAt !== null) { const row = el("div", "support-name"); row.append(el("p", "audio-ok", `✓ O admin recebeu o aviso (${new Date(s.deliveredAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}).`), now); box.append(row); }
     else {
-      const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Avisando o admin…"));
-      const retry = el("button", "btn btn-ghost btn-small", "Tentar de novo"); retry.type = "button"; retry.disabled = supportBusy;
-      retry.addEventListener("click", () => { void supportDo(() => window.meuBot.supportDeliver(), null); });
-      box.append(wait, retry);
+      const wait = el("div", "wa-progress"); wait.append(el("span", "wa-pulse"), el("span", "grow", "Avisando o admin…"), now);
+      box.append(wait);
     }
     // Último recurso (se a entrega automática não chegar): revelar o código para mandar a mão.
     const more = el("details", "support-more");
@@ -3632,6 +3654,7 @@ window.meuBot.on("chat:tool", ({ conversationId, tool }) => { const tab = tabs.g
 
 function openSettings(): void {
   if (dialog.open) return;
+  paintSupport(); void refreshSupportState();
   syncPrimaryFromModel();
   paintFallbackOrder();
   settingsError.hidden = true;

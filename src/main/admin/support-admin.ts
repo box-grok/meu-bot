@@ -10,7 +10,7 @@ import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
 import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
 import { xaiAuthInfo } from "../xaiLogin";
@@ -231,7 +231,7 @@ async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: stri
   const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
   if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
   const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
-  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off.hostKey), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\n`, 60_000);
+  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off.hostKey), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`, 60_000);
   if (r.code !== 0) return { ok: false, detail: (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou" };
   entry.code = off; save(m); writeSshFiles(m);
   log(`[suporte] ${host}: suporte desligado pelo admin`);

@@ -128,6 +128,8 @@ export const isSupportAlias = (h: string): boolean => /^suporte-[a-z0-9-]+-[0-9a
 
 /** Pasta do suporte na máquina dela: chave só de entrega, known_hosts da caixa, código e entregador. */
 export const SUPPORT_DIR = "$HOME/.local/share/meu-bot/suporte";
+/** O admin desligou: o meu-bot dela não religa sozinho (só se ela clicar em "Ligar o suporte"). Ligar apaga. */
+export const SUPPORT_BLOCK_FILE = "$HOME/.local/share/meu-bot/suporte-desligado-pelo-admin";
 /** Script remoto ao desligar: entrega "desligado" uma última vez e apaga timer, chave e código. */
 export function removeDeliverySh(id: string, offText: string): string {
   return `umask 077

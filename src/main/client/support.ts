@@ -13,7 +13,7 @@ import type { SupportInfo, SupportShare } from "../../shared/ipc";
 import { LOCAL_HOST } from "../localBackend";
 import { isValidHost } from "../settings";
 import { log } from "../backend";
-import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_DIR, SUPPORT_LOG, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
+import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_BLOCK_FILE, SUPPORT_DIR, SUPPORT_LOG, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh } from "../whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
@@ -161,8 +161,8 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
 /** Estado do suporte na máquina desta janela: chave do admin presente + últimas linhas do registro. */
 export async function supportInfo(host: string): Promise<SupportInfo> {
   const b = supportBundle();
-  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE };
-  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
+  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE, blockedByAdmin: false };
+  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\necho "B=$([ -f "${SUPPORT_BLOCK_FILE}" ] && echo 1 || echo 0)"\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
   const lines = r.stdout.split("\n");
   const entries = lines.filter((l) => l.startsWith("L=")).map((l) => {
@@ -175,7 +175,7 @@ export async function supportInfo(host: string): Promise<SupportInfo> {
   let share = DEFAULT_SHARE;
   try { share = parseSupportShare(JSON.parse((lines.find((l) => l.startsWith("S=")) ?? "S=").slice(2))); } catch { /* sem escolha gravada: tudo compartilhado */ }
   shareOf.set(host, share);
-  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share };
+  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share, blockedByAdmin: lines.includes("B=1") };
 }
 
 /** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */
@@ -188,7 +188,7 @@ export async function setSupport(host: string, on: boolean, name: string): Promi
   if (who !== "") saveSupportName(who);
   const built = await buildCode(host, who || "pessoa", on ? "on" : "off");
   const script = on
-    ? `${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, "ligou o acesso do admin")}\n${installDeliverySh(b, built.id, built.text)}`
+    ? `rm -f "${SUPPORT_BLOCK_FILE}"\n${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, "ligou o acesso do admin")}\n${installDeliverySh(b, built.id, built.text)}`
     : `${authorizedKeysScript(null)}\n${supportLogSh(who || "pessoa", "desligou o acesso do admin")}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
   lastProgress.delete(host);
   const r = await runSsh(host, script, 60_000);
