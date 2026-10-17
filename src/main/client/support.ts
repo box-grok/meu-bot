@@ -97,7 +97,7 @@ async function buildCode(host: string, name: string, state: "on" | "off"): Promi
   if (r.code !== 0 || hostKey === "") throw new Error("não consegui ler a chave do servidor desta máquina");
   // `machine` é o apelido dela para a máquina (o host desta janela): o admin mostra "colima", não o alias dele.
   const code: SupportCode = { v: 1, name, hostname: addr.hostname, user: addr.user, port: addr.port, hostKey, state, at: new Date().toISOString(), machine: host };
-  return { id: machineId(hostKey), code, text: encodeSupportCode(code) };
+  return { id: machineId(code), code, text: encodeSupportCode(code) };
 }
 
 /** Script remoto: grava chave de entrega, known_hosts, código e o entregador; liga o timer; entrega já. */
@@ -161,8 +161,8 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
 /** Estado do suporte na máquina desta janela: chave do admin presente + últimas linhas do registro. */
 export async function supportInfo(host: string): Promise<SupportInfo> {
   const b = supportBundle();
-  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE, blockedByAdmin: false };
-  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\necho "B=$([ -f "${SUPPORT_BLOCK_FILE}" ] && echo 1 || echo 0)"\n`, 20_000);
+  if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE, blockedByAdmin: false, staleId: false };
+  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\necho "B=$([ -f "${SUPPORT_BLOCK_FILE}" ] && echo 1 || echo 0)"\necho "I=$(head -n 1 "${D}/codigo" 2>/dev/null)"\necho "K=$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || cut -d' ' -f1,2 /etc/ssh/ssh_host_ecdsa_key.pub 2>/dev/null)"\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
   const lines = r.stdout.split("\n");
   const entries = lines.filter((l) => l.startsWith("L=")).map((l) => {
@@ -175,7 +175,13 @@ export async function supportInfo(host: string): Promise<SupportInfo> {
   let share = DEFAULT_SHARE;
   try { share = parseSupportShare(JSON.parse((lines.find((l) => l.startsWith("S=")) ?? "S=").slice(2))); } catch { /* sem escolha gravada: tudo compartilhado */ }
   shareOf.set(host, share);
-  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share, blockedByAdmin: lines.includes("B=1") };
+  // O código gravado na máquina ainda tem o id antigo (só a chave)? Então o app regrava (ligar de novo), senão duas
+  // contas na mesma máquina continuam se sobrescrevendo na caixa do admin.
+  const storedId = (lines.find((l) => l.startsWith("I=")) ?? "I=").slice(2).trim();
+  const hostKey = (lines.find((l) => l.startsWith("K=")) ?? "K=").slice(2).trim();
+  let staleId = false;
+  if (storedId !== "" && hostKey !== "") { try { const addr = await resolveSsh(host); staleId = storedId !== machineId({ hostKey, user: addr.user, port: addr.port }); } catch { staleId = false; } }
+  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share, blockedByAdmin: lines.includes("B=1"), staleId };
 }
 
 /** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */

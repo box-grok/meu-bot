@@ -72,12 +72,19 @@ export function decodeSupportCode(raw: string): DecodeResult {
 }
 
 /** Identidade estável da máquina: o hash da chave do servidor (nome e endereço podem mudar). */
-export const machineId = (hostKey: string): string => createHash("sha256").update(hostKey.trim()).digest("hex").slice(0, 12);
+/**
+ * Identidade de uma conta numa máquina: chave do servidor + usuário + porta. Só a chave não bastava: duas contas
+ * na mesma VM (root e box) têm o mesmo sshd e se sobrescreviam na caixa, no pessoas.json e no alias.
+ */
+export const machineId = (c: Pick<SupportCode, "hostKey" | "user" | "port">): string =>
+  createHash("sha256").update(`${c.hostKey.trim()}\n${c.user}@${c.port}`).digest("hex").slice(0, 12);
+/** O id antigo (só a chave), para o admin reconhecer avisos de meu-bots que ainda não atualizaram. */
+export const legacyMachineId = (hostKey: string): string => createHash("sha256").update(hostKey.trim()).digest("hex").slice(0, 12);
 
-/** Alias no ~/.ssh/config do admin: `suporte-<nome>-<4 hex da máquina>` (duas máquinas da mesma pessoa não colidem). */
-export function supportAlias(c: Pick<SupportCode, "name" | "hostKey">): string {
+/** Alias no ~/.ssh/config do admin: `suporte-<nome>-<4 hex da conta na máquina>` (nem máquinas nem contas colidem). */
+export function supportAlias(c: Pick<SupportCode, "name" | "hostKey" | "user" | "port">): string {
   const slug = c.name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "pessoa";
-  return `suporte-${slug}-${machineId(c.hostKey).slice(0, 4)}`;
+  return `suporte-${slug}-${machineId(c).slice(0, 4)}`;
 }
 
 /** Só a parte "tipo base64" de uma chave pública (sem comentário); null se não é chave pública. */

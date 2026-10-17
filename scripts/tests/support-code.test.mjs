@@ -17,7 +17,13 @@ test("código de suporte: ida e volta; alias estável pela máquina", () => {
   assert.deepEqual(m.decodeSupportCode(`  ${txt}\n`), { ok: true, code });
   assert.match(m.supportAlias(code), /^suporte-bianca-alcantara-[0-9a-f]{4}$/);
   assert.equal(m.supportAlias({ ...code, name: "Bia" }).slice(-4), m.supportAlias(code).slice(-4));
-  assert.equal(m.machineId(HOSTKEY).length, 12);
+  assert.equal(m.machineId(code).length, 12);
+  // Duas contas na mesma máquina (mesma chave do servidor, usuários diferentes): ids e aliases diferentes.
+  const root = { ...code, user: "root" };
+  assert.notEqual(m.machineId(root), m.machineId(code));
+  assert.notEqual(m.supportAlias(root), m.supportAlias(code));
+  assert.equal(m.legacyMachineId(HOSTKEY).length, 12);
+  assert.notEqual(m.legacyMachineId(HOSTKEY), m.machineId(code));
 });
 
 test("código de suporte: recusa o que não é do formato (vem de fora)", () => {
@@ -61,7 +67,7 @@ test("caixa de entrada: grava por máquina, substitui na reentrega, recusa lixo 
   const home = mkdtempSync(join(tmpdir(), "mb-inbox-"));
   const inbox = resolve("backend-colima/meu-bot-suporte-inbox");
   const send = (input) => spawnSync("sh", [inbox], { input, env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" });
-  const id = m.machineId(HOSTKEY);
+  const id = m.machineId(code);
   const txt = m.encodeSupportCode(code);
   assert.equal(send(`${id}\n${txt}\n`).status, 0);
   assert.equal(send(`${id}\n${m.encodeSupportCode({ ...code, state: "off" })}\n`).status, 0);

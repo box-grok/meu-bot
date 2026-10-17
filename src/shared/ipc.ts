@@ -258,6 +258,8 @@ export interface SupportInfo {
   share: SupportShare;
   /** O admin desligou: o app não religa sozinho; "Ligar o suporte" pede de novo. */
   blockedByAdmin: boolean;
+  /** O código gravado na máquina tem o id antigo (só a chave do servidor): o app regrava sozinho. */
+  staleId: boolean;
 }
 /**
  * O que a pessoa escolhe compartilhar com o app do admin: progresso nos tutoriais, WhatsApp (estado e

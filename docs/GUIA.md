@@ -1195,6 +1195,11 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:
   atualizar com `scp backend-colima/* <host>:~/backend-colima/ && ssh <host> bash ~/backend-colima/install.sh`
   (ou "Instalar backend" no seletor).
+- Identidade por conta na máquina (16 out): `machineId` passou a ser hash de chave do servidor + usuário + porta
+  (antes só a chave: duas contas na mesma VM, root e box, se sobrescreviam na caixa, no pessoas.json e no
+  alias). O admin aceita avisos com o id antigo (`legacyMachineId`) e guarda sob o novo; o `pessoas.json`
+  antigo é re-chaveado ao carregar; o meu-bot da pessoa vê pelo `SupportInfo.staleId` que o código gravado na
+  máquina é antigo e regrava sozinho (liga de novo). Aliases mudam de sufixo uma vez.
 - Escolha do que o admin vê, oculta por ora (16 out, pedido do usuário: poluía): `SHOW_SUPPORT_SHARE = false` no
   renderer; o código e o `support:share` ficam, tudo compartilhado por padrão.
 - Suporte ligado por padrão e seção nas Configurações (16 out): numa janela de máquina por SSH com o pacote, o

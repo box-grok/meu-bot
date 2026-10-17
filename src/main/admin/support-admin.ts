@@ -10,7 +10,7 @@ import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
 import { PROJECT_DIR_RE, SESSION_ID_RE, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
 import { runSsh, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
 import { xaiAuthInfo } from "../xaiLogin";
@@ -39,7 +39,12 @@ function load(): Map<string, Stored> {
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
-      if (d?.ok === true && /^[0-9a-f]{12}$/.test(id)) m.set(id, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true });
+      if (d?.ok !== true || !/^[0-9a-f]{12}$/.test(id)) continue;
+      // Entradas gravadas com o id antigo (só a chave) passam para o id novo (chave + usuário + porta).
+      const key = machineId(d.code);
+      const prev = m.get(key);
+      if (prev !== undefined && prev.seenAt >= (typeof v.seenAt === "string" ? v.seenAt : "")) continue;
+      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true });
     }
     return m;
   } catch {
@@ -91,10 +96,13 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
     const [tag, id, mtime, text] = line.split("\t");
     if (tag !== "F" || id === undefined || text === undefined || !/^[0-9a-f]{12}$/.test(id)) continue;
     const d = decodeSupportCode(text);
-    if (!d.ok || machineId(d.code.hostKey) !== id) continue; // o id tem de bater com a chave do servidor do código
+    // O id do arquivo tem de bater com o código: o novo (chave + usuário + porta) ou o antigo (só a chave, de meu-bots
+    // que ainda não regravaram); guarda sempre sob o novo.
+    if (!d.ok || (machineId(d.code) !== id && legacyMachineId(d.code.hostKey) !== id)) continue;
+    const key = machineId(d.code);
     const seenAt = new Date(Number(mtime) * 1000).toISOString();
-    const prev = m.get(id);
-    if (prev === undefined || seenAt >= prev.seenAt) m.set(id, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true });
+    const prev = m.get(key);
+    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true });
   }
   return null;
 }
@@ -120,7 +128,7 @@ export function addSupportCode(text: string): SupportPerson {
   if (!d.ok) throw new Error(d.reason);
   const m = load();
   const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado", archived: false };
-  m.set(machineId(d.code.hostKey), s);
+  m.set(machineId(d.code), s);
   save(m);
   writeSshFiles(m);
   return toPerson(s);
@@ -231,7 +239,7 @@ async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: stri
   const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
   if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
   const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
-  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off.hostKey), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`, 60_000);
+  const r = await runSsh(host, `${authorizedKeysScript(null)}\n${supportLogSh("admin", "desligou o suporte")}\n${removeDeliverySh(machineId(off), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`, 60_000);
   if (r.code !== 0) return { ok: false, detail: (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou" };
   entry.code = off; save(m); writeSshFiles(m);
   log(`[suporte] ${host}: suporte desligado pelo admin`);

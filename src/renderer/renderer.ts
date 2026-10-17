@@ -3266,6 +3266,10 @@ async function refreshSupportState(): Promise<void> {
   if (s !== null && s.available && !s.on && !s.blockedByAdmin && !supportBusy && !supportAutoTried) {
     supportAutoTried = true;
     void supportDo(() => window.meuBot.setSupport(true, s.name !== "" ? s.name : s.suggestedName), "Suporte ligado. Avisando o admin…");
+  } else if (s !== null && s.available && s.on && s.staleId && !supportBusy && !supportAutoTried) {
+    // Código antigo na máquina (id só pela chave): regrava para esta conta não se misturar com outra na mesma máquina.
+    supportAutoTried = true;
+    void supportDo(() => window.meuBot.setSupport(true, s.name !== "" ? s.name : s.suggestedName), null);
   }
 }
 function paintSupport(): void {
