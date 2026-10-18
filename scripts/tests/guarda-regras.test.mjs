@@ -60,7 +60,7 @@ test("mensagens quase iguais seguidas também contam; forget zera; sem received 
 test("nota da pausa automática começa como as outras notas do meu-bot e explica o motivo", () => {
   const n = autoPauseNoteText("3 ciclos de despedida em 2 min", "18/10/2026 01:06 (UTC)", "+595981003050");
   assert.match(n, /^Nota do meu-bot: o agente foi pausado para este contato em 18\/10\/2026 01:06 \(UTC\) automaticamente pelo meu-bot: padrão de loop \(3 ciclos de despedida em 2 min\) com \+595981003050/);
-  assert.match(n, /Não responda a esta nota ao contato/);
+  assert.match(n, /responda NO_REPLY a tudo/); assert.match(n, /nunca a mencione ao contato/);
 });
 
 test("despedidas em espanhol rioplatense e português curto contam (caso real: Sofía, 18/10)", () => {
@@ -71,4 +71,19 @@ test("despedidas em espanhol rioplatense e português curto contam (caso real: S
   let at = 1000; let r = { loop: false };
   for (const [i, o] of pairs) { tr.received("k", i, at); r = tr.sending("k", o, at + 5000); at += 30_000; }
   assert.equal(r.loop, true);
+});
+
+test("só de saída (sem message_received): 4 respostas de despedida seguidas pausam; 3 não; conteúdo não", () => {
+  const tr = new LoopTracker();
+  const outs = ["Dale, Sofía.", "Vos también, Sofía.", "Vos también.", "Chau, Sofía."];
+  let r = { loop: false }; let at = 1000;
+  for (const [i, o] of outs.entries()) { r = tr.sending("k", o, at); if (i === 2) assert.equal(r.loop, false, "3 respostas ainda não pausam"); at += 20_000; }
+  assert.equal(r.loop, true); assert.match(r.reason, /4 respostas de despedida/);
+  const tr2 = new LoopTracker(); let r2 = { loop: false }; at = 1000;
+  for (const o of ["Dale.", "O pedido 4521 sai amanhã às 9h, com nota fiscal.", "Igualmente.", "Chau."]) { r2 = tr2.sending("k", o, at); at += 20_000; }
+  assert.equal(r2.loop, false);
+  // com a entrada presente continua valendo 3 ciclos
+  const tr3 = new LoopTracker(); let r3 = { loop: false }; at = 1000;
+  for (const [i, o] of [["Gracias.", "Dale."], ["Chau.", "Chau."], ["Nos vemos.", "Nos vemos."]]) { tr3.received("k", i, at); r3 = tr3.sending("k", o, at + 2000); at += 20_000; }
+  assert.equal(r3.loop, true); assert.match(r3.reason, /3 ciclos/);
 });

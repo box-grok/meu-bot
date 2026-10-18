@@ -18,18 +18,19 @@ export type PauseBy = "dono" | "admin";
 /** Só chaves que o próprio OpenClaw gera entram no script remoto (as mesmas de whatsapp.ts). */
 const SAFE_KEY = /^[A-Za-z0-9:+._-]{1,200}$/;
 
-export const PAUSE_RULE_VERSION = 1;
+export const PAUSE_RULE_VERSION = 2;
 const RULE_START = `<!-- meu-bot:pausa v${PAUSE_RULE_VERSION} inicio -->`;
 const RULE_END = `<!-- meu-bot:pausa v${PAUSE_RULE_VERSION} fim -->`;
 export const PAUSE_RULE_BLOCK = `${RULE_START}
 ## Pausa pelo meu-bot
 O app meu-bot pode pausar você para um contato. Você sabe pelas notas "Nota do meu-bot: … pausado …" e
 "… pausa encerrada …" no histórico desta conversa.
-- Enquanto pausado: as mensagens do contato continuam chegando e você pode pensar e responder, mas nada do
-  que responder é entregue. Não insista, não repita, não tente outro canal.
-- Ao ver "pausa encerrada": tudo o que você respondeu entre as duas notas não chegou. Na próxima mensagem do
-  contato, responda ao que ficou pendente numa mensagem só, resumida. Não repita as respostas antigas.
-- Não fale da pausa com o contato a menos que ajude a explicar um silêncio longo.
+- Enquanto pausado: as mensagens do contato continuam chegando, mas nada do que você responder é entregue.
+  Responda exatamente NO_REPLY a cada mensagem dele (e às notas do meu-bot): nada fica registrado como
+  resposta sua. Não insista, não repita, não tente outro canal.
+- Ao ver "pausa encerrada": na próxima mensagem do contato, responda ao que ficou pendente numa mensagem só,
+  resumida. Não repita respostas antigas.
+- A pausa é um controle interno do dono: nunca mencione ao contato que você foi pausado ou retomado.
 ${RULE_END}
 `;
 
@@ -47,9 +48,9 @@ export function localWhenText(d: Date, timeZone?: string): string {
  */
 export function pauseNoteText(kind: "pause" | "resume", whenText: string, by: PauseBy): string {
   const who = by === "admin" ? "pelo suporte" : "pelo dono do número";
-  const tail = " Não responda a esta nota ao contato; apenas registre com uma palavra.";
+  const tail = " Responda a esta nota apenas com NO_REPLY. A pausa é controle interno do dono: nunca a mencione ao contato.";
   return kind === "pause"
-    ? `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} ${who}. A partir daqui, nada do que você responder será entregue ao contato. Você pode continuar raciocinando; a resposta não chega.${tail}`
+    ? `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} ${who}. A partir daqui, nada do que você responder será entregue ao contato. Enquanto a pausa durar, responda NO_REPLY a tudo o que ele mandar: não escreva nada, nem para registrar.${tail}`
     : `Nota do meu-bot: pausa encerrada em ${whenText} ${who}. Nada do que você respondeu desde a nota "pausado" acima chegou ao contato; ele só vê o que você mandar a partir de agora. Na próxima mensagem dele, responda ao que ficou pendente de forma resumida, sem repetir tudo.${tail}`;
 }
 

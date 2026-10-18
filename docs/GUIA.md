@@ -1533,6 +1533,15 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- Loop só pelas saídas e pausa silenciosa (18 out, mais tarde): **confirmado ao vivo** que o OpenClaw 2026.9.9
+  não chama `message_received` de plugins de fora, mesmo com `allowConversationAccess` (log de depuração na
+  primeira linha do handler nunca apareceu enquanto o agente processava as entradas); `message_sending` chega.
+  A `LoopTracker` passou a aceitar `sending` sem `received`: ciclo "só de saída", e nesse modo exige 4
+  respostas de despedida/quase iguais em sequência (3 quando há entrada), para a despedida educada de um
+  humano não pausar a conversa dele; simulado com a transcrição da Sofía, pausaria na 10ª resposta. Notas de
+  pausa (manual e automática) e o bloco `meu-bot:pausa v2` do AGENTS.md agora mandam o agente responder
+  **NO_REPLY** a tudo enquanto pausado e nunca mencionar a pausa ao contato: antes a nota pedia "registre com
+  uma palavra" e o agente soltava um "Valeu." que aparecia no espelho como se tivesse respondido.
 - Guarda por padrão na conta (18 out): o anti-loop não disparava porque o OpenClaw **não entrega
   `message_received` a plugins de fora do catálogo** sem `plugins.entries.<id>.hooks.allowConversationAccess:
   true`; a guarda via só as saídas (`message_sending`, que bloqueava as notas de fallback) e nunca fechava um

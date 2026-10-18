@@ -44,6 +44,9 @@ export const DEFAULTS = Object.freeze({ cycles: 3, gapMs: 3 * 60_000, maxChars: 
 /**
  * Acompanha, por conversa, os pares (recebida → enviada). `received` abre um ciclo; `sending` fecha e avalia.
  * Devolve `{ loop: false }` ou `{ loop: true, reason }` na resposta que fecha o 3º ciclo suspeito.
+ * Sem a entrada (o OpenClaw 2026.9 não entrega `message_received` a plugins de fora, só `message_sending`),
+ * cada resposta vira um ciclo "só de saída": aí a regra exige um ciclo a mais (4) e olha só o que o agente mandou,
+ * para uma despedida educada de humano (obrigado → de nada → até → até) não pausar a conversa dele.
  */
 export class LoopTracker {
   constructor(opts = {}) { this.opts = { ...DEFAULTS, ...opts }; this.conv = new Map(); }
@@ -53,30 +56,35 @@ export class LoopTracker {
     this.conv.set(convId, c);
   }
   sending(convId, text, at = Date.now()) {
-    const c = this.conv.get(convId);
-    if (c === undefined || c.pending === null) return { loop: false };
-    c.cycles.push({ ...c.pending, outText: String(text ?? ""), outAt: at });
+    const c = this.conv.get(convId) ?? { pending: null, cycles: [] };
+    this.conv.set(convId, c);
+    const pending = c.pending ?? { inText: "", inAt: at, soSaida: true };
+    c.cycles.push({ ...pending, outText: String(text ?? ""), outAt: at });
     c.pending = null;
-    if (c.cycles.length > this.opts.cycles) c.cycles.splice(0, c.cycles.length - this.opts.cycles);
+    const keep = this.opts.cycles + 1;
+    if (c.cycles.length > keep) c.cycles.splice(0, c.cycles.length - keep);
     return this.evaluate(c.cycles);
   }
   forget(convId) { this.conv.delete(convId); }
-  evaluate(cycles) {
-    const { cycles: n, gapMs, maxChars, minSimilarity } = this.opts;
-    if (cycles.length < n) return { loop: false };
+  evaluate(all) {
+    const { gapMs, maxChars, minSimilarity } = this.opts;
+    const soSaida = all.some((c) => c.soSaida === true);
+    const n = soSaida ? this.opts.cycles + 1 : this.opts.cycles;
+    if (all.length < n) return { loop: false };
+    const cycles = all.slice(-n);
     const short = cycles.every((c) => c.inText.length <= maxChars && c.outText.length <= maxChars);
     if (!short) return { loop: false };
     for (let i = 1; i < cycles.length; i += 1) if (cycles[i].inAt - cycles[i - 1].inAt > gapMs) return { loop: false };
     const spanMin = Math.max(1, Math.round((cycles[cycles.length - 1].inAt - cycles[0].inAt) / 60_000));
     const allFarewell = (pick) => cycles.every((c) => isFarewell(pick(c)));
-    if (allFarewell((c) => c.inText) || allFarewell((c) => c.outText)) return { loop: true, reason: `${n} ciclos de despedida em ${spanMin} min` };
+    if ((!soSaida && allFarewell((c) => c.inText)) || allFarewell((c) => c.outText)) return { loop: true, reason: `${n} ${soSaida ? "respostas" : "ciclos"} de despedida em ${spanMin} min` };
     const similar = (pick) => cycles.slice(1).every((c, i) => similarity(pick(c), pick(cycles[i])) >= minSimilarity);
-    if (similar((c) => c.inText) || similar((c) => c.outText)) return { loop: true, reason: `${n} mensagens quase iguais em ${spanMin} min` };
+    if ((!soSaida && similar((c) => c.inText)) || similar((c) => c.outText)) return { loop: true, reason: `${n} ${soSaida ? "respostas" : "mensagens"} quase iguais em ${spanMin} min` };
     return { loop: false };
   }
 }
 
 /** A nota que entra na conversa para o agente saber que foi pausado automaticamente (mesmo molde da pausa manual). */
 export function autoPauseNoteText(reason, whenText, peer) {
-  return `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} automaticamente pelo meu-bot: padrão de loop (${reason}) com ${peer}; o contato parece ser outro agente. A partir daqui, nada do que você responder será entregue ao contato. Não responda a esta nota ao contato; apenas registre com uma palavra.`;
+  return `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} automaticamente pelo meu-bot: padrão de loop (${reason}) com ${peer}; o contato parece ser outro agente. A partir daqui, nada do que você responder será entregue a ele. Enquanto a pausa durar, responda NO_REPLY a tudo o que ele mandar, inclusive a esta nota: não escreva nada, nem para registrar. A pausa é controle interno do dono: nunca a mencione ao contato.`;
 }

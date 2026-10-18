@@ -15,7 +15,8 @@ test("pauseNoteText: começa com 'Nota do meu-bot', diz quem pausou e aponta a r
   const r = pauseNoteText("resume", "17/10/2026 09:00 (Horário de Brasília)", "admin");
   assert.ok(r.startsWith("Nota do meu-bot: pausa encerrada em 17/10/2026 09:00"));
   assert.ok(r.includes("pelo suporte") && r.includes('nota "pausado" acima') && r.includes("resumida"));
-  assert.ok(p.endsWith("registre com uma palavra.") && r.endsWith("registre com uma palavra."), "pede só um ok, que não é entregue");
+  assert.ok(p.includes("responda NO_REPLY a tudo") && p.includes("nunca a mencione ao contato"), "pausa: só NO_REPLY e sem contar ao contato");
+  assert.ok(r.includes("NO_REPLY") && r.includes("nunca a mencione ao contato"), "retomada: nota respondida com NO_REPLY, pausa é interna");
 });
 
 test("pauseNoteSh: turno do agente em segundo plano com a nota por arquivo (base64), sem --deliver; recusa chave estranha", () => {
@@ -38,7 +39,7 @@ test("pauseRuleSh: bloco versionado em base64, workspace configurado com reserva
   const b64 = /printf '%s' '([A-Za-z0-9+/=]+)' \| base64 -d \| python3/.exec(sh)[1];
   assert.equal(Buffer.from(b64, "base64").toString("utf8"), PAUSE_RULE_BLOCK);
   assert.ok(PAUSE_RULE_BLOCK.startsWith(`<!-- meu-bot:pausa v${PAUSE_RULE_VERSION} inicio -->`) && PAUSE_RULE_BLOCK.trimEnd().endsWith(`<!-- meu-bot:pausa v${PAUSE_RULE_VERSION} fim -->`));
-  assert.ok(PAUSE_RULE_BLOCK.includes("pausa encerrada") && PAUSE_RULE_BLOCK.includes("Não repita as respostas antigas"));
+  assert.ok(PAUSE_RULE_BLOCK.includes("pausa encerrada") && PAUSE_RULE_BLOCK.includes("Não repita respostas antigas") && PAUSE_RULE_BLOCK.includes("NO_REPLY") && PAUSE_RULE_BLOCK.includes("nunca mencione ao contato"));
   assert.ok(sh.includes("os.replace(tmp, f)") && sh.includes('print("REGRA=1")') && sh.includes('print("REGRA=0")') && sh.includes('echo "REGRA=erro"'));
 });
 
