@@ -26,7 +26,8 @@ export function similarity(a, b) {
 /** Fórmulas de encerramento/cortesia em pt, es e en (normalizadas). */
 const FAREWELLS = [
   "ate mais", "ate logo", "ate breve", "ate", "tchau", "adeus", "obrigado", "obrigada", "de nada", "valeu", "ok", "okay", "beleza",
-  "combinado", "fico a disposicao", "estou a disposicao", "a disposicao", "qualquer coisa", "quando precisar", "se precisar",
+  "combinado", "fechado", "pode deixar", "tranquilo", "show", "perfeito", "sem problema", "fico no aguardo", "te aviso", "estamos ai", "pra voce tambem", "para voce tambem",
+  "fico a disposicao", "estou a disposicao", "a disposicao", "qualquer coisa", "quando precisar", "se precisar",
   "bom dia", "boa tarde", "boa noite", "bom domingo", "bom sabado", "bom descanso", "bom fim de semana", "boa semana", "bom feriado", "tenha um otimo dia", "tenha um bom dia", "por agora nao", "por enquanto nao",
   "buen descanso", "buen fin de semana", "buena semana", "buenas noches", "buenas tardes", "buen domingo",
   "hasta luego", "hasta pronto", "hasta la proxima", "adios", "chau", "chao", "gracias", "que estes bien", "que andes bien", "cuidate", "buen dia", "aqui estare", "cuando necesites", "cuando quieras", "igualmente", "igual", "nos vemos", "dale", "listo", "quedamos asi", "vos tambien", "abrazo", "abraco", "ate mais", "ate a proxima",

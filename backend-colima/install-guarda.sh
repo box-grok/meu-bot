@@ -13,6 +13,31 @@ mkdir -p "$SRC"
 cp "$HERE/guarda/index.js" "$HERE/guarda/regras.mjs" "$HERE/guarda/package.json" "$HERE/guarda/openclaw.plugin.json" "$SRC/"
 # Uma cópia antiga dentro de extensions/ (instalação à mão) confunde o registro: a fonte é o link.
 [ -d "$HOME/.openclaw/extensions/meu-bot-guarda" ] && [ ! -L "$HOME/.openclaw/extensions/meu-bot-guarda" ] && rm -rf "$HOME/.openclaw/extensions/meu-bot-guarda"
+# Regra de encerramento no AGENTS.md do workspace do agente: a guarda pausa de fora; esta regra evita que o loop
+# comece, porque o próprio agente para de responder a cortesias depois da despedida (vale para humanos também).
+RULE='<!-- meu-bot:encerramento v1 inicio -->
+## Encerramento de conversa (meu-bot)
+- Quando a conversa já se encerrou (os dois lados se despediram ou combinaram o próximo passo), não responda a
+  novas cortesias, agradecimentos ou despedidas ("obrigado", "até mais", "bom descanso", "igualmente", "chau",
+  "gracias", "nos vemos"): devolva exatamente NO_REPLY. Despeça-se uma vez só.
+- Volte a responder apenas quando vier conteúdo: uma pergunta, um pedido, uma informação nova.
+- Se o contato repetir cortesias várias vezes seguidas, é provável que seja outro agente automático: NO_REPLY em
+  todas, sem comentar isso com ele.
+- Nunca diga ao contato que está deixando de responder nem que foi pausado.
+<!-- meu-bot:encerramento v1 fim -->'
+W="$(openclaw config get agents.defaults.workspace 2>/dev/null | tr -d '\n')"; case "$W" in /*) ;; *) W="$HOME/.openclaw/workspace" ;; esac
+mkdir -p "$W"
+printf '%s\n' "$RULE" | python3 -c '
+import re, sys, os
+f = sys.argv[1]; block = sys.stdin.read()
+try: cur = open(f, encoding="utf-8").read()
+except FileNotFoundError: cur = ""
+pat = re.compile(r"\n?<!-- meu-bot:encerramento v\d+ inicio -->.*?<!-- meu-bot:encerramento v\d+ fim -->\n?", re.S)
+m = pat.search(cur)
+if m and m.group(0).strip() == block.strip(): print("regra de encerramento ok em " + f); sys.exit(0)
+new = (cur[:m.start()] + "\n" + block + cur[m.end():]) if m else (cur + ("" if cur == "" or cur.endswith("\n") else "\n") + "\n" + block)
+tmp = f + ".tmp"; open(tmp, "w", encoding="utf-8").write(new); os.replace(tmp, f); print("regra de encerramento gravada em " + f)
+' "$W/AGENTS.md"
 echo "registrando a guarda no OpenClaw…"
 timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
 # Sem esta permissão o OpenClaw não entrega message_received a plugins de fora do catálogo: a guarda via só as
