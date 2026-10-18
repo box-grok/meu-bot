@@ -1493,6 +1493,21 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   "Extensões no Navegador" (exemplo: Streak CRM for Gmail; o passo "Usar" exige login no Google dentro da
   aba). Verificado: backend novo na agente-box (requer `licenca.js` ao lado: copiar todos os .js), MCP responde
   `tools/list`.
+- Service worker das extensões segurado (18 out): o Chromium encerra o service worker MV3 após ~30 s ocioso e
+  o Electron **não** o acorda quando o content script chama `runtime.connect`/`sendMessage` (o Chrome acorda).
+  Sintoma no Streak: minutos depois de abrir, "failure to send getExtensions message", `BackgroundPageCommunicator`
+  undefined e "Faça login para usar o Streak" a cada recarga (a ponte com o background morreu, não a sessão).
+  Correção em `browser.ts`: `workerHold` acorda com `startWorkerForScope` e chama `w.startTask()` sem nunca
+  encerrar (o worker não entra em ociosidade); `running-status-changed` → `stopped` religa (1 s; 30 s depois de
+  3 quedas); `browserOpen` espera os workers subirem (até 4 s) antes de o webview carregar; `extension-unloaded`
+  solta a tarefa. Diagnóstico: `/diag` do nav-api lista `service_workers` (o da extensão tem de aparecer).
+- Recortes do Navegador (18 out): partes de um site que a pessoa oculta para sobrar tela (`lib/recortes.ts`,
+  tabela `RECORTES` por host). No Gmail: painel lateral (`.bkL > .aqn`: pastas do Gmail e painel do Streak, 256 px),
+  menu Mail/Streak/Chat/Meet (`.aeN.WR`, 68 px) e barra superior (`header#gb`, 64 px); os três **ocultos por
+  padrão** (pedido do usuário), botões ◧ ⋮ ⬒ na barra do Navegador (apagado = oculto). Implementação:
+  `insertCSS` no webview por documento (`NavTab.cssKeys`, zerado no `did-navigate`, aplicado em `did-navigate` e
+  `dom-ready`), depois `dispatchEvent(new Event("resize"))` porque o Gmail mede a tela por JS (sem isso o
+  conteúdo não cresce). Preferência em `localStorage.navRecortes` (por recorte, vale para todas as máquinas).
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
   Tutoriais, Acervo, guia, chat do WhatsApp), como o terminal dividido do Cursor. `.content` vira grid de 3
   colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de

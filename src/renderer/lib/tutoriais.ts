@@ -417,7 +417,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "usar", title: "Usar a extensão", target: "none",
-        text: "Abra o Gmail na aba e entre na sua conta do Google (o login fica guardado nesta máquina). O Streak aparece dentro da caixa de entrada. Extensões rodam com as APIs que o Electron oferece: as de conteúdo funcionam; popups de botão e alguns recursos (como o rastreio por rede) ainda não.",
+        text: "Abra o Gmail na aba e entre na sua conta do Google (o login fica guardado nesta máquina). O Streak aparece dentro da caixa de entrada: pipelines, boxes e contatos funcionam; o rastreio de e-mails por rede ainda não. Para sobrar tela, a barra tem os botões ◧ ⋮ ⬒ que ocultam o painel lateral, o menu Mail/Chat/Meet e a barra superior do Gmail (vêm ocultos; clique para mostrar de novo).",
         done: (_st, f) => f.extSeen,
         manual: { label: "Vi funcionando", flag: "extSeen" },
       },

@@ -9,10 +9,13 @@
 (() => {
   const g = globalThis as unknown as { chrome?: Record<string, unknown>; location?: { protocol?: string }; ServiceWorkerGlobalScope?: unknown };
   const isWorker = typeof g.ServiceWorkerGlobalScope !== "undefined";
-  if (!isWorker && g.location?.protocol !== "chrome-extension:") return;
   const chrome = g.chrome;
+  // Content script (mundo isolado de uma página comum): o Electron dá chrome.runtime/storage/i18n, mas não
+  // chrome.extension, e extensões como o Streak testam `chrome.extension` para decidir se há background para falar.
+  const isContent = !isWorker && g.location?.protocol !== "chrome-extension:" && typeof (chrome?.["runtime"] as { id?: unknown } | undefined)?.id === "string";
+  if (!isWorker && !isContent && g.location?.protocol !== "chrome-extension:") return;
   // Marcador no console (o main registra erros dos service workers): confirma em que contexto o polyfill rodou.
-  try { console.error(`meu-bot polyfill: ${isWorker ? "service worker" : "frame"}; chrome=${chrome === undefined ? "undefined" : Object.keys(chrome).sort().join(",").slice(0, 200)}`); } catch { /* ignore */ }
+  try { console.error(`meu-bot polyfill: ${isWorker ? "service worker" : isContent ? "content script" : "frame"}; chrome=${chrome === undefined ? "undefined" : Object.keys(chrome).sort().join(",").slice(0, 200)}`); } catch { /* ignore */ }
   if (chrome === undefined || chrome === null || typeof chrome !== "object") return;
 
   const event = (): unknown => ({ addListener: () => undefined, removeListener: () => undefined, hasListener: () => false, hasListeners: () => false, dispatch: () => undefined });
@@ -23,6 +26,9 @@
     for (const [k, v] of Object.entries(members)) { if (ns[k] === undefined) { try { ns[k] = v; } catch { /* só leitura */ } } }
   };
 
+  const runtime = chrome["runtime"] as { getURL?: (p: string) => string } | undefined;
+  ensure("extension", { getURL: (p: string) => (runtime?.getURL ? runtime.getURL(p) : p), inIncognitoContext: false, isAllowedIncognitoAccess: resolve(false), isAllowedFileSchemeAccess: resolve(false), getViews: () => [], getBackgroundPage: () => null, ViewType: { TAB: "tab", POPUP: "popup" } });
+  if (isContent) return; // o resto é para o service worker e as páginas da extensão
   ensure("permissions", { onAdded: event(), onRemoved: event(), contains: resolve(true), request: resolve(true), remove: resolve(true), getAll: resolve({ permissions: [], origins: [] }) });
   ensure("declarativeNetRequest", {
     getDynamicRules: resolve([]), getSessionRules: resolve([]), updateDynamicRules: resolve(undefined), updateSessionRules: resolve(undefined),

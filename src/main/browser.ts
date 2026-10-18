@@ -24,7 +24,7 @@ const extensionsDir = (host: string): string => path.join(app.getPath("userData"
 const hostOfPartition = (part: string): string | null => (part.startsWith(PART_PREFIX) ? part.slice(PART_PREFIX.length) : null);
 
 const readySessions = new Map<string, Promise<void>>();
-const POLYFILL_MARK = "/*meu-bot-polyfill v2*/";
+const POLYFILL_MARK = "/*meu-bot-polyfill v3*/";
 const POLYFILL_END = "/*meu-bot-polyfill:fim*/";
 /** O polyfill como script puro: o tsc emite cabeçalho CommonJS (`exports`), que não existe num service worker. */
 const polyfillSource = (): string => {
@@ -47,7 +47,7 @@ function stripOldPolyfill(cur: string): string | null {
  */
 function patchExtensionFiles(host: string, ext: Electron.Extension): boolean {
   const src = polyfillSource(); if (src === "") return false;
-  const m = ext.manifest as { background?: { service_worker?: string; scripts?: string[] }; action?: { default_popup?: string }; options_page?: string; options_ui?: { page?: string } };
+  const m = ext.manifest as { background?: { service_worker?: string; scripts?: string[] }; action?: { default_popup?: string }; options_page?: string; options_ui?: { page?: string }; content_scripts?: { js?: string[]; world?: string }[] };
   let changed = false;
   const inDir = (rel: string): string | null => { const f = path.resolve(ext.path, rel.replace(/^\//, "")); return f.startsWith(path.resolve(ext.path) + path.sep) ? f : null; };
   const sw = typeof m.background?.service_worker === "string" ? inDir(m.background.service_worker) : null;
@@ -56,6 +56,15 @@ function patchExtensionFiles(host: string, ext: Electron.Extension): boolean {
     const base = stripOldPolyfill(cur);
     if (base === "") { log(`[navegador ${host}] ${ext.name}: polyfill antigo sem marcador de fim; reinstalando a extensão`); void reinstallExtension(host, ext.id); return false; }
     if (base !== null) { fs.writeFileSync(sw, `${src}${base}`); changed = true; }
+  }
+  // Content scripts do mundo isolado (não MAIN): o Electron não lhes dá chrome.extension; o polyfill entra na frente.
+  for (const cs of m.content_scripts ?? []) {
+    if (cs.world === "MAIN") continue;
+    for (const rel of cs.js ?? []) {
+      const f = inDir(rel); if (f === null || !fs.existsSync(f)) continue;
+      const base = stripOldPolyfill(fs.readFileSync(f, "utf8"));
+      if (base !== null && base !== "") { fs.writeFileSync(f, `${src}${base}`); changed = true; }
+    }
   }
   const pages = [m.action?.default_popup, m.options_page, m.options_ui?.page].filter((p): p is string => typeof p === "string" && p !== "");
   if (pages.length > 0) {

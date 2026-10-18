@@ -3924,8 +3924,8 @@ interface WebviewEl extends HTMLElement {
   getWebContentsId(): number;
   insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
-/** `cssKeys`: recortes aplicados neste documento (id do recorte → chave do insertCSS); zera a cada navegação. */
-interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string> }
+/** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]> }
 let navPage: PageTab | null = null;
 let navTabs: NavTab[] = [];
 let navActive: string | null = null;
@@ -3939,17 +3939,22 @@ let navPopupFor: string | null = null;
 /** Recortes (partes do site ocultas, ver lib/recortes.ts): escolha por recorte, lembrada no app. */
 let navRecortes: RecortesPref = (() => { try { return parseRecortesPref(localStorage.getItem("navRecortes")); } catch { return {}; } })();
 let navActionsHost = "";
-function applyRecortes(tab: NavTab): void {
+/**
+ * Aplica os recortes no documento atual. Só depois de `dom-ready` (e de novo em `did-finish-load`): o Gmail
+ * reescreve o documento no começo da carga e um CSS inserido no `did-navigate` se perde, enquanto a chave guardada
+ * impediria a reinserção. Inserir duas vezes é inofensivo; por isso as chaves são lista e `mostrar` remove todas.
+ */
+function applyRecortes(tab: NavTab, fresh = false): void {
   const list = recortesPara(tab.url);
   let touched = false;
   const run = async (): Promise<void> => {
     for (const r of list) {
-      const key = tab.cssKeys.get(r.id);
+      const keys = tab.cssKeys.get(r.id) ?? [];
       const hide = recorteOculto(navRecortes, r);
       try {
-        if (hide && key === undefined) { tab.cssKeys.set(r.id, await tab.wv.insertCSS(r.css)); touched = touched || r.resize === true; }
-        else if (!hide && key !== undefined) { tab.cssKeys.delete(r.id); await tab.wv.removeInsertedCSS(key); touched = touched || r.resize === true; }
-      } catch { /* documento trocou no meio: a próxima navegação reaplica */ }
+        if (hide && (fresh || keys.length === 0)) { const k = await tab.wv.insertCSS(r.css); tab.cssKeys.set(r.id, [...(tab.cssKeys.get(r.id) ?? []), k]); touched = touched || r.resize === true; }
+        else if (!hide && keys.length > 0) { tab.cssKeys.delete(r.id); for (const k of keys) await tab.wv.removeInsertedCSS(k); touched = touched || r.resize === true; }
+      } catch { /* documento trocou no meio: a próxima carga reaplica */ }
     }
     if (touched) { try { await tab.wv.executeJavaScript("window.dispatchEvent(new Event('resize')); undefined"); } catch { /* idem */ } }
   };
@@ -3968,18 +3973,8 @@ function paintNavActions(): void {
   if (navEls === null) return;
   const e = navEls;
   e.actions.replaceChildren();
-  for (const x of navExtensions) {
-    const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
-    if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
-    b.addEventListener("click", () => {
-      // Atalho configurável: se há uma URL nas Configurações, o clique no ícone da extensão abre essa URL.
-      const shortcut = settings?.navShortcutUrl ?? "";
-      if (shortcut !== "") { const c = navCurrent(); if (c === null) navNewTab(shortcut); else void c.wv.loadURL(shortcut); return; }
-      if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
-      navOpenPopup(x.id, x.popup, b);
-    });
-    e.actions.append(b);
-  }
+  // Ícones de ação das extensões removidos: o popup de botão não funciona neste navegador, então não valiam nada.
+  // As extensões seguem agindo nas páginas (content scripts) e são geridas pelo menu 🧩.
   // Recortes do site da aba ativa: botão aceso = parte visível; apagado = oculta.
   const cur = navCurrent();
   for (const r of cur === null ? [] : recortesPara(cur.url)) {
@@ -4048,7 +4043,8 @@ function navNewTab(url: string = NAV_HOME, activate = true): NavTab | null {
   const sync = (): void => { tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
-  wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); applyRecortes(tab); });
+  wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
+  wv.addEventListener("did-finish-load", () => applyRecortes(tab, true));
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
