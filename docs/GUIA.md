@@ -1533,6 +1533,15 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- Vazamento de erro em inglês (18 out): quando o primário e os fallbacks falham, o OpenClaw entrega ao chat o
+  texto do erro ("claude-cli/claude-opus-5-5 request failed", "The model returned an empty response. Please try
+  again.", "This turn ended before a reply: …"). A Sofía recebeu um desses e respondeu "parece uma mensagem de
+  erro do sistema". `isOperationalNotice` agora cobre prefixos (↪️, ⚠️, "This turn ended…", "LLM request
+  failed", "The model returned…", "The provider session expired", "NO_REPLY") e padrões
+  (`<provedor>/<modelo> request failed`, "request failed … provider/model/status NNN", "empty response … try
+  again"), só em textos de até 400 caracteres; a fala normal do agente, mesmo em inglês, passa (teste). Regra de
+  encerramento (`meu-bot:encerramento v1` no AGENTS.md, gravada pelo install-guarda.sh): depois da despedida, o
+  próprio agente responde NO_REPLY a cortesias; a conversa da Sofía mostrou NO_REPLY em 16:38 e 16:40.
 - Loop só pelas saídas e pausa silenciosa (18 out, mais tarde): **confirmado ao vivo** que o OpenClaw 2026.9.9
   não chama `message_received` de plugins de fora, mesmo com `allowConversationAccess` (log de depuração na
   primeira linha do handler nunca apareceu enquanto o agente processava as entradas); `message_sending` chega.

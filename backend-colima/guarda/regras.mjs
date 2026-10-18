@@ -7,9 +7,27 @@
  *    conteúdo não passa na similaridade nem na lista de despedidas.
  */
 
-/** Prefixos das linhas operacionais do OpenClaw que não são fala do agente. */
-export const OPERATIONAL_PREFIXES = ["↪️ Model Fallback", "↪️ Retried on"];
-export const isOperationalNotice = (text) => typeof text === "string" && OPERATIONAL_PREFIXES.some((p) => text.trimStart().startsWith(p));
+/**
+ * Linhas operacionais do OpenClaw que não são fala do agente e nunca podem ir ao contato: notas de fallback e
+ * retry, e os textos de erro que ele manda ao chat quando todas as tentativas falham ("claude-cli/claude-opus-5-5
+ * request failed", "The model returned an empty response. Please try again.", "This turn ended before a reply: …").
+ * Sempre em inglês, sempre técnicos; a conversa da pessoa é em português.
+ */
+export const OPERATIONAL_PREFIXES = ["↪️ Model Fallback", "↪️ Retried on", "↪️", "⚠️ ", "This turn ended before a reply", "LLM request failed", "The model returned an empty response", "The provider session expired", "NO_REPLY"];
+export const OPERATIONAL_PATTERNS = [
+  /^[a-z0-9._-]+\/[a-z0-9._-]+ (request|call|turn) failed\b/i, // "claude-cli/claude-opus-5-5 request failed"
+  /\brequest failed\b.*\b(provider|model|backend|cli|timeout|status \d{3})\b/i,
+  /\b(empty response|rate limit(ed)?|context window|token limit|session expired)\b.*\b(try again|retry|model)\b/i,
+  /^(error|erro):\s*\S*(request|provider|backend|cli)/i,
+];
+export function isOperationalNotice(text) {
+  if (typeof text !== "string") return false;
+  const t = text.trim();
+  if (t === "") return false;
+  if (OPERATIONAL_PREFIXES.some((p) => t.startsWith(p))) return true;
+  if (t.length > 400) return false; // fala normal do agente pode ser longa; os avisos do OpenClaw são curtos
+  return OPERATIONAL_PATTERNS.some((re) => re.test(t));
+}
 
 /** Minúsculas, sem acento, sem pontuação, espaços únicos. */
 export const normalize = (s) => String(s ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();

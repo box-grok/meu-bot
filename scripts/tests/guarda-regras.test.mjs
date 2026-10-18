@@ -87,3 +87,8 @@ test("só de saída (sem message_received): 4 respostas de despedida seguidas pa
   for (const [i, o] of [["Gracias.", "Dale."], ["Chau.", "Chau."], ["Nos vemos.", "Nos vemos."]]) { tr3.received("k", i, at); r3 = tr3.sending("k", o, at + 2000); at += 20_000; }
   assert.equal(r3.loop, true); assert.match(r3.reason, /3 ciclos/);
 });
+
+test("avisos de erro do OpenClaw em inglês nunca vão ao contato; fala normal passa", () => {
+  for (const t of ["claude-cli/claude-opus-5-5 request failed", "grok/grok-4.7 request failed: HTTP 429", "The model returned an empty response. Please try again.", "This turn ended before a reply: CLI backend returned an empty response.", "LLM request failed with an unknown error.", "⚠️ Reply failed", "NO_REPLY"]) assert.equal(isOperationalNotice(t), true, t);
+  for (const t of ["Oi Junior, o pedido falhou no cartão, pode tentar de novo?", "The meeting is on Monday, please try again later if the link fails.", "Beleza, valeu Sofía.", "Fechado. Qualquer coisa me chama."]) assert.equal(isOperationalNotice(t), false, t);
+});
