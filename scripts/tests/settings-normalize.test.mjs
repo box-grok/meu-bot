@@ -43,3 +43,18 @@ test("hostNames: apelidos válidos por host; lixo fora", async () => {
   assert.equal(normalizeHostNames({ vm: "x".repeat(80) }).vm.length, 40);
   assert.deepEqual(normalizeSettings({}).hostNames, {});
 });
+
+test("navFavoritos: por máquina válida; url http(s), título ≤ 60, url repetida fica com a primeira, id ruim ganha outro", () => {
+  const s = normalizeSettings({ navFavoritos: { colima: [
+    { id: "ok1", titulo: "  Pipeline   X ", url: "https://a.com/p" },
+    { id: "ok2", titulo: "repetido", url: "https://a.com/p" },
+    { id: "bad id!", titulo: "x".repeat(80), url: "http://b.com" },
+    { id: "ok3", titulo: "sem esquema", url: "ftp://c" },
+  ], "x y": [{ id: "z", titulo: "", url: "https://d.com" }] } });
+  assert.deepEqual(Object.keys(s.navFavoritos), ["colima"]);
+  assert.equal(s.navFavoritos.colima.length, 2);
+  assert.deepEqual(s.navFavoritos.colima[0], { id: "ok1", titulo: "Pipeline X", url: "https://a.com/p" });
+  assert.equal(s.navFavoritos.colima[1].titulo.length, 60);
+  assert.notEqual(s.navFavoritos.colima[1].id, "bad id!");
+  assert.deepEqual(normalizeSettings({ navFavoritos: [] }).navFavoritos, {});
+});

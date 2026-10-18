@@ -22,6 +22,9 @@ const TOOLS = [
   { name: 'voltar', description: 'Volta uma página no histórico da aba.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
   { name: 'avancar', description: 'Avança uma página no histórico da aba.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
   { name: 'recarregar', description: 'Recarrega a aba.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
+  { name: 'favoritos', description: 'Lista a barra de favoritos do Navegador da pessoa (id, título, url).', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'favoritar', description: 'Adiciona uma url à barra de favoritos do Navegador da pessoa (título opcional; url repetida só atualiza o título).', inputSchema: { type: 'object', properties: { url: { type: 'string' }, titulo: { type: 'string' } }, required: ['url'], additionalProperties: false } },
+  { name: 'desfavoritar', description: 'Tira um favorito da barra, pelo id (veja favoritos) ou pela url.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' } }, additionalProperties: false } },
   { name: 'js', description: 'Roda JavaScript na página e devolve o resultado (último recurso; prefira ler/clicar/digitar).', inputSchema: { type: 'object', properties: { codigo: { type: 'string' }, aba: { type: 'number' } }, required: ['codigo'], additionalProperties: false } },
 ];
 

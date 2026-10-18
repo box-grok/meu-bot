@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -23,6 +23,7 @@ import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
 import { clampSplitRatio, parseSplitPref, splitLabel, splitLayout, splitPrefPageId } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
+import { favLabel, favOf, favTitleFor, parseFavsShown } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -642,6 +643,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:split", kind: "action", label: splitLabel(splitPage?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
+  if (navPage !== null && navAccess === "ok") add({ id: "a:favs", kind: "action", label: navFavsShown ? "Navegador: esconder a barra de favoritos" : "Navegador: mostrar a barra de favoritos", detail: "Cmd+Shift+F", keywords: ["favoritos", "barra", "bookmarks", "navegador"] }, () => toggleFavsBar());
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: "quick view com extensões do Chrome; o agente pode navegar por você (Pro)", keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
@@ -3432,6 +3434,7 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
   if (mod && ev.key === "\\") { ev.preventDefault(); toggleSplit(); return; }
+  if (mod && ev.shiftKey && (ev.key === "f" || ev.key === "F") && navPage !== null && pageShown(navPage)) { ev.preventDefault(); toggleFavsBar(); return; }
   if (mod && ev.key === "w" && pageActive !== null) { ev.preventDefault(); closePage(pageActive); return; }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
@@ -3934,8 +3937,49 @@ let navPartition: string | null = null;
 let navExtensions: BrowserExtensionInfo[] = [];
 let navAccess: ProAccess | null = null;
 let navAskedPro = false;
-let navEls: { tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
+let navEls: { favs: HTMLElement; star: HTMLButtonElement; tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
 let navPopupFor: string | null = null;
+/** Barra de favoritos (lista por máquina, do main); mostrar/ocultar é escolha do app (Cmd+Shift+F). */
+let navFavs: NavFavorito[] = [];
+let navFavsShown = (() => { try { return parseFavsShown(localStorage.getItem("navFavsShown")); } catch { return true; } })();
+function paintNavFavs(): void {
+  if (navEls === null) return;
+  const e = navEls;
+  e.favs.hidden = !navFavsShown;
+  e.favs.replaceChildren();
+  if (navFavs.length === 0) { e.favs.append(el("span", "nav-favs-hint", "Sem favoritos: ☆ guarda a página aberta; o agente também adiciona (\"favorite este link\"). Cmd+Shift+F esconde a barra.")); }
+  for (const f of navFavs) {
+    const b = el("button", "nav-fav"); b.type = "button"; b.title = `${f.titulo}\n${f.url}`;
+    b.append(el("span", "nav-fav-label", favLabel(f)));
+    const x = el("span", "nav-fav-x", "×"); x.title = "Tirar dos favoritos"; x.setAttribute("role", "button");
+    x.addEventListener("click", (ev) => { ev.stopPropagation(); void window.meuBot.browserFavoriteRemove(f.id).then((list) => { navFavs = list; paintNavFavs(); paintNavStar(); }).catch(() => undefined); });
+    b.append(x);
+    b.addEventListener("click", (ev) => { const cur = navCurrent(); if (ev.metaKey || ev.ctrlKey || cur === null) navNewTab(f.url); else { void cur.wv.loadURL(f.url); cur.wv.focus(); } });
+    e.favs.append(b);
+  }
+  paintNavStar();
+}
+function paintNavStar(): void {
+  if (navEls === null) return;
+  const cur = navCurrent();
+  const fav = cur === null ? null : favOf(navFavs, cur.url);
+  navEls.star.textContent = fav === null ? "☆" : "★";
+  navEls.star.classList.toggle("on", fav !== null);
+  navEls.star.disabled = cur === null || !/^https?:/.test(cur.url);
+  navEls.star.title = fav === null ? "Guardar esta página nos favoritos" : "Tirar esta página dos favoritos";
+}
+function toggleFavCurrent(): void {
+  const cur = navCurrent(); if (cur === null || !/^https?:/.test(cur.url)) return;
+  const fav = favOf(navFavs, cur.url);
+  const p = fav === null ? window.meuBot.browserFavoriteAdd({ titulo: favTitleFor(cur.title, cur.url), url: cur.url }) : window.meuBot.browserFavoriteRemove(fav.id);
+  void p.then((list) => { navFavs = list; if (fav === null && !navFavsShown) { navFavsShown = true; try { localStorage.setItem("navFavsShown", "1"); } catch { /* opcional */ } } paintNavFavs(); })
+    .catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Favoritos: ${ipcErrorText(err)}`; } });
+}
+function toggleFavsBar(): void {
+  navFavsShown = !navFavsShown;
+  try { localStorage.setItem("navFavsShown", navFavsShown ? "1" : "0"); } catch { /* opcional */ }
+  paintNavFavs();
+}
 /** Recortes (partes do site ocultas, ver lib/recortes.ts): escolha por recorte, lembrada no app. */
 let navRecortes: RecortesPref = (() => { try { return parseRecortesPref(localStorage.getItem("navRecortes")); } catch { return {}; } })();
 let navActionsHost = "";
@@ -3973,8 +4017,18 @@ function paintNavActions(): void {
   if (navEls === null) return;
   const e = navEls;
   e.actions.replaceChildren();
-  // Ícones de ação das extensões removidos: o popup de botão não funciona neste navegador, então não valiam nada.
-  // As extensões seguem agindo nas páginas (content scripts) e são geridas pelo menu 🧩.
+  // Ícone de ação de cada extensão na barra. Clique: se há URL de atalho nas Configurações, abre ela; senão, popup.
+  for (const x of navExtensions) {
+    const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
+    if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
+    b.addEventListener("click", () => {
+      const shortcut = settings?.navShortcutUrl ?? "";
+      if (shortcut !== "") { const c = navCurrent(); if (c === null) navNewTab(shortcut); else void c.wv.loadURL(shortcut); return; }
+      if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
+      navOpenPopup(x.id, x.popup, b);
+    });
+    e.actions.append(b);
+  }
   // Recortes do site da aba ativa: botão aceso = parte visível; apagado = oculta.
   const cur = navCurrent();
   for (const r of cur === null ? [] : recortesPara(cur.url)) {
@@ -4076,7 +4130,7 @@ function paintNav(): void {
   if (navEls === null || navPage === null) return;
   const e = navEls;
   const blocked = navAccess !== "ok";
-  e.block.hidden = !blocked; e.tabs.hidden = blocked; e.bar.hidden = blocked; e.box.hidden = blocked;
+  e.block.hidden = !blocked; e.tabs.hidden = blocked; e.bar.hidden = blocked; e.box.hidden = blocked; e.favs.hidden = blocked || !navFavsShown;
   if (blocked) {
     const a = navAccess === null || navAccess === "ok" ? "unknown" : navAccess;
     const t = proBlockText(a, license);
@@ -4111,6 +4165,7 @@ function paintNav(): void {
   const cur = navCurrent();
   if (cur !== null && document.activeElement !== e.url) e.url.value = displayUrl(cur.url);
   { let h = ""; try { h = cur === null ? "" : new URL(cur.url).hostname; } catch { /* url em branco */ } if (h !== navActionsHost) paintNavActions(); }
+  paintNavStar();
   e.back.disabled = cur === null || !cur.wv.canGoBack();
   e.fwd.disabled = cur === null || !cur.wv.canGoForward();
   e.loading.hidden = cur === null || !cur.loading;
@@ -4160,9 +4215,12 @@ async function openNavTab(url?: string): Promise<void> {
     const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
     const menu = el("div", "nav-menu"); menu.hidden = true;
     const agent = el("button", "btn btn-ghost btn-small nav-agent", "🤖 agente: desligado"); agent.type = "button";
+    const star = el("button", "mini-btn nav-star", "☆"); star.type = "button"; star.title = "Guardar esta página nos favoritos";
+    const favs = el("div", "nav-favs"); favs.hidden = true;
     const actions = el("div", "nav-actions");
     const popup = el("div", "nav-popup"); popup.hidden = true;
-    bar.append(back, fwd, reload, urlEl, loading, agent, actions, ext, open, menu, popup);
+    bar.append(back, fwd, reload, urlEl, loading, star, agent, actions, ext, open, menu, popup);
+    star.addEventListener("click", () => toggleFavCurrent());
     agent.addEventListener("click", () => {
       navAgentBusy = true; paintNav();
       void window.meuBot.browserAgent(!navAgent.on).then((st) => { navAgent = st; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Agente: ${ipcErrorText(err)}`; } }).finally(() => { navAgentBusy = false; paintNav(); });
@@ -4170,9 +4228,9 @@ async function openNavTab(url?: string): Promise<void> {
     const note = el("div", "nav-note"); note.hidden = true;
     const box = el("div", "nav-box");
     const block = el("div", "nav-block"); block.hidden = true;
-    panel.append(tabsEl2, bar, note, box, block);
+    panel.append(tabsEl2, bar, favs, note, box, block);
     panelsEl.append(panel);
-    navEls = { tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
+    navEls = { favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
     reload.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; if (c.loading) c.wv.stop(); else c.wv.reload(); });
@@ -4192,7 +4250,7 @@ async function openNavTab(url?: string): Promise<void> {
   navAccess = browserAccess(license, windowHost);
   paintNav();
   if (navAccess === "ok" && navPartition === null) {
-    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; paintNavActions(); }
+    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; navFavs = info.favoritos; paintNavActions(); paintNavFavs(); }
     catch (err) { navAccess = /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
     paintNav();
   }
@@ -4213,6 +4271,7 @@ function disposeNav(): void {
 window.meuBot.on("browser:extensions", (list) => { navExtensions = list; paintNavActions(); if (navEls !== null && !navEls.menu.hidden) paintNavMenu(); });
 window.meuBot.on("browser:open-url", ({ url }) => { if (navPage !== null && navPartition !== null) { navNewTab(url); } });
 window.meuBot.on("browser:agent", (st) => { navAgent = st; paintNav(); });
+window.meuBot.on("browser:favorites", (list) => { navFavs = list; paintNavFavs(); });
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.
 window.meuBot.on("browser:ask", (msg) => {
   if (navPage === null || navPartition === null) return;
@@ -4225,6 +4284,7 @@ window.meuBot.on("browser:ask", (msg) => {
 window.meuBot.on("browser:key", ({ key, shift }) => {
   if (key === "k") { if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (key === "\\") { toggleSplit(); return; }
+  if (key === "f" && shift) { toggleFavsBar(); return; }
   if (key === "j") { void openTerminalTab(shift ? "new" : "focus"); return; }
   if (key === "n") { void newTab(); return; }
   if (key === "b" && shift) { setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }

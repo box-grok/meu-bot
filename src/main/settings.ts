@@ -6,7 +6,7 @@ import { parseAccelerator } from "./accelerator";
 import {
   defaultSettings, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeSettings,
   type SettingsFile, type WindowBounds,
-} from "./settings-normalize";
+ normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
 
 export { BACKEND_MODELS, isBackendModel, isValidHost } from "./settings-normalize";
 
@@ -94,6 +94,30 @@ export function setNavAgentHost(host: string, on: boolean): void {
   if (on) next.push(host);
   file.navAgentHosts = next;
   persist();
+}
+/** Favoritos do Navegador da máquina (cópia). */
+export const navFavoritos = (host: string): NavFavoritoItem[] => (file.navFavoritos[host] ?? []).map((f) => ({ ...f }));
+/** Adiciona (ou, com a mesma url, só atualiza o título se vier um) e devolve a lista; limite MAX_FAVORITOS. */
+export function addNavFavorito(host: string, f: { titulo: string; url: string }): NavFavoritoItem[] {
+  if (!isValidHost(host)) return [];
+  const cur = navFavoritos(host);
+  const i = cur.findIndex((x) => x.url === f.url);
+  const titulo = f.titulo.replace(/\s+/g, " ").trim().slice(0, 60);
+  if (i >= 0) { if (titulo !== "") cur[i] = { ...cur[i]!, titulo }; }
+  else cur.push({ id: `f${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, titulo, url: f.url });
+  const next = normalizeFavoritos(cur);
+  file.navFavoritos = { ...file.navFavoritos, [host]: next };
+  persist();
+  return next.map((x) => ({ ...x }));
+}
+/** Remove por id ou por url; devolve a lista. */
+export function removeNavFavorito(host: string, idOrUrl: string): NavFavoritoItem[] {
+  if (!isValidHost(host)) return [];
+  const next = navFavoritos(host).filter((x) => x.id !== idOrUrl && x.url !== idOrUrl);
+  const all = { ...file.navFavoritos }; if (next.length === 0) delete all[host]; else all[host] = next;
+  file.navFavoritos = all;
+  persist();
+  return next;
 }
 /** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
 export function setPodHost(host: string, isPod: boolean): void {

@@ -39,6 +39,8 @@ export interface SettingsFile {
   podHosts: string[];
   /** Máquinas em que "🤖 agente pode usar" o Navegador ficou ligado (religa sozinho ao abrir a aba). */
   navAgentHosts: string[];
+  /** Barra de favoritos do Navegador, por máquina (a pessoa ou o agente adicionam). */
+  navFavoritos: Record<string, NavFavoritoItem[]>;
   /** Onboarding guiado da primeira vez: pendente até a pessoa concluir ou pular. */
   onboarding: Onboarding;
   /** Abrir a janela direto (padrão) ou com a abertura animada toda vez; caixinha no seletor. */
@@ -48,6 +50,30 @@ export interface SettingsFile {
 }
 
 export type Onboarding = "pending" | "done" | "skipped";
+export interface NavFavoritoItem { id: string; titulo: string; url: string }
+export const MAX_FAVORITOS = 50;
+/** Favoritos válidos de uma máquina: url http(s), título curto, ids únicos, url repetida fica com a primeira. */
+function normalizeNavFavoritos(v: unknown): Record<string, NavFavoritoItem[]> {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, NavFavoritoItem[]> = {};
+  for (const [host, list] of Object.entries(v as Record<string, unknown>)) { if (!isValidHost(host)) continue; const n = normalizeFavoritos(list); if (n.length > 0) out[host] = n; }
+  return out;
+}
+export function normalizeFavoritos(v: unknown): NavFavoritoItem[] {
+  if (!Array.isArray(v)) return [];
+  const out: NavFavoritoItem[] = []; const urls = new Set<string>(); const ids = new Set<string>();
+  for (const it of v as unknown[]) {
+    if (it === null || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    if (typeof o["url"] !== "string" || !/^https?:\/\/\S+$/i.test(o["url"]) || o["url"].length > 2048) continue;
+    const url = o["url"]; if (urls.has(url)) continue;
+    const id = typeof o["id"] === "string" && /^[A-Za-z0-9_-]{1,32}$/.test(o["id"]) && !ids.has(o["id"]) ? o["id"] : `f${out.length + 1}-${Math.random().toString(36).slice(2, 8)}`;
+    const titulo = (typeof o["titulo"] === "string" ? o["titulo"] : "").replace(/\s+/g, " ").trim().slice(0, 60);
+    out.push({ id, titulo, url }); urls.add(url); ids.add(id);
+    if (out.length >= MAX_FAVORITOS) break;
+  }
+  return out;
+}
 const ONBOARDINGS: readonly Onboarding[] = ["pending", "done", "skipped"];
 export const isOnboarding = (v: unknown): v is Onboarding => typeof v === "string" && (ONBOARDINGS as readonly string[]).includes(v);
 
@@ -78,7 +104,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, navShortcutUrl: "", windowBounds: {}, podHosts: [], navAgentHosts: [], onboarding: "pending", openDirect: true, hostNames: {},
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, navShortcutUrl: "", windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {},
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -115,6 +141,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     navAgentHosts: Array.isArray(p["navAgentHosts"]) ? [...new Set((p["navAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     hostNames: normalizeHostNames(p["hostNames"]),
+    navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
   };
 }
 

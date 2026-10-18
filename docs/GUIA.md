@@ -1508,6 +1508,21 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   `insertCSS` no webview por documento (`NavTab.cssKeys`, zerado no `did-navigate`, aplicado em `did-navigate` e
   `dom-ready`), depois `dispatchEvent(new Event("resize"))` porque o Gmail mede a tela por JS (sem isso o
   conteúdo não cresce). Preferência em `localStorage.navRecortes` (por recorte, vale para todas as máquinas).
+- Polyfill nos content scripts (18 out): o Electron não dá `chrome.extension` ao mundo isolado dos content
+  scripts; o Streak testa `chrome.extension` para criar a ponte com o background e, sem ela, `_bridge` fica
+  undefined ("reading 'getLocalStorageItem'", "failure to send getExtensions") e ele pede login a cada carga.
+  `patchExtensionFiles` agora prepõe o polyfill (marca v3) a todo `content_scripts[].js` com `world !== "MAIN"`;
+  o polyfill detecta o contexto por `chrome.runtime.id` e só cria `chrome.extension`. Depois da recarga da
+  extensão o `extension-ready` não repete: `workerHold` é chamado direto após `loadExtension`. Verificado: zero
+  erros no console do Gmail, Streak sem pedir login.
+- Barra de favoritos do Navegador (18 out): lista **por máquina** em `settings.navFavoritos` (normalizada:
+  url http(s), título ≤ 60, url repetida só atualiza título, 50 no máximo); IPC `browser:favorite-add/remove`
+  e evento `browser:favorites` para todas as janelas da máquina; o agente usa `/favoritos`, `/favoritar
+  {url, titulo?}` (sem título: o da aba nessa url, senão o host) e `/desfavoritar {id|url}` → ferramentas MCP
+  `favoritos/favoritar/desfavoritar` (resumo ⭐ em tool-events). UI: linha `.nav-favs` sob a barra (clique abre
+  na aba atual, Cmd+clique em aba nova, × tira), ☆/★ na barra guarda/tira a página aberta, **Cmd+Shift+F**
+  mostra/esconde a barra (também vindo do webview; preferência `localStorage.navFavsShown`), paleta "barra de
+  favoritos". Verificado na agente-box: `favoritar` pelo socket e `favoritos` pelo MCP na VM.
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
   Tutoriais, Acervo, guia, chat do WhatsApp), como o terminal dividido do Cursor. `.content` vira grid de 3
   colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de

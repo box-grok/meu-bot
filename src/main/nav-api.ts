@@ -8,13 +8,14 @@
  * API (JSON): GET /abas · POST /abrir {url, nova?} · POST /ler {aba?} · POST /clicar {aba?, n?|texto?|seletor?}
  * · POST /digitar {aba?, n?|seletor?, texto, enter?} · POST /tecla {aba?, tecla} · POST /print {aba?}
  * · POST /voltar|/avancar|/recarregar {aba?} · POST /js {aba?, codigo}
+ * · /favoritos · POST /favoritar {url, titulo?} · POST /desfavoritar {id?|url?}  (barra de favoritos da máquina)
  */
 import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { WebContents } from "electron";
-import { browserActiveWcId, browserAsk, browserConsole, browserExtensions, browserServiceWorkers, browserWebContents } from "./browser";
+import { browserActiveWcId, browserAsk, browserConsole, browserExtensions, browserFavoriteAdd, browserFavoriteRemove, browserFavorites, browserServiceWorkers, browserWebContents } from "./browser";
 import { log } from "./tunnel";
 
 const sanit = (h: string): string => h.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -59,7 +60,7 @@ const READ_SCRIPT = `(() => {
 })()`;
 const pick = (n: number): string => `(() => { const e = (window.__meuBotEls || [])[${n - 1}]; if (!e) throw new Error("elemento ${n} não existe: use 'ler' de novo"); return e; })()`;
 
-interface Req { aba?: unknown; url?: unknown; nova?: unknown; n?: unknown; texto?: unknown; seletor?: unknown; enter?: unknown; tecla?: unknown; codigo?: unknown }
+interface Req { aba?: unknown; url?: unknown; nova?: unknown; n?: unknown; texto?: unknown; seletor?: unknown; enter?: unknown; tecla?: unknown; codigo?: unknown; titulo?: unknown; id?: unknown }
 
 function tabsOf(host: string): WebContents[] { return browserWebContents(host); }
 function tabInfo(wc: WebContents, activeId: number | null): { aba: number; url: string; titulo: string; ativa: boolean; carregando: boolean } {
@@ -136,6 +137,19 @@ async function act(host: string, route: string, b: Req): Promise<unknown> {
     case "/avancar": { const wc = resolveTab(host, b.aba); if (wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward(); await settle(300); await waitLoad(wc); return tabInfo(wc, active); }
     case "/recarregar": { const wc = resolveTab(host, b.aba); wc.reload(); await settle(300); await waitLoad(wc); return tabInfo(wc, active); }
     case "/js": { const wc = resolveTab(host, b.aba); if (typeof b.codigo !== "string") throw new Error("falta codigo"); const r: unknown = await wc.executeJavaScript(b.codigo, true); return { resultado: typeof r === "string" ? r.slice(0, 8000) : JSON.stringify(r)?.slice(0, 8000) ?? null }; }
+    case "/favoritos": return { favoritos: browserFavorites(host) };
+    case "/favoritar": {
+      if (typeof b.url !== "string" || !/^https?:\/\//i.test(b.url)) throw new Error("url precisa começar com http:// ou https://");
+      // Sem título: o da aba que está nessa url, senão o host.
+      let titulo = typeof b.titulo === "string" ? b.titulo : "";
+      if (titulo.trim() === "") { const t = tabsOf(host).find((w) => w.getURL() === b.url); titulo = t?.getTitle() ?? ""; if (titulo === "") { try { titulo = new URL(b.url).hostname; } catch { /* fica vazio */ } } }
+      return { favoritos: browserFavoriteAdd(host, { titulo, url: b.url }) };
+    }
+    case "/desfavoritar": {
+      const key = typeof b.id === "string" ? b.id : typeof b.url === "string" ? b.url : "";
+      if (key === "") throw new Error("informe id ou url do favorito (veja 'favoritos')");
+      return { favoritos: browserFavoriteRemove(host, key) };
+    }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });
   }
 }

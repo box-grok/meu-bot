@@ -34,6 +34,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:key",
   "browser:ask",
   "browser:agent",
+  "browser:favorites",
 ];
 
 /** Os dois apps. */
@@ -119,6 +120,8 @@ const clientApi: MeuBotClientApi = {
   browserActive: (wcId: number) => ipcRenderer.send("browser:active", { wcId }),
   browserRemoveExtension: (extId: string) => ipcRenderer.invoke("browser:remove-extension", { extId }),
   browserRequestPro: () => ipcRenderer.invoke("browser:request-pro", {}),
+  browserFavoriteAdd: (f: { titulo: string; url: string }) => ipcRenderer.invoke("browser:favorite-add", f),
+  browserFavoriteRemove: (id: string) => ipcRenderer.invoke("browser:favorite-remove", { id }),
   guardaInstalled: () => ipcRenderer.invoke("guarda:status", {}),
   navegadorInstalled: () => ipcRenderer.invoke("navegador:status", {}),
   installNavegador: () => ipcRenderer.invoke("navegador:install", {}),

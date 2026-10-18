@@ -791,3 +791,14 @@ body.topbar-hidden .topbar { display: none; }
 .nav-cut { font-size: 14px; }
 .nav-cut.off { opacity: .4; text-decoration: line-through; }
 .nav-cut.off:hover { opacity: .8; }
+/* Barra de favoritos do Navegador (Cmd+Shift+F mostra/esconde). */
+.nav-favs { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; scrollbar-width: none; }
+.nav-favs[hidden] { display: none; }
+.nav-fav { display: inline-flex; align-items: center; gap: 4px; max-width: 220px; padding: 2px 4px 2px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--fg); font: 12px/1.4 inherit; cursor: pointer; white-space: nowrap; }
+.nav-fav:hover { border-color: var(--line); background: var(--card); }
+.nav-fav-label { overflow: hidden; text-overflow: ellipsis; }
+.nav-fav-x { color: var(--muted); font-size: 13px; line-height: 1; padding: 0 3px; border-radius: 4px; visibility: hidden; }
+.nav-fav:hover .nav-fav-x { visibility: visible; }
+.nav-fav-x:hover { color: var(--fg); background: var(--line); }
+.nav-favs-hint { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.nav-star.on { color: #e8b400; }

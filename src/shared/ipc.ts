@@ -678,7 +678,9 @@ export interface NetState { online: boolean | null; checking: boolean; since: nu
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
 /** `icon` = data URL do ícone (para o botão na barra, como no Chrome/Rambox); `popup` = url chrome-extension:// do popup, se houver. */
 export interface BrowserExtensionInfo { id: string; name: string; version: string; icon: string | null; popup: string | null }
-export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState }
+export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState; favoritos: NavFavorito[] }
+/** Favorito da barra do Navegador (por máquina; o agente também adiciona/remove pelas ações). */
+export interface NavFavorito { id: string; titulo: string; url: string }
 /** "Agente pode usar" o Navegador: ligado? o túnel reverso está de pé? em que porta da máquina? */
 export interface BrowserAgentState { on: boolean; state: "up" | "down" | "connecting"; port: number | null }
 
@@ -737,6 +739,8 @@ export interface MainEvents {
   "browser:ask": { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number };
   /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */
   "browser:agent": BrowserAgentState;
+  /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */
+  "browser:favorites": NavFavorito[];
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -876,6 +880,9 @@ export interface MeuBotClientApi {
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
   /** Free pediu o Pro: fica no registro do suporte da máquina. */
   browserRequestPro(): Promise<void>;
+  /** Barra de favoritos do Navegador (por máquina): adicionar (url repetida só atualiza o título) e remover por id. */
+  browserFavoriteAdd(f: { titulo: string; url: string }): Promise<NavFavorito[]>;
+  browserFavoriteRemove(id: string): Promise<NavFavorito[]>;
   guardaInstalled(): Promise<boolean | null>;
   /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
   navegadorInstalled(): Promise<boolean | null>;

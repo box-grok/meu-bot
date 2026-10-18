@@ -13,9 +13,9 @@ import path from "node:path";
 import { installChromeWebStore, installExtension, uninstallExtension } from "electron-chrome-web-store";
 import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
-import { isNavAgentHost, setNavAgentHost } from "./settings";
+import { addNavFavorito, isNavAgentHost, navFavoritos, removeNavFavorito, setNavAgentHost } from "./settings";
 import type { BrowserAgentState } from "../shared/ipc";
-import type { BrowserExtensionInfo, BrowserOpenInfo } from "../shared/ipc";
+import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito } from "../shared/ipc";
 
 const PART_PREFIX = "persist:navegador-";
 const sanit = (host: string): string => host.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -143,7 +143,7 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
       // Polyfill gravado nos arquivos da extensão (service worker e páginas): o preload de service worker não alcança o
       // contexto da extensão. Idempotente (marcador); depois de corrigir, recarrega a extensão uma vez.
       if (patchExtensionFiles(host, ext)) {
-        void (async () => { try { await ses.removeExtension(ext.id); await ses.loadExtension(ext.path, { allowFileAccess: false }); log(`[navegador ${host}] extensão ${ext.name} recarregada com o polyfill`); } catch (e) { log(`[navegador ${host}] recarga da extensão falhou: ${e instanceof Error ? e.message : String(e)}`); } })();
+        void (async () => { try { await ses.removeExtension(ext.id); const again = await ses.loadExtension(ext.path, { allowFileAccess: false }); log(`[navegador ${host}] extensão ${ext.name} recarregada com o polyfill`); workerHold(ses, host, again); /* o extension-ready não repete após a recarga */ } catch (e) { log(`[navegador ${host}] recarga da extensão falhou: ${e instanceof Error ? e.message : String(e)}`); } })();
       }
     });
     ses.on("extension-unloaded", (_e, ext) => { log(`[navegador ${host}] extensão descarregada: ${ext.id}`); workerForget(host, ext.id); publishExtensions(host); });
@@ -199,7 +199,19 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   log(`[navegador ${host}] aberto na janela ${win.id}`);
   // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
   if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
-  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host) };
+  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host), favoritos: navFavoritos(host) };
+}
+/** Barra de favoritos (por máquina): a pessoa e o agente mexem; toda janela da máquina recebe a lista nova. */
+function publishFavorites(host: string, list: NavFavorito[]): void {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:favorites", list);
+}
+export const browserFavorites = (host: string): NavFavorito[] => navFavoritos(host);
+export function browserFavoriteAdd(host: string, f: { titulo: string; url: string }): NavFavorito[] {
+  if (!/^https?:\/\/\S+$/i.test(f.url) || f.url.length > 2048) throw new Error("url do favorito precisa começar com http:// ou https://");
+  const list = addNavFavorito(host, f); publishFavorites(host, list); log(`[navegador ${host}] favorito: ${f.url.slice(0, 80)}`); return list;
+}
+export function browserFavoriteRemove(host: string, idOrUrl: string): NavFavorito[] {
+  const list = removeNavFavorito(host, idOrUrl); publishFavorites(host, list); return list;
 }
 export const browserExtensions = (host: string): BrowserExtensionInfo[] => {
   const ses = session.fromPartition(partitionOf(host));
@@ -300,7 +312,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     wc.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.meta) return;
       const k = input.key.toLowerCase();
-      if (["k", "j", "n", "b", "w", "t", "l", "[", "]", "\\"].includes(k) || (input.shift && (k === "b" || k === "n"))) {
+      if (["k", "j", "n", "b", "w", "t", "l", "[", "]", "\\"].includes(k) || (input.shift && (k === "b" || k === "n" || k === "f"))) {
         event.preventDefault();
         if (!win.isDestroyed()) { win.webContents.focus(); win.webContents.send("browser:key", { key: k, shift: input.shift }); }
       }

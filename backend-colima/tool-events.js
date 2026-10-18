@@ -46,6 +46,9 @@ function navegadorSummary(tool, i) {
     case 'recarregar': return '🌐 recarregou';
     case 'abas': return '🌐 listou as abas';
     case 'js': return '🌐 rodou um script na página';
+    case 'favoritos': return '⭐ listou os favoritos';
+    case 'favoritar': return `⭐ favoritou ${s('url') || ''}`;
+    case 'desfavoritar': return `⭐ tirou dos favoritos ${s('url') || s('id') || ''}`;
     default: return `🌐 ${tool}`;
   }
 }

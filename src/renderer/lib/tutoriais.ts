@@ -385,7 +385,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "abrir", title: "Abrir o Navegador e entrar num site", target: "none", body: "navegador-open",
-        text: "Abra a aba Navegador, digite um endereço e navegue. Cookies e logins ficam guardados só nesta máquina; \"abrir no Mac\" leva a página para o seu navegador de sempre.",
+        text: "Abra a aba Navegador, digite um endereço e navegue. Cookies e logins ficam guardados só nesta máquina; \"abrir no Mac\" leva a página para o seu navegador de sempre. ☆ guarda a página na barra de favoritos (Cmd+Shift+F mostra ou esconde a barra); o agente também pode favoritar um link para você.",
         done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
       },
       {
