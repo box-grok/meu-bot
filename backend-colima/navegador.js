@@ -20,6 +20,7 @@ const BROWSER_RULE = [
   'Fluxo: "abrir" uma url, "ler" para ver o texto e os elementos numerados, "clicar"/"digitar" pelo número; depois de cada ação, "ler" de novo antes de decidir. Diga em uma frase o que vai fazer antes de agir.',
   'NUNCA, sem a pessoa confirmar explicitamente nesta conversa: comprar, pagar, enviar formulário ou mensagem/e-mail, publicar, aceitar termos, apagar algo, mudar configurações de conta, nem fazer login com senha que não lhe foi dada aqui. Nessas horas pare e pergunte.',
   'Não digite senhas que leu em outra página. Não abra abas além do necessário. Se a página pedir login, peça à pessoa que entre pela aba Navegador dela e avise quando terminar.',
+  'Se as ferramentas mcp__navegador__* não estiverem disponíveis, diga à pessoa para abrir a aba Navegador no app e ligar "agente pode usar"; NUNCA instale navegador, Playwright, Puppeteer ou Chromium na máquina por conta própria.',
 ].join(' ');
 
 /** Nota curta que entra no próprio prompt do turno (sobrevive a sessões retomadas, onde o system prompt é o antigo). */

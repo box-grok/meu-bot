@@ -10,13 +10,14 @@ mkdir -p "$D"
 cp "$HERE/navegador-mcp.mjs" "$D/navegador-mcp.mjs"
 chmod 644 "$D/navegador-mcp.mjs"
 echo "navegador-mcp.mjs em $D"
-RULE='<!-- meu-bot:navegador v1 inicio -->
+RULE='<!-- meu-bot:navegador v2 inicio -->
 ## Navegador da pessoa (meu-bot)
 Quando as ferramentas mcp__navegador__* estiverem disponíveis, você pode usar o navegador que a pessoa vê na janela do meu-bot dela.
 - Fluxo: abrir → ler → clicar/digitar pelo número → ler de novo. Diga em uma frase o que vai fazer antes de agir.
 - NUNCA, sem a pessoa confirmar nesta conversa: comprar, pagar, enviar formulário/mensagem/e-mail, publicar, aceitar termos, apagar, mudar configurações de conta, nem fazer login com senha que não lhe foi dada aqui. Pare e pergunte.
 - Se a página pedir login, peça à pessoa que entre pela aba Navegador e avise quando terminar.
-<!-- meu-bot:navegador v1 fim -->'
+- Sem as ferramentas mcp__navegador__*: peça à pessoa para abrir a aba Navegador no app e ligar "agente pode usar". NUNCA instale navegador, Playwright, Puppeteer ou Chromium na máquina por conta própria.
+<!-- meu-bot:navegador v2 fim -->'
 for W in "$HOME/agent-workspace" "$HOME/chat-workspace"; do
   mkdir -p "$W"
   F="$W/CLAUDE.md"

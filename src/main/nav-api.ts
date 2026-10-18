@@ -14,7 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { WebContents } from "electron";
-import { browserActiveWcId, browserAsk, browserWebContents } from "./browser";
+import { browserActiveWcId, browserAsk, browserConsole, browserExtensions, browserServiceWorkers, browserWebContents } from "./browser";
 import { log } from "./tunnel";
 
 const sanit = (h: string): string => h.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -84,6 +84,10 @@ async function act(host: string, route: string, b: Req): Promise<unknown> {
   const active = browserActiveWcId(host);
   switch (route) {
     case "/abas": return { abas: tabsOf(host).map((w) => tabInfo(w, active)) };
+    case "/diag": {
+      const wc = tabsOf(host).length === 0 ? null : resolveTab(host, b.aba);
+      return { extensoes: browserExtensions(host).map((e) => ({ id: e.id, nome: e.name, versao: e.version, popup: e.popup })), service_workers: browserServiceWorkers(host), console: wc === null ? [] : browserConsole(wc.id), aba: wc === null ? null : tabInfo(wc, active) };
+    }
     case "/abrir": {
       if (typeof b.url !== "string" || !/^https?:\/\//i.test(b.url)) throw new Error("url precisa começar com http:// ou https://");
       let wc: WebContents;

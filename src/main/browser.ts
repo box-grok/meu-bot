@@ -10,7 +10,7 @@
 import { BrowserWindow, app, session, shell, type Session, type WebContents } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { installChromeWebStore, uninstallExtension } from "electron-chrome-web-store";
+import { installChromeWebStore, installExtension, uninstallExtension } from "electron-chrome-web-store";
 import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
 import { isNavAgentHost, setNavAgentHost } from "./settings";
@@ -24,6 +24,55 @@ const extensionsDir = (host: string): string => path.join(app.getPath("userData"
 const hostOfPartition = (part: string): string | null => (part.startsWith(PART_PREFIX) ? part.slice(PART_PREFIX.length) : null);
 
 const readySessions = new Map<string, Promise<void>>();
+const POLYFILL_MARK = "/*meu-bot-polyfill v2*/";
+const POLYFILL_END = "/*meu-bot-polyfill:fim*/";
+/** O polyfill como script puro: o tsc emite cabeçalho CommonJS (`exports`), que não existe num service worker. */
+const polyfillSource = (): string => {
+  try {
+    const raw = fs.readFileSync(path.join(__dirname, "..", "preload", "ext-polyfill.js"), "utf8");
+    const body = raw.split("\n").filter((l) => !/^Object\.defineProperty\(exports,/.test(l) && !/^exports\./.test(l) && !/^module\.exports/.test(l)).join("\n");
+    return `${POLYFILL_MARK}\n${body}\n${POLYFILL_END}\n`;
+  } catch { return ""; }
+};
+/** Tira um polyfill antigo (com marcador de fim) ou um da versão 1 (sem fim: o texto era o atual menos o cabeçalho). */
+function stripOldPolyfill(cur: string): string | null {
+  if (cur.startsWith(POLYFILL_MARK)) return null; // já é a versão atual
+  const end = cur.indexOf(POLYFILL_END);
+  if (cur.startsWith("/*meu-bot-polyfill") && end >= 0) return cur.slice(end + POLYFILL_END.length).replace(/^\n/, "");
+  return cur.startsWith("/*meu-bot-polyfill") ? "" : cur; // v1 sem fim: não dá para separar; pede reinstalação
+}
+/**
+ * Prepara os arquivos de uma extensão para rodar no Electron: o polyfill entra no começo do service worker e, por
+ * um <script> próprio, nas páginas (popup, opções). Devolve true se mudou algo (então a extensão precisa recarregar).
+ */
+function patchExtensionFiles(host: string, ext: Electron.Extension): boolean {
+  const src = polyfillSource(); if (src === "") return false;
+  const m = ext.manifest as { background?: { service_worker?: string; scripts?: string[] }; action?: { default_popup?: string }; options_page?: string; options_ui?: { page?: string } };
+  let changed = false;
+  const inDir = (rel: string): string | null => { const f = path.resolve(ext.path, rel.replace(/^\//, "")); return f.startsWith(path.resolve(ext.path) + path.sep) ? f : null; };
+  const sw = typeof m.background?.service_worker === "string" ? inDir(m.background.service_worker) : null;
+  if (sw !== null && fs.existsSync(sw)) {
+    const cur = fs.readFileSync(sw, "utf8");
+    const base = stripOldPolyfill(cur);
+    if (base === "") { log(`[navegador ${host}] ${ext.name}: polyfill antigo sem marcador de fim; reinstalando a extensão`); void reinstallExtension(host, ext.id); return false; }
+    if (base !== null) { fs.writeFileSync(sw, `${src}${base}`); changed = true; }
+  }
+  const pages = [m.action?.default_popup, m.options_page, m.options_ui?.page].filter((p): p is string => typeof p === "string" && p !== "");
+  if (pages.length > 0) {
+    const jsFile = path.join(ext.path, "meu-bot-polyfill.js");
+    if (!fs.existsSync(jsFile) || !fs.readFileSync(jsFile, "utf8").startsWith(POLYFILL_MARK)) { fs.writeFileSync(jsFile, src); changed = true; }
+    for (const p of pages) {
+      const f = inDir(p); if (f === null || !fs.existsSync(f)) continue;
+      const html = fs.readFileSync(f, "utf8");
+      if (html.includes("meu-bot-polyfill.js")) continue;
+      const tag = `<script src="/meu-bot-polyfill.js"></script>`;
+      const next = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (h) => `${h}${tag}`) : `${tag}${html}`;
+      fs.writeFileSync(f, next); changed = true;
+    }
+  }
+  if (changed) log(`[navegador ${host}] polyfill gravado na extensão ${ext.name} ${ext.version}`);
+  return changed;
+}
 /** Sessão da máquina pronta (uma vez por sessão): permissões, UA e Web Store. */
 function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
   const part = partitionOf(host);
@@ -36,6 +85,10 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     ses.on("will-download", (_e, item) => { log(`[navegador ${host}] download: ${item.getFilename()}`); });
     // Sem a assinatura do Electron no User-Agent: o login do Google e outros tratam app embutido como inseguro.
     ses.setUserAgent(ses.getUserAgent().replace(/ Electron\/\S+/, "").replace(/ meu-bot[^ ]*\/\S+/, ""));
+    // Polyfill das APIs chrome.* que o Electron não tem, no service worker e nas páginas das extensões (ver ext-polyfill.ts).
+    const polyfill = path.join(__dirname, "..", "preload", "ext-polyfill.js");
+    try { ses.registerPreloadScript({ type: "service-worker", filePath: polyfill }); ses.registerPreloadScript({ type: "frame", filePath: polyfill }); }
+    catch (e) { log(`[navegador ${host}] polyfill de extensões não registrado: ${e instanceof Error ? e.message : String(e)}`); }
     ready = installChromeWebStore({
       session: ses,
       extensionsPath: extensionsDir(host),
@@ -45,9 +98,28 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     }).then(() => { log(`[navegador ${host}] sessão pronta (${ses.getAllExtensions().length} extensões)`); })
       .catch((e: unknown) => { log(`[navegador ${host}] web store não ligou: ${e instanceof Error ? e.message : String(e)}`); });
     readySessions.set(part, ready);
-    ses.on("extension-loaded", (_e, ext) => { log(`[navegador ${host}] extensão carregada: ${ext.name} ${ext.version} (${ext.id}); manifest v${(ext.manifest as { manifest_version?: number }).manifest_version ?? "?"}`); publishExtensions(host); });
+    ses.on("extension-loaded", (_e, ext) => {
+      log(`[navegador ${host}] extensão carregada: ${ext.name} ${ext.version} (${ext.id}); manifest v${(ext.manifest as { manifest_version?: number }).manifest_version ?? "?"}`);
+      publishExtensions(host);
+      // Polyfill gravado nos arquivos da extensão (service worker e páginas): o preload de service worker não alcança o
+      // contexto da extensão. Idempotente (marcador); depois de corrigir, recarrega a extensão uma vez.
+      if (patchExtensionFiles(host, ext)) {
+        void (async () => { try { await ses.removeExtension(ext.id); await ses.loadExtension(ext.path, { allowFileAccess: false }); log(`[navegador ${host}] extensão ${ext.name} recarregada com o polyfill`); } catch (e) { log(`[navegador ${host}] recarga da extensão falhou: ${e instanceof Error ? e.message : String(e)}`); } })();
+      }
+    });
     ses.on("extension-unloaded", (_e, ext) => { log(`[navegador ${host}] extensão descarregada: ${ext.id}`); publishExtensions(host); });
-    ses.on("extension-ready", (_e, ext) => { log(`[navegador ${host}] extensão pronta: ${ext.id}`); });
+    ses.on("extension-ready", (_e, ext) => {
+      log(`[navegador ${host}] extensão pronta: ${ext.id}`);
+      // MV3: o Electron não acorda o service worker da extensão sozinho; sem ele, extensões como o Streak não
+      // respondem ao content script. Acordar explicitamente (Electron ≥ 35) e registrar o resultado.
+      const bg = (ext.manifest as { background?: { service_worker?: string } }).background?.service_worker;
+      if (typeof bg === "string") {
+        void ses.serviceWorkers.startWorkerForScope(ext.url).then((w) => { log(`[navegador ${host}] service worker da extensão ${ext.name} acordado (${w.scriptURL})`); })
+          .catch((e: unknown) => { log(`[navegador ${host}] service worker da extensão ${ext.name} não subiu: ${e instanceof Error ? e.message : String(e)}`); });
+      }
+    });
+    // Erros dos service workers das extensões vão para o log (é onde um "declarativeNetRequest is undefined" apareceria).
+    ses.serviceWorkers.on("console-message", (_ev, d) => { if (d.level >= 2 && /^chrome-extension:/.test(d.sourceUrl)) log(`[navegador ${host}] sw ${d.sourceUrl.slice(0, 70)}:${d.lineNumber}: ${d.message.slice(0, 300)}`); });
   }
   return { ses, ready };
 }
@@ -99,11 +171,25 @@ export async function browserRemoveExtension(host: string, extId: string): Promi
   log(`[navegador ${host}] extensão removida: ${extId}`);
   return extensionsOf(ses);
 }
+/** Baixa de novo a extensão da Web Store (arquivos limpos) e carrega; o `extension-loaded` aplica o polyfill. */
+async function reinstallExtension(host: string, extId: string): Promise<void> {
+  const ses = session.fromPartition(partitionOf(host));
+  try { await uninstallExtension(extId, { session: ses, extensionsPath: extensionsDir(host) }); } catch { /* pode já não estar carregada */ }
+  try { await installExtension(extId, { session: ses, extensionsPath: extensionsDir(host) }); log(`[navegador ${host}] extensão ${extId} reinstalada`); }
+  catch (e) { log(`[navegador ${host}] reinstalação da extensão ${extId} falhou: ${e instanceof Error ? e.message : String(e)}`); }
+}
 export function browserForget(winId: number): void {
   const host = windowHosts.get(winId);
   windowHosts.delete(winId);
-  // Última janela do host fechou: o agente perde o navegador (socket e -R caem).
-  if (host !== undefined && ![...windowHosts.values()].includes(host)) browserAgent(host, false);
+  // Última janela do host fechou: socket e -R caem, mas a escolha "agente pode usar" fica lembrada para a próxima abertura.
+  if (host !== undefined && ![...windowHosts.values()].includes(host)) agentStop(host);
+}
+function agentStop(host: string): void {
+  if (!agentOn.has(host)) return;
+  agentOn.delete(host);
+  setReverseWanted(host, null);
+  stopNavApi(host);
+  tellAgent(host, { on: false, state: "down", port: null });
 }
 
 // ---- "Agente pode usar": o serviço de ações sobe num socket 0700 e o túnel reverso o leva à máquina. O backend
@@ -121,13 +207,7 @@ export function browserAgent(host: string, on: boolean): void {
     agentOn.add(host);
     tellAgent(host, { on: true, state: "connecting", port: null });
     void startNavApi(host).then((sock) => setReverseWanted(host, sock)).catch((e: unknown) => { log(`[navegador ${host}] serviço do agente não subiu: ${e instanceof Error ? e.message : String(e)}`); tellAgent(host, { on: true, state: "down", port: null }); });
-  } else {
-    if (!agentOn.has(host)) return;
-    agentOn.delete(host);
-    setReverseWanted(host, null);
-    stopNavApi(host);
-    tellAgent(host, { on: false, state: "down", port: null });
-  }
+  } else agentStop(host);
 }
 export const browserAgentInfo = (host: string): BrowserAgentState => agentState.get(host) ?? { on: false, state: "down", port: null };
 /** Porta remota a mandar ao backend neste turno (só com o agente ligado e o -R de pé). */
@@ -140,6 +220,11 @@ export const browserSetActive = (host: string, wcId: number): void => { activeBy
 export const browserActiveWcId = (host: string): number | null => activeByHost.get(host) ?? null;
 /** Os webContents vivos dos webviews do navegador, por host (as ações do agente só alcançam estes). */
 const views = new Map<number, { wc: WebContents; host: string; winId: number }>();
+/** Últimas mensagens de console (avisos/erros) de cada webview: diagnóstico de extensões que não desenham. */
+const consoleLog = new Map<number, string[]>();
+export const browserConsole = (wcId: number): string[] => consoleLog.get(wcId) ?? [];
+/** Service workers rodando na sessão (os das extensões MV3 aparecem aqui). */
+export const browserServiceWorkers = (host: string): string[] => { try { return Object.values(session.fromPartition(partitionOf(host)).serviceWorkers.getAllRunning()).map((w) => `${w.scope} ← ${w.scriptUrl}`); } catch { return []; } };
 export const browserWebContents = (host: string): WebContents[] => [...views.values()].filter((v) => v.host === host && !v.wc.isDestroyed()).map((v) => v.wc);
 /** Pede ao renderer da janela do host uma ação de aba (o DOM é dele): nova aba, ativar ou fechar pelo id do webContents. */
 export function browserAsk(host: string, msg: { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number }): boolean {
@@ -155,8 +240,17 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     const host = windowHosts.get(win.id);
     if (host === undefined) return;
     views.set(wc.id, { wc, host, winId: win.id });
-    wc.on("destroyed", () => { views.delete(wc.id); });
-    wc.setWindowOpenHandler(({ url }) => {
+    wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); });
+    wc.on("console-message", (ev) => {
+      if (ev.level !== "warning" && ev.level !== "error") return;
+      const list = consoleLog.get(wc.id) ?? [];
+      list.push(`[${ev.level}] ${ev.message.slice(0, 400)}${ev.sourceId ? ` (${ev.sourceId.slice(-80)}:${ev.lineNumber})` : ""}`);
+      consoleLog.set(wc.id, list.slice(-60));
+    });
+    wc.setWindowOpenHandler(({ url, disposition }) => {
+      // window.open com tamanho (login do Google, OAuth, "entrar com…") precisa de janela de verdade: window.opener e
+      // postMessage de volta ao site. Link comum em _blank vira aba interna.
+      if (disposition === "new-window" && /^(https?:|about:blank)/.test(url)) return { action: "allow", overrideBrowserWindowOptions: { width: 540, height: 720, autoHideMenuBar: true, title: "Navegador · meu-bot" } };
       if (/^https?:\/\//.test(url)) { if (!win.isDestroyed()) win.webContents.send("browser:open-url", { url }); }
       else if (/^(mailto|tel):/.test(url)) void shell.openExternal(url);
       return { action: "deny" };

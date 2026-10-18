@@ -1493,6 +1493,23 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   "Extensões no Navegador" (exemplo: Streak CRM for Gmail; o passo "Usar" exige login no Google dentro da
   aba). Verificado: backend novo na agente-box (requer `licenca.js` ao lado: copiar todos os .js), MCP responde
   `tools/list`.
+- Extensões MV3 no Navegador (18 out): o Streak não desenhava porque o service worker dele morria na primeira
+  linha (`chrome.permissions.onAdded`: o Electron não tem `chrome.permissions`, `declarativeNetRequest`,
+  `windows`, `alarms`…). `registerPreloadScript({type:"service-worker"})` NÃO alcança o contexto da extensão
+  (testado: o marcador nunca apareceu). O que funciona: `patchExtensionFiles` (browser.ts) grava
+  `src/preload/ext-polyfill.ts` (como script puro: o tsc emite cabeçalho CommonJS e `exports` não existe no
+  worker; `polyfillSource` tira essas linhas) no começo do service worker e, por `<script src="/meu-bot-
+  polyfill.js">`, nas páginas (popup/opções), com marcadores de início/fim versionados; depois recarrega a
+  extensão uma vez (`removeExtension` + `loadExtension`). Versão sem marcador de fim → `reinstallExtension`
+  (baixa de novo da Web Store). Resultado: o service worker do Streak roda, o pipeline aparece no Gmail dentro
+  da aba (print em 18 out); sobram erros de `BackgroundPageCommunicator` (local storage/pixel tracker via
+  background) sem efeito visível. Popups `window.open` com tamanho (OAuth do Google) viram janela de verdade
+  (`action: "allow"`), senão `window.opener`/postMessage quebram; `_blank` comum vira aba interna. Diagnóstico:
+  `POST /diag` no socket de ações (extensões, service workers, console da aba) e o log `sw chrome-extension://…`.
+  Incidente: sem as ferramentas (interruptor desligado), o agente em modo bypass rodou `sudo npx playwright
+  install` na agente-box; a regra v2 (navegador.js + CLAUDE.md) proíbe instalar navegador por conta própria.
+  O interruptor "agente pode usar" agora é lembrado por máquina (`navAgentHosts` em settings) e religa ao
+  abrir a aba; fechar a janela derruba socket e -R sem esquecer a escolha.
 - Resposta em voz no espelho do WhatsApp (18 out): quando o agente responde em áudio, a mensagem do
   assistente no `chat.history` é uma chamada à ferramenta `mcp__openclaw__tts` (`stopReason: "tool_use"`,
   importada do claude-cli sem `runId`) com o `tool_result` "(spoken) …" — o filtro de rascunho descartava e o
