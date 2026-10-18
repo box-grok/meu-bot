@@ -8,7 +8,7 @@
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
-import { approveTailscaleCheck, installAudio, installBackend, installClaudeCode, installStatusLine, probeHost } from "./hostProbe";
+import { approveTailscaleCheck, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { showRelief } from "./relief";
@@ -143,6 +143,13 @@ export const clientPickerSource: PickerSource = {
       if (!fromPicker(event)) throw new Error("origem inválida");
       const host = hostArg(payload);
       const r = await installClaudeCode(host, (line) => progress(host, line));
+      forgetProbe(host);
+      return r;
+    });
+    handleClient("picker:install-guarda", async (event, payload: unknown) => {
+      if (!fromPicker(event)) throw new Error("origem inválida");
+      const host = hostArg(payload);
+      const r = await installGuarda(host, (line) => progress(host, line));
       forgetProbe(host);
       return r;
     });

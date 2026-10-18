@@ -22,7 +22,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 });
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8]);
   assert.deepEqual(TUTORIAIS.slice(0, 6).map((x) => x.id), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
@@ -93,6 +93,18 @@ test("tutorial 5 · Fallback: duas contas → escolher primário → ver a reser
   assert.match(fallbackOrderText("claudecode", chain), /fora da corrente/);
   assert.match(fallbackOrderText("agente", [{ name: "agente", available: true }]), /Sem reserva/);
   assert.equal(fallbackOrderText("agente", chain), "Primário: agente. Reserva: grok-4, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.");
+});
+
+test("tutorial 8 · Guarda do WhatsApp: depois do 2; ativa → entendi", () => {
+  const t8 = byId("guarda-whatsapp");
+  assert.equal(t8.after, "whatsapp-openclaw"); assert.equal(t8.steps[0].body, "guarda-install");
+  const c = (g) => ({ ...emptyContext(), guarda: { installed: g } });
+  assert.equal(guideView(t8, null, emptyFlags(), c(null)).current, 0);
+  assert.equal(guideView(t8, null, emptyFlags(), c(true)).current, 1);
+  assert.equal(guideView(t8, null, { ...emptyFlags(), guardaSeen: true }, c(true)).finished, true);
+  assert.equal(guideView(t8, null, { ...emptyFlags(), guardaSeen: true }, c(false)).current, 0, "tirou a guarda: volta ao passo 1");
+  assert.ok(!visibleTutorials(emptyContext(), () => false).map((x) => x.id).includes("guarda-whatsapp"));
+  assert.ok(visibleTutorials(emptyContext(), (x) => x.id === "whatsapp-openclaw").map((x) => x.id).includes("guarda-whatsapp"));
 });
 
 test("selo da lateral: número = pendências (interruptor desliga); pulso = novidade (não obedece ao interruptor)", () => {

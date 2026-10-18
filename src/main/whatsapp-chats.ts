@@ -88,6 +88,30 @@ function textOf(content: unknown): string {
 }
 
 /**
+ * Resposta em voz: o agente chamou a ferramenta de TTS do OpenClaw (`mcp__openclaw__tts`) com o texto falado, e
+ * o `tool_result` confirma "(spoken) …". É uma resposta entregue (o áudio foi ao WhatsApp) mesmo com
+ * `stopReason: "tool_use"` e sem `runId`: sem isto, o espelho não via a resposta e o balão de "digitando" ficava
+ * preso. Devolve o texto falado, ou null se não é uma resposta em voz.
+ */
+function spokenText(content: unknown): string | null {
+  if (!Array.isArray(content)) return null;
+  const calls = new Map<string, string>();
+  for (const p of content) {
+    if (!isObj(p) || p.type !== "toolcall" || typeof p.name !== "string" || !/(^|_)tts$/.test(p.name)) continue;
+    const args = isObj(p.arguments) ? p.arguments : {};
+    if (typeof args.text === "string" && args.text.trim() !== "") calls.set(typeof p.id === "string" ? p.id : "", args.text.trim());
+  }
+  if (calls.size === 0) return null;
+  for (const p of content) {
+    if (!isObj(p) || p.type !== "tool_result") continue;
+    const id = typeof p.tool_use_id === "string" ? p.tool_use_id : "";
+    const res = textOf(p.content);
+    if (/^\(spoken\)/.test(res) && (calls.has(id) || calls.has(""))) return calls.get(id) ?? calls.get("") ?? null;
+  }
+  return null;
+}
+
+/**
  * Resposta que foi ao WhatsApp. Com o backend claude-cli, a entregue é a da execução (`__openclaw.runId`);
  * as importadas do CLI sem `runId` são o rascunho interno (ferramentas, textos intermediários) e nunca saem
  * do agente. Parada por ferramenta (`stopReason: "tool_use"`) também é meio de turno.
@@ -127,7 +151,10 @@ export function threadFor(number: string, histories: readonly SessionHistory[]):
         if (typeof meta.senderName === "string" && meta.senderName !== "") name = meta.senderName;
         out.push({ role: "contact", text, at });
       } else if (m.role === "assistant") {
-        if (current !== want || text === "" || text === "NO_REPLY" || !isDelivered(m)) continue;
+        if (current !== want) continue;
+        const spoken = spokenText(m.content);
+        if (spoken !== null) { out.push({ role: "agent", text: `🎙️ ${spoken}`, at }); continue; }
+        if (text === "" || text === "NO_REPLY" || !isDelivered(m)) continue;
         out.push({ role: "agent", text, at });
       }
     }

@@ -153,6 +153,24 @@ test("rascunho interno do claude-cli (ferramentas, textos de meio de turno) não
   assert.deepEqual(t.messages.map((m) => [m.role, m.text]), [["contact", "Sim"], ["agent", "Pronto! Agora eu sou a Nunu."], ["agent", "[mídia]"]]);
 });
 
+test("resposta em voz (ferramenta tts do OpenClaw) aparece como fala do agente com 🎙️, mesmo com tool_use e sem runId", () => {
+  const key = "agent:main:whatsapp:direct:+5516992294486";
+  const cli = (content, ts, extra = {}) => ({ role: "assistant", content, timestamp: ts, ...extra });
+  const meta = { stopReason: "tool_use", __openclaw: { importedFrom: "claude-cli", cliSessionId: "c1" } };
+  const history = { messages: [
+    user("+5516992294486", "Agentes Grok", "Eu decidi vou usar o kommo crm", 1),
+    cli([
+      { type: "toolcall", id: "t1", name: "mcp__openclaw__tts", caller: { type: "direct" }, arguments: { text: "Boa decisão, faz sentido ficar no Kommo.", channel: "whatsapp" } },
+      { tool_use_id: "t1", type: "tool_result", content: [{ type: "text", text: "(spoken) Boa decisão, faz sentido ficar no Kommo." }] },
+    ], 2, meta),
+    user("+5516992294486", "Agentes Grok", "Sim", 3),
+    // chamada de tts sem o "(spoken)" de volta: não saiu áudio; continua rascunho
+    cli([{ type: "toolcall", id: "t2", name: "mcp__openclaw__tts", arguments: { text: "falha" } }, { tool_use_id: "t2", type: "tool_result", content: [{ type: "text", text: "Error: tts unavailable" }] }], 4, meta),
+  ] };
+  const t = threadFor("5516992294486", [{ sessionKey: key, history }]);
+  assert.deepEqual(t.messages.map((m) => [m.role, m.text]), [["contact", "Eu decidi vou usar o kommo crm"], ["agent", "🎙️ Boa decisão, faz sentido ficar no Kommo."], ["contact", "Sim"]]);
+});
+
 test("pausa: envio negado na sessão do contato marca paused; a principal não conta", () => {
   const P = "+5521900000005";
   const sessions = { sessions: [

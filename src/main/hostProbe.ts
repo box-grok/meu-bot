@@ -12,6 +12,7 @@ import { app, shell } from "electron";
 import os from "node:os";
 import type { AudioSetup, HostProbe, InstallBackendResult } from "../shared/ipc";
 import { claudeLoggedIn, findClaude, findNode, LOCAL_HOST, localBackendAlive } from "./localBackend";
+import { isValidHost } from "./settings";
 
 const BACKEND_DIR = "~/.hermes/agente-rene/backend-sdk-claude";
 const REMOTE_STAGE = "~/.meu-bot-install";
@@ -85,6 +86,8 @@ function probeScript(port: number): string {
     `grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null && echo login=1 || echo login=0`,
     // Status line nossa: o statusline.sh que grava o cache de limites lido em /v1/meu-bot/status.
     `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
+    // Guarda do WhatsApp (plugin meu-bot-guarda do OpenClaw): a cópia que o install-guarda.sh registra por --link.
+    `[ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`,
     // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
     `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
@@ -120,7 +123,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, audioIn: null, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -152,6 +155,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     systemd: kv.get("systemd") === "1",
     grokPod: kv.get("grokpod") === "1",
     statusLine: kv.get("statusline") === "1",
+    guarda: kv.get("gateway") === "openclaw" ? kv.get("guarda") === "1" : null,
     audioIn: kv.get("gateway") === "openclaw" ? kv.get("audioin") === "1" : null,
     gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : null,
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
@@ -184,7 +188,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 
@@ -285,6 +289,49 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 }
 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
+/** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
+const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
+const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
+
+/** A guarda do WhatsApp está nesta máquina? (a cópia registrada no OpenClaw; null para este Mac) */
+export async function guardaInstalled(host: string): Promise<boolean | null> {
+  if (host === LOCAL_HOST || !isValidHost(host)) return null;
+  const r = await run("ssh", [...sshBase(host), "--", host, `command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ] || { echo guarda=none; exit 0; }; [ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`], 25_000);
+  if (r.stdout.includes("guarda=none")) return null;
+  return r.stdout.includes("guarda=1");
+}
+
+/**
+ * Instala a guarda do WhatsApp (plugin meu-bot-guarda) no OpenClaw da máquina: manda a pasta guarda/ e os scripts
+ * e roda o instalador, que registra o plugin por --link (o gateway aplica na hora). Mesmo molde da status line.
+ */
+export async function installGuarda(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["a guarda é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  say(`enviando a guarda para ${host}:${REMOTE_STAGE}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/guarda`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_PLUGIN_FILES.map((f) => path.join(dir, "guarda", f)), `${host}:${REMOTE_STAGE}/guarda/`], 60_000);
+  if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-guarda.sh 2>&1`], 4 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+/** "Refazer do zero" do tutorial da guarda: tira o plugin do OpenClaw e apaga a cópia. */
+export async function uninstallGuarda(host: string): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: true, log: ["nada a desfazer neste Mac"] };
+  const dir = backendBundleDir();
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-guarda.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [`scp falhou: ${lastLine(scp.stderr)}`] };
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-guarda.sh 2>&1`], 2 * 60_000);
+  if (r.code !== 0) return { ok: false, log: [lastLine(r.stdout) || lastLine(r.stderr) || `código ${r.code ?? "timeout"}`] };
+  return { ok: true, log: r.stdout.trim().split("\n") };
+}
 
 /** "Refazer do zero" da status line: desfaz o install-statusline.sh na máquina (ou neste Mac). */
 export async function uninstallStatusLine(host: string): Promise<InstallBackendResult> {

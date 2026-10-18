@@ -2,7 +2,7 @@
 import type { HostProbe } from "../../shared/ipc";
 
 export type ProbeKind = "ok" | "warn" | "bad";
-export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | "claude" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
+export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | "guarda" | "claude" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
 
 let nicknames: Record<string, string> = {};
 /** Apelidos ("Renomear" no seletor): a partir daqui, hostLabel mostra o apelido no lugar da chave SSH. */
@@ -13,8 +13,8 @@ export const hostLabel = (h: string): string => nicknames[h] ?? (h === "local" ?
  * O que falta de opcional numa máquina que abre: a status line do Claude (cache de limites) e, com OpenClaw, a
  * transcrição de áudio do agente do WhatsApp. A máquina abre igual; o seletor oferece instalar um por vez.
  */
-const slNote = (p: HostProbe): string => `${p.statusLine ? "" : " · sem status line do Claude"}${p.audioIn === false ? " · sem transcrição de áudio" : ""}`;
-const slInstall = (p: HostProbe): "statusline" | "transcricao" | null => (!p.statusLine ? "statusline" : p.audioIn === false ? "transcricao" : null);
+const slNote = (p: HostProbe): string => `${p.statusLine ? "" : " · sem status line do Claude"}${p.audioIn === false ? " · sem transcrição de áudio" : ""}${p.guarda === false ? " · sem guarda do WhatsApp" : ""}`;
+const slInstall = (p: HostProbe): "statusline" | "transcricao" | "guarda" | null => (!p.statusLine ? "statusline" : p.audioIn === false ? "transcricao" : p.guarda === false ? "guarda" : null);
 
 export function describeProbe(p: HostProbe): ProbeText {
   const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : ""}`;

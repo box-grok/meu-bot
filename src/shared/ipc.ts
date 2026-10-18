@@ -182,6 +182,8 @@ export interface HostProbe {
   tailscaleCheck: boolean;
   /** ~/.claude/statusline.sh é o nosso: grava ~/.cache/claude-statusline/ratelimits.json, que a status line do app lê. */
   statusLine: boolean;
+  /** OpenClaw: a guarda do WhatsApp do meu-bot (plugin meu-bot-guarda) está nesta máquina; null = sem OpenClaw. */
+  guarda: boolean | null;
   /** OpenClaw: o agente do WhatsApp entende áudio (transcritor configurado); null = sem OpenClaw. */
   audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
@@ -544,6 +546,8 @@ export interface PickerClientApi {
   installStatusLine(host: string): Promise<InstallBackendResult>;
   /** Liga a transcrição de áudio do agente do WhatsApp (OpenClaw) na máquina; mesmo log de progresso. */
   installTranscription(host: string): Promise<InstallBackendResult>;
+  /** Ativa a guarda do WhatsApp (plugin meu-bot-guarda) no OpenClaw da máquina; mesmo log de progresso. */
+  installGuarda(host: string): Promise<InstallBackendResult>;
   /** Instala o Claude Code na conta do alias (instalador oficial, ~/.local/bin); depois vêm o login e o backend. */
   installClaude(host: string): Promise<InstallBackendResult>;
   /** Tira a máquina do seletor e do ~/.ssh/config (backup em `backup`). */
@@ -689,6 +693,8 @@ export interface MainEvents {
   "whatsapp:event": WhatsappEvent;
   /** Linha de progresso do instalador da status line (tutorial). */
   "statusline:progress": { line: string };
+  /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
+  "guarda:progress": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
@@ -829,6 +835,10 @@ export interface MeuBotClientApi {
   statusLineSegments(): Promise<StatusLineSegments | null>;
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
+  /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */
+  guardaInstalled(): Promise<boolean | null>;
+  installGuarda(): Promise<InstallBackendResult>;
+  uninstallGuarda(): Promise<InstallBackendResult>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;
   /** Tutorial 7: estado na máquina (objetivo, nível, skill salva, skills do workspace). */

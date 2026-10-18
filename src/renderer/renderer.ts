@@ -1659,6 +1659,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderAudioControls(txt);
       } else if (step.body === "statusline-install") {
         renderStatusLineInstall(txt);
+      } else if (step.body === "guarda-install") {
+        renderGuardaInstall(txt);
       } else if (step.body === "statusline-segments") {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
@@ -1801,6 +1803,7 @@ function openGuide(t: Tutorial): void {
   openPage(g.page);
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
   if (t.id === "claude-login") void refreshClaudeLine();
+  if (t.id === "guarda-whatsapp") void refreshGuarda();
   if (t.id === "xai-login") void refreshXaiLine();
   paintGuide();
 }
@@ -1823,6 +1826,11 @@ async function resetTutorial(t: Tutorial): Promise<void> {
       if (!r.ok) throw new Error(r.log.at(-1) ?? "não deu para desinstalar");
       statusLineSegs = null;
       await refreshStatusLine();
+    } else if (t.id === "guarda-whatsapp") {
+      const r = await window.meuBot.uninstallGuarda();
+      if (!r.ok) throw new Error(r.log.at(-1) ?? "não deu para tirar a guarda");
+      guardaMsg = null;
+      await refreshGuarda();
     } else if (t.id === "suporte") {
       supportState = await window.meuBot.resetSupport();
       repaintSupport();
@@ -3369,6 +3377,11 @@ let supportCodeShown: string | null = null;
 let supportPoll: number | null = null;
 /** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
 let statusLineState: boolean | null = null;
+/** Guarda do WhatsApp nesta máquina (tutorial 8): null = não consultado ou sem OpenClaw. */
+let guardaState: boolean | null = null;
+let guardaBusy = false;
+let guardaLog: string[] = [];
+let guardaMsg: { text: string; bad: boolean } | null = null;
 let statusLineBusy = false;
 let statusLineLog: string[] = [];
 let statusLineMsg: { text: string; bad: boolean } | null = null;
@@ -3389,6 +3402,7 @@ const guideCtx = (): GuideContext => ({
     loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null,
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
+  guarda: { installed: guardaState },
   objective: objectiveState,
 });
 
@@ -3500,6 +3514,32 @@ function renderFallbackOrder(container: HTMLElement): void {
   keep.hidden = !FALLBACK_PRIMARIES.includes(cur) || loadGuideFlags(FALLBACK_TUTORIAL).fallbackChosen;
   keep.addEventListener("click", () => { saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); paintGuide(); });
   box.append(accounts, label, hint, keep);
+  container.append(box);
+}
+async function refreshGuarda(): Promise<void> {
+  if (!caps.install || windowHost === "" || windowHost === "local") return;
+  try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
+  paintGuide();
+}
+window.meuBot.on("guarda:progress", ({ line }) => { guardaLog = [...guardaLog, line].slice(-6); if (guardaBusy) paintGuide(); });
+function renderGuardaInstall(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const row = el("div", "audio-row");
+  if (guardaState === true && !guardaBusy) row.append(el("span", "audio-ok", "✓ ativa nesta máquina"));
+  const b = el("button", `btn ${guardaState === true ? "btn-ghost" : "btn-primary"} btn-small`, guardaBusy ? "Ativando…" : guardaState === true ? "Reinstalar" : "Ativar");
+  b.type = "button"; b.disabled = guardaBusy || guardaState === null;
+  b.addEventListener("click", () => {
+    guardaBusy = true; guardaLog = []; guardaMsg = null; paintGuide();
+    void window.meuBot.installGuarda()
+      .then((r) => { guardaMsg = r.ok ? { text: "Guarda ativa.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
+      .catch((err: unknown) => { guardaMsg = { text: ipcErrorText(err), bad: true }; })
+      .finally(() => { guardaBusy = false; void refreshGuarda(); });
+  });
+  row.append(b);
+  box.append(row);
+  if (guardaState === null) box.append(el("p", "hint", waStatus?.gateway === "openclaw" || waStatus === null ? "Consultando a máquina…" : "Esta máquina não roda o OpenClaw; a guarda é do agente do WhatsApp dele."));
+  if (guardaBusy && guardaLog.length > 0) box.append(el("pre", "admin-logs", guardaLog.join("\n")));
+  if (guardaMsg !== null) box.append(el("p", `hint ${guardaMsg.bad ? "guide-pair-note" : "audio-ok"}`, guardaMsg.text));
   container.append(box);
 }
 async function refreshStatusLine(): Promise<void> {

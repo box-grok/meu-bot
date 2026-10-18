@@ -20,6 +20,8 @@ export interface GuideContext {
    * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
   xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
+  /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw): instalada? null = não consultado ou máquina sem OpenClaw. */
+  guarda: { installed: boolean | null };
   /**
    * Fallback entre contas: `primary` = modelo padrão desta máquina (quem responde sempre); `chain` = a corrente de
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
@@ -34,6 +36,7 @@ export const emptyContext = (): GuideContext => ({
   statusLine: { installed: null, limits: false, segments: null },
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
+  guarda: { installed: null },
   fallback: { primary: null, chain: null },
   objective: null,
 });
@@ -67,13 +70,13 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen";
 
 export interface GuideStep {
   id: string;
@@ -82,7 +85,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -327,6 +330,30 @@ export const TUTORIAIS: readonly Tutorial[] = [
         id: "skill", title: "Salvar como skill no Acervo", target: "none", body: "objective-skill",
         text: "Grava uma skill de verdade no workspace do agente (o OpenClaw carrega sozinho) e ajusta as ferramentas ao nível escolhido. Ela aparece no Acervo; salvar de novo substitui.",
         done: (_st, _f, c) => c.objective?.savedAt !== null && c.objective?.savedAt !== undefined && c.objective.skillPresent,
+      },
+    ],
+  },
+  {
+    id: "guarda-whatsapp",
+    number: 8,
+    after: "whatsapp-openclaw",
+    title: "Guarda do WhatsApp",
+    short: "Guarda",
+    summary: "Um plugin no agente desta máquina: avisos técnicos do OpenClaw nunca vão ao contato, e uma conversa bot-com-bot que entra em loop é pausada sozinha.",
+    minutes: 2,
+    icon: "target",
+    reset: { what: "tira a guarda do OpenClaw desta máquina (o agente volta a entregar tudo e nada é pausado sozinho)" },
+    steps: [
+      {
+        id: "ativar", title: "Ativar a guarda nesta máquina", target: "none", body: "guarda-install",
+        text: "É um plugin pequeno do meu-bot no OpenClaw: entra na hora, sem reiniciar o agente, e roda 24 horas na máquina mesmo com o app fechado.",
+        done: (_st, _f, c) => c.guarda.installed === true,
+      },
+      {
+        id: "entender", title: "O que ela faz por você", target: "none",
+        text: "1) Linhas técnicas como \"↪️ Model Fallback: …\" (o OpenClaw trocou de modelo) não são entregues ao contato. 2) Se outro bot ficar trocando despedidas com o seu agente (\"Até mais!\" → \"Até.\" → …) por 3 ciclos em poucos minutos, a conversa é pausada sozinha: a resposta não sai, o contato aparece como \"pausado\" na lista do WhatsApp e o agente recebe uma nota explicando. Para voltar, é o menu \"…\" do contato › Retomar. Pessoas de verdade não são afetadas: a regra exige mensagens curtas, quase iguais ou de despedida, em menos de 3 minutos entre uma e outra.",
+        done: (_st, f) => f.guardaSeen,
+        manual: { label: "Entendi", flag: "guardaSeen" },
       },
     ],
   },

@@ -28,7 +28,7 @@ async function rememberClaudeSession(conv: { id: string; host: string; claude?: 
 import { getHostNames, isBackendModel } from "../settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
 import { toggleQuickEntry } from "../quickEntry";
-import { installAudio, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallStatusLine } from "../hostProbe";
+import { guardaInstalled, installAudio, installGuarda, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
 import { readSegments, writeSegments } from "../statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
@@ -142,6 +142,14 @@ export function registerClientIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("statusline:progress", { line }); });
   });
+  // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
+  handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
+  handleClient("guarda:install", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return installGuarda(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("guarda:progress", { line }); });
+  });
+  handleClient("guarda:uninstall", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return uninstallGuarda(h.host); });
   // Segmentos da status line (preferência na máquina) e "Refazer do zero".
   handleClient("statusline:segments", (event) => {
     const h = hostFromEvent(event);

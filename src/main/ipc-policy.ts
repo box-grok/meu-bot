@@ -42,13 +42,14 @@ export const CLIENT_CHANNELS = [
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
+  "guarda:status", "guarda:install", "guarda:uninstall",
   "tailscale:disable-check", "tailscale:restore",
   // tutorial 7: objetivo do WhatsApp (objetivo.json, skill no workspace do OpenClaw, trava do nível)
   "objective:info", "objective:set", "objective:save", "objective:reset",
   // suporte, lado da pessoa
   "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share", "support:reset",
   // seletor
-  "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:install-claude", "picker:remove-host", "picker:rename-host",
+  "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:install-claude", "picker:install-guarda", "picker:remove-host", "picker:rename-host",
   "picker:sync-ssh", "picker:open-direct", "picker:onboarding-done", "picker:claude-login",
   "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
 ] as const;

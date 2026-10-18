@@ -1445,6 +1445,31 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   uma mensagem `assistant` — checado em `chat:done`). `refreshClaudeLine` repinta o guia; `logoutClaude(relogin)`
   serve ao botão "sair", ao painel de gerência ("Sair e entrar com outra conta") e ao "Refazer do zero". O guia
   só espera o WhatsApp (`st === null`) em tutoriais com alvo `wa-*`.
+- Guarda do WhatsApp (18 out, `backend-colima/guarda/` + `install-guarda.sh`): plugin local do OpenClaw
+  (`meu-bot-guarda`, JS puro, hooks `message_received`/`message_sending`/`session_start`; registrado por
+  `openclaw plugins install --link ~/.local/share/meu-bot/guarda --force`, que o gateway aplica na hora, sem
+  reiniciar; `plugins reload` depois de editar). Motivo: na conversa com +595981003050 (bot da DLS Technology) o
+  OpenClaw entregou ao contato "↪️ Model Fallback: grok/grok-4.7 (selected anthropic/claude-opus-5-5; empty
+  response)" e a conversa entrou em loop de despedidas (9 ciclos em 8 min). O OpenClaw 2026.9.9 não tem chave
+  para calar a nota em conversas diretas (só poupa grupos/canais) e o `botLoopProtection` nativo não vale para
+  WhatsApp (não classifica autor como bot). Regras em `guarda/regras.mjs` (puro; `scripts/tests/guarda-regras.test.mjs`
+  roda direto, sem dist): (1) `isOperationalNotice` — texto começando por "↪️ Model Fallback"/"↪️ Retried on" →
+  `{ cancel: true }` em `message_sending` (o estado de fallback do OpenClaw segue; só a linha não sai); (2)
+  `LoopTracker` — por sessão direta, pares recebida→enviada; loop = 3 ciclos seguidos, mensagens ≤ 200 chars,
+  ≤ 3 min entre ciclos, e os 3 textos do contato (ou do agente) são despedidas/cortesias (lista pt/es/en,
+  ≤ 12 palavras) ou quase iguais (Jaccard de palavras ≥ 0,6). Ao detectar, na 3ª resposta: cancela o envio,
+  `api.runtime.agent.session.patchSessionEntry({ sendPolicy: "deny" })` (a mesma pausa manual: a lista do app
+  mostra "pausado"; retomar é o menu "…" › Retomar) e injeta a nota ao agente por `openclaw agent --message-file`
+  (molde de whatsapp-pause.ts). Humanos não batem: três "ok" com 5 min de intervalo estouram a janela; conversa
+  com conteúdo não passa. Logs em `/tmp/openclaw/openclaw-<data>.log` ("meu-bot-guarda: …"). No app: sonda
+  `guarda` (null sem OpenClaw), `guarda:status|install|uninstall`, botão "Ativar guarda do WhatsApp" no seletor
+  (depois de status line e transcrição) e **tutorial 8 · Guarda do WhatsApp** (após o 2: ativar + "Entendi").
+  Instalada na agente-box em 18 out (geração 5 do gateway); confirmação ao vivo pendente do próximo loop.
+- Resposta em voz no espelho do WhatsApp (18 out): quando o agente responde em áudio, a mensagem do
+  assistente no `chat.history` é uma chamada à ferramenta `mcp__openclaw__tts` (`stopReason: "tool_use"`,
+  importada do claude-cli sem `runId`) com o `tool_result` "(spoken) …" — o filtro de rascunho descartava e o
+  balão de "digitando" ficava preso para sempre. `spokenText` em whatsapp-chats.ts reconhece o par toolcall
+  tts + "(spoken)" e mostra a fala como "🎙️ <texto>" (sem o "(spoken)", a chamada falhou e continua rascunho).
 - "Instalar Claude Code" no seletor (17 out): uma conta sem Claude Code (outro usuário da mesma VPS, como
   `agente-openclaw` ao lado de `agente-box`: o Claude e o backend são por home) dava "✗ sem backend e sem Claude
   Code. Instale antes" sem botão. Agora `describeProbe` devolve `install: "claude"` e o seletor instala pelo

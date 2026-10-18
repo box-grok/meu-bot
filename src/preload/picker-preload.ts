@@ -29,6 +29,7 @@ const clientApi: PickerClientApi = {
   installStatusLine: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-statusline", { host }),
   installTranscription: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-transcricao", { host }),
   installClaude: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-claude", { host }),
+  installGuarda: (host: string): Promise<InstallBackendResult> => ipcRenderer.invoke("picker:install-guarda", { host }),
   removeHost: (host: string) => ipcRenderer.invoke("picker:remove-host", { host }),
   renameHost: (host: string, name: string): Promise<void> => ipcRenderer.invoke("picker:rename-host", { host, name }),
   syncSsh: (): Promise<SshSyncResult> => ipcRenderer.invoke("picker:sync-ssh", {}),
