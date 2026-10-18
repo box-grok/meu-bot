@@ -219,6 +219,30 @@ export async function installBackend(host: string, port: number, onLine?: (line:
 
 
 /**
+ * Claude Code na conta do alias (outro usuário da mesma máquina, por exemplo): o instalador oficial
+ * (claude.ai/install.sh) põe o binário em ~/.local/bin sem precisar de Node nem de root; idempotente (se já
+ * existe, só confere a versão). O login e o backend vêm depois, pelos botões de sempre do seletor.
+ */
+export async function installClaudeCode(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["neste Mac, instale o Claude Code pelo site: https://claude.ai/code"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { if (l.trim() !== "") { lines.push(l); onLine?.(l); } };
+  const script = [
+    `export PATH="$HOME/.local/bin:$PATH"`,
+    `if command -v claude >/dev/null 2>&1; then echo "Claude Code já instalado: $(claude --version 2>/dev/null | head -1)"; exit 0; fi`,
+    `command -v curl >/dev/null 2>&1 || { echo "esta máquina não tem curl; instale com: sudo apt install curl"; exit 2; }`,
+    `echo "baixando o instalador oficial do Claude Code…"`,
+    `curl -fsSL https://claude.ai/install.sh | bash 2>&1`,
+    `command -v claude >/dev/null 2>&1 || [ -x "$HOME/.local/bin/claude" ] || { echo "o instalador terminou, mas não achei o claude em ~/.local/bin"; exit 3; }`,
+    `echo "pronto: Claude Code instalado em ~/.local/bin; agora é Entrar no Claude Code"`,
+  ].join("; ");
+  say(`instalando o Claude Code em ${host} (conta do alias)…`);
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash -c ${JSON.stringify(script)}`], 5 * 60_000, say);
+  if (r.code !== 0) return { ok: false, log: [...lines, r.code === null ? "o instalador não terminou em 5 min" : lastLine(r.stderr) || `instalador saiu com código ${r.code}`] };
+  return { ok: true, log: lines };
+}
+
+/**
  * Áudio do agente do WhatsApp (OpenClaw): "in" = transcrição local (install-transcricao.sh), "out" = voz local
  * com o modo (install-voz.sh off|inbound|always). Mesmo molde da status line: manda o script e roda no host.
  */

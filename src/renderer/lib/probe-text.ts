@@ -2,7 +2,7 @@
 import type { HostProbe } from "../../shared/ipc";
 
 export type ProbeKind = "ok" | "warn" | "bad";
-export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
+export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | "claude" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
 
 let nicknames: Record<string, string> = {};
 /** Apelidos ("Renomear" no seletor): a partir daqui, hostLabel mostra o apelido no lugar da chave SSH. */
@@ -33,7 +33,8 @@ export function describeProbe(p: HostProbe): ProbeText {
     return { kind: "ok", text: `✓ ${who} · backend instalado e ouvindo${p.models.length > 0 ? ` · modelos: ${p.models.join(", ")}` : ""}${slNote(p)}`, install: slInstall(p), canOpen: true };
   }
   if (p.backendInstalled) return { kind: "warn", text: `⚠ ${who} · backend instalado mas parado. Reinstalar sobe o serviço de novo.`, install: "reinstall", canOpen: true };
-  if (p.claudePath === null) return { kind: "bad", text: `✗ ${who} · sem backend e sem Claude Code. Instale o Claude Code nessa máquina e faça login antes.`, install: null, canOpen: false };
+  // Conta sem Claude Code (outro usuário da mesma máquina, por exemplo): o seletor instala; depois vêm o login e o backend.
+  if (p.claudePath === null) return { kind: "bad", text: `✗ ${who} · sem backend e sem Claude Code nesta conta. "Instalar Claude Code" instala em ~/.local/bin; depois é "Entrar no Claude Code" e "Instalar backend".`, install: "claude", canOpen: false };
   if (!p.claudeLoggedIn) {
     return { kind: "bad", text: `✗ ${who} · sem backend; Claude Code existe mas não está logado. Use "Entrar no Claude Code" e depois instale o backend.`, install: null, canOpen: false, login: true };
   }

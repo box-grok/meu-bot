@@ -141,6 +141,7 @@ const adminApi: MeuBotAdminApi = {
   showBotMenu: (sessionId: string) => ipcRenderer.invoke("ui:bot-menu", { sessionId }),
   setLicense: (patch: LicensePatch) => ipcRenderer.invoke("admin:license-set", { patch }),
   approveDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-approve", { deviceId }),
+  removeDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-revoke", { deviceId }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

@@ -239,7 +239,7 @@ function paintDetail(): void {
   openBtn.disabled = !t.canOpen || installing;
   claudeLoginBtn.hidden = t.login !== true;
   if (t.install !== null && !installing) {
-    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : t.install === "statusline" ? "Instalar status line" : t.install === "transcricao" ? "Ativar transcrição de áudio" : "Instalar backend";
+    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : t.install === "statusline" ? "Instalar status line" : t.install === "transcricao" ? "Ativar transcrição de áudio" : t.install === "claude" ? "Instalar Claude Code" : "Instalar backend";
     installBtn.hidden = false;
   }
 }
@@ -298,12 +298,14 @@ async function install(): Promise<void> {
   statusEl.className = "status";
   statusEl.textContent = what === "statusline" ? `instalando a status line em ${hostLabel(host)}…`
     : what === "transcricao" ? `ativando a transcrição de áudio em ${hostLabel(host)}… (na primeira vez baixa ~500 MB)`
+    : what === "claude" ? `instalando o Claude Code em ${hostLabel(host)}… (instalador oficial, em ~/.local/bin)`
     : `instalando o backend em ${hostLabel(host)}… (pode levar alguns minutos)`;
   openBtn.disabled = true;
   const failed = (why: string): void => { results.set(host, { kind: "bad", text: `✗ instalação falhou: ${why}`, install: what, canOpen: statusLine }); paintState(host); };
   try {
     const r = what === "statusline" ? await window.picker.installStatusLine(host)
       : what === "transcricao" ? await window.picker.installTranscription(host)
+      : what === "claude" ? await window.picker.installClaude(host)
       : await window.picker.install(host);
     if (!r.ok) { failed(r.log.at(-1) ?? "sem detalhes"); return; }
   } catch (err) {

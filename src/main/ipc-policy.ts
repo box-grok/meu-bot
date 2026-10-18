@@ -48,13 +48,13 @@ export const CLIENT_CHANNELS = [
   // suporte, lado da pessoa
   "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share", "support:reset",
   // seletor
-  "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:remove-host", "picker:rename-host",
+  "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:install-claude", "picker:remove-host", "picker:rename-host",
   "picker:sync-ssh", "picker:open-direct", "picker:onboarding-done", "picker:claude-login",
   "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

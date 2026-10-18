@@ -91,6 +91,21 @@ export function licenseSummary(view: LicenseView, now: number = Date.now()): Hea
   return lines;
 }
 
+/** ISO → "2027-10-15" para preencher um <input type=date>; "" quando nulo/inválido. */
+export function isoToDateInput(iso: string | null): string {
+  if (iso === null || iso === "") return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  return new Date(t).toISOString().slice(0, 10);
+}
+/** "2027-10-15" (valor de <input type=date>) → ISO meia-noite UTC; null se vazio ou inválido (limpa o campo). */
+export function dateInputToIso(value: string): string | null {
+  const v = value.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const t = Date.parse(`${v}T00:00:00.000Z`);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
 /** Rótulo de status de um device. */
 export const deviceStatusLabel = (s: LicenseDevice["status"]): string => (s === "pending" ? "Pendente" : "Ativo");
 /** Uma linha de device para a tabela de máquinas (nome + sistema + versão + status + visto há). */

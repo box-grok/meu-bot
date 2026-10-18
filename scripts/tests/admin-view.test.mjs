@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, gb, healthLines, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
+import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
 
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
@@ -101,4 +101,24 @@ test("healthLines: disco e memória da máquina (REA do Rambox), com aviso de po
   assert.match(low.find((l) => l.text.startsWith("disco:")).text, /pouco espaço/);
   // sem os números (máquina antiga/sondagem sem df): nenhuma linha
   assert.equal(healthLines({ ...base, probe }, fmt, V).some((l) => /^disco:|^memória:/.test(l.text)), false);
+});
+
+test("isoToDateInput / dateInputToIso: ida e volta, vazio e inválido", () => {
+  assert.equal(isoToDateInput("2027-10-15T00:00:00.000Z"), "2027-10-15");
+  assert.equal(isoToDateInput(null), "");
+  assert.equal(isoToDateInput("não-data"), "");
+  assert.equal(dateInputToIso("2027-10-15"), "2027-10-15T00:00:00.000Z");
+  assert.equal(dateInputToIso(""), null, "vazio limpa a validade");
+  assert.equal(dateInputToIso("15/10/2027"), null, "formato errado vira null");
+  // Round-trip: input → ISO → input.
+  assert.equal(isoToDateInput(dateInputToIso("2026-01-02")), "2026-01-02");
+});
+
+test("licenseSummary: mostra validade e marca expirada no passado", () => {
+  const lic = { plan: "pro", status: "active", interval: "year", memberSince: "2026-10-15T00:00:00.000Z", trialEnd: null, expiresAt: "2020-01-01T00:00:00.000Z", deviceLimit: 2, updatedAt: "2026-10-17T00:00:00.000Z", updatedBy: "admin" };
+  const view = { license: lic, devices: [], activeCount: 0, pendingCount: 0, deviceLimit: 2 };
+  const lines = licenseSummary(view, Date.parse("2026-10-17T00:00:00.000Z"));
+  const exp = lines.find((l) => l.text.startsWith("Expira:"));
+  assert.ok(exp, "tem linha de validade");
+  assert.equal(exp.ok, false, "validade no passado marca vermelho");
 });

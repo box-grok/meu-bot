@@ -9,7 +9,7 @@ import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, deviceLine, healthLines, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceLine, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
@@ -23,7 +23,7 @@ export interface SuportePageDeps {
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   fmtPhone(digits: string | null): string;
-  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice">;
+  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
   /** Cache desta janela (lib/cache.ts, por máquina): a saúde da última vez aparece na hora, com "há X min". */
@@ -127,28 +127,64 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
         b.addEventListener("click", run);
         return b;
       };
-      // Devices da conta, com "Aprovar" nos que levantaram a mão.
+      const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
+      // Devices da conta: "Aprovar" nos que levantaram a mão, "Revogar" nos ativos (volta no próximo hello se couber).
       const devs = el("div", "admin-devices");
       for (const d of view.devices) {
         const row = el("div", "admin-device-row");
         const dl = deviceLine(d);
         row.append(el("span", d.status === "pending" ? "bad" : "ok", dl.text));
         if (d.status === "pending") row.append(licBtn(state.licBusy ? "Liberando…" : "Aprovar", () => { void runLicense(`device ${d.name || d.id} liberado`, () => deps.api.approveDevice(d.id)); }));
+        else row.append(licBtn(state.licBusy ? "Revogando…" : "Revogar", () => { void runLicense(`device ${d.name || d.id} revogado`, () => deps.api.removeDevice(d.id)); }));
         devs.append(row);
       }
       if (view.devices.length === 0) devs.append(el("p", "hint", "Nenhum device registrado ainda."));
       lc.append(devs);
-      // Controles do admin: plano, status e limite de devices.
+      // Campo com rótulo + <input>; a função devolve o input para o botão ler o valor na hora do clique.
+      const field = (label: string, input: HTMLInputElement | HTMLSelectElement): HTMLElement => {
+        const wrap = el("label", "admin-field"); input.disabled = state.licBusy;
+        wrap.append(el("span", "hint", label), input);
+        return wrap;
+      };
+      const dateInput = (iso: string | null): HTMLInputElement => { const i = el("input") as HTMLInputElement; i.type = "date"; i.value = isoToDateInput(iso); return i; };
+      // Validade (expiresAt): estende a licença; vazio + "Remover validade" limpa.
+      const exp = dateInput(view.license.expiresAt);
+      const expCtl = el("div", "admin-actions");
+      expCtl.append(
+        field("Validade", exp),
+        licBtn("Salvar validade", () => setLic("validade", { status: "active", plan: "pro", expiresAt: dateInputToIso(exp.value) })),
+        licBtn("Remover validade", () => setLic("validade removida", { expiresAt: null })),
+      );
+      // Trial (trialEnd).
+      const tri = dateInput(view.license.trialEnd);
+      const triCtl = el("div", "admin-actions");
+      triCtl.append(
+        field("Trial termina", tri),
+        licBtn("Salvar trial", () => setLic("trial", { status: "trialing", plan: "pro", trialEnd: dateInputToIso(tri.value) })),
+      );
+      // Ciclo de cobrança (interval).
+      const cycle = el("select") as HTMLSelectElement; cycle.disabled = state.licBusy;
+      const cycleOpts: [string, string][] = [["", "nenhum"], ["month", "mensal"], ["year", "anual"]];
+      for (const [v, t] of cycleOpts) { const o = el("option", "", t) as HTMLOptionElement; o.value = v; if ((view.license.interval ?? "") === v) o.selected = true; cycle.append(o); }
+      const cycleCtl = el("div", "admin-actions");
+      cycleCtl.append(field("Ciclo", cycle), licBtn("Salvar ciclo", () => setLic("ciclo", { interval: (cycle.value === "month" || cycle.value === "year") ? cycle.value : null })));
+      // Limite exato de devices.
+      const lim = el("input") as HTMLInputElement; lim.type = "number"; lim.min = "1"; lim.max = "100"; lim.value = String(view.deviceLimit); lim.disabled = state.licBusy;
+      const limCtl = el("div", "admin-actions");
+      limCtl.append(
+        field("Limite de devices", lim),
+        licBtn("Salvar limite", () => { const n = Number.parseInt(lim.value, 10); setLic("limite de devices", { deviceLimit: Number.isInteger(n) ? n : view.deviceLimit }); }),
+        licBtn("+1", () => setLic("limite de devices", { deviceLimit: view.deviceLimit + 1 })),
+      );
+      // Plano e status rápidos.
       const ctl = el("div", "admin-actions");
-      const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
       ctl.append(
         view.license.plan === "pro" ? licBtn("Mudar para Free", () => setLic("plano Free", { plan: "free", status: "free" })) : licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" })),
         licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: "pro", status: "trialing" })),
         licBtn("Marcar Active", () => setLic("status Active", { plan: "pro", status: "active" })),
         licBtn("Marcar Expired", () => setLic("status Expired", { status: "expired" })),
-        licBtn("Limite +1 device", () => setLic("limite de devices", { deviceLimit: view.deviceLimit + 1 })),
       );
-      lc.append(ctl);
+      lc.append(expCtl, triCtl, cycleCtl, limCtl, ctl);
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }
     panel.append(lc);

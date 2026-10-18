@@ -1445,6 +1445,12 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   uma mensagem `assistant` — checado em `chat:done`). `refreshClaudeLine` repinta o guia; `logoutClaude(relogin)`
   serve ao botão "sair", ao painel de gerência ("Sair e entrar com outra conta") e ao "Refazer do zero". O guia
   só espera o WhatsApp (`st === null`) em tutoriais com alvo `wa-*`.
+- "Instalar Claude Code" no seletor (17 out): uma conta sem Claude Code (outro usuário da mesma VPS, como
+  `agente-openclaw` ao lado de `agente-box`: o Claude e o backend são por home) dava "✗ sem backend e sem Claude
+  Code. Instale antes" sem botão. Agora `describeProbe` devolve `install: "claude"` e o seletor instala pelo
+  instalador oficial (`curl -fsSL https://claude.ai/install.sh | bash`, binário em `~/.local/bin`, sem Node nem
+  root; `installClaudeCode` em hostProbe.ts, canal `picker:install-claude`, 5 min de teto, idempotente). A
+  sonda seguinte vê o `claude` e oferece "Entrar no Claude Code" e depois "Instalar backend", como sempre.
 - Faixa OFFLINE (17 out): como no Rambox, para a pessoa saber que **o problema é na conexão dela, não no
   app**. `src/main/net.ts` sonda a internet (HEAD em `captive.apple.com/hotspot-detect.html` e
   `gstatic.com/generate_204`, 5 s; offline só se as duas falharem com erro de rede; qualquer resposta HTTP

@@ -9,7 +9,8 @@ test("estados da sondagem remota", () => {
   assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: true, models: ["claudecode", "agente"] })), { kind: "ok", install: null, canOpen: true });
   assert.match(describeProbe({ ...base, backendInstalled: true, backendListening: true, models: ["claudecode", "agente"] }).text, /modelos: claudecode, agente/);
   assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: false })), { kind: "warn", install: "reinstall", canOpen: true });
-  assert.deepEqual(pick(describeProbe({ ...base, claudePath: null })), { kind: "bad", install: null, canOpen: false });
+  assert.deepEqual(pick(describeProbe({ ...base, claudePath: null })), { kind: "bad", install: "claude", canOpen: false });
+  assert.match(describeProbe({ ...base, claudePath: null }).text, /Instalar Claude Code/);
   assert.deepEqual(pick(describeProbe({ ...base, claudeLoggedIn: false })), { kind: "bad", install: null, canOpen: false });
   assert.match(describeProbe({ ...base, claudeLoggedIn: false }).text, /Entrar no Claude Code/);
   assert.equal(describeProbe({ ...base, claudeLoggedIn: false }).login, true);

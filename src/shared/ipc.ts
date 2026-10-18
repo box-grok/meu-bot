@@ -544,6 +544,8 @@ export interface PickerClientApi {
   installStatusLine(host: string): Promise<InstallBackendResult>;
   /** Liga a transcrição de áudio do agente do WhatsApp (OpenClaw) na máquina; mesmo log de progresso. */
   installTranscription(host: string): Promise<InstallBackendResult>;
+  /** Instala o Claude Code na conta do alias (instalador oficial, ~/.local/bin); depois vêm o login e o backend. */
+  installClaude(host: string): Promise<InstallBackendResult>;
   /** Tira a máquina do seletor e do ~/.ssh/config (backup em `backup`). */
   removeHost(host: string): Promise<{ backup: string }>;
   /** Apelido da máquina no app (vazio tira); a chave SSH não muda. */
@@ -880,6 +882,8 @@ export interface MeuBotAdminApi {
   setLicense(patch: LicensePatch): Promise<LicenseView>;
   /** meu-bot-admin: libera um device pendente (sobe o limite se preciso e marca o device como ativo). */
   approveDevice(deviceId: string): Promise<LicenseView>;
+  /** meu-bot-admin: revoga um device (tira do registro); ele volta no próximo hello se couber no limite. */
+  removeDevice(deviceId: string): Promise<LicenseView>;
 }
 
 /** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */

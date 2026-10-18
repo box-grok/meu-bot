@@ -7,7 +7,7 @@ import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../support-code";
 import type { LicensePatch } from "../../shared/ipc";
-import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, setLicense } from "./support-admin";
+import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, removeDevice, setLicense } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 
@@ -51,5 +51,9 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:license-approve", (event, payload: unknown) => {
     const id = String((payload as { deviceId?: unknown } | null)?.deviceId ?? "");
     return approveDevice(adminHost(event), id);
+  });
+  handleAdmin("admin:license-revoke", (event, payload: unknown) => {
+    const id = String((payload as { deviceId?: unknown } | null)?.deviceId ?? "");
+    return removeDevice(adminHost(event), id);
   });
 }

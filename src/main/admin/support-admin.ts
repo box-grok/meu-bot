@@ -239,6 +239,19 @@ export async function approveDevice(host: string, deviceId: string): Promise<Lic
   return view;
 }
 
+/** meu-bot-admin: revoga um device (tira do maquinas.json). Revogar ≠ banir: ele volta no próximo hello se couber. */
+export async function removeDevice(host: string, deviceId: string): Promise<LicenseView> {
+  if (!/^[a-f0-9]{12}$/.test(deviceId)) throw new Error("device inválido");
+  const machines = await fetchJson(host, MACHINES_PATH);
+  if (machines[deviceId] === undefined) throw new Error("device não encontrado na máquina");
+  delete machines[deviceId];
+  await writeJson(host, MACHINES_PATH, machines);
+  await runSsh(host, `${supportLogSh(adminName(), "device revogado pelo admin")}\n`, 15_000).catch(() => null);
+  const view = await readLicenseView(host);
+  if (view === null) throw new Error("revoguei, mas a máquina não respondeu ao reler");
+  return view;
+}
+
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
 async function readProgress(host: string): Promise<SupportProgress | null> {
   const r = await runSsh(host, `head -c 16384 "$HOME/.local/share/meu-bot/progresso.json" 2>/dev/null\n`, 20_000).catch(() => null);
