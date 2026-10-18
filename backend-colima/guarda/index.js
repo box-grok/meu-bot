@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LoopTracker, autoPauseNoteText, isOperationalNotice } from "./regras.mjs";
+import { LoopTracker, autoPauseNoteText, closureVerdict, isOperationalNotice, loopVerdict } from "./regras.mjs";
 
 const PLUGIN_ID = "meu-bot-guarda";
 const tracker = new LoopTracker();
@@ -82,6 +82,22 @@ export default {
       return { cancel: true, cancelReason: `${PLUGIN_ID}: ${r.reason}` };
     });
 
+    // Fim de cada turno do agente: o OpenClaw entrega a conversa inteira (`event.messages`). É o único hook em que a
+    // entrada do contato aparece (message_received não chega a plugins de fora), então o loop é reavaliado com os
+    // dois lados (3 ciclos) e, além dele, a conversa encerrada: o agente se despediu e ficou em silêncio 2 vezes →
+    // pausa de verdade (sendPolicy deny), que o app mostra como "pausado", como se o dono tivesse clicado.
+    api.on("agent_end", async (event, ctx) => {
+      if (ctx?.channelId !== "whatsapp") return;
+      const key = sessionKeyOf(ctx, null);
+      if (key === null || !key.includes(":direct:") || pausedByUs.has(key)) return;
+      const msgs = Array.isArray(event?.messages) ? event.messages : [];
+      if (msgs.length === 0) return;
+      const loop = loopVerdict(msgs);
+      const closed = loop.loop ? { closed: false } : closureVerdict(msgs);
+      if (!loop.loop && !closed.closed) return;
+      try { await pause(key, loop.loop ? loop.reason : closed.reason); }
+      catch (e) { logger.error(`${PLUGIN_ID}: não consegui pausar ${key} (agent_end): ${e instanceof Error ? e.message : String(e)}`); }
+    });
     // Retomada manual (sendPolicy volta a null pelo meu-bot): esquecer a sessão para a guarda voltar a observar.
     api.on("session_start", (_event, ctx) => { if (typeof ctx?.sessionKey === "string") pausedByUs.delete(ctx.sessionKey); });
     logger.info(`${PLUGIN_ID}: ativo (nota de fallback bloqueada; pausa automática em loop de 3 ciclos)`);

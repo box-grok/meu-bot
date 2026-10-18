@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LoopTracker, autoPauseNoteText, isFarewell, isOperationalNotice, normalize, similarity } from "../../backend-colima/guarda/regras.mjs";
+import { LoopTracker, autoPauseNoteText, closureVerdict, isFarewell, isOperationalNotice, loopVerdict, normalize, similarity, transcriptPairs } from "../../backend-colima/guarda/regras.mjs";
 
 test("nota operacional: só as linhas do OpenClaw, não fala parecida do agente", () => {
   assert.equal(isOperationalNotice("↪️ Model Fallback: grok/grok-4.7 (selected anthropic/claude-opus-5-5; empty response)"), true);
@@ -91,4 +91,21 @@ test("só de saída (sem message_received): 4 respostas de despedida seguidas pa
 test("avisos de erro do OpenClaw em inglês nunca vão ao contato; fala normal passa", () => {
   for (const t of ["claude-cli/claude-opus-5-5 request failed", "grok/grok-4.7 request failed: HTTP 429", "The model returned an empty response. Please try again.", "This turn ended before a reply: CLI backend returned an empty response.", "LLM request failed with an unknown error.", "⚠️ Reply failed", "NO_REPLY"]) assert.equal(isOperationalNotice(t), true, t);
   for (const t of ["Oi Junior, o pedido falhou no cartão, pode tentar de novo?", "The meeting is on Monday, please try again later if the link fails.", "Beleza, valeu Sofía.", "Fechado. Qualquer coisa me chama."]) assert.equal(isOperationalNotice(t), false, t);
+});
+
+test("agent_end: pares do transcript, loop com os dois lados e conversa encerrada (despedida + 2 silêncios)", () => {
+  const u = (t, at) => ({ role: "user", content: [{ type: "text", text: t }], timestamp: at });
+  const a = (t, at) => ({ role: "assistant", content: t, timestamp: at });
+  const conv = [u("Quanto custa?", 1000), a("Custa 50 mil.", 2000), u("Obrigada, Diego!", 3000), a("De nada. Até segunda!", 4000), u("Até segunda!", 5000), a("NO_REPLY", 6000), u("Bom descanso!", 7000)];
+  assert.deepEqual(transcriptPairs(conv).map((p) => [p.inText, p.outText]), [["Quanto custa?", "Custa 50 mil."], ["Obrigada, Diego!", "De nada. Até segunda!"]]);
+  assert.equal(loopVerdict(conv).loop, false);
+  const c = closureVerdict(conv);
+  assert.equal(c.closed, true); assert.match(c.reason, /se despediu/);
+  // só 1 silêncio: ainda não
+  assert.equal(closureVerdict(conv.slice(0, 6)).closed, false);
+  // silêncio depois de resposta com conteúdo (falha transitória): não encerra
+  assert.equal(closureVerdict([u("Quanto custa?", 1), a("Custa 50 mil.", 2), u("E o prazo?", 3), u("Oi?", 4)]).closed, false);
+  // loop clássico com entrada e saída: 3 ciclos
+  const loop = [u("Gracias.", 1000), a("Dale.", 2000), u("Chau.", 20000), a("Chau.", 21000), u("Nos vemos.", 40000), a("Nos vemos.", 41000)];
+  assert.equal(loopVerdict(loop).loop, true);
 });

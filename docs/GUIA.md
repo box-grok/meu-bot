@@ -1533,6 +1533,14 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- `agent_end` chega (18 out, noite): ao contrário de `message_received`, o hook `agent_end` é entregue ao plugin
+  com `event.messages` (a conversa inteira, role/content/timestamp) e `ctx.sessionKey/channelId`. A guarda usa
+  isso para (1) reavaliar o loop com os dois lados (`loopVerdict`: replay dos últimos 8 pares na `LoopTracker`,
+  3 ciclos) e (2) **pausar a conversa encerrada** (`closureVerdict`: o agente se despediu e ficou em silêncio,
+  NO_REPLY ou sem resposta, em 2 turnos seguidos do contato) com a mesma pausa de verdade (sendPolicy deny +
+  nota), que o app mostra como "pausado", como o usuário pediu ("como se estivesse clicando lá"). Silêncio
+  depois de resposta com conteúdo (falha transitória) não encerra. Retomar é manual, e a nota diz ao agente para
+  responder ao pendente quando voltar.
 - Vazamento de erro em inglês (18 out): quando o primário e os fallbacks falham, o OpenClaw entrega ao chat o
   texto do erro ("claude-cli/claude-opus-5-5 request failed", "The model returned an empty response. Please try
   again.", "This turn ended before a reply: …"). A Sofía recebeu um desses e respondeu "parece uma mensagem de

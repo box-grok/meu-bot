@@ -108,3 +108,53 @@ export class LoopTracker {
 export function autoPauseNoteText(reason, whenText, peer) {
   return `Nota do meu-bot: o agente foi pausado para este contato em ${whenText} automaticamente pelo meu-bot: padrão de loop (${reason}) com ${peer}; o contato parece ser outro agente. A partir daqui, nada do que você responder será entregue a ele. Enquanto a pausa durar, responda NO_REPLY a tudo o que ele mandar, inclusive a esta nota: não escreva nada, nem para registrar. A pausa é controle interno do dono: nunca a mencione ao contato.`;
 }
+
+/** Texto de uma mensagem do transcript do OpenClaw (string ou partes {type:"text"}). */
+export function textOfContent(content) {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content.map((p) => (p && typeof p === "object" && typeof p.text === "string" ? p.text : "")).filter(Boolean).join("\n").trim();
+}
+export const SILENT = "NO_REPLY";
+export const isSilentText = (t) => { const n = String(t ?? "").trim(); return n === "" || n.toUpperCase() === SILENT; };
+
+/**
+ * Pares (contato → agente) do transcript que o `agent_end` entrega (`event.messages`): cada mensagem `user` com
+ * remetente abre um par; a próxima `assistant` com texto fecha. Avisos ("Nota do meu-bot:") e turnos sem texto ficam fora.
+ */
+export function transcriptPairs(messages) {
+  const pairs = [];
+  let pending = null;
+  for (const m of Array.isArray(messages) ? messages : []) {
+    if (m === null || typeof m !== "object") continue;
+    const at = typeof m.timestamp === "number" ? m.timestamp : 0;
+    const text = textOfContent(m.content);
+    if (m.role === "user") { if (text === "" || /^Nota do meu-bot:/.test(text)) continue; pending = { inText: text, inAt: at }; }
+    else if (m.role === "assistant" && pending !== null) { if (isSilentText(text)) continue; pairs.push({ ...pending, outText: text, outAt: at }); pending = null; }
+  }
+  return pairs;
+}
+
+/** Reavalia o loop com a conversa inteira (entrada e saída), como se os hooks de entrada tivessem chegado. */
+export function loopVerdict(messages, opts = {}) {
+  const tr = new LoopTracker(opts);
+  let r = { loop: false };
+  for (const p of transcriptPairs(messages).slice(-8)) { tr.received("k", p.inText, p.inAt); r = tr.sending("k", p.outText, p.outAt); }
+  return r;
+}
+
+/**
+ * Conversa encerrada: o agente já se despediu e, desde então, ficou em silêncio (NO_REPLY ou sem resposta) em
+ * `silences` turnos seguidos do contato. Aí a pausa de verdade entra (o app mostra "pausado"), sem depender do loop.
+ */
+export function closureVerdict(messages, silences = 2) {
+  const msgs = (Array.isArray(messages) ? messages : []).filter((m) => m && typeof m === "object" && (m.role === "user" || m.role === "assistant"));
+  let silent = 0; let lastReply = null;
+  for (let i = msgs.length - 1; i >= 0; i -= 1) {
+    const m = msgs[i]; const text = textOfContent(m.content);
+    if (m.role === "user") { if (/^Nota do meu-bot:/.test(text)) continue; const next = msgs[i + 1]; const replied = next !== undefined && next.role === "assistant" && !isSilentText(textOfContent(next.content)); if (replied) break; silent += 1; continue; }
+    if (m.role === "assistant" && !isSilentText(text)) { lastReply = text; break; }
+  }
+  if (silent >= silences && lastReply !== null && isFarewell(lastReply)) return { closed: true, reason: `conversa encerrada: o agente se despediu ("${lastReply.slice(0, 40)}") e ficou em silêncio ${silent}×` };
+  return { closed: false };
+}
