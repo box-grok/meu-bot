@@ -1523,6 +1523,16 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   na aba atual, Cmd+clique em aba nova, × tira), ☆/★ na barra guarda/tira a página aberta, **Cmd+Shift+F**
   mostra/esconde a barra (também vindo do webview; preferência `localStorage.navFavsShown`), paleta "barra de
   favoritos". Verificado na agente-box: `favoritar` pelo socket e `favoritos` pelo MCP na VM.
+- Skills aprendidas do Navegador (18 out): o agente registra o que descobriu num site para não repetir
+  tentativas. Regra v3 do bloco `meu-bot:navegador` (install-navegador-mcp.sh): antes de operar um site, ler
+  `~/.claude/skills/<site>-navegador/SKILL.md`; ao terminar uma tarefa que exigiu descobrir o caminho, gravar
+  ou atualizar essa skill (frontmatter + o que funcionou e o que não). Sementes `backend-colima/skill-*.md`
+  (hoje `skill-streak-crm-navegador.md`, escrita a partir da sessão c8d553bf na agente-box: "+" da barra cria
+  box, célula inline não salva, selects aceitam digitar+Enter, checkbox do cabeçalho só por eventos de mouse,
+  confirmação "N caixas", hash `#pipeline` volta a `#inbox` em Gmail recém-carregado, popup da extensão não é
+  aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
+  a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
+  claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
   Tutoriais, Acervo, guia, chat do WhatsApp), como o terminal dividido do Cursor. `.content` vira grid de 3
   colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de

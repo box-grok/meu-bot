@@ -10,14 +10,15 @@ mkdir -p "$D"
 cp "$HERE/navegador-mcp.mjs" "$D/navegador-mcp.mjs"
 chmod 644 "$D/navegador-mcp.mjs"
 echo "navegador-mcp.mjs em $D"
-RULE='<!-- meu-bot:navegador v2 inicio -->
+RULE='<!-- meu-bot:navegador v3 inicio -->
 ## Navegador da pessoa (meu-bot)
 Quando as ferramentas mcp__navegador__* estiverem disponíveis, você pode usar o navegador que a pessoa vê na janela do meu-bot dela.
 - Fluxo: abrir → ler → clicar/digitar pelo número → ler de novo. Diga em uma frase o que vai fazer antes de agir.
 - NUNCA, sem a pessoa confirmar nesta conversa: comprar, pagar, enviar formulário/mensagem/e-mail, publicar, aceitar termos, apagar, mudar configurações de conta, nem fazer login com senha que não lhe foi dada aqui. Pare e pergunte.
 - Se a página pedir login, peça à pessoa que entre pela aba Navegador e avise quando terminar.
 - Sem as ferramentas mcp__navegador__*: peça à pessoa para abrir a aba Navegador no app e ligar "agente pode usar". NUNCA instale navegador, Playwright, Puppeteer ou Chromium na máquina por conta própria.
-<!-- meu-bot:navegador v2 fim -->'
+- Skills aprendidas: antes de operar um site, veja se existe ~/.claude/skills/<site>-navegador/SKILL.md (ex.: streak-crm-navegador) e siga o que já funcionou. Ao terminar uma tarefa num site em que você precisou descobrir o caminho (tentativas, prints, scripts), grave ou atualize essa skill com frontmatter (name, description) e o passo a passo que funcionou e o que não funcionou, para não repetir o trabalho da próxima vez.
+<!-- meu-bot:navegador v3 fim -->'
 for W in "$HOME/agent-workspace" "$HOME/chat-workspace"; do
   mkdir -p "$W"
   F="$W/CLAUDE.md"
@@ -32,6 +33,13 @@ if m and m.group(0).strip() == block.strip(): print("regra ok em " + f); sys.exi
 new = (cur[:m.start()] + "\n" + block + cur[m.end():]) if m else (cur + ("" if cur == "" or cur.endswith("\n") else "\n") + "\n" + block)
 tmp = f + ".tmp"; open(tmp, "w", encoding="utf-8").write(new); os.replace(tmp, f); print("regra gravada em " + f)
 ' "$F"
+done
+# Skills aprendidas: sementes do meu-bot entram só se a máquina ainda não tiver a sua (o agente edita a dele).
+for SEED in "$HERE"/skill-*.md; do
+  [ -f "$SEED" ] || continue
+  NAME=$(basename "$SEED" .md); NAME=${NAME#skill-}
+  SK="$HOME/.claude/skills/$NAME/SKILL.md"
+  if [ -f "$SK" ]; then echo "skill $NAME já existe (mantida)"; else mkdir -p "$(dirname "$SK")"; cp "$SEED" "$SK"; echo "skill $NAME instalada em $SK"; fi
 done
 NODE=$(command -v node || ls /opt/node/bin/node "$HOME/.local/node/bin/node" 2>/dev/null | head -1 || true)
 [ -n "$NODE" ] || { echo "esta máquina não tem node (o backend do meu-bot precisa dele); reinstale o backend"; exit 2; }

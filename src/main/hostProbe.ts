@@ -292,7 +292,7 @@ const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-s
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
 /** Navegador do agente (módulo Pro): o servidor MCP (um arquivo) e o instalador. */
-const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh"];
+const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md"];
 
 /** O lado da máquina do Navegador está instalado? (null para este Mac) */
 export async function navegadorInstalled(host: string): Promise<boolean | null> {

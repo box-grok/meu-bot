@@ -62,7 +62,9 @@ const pick = (n: number): string => `(() => { const e = (window.__meuBotEls || [
 
 interface Req { aba?: unknown; url?: unknown; nova?: unknown; n?: unknown; texto?: unknown; seletor?: unknown; enter?: unknown; tecla?: unknown; codigo?: unknown; titulo?: unknown; id?: unknown }
 
-function tabsOf(host: string): WebContents[] { return browserWebContents(host); }
+/** Abas de página do Navegador: o popup de uma extensão (chrome-extension://…/popup.html) também é um webview da sessão, mas não é aba. */
+function tabsOf(host: string): WebContents[] { return browserWebContents(host).filter((w) => { try { return !w.getURL().startsWith("chrome-extension:"); } catch { return false; } }); }
+const alive = (wc: WebContents): WebContents => { if (wc.isDestroyed()) throw new Error("essa aba foi fechada no meio da ação: chame 'abas' e siga na aba nova"); return wc; };
 function tabInfo(wc: WebContents, activeId: number | null): { aba: number; url: string; titulo: string; ativa: boolean; carregando: boolean } {
   return { aba: wc.id, url: wc.getURL(), titulo: wc.getTitle(), ativa: wc.id === activeId, carregando: wc.isLoading() };
 }
@@ -98,9 +100,14 @@ async function act(host: string, route: string, b: Req): Promise<unknown> {
         wc = await new Promise<WebContents>((resolve, reject) => { const t0 = Date.now(); const tick = (): void => { const n = tabsOf(host).find((w) => !before.has(w.id)); if (n !== undefined) resolve(n); else if (Date.now() - t0 > 10_000) reject(new Error("a aba nova não apareceu")); else setTimeout(tick, 100); }; tick(); });
       } else { wc = resolveTab(host, b.aba); browserAsk(host, { kind: "activate", wcId: wc.id }); await wc.loadURL(b.url).catch(() => { /* erro de carga aparece no título/url */ }); }
       await waitLoad(wc); await settle(300);
-      return tabInfo(wc, browserActiveWcId(host));
+      return tabInfo(alive(wc), browserActiveWcId(host));
     }
-    case "/ler": { const wc = resolveTab(host, b.aba); await waitLoad(wc); return await wc.executeJavaScript(READ_SCRIPT, true); }
+    case "/ler": {
+      const wc = resolveTab(host, b.aba); await waitLoad(wc);
+      // Páginas pesadas (Gmail + extensões) às vezes falham na primeira leitura logo após navegar; uma segunda tentativa resolve.
+      try { return await alive(wc).executeJavaScript(READ_SCRIPT, true); }
+      catch (e) { log(`[navegador ${host}] ler falhou (1ª): ${e instanceof Error ? e.message : String(e)}`); await settle(600); return await alive(wc).executeJavaScript(READ_SCRIPT, true); }
+    }
     case "/clicar": {
       const wc = resolveTab(host, b.aba);
       const target = typeof b.n === "number" ? pick(b.n)
@@ -163,5 +170,10 @@ async function handle(host: string, req: http.IncomingMessage, res: http.ServerR
     try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as Req; } catch { return send(400, { erro: "JSON inválido" }); }
   }
   try { send(200, await act(host, route, body)); }
-  catch (e) { const st = (e as { status?: number }).status ?? 400; send(st, { erro: e instanceof Error ? e.message : String(e) }); }
+  catch (e) {
+    const st = (e as { status?: number }).status ?? 400;
+    const msg = (e instanceof Error ? e.message : String(e)) || "a ação falhou sem mensagem (a aba pode ter mudado); chame 'abas' e tente de novo";
+    log(`[navegador ${host}] ${route} → ${st}: ${msg.slice(0, 200)}`);
+    send(st, { erro: msg });
+  }
 }
