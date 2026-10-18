@@ -54,10 +54,13 @@ export default {
       injectNote(key, autoPauseNoteText(reason, whenText(), peerOf(key)), logger);
     }
 
+    // Confirmação no log de que o hook de entrada chega (exige plugins.entries.meu-bot-guarda.hooks.allowConversationAccess).
+    const seenIn = new Set();
     api.on("message_received", (event, ctx) => {
       if (ctx.channelId !== "whatsapp") return;
       const key = sessionKeyOf(ctx, event.from);
       if (key === null || !key.includes(":direct:")) return;
+      if (!seenIn.has(key)) { seenIn.add(key); logger.info(`${PLUGIN_ID}: observando ${peerOf(key)} (entrada recebida)`); }
       if (pausedByUs.has(key)) return;
       tracker.received(key, event.content ?? "", typeof event.timestamp === "number" ? event.timestamp : Date.now());
     });

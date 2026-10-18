@@ -62,3 +62,13 @@ test("nota da pausa automática começa como as outras notas do meu-bot e explic
   assert.match(n, /^Nota do meu-bot: o agente foi pausado para este contato em 18\/10\/2026 01:06 \(UTC\) automaticamente pelo meu-bot: padrão de loop \(3 ciclos de despedida em 2 min\) com \+595981003050/);
   assert.match(n, /Não responda a esta nota ao contato/);
 });
+
+test("despedidas em espanhol rioplatense e português curto contam (caso real: Sofía, 18/10)", () => {
+  for (const t of ["Gracias por escribir.", "Dale, que andes bien.", "Chau, Sofía.", "Nos vemos.", "Listo, Sofía.", "Vos también.", "Gracias, cuidate.", "Hasta la próxima.", "Quedamos así.", "Abraço, Sofi."]) assert.equal(isFarewell(t), true, t);
+  assert.equal(isFarewell("Dale, me passa o número do pedido que eu confiro no sistema agora"), false);
+  const tr = new LoopTracker();
+  const pairs = [["Gracias por escribir.", "Dale, Sofía."], ["Dale, que andes bien.", "Vos también, Sofía."], ["Gracias, cuidate.", "Vos también."]];
+  let at = 1000; let r = { loop: false };
+  for (const [i, o] of pairs) { tr.received("k", i, at); r = tr.sending("k", o, at + 5000); at += 30_000; }
+  assert.equal(r.loop, true);
+});

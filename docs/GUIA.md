@@ -1533,6 +1533,16 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- Guarda por padrão na conta (18 out): o anti-loop não disparava porque o OpenClaw **não entrega
+  `message_received` a plugins de fora do catálogo** sem `plugins.entries.<id>.hooks.allowConversationAccess:
+  true`; a guarda via só as saídas (`message_sending`, que bloqueava as notas de fallback) e nunca fechava um
+  ciclo. Caso real: Sofía (+595995661756), 40 trocas de despedida em 8 min; as regras já detectariam no 3º ciclo
+  (simulado com a transcrição). Correções: `install-guarda.sh` grava a permissão; `FAREWELLS` ganha chau, dale,
+  listo, nos vemos, que andes bien, cuidate, hasta la próxima, quedamos así, vos también, abraço; log
+  "observando <contato> (entrada recebida)" na 1ª entrada por sessão para confirmar ao vivo; e o seletor
+  (`picker.ts: ensureGuarda`) instala a guarda sozinho em toda máquina com OpenClaw que a sonda achar sem ela
+  (uma tentativa por máquina por sessão do app). Tutorial 8 vira conferência. Depois de editar o plugin, o
+  `--link --force` pode dizer "replacement not applied": rodar `openclaw plugins reload meu-bot-guarda`.
 - CRM pelo WhatsApp, tutorial 11 (18 out, módulo Pro): o agente da máquina anota no Streak **pela API**, sem
   navegador, 24 h. Lado da VM em `backend-colima/crm/`: `streak.mjs` (CLI node puro: diag, pipelines,
   pipeline, box-find, box-create, box-update, field-set, comment, contact-upsert, telefone-set; chave em

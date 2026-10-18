@@ -17,6 +17,7 @@ import { openGrokbotReset } from "./grokbot";
 import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialState } from "./secrets";
 import { disableSshCheck } from "./tailscale";
 import { handleClient, handleShared, onShared } from "./ipc/registry";
+import { log } from "./backend";
 import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
 import { listSshHosts } from "./sshConfig";
 import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
@@ -73,10 +74,27 @@ function probeCached(host: string): Promise<HostProbe> {
     probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
     if (probe.reachable) setPodHost(host, probe.grokPod);
+    ensureGuarda(host, probe);
     return probe;
   }).finally(() => inflight.delete(host));
   inflight.set(host, p);
   return p;
+}
+
+/**
+ * Anti-loop é padrão da conta: toda máquina com OpenClaw recebe a guarda do WhatsApp sozinha (notas técnicas
+ * não vão ao contato; despedidas bot-com-bot em 3 ciclos pausam a conversa). Uma tentativa por máquina por
+ * sessão do app, em segundo plano; o tutorial 8 só confere e explica. Uma máquina sem SSH ou sem OpenClaw fica fora.
+ */
+const guardaTried = new Set<string>();
+function ensureGuarda(host: string, probe: HostProbe): void {
+  if (!probe.reachable || probe.gateway !== "openclaw" || probe.guarda !== false || host === LOCAL_HOST || guardaTried.has(host)) return;
+  guardaTried.add(host);
+  log(`[guarda] ${host}: máquina com OpenClaw sem a guarda; instalando em segundo plano`);
+  void installGuarda(host).then((r) => {
+    log(`[guarda] ${host}: ${r.ok ? "instalada sozinha" : `instalação automática falhou: ${r.log.at(-1) ?? "?"}`}`);
+    const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, guarda: true }, at: hit.at });
+  }).catch((e: unknown) => { log(`[guarda] ${host}: instalação automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 
 const current = (): PickerSource => { if (source === null) throw new Error("seletor sem fonte: initPicker não rodou"); return source; };

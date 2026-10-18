@@ -28,7 +28,7 @@ const FAREWELLS = [
   "ate mais", "ate logo", "ate breve", "ate", "tchau", "adeus", "obrigado", "obrigada", "de nada", "valeu", "ok", "okay", "beleza",
   "combinado", "fico a disposicao", "estou a disposicao", "a disposicao", "qualquer coisa", "quando precisar", "se precisar",
   "bom dia", "boa tarde", "boa noite", "tenha um otimo dia", "tenha um bom dia", "por agora nao", "por enquanto nao",
-  "hasta luego", "hasta pronto", "adios", "gracias", "que estes bien", "buen dia", "aqui estare", "cuando necesites", "igualmente", "igual",
+  "hasta luego", "hasta pronto", "hasta la proxima", "adios", "chau", "chao", "gracias", "que estes bien", "que andes bien", "cuidate", "buen dia", "aqui estare", "cuando necesites", "cuando quieras", "igualmente", "igual", "nos vemos", "dale", "listo", "quedamos asi", "vos tambien", "abrazo", "abraco", "ate mais", "ate a proxima",
   "bye", "goodbye", "see you", "thanks", "thank you", "you re welcome", "take care", "have a nice day", "let me know", "anytime",
 ];
 const FAREWELL_RE = new RegExp(`(^| )(${FAREWELLS.map((f) => f.replace(/ /g, "\\s+")).join("|")})( |$)`);

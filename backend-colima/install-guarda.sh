@@ -15,6 +15,9 @@ cp "$HERE/guarda/index.js" "$HERE/guarda/regras.mjs" "$HERE/guarda/package.json"
 [ -d "$HOME/.openclaw/extensions/meu-bot-guarda" ] && [ ! -L "$HOME/.openclaw/extensions/meu-bot-guarda" ] && rm -rf "$HOME/.openclaw/extensions/meu-bot-guarda"
 echo "registrando a guarda no OpenClaw…"
 timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
+# Sem esta permissão o OpenClaw não entrega message_received a plugins de fora do catálogo: a guarda via só as
+# saídas e nunca fechava um ciclo (o anti-loop não disparava).
+timeout 60 openclaw config set plugins.entries.meu-bot-guarda.hooks.allowConversationAccess true --strict-json >/dev/null 2>&1 || echo "aviso: não consegui gravar hooks.allowConversationAccess (confira no openclaw.json)"
 if timeout 60 openclaw plugins inspect meu-bot-guarda --runtime 2>/dev/null | grep -q "^Status: loaded"; then
   echo "pronto: guarda ativa (nota de fallback bloqueada; pausa automática em loop de 3 ciclos)"
 else

@@ -355,7 +355,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: [
       {
         id: "ativar", title: "Ativar a guarda nesta máquina", target: "none", body: "guarda-install",
-        text: "É um plugin pequeno do meu-bot no OpenClaw: entra na hora, sem reiniciar o agente, e roda 24 horas na máquina mesmo com o app fechado.",
+        text: "Ela já vem ligada: toda máquina com OpenClaw recebe a guarda sozinha quando o app a encontra. É um plugin pequeno do meu-bot no OpenClaw, roda 24 horas mesmo com o app fechado; se por algum motivo não estiver aqui, o botão instala.",
         done: (_st, _f, c) => c.guarda.installed === true,
       },
       {
