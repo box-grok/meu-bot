@@ -15,16 +15,17 @@ cp "$HERE/guarda/index.js" "$HERE/guarda/regras.mjs" "$HERE/guarda/package.json"
 [ -d "$HOME/.openclaw/extensions/meu-bot-guarda" ] && [ ! -L "$HOME/.openclaw/extensions/meu-bot-guarda" ] && rm -rf "$HOME/.openclaw/extensions/meu-bot-guarda"
 # Regra de encerramento no AGENTS.md do workspace do agente: a guarda pausa de fora; esta regra evita que o loop
 # comece, porque o próprio agente para de responder a cortesias depois da despedida (vale para humanos também).
-RULE='<!-- meu-bot:encerramento v1 inicio -->
+RULE='<!-- meu-bot:encerramento v2 inicio -->
 ## Encerramento de conversa (meu-bot)
 - Quando a conversa já se encerrou (os dois lados se despediram ou combinaram o próximo passo), não responda a
   novas cortesias, agradecimentos ou despedidas ("obrigado", "até mais", "bom descanso", "igualmente", "chau",
-  "gracias", "nos vemos"): devolva exatamente NO_REPLY. Despeça-se uma vez só.
+  "gracias", "nos vemos"): responda com a palavra NO_REPLY, sozinha. Nunca devolva uma resposta vazia: vazio
+  é tratado como erro pelo sistema (ele tenta de novo e gera avisos); NO_REPLY é silêncio limpo. Despeça-se uma vez só.
 - Volte a responder apenas quando vier conteúdo: uma pergunta, um pedido, uma informação nova.
 - Se o contato repetir cortesias várias vezes seguidas, é provável que seja outro agente automático: NO_REPLY em
   todas, sem comentar isso com ele.
 - Nunca diga ao contato que está deixando de responder nem que foi pausado.
-<!-- meu-bot:encerramento v1 fim -->'
+<!-- meu-bot:encerramento v2 fim -->'
 W="$(openclaw config get agents.defaults.workspace 2>/dev/null | tr -d '\n')"; case "$W" in /*) ;; *) W="$HOME/.openclaw/workspace" ;; esac
 mkdir -p "$W"
 printf '%s\n' "$RULE" | python3 -c '
