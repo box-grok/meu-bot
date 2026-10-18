@@ -21,6 +21,8 @@ import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
+import { clampSplitRatio, parseSplitPref, splitLabel, splitLayout, splitPrefPageId } from "./lib/split.js";
+import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -81,6 +83,7 @@ const notasCount = $<HTMLSpanElement>("notas-count");
 const ctxLine = $<HTMLElement>("ctx-line");
 const quickEnabled = $<HTMLInputElement>("quick-enabled");
 const quickShortcut = $<HTMLInputElement>("quick-shortcut");
+const navShortcutInput = $<HTMLInputElement>("nav-shortcut-url");
 const quickStatus = $<HTMLSpanElement>("quick-status");
 const sidebarEl = $<HTMLElement>("sidebar");
 const sidebarBtn = $<HTMLButtonElement>("btn-sidebar");
@@ -638,6 +641,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
+  add({ id: "a:split", kind: "action", label: splitLabel(splitPage?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: "quick view com extensões do Chrome; o agente pode navegar por você (Pro)", keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
@@ -940,6 +944,7 @@ function applySettings(view: SettingsView): void {
   memoryEveryInput.value = String(view.memoryEveryTurns);
   quickEnabled.checked = view.quickEntryEnabled;
   quickShortcut.value = view.quickEntryShortcut;
+  navShortcutInput.value = view.navShortcutUrl;
   openAtLoginInput.checked = view.openAtLogin;
   openAtLoginInput.disabled = !view.openAtLoginAvailable;
   openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
@@ -1314,6 +1319,7 @@ function definePage(id: string, title: string, panel: HTMLElement, render: () =>
 }
 
 function activatePage(page: PageTab): void {
+  if (splitPage !== null) { if (splitPage !== page) splitOn(page); else focusSplit(); return; }
   if (pageActive === page) return;
   if (pageActive === null) {
     const prev = active();
@@ -1348,7 +1354,9 @@ function openPage(page: PageTab, activateIt = true): void {
     const titleEl = el("span", "tab-title", page.title);
     const closeBtn = el("button", "tab-close", "×");
     closeBtn.type = "button"; closeBtn.title = "Fechar aba";
-    tabEl.append(titleEl, closeBtn);
+    const splitBtn = el("button", "tab-split", "⫿"); splitBtn.type = "button"; splitBtn.title = "Mostrar ao lado da conversa (Cmd+\\)";
+    splitBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (splitPage === page) splitOff(); else splitOn(page); });
+    tabEl.append(titleEl, splitBtn, closeBtn);
     tabEl.addEventListener("click", () => activatePage(page));
     closeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1364,6 +1372,7 @@ function openPage(page: PageTab, activateIt = true): void {
 
 function closePage(page: PageTab): void {
   if (page.tabEl === null) return;
+  if (splitPage === page) splitOff(false);
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
   if (page.id.startsWith("term-")) disposeTerminal(page.id);
   if (page.id === "navegador") disposeNav();
@@ -1381,6 +1390,92 @@ function closePage(page: PageTab): void {
   syncRest();
 }
 
+// ---- Modo dividido: conversa à esquerda (#panels), uma página fixada à direita (#split-panel), divisor arrastável.
+// Os painéis de página são absolutos (inset:0): mover o elemento para o #split-panel basta. Páginas sempre vão
+// para a direita enquanto a divisão está ligada; conversas, para a esquerda. Lembrado por máquina.
+const contentEl = $<HTMLElement>("content-root");
+const splitPanelEl = $<HTMLElement>("split-panel");
+const splitHandle = $<HTMLElement>("split-handle");
+let splitPage: PageTab | null = null;
+let splitRatio = 0.55;
+const splitKey = (): string => `split:${windowHost}`;
+/** A página está à vista (na frente ou fixada ao lado)? Quem repinta por `pageActive === page` usa isto. */
+const pageShown = (page: PageTab | null): boolean => page !== null && (pageActive === page || splitPage === page);
+function saveSplit(): void {
+  try { if (splitPage === null) localStorage.removeItem(splitKey()); else localStorage.setItem(splitKey(), JSON.stringify({ pageId: splitPrefPageId(splitPage.id), ratio: splitRatio })); } catch { /* opcional */ }
+}
+function applySplitRatio(): void {
+  const w = contentEl.clientWidth;
+  const r = clampSplitRatio(splitRatio, w);
+  contentEl.classList.toggle("split-collapsed", splitLayout(w) === "collapsed" || r === null);
+  if (r !== null) contentEl.style.setProperty("--split", `${(r * 100).toFixed(2)}%`);
+}
+function splitOn(page: PageTab): void {
+  if (splitPage === page) return;
+  if (splitPage !== null) { const prev = splitPage; splitPage = null; prev.panel.hidden = true; panelsEl.append(prev.panel); prev.tabEl?.classList.remove("split", "active"); }
+  if (pageActive === page) deactivatePage();
+  else if (pageActive !== null) { const other = pageActive; deactivatePage(); void other; }
+  // A esquerda precisa de uma conversa: a que estava antes da página, senão a última.
+  if (activeId === null) { const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1); pagePrev = null; if (back !== undefined) activate(back); }
+  splitPage = page;
+  splitPanelEl.append(page.panel);
+  contentEl.classList.add("split");
+  applySplitRatio();
+  page.panel.hidden = false;
+  page.tabEl?.classList.add("split");
+  page.render();
+  saveSplit();
+  syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
+}
+/** Desfaz a divisão; a página volta a ser uma aba comum (fechada ou atrás da conversa). */
+function splitOff(keepPref = false): void {
+  const page = splitPage; if (page === null) return;
+  splitPage = null;
+  page.panel.hidden = true;
+  panelsEl.append(page.panel);
+  page.tabEl?.classList.remove("split");
+  contentEl.classList.remove("split", "split-collapsed");
+  if (!keepPref) saveSplit();
+  syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
+}
+function focusSplit(): void { const p = splitPage; if (p === null) return; if (p.id === "navegador") navCurrent()?.wv.focus(); else (p.panel.querySelector<HTMLElement>("textarea, input, .xterm-helper-textarea") ?? p.panel).focus?.(); }
+/** Cmd+\: alterna. Sem página à vista, divide a última aberta; sem nenhuma, abre o Navegador (Pro) ou o Terminal. */
+function toggleSplit(): void {
+  if (splitPage !== null) { splitOff(); return; }
+  const candidate = pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1) ?? null;
+  if (candidate !== null) { splitOn(candidate); return; }
+  if (caps.chat && browserAccess(license, windowHost) === "ok") void openNavTab().then(() => { if (navPage !== null) splitOn(navPage); });
+  else void openTerminalTab("new").then((t) => { if (t !== null) splitOn(t.page); });
+}
+// Divisor: arrasto com pointer events; webview/xterm perdem o mouse durante o arrasto (body.dragging).
+splitHandle.addEventListener("pointerdown", (ev) => {
+  ev.preventDefault();
+  splitHandle.setPointerCapture(ev.pointerId);
+  document.body.classList.add("dragging"); contentEl.classList.add("dragging");
+  const rect = contentEl.getBoundingClientRect();
+  const move = (e: PointerEvent): void => { const r = clampSplitRatio((e.clientX - rect.left) / rect.width, rect.width); if (r !== null) { splitRatio = r; applySplitRatio(); } };
+  const up = (): void => { document.body.classList.remove("dragging"); contentEl.classList.remove("dragging"); splitHandle.removeEventListener("pointermove", move); splitHandle.removeEventListener("pointerup", up); saveSplit(); };
+  splitHandle.addEventListener("pointermove", move);
+  splitHandle.addEventListener("pointerup", up);
+});
+new ResizeObserver(() => { if (splitPage !== null) applySplitRatio(); }).observe(contentEl);
+/** Ao abrir a janela: volta dividida com a página lembrada, se ela puder abrir. */
+async function restoreSplit(): Promise<void> {
+  let pref: ReturnType<typeof parseSplitPref> = null;
+  try { pref = parseSplitPref(localStorage.getItem(splitKey())); } catch { /* opcional */ }
+  if (pref === null) return;
+  splitRatio = pref.ratio;
+  const id = pref.pageId;
+  try {
+    if (id === "navegador") { if (!caps.chat) return; await refreshLicense(); if (browserAccess(license, windowHost) !== "ok") { try { localStorage.removeItem(splitKey()); } catch { /* ok */ } return; } await openNavTab(); if (navPage !== null) splitOn(navPage); }
+    else if (id.startsWith("term-")) { const t = await openTerminalTab("new"); if (t !== null) splitOn(t.page); }
+    else if (id === "atividade") splitOn(activityPage());
+    else if (id === "tutoriais") { openPage(tutoriaisPage); splitOn(tutoriaisPage); }
+    else if (id === "acervo") { openPage(acervoPage); splitOn(acervoPage); }
+    else if (id.startsWith("tut-")) { const t = TUTORIAIS.find((x) => `tut-${x.id}` === id); if (t !== undefined) { openGuide(t); const g = pages.get(id); if (g !== undefined) splitOn(g); } }
+  } catch { /* a página não abriu: segue sem dividir */ }
+}
+
 // ---- Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
 let objectiveState: ObjectiveInfo | null = null;
 let objectiveBusy = false;
@@ -1392,14 +1487,14 @@ async function refreshObjective(): Promise<void> {
   if (windowHost === "" || windowHost === "local" || !caps.install) return;
   try { objectiveState = await window.meuBot.objectiveInfo(); } catch { /* sem resposta: fica o que havia */ }
   paintAcervoCount(); paintGuide();
-  if (pageActive === acervoPage) acervoPage.render();
+  if (pageShown(acervoPage)) acervoPage.render();
 }
 async function objectiveDo(run: () => Promise<ObjectiveInfo>, okText: string | null): Promise<void> {
   if (objectiveBusy) return;
   objectiveBusy = true; objectiveMsg = null; paintGuide();
   try { objectiveState = await run(); objectiveMsg = okText === null ? null : { text: okText, bad: false }; }
   catch (err) { objectiveMsg = { text: ipcErrorText(err), bad: true }; }
-  finally { objectiveBusy = false; paintAcervoCount(); paintGuide(); if (pageActive === acervoPage) acervoPage.render(); }
+  finally { objectiveBusy = false; paintAcervoCount(); paintGuide(); if (pageShown(acervoPage)) acervoPage.render(); }
 }
 function paintAcervoCount(): void {
   const n = ACERVO_SKILLS.length + (objectiveState?.skills.length ?? 0);
@@ -1533,8 +1628,9 @@ function reconcileGuideFlags(t: Tutorial): void {
 }
 /** O guia na frente, se a aba ativa é de um tutorial. */
 function activeGuide(): Tutorial | null {
-  if (pageActive === null) return null;
-  return guidePages.get(pageActive.id)?.tutorial ?? null;
+  const shown = pageActive ?? splitPage;
+  if (shown === null) return null;
+  return guidePages.get(shown.id)?.tutorial ?? guidePages.get(splitPage?.id ?? "")?.tutorial ?? null;
 }
 const guideTargets = (): Record<Exclude<GuideTarget, "none">, HTMLElement[]> => ({
   "wa-line": [], "wa-agent": [waAgentBtn], "wa-pair": [waPairBtn], "wa-policy": [waPolicyCards], "chat": [],
@@ -1616,9 +1712,9 @@ function paintGuide(): void {
   for (const { page, tutorial } of guidePages.values()) {
     const v = guideView(tutorial, waStatus, loadGuideFlags(tutorial), guideCtx());
     const title = page.tabEl?.querySelector(".tab-title"); if (title !== null && title !== undefined) title.textContent = guideTabTitle(tutorial, v);
-    if (pageActive === page) page.render();
+    if (pageShown(page)) page.render();
   }
-  if (pageActive === tutoriaisPage) tutoriaisPage.render();
+  if (pageShown(tutoriaisPage)) tutoriaisPage.render();
   paintGuideTargets();
 }
 function renderGuide(t: Tutorial, panel: HTMLElement): void {
@@ -2197,7 +2293,7 @@ function learnMissingWaNames(): Promise<void> {
       const names = await window.meuBot.learnWhatsappNames(missing);
       if (Object.keys(names).length === 0) return;
       waChats = waChats.map((c) => (names[c.number] !== undefined && c.name === null ? { ...c, name: names[c.number]! } : c));
-      for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageActive === g.page) renderWaChat(g); } }
+      for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageShown(g.page)) renderWaChat(g); } }
       cacheWrite("waChats", waChats);
       if (getListMode() === "whatsapp") renderSidebar();
     } catch (err) { console.warn("nomes do WhatsApp:", err); }
@@ -2264,7 +2360,7 @@ function cacheDrop(name: string): void { const st = cacheStore(); if (st !== nul
 /** Marca na máquina e aplica na lista local na hora (otimista); em erro, relê a lista e avisa. */
 async function markWa(patch: WaMarkPatch, what: string): Promise<boolean> {
   waChats = waChats.map((c) => (c.number === patch.number ? { ...c, ...(patch.archived !== undefined ? { archived: patch.archived } : {}), ...(patch.deleted !== undefined ? { deleted: patch.deleted } : {}), ...(patch.alias !== undefined ? { alias: patch.alias === "" ? null : patch.alias } : {}) } : c));
-  for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageActive === g.page) renderWaChat(g); } }
+  for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); if (pageShown(g.page)) renderWaChat(g); } }
   paintListMode(); renderSidebar();
   try { await window.meuBot.markWhatsapp([patch]); return true; }
   catch (err) {
@@ -2331,7 +2427,7 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       try {
         await window.meuBot.pauseWhatsapp(row.number, action === "pause");
         waChats = waChats.map((c) => (c.number === row.number ? { ...c, paused: action === "pause" } : c));
-        for (const g of waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: action === "pause" }; if (pageActive === g.page) renderWaChat(g); }
+        for (const g of waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: action === "pause" }; if (pageShown(g.page)) renderWaChat(g); }
         renderSidebar();
       } catch (err) { fail(action === "pause" ? "Não deu para pausar" : "Não deu para retomar", err); }
       finally { item?.classList.remove("wa-busy"); }
@@ -2521,7 +2617,7 @@ function refreshWaThread(g: WaChatPage): Promise<void> {
     try { g.msgs = await window.meuBot.whatsappThread(g.chat.number); g.err = null; g.stale = false; cacheWrite(`waThread:${g.chat.number}`, g.msgs.slice(-200)); }
     catch (err) { g.err = err instanceof Error ? err.message : String(err); }
     finally { g.loaded = true; g.inflight = null; }
-    if (pageActive === g.page) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, waAgentTyping(g) ? 3_000 : 8_000); renderWaChat(g); }
+    if (pageShown(g.page)) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaThread(g); }, waAgentTyping(g) ? 3_000 : 8_000); renderWaChat(g); }
   })();
   return g.inflight;
 }
@@ -2641,7 +2737,7 @@ function renderWaChat(g: WaChatPage): void {
     if (atEnd) panel.scrollTo({ top: panel.scrollHeight, behavior: from === 0 ? "auto" : "smooth" });
   }
   // Voltou para a frente sem consulta agendada: retoma o ciclo.
-  if (pageActive === g.page && g.inflight === null && g.timer === null) void refreshWaThread(g);
+  if (pageShown(g.page) && g.inflight === null && g.timer === null) void refreshWaThread(g);
 }
 /** Copiar o texto de uma bolha do espelho. */
 function waCopy(btn: HTMLButtonElement): void {
@@ -3335,6 +3431,7 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
   if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
   if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
+  if (mod && ev.key === "\\") { ev.preventDefault(); toggleSplit(); return; }
   if (mod && ev.key === "w" && pageActive !== null) { ev.preventDefault(); closePage(pageActive); return; }
   if (mod && ev.key === "w" && activeId !== null) { ev.preventDefault(); void closeTab(activeId); }
 });
@@ -3825,8 +3922,10 @@ interface WebviewEl extends HTMLElement {
   loadURL(url: string): Promise<void>; getURL(): string; getTitle(): string; isLoading(): boolean;
   canGoBack(): boolean; canGoForward(): boolean; goBack(): void; goForward(): void; reload(): void; stop(): void; focus(): void;
   getWebContentsId(): number;
+  insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
-interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null }
+/** `cssKeys`: recortes aplicados neste documento (id do recorte → chave do insertCSS); zera a cada navegação. */
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string> }
 let navPage: PageTab | null = null;
 let navTabs: NavTab[] = [];
 let navActive: string | null = null;
@@ -3837,6 +3936,33 @@ let navAccess: ProAccess | null = null;
 let navAskedPro = false;
 let navEls: { tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
 let navPopupFor: string | null = null;
+/** Recortes (partes do site ocultas, ver lib/recortes.ts): escolha por recorte, lembrada no app. */
+let navRecortes: RecortesPref = (() => { try { return parseRecortesPref(localStorage.getItem("navRecortes")); } catch { return {}; } })();
+let navActionsHost = "";
+function applyRecortes(tab: NavTab): void {
+  const list = recortesPara(tab.url);
+  let touched = false;
+  const run = async (): Promise<void> => {
+    for (const r of list) {
+      const key = tab.cssKeys.get(r.id);
+      const hide = recorteOculto(navRecortes, r);
+      try {
+        if (hide && key === undefined) { tab.cssKeys.set(r.id, await tab.wv.insertCSS(r.css)); touched = touched || r.resize === true; }
+        else if (!hide && key !== undefined) { tab.cssKeys.delete(r.id); await tab.wv.removeInsertedCSS(key); touched = touched || r.resize === true; }
+      } catch { /* documento trocou no meio: a próxima navegação reaplica */ }
+    }
+    if (touched) { try { await tab.wv.executeJavaScript("window.dispatchEvent(new Event('resize')); undefined"); } catch { /* idem */ } }
+  };
+  void run();
+}
+function toggleRecorte(r: Recorte): void {
+  const cur = navCurrent();
+  navRecortes = { ...navRecortes, [r.id]: !recorteOculto(navRecortes, r) };
+  try { localStorage.setItem("navRecortes", JSON.stringify(navRecortes)); } catch { /* opcional */ }
+  for (const t of navTabs) applyRecortes(t);
+  navActionsHost = ""; paintNavActions();
+  cur?.wv.focus();
+}
 /** Botões das extensões na barra (ícone da ação, como no Chrome/Rambox); clique abre o popup da extensão num webview pequeno. */
 function paintNavActions(): void {
   if (navEls === null) return;
@@ -3846,11 +3972,23 @@ function paintNavActions(): void {
     const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
     if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
     b.addEventListener("click", () => {
+      // Atalho configurável: se há uma URL nas Configurações, o clique no ícone da extensão abre essa URL.
+      const shortcut = settings?.navShortcutUrl ?? "";
+      if (shortcut !== "") { const c = navCurrent(); if (c === null) navNewTab(shortcut); else void c.wv.loadURL(shortcut); return; }
       if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
       navOpenPopup(x.id, x.popup, b);
     });
     e.actions.append(b);
   }
+  // Recortes do site da aba ativa: botão aceso = parte visível; apagado = oculta.
+  const cur = navCurrent();
+  for (const r of cur === null ? [] : recortesPara(cur.url)) {
+    const hidden = recorteOculto(navRecortes, r);
+    const b = el("button", `nav-action nav-cut${hidden ? " off" : ""}`, r.icone); b.type = "button"; b.title = recorteTitulo(r, hidden); b.setAttribute("aria-pressed", String(!hidden));
+    b.addEventListener("click", () => toggleRecorte(r));
+    e.actions.append(b);
+  }
+  try { navActionsHost = cur === null ? "" : new URL(cur.url).hostname; } catch { navActionsHost = ""; }
 }
 function navOpenPopup(id: string, url: string, anchor: HTMLElement): void {
   if (navEls === null || navPartition === null) return;
@@ -3906,16 +4044,16 @@ function navNewTab(url: string = NAV_HOME, activate = true): NavTab | null {
   wv.setAttribute("allowpopups", "");
   wv.className = "nav-view";
   wv.hidden = true;
-  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null };
+  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map() };
   const sync = (): void => { tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
-  wv.addEventListener("did-navigate", sync);
+  wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); applyRecortes(tab); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
   wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
-  wv.addEventListener("dom-ready", () => { sync(); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
+  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
   wv.setAttribute("src", url);
   navEls.box.append(wv);
   navTabs.push(tab);
@@ -3976,6 +4114,7 @@ function paintNav(): void {
   e.tabs.append(add);
   const cur = navCurrent();
   if (cur !== null && document.activeElement !== e.url) e.url.value = displayUrl(cur.url);
+  { let h = ""; try { h = cur === null ? "" : new URL(cur.url).hostname; } catch { /* url em branco */ } if (h !== navActionsHost) paintNavActions(); }
   e.back.disabled = cur === null || !cur.wv.canGoBack();
   e.fwd.disabled = cur === null || !cur.wv.canGoForward();
   e.loading.hidden = cur === null || !cur.loading;
@@ -4081,14 +4220,15 @@ window.meuBot.on("browser:agent", (st) => { navAgent = st; paintNav(); });
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.
 window.meuBot.on("browser:ask", (msg) => {
   if (navPage === null || navPartition === null) return;
-  if (msg.kind === "new-tab") { navNewTab(msg.url); if (pageActive !== navPage) openPage(navPage); return; }
+  if (msg.kind === "new-tab") { navNewTab(msg.url); if (!pageShown(navPage)) openPage(navPage); return; }
   const t = navTabByWc(msg.wcId); if (t === null) return;
-  if (msg.kind === "activate") { navSelect(t.id); if (pageActive !== navPage) openPage(navPage); }
+  if (msg.kind === "activate") { navSelect(t.id); if (!pageShown(navPage)) openPage(navPage); }
   else navClose(t.id);
 });
 // Cmd+… apertado com o foco dentro de um webview: o main devolve e o app faz o de sempre.
 window.meuBot.on("browser:key", ({ key, shift }) => {
   if (key === "k") { if (paletteEl.hidden) openPalette(); else closePalette(); return; }
+  if (key === "\\") { toggleSplit(); return; }
   if (key === "j") { void openTerminalTab(shift ? "new" : "focus"); return; }
   if (key === "n") { void newTab(); return; }
   if (key === "b" && shift) { setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
@@ -4578,6 +4718,7 @@ form.addEventListener("submit", (ev) => {
     ...(Number.isInteger(every) ? { memoryEveryTurns: every } : {}),
     quickEntryEnabled: quickEnabled.checked,
     ...(quickShortcut.value.trim() === "" ? {} : { quickEntryShortcut: quickShortcut.value.trim() }),
+    navShortcutUrl: navShortcutInput.value.trim(),
     ...(openAtLoginInput.disabled ? {} : { openAtLogin: openAtLoginInput.checked }),
   };
   void saveAlertPrefs();
@@ -4647,6 +4788,7 @@ void (async () => {
   await restoreTabs();
   renderSidebar();
   tabsReady = true;
+  void restoreSplit();
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);
   await intro;

@@ -73,6 +73,36 @@ function patchExtensionFiles(host: string, ext: Electron.Extension): boolean {
   if (changed) log(`[navegador ${host}] polyfill gravado na extensão ${ext.name} ${ext.version}`);
   return changed;
 }
+/**
+ * Service workers de extensões MV3. O Chromium os encerra após ~30 s ociosos e o Electron não os acorda quando um
+ * content script chama `runtime.connect`/`sendMessage` (o Chrome acorda). Sem isto, o Streak perde a ponte com o
+ * background minutos depois de abrir e passa a pedir login a cada recarga. Solução: acordar o worker ao carregar a
+ * extensão e segurá-lo vivo com `startTask()` (a tarefa nunca termina); se mesmo assim parar, religar.
+ */
+interface HeldWorker { host: string; extId: string; versionId: number; up: Promise<void>; task: { end: () => void } | null; stopping: boolean; restarts: number }
+const workers = new Map<string, HeldWorker>();
+const workerKey = (host: string, extId: string): string => `${host}|${extId}`;
+function workerHold(ses: Session, host: string, ext: Electron.Extension): void {
+  const bg = (ext.manifest as { background?: { service_worker?: string } }).background?.service_worker;
+  if (typeof bg !== "string") return;
+  const key = workerKey(host, ext.id);
+  const prev = workers.get(key);
+  const held: HeldWorker = { host, extId: ext.id, versionId: -1, up: Promise.resolve(), task: null, stopping: false, restarts: (prev?.restarts ?? -1) + 1 };
+  held.up = ses.serviceWorkers.startWorkerForScope(ext.url).then((w) => {
+    if (workers.get(key) !== held) return;
+    held.versionId = w.versionId;
+    try { held.task = w.startTask(); } catch (e) { log(`[navegador ${host}] startTask falhou: ${e instanceof Error ? e.message : String(e)}`); }
+    log(`[navegador ${host}] service worker da extensão ${ext.name} de pé e segurado (v${w.versionId}${held.restarts > 0 ? `, religado ${held.restarts}×` : ""})`);
+  }).catch((e: unknown) => { log(`[navegador ${host}] service worker da extensão ${ext.name} não subiu: ${e instanceof Error ? e.message : String(e)}`); });
+  workers.set(key, held);
+}
+function workerForget(host: string, extId: string): void {
+  const held = workers.get(workerKey(host, extId));
+  if (held === undefined) return;
+  held.stopping = true;
+  try { held.task?.end(); } catch { /* worker já foi */ }
+  workers.delete(workerKey(host, extId));
+}
 /** Sessão da máquina pronta (uma vez por sessão): permissões, UA e Web Store. */
 function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
   const part = partitionOf(host);
@@ -107,16 +137,16 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
         void (async () => { try { await ses.removeExtension(ext.id); await ses.loadExtension(ext.path, { allowFileAccess: false }); log(`[navegador ${host}] extensão ${ext.name} recarregada com o polyfill`); } catch (e) { log(`[navegador ${host}] recarga da extensão falhou: ${e instanceof Error ? e.message : String(e)}`); } })();
       }
     });
-    ses.on("extension-unloaded", (_e, ext) => { log(`[navegador ${host}] extensão descarregada: ${ext.id}`); publishExtensions(host); });
-    ses.on("extension-ready", (_e, ext) => {
-      log(`[navegador ${host}] extensão pronta: ${ext.id}`);
-      // MV3: o Electron não acorda o service worker da extensão sozinho; sem ele, extensões como o Streak não
-      // respondem ao content script. Acordar explicitamente (Electron ≥ 35) e registrar o resultado.
-      const bg = (ext.manifest as { background?: { service_worker?: string } }).background?.service_worker;
-      if (typeof bg === "string") {
-        void ses.serviceWorkers.startWorkerForScope(ext.url).then((w) => { log(`[navegador ${host}] service worker da extensão ${ext.name} acordado (${w.scriptURL})`); })
-          .catch((e: unknown) => { log(`[navegador ${host}] service worker da extensão ${ext.name} não subiu: ${e instanceof Error ? e.message : String(e)}`); });
-      }
+    ses.on("extension-unloaded", (_e, ext) => { log(`[navegador ${host}] extensão descarregada: ${ext.id}`); workerForget(host, ext.id); publishExtensions(host); });
+    ses.on("extension-ready", (_e, ext) => { log(`[navegador ${host}] extensão pronta: ${ext.id}`); workerHold(ses, host, ext); });
+    // Se o worker parar mesmo assim (travou, recarga da extensão), religa com um respiro, sem laço se ele cair na largada.
+    ses.serviceWorkers.on("running-status-changed", (ev) => {
+      if (ev.runningStatus !== "stopped") return;
+      const held = [...workers.values()].find((w) => w.host === host && w.versionId === ev.versionId);
+      if (held === undefined || held.stopping) return;
+      const ext = ses.getExtension(held.extId);
+      log(`[navegador ${host}] service worker da extensão ${held.extId} parou; religando`);
+      if (ext !== null) setTimeout(() => { if (workers.get(workerKey(host, held.extId)) === held) workerHold(ses, host, ext); }, held.restarts > 3 ? 30_000 : 1_000);
     });
     // Erros dos service workers das extensões vão para o log (é onde um "declarativeNetRequest is undefined" apareceria).
     ses.serviceWorkers.on("console-message", (_ev, d) => { if (d.level >= 2 && /^chrome-extension:/.test(d.sourceUrl)) log(`[navegador ${host}] sw ${d.sourceUrl.slice(0, 70)}:${d.lineNumber}: ${d.message.slice(0, 300)}`); });
@@ -153,6 +183,9 @@ const windowHosts = new Map<number, string>();
 export async function browserOpen(win: BrowserWindow, host: string): Promise<BrowserOpenInfo> {
   const { ses, ready } = prepareSession(host);
   await ready;
+  // Os service workers das extensões precisam estar de pé antes de a página carregar (o content script do Streak
+  // conecta no primeiro instante); espera um pouco por eles, sem travar a abertura se algum não subir.
+  await Promise.race([Promise.all([...workers.values()].filter((w) => w.host === host).map((w) => w.up)), new Promise((r) => setTimeout(r, 4_000))]);
   windowHosts.set(win.id, host);
   log(`[navegador ${host}] aberto na janela ${win.id}`);
   // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
@@ -258,7 +291,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     wc.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.meta) return;
       const k = input.key.toLowerCase();
-      if (["k", "j", "n", "b", "w", "t", "l", "[", "]"].includes(k) || (input.shift && (k === "b" || k === "n"))) {
+      if (["k", "j", "n", "b", "w", "t", "l", "[", "]", "\\"].includes(k) || (input.shift && (k === "b" || k === "n"))) {
         event.preventDefault();
         if (!win.isDestroyed()) { win.webContents.focus(); win.webContents.send("browser:key", { key: k, shift: input.shift }); }
       }

@@ -4,8 +4,8 @@ import { clampSplitRatio, parseSplitPref, splitLabel, splitLayout, splitPrefPage
 
 test("clampSplitRatio: mínimos dos dois lados; sem largura para os dois, null", () => {
   assert.equal(clampSplitRatio(0.55, 1000), 0.55);
-  assert.equal(clampSplitRatio(0.1, 1000), 0.32);
-  assert.equal(clampSplitRatio(0.95, 1000), 0.68);
+  assert.ok(Math.abs(clampSplitRatio(0.1, 1000) - 0.32) < 1e-9);
+  assert.ok(Math.abs(clampSplitRatio(0.95, 1000) - 0.68) < 1e-9);
   assert.equal(clampSplitRatio(NaN, 1000), 0.55);
   assert.equal(clampSplitRatio(0.5, 600), null);
 });

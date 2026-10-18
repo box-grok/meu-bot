@@ -787,3 +787,7 @@ body.topbar-hidden .topbar { display: none; }
 
 /* Selo "PRO" no canto superior direito quando a conta é Pro. */
 .badge.pro { font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; background: var(--accent, hsl(248 70% 60%)); color: #fff; align-self: center; }
+/* Recortes do Navegador (partes do site ocultas): botão aceso = visível, apagado = oculto. */
+.nav-cut { font-size: 14px; }
+.nav-cut.off { opacity: .4; text-decoration: line-through; }
+.nav-cut.off:hover { opacity: .8; }

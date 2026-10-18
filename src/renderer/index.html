@@ -93,7 +93,7 @@
         <span id="status-pill" class="pill pill-neutral" hidden></span>
       </div>
     </aside>
-    <div class="content">
+    <div class="content" id="content-root">
       <!-- ☰ pequeno, ao lado das abas: esta linha nunca some (a barra de cima sim, com Cmd+Shift+B). -->
       <div class="tabs-row">
         <!-- ☰ e + são gêmeos (mesmo quadrado 26px, lado a lado); o + só aparece sem nenhuma aba de conversa. -->
@@ -358,6 +358,16 @@
           </label>
         </div>
         <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
+      </details>
+      <details class="settings-group">
+        <summary>Navegador <span class="sum-hint">atalho ao clicar no ícone de uma extensão</span></summary>
+        <div class="row">
+          <label>
+            URL do atalho
+            <input id="nav-shortcut-url" type="text" autocomplete="off" placeholder="https://mail.google.com/..." />
+          </label>
+        </div>
+        <p class="hint">Quando preenchido, clicar no ícone de uma extensão na barra do Navegador abre esta URL numa aba (útil quando o popup da extensão não funciona). Vazio desliga.</p>
       </details>
 
       <!-- Inicialização (do REA do Rambox): item de início do macOS; o sistema é a fonte da verdade. -->

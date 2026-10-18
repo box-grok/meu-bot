@@ -1493,6 +1493,18 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   "Extensões no Navegador" (exemplo: Streak CRM for Gmail; o passo "Usar" exige login no Google dentro da
   aba). Verificado: backend novo na agente-box (requer `licenca.js` ao lado: copiar todos os .js), MCP responde
   `tools/list`.
+- Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
+  Tutoriais, Acervo, guia, chat do WhatsApp), como o terminal dividido do Cursor. `.content` vira grid de 3
+  colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de
+  página já são absolutos, então `splitOn(page)` só **move o elemento** para `#split-panel` e `splitOff` devolve
+  ao `#panels`. Regras: com a divisão ligada, páginas sempre vão para a direita (`activatePage` → `splitOn`) e
+  conversas para a esquerda; ⫿ na aba da página, Cmd+\ (também vindo do webview) e a paleta ("Dividir a tela
+  com …"); fechar a página desfaz. `pageShown(page)` substitui `pageActive === page` nas repinturas (guia,
+  Tutoriais, Acervo, polling do WhatsApp, pedidos do agente ao Navegador); `activeGuide()` considera a página
+  fixada, então o guia pulsa os alvos ao lado da conversa. Divisor com pointer capture e `body.dragging`
+  (webview/xterm perdem o mouse no arrasto). Lembrado em `localStorage split:<host>` (`lib/split.ts`, testado:
+  `clampSplitRatio`, `splitLayout`, `parseSplitPref`); `restoreSplit()` no boot reabre a página (Navegador só
+  com Pro; terminal sempre novo).
 - Extensões MV3 no Navegador (18 out): o Streak não desenhava porque o service worker dele morria na primeira
   linha (`chrome.permissions.onAdded`: o Electron não tem `chrome.permissions`, `declarativeNetRequest`,
   `windows`, `alarms`…). `registerPreloadScript({type:"service-worker"})` NÃO alcança o contexto da extensão

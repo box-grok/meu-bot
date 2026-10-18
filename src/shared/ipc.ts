@@ -22,6 +22,8 @@ export interface SettingsView {
   memoryEveryTurns: number;
   quickEntryEnabled: boolean;
   quickEntryShortcut: string;
+  /** URL que o clique num ícone de extensão sem popup abre no Navegador; "" = desligado. */
+  navShortcutUrl: string;
   quickEntryStatus: QuickEntryStatus;
   /** Onboarding guiado: "pending" até concluir ("done") ou pular ("skipped"). */
   onboarding: "pending" | "done" | "skipped";
@@ -47,6 +49,8 @@ export interface SettingsUpdate {
   memoryEveryTurns?: number;
   quickEntryEnabled?: boolean;
   quickEntryShortcut?: string;
+  /** URL do atalho do Navegador (clique no ícone de extensão sem popup); "" desliga. */
+  navShortcutUrl?: string;
   /** O renderer marca concluído/pulado; "pending" é a ação "Rever onboarding" da paleta. */
   onboarding?: "pending" | "done" | "skipped";
   openAtLogin?: boolean;

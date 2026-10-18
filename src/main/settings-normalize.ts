@@ -31,6 +31,8 @@ export interface SettingsFile {
   memoryEveryTurns: number;
   quickEntryEnabled: boolean;
   quickEntryShortcut: string;
+  /** URL que o clique no ícone de uma extensão (sem popup) abre no Navegador; "" = desligado. */
+  navShortcutUrl: string;
   /** Posição/tamanho da janela de cada máquina. */
   windowBounds: Record<string, WindowBounds>;
   /** Máquinas que a sondagem reconheceu como computador do Grok Bot; vale mesmo quando inacessíveis. */
@@ -76,7 +78,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], onboarding: "pending", openDirect: true, hostNames: {},
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, navShortcutUrl: "", windowBounds: {}, podHosts: [], navAgentHosts: [], onboarding: "pending", openDirect: true, hostNames: {},
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -106,6 +108,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     memoryEveryTurns: isEvery(p["memoryEveryTurns"]) ? p["memoryEveryTurns"] : DEFAULT_MEMORY_EVERY,
     quickEntryEnabled: typeof p["quickEntryEnabled"] === "boolean" ? p["quickEntryEnabled"] : true,
     quickEntryShortcut: typeof p["quickEntryShortcut"] === "string" && parseAccelerator(p["quickEntryShortcut"]) !== null ? p["quickEntryShortcut"] : DEFAULT_SHORTCUT,
+    navShortcutUrl: typeof p["navShortcutUrl"] === "string" && /^https?:\/\//i.test(p["navShortcutUrl"]) ? p["navShortcutUrl"] : "",
     windowBounds: bounds,
     onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",
     openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
