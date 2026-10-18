@@ -188,6 +188,8 @@ export interface HostProbe {
   statusLine: boolean;
   /** OpenClaw: a guarda do WhatsApp do meu-bot (plugin meu-bot-guarda) está nesta máquina; null = sem OpenClaw. */
   guarda: boolean | null;
+  /** Versão da guarda instalada (package.json do plugin); null = sem guarda ou desconhecida. */
+  guardaVersion: string | null;
   /** OpenClaw: o agente do WhatsApp entende áudio (transcritor configurado); null = sem OpenClaw. */
   audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */

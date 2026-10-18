@@ -8,7 +8,7 @@
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit } from "../shared/ipc";
-import { approveTailscaleCheck, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
+import { approveTailscaleCheck, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "./whatsapp";
@@ -88,12 +88,16 @@ function probeCached(host: string): Promise<HostProbe> {
  */
 const guardaTried = new Set<string>();
 function ensureGuarda(host: string, probe: HostProbe): void {
-  if (!probe.reachable || probe.gateway !== "openclaw" || probe.guarda !== false || host === LOCAL_HOST || guardaTried.has(host)) return;
+  if (!probe.reachable || probe.gateway !== "openclaw" || host === LOCAL_HOST || guardaTried.has(host)) return;
+  const want = bundledGuardaVersion();
+  const missing = probe.guarda === false;
+  const outdated = probe.guarda === true && want !== null && probe.guardaVersion !== want;
+  if (!missing && !outdated) return;
   guardaTried.add(host);
-  log(`[guarda] ${host}: máquina com OpenClaw sem a guarda; instalando em segundo plano`);
+  log(`[guarda] ${host}: ${missing ? "máquina com OpenClaw sem a guarda" : `guarda ${probe.guardaVersion ?? "sem versão"} → ${want}`}; instalando em segundo plano`);
   void installGuarda(host).then((r) => {
     log(`[guarda] ${host}: ${r.ok ? "instalada sozinha" : `instalação automática falhou: ${r.log.at(-1) ?? "?"}`}`);
-    const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, guarda: true }, at: hit.at });
+    const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, guarda: true, guardaVersion: bundledGuardaVersion() }, at: hit.at });
   }).catch((e: unknown) => { log(`[guarda] ${host}: instalação automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 

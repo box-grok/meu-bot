@@ -88,6 +88,7 @@ function probeScript(port: number): string {
     `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
     // Guarda do WhatsApp (plugin meu-bot-guarda do OpenClaw): a cópia que o install-guarda.sh registra por --link.
     `[ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`,
+    `echo "guardaver=$(python3 -c 'import json;print(json.load(open("'"$HOME"'/.local/share/meu-bot/guarda/package.json")).get("version",""))' 2>/dev/null)"`,
     // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
     `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
@@ -123,7 +124,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (host === LOCAL_HOST) return probeLocal();
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
-    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, audioIn: null, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -156,6 +157,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     grokPod: kv.get("grokpod") === "1",
     statusLine: kv.get("statusline") === "1",
     guarda: kv.get("gateway") === "openclaw" ? kv.get("guarda") === "1" : null,
+    guardaVersion: kv.get("guardaver") || null,
     audioIn: kv.get("gateway") === "openclaw" ? kv.get("audioin") === "1" : null,
     gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : null,
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
@@ -188,7 +190,7 @@ function probeLocal(): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 
@@ -291,6 +293,10 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
+/** Versão da guarda que vem neste app (package.json do plugin); o seletor atualiza máquinas com versão diferente. */
+export function bundledGuardaVersion(): string | null {
+  try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
+}
 /** Navegador do agente (módulo Pro): o servidor MCP (um arquivo) e o instalador. */
 const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md"];
 

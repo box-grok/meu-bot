@@ -1533,6 +1533,11 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- Guarda com versão e rollout automático (18 out, noite): `guarda/package.json` leva a versão (1.1.0); a sonda
+  do seletor imprime `guardaver=`; `ensureGuarda` (picker.ts) instala quando falta **ou quando a versão da máquina
+  difere da que vem no app** (`bundledGuardaVersion()`). Assim toda máquina com OpenClaw da conta recebe regras
+  novas (encerramento, bloqueio de erros, agent_end) na próxima abertura do seletor, sem clicar em nada. Subir a
+  versão no package.json a cada mudança no plugin.
 - `agent_end` chega (18 out, noite): ao contrário de `message_received`, o hook `agent_end` é entregue ao plugin
   com `event.messages` (a conversa inteira, role/content/timestamp) e `ctx.sessionKey/channelId`. A guarda usa
   isso para (1) reavaliar o loop com os dois lados (`loopVerdict`: replay dos últimos 8 pares na `LoopTracker`,
