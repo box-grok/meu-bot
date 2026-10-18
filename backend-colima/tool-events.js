@@ -23,7 +23,30 @@ function summarize(name, input) {
     case 'WebSearch': return str('query') || '';
     case 'Task': return str('description') || str('prompt') || '';
     case 'TodoWrite': return Array.isArray(i.todos) ? `${i.todos.length} itens` : '';
-    default: { try { return JSON.stringify(i); } catch (_) { return ''; } }
+    default: {
+      if (name.startsWith('mcp__navegador__')) return navegadorSummary(name.slice('mcp__navegador__'.length), i);
+      try { return JSON.stringify(i); } catch (_) { return ''; }
+    }
+  }
+}
+
+/** Ações do agente no Navegador da pessoa, em uma linha. "digitar" nunca mostra o texto (pode ser senha). */
+function navegadorSummary(tool, i) {
+  const s = (k) => (typeof i[k] === 'string' ? i[k] : null);
+  const alvo = typeof i.n === 'number' ? `o elemento ${i.n}` : (s('texto') && tool === 'clicar') ? `"${i.texto.slice(0, 40)}"` : s('seletor') ? `\`${i.seletor.slice(0, 40)}\`` : null;
+  switch (tool) {
+    case 'abrir': return `🌐 abriu ${s('url') || ''}${i.nova === true ? ' (aba nova)' : ''}`;
+    case 'ler': return '🌐 leu a página';
+    case 'clicar': return `🌐 clicou em ${alvo || 'um elemento'}`;
+    case 'digitar': return `🌐 digitou em ${alvo || 'um campo'}${i.enter === true ? ' e apertou Enter' : ''}`;
+    case 'tecla': return `🌐 tecla ${s('tecla') || ''}`;
+    case 'print': return '🌐 tirou um print';
+    case 'voltar': return '🌐 voltou';
+    case 'avancar': return '🌐 avançou';
+    case 'recarregar': return '🌐 recarregou';
+    case 'abas': return '🌐 listou as abas';
+    case 'js': return '🌐 rodou um script na página';
+    default: return `🌐 ${tool}`;
   }
 }
 

@@ -25,4 +25,6 @@ export const handleAdmin = (channel: AdminChannel, fn: InvokeHandler): void =>
   register(channel, caps().supportAdmin ? fn : refusing(NOT_ADMIN_MSG));
 /** `ipcMain.on` (sem resposta), só para canais comuns. */
 export const onShared = (channel: SharedChannel, fn: EventHandler): void => { ipcMain.on(channel, fn); };
+/** `ipcMain.on` (sem resposta) só no app da pessoa; no admin o evento é ignorado. */
+export const onClient = (channel: ClientChannel, fn: EventHandler): void => { if (caps().variant === "client") ipcMain.on(channel, fn); };
 

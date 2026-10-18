@@ -13,6 +13,7 @@ import { applyOps, buildMemoryRequest, getMemory, memorySystemMessage, NOTAS_MAX
 import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "./settings";
 import { ensureTunnel, markDegraded, TunnelFatalError } from "./tunnel";
 import { netState, noteNetworkError } from "./net";
+import { browserAgentPort } from "./browser";
 import { looksLikeOffline, offlineMessage } from "./net-core";
 import { broadcast, sendToHost } from "./windows";
 
@@ -508,7 +509,8 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     const t0 = Date.now();
     // Retomada de sessão no backend: diz quantas mensagens do começo ele já conhece.
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
-    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId() };
+    const browserPort = browserAgentPort(host);
+    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId(), ...(browserPort === null ? {} : { "X-Meu-Bot-Browser-Port": String(browserPort) }) };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
     let fallbackNote: string | undefined;
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {

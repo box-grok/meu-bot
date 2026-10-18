@@ -23,6 +23,11 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
+const navegador = require('./navegador');
+const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mcp.mjs');
+/** Versão da CLI (para saber se aceita --system-prompt-snapshot off); lida uma vez, em segundo plano. */
+let CLAUDE_VERSION = '';
+try { require('node:child_process').execFile(CLAUDE_BIN, ['--version'], { timeout: 10000 }, (e, out) => { if (!e) CLAUDE_VERSION = String(out).trim(); }); } catch (_) { /* fica vazio: sem a flag */ }
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
@@ -240,10 +245,12 @@ function sysHash(messages) {
  * Roda a CLI uma vez. onDelta recebe texto incremental. Resolve {text, usage, sessionId, deltas}.
  * Rejeita com Error({code:'resume_failed'|'cli_failed'|'aborted'|'timeout'}).
  */
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool }) {
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser }) {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
+    // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).
+    if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
     if (system) args.push('--append-system-prompt', system);
     if (resume) args.push('--resume', resume);
     fs.mkdirSync(cwd, { recursive: true });
@@ -276,7 +283,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     });
     child.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
     child.stdin.on('error', () => {});
-    child.stdin.end(prompt);
+    child.stdin.end(browser ? `${navegador.browserTurnNote()}\n\n${prompt}` : prompt);
 
     function handle(ev) {
       if (ev.session_id && !sessionId) sessionId = ev.session_id;
@@ -367,6 +374,15 @@ async function chatCompletions(req, res) {
   const stream = body.stream === true;
   const live = stream && String(req.headers['x-stream-mode'] || '').toLowerCase() === 'live';
 
+  // Navegador do agente (módulo Pro): só com a porta válida, licença Pro ativa e o MCP instalado na máquina.
+  let browser = null;
+  const browserPort = navegador.parseBrowserPort(req.headers['x-meu-bot-browser-port']);
+  if (browserPort !== null) {
+    const lic = licenseView().license;
+    if (lic.plan !== 'pro' || !['active', 'trialing'].includes(lic.status)) log(`navegador pedido sem Pro (plano ${lic.plan}/${lic.status}); ignorado`);
+    else if (!fs.existsSync(NAVEGADOR_MCP)) log(`navegador pedido, mas ${NAVEGADOR_MCP} não existe; ignorado`);
+    else browser = { port: browserPort };
+  }
   const convRaw = req.headers['x-conversation-id'];
   const convId = typeof convRaw === 'string' && CONV_ID_RE.test(convRaw) ? convRaw : null;
   const hash = sysHash(messages);
@@ -408,19 +424,19 @@ async function chatCompletions(req, res) {
       const key = convId ? `${name}:${convId}` : null;
       let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
       // O modelo sabe quem é (a pergunta "qual modelo é você?" não depende do que ele acha de si).
-      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.`;
+      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
       let out;
       try {
-        out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool });
+        out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser });
       } catch (e) {
         if (e.code === 'resume_failed' && plan.resume && !headersSent) {
           log(`resume falhou para ${key}; refazendo sem resume`);
           if (key) sessions.del(key);
           plan = { ...flatten(messages), resume: null }; resumed = false;
           plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
-          out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool });
+          out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser });
         } else throw e;
       }
       usedKey = key; usedProfile = profile;

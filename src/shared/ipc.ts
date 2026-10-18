@@ -671,7 +671,9 @@ export interface NetState { online: boolean | null; checking: boolean; since: nu
 
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
 export interface BrowserExtensionInfo { id: string; name: string; version: string }
-export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[] }
+export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState }
+/** "Agente pode usar" o Navegador: ligado? o túnel reverso está de pé? em que porta da máquina? */
+export interface BrowserAgentState { on: boolean; state: "up" | "down" | "connecting"; port: number | null }
 
 export interface MainEvents {
   "chat:assistant-start": ConversationRef;
@@ -722,6 +724,10 @@ export interface MainEvents {
   "browser:open-url": { url: string };
   /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
   "browser:key": { key: string; shift: boolean };
+  /** Navegador: o agente (pelas ações) pede uma aba nova, ativar ou fechar uma aba (id do webContents). */
+  "browser:ask": { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number };
+  /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */
+  "browser:agent": BrowserAgentState;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -751,6 +757,10 @@ export interface MeuBotSharedApi {
    */
   browserOpen(): Promise<BrowserOpenInfo>;
   browserExtensions(): Promise<BrowserExtensionInfo[]>;
+  /** Liga/desliga "agente pode usar" (socket de ações + túnel reverso); estado em browser:agent. */
+  browserAgent(on: boolean): Promise<BrowserAgentState>;
+  /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
+  browserActive(wcId: number): void;
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
   /** Free pediu o Pro: fica no registro do suporte da máquina. */
   browserRequestPro(): Promise<void>;

@@ -33,12 +33,15 @@ const BACKOFF_MS = 3000;
 /** Erro que não adianta repetir (host sem backend, por exemplo). */
 export class TunnelFatalError extends Error {}
 
+/** Túnel reverso (-R): a máquina alcança um socket Unix deste Mac em 127.0.0.1:<remotePort> (ações do agente no Navegador). */
+interface Reverse { child: ChildProcess; remotePort: number; localSocket: string; restarts: number; since: number }
 interface Live {
   remotePort: number;
   localPort: number;
   apiKey: string;
   forward: ChildProcess;
   forwardRestarts: number;
+  reverse?: Reverse;
 }
 
 interface HostTunnel {
@@ -48,6 +51,9 @@ interface HostTunnel {
   pending: Promise<TunnelInfo> | undefined;
   stopping: boolean;
   suspect: boolean;
+  /** Socket local que a máquina deve alcançar por -R (null = nenhum). O reconcile abre/fecha conforme. */
+  reverseWanted: string | null;
+  reverseBusy: boolean;
 }
 
 const hosts = new Map<string, HostTunnel>();
@@ -63,7 +69,7 @@ export function log(line: string): void {
 
 function entry(host: string): HostTunnel {
   let h = hosts.get(host);
-  if (h === undefined) { h = { host, state: "idle", live: undefined, pending: undefined, stopping: false, suspect: false }; hosts.set(host, h); }
+  if (h === undefined) { h = { host, state: "idle", live: undefined, pending: undefined, stopping: false, suspect: false, reverseWanted: null, reverseBusy: false }; hosts.set(host, h); }
   return h;
 }
 
@@ -347,6 +353,7 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
       const forward = await withRetry("túnel SSH", () => startForward(h, localPort, remotePort), onStatus);
       h.live = { remotePort, localPort, apiKey, forward, forwardRestarts: 0 };
       setState(h, "ready", "túnel pronto");
+      void reconcileReverse(h);
       return { localPort, apiKey };
     } catch (err) {
       setState(h, "error", err instanceof Error ? err.message : String(err));
@@ -356,6 +363,98 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
     }
   })();
   return h.pending;
+}
+
+// ---- Túnel reverso para o Navegador: `ssh -R 127.0.0.1:P:<socket>` como cliente do master. Estado desejado por
+// host (setReverseWanted); o reconcile abre quando o túnel principal está pronto e fecha quando ninguém quer mais.
+const REVERSE_RESTART_BUDGET = 5;
+const reverseListeners = new Set<(host: string, state: "up" | "down" | "connecting", port: number | null) => void>();
+export function onReverseState(cb: (host: string, state: "up" | "down" | "connecting", port: number | null) => void): () => void { reverseListeners.add(cb); return () => reverseListeners.delete(cb); }
+const tellReverse = (host: string, state: "up" | "down" | "connecting", port: number | null): void => { for (const cb of reverseListeners) cb(host, state, port); };
+export const reversePort = (host: string): number | null => hosts.get(host)?.live?.reverse?.remotePort ?? null;
+
+/** Quer (ou não) o -R para este socket; abre já se o túnel estiver pronto, senão na próxima vez que ficar. */
+export function setReverseWanted(host: string, localSocket: string | null): void {
+  const h = entry(host);
+  h.reverseWanted = localSocket;
+  void reconcileReverse(h);
+}
+async function reconcileReverse(h: HostTunnel): Promise<void> {
+  if (h.reverseBusy) return;
+  h.reverseBusy = true;
+  try {
+    const live = h.live;
+    if (h.reverseWanted === null) { if (live?.reverse !== undefined) { await stopReverse(h.host, live); delete live.reverse; tellReverse(h.host, "down", null); } return; }
+    if (live === undefined || h.state !== "ready") return;
+    if (live.reverse !== undefined && live.reverse.child.exitCode === null && live.reverse.localSocket === h.reverseWanted) return;
+    if (live.reverse !== undefined) { await stopReverse(h.host, live); delete live.reverse; }
+    tellReverse(h.host, "connecting", null);
+    const rev = await startReverse(h, h.reverseWanted, 0);
+    live.reverse = rev;
+    tellReverse(h.host, "up", rev.remotePort);
+  } catch (e) {
+    log(`[${h.host}] reverso: ${e instanceof Error ? e.message : String(e)}`);
+    tellReverse(h.host, "down", null);
+  } finally { h.reverseBusy = false; }
+}
+/** Porta livre na máquina (python3 já é exigido pelo terminal); sem python, uma determinística pelo nome. */
+async function remoteFreePort(host: string): Promise<number> {
+  const r = await execViaMux(host, `python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])' 2>/dev/null`, 10_000);
+  const n = Number.parseInt(r.stdout.trim(), 10);
+  if (Number.isInteger(n) && n > 1024) return n;
+  let hsh = 0; for (const ch of host) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+  return 19000 + (hsh % 1000);
+}
+function startReverse(h: HostTunnel, localSocket: string, restarts: number): Promise<Reverse> {
+  const { host } = h;
+  return new Promise((resolve, reject) => {
+    void (async () => {
+      const remotePort = await remoteFreePort(host);
+      const child = spawn("ssh", ["-N", "-o", "ControlMaster=no", "-o", "ExitOnForwardFailure=yes", "-R", `127.0.0.1:${remotePort}:${localSocket}`, ...muxOpts(host)], { stdio: ["pipe", "ignore", "pipe"] });
+      child.stdin?.on("error", () => { /* fechou antes */ });
+      let err = ""; let done = false; const t0 = Date.now();
+      child.stderr?.on("data", (d: Buffer) => { err += d.toString("utf8"); });
+      const rev: Reverse = { child, remotePort, localSocket, restarts, since: Date.now() };
+      const finish = (ok: boolean, why: string): void => { if (done) return; done = true; if (ok) resolve(rev); else { child.kill(); reject(new Error(why)); } };
+      // Pronto quando a máquina alcança o socket pelo -R (prova o caminho inteiro).
+      const probe = `curl -s -m 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:${remotePort}/abas 2>/dev/null || python3 -c 'import urllib.request;print(urllib.request.urlopen("http://127.0.0.1:${remotePort}/abas",timeout=2).status)' 2>/dev/null`;
+      const poll = async (): Promise<void> => {
+        while (!done && Date.now() - t0 < 20_000) {
+          if (child.exitCode !== null) break;
+          const r = await execViaMux(host, probe, 6_000);
+          if (/^(200|404|400)$/.test(r.stdout.trim())) { log(`[${host}] reverso pronto: 127.0.0.1:${remotePort} → ${localSocket} em ${Date.now() - t0} ms`); finish(true, ""); return; }
+          await new Promise((r2) => setTimeout(r2, 500));
+        }
+        finish(false, child.exitCode !== null ? `o ssh -R saiu (${child.exitCode}): ${lastLine(err) || "sem detalhes"}` : "o túnel reverso não respondeu em 20 s");
+      };
+      void poll();
+      child.on("error", (e) => finish(false, `Falha ao iniciar ssh -R: ${e.message}`));
+      child.on("exit", (code) => {
+        if (!done) { finish(false, `ssh -R encerrou (${code}): ${lastLine(err) || "sem detalhes"}`); return; }
+        onReverseExit(h, rev, code);
+      });
+    })().catch((e: unknown) => reject(e instanceof Error ? e : new Error(String(e))));
+  });
+}
+function onReverseExit(h: HostTunnel, rev: Reverse, code: number | null): void {
+  const live = h.live;
+  if (h.stopping || live === undefined || live.reverse !== rev) return;
+  log(`[${h.host}] reverso caiu (code=${code}) após ${Math.round((Date.now() - rev.since) / 1000)} s`);
+  const restarts = Date.now() - rev.since > 60_000 ? 0 : rev.restarts + 1;
+  delete live.reverse;
+  tellReverse(h.host, "connecting", null);
+  if (h.reverseWanted === null) { tellReverse(h.host, "down", null); return; }
+  if (restarts > REVERSE_RESTART_BUDGET) { log(`[${h.host}] reverso: orçamento de reinícios esgotado`); tellReverse(h.host, "down", null); return; }
+  setTimeout(() => {
+    if (h.stopping || h.live !== live || h.reverseWanted === null) return;
+    startReverse(h, h.reverseWanted, restarts).then((r) => { live.reverse = r; tellReverse(h.host, "up", r.remotePort); }).catch((e: unknown) => { log(`[${h.host}] reverso não voltou: ${e instanceof Error ? e.message : String(e)}`); tellReverse(h.host, "down", null); });
+  }, Math.min(1000 * 2 ** restarts, 8000));
+}
+async function stopReverse(host: string, l: Live): Promise<void> {
+  const r = l.reverse; if (r === undefined) return;
+  r.child.stdin?.end(); r.child.kill();
+  await runSsh(["-O", "cancel", "-R", `127.0.0.1:${r.remotePort}:${r.localSocket}`, ...muxOpts(host)], 5000);
+  log(`[${host}] reverso cancelado (127.0.0.1:${r.remotePort})`);
 }
 
 /** Encerra o filho do forward e cancela o forward no master (ele persiste lá mesmo sem o filho). */
@@ -368,6 +467,7 @@ async function stopForward(host: string, l: Live): Promise<void> {
 async function teardown(h: HostTunnel, exitMasterToo: boolean): Promise<void> {
   const prev = h.live;
   h.live = undefined;
+  if (prev?.reverse !== undefined) { await stopReverse(h.host, prev).catch(() => { /* master já caiu */ }); delete prev.reverse; tellReverse(h.host, "down", null); }
   if (prev !== undefined) {
     await stopForward(h.host, prev);
     if (exitMasterToo) await exitMaster(h.host);

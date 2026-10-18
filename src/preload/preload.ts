@@ -31,6 +31,8 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:extensions",
   "browser:open-url",
   "browser:key",
+  "browser:ask",
+  "browser:agent",
 ];
 
 /** Os dois apps. */
@@ -51,6 +53,8 @@ const sharedApi: MeuBotSharedApi = {
   updateState: () => ipcRenderer.invoke("update:state", {}),
   browserOpen: () => ipcRenderer.invoke("browser:open", {}),
   browserExtensions: () => ipcRenderer.invoke("browser:extensions", {}),
+  browserAgent: (on: boolean) => ipcRenderer.invoke("browser:agent", { on }),
+  browserActive: (wcId: number) => ipcRenderer.send("browser:active", { wcId }),
   browserRemoveExtension: (extId: string) => ipcRenderer.invoke("browser:remove-extension", { extId }),
   browserRequestPro: () => ipcRenderer.invoke("browser:request-pro", {}),
   checkUpdate: () => ipcRenderer.invoke("update:check", {}),

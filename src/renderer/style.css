@@ -625,6 +625,7 @@ body.topbar-hidden .topbar { display: none; }
 .sl-preview { display: block; box-sizing: border-box; max-width: 100%; font: 12px/1.5 var(--mono); padding: 8px 10px; border-radius: 8px; background: var(--code); color: var(--fg); overflow-x: auto; white-space: nowrap; }
 .sl-switches { display: flex; flex-wrap: wrap; gap: 4px 18px; }
 /* Aba "Navegador" (Pro): a view nativa é desenhada por cima do .nav-box; o DOM só reserva o espaço e desenha a barra. */
+.admin-mode #navegador-line { display: none; } /* o Navegador é do meu-bot da pessoa; o admin não tem licença nem conversas */
 .nav-panel { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
 .nav-panel[hidden] { display: none; }
 .nav-tabs { display: flex; align-items: center; gap: 4px; padding: 6px 8px 0; overflow-x: auto; flex: none; scrollbar-width: none; }
@@ -640,6 +641,8 @@ body.topbar-hidden .topbar { display: none; }
 .nav-bar .mini-btn:disabled { opacity: .35; cursor: default; }
 .nav-url { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
 .nav-url:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.nav-agent { white-space: nowrap; }
+.nav-agent.on { border-color: var(--ok); color: var(--ok); }
 .nav-loading { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: new-glow 1s ease-in-out infinite; flex: none; }
 .nav-box { flex: 1; min-height: 0; background: var(--bg); position: relative; }
 .nav-box[hidden] { display: none; }

@@ -33,8 +33,8 @@ import { readSegments, writeSegments } from "../statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
-import { handleClient } from "./registry";
-import { browserExtensions, browserOpen, browserRemoveExtension } from "../browser";
+import { handleClient, onClient } from "./registry";
+import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive } from "../browser";
 import { supportLogSh } from "../support-code";
 
 /**
@@ -155,6 +155,8 @@ export function registerClientIpc(): void {
     return browserOpen(h.win, h.host);
   });
   handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
+  handleClient("browser:agent", (event, payload: unknown) => { const h = ctxOf(event); browserAgent(h.host, (payload as { on?: unknown } | null)?.on === true); return browserAgentInfo(h.host); });
+  onClient("browser:active", (event, payload: unknown) => { const h = hostFromEvent(event); const id = (payload as { wcId?: unknown } | null)?.wcId; if (h !== null && typeof id === "number") browserSetActive(h.host, id); });
   handleClient("browser:remove-extension", (event, payload: unknown) => { const id = (payload as { extId?: unknown } | null)?.extId; if (typeof id !== "string" || !/^[a-p]{32}$/.test(id)) throw new Error("id de extensão inválido"); return browserRemoveExtension(ctxOf(event).host, id); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.

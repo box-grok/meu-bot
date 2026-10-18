@@ -10,7 +10,9 @@
 import { BrowserWindow, app, session, shell, type Session, type WebContents } from "electron";
 import path from "node:path";
 import { installChromeWebStore, uninstallExtension } from "electron-chrome-web-store";
-import { log } from "./tunnel";
+import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
+import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
+import type { BrowserAgentState } from "../shared/ipc";
 import type { BrowserExtensionInfo, BrowserOpenInfo } from "../shared/ipc";
 
 const PART_PREFIX = "persist:navegador-";
@@ -62,7 +64,7 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   await ready;
   windowHosts.set(win.id, host);
   log(`[navegador ${host}] aberto na janela ${win.id}`);
-  return { partition: partitionOf(host), extensions: extensionsOf(ses) };
+  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host) };
 }
 export const browserExtensions = (host: string): BrowserExtensionInfo[] => extensionsOf(session.fromPartition(partitionOf(host)));
 export async function browserRemoveExtension(host: string, extId: string): Promise<BrowserExtensionInfo[]> {
@@ -71,19 +73,60 @@ export async function browserRemoveExtension(host: string, extId: string): Promi
   log(`[navegador ${host}] extensão removida: ${extId}`);
   return extensionsOf(ses);
 }
-export function browserForget(winId: number): void { windowHosts.delete(winId); }
+export function browserForget(winId: number): void {
+  const host = windowHosts.get(winId);
+  windowHosts.delete(winId);
+  // Última janela do host fechou: o agente perde o navegador (socket e -R caem).
+  if (host !== undefined && ![...windowHosts.values()].includes(host)) browserAgent(host, false);
+}
 
-/** Os webContents vivos dos webviews do navegador, por host (o endpoint CDP só expõe estes). */
-const views = new Map<number, { wc: WebContents; host: string }>();
+// ---- "Agente pode usar": o serviço de ações sobe num socket 0700 e o túnel reverso o leva à máquina. O backend
+// recebe a porta no cabeçalho de cada turno (X-Meu-Bot-Browser-Port) enquanto estiver ligado e de pé.
+const agentOn = new Set<string>();
+const agentState = new Map<string, BrowserAgentState>();
+const tellAgent = (host: string, st: BrowserAgentState): void => {
+  agentState.set(host, st);
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:agent", st);
+};
+onReverseState((host, state, port) => { if (agentOn.has(host)) tellAgent(host, { on: true, state, port }); });
+export function browserAgent(host: string, on: boolean): void {
+  if (on) {
+    agentOn.add(host);
+    tellAgent(host, { on: true, state: "connecting", port: null });
+    void startNavApi(host).then((sock) => setReverseWanted(host, sock)).catch((e: unknown) => { log(`[navegador ${host}] serviço do agente não subiu: ${e instanceof Error ? e.message : String(e)}`); tellAgent(host, { on: true, state: "down", port: null }); });
+  } else {
+    if (!agentOn.has(host)) return;
+    agentOn.delete(host);
+    setReverseWanted(host, null);
+    stopNavApi(host);
+    tellAgent(host, { on: false, state: "down", port: null });
+  }
+}
+export const browserAgentInfo = (host: string): BrowserAgentState => agentState.get(host) ?? { on: false, state: "down", port: null };
+/** Porta remota a mandar ao backend neste turno (só com o agente ligado e o -R de pé). */
+export const browserAgentPort = (host: string): number | null => (agentOn.has(host) ? reversePort(host) : null);
+export const browserSocketPath = navSocketPath;
+
+/** Aba ativa de cada host (o renderer avisa): as ações do agente sem `aba` caem nela. */
+const activeByHost = new Map<string, number>();
+export const browserSetActive = (host: string, wcId: number): void => { activeByHost.set(host, wcId); };
+export const browserActiveWcId = (host: string): number | null => activeByHost.get(host) ?? null;
+/** Os webContents vivos dos webviews do navegador, por host (as ações do agente só alcançam estes). */
+const views = new Map<number, { wc: WebContents; host: string; winId: number }>();
 export const browserWebContents = (host: string): WebContents[] => [...views.values()].filter((v) => v.host === host && !v.wc.isDestroyed()).map((v) => v.wc);
+/** Pede ao renderer da janela do host uma ação de aba (o DOM é dele): nova aba, ativar ou fechar pelo id do webContents. */
+export function browserAsk(host: string, msg: { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number }): boolean {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send("browser:ask", msg); return true; }
+  return false;
+}
 
 // Cada <webview> anexado a uma janela que abriu o navegador: popups viram aba interna; Cmd+… volta ao app.
 app.on("browser-window-created", (_e, win) => {
   win.webContents.on("did-attach-webview", (_ev, wc) => {
     const host = windowHosts.get(win.id);
     if (host === undefined) return;
-    views.set(wc.id, { wc, host });
-    wc.on("destroyed", () => views.delete(wc.id));
+    views.set(wc.id, { wc, host, winId: win.id });
+    wc.on("destroyed", () => { views.delete(wc.id); });
     wc.setWindowOpenHandler(({ url }) => {
       if (/^https?:\/\//.test(url)) { if (!win.isDestroyed()) win.webContents.send("browser:open-url", { url }); }
       else if (/^(mailto|tel):/.test(url)) void shell.openExternal(url);
