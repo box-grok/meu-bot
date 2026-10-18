@@ -1533,6 +1533,27 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   aba, conversa do WhatsApp no sqlite do OpenClaw) são copiadas para `~/.claude/skills/<nome>/SKILL.md` só se
   a máquina ainda não tiver a sua (o agente edita a dele). nav-api: popup da extensão fora de `abas`, erro
   claro quando a aba morre no meio (`alive`), `ler` tenta duas vezes e toda falha vai ao meu-bot.log.
+- CRM pelo WhatsApp, tutorial 11 (18 out, módulo Pro): o agente da máquina anota no Streak **pela API**, sem
+  navegador, 24 h. Lado da VM em `backend-colima/crm/`: `streak.mjs` (CLI node puro: diag, pipelines,
+  pipeline, box-find, box-create, box-update, field-set, comment, contact-upsert, telefone-set; chave em
+  `~/.local/share/meu-bot/crm.json` 0600, nunca impressa), `crm-job.mjs` (lê a conversa com `gateway call
+  chat.history` desde a marca d'água em `crm/estado.json`, pede um turno ao backend local — `model: agente`,
+  `X-Conversation-Id: crm:+N` — com o prompt de `regras.buildPrompt`, espera o bloco ```crm-json``` {aplicado,
+  propostas, resumo}, avisa o dono por `openclaw message send`; `--aplicar [n]`/`--descartar` respondem à última
+  proposta sem LLM; `--dono --comando` para pedidos sem contato explícito; `transcricao +N` para o agente ler uma
+  conversa), plugin OpenClaw `meu-bot-crm` (`message_received`/`message_sending` alimentam `SilenceTracker`
+  persistido em `crm/tracker.json`; timer de 30 s dispara o job após `silencioMin` (config do plugin, 10); no chat
+  do dono consigo mesmo: "anota no CRM: …"/"crm: …" → job, "ok"/"ok 2"/"não" → aplicar/descartar). Regras puras
+  em `crm/regras.mjs` (testes crm-regras). `install-crm.sh`: copia, `plugins install --link`, grava
+  `plugins.entries.meu-bot-crm.hooks.allowConversationAccess=true` (docs exigem para plugins de fora), semeia a
+  skill `streak-crm-api`. Limites conhecidos: a transcrição do OpenClaw tem só contato + Rene (respostas manuais
+  do dono pelo celular não aparecem) e `chat.history` devolve só a janela desde o último reset; por isso o comando
+  do dono no chat consigo mesmo é o caminho garantido. Sem box e sem pedido do dono, o job não cria nada (só
+  marca `semBox`). App: `crm-core.ts` (puro: `parseCrmPatch`, `setCrmSh` em base64, `crmInfoSh`, `streakSh`
+  diag/pipelines) + `crm.ts` (gate Pro via `fetchLicense`), IPC `crm:info|install|set|test|reset` + evento
+  `crm:progress`, `hostProbe.installCrm/uninstallCrm`, tutorial 11 `crm-whatsapp` (after `navegador-extensoes`,
+  bodies crm-pro/crm-install/crm-config/crm-test, flag `crmSeen`), `proBlockText(a, view, "crm")`. Também
+  corrigido: `licenca.js` faltava no `install.sh` e em `BUNDLE_FILES` (backend novo quebrava no require).
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
   Tutoriais, Acervo, guia, chat do WhatsApp), como o terminal dividido do Cursor. `.content` vira grid de 3
   colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de

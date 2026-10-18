@@ -42,7 +42,7 @@ export const CLIENT_CHANNELS = [
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
-  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install",
+  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "crm:info", "crm:install", "crm:set", "crm:test", "crm:reset",
   // aba Navegador (módulo Pro)
   "browser:open", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove",
   "tailscale:disable-check", "tailscale:restore",

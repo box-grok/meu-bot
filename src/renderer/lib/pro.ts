@@ -19,10 +19,16 @@ export function browserAccess(view: LicenseView | null, host: string): ProAccess
 }
 
 /** Texto do bloqueio, por situação. */
-export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null): { title: string; text: string; askAdmin: boolean } {
-  if (a === "unknown") return { title: "Navegador · Pro", text: "Não consegui ler o plano desta máquina (backend antigo, fora do ar, ou este Mac). Reinstale o backend pelo seletor e tente de novo.", askAdmin: false };
-  if (a === "expired") return { title: "Seu Pro venceu", text: `O plano Pro desta máquina venceu${view?.license.expiresAt ? ` em ${new Date(view.license.expiresAt).toLocaleDateString("pt-BR")}` : ""}. Peça ao admin para renovar e a aba volta a abrir.`, askAdmin: true };
-  return { title: "Navegador é do plano Pro", text: "Um navegador dentro do meu-bot, com abas, cookies separados por máquina e extensões do Chrome (como o Streak CRM no Gmail). E o agente da conversa pode navegar por você. Peça o Pro ao admin: ele libera e a aba abre aqui mesmo.", askAdmin: true };
+export type ProModule = "navegador" | "crm";
+const MODULE_TEXT: Record<ProModule, { name: string; pitch: string; back: string }> = {
+  navegador: { name: "Navegador", pitch: "Um navegador dentro do meu-bot, com abas, cookies separados por máquina e extensões do Chrome (como o Streak CRM no Gmail). E o agente da conversa pode navegar por você.", back: "a aba volta a abrir" },
+  crm: { name: "CRM pelo WhatsApp", pitch: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: cria e atualiza boxes, campos e comentários, e pede sua confirmação antes de mudar de etapa.", back: "o tutorial continua" },
+};
+export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null, modulo: ProModule = "navegador"): { title: string; text: string; askAdmin: boolean } {
+  const m = MODULE_TEXT[modulo];
+  if (a === "unknown") return { title: `${m.name} · Pro`, text: "Não consegui ler o plano desta máquina (backend antigo, fora do ar, ou este Mac). Reinstale o backend pelo seletor e tente de novo.", askAdmin: false };
+  if (a === "expired") return { title: "Seu Pro venceu", text: `O plano Pro desta máquina venceu${view?.license.expiresAt ? ` em ${new Date(view.license.expiresAt).toLocaleDateString("pt-BR")}` : ""}. Peça ao admin para renovar e ${m.back}.`, askAdmin: true };
+  return { title: `${m.name} é do plano Pro`, text: `${m.pitch} Peça o Pro ao admin: ele libera e ${m.back} aqui mesmo.`, askAdmin: true };
 }
 
 /** Título curto de uma aba interna (favicon à parte): o título da página, senão o domínio, senão "Nova aba". */

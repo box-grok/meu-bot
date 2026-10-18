@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -1508,9 +1508,21 @@ const acervoList = $<HTMLElement>("acervo-list");
 paintAcervoCount();
 const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel"), () => {
   acervoList.replaceChildren();
-  const machine = objectiveState?.skills ?? [];
+  const machine = (objectiveState?.skills ?? []).filter((sk) => sk.learned !== true);
+  const learned = (objectiveState?.skills ?? []).filter((sk) => sk.learned === true);
+  if (objectiveState?.available === true && learned.length > 0) {
+    acervoList.append(el("div", "tut-group", `Skills aprendidas em ${hostLabel(windowHost)}`));
+    acervoList.append(el("div", "acervo-empty", "O agente da conversa registra aqui o que aprendeu (ex.: como operar um site pelo Navegador) e consulta antes de repetir a tarefa. Para mudar uma, peça na conversa: \"atualize a skill <nome>: …\"."));
+    for (const sk of learned) {
+      const info = el("div", "acervo-info");
+      info.append(el("strong", "", sk.name), el("span", "", sk.description !== "" ? sk.description : "sem descrição"));
+      const item = el("div", "acervo-item on");
+      item.append(info);
+      acervoList.append(item);
+    }
+  }
   if (objectiveState?.available === true) {
-    acervoList.append(el("div", "tut-group", `Skills do agente em ${hostLabel(windowHost)}`));
+    acervoList.append(el("div", "tut-group", `Skills do agente do WhatsApp em ${hostLabel(windowHost)}`));
     if (machine.length === 0) acervoList.append(el("div", "acervo-empty", "O agente desta máquina ainda não tem skills no workspace. O tutorial 7 cria a primeira: o objetivo dele no WhatsApp."));
     for (const sk of machine) {
       const info = el("div", "grow");
@@ -1771,6 +1783,14 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderNavOpen(txt, false);
       } else if (step.body === "navegador-ext") {
         renderNavOpen(txt, true);
+      } else if (step.body === "crm-pro") {
+        renderCrmPro(txt);
+      } else if (step.body === "crm-install") {
+        renderCrmInstall(txt);
+      } else if (step.body === "crm-config") {
+        renderCrmConfig(txt);
+      } else if (step.body === "crm-test") {
+        renderCrmTest(txt);
       } else if (step.body === "statusline-segments") {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
@@ -1915,6 +1935,7 @@ function openGuide(t: Tutorial): void {
   if (t.id === "claude-login") void refreshClaudeLine();
   if (t.id === "guarda-whatsapp") void refreshGuarda();
   if (t.id === "navegador" || t.id === "navegador-extensoes") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
+  if (t.id === "crm-whatsapp") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
   if (t.id === "xai-login") void refreshXaiLine();
   paintGuide();
 }
@@ -3522,6 +3543,7 @@ const guideCtx = (): GuideContext => ({
   guarda: { installed: guardaState },
   navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
   objective: objectiveState,
+  crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), info: crmState },
 });
 
 /** Tutorial 7, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
@@ -3687,6 +3709,114 @@ function renderNavOpen(container: HTMLElement, webStore: boolean): void {
   b.addEventListener("click", () => { void openNavTab(webStore ? NAV_WEB_STORE : undefined); });
   row.append(b);
   container.append(row);
+}
+// ---- Tutorial 11 · CRM pelo WhatsApp (Pro): estado na máquina, instalação, chave/pipeline/regras, teste.
+let crmState: CrmInfo | null = null;
+let crmBusy = false;
+let crmLog: string[] = [];
+let crmMsg: { text: string; bad: boolean } | null = null;
+let crmDiag: CrmDiag | null = null;
+let crmKeyDraft = "";
+async function refreshCrm(): Promise<void> {
+  if (!caps.install || windowHost === "" || windowHost === "local") return;
+  try { crmState = await window.meuBot.crmInfo(); } catch { /* máquina fora: fica o que havia */ }
+  paintGuide();
+}
+window.meuBot.on("crm:progress", ({ line }) => { crmLog = [...crmLog, line].slice(-6); if (crmBusy) paintGuide(); });
+async function crmDo(run: () => Promise<unknown>, okText: string | null): Promise<void> {
+  if (crmBusy) return;
+  crmBusy = true; crmMsg = null; paintGuide();
+  try { const r = await run(); if (r !== null && typeof r === "object" && "available" in (r as object)) crmState = r as CrmInfo; crmMsg = okText === null ? null : { text: okText, bad: false }; }
+  catch (err) { crmMsg = { text: /PRO_REQUIRED/.test(ipcErrorText(err)) ? "Esta máquina não tem o plano Pro." : ipcErrorText(err), bad: true }; }
+  finally { crmBusy = false; paintGuide(); }
+}
+/** Passo 1: o plano (mesmo gate do Navegador, texto do CRM). */
+function renderCrmPro(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const a = browserAccess(license, windowHost);
+  if (a === "ok") { box.append(el("p", "audio-ok", `✓ plano Pro ativo em ${hostLabel(windowHost)}`)); container.append(box); return; }
+  const t = proBlockText(a, license, "crm");
+  box.append(el("p", "hint", t.text));
+  const row = el("div", "audio-row");
+  if (t.askAdmin) {
+    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+    b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintGuide(); }).catch(() => { b.disabled = false; }); });
+    row.append(b);
+  }
+  const again = el("button", "btn btn-ghost btn-small", "Conferir de novo"); again.type = "button";
+  again.addEventListener("click", () => { void refreshLicense().then(() => paintGuide()); });
+  row.append(again); box.append(row); container.append(box);
+}
+/** Passo 2: plugin + streak.mjs na máquina. */
+function renderCrmInstall(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const row = el("div", "audio-row");
+  const inst = crmState?.installed === true;
+  if (inst && !crmBusy) row.append(el("span", "audio-ok", "✓ instalado nesta máquina"));
+  const b = el("button", `btn ${inst ? "btn-ghost" : "btn-primary"} btn-small`, crmBusy ? "Instalando…" : inst ? "Reinstalar" : "Instalar"); b.type = "button"; b.disabled = crmBusy || crmState === null;
+  b.addEventListener("click", () => { crmLog = []; void crmDo(async () => { const r = await window.meuBot.installCrm(); if (!r.ok) throw new Error(r.log.at(-1) ?? "a instalação falhou"); return window.meuBot.crmInfo(); }, "Máquina pronta: o plugin do CRM está no OpenClaw."); });
+  row.append(b); box.append(row);
+  if (crmState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (crmBusy && crmLog.length > 0) box.append(el("pre", "admin-logs", crmLog.join("\n")));
+  if (crmMsg !== null) box.append(el("p", `hint ${crmMsg.bad ? "guide-pair-note" : "audio-ok"}`, crmMsg.text));
+  container.append(box);
+}
+/** Passo 3: chave da API (só vai à máquina), teste, pipeline e regras. */
+function renderCrmConfig(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const st = crmState;
+  // Chave
+  const keyRow = el("div", "support-name");
+  const key = el("input"); key.type = "password"; key.autocomplete = "off"; key.spellcheck = false; key.maxLength = 200; key.disabled = crmBusy;
+  key.placeholder = st?.configured === true ? "chave guardada na máquina · cole outra para trocar" : "cole aqui a chave da API do Streak";
+  key.value = crmKeyDraft;
+  key.addEventListener("input", () => { crmKeyDraft = key.value; saveKey.disabled = crmBusy || key.value.trim().length < 16; });
+  const saveKey = el("button", "btn btn-primary btn-small", st?.configured === true ? "Trocar a chave" : "Guardar a chave"); saveKey.type = "button"; saveKey.disabled = crmBusy || key.value.trim().length < 16;
+  saveKey.addEventListener("click", () => { const k = key.value.trim(); crmKeyDraft = ""; void crmDo(async () => { const r = await window.meuBot.setCrm({ apiKey: k }); crmDiag = await window.meuBot.crmTest(); if (!crmDiag.ok) throw new Error(crmDiag.erro ?? "a chave não funcionou"); return r; }, "Chave guardada e testada no Streak."); });
+  key.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !saveKey.disabled) { ev.preventDefault(); saveKey.click(); } });
+  keyRow.append(key, saveKey); box.append(keyRow);
+  if (st?.configured === true) {
+    const testRow = el("div", "audio-row");
+    const test = el("button", "btn btn-ghost btn-small", crmBusy ? "Testando…" : "Testar a chave e listar pipelines"); test.type = "button"; test.disabled = crmBusy;
+    test.addEventListener("click", () => { void crmDo(async () => { crmDiag = await window.meuBot.crmTest(); if (!crmDiag.ok) throw new Error(crmDiag.erro ?? "falhou"); return null; }, crmDiag?.ok ? null : null); });
+    testRow.append(test);
+    if (crmDiag?.ok === true) testRow.append(el("span", "audio-ok", `✓ ${crmDiag.usuario ?? "conta"} · ${crmDiag.pipelines.length} pipeline${crmDiag.pipelines.length === 1 ? "" : "s"}`));
+    box.append(testRow);
+    // Pipeline
+    const pipes = crmDiag?.pipelines ?? (st.pipelineKey !== null ? [{ key: st.pipelineKey, name: st.pipelineName ?? st.pipelineKey }] : []);
+    if (pipes.length > 0) {
+      const pr = el("div", "support-name");
+      const sel = document.createElement("select"); sel.className = "nav-url"; sel.disabled = crmBusy;
+      const none = document.createElement("option"); none.value = ""; none.textContent = "escolha o pipeline…"; sel.append(none);
+      for (const p of pipes) { const o = document.createElement("option"); o.value = p.key; o.textContent = p.name; if (p.key === st.pipelineKey) o.selected = true; sel.append(o); }
+      sel.addEventListener("change", () => { const p = pipes.find((x) => x.key === sel.value); if (p === undefined) return; void crmDo(() => window.meuBot.setCrm({ pipelineKey: p.key, pipelineName: p.name }), `Pipeline "${p.name}" escolhido.`); });
+      pr.append(el("span", "hint", "Pipeline:"), sel); box.append(pr);
+      if (crmDiag?.pipeline) box.append(el("p", "hint", `Etapas: ${crmDiag.pipeline.stages.join(" → ")}. Campos: ${crmDiag.pipeline.fields.join(", ") || "nenhum"}.`));
+    } else if (crmDiag !== null && crmDiag.ok) box.append(el("p", "hint guide-pair-note", "Nenhum pipeline nesta conta do Streak: crie um no Gmail e teste de novo."));
+    // Regras
+    const rules = el("div", "audio-row");
+    const sil = document.createElement("input"); sil.type = "number"; sil.min = "1"; sil.max = "240"; sil.className = "nav-url"; sil.style.maxWidth = "80px"; sil.value = String(st.silencioMin); sil.disabled = crmBusy;
+    sil.addEventListener("change", () => { const n = Number(sil.value); if (Number.isInteger(n) && n >= 1 && n <= 240 && n !== st.silencioMin) void crmDo(() => window.meuBot.setCrm({ silencioMin: n }), `Anota após ${n} min de silêncio.`); });
+    const lab = el("label", "hint"); lab.append("anotar após ", sil, " min de silêncio na conversa");
+    const auto = document.createElement("input"); auto.type = "checkbox"; auto.checked = st.criarSemPerguntar; auto.disabled = crmBusy;
+    auto.addEventListener("change", () => { void crmDo(() => window.meuBot.setCrm({ criarSemPerguntar: auto.checked }), auto.checked ? "Box novo e etapa sem perguntar." : "Box novo e etapa só com o seu ok."); });
+    const lab2 = el("label", "hint"); lab2.append(auto, " criar box e mudar etapa sem perguntar");
+    rules.append(lab, lab2); box.append(rules);
+  }
+  if (crmBusy) box.append(el("p", "hint", "Falando com a máquina…"));
+  if (crmMsg !== null) box.append(el("p", `hint ${crmMsg.bad ? "guide-pair-note" : "audio-ok"}`, crmMsg.text));
+  container.append(box);
+}
+/** Passo 4: como testar e "Refazer do zero". */
+function renderCrmTest(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  box.append(el("p", "hint", `Também funciona sozinho: ${crmState?.silencioMin ?? 10} min depois da última mensagem de um contato que já tem box, o agente anota o que mudou e te avisa pelo WhatsApp.`));
+  const row = el("div", "audio-row");
+  const reset = el("button", "btn btn-ghost btn-small", "Refazer do zero"); reset.type = "button"; reset.disabled = crmBusy;
+  reset.addEventListener("click", () => { if (!confirm("Apagar a chave da API e a configuração do CRM desta máquina e tirar o plugin?")) return; crmDiag = null; void crmDo(() => window.meuBot.resetCrm(), "CRM removido desta máquina."); });
+  row.append(reset); box.append(row);
+  if (crmMsg !== null) box.append(el("p", `hint ${crmMsg.bad ? "guide-pair-note" : "audio-ok"}`, crmMsg.text));
+  container.append(box);
 }
 async function refreshGuarda(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
@@ -4000,9 +4130,24 @@ function applyRecortes(tab: NavTab, fresh = false): void {
         else if (!hide && keys.length > 0) { tab.cssKeys.delete(r.id); for (const k of keys) await tab.wv.removeInsertedCSS(k); touched = touched || r.resize === true; }
       } catch { /* documento trocou no meio: a próxima carga reaplica */ }
     }
-    if (touched) { try { await tab.wv.executeJavaScript("window.dispatchEvent(new Event('resize')); undefined"); } catch { /* idem */ } }
+    if (touched) navRefit(tab);
   };
   void run();
+}
+/**
+ * Pede à página que refaça o layout: sites como o Gmail medem a janela por JS e, se a medida aconteceu com a aba
+ * escondida (display:none) ou com o documento rolado, a parte de baixo some (planilha do Streak cortada). Zera a
+ * rolagem do documento e dispara `resize`; chamado ao mostrar a aba, ao mudar o tamanho da área e nos recortes.
+ */
+const NAV_REFIT_JS = "window.scrollTo(0, 0); document.documentElement.scrollTop = 0; if (document.body) document.body.scrollTop = 0; window.dispatchEvent(new Event('resize')); undefined";
+function navRefit(tab: NavTab): void {
+  if (tab.loading) return;
+  try { void tab.wv.executeJavaScript(NAV_REFIT_JS).catch(() => undefined); } catch { /* webview ainda não anexado */ }
+}
+let navRefitTimer: ReturnType<typeof setTimeout> | null = null;
+function navRefitSoon(): void {
+  if (navRefitTimer !== null) clearTimeout(navRefitTimer);
+  navRefitTimer = setTimeout(() => { navRefitTimer = null; const cur = navCurrent(); if (cur !== null) navRefit(cur); }, 150);
 }
 function toggleRecorte(r: Recorte): void {
   const cur = navCurrent();
@@ -4114,6 +4259,7 @@ function navSelect(id: string): void {
   navActive = id;
   for (const t of navTabs) t.wv.hidden = t.id !== id;
   paintNav();
+  navRefitSoon();
   const cur = navCurrent();
   if (cur !== null) { cur.wv.focus(); try { window.meuBot.browserActive(cur.wv.getWebContentsId()); } catch { /* ainda não anexado: o dom-ready avisa */ } }
 }
@@ -4243,6 +4389,7 @@ async function openNavTab(url?: string): Promise<void> {
     ext.addEventListener("click", () => { menu.hidden = !menu.hidden; if (!menu.hidden) paintNavMenu(); });
     open.addEventListener("click", () => { const c = navCurrent(); if (c !== null && /^https?:/.test(c.url)) void window.meuBot.openExternal(c.url); });
     box.addEventListener("mousedown", () => { menu.hidden = true; navClosePopup(); });
+    new ResizeObserver(() => navRefitSoon()).observe(box);
     navPage = definePage("navegador", "Navegador", panel, () => { paintNav(); });
   }
   openPage(navPage);

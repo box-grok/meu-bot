@@ -27,8 +27,9 @@ async function rememberClaudeSession(conv: { id: string; host: string; claude?: 
 }
 import { getHostNames, isBackendModel } from "../settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
+import { crmInfo, crmTest, resetCrm, setCrm } from "../crm";
 import { toggleQuickEntry } from "../quickEntry";
-import { guardaInstalled, installAudio, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
+import { guardaInstalled, installAudio, installCrm, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
 import { readSegments, writeSegments } from "../statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
@@ -161,6 +162,12 @@ export function registerClientIpc(): void {
   handleClient("browser:favorite-add", (event, payload: unknown) => { const p = payload as { titulo?: unknown; url?: unknown } | null; if (typeof p?.url !== "string") throw new Error("falta url"); return browserFavoriteAdd(ctxOf(event).host, { titulo: typeof p.titulo === "string" ? p.titulo : "", url: p.url }); });
   handleClient("browser:favorite-remove", (event, payload: unknown) => { const id = (payload as { id?: unknown } | null)?.id; if (typeof id !== "string" || id === "") throw new Error("falta id"); return browserFavoriteRemove(ctxOf(event).host, id); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
+  // Tutorial 11 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
+  handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
+  handleClient("crm:install", async (event) => { const h = ctxOf(event); const lic = await fetchLicense(h.host); if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED"); return installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); });
+  handleClient("crm:set", (event, payload: unknown) => setCrm(ctxOf(event).host, payload));
+  handleClient("crm:test", (event) => crmTest(ctxOf(event).host));
+  handleClient("crm:reset", async (event) => { const h = ctxOf(event); await uninstallCrm(h.host).catch(() => undefined); return resetCrm(h.host); });
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
   handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
   handleClient("navegador:status", (event) => navegadorInstalled(ctxOf(event).host));

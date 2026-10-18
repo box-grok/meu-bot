@@ -200,7 +200,7 @@ export function backendBundleDir(): string {
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "meu-bot-backend.service", "install.sh",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "meu-bot-backend.service", "install.sh",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 
@@ -317,6 +317,31 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   return { ok: true, log: lines };
 }
 const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
+const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md"];
+const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "streak.mjs", "package.json", "openclaw.plugin.json"];
+/** Tutorial 11: instala o plugin meu-bot-crm + streak.mjs + skill na máquina (molde da guarda). */
+export async function installCrm(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["o CRM pelo WhatsApp é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  say(`enviando o CRM para ${host}:${REMOTE_STAGE}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/crm`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_PLUGIN_FILES.map((f) => path.join(dir, "crm", f)), `${host}:${REMOTE_STAGE}/crm/`], 60_000);
+  if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-crm.sh 2>&1`], 4 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+export async function uninstallCrm(host: string): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: true, log: ["nada a desfazer neste Mac"] };
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-crm.sh 2>&1 || bash "$HOME/.local/share/meu-bot/crm/../uninstall-crm.sh" 2>&1 || { export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; openclaw plugins uninstall meu-bot-crm >/dev/null 2>&1; rm -rf "$HOME/.local/share/meu-bot/crm"; echo removido; }`], 2 * 60_000);
+  return { ok: r.code === 0, log: r.stdout.trim().split("\n").filter(Boolean) };
+}
 
 /** A guarda do WhatsApp está nesta máquina? (a cópia registrada no OpenClaw; null para este Mac) */
 export async function guardaInstalled(host: string): Promise<boolean | null> {

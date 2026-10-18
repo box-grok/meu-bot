@@ -436,7 +436,7 @@ export interface ObjectiveChoice { id: string; label: string; text: string }
 /** Quanta liberdade o agente tem: só conversa, consulta e organiza, ou age pelo dono. */
 export type FreedomLevel = "conversa" | "consulta" | "age";
 /** Uma skill do workspace do OpenClaw na máquina (`<workspace>/skills/<nome>/SKILL.md`); `objective` = a do tutorial 7. */
-export interface MachineSkill { name: string; description: string; objective: boolean }
+export interface MachineSkill { name: string; description: string; objective: boolean; /** Skill aprendida/instalada para o Claude Code da máquina (~/.claude/skills), não do workspace do OpenClaw. */ learned?: boolean }
 /** Estado do tutorial 7 na máquina (objetivo.json + skills do workspace). */
 export interface ObjectiveInfo {
   /** Janela de máquina por SSH (neste Mac não há agente). */
@@ -452,6 +452,25 @@ export interface ObjectiveInfo {
   /** Todas as skills do workspace (o Acervo lista; a do objetivo primeiro). */
   skills: MachineSkill[];
 }
+
+/** Tutorial 11 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
+export interface CrmInfo {
+  /** Janela de máquina por SSH (neste Mac não há agente). */
+  available: boolean;
+  /** Plugin meu-bot-crm + streak.mjs na máquina. */
+  installed: boolean;
+  /** Há chave da API do Streak gravada (a chave nunca volta ao app). */
+  configured: boolean;
+  pipelineKey: string | null;
+  pipelineName: string | null;
+  /** Minutos de silêncio na conversa antes de o agente anotar. */
+  silencioMin: number;
+  /** Criar box e mudar etapa sem perguntar (padrão: propõe e espera "ok"). */
+  criarSemPerguntar: boolean;
+  savedAt: string | null;
+}
+/** `streak.mjs diag` na máquina: a chave funciona? quais pipelines existem? */
+export interface CrmDiag { ok: boolean; erro: string | null; usuario: string | null; pipelines: { key: string; name: string }[]; pipeline: { name: string; stages: string[]; fields: string[] } | null }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
@@ -714,6 +733,8 @@ export interface MainEvents {
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
   "navegador:progress": { line: string };
+  /** Instalação do CRM pelo WhatsApp (tutorial 11): uma linha de progresso. */
+  "crm:progress": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
@@ -889,6 +910,12 @@ export interface MeuBotClientApi {
   installNavegador(): Promise<InstallBackendResult>;
   installGuarda(): Promise<InstallBackendResult>;
   uninstallGuarda(): Promise<InstallBackendResult>;
+  /** Tutorial 11 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
+  crmInfo(): Promise<CrmInfo>;
+  installCrm(): Promise<InstallBackendResult>;
+  setCrm(patch: { apiKey?: string; pipelineKey?: string | null; pipelineName?: string; silencioMin?: number; criarSemPerguntar?: boolean }): Promise<CrmInfo>;
+  crmTest(): Promise<CrmDiag>;
+  resetCrm(): Promise<CrmInfo>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;
   /** Tutorial 7: estado na máquina (objetivo, nível, skill salva, skills do workspace). */

@@ -1,0 +1,1 @@
+{ "id": "meu-bot-crm", "name": "meu-bot · CRM pelo WhatsApp", "activation": { "onStartup": true }, "configSchema": { "type": "object", "additionalProperties": false, "properties": { "silencioMin": { "type": "number", "minimum": 1, "maximum": 240, "description": "Minutos sem mensagem numa conversa para o agente anotar no CRM" } } } }

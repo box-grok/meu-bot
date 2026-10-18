@@ -62,10 +62,11 @@ export function parseMachineSkills(stdout: string): MachineSkill[] {
   const out: MachineSkill[] = [];
   for (const line of stdout.split("\n")) {
     const [tag, name, description] = line.split("\t");
-    if (tag !== "K" || name === undefined || !/^[A-Za-z0-9._-]{1,80}$/.test(name)) continue;
-    out.push({ name, description: (description ?? "").slice(0, 300), objective: name === OBJECTIVE_SKILL });
+    if ((tag !== "K" && tag !== "L") || name === undefined || !/^[A-Za-z0-9._-]{1,80}$/.test(name)) continue;
+    const learned = tag === "L";
+    out.push({ name, description: (description ?? "").slice(0, 300), objective: !learned && name === OBJECTIVE_SKILL, ...(learned ? { learned: true } : {}) });
   }
-  return out.sort((a, b) => Number(b.objective) - Number(a.objective) || a.name.localeCompare(b.name));
+  return out.sort((a, b) => Number(b.objective) - Number(a.objective) || Number(a.learned === true) - Number(b.learned === true) || a.name.localeCompare(b.name));
 }
 
 /** O SKILL.md: frontmatter que o OpenClaw lê (nome, descrição) e instruções em português para o agente. */
@@ -126,6 +127,14 @@ for f in "$W"/skills/*/SKILL.md; do
   [ -n "$n" ] || n=$(basename "$(dirname "$f")")
   d=$(sed -n 's/^description:[[:space:]]*//p' "$f" | head -n1 | sed 's/^"//; s/"$//' | tr -d '\\t\\r')
   printf 'K\\t%s\\t%s\\n' "$n" "$d"
+done
+for f in "$HOME"/.claude/skills/*/SKILL.md; do
+  [ -f "$f" ] || continue
+  case "$f" in */synced/*) continue;; esac
+  n=$(sed -n 's/^name:[[:space:]]*//p' "$f" | head -n1 | tr -d '"\\r')
+  [ -n "$n" ] || n=$(basename "$(dirname "$f")")
+  d=$(sed -n 's/^description:[[:space:]]*//p' "$f" | head -n1 | sed 's/^"//; s/"$//' | tr -d '\\t\\r')
+  printf 'L\\t%s\\t%s\\n' "$n" "$d"
 done
 `;
 }

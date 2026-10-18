@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappStatus } from "../../shared/ipc";
+import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappStatus, CrmInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -34,6 +34,8 @@ export interface GuideContext {
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
   /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
+  /** Tutorial 11 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
+  crm: { access: "ok" | "free" | "expired" | "unknown" | null; info: CrmInfo | null };
 }
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
@@ -45,6 +47,7 @@ export const emptyContext = (): GuideContext => ({
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false },
   fallback: { primary: null, chain: null },
   objective: null,
+  crm: { access: null, info: null },
 });
 
 /** Modelos que entram na corrente de fallback (os outros respondem sozinhos, sem reserva). */
@@ -76,13 +79,13 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; extSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, extSeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; extSeen: boolean; crmSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, extSeen: false, crmSeen: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "extSeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "extSeen" | "crmSeen";
 
 export interface GuideStep {
   id: string;
@@ -91,7 +94,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "navegador-ext";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "navegador-ext" | "crm-pro" | "crm-install" | "crm-config" | "crm-test";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -420,6 +423,39 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "Abra o Gmail na aba e entre na sua conta do Google (o login fica guardado nesta máquina). O Streak aparece dentro da caixa de entrada: pipelines, boxes e contatos funcionam; o rastreio de e-mails por rede ainda não. Para sobrar tela, a barra tem os botões ◧ ⋮ ⬒ que ocultam o painel lateral, o menu Mail/Chat/Meet e a barra superior do Gmail (vêm ocultos; clique para mostrar de novo).",
         done: (_st, f) => f.extSeen,
         manual: { label: "Vi funcionando", flag: "extSeen" },
+      },
+    ],
+  },
+  {
+    id: "crm-whatsapp",
+    number: 11,
+    after: "navegador-extensoes",
+    title: "CRM pelo WhatsApp (Pro)",
+    short: "CRM",
+    summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",
+    minutes: 6,
+    icon: "chat",
+    steps: [
+      {
+        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "crm-pro",
+        text: "O CRM pelo WhatsApp é do plano Pro, como o Navegador. Se já liberou o Navegador, este passo já está feito.",
+        done: (_st, _f, c) => c.crm.access === "ok",
+      },
+      {
+        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
+        text: "Entra um plugin no OpenClaw da máquina (vê as conversas e percebe quando uma fica em silêncio) e uma ferramenta que fala com o Streak pela API. Nada passa pelo seu computador: funciona com o app fechado.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
+      },
+      {
+        id: "config", title: "Chave da API do Streak, pipeline e regras", target: "none", body: "crm-config",
+        text: "No Gmail, Streak › Configurações › Integrações (API) › copie a sua chave. Cole aqui: ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline e quanto tempo de silêncio na conversa dispara a anotação.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.configured === true && c.crm.info.pipelineKey !== null,
+      },
+      {
+        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
+        text: "No WhatsApp, abra a conversa com você mesmo (seu próprio número) e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇. Se ele propuser algo (mudar de etapa, criar box), responda \"ok\" ou \"não\".",
+        done: (_st, f) => f.crmSeen,
+        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
       },
     ],
   },

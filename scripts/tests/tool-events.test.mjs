@@ -48,3 +48,9 @@ test("ações do navegador viram uma linha com 🌐; digitar nunca mostra o text
   assert.equal(sum("mcp__navegador__print", {}), "🌐 tirou um print");
   assert.match(sum("mcp__outro__x", { a: 1 }), /^\{/);
 });
+
+test("comandos do streak.mjs no Bash viram uma linha 📇 com o subcomando", () => {
+  const { summarize } = createRequire(import.meta.url)("../../backend-colima/tool-events.js");
+  assert.equal(summarize("Bash", { command: "node ~/.local/share/meu-bot/crm/streak.mjs box-find --phone +595994402904" }), "📇 CRM: box-find --phone +595994402904");
+  assert.equal(summarize("Bash", { command: "node /x/streak.mjs comment k1 \"fechou o Kommo\"" }), "📇 CRM: comment k1 \"fechou o Kommo\"");
+});
