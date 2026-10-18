@@ -624,6 +624,39 @@ body.topbar-hidden .topbar { display: none; }
 .guide-reset { border-top: none; padding-top: 0; }
 .sl-preview { display: block; box-sizing: border-box; max-width: 100%; font: 12px/1.5 var(--mono); padding: 8px 10px; border-radius: 8px; background: var(--code); color: var(--fg); overflow-x: auto; white-space: nowrap; }
 .sl-switches { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+/* Aba "Navegador" (Pro): a view nativa é desenhada por cima do .nav-box; o DOM só reserva o espaço e desenha a barra. */
+.nav-panel { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.nav-panel[hidden] { display: none; }
+.nav-tabs { display: flex; align-items: center; gap: 4px; padding: 6px 8px 0; overflow-x: auto; flex: none; scrollbar-width: none; }
+.nav-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 200px; padding: 4px 8px; border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--card); color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.nav-tab.active { color: var(--fg); background: var(--bg); }
+.nav-tab img { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.nav-tab .nav-tab-title { overflow: hidden; text-overflow: ellipsis; }
+.nav-tab .tab-close { font-size: 13px; line-height: 1; padding: 0 2px; }
+.nav-tab-add { font: 14px/1 inherit; padding: 2px 8px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 6px; cursor: pointer; }
+.nav-tab-add:hover { color: var(--fg); border-color: var(--line); }
+.nav-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); flex: none; position: relative; }
+.nav-bar .mini-btn { font-size: 14px; }
+.nav-bar .mini-btn:disabled { opacity: .35; cursor: default; }
+.nav-url { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+.nav-url:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.nav-loading { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: new-glow 1s ease-in-out infinite; flex: none; }
+.nav-box { flex: 1; min-height: 0; background: var(--bg); position: relative; }
+.nav-box[hidden] { display: none; }
+.nav-view { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: flex; }
+.nav-view[hidden] { display: none; }
+.nav-tabs[hidden], .nav-bar[hidden] { display: none; }
+.nav-menu { position: absolute; right: 8px; top: 100%; z-index: 7; min-width: 260px; max-width: 360px; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 6px 24px rgba(0,0,0,.25); display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.nav-menu[hidden] { display: none; }
+.nav-menu .nav-ext { display: flex; align-items: center; gap: 8px; }
+.nav-menu .nav-ext .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-block { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; max-width: 560px; margin: 0 auto; }
+.nav-block[hidden] { display: none; }
+.nav-block h2 { margin: 0; font-size: 18px; }
+.nav-block p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.nav-block .nav-pro-badge { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); font-weight: 700; }
+.nav-note { padding: 4px 12px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); flex: none; }
+.nav-note[hidden] { display: none; }
 .term-panel { position: absolute; inset: 0; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
 .term-panel[hidden] { display: none; }
 .term-head { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--muted); flex: none; }
@@ -725,3 +758,6 @@ body.topbar-hidden .topbar { display: none; }
 .login-details[open] > summary::before { content: "▾ "; }
 .login-details pre { margin: 6px 0 0; max-height: 120px; overflow: auto; font: 11px/1.4 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .login-step.active .ls-dot { animation: none; } }
+
+/* Selo "PRO" no canto superior direito quando a conta é Pro. */
+.badge.pro { font-size: 10px; font-weight: 700; letter-spacing: .05em; padding: 2px 7px; border-radius: 999px; background: var(--accent, hsl(248 70% 60%)); color: #fff; align-self: center; }

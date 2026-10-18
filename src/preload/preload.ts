@@ -28,6 +28,9 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "update:ready",
   "update:state",
   "net:state",
+  "browser:extensions",
+  "browser:open-url",
+  "browser:key",
 ];
 
 /** Os dois apps. */
@@ -46,6 +49,10 @@ const sharedApi: MeuBotSharedApi = {
   termClose: (id: string) => ipcRenderer.invoke("term:close", { id }),
   termReplay: (id: string) => ipcRenderer.invoke("term:replay", { id }),
   updateState: () => ipcRenderer.invoke("update:state", {}),
+  browserOpen: () => ipcRenderer.invoke("browser:open", {}),
+  browserExtensions: () => ipcRenderer.invoke("browser:extensions", {}),
+  browserRemoveExtension: (extId: string) => ipcRenderer.invoke("browser:remove-extension", { extId }),
+  browserRequestPro: () => ipcRenderer.invoke("browser:request-pro", {}),
   checkUpdate: () => ipcRenderer.invoke("update:check", {}),
   applyUpdate: () => ipcRenderer.invoke("update:apply", {}),
   netCheck: (force?: boolean) => ipcRenderer.invoke("net:check", { force: force === true }),

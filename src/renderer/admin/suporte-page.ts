@@ -26,6 +26,8 @@ export interface SuportePageDeps {
   api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
+  /** O plano da conta (do card de licença): o renderer pinta o selo "PRO" no canto superior. */
+  onPlan(plan: "free" | "pro" | null): void;
   /** Cache desta janela (lib/cache.ts, por máquina): a saúde da última vez aparece na hora, com "há X min". */
   cache: { read<T>(name: string): Cached<T> | null; write(name: string, value: unknown): void };
 }
@@ -42,7 +44,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
   const state: State = { health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null };
   // A saúde da última vez aparece na hora (com a idade); a consulta real troca por baixo.
   const cachedHealth = deps.cache.read<AdminHealth>("health");
-  if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); }
+  if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); deps.onPlan(cachedHealth.value.license?.license.plan ?? null); }
   let page: PageTab | null = null;
   /** Registros recolhidos por padrão: só lê o journal da máquina quando a pessoa abre. */
   let logsOpen = false;
@@ -53,6 +55,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     try {
       state.health = await deps.api.adminHealth(); state.healthErr = null; state.healthAt = Date.now(); deps.cache.write("health", state.health);
       deps.onWhatsapp(state.health.whatsapp);
+      deps.onPlan(state.health.license?.license.plan ?? null);
     } catch (err) { state.healthErr = ipcErrorText(err); }
     finally { state.busy = null; render(); }
   }

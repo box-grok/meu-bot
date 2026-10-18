@@ -56,6 +56,7 @@
     <div class="spacer"></div>
     <!-- Verificação de atualização ao abrir (como no Rambox): some quando termina. -->
     <span id="update-check-dot" class="update-check" hidden>verificando atualizações…</span>
+    <span id="plan-badge" class="badge pro" title="Conta Pro" hidden>PRO</span>
     <button id="btn-palette" class="btn btn-ghost" type="button" title="Paleta de comandos (Cmd+K)">⌘K</button>
     <button id="btn-settings" class="btn btn-ghost" type="button">Configurações</button>
     <button id="btn-topbar-hide" class="btn btn-ghost mini-btn" type="button" title="Recolher a barra (Cmd+Shift+B)">⌃</button>
@@ -70,6 +71,7 @@
         <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
         <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
         <button type="button" id="terminal-line" class="wa-line acervo-line" title="Terminal nesta máquina (Cmd+J; Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
+        <button type="button" id="navegador-line" class="wa-line acervo-line" title="Navegador dentro do meu-bot, com extensões do Chrome; o agente pode navegar por você (plano Pro)"><span class="acervo-icon">🌐</span><span class="grow">Navegador</span><span id="navegador-count" class="acervo-count">Pro</span></button>
         <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count"></span></button>
         <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
         <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>

@@ -358,6 +358,8 @@ export interface SupportPerson {
   source: "caixa" | "colado";
   /** O admin tirou da lista (continua com suporte; o interruptor "arquivadas" mostra de volta). */
   archived: boolean;
+  /** Último plano visto da conta (cache, para o selo "PRO" no seletor); null = ainda desconhecido. */
+  plan: "free" | "pro" | null;
 }
 /** Uma conversa da pessoa com o meu-bot, vista pela transcrição do Claude Code na máquina dela (meu-bot-admin). */
 export interface BotChat {
@@ -667,6 +669,10 @@ export type ExportFormat = "md" | "json";
  */
 export interface NetState { online: boolean | null; checking: boolean; since: number | null; checkedAt: number | null }
 
+/** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
+export interface BrowserExtensionInfo { id: string; name: string; version: string }
+export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[] }
+
 export interface MainEvents {
   "chat:assistant-start": ConversationRef;
   "chat:delta": ConversationRef & { text: string };
@@ -710,6 +716,12 @@ export interface MainEvents {
   "ui:claude-login": Record<string, never>;
   /** Internet deste Mac mudou ou foi sondada (faixa OFFLINE em todas as janelas). */
   "net:state": NetState;
+  /** Navegador: a lista de extensões da sessão mudou (instalou pela Web Store, removeu). */
+  "browser:extensions": BrowserExtensionInfo[];
+  /** Navegador: uma página pediu janela nova (target=_blank): abrir como aba interna. */
+  "browser:open-url": { url: string };
+  /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
+  "browser:key": { key: string; shift: boolean };
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -733,6 +745,15 @@ export interface MeuBotSharedApi {
   termResize(id: string, cols: number, rows: number): void;
   termClose(id: string): Promise<void>;
   termReplay(id: string): Promise<Uint8Array>;
+  /**
+   * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que
+   * `browserOpen` devolve (exige plano Pro na máquina: erro "PRO_REQUIRED"); o main cuida da sessão e das extensões.
+   */
+  browserOpen(): Promise<BrowserOpenInfo>;
+  browserExtensions(): Promise<BrowserExtensionInfo[]>;
+  browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
+  /** Free pediu o Pro: fica no registro do suporte da máquina. */
+  browserRequestPro(): Promise<void>;
   /** Atualização automática: estado (versão atual, disponível, pronta) e trocar + reiniciar. */
   updateState(): Promise<UpdateState>;
   /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */

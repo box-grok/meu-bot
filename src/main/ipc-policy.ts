@@ -43,6 +43,8 @@ export const CLIENT_CHANNELS = [
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
   "guarda:status", "guarda:install", "guarda:uninstall",
+  // aba Navegador (módulo Pro)
+  "browser:open", "browser:extensions", "browser:remove-extension", "browser:request-pro",
   "tailscale:disable-check", "tailscale:restore",
   // tutorial 7: objetivo do WhatsApp (objetivo.json, skill no workspace do OpenClaw, trava do nível)
   "objective:info", "objective:set", "objective:save", "objective:reset",

@@ -19,7 +19,7 @@ import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
 interface AdminConfig { admin: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: "free" | "pro" }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
@@ -36,7 +36,7 @@ export const adminName = (): string => adminConfig().admin;
 const storePath = (): string => path.join(app.getPath("userData"), "pessoas.json");
 function load(): Map<string, Stored> {
   try {
-    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown }>;
+    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown }>;
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
@@ -45,7 +45,7 @@ function load(): Map<string, Stored> {
       const key = machineId(d.code);
       const prev = m.get(key);
       if (prev !== undefined && prev.seenAt >= (typeof v.seenAt === "string" ? v.seenAt : "")) continue;
-      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "" });
+      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "", ...(v.plan === "pro" || v.plan === "free" ? { plan: v.plan } : {}) });
     }
     return m;
   } catch {
@@ -53,8 +53,8 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string }> = {};
-  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname };
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: "free" | "pro" }> = {};
+  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }) };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
 const encode = (c: SupportCode): string => `MBS1.${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
@@ -109,7 +109,15 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
 }
 
 const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
-const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.nickname !== "" ? s.nickname : s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived });
+const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.nickname !== "" ? s.nickname : s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived, plan: s.plan ?? null });
+
+/** Guarda o último plano visto da pessoa (pelo alias) para o selo do seletor; só grava se mudou. */
+function rememberPlan(alias: string, plan: "free" | "pro"): void {
+  const m = load();
+  let changed = false;
+  for (const s of m.values()) if (supportAlias(s.code) === alias && s.plan !== plan) { s.plan = plan; changed = true; }
+  if (changed) save(m);
+}
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
@@ -175,6 +183,7 @@ export async function adminHealth(host: string): Promise<AdminHealth> {
     xaiAuthInfo(host).catch(() => null),
     readLicenseView(host).catch(() => null),
   ]);
+  if (license !== null) rememberPlan(host, license.license.plan);
   return { probe, whatsapp: wa, progress, share, xai, license };
 }
 
@@ -216,6 +225,7 @@ export async function setLicense(host: string, patch: LicensePatch): Promise<Lic
   await runSsh(host, `${supportLogSh(adminName(), "licença atualizada pelo admin")}\n`, 15_000).catch(() => null);
   const view = await readLicenseView(host);
   if (view === null) throw new Error("gravei, mas a máquina não respondeu ao reler");
+  rememberPlan(host, view.license.plan);
   return view;
 }
 
@@ -236,6 +246,7 @@ export async function approveDevice(host: string, deviceId: string): Promise<Lic
   await runSsh(host, `${supportLogSh(adminName(), "device liberado pelo admin")}\n`, 15_000).catch(() => null);
   const view = await readLicenseView(host);
   if (view === null) throw new Error("liberei, mas a máquina não respondeu ao reler");
+  rememberPlan(host, view.license.plan);
   return view;
 }
 
@@ -249,6 +260,7 @@ export async function removeDevice(host: string, deviceId: string): Promise<Lice
   await runSsh(host, `${supportLogSh(adminName(), "device revogado pelo admin")}\n`, 15_000).catch(() => null);
   const view = await readLicenseView(host);
   if (view === null) throw new Error("revoguei, mas a máquina não respondeu ao reler");
+  rememberPlan(host, view.license.plan);
   return view;
 }
 

@@ -34,6 +34,8 @@ import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupport
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient } from "./registry";
+import { browserExtensions, browserOpen, browserRemoveExtension } from "../browser";
+import { supportLogSh } from "../support-code";
 
 /**
  * Padrão do app: máquina com OpenClaw pareada entende áudios. Depois de parear, se não há transcritor, instala
@@ -142,6 +144,19 @@ export function registerClientIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("statusline:progress", { line }); });
   });
+  // Aba "Navegador" (módulo Pro): a sessão é da máquina da janela; abrir exige plano Pro (o renderer já bloqueia;
+  // aqui é a defesa). Os <webview> são do renderer; o main só prepara a sessão e cuida das extensões.
+  const ctxOf = (event: Electron.IpcMainInvokeEvent) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return h; };
+  handleClient("browser:open", async (event) => {
+    const h = ctxOf(event);
+    if (h.host === "local") throw new Error("PRO_REQUIRED");
+    const lic = await fetchLicense(h.host);
+    if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED");
+    return browserOpen(h.win, h.host);
+  });
+  handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
+  handleClient("browser:remove-extension", (event, payload: unknown) => { const id = (payload as { extId?: unknown } | null)?.extId; if (typeof id !== "string" || !/^[a-p]{32}$/.test(id)) throw new Error("id de extensão inválido"); return browserRemoveExtension(ctxOf(event).host, id); });
+  handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
   handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
   handleClient("guarda:install", (event) => {

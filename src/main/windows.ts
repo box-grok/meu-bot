@@ -11,6 +11,7 @@ import { getBackendPort, getWindowBounds, setWindowBounds } from "./settings";
 import { closeTunnel, ensureTunnel, log } from "./tunnel";
 import { appTitle, caps } from "./variant";
 import { closeTerminalsOfWindow } from "./terminal";
+import { browserForget } from "./browser";
 
 export type OpenOrigin = "startup" | "picker" | "notify" | "quick" | "menu" | "shortcut";
 
@@ -117,6 +118,8 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
       sandbox: true,
       webSecurity: true,
       spellcheck: false,
+      // Aba Navegador: as abas internas são <webview> (como no Rambox), na partição da máquina.
+      webviewTag: true,
     },
   });
   byId.set(win.id, { win, host });
@@ -131,6 +134,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   win.on("close", () => { if (!win.isDestroyed() && !win.isMinimized() && !win.isFullScreen()) setWindowBounds(host, win.getBounds()); });
   win.on("closed", () => {
     closeTerminalsOfWindow(win.id);
+    browserForget(win.id);
     byId.delete(win.id);
     if (lastFocusedId === win.id) lastFocusedId = null;
     if (windowForHost(host) === undefined) scheduleHostTeardown(host);

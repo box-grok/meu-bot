@@ -1,4 +1,4 @@
-import type { NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserExtensionInfo, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -20,6 +20,7 @@ import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
+import { browserAccess, displayUrl, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -638,6 +639,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
+  add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: "quick view com extensões do Chrome; o agente pode navegar por você (Pro)", keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
@@ -1364,6 +1366,7 @@ function closePage(page: PageTab): void {
   if (page.tabEl === null) return;
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
   if (page.id.startsWith("term-")) disposeTerminal(page.id);
+  if (page.id === "navegador") disposeNav();
   const wasActive = pageActive === page;
   if (wasActive) deactivatePage();
   page.tabEl.remove();
@@ -3745,6 +3748,227 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     container.append(ul);
   }
 }
+
+/* ---------- Navegador (módulo Pro), como no Rambox: abas internas são <webview> na partição da máquina ---------- */
+/** O <webview> do Electron: só o que usamos (o renderer não tem os tipos do Electron). */
+interface WebviewEl extends HTMLElement {
+  src: string; partition: string; allowpopups: boolean;
+  loadURL(url: string): Promise<void>; getURL(): string; getTitle(): string; isLoading(): boolean;
+  canGoBack(): boolean; canGoForward(): boolean; goBack(): void; goForward(): void; reload(): void; stop(): void; focus(): void;
+}
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null }
+let navPage: PageTab | null = null;
+let navTabs: NavTab[] = [];
+let navActive: string | null = null;
+let navSeq = 0;
+let navPartition: string | null = null;
+let navExtensions: BrowserExtensionInfo[] = [];
+let navAccess: ProAccess | null = null;
+let navAskedPro = false;
+let navEls: { tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement } | null = null;
+let license: LicenseView | null = null;
+const NAV_HOME = "https://www.google.com";
+const NAV_WEB_STORE = "https://chromewebstore.google.com/";
+/** Licença da máquina (cache; a aba Navegador e as Configurações leem daqui). */
+/** Selo "PRO" no canto superior direito: mostra quando a conta desta janela é Pro. */
+const planBadge = $<HTMLElement>("plan-badge");
+function setPlanBadge(pro: boolean): void { planBadge.hidden = !pro; }
+async function refreshLicense(): Promise<LicenseView | null> {
+  if (!caps.chat || windowHost === "local") { license = null; setPlanBadge(false); return null; }
+  try { license = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar: fica o que havia */ }
+  setPlanBadge(license?.license.plan === "pro");
+  return license;
+}
+const navCurrent = (): NavTab | null => navTabs.find((t) => t.id === navActive) ?? null;
+/** O que a pessoa digitou: endereço, host sem esquema ou busca. */
+function navNormalize(raw: string): string {
+  const t = raw.trim();
+  if (t === "") return NAV_HOME;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) && !/^file:/i.test(t)) return t;
+  if (/^[\w.-]+\.[a-z]{2,}(\/|$|:|\?)/i.test(t) || /^localhost(:|\/|$)/.test(t)) return `https://${t}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
+}
+function navNewTab(url: string = NAV_HOME, activate = true): NavTab | null {
+  if (navEls === null || navPartition === null) return null;
+  const wv = document.createElement("webview") as WebviewEl;
+  wv.setAttribute("partition", navPartition);
+  wv.setAttribute("allowpopups", "");
+  wv.className = "nav-view";
+  wv.hidden = true;
+  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null };
+  const sync = (): void => { tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); };
+  wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
+  wv.addEventListener("did-stop-loading", sync);
+  wv.addEventListener("did-navigate", sync);
+  wv.addEventListener("did-navigate-in-page", sync);
+  wv.addEventListener("page-title-updated", sync);
+  wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
+  wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
+  wv.addEventListener("dom-ready", sync);
+  wv.setAttribute("src", url);
+  navEls.box.append(wv);
+  navTabs.push(tab);
+  if (activate || navActive === null) navSelect(tab.id); else paintNav();
+  return tab;
+}
+function navSelect(id: string): void {
+  navActive = id;
+  for (const t of navTabs) t.wv.hidden = t.id !== id;
+  paintNav();
+  navCurrent()?.wv.focus();
+}
+function navClose(id: string): void {
+  const i = navTabs.findIndex((t) => t.id === id);
+  if (i < 0) return;
+  const [t] = navTabs.splice(i, 1);
+  t!.wv.remove();
+  if (navActive === id) { const next = navTabs[Math.min(i, navTabs.length - 1)]; if (next !== undefined) navSelect(next.id); else { navActive = null; paintNav(); } }
+  else paintNav();
+}
+function paintNav(): void {
+  if (navEls === null || navPage === null) return;
+  const e = navEls;
+  const blocked = navAccess !== "ok";
+  e.block.hidden = !blocked; e.tabs.hidden = blocked; e.bar.hidden = blocked; e.box.hidden = blocked;
+  if (blocked) {
+    const a = navAccess === null || navAccess === "ok" ? "unknown" : navAccess;
+    const t = proBlockText(a, license);
+    e.block.replaceChildren(el("span", "nav-pro-badge", "módulo Pro"), el("h2", "", t.title), el("p", "", t.text));
+    const row = el("div", "actions");
+    if (t.askAdmin) {
+      const b = el("button", "btn btn-primary", navAskedPro ? "Pedido enviado ao admin ✓" : a === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+      b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintNav(); }).catch((err: unknown) => { b.disabled = false; e.note.hidden = false; e.note.textContent = `Não consegui registrar o pedido: ${ipcErrorText(err)}`; }); });
+      row.append(b);
+    }
+    const again = el("button", "btn btn-ghost", "Conferir de novo"); again.type = "button";
+    again.addEventListener("click", () => { void openNavTab(); });
+    row.append(again);
+    e.block.append(row);
+    return;
+  }
+  e.tabs.replaceChildren();
+  for (const t of navTabs) {
+    const tabEl = el("div", `nav-tab${t.id === navActive ? " active" : ""}`);
+    if (t.favicon !== null) { const img = document.createElement("img"); img.src = t.favicon; img.alt = ""; tabEl.append(img); }
+    tabEl.append(el("span", "nav-tab-title", tabLabel(t.title, t.url)));
+    const x = el("button", "tab-close", "×"); x.type = "button"; x.title = "Fechar aba";
+    x.addEventListener("click", (ev) => { ev.stopPropagation(); navClose(t.id); });
+    tabEl.append(x);
+    tabEl.title = t.url;
+    tabEl.addEventListener("click", () => navSelect(t.id));
+    e.tabs.append(tabEl);
+  }
+  const add = el("button", "nav-tab-add", "+"); add.type = "button"; add.title = "Nova aba (Cmd+T)";
+  add.addEventListener("click", () => { navNewTab(); });
+  e.tabs.append(add);
+  const cur = navCurrent();
+  if (cur !== null && document.activeElement !== e.url) e.url.value = displayUrl(cur.url);
+  e.back.disabled = cur === null || !cur.wv.canGoBack();
+  e.fwd.disabled = cur === null || !cur.wv.canGoForward();
+  e.loading.hidden = cur === null || !cur.loading;
+  e.reload.textContent = cur !== null && cur.loading ? "✕" : "↻";
+  e.reload.title = cur !== null && cur.loading ? "Parar" : "Recarregar";
+  e.note.hidden = cur === null || cur.failed === null;
+  if (cur !== null && cur.failed !== null) e.note.textContent = `Não carregou: ${cur.failed}`;
+  if (navPage.tabEl !== null) { const title = navPage.tabEl.querySelector(".tab-title"); if (title !== null) title.textContent = `Navegador${navTabs.length > 1 ? ` (${navTabs.length})` : ""}`; }
+  $<HTMLElement>("navegador-count").textContent = navTabs.length === 0 ? "Pro" : navTabs.length === 1 ? "1 aba" : `${navTabs.length} abas`;
+}
+function paintNavMenu(): void {
+  if (navEls === null) return;
+  const m = navEls.menu;
+  m.replaceChildren();
+  const ws = el("button", "btn btn-primary btn-small", "Abrir a Chrome Web Store"); ws.type = "button";
+  ws.addEventListener("click", () => { m.hidden = true; navNewTab(NAV_WEB_STORE); });
+  m.append(el("p", "hint strong-hint", "Extensões nesta máquina"), ws);
+  if (navExtensions.length === 0) m.append(el("p", "hint", "Nenhuma ainda. Na Web Store, abra a página da extensão e clique em \"Usar no Chrome\"; ela aparece aqui e fica salva para esta máquina."));
+  for (const x of navExtensions) {
+    const row = el("div", "nav-ext");
+    row.append(el("span", "grow", `${x.name} · ${x.version}`));
+    const rm = el("button", "btn btn-ghost btn-small", "Remover"); rm.type = "button";
+    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; paintNavMenu(); }); }));
+    row.append(rm);
+    m.append(row);
+  }
+  m.append(el("p", "hint", "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
+}
+/** Abre a aba Navegador (ou traz para a frente). Sem Pro, abre bloqueada com a explicação e o pedido ao admin. */
+async function openNavTab(url?: string): Promise<void> {
+  if (navPage === null) {
+    const panel = el("section", "nav-panel"); panel.hidden = true;
+    const tabsEl2 = el("div", "nav-tabs");
+    const bar = el("div", "nav-bar");
+    const back = el("button", "mini-btn", "←"); back.type = "button"; back.title = "Voltar (Cmd+[)";
+    const fwd = el("button", "mini-btn", "→"); fwd.type = "button"; fwd.title = "Avançar (Cmd+])";
+    const reload = el("button", "mini-btn", "↻"); reload.type = "button"; reload.title = "Recarregar";
+    const urlEl = document.createElement("input"); urlEl.type = "text"; urlEl.className = "nav-url"; urlEl.placeholder = "endereço ou busca (Cmd+L)"; urlEl.autocomplete = "off"; urlEl.spellcheck = false;
+    const loading = el("span", "nav-loading"); loading.hidden = true;
+    const ext = el("button", "mini-btn", "🧩"); ext.type = "button"; ext.title = "Extensões";
+    const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
+    const menu = el("div", "nav-menu"); menu.hidden = true;
+    bar.append(back, fwd, reload, urlEl, loading, ext, open, menu);
+    const note = el("div", "nav-note"); note.hidden = true;
+    const box = el("div", "nav-box");
+    const block = el("div", "nav-block"); block.hidden = true;
+    panel.append(tabsEl2, bar, note, box, block);
+    panelsEl.append(panel);
+    navEls = { tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar };
+    back.addEventListener("click", () => navCurrent()?.wv.goBack());
+    fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
+    reload.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; if (c.loading) c.wv.stop(); else c.wv.reload(); });
+    urlEl.addEventListener("keydown", (ev) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") { ev.preventDefault(); const c = navCurrent(); const target = navNormalize(urlEl.value); if (c === null) navNewTab(target); else void c.wv.loadURL(target); urlEl.blur(); navCurrent()?.wv.focus(); }
+      if (ev.key === "Escape") { const c = navCurrent(); urlEl.value = c === null ? "" : displayUrl(c.url); urlEl.blur(); }
+    });
+    urlEl.addEventListener("focus", () => urlEl.select());
+    ext.addEventListener("click", () => { menu.hidden = !menu.hidden; if (!menu.hidden) paintNavMenu(); });
+    open.addEventListener("click", () => { const c = navCurrent(); if (c !== null && /^https?:/.test(c.url)) void window.meuBot.openExternal(c.url); });
+    box.addEventListener("mousedown", () => { menu.hidden = true; });
+    navPage = definePage("navegador", "Navegador", panel, () => { paintNav(); });
+  }
+  openPage(navPage);
+  await refreshLicense();
+  navAccess = browserAccess(license, windowHost);
+  paintNav();
+  if (navAccess === "ok" && navPartition === null) {
+    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; }
+    catch (err) { navAccess = /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
+    paintNav();
+  }
+  if (navAccess === "ok" && navPartition !== null) {
+    if (url !== undefined) navNewTab(navNormalize(url));
+    else if (navTabs.length === 0) navNewTab();
+    else navCurrent()?.wv.focus();
+  }
+}
+function disposeNav(): void {
+  if (navPage === null) return;
+  for (const t of navTabs) t.wv.remove();
+  navTabs = []; navActive = null;
+  navPage.panel.remove();
+  navPage = null; navEls = null;
+  $<HTMLElement>("navegador-count").textContent = "Pro";
+}
+window.meuBot.on("browser:extensions", (list) => { navExtensions = list; if (navEls !== null && !navEls.menu.hidden) paintNavMenu(); });
+window.meuBot.on("browser:open-url", ({ url }) => { if (navPage !== null && navPartition !== null) { navNewTab(url); } });
+// Cmd+… apertado com o foco dentro de um webview: o main devolve e o app faz o de sempre.
+window.meuBot.on("browser:key", ({ key, shift }) => {
+  if (key === "k") { if (paletteEl.hidden) openPalette(); else closePalette(); return; }
+  if (key === "j") { void openTerminalTab(shift ? "new" : "focus"); return; }
+  if (key === "n") { void newTab(); return; }
+  if (key === "b" && shift) { setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
+  if (key === "b") { toggleSidebar(); return; }
+  if (key === "t") { navNewTab(); return; }
+  if (key === "l") { navEls?.url.focus(); return; }
+  if (key === "[") { navCurrent()?.wv.goBack(); return; }
+  if (key === "]") { navCurrent()?.wv.goForward(); return; }
+  if (key === "w") {
+    if (navTabs.length > 1 && navActive !== null) navClose(navActive);
+    else if (navPage !== null) closePage(navPage);
+  }
+});
+$<HTMLButtonElement>("navegador-line").addEventListener("click", () => { void openNavTab(); });
+
 /* ---------- Terminal: abas com xterm.js; o PTY roda na máquina da janela (pty-broker.py por ssh) ---------- */
 type XTermCtor = typeof import("@xterm/xterm").Terminal;
 /** A classe Terminal do xterm: o UMD no navegador expõe a classe direto; o tipo cobre também o namespace. */
@@ -4151,8 +4375,7 @@ async function loadLicensePanel(): Promise<void> {
   let box = document.getElementById("license-panel");
   if (box === null) { box = el("div", "settings-group"); box.id = "license-panel"; alertsGroup.parentElement?.insertBefore(box, alertsGroup); }
   box.replaceChildren(el("p", "hint strong-hint", "Sua conta"));
-  let view: Awaited<ReturnType<typeof window.meuBot.getLicense>> = null;
-  try { view = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar */ }
+  const view = await refreshLicense();
   if (view === null) { box.append(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
   const ul = el("ul", "admin-health");
   for (const l of licenseSummary(view)) ul.append(el("li", l.ok === null ? "" : l.ok ? "ok" : "bad", l.text));
@@ -4257,6 +4480,7 @@ void (async () => {
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
       who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
+      onPlan: (plan) => setPlanBadge(plan === "pro"),
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
         else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }

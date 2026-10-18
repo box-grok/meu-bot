@@ -41,6 +41,7 @@
     "typescript": "7.0.2"
   },
   "dependencies": {
+    "electron-chrome-web-store": "^0.13.0",
     "qrcode": "^1.5.4"
   }
 }
