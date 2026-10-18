@@ -28,7 +28,23 @@ dialog h3 { margin: 8px 0 0; font-size: 14px; }
 dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); resize: vertical; }
 .count { font-size: 11px; color: var(--muted); float: right; }
 .body { display: flex; min-height: 0; }
-.content { flex: 1; min-width: 0; display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+.content { flex: 1; min-width: 0; display: grid; grid-template-rows: auto 1fr; grid-template-columns: 1fr 0 0; min-height: 0; }
+.content > .tabs-row { grid-column: 1 / -1; }
+/* Modo dividido: conversa (#panels) à esquerda, página fixada (#split-panel) à direita, divisor no meio. */
+.content.split { grid-template-columns: minmax(320px, var(--split, 55%)) 6px minmax(320px, 1fr); }
+.split-handle, .split-panel { display: none; }
+.content.split .split-handle { display: block; cursor: col-resize; background: var(--line); position: relative; }
+.content.split .split-handle::after { content: ""; position: absolute; inset: 0 -4px; }
+.content.split .split-handle:hover, .content.split.dragging .split-handle { background: var(--accent); }
+.content.split .split-panel { display: block; position: relative; overflow: hidden; border-left: 1px solid var(--line); }
+/* Estreito demais para os dois: a conversa fica, a página recolhe (volta sozinha ao alargar). */
+.content.split.split-collapsed { grid-template-columns: 1fr 0 0; }
+.content.split.split-collapsed .split-handle, .content.split.split-collapsed .split-panel { display: none; }
+body.dragging webview, body.dragging .term-box, body.dragging iframe { pointer-events: none; }
+.tab-split { font: 13px/1 inherit; padding: 0 4px; margin-left: 2px; color: var(--muted); background: transparent; border: 0; border-radius: 4px; cursor: pointer; }
+.tab-split:hover { background: var(--line); color: var(--fg); }
+.tab-page.split .tab-split { color: var(--accent); }
+.content.split-collapsed .tab-page.split .tab-split { color: var(--muted); opacity: .5; }
 .topbar {
   display: flex; align-items: center; gap: 10px; padding: 10px 14px 10px 86px;
   border-bottom: 1px solid var(--line); background: var(--card); position: relative;
