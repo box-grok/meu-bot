@@ -26,7 +26,7 @@ RULE='<!-- meu-bot:encerramento v2 inicio -->
   todas, sem comentar isso com ele.
 - Nunca diga ao contato que está deixando de responder nem que foi pausado.
 <!-- meu-bot:encerramento v2 fim -->'
-W="$(openclaw config get agents.defaults.workspace 2>/dev/null | tr -d '\n')"; case "$W" in /*) ;; *) W="$HOME/.openclaw/workspace" ;; esac
+W="$(openclaw config get agents.defaults.workspace 2>/dev/null | tr -d '\n' || true)"; case "$W" in /*) ;; *) W="$HOME/.openclaw/workspace" ;; esac
 mkdir -p "$W"
 printf '%s\n' "$RULE" | python3 -c '
 import re, sys, os
@@ -40,13 +40,35 @@ new = (cur[:m.start()] + "\n" + block + cur[m.end():]) if m else (cur + ("" if c
 tmp = f + ".tmp"; open(tmp, "w", encoding="utf-8").write(new); os.replace(tmp, f); print("regra de encerramento gravada em " + f)
 ' "$W/AGENTS.md"
 echo "registrando a guarda no OpenClaw…"
-timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
+# Versões novas do OpenClaw pedem consentimento de capacidades (--accept-capabilities); as antigas não conhecem a flag.
+OUT=$(timeout 120 openclaw plugins install --link "$SRC" --force --accept-capabilities 2>&1 || true)
+case "$OUT" in *"unknown option"*|*"Unknown option"*|*"too many arguments"*) OUT=$(timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 || true);; esac
+printf '%s\n' "$OUT" | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
 # Sem esta permissão o OpenClaw não entrega message_received a plugins de fora do catálogo: a guarda via só as
 # saídas e nunca fechava um ciclo (o anti-loop não disparava).
 timeout 60 openclaw config set plugins.entries.meu-bot-guarda.hooks.allowConversationAccess true --strict-json >/dev/null 2>&1 || echo "aviso: não consegui gravar hooks.allowConversationAccess (confira no openclaw.json)"
+VER=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$SRC/package.json" 2>/dev/null || true)
 if timeout 60 openclaw plugins inspect meu-bot-guarda --runtime 2>/dev/null | grep -q "^Status: loaded"; then
+  printf '%s' "$VER" > "$SRC/.ok"
   echo "pronto: guarda ativa (nota de fallback bloqueada; pausa automática em loop de 3 ciclos)"
 else
-  echo "a guarda foi copiada, mas o OpenClaw não a mostra carregada; veja na máquina: openclaw plugins inspect meu-bot-guarda"
-  exit 3
+  # Sem gateway rodando (máquina sem o agente do WhatsApp ligado) o --link não registra: gravar a config direto para
+  # o plugin subir junto com o gateway quando ele existir. Não é erro desta máquina; é o que dá para fazer agora.
+  python3 - "$SRC" <<'PY' || true
+import json, os, sys
+src = sys.argv[1]; f = os.path.expanduser("~/.openclaw/openclaw.json")
+try: cfg = json.load(open(f))
+except Exception: cfg = {}
+plugins = cfg.setdefault("plugins", {}); load = plugins.setdefault("load", {}); paths = load.setdefault("paths", [])
+if src not in paths: paths.append(src)
+entry = plugins.setdefault("entries", {}).setdefault("meu-bot-guarda", {}); entry["enabled"] = True; entry.setdefault("hooks", {})["allowConversationAccess"] = True
+tmp = f + ".tmp"; json.dump(cfg, open(tmp, "w"), ensure_ascii=False, indent=2); os.replace(tmp, f)
+print("config do OpenClaw gravada (plugins.load.paths + entries.meu-bot-guarda)")
+PY
+  printf '%s' "$VER" > "$SRC/.ok"
+  if (systemctl --user is-active openclaw-gateway >/dev/null 2>&1) || pgrep -u "$(id -u)" -f "openclaw(-gateway| gateway)( |$)" >/dev/null 2>&1; then
+    echo "a guarda foi copiada e configurada, mas o OpenClaw não a mostra carregada; veja na máquina: openclaw plugins inspect meu-bot-guarda"
+    exit 3
+  fi
+  echo "pronto: guarda copiada e configurada; o gateway do OpenClaw não está rodando nesta máquina, ela entra quando ele subir"
 fi

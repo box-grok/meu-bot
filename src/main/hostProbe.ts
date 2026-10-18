@@ -88,7 +88,8 @@ function probeScript(port: number): string {
     `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
     // Guarda do WhatsApp (plugin meu-bot-guarda do OpenClaw): a cópia que o install-guarda.sh registra por --link.
     `[ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`,
-    `echo "guardaver=$(python3 -c 'import json;print(json.load(open("'"$HOME"'/.local/share/meu-bot/guarda/package.json")).get("version",""))' 2>/dev/null)"`,
+    // Versão instalada com sucesso (o instalador grava .ok no fim); sem .ok = instalação antiga ou incompleta → atualiza.
+    `echo "guardaver=$(cat "$HOME/.local/share/meu-bot/guarda/.ok" 2>/dev/null)"`,
     // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
     `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)

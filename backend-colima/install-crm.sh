@@ -15,7 +15,9 @@ cp "$HERE/crm/index.js" "$HERE/crm/regras.mjs" "$HERE/crm/crm-job.mjs" "$HERE/cr
 chmod 700 "$SRC"; chmod 644 "$SRC"/*
 [ -d "$HOME/.openclaw/extensions/meu-bot-crm" ] && [ ! -L "$HOME/.openclaw/extensions/meu-bot-crm" ] && rm -rf "$HOME/.openclaw/extensions/meu-bot-crm"
 echo "registrando o plugin meu-bot-crm no OpenClaw…"
-timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
+OUT=$(timeout 120 openclaw plugins install --link "$SRC" --force --accept-capabilities 2>&1 || true)
+case "$OUT" in *"unknown option"*|*"Unknown option"*|*"too many arguments"*) OUT=$(timeout 120 openclaw plugins install --link "$SRC" --force 2>&1 || true);; esac
+printf '%s\n' "$OUT" | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
 # Hooks de conversa (message_received/sending) exigem esta permissão para plugins de fora do catálogo.
 timeout 60 openclaw config set plugins.entries.meu-bot-crm.hooks.allowConversationAccess true --strict-json >/dev/null 2>&1 || echo "aviso: não consegui gravar hooks.allowConversationAccess (confira no openclaw.json)"
 timeout 60 openclaw config set plugins.entries.meu-bot-crm.enabled true --strict-json >/dev/null 2>&1 || true
