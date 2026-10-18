@@ -200,7 +200,7 @@ export function backendBundleDir(): string {
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "meu-bot-backend.service", "install.sh",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "meu-bot-backend.service", "install.sh",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 
@@ -291,6 +291,31 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
+/** Navegador do agente (módulo Pro): o servidor MCP (um arquivo) e o instalador. */
+const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh"];
+
+/** O lado da máquina do Navegador está instalado? (null para este Mac) */
+export async function navegadorInstalled(host: string): Promise<boolean | null> {
+  if (host === LOCAL_HOST || !isValidHost(host)) return null;
+  const r = await run("ssh", [...sshBase(host), "--", host, `[ -f "$HOME/.local/share/meu-bot/navegador-mcp.mjs" ] && grep -q "meu-bot:navegador" "$HOME/agent-workspace/CLAUDE.md" 2>/dev/null && echo nav=1 || echo nav=0`], 25_000);
+  return r.stdout.includes("nav=1");
+}
+/** Instala o lado da máquina do Navegador (MCP + regra no CLAUDE.md). Mesmo molde da status line. */
+export async function installNavegador(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["o Navegador do agente é para máquinas por SSH"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  say(`enviando o Navegador do agente para ${host}:${REMOTE_STAGE}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...NAVEGADOR_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-navegador-mcp.sh 2>&1`], 2 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
 const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
 
 /** A guarda do WhatsApp está nesta máquina? (a cópia registrada no OpenClaw; null para este Mac) */

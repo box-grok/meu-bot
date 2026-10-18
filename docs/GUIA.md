@@ -1465,6 +1465,34 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   `guarda` (null sem OpenClaw), `guarda:status|install|uninstall`, botão "Ativar guarda do WhatsApp" no seletor
   (depois de status line e transcrição) e **tutorial 8 · Guarda do WhatsApp** (após o 2: ativar + "Entendi").
   Instalada na agente-box em 18 out (geração 5 do gateway); confirmação ao vivo pendente do próximo loop.
+- Módulo Pro "Navegador" (18 out), como o quick view do Rambox: aba `navegador` (renderer, `openNavTab`) com
+  abas internas que são `<webview>` (`webviewTag: true` na janela; `windows.ts`) na partição
+  `persist:navegador-<host>` (cookies/logins por máquina, separados do app). O main (`src/main/browser.ts`)
+  prepara a sessão (permissões fechadas, User-Agent sem "Electron" — senão o login do Google recusa — e a
+  Chrome Web Store ligada pelo `electron-chrome-web-store`, MIT, como no Rambox: a pessoa abre a loja na aba e
+  "Usar no Chrome" instala em `userData/Navegador/<host>/Extensions`, com atualização automática; menu 🧩 lista
+  e remove). Popups viram aba interna; Cmd+K/J/N/B/W/T/L/[/] dentro do webview voltam ao app
+  (`before-input-event` → `browser:key`). `electron-chrome-extensions` (GPL-3) NÃO entrou: sem a licença
+  patron do autor; extensões rodam com as APIs nativas do Electron (content scripts, storage, scripting;
+  sem popup de botão nem declarativeNetRequest). **Gate Pro**: `lib/pro.ts` (`browserAccess`: ok/free/
+  expired/unknown; testado) com cache `license` no renderer; free vê a aba bloqueada com "Pedir o Pro ao admin"
+  (`browser:request-pro` → linha no suporte.log); o main recusa `browser:open` sem Pro (PRO_REQUIRED); o
+  backend ignora o navegador sem licença Pro. Só no meu-bot da pessoa (`caps.chat`; escondido no admin).
+  **Agente navega** (o desenho simples, em vez de emular o CDP para o puppeteer): `src/main/nav-api.ts` serve
+  ações JSON num socket Unix 0700 (`/tmp/meu-bot-<uid>/nav-<host>.sock`: abas, abrir, ler — texto + elementos
+  numerados —, clicar, digitar com `insertText`, tecla, print, voltar/avancar/recarregar, js); o interruptor
+  "🤖 agente: pode usar" na barra (`browserAgent`) sobe o socket e pede ao túnel um `-R 127.0.0.1:<porta>:<socket>`
+  (`tunnel.ts`: `setReverseWanted`/`reconcileReverse`, porta livre por python3 na máquina, prontidão por curl
+  ao `/abas`, reinício com orçamento, `-O cancel -R` ao desligar). Com o agente ligado e o -R de pé,
+  `runBackendTurn` manda `X-Meu-Bot-Browser-Port`; o backend (`navegador.js`, puro/testado) confere Pro e o
+  arquivo `~/.local/share/meu-bot/navegador-mcp.mjs` (servidor MCP stdio de um arquivo, sem npm, instalado por
+  `install-navegador-mcp.sh` junto com a regra de conduta no CLAUDE.md dos workspaces) e roda a CLI com
+  `--mcp-config` + `--allowedTools mcp__navegador` (+ `--system-prompt-snapshot off` em CLI ≥ 2.1.257), a
+  regra no system (depois do sysHash, como a identity) e uma nota no prompt do turno. `tool-events.js` resume
+  como "🌐 abriu …", "🌐 digitou em …" (nunca o texto). Tutoriais 9 "Navegador do agente (Pro)" e 10
+  "Extensões no Navegador" (exemplo: Streak CRM for Gmail; o passo "Usar" exige login no Google dentro da
+  aba). Verificado: backend novo na agente-box (requer `licenca.js` ao lado: copiar todos os .js), MCP responde
+  `tools/list`.
 - Resposta em voz no espelho do WhatsApp (18 out): quando o agente responde em áudio, a mensagem do
   assistente no `chat.history` é uma chamada à ferramenta `mcp__openclaw__tts` (`stopReason: "tool_use"`,
   importada do claude-cli sem `runId`) com o `tool_result` "(spoken) …" — o filtro de rascunho descartava e o

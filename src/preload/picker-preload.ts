@@ -6,6 +6,7 @@ const EVENTS = ["picker:init", "picker:install-progress"] as const;
 /** Os dois apps. */
 const sharedApi: PickerSharedApi = {
   list: (): Promise<PickerInit> => ipcRenderer.invoke("picker:list", {}),
+  plans: (): Promise<Record<string, "free" | "pro">> => ipcRenderer.invoke("picker:plans", {}),
   probe: (host: string): Promise<HostProbe> => ipcRenderer.invoke("picker:probe", { host }),
   choose: (host: string): Promise<void> => ipcRenderer.invoke("picker:choose", { host }),
   setShortcut: (host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }> => ipcRenderer.invoke("picker:shortcut", { host, create }),

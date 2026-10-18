@@ -123,9 +123,21 @@ function rememberPlan(alias: string, plan: "free" | "pro"): void {
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
   const m = load();
   const warning = await pullInbox(m).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
+  // Atualiza o plano em cache de cada pessoa ligada (melhor esforço, para o selo "PRO" do seletor refletir a conta).
+  await Promise.all([...m.values()].filter((s) => s.code.state === "on").map(async (s) => {
+    const plan = await readPlan(supportAlias(s.code));
+    if (plan !== null && s.plan !== plan) s.plan = plan;
+  }));
   save(m);
   writeSshFiles(m);
   return { people: [...m.values()].map(toPerson).sort((a, b) => a.name.localeCompare(b.name)), warning };
+}
+
+/** Lê só o plano da licença da máquina (SSH curto, melhor esforço); null = fora do ar, ausente ou inválido. */
+async function readPlan(host: string): Promise<"free" | "pro" | null> {
+  const r = await runSsh(host, `cat "${LICENSE_PATH}" 2>/dev/null; echo\n`, 10_000).catch(() => null);
+  if (r === null || r.code !== 0) return null;
+  try { const v = JSON.parse(r.stdout.trim() || "null"); return v && (v.plan === "pro" || v.plan === "free") ? v.plan : null; } catch { return null; }
 }
 
 /** Pessoas já conhecidas (sem ler a caixa): a lista do seletor abre na hora. */

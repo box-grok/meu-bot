@@ -25,9 +25,6 @@ const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
 const navegador = require('./navegador');
 const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mcp.mjs');
-/** Versão da CLI (para saber se aceita --system-prompt-snapshot off); lida uma vez, em segundo plano. */
-let CLAUDE_VERSION = '';
-try { require('node:child_process').execFile(CLAUDE_BIN, ['--version'], { timeout: 10000 }, (e, out) => { if (!e) CLAUDE_VERSION = String(out).trim(); }); } catch (_) { /* fica vazio: sem a flag */ }
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
@@ -38,6 +35,9 @@ const KEY = ENV.OPENAI_COMPAT_KEY || process.env.OPENAI_COMPAT_KEY || '';
 const HOST = ENV.HOST || '127.0.0.1';
 const PORT = Number(ENV.PORT || 8080);
 const CLAUDE_BIN = ENV.CLAUDE_BIN || path.join(os.homedir(), '.local', 'bin', 'claude');
+/** Versão da CLI (para saber se aceita --system-prompt-snapshot off); lida uma vez, em segundo plano. */
+let CLAUDE_VERSION = '';
+try { require('node:child_process').execFile(CLAUDE_BIN, ['--version'], { timeout: 10000 }, (e, out) => { if (!e) CLAUDE_VERSION = String(out).trim(); }); } catch (_) { /* fica vazio: sem a flag */ }
 const WORKSPACE = ENV.WORKSPACE || path.join(os.homedir(), 'chat-workspace');
 const TURN_TIMEOUT_MS = Number(ENV.TURN_TIMEOUT_MS || 10 * 60 * 1000);
 

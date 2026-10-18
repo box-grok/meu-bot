@@ -22,7 +22,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 });
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.deepEqual(TUTORIAIS.slice(0, 6).map((x) => x.id), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
@@ -32,7 +32,8 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador"]);
+  assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("navegador-extensoes"), "o 10 só depois do 9");
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
   assert.deepEqual(ids(), ids(() => false), "sem `finished`, nada da trilha destravado");
 });

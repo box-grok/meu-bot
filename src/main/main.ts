@@ -17,6 +17,7 @@ import { useAdminUserData } from "./admin/user-data";
 import { registerIpc } from "./ipc";
 import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
+import { installBrowserHooks } from "./browser";
 import { getBackendPort } from "./settings";
 import { installAppMenu } from "./menu";
 import { clientPickerSource, initPicker, showPicker } from "./picker";
@@ -66,6 +67,7 @@ app.whenReady().then(() => {
   // Internet deste Mac (faixa OFFLINE). Quando volta: revalida os túneis, reabre o das janelas abertas que
   // caíram e refaz a checagem de atualização se ela falhou por rede.
   initNet();
+  installBrowserHooks();
   onBackOnline(() => {
     markSuspect(); void revalidate();
     const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));

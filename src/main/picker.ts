@@ -11,6 +11,7 @@ import type { HostProbe, PickerInit } from "../shared/ipc";
 import { approveTailscaleCheck, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
+import { runSsh } from "./whatsapp";
 import { showRelief } from "./relief";
 import { openGrokbotReset } from "./grokbot";
 import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialState } from "./secrets";
@@ -231,6 +232,21 @@ export const clientPickerSource: PickerSource = {
 export function initPicker(src: PickerSource): void {
   source = src;
   handleShared("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
+  // Plano de cada host (licenca.json por SSH, melhor esforço) para o selo "PRO"; local e máquinas fora do ar ficam de fora.
+  handleShared("picker:plans", async (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const hosts = current().hosts().filter((h) => h !== LOCAL_HOST && isValidHost(h));
+    const out: Record<string, "free" | "pro"> = {};
+    await Promise.all(hosts.map(async (h) => {
+      try {
+        const r = await runSsh(h, `cat "$HOME/.local/share/meu-bot/licenca.json" 2>/dev/null; echo\n`, 10_000);
+        if (r.code !== 0) return;
+        const v = JSON.parse(r.stdout.trim() || "null") as { plan?: unknown } | null;
+        if (v && (v.plan === "pro" || v.plan === "free")) out[h] = v.plan;
+      } catch { /* fora do ar, ausente ou JSON inválido: sem selo */ }
+    }));
+    return out;
+  });
   handleShared("picker:probe", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return probeCached(hostArg(payload));

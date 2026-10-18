@@ -20,7 +20,7 @@ export const SHARED_CHANNELS = [
   // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
   "net:check", "host:local-addr",
   // seletor
-  "picker:list", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
+  "picker:list", "picker:plans", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
   // alívio do Grok Bot (relief.ts registra sozinho)
   "relief:close", "relief:open-reset",
@@ -42,7 +42,7 @@ export const CLIENT_CHANNELS = [
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
-  "guarda:status", "guarda:install", "guarda:uninstall",
+  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install",
   // aba Navegador (módulo Pro)
   "browser:open", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active",
   "tailscale:disable-check", "tailscale:restore",

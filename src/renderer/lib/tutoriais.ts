@@ -23,6 +23,11 @@ export interface GuideContext {
   /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw): instalada? null = não consultado ou máquina sem OpenClaw. */
   guarda: { installed: boolean | null };
   /**
+   * Navegador (módulo Pro): `access` = acesso pela licença (null = não consultado); `installed` = lado da máquina
+   * (MCP + regra); `tabs` = abas abertas agora; `extensions` = extensões na sessão; `agentOn` = "agente pode usar".
+   */
+  navegador: { access: "ok" | "free" | "expired" | "unknown" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean };
+  /**
    * Fallback entre contas: `primary` = modelo padrão desta máquina (quem responde sempre); `chain` = a corrente de
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
    */
@@ -37,6 +42,7 @@ export const emptyContext = (): GuideContext => ({
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null },
+  navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false },
   fallback: { primary: null, chain: null },
   objective: null,
 });
@@ -70,13 +76,13 @@ export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "o
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; extSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, extSeen: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "extSeen";
 
 export interface GuideStep {
   id: string;
@@ -85,7 +91,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "navegador-ext";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -354,6 +360,66 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "1) Linhas técnicas como \"↪️ Model Fallback: …\" (o OpenClaw trocou de modelo) não são entregues ao contato. 2) Se outro bot ficar trocando despedidas com o seu agente (\"Até mais!\" → \"Até.\" → …) por 3 ciclos em poucos minutos, a conversa é pausada sozinha: a resposta não sai, o contato aparece como \"pausado\" na lista do WhatsApp e o agente recebe uma nota explicando. Para voltar, é o menu \"…\" do contato › Retomar. Pessoas de verdade não são afetadas: a regra exige mensagens curtas, quase iguais ou de despedida, em menos de 3 minutos entre uma e outra.",
         done: (_st, f) => f.guardaSeen,
         manual: { label: "Entendi", flag: "guardaSeen" },
+      },
+    ],
+  },
+  {
+    id: "navegador",
+    number: 9,
+    after: "claude-login",
+    title: "Navegador do agente (Pro)",
+    short: "Navegador",
+    summary: "Um navegador dentro do meu-bot, com abas e cookies desta máquina. O agente da conversa pode abrir, ler e clicar por você, avisando antes.",
+    minutes: 4,
+    icon: "chat",
+    steps: [
+      {
+        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "navegador-pro",
+        text: "O Navegador é do plano Pro. Se a sua máquina ainda é free, peça ao admin por aqui: ele libera e o tutorial continua sozinho.",
+        done: (_st, _f, c) => c.navegador.access === "ok",
+      },
+      {
+        id: "instalar", title: "Preparar a máquina para o agente", target: "none", body: "navegador-install",
+        text: "Um arquivo pequeno na máquina apresenta as ações do navegador ao agente (abrir, ler, clicar, digitar…) e grava a regra de conduta: ele avisa antes de agir e nunca compra, paga ou envia nada sem você confirmar.",
+        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.installed === true,
+      },
+      {
+        id: "abrir", title: "Abrir o Navegador e entrar num site", target: "none", body: "navegador-open",
+        text: "Abra a aba Navegador, digite um endereço e navegue. Cookies e logins ficam guardados só nesta máquina; \"abrir no Mac\" leva a página para o seu navegador de sempre.",
+        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
+      },
+      {
+        id: "agente", title: "Deixar o agente navegar", target: "chat",
+        text: "Na barra do Navegador, ligue \"agente: pode usar\". Depois vá para a conversa e peça algo como \"abra o site example.com e me diga o título\": cada ação aparece na conversa com 🌐.",
+        done: (_st, f, c) => c.navegador.access === "ok" && f.navAgentUsed,
+      },
+    ],
+  },
+  {
+    id: "navegador-extensoes",
+    number: 10,
+    after: "navegador",
+    title: "Extensões no Navegador",
+    short: "Extensões",
+    summary: "Instale extensões do Chrome pela própria Web Store, dentro da aba. Exemplo: o Streak CRM no Gmail.",
+    minutes: 3,
+    icon: "chat",
+    steps: [
+      {
+        id: "loja", title: "Abrir a Chrome Web Store na aba", target: "none", body: "navegador-ext",
+        text: "No Navegador, 🧩 › \"Abrir a Chrome Web Store\". É a loja oficial, aberta dentro da aba; o botão \"Usar no Chrome\" instala aqui.",
+        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
+      },
+      {
+        id: "instalar", title: "Instalar uma extensão (ex.: Streak CRM for Gmail)", target: "none",
+        text: "Procure \"Streak CRM for Gmail\", abra a página dela e clique em \"Usar no Chrome\". Ela aparece no menu 🧩 e fica salva para esta máquina, com atualização automática.",
+        done: (_st, _f, c) => c.navegador.extensions > 0,
+      },
+      {
+        id: "usar", title: "Usar a extensão", target: "none",
+        text: "Abra o Gmail na aba e entre na sua conta do Google (o login fica guardado nesta máquina). O Streak aparece dentro da caixa de entrada. Extensões rodam com as APIs que o Electron oferece: as de conteúdo funcionam; popups de botão e alguns recursos (como o rastreio por rede) ainda não.",
+        done: (_st, f) => f.extSeen,
+        manual: { label: "Vi funcionando", flag: "extSeen" },
       },
     ],
   },

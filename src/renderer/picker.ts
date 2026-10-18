@@ -77,6 +77,8 @@ let pods = new Set<string>();
 let hosts: string[] = [];
 /** meu-bot-admin: as pessoas do suporte (null = meu-bot normal). */
 let support: PickerInit["support"] = null;
+/** Plano por host (lido por SSH), para o selo "PRO"; vale nos dois apps. */
+const plans = new Map<string, "free" | "pro">();
 const personOf = (host: string): SupportPerson | undefined => support?.people.find((p) => p.alias === host);
 /** Nome na lista: a pessoa (admin) ou a máquina. */
 const rowLabel = (host: string): string => personOf(host)?.name ?? hostLabel(host);
@@ -103,7 +105,7 @@ function buildRows(): void {
     dot.style.background = hostAccent(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
-    if (person?.plan === "pro") name.append(el("span", "badge pro", "PRO"));
+    if (person?.plan === "pro" || plans.get(host) === "pro") name.append(el("span", "badge pro", "PRO"));
     if (person !== undefined) name.append(el("span", "seen", personSuffix(person)));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);
@@ -395,6 +397,15 @@ removePersonBtn.addEventListener("click", () => {
   });
 });
 
+/** Lê o plano de cada host por SSH (melhor esforço) e repinta as linhas para o selo "PRO" aparecer. */
+async function loadPlans(): Promise<void> {
+  try {
+    const map = await window.picker.plans();
+    let changed = false;
+    for (const [h, p] of Object.entries(map)) if (plans.get(h) !== p) { plans.set(h, p); changed = true; }
+    if (changed) { buildRows(); if (selected !== null) select(selected); }
+  } catch { /* sem planos: o seletor segue sem selo */ }
+}
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
   support = payload.support;
@@ -417,6 +428,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
   // Todas em paralelo: a lista nunca espera a máquina lenta.
   for (const h of hosts) void probe(h);
+  void loadPlans();
   filterEl.focus();
 }
 

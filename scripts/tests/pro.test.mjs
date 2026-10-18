@@ -26,7 +26,7 @@ test("tabLabel e displayUrl", () => {
   assert.equal(tabLabel("", "https://www.google.com/"), "google.com");
   assert.equal(tabLabel("https://x.com/a", "https://x.com/a"), "x.com");
   assert.equal(tabLabel("", "about:blank"), "Nova aba");
-  assert.equal(tabLabel("Um título muito comprido que não cabe na aba interna", "https://a.b"), "Um título muito comprido que…");
+  assert.equal(tabLabel("Um título muito comprido que não cabe na aba interna", "https://a.b"), "Um título muito comprido qu…");
   assert.equal(displayUrl("https://mail.google.com/"), "mail.google.com");
   assert.equal(displayUrl("http://localhost:3000/x"), "http://localhost:3000/x");
 });

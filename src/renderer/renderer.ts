@@ -1558,6 +1558,7 @@ let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
   if (target === "chat") {
+    if (t.id === "navegador") { if (!navAgent.on) void window.meuBot.browserAgent(true).then((st) => { navAgent = st; paintNav(); }); void goToChatFromGuide("Abra o site https://example.com no meu navegador e me diga o título da página.", "O agente vai abrir a página na aba Navegador e cada ação aparece aqui com 🌐; quando ele responder, o tutorial se conclui sozinho."); return; }
     if (t.id === "xai-login") void goToChatFromGuide("Oi! Qual modelo está respondendo agora? Uma linha.", "A conversa mudou para o grok-4: a resposta vem da xAI e a pill do túnel mostra \"respondeu grok-4\"; aí o tutorial se conclui sozinho.", "grok-4");
     else if (t.id === "claude-login") void goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");
     else void goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
@@ -1664,6 +1665,14 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderStatusLineInstall(txt);
       } else if (step.body === "guarda-install") {
         renderGuardaInstall(txt);
+      } else if (step.body === "navegador-pro") {
+        renderNavPro(txt);
+      } else if (step.body === "navegador-install") {
+        renderNavInstall(txt);
+      } else if (step.body === "navegador-open") {
+        renderNavOpen(txt, false);
+      } else if (step.body === "navegador-ext") {
+        renderNavOpen(txt, true);
       } else if (step.body === "statusline-segments") {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
@@ -1807,6 +1816,7 @@ function openGuide(t: Tutorial): void {
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
   if (t.id === "claude-login") void refreshClaudeLine();
   if (t.id === "guarda-whatsapp") void refreshGuarda();
+  if (t.id === "navegador" || t.id === "navegador-extensoes") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
   if (t.id === "xai-login") void refreshXaiLine();
   paintGuide();
 }
@@ -3382,6 +3392,10 @@ let supportPoll: number | null = null;
 let statusLineState: boolean | null = null;
 /** Guarda do WhatsApp nesta máquina (tutorial 8): null = não consultado ou sem OpenClaw. */
 let guardaState: boolean | null = null;
+let navInstState: boolean | null = null;
+let navInstBusy = false;
+let navInstLog: string[] = [];
+let navInstMsg: { text: string; bad: boolean } | null = null;
 let guardaBusy = false;
 let guardaLog: string[] = [];
 let guardaMsg: { text: string; bad: boolean } | null = null;
@@ -3406,6 +3420,7 @@ const guideCtx = (): GuideContext => ({
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
   guarda: { installed: guardaState },
+  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
   objective: objectiveState,
 });
 
@@ -3518,6 +3533,60 @@ function renderFallbackOrder(container: HTMLElement): void {
   keep.addEventListener("click", () => { saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); paintGuide(); });
   box.append(accounts, label, hint, keep);
   container.append(box);
+}
+async function refreshNavInst(): Promise<void> {
+  if (!caps.install || windowHost === "" || windowHost === "local") return;
+  try { navInstState = await window.meuBot.navegadorInstalled(); } catch { /* máquina fora: fica o que havia */ }
+  paintGuide();
+}
+window.meuBot.on("navegador:progress", ({ line }) => { navInstLog = [...navInstLog, line].slice(-6); if (navInstBusy) paintGuide(); });
+/** Tutorial 9, passo 2: instalar o lado da máquina (MCP + regra). */
+function renderNavInstall(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const row = el("div", "audio-row");
+  if (navInstState === true && !navInstBusy) row.append(el("span", "audio-ok", "✓ pronto nesta máquina"));
+  const b = el("button", `btn ${navInstState === true ? "btn-ghost" : "btn-primary"} btn-small`, navInstBusy ? "Preparando…" : navInstState === true ? "Reinstalar" : "Preparar");
+  b.type = "button"; b.disabled = navInstBusy || navInstState === null;
+  b.addEventListener("click", () => {
+    navInstBusy = true; navInstLog = []; navInstMsg = null; paintGuide();
+    void window.meuBot.installNavegador()
+      .then((r) => { navInstMsg = r.ok ? { text: "Máquina pronta: o agente já tem as ações do navegador.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
+      .catch((err: unknown) => { navInstMsg = { text: ipcErrorText(err), bad: true }; })
+      .finally(() => { navInstBusy = false; void refreshNavInst(); });
+  });
+  row.append(b);
+  box.append(row);
+  if (navInstState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (navInstBusy && navInstLog.length > 0) box.append(el("pre", "admin-logs", navInstLog.join("\n")));
+  if (navInstMsg !== null) box.append(el("p", `hint ${navInstMsg.bad ? "guide-pair-note" : "audio-ok"}`, navInstMsg.text));
+  container.append(box);
+}
+/** Tutorial 9, passo 1: o plano desta máquina e o pedido ao admin. */
+function renderNavPro(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const a = browserAccess(license, windowHost);
+  if (a === "ok") { box.append(el("p", "audio-ok", `✓ plano Pro ativo em ${hostLabel(windowHost)}`)); container.append(box); return; }
+  const t = proBlockText(a, license);
+  box.append(el("p", "hint", t.text));
+  const row = el("div", "audio-row");
+  if (t.askAdmin) {
+    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+    b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintGuide(); }).catch(() => { b.disabled = false; }); });
+    row.append(b);
+  }
+  const again = el("button", "btn btn-ghost btn-small", "Conferir de novo"); again.type = "button";
+  again.addEventListener("click", () => { void refreshLicense().then(() => paintGuide()); });
+  row.append(again);
+  box.append(row);
+  container.append(box);
+}
+/** Tutorial 9, passo 3 e tutorial 10, passo 1: abrir a aba (e a Web Store). */
+function renderNavOpen(container: HTMLElement, webStore: boolean): void {
+  const row = el("div", "audio-row");
+  const b = el("button", "btn btn-primary btn-small", webStore ? "Abrir a Chrome Web Store na aba" : navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
+  b.addEventListener("click", () => { void openNavTab(webStore ? NAV_WEB_STORE : undefined); });
+  row.append(b);
+  container.append(row);
 }
 async function refreshGuarda(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
@@ -3773,15 +3842,19 @@ let license: LicenseView | null = null;
 const NAV_HOME = "https://www.google.com";
 const NAV_WEB_STORE = "https://chromewebstore.google.com/";
 /** Licença da máquina (cache; a aba Navegador e as Configurações leem daqui). */
-/** Selo "PRO" no canto superior direito: mostra quando a conta desta janela é Pro. */
+/** Selo "PRO" no canto superior direito: mostra quando a conta desta janela é Pro (barra cheia e recolhida). */
 const planBadge = $<HTMLElement>("plan-badge");
-function setPlanBadge(pro: boolean): void { planBadge.hidden = !pro; }
+const miniPlan = $<HTMLElement>("mini-plan");
+function setPlanBadge(pro: boolean): void { planBadge.hidden = !pro; miniPlan.hidden = !pro; }
+let navLicenseAsked = false;
 async function refreshLicense(): Promise<LicenseView | null> {
-  if (!caps.chat || windowHost === "local") { license = null; setPlanBadge(false); return null; }
+  if (!caps.chat || windowHost === "local") { license = null; navLicenseAsked = true; setPlanBadge(false); return null; }
   try { license = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar: fica o que havia */ }
+  navLicenseAsked = true;
   setPlanBadge(license?.license.plan === "pro");
   return license;
 }
+const NAV_TUTORIAL = TUTORIAIS.find((t) => t.id === "navegador") as Tutorial;
 const navCurrent = (): NavTab | null => navTabs.find((t) => t.id === navActive) ?? null;
 /** O que a pessoa digitou: endereço, host sem esquema ou busca. */
 function navNormalize(raw: string): string {
@@ -4276,7 +4349,10 @@ function showTool(tab: Tab, tool: ToolEvent): void {
   }
   scrollToBottom(tab, false);
 }
-window.meuBot.on("chat:tool", ({ conversationId, tool }) => { const tab = tabs.get(conversationId); if (tab !== undefined) showTool(tab, tool); });
+window.meuBot.on("chat:tool", ({ conversationId, tool }) => {
+  const tab = tabs.get(conversationId); if (tab !== undefined) showTool(tab, tool);
+  if (tool.name !== null && tool.name.startsWith("mcp__navegador__") && !loadGuideFlags(NAV_TUTORIAL).navAgentUsed) { saveGuideFlag(NAV_TUTORIAL, "navAgentUsed"); paintGuide(); }
+});
 
 function openSettings(): void {
   if (dialog.open) return;

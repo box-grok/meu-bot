@@ -523,6 +523,8 @@ export type ReliefEvent =
 /** Seletor, os dois apps. */
 export interface PickerSharedApi {
   list(): Promise<PickerInit>;
+  /** Plano de cada host (lido por SSH, melhor esforço) para o selo "PRO" no seletor; hosts fora do ar ficam de fora. */
+  plans(): Promise<Record<string, "free" | "pro">>;
   probe(host: string): Promise<HostProbe>;
   choose(host: string): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
@@ -703,6 +705,8 @@ export interface MainEvents {
   "statusline:progress": { line: string };
   /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
   "guarda:progress": { line: string };
+  /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
+  "navegador:progress": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
@@ -751,19 +755,6 @@ export interface MeuBotSharedApi {
   termResize(id: string, cols: number, rows: number): void;
   termClose(id: string): Promise<void>;
   termReplay(id: string): Promise<Uint8Array>;
-  /**
-   * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que
-   * `browserOpen` devolve (exige plano Pro na máquina: erro "PRO_REQUIRED"); o main cuida da sessão e das extensões.
-   */
-  browserOpen(): Promise<BrowserOpenInfo>;
-  browserExtensions(): Promise<BrowserExtensionInfo[]>;
-  /** Liga/desliga "agente pode usar" (socket de ações + túnel reverso); estado em browser:agent. */
-  browserAgent(on: boolean): Promise<BrowserAgentState>;
-  /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
-  browserActive(wcId: number): void;
-  browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
-  /** Free pediu o Pro: fica no registro do suporte da máquina. */
-  browserRequestPro(): Promise<void>;
   /** Atualização automática: estado (versão atual, disponível, pronta) e trocar + reiniciar. */
   updateState(): Promise<UpdateState>;
   /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
@@ -867,7 +858,23 @@ export interface MeuBotClientApi {
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
   /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */
+  /**
+   * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que
+   * `browserOpen` devolve (exige plano Pro na máquina: erro "PRO_REQUIRED"); o main cuida da sessão e das extensões.
+   */
+  browserOpen(): Promise<BrowserOpenInfo>;
+  browserExtensions(): Promise<BrowserExtensionInfo[]>;
+  /** Liga/desliga "agente pode usar" (socket de ações + túnel reverso); estado em browser:agent. */
+  browserAgent(on: boolean): Promise<BrowserAgentState>;
+  /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
+  browserActive(wcId: number): void;
+  browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
+  /** Free pediu o Pro: fica no registro do suporte da máquina. */
+  browserRequestPro(): Promise<void>;
   guardaInstalled(): Promise<boolean | null>;
+  /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
+  navegadorInstalled(): Promise<boolean | null>;
+  installNavegador(): Promise<InstallBackendResult>;
   installGuarda(): Promise<InstallBackendResult>;
   uninstallGuarda(): Promise<InstallBackendResult>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */

@@ -28,7 +28,7 @@ async function rememberClaudeSession(conv: { id: string; host: string; claude?: 
 import { getHostNames, isBackendModel } from "../settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
 import { toggleQuickEntry } from "../quickEntry";
-import { guardaInstalled, installAudio, installGuarda, installStatusLine, prepareGrokOauth, statusLineInstalled, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
+import { guardaInstalled, installAudio, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
 import { readSegments, writeSegments } from "../statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
@@ -161,6 +161,8 @@ export function registerClientIpc(): void {
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
   handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
+  handleClient("navegador:status", (event) => navegadorInstalled(ctxOf(event).host));
+  handleClient("navegador:install", (event) => { const h = ctxOf(event); return installNavegador(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("navegador:progress", { line }); }); });
   handleClient("guarda:install", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");

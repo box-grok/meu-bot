@@ -34,3 +34,17 @@ test("resultado longo é cortado em 20 linhas; chunk SSE tem o formato OpenAI co
   const c = toolChunk("id1", 123, "agente", { kind: "use", name: "Bash", summary: "pwd" });
   assert.equal(c.object, "chat.completion.chunk"); assert.deepEqual(c.choices[0].delta, {}); assert.equal(c.x_meu_bot.tool.summary, "pwd");
 });
+
+test("ações do navegador viram uma linha com 🌐; digitar nunca mostra o texto", () => {
+  const ev = (name, input) => ({ type: "assistant", message: { content: [{ type: "tool_use", id: `t-${name}`, name, input }] } });
+  const names = new Map();
+  const sum = (name, input) => toolEventsFrom(ev(name, input), names)[0].summary;
+  assert.equal(sum("mcp__navegador__abrir", { url: "https://example.com", nova: true }), "🌐 abriu https://example.com (aba nova)");
+  assert.equal(sum("mcp__navegador__ler", {}), "🌐 leu a página");
+  assert.equal(sum("mcp__navegador__clicar", { n: 12 }), "🌐 clicou em o elemento 12");
+  assert.equal(sum("mcp__navegador__clicar", { texto: "Entrar" }), '🌐 clicou em "Entrar"');
+  const d = sum("mcp__navegador__digitar", { n: 3, texto: "minha-senha-secreta", enter: true });
+  assert.equal(d, "🌐 digitou em o elemento 3 e apertou Enter"); assert.doesNotMatch(d, /secreta/);
+  assert.equal(sum("mcp__navegador__print", {}), "🌐 tirou um print");
+  assert.match(sum("mcp__outro__x", { a: 1 }), /^\{/);
+});

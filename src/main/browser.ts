@@ -121,7 +121,9 @@ export function browserAsk(host: string, msg: { kind: "new-tab"; url: string } |
 }
 
 // Cada <webview> anexado a uma janela que abriu o navegador: popups viram aba interna; Cmd+… volta ao app.
-app.on("browser-window-created", (_e, win) => {
+// Registrado pelo main.ts no boot (não no import: os testes puros carregam módulos do main sem Electron).
+export function installBrowserHooks(): void { app.on("browser-window-created", onWindowCreated); }
+function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
   win.webContents.on("did-attach-webview", (_ev, wc) => {
     const host = windowHosts.get(win.id);
     if (host === undefined) return;
@@ -141,4 +143,4 @@ app.on("browser-window-created", (_e, win) => {
       }
     });
   });
-});
+}
