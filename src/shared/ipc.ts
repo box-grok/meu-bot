@@ -672,7 +672,8 @@ export type ExportFormat = "md" | "json";
 export interface NetState { online: boolean | null; checking: boolean; since: number | null; checkedAt: number | null }
 
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
-export interface BrowserExtensionInfo { id: string; name: string; version: string }
+/** `icon` = data URL do ícone (para o botão na barra, como no Chrome/Rambox); `popup` = url chrome-extension:// do popup, se houver. */
+export interface BrowserExtensionInfo { id: string; name: string; version: string; icon: string | null; popup: string | null }
 export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState }
 /** "Agente pode usar" o Navegador: ligado? o túnel reverso está de pé? em que porta da máquina? */
 export interface BrowserAgentState { on: boolean; state: "up" | "down" | "connecting"; port: number | null }

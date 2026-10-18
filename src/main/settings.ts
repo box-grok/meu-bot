@@ -84,6 +84,15 @@ export function setHostName(host: string, name: string): void {
 }
 
 export const isPodHost = (host: string): boolean => file.podHosts.includes(host);
+/** "🤖 agente pode usar" o Navegador: lembrado por máquina, para sobreviver a reinícios do app. */
+export const isNavAgentHost = (host: string): boolean => file.navAgentHosts.includes(host);
+export function setNavAgentHost(host: string, on: boolean): void {
+  if (!isValidHost(host)) return;
+  const next = file.navAgentHosts.filter((h) => h !== host);
+  if (on) next.push(host);
+  file.navAgentHosts = next;
+  persist();
+}
 /** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
 export function setPodHost(host: string, isPod: boolean): void {
   if (!isValidHost(host) || isPodHost(host) === isPod) return;

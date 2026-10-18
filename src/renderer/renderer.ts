@@ -3835,7 +3835,42 @@ let navPartition: string | null = null;
 let navExtensions: BrowserExtensionInfo[] = [];
 let navAccess: ProAccess | null = null;
 let navAskedPro = false;
-let navEls: { tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement } | null = null;
+let navEls: { tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
+let navPopupFor: string | null = null;
+/** Botões das extensões na barra (ícone da ação, como no Chrome/Rambox); clique abre o popup da extensão num webview pequeno. */
+function paintNavActions(): void {
+  if (navEls === null) return;
+  const e = navEls;
+  e.actions.replaceChildren();
+  for (const x of navExtensions) {
+    const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
+    if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
+    b.addEventListener("click", () => {
+      if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
+      navOpenPopup(x.id, x.popup, b);
+    });
+    e.actions.append(b);
+  }
+}
+function navOpenPopup(id: string, url: string, anchor: HTMLElement): void {
+  if (navEls === null || navPartition === null) return;
+  navClosePopup();
+  const wv = document.createElement("webview") as WebviewEl;
+  wv.setAttribute("partition", navPartition);
+  wv.className = "nav-popup-view";
+  wv.setAttribute("src", url);
+  navEls.popup.replaceChildren(wv);
+  const r = anchor.getBoundingClientRect(); const bar = navEls.bar.getBoundingClientRect();
+  navEls.popup.style.right = `${Math.max(8, bar.right - r.right)}px`;
+  navEls.popup.hidden = false;
+  navPopupFor = id;
+  paintNavActions();
+}
+function navClosePopup(): void {
+  if (navEls === null) return;
+  navEls.popup.hidden = true; navEls.popup.replaceChildren(); navPopupFor = null;
+  paintNavActions();
+}
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 let navAgentBusy = false;
 let license: LicenseView | null = null;
@@ -3968,7 +4003,7 @@ function paintNavMenu(): void {
     const row = el("div", "nav-ext");
     row.append(el("span", "grow", `${x.name} · ${x.version}`));
     const rm = el("button", "btn btn-ghost btn-small", "Remover"); rm.type = "button";
-    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; paintNavMenu(); }); }));
+    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; paintNavMenu(); paintNavActions(); }); }));
     row.append(rm);
     m.append(row);
   }
@@ -3990,7 +4025,9 @@ async function openNavTab(url?: string): Promise<void> {
     const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
     const menu = el("div", "nav-menu"); menu.hidden = true;
     const agent = el("button", "btn btn-ghost btn-small nav-agent", "🤖 agente: desligado"); agent.type = "button";
-    bar.append(back, fwd, reload, urlEl, loading, agent, ext, open, menu);
+    const actions = el("div", "nav-actions");
+    const popup = el("div", "nav-popup"); popup.hidden = true;
+    bar.append(back, fwd, reload, urlEl, loading, agent, actions, ext, open, menu, popup);
     agent.addEventListener("click", () => {
       navAgentBusy = true; paintNav();
       void window.meuBot.browserAgent(!navAgent.on).then((st) => { navAgent = st; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Agente: ${ipcErrorText(err)}`; } }).finally(() => { navAgentBusy = false; paintNav(); });
@@ -4000,7 +4037,7 @@ async function openNavTab(url?: string): Promise<void> {
     const block = el("div", "nav-block"); block.hidden = true;
     panel.append(tabsEl2, bar, note, box, block);
     panelsEl.append(panel);
-    navEls = { tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent };
+    navEls = { tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
     reload.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; if (c.loading) c.wv.stop(); else c.wv.reload(); });
@@ -4012,7 +4049,7 @@ async function openNavTab(url?: string): Promise<void> {
     urlEl.addEventListener("focus", () => urlEl.select());
     ext.addEventListener("click", () => { menu.hidden = !menu.hidden; if (!menu.hidden) paintNavMenu(); });
     open.addEventListener("click", () => { const c = navCurrent(); if (c !== null && /^https?:/.test(c.url)) void window.meuBot.openExternal(c.url); });
-    box.addEventListener("mousedown", () => { menu.hidden = true; });
+    box.addEventListener("mousedown", () => { menu.hidden = true; navClosePopup(); });
     navPage = definePage("navegador", "Navegador", panel, () => { paintNav(); });
   }
   openPage(navPage);
@@ -4020,7 +4057,7 @@ async function openNavTab(url?: string): Promise<void> {
   navAccess = browserAccess(license, windowHost);
   paintNav();
   if (navAccess === "ok" && navPartition === null) {
-    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; }
+    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; paintNavActions(); }
     catch (err) { navAccess = /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
     paintNav();
   }
@@ -4038,7 +4075,7 @@ function disposeNav(): void {
   navPage = null; navEls = null;
   $<HTMLElement>("navegador-count").textContent = "Pro";
 }
-window.meuBot.on("browser:extensions", (list) => { navExtensions = list; if (navEls !== null && !navEls.menu.hidden) paintNavMenu(); });
+window.meuBot.on("browser:extensions", (list) => { navExtensions = list; paintNavActions(); if (navEls !== null && !navEls.menu.hidden) paintNavMenu(); });
 window.meuBot.on("browser:open-url", ({ url }) => { if (navPage !== null && navPartition !== null) { navNewTab(url); } });
 window.meuBot.on("browser:agent", (st) => { navAgent = st; paintNav(); });
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.

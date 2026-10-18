@@ -642,6 +642,13 @@ body.topbar-hidden .topbar { display: none; }
 .nav-url { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
 .nav-url:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .nav-agent { white-space: nowrap; }
+.nav-actions { display: flex; align-items: center; gap: 2px; }
+.nav-action { width: 28px; height: 28px; padding: 4px; border-radius: 6px; border: 1px solid transparent; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--fg); font: 12px/1 inherit; }
+.nav-action:hover, .nav-action.on { border-color: var(--line); background: var(--card); }
+.nav-action img { width: 18px; height: 18px; }
+.nav-popup { position: absolute; top: 100%; right: 8px; z-index: 8; width: 420px; height: 560px; max-height: 70vh; border-radius: 10px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 8px 28px rgba(0,0,0,.3); overflow: hidden; }
+.nav-popup[hidden] { display: none; }
+.nav-popup-view { width: 100%; height: 100%; display: flex; border: 0; }
 .nav-agent.on { border-color: var(--ok); color: var(--ok); }
 .nav-loading { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: new-glow 1s ease-in-out infinite; flex: none; }
 .nav-box { flex: 1; min-height: 0; background: var(--bg); position: relative; }

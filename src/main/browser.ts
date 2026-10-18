@@ -8,10 +8,12 @@
  * Cmd+… volta para o app. Os webviews não têm preload do app: o conteúdo web não fala IPC com o meu-bot.
  */
 import { BrowserWindow, app, session, shell, type Session, type WebContents } from "electron";
+import fs from "node:fs";
 import path from "node:path";
 import { installChromeWebStore, uninstallExtension } from "electron-chrome-web-store";
 import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
+import { isNavAgentHost, setNavAgentHost } from "./settings";
 import type { BrowserAgentState } from "../shared/ipc";
 import type { BrowserExtensionInfo, BrowserOpenInfo } from "../shared/ipc";
 
@@ -43,13 +45,30 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     }).then(() => { log(`[navegador ${host}] sessão pronta (${ses.getAllExtensions().length} extensões)`); })
       .catch((e: unknown) => { log(`[navegador ${host}] web store não ligou: ${e instanceof Error ? e.message : String(e)}`); });
     readySessions.set(part, ready);
-    ses.on("extension-loaded", () => publishExtensions(host));
-    ses.on("extension-unloaded", () => publishExtensions(host));
+    ses.on("extension-loaded", (_e, ext) => { log(`[navegador ${host}] extensão carregada: ${ext.name} ${ext.version} (${ext.id}); manifest v${(ext.manifest as { manifest_version?: number }).manifest_version ?? "?"}`); publishExtensions(host); });
+    ses.on("extension-unloaded", (_e, ext) => { log(`[navegador ${host}] extensão descarregada: ${ext.id}`); publishExtensions(host); });
+    ses.on("extension-ready", (_e, ext) => { log(`[navegador ${host}] extensão pronta: ${ext.id}`); });
   }
   return { ses, ready };
 }
 
-const extensionsOf = (ses: Session): BrowserExtensionInfo[] => ses.getAllExtensions().map((e) => ({ id: e.id, name: e.name, version: e.version }));
+/** Ícone (16–48 px) e popup da ação da extensão, lidos do manifesto; o ícone vai como data URL (a página do app não enxerga chrome-extension://). */
+function extensionInfo(e: Electron.Extension): BrowserExtensionInfo {
+  const m = e.manifest as { action?: { default_icon?: string | Record<string, string>; default_popup?: string }; icons?: Record<string, string> };
+  const pick = (icons: string | Record<string, string> | undefined): string | null => {
+    if (typeof icons === "string") return icons;
+    if (icons === undefined) return null;
+    const sizes = Object.keys(icons).map(Number).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);
+    const best = sizes.find((n) => n >= 32) ?? sizes.at(-1);
+    return best === undefined ? null : icons[String(best)] ?? null;
+  };
+  const rel = pick(m.action?.default_icon) ?? pick(m.icons);
+  let icon: string | null = null;
+  if (rel !== null) { try { const file = path.join(e.path, rel); const ext = path.extname(file).toLowerCase(); const mime = ext === ".svg" ? "image/svg+xml" : ext === ".jpg" || ext === ".jpeg" ? "image/jpeg" : "image/png"; icon = `data:${mime};base64,${fs.readFileSync(file).toString("base64")}`; } catch { icon = null; } }
+  const popup = typeof m.action?.default_popup === "string" && m.action.default_popup !== "" ? `${e.url}${m.action.default_popup.replace(/^\//, "")}` : null;
+  return { id: e.id, name: e.name, version: e.version, icon, popup };
+}
+const extensionsOf = (ses: Session): BrowserExtensionInfo[] => ses.getAllExtensions().map(extensionInfo);
 /** Janelas desta máquina recebem a lista nova de extensões (instalou pela Web Store, removeu…). */
 function publishExtensions(host: string): void {
   const list = extensionsOf(session.fromPartition(partitionOf(host)));
@@ -64,9 +83,16 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   await ready;
   windowHosts.set(win.id, host);
   log(`[navegador ${host}] aberto na janela ${win.id}`);
+  // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
+  if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
   return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host) };
 }
-export const browserExtensions = (host: string): BrowserExtensionInfo[] => extensionsOf(session.fromPartition(partitionOf(host)));
+export const browserExtensions = (host: string): BrowserExtensionInfo[] => {
+  const ses = session.fromPartition(partitionOf(host));
+  // Diagnóstico no log: os service workers das extensões (MV3) estão rodando?
+  try { const running = ses.serviceWorkers.getAllRunning(); const sw = Object.values(running).map((w) => `${w.scope} (${w.scriptUrl})`); log(`[navegador ${host}] extensões: ${ses.getAllExtensions().map((e) => `${e.name}@${e.version}`).join(", ") || "nenhuma"}; service workers: ${sw.join(" | ") || "nenhum"}`); } catch (e) { log(`[navegador ${host}] diagnóstico de extensões falhou: ${e instanceof Error ? e.message : String(e)}`); }
+  return extensionsOf(ses);
+};
 export async function browserRemoveExtension(host: string, extId: string): Promise<BrowserExtensionInfo[]> {
   const ses = session.fromPartition(partitionOf(host));
   await uninstallExtension(extId, { session: ses, extensionsPath: extensionsDir(host) });
@@ -90,6 +116,7 @@ const tellAgent = (host: string, st: BrowserAgentState): void => {
 };
 onReverseState((host, state, port) => { if (agentOn.has(host)) tellAgent(host, { on: true, state, port }); });
 export function browserAgent(host: string, on: boolean): void {
+  setNavAgentHost(host, on);
   if (on) {
     agentOn.add(host);
     tellAgent(host, { on: true, state: "connecting", port: null });
