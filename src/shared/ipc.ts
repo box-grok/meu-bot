@@ -15,6 +15,10 @@ export interface SettingsView {
   backendPort: number;
   /** Porta já resolvida para a máquina da janela que pediu (por máquina vence a padrão). */
   backendPortForHost: number;
+  /** Notificações das páginas do Navegador viram conversas com a instrução da pessoa. */
+  navNotify: NavNotifyPref;
+  /** Espaços de trabalho do Navegador da máquina da janela (para o tutorial saber antes de o Navegador abrir). */
+  navEspacos: NavWorkspaces;
   fontSize: number;
   theme: Theme;
   /** Avisar com notificação do sistema quando uma resposta terminar em segundo plano. */
@@ -38,6 +42,13 @@ export interface SettingsView {
   hostNames: Record<string, string>;
 }
 
+/**
+ * Notificações das páginas do Navegador (do REA do Rambox, com a camada do meu-bot por cima): cada notificação de
+ * um site vira uma mensagem numa conversa, com a instrução da pessoa, e o agente a trata; a notificação do sistema
+ * leva à conversa. `hosts` vazio = todo site; `mode` "site" = uma conversa por site, "each" = uma por notificação.
+ */
+export interface NavNotifyPref { enabled: boolean; instruction: string; hosts: string[]; mode: "site" | "each" }
+
 export interface SettingsUpdate {
   backendModel?: BackendModel;
   /** Modelo padrão só para a máquina da janela que salvou. */
@@ -45,6 +56,7 @@ export interface SettingsUpdate {
   backendPort?: number;
   /** Porta só para a máquina da janela que salvou (igual à padrão tira a exceção). */
   backendPortForHost?: number;
+  navNotify?: Partial<NavNotifyPref>;
   fontSize?: number;
   theme?: Theme;
   notifications?: boolean;
@@ -716,7 +728,16 @@ export interface NetState { online: boolean | null; checking: boolean; since: nu
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
 /** `icon` = data URL do ícone (para o botão na barra, como no Chrome/Rambox); `popup` = url chrome-extension:// do popup, se houver. */
 export interface BrowserExtensionInfo { id: string; name: string; version: string; icon: string | null; popup: string | null }
-export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState; favoritos: NavFavorito[] }
+export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState; favoritos: NavFavorito[]; espacos: NavWorkspaces }
+/**
+ * Espaços de trabalho do Navegador (do REA do Rambox: grupos/workspaces com apps fixos num trilho). Por máquina.
+ * `tipo` = como a pessoa organiza (por projeto ou por cliente; null = ainda não escolheu); cada espaço tem os sites
+ * fixos (serviços), que abrem em abas permanentes enquanto o Navegador existe (as notificações deles chegam).
+ */
+export type NavWorkspaceKind = "projeto" | "cliente";
+export interface NavService { id: string; nome: string; url: string; icone: string | null }
+export interface NavWorkspace { id: string; nome: string; servicos: NavService[] }
+export interface NavWorkspaces { tipo: NavWorkspaceKind | null; ativo: string | null; lista: NavWorkspace[] }
 /** Favorito da barra do Navegador (por máquina; o agente também adiciona/remove pelas ações). */
 export interface NavFavorito { id: string; titulo: string; url: string }
 /** "Agente pode usar" o Navegador: ligado? o túnel reverso está de pé? em que porta da máquina? */
@@ -781,6 +802,7 @@ export interface MainEvents {
   "browser:agent": BrowserAgentState;
   /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */
   "browser:favorites": NavFavorito[];
+  "browser:workspaces": NavWorkspaces;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -923,6 +945,8 @@ export interface MeuBotClientApi {
   /** Barra de favoritos do Navegador (por máquina): adicionar (url repetida só atualiza o título) e remover por id. */
   browserFavoriteAdd(f: { titulo: string; url: string }): Promise<NavFavorito[]>;
   browserFavoriteRemove(id: string): Promise<NavFavorito[]>;
+  /** Grava os espaços de trabalho desta máquina (o main valida e devolve o que ficou). */
+  browserWorkspacesSet(w: NavWorkspaces): Promise<NavWorkspaces>;
   guardaInstalled(): Promise<boolean | null>;
   /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
   navegadorInstalled(): Promise<boolean | null>;

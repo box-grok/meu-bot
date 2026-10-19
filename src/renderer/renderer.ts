@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -12,6 +12,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
+import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification } from "./lib/nav-notify.js";
 import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -73,6 +74,10 @@ const themeSelect = $<HTMLSelectElement>("theme");
 const settingsError = $<HTMLParagraphElement>("settings-error");
 const cancelBtn = $<HTMLButtonElement>("btn-cancel");
 const notificationsInput = $<HTMLInputElement>("notifications");
+const navNotifyOn = $<HTMLInputElement>("nav-notify-on");
+const navNotifyInstruction = $<HTMLTextAreaElement>("nav-notify-instruction");
+const navNotifyHosts = $<HTMLInputElement>("nav-notify-hosts");
+const navNotifyMode = $<HTMLSelectElement>("nav-notify-mode");
 const openAtLoginInput = $<HTMLInputElement>("open-at-login");
 const openAtLoginHint = $<HTMLElement>("open-at-login-hint");
 const contextBudgetInput = $<HTMLInputElement>("context-budget");
@@ -953,6 +958,7 @@ function applySettings(view: SettingsView): void {
   fontSizeInput.value = String(view.fontSize);
   themeSelect.value = view.theme;
   notificationsInput.checked = view.notifications;
+  navNotifyOn.checked = view.navNotify.enabled; navNotifyInstruction.value = view.navNotify.instruction; navNotifyHosts.value = view.navNotify.hosts.join(", "); navNotifyMode.value = view.navNotify.mode;
   contextBudgetInput.value = String(view.contextBudgetTokens);
   memoryEveryInput.value = String(view.memoryEveryTurns);
   quickEnabled.checked = view.quickEntryEnabled;
@@ -1818,6 +1824,12 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderCrmConfig(txt);
       } else if (step.body === "crm-test") {
         renderCrmTest(txt);
+      } else if (step.body === "nav-ws") {
+        renderNavWsStep(txt);
+      } else if (step.body === "nav-notify-config") {
+        renderNavNotifyConfig(txt);
+      } else if (step.body === "nav-notify-test") {
+        renderNavNotifyTest(txt);
       } else if (step.body === "statusline-segments") {
         renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
@@ -2000,6 +2012,8 @@ async function resetTutorial(t: Tutorial): Promise<void> {
       await logoutClaude(false);
     } else if (t.id === "xai-login") {
       if (xaiAuth?.loggedIn === true) await logoutXai(false);
+    } else if (t.id === "notificacoes-navegador") {
+      applySettings(await window.meuBot.setSettings({ navNotify: { enabled: false } }));
     } else if (t.id === "whatsapp-objetivo") {
       objectiveState = await window.meuBot.resetObjective(); objectiveDraft = null; objectiveMsg = null; paintAcervoCount();
     }
@@ -3616,7 +3630,8 @@ const guideCtx = (): GuideContext => ({
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
   guarda: { installed: guardaState },
-  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
+  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up", servicos: navServicosCount() },
+  notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), info: crmState },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
@@ -4184,7 +4199,7 @@ interface WebviewEl extends HTMLElement {
   insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
 /** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
-interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]> }
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; /** Quando o documento atual terminou de carregar (aquecimento das notificações). */ loadedAt?: number }
 let navPage: PageTab | null = null;
 let navTabs: NavTab[] = [];
 let navActive: string | null = null;
@@ -4193,10 +4208,15 @@ let navPartition: string | null = null;
 let navExtensions: BrowserExtensionInfo[] = [];
 let navAccess: ProAccess | null = null;
 let navAskedPro = false;
-let navEls: { favs: HTMLElement; star: HTMLButtonElement; tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
+let navEls: { rail: HTMLElement; favs: HTMLElement; star: HTMLButtonElement; tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
 let navPopupFor: string | null = null;
 /** Barra de favoritos (lista por máquina, do main); mostrar/ocultar é escolha do app (Cmd+Shift+F). */
 let navFavs: NavFavorito[] = [];
+/** Espaços de trabalho desta máquina (do REA do Rambox): sites fixos em abas permanentes, agrupados por projeto ou cliente. */
+let navWs: NavWorkspaces = { tipo: null, ativo: null, lista: [] };
+/** Formulário aberto no trilho (adicionar site, novo espaço, renomear) e o erro da última gravação. */
+let navRailForm: { kind: "site" | "espaco" | "renomear" } | null = null;
+let navRailMsg: string | null = null;
 let navFavsShown = (() => { try { return parseFavsShown(localStorage.getItem("navFavsShown")); } catch { return true; } })();
 function paintNavFavs(): void {
   if (navEls === null) return;
@@ -4259,6 +4279,112 @@ function applyRecortes(tab: NavTab, fresh = false): void {
     if (touched) navRefit(tab);
   };
   void run();
+}
+/**
+ * Notificações das páginas (do REA do Rambox): no mundo da página entra um substituto de `window.Notification`
+ * (permissão "granted"; construir uma notificação manda título/corpo/ícone pela ponte `window.meuBotNav`, exposta
+ * pelo preload da sessão) e o app decide o que fazer. Sem isto, o Navegador nega a permissão e a página nem tenta.
+ * Idempotente por documento; só http(s). A notificação em si nunca chega ao sistema por aqui: quem avisa é o app,
+ * apontando para a conversa que a trata.
+ */
+const NAV_NOTIFY_JS = `(() => {
+  if (window.__meuBotNotify || !window.meuBotNav) return; window.__meuBotNotify = true;
+  class N extends EventTarget {
+    constructor(title, options) {
+      super(); const o = options || {};
+      this.title = String(title == null ? "" : title); this.body = typeof o.body === "string" ? o.body : ""; this.icon = typeof o.icon === "string" ? o.icon : "";
+      this.tag = typeof o.tag === "string" ? o.tag : ""; this.data = o.data == null ? null : o.data; this.onclick = null; this.onclose = null; this.onerror = null; this.onshow = null;
+      try { window.meuBotNav.notify({ title: this.title, body: this.body, icon: this.icon, tag: this.tag, url: location.href, site: location.hostname }); } catch {}
+      setTimeout(() => { try { const e = new Event("show"); this.dispatchEvent(e); if (typeof this.onshow === "function") this.onshow(e); } catch {} }, 0);
+    }
+    close() { try { const e = new Event("close"); this.dispatchEvent(e); if (typeof this.onclose === "function") this.onclose(e); } catch {} }
+    static get permission() { return "granted"; }
+    static requestPermission(cb) { const p = Promise.resolve("granted"); if (typeof cb === "function") p.then(cb); return p; }
+    static get maxActions() { return 0; }
+  }
+  try { Object.defineProperty(window, "Notification", { value: N, configurable: true, writable: true }); } catch { window.Notification = N; }
+})(); undefined`;
+function navNotifyInject(tab: NavTab): void {
+  if (!/^https?:/.test(tab.url)) return;
+  try { void tab.wv.executeJavaScript(NAV_NOTIFY_JS).catch(() => undefined); } catch { /* webview ainda não anexado */ }
+}
+const navNotifyDedup = new NavNotifyDedup();
+const navNotifyBudget = new NavNotifyBudget(3, 60_000);
+const NAV_NOTIFY_WARMUP_MS = 10_000;
+const NOTIFY_TUTORIAL = TUTORIAIS.find((t) => t.id === "notificacoes-navegador") as Tutorial;
+/** Sites fixos do espaço ativo: do Navegador aberto, ou das Configurações antes de ele abrir. */
+function navServicosCount(): number {
+  const src = navWs.lista.length > 0 ? navWs : (settings?.navEspacos ?? navWs);
+  return src.lista.find((w) => w.id === src.ativo)?.servicos.length ?? 0;
+}
+/** Tutorial 11, passo 1: abrir o Navegador para criar o espaço e fixar o site. */
+function renderNavWsStep(container: HTMLElement): void {
+  const row = el("div", "audio-row");
+  const n = navServicosCount();
+  const b = el("button", "btn btn-primary btn-small", n > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
+  b.addEventListener("click", () => { void openNavTab(); });
+  row.append(b, el("span", n > 0 ? "audio-ok" : "hint", n > 0 ? `✓ ${n} site${n === 1 ? "" : "s"} fixo${n === 1 ? "" : "s"} no espaço ativo` : "No trilho à esquerda: escolha projeto ou cliente, crie o espaço e fixe o site."));
+  container.append(row);
+}
+/** Tutorial 11, passo 2: a mesma configuração das Configurações, inline, com "Pular". */
+function renderNavNotifyConfig(container: HTMLElement): void {
+  const pref = settings?.navNotify;
+  const box = el("div", "audio-controls");
+  if (pref === undefined) { box.append(el("p", "hint", "Carregando as configurações…")); container.append(box); return; }
+  if (pref.enabled) box.append(el("p", "audio-ok", "✓ Ligado. Ajuste quando quiser em Configurações › Notificações do Navegador."));
+  const inst = document.createElement("textarea"); inst.rows = 3; inst.maxLength = 2000; inst.className = "wa-list-input"; inst.value = pref.instruction; inst.placeholder = "O que o agente faz com cada notificação";
+  const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Só destes sites (vazio = todos): mail.google.com"; hosts.value = pref.hosts.join(", ");
+  const mode = document.createElement("select"); mode.className = "nav-url";
+  for (const [v, l] of [["site", "uma conversa por site"], ["each", "uma conversa nova por notificação"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.mode === v; mode.append(o); }
+  const row = el("div", "audio-row");
+  const on = el("button", "btn btn-primary btn-small", pref.enabled ? "Salvar" : "Ligar com esta ação"); on.type = "button";
+  on.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: parseNotifyHosts(hosts.value), mode: mode.value === "each" ? "each" : "site" } }).then(applySettings).then(() => paintGuide()).catch((err: unknown) => { const t = active(); if (t !== null) addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); }); });
+  row.append(on);
+  if (pref.enabled) { const off = el("button", "btn btn-ghost btn-small", "Desligar"); off.type = "button"; off.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: false } }).then(applySettings).then(() => paintGuide()); }); row.append(off); }
+  else { const skip = el("button", "btn btn-ghost btn-small", "Pular esta etapa (deixar desligado)"); skip.type = "button"; skip.addEventListener("click", () => { saveGuideFlag(NOTIFY_TUTORIAL, "notifySkipped"); paintGuide(); }); row.append(skip); }
+  box.append(el("p", "hint strong-hint", "Ação"), inst, el("p", "hint strong-hint", "Sites e conversa"), hosts, mode, row);
+  container.append(box);
+}
+/** Tutorial 11, passo 3: a conversa "🔔" já existe? Abre-a; senão, a pessoa marca quando vir. */
+function renderNavNotifyTest(container: HTMLElement): void {
+  const row = el("div", "audio-row");
+  const convs = [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived);
+  if (convs.length > 0) { const b = el("button", "btn btn-primary btn-small", `Abrir ${convs[0]!.title ?? "a conversa"}`); b.type = "button"; b.addEventListener("click", () => { void openFromIndex(convs[0]!.id); }); row.append(b, el("span", "audio-ok", `✓ ${convs.length} conversa${convs.length === 1 ? "" : "s"} de notificação`)); }
+  else row.append(el("span", "hint", settings?.navNotify.enabled === true ? "Aguardando a primeira notificação nova do site fixo…" : "A função está desligada: ligue no passo anterior ou marque como visto."));
+  container.append(row);
+}
+/**
+ * Uma notificação chegou de uma aba: vira mensagem na conversa do site (ou numa nova), com a instrução das
+ * Configurações, sem roubar a aba ativa; a notificação do Mac leva à conversa. Repetidas em 60 s são ignoradas.
+ */
+async function onPageNotification(tab: NavTab, raw: unknown): Promise<void> {
+  const pref = settings?.navNotify;
+  if (pref === undefined || !pref.enabled) return;
+  const n = parsePageNotification(raw);
+  if (n === null || !navNotifyAllowed(pref.hosts, n.site) || !navNotifyDedup.fresh(n)) return;
+  // Cuidado com o volume: a rajada logo depois de a página carregar (sites que avisam o que já estava na caixa)
+  // não conta, e cada site tem no máximo 3 por minuto; o excedente vira uma linha no próximo aviso tratado.
+  if (tab.loadedAt !== undefined && Date.now() - tab.loadedAt < NAV_NOTIFY_WARMUP_MS) { console.info(`[navegador] notificação de ${n.site} ignorada: página acabou de carregar`); return; }
+  const budget = navNotifyBudget.take(n.site);
+  if (!budget.ok) { console.info(`[navegador] notificação de ${n.site} ignorada: mais de 3 por minuto`); return; }
+  const title = navNotifyTitle(n, pref.mode);
+  const prev = activeId;
+  let chat: Tab | undefined;
+  if (pref.mode === "site") {
+    const existing = [...index.values()].find((c) => c.title === title && !c.archived);
+    if (existing !== undefined) { await openFromIndex(existing.id); chat = tabs.get(existing.id); }
+  }
+  if (chat === undefined) {
+    chat = await newTab();
+    applyCustomTitle(chat, title);
+    patchIndex(chat.id, { title });
+    try { await window.meuBot.renameConversation(chat.id, title); } catch { /* o título fica só local até o próximo salvamento */ }
+  }
+  if (prev !== null && prev !== chat.id && tabs.has(prev)) activate(prev); // a pessoa continua onde estava
+  await sendText(chat, `${navNotifyMessage(pref.instruction, n)}${budget.skipped > 0 ? `\n\n(Outras ${budget.skipped} notificações deste site ficaram de fora no último minuto, por volume.)` : ""}`);
+  void window.meuBot.notify(chat.id, `${n.site}: ${n.title || "notificação"}`, n.body);
+  paintGuide(); // tutorial 11, passo 3: a conversa "🔔" existe
+  console.info(`[navegador] notificação de ${n.site} → conversa "${title}"`);
 }
 /**
  * Chrome Web Store dentro da aba: a loja vê que o navegador não é o Chrome (as marcas do client hint do Electron não
@@ -4405,24 +4531,25 @@ function navNormalize(raw: string): string {
   if (/^[\w.-]+\.[a-z]{2,}(\/|$|:|\?)/i.test(t) || /^localhost(:|\/|$)/.test(t)) return `https://${t}`;
   return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
 }
-function navNewTab(url: string = NAV_HOME, activate = true): NavTab | null {
+function navNewTab(url: string = NAV_HOME, activate = true, serviceId?: string): NavTab | null {
   if (navEls === null || navPartition === null) return null;
   const wv = document.createElement("webview") as WebviewEl;
   wv.setAttribute("partition", navPartition);
   wv.setAttribute("allowpopups", "");
   wv.className = "nav-view";
   wv.hidden = true;
-  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map() };
+  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map(), ...(serviceId !== undefined ? { serviceId } : {}) };
   const sync = (): void => { tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
-  wv.addEventListener("did-finish-load", () => { applyRecortes(tab, true); navStoreTweaks(tab); });
+  wv.addEventListener("did-finish-load", () => { tab.loadedAt = Date.now(); applyRecortes(tab, true); navStoreTweaks(tab); navNotifyInject(tab); });
+  wv.addEventListener("ipc-message", (ev) => { const e = ev as Event & { channel?: string; args?: unknown[] }; if (e.channel === "nav:notification") void onPageNotification(tab, e.args?.[0]); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
   wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
-  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); navStoreTweaks(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
+  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); navStoreTweaks(tab); navNotifyInject(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
   wv.setAttribute("src", url);
   navEls.box.append(wv);
   navTabs.push(tab);
@@ -4468,13 +4595,14 @@ function paintNav(): void {
     return;
   }
   e.tabs.replaceChildren();
-  for (const t of navTabs) {
-    const tabEl = el("div", `nav-tab${t.id === navActive ? " active" : ""}`);
+  for (const t of navVisibleTabs()) {
+    const fixed = t.serviceId !== undefined;
+    const tabEl = el("div", `nav-tab${t.id === navActive ? " active" : ""}${fixed ? " fixed" : ""}`);
     if (t.favicon !== null) { const img = document.createElement("img"); img.src = t.favicon; img.alt = ""; tabEl.append(img); }
     tabEl.append(el("span", "nav-tab-title", tabLabel(t.title, t.url)));
-    const x = el("button", "tab-close", "×"); x.type = "button"; x.title = "Fechar aba";
-    x.addEventListener("click", (ev) => { ev.stopPropagation(); navClose(t.id); });
-    tabEl.append(x);
+    // Aba fixa de um serviço: não fecha pela tira (sai do trilho, com ×); a solta fecha como sempre.
+    if (!fixed) { const x = el("button", "tab-close", "×"); x.type = "button"; x.title = "Fechar aba"; x.addEventListener("click", (ev) => { ev.stopPropagation(); navClose(t.id); }); tabEl.append(x); }
+    else tabEl.title = "Site fixo do espaço de trabalho";
     tabEl.title = t.url;
     tabEl.addEventListener("click", () => navSelect(t.id));
     e.tabs.append(tabEl);
@@ -4498,6 +4626,7 @@ function paintNav(): void {
   e.agent.disabled = navAgentBusy;
   e.agent.textContent = !a.on ? "🤖 agente: desligado" : a.state === "up" ? "🤖 agente: pode usar" : a.state === "connecting" ? "🤖 agente: conectando…" : "🤖 agente: sem túnel";
   e.agent.title = a.on ? `O agente da conversa pode abrir, ler e clicar nestas abas (túnel ${a.state === "up" ? `ativo, porta ${a.port}` : a.state}). Clique para desligar.` : "Deixar o agente da conversa usar este navegador (ele avisa antes de agir e não compra/envia nada sem você confirmar). Clique para ligar.";
+  paintNavRail();
   if (navPage.tabEl !== null) { const title = navPage.tabEl.querySelector(".tab-title"); if (title !== null) title.textContent = `Navegador${navTabs.length > 1 ? ` (${navTabs.length})` : ""}`; }
   $<HTMLElement>("navegador-count").textContent = navTabs.length === 0 ? "Pro" : navTabs.length === 1 ? "1 aba" : `${navTabs.length} abas`;
 }
@@ -4548,9 +4677,17 @@ async function openNavTab(url?: string): Promise<void> {
     const note = el("div", "nav-note"); note.hidden = true;
     const box = el("div", "nav-box");
     const block = el("div", "nav-block"); block.hidden = true;
-    panel.append(tabsEl2, bar, favs, note, box, block);
+    // Trilho dos espaços de trabalho à esquerda; a coluna da direita é o navegador de sempre.
+    const rail = el("aside", "nav-rail");
+    const main = el("div", "nav-main");
+    main.append(tabsEl2, bar, favs, note, box, block);
+    panel.classList.add("with-rail");
+    panel.append(rail, main);
     panelsEl.append(panel);
-    navEls = { favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
+    const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button"; pin.title = "Fixar esta aba no espaço de trabalho (vira um site fixo do trilho)";
+    pin.addEventListener("click", () => { void navPinCurrent(); });
+    star.insertAdjacentElement("afterend", pin);
+    navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
     reload.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; if (c.loading) c.wv.stop(); else c.wv.reload(); });
@@ -4571,15 +4708,166 @@ async function openNavTab(url?: string): Promise<void> {
   navAccess = browserAccess(license, windowHost);
   paintNav();
   if (navAccess === "ok" && navPartition === null) {
-    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; navFavs = info.favoritos; paintNavActions(); paintNavFavs(); }
+    try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; navFavs = info.favoritos; navWs = info.espacos; paintNavActions(); paintNavFavs(); navMountWorkspace(false); }
     catch (err) { navAccess = /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
     paintNav();
   }
   if (navAccess === "ok" && navPartition !== null) {
     if (url !== undefined) navNewTab(navNormalize(url));
     else if (navTabs.length === 0) navNewTab();
+    else if (navCurrent() === null) { const first = navVisibleTabs()[0]; if (first !== undefined) navSelect(first.id); }
     else navCurrent()?.wv.focus();
   }
+}
+window.meuBot.on("browser:workspaces", (w) => { navWs = w; navMountWorkspace(false); paintNav(); });
+// ---- Espaços de trabalho (do REA do Rambox: grupos com apps fixos num trilho; aqui por máquina, nas Configurações).
+const navActiveWs = (): NavWorkspace | null => navWs.lista.find((w) => w.id === navWs.ativo) ?? null;
+/** Abas do espaço ativo + as soltas; as fixas de outros espaços ficam vivas (notificações) mas fora da tira. */
+function navVisibleTabs(): NavTab[] {
+  const active = navActiveWs();
+  const ids = new Set((active?.servicos ?? []).map((s) => s.id));
+  return navTabs.filter((t) => t.serviceId === undefined || ids.has(t.serviceId));
+}
+const navId = (): string => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+async function navSaveWs(next: NavWorkspaces): Promise<void> {
+  navWs = next; navRailMsg = null;
+  try { navWs = await window.meuBot.browserWorkspacesSet(next); } catch (err) { navRailMsg = `Não gravou: ${ipcErrorText(err)}`; }
+  navMountWorkspace(false); paintNav();
+}
+/** Abre (sem ativar) as abas fixas do espaço ativo que ainda não existem; remove as de serviços que já não existem. */
+function navMountWorkspace(activateFirst: boolean): void {
+  if (navEls === null || navPartition === null) return;
+  const all = new Set(navWs.lista.flatMap((w) => w.servicos.map((s) => s.id)));
+  for (const t of [...navTabs]) if (t.serviceId !== undefined && !all.has(t.serviceId)) navClose(t.id);
+  const active = navActiveWs(); if (active === null) return;
+  let first: NavTab | null = null;
+  for (const s of active.servicos) {
+    let t = navTabs.find((x) => x.serviceId === s.id);
+    if (t === undefined) t = navNewTab(s.url, false, s.id) ?? undefined;
+    if (t !== undefined && first === null) first = t;
+  }
+  if (activateFirst && first !== null) navSelect(first.id);
+  else if (navCurrent() !== null && !navVisibleTabs().some((t) => t.id === navActive)) { const v = navVisibleTabs()[0]; if (v !== undefined) navSelect(v.id); }
+}
+function navServiceOpen(s: NavService): void {
+  const t = navTabs.find((x) => x.serviceId === s.id);
+  if (t !== undefined) { navSelect(t.id); t.wv.focus(); return; }
+  navNewTab(s.url, true, s.id);
+}
+function navUpdateActive(fn: (w: NavWorkspace) => NavWorkspace): NavWorkspaces | null {
+  const a = navActiveWs(); if (a === null) return null;
+  return { ...navWs, lista: navWs.lista.map((w) => (w.id === a.id ? fn(w) : w)) };
+}
+/** A aba atual vira um site fixo do espaço ativo (nome = título, ícone = favicon). Sem espaço, abre o formulário. */
+async function navPinCurrent(): Promise<void> {
+  const cur = navCurrent(); if (cur === null || !/^https?:/.test(cur.url)) return;
+  if (navActiveWs() === null) { navRailForm = { kind: "espaco" }; paintNavRail(); return; }
+  if (cur.serviceId !== undefined) return;
+  const id = navId();
+  let nome = cur.title.trim(); try { if (nome === "") nome = new URL(cur.url).hostname; } catch { /* fica o título */ }
+  const next = navUpdateActive((w) => ({ ...w, servicos: [...w.servicos, { id, nome: nome.slice(0, 40), url: cur.url, icone: cur.favicon }] }));
+  if (next === null) return;
+  cur.serviceId = id;
+  await navSaveWs(next);
+}
+async function navAddService(nome: string, url: string): Promise<void> {
+  const target = navNormalize(url); if (!/^https?:/.test(target)) { navRailMsg = "Endereço inválido."; paintNavRail(); return; }
+  const id = navId(); let n = nome.trim(); try { if (n === "") n = new URL(target).hostname; } catch { n = target; }
+  const next = navUpdateActive((w) => ({ ...w, servicos: [...w.servicos, { id, nome: n.slice(0, 40), url: target, icone: null }] }));
+  if (next === null) return;
+  navRailForm = null;
+  await navSaveWs(next);
+  const s = navActiveWs()?.servicos.find((x) => x.id === id); if (s !== undefined) navServiceOpen(s);
+}
+async function navRemoveService(id: string): Promise<void> {
+  const next = navUpdateActive((w) => ({ ...w, servicos: w.servicos.filter((s) => s.id !== id) })); if (next === null) return;
+  await navSaveWs(next);
+}
+async function navCreateWorkspace(nome: string): Promise<void> {
+  const n = nome.trim().slice(0, 40); if (n === "") { navRailMsg = "Dê um nome ao espaço."; paintNavRail(); return; }
+  const id = navId(); navRailForm = null;
+  await navSaveWs({ ...navWs, ativo: id, lista: [...navWs.lista, { id, nome: n, servicos: [] }] });
+}
+async function navRenameWorkspace(nome: string): Promise<void> {
+  const n = nome.trim().slice(0, 40); if (n === "") return;
+  const next = navUpdateActive((w) => ({ ...w, nome: n })); if (next === null) return;
+  navRailForm = null; await navSaveWs(next);
+}
+async function navRemoveWorkspace(): Promise<void> {
+  const a = navActiveWs(); if (a === null) return;
+  const lista = navWs.lista.filter((w) => w.id !== a.id);
+  await navSaveWs({ ...navWs, ativo: lista[0]?.id ?? null, lista });
+}
+async function navSelectWorkspace(id: string): Promise<void> {
+  if (!navWs.lista.some((w) => w.id === id) || id === navWs.ativo) return;
+  await navSaveWs({ ...navWs, ativo: id });
+  navMountWorkspace(true);
+}
+const navKindLabel = (plural = false): string => navWs.tipo === "cliente" ? (plural ? "clientes" : "cliente") : (plural ? "projetos" : "projeto");
+function paintNavRail(): void {
+  if (navEls === null) return;
+  const r = navEls.rail; r.replaceChildren();
+  r.hidden = navAccess !== "ok";
+  if (r.hidden) return;
+  const head = el("div", "nav-rail-head");
+  // Primeira vez: como organizar? (por projeto ou por cliente). Só rotula; a estrutura é a mesma.
+  if (navWs.tipo === null) {
+    head.append(el("div", "nav-rail-title", "Espaços de trabalho"), el("p", "hint", "Sites fixos, sempre abertos, agrupados do seu jeito. Como você organiza?"));
+    const row = el("div", "nav-rail-row");
+    for (const k of ["projeto", "cliente"] as const) { const b = el("button", "btn btn-small", `Por ${k}`); b.type = "button"; b.addEventListener("click", () => { void navSaveWs({ ...navWs, tipo: k }); navRailForm = { kind: "espaco" }; }); row.append(b); }
+    head.append(row); r.append(head); return;
+  }
+  const sel = document.createElement("select"); sel.className = "nav-rail-select"; sel.title = `Espaço de trabalho (${navKindLabel()})`;
+  const ph = document.createElement("option"); ph.value = ""; ph.textContent = navWs.lista.length === 0 ? `Nenhum ${navKindLabel()} ainda` : `Escolher ${navKindLabel()}…`; ph.disabled = true; ph.selected = navWs.ativo === null; sel.append(ph);
+  for (const w of navWs.lista) { const o = document.createElement("option"); o.value = w.id; o.textContent = w.nome; o.selected = w.id === navWs.ativo; sel.append(o); }
+  sel.addEventListener("change", () => { void navSelectWorkspace(sel.value); });
+  const newBtn = el("button", "mini-btn", "＋"); newBtn.type = "button"; newBtn.title = `Novo ${navKindLabel()}`;
+  newBtn.addEventListener("click", () => { navRailForm = navRailForm?.kind === "espaco" ? null : { kind: "espaco" }; paintNavRail(); });
+  const more = el("button", "mini-btn", "⋯"); more.type = "button"; more.title = `Renomear ou remover este ${navKindLabel()}`; more.disabled = navActiveWs() === null;
+  more.addEventListener("click", () => { navRailForm = navRailForm?.kind === "renomear" ? null : { kind: "renomear" }; paintNavRail(); });
+  const top = el("div", "nav-rail-row"); top.append(sel, newBtn, more); head.append(top);
+  r.append(head);
+  const form = (kind: "site" | "espaco" | "renomear"): HTMLElement => {
+    const f = el("div", "nav-rail-form");
+    const name = document.createElement("input"); name.type = "text"; name.className = "nav-rail-input"; name.maxLength = 40;
+    name.placeholder = kind === "site" ? "Nome (ex.: Gmail)" : kind === "espaco" ? `Nome do ${navKindLabel()}` : "Novo nome";
+    if (kind === "renomear") name.value = navActiveWs()?.nome ?? "";
+    f.append(name);
+    let urlIn: HTMLInputElement | null = null;
+    if (kind === "site") { urlIn = document.createElement("input"); urlIn.type = "text"; urlIn.className = "nav-rail-input"; urlIn.placeholder = "https://…"; urlIn.value = navCurrent()?.url.startsWith("http") ? navCurrent()!.url : ""; f.append(urlIn); }
+    const row = el("div", "nav-rail-row");
+    const ok = el("button", "btn btn-primary btn-small", kind === "site" ? "Adicionar" : kind === "espaco" ? "Criar" : "Salvar"); ok.type = "button";
+    const go = (): void => { if (kind === "site") void navAddService(name.value, urlIn?.value ?? ""); else if (kind === "espaco") void navCreateWorkspace(name.value); else void navRenameWorkspace(name.value); };
+    ok.addEventListener("click", go);
+    const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button"; cancel.addEventListener("click", () => { navRailForm = null; paintNavRail(); });
+    row.append(ok, cancel);
+    if (kind === "renomear") { const del = el("button", "btn btn-ghost btn-small nav-rail-del", "Remover"); del.type = "button"; del.addEventListener("click", () => armConfirm(del, "Confirmar? remove o espaço", () => { void navRemoveWorkspace(); })); row.append(del); }
+    f.append(row);
+    for (const i of [name, urlIn]) i?.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); go(); } if (ev.key === "Escape") { navRailForm = null; paintNavRail(); } });
+    setTimeout(() => name.focus(), 0);
+    return f;
+  };
+  if (navRailForm !== null && (navRailForm.kind !== "site" || navActiveWs() !== null)) r.append(form(navRailForm.kind));
+  const a = navActiveWs();
+  const list = el("div", "nav-rail-list");
+  if (a === null) list.append(el("p", "hint", navWs.lista.length === 0 ? `Crie o primeiro ${navKindLabel()} com ＋.` : `Escolha um ${navKindLabel()} acima.`));
+  else {
+    if (a.servicos.length === 0) list.append(el("p", "hint", "Sem sites fixos ainda: ＋ Adicionar site, ou 📌 na barra fixa a aba aberta."));
+    for (const s of a.servicos) {
+      const t = navTabs.find((x) => x.serviceId === s.id);
+      const b = el("button", `nav-service${t !== undefined && t.id === navActive ? " active" : ""}`); b.type = "button"; b.title = s.url;
+      if (s.icone !== null) { const img = document.createElement("img"); img.src = s.icone; img.alt = ""; b.append(img); } else b.append(el("span", "nav-service-initial", s.nome.slice(0, 1).toUpperCase()));
+      b.append(el("span", "nav-service-name", s.nome));
+      const x = el("span", "nav-service-x", "×"); x.title = "Tirar do espaço"; x.setAttribute("role", "button");
+      x.addEventListener("click", (ev) => { ev.stopPropagation(); void navRemoveService(s.id); });
+      b.append(x);
+      b.addEventListener("click", () => navServiceOpen(s));
+      list.append(b);
+    }
+  }
+  r.append(list);
+  if (a !== null) { const add = el("button", "btn btn-ghost btn-small nav-rail-add", "＋ Adicionar site"); add.type = "button"; add.addEventListener("click", () => { navRailForm = navRailForm?.kind === "site" ? null : { kind: "site" }; paintNavRail(); }); r.append(add); }
+  if (navRailMsg !== null) r.append(el("p", "hint bad-hint", navRailMsg));
 }
 function disposeNav(): void {
   if (navPage === null) return;
@@ -5103,6 +5391,7 @@ form.addEventListener("submit", (ev) => {
     backendModelForHost: backendModelSelect.value as BackendModel,
     theme: themeSelect.value as Theme,
     notifications: notificationsInput.checked,
+    navNotify: { enabled: navNotifyOn.checked, instruction: navNotifyInstruction.value, hosts: parseNotifyHosts(navNotifyHosts.value), mode: navNotifyMode.value === "each" ? "each" as const : "site" as const },
     // Na janela de uma máquina a porta é só dela; na deste Mac (sem túnel) o campo edita a padrão das demais.
     ...(Number.isInteger(port) ? (windowHost === "local" ? { backendPort: port } : { backendPortForHost: port }) : {}),
     ...(Number.isInteger(fontSize) ? { fontSize } : {}),

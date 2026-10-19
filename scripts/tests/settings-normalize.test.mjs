@@ -66,3 +66,28 @@ test("navFavoritos: por máquina válida; url http(s), título ≤ 60, url repet
   assert.notEqual(s.navFavoritos.colima[1].id, "bad id!");
   assert.deepEqual(normalizeSettings({ navFavoritos: [] }).navFavoritos, {});
 });
+
+test("navNotify: padrão desligado (o tutorial liga) com a instrução padrão; patch parcial mantém o resto; hosts limpos; modo validado", () => {
+  const { normalizeNavNotify, NAV_NOTIFY_DEFAULT_INSTRUCTION } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
+  const d = normalizeSettings({}).navNotify;
+  assert.deepEqual(d, { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site" });
+  const s = normalizeSettings({ navNotify: { enabled: false, instruction: "  Resuma.  ", hosts: ["Mail.Google.com", "bad host!", "mail.google.com"], mode: "each" } }).navNotify;
+  assert.deepEqual(s, { enabled: false, instruction: "Resuma.", hosts: ["mail.google.com"], mode: "each" });
+  assert.deepEqual(normalizeNavNotify({ mode: "x", instruction: "" }, s), { ...s, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION }, "patch: modo inválido e instrução vazia caem no que havia / padrão");
+  assert.equal(normalizeNavNotify({ hosts: "nope" }, s).hosts, s.hosts);
+});
+
+test("navEspacos: ids e nomes válidos, urls http(s), ícone http(s)/data, ativo existente; lixo cai fora", () => {
+  const { normalizeNavWorkspaces } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
+  const w = normalizeNavWorkspaces({ tipo: "cliente", ativo: "nope", lista: [
+    { id: "w1", nome: "  ACME  ", servicos: [{ id: "s1", nome: "", url: "https://mail.google.com/", icone: "javascript:x" }, { id: "s1", nome: "dup", url: "https://a.com" }, { id: "s2", nome: "ftp", url: "ftp://x" }] },
+    { id: "bad id!", nome: "x", servicos: [] },
+    { id: "w2", nome: "", servicos: [] },
+  ] });
+  assert.deepEqual(w, { tipo: "cliente", ativo: "w1", lista: [{ id: "w1", nome: "ACME", servicos: [{ id: "s1", nome: "mail.google.com", url: "https://mail.google.com/", icone: null }] }] });
+  assert.deepEqual(normalizeNavWorkspaces("nope"), { tipo: null, ativo: null, lista: [] });
+  assert.equal(normalizeNavWorkspaces({ tipo: "x", lista: [] }).tipo, null);
+  const s = normalizeSettings({ navEspacos: { colima: { tipo: "projeto", ativo: "a", lista: [{ id: "a", nome: "Site", servicos: [] }] }, "x y": { tipo: "projeto", lista: [] }, vazio: { lista: [] } } });
+  assert.deepEqual(Object.keys(s.navEspacos), ["colima"]);
+  assert.equal(s.navEspacos.colima.ativo, "a");
+});

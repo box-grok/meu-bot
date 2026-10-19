@@ -1929,3 +1929,42 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - Verificado localmente: `chave-set abc` recusa pelo formato; chave inválida é recusada pelo Streak (chamada real).
   Na `agente-box`: streak.mjs novo copiado e a seção da chave acrescentada à skill instalada (a instalação mantém
   a skill existente, então atualizações do bundle não chegam sozinhas a máquinas já instaladas).
+
+## Notificações do Navegador viram conversas (19 out 2026) · REA do Rambox
+
+- **O que o Rambox faz** (app.asar 3.1.1, `.vite/build/injected.js`, lido com `@electron/asar` numa pasta
+  isolada): injeta na página um substituto de `window.Notification`: classe cujo construtor normaliza as opções
+  (ícone vira data URL por `fetch`, senão o logo do serviço) e chama `window.rambox.sendNotificationToApp({title,
+  options})` (ponte do preload); `Notification.permission = "granted"` e `requestPermission` resolve "granted"
+  (callback e promessa); o objeto devolvido tem `addEventListener`/`close` inertes (`close` avisa o app). O main
+  mostra a notificação nativa e o clique foca o serviço. A sessão também libera a permissão "notifications".
+- **No meu-bot** (só no Navegador, logo só Pro): `nav-notify-preload.ts` (preload de frame da partição, só http(s))
+  expõe `window.meuBotNav.notify` → `ipcRenderer.sendToHost("nav:notification")`; o renderer injeta `NAV_NOTIFY_JS`
+  em `dom-ready`/`did-finish-load` (substituto de `Notification`, idempotente) e trata o `ipc-message` do
+  <webview>: `parsePageNotification` → filtro de sites → dedup 60 s → conversa "🔔 <site>" (uma por site, ou uma por
+  notificação) sem roubar a aba ativa → `sendText` com a instrução das Configurações + título/corpo/url →
+  `ui:notify` (clique leva à conversa). A permissão do Chromium continua negada: só o substituto age.
+- **Configurações › "Notificações do Navegador"**: ligado/desligado, a instrução (padrão: traduzir e explicar para
+  leigo em até cinco linhas), só estes sites (vazio = todos) e o modo da conversa. `navNotify` no settings.json
+  (`normalizeNavNotify`, patch parcial). Puro e testado: `lib/nav-notify.ts`.
+- Pré-requisito: o site aberto numa aba do Navegador (a aba fica aberta enquanto a página Navegador existe).
+
+## Espaços de trabalho do Navegador (19 out 2026) · REA do Rambox
+
+- **No Rambox:** workspaces são "grupos" (`$workspaces.addGroup/editGroup`, `addApp`) com apps fixos num trilho
+  (rail), cada app um webview permanente; os dados ficam na conta Rambox (API `customerApps`), não localmente.
+  O que se aproveitou: trilho lateral, sites fixos sempre abertos, agrupamento escolhido pela pessoa.
+- **No meu-bot:** `NavWorkspaces { tipo: projeto|cliente|null, ativo, lista: [{ id, nome, servicos: [{ id, nome,
+  url, icone }] }] }`, por máquina em `settings.json › navEspacos` (`normalizeNavWorkspaces`, limites 20×30),
+  gravado inteiro por `browser:workspaces-set` (o main valida e avisa as outras janelas da máquina, evento
+  `browser:workspaces`); `browserOpen` devolve `espacos`; `SettingsView.navEspacos` deixa o tutorial saber antes
+  de o Navegador abrir. Trilho (`paintNavRail`): primeira vez pergunta "por projeto ou por cliente" (só rotula),
+  seletor do espaço, ＋ (novo), ⋯ (renomear/remover), lista dos sites fixos, "＋ Adicionar site"; 📌 na barra fixa a
+  aba aberta. Abas fixas (`NavTab.serviceId`) nascem com o Navegador (`navMountWorkspace`), sem ✕ na tira; as de
+  outros espaços ficam vivas (notificações) mas fora da tira (`navVisibleTabs`).
+- **Tutorial 11 · Notificações do Navegador (Pro)**, depois do 9: fixar o site; decidir a ação (a função nasce
+  **desligada**; o passo liga com instrução/sites/modo ou "Pular esta etapa"); ver a conversa "🔔" aparecer
+  (automático quando ela existe, ou "Vi a conversa aparecer"). "Refazer do zero" desliga.
+- **Cuidados de volume** (`onPageNotification`): 10 s de aquecimento depois de a página carregar (sites que avisam
+  o que já estava na caixa de entrada não disparam nada); `NavNotifyBudget` 3 por minuto por site, e o próximo
+  aviso tratado diz quantas ficaram de fora; dedup de 60 s; só notificações novas, nunca o histórico.

@@ -44,7 +44,7 @@ export const CLIENT_CHANNELS = [
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
   "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "crm:info", "crm:install", "crm:set", "crm:test", "crm:reset",
   // aba Navegador (módulo Pro)
-  "browser:open", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove",
+  "browser:open", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove", "browser:workspaces-set",
   "tailscale:disable-check", "tailscale:restore",
   // tutorial 7: objetivo do WhatsApp (objetivo.json, skill no workspace do OpenClaw, trava do nível)
   "objective:info", "objective:set", "objective:save", "objective:reset",

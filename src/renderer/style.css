@@ -682,6 +682,32 @@ body.topbar-hidden .topbar { display: none; }
 .nav-popup-view { width: 100%; height: 100%; display: flex; border: 0; }
 .nav-agent.on { border-color: var(--ok); color: var(--ok); }
 .nav-loading { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: new-glow 1s ease-in-out infinite; flex: none; }
+/* Espaços de trabalho (do REA do Rambox): trilho à esquerda com os sites fixos; a coluna da direita é o navegador. */
+.nav-panel.with-rail { flex-direction: row; }
+.nav-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.nav-rail { width: 196px; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px; border-right: 1px solid var(--line); background: var(--card); overflow-y: auto; }
+.nav-rail[hidden] { display: none; }
+.nav-rail-head { display: flex; flex-direction: column; gap: 6px; }
+.nav-rail-title { font-weight: 600; font-size: 13px; }
+.nav-rail-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.nav-rail-select { flex: 1; min-width: 0; font: inherit; font-size: 12px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.nav-rail-form { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }
+.nav-rail-input { font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); min-width: 0; }
+.nav-rail-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.nav-rail-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-rail .hint { margin: 0; font-size: 12px; }
+.nav-service { font: inherit; font-size: 13px; text-align: left; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--fg); cursor: pointer; }
+.nav-service:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.nav-service.active { background: color-mix(in srgb, var(--accent) 14%, transparent); border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.nav-service img { width: 16px; height: 16px; border-radius: 4px; flex: none; }
+.nav-service-initial { width: 16px; height: 16px; border-radius: 4px; background: var(--line); color: var(--muted); font-size: 11px; font-weight: 700; display: grid; place-items: center; flex: none; }
+.nav-service-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav-service-x { color: var(--muted); font-size: 13px; line-height: 1; padding: 0 2px; opacity: 0; }
+.nav-service:hover .nav-service-x { opacity: 1; }
+.nav-service-x:hover { color: var(--bad); }
+.nav-rail-add { align-self: flex-start; }
+.nav-rail-del { color: var(--bad); margin-left: auto; }
+.nav-tab.fixed .nav-tab-title::before { content: "📌 "; font-size: 10px; }
 .nav-box { flex: 1; min-height: 0; background: var(--bg); position: relative; }
 .nav-box[hidden] { display: none; }
 .nav-view { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: flex; }

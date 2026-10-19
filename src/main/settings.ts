@@ -1,10 +1,10 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendModel, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../shared/ipc";
+import type { BackendModel, NavNotifyPref, NavWorkspaces, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 import {
-  defaultSettings, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeSettings,
+  defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
   type SettingsFile, type WindowBounds,
  normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
 
@@ -127,6 +127,17 @@ export function removeNavFavorito(host: string, idOrUrl: string): NavFavoritoIte
   persist();
   return next;
 }
+/** Espaços de trabalho do Navegador da máquina (cópia). */
+export const navEspacos = (host: string): NavWorkspaces => normalizeNavWorkspaces(file.navEspacos[host] ?? emptyWorkspaces());
+/** Grava o estado inteiro (validado); devolve o que ficou. */
+export function setNavEspacos(host: string, w: unknown): NavWorkspaces {
+  if (!isValidHost(host)) throw new Error(`Host SSH inválido: ${JSON.stringify(host)}`);
+  const n = normalizeNavWorkspaces(w);
+  const all = { ...file.navEspacos }; if (n.lista.length === 0 && n.tipo === null) delete all[host]; else all[host] = n;
+  file.navEspacos = all;
+  persist();
+  return navEspacos(host);
+}
 /** Lembra se a máquina é um computador do Grok Bot (a sondagem decide); persiste só quando muda. */
 export function setPodHost(host: string, isPod: boolean): void {
   if (!isValidHost(host) || isPodHost(host) === isPod) return;
@@ -154,7 +165,10 @@ export const settingsView = (host?: string): SettingsView => ({
   // Preenchidos pelo handler settings:get/set (dependem do app empacotado e do sistema).
   openAtLogin: false, openAtLoginAvailable: false,
   hostNames: { ...file.hostNames },
+  navNotify: { ...file.navNotify, hosts: [...file.navNotify.hosts] },
+  navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
 });
+export const getNavNotify = (): NavNotifyPref => settingsView().navNotify;
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */
 export function updateSettings(update: SettingsUpdate, host?: string): SettingsView {
@@ -203,6 +217,7 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     if (!isOnboarding(update.onboarding)) throw new Error("Estado de onboarding inválido.");
     file.onboarding = update.onboarding;
   }
+  if (update.navNotify !== undefined) file.navNotify = normalizeNavNotify(update.navNotify, file.navNotify);
   persist();
   return settingsView(host);
 }

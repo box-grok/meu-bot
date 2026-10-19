@@ -3,7 +3,7 @@
  * migração `sshHost` (v2, host padrão global) → `lastHost` (v3, só pré-seleção do seletor).
  * Sem Electron: testável com node --test.
  */
-import type { BackendModel, Theme } from "../shared/ipc";
+import type { BackendModel, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 
 export const BACKEND_MODELS: readonly BackendModel[] = ["claudecode", "agente", "rene-dm", "rene", "grok-4"];
@@ -48,6 +48,66 @@ export interface SettingsFile {
   openDirect: boolean;
   /** Apelido de cada máquina no app ("Renomear" no seletor); a chave SSH não muda. */
   hostNames: Record<string, string>;
+  /** Notificações das páginas do Navegador → conversas (instrução, sites, modo). */
+  navNotify: NavNotifyPref;
+  /** Espaços de trabalho do Navegador, por máquina (tipo, ativo e a lista com os sites fixos). */
+  navEspacos: Record<string, NavWorkspaces>;
+}
+export const MAX_ESPACOS = 20;
+export const MAX_SERVICOS = 30;
+const ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
+export const emptyWorkspaces = (): NavWorkspaces => ({ tipo: null, ativo: null, lista: [] });
+const cleanName = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+/** Um estado de espaços válido: ids únicos, nomes 1..40, urls http(s), ícone http(s)/data ou null, ativo existente. */
+export function normalizeNavWorkspaces(v: unknown): NavWorkspaces {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return emptyWorkspaces();
+  const p = v as Record<string, unknown>;
+  const ids = new Set<string>(); const lista: NavWorkspace[] = [];
+  for (const raw of Array.isArray(p["lista"]) ? (p["lista"] as unknown[]) : []) {
+    if (raw === null || typeof raw !== "object") continue;
+    const w = raw as Record<string, unknown>;
+    const id = typeof w["id"] === "string" && ID_RE.test(w["id"]) && !ids.has(w["id"]) ? w["id"] : null;
+    const nome = cleanName(w["nome"], 40);
+    if (id === null || nome === "") continue;
+    const sids = new Set<string>(); const servicos: NavService[] = [];
+    for (const sr of Array.isArray(w["servicos"]) ? (w["servicos"] as unknown[]) : []) {
+      if (sr === null || typeof sr !== "object") continue;
+      const s = sr as Record<string, unknown>;
+      const sid = typeof s["id"] === "string" && ID_RE.test(s["id"]) && !sids.has(s["id"]) ? s["id"] : null;
+      const url = typeof s["url"] === "string" && /^https?:\/\/\S+$/i.test(s["url"]) && s["url"].length <= 2048 ? s["url"] : null;
+      if (sid === null || url === null) continue;
+      let snome = cleanName(s["nome"], 40); if (snome === "") { try { snome = new URL(url).hostname; } catch { snome = url.slice(0, 40); } }
+      const icone = typeof s["icone"] === "string" && /^(https?:|data:image\/)/i.test(s["icone"]) && s["icone"].length <= 2048 ? s["icone"] : null;
+      servicos.push({ id: sid, nome: snome, url, icone }); sids.add(sid);
+      if (servicos.length >= MAX_SERVICOS) break;
+    }
+    lista.push({ id, nome, servicos }); ids.add(id);
+    if (lista.length >= MAX_ESPACOS) break;
+  }
+  const tipo = p["tipo"] === "projeto" || p["tipo"] === "cliente" ? p["tipo"] : null;
+  const ativo = typeof p["ativo"] === "string" && ids.has(p["ativo"]) ? p["ativo"] : (lista[0]?.id ?? null);
+  return { tipo, ativo, lista };
+}
+function normalizeNavEspacos(v: unknown): Record<string, NavWorkspaces> {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+  const out: Record<string, NavWorkspaces> = {};
+  for (const [host, w] of Object.entries(v as Record<string, unknown>)) { if (!isValidHost(host)) continue; const n = normalizeNavWorkspaces(w); if (n.lista.length > 0 || n.tipo !== null) out[host] = n; }
+  return out;
+}
+export const NAV_NOTIFY_DEFAULT_INSTRUCTION = "Chegou uma notificação de um site que acompanho. Traduza para português, se estiver em outra língua, e explique em termos simples, para quem não é técnico, o que ela significa e se preciso fazer alguma coisa. Seja breve: no máximo cinco linhas.";
+export const defaultNavNotify = (): NavNotifyPref => ({ enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site" });
+const HOST_ITEM_RE = /^[a-z0-9.-]+$/;
+/** Aceita um objeto parcial (arquivo antigo, patch das Configurações) e devolve a preferência completa. */
+export function normalizeNavNotify(v: unknown, base: NavNotifyPref = defaultNavNotify()): NavNotifyPref {
+  const p = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  const hosts = Array.isArray(p["hosts"]) ? [...new Set((p["hosts"] as unknown[]).map((h) => (typeof h === "string" ? h.trim().toLowerCase() : "")).filter((h) => h !== "" && HOST_ITEM_RE.test(h)))] : base.hosts;
+  const instruction = typeof p["instruction"] === "string" ? p["instruction"].trim().slice(0, 2000) : base.instruction;
+  return {
+    enabled: typeof p["enabled"] === "boolean" ? p["enabled"] : base.enabled,
+    instruction: instruction === "" ? NAV_NOTIFY_DEFAULT_INSTRUCTION : instruction,
+    hosts,
+    mode: p["mode"] === "each" || p["mode"] === "site" ? p["mode"] : base.mode,
+  };
 }
 
 export type Onboarding = "pending" | "done" | "skipped";
@@ -105,7 +165,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {},
+  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {},
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -148,6 +208,8 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navAgentHosts: Array.isArray(p["navAgentHosts"]) ? [...new Set((p["navAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     hostNames: normalizeHostNames(p["hostNames"]),
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
+    navNotify: normalizeNavNotify(p["navNotify"]),
+    navEspacos: normalizeNavEspacos(p["navEspacos"]),
   };
 }
 

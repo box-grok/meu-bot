@@ -26,7 +26,9 @@ export interface GuideContext {
    * Navegador (módulo Pro): `access` = acesso pela licença (null = não consultado); `installed` = lado da máquina
    * (MCP + regra); `tabs` = abas abertas agora; `extensions` = extensões na sessão; `agentOn` = "agente pode usar".
    */
-  navegador: { access: "ok" | "free" | "expired" | "unknown" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean };
+  navegador: { access: "ok" | "free" | "expired" | "unknown" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean; /** Sites fixos no espaço de trabalho ativo. */ servicos: number };
+  /** Tutorial 11: notificações do Navegador ligadas nas Configurações e quantas conversas "🔔" já existem. */
+  notify: { enabled: boolean; conversas: number };
   /**
    * Fallback entre contas: `primary` = modelo padrão desta máquina (quem responde sempre); `chain` = a corrente de
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
@@ -53,7 +55,8 @@ export const emptyContext = (): GuideContext => ({
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null },
-  navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false },
+  navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0 },
+  notify: { enabled: false, conversas: 0 },
   fallback: { primary: null, chain: null },
   objective: null,
   crm: { access: null, info: null },
@@ -115,13 +118,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; notifySkipped: boolean; notifySeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, notifySkipped: false, notifySeen: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "notifySkipped" | "notifySeen";
 
 export interface GuideStep {
   id: string;
@@ -130,7 +133,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "nav-ws" | "nav-notify-config" | "nav-notify-test";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -477,6 +480,36 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "No WhatsApp, abra a conversa com você mesmo (seu próprio número) e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇. Se ele propuser algo (mudar de etapa, criar box), responda \"ok\" ou \"não\".",
         done: (_st, f) => f.crmSeen,
         manual: { label: "Recebi a confirmação", flag: "crmSeen" },
+      },
+    ],
+  },
+  {
+    id: "notificacoes-navegador",
+    number: 11,
+    needs: ["navegador"],
+    after: "navegador",
+    title: "Notificações do Navegador (Pro)",
+    short: "Notificações",
+    summary: "Um site fixo no Navegador (o Gmail, por exemplo) avisa quando chega algo; o agente recebe o aviso numa conversa e faz o que você mandar: traduzir, explicar para leigo, resumir.",
+    minutes: 4,
+    icon: "chat",
+    reset: { what: "desliga as notificações do Navegador e esquece \"pulei\" e \"vi funcionando\" (os espaços de trabalho e as conversas ficam)" },
+    steps: [
+      {
+        id: "fixar", title: "Fixar o site num espaço de trabalho", target: "none", body: "nav-ws",
+        text: "No Navegador, crie um espaço de trabalho (por projeto ou por cliente, como preferir) e fixe o site com 📌 ou \"＋ Adicionar site\". Site fixo fica aberto enquanto o Navegador existe; é assim que as notificações chegam.",
+        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.servicos > 0,
+      },
+      {
+        id: "acao", title: "Decidir o que fazer com cada notificação", target: "none", body: "nav-notify-config",
+        text: "Só o que chegar de novo conta: o que já está na caixa de entrada não dispara nada. Mesmo assim, se o site avisa muito, limite aos sites que importam e saiba que o app trata no máximo 3 por minuto por site. Se preferir, pule: fica desligado até você ligar nas Configurações.",
+        done: (_st, f, c) => c.notify.enabled || f.notifySkipped,
+      },
+      {
+        id: "ver", title: "Ver uma notificação virar conversa", target: "none", body: "nav-notify-test",
+        text: "Com a função ligada, mande um e-mail para você mesmo (ou espere o próximo). A conversa \"🔔 <site>\" aparece sozinha com a resposta do agente, e a notificação do Mac leva até ela.",
+        done: (_st, f, c) => f.notifySkipped || f.notifySeen || c.notify.conversas > 0,
+        manual: { label: "Vi a conversa aparecer", flag: "notifySeen" },
       },
     ],
   },

@@ -13,9 +13,9 @@ import path from "node:path";
 import { installChromeWebStore, installExtension, uninstallExtension } from "electron-chrome-web-store";
 import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
-import { addNavFavorito, isNavAgentHost, navFavoritos, removeNavFavorito, setNavAgentHost } from "./settings";
+import { addNavFavorito, isNavAgentHost, navEspacos, navFavoritos, removeNavFavorito, setNavAgentHost, setNavEspacos } from "./settings";
 import type { BrowserAgentState } from "../shared/ipc";
-import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito } from "../shared/ipc";
+import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
 
 const PART_PREFIX = "persist:navegador-";
 const sanit = (host: string): string => host.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -128,6 +128,10 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     const polyfill = path.join(__dirname, "..", "preload", "ext-polyfill.js");
     try { ses.registerPreloadScript({ type: "service-worker", filePath: polyfill }); ses.registerPreloadScript({ type: "frame", filePath: polyfill }); }
     catch (e) { log(`[navegador ${host}] polyfill de extensões não registrado: ${e instanceof Error ? e.message : String(e)}`); }
+    // Ponte das notificações das páginas (ver nav-notify-preload.ts): só expõe `window.meuBotNav.notify` em http(s).
+    const notify = path.join(__dirname, "..", "preload", "nav-notify-preload.js");
+    try { ses.registerPreloadScript({ type: "frame", filePath: notify }); }
+    catch (e) { log(`[navegador ${host}] ponte de notificações não registrada: ${e instanceof Error ? e.message : String(e)}`); }
     ready = installChromeWebStore({
       session: ses,
       extensionsPath: extensionsDir(host),
@@ -199,13 +203,19 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   log(`[navegador ${host}] aberto na janela ${win.id}`);
   // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
   if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
-  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host), favoritos: navFavoritos(host) };
+  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
 }
 /** Barra de favoritos (por máquina): a pessoa e o agente mexem; toda janela da máquina recebe a lista nova. */
 function publishFavorites(host: string, list: NavFavorito[]): void {
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:favorites", list);
 }
 export const browserFavorites = (host: string): NavFavorito[] => navFavoritos(host);
+/** Espaços de trabalho: grava o estado inteiro desta máquina e avisa as outras janelas dela. */
+export function browserWorkspacesSet(host: string, w: unknown, from?: BrowserWindow): NavWorkspaces {
+  const n = setNavEspacos(host, w);
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host && win !== from) win.webContents.send("browser:workspaces", n);
+  return n;
+}
 export function browserFavoriteAdd(host: string, f: { titulo: string; url: string }): NavFavorito[] {
   if (!/^https?:\/\/\S+$/i.test(f.url) || f.url.length > 2048) throw new Error("url do favorito precisa começar com http:// ou https://");
   const list = addNavFavorito(host, f); publishFavorites(host, list); log(`[navegador ${host}] favorito: ${f.url.slice(0, 80)}`); return list;

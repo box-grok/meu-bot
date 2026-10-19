@@ -367,6 +367,30 @@
         <p id="open-at-login-hint" class="hint">O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina.</p>
       </details>
 
+      <!-- Notificações das páginas do Navegador (do REA do Rambox): cada uma vira uma conversa com a instrução da pessoa. -->
+      <details class="group" data-group="nav-notify">
+        <summary>Notificações do Navegador <span class="sum-hint">viram conversas com o agente</span></summary>
+        <label class="switch switch-row"><input id="nav-notify-on" type="checkbox" /><span class="track"></span><span class="switch-label">Tratar as notificações dos sites abertos no Navegador</span></label>
+        <p class="hint">Com um site aberto numa aba do Navegador (Gmail, por exemplo), cada notificação dele vira uma mensagem numa conversa, com a instrução abaixo, e o agente responde. A notificação do Mac leva direto à conversa.</p>
+        <label>
+          O que fazer com cada notificação
+          <textarea id="nav-notify-instruction" rows="3" maxlength="2000" placeholder="Ex.: traduza para português e explique em termos simples o que significa e se preciso fazer algo."></textarea>
+        </label>
+        <div class="row">
+          <label>
+            Só destes sites (vazio = todos)
+            <input id="nav-notify-hosts" type="text" autocomplete="off" placeholder="mail.google.com, web.whatsapp.com" />
+          </label>
+          <label>
+            Conversa
+            <select id="nav-notify-mode">
+              <option value="site">uma por site (as notificações vão se acumulando)</option>
+              <option value="each">uma nova por notificação</option>
+            </select>
+          </label>
+        </div>
+      </details>
+
       <!-- Segurança (do REA do Rambox: aviso de login numa máquina nova). Só no meu-bot; a máquina avisa. -->
       <details class="group" data-group="seguranca" id="alerts-group">
         <summary>Segurança <span class="sum-hint">aviso quando um Mac novo usar o seu meu-bot</span></summary>
