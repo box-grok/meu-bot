@@ -9,6 +9,7 @@ const sharedApi: PickerSharedApi = {
   plans: (): Promise<Record<string, "free" | "pro">> => ipcRenderer.invoke("picker:plans", {}),
   probe: (host: string): Promise<HostProbe> => ipcRenderer.invoke("picker:probe", { host }),
   choose: (host: string): Promise<void> => ipcRenderer.invoke("picker:choose", { host }),
+  usePort: (host: string, port: number): Promise<void> => ipcRenderer.invoke("picker:use-port", { host, port }),
   setShortcut: (host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }> => ipcRenderer.invoke("picker:shortcut", { host, create }),
   relieve: (host: string): Promise<void> => ipcRenderer.invoke("picker:relieve", { host }),
   setReliefShortcut: (host: string, create: boolean): Promise<{ has: boolean }> => ipcRenderer.invoke("picker:relief-shortcut", { host, create }),

@@ -1799,3 +1799,68 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   também pela paleta) mostra `$ comando` e o resultado ao vivo. Exige backend reinstalado (colima: feito).
 - Verificado: broker local no teste; terminal na colima pelo app (prompt, `uname`, `stty size` = tamanho da
   aba, cores). Pendente de ver no app: "este Mac", barra de seleção, Rodar no terminal, Reconectar.
+
+## Porta do backend por máquina (18 out 2026)
+
+- **Problema:** a porta era uma só no app (`backendPort`, 8080). Duas contas na mesma máquina (`agente-box` e
+  `agente-openclaw` na mesma VPS) não cabem na mesma porta: a segunda conta instalava e o seletor dizia "sem
+  backend" ou abria o túnel para o backend da outra conta (401). A porta é propriedade do backend de cada
+  máquina (o `PORT=` do `.env` dele), não do app.
+- **Settings:** `backendPortByHost` (vence a padrão; igual à padrão tira a exceção), `getBackendPort(host)`,
+  `setBackendPortForHost`. Todo `ensureTunnel`/`probeHost` passa a porta da máquina. Na janela de uma máquina o
+  campo "Porta do backend" edita só a dela (`backendPortForHost`); na janela deste Mac edita a padrão das demais.
+  Trocar derruba só o túnel afetado (todos, se a padrão mudou), com a mesma recusa de resposta em andamento.
+- **Sondagem** (`hostProbe.ts`): lê `PORT=` do `.env` do backend (`backendPort`), checa "ouvindo" e `/v1/models`
+  **nessa** porta, diz se a porta do app está tomada (`portBusy`) e a primeira livre acima dela até +30
+  (`freePort`). `appPort` é a porta com que a sondagem foi feita, para o texto do seletor.
+- **Seletor** (`probe-text.ts`, puro e testado): backend instalado em outra porta → "⚠ … está na porta 8081, mas
+  o app usa a 8080" e botão **"Usar porta 8081"** (`picker:use-port`, canal compartilhado: grava só para a
+  máquina, derruba o túnel dela, invalida a sondagem). É configuração deste Mac, nada escrito na máquina da
+  pessoa, por isso o meu-bot-admin também mostra o botão (os outros botões de instalar continuam só no cliente). Sem backend e porta do app ocupada → "⚠ … a porta 8080 já está ocupada nesta
+  máquina (outra conta ou outro programa)" e botão **"Instalar backend na porta 8081"**; `picker:install` usa a
+  porta que a sondagem decidiu (a do `.env` ao reinstalar, a livre quando ocupada, senão a do app) e, se não
+  for a configurada, grava para a máquina ao terminar. Sem porta livre, manda trocar nas Configurações.
+- **install.sh:** com `.env`, o `PORT=` dele manda (um `PORT=` diferente pedido só fazia a checagem do fim
+  falhar); instalação nova em porta ocupada sai com código 4 e explica, antes de escrever qualquer coisa.
+- Verificado na VPS `agente`: sondagem em `agente-openclaw` → `envport=8081 port=1 busy=1 freeport=8082
+  models=claudecode,agente`; reinstalar com `PORT=8080` mantém 8081 e responde OK.
+
+## Gateway do OpenClaw em porta própria (18 out 2026)
+
+- **Sintoma:** ao gerar o QR (ou na consulta de estado) em `agente-openclaw`: `gateway connect failed:
+  GatewayClientRequestError: unauthorized: gateway token mismatch`. Causa: a segunda conta da mesma VPS não tem
+  `gateway.port` autorado; a CLI cai no padrão 18789, que é o gateway da conta `box` (token diferente), e o
+  serviço dela, preso à mesma porta, falha com exit 78 ("Another process is listening on this port").
+- **Conserto automático** (`whatsapp.ts`, `GATEWAY_FIX_SH`, nos dois scripts remotos): "token mismatch" no
+  `channels status` → `gw_fix`: primeira porta livre a partir da configurada (até +30) vira `gateway.port`,
+  `openclaw gateway install --force --port N` regrava a unidade systemd de usuário (backup `.bak` do OpenClaw),
+  `reset-failed`, e espera o `channels status --json` responder (até ~36 s). Só gateway `mode=local` sob
+  systemd; sob supervisord (computador do Grok Bot) ou remoto, não mexe.
+  - Estado do WhatsApp: a consulta já conserta e devolve `repaired` ("✓ Consertado sozinho: …" no painel);
+    se não deu, `detail` explica com os dois comandos.
+  - Pareamento: antes do `channels login`, conserta e emite o passo "ganhou a porta própria N"; se não deu,
+    erro claro em vez do texto cru da CLI.
+- Verificado na VPS `agente` (conta `openclaw`): porta livre 18790, serviço ativo, `channels status` ok,
+  gerenciador de usuário voltou de "degraded" para "running".
+- **Bug antigo corrigido junto:** os dois `echo` do evento `connected` no PAIR_SCRIPT tinham `\"` no template
+  literal do TS, que vira `"` antes de chegar ao shell; o shell então imprimia `{event:connected,user:{id:…}}`
+  (sem aspas), o `JSON.parse` falhava e o app nunca recebia "connected" pelo evento (só pelo refresh do
+  estado depois do `done`, com "terminou sem conectar"). Agora é `\\"` (o shell recebe `\"`), como o evento
+  `gateway-port`. Conferido avaliando o template do `dist/` e rodando no bash: JSON válido.
+
+## Backend e proxy do Grok em conta secundária da mesma máquina (18 out 2026)
+
+- **Sintoma:** "Preparar o Grok" em `agente-openclaw`: `Failed to restart meu-bot-backend.service: Unit
+  meu-bot-backend.service not found.` Causa dupla, a mesma família das portas: (1) o `install.sh` decidia
+  "serviço de usuário" pelo código de saída de `systemctl --user is-system-running`, que é ≠ 0 também em
+  `degraded` (o openclaw-gateway dessa conta estava falho), e mandou o backend para `/etc/systemd/system`;
+  todo script que faz `systemctl --user restart meu-bot-backend` quebrava. (2) O proxy do Hermes era fixo na
+  8645, que já é da conta `box`: o da conta `openclaw` saía com status 2 e o grok-4 apontava para o proxy (e a
+  conta xAI) do vizinho.
+- **install.sh:** `user_manager()` aceita running/degraded/starting/maintenance. Conta com serviço de sistema
+  antigo (`User=` desta conta) é migrada: `sudo -n systemctl disable --now` + remove a unidade + daemon-reload e
+  nasce a de usuário; sem sudo, mantém o de sistema e avisa.
+- **install-grok-oauth.sh:** `backend_restart()` reinicia o que existe (usuário → sistema via `sudo -n` →
+  aviso para "Reinstalar backend"); o node vem da unidade de usuário ou da de sistema. Porta do proxy: a que a
+  unidade desta conta já usa, se ninguém de fora a ocupou (`ss -ltnp` só mostra processo dos sockets desta
+  conta); senão a primeira livre a partir de 8645. `providers.json` aponta para essa porta.

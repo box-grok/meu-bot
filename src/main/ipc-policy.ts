@@ -20,7 +20,7 @@ export const SHARED_CHANNELS = [
   // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
   "net:check", "host:local-addr",
   // seletor
-  "picker:list", "picker:plans", "picker:probe", "picker:choose", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
+  "picker:list", "picker:plans", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
   // alívio do Grok Bot (relief.ts registra sozinho)
   "relief:close", "relief:open-reset",

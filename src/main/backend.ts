@@ -235,7 +235,7 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
   for (;;) {
     if (signal?.aborted) throw Object.assign(new Error("cancelado"), { code: "ABORTED" });
     try {
-      const tunnel = await ensureTunnel(host, getBackendPort(), status);
+      const tunnel = await ensureTunnel(host, getBackendPort(host), status);
       if (await tunnelHealthy(tunnel.localPort, tunnel.apiKey)) { if (host !== LOCAL_HOST && !announced.has(host)) setTimeout(() => announceMachine(host), 0); return tunnel; }
       lastErr = null;
     } catch (err) {

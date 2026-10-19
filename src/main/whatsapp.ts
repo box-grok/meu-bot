@@ -26,8 +26,33 @@ const SSH_OPTS = [
   "-o", "ControlMaster=no", "-o", "ControlPath=none", "-o", "StrictHostKeyChecking=accept-new",
 ];
 
+/**
+ * Gateway do OpenClaw desta conta apontando para o gateway de OUTRA conta (duas contas na mesma máquina: a
+ * segunda fica sem \`gateway.port\`, a CLI cai no padrão 18789, que é da primeira, e tudo responde "gateway token
+ * mismatch"; o serviço dela, preso à mesma porta, nunca sobe). Conserto: a primeira porta livre a partir da
+ * configurada vira \`gateway.port\`, o serviço é regravado nela (\`gateway install --force --port\`) e esperamos o
+ * \`channels status\` responder. Só para gateway local sob systemd; sob supervisord (computador do Grok Bot)
+ * ou modo remoto, não mexe. Imprime a porta nova em stdout; falha em silêncio (código 1).
+ */
+const GATEWAY_FIX_SH = `
+gw_mismatch() { timeout 25 openclaw channels status --json 2>&1 | grep -q 'token mismatch'; }
+gw_fix() {
+  [ "$(openclaw config get gateway.mode 2>/dev/null | tr -d '"')" = "local" ] || return 1
+  [ -d /run/systemd/system ] || return 1
+  supervisorctl status 2>/dev/null | grep -q openclaw-gateway && return 1
+  P=$(openclaw config get gateway.port 2>/dev/null); case "$P" in *unset*) P=;; esac; P=$(printf '%s' "$P" | tr -dc 0-9); [ -n "$P" ] || P=18789
+  L=$(ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null)
+  N=$P; while echo "$L" | grep -q ":$N "; do N=$((N+1)); [ $N -gt $((P+30)) ] && return 1; done
+  openclaw config set gateway.port "$N" >/dev/null 2>&1 || return 1
+  timeout 150 openclaw gateway install --force --port "$N" >/dev/null 2>&1 || return 1
+  systemctl --user reset-failed openclaw-gateway.service >/dev/null 2>&1
+  for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; if timeout 20 openclaw channels status --json >/dev/null 2>&1; then echo "$N"; return 0; fi; done
+  return 1
+}`;
+
 const STATUS_SCRIPT = `
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
+${GATEWAY_FIX_SH}
 S=$HOME/.hermes/whatsapp
 if [ -d "$S" ]; then
   echo gateway=hermes; echo present=1
@@ -63,7 +88,12 @@ m=(c.get("tools") or {}).get("media") or {}
 print("audioin=%d" % any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x, dict)))
 t=c.get("tts") or {}
 print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))' 2>/dev/null
-  echo "oc=$(timeout 25 openclaw channels status --channel whatsapp --json 2>/dev/null | python3 -c 'import json,sys
+  # Uma consulta só; "token mismatch" = esta conta aponta para o gateway de outra: conserta e consulta de novo.
+  CS=$(timeout 25 openclaw channels status --channel whatsapp --json 2>&1)
+  if printf '%s' "$CS" | grep -q 'token mismatch'; then
+    if N=$(gw_fix); then echo "gwfix=$N"; CS=$(timeout 25 openclaw channels status --channel whatsapp --json 2>&1); else echo "gwfix=fail"; fi
+  fi
+  echo "oc=$(printf '%s' "$CS" | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
   exit 0
@@ -91,7 +121,8 @@ const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.ex
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
-  const r = await runSsh(host, STATUS_SCRIPT, 60_000);
+  // Normalmente segundos; com o conserto do gateway (gw_fix: install --force + espera) passa de um minuto.
+  const r = await runSsh(host, STATUS_SCRIPT, 240_000);
   if (r.code !== 0) return { ...none, detail: `não consegui consultar: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}` };
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1).trim()); }
@@ -144,7 +175,10 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   try { const raw = kv.get("channel") ?? ""; if (raw !== "") channelConfig = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* sem bloco ainda */ }
   const voz = kv.get("voz");
   const audioOut: VoiceReplyMode | null = voz === "inbound" || voz === "always" ? voz : voz === undefined || voz === "" ? null : "off";
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail, dmPolicy, channelConfig, audioIn: kv.get("audioin") === "1", audioOut };
+  const gwfix = kv.get("gwfix") ?? "";
+  const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
+  const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, audioIn: kv.get("audioin") === "1", audioOut, ...(repaired !== null ? { repaired } : {}) };
 }
 
 /**
@@ -200,6 +234,7 @@ export const ownerLockSh = (number: string): string => {
 const PAIR_SCRIPT = `
 set -u
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
+${GATEWAY_FIX_SH}
 S=$HOME/.hermes/whatsapp
 if [ -d "$S" ]; then
   B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
@@ -229,6 +264,10 @@ if command -v openclaw >/dev/null 2>&1; then
   if [ -z "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" ] || openclaw config get channels.whatsapp.dmPolicy 2>&1 | grep -q unset; then
     ( ${SELF_POLICY_SH} ) >/dev/null 2>&1 && echo '{"event":"meu-bot","step":"silent"}'
   fi
+  # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
+  if gw_mismatch; then
+    if N=$(gw_fix); then echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-port\\",\\"port\\":$N}"; else echo '{"event":"error","error":"o gateway do OpenClaw desta conta aponta para o gateway de outra conta desta máquina (token diferente) e não consegui dar a ele uma porta própria. Na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>"}'; exit 2; fi
+  fi
   if [ "$RESET" = "1" ]; then timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1; echo '{"event":"meu-bot","step":"logged-out"}'; fi
   # Gateway: sob supervisord (computador do Grok Bot) o programa se chama openclaw-gateway; senão o daemon do próprio openclaw.
   GW=$(supervisorctl status 2>/dev/null | awk '/openclaw-gateway/ {print $1; exit}')
@@ -252,7 +291,7 @@ if command -v openclaw >/dev/null 2>&1; then
   linked_now() { [ -f "$CREDS" ] || return 1; [ "$(stat -c %Y "$CREDS" 2>/dev/null || echo 0)" -ge "$T0" ] || return 1; ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null); [ -n "$ME" ]; }
   ( while kill -0 $P 2>/dev/null; do
       if linked_now; then
-        touch "$LOG.linked"; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"
+        touch "$LOG.linked"; echo "{\\"event\\":\\"connected\\",\\"user\\":{\\"id\\":\\"$ME\\"}}"
         # "só você": o número recém-vinculado entra no allowFrom (antes do login ele não existia).
         if [ "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" = "allowlist" ]; then NUM=$(printf '%s' "$ME" | sed 's/[:@].*//'); openclaw config set channels.whatsapp.allowFrom "[\"+$NUM\"]" --strict-json >/dev/null 2>&1; fi
         sleep 4; kill $P 2>/dev/null; break
@@ -268,7 +307,7 @@ if command -v openclaw >/dev/null 2>&1; then
   # O CLI encerra sozinho logo depois de vincular, às vezes antes de o vigia olhar: confere uma última vez.
   if [ $LINKED -eq 0 ]; then
     for _ in 1 2 3 4 5; do
-      if linked_now; then LINKED=1; echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; break; fi
+      if linked_now; then LINKED=1; echo "{\\"event\\":\\"connected\\",\\"user\\":{\\"id\\":\\"$ME\\"}}"; break; fi
       sleep 1
     done
   fi
@@ -317,7 +356,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
       if (!connected && OC_FAIL_RE.test(clean)) send({ kind: "error", text: clean });
     };
     const handle = async (line: string): Promise<void> => {
-      let ev: { event?: string; qr?: string; step?: string; user?: { id?: string }; error?: string; reason?: unknown; session?: string };
+      let ev: { event?: string; qr?: string; step?: string; port?: unknown; user?: { id?: string }; error?: string; reason?: unknown; session?: string };
       try { ev = JSON.parse(line) as typeof ev; } catch { if (openclaw) handleText(line); else send({ kind: "log", text: line }); return; }
       switch (ev.event) {
         case "meu-bot":
@@ -327,6 +366,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
           else if (ev.step === "silent") send({ kind: "step", text: "padrão: só você fala com o agente; ninguém mais recebe resposta nem código" });
           else if (ev.step === "gateway-started") send({ kind: "step", text: "gateway de volta no ar" });
+          else if (ev.step === "gateway-port") send({ kind: "step", text: `o gateway desta conta apontava para o gateway de outra conta da máquina; ganhou a porta própria ${String(ev.port ?? "?")}` });
           break;
         case "started": send({ kind: "step", text: openclaw ? "gerando o QR…" : "bridge do Hermes iniciado; gerando o QR…" }); break;
         case "qr":

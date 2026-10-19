@@ -143,7 +143,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   log(`[${host}] janela aberta (${origin})`);
   // Pré-aquecimento: a primeira mensagem não espera o SSH. Erro aqui só pinta o pill; o envio tenta de novo.
   // O admin só lê e roda ações por SSH: nada de túnel para o backend da pessoa.
-  if (caps().tunnel) void ensureTunnel(host, getBackendPort()).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
+  if (caps().tunnel) void ensureTunnel(host, getBackendPort(host)).catch((e) => log(`[${host}] pré-aquecimento falhou: ${e instanceof Error ? e.message : String(e)}`));
   return win;
 }
 

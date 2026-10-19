@@ -2,7 +2,17 @@
 import type { HostProbe } from "../../shared/ipc";
 
 export type ProbeKind = "ok" | "warn" | "bad";
-export interface ProbeText { kind: ProbeKind; text: string; install: "install" | "reinstall" | "statusline" | "transcricao" | "guarda" | "claude" | null; canOpen: boolean; /** Oferecer o botão "Entrar no Claude Code". */ login?: boolean }
+export interface ProbeText {
+  kind: ProbeKind;
+  text: string;
+  /** O que o botão de ação faz; "porta" = "Usar porta N" (o backend da máquina está em outra porta). */
+  install: "install" | "reinstall" | "statusline" | "transcricao" | "guarda" | "claude" | "porta" | null;
+  canOpen: boolean;
+  /** Oferecer o botão "Entrar no Claude Code". */
+  login?: boolean;
+  /** Porta que a ação usa: a do backend ("porta") ou a livre em que "install" vai instalar. */
+  port?: number;
+}
 
 let nicknames: Record<string, string> = {};
 /** Apelidos ("Renomear" no seletor): a partir daqui, hostLabel mostra o apelido no lugar da chave SSH. */
@@ -27,6 +37,11 @@ export function describeProbe(p: HostProbe): ProbeText {
   }
   if (!p.reachable && p.tailscaleCheck) return { kind: "warn", text: `⚠ ${p.host}: o Tailscale SSH pede uma verificação extra no navegador. Clique em "Aprovar verificação do Tailscale": o link abre e a máquina entra quando você aprovar.`, install: null, canOpen: false };
   if (!p.reachable) return { kind: "bad", text: `✗ ${p.host} inacessível por SSH: ${p.error ?? "sem detalhes"}`, install: null, canOpen: false };
+  // O backend desta conta está em outra porta (duas contas na mesma máquina, por exemplo): o app apontaria para
+  // a porta errada. Um clique grava a porta certa só para esta máquina.
+  if (p.backendInstalled && p.backendPort !== null && p.backendPort !== p.appPort) {
+    return { kind: "warn", text: `⚠ ${who} · o backend desta máquina está na porta ${p.backendPort}, mas o app usa a ${p.appPort}. "Usar porta ${p.backendPort}" ajusta só esta máquina; as outras continuam como estão.`, install: "porta", port: p.backendPort, canOpen: false };
+  }
   if (p.backendInstalled && p.backendListening) {
     // Backend no ar mas Claude deslogado: dá para abrir (grok-4 ainda responde), mas avisa e oferece o login.
     if (p.claudePath !== null && !p.claudeLoggedIn) return { kind: "warn", text: `⚠ ${who} · backend no ar, mas o Claude Code está deslogado nesta máquina. "Entrar no Claude Code" abre a janela já no login.`, install: null, canOpen: true, login: true };
@@ -38,5 +53,12 @@ export function describeProbe(p: HostProbe): ProbeText {
   if (!p.claudeLoggedIn) {
     return { kind: "bad", text: `✗ ${who} · sem backend; Claude Code existe mas não está logado. Use "Entrar no Claude Code" e depois instale o backend.`, install: null, canOpen: false, login: true };
   }
-  return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot.${p.node ? ` Node ${p.node} presente.` : " Node será baixado."}`, install: "install", canOpen: false };
+  const nodeNote = p.node ? ` Node ${p.node} presente.` : " Node será baixado.";
+  // A porta do app já tem dono nesta máquina (outra conta com o próprio backend, outro programa): instalar nela
+  // falharia. "Instalar backend" usa a primeira livre e grava a porta só para esta máquina.
+  if (p.portBusy) {
+    if (p.freePort === null) return { kind: "bad", text: `✗ ${who} · sem backend, e a porta ${p.appPort} já está ocupada nesta máquina (outra conta ou outro programa); nenhuma livre entre ${p.appPort + 1} e ${p.appPort + 30}. Troque a porta em Configurações e tente de novo.`, install: null, canOpen: false };
+    return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot. A porta ${p.appPort} já está ocupada nesta máquina (outra conta ou outro programa): "Instalar backend" instala na ${p.freePort} e grava essa porta só para esta máquina.${nodeNote}`, install: "install", port: p.freePort, canOpen: false };
+  }
+  return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot.${nodeNote}`, install: "install", canOpen: false };
 }

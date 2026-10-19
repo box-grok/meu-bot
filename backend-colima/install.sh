@@ -37,11 +37,23 @@ if [ -f "$DEST/app.js" ] || [ -d "$DEST/services" ]; then
   echo "      Para o modelo agente/grok-4 nessa máquina use backend-vm/deploy-agente.sh." >&2
   exit 3
 fi
+# Porta: numa máquina com backend, a do .env dele manda (um PORT= diferente aqui só serviria para a checagem
+# do fim falhar). Numa instalação nova, porta já ocupada (outra conta desta máquina, outro programa) é erro
+# claro antes de escrever qualquer coisa: o seletor do app escolhe uma livre sozinho e grava para a máquina.
+listening() { (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q ":$1 "; }
+if [ -f "$DEST/.env" ]; then
+  EP=$(grep '^PORT=' "$DEST/.env" | head -1 | cut -d= -f2- | tr -dc 0-9)
+  if [ -n "$EP" ] && [ "$EP" != "$PORT" ]; then echo "porta: o .env desta máquina usa $EP (pedida: $PORT); mantendo $EP"; PORT=$EP; fi
+elif listening "$PORT"; then
+  echo "ERRO: a porta $PORT já está ocupada nesta máquina (outra conta ou outro programa). Instale em outra porta: PORT=<n> bash install.sh" >&2
+  exit 4
+fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
 cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$DEST/"
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
-  umask 077; printf 'OPENAI_COMPAT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env"; echo ".env criado"
+  # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.
+  ( umask 077; printf 'OPENAI_COMPAT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env" ); echo ".env criado"
 else
   grep -q '^CLAUDE_BIN=' "$DEST/.env" || printf 'CLAUDE_BIN=%s\n' "$CLAUDE" >> "$DEST/.env"
 fi
@@ -52,8 +64,28 @@ render_unit() { # $1 = USERLINE, $2 = TARGET
       -e "s|__USERLINE__|$1|g" -e "s|__TARGET__|$2|g" "$HERE/meu-bot-backend.service"
 }
 
-if [ "$(id -u)" -ne 0 ] && systemctl --user is-system-running >/dev/null 2>&1; then
+# Serviço de usuário sempre que há um gerenciador de usuário, mesmo "degraded" (uma unidade qualquer falhou;
+# o gerenciador funciona). Testar só o código de saída de is-system-running mandava o backend para o sistema
+# numa conta com um serviço falho, e todo script que fala "systemctl --user restart meu-bot-backend" quebrava.
+user_manager() { case "$(systemctl --user is-system-running 2>/dev/null)" in running|degraded|starting|maintenance) return 0;; *) return 1;; esac; }
+SYS_UNIT=/etc/systemd/system/meu-bot-backend.service
+if [ "$(id -u)" -ne 0 ] && user_manager; then
   mkdir -p "$HOME/.config/systemd/user"
+  # Esta conta já tem o backend como serviço de sistema (instalação antiga com o gerenciador degradado): migra.
+  # `systemctl show` responde a qualquer usuário; ler o arquivo não (uma instalação antiga o deixou 600).
+  if [ -f "$SYS_UNIT" ] && [ "$(systemctl show -p User --value meu-bot-backend.service 2>/dev/null)" = "$(id -un)" ]; then
+    if sudo -n systemctl disable --now meu-bot-backend.service >/dev/null 2>&1 && sudo -n rm -f "$SYS_UNIT" && sudo -n systemctl daemon-reload; then
+      echo "serviço de sistema antigo desta conta removido; o backend passa a ser serviço de usuário"
+    else
+      echo "aviso: o backend desta conta é serviço de sistema e não consegui removê-lo (sem sudo); mantendo-o como está"
+      SYS_KEEP=1
+    fi
+  fi
+fi
+if [ -n "${SYS_KEEP:-}" ]; then
+  sudo -n systemctl restart meu-bot-backend.service >/dev/null 2>&1 || echo "aviso: não consegui reiniciar o serviço de sistema (sem sudo); o backend continua com a versão que já rodava"
+  sleep 1.5
+elif [ "$(id -u)" -ne 0 ] && user_manager; then
   render_unit "" "default.target" > "$HOME/.config/systemd/user/meu-bot-backend.service"
   systemctl --user daemon-reload
   systemctl --user enable meu-bot-backend.service >/dev/null

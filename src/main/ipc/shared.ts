@@ -208,6 +208,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.backendModel === "string" ? { backendModel: u.backendModel } : {}),
       ...(typeof u.backendModelForHost === "string" ? { backendModelForHost: u.backendModelForHost } : {}),
       ...(typeof u.backendPort === "number" ? { backendPort: u.backendPort } : {}),
+      ...(typeof u.backendPortForHost === "number" ? { backendPortForHost: u.backendPortForHost } : {}),
       ...(typeof u.fontSize === "number" ? { fontSize: u.fontSize } : {}),
       ...(typeof u.theme === "string" ? { theme: u.theme } : {}),
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
@@ -218,8 +219,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.quickEntryShortcut === "string" ? { quickEntryShortcut: u.quickEntryShortcut } : {}),
       ...(u.onboarding === "done" || u.onboarding === "skipped" || u.onboarding === "pending" ? { onboarding: u.onboarding } : {}),
     };
-    // Porta nova atinge todos os túneis, o que cortaria uma resposta em andamento; recusa até ficar ocioso.
-    const portChanges = clean.backendPort !== undefined && clean.backendPort !== getBackendPort();
+    // Porta nova derruba o túnel (todos, se é a padrão; só o desta máquina, se é a dela), o que cortaria uma
+    // resposta em andamento; recusa até ficar ocioso.
+    const defaultPortChanges = clean.backendPort !== undefined && clean.backendPort !== getBackendPort();
+    const hostPortChanges = host !== undefined && clean.backendPortForHost !== undefined && clean.backendPortForHost !== getBackendPort(host);
+    const portChanges = defaultPortChanges || hostPortChanges;
     if (portChanges && anyConversationBusy()) {
       throw new Error("Há uma resposta em andamento. Espere terminar antes de trocar a porta.");
     }
@@ -227,7 +231,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     // A entrada rápida é do chat: o meu-bot-admin não registra o atalho global.
     if (caps().chat) { const qe = getQuickEntry(); applyQuickEntryShortcut(qe.enabled, qe.shortcut); }
     nativeTheme.themeSource = view.theme;
-    if (portChanges) closeTunnel();
+    if (defaultPortChanges) closeTunnel(); else if (hostPortChanges) closeTunnel(host);
     // Outras janelas (fonte, tema, notificações…): cada uma recebe a visão com o modelo da sua máquina.
     broadcast("settings:changed", settingsView());
     if (clean.openAtLogin !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: clean.openAtLogin });

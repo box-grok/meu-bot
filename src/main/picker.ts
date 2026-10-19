@@ -18,7 +18,9 @@ import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialS
 import { disableSshCheck } from "./tailscale";
 import { handleClient, handleShared, onShared } from "./ipc/registry";
 import { log } from "./backend";
-import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
+import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "./settings";
+import { isPort } from "./settings-normalize";
+import { closeTunnel } from "./tunnel";
 import { listSshHosts } from "./sshConfig";
 import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
 import {
@@ -70,7 +72,7 @@ function probeCached(host: string): Promise<HostProbe> {
   if (hit !== undefined && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(hit.probe);
   const running = inflight.get(host);
   if (running !== undefined) return running;
-  const p = probeHost(host, getBackendPort()).then((probe) => {
+  const p = probeHost(host, getBackendPort(host)).then((probe) => {
     probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
     if (probe.reachable) setPodHost(host, probe.grokPod);
@@ -151,7 +153,16 @@ export const clientPickerSource: PickerSource = {
     handleClient("picker:install", async (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       const host = hostArg(payload);
-      const r = await installBackend(host, getBackendPort(), (line) => progress(host, line));
+      // A porta é a que a sondagem decidiu: a do backend já instalado (reinstalar não muda o .env), a primeira
+      // livre quando a do app está tomada nesta máquina, senão a do app. Instalou em outra: fica gravada só para ela.
+      const probe = await probeCached(host);
+      const configured = getBackendPort(host);
+      const port = probe.backendInstalled && probe.backendPort !== null ? probe.backendPort
+        : !probe.backendInstalled && probe.portBusy && probe.freePort !== null ? probe.freePort
+        : configured;
+      if (port !== configured) progress(host, `porta ${configured} ${probe.backendInstalled ? "não é a do backend desta máquina" : "já ocupada nesta máquina"}: usando ${port} para ${host}`);
+      const r = await installBackend(host, port, (line) => progress(host, line));
+      if (r.ok && port !== configured) { setBackendPortForHost(host, port); closeTunnel(host); broadcast("settings:changed", settingsView()); }
       forgetProbe(host);
       return r;
     });
@@ -272,6 +283,18 @@ export function initPicker(src: PickerSource): void {
   handleShared("picker:probe", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     return probeCached(hostArg(payload));
+  });
+  // "Usar porta N": o backend da máquina está em outra porta; o app passa a usar essa só para ela. É configuração
+  // deste Mac (nada escrito na máquina), então o meu-bot-admin também ajusta a sua.
+  handleShared("picker:use-port", (event, payload: unknown) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const host = hostArg(payload);
+    const port = (payload as { port?: unknown } | null)?.port;
+    if (!isPort(port)) throw new Error("Porta do backend inválida (1 a 65535).");
+    setBackendPortForHost(host, port);
+    closeTunnel(host);
+    broadcast("settings:changed", settingsView());
+    probes.delete(host);
   });
   handleShared("picker:choose", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");

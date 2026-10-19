@@ -81,7 +81,14 @@ function probeScript(port: number): string {
     `echo "arch=$(uname -m 2>/dev/null)"`,
     `[ -f ${BACKEND_DIR}/.env ] && echo env=1 || echo env=0`,
     `[ -f ${BACKEND_DIR}/server.js ] && echo server=1 || echo server=0`,
-    `( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q ':${port} ' ) && echo port=1 || echo port=0`,
+    // A porta do backend é a do .env dele (o app pode estar com outra); sem backend, é a que o app usa.
+    `EP=$(grep '^PORT=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9); echo "envport=$EP"`,
+    `L=$( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) ); BP=\${EP:-${port}}`,
+    `echo "$L" | grep -q ":$BP " && echo port=1 || echo port=0`,
+    // A porta do app está tomada nesta máquina? (sem backend nesta conta: outra conta ou outro programa)
+    `echo "$L" | grep -q ':${port} ' && echo busy=1 || echo busy=0`,
+    // Primeira porta livre acima da do app, para o seletor instalar sem conflito.
+    `F=; q=$((${port}+1)); while [ $q -le $((${port}+30)) ]; do echo "$L" | grep -q ":$q " || { F=$q; break; }; q=$((q+1)); done; echo "freeport=$F"`,
     `C=$(command -v claude 2>/dev/null); [ -z "$C" ] && [ -x "$HOME/.local/bin/claude" ] && C="$HOME/.local/bin/claude"; echo "claude=$C"`,
     `grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null && echo login=1 || echo login=0`,
     // Status line nossa: o statusline.sh que grava o cache de limites lido em /v1/meu-bot/status.
@@ -101,7 +108,7 @@ function probeScript(port: number): string {
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
     `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
-    `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:${port}/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
+    `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:$BP/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
 }
 
@@ -110,6 +117,12 @@ function sizePair(v: string | undefined, kind: "disk" | "mem"): { diskTotalMb: n
   const m = /^(\d+)\s+(\d+)$/.exec((v ?? "").trim());
   const total = m === null ? null : Math.round(Number(m[1]) / 1024), free = m === null ? null : Math.round(Number(m[2]) / 1024);
   return kind === "disk" ? { diskTotalMb: total, diskFreeMb: free } : { memTotalMb: total, memFreeMb: free };
+}
+
+/** Porta vinda da sondagem (só dígitos, 1 a 65535); vazio ou lixo = null. */
+function parsePort(v: string | undefined): number | null {
+  const n = /^\d{1,5}$/.test(v ?? "") ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= 1 && n <= 65535 ? n : null;
 }
 
 function parseKv(stdout: string): Map<string, string> {
@@ -122,9 +135,10 @@ function parseKv(stdout: string): Map<string, string> {
 }
 
 export async function probeHost(host: string, port: number): Promise<HostProbe> {
-  if (host === LOCAL_HOST) return probeLocal();
+  if (host === LOCAL_HOST) return probeLocal(port);
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
+    appPort: port, backendPort: null, portBusy: false, freePort: null,
     claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
@@ -150,6 +164,9 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     arch: kv.get("arch") || null,
     backendInstalled: kv.get("env") === "1" && kv.get("server") === "1",
     backendListening: kv.get("port") === "1",
+    backendPort: parsePort(kv.get("envport")),
+    portBusy: kv.get("busy") === "1",
+    freePort: parsePort(kv.get("freeport")),
     claudePath: kv.get("claude") || null,
     claudeLoggedIn: kv.get("login") === "1",
     node: kv.get("node") || null,
@@ -183,14 +200,14 @@ function localStatusLine(): boolean {
 }
 
 /** "local": este Mac, sem SSH. O backend vai junto no app, então "instalado" é sempre verdade. */
-function probeLocal(): HostProbe {
+function probeLocal(port: number): HostProbe {
   const node = findNode();
   const claude = findClaude();
   let nodeVersion: string | null = null;
   if (node !== null) { try { nodeVersion = spawnSync(node, ["-v"], { encoding: "utf8", timeout: 5000 }).stdout.trim() || null; } catch { /* sem versão */ } }
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
-    backendInstalled: true, backendListening: localBackendAlive(), claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
+    backendInstalled: true, backendListening: localBackendAlive(), appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
     node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }

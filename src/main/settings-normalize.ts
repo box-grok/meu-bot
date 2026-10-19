@@ -23,7 +23,10 @@ export interface SettingsFile {
   backendModel: BackendModel;
   /** Modelo padrão por máquina; vence o global. */
   defaultModelByHost: Record<string, BackendModel>;
+  /** Porta padrão do backend nas máquinas. */
   backendPort: number;
+  /** Porta por máquina; vence a padrão (duas contas na mesma máquina não cabem na mesma porta). */
+  backendPortByHost: Record<string, number>;
   fontSize: number;
   theme: Theme;
   notifications: boolean;
@@ -102,7 +105,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 };
 
 export const defaultSettings = (): SettingsFile => ({
-  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, fontSize: DEFAULT_FONT,
+  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
   quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, navShortcutUrl: "", windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {},
 });
@@ -114,6 +117,11 @@ export function normalizeSettings(input: unknown): SettingsFile {
   const rawByHost = p["defaultModelByHost"];
   if (rawByHost !== null && typeof rawByHost === "object") {
     for (const [h, m] of Object.entries(rawByHost as Record<string, unknown>)) if (isValidHost(h) && isBackendModel(m)) byHost[h] = m;
+  }
+  const portByHost: Record<string, number> = {};
+  const rawPortByHost = p["backendPortByHost"];
+  if (rawPortByHost !== null && typeof rawPortByHost === "object") {
+    for (const [h, n] of Object.entries(rawPortByHost as Record<string, unknown>)) if (isValidHost(h) && isPort(n)) portByHost[h] = n;
   }
   const bounds: Record<string, WindowBounds> = {};
   const rawBounds = p["windowBounds"];
@@ -127,6 +135,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     backendModel: isBackendModel(p["backendModel"]) ? p["backendModel"] : DEFAULT_MODEL,
     defaultModelByHost: byHost,
     backendPort: isPort(p["backendPort"]) ? p["backendPort"] : DEFAULT_PORT,
+    backendPortByHost: portByHost,
     fontSize: isFont(p["fontSize"]) ? p["fontSize"] : DEFAULT_FONT,
     theme: isTheme(p["theme"]) ? p["theme"] : "system",
     notifications: typeof p["notifications"] === "boolean" ? p["notifications"] : true,

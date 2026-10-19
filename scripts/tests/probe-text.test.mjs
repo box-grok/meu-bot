@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { describeProbe, hostLabel } from "../../dist/renderer/lib/probe-text.js";
 
-const base = { host: "vm", reachable: true, user: "box", os: "Debian 13", arch: "x86_64", backendInstalled: false, backendListening: false, claudePath: "/usr/bin/claude", claudeLoggedIn: true, node: "v24", systemd: true, tailscaleCheck: false, statusLine: true, models: [], error: null };
+const base = { host: "vm", reachable: true, user: "box", os: "Debian 13", arch: "x86_64", backendInstalled: false, backendListening: false, appPort: 8080, backendPort: null, portBusy: false, freePort: null, claudePath: "/usr/bin/claude", claudeLoggedIn: true, node: "v24", systemd: true, tailscaleCheck: false, statusLine: true, models: [], error: null };
 
 test("estados da sondagem remota", () => {
   assert.deepEqual(pick(describeProbe({ ...base, reachable: false, error: "timeout" })), { kind: "bad", install: null, canOpen: false });
@@ -50,6 +50,34 @@ test("transcrição de áudio (OpenClaw): oferecida depois da status line; sem O
   assert.deepEqual(pick(describeProbe({ ...up, audioIn: false, statusLine: false })).install, "statusline", "um opcional por vez");
   assert.deepEqual(pick(describeProbe({ ...up, audioIn: true })).install, null);
   assert.doesNotMatch(describeProbe({ ...up, audioIn: null }).text, /transcrição/);
+});
+
+test("porta: backend da máquina em outra porta → 'Usar porta N' com um clique; só essa máquina muda", () => {
+  const other = describeProbe({ ...base, backendInstalled: true, backendListening: true, backendPort: 8081, models: ["claudecode"] });
+  assert.deepEqual(pick(other), { kind: "warn", install: "porta", canOpen: false });
+  assert.equal(other.port, 8081);
+  assert.match(other.text, /porta 8081, mas o app usa a 8080/);
+  assert.match(other.text, /Usar porta 8081/);
+  // Backend parado mas em outra porta: a porta vem antes de "reinstalar" (reinstalar na porta errada não resolveria).
+  assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: false, backendPort: 8081 })), { kind: "warn", install: "porta", canOpen: false });
+  // Mesma porta ou .env sem PORT: nada muda.
+  assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: true, backendPort: 8080, models: ["claudecode"] })), { kind: "ok", install: null, canOpen: true });
+  assert.equal(describeProbe({ ...base, backendInstalled: true, backendListening: true, backendPort: null, models: ["claudecode"] }).port, undefined);
+});
+
+test("porta ocupada sem backend nesta conta: instala na primeira livre e avisa; sem livre, manda trocar nas Configurações", () => {
+  const busy = describeProbe({ ...base, portBusy: true, freePort: 8081 });
+  assert.deepEqual(pick(busy), { kind: "warn", install: "install", canOpen: false });
+  assert.equal(busy.port, 8081);
+  assert.match(busy.text, /porta 8080 já está ocupada/);
+  assert.match(busy.text, /instala na 8081/);
+  const none = describeProbe({ ...base, portBusy: true, freePort: null });
+  assert.deepEqual(pick(none), { kind: "bad", install: null, canOpen: false });
+  assert.match(none.text, /Configurações/);
+  // Porta ocupada mas pelo backend desta conta (instalado e na mesma porta): é o estado normal, sem aviso.
+  assert.deepEqual(pick(describeProbe({ ...base, backendInstalled: true, backendListening: true, backendPort: 8080, portBusy: true, models: ["claudecode"] })), { kind: "ok", install: null, canOpen: true });
+  // Sem login, o login vem antes da porta.
+  assert.deepEqual(pick(describeProbe({ ...base, portBusy: true, freePort: 8081, claudeLoggedIn: false })), { kind: "bad", install: null, canOpen: false });
 });
 
 function pick(t) { return { kind: t.kind, install: t.install, canOpen: t.canOpen }; }

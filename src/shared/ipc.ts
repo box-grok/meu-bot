@@ -11,7 +11,10 @@ export interface SettingsView {
   backendModel: BackendModel;
   /** Modelo padrão já resolvido para a máquina da janela que pediu (por máquina vence o global). */
   backendModelForHost: BackendModel;
+  /** Porta padrão do backend (máquinas sem porta própria). */
   backendPort: number;
+  /** Porta já resolvida para a máquina da janela que pediu (por máquina vence a padrão). */
+  backendPortForHost: number;
   fontSize: number;
   theme: Theme;
   /** Avisar com notificação do sistema quando uma resposta terminar em segundo plano. */
@@ -42,6 +45,8 @@ export interface SettingsUpdate {
   /** Modelo padrão só para a máquina da janela que salvou. */
   backendModelForHost?: BackendModel;
   backendPort?: number;
+  /** Porta só para a máquina da janela que salvou (igual à padrão tira a exceção). */
+  backendPortForHost?: number;
   fontSize?: number;
   theme?: Theme;
   notifications?: boolean;
@@ -174,8 +179,16 @@ export interface HostProbe {
   arch: string | null;
   /** Há server.js e .env em ~/.hermes/agente-rene/backend-sdk-claude. */
   backendInstalled: boolean;
-  /** Alguém escuta na porta do backend. */
+  /** Alguém escuta na porta do backend (a do .env dele quando existe; senão `appPort`). */
   backendListening: boolean;
+  /** Porta que o app usa para esta máquina (a sondagem foi feita com ela). */
+  appPort: number;
+  /** Porta declarada no .env do backend instalado; null sem backend ou sem PORT no .env. */
+  backendPort: number | null;
+  /** Alguém escuta em `appPort` nesta máquina. Sem backend instalado, é outra conta ou outro programa. */
+  portBusy: boolean;
+  /** Primeira porta livre acima de `appPort` (até +30), para instalar sem conflito; null se nenhuma. */
+  freePort: number | null;
   claudePath: string | null;
   claudeLoggedIn: boolean;
   node: string | null;
@@ -310,6 +323,8 @@ export interface WhatsappStatus {
   audioIn?: boolean;
   /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
+  /** O que o app consertou sozinho nesta consulta (pt-BR), para a pessoa saber que a máquina mudou (ex.: gateway em porta própria). */
+  repaired?: string;
 }
 
 /** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */
@@ -552,6 +567,8 @@ export interface PickerSharedApi {
   plans(): Promise<Record<string, "free" | "pro">>;
   probe(host: string): Promise<HostProbe>;
   choose(host: string): Promise<void>;
+  /** O backend desta máquina está em outra porta: o app passa a usar `port` só para ela (configuração deste Mac; nada escrito na máquina, por isso o admin também pode). */
+  usePort(host: string, port: number): Promise<void>;
   /** Cria (true) ou remove (false) o atalho "meu-bot <host>.app" na área de trabalho; devolve o estado final. */
   setShortcut(host: string, create: boolean): Promise<{ has: boolean; emoji: string | null }>;
   /** Abre a janela de alívio da máquina (computador do Grok Bot) e fecha o seletor. */

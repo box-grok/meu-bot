@@ -71,7 +71,7 @@ app.whenReady().then(() => {
   onBackOnline(() => {
     markSuspect(); void revalidate();
     const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));
-    for (const h of hosts) void ensureTunnel(h, getBackendPort()).catch(() => { /* a próxima mensagem tenta de novo */ });
+    for (const h of hosts) void ensureTunnel(h, getBackendPort(h)).catch(() => { /* a próxima mensagem tenta de novo */ });
     if (lastUpdateErrorWasNetwork()) void checkUpdateNow();
   });
   // A entrada rápida é do chat: o meu-bot-admin não a sobe nem registra o atalho global.

@@ -938,7 +938,7 @@ function applySettings(view: SettingsView): void {
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
-  backendPortInput.value = String(view.backendPort);
+  backendPortInput.value = String(view.backendPortForHost);
   fontSizeInput.value = String(view.fontSize);
   themeSelect.value = view.theme;
   notificationsInput.checked = view.notifications;
@@ -2817,7 +2817,8 @@ function paintWhatsapp(): void {
   const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? "só você" : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
   waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who}${responde}` : `${via} · desconectado`));
   // Conectado: só o número. Desconectado: nada (o QR e a linha de progresso dizem o resto). A ficha técnica fica no title.
-  waStatusEl.textContent = st.connected ? `Conectado como ${who}.` : "";
+  // O que o app consertou sozinho na consulta (gateway em porta própria) aparece uma vez, aqui, para a pessoa saber.
+  waStatusEl.textContent = `${st.connected ? `Conectado como ${who}.` : ""}${st.repaired !== undefined ? `${st.connected ? "\n" : ""}✓ Consertado sozinho: ${st.repaired}.` : ""}`;
   waStatusEl.title = st.agent;
   waPairBtn.hidden = st.connected || waPairing;
   waPairBtn.textContent = st.number === null ? "Gerar QR" : "Tentar reconectar e gerar QR";
@@ -4915,7 +4916,8 @@ form.addEventListener("submit", (ev) => {
     backendModelForHost: backendModelSelect.value as BackendModel,
     theme: themeSelect.value as Theme,
     notifications: notificationsInput.checked,
-    ...(Number.isInteger(port) ? { backendPort: port } : {}),
+    // Na janela de uma máquina a porta é só dela; na deste Mac (sem túnel) o campo edita a padrão das demais.
+    ...(Number.isInteger(port) ? (windowHost === "local" ? { backendPort: port } : { backendPortForHost: port }) : {}),
     ...(Number.isInteger(fontSize) ? { fontSize } : {}),
     ...(Number.isInteger(budget) ? { contextBudgetTokens: budget } : {}),
     ...(Number.isInteger(every) ? { memoryEveryTurns: every } : {}),

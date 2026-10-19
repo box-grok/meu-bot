@@ -189,7 +189,7 @@ async function readShare(host: string): Promise<SupportShare> {
 export async function adminHealth(host: string): Promise<AdminHealth> {
   const share = await readShare(host);
   const [probe, wa, progress, xai, license] = await Promise.all([
-    probeHost(host, getBackendPort()),
+    probeHost(host, getBackendPort(host)),
     share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
     share.progress ? readProgress(host) : Promise.resolve(null),
     xaiAuthInfo(host).catch(() => null),

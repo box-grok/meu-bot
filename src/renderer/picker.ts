@@ -242,7 +242,7 @@ function paintDetail(): void {
   openBtn.disabled = !t.canOpen || installing;
   claudeLoginBtn.hidden = t.login !== true;
   if (t.install !== null && !installing) {
-    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : t.install === "statusline" ? "Instalar status line" : t.install === "transcricao" ? "Ativar transcrição de áudio" : t.install === "guarda" ? "Ativar guarda do WhatsApp" : t.install === "claude" ? "Instalar Claude Code" : "Instalar backend";
+    installBtn.textContent = t.install === "reinstall" ? "Reinstalar backend" : t.install === "statusline" ? "Instalar status line" : t.install === "transcricao" ? "Ativar transcrição de áudio" : t.install === "guarda" ? "Ativar guarda do WhatsApp" : t.install === "claude" ? "Instalar Claude Code" : t.install === "porta" ? `Usar porta ${t.port ?? "?"}` : t.port !== undefined ? `Instalar backend na porta ${t.port}` : "Instalar backend";
     installBtn.hidden = false;
   }
 }
@@ -263,8 +263,8 @@ async function probe(host: string, force = false): Promise<void> {
   try {
     const p: HostProbe = await window.picker.probe(host);
     const t = describeProbe(p);
-    // Admin não instala nem faz login na máquina da pessoa: só a sondagem.
-    results.set(host, support !== null ? { ...t, install: null, login: false } : t);
+    // Admin não instala nem faz login na máquina da pessoa: só a sondagem. "Usar porta N" fica: é configuração deste Mac.
+    results.set(host, support !== null ? { ...t, install: t.install === "porta" ? "porta" : null, login: false } : t);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
   } catch (err) {
@@ -291,7 +291,9 @@ async function install(): Promise<void> {
   if (selected === null || installing) return;
   const host = selected;
   // O mesmo botão instala o backend ou a status line, conforme o que a sondagem pediu.
-  const what = results.get(host)?.install ?? "install";
+  const current = results.get(host);
+  const what = current?.install ?? "install";
+  const port = current?.port;
   // Opcionais (status line, transcrição): falhar não impede abrir, o backend continua de pé.
   const statusLine = what === "statusline" || what === "transcricao" || what === "guarda";
   installing = true;
@@ -303,16 +305,22 @@ async function install(): Promise<void> {
     : what === "transcricao" ? `ativando a transcrição de áudio em ${hostLabel(host)}… (na primeira vez baixa ~500 MB)`
     : what === "guarda" ? `ativando a guarda do WhatsApp em ${hostLabel(host)}… (plugin no OpenClaw; sem reiniciar)`
     : what === "claude" ? `instalando o Claude Code em ${hostLabel(host)}… (instalador oficial, em ~/.local/bin)`
-    : `instalando o backend em ${hostLabel(host)}… (pode levar alguns minutos)`;
+    : what === "porta" ? `ajustando ${hostLabel(host)} para a porta ${port ?? "?"}…`
+    : `instalando o backend em ${hostLabel(host)}${port !== undefined ? ` na porta ${port}` : ""}… (pode levar alguns minutos)`;
   openBtn.disabled = true;
-  const failed = (why: string): void => { results.set(host, { kind: "bad", text: `✗ instalação falhou: ${why}`, install: what, canOpen: statusLine }); paintState(host); };
+  const failed = (why: string): void => { results.set(host, { kind: "bad", text: `✗ ${what === "porta" ? "ajuste da porta" : "instalação"} falhou: ${why}`, install: what, canOpen: statusLine, ...(port !== undefined ? { port } : {}) }); paintState(host); };
   try {
-    const r = what === "statusline" ? await window.picker.installStatusLine(host)
-      : what === "transcricao" ? await window.picker.installTranscription(host)
-      : what === "claude" ? await window.picker.installClaude(host)
-      : what === "guarda" ? await window.picker.installGuarda(host)
-      : await window.picker.install(host);
-    if (!r.ok) { failed(r.log.at(-1) ?? "sem detalhes"); return; }
+    if (what === "porta") {
+      if (port === undefined) { failed("a sondagem não disse a porta do backend"); return; }
+      await window.picker.usePort(host, port);
+    } else {
+      const r = what === "statusline" ? await window.picker.installStatusLine(host)
+        : what === "transcricao" ? await window.picker.installTranscription(host)
+        : what === "claude" ? await window.picker.installClaude(host)
+        : what === "guarda" ? await window.picker.installGuarda(host)
+        : await window.picker.install(host);
+      if (!r.ok) { failed(r.log.at(-1) ?? "sem detalhes"); return; }
+    }
   } catch (err) {
     failed(ipcErrorText(err));
     return;

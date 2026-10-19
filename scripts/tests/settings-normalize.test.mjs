@@ -23,6 +23,14 @@ test("defaults, modelo por máquina e bounds validados", () => {
   assert.deepEqual(normalizeSettings({}), defaultSettings());
 });
 
+test("porta por máquina: só hosts válidos com porta válida; padrão continua a global", () => {
+  const s = normalizeSettings({ backendPort: 8080, backendPortByHost: { "agente-openclaw": 8081, "x y": 8082, colima: 0, vm: "8083", outra: 70000 } });
+  assert.deepEqual(s.backendPortByHost, { "agente-openclaw": 8081 });
+  assert.equal(s.backendPort, 8080);
+  assert.deepEqual(normalizeSettings({ backendPortByHost: "nope" }).backendPortByHost, {});
+  assert.deepEqual(defaultSettings().backendPortByHost, {});
+});
+
 test("onboarding: pendente por padrão, inválido vira pendente, done/skipped ficam", () => {
   assert.equal(normalizeSettings({}).onboarding, "pending");
   assert.equal(normalizeSettings({ onboarding: "x" }).onboarding, "pending");

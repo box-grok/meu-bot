@@ -42,7 +42,17 @@ export function setLastHost(host: string): void {
 
 /** Modelo padrão para conversas novas: o da máquina, se definido; senão o global. */
 export const getBackendModel = (host?: string): BackendModel => (host !== undefined ? file.defaultModelByHost[host] : undefined) ?? file.backendModel;
-export const getBackendPort = (): number => file.backendPort;
+/** Porta do backend: a da máquina, se definida; senão a padrão. */
+export const getBackendPort = (host?: string): number => (host !== undefined ? file.backendPortByHost[host] : undefined) ?? file.backendPort;
+/** Porta só desta máquina ("Usar porta N" no seletor, instalação em porta livre); igual à padrão tira a exceção. */
+export function setBackendPortForHost(host: string, port: number): void {
+  if (!isValidHost(host)) throw new Error(`Host SSH inválido: ${JSON.stringify(host)}`);
+  if (!isPort(port)) throw new Error("Porta do backend inválida (1 a 65535).");
+  const next = { ...file.backendPortByHost };
+  if (port === file.backendPort) delete next[host]; else next[host] = port;
+  file.backendPortByHost = next;
+  persist();
+}
 export const getTheme = (): Theme => file.theme;
 export const getContextBudget = (): number => file.contextBudgetTokens;
 export const getMemoryEveryTurns = (): number => file.memoryEveryTurns;
@@ -132,6 +142,7 @@ export const settingsView = (host?: string): SettingsView => ({
   backendModel: file.backendModel,
   backendModelForHost: getBackendModel(host),
   backendPort: file.backendPort,
+  backendPortForHost: getBackendPort(host),
   fontSize: file.fontSize,
   theme: file.theme,
   notifications: file.notifications,
@@ -161,6 +172,12 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
   if (update.backendPort !== undefined) {
     if (!isPort(update.backendPort)) throw new Error("Porta do backend inválida (1 a 65535).");
     file.backendPort = update.backendPort;
+  }
+  if (update.backendPortForHost !== undefined && host !== undefined) {
+    if (!isPort(update.backendPortForHost)) throw new Error("Porta do backend inválida (1 a 65535).");
+    const next = { ...file.backendPortByHost };
+    if (update.backendPortForHost === file.backendPort) delete next[host]; else next[host] = update.backendPortForHost;
+    file.backendPortByHost = next;
   }
   if (update.fontSize !== undefined) {
     if (!isFont(update.fontSize)) throw new Error(`Tamanho de fonte inválido (${FONT_MIN} a ${FONT_MAX}).`);
