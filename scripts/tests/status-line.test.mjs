@@ -48,3 +48,10 @@ test("segmentos escolhidos filtram o rodapé (turno e idade ficam); prévia acom
   assert.equal(previewLine(null), "Opus 4.8 | Ctx: 12% · 24.0k/200.0k | você@exemplo.com (Premium) | Sessão: 57% · 1h4m | Semanal: 12% · 3d");
   assert.equal(previewLine({ model: true, ctx: false, account: false, session: false, weekly: true }), "Opus 4.8 | Semanal: 12% · 3d");
 });
+
+test("modelo: o nome que o backend informa vence o modo (Opus 5.5 durante o limite); grok e backend antigo mostram o modo", () => {
+  const base = { email: null, assento: null, sessionPct: null, weeklyPct: null, sessionResets: null, weeklyResets: null, updated: null, providers: [] };
+  assert.equal(buildSegments({ model: "agente", ctx: null, turn: null, account: { ...base, modelName: "Opus 5.5" } })[0].text, "Opus 5.5");
+  assert.equal(buildSegments({ model: "agente", ctx: null, turn: null, account: { ...base, modelName: null } })[0].text, "agente");
+  assert.equal(buildSegments({ model: "grok-4", ctx: null, turn: null, account: { ...base, modelName: "Opus 5.5" } })[0].text, "grok-4");
+});

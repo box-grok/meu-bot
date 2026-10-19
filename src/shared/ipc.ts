@@ -47,7 +47,9 @@ export interface SettingsView {
  * um site vira uma mensagem numa conversa, com a instrução da pessoa, e o agente a trata; a notificação do sistema
  * leva à conversa. `hosts` vazio = todo site; `mode` "site" = uma conversa por site, "each" = uma por notificação.
  */
-export interface NavNotifyPref { enabled: boolean; instruction: string; hosts: string[]; mode: "site" | "each" }
+/** Quando o Mac avisa: "tratado" = depois de o agente responder, com a resposta; "chegada" = na hora, com o aviso do site; "nunca" = só a conversa. */
+export type NavNotifyWhen = "tratado" | "chegada" | "nunca";
+export interface NavNotifyPref { enabled: boolean; instruction: string; hosts: string[]; mode: "site" | "each"; avisar: NavNotifyWhen }
 
 export interface SettingsUpdate {
   backendModel?: BackendModel;
@@ -162,6 +164,8 @@ export interface AccountStatus {
   updated: number | null;
   /** Corrente de provedores do backend, em ordem de prioridade. */
   providers: { name: string; type: "claude" | "openai"; available: boolean }[];
+  /** Modelo que o Claude Code da máquina usa agora ("Fable 5.1", ou "Opus 5.5" durante o limite); null = backend antigo. */
+  modelName?: string | null;
 }
 
 export interface MemoryView {

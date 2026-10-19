@@ -8,7 +8,7 @@ import type { NavNotifyPref } from "../../shared/ipc";
 export interface PageNotification { title: string; body: string; icon: string; tag: string; url: string; site: string }
 
 export const NAV_NOTIFY_DEFAULT_INSTRUCTION = "Chegou uma notificação de um site que acompanho. Traduza para português, se estiver em outra língua, e explique em termos simples, para quem não é técnico, o que ela significa e se preciso fazer alguma coisa. Seja breve: no máximo cinco linhas.";
-export const NAV_NOTIFY_DEFAULT: NavNotifyPref = { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site" };
+export const NAV_NOTIFY_DEFAULT: NavNotifyPref = { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site", avisar: "tratado" };
 
 /** O que veio da página (via ponte): só os campos esperados, como texto, com limites. */
 export function parsePageNotification(raw: unknown): PageNotification | null {

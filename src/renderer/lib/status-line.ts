@@ -64,7 +64,9 @@ export function buildSegments(input: StatusInput): Segment[] {
   const now = input.nowMs ?? Date.now();
   const segs = input.segments ?? null;
   const on = (k: keyof StatusLineSegments): boolean => segs === null || segs[k] !== false;
-  const out: Segment[] = on("model") ? [{ kind: "model", text: input.model }] : [];
+  // O modelo que está respondendo de fato (o backend informa; "Opus 5.5" durante o limite do Fable); sem isso, o modo.
+  const real = isClaudeModel(input.model) ? input.account?.modelName ?? null : null;
+  const out: Segment[] = on("model") ? [{ kind: "model", text: real ?? input.model }] : [];
   if (on("ctx") && input.ctx !== null && input.ctx.budget > 0) {
     const pct = Math.min(999, Math.round((input.ctx.tokens / input.ctx.budget) * 100));
     out.push({ kind: "ctx", text: `Ctx: ${pct}% · ${fmtK(input.ctx.tokens)}/${fmtK(input.ctx.budget)}`, title: "tokens estimados enviados ao backend / orçamento de contexto" });

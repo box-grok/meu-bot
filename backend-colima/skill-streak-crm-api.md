@@ -17,6 +17,9 @@ A chave da API e o pipeline ficam em `~/.local/share/meu-bot/crm.json` (nunca le
 - `comment <boxKey> "16/10: pediu os links do Kommo; fecha depois do fim de semana"`
 - `contact-upsert --phone +N --name "Nome Sobrenome" [--email e] --box <boxKey>` (cria/acha o contato e vincula)
 - `telefone-set +N <boxKey>` (lembra que o telefone é desse box)
+- `box-find --email fulano@x.com` | `--email @dominio` (contatos, threads vinculadas e notas)
+- `threads <boxKey>` (conversas do Gmail já no box) · `thread-add <boxKey> <threadGmailId>` (vincula uma conversa;
+  o id é o hexadecimal `data-legacy-thread-id` da linha no Gmail; uma conversa só pode estar em um box)
 
 ## Como agir
 1. Sempre comece por `box-find --phone` (telefone do WhatsApp); sem resultado, `--name`.
@@ -25,6 +28,13 @@ A chave da API e o pipeline ficam em `~/.local/share/meu-bot/crm.json` (nunca le
 4. Criar box, mudar etapa e campos de lista: só com o dono confirmando (no fluxo automático, proponha no bloco
    `crm-json`; se o dono pediu explicitamente, faça).
 5. Nunca invente valores; o que a conversa não disse fica em branco.
+6. Assunto que não cabe no pipeline configurado (ex.: e-mails de inscrição, cobranças, um cliente quando o
+   pipeline é de parceiros): não encaixe. Liste os `pipelines`, proponha 2 ou 3 saídas (pipeline próprio para
+   aquele assunto, só anotar sem CRM, ou o configurado se a pessoa confirmar que é isso) com a sua recomendação,
+   e espere. Criar pipeline novo só com o dono confirmando.
+7. Este streak.mjs é do meu-bot: não o edite nem acrescente subcomandos por conta própria. Se faltar uma ação
+   (ex.: criar um pipeline), diga à pessoa o que falta para ela pedir no app. Pipeline novo se cria pelo Gmail,
+   no Navegador (Streak › novo pipeline), com a pessoa vendo e confirmando.
 
 ## Fluxo automático (plugin meu-bot-crm)
 O job `crm-job.mjs` chama você com a conversa nova e espera no fim um bloco:

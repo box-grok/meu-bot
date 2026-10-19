@@ -79,6 +79,7 @@ const navNotifyOn = $<HTMLInputElement>("nav-notify-on");
 const navNotifyInstruction = $<HTMLTextAreaElement>("nav-notify-instruction");
 const navNotifyHosts = $<HTMLInputElement>("nav-notify-hosts");
 const navNotifyMode = $<HTMLSelectElement>("nav-notify-mode");
+const navNotifyWhen = $<HTMLSelectElement>("nav-notify-when");
 const openAtLoginInput = $<HTMLInputElement>("open-at-login");
 const openAtLoginHint = $<HTMLElement>("open-at-login-hint");
 const contextBudgetInput = $<HTMLInputElement>("context-budget");
@@ -118,6 +119,8 @@ interface Tab {
   modelEl: HTMLElement;
   /** Sites que o agente visitou pelo Navegador neste turno (para sugerir uma skill no fim). */
   navSitesTurn: Set<string>;
+  /** Notificação de site à espera do tratamento: o Mac avisa quando o agente responder, com a resposta. */
+  notifyAfter: { title: string } | null;
   /** Máquina (host SSH) desta conversa; fixa desde a criação. */
   host: string;
   dotEl: HTMLElement;
@@ -862,7 +865,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   messagesEl.addEventListener("scroll", () => { tab.followBottom = nearBottom(messagesEl); }, { passive: true });
   const tab: Tab = {
     id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, followBottom: true, currentAssistant: null,
-    pendingText: "", navSitesTurn: new Set(), renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
+    pendingText: "", navSitesTurn: new Set(), notifyAfter: null, renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
   };
   tabs.set(conversationId, tab);
   tabsEl.appendChild(tabEl);
@@ -966,7 +969,7 @@ function applySettings(view: SettingsView): void {
   fontSizeInput.value = String(view.fontSize);
   themeSelect.value = view.theme;
   notificationsInput.checked = view.notifications;
-  navNotifyOn.checked = view.navNotify.enabled; navNotifyInstruction.value = view.navNotify.instruction; navNotifyHosts.value = view.navNotify.hosts.join(", "); navNotifyMode.value = view.navNotify.mode;
+  navNotifyOn.checked = view.navNotify.enabled; navNotifyInstruction.value = view.navNotify.instruction; navNotifyHosts.value = view.navNotify.hosts.join(", "); navNotifyMode.value = view.navNotify.mode; navNotifyWhen.value = view.navNotify.avisar;
   contextBudgetInput.value = String(view.contextBudgetTokens);
   memoryEveryInput.value = String(view.memoryEveryTurns);
   quickEnabled.checked = view.quickEntryEnabled;
@@ -1109,6 +1112,11 @@ function navHostsIn(summary: string): string[] {
  * citam o host, um pedaço dele ou o título da aba) ou criar uma do zero a partir desta conversa. "Agora não" fecha.
  */
 function offerSkillFromTurn(tab: Tab): void {
+  // O turno que era o próprio pedido de skill não oferece outra (senão cada clique gerava mais um balão).
+  const lastUser = [...tab.messagesEl.querySelectorAll(".msg-user")].pop()?.textContent ?? "";
+  if (/^(Crie uma skill nova|Atualize a skill)/.test(lastUser)) return;
+  // Um balão por conversa à vista: o anterior sai.
+  for (const old of tab.messagesEl.querySelectorAll(".skill-offer")) old.remove();
   const sites = [...tab.navSitesTurn].filter((s) => s !== "*");
   const label = sites.length > 0 ? sites.join(", ") : "o site aberto";
   const tokens = new Set<string>();
@@ -3389,7 +3397,8 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
     if (!had || grokNow) paintGuide(); // primeira resposta nesta máquina (tutorial 1) / primeira do grok-4 (tutorial 4)
   }
   markUnread(tab);
-  maybeNotify(tab, tab.pendingText);
+  if (tab.notifyAfter !== null) { const t = tab.notifyAfter; tab.notifyAfter = null; void window.meuBot.notify(tab.id, t.title, tab.pendingText.replace(/\s+/g, " ").trim().slice(0, 200) || "tratado pelo agente"); }
+  else maybeNotify(tab, tab.pendingText);
   if (tab.navSitesTurn.size > 0) { offerSkillFromTurn(tab); tab.navSitesTurn = new Set(); }
 });
 window.meuBot.on("chat:error", (e: ErrorEvent) => {
@@ -4403,18 +4412,20 @@ function renderNavNotifyConfig(container: HTMLElement): void {
   const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Sites com o sino ligado (vazio = os sites fixos do espaço): mail.google.com"; hosts.value = pref.hosts.join(", ");
   const mode = document.createElement("select"); mode.className = "nav-url";
   for (const [v, l] of [["site", "uma conversa por site"], ["each", "uma conversa nova por notificação"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.mode === v; mode.append(o); }
+  const when = document.createElement("select"); when.className = "nav-url";
+  for (const [v, l] of [["tratado", "avisar no Mac depois de o agente tratar, com a resposta"], ["chegada", "avisar no Mac assim que chegar"], ["nunca", "não avisar no Mac: só a conversa"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.avisar === v; when.append(o); }
   const row = el("div", "audio-row");
   const on = el("button", "btn btn-primary btn-small", pref.enabled ? "Salvar" : "Ligar com esta ação"); on.type = "button";
   on.addEventListener("click", () => {
     // Sem sites marcados, os sites fixos do espaço ativo ganham o sino (senão "ligado" não ligaria nada).
     let list = parseNotifyHosts(hosts.value);
     if (list.length === 0) { const src = navWs.lista.length > 0 ? navWs : (settings?.navEspacos ?? navWs); for (const s of src.lista.find((w) => w.id === src.ativo)?.servicos ?? []) { try { list = toggleNotifyHost(list, new URL(s.url).hostname, true); } catch { /* url estranha */ } } }
-    void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: list, mode: mode.value === "each" ? "each" : "site" } }).then(applySettings).then(() => { paintGuide(); paintNav(); }).catch((err: unknown) => { const t = active(); if (t !== null) addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); });
+    void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: list, mode: mode.value === "each" ? "each" : "site", avisar: when.value === "chegada" ? "chegada" : when.value === "nunca" ? "nunca" : "tratado" } }).then(applySettings).then(() => { paintGuide(); paintNav(); }).catch((err: unknown) => { const t = active(); if (t !== null) addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); });
   });
   row.append(on);
   if (pref.enabled) { const off = el("button", "btn btn-ghost btn-small", "Desligar"); off.type = "button"; off.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: false } }).then(applySettings).then(() => paintGuide()); }); row.append(off); }
   else { const skip = el("button", "btn btn-ghost btn-small", "Pular esta etapa (deixar desligado)"); skip.type = "button"; skip.addEventListener("click", () => { saveGuideFlag(NOTIFY_TUTORIAL, "notifySkipped"); paintGuide(); }); row.append(skip); }
-  box.append(el("p", "hint strong-hint", "Ação"), inst, el("p", "hint strong-hint", "Sites e conversa"), hosts, mode, row);
+  box.append(el("p", "hint strong-hint", "Ação"), inst, el("p", "hint strong-hint", "Sites, conversa e aviso"), hosts, mode, when, row);
   container.append(box);
 }
 /** Tutorial 11, passo 3: a conversa "🔔" já existe? Abre-a; senão, a pessoa marca quando vir. */
@@ -4476,8 +4487,12 @@ async function navNotifyHandle(n: PageNotification, pref: NavNotifyPref, extra: 
     try { await window.meuBot.renameConversation(chat.id, title); } catch { /* o título fica só local até o próximo salvamento */ }
   }
   if (prev !== null && prev !== chat.id && tabs.has(prev)) activate(prev); // a pessoa continua onde estava
+  // Quando avisar no Mac é escolha da pessoa: na chegada (com o aviso do site), depois do tratamento (com a
+  // resposta do agente; é o padrão) ou nunca. Pendura antes de mandar: o "done" do turno é quem dispara.
+  const head = `${n.site}: ${n.title || "notificação"}`;
+  if (pref.avisar === "tratado") chat.notifyAfter = { title: head };
   await sendText(chat, `${navNotifyMessage(pref.instruction, n)}${extra}`);
-  void window.meuBot.notify(chat.id, `${n.site}: ${n.title || "notificação"}`, n.body);
+  if (pref.avisar === "chegada") void window.meuBot.notify(chat.id, head, n.body);
   paintGuide(); // tutorial 11, passo 3: a conversa "🔔" existe
   console.info(`[navegador] notificação de ${n.site} → conversa "${title}"`);
 }
@@ -4530,18 +4545,31 @@ function toggleRecorte(r: Recorte): void {
   cur?.wv.focus();
 }
 /** Botões das extensões na barra (ícone da ação, como no Chrome/Rambox); clique abre o popup da extensão num webview pequeno. */
+/** Extensões fixadas na barra (como no Brave: por padrão todas ficam no 🧩); por máquina, neste Mac. */
+const navExtPinKey = (): string => `navExtFixadas:${windowHost}`;
+function navExtPinned(): Set<string> { try { const raw = localStorage.getItem(navExtPinKey()); if (raw !== null) return new Set((JSON.parse(raw) as unknown[]).filter((x): x is string => typeof x === "string")); } catch { /* opcional */ } return new Set(); }
+function navExtSetPinned(id: string, on: boolean): void {
+  const s = navExtPinned(); if (on) s.add(id); else s.delete(id);
+  try { localStorage.setItem(navExtPinKey(), JSON.stringify([...s])); } catch { /* opcional */ }
+  paintNavActions(); if (navEls !== null && !navEls.menu.hidden) paintNavMenu();
+}
+/** Clique numa extensão (na barra ou no 🧩): abre/fecha o popup dela ancorado em `anchor`. */
+function navExtClick(x: BrowserExtensionInfo, anchor: HTMLElement): void {
+  if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
+  navOpenPopup(x.id, x.popup, anchor);
+}
+const navExtIcon = (x: BrowserExtensionInfo): HTMLElement => { if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = ""; img.className = "nav-ext-icon"; return img; } return el("span", "nav-ext-icon nav-ext-initial", x.name.slice(0, 1)); };
 function paintNavActions(): void {
   if (navEls === null) return;
   const e = navEls;
   e.actions.replaceChildren();
-  // Ícone de ação de cada extensão na barra. Clique abre o popup da extensão.
+  // Na barra, só as fixadas (📌 no 🧩); as outras abrem pelo próprio 🧩.
+  const pinned = navExtPinned();
   for (const x of navExtensions) {
+    if (!pinned.has(x.id)) continue;
     const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
     if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
-    b.addEventListener("click", () => {
-      if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
-      navOpenPopup(x.id, x.popup, b);
-    });
+    b.addEventListener("click", () => navExtClick(x, b));
     e.actions.append(b);
   }
   // Recortes do site da aba ativa: botão aceso = parte visível; apagado = oculta.
@@ -4710,6 +4738,7 @@ function paintNav(): void {
   { let h = ""; try { h = cur === null ? "" : new URL(cur.url).hostname; } catch { /* url em branco */ } if (h !== navActionsHost) paintNavActions(); }
   paintNavStar();
   paintNavBell();
+  paintNavPin();
   e.back.disabled = cur === null || !cur.wv.canGoBack();
   e.fwd.disabled = cur === null || !cur.wv.canGoForward();
   e.loading.hidden = cur === null || !cur.loading;
@@ -4732,14 +4761,21 @@ function paintNavMenu(): void {
   m.replaceChildren();
   const ws = el("button", "btn btn-primary btn-small", "Abrir a Chrome Web Store"); ws.type = "button";
   ws.addEventListener("click", () => { m.hidden = true; navNewTab(NAV_WEB_STORE); });
-  m.append(el("p", "hint strong-hint", "Extensões nesta máquina"), ws);
+  m.append(el("p", "hint strong-hint", "Gerenciar extensões"), ws);
   if (navExtensions.length === 0) m.append(el("p", "hint", "Nenhuma ainda. Na Web Store, abra a página da extensão e clique em \"Usar no Chrome\"; ela aparece aqui e fica salva para esta máquina."));
+  const pinned = navExtPinned();
   for (const x of navExtensions) {
     const row = el("div", "nav-ext");
-    row.append(el("span", "grow", `${x.name} · ${x.version}`));
+    // Clique no nome abre o popup da extensão (ancorado no 🧩); 📌 fixa/solta na barra.
+    const open = el("button", "nav-ext-open"); open.type = "button"; open.title = x.popup === null ? `${x.name}: age dentro das páginas que suporta` : `Abrir ${x.name}`;
+    open.append(navExtIcon(x), el("span", "grow", x.name), el("span", "hint", x.version));
+    open.addEventListener("click", () => { m.hidden = true; const anchor = navEls?.bar.querySelector<HTMLElement>(".nav-ext-btn") ?? open; navExtClick(x, anchor); });
+    const on = pinned.has(x.id);
+    const pin = el("button", `mini-btn nav-ext-pin${on ? " on" : ""}`, "📌"); pin.type = "button"; pin.title = on ? "Tirar da barra (continua aqui no 🧩)" : "Fixar na barra do Navegador";
+    pin.addEventListener("click", () => navExtSetPinned(x.id, !on));
     const rm = el("button", "btn btn-ghost btn-small", "Remover"); rm.type = "button";
-    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; paintNavMenu(); paintNavActions(); }); }));
-    row.append(rm);
+    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; navExtSetPinned(x.id, false); paintNavMenu(); paintNavActions(); }); }));
+    row.append(open, pin, rm);
     m.append(row);
   }
   m.append(el("p", "hint", "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
@@ -4756,7 +4792,7 @@ async function openNavTab(url?: string): Promise<void> {
     const reload = el("button", "mini-btn", "↻"); reload.type = "button"; reload.title = "Recarregar";
     const urlEl = document.createElement("input"); urlEl.type = "text"; urlEl.className = "nav-url"; urlEl.placeholder = "endereço ou busca (Cmd+L)"; urlEl.autocomplete = "off"; urlEl.spellcheck = false;
     const loading = el("span", "nav-loading"); loading.hidden = true;
-    const ext = el("button", "mini-btn", "🧩"); ext.type = "button"; ext.title = "Extensões";
+    const ext = el("button", "mini-btn nav-ext-btn", "🧩"); ext.type = "button"; ext.title = "Gerenciar extensões";
     const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
     const menu = el("div", "nav-menu"); menu.hidden = true;
     const agent = el("button", "btn btn-ghost btn-small nav-agent", "🤖 agente: desligado"); agent.type = "button";
@@ -4787,6 +4823,10 @@ async function openNavTab(url?: string): Promise<void> {
     const bell = el("button", "mini-btn nav-bell", "🔔"); bell.type = "button";
     bell.addEventListener("click", () => { void navToggleBell(); });
     star.insertAdjacentElement("afterend", bell);
+    // Pino: esta aba é um site fixo do espaço? Aceso = fixa (clique solta); apagado = solta (clique fixa).
+    const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button";
+    pin.addEventListener("click", () => { void navTogglePin(); });
+    bell.insertAdjacentElement("afterend", pin);
     navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
@@ -4857,6 +4897,31 @@ function navServiceOpen(s: NavService): void {
 function navUpdateActive(fn: (w: NavWorkspace) => NavWorkspace): NavWorkspaces | null {
   const a = navActiveWs(); if (a === null) return null;
   return { ...navWs, lista: navWs.lista.map((w) => (w.id === a.id ? fn(w) : w)) };
+}
+/** 📌 na barra: fixa a aba atual no espaço ativo (nome = título, ícone = favicon) ou, se já é fixa, solta. */
+async function navTogglePin(): Promise<void> {
+  const cur = navCurrent(); if (cur === null || !/^https?:/.test(cur.url)) return;
+  if (cur.serviceId !== undefined) {
+    const sid = cur.serviceId; delete cur.serviceId; // a aba continua aberta, agora solta
+    const next = { ...navWs, lista: navWs.lista.map((w) => ({ ...w, servicos: w.servicos.filter((s) => s.id !== sid) })) };
+    await navSaveWs(next); return;
+  }
+  if (navActiveWs() === null) { navRailShown = true; navRailForm = { kind: "espaco" }; navRailMsg = "Crie um espaço para fixar esta aba nele."; paintNavRail(); return; }
+  const id = navId();
+  let nome = cur.title.trim(); try { if (nome === "") nome = new URL(cur.url).hostname; } catch { /* fica o título */ }
+  const next = navUpdateActive((w) => ({ ...w, servicos: [...w.servicos, { id, nome: nome.slice(0, 40), url: cur.url, icone: cur.favicon }] }));
+  if (next === null) return;
+  cur.serviceId = id;
+  await navSaveWs(next);
+}
+function paintNavPin(): void {
+  if (navEls === null) return;
+  const b = navEls.bar.querySelector<HTMLButtonElement>(".nav-pin"); if (b === null) return;
+  const cur = navCurrent(); const ok = cur !== null && /^https?:/.test(cur.url);
+  const fixed = ok && cur.serviceId !== undefined;
+  b.hidden = !ok;
+  b.classList.toggle("on", fixed);
+  b.title = fixed ? "Aba fixa no espaço de trabalho: abre sozinha com o Navegador. Clique para soltar." : "Fixar esta aba no espaço de trabalho: ela passa a abrir sozinha com o Navegador.";
 }
 async function navAddService(nome: string, url: string): Promise<void> {
   const target = navNormalize(url); if (!/^https?:/.test(target)) { navRailMsg = "Endereço inválido."; paintNavRail(); return; }
@@ -5500,7 +5565,7 @@ form.addEventListener("submit", (ev) => {
     backendModelForHost: backendModelSelect.value as BackendModel,
     theme: themeSelect.value as Theme,
     notifications: notificationsInput.checked,
-    navNotify: { enabled: navNotifyOn.checked, instruction: navNotifyInstruction.value, hosts: parseNotifyHosts(navNotifyHosts.value), mode: navNotifyMode.value === "each" ? "each" as const : "site" as const },
+    navNotify: { enabled: navNotifyOn.checked, instruction: navNotifyInstruction.value, hosts: parseNotifyHosts(navNotifyHosts.value), mode: navNotifyMode.value === "each" ? "each" as const : "site" as const, avisar: navNotifyWhen.value === "chegada" ? "chegada" as const : navNotifyWhen.value === "nunca" ? "nunca" as const : "tratado" as const },
     // Na janela de uma máquina a porta é só dela; na deste Mac (sem túnel) o campo edita a padrão das demais.
     ...(Number.isInteger(port) ? (windowHost === "local" ? { backendPort: port } : { backendPortForHost: port }) : {}),
     ...(Number.isInteger(fontSize) ? { fontSize } : {}),

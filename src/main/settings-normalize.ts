@@ -96,7 +96,7 @@ function normalizeNavEspacos(v: unknown): Record<string, NavWorkspaces> {
   return out;
 }
 export const NAV_NOTIFY_DEFAULT_INSTRUCTION = "Chegou uma notificação de um site que acompanho. Traduza para português, se estiver em outra língua, e explique em termos simples, para quem não é técnico, o que ela significa e se preciso fazer alguma coisa. Seja breve: no máximo cinco linhas.";
-export const defaultNavNotify = (): NavNotifyPref => ({ enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site" });
+export const defaultNavNotify = (): NavNotifyPref => ({ enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site", avisar: "tratado" });
 const HOST_ITEM_RE = /^[a-z0-9.-]+$/;
 /** Aceita um objeto parcial (arquivo antigo, patch das Configurações) e devolve a preferência completa. */
 export function normalizeNavNotify(v: unknown, base: NavNotifyPref = defaultNavNotify()): NavNotifyPref {
@@ -108,6 +108,7 @@ export function normalizeNavNotify(v: unknown, base: NavNotifyPref = defaultNavN
     instruction: instruction === "" ? NAV_NOTIFY_DEFAULT_INSTRUCTION : instruction,
     hosts,
     mode: p["mode"] === "each" || p["mode"] === "site" ? p["mode"] : base.mode,
+    avisar: p["avisar"] === "tratado" || p["avisar"] === "chegada" || p["avisar"] === "nunca" ? p["avisar"] : base.avisar,
   };
 }
 

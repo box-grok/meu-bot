@@ -12,6 +12,9 @@
  *   comment <box> "texto"
  *   contact-upsert --phone +N [--name "x"] [--email e] [--box <box>]
  *   telefone-set +N <box>                       (lembra que este telefone é deste box)
+ *   box-find --email e | --email @dominio       (acha box pelo e-mail: contatos, threads vinculadas, notas)
+ *   threads <box>                               (threads de e-mail do Gmail já vinculadas ao box)
+ *   thread-add <box> <threadGmailId>            (vincula uma conversa do Gmail ao box; id hex = data-legacy-thread-id)
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -39,6 +42,14 @@ async function api(method, p, body, key = cfg.apiKey) {
   if (!res.ok) { const e = new Error(res.status === 401 ? "chave da API recusada pelo Streak (confira em Streak › Configurações › API)" : `Streak respondeu ${res.status} em ${method} ${p}${json && json.error ? `: ${json.error}` : ""}`); e.status = res.status; throw e; }
   return json;
 }
+async function apiForm(method, p, fields) {
+  const res = await fetch(`${API}${p}`, { method, headers: { Authorization: `Basic ${Buffer.from(`${cfg.apiKey}:`).toString("base64")}`, "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams(fields).toString() });
+  const text = await res.text();
+  let json = null; try { json = text === "" ? null : JSON.parse(text); } catch { json = { raw: text.slice(0, 300) } }
+  if (!res.ok) { const e = new Error(res.status === 401 ? "chave da API recusada pelo Streak (confira em Streak › Configurações › API)" : `Streak respondeu ${res.status} em ${method} ${p}${json && json.error ? `: ${json.error}` : ""}`); e.status = res.status; throw e; }
+  return json;
+}
+const threadView = (t) => ({ key: t.key ?? t.threadKey ?? null, threadGmailId: t.threadGmailId ?? null, assunto: t.subject ?? t.name ?? null, nomes: Array.isArray(t.names) ? t.names : [], emails: Array.isArray(t.emailAddresses) ? t.emailAddresses : [], mensagens: t.numberOfEmails ?? null, em: t.lastUpdatedTimestamp ? new Date(t.lastUpdatedTimestamp).toISOString().slice(0, 16) : null });
 // ---- argumentos: posicionais + --chave valor / --flag
 const argv = process.argv.slice(2);
 const cmd = argv[0] ?? "";
@@ -100,7 +111,20 @@ async function main() {
       if (typeof opt.phone === "string") { const d = digits(opt.phone); const mapped = cfg.telefones?.[`+${d}`]; hits = boxes.filter((b) => (mapped && (b.boxKey ?? b.key) === mapped) || digits(b.notes ?? "").includes(d) || digits(b.name ?? "").includes(d)); }
       else if (typeof opt.name === "string") { const w = norm(opt.name); hits = boxes.filter((b) => norm(b.name).includes(w)); }
       else if (typeof opt.query === "string") { const w = norm(opt.query); hits = boxes.filter((b) => norm(b.name).includes(w) || norm(b.notes ?? "").includes(w)); }
-      else throw new Error("use --phone, --name ou --query");
+      else if (typeof opt.email === "string") {
+        // e-mail completo ou "@dominio": procura nas notas/nome, nos contatos vinculados e nas threads de e-mail do box
+        const w = norm(opt.email); const contactCache = new Map();
+        const contactEmails = async (k) => { if (!contactCache.has(k)) { try { const c = await api("GET", `/v2/contacts/${encodeURIComponent(k)}`); contactCache.set(k, (Array.isArray(c.emailAddresses) ? c.emailAddresses : []).map(norm)); } catch { contactCache.set(k, []); } } return contactCache.get(k); };
+        for (const b of boxes.slice(0, 200)) {
+          const bk = b.boxKey ?? b.key;
+          if (norm(b.notes ?? "").includes(w) || norm(b.name).includes(w)) { hits.push(b); continue; }
+          let found = false;
+          for (const c of (Array.isArray(b.contacts) ? b.contacts : [])) { if ((await contactEmails(c.key)).some((e) => e.includes(w))) { found = true; break; } }
+          if (!found) { try { const ts = await api("GET", `/v1/boxes/${encodeURIComponent(bk)}/threads`); found = (Array.isArray(ts) ? ts : []).some((t) => (Array.isArray(t.emailAddresses) ? t.emailAddresses : []).some((e) => norm(e).includes(w))); } catch { /* sem threads */ } }
+          if (found) hits.push(b);
+        }
+      }
+      else throw new Error("use --phone, --name, --query ou --email");
       const views = hits.slice(0, 10).map((b) => boxView(b, info));
       if (views.length === 1) { try { const cs = await api("GET", `/v1/boxes/${encodeURIComponent(views[0].key)}/comments`); views[0].comentarios = (Array.isArray(cs) ? cs : []).slice(-5).map((c) => ({ em: c.timestamp ? new Date(c.timestamp).toISOString().slice(0, 16) : null, texto: String(c.message ?? "").slice(0, 300) })); } catch { /* sem comentários */ } }
       return out({ boxes: views, total: hits.length });
@@ -162,6 +186,19 @@ async function main() {
         if (typeof opt.phone === "string") { const d = digits(opt.phone); if (d) { cfg.telefones = { ...(cfg.telefones ?? {}), [`+${d}`]: opt.box }; saveConfig(cfg); } }
       }
       return out({ ok: true, contato: contactKey, vinculado: linked });
+    }
+    case "threads": {
+      const box = pos[0]; if (!box) throw new Error("uso: threads <box>");
+      const ts = await api("GET", `/v1/boxes/${encodeURIComponent(box)}/threads`);
+      return out({ box, threads: (Array.isArray(ts) ? ts : []).map(threadView) });
+    }
+    case "thread-add": {
+      const [box, gid] = pos; if (!box || !gid) throw new Error("uso: thread-add <box> <threadGmailId>");
+      if (!/^[0-9a-f]{10,20}$/i.test(gid)) throw new Error("threadGmailId deve ser o id hexadecimal da conversa no Gmail (atributo data-legacy-thread-id), ex. 1a1544925ace5958");
+      // Uma thread só pode estar em um box; o Streak responde 400 (corpo vazio) se já estiver em outro.
+      let r; try { r = await apiForm("PUT", `/v1/boxes/${encodeURIComponent(box)}/threads`, { boxKey: box, threadGmailId: gid.toLowerCase() }); }
+      catch (e) { if (e.status === 400) throw new Error("o Streak recusou (400): confira o id da conversa e se ela já não está em outro box (uma conversa só pode estar em um box)"); throw e; }
+      return out({ ok: true, box, threads: (Array.isArray(r) ? r : r ? [r] : []).map(threadView) });
     }
     // Guarda a chave da API (gerada no Gmail: botão do Streak › Integrações e Automações › Integrações personalizadas)
     // depois de conferir no Streak que ela vale. Para o agente do meu-bot configurar o CRM sem a pessoa colar nada no

@@ -245,7 +245,27 @@ function sysHash(messages) {
  * Roda a CLI uma vez. onDelta recebe texto incremental. Resolve {text, usage, sessionId, deltas}.
  * Rejeita com Error({code:'resume_failed'|'cli_failed'|'aborted'|'timeout'}).
  */
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser }) {
+/**
+ * Limite do modelo da conta (ex.: "You've reached your Fable limit"): a CLI devolve isso como texto de resposta.
+ * Reconhecido antes de chegar ao cliente (as primeiras ~120 letras ficam retidas até descartar a hipótese) e vira
+ * erro `model_limit`; o chamador refaz o turno com o modelo reserva (MODEL_FALLBACK, padrão Opus 5.5) e fica nele
+ * até o limite passar (LIMIT_HOLD_MS), sem bater de novo no limite a cada mensagem.
+ */
+const LIMIT_RE = /you(?:'|’)?ve (?:reached|hit) your [\w .-]{1,40}limit/i;
+const MODEL_FALLBACK = process.env.MODEL_FALLBACK || 'claude-opus-5-5';
+const MODEL_FALLBACK_LABEL = process.env.MODEL_FALLBACK_LABEL || 'Opus 5.5';
+const LIMIT_HOLD_MS = Number(process.env.LIMIT_HOLD_MS) > 0 ? Number(process.env.LIMIT_HOLD_MS) : 60 * 60 * 1000;
+let limitUntil = 0; let limitWhat = '';
+/** Nome legível do modelo que o Claude Code usa agora: o reserva durante o limite; senão o da conta (settings.json). */
+const MODEL_LABELS = { fable: 'Fable 5.1', 'claude-fable-5-1': 'Fable 5.1', opus: 'Opus 5.5', 'claude-opus-5-5': 'Opus 5.5', sonnet: 'Sonnet 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', haiku: 'Haiku 5.5', 'claude-haiku-5-5': 'Haiku 5.5' };
+function currentModelLabel() {
+  if (Date.now() < limitUntil) return MODEL_FALLBACK_LABEL;
+  let m = ''; try { m = String(JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).model || ''); } catch (_) { /* sem settings */ }
+  const k = m.toLowerCase().replace(/\[.*\]$/, '');
+  return MODEL_LABELS[k] || (m || null);
+}
+
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model }) {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
@@ -253,6 +273,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
     if (system) args.push('--append-system-prompt', system);
     if (resume) args.push('--resume', resume);
+    if (model) args.push('--model', model);
     fs.mkdirSync(cwd, { recursive: true });
     const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir() }, stdio: ['pipe', 'pipe', 'pipe'] });
     let text = ''; let deltas = 0; let usage = null; let sessionId = resume || null; let stderr = '';
@@ -268,7 +289,16 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
       setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000).unref();
       const e = new Error(msg); e.code = code; e.stderr = stderr.slice(-2000); reject(e);
     }
-    function emit(t) { if (!t) return; text += t; deltas++; if (onDelta) onDelta(t); }
+    // As primeiras letras ficam retidas: se forem o aviso de limite do modelo, o turno falha sem nada ter saído.
+    let held = ''; let released = false;
+    function release() { if (released) return; released = true; if (held && onDelta) onDelta(held); held = ''; }
+    function emit(t) {
+      if (!t) return; text += t; deltas++;
+      if (released) { if (onDelta) onDelta(t); return; }
+      held += t;
+      if (LIMIT_RE.test(held)) { fail('model_limit', held.trim().split('\n')[0].slice(0, 200)); return; }
+      if (held.length >= 120) release();
+    }
 
     let buf = '';
     child.stdout.on('data', (d) => {
@@ -303,6 +333,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         if (ev.session_id) sessionId = ev.session_id;
         usage = ev.usage || null;
         if (typeof ev.result === 'string') resultText = ev.result;
+        if (resultText && LIMIT_RE.test(resultText) && !released) { fail('model_limit', resultText.trim().split('\n')[0].slice(0, 200)); return; }
         if (ev.is_error && !text) { fail(looksLikeResumeFailure(ev, stderr) ? 'resume_failed' : 'cli_failed', resultText || ev.subtype || 'erro da CLI'); }
       }
     }
@@ -312,6 +343,8 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
       if (finished) return; finished = true; clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onAbort);
       if (!deltas && resultText) { text = resultText; }
+      if (LIMIT_RE.test(text.slice(0, 300))) { const e = new Error(text.trim().split('\n')[0].slice(0, 200)); e.code = 'model_limit'; return reject(e); }
+      release();
       if (!text) {
         const code2 = looksLikeResumeFailure(null, stderr) ? 'resume_failed' : 'cli_failed';
         const e = new Error(`CLI saiu com código ${code} sem texto`); e.code = code2; e.stderr = stderr.slice(-2000); return reject(e);
@@ -427,17 +460,35 @@ async function chatCompletions(req, res) {
       const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
+      // Limite do modelo da conta recente: vai direto ao reserva até passar.
+      let model = Date.now() < limitUntil ? MODEL_FALLBACK : undefined;
+      // No reserva, o modelo sabe que é ele (a identidade padrão não diz o modelo).
+      const withModel = (p) => (model ? { ...p, system: `${p.system}\n\nNeste turno o modelo é o ${MODEL_FALLBACK_LABEL} (${MODEL_FALLBACK}): o modelo padrão da conta bateu o limite de uso.` } : p);
+      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model });
       let out;
-      try {
-        out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser });
-      } catch (e) {
-        if (e.code === 'resume_failed' && plan.resume && !headersSent) {
-          log(`resume falhou para ${key}; refazendo sem resume`);
-          if (key) sessions.del(key);
-          plan = { ...flatten(messages), resume: null }; resumed = false;
-          plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
-          out = await runClaude({ ...plan, cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser });
-        } else throw e;
+      for (let tries = 0; ; tries++) {
+        try { out = await call(); break; }
+        catch (e) {
+          if (e.code === 'resume_failed' && plan.resume && !headersSent && tries < 3) {
+            log(`resume falhou para ${key}; refazendo sem resume`);
+            if (key) sessions.del(key);
+            plan = { ...flatten(messages), resume: null }; resumed = false;
+            plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
+            continue;
+          }
+          if (e.code === 'model_limit' && model === undefined && !firstDeltaAt && tries < 3) {
+            limitUntil = Date.now() + LIMIT_HOLD_MS; limitWhat = e.message;
+            log(`limite do modelo (${e.message}); refazendo com ${MODEL_FALLBACK} e mantendo por ${Math.round(LIMIT_HOLD_MS / 60000)} min`);
+            model = MODEL_FALLBACK;
+            // Aviso curto em português: "Fable falhou (limite de uso da conta); respondendo com Opus 5.5".
+            const which = (/your ([\w .-]{1,30}?) limit/i.exec(e.message) || [])[1] || 'modelo da conta';
+            const note = { from: which, to: MODEL_FALLBACK_LABEL, reason: `limite de uso da conta; o ${MODEL_FALLBACK_LABEL} segue por ${Math.round(LIMIT_HOLD_MS / 60000)} min` };
+            if (headersSent) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, note.from, note.to, note.reason))}\n\n`);
+            else pendingNotes.push(note);
+            continue;
+          }
+          throw e;
+        }
       }
       usedKey = key; usedProfile = profile;
       return out;
@@ -519,7 +570,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/v1/meu-bot/status' && req.method === 'GET') {
     refreshRateLimits().then((why) => {
       if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta: ${why}`); }
-      json(res, 200, { claude: readClaudeStatus(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
+      json(res, 200, { claude: readClaudeStatus(), model: currentModelLabel(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
     });
     return;
   }

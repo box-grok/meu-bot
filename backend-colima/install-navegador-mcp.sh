@@ -10,7 +10,7 @@ mkdir -p "$D"
 cp "$HERE/navegador-mcp.mjs" "$D/navegador-mcp.mjs"
 chmod 644 "$D/navegador-mcp.mjs"
 echo "navegador-mcp.mjs em $D"
-RULE='<!-- meu-bot:navegador v3 inicio -->
+RULE='<!-- meu-bot:navegador v4 inicio -->
 ## Navegador da pessoa (meu-bot)
 Quando as ferramentas mcp__navegador__* estiverem disponíveis, você pode usar o navegador que a pessoa vê na janela do meu-bot dela.
 - Fluxo: abrir → ler → clicar/digitar pelo número → ler de novo. Diga em uma frase o que vai fazer antes de agir.
@@ -18,7 +18,13 @@ Quando as ferramentas mcp__navegador__* estiverem disponíveis, você pode usar 
 - Se a página pedir login, peça à pessoa que entre pela aba Navegador e avise quando terminar.
 - Sem as ferramentas mcp__navegador__*: peça à pessoa para abrir a aba Navegador no app e ligar "agente pode usar". NUNCA instale navegador, Playwright, Puppeteer ou Chromium na máquina por conta própria.
 - Skills aprendidas: antes de operar um site, veja se existe ~/.claude/skills/<site>-navegador/SKILL.md (ex.: streak-crm-navegador) e siga o que já funcionou. Ao terminar uma tarefa num site em que você precisou descobrir o caminho (tentativas, prints, scripts), grave ou atualize essa skill com frontmatter (name, description) e o passo a passo que funcionou e o que não funcionou, para não repetir o trabalho da próxima vez.
-<!-- meu-bot:navegador v3 fim -->'
+
+## Pedido vago: ajude a pessoa a decidir antes de criar ou encaixar (meu-bot)
+- Quando o pedido implica criar ou encaixar algo numa estrutura (pipeline, etapa ou box no CRM; espaço de trabalho; fluxo; skill) e a pessoa não disse onde, ou parece não ter certeza do que quer: NÃO encaixe no único lugar que existe só porque é o único. Pare e ofereça 2 ou 3 opções em linguagem simples, com a sua recomendação e o porquê em uma linha, e espere a escolha. Exemplo: um e-mail de assunto novo não vai para o pipeline de parceiros; proponha um pipeline ou fluxo próprio para aquele assunto, ou só anotar sem CRM.
+- Assunto diferente pede lugar diferente: parceiros, clientes, cobranças e inscrições não moram no mesmo pipeline. Prefira propor o lugar próprio a misturar.
+- Pessoa que não sabe o que quer: faça uma pergunta por vez, com exemplos concretos do que ela já tem na máquina, e só aja depois da resposta. Nunca crie "de teste" em dados reais sem avisar que é teste e sem combinar como desfazer.
+- As ferramentas do meu-bot na máquina (~/.local/share/meu-bot/*, inclusive streak.mjs e os plugins) são do app: não as edite nem as substitua por conta própria. Se faltar um subcomando ou uma ação, diga à pessoa o que falta para ela pedir no app; use só o que existe.
+<!-- meu-bot:navegador v4 fim -->'
 for W in "$HOME/agent-workspace" "$HOME/chat-workspace"; do
   mkdir -p "$W"
   F="$W/CLAUDE.md"

@@ -70,9 +70,11 @@ test("navFavoritos: por máquina válida; url http(s), título ≤ 60, url repet
 test("navNotify: padrão desligado (o tutorial liga) com a instrução padrão; patch parcial mantém o resto; hosts limpos; modo validado", () => {
   const { normalizeNavNotify, NAV_NOTIFY_DEFAULT_INSTRUCTION } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
   const d = normalizeSettings({}).navNotify;
-  assert.deepEqual(d, { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site" });
+  assert.deepEqual(d, { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site", avisar: "tratado" });
   const s = normalizeSettings({ navNotify: { enabled: false, instruction: "  Resuma.  ", hosts: ["Mail.Google.com", "bad host!", "mail.google.com"], mode: "each" } }).navNotify;
-  assert.deepEqual(s, { enabled: false, instruction: "Resuma.", hosts: ["mail.google.com"], mode: "each" });
+  assert.deepEqual(s, { enabled: false, instruction: "Resuma.", hosts: ["mail.google.com"], mode: "each", avisar: "tratado" });
+  assert.equal(normalizeNavNotify({ avisar: "nunca" }, s).avisar, "nunca");
+  assert.equal(normalizeNavNotify({ avisar: "x" }, s).avisar, "tratado");
   assert.deepEqual(normalizeNavNotify({ mode: "x", instruction: "" }, s), { ...s, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION }, "patch: modo inválido e instrução vazia caem no que havia / padrão");
   assert.equal(normalizeNavNotify({ hosts: "nope" }, s).hosts, s.hosts);
 });

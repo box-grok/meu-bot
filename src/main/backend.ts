@@ -402,12 +402,13 @@ export async function fetchAccountStatus(host: string): Promise<AccountStatus | 
       res.on("end", () => {
         if (res.statusCode !== 200) { resolve(null); return; }
         try {
-          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"] };
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"]; model?: unknown };
           const c = j.claude ?? {};
           const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
           resolve({
             email: typeof c.email === "string" ? c.email : null, assento: typeof c.assento === "string" ? c.assento : null,
             sessionPct: num(c.sessionPct), weeklyPct: num(c.weeklyPct), sessionResets: num(c.sessionResets), weeklyResets: num(c.weeklyResets), updated: num(c.updated),
+            modelName: typeof j.model === "string" && j.model.length <= 40 ? j.model : null,
             providers: Array.isArray(j.providers) ? j.providers.filter((p) => p && typeof p.name === "string").map((p) => ({ name: p.name, type: p.type === "openai" ? "openai" : "claude", available: p.available === true })) : [],
           });
         } catch { resolve(null); }

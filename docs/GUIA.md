@@ -1943,7 +1943,9 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   em `dom-ready`/`did-finish-load` (substituto de `Notification`, idempotente) e trata o `ipc-message` do
   <webview>: `parsePageNotification` → filtro de sites → dedup 60 s → conversa "🔔 <site>" (uma por site, ou uma por
   notificação) sem roubar a aba ativa → `sendText` com a instrução das Configurações + título/corpo/url →
-  `ui:notify` (clique leva à conversa). A permissão do Chromium continua negada: só o substituto age.
+  `ui:notify` (clique leva à conversa) **quando** a pessoa escolheu (`avisar`: "tratado" = depois de o agente
+  responder, com a resposta, o padrão; "chegada" = na hora, com o aviso do site; "nunca"). A permissão do
+  Chromium continua negada: só o substituto age.
 - **Configurações › "Notificações do Navegador"**: ligado/desligado, a instrução (padrão: traduzir e explicar para
   leigo em até cinco linhas), os sites com o sino ligado (vazio = nenhum; o 🔔/🔕 na barra do Navegador liga e
   desliga por site, e ligar no tutorial sem sites marca os fixos do espaço ativo) e o modo da conversa. O 📌 da
@@ -1984,3 +1986,24 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - Os sites vêm das urls nos resumos das ferramentas (`navHostsIn`) ou, sem url, do host da aba ativa
   (`Tab.navSitesTurn`, zerado a cada turno). As skills vêm de `objectiveState.skills` (as da máquina, menos a do
   objetivo).
+- (19/10) O agente da `agente-box` acrescentou ao streak.mjs da máquina `box-find --email`, `threads` e `thread-add`
+  (vincular uma conversa do Gmail a um box, `PUT /v1/boxes/<box>/threads`, form `threadGmailId`); incorporados ao
+  bundle para não se perderem na próxima reinstalação, e a skill da API os documenta. A regra v4 do CLAUDE.md
+  (seção "Pedido vago") passa a proibir o agente de editar as ferramentas do app e de encaixar assunto novo no
+  único pipeline existente. O balão de skill não aparece depois de um turno que já era o pedido de skill, e só
+  um fica à vista por conversa.
+
+## Limite do Fable: o turno refaz com o Opus 5.5 (19 out 2026)
+
+- A CLI do Claude Code devolve "You've reached your Fable limit…" como **texto de resposta**. `runClaude` retém as
+  primeiras ~120 letras de cada turno até descartar a hipótese (`LIMIT_RE`), então o aviso nunca chega à conversa:
+  vira erro `model_limit`. O provedor refaz o mesmo turno com `--model ${MODEL_FALLBACK}` (padrão
+  `claude-opus-5-5`, rótulo `MODEL_FALLBACK_LABEL`), emite o chunk de fallback ("Fable falhou (limite de uso da conta; o Opus 5.5 segue por 60 min)", o app
+  mostra como os outros fallbacks) e fica no reserva por `LIMIT_HOLD_MS` (1 h) sem tentar o padrão a cada
+  mensagem. No reserva, o system prompt diz ao modelo qual ele é. Se o reserva também bater limite, segue a
+  corrente normal (agente → grok-4).
+- Verificado na `agente-box` com o limite real ativo: resposta veio do Opus 5.5, o aviso de limite não apareceu,
+  log "limite do modelo (…); refazendo com claude-opus-5-5".
+- (19/10) Status line: o segmento do modelo mostra o nome do modelo que responde de fato (`/v1/meu-bot/status › model`: o reserva durante o limite, senão o `model` do ~/.claude/settings.json da máquina, em nome legível); grok-4 e backend antigo continuam com o modo.
+- (19/10) O 📌 voltou à barra, ao lado do 🔔, com estado: aceso = a aba é site fixo do espaço (clique solta, a aba continua aberta); apagado = solta (clique fixa no espaço ativo; sem espaço, abre o trilho para criar um).
+- (19/10) Extensões como no Brave: todas ficam no 🧩 ("Gerenciar extensões": clique no nome abre o popup, 📌 fixa/solta na barra, Remover); na barra só as fixadas (`navExtFixadas:<host>` no localStorage).
