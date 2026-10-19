@@ -12,7 +12,8 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, type PageNotification } from "./lib/nav-notify.js";
+import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js";
+import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost, type PageNotification } from "./lib/nav-notify.js";
 import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -115,6 +116,8 @@ interface Tab {
   tabEl: HTMLElement;
   titleEl: HTMLElement;
   modelEl: HTMLElement;
+  /** Sites que o agente visitou pelo Navegador neste turno (para sugerir uma skill no fim). */
+  navSitesTurn: Set<string>;
   /** Máquina (host SSH) desta conversa; fixa desde a criação. */
   host: string;
   dotEl: HTMLElement;
@@ -492,7 +495,12 @@ function sidebarNotice(text: string): void {
 }
 /** Copia e avisa; em erro de clipboard, avisa também (sem caixa). */
 function copyReference(text: string): void {
-  void navigator.clipboard.writeText(text).then(() => sidebarNotice("✓ ID copiado"), () => sidebarNotice("✗ Não deu para copiar"));
+  void navigator.clipboard.writeText(text).then(() => {
+    sidebarNotice("✓ ID copiado");
+    // O ⓘ do item: na primeira cópia neste Mac, o balão explica o que o ID é; depois, só copia.
+    let seen = false; try { seen = localStorage.getItem("idInfoSeen") === "1"; } catch { /* opcional */ }
+    if (!seen) { infoBalloon(ID_INFO_TITLE, ID_INFO_TEXT); try { localStorage.setItem("idInfoSeen", "1"); } catch { /* opcional */ } }
+  }, () => sidebarNotice("✗ Não deu para copiar"));
 }
 
 async function runTabAction(id: string, action: TabMenuAction | null): Promise<void> {
@@ -854,7 +862,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   messagesEl.addEventListener("scroll", () => { tab.followBottom = nearBottom(messagesEl); }, { passive: true });
   const tab: Tab = {
     id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, followBottom: true, currentAssistant: null,
-    pendingText: "", renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
+    pendingText: "", navSitesTurn: new Set(), renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
   };
   tabs.set(conversationId, tab);
   tabsEl.appendChild(tabEl);
@@ -1089,6 +1097,42 @@ window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {
 
 /** Erro/aviso que indica Claude Code deslogado: a notice ganha o botão "Entrar no Claude Code". */
 const LOGGED_OUT_RE = /not logged in|please run \/?login|deslogad|não está logado/i;
+/** Hosts http(s) citados no resumo de uma ferramenta do Navegador (url do `abrir`, por exemplo). */
+function navHostsIn(summary: string): string[] {
+  const out = new Set<string>();
+  for (const m of summary.matchAll(/https?:\/\/[^\s"'\\)]+/g)) { try { out.add(new URL(m[0]).hostname.toLowerCase()); } catch { /* não é url */ } }
+  return [...out];
+}
+/**
+ * O agente navegou neste turno: o que ele descobriu vale uma skill (do REA do Rambox nada disto; é do meu-bot).
+ * Balão no fim da resposta: atualizar uma skill da máquina que combine com os sites visitados (nome/descrição
+ * citam o host, um pedaço dele ou o título da aba) ou criar uma do zero a partir desta conversa. "Agora não" fecha.
+ */
+function offerSkillFromTurn(tab: Tab): void {
+  const sites = [...tab.navSitesTurn].filter((s) => s !== "*");
+  const label = sites.length > 0 ? sites.join(", ") : "o site aberto";
+  const tokens = new Set<string>();
+  for (const s of sites) { tokens.add(s); for (const part of s.split(".")) if (part.length >= 4 && !["google", "com", "www", "app", "mail"].includes(part)) tokens.add(part); for (const t of navTabs) { let h = ""; try { h = new URL(t.url).hostname.toLowerCase(); } catch { continue; } if (h === s) for (const w of t.title.toLowerCase().split(/[^a-z0-9à-ú]+/)) if (w.length >= 5) tokens.add(w); } }
+  if (sites.some((s) => s.includes("google"))) tokens.add("gmail");
+  const skills = (objectiveState?.skills ?? []).filter((sk) => !sk.objective);
+  const matches = skills.filter((sk) => { const hay = `${sk.name} ${sk.description}`.toLowerCase(); return [...tokens].some((t) => hay.includes(t)); }).slice(0, 2);
+  const box = el("div", "notice skill-offer");
+  box.append(el("span", "", `O agente usou o Navegador em ${label}. Quer guardar o que ele aprendeu numa skill, para a próxima vez ir direto? `));
+  const row = el("div", "skill-offer-row");
+  const ask = (text: string): void => { box.remove(); void sendText(tab, text); };
+  for (const sk of matches) {
+    const b = el("button", "btn btn-ghost btn-small", `Atualizar «${sk.name}»`); b.type = "button";
+    b.addEventListener("click", () => ask(`Atualize a skill "${sk.name}" (o SKILL.md dela nesta máquina) com o que você aprendeu nesta conversa sobre ${label}: o caminho que funcionou passo a passo, o que falhou e por quê, urls, seletores e rótulos úteis. Acrescente numa seção "Diário" com a data de hoje; não repita o que já está lá e não apague nada. No fim, me diga em uma linha o que mudou.`));
+    row.append(b);
+  }
+  const create = el("button", "btn btn-primary btn-small", matches.length > 0 ? "Criar outra skill do zero" : "Criar uma skill do zero"); create.type = "button";
+  create.addEventListener("click", () => ask(`Crie uma skill nova em ~/.claude/skills/<nome-curto-em-kebab-case>/SKILL.md (frontmatter com name e description, como as outras skills desta máquina) com o que você aprendeu nesta conversa sobre ${label}: quando usar, o caminho que funcionou passo a passo, o que falhou e por quê, urls, seletores e rótulos úteis, e uma seção "Diário" com a data de hoje. Escolha o nome pelo site e pela tarefa. No fim, me diga o nome do arquivo e, em uma linha, o que ela ensina.`));
+  const no = el("button", "btn btn-ghost btn-small", "Agora não"); no.type = "button"; no.addEventListener("click", () => box.remove());
+  row.append(create, no);
+  box.append(row);
+  tab.messagesEl.appendChild(box);
+  scrollToBottom(tab, false);
+}
 function offerClaudeLogin(tab: Tab, text: string): void {
   if (!LOGGED_OUT_RE.test(text)) return;
   const box = el("div", "notice notice-warn");
@@ -3304,6 +3348,7 @@ window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
   if (tab === undefined) return;
   if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   tab.pendingText = "";
+  tab.navSitesTurn = new Set();
   tab.currentAssistant = startAssistantBubble(tab, conversationId);
   scrollToBottom(tab, false);
 });
@@ -3345,6 +3390,7 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
   }
   markUnread(tab);
   maybeNotify(tab, tab.pendingText);
+  if (tab.navSitesTurn.size > 0) { offerSkillFromTurn(tab); tab.navSitesTurn = new Set(); }
 });
 window.meuBot.on("chat:error", (e: ErrorEvent) => {
   const tab = tabs.get(e.conversationId);
@@ -4239,6 +4285,23 @@ function paintNavFavs(): void {
   }
   paintNavStar();
 }
+const navCurrentHost = (): string | null => { const c = navCurrent(); if (c === null || !/^https?:/.test(c.url)) return null; try { return new URL(c.url).hostname; } catch { return null; } };
+function paintNavBell(): void {
+  if (navEls === null) return;
+  const b = navEls.bar.querySelector<HTMLButtonElement>(".nav-bell"); if (b === null) return;
+  const host = navCurrentHost(); const pref = settings?.navNotify;
+  const on = host !== null && pref !== undefined && pref.enabled && navNotifyAllowed(pref.hosts, host);
+  b.hidden = host === null;
+  b.textContent = on ? "🔔" : "🔕";
+  b.classList.toggle("on", on);
+  b.title = host === null ? "" : on ? `Notificações de ${host} viram conversa com o agente. Clique para desligar neste site.` : `Clique para as notificações de ${host} virarem conversa com o agente (a ação está em Configurações › Notificações do Navegador).`;
+}
+async function navToggleBell(): Promise<void> {
+  const host = navCurrentHost(); const pref = settings?.navNotify; if (host === null || pref === undefined) return;
+  const on = !(pref.enabled && navNotifyAllowed(pref.hosts, host));
+  try { applySettings(await window.meuBot.setSettings({ navNotify: { enabled: on ? true : pref.enabled, hosts: toggleNotifyHost(pref.hosts, host, on) } })); paintNav(); paintGuide(); }
+  catch (err) { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Sino: ${ipcErrorText(err)}`; } }
+}
 function paintNavStar(): void {
   if (navEls === null) return;
   const cur = navCurrent();
@@ -4337,12 +4400,17 @@ function renderNavNotifyConfig(container: HTMLElement): void {
   if (pref === undefined) { box.append(el("p", "hint", "Carregando as configurações…")); container.append(box); return; }
   if (pref.enabled) box.append(el("p", "audio-ok", "✓ Ligado. Ajuste quando quiser em Configurações › Notificações do Navegador."));
   const inst = document.createElement("textarea"); inst.rows = 3; inst.maxLength = 2000; inst.className = "wa-list-input"; inst.value = pref.instruction; inst.placeholder = "O que o agente faz com cada notificação";
-  const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Só destes sites (vazio = todos): mail.google.com"; hosts.value = pref.hosts.join(", ");
+  const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Sites com o sino ligado (vazio = os sites fixos do espaço): mail.google.com"; hosts.value = pref.hosts.join(", ");
   const mode = document.createElement("select"); mode.className = "nav-url";
   for (const [v, l] of [["site", "uma conversa por site"], ["each", "uma conversa nova por notificação"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.mode === v; mode.append(o); }
   const row = el("div", "audio-row");
   const on = el("button", "btn btn-primary btn-small", pref.enabled ? "Salvar" : "Ligar com esta ação"); on.type = "button";
-  on.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: parseNotifyHosts(hosts.value), mode: mode.value === "each" ? "each" : "site" } }).then(applySettings).then(() => paintGuide()).catch((err: unknown) => { const t = active(); if (t !== null) addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); }); });
+  on.addEventListener("click", () => {
+    // Sem sites marcados, os sites fixos do espaço ativo ganham o sino (senão "ligado" não ligaria nada).
+    let list = parseNotifyHosts(hosts.value);
+    if (list.length === 0) { const src = navWs.lista.length > 0 ? navWs : (settings?.navEspacos ?? navWs); for (const s of src.lista.find((w) => w.id === src.ativo)?.servicos ?? []) { try { list = toggleNotifyHost(list, new URL(s.url).hostname, true); } catch { /* url estranha */ } } }
+    void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: list, mode: mode.value === "each" ? "each" : "site" } }).then(applySettings).then(() => { paintGuide(); paintNav(); }).catch((err: unknown) => { const t = active(); if (t !== null) addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); });
+  });
   row.append(on);
   if (pref.enabled) { const off = el("button", "btn btn-ghost btn-small", "Desligar"); off.type = "button"; off.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: false } }).then(applySettings).then(() => paintGuide()); }); row.append(off); }
   else { const skip = el("button", "btn btn-ghost btn-small", "Pular esta etapa (deixar desligado)"); skip.type = "button"; skip.addEventListener("click", () => { saveGuideFlag(NOTIFY_TUTORIAL, "notifySkipped"); paintGuide(); }); row.append(skip); }
@@ -4641,6 +4709,7 @@ function paintNav(): void {
   if (cur !== null && document.activeElement !== e.url) e.url.value = displayUrl(cur.url);
   { let h = ""; try { h = cur === null ? "" : new URL(cur.url).hostname; } catch { /* url em branco */ } if (h !== navActionsHost) paintNavActions(); }
   paintNavStar();
+  paintNavBell();
   e.back.disabled = cur === null || !cur.wv.canGoBack();
   e.fwd.disabled = cur === null || !cur.wv.canGoForward();
   e.loading.hidden = cur === null || !cur.loading;
@@ -4714,9 +4783,10 @@ async function openNavTab(url?: string): Promise<void> {
     const railBtn = el("button", "mini-btn nav-rail-toggle", "◧"); railBtn.type = "button";
     railBtn.addEventListener("click", () => { navRailShown = !navRailShown; try { localStorage.setItem("navRailShown", navRailShown ? "1" : "0"); } catch { /* opcional */ } paintNavRail(); });
     bar.prepend(railBtn);
-    const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button"; pin.title = "Fixar esta aba no espaço de trabalho (vira um site fixo do trilho)";
-    pin.addEventListener("click", () => { void navPinCurrent(); });
-    star.insertAdjacentElement("afterend", pin);
+    // Sino: as notificações deste site viram conversa com o agente? Liga/desliga por site (e liga a função).
+    const bell = el("button", "mini-btn nav-bell", "🔔"); bell.type = "button";
+    bell.addEventListener("click", () => { void navToggleBell(); });
+    star.insertAdjacentElement("afterend", bell);
     navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
@@ -4787,18 +4857,6 @@ function navServiceOpen(s: NavService): void {
 function navUpdateActive(fn: (w: NavWorkspace) => NavWorkspace): NavWorkspaces | null {
   const a = navActiveWs(); if (a === null) return null;
   return { ...navWs, lista: navWs.lista.map((w) => (w.id === a.id ? fn(w) : w)) };
-}
-/** A aba atual vira um site fixo do espaço ativo (nome = título, ícone = favicon). Sem espaço, abre o formulário. */
-async function navPinCurrent(): Promise<void> {
-  const cur = navCurrent(); if (cur === null || !/^https?:/.test(cur.url)) return;
-  if (navActiveWs() === null) { navRailForm = { kind: "espaco" }; paintNavRail(); return; }
-  if (cur.serviceId !== undefined) return;
-  const id = navId();
-  let nome = cur.title.trim(); try { if (nome === "") nome = new URL(cur.url).hostname; } catch { /* fica o título */ }
-  const next = navUpdateActive((w) => ({ ...w, servicos: [...w.servicos, { id, nome: nome.slice(0, 40), url: cur.url, icone: cur.favicon }] }));
-  if (next === null) return;
-  cur.serviceId = id;
-  await navSaveWs(next);
 }
 async function navAddService(nome: string, url: string): Promise<void> {
   const target = navNormalize(url); if (!/^https?:/.test(target)) { navRailMsg = "Endereço inválido."; paintNavRail(); return; }
@@ -5251,6 +5309,7 @@ function showTool(tab: Tab, tool: ToolEvent): string | null {
 window.meuBot.on("chat:tool", ({ conversationId, tool }) => {
   const tab = tabs.get(conversationId);
   const name = tab !== undefined ? showTool(tab, tool) : tool.name;
+  if (tab !== undefined && tool.kind === "use" && tool.name.startsWith("mcp__navegador__")) { for (const h of navHostsIn(tool.summary)) tab.navSitesTurn.add(h); if (tab.navSitesTurn.size === 0) tab.navSitesTurn.add(navCurrentHost() ?? "*"); }
   // "Deixar o agente navegar" só conclui com uma ação do Navegador que deu certo. A tentativa (o `use`) e o erro
   // com "agente pode usar" desligado não contam: antes, qualquer tentativa marcava o passo e o tutorial "concluía".
   if (tool.kind === "result" && tool.ok && name !== null && name.startsWith("mcp__navegador__") && !loadGuideFlags(NAV_TUTORIAL).navAgentUsed) { saveGuideFlag(NAV_TUTORIAL, "navAgentUsed"); paintGuide(); }

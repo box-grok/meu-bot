@@ -22,10 +22,14 @@ export function parsePageNotification(raw: unknown): PageNotification | null {
   return { title, body, icon: /^(https?:|data:image\/)/i.test(icon) ? icon : "", tag: str("tag", 120), url: /^https?:\/\//i.test(url) ? url : "", site };
 }
 
-/** Sem lista, todo site vale; com lista, o site ou um subdomínio dele. */
+/** Só os sites com o sino ligado (o host ou um subdomínio dele); lista vazia = nenhum. */
 export function navNotifyAllowed(hosts: readonly string[], site: string): boolean {
-  if (hosts.length === 0) return true;
   return hosts.some((h) => site === h || site.endsWith(`.${h}`));
+}
+/** Liga/desliga o sino de um site na lista (sem repetição; o host como a página informa). */
+export function toggleNotifyHost(hosts: readonly string[], site: string, on: boolean): string[] {
+  const s = site.toLowerCase();
+  return on ? (hosts.includes(s) ? [...hosts] : [...hosts, s]) : hosts.filter((h) => h !== s);
 }
 
 /** Título da conversa que trata o site (modo "site": uma por site; "each": uma por notificação). */

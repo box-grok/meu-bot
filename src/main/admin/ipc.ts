@@ -31,7 +31,7 @@ export function registerAdminIpc(): void {
     return new Promise<BotMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: BotMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      const menu = Menu.buildFromTemplate([{ label: "Copiar ID", click: () => pick("copy-ref") }]);
+      const menu = Menu.buildFromTemplate([{ label: "Copiar ID  ⓘ", click: () => pick("copy-ref") }]);
       // O callback de fechamento corre antes do click; o adiamento deixa o click vencer.
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });

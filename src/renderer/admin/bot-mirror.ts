@@ -4,6 +4,7 @@
  * transcrições do Claude Code na máquina dela (admin:bot-chats / admin:bot-thread), então não depende do app
  * dela estar aberto. Mesmo desenho das bolhas do WhatsApp (classes wa-*).
  */
+import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "../lib/info-balloon.js";
 import type { BotChat, BotMessage, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -84,7 +85,10 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     const ref = el("button", "btn btn-ghost btn-small", "Copiar ID"); ref.type = "button";
     ref.title = "Copia o caminho do .jsonl desta conversa na máquina dela";
     ref.addEventListener("click", () => deps.copyReference(botReferenceText(g.chat, deps.machine())));
-    head.append(ref, del);
+    // ⓘ ao lado: o que o ID é, num balão (a frase fica mais visível do que numa dica de mouse).
+    const info = el("button", "mini-btn info-btn", "ⓘ"); info.type = "button"; info.title = "O que é o ID?";
+    info.addEventListener("click", () => infoBalloon(ID_INFO_TITLE, ID_INFO_TEXT));
+    head.append(ref, info, del);
     const list = el("div", "wa-chat-msgs");
     if (!g.loaded) list.append(el("p", "hint", "Lendo a conversa na máquina…"));
     else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa: ${g.err}`));
@@ -143,7 +147,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
           const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações";
           menu.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            void deps.api.showBotMenu(c.sessionId).then((a) => { if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine())); });
+            void deps.api.showBotMenu(c.sessionId).then((a) => { if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine()));  });
           });
           item.append(el("span", "si-title", c.title));
           // Conversa fora do Claude Code (diário do backend): o provedor aparece como etiqueta, como "pausado" no WhatsApp.

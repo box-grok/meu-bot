@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NAV_NOTIFY_DEFAULT_INSTRUCTION, NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification } from "../../dist/renderer/lib/nav-notify.js";
+import { NAV_NOTIFY_DEFAULT_INSTRUCTION, NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost } from "../../dist/renderer/lib/nav-notify.js";
 
 const n = { title: "New message from Alice", body: "Your invoice is ready", icon: "https://x/i.png", tag: "t1", url: "https://mail.google.com/mail/u/0/#inbox", site: "mail.google.com" };
 
@@ -12,8 +12,11 @@ test("parsePageNotification: só campos esperados, texto normalizado, url/ícone
   assert.equal(parsePageNotification({ ...n, site: "MAIL.Google.com" }).site, "mail.google.com");
 });
 
-test("navNotifyAllowed: lista vazia aceita tudo; com lista, o host ou subdomínio", () => {
-  assert.equal(navNotifyAllowed([], "x.com"), true);
+test("navNotifyAllowed: só sites com o sino ligado (host ou subdomínio); vazio = nenhum", () => {
+  assert.equal(navNotifyAllowed([], "x.com"), false);
+  assert.deepEqual(toggleNotifyHost([], "Mail.Google.com", true), ["mail.google.com"]);
+  assert.deepEqual(toggleNotifyHost(["mail.google.com"], "mail.google.com", true), ["mail.google.com"]);
+  assert.deepEqual(toggleNotifyHost(["mail.google.com", "a.com"], "mail.google.com", false), ["a.com"]);
   assert.equal(navNotifyAllowed(["google.com"], "mail.google.com"), true);
   assert.equal(navNotifyAllowed(["mail.google.com"], "google.com"), false);
   assert.equal(navNotifyAllowed(["a.com"], "b.com"), false);

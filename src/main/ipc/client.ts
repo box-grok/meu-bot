@@ -397,7 +397,7 @@ export function registerClientIpc(): void {
         item("Renomear", "rename"),
         item("Duplicar", "duplicate", !busy),
         { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] },
-        item("Copiar ID", "copy-ref"),
+        item("Copiar ID  ⓘ", "copy-ref"),
         archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive", !busy),
         { type: "separator" },
         item("Fechar aba", "close"),

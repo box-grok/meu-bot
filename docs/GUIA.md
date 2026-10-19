@@ -1945,7 +1945,9 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   notificação) sem roubar a aba ativa → `sendText` com a instrução das Configurações + título/corpo/url →
   `ui:notify` (clique leva à conversa). A permissão do Chromium continua negada: só o substituto age.
 - **Configurações › "Notificações do Navegador"**: ligado/desligado, a instrução (padrão: traduzir e explicar para
-  leigo em até cinco linhas), só estes sites (vazio = todos) e o modo da conversa. `navNotify` no settings.json
+  leigo em até cinco linhas), os sites com o sino ligado (vazio = nenhum; o 🔔/🔕 na barra do Navegador liga e
+  desliga por site, e ligar no tutorial sem sites marca os fixos do espaço ativo) e o modo da conversa. O 📌 da
+  barra saiu (fixar é por "＋ Adicionar site", que já vem com a URL aberta). `navNotify` no settings.json
   (`normalizeNavNotify`, patch parcial). Puro e testado: `lib/nav-notify.ts`.
 - Pré-requisito: o site aberto numa aba do Navegador (a aba fica aberta enquanto a página Navegador existe).
 
@@ -1971,3 +1973,14 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - **Cuidados de volume** (`onPageNotification`): 10 s de aquecimento depois de a página carregar (sites que avisam
   o que já estava na caixa de entrada não disparam nada); `NavNotifyBudget` 3 por minuto por site, e o próximo
   aviso tratado diz quantas ficaram de fora; dedup de 60 s; só notificações novas, nunca o histórico.
+
+## Balão "guardar numa skill" depois de o agente navegar (19 out 2026)
+
+- Ao fim de um turno em que o agente usou ferramentas `mcp__navegador__*`, a conversa ganha um balão: "O agente
+  usou o Navegador em <sites>. Quer guardar o que ele aprendeu numa skill?" com "Atualizar «skill»" para cada
+  skill da máquina que combine (nome/descrição citam o host, um pedaço dele ou palavras do título da aba; até 2),
+  "Criar uma skill do zero" e "Agora não". Os botões mandam um pedido pronto na própria conversa: atualizar o
+  SKILL.md (seção "Diário" datada, sem apagar) ou criar `~/.claude/skills/<nome>/SKILL.md` com frontmatter.
+- Os sites vêm das urls nos resumos das ferramentas (`navHostsIn`) ou, sem url, do host da aba ativa
+  (`Tab.navSitesTurn`, zerado a cada turno). As skills vêm de `objectiveState.skills` (as da máquina, menos a do
+  objetivo).
