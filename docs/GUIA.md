@@ -1963,9 +1963,11 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   fecha as abas fixas dele e não apaga nada), lista dos sites fixos, "＋ Adicionar site"; 📌 na barra fixa a
   aba aberta. Abas fixas (`NavTab.serviceId`) nascem com o Navegador (`navMountWorkspace`), sem ✕ na tira; as de
   outros espaços ficam vivas (notificações) mas fora da tira (`navVisibleTabs`).
-- **Tutorial 11 · Notificações do Navegador (Pro)**, depois do 9: fixar o site; decidir a ação (a função nasce
+- **Tutorial 11 · Notificações do Navegador (Pro)**, visível sempre (sem `after`; o Pro é o passo 1): fixar o site; decidir a ação (a função nasce
   **desligada**; o passo liga com instrução/sites/modo ou "Pular esta etapa"); ver a conversa "🔔" aparecer
-  (automático quando ela existe, ou "Vi a conversa aparecer"). "Refazer do zero" desliga.
+  (automático quando ela existe, ou "Vi a conversa aparecer"; "Testar agora com o que está na caixa" manda o
+  agente abrir o site fixo no Navegador e aplicar a instrução só ao item não lido mais recente). "Refazer do
+  zero" desliga.
 - **Cuidados de volume** (`onPageNotification`): 10 s de aquecimento depois de a página carregar (sites que avisam
   o que já estava na caixa de entrada não disparam nada); `NavNotifyBudget` 3 por minuto por site, e o próximo
   aviso tratado diz quantas ficaram de fora; dedup de 60 s; só notificações novas, nunca o histórico.

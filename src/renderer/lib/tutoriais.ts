@@ -490,7 +490,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "notificacoes-navegador",
     number: 11,
     needs: ["navegador"],
-    after: "navegador",
+    // Sem `after`: não depende de o tutorial 9 estar concluído (o agente navegar não é pré-requisito); o Pro é o passo 1.
     title: "Notificações do Navegador (Pro)",
     short: "Notificações",
     summary: "Um site fixo no Navegador (o Gmail, por exemplo) avisa quando chega algo; o agente recebe o aviso numa conversa e faz o que você mandar: traduzir, explicar para leigo, resumir.",
@@ -498,6 +498,11 @@ export const TUTORIAIS: readonly Tutorial[] = [
     icon: "chat",
     reset: { what: "desliga as notificações do Navegador e esquece \"pulei\" e \"vi funcionando\" (os espaços de trabalho e as conversas ficam)" },
     steps: [
+      {
+        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "navegador-pro",
+        text: "As notificações são do Navegador, que é do plano Pro. Se já liberou o Navegador, este passo já está feito.",
+        done: (_st, _f, c) => c.navegador.access === "ok",
+      },
       {
         id: "fixar", title: "Fixar o site num espaço de trabalho", target: "none", body: "nav-ws",
         text: "No Navegador, crie um espaço de trabalho (um por cliente, por projeto, como preferir: o nome é seu) e fixe o site com 📌 ou \"＋ Adicionar site\". Site fixo fica aberto enquanto o Navegador existe; é assim que as notificações chegam.",

@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -12,7 +12,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification } from "./lib/nav-notify.js";
+import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, type PageNotification } from "./lib/nav-notify.js";
 import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -4354,7 +4354,13 @@ function renderNavNotifyTest(container: HTMLElement): void {
   const row = el("div", "audio-row");
   const convs = [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived);
   if (convs.length > 0) { const b = el("button", "btn btn-primary btn-small", `Abrir ${convs[0]!.title ?? "a conversa"}`); b.type = "button"; b.addEventListener("click", () => { void openFromIndex(convs[0]!.id); }); row.append(b, el("span", "audio-ok", `✓ ${convs.length} conversa${convs.length === 1 ? "" : "s"} de notificação`)); }
-  else row.append(el("span", "hint", settings?.navNotify.enabled === true ? "Aguardando a primeira notificação nova do site fixo…" : "A função está desligada: ligue no passo anterior ou marque como visto."));
+  else if (settings?.navNotify.enabled === true) {
+    // Caixa com item não lido e nada novo chegando: dá para testar agora, com o que já está lá (só o mais recente).
+    const test = el("button", "btn btn-primary btn-small", "Testar agora com o que está na caixa"); test.type = "button"; test.disabled = navServicosCount() === 0;
+    test.title = "O agente abre o site fixo no Navegador, lê só o item não lido mais recente e aplica a sua instrução; vira a conversa 🔔 do site";
+    test.addEventListener("click", () => { void navNotifyTestNow(); });
+    row.append(test, el("span", "hint", "ou espere a próxima notificação nova do site fixo"));
+  } else row.append(el("span", "hint", "A função está desligada: ligue no passo anterior ou marque como visto."));
   container.append(row);
 }
 /**
@@ -4371,6 +4377,23 @@ async function onPageNotification(tab: NavTab, raw: unknown): Promise<void> {
   if (tab.loadedAt !== undefined && Date.now() - tab.loadedAt < NAV_NOTIFY_WARMUP_MS) { console.info(`[navegador] notificação de ${n.site} ignorada: página acabou de carregar`); return; }
   const budget = navNotifyBudget.take(n.site);
   if (!budget.ok) { console.info(`[navegador] notificação de ${n.site} ignorada: mais de 3 por minuto`); return; }
+  await navNotifyHandle(n, pref, budget.skipped > 0 ? `\n\n(Outras ${budget.skipped} notificações deste site ficaram de fora no último minuto, por volume.)` : "");
+}
+/**
+ * Tutorial 11, passo "ver": testar agora com o que já está na caixa, sem esperar uma notificação nova. Vai pela
+ * mesma conversa "🔔 <site>", mas o pedido é explícito: o agente abre o site fixo no Navegador e aplica a instrução
+ * ao item não lido mais recente. Só este item: o histórico continua intocado.
+ */
+async function navNotifyTestNow(): Promise<void> {
+  const pref = settings?.navNotify; if (pref === undefined || !pref.enabled) return;
+  const a = navActiveWs(); const s = a?.servicos[0];
+  const url = s?.url ?? navCurrent()?.url ?? ""; if (!/^https?:/.test(url)) return;
+  let site = ""; try { site = new URL(url).hostname; } catch { return; }
+  if (!navAgent.on) void window.meuBot.browserAgent(true).then((st) => { navAgent = st; paintNav(); });
+  const n = { title: "Teste pedido no tutorial", body: "", icon: "", tag: `teste-${Date.now()}`, url, site };
+  await navNotifyHandle(n, pref, `\n\nEste é um teste que eu pedi no tutorial: abra ${url} no meu Navegador (a aba já está aberta e você pode usá-la), leia só o item não lido mais recente e aplique a instrução acima a ele. Não mexa nos outros.`);
+}
+async function navNotifyHandle(n: PageNotification, pref: NavNotifyPref, extra: string): Promise<void> {
   const title = navNotifyTitle(n, pref.mode);
   const prev = activeId;
   let chat: Tab | undefined;
@@ -4385,7 +4408,7 @@ async function onPageNotification(tab: NavTab, raw: unknown): Promise<void> {
     try { await window.meuBot.renameConversation(chat.id, title); } catch { /* o título fica só local até o próximo salvamento */ }
   }
   if (prev !== null && prev !== chat.id && tabs.has(prev)) activate(prev); // a pessoa continua onde estava
-  await sendText(chat, `${navNotifyMessage(pref.instruction, n)}${budget.skipped > 0 ? `\n\n(Outras ${budget.skipped} notificações deste site ficaram de fora no último minuto, por volume.)` : ""}`);
+  await sendText(chat, `${navNotifyMessage(pref.instruction, n)}${extra}`);
   void window.meuBot.notify(chat.id, `${n.site}: ${n.title || "notificação"}`, n.body);
   paintGuide(); // tutorial 11, passo 3: a conversa "🔔" existe
   console.info(`[navegador] notificação de ${n.site} → conversa "${title}"`);
