@@ -4827,10 +4827,15 @@ function paintNavRail(): void {
   const r = navEls.rail; r.replaceChildren();
   r.hidden = navAccess !== "ok" || !navRailShown;
   const toggle = navEls.bar.querySelector<HTMLButtonElement>(".nav-rail-toggle");
-  if (toggle !== null) { toggle.classList.toggle("on", navRailShown); toggle.title = navRailShown ? "Recolher os espaços de trabalho" : "Mostrar os espaços de trabalho"; toggle.hidden = navAccess !== "ok"; }
+  // Na barra, o ◧ só aparece com o trilho recolhido (para trazê-lo de volta); com ele à vista, o ◧ fica no título.
+  if (toggle !== null) { toggle.title = "Mostrar os espaços de trabalho"; toggle.hidden = navAccess !== "ok" || navRailShown; }
   if (r.hidden) return;
   const head = el("div", "nav-rail-head");
-  head.append(el("div", "nav-rail-title", "Espaços de trabalho"));
+  const titleRow = el("div", "nav-rail-row nav-rail-titlerow");
+  const collapse = el("button", "mini-btn nav-rail-collapse", "◧"); collapse.type = "button"; collapse.title = "Recolher os espaços de trabalho";
+  collapse.addEventListener("click", () => { navRailShown = false; try { localStorage.setItem("navRailShown", "0"); } catch { /* opcional */ } paintNavRail(); });
+  titleRow.append(el("div", "nav-rail-title", "Espaços de trabalho"), collapse);
+  head.append(titleRow);
   const sel = document.createElement("select"); sel.className = "nav-rail-select"; sel.title = "Espaço de trabalho (um cliente, um projeto, o que você quiser)";
   const ph = document.createElement("option"); ph.value = ""; ph.textContent = navWs.lista.length === 0 ? "Nenhum espaço ainda" : "Escolher espaço…"; ph.disabled = true; ph.selected = navWs.ativo === null; sel.append(ph);
   for (const w of navWs.lista) { if (w.oculto === true) continue; const o = document.createElement("option"); o.value = w.id; o.textContent = w.nome; o.selected = w.id === navWs.ativo; sel.append(o); }
