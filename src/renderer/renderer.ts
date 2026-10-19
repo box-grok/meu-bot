@@ -3595,6 +3595,8 @@ document.addEventListener("keydown", (ev) => {
   if (inTerm && ev.ctrlKey && !ev.metaKey) return;
   if (ev.metaKey && (ev.key === "j" || ev.key === "J")) { ev.preventDefault(); void openTerminalTab(ev.shiftKey ? "new" : "focus"); return; }
   const mod = ev.metaKey || ev.ctrlKey;
+  // Zoom da aba do Navegador também com o foco fora da página (barra de endereço, botões): Cmd+= / Cmd++ / Cmd+- / Cmd+0.
+  if (ev.metaKey && navPage !== null && pageShown(navPage) && ["=", "+", "-", "0"].includes(ev.key)) { ev.preventDefault(); navZoomStep(ev.key === "-" ? -1 : ev.key === "0" ? 0 : 1); return; }
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
@@ -4340,6 +4342,8 @@ let navActionsHost = "";
  * reescreve o documento no começo da carga e um CSS inserido no `did-navigate` se perde, enquanto a chave guardada
  * impediria a reinserção. Inserir duas vezes é inofensivo; por isso as chaves são lista e `mostrar` remove todas.
  */
+/** Uma aplicação de recortes por aba de cada vez: cliques rápidos (ocultar/mostrar/ocultar) não se atropelam. */
+const navCutChain = new WeakMap<NavTab, Promise<void>>();
 function applyRecortes(tab: NavTab, fresh = false): void {
   const list = recortesPara(tab.url);
   let touched = false;
@@ -4354,7 +4358,9 @@ function applyRecortes(tab: NavTab, fresh = false): void {
     }
     if (touched) navRefit(tab);
   };
-  void run();
+  // O estado desejado é lido na hora de rodar (recorteOculto), então a fila sempre termina no último clique.
+  const next = (navCutChain.get(tab) ?? Promise.resolve()).then(run, run);
+  navCutChain.set(tab, next);
 }
 /**
  * Notificações das páginas (do REA do Rambox): no mundo da página entra um substituto de `window.Notification`
@@ -4541,8 +4547,12 @@ function toggleRecorte(r: Recorte): void {
   navRecortes = { ...navRecortes, [r.id]: !recorteOculto(navRecortes, r) };
   try { localStorage.setItem("navRecortes", JSON.stringify(navRecortes)); } catch { /* opcional */ }
   for (const t of navTabs) applyRecortes(t);
-  navActionsHost = ""; paintNavActions();
-  cur?.wv.focus();
+  // Atualiza o próprio botão em vez de recriar a barra: recriar sob o mouse deixava a dica antiga presa na tela.
+  const hidden = recorteOculto(navRecortes, r);
+  const b = navEls?.actions.querySelector<HTMLButtonElement>(`.nav-cut[data-cut="${r.id}"]`);
+  if (b != null) { b.classList.toggle("off", hidden); b.title = recorteTitulo(r, hidden); b.setAttribute("aria-pressed", String(!hidden)); }
+  else { navActionsHost = ""; paintNavActions(); }
+  void cur;
 }
 /** Botões das extensões na barra (ícone da ação, como no Chrome/Rambox); clique abre o popup da extensão num webview pequeno. */
 /** Extensões fixadas na barra (como no Brave: por padrão todas ficam no 🧩); por máquina, neste Mac. */
@@ -4576,7 +4586,7 @@ function paintNavActions(): void {
   const cur = navCurrent();
   for (const r of cur === null ? [] : recortesPara(cur.url)) {
     const hidden = recorteOculto(navRecortes, r);
-    const b = el("button", `nav-action nav-cut${hidden ? " off" : ""}`, r.icone); b.type = "button"; b.title = recorteTitulo(r, hidden); b.setAttribute("aria-pressed", String(!hidden));
+    const b = el("button", `nav-action nav-cut${hidden ? " off" : ""}`, r.icone); b.type = "button"; b.title = recorteTitulo(r, hidden); b.setAttribute("aria-pressed", String(!hidden)); b.dataset["cut"] = r.id;
     b.addEventListener("click", () => toggleRecorte(r));
     e.actions.append(b);
   }

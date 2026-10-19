@@ -21,7 +21,7 @@ export interface Recorte {
 export const RECORTES: Recorte[] = [
   { id: "gmail-painel", hosts: ["mail.google.com"], titulo: "Painel lateral (pastas do Gmail / pipelines do Streak)", icone: "◧", css: ".bkL > .aqn{display:none!important}", padrao: true, resize: true },
   { id: "gmail-menu", hosts: ["mail.google.com"], titulo: "Menu lateral (Mail, Streak, Chat, Meet)", icone: "⋮", css: ".aeN.WR{display:none!important}", padrao: true, resize: true },
-  { id: "gmail-topo", hosts: ["mail.google.com"], titulo: "Barra superior (logo, busca, conta)", icone: "⬒", css: "header#gb{display:none!important}", padrao: true, resize: true },
+  { id: "gmail-topo", hosts: ["mail.google.com"], titulo: "Barra superior (logo, busca, conta)", icone: "⬒", css: "header#gb{display:none!important}.inboxsdk__custom_view_element{height:100vh!important}", padrao: true, resize: true },
   // Gemini (painel do Workspace à direita): ocupa uma coluna inteira e espreme a planilha do Streak. Oculto por padrão.
   { id: "gmail-gemini", hosts: ["mail.google.com"], titulo: "Painel do Gemini", icone: "✦", css: '.aUx:has([aria-label="Gemini"]){display:none!important}', padrao: true, resize: true },
   // Painel lateral direito (Agenda, Keep, Tarefas, Contatos e complementos, inclusive o do Streak). Visível por padrão.
