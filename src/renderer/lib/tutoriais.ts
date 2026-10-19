@@ -34,7 +34,7 @@ export interface GuideContext {
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
   /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
-  /** Tutorial 11 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
+  /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | null; info: CrmInfo | null };
 }
 export interface FallbackProvider { name: string; available: boolean }
@@ -67,25 +67,51 @@ export function fallbackOrderText(primary: string, chain: readonly FallbackProvi
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "chat" | "none";
 
 /** Quem o agente responde, como o guia e o modal oferecem (os mesmos dois cartões). */
-export interface ReplyOption { id: "self" | "open"; title: string; text: string; isDefault: boolean }
+export interface ReplyOption { id: "self" | "open" | "list"; title: string; text: string; isDefault: boolean }
 export const REPLY_OPTIONS: readonly ReplyOption[] = [
   { id: "self", title: "Desativado: só eu falo com o agente", text: "O agente só responde mensagens que você manda para si mesmo. Ninguém mais recebe resposta nem código de pareamento.", isDefault: true },
   { id: "open", title: "Responder todo mundo", text: "Logo depois do pareamento, o agente responde qualquer pessoa que mandar mensagem para este número.", isDefault: false },
+  { id: "list", title: "Só alguns contatos", text: "Você e os números que você listar. Quem não estiver na lista não recebe resposta nem código.", isDefault: false },
 ];
 export const REPLY_NOTE = "Para atender clientes, as respostas precisam estar ativas. Você pode testar só com você agora e ativar depois no canal WhatsApp.";
-/** A política gravada no OpenClaw → qual cartão está marcado (null = nenhum dos dois: pairing ou disabled). */
-export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"]): "self" | "open" | null {
-  return dmPolicy === "allowlist" ? "self" : dmPolicy === "open" ? "open" : null;
+/** Só dígitos de um número como o OpenClaw guarda ("+5511…", "5511…"). */
+const digitsOf = (n: string): string => n.replace(/\D/g, "");
+/** Números da allowlist além do dono (sem "*"): o que a pessoa listou. */
+export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null): string[] {
+  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self))];
+}
+/**
+ * A política gravada no OpenClaw → qual cartão está marcado (null = nenhum: pairing ou disabled). allowlist com
+ * alguém além do dono em allowFrom é "list"; só o dono (ou vazio) é "self".
+ */
+export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null): "self" | "open" | "list" | null {
+  if (dmPolicy === "open") return "open";
+  if (dmPolicy !== "allowlist") return null;
+  return listedNumbers(allowFrom, self).length > 0 ? "list" : "self";
+}
+/**
+ * Texto digitado → números para a lista (um por linha, vírgula ou ponto e vírgula). Sem "+", 10 ou 11 dígitos
+ * é número brasileiro com DDD e ganha o 55. `bad` são os que não viraram número (8 a 15 dígitos).
+ */
+export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
+  const ok: string[] = []; const bad: string[] = [];
+  for (const raw of text.split(/[\n,;]+/)) {
+    const item = raw.trim(); if (item === "") continue;
+    let d = digitsOf(item);
+    if (!item.startsWith("+") && (d.length === 10 || d.length === 11)) d = `55${d}`;
+    if (/^\d{8,15}$/.test(d)) { if (!ok.includes(d)) ok.push(d); } else bad.push(item);
+  }
+  return { ok, bad };
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; extSeen: boolean; crmSeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, extSeen: false, crmSeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "extSeen" | "crmSeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen";
 
 export interface GuideStep {
   id: string;
@@ -94,7 +120,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "navegador-ext" | "crm-pro" | "crm-install" | "crm-config" | "crm-test";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -373,6 +399,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     title: "Navegador do agente (Pro)",
     short: "Navegador",
     summary: "Um navegador dentro do meu-bot, com abas e cookies desta máquina. O agente da conversa pode abrir, ler e clicar por você, avisando antes.",
+    reset: { what: "esquece \"o agente navegou\" nesta máquina (o plano, a instalação e as abas continuam)" },
     minutes: 4,
     icon: "chat",
     steps: [
@@ -399,37 +426,9 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "navegador-extensoes",
+    id: "crm-whatsapp",
     number: 10,
     after: "navegador",
-    title: "Extensões no Navegador",
-    short: "Extensões",
-    summary: "Instale extensões do Chrome pela própria Web Store, dentro da aba. Exemplo: o Streak CRM no Gmail.",
-    minutes: 3,
-    icon: "chat",
-    steps: [
-      {
-        id: "loja", title: "Abrir a Chrome Web Store na aba", target: "none", body: "navegador-ext",
-        text: "No Navegador, 🧩 › \"Abrir a Chrome Web Store\". É a loja oficial, aberta dentro da aba; o botão \"Usar no Chrome\" instala aqui.",
-        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
-      },
-      {
-        id: "instalar", title: "Instalar uma extensão (ex.: Streak CRM for Gmail)", target: "none",
-        text: "Procure \"Streak CRM for Gmail\", abra a página dela e clique em \"Usar no Chrome\". Ela aparece no menu 🧩 e fica salva para esta máquina, com atualização automática.",
-        done: (_st, _f, c) => c.navegador.extensions > 0,
-      },
-      {
-        id: "usar", title: "Usar a extensão", target: "none",
-        text: "Abra o Gmail na aba e entre na sua conta do Google (o login fica guardado nesta máquina). O Streak aparece dentro da caixa de entrada: pipelines, boxes e contatos funcionam; o rastreio de e-mails por rede ainda não. Para sobrar tela, a barra tem os botões ◧ ⋮ ⬒ que ocultam o painel lateral, o menu Mail/Chat/Meet e a barra superior do Gmail (vêm ocultos; clique para mostrar de novo).",
-        done: (_st, f) => f.extSeen,
-        manual: { label: "Vi funcionando", flag: "extSeen" },
-      },
-    ],
-  },
-  {
-    id: "crm-whatsapp",
-    number: 11,
-    after: "navegador-extensoes",
     title: "CRM pelo WhatsApp (Pro)",
     short: "CRM",
     summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",

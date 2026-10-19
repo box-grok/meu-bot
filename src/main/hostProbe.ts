@@ -343,7 +343,7 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
 const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
 const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md"];
 const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "streak.mjs", "package.json", "openclaw.plugin.json"];
-/** Tutorial 11: instala o plugin meu-bot-crm + streak.mjs + skill na máquina (molde da guarda). */
+/** Tutorial 10: instala o plugin meu-bot-crm + streak.mjs + skill na máquina (molde da guarda). */
 export async function installCrm(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: false, log: ["o CRM pelo WhatsApp é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
   const lines: string[] = [];

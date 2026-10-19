@@ -172,13 +172,21 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const dm = kv.get("dmpolicy") ?? "";
   const dmPolicy: WhatsappDmPolicy | null = dm === "pairing" || dm === "allowlist" || dm === "open" || dm === "disabled" ? dm : dm === "" ? "pairing" : null; // sem valor autorado, o OpenClaw usa pairing
   let channelConfig: string | null = null;
-  try { const raw = kv.get("channel") ?? ""; if (raw !== "") channelConfig = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* sem bloco ainda */ }
+  let allowFrom: string[] | undefined;
+  try {
+    const raw = kv.get("channel") ?? "";
+    if (raw !== "") {
+      const parsed = JSON.parse(raw) as { allowFrom?: unknown };
+      channelConfig = JSON.stringify(parsed, null, 2);
+      if (Array.isArray(parsed.allowFrom)) allowFrom = parsed.allowFrom.filter((x): x is string => typeof x === "string");
+    }
+  } catch { /* sem bloco ainda */ }
   const voz = kv.get("voz");
   const audioOut: VoiceReplyMode | null = voz === "inbound" || voz === "always" ? voz : voz === undefined || voz === "" ? null : "off";
   const gwfix = kv.get("gwfix") ?? "";
   const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
   const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, audioIn: kv.get("audioin") === "1", audioOut, ...(repaired !== null ? { repaired } : {}) };
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", audioOut, ...(repaired !== null ? { repaired } : {}) };
 }
 
 /**
@@ -200,11 +208,23 @@ async function ownerLockFor(host: string): Promise<string> {
   return n === null ? "" : ` && ${ownerLockSh(n)}`;
 }
 
-export async function setDmPolicy(host: string, policy: WhatsappReplyChoice): Promise<WhatsappStatus> {
+export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, numbers: readonly string[] = []): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
-  const script = policy === "open"
-    ? `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${await ownerLockFor(host)}`
-    : `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
+  let script: string;
+  if (policy === "open") {
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${await ownerLockFor(host)}`;
+  } else if (policy === "list") {
+    // Você + os números escolhidos: allowlist com allowFrom explícito. O dono entra sempre (sem ele, a pessoa
+    // perdia o próprio agente); a trava de ferramentas continua só para o dono.
+    const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
+    if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
+    const self = await readSelfNumber(host);
+    const list = [...new Set([...(self === null ? [] : [self]), ...numbers])].map((n) => `+${n}`);
+    const allow = JSON.stringify(list).replace(/'/g, "");
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '${allow}' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${self === null ? "" : ` && ${ownerLockSh(self)}`}`;
+  } else {
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
+  }
   const r = await runSsh(host, `${script}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   log(`[whatsapp] ${host}: dmPolicy=${policy}`);

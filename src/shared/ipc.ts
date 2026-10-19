@@ -319,6 +319,8 @@ export interface WhatsappStatus {
   dmPolicy: WhatsappDmPolicy | null;
   /** OpenClaw: o bloco `channels.whatsapp` como está no openclaw.json (JSON), para "Ver configuração do canal". */
   channelConfig: string | null;
+  /** OpenClaw: `channels.whatsapp.allowFrom` como está ("+55…" ou "*"); ausente = Hermes ou bloco sem a lista. */
+  allowFrom?: string[];
   /** OpenClaw: o agente entende áudio (há transcritor em `tools.media.models`). Ausente = não se sabe (Hermes). */
   audioIn?: boolean;
   /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
@@ -470,7 +472,7 @@ export interface ObjectiveInfo {
   skills: MachineSkill[];
 }
 
-/** Tutorial 11 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
+/** Tutorial 10 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
 export interface CrmInfo {
   /** Janela de máquina por SSH (neste Mac não há agente). */
   available: boolean;
@@ -498,7 +500,8 @@ export interface WhatsappOrigin {
   messages?: WhatsappThreadMessage[];
 }
 /** O que o app oferece: "self" = só você (allowlist + selfChatMode); "open" = todo mundo (open + allowFrom *). */
-export type WhatsappReplyChoice = "self" | "open";
+/** Cartão escolhido: "self" = só você; "open" = todo mundo; "list" = você e os números listados (allowlist com allowFrom). */
+export type WhatsappReplyChoice = "self" | "open" | "list";
 
 /** Eventos do pareamento por QR. */
 export type WhatsappEvent =
@@ -752,7 +755,7 @@ export interface MainEvents {
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
   "navegador:progress": { line: string };
-  /** Instalação do CRM pelo WhatsApp (tutorial 11): uma linha de progresso. */
+  /** Instalação do CRM pelo WhatsApp (tutorial 10): uma linha de progresso. */
   "crm:progress": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
@@ -929,7 +932,7 @@ export interface MeuBotClientApi {
   installNavegador(): Promise<InstallBackendResult>;
   installGuarda(): Promise<InstallBackendResult>;
   uninstallGuarda(): Promise<InstallBackendResult>;
-  /** Tutorial 11 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
+  /** Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
   crmInfo(): Promise<CrmInfo>;
   installCrm(): Promise<InstallBackendResult>;
   setCrm(patch: { apiKey?: string; pipelineKey?: string | null; pipelineName?: string; silencioMin?: number; criarSemPerguntar?: boolean }): Promise<CrmInfo>;
@@ -954,8 +957,8 @@ export interface MeuBotClientApi {
   /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
   whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
   whatsappCancel(): Promise<void>;
-  /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo. Vale sem reiniciar o gateway. */
-  whatsappSetDmPolicy(policy: WhatsappReplyChoice): Promise<WhatsappStatus>;
+  /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo; "list" = você + `numbers` (só dígitos, com DDI). Vale sem reiniciar o gateway. */
+  whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */

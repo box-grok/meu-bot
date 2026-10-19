@@ -1,5 +1,5 @@
 /**
- * Tutorial 11 · CRM pelo WhatsApp (módulo Pro), parte pura: os scripts de shell que leem/gravam a configuração
+ * Tutorial 10 · CRM pelo WhatsApp (módulo Pro), parte pura: os scripts de shell que leem/gravam a configuração
  * na máquina (`~/.local/share/meu-bot/crm.json`, 0600, com a chave da API do Streak) e o parse do que volta.
  * Mesmo molde do objetivo-core.ts: patch em base64 pelo stdin, merge em python3, gravação atômica. Testado.
  */

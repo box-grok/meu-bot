@@ -162,7 +162,7 @@ export function registerClientIpc(): void {
   handleClient("browser:favorite-add", (event, payload: unknown) => { const p = payload as { titulo?: unknown; url?: unknown } | null; if (typeof p?.url !== "string") throw new Error("falta url"); return browserFavoriteAdd(ctxOf(event).host, { titulo: typeof p.titulo === "string" ? p.titulo : "", url: p.url }); });
   handleClient("browser:favorite-remove", (event, payload: unknown) => { const id = (payload as { id?: unknown } | null)?.id; if (typeof id !== "string" || id === "") throw new Error("falta id"); return browserFavoriteRemove(ctxOf(event).host, id); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
-  // Tutorial 11 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
+  // Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
   handleClient("crm:install", async (event) => { const h = ctxOf(event); const lic = await fetchLicense(h.host); if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED"); return installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); });
   handleClient("crm:set", (event, payload: unknown) => setCrm(ctxOf(event).host, payload));
@@ -230,9 +230,12 @@ export function registerClientIpc(): void {
   handleClient("whatsapp:dm-policy", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    const policy = (payload as { policy?: unknown } | null)?.policy;
-    if (policy !== "open" && policy !== "self") throw new Error("política inválida");
-    return setDmPolicy(h.host, policy);
+    const p = payload as { policy?: unknown; numbers?: unknown } | null;
+    const policy = p?.policy;
+    if (policy !== "open" && policy !== "self" && policy !== "list") throw new Error("política inválida");
+    const numbers = Array.isArray(p?.numbers) ? p.numbers.filter((n): n is string => typeof n === "string") : [];
+    if (policy === "list" && numbers.length === 0) throw new Error("a lista precisa de pelo menos um número");
+    return setDmPolicy(h.host, policy, numbers);
   });
   handleClient("whatsapp:branch", (event, payload: unknown) => {
     const h = hostFromEvent(event);

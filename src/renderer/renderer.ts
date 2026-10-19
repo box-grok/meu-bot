@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -12,7 +12,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
@@ -161,7 +161,19 @@ function addNotice(tab: Tab, text: string, kind: "info" | "error" | "warn" = "in
 function renderAssistant(target: HTMLElement, text: string): void {
   let body = target.querySelector<HTMLElement>(":scope > .md-body");
   if (body === null) { body = el("div", "md-body"); target.prepend(body); }
+  // Bolha à espera da primeira palavra: três pontinhos (como o "digitando…" do WhatsApp), não uma bolha vazia.
+  if (text === "" && target.classList.contains("typing")) { body.replaceChildren(el("span", "typing-dot"), el("span", "typing-dot"), el("span", "typing-dot")); return; }
+  target.classList.remove("typing");
   body.replaceChildren(renderMarkdown(text));
+}
+
+/** Bolha do assistente recém-aberta, antes de qualquer texto: nasce "digitando". */
+function startAssistantBubble(tab: Tab, conversationId: string): HTMLElement {
+  const node = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
+  node.classList.add("typing");
+  node.setAttribute("aria-label", "o assistente está respondendo");
+  renderAssistant(node, "");
+  return node;
 }
 
 function flushRender(tab: Tab): void {
@@ -1766,7 +1778,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       txt.append(el("p", "", step.text));
       if (step.body === "reply-choice" && st !== null) {
         const cards = el("div", "reply-cards guide-cards");
-        renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving || !st.connected, chooseReply);
+        renderReplyCards(cards, replyChoiceNow(st), waPolicySaving || !st.connected, chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
         renderChannelEditor(txt);
       } else if (step.body === "audio") {
@@ -1780,9 +1792,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       } else if (step.body === "navegador-install") {
         renderNavInstall(txt);
       } else if (step.body === "navegador-open") {
-        renderNavOpen(txt, false);
-      } else if (step.body === "navegador-ext") {
-        renderNavOpen(txt, true);
+        renderNavOpen(txt);
       } else if (step.body === "crm-pro") {
         renderCrmPro(txt);
       } else if (step.body === "crm-install") {
@@ -1902,7 +1912,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     manage.append(el("span", "tut-finished-line", "✓ Conectado. Ajuste aqui quando quiser."));
     manage.append(el("p", "hint strong-hint", "Quem o agente responde no WhatsApp"));
     const cards = el("div", "reply-cards guide-cards");
-    renderReplyCards(cards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
+    renderReplyCards(cards, replyChoiceNow(st), waPolicySaving, chooseReply);
     manage.append(cards);
     renderChannelEditor(manage);
     manage.append(el("p", "hint strong-hint", "Áudio no WhatsApp"));
@@ -1934,7 +1944,7 @@ function openGuide(t: Tutorial): void {
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
   if (t.id === "claude-login") void refreshClaudeLine();
   if (t.id === "guarda-whatsapp") void refreshGuarda();
-  if (t.id === "navegador" || t.id === "navegador-extensoes") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
+  if (t.id === "navegador") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
   if (t.id === "crm-whatsapp") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
   if (t.id === "xai-login") void refreshXaiLine();
   paintGuide();
@@ -2131,10 +2141,16 @@ function renderChannelEditor(host: HTMLElement): void {
 }
 /** Os dois cartões de rádio (só você / todo mundo), iguais no modal e no guia; o escolhido fica verde. */
 /** Cartão sendo gravado nesta hora (mostra o spinner e a seleção otimista); null = nenhum. */
-let waPolicyTarget: "self" | "open" | null = null;
-function renderReplyCards(container: HTMLElement, current: "self" | "open" | null, disabled: boolean, onChoose: (c: "self" | "open") => void): void {
+let waPolicyTarget: WhatsappReplyChoice | null = null;
+/** "Só alguns contatos": a lista está aberta para edição (o cartão foi clicado, ainda sem salvar), o rascunho e o último erro. */
+let waListEditing = false;
+let waListDraft: string | null = null;
+let waListError: string | null = null;
+/** O cartão marcado hoje, pelo que está gravado na máquina. */
+const replyChoiceNow = (st: WhatsappStatus): WhatsappReplyChoice | null => replyChoiceOf(st.dmPolicy, st.allowFrom, st.number);
+function renderReplyCards(container: HTMLElement, current: WhatsappReplyChoice | null, disabled: boolean, onChoose: (c: WhatsappReplyChoice) => void): void {
   container.replaceChildren();
-  const marked = waPolicyTarget ?? current; // otimista: enquanto grava, o cartão clicado já aparece marcado
+  const marked = waPolicyTarget ?? (waListEditing ? "list" : current); // otimista: enquanto grava, o cartão clicado já aparece marcado
   for (const o of REPLY_OPTIONS) {
     const saving = waPolicyTarget === o.id;
     const card = el("button", `reply-card${marked === o.id ? " on" : ""}${saving ? " saving" : ""}`);
@@ -2143,10 +2159,44 @@ function renderReplyCards(container: HTMLElement, current: "self" | "open" | nul
     if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
     if (saving) title.append(el("span", "reply-saving", "aplicando…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    if (o.id === "list" && current === "list" && waStatus !== null && !waListEditing) {
+      const nums = listedNumbers(waStatus.allowFrom, waStatus.number);
+      body.append(el("p", "reply-list-now", `Na lista: ${nums.map((n) => fmtPhone(n)).join(", ")}. Clique para mudar.`));
+    }
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
     card.addEventListener("click", () => onChoose(o.id));
     container.append(card);
+    // A lista editável fica fora do cartão (botão não pode conter campo de texto).
+    if (o.id === "list" && waListEditing) container.append(renderListEditor(disabled));
   }
+}
+/** Campo da lista: um número por linha; "Salvar lista" grava a allowlist (você entra sempre). */
+function renderListEditor(disabled: boolean): HTMLElement {
+  const box = el("div", "wa-list-editor");
+  const ta = document.createElement("textarea"); ta.className = "wa-list-input"; ta.rows = 3;
+  ta.placeholder = "Um número por linha, com DDD: 11 99999-9999 (o +55 entra sozinho) ou +1 212 555 0100";
+  ta.value = waListDraft ?? (waStatus === null ? "" : listedNumbers(waStatus.allowFrom, waStatus.number).map((n) => `+${n}`).join("\n"));
+  ta.disabled = disabled;
+  ta.addEventListener("input", () => { waListDraft = ta.value; waListError = null; });
+  const row = el("div", "wa-list-row");
+  const save = el("button", "btn btn-primary btn-small", waPolicySaving ? "Aplicando…" : "Salvar lista"); save.type = "button"; save.disabled = disabled;
+  save.addEventListener("click", () => { void saveReplyList(ta.value); });
+  const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button"; cancel.disabled = disabled;
+  cancel.addEventListener("click", () => { waListEditing = false; waListDraft = null; waListError = null; paintWhatsapp(); });
+  row.append(save, cancel);
+  box.append(ta, row, el("p", waListError === null ? "hint" : "hint bad-hint", waListError ?? "Você fica na lista sempre. Vale na hora, sem reiniciar nada."));
+  return box;
+}
+async function saveReplyList(text: string): Promise<void> {
+  if (waPolicySaving) return;
+  const { ok, bad } = parseWaNumbers(text);
+  if (bad.length > 0) { waListError = `não entendi: ${bad.join(", ")} (use só dígitos, com DDD; de fora do Brasil, comece com +)`; paintWhatsapp(); return; }
+  if (ok.length === 0) { waListError = "a lista está vazia; para só você falar com o agente, use o primeiro cartão"; paintWhatsapp(); return; }
+  for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
+  waPolicySaving = true; waPolicyTarget = "list"; waListError = null; paintWhatsapp();
+  try { waStatus = await window.meuBot.whatsappSetDmPolicy("list", ok); waListEditing = false; waListDraft = null; }
+  catch (err) { waListError = `✗ ${err instanceof Error ? err.message : String(err)}`; }
+  finally { waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); }
 }
 /** Quando o agente responde em áudio (os três cartões). */
 const VOICE_OPTIONS: readonly { id: VoiceReplyMode; title: string; text: string; isDefault: boolean }[] = [
@@ -2207,10 +2257,13 @@ async function runAudioSetup(setup: AudioSetup): Promise<void> {
     waAudioMsg = { text: ipcErrorText(err), bad: true };
   } finally { waAudioBusy = null; paintGuide(); }
 }
-function chooseReply(choice: "self" | "open"): void {
+function chooseReply(choice: WhatsappReplyChoice): void {
   if (waPolicySaving) return;
+  // "Só alguns contatos" abre a lista para a pessoa preencher; grava só no "Salvar lista".
+  if (choice === "list") { waListEditing = true; waListError = null; paintWhatsapp(); return; }
+  waListEditing = false; waListDraft = null; waListError = null;
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
-  if (replyChoiceOf(waStatus?.dmPolicy ?? null) === choice) { paintWhatsapp(); return; }
+  if (waStatus !== null && replyChoiceNow(waStatus) === choice) { paintWhatsapp(); return; }
   waPolicySaving = true; waPolicyTarget = choice; paintWhatsapp(); // seleção na hora + spinner no cartão
   void window.meuBot.whatsappSetDmPolicy(choice)
     .then((st) => { waStatus = st; })
@@ -2222,7 +2275,7 @@ function paintWaPolicy(): void {
   const show = st !== null && st.gateway === "openclaw" && st.ready && st.connected && st.dmPolicy !== null && !waPairing;
   waPolicyBox.hidden = !show;
   if (!show || st === null) return;
-  renderReplyCards(waPolicyCards, replyChoiceOf(st.dmPolicy), waPolicySaving, chooseReply);
+  renderReplyCards(waPolicyCards, replyChoiceNow(st), waPolicySaving, chooseReply);
   waPolicyEditor.replaceChildren(); renderChannelEditor(waPolicyEditor);
   waPolicyHint.textContent = waPolicySaving ? "Aplicando na máquina…"
     : st.dmPolicy === "pairing" ? "Hoje está no padrão do OpenClaw: quem manda mensagem recebe um código de pareamento e espera aprovação. Escolha uma das opções para mudar."
@@ -3214,16 +3267,14 @@ window.meuBot.on("chat:assistant-start", ({ conversationId }) => {
   if (tab === undefined) return;
   if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
   tab.pendingText = "";
-  tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
+  tab.currentAssistant = startAssistantBubble(tab, conversationId);
   scrollToBottom(tab, false);
 });
 window.meuBot.on("chat:delta", ({ conversationId, text }) => {
   const tab = tabs.get(conversationId);
   if (tab === undefined) return;
   if (sendPhase.get(tab.id) === "sending") setSendPhase(tab, "streaming");
-  if (tab.currentAssistant === null) {
-    tab.currentAssistant = appendMessage(tab, "assistant", "", index.get(conversationId)?.messages.length ?? 0);
-  }
+  if (tab.currentAssistant === null) tab.currentAssistant = startAssistantBubble(tab, conversationId);
   tab.pendingText += text;
   scheduleRender(tab);
   markUnread(tab);
@@ -3542,7 +3593,7 @@ const guideCtx = (): GuideContext => ({
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
   guarda: { installed: guardaState },
-  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
+  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), info: crmState },
 });
@@ -3703,15 +3754,15 @@ function renderNavPro(container: HTMLElement): void {
   box.append(row);
   container.append(box);
 }
-/** Tutorial 9, passo 3 e tutorial 10, passo 1: abrir a aba (e a Web Store). */
-function renderNavOpen(container: HTMLElement, webStore: boolean): void {
+/** Tutorial 9, passo 3: abrir a aba do Navegador. */
+function renderNavOpen(container: HTMLElement): void {
   const row = el("div", "audio-row");
-  const b = el("button", "btn btn-primary btn-small", webStore ? "Abrir a Chrome Web Store na aba" : navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
-  b.addEventListener("click", () => { void openNavTab(webStore ? NAV_WEB_STORE : undefined); });
+  const b = el("button", "btn btn-primary btn-small", navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
+  b.addEventListener("click", () => { void openNavTab(); });
   row.append(b);
   container.append(row);
 }
-// ---- Tutorial 11 · CRM pelo WhatsApp (Pro): estado na máquina, instalação, chave/pipeline/regras, teste.
+// ---- Tutorial 10 · CRM pelo WhatsApp (Pro): estado na máquina, instalação, chave/pipeline/regras, teste.
 let crmState: CrmInfo | null = null;
 let crmBusy = false;
 let crmLog: string[] = [];
@@ -4709,8 +4760,10 @@ function activityWrite(text: string): void {
 }
 const ANSI = { dim: "\u001b[2m", bold: "\u001b[1m", yellow: "\u001b[33m", cyan: "\u001b[36m", red: "\u001b[31m", green: "\u001b[32m", reset: "\u001b[0m" };
 /** Linha recolhível na conversa + eco na aba de atividade. */
-function showTool(tab: Tab, tool: ToolEvent): void {
+/** Desenha a linha da ferramenta; devolve o nome dela (no resultado sem nome, o da linha que ele fechou). */
+function showTool(tab: Tab, tool: ToolEvent): string | null {
   const host = tab.currentAssistant ?? tab.messagesEl;
+  let resolved: string | null = tool.name;
   if (tool.kind === "use") {
     const d = el("details", "tool-line");
     const s = el("summary"); s.append(el("span", "tool-name", tool.name === "Bash" ? "rodou" : tool.name), el("code", "", tool.summary || "(sem detalhes)"));
@@ -4723,16 +4776,21 @@ function showTool(tab: Tab, tool: ToolEvent): void {
     const lines = [...tab.messagesEl.querySelectorAll<HTMLDetailsElement>(".tool-line")];
     const target = [...lines].reverse().find((d) => !d.classList.contains("done") && (tool.name === null || d.dataset["tool"] === tool.name));
     if (target !== undefined) {
+      resolved = target.dataset["tool"] ?? tool.name;
       target.classList.add("done", tool.ok ? "ok" : "bad");
       if (tool.text.trim() !== "") target.append(el("pre", "tool-result", tool.text));
     }
     if (tool.text.trim() !== "") activityWrite(`${tool.ok ? "" : ANSI.red}${tool.text.replace(/\n/g, "\r\n")}${ANSI.reset}\r\n`);
   }
   scrollToBottom(tab, false);
+  return resolved;
 }
 window.meuBot.on("chat:tool", ({ conversationId, tool }) => {
-  const tab = tabs.get(conversationId); if (tab !== undefined) showTool(tab, tool);
-  if (tool.name !== null && tool.name.startsWith("mcp__navegador__") && !loadGuideFlags(NAV_TUTORIAL).navAgentUsed) { saveGuideFlag(NAV_TUTORIAL, "navAgentUsed"); paintGuide(); }
+  const tab = tabs.get(conversationId);
+  const name = tab !== undefined ? showTool(tab, tool) : tool.name;
+  // "Deixar o agente navegar" só conclui com uma ação do Navegador que deu certo. A tentativa (o `use`) e o erro
+  // com "agente pode usar" desligado não contam: antes, qualquer tentativa marcava o passo e o tutorial "concluía".
+  if (tool.kind === "result" && tool.ok && name !== null && name.startsWith("mcp__navegador__") && !loadGuideFlags(NAV_TUTORIAL).navAgentUsed) { saveGuideFlag(NAV_TUTORIAL, "navAgentUsed"); paintGuide(); }
 });
 
 function openSettings(): void {

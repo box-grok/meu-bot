@@ -1592,7 +1592,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   do dono no chat consigo mesmo é o caminho garantido. Sem box e sem pedido do dono, o job não cria nada (só
   marca `semBox`). App: `crm-core.ts` (puro: `parseCrmPatch`, `setCrmSh` em base64, `crmInfoSh`, `streakSh`
   diag/pipelines) + `crm.ts` (gate Pro via `fetchLicense`), IPC `crm:info|install|set|test|reset` + evento
-  `crm:progress`, `hostProbe.installCrm/uninstallCrm`, tutorial 11 `crm-whatsapp` (after `navegador-extensoes`,
+  `crm:progress`, `hostProbe.installCrm/uninstallCrm`, tutorial 11 `crm-whatsapp` (after `navegador`; o tutorial 10 de extensões foi removido em 19 out 2026,
   bodies crm-pro/crm-install/crm-config/crm-test, flag `crmSeen`), `proBlockText(a, view, "crm")`. Também
   corrigido: `licenca.js` faltava no `install.sh` e em `BUNDLE_FILES` (backend novo quebrava no require).
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
@@ -1864,3 +1864,31 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   aviso para "Reinstalar backend"); o node vem da unidade de usuário ou da de sistema. Porta do proxy: a que a
   unidade desta conta já usa, se ninguém de fora a ocupou (`ss -ltnp` só mostra processo dos sockets desta
   conta); senão a primeira livre a partir de 8645. `providers.json` aponta para essa porta.
+
+## WhatsApp: "Só alguns contatos" (18 out 2026)
+
+- Terceiro cartão em "Quem o agente responde": você + os números listados. É `dmPolicy allowlist` com `allowFrom`
+  explícito (o dono entra sempre, `selfChatMode true`, grupos desativados, trava de ferramentas só para o dono).
+  Os dois primeiros cartões continuam iguais. "Ajustar pelo chat" segue para o resto.
+- `replyChoiceOf(dmPolicy, allowFrom, self)`: allowlist com alguém além do dono marca "list"; só o dono (ou vazio,
+  ou "*") marca "self". `listedNumbers` e `parseWaNumbers` (puros, testados): um número por linha/vírgula; sem
+  "+" e com 10/11 dígitos ganha o 55. O estado traz `allowFrom` lido do `channels.whatsapp` da máquina.
+- Clicar no cartão abre o campo logo abaixo (fora do botão); grava só em "Salvar lista"
+  (`whatsapp:dm-policy` com `numbers`); o main valida 8 a 15 dígitos.
+
+## Tutorial do Navegador concluía sem o agente ter navegado (18 out 2026)
+
+- **Causa:** o passo "Deixar o agente navegar" marcava `navAgentUsed` em qualquer evento `chat:tool` cujo nome
+  começasse com `mcp__navegador__`, inclusive o `use` (a tentativa) e o resultado com erro ("o Navegador da
+  pessoa não está ligado para o agente"). Bastava o agente tentar com "agente pode usar" desligado e o
+  tutorial "concluía". E "Abrir o Navegador e entrar num site" contava uma aba vazia.
+- **Agora:** só um `result` com `ok` de ferramenta do Navegador marca o passo (`showTool` devolve o nome da
+  ferramenta, inclusive no resultado sem nome, pela linha que ele fechou); "entrar num site" conta só abas
+  com URL carregada. O tutorial ganhou "Refazer do zero" (só apaga a flag; plano, instalação e abas ficam),
+  para quem já estava marcado errado.
+
+## Tutorial 10 "Extensões no Navegador" removido (19 out 2026)
+
+- Só o tutorial saiu (bloco em `tutoriais.ts`, flag `extSeen`, corpo `navegador-ext`); o recurso de extensões
+  (🧩, Web Store na aba, `browser:extensions`) continua. O CRM passa a vir depois do Navegador (9) e vira o
+  10 (a trilha exige números contínuos 1..N).

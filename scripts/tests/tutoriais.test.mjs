@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -22,7 +22,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 });
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.deepEqual(TUTORIAIS.slice(0, 6).map((x) => x.id), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
@@ -33,7 +33,7 @@ test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
   assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador"]);
-  assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("navegador-extensoes"), "o 10 só depois do 9");
+  assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM) só depois do 9 (Navegador); o antigo 10 de extensões foi removido");
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
   assert.deepEqual(ids(), ids(() => false), "sem `finished`, nada da trilha destravado");
 });
@@ -135,11 +135,25 @@ test("título da aba do guia: progresso, e ✓ quando termina", () => {
 });
 
 test("cartões de quem responder: só você é o padrão; a política gravada marca o cartão certo", () => {
-  assert.deepEqual(REPLY_OPTIONS.map((o) => [o.id, o.isDefault]), [["self", true], ["open", false]]);
+  assert.deepEqual(REPLY_OPTIONS.map((o) => [o.id, o.isDefault]), [["self", true], ["open", false], ["list", false]]);
   assert.equal(replyChoiceOf("allowlist"), "self");
   assert.equal(replyChoiceOf("open"), "open");
   assert.equal(replyChoiceOf("pairing"), null);
   assert.equal(replyChoiceOf("disabled"), null);
+  // allowlist com alguém além do dono = "Só alguns contatos"; só o dono (ou vazio, ou "*") continua "self".
+  assert.equal(replyChoiceOf("allowlist", ["+5547999990000"], "5547999990000"), "self");
+  assert.equal(replyChoiceOf("allowlist", ["+5547999990000", "+5511988887777"], "5547999990000"), "list");
+  assert.equal(replyChoiceOf("allowlist", ["+5511988887777"], null), "list");
+  assert.equal(replyChoiceOf("allowlist", ["*"], null), "self");
+  assert.deepEqual(listedNumbers(["+5547999990000", "+5511988887777", "5511988887777", "*"], "5547999990000"), ["5511988887777"]);
+  assert.deepEqual(listedNumbers(undefined, null), []);
+});
+
+test("parseWaNumbers: um por linha ou vírgula; sem + e com 10/11 dígitos ganha o 55; lixo vai para bad", () => {
+  assert.deepEqual(parseWaNumbers("11 99999-9999\n+1 212 555 0100, (47) 3333-2222; +5547999990000\n\n"), { ok: ["5511999999999", "12125550100", "554733332222", "5547999990000"], bad: [] });
+  assert.deepEqual(parseWaNumbers("abc\n123\n+5511999999999"), { ok: ["5511999999999"], bad: ["abc", "123"] });
+  assert.deepEqual(parseWaNumbers("5511999999999\n+5511999999999"), { ok: ["5511999999999"], bad: [] }, "repetido entra uma vez");
+  assert.deepEqual(parseWaNumbers("  "), { ok: [], bad: [] });
 });
 
 test("guia é sequencial: marcações antigas não acendem passos à frente de um pendente", () => {
