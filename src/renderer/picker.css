@@ -118,3 +118,5 @@ body.arrive .row { animation: arrive-row .26s ease-out both; animation-delay: ca
 
 /* Selo de conta Pro no seletor. */
 .badge.pro { color: #fff; background: var(--accent); border-color: var(--accent); font-weight: 700; letter-spacing: .04em; }
+/* Dentro do nome da máquina, o selo respira: espaço do texto e alinhado ao meio da linha. */
+.name .badge.pro { margin-left: 8px; vertical-align: 2px; }

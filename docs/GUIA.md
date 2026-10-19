@@ -1892,3 +1892,25 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - Só o tutorial saiu (bloco em `tutoriais.ts`, flag `extSeen`, corpo `navegador-ext`); o recurso de extensões
   (🧩, Web Store na aba, `browser:extensions`) continua. O CRM passa a vir depois do Navegador (9) e vira o
   10 (a trilha exige números contínuos 1..N).
+
+## Tutoriais: "ainda não consultei" não é "não feito" (19 out 2026)
+
+- **Sintoma:** ao abrir a janela, a lista de Tutoriais e o selo da lateral nasciam com tudo "pendente" e mudavam
+  conforme as consultas à máquina chegavam (o selo "3" aparecia tarde; cartões concluídos iam para arquivados
+  depois). Causa: cada `done()` de passo devolve `false` para fonte `null`, e a lista tratava isso como pendente.
+- **Modelo:** cada tutorial declara `needs` (fontes do contexto: whatsapp, claude, statusline, xai, fallback,
+  support, objective, guarda, navegador, crm) e o contexto traz `known` por fonte (consulta respondeu, ou não se
+  aplica aqui: este Mac, sem o pacote, máquina sem OpenClaw; consulta que falhou continua desconhecida).
+  `tutorialState` é tri-valente: `done` / `todo` pelo estado real quando as fontes chegaram; antes, a lembrança
+  por máquina (`tutLembrado:<host>`, gravada sempre que as fontes estão completas); sem lembrança, `unknown`.
+- **UI:** `unknown` vira cartão "verificando a máquina…" (sem Começar, fora do selo e do "próximo"); o resumo
+  diz "verificando N na máquina…". Com lembrança, a lista nasce como ficou da última vez e só muda se a máquina
+  mudou. As consultas que a lista precisa (guarda, licença, Navegador, CRM) agora rodam na abertura, em
+  paralelo, e não só ao abrir cada guia. Puro e testado: `tutorialKnown`, `tutorialState`, `parseTutMemory`.
+
+## CRM: caminho real da chave da API do Streak (19 out 2026)
+
+- O passo 3 do tutorial 10 dizia "Streak › Configurações › Integrações (API)". Verificado ao vivo no Gmail da
+  `agente-box` (pelo agente com o Navegador) e na documentação do Streak: o botão do Streak na barra do Gmail abre
+  um menu com "Integrações e Automações" (irmão de "Configurações"), e a chave fica em "Integrações personalizadas
+  – Use nossa API" (criar/copiar). O texto do passo agora segue esses rótulos.

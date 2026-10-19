@@ -36,7 +36,16 @@ export interface GuideContext {
   objective: ObjectiveInfo | null;
   /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | null; info: CrmInfo | null };
+  /**
+   * Que fontes já foram consultadas nesta janela. "Ainda não consultei" não é "não feito": um tutorial cujas fontes
+   * não chegaram fica "verificando", fora da contagem e do selo, em vez de aparecer como pendente e sumir depois.
+   */
+  known: Record<GuideSource, boolean>;
 }
+/** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false });
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
@@ -48,6 +57,7 @@ export const emptyContext = (): GuideContext => ({
   fallback: { primary: null, chain: null },
   objective: null,
   crm: { access: null, info: null },
+  known: noneKnown(),
 });
 
 /** Modelos que entram na corrente de fallback (os outros respondem sozinhos, sem reserva). */
@@ -151,6 +161,8 @@ export interface Tutorial {
   needsXai?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
+  /** Fontes do contexto que os passos consultam; enquanto alguma não chegou, o tutorial está "verificando". */
+  needs: readonly GuideSource[];
   /** "Refazer do zero" (tutorial concluído): o que é desfeito na máquina antes de voltar ao passo 1. */
   reset?: { what: string };
   steps: GuideStep[];
@@ -190,6 +202,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "claude-login",
     number: 1,
+    needs: ["claude"],
     title: "Entrar no Claude Code",
     short: "Claude",
     summary: "O agente desta máquina responde pela sua conta do Claude. Entre nela, confira quem está logado e receba a primeira resposta.",
@@ -218,6 +231,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "whatsapp-openclaw",
     number: 2,
+    needs: ["whatsapp"],
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
     summary: "Conecte um número ao agente da máquina, decida quem ele responde, faça ele entender áudios e teste de verdade.",
@@ -229,6 +243,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "statusline",
     number: 3,
+    needs: ["statusline"],
     after: "claude-login",
     title: "Status line do Claude",
     short: "Status line",
@@ -263,6 +278,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "xai-login",
     number: 4,
+    needs: ["xai"],
     after: "claude-login",
     needsXai: true,
     title: "Entrar na xAI (Grok)",
@@ -292,6 +308,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "fallback-contas",
     number: 5,
+    needs: ["claude", "xai", "fallback"],
     after: "xai-login",
     needsXai: true,
     title: "Fallback: Claude e Grok",
@@ -322,6 +339,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "suporte",
     number: 6,
+    needs: ["support"],
     title: "Ligar o suporte",
     short: "Suporte",
     summary: "Deixe o admin do seu meu-bot ver a sua máquina e te ajudar. Você escolhe o que ele vê e acompanha tudo o que ele fizer; só o admin desliga.",
@@ -344,6 +362,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "whatsapp-objetivo",
     number: 7,
+    needs: ["objective"],
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
     summary: "Escolha um objetivo, diga quanta liberdade o agente tem e salve como skill no Acervo: o agente passa a trabalhar em cima disso.",
@@ -371,6 +390,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "guarda-whatsapp",
     number: 8,
+    needs: ["guarda"],
     after: "whatsapp-openclaw",
     title: "Guarda do WhatsApp",
     short: "Guarda",
@@ -395,6 +415,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "navegador",
     number: 9,
+    needs: ["navegador"],
     after: "claude-login",
     title: "Navegador do agente (Pro)",
     short: "Navegador",
@@ -428,6 +449,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     id: "crm-whatsapp",
     number: 10,
+    needs: ["crm"],
     after: "navegador",
     title: "CRM pelo WhatsApp (Pro)",
     short: "CRM",
@@ -447,7 +469,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "config", title: "Chave da API do Streak, pipeline e regras", target: "none", body: "crm-config",
-        text: "No Gmail, Streak › Configurações › Integrações (API) › copie a sua chave. Cole aqui: ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline e quanto tempo de silêncio na conversa dispara a anotação.",
+        text: "No Gmail, clique no botão do Streak na barra de cima › \"Integrações e Automações\" › \"Integrações personalizadas – Use nossa API\" › crie ou copie a sua chave. Cole aqui: ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline e quanto tempo de silêncio na conversa dispara a anotação.",
         done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.configured === true && c.crm.info.pipelineKey !== null,
       },
       {
@@ -501,6 +523,30 @@ export interface GuideView { done: boolean[]; current: number; finished: boolean
  * só conta como concluído se todos os anteriores também estão; assim uma marcação antiga ("testei") não
  * acende o passo 4 enquanto o número está desconectado.
  */
+/** Todas as fontes do tutorial já chegaram nesta janela? */
+export const tutorialKnown = (t: Tutorial, ctx: GuideContext): boolean => t.needs.every((s) => ctx.known[s]);
+export type TutorialState = "done" | "todo" | "unknown";
+/**
+ * Estado do tutorial para a lista e o selo: pelo estado real quando as fontes chegaram; antes disso, o que se lembra
+ * da última vez nesta máquina (`remembered`: concluído ou não); sem lembrança, "unknown" (verificando). "Em breve"
+ * nunca conta como feito.
+ */
+export function tutorialState(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext, remembered: boolean | null): TutorialState {
+  if (t.comingSoon === true) return "todo";
+  if (!tutorialKnown(t, ctx)) return remembered === null ? "unknown" : remembered ? "done" : "todo";
+  return guideView(t, status, flags, ctx).finished ? "done" : "todo";
+}
+/** Lembrança por máquina (`tutLembrado:<host>`): id → concluído na última vez em que as fontes chegaram. */
+export function parseTutMemory(json: string | null): Record<string, boolean> {
+  if (json === null || json === "") return {};
+  try {
+    const v = JSON.parse(json) as unknown;
+    if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
+    const out: Record<string, boolean> = {};
+    for (const [k, b] of Object.entries(v as Record<string, unknown>)) if (typeof b === "boolean" && /^[a-z0-9-]+$/.test(k)) out[k] = b;
+    return out;
+  } catch { return {}; }
+}
 export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext = emptyContext()): GuideView {
   const done: boolean[] = [];
   let chain = true;

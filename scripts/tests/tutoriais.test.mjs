@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -217,4 +217,26 @@ test("tutorial 7 · objetivo do WhatsApp: objetivo → nível → skill salva (t
   assert.equal(OBJECTIVE_OPTIONS.filter((o) => o.needsText).map((o) => o.id).join(), "outro");
   assert.deepEqual(LEVEL_OPTIONS.map((l) => l.id), ["conversa", "consulta", "age"]);
   assert.equal(LEVEL_OPTIONS.filter((l) => l.isDefault).length, 1);
+});
+
+test("fontes: todo tutorial declara de onde vêm os fatos; antes de chegarem, o estado é 'verificando' ou o lembrado", () => {
+  for (const x of TUTORIAIS) { assert.ok(x.needs.length > 0, `${x.id} sem needs`); for (const s of x.needs) assert.ok(GUIDE_SOURCES.includes(s), `${x.id}: fonte ${s}`); }
+  const nav = TUTORIAIS.find((x) => x.id === "navegador");
+  const ctx = emptyContext();
+  assert.equal(tutorialKnown(nav, ctx), false);
+  assert.equal(tutorialState(nav, null, emptyFlags(), ctx, null), "unknown");
+  assert.equal(tutorialState(nav, null, emptyFlags(), ctx, true), "done", "sem a fonte, vale a lembrança");
+  assert.equal(tutorialState(nav, null, emptyFlags(), ctx, false), "todo");
+  const known = { ...ctx, known: { ...ctx.known, navegador: true }, navegador: { access: "free", installed: null, tabs: 0, extensions: 0, agentOn: false } };
+  assert.equal(tutorialKnown(nav, known), true);
+  assert.equal(tutorialState(nav, null, emptyFlags(), known, true), "todo", "fonte chegou: o estado real vence a lembrança");
+  const soon = { ...nav, comingSoon: true };
+  assert.equal(tutorialState(soon, null, emptyFlags(), known, true), "todo");
+});
+
+test("parseTutMemory: só ids válidos com booleano; lixo vira vazio", () => {
+  assert.deepEqual(parseTutMemory('{"navegador":true,"statusline":false,"x y":true,"crm-whatsapp":"sim"}'), { navegador: true, statusline: false });
+  assert.deepEqual(parseTutMemory("nope"), {});
+  assert.deepEqual(parseTutMemory(null), {});
+  assert.deepEqual(parseTutMemory("[true]"), {});
 });

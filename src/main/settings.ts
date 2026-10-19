@@ -58,8 +58,6 @@ export const getContextBudget = (): number => file.contextBudgetTokens;
 export const getMemoryEveryTurns = (): number => file.memoryEveryTurns;
 export const getFontSize = (): number => file.fontSize;
 export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ enabled: file.quickEntryEnabled, shortcut: file.quickEntryShortcut });
-/** URL que o clique num ícone de extensão sem popup abre no Navegador; "" = desligado. */
-export const getNavShortcutUrl = (): string => file.navShortcutUrl;
 
 export const getWindowBounds = (host: string): WindowBounds | undefined => file.windowBounds[host];
 export function setWindowBounds(host: string, bounds: WindowBounds): void {
@@ -150,7 +148,6 @@ export const settingsView = (host?: string): SettingsView => ({
   memoryEveryTurns: file.memoryEveryTurns,
   quickEntryEnabled: file.quickEntryEnabled,
   quickEntryShortcut: file.quickEntryShortcut,
-  navShortcutUrl: file.navShortcutUrl,
   quickEntryStatus: quickEntryStatusProvider(),
   onboarding: file.onboarding,
   openDirect: file.openDirect,
@@ -201,11 +198,6 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     const acc = parseAccelerator(update.quickEntryShortcut);
     if (acc === null) throw new Error("Atalho inválido: use pelo menos um modificador (Cmd, Ctrl, Alt, Shift) e uma tecla.");
     file.quickEntryShortcut = acc;
-  }
-  if (update.navShortcutUrl !== undefined) {
-    const u = update.navShortcutUrl.trim();
-    if (u !== "" && !/^https?:\/\//i.test(u)) throw new Error("URL do atalho inválida: comece com http:// ou https://.");
-    file.navShortcutUrl = u;
   }
   if (update.onboarding !== undefined) {
     if (!isOnboarding(update.onboarding)) throw new Error("Estado de onboarding inválido.");

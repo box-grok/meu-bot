@@ -359,16 +359,6 @@
         </div>
         <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
       </details>
-      <details class="settings-group">
-        <summary>Navegador <span class="sum-hint">atalho ao clicar no ícone de uma extensão</span></summary>
-        <div class="row">
-          <label>
-            URL do atalho
-            <input id="nav-shortcut-url" type="text" autocomplete="off" placeholder="https://mail.google.com/..." />
-          </label>
-        </div>
-        <p class="hint">Quando preenchido, clicar no ícone de uma extensão na barra do Navegador abre esta URL numa aba (útil quando o popup da extensão não funciona). Vazio desliga.</p>
-      </details>
 
       <!-- Inicialização (do REA do Rambox): item de início do macOS; o sistema é a fonte da verdade. -->
       <details class="group" data-group="inicio">
@@ -406,6 +396,11 @@
       <details class="group" data-group="suporte" id="support-group" hidden>
         <summary>Suporte <span class="sum-hint" id="support-hint">ajuda de quem cuida do seu meu-bot</span></summary>
         <div id="support-body"></div>
+      </details>
+      <!-- Último grupo: a conta (plano, status, devices), só leitura; o renderer preenche e mostra em máquinas com backend. -->
+      <details class="group" data-group="conta" id="license-panel" hidden>
+        <summary>Sua conta <span class="sum-hint" id="license-sum">plano e devices</span></summary>
+        <div id="license-body"></div>
       </details>
 
       <p id="settings-error" class="error" hidden></p>

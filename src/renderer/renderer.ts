@@ -12,7 +12,7 @@ import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
-import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
@@ -84,7 +84,6 @@ const notasCount = $<HTMLSpanElement>("notas-count");
 const ctxLine = $<HTMLElement>("ctx-line");
 const quickEnabled = $<HTMLInputElement>("quick-enabled");
 const quickShortcut = $<HTMLInputElement>("quick-shortcut");
-const navShortcutInput = $<HTMLInputElement>("nav-shortcut-url");
 const quickStatus = $<HTMLSpanElement>("quick-status");
 const sidebarEl = $<HTMLElement>("sidebar");
 const sidebarBtn = $<HTMLButtonElement>("btn-sidebar");
@@ -958,7 +957,6 @@ function applySettings(view: SettingsView): void {
   memoryEveryInput.value = String(view.memoryEveryTurns);
   quickEnabled.checked = view.quickEntryEnabled;
   quickShortcut.value = view.quickEntryShortcut;
-  navShortcutInput.value = view.navShortcutUrl;
   openAtLoginInput.checked = view.openAtLogin;
   openAtLoginInput.disabled = !view.openAtLoginAvailable;
   openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
@@ -1578,7 +1576,23 @@ const tutArchivedEl = $<HTMLInputElement>("tut-archived");
 var tutorialsReady = true; // applySettings pode rodar antes deste trecho; var evita a zona morta do let
 try { tutArchivedEl.checked = localStorage.getItem("tutArchived") === "1"; } catch { /* opcional */ }
 const tourDone = (): boolean => settings?.onboarding === "done";
-const tutorialDone = (t: Tutorial): boolean => t.comingSoon !== true && guideView(t, waStatus, loadGuideFlags(t), guideCtx()).finished;
+/**
+ * Lembrança por máquina do que estava concluído da última vez em que as fontes chegaram: enquanto a janela ainda
+ * consulta a máquina, a lista e o selo nascem como ficaram, em vez de mostrar tudo pendente e corrigir depois.
+ */
+const tutMemoryKey = (): string => `tutLembrado:${windowHost}`;
+function loadTutMemory(): Record<string, boolean> { try { return parseTutMemory(localStorage.getItem(tutMemoryKey())); } catch { return {}; } }
+function rememberTutorials(states: Map<string, TutorialState>): void {
+  const mem = loadTutMemory(); let changed = false;
+  for (const t of TUTORIAIS) {
+    if (t.comingSoon === true || !tutorialKnown(t, guideCtx())) continue;
+    const done = states.get(t.id) === "done";
+    if (mem[t.id] !== done) { mem[t.id] = done; changed = true; }
+  }
+  if (changed) { try { localStorage.setItem(tutMemoryKey(), JSON.stringify(mem)); } catch { /* opcional */ } }
+}
+const tutState = (t: Tutorial): TutorialState => tutorialState(t, waStatus, loadGuideFlags(t), guideCtx(), loadTutMemory()[t.id] ?? null);
+const tutorialDone = (t: Tutorial): boolean => tutState(t) === "done";
 /** Os tutoriais desta janela agora (pacote de suporte e trilha: o 3 e o 4 só depois do 1 concluído). */
 const visibleNow = (): Tutorial[] => visibleTutorials(guideCtx(), tutorialDone);
 /**
@@ -1598,15 +1612,18 @@ function markTutSeen(ids: string[]): void {
 /** Ids que eram novidade quando Tutoriais abriu desta vez: ganham "Novo" no cartão enquanto a página está à vista. */
 let tutNovoLabels = new Set<string>();
 /** Contagem dos tutoriais: para fazer (inclui o tour), arquivados (concluídos), "em breve", total, novidades e o próximo. */
-function tutCounts(): { todo: number; archived: number; soon: number; total: number; novos: number; next: Tutorial | null } {
+function tutCounts(): { todo: number; archived: number; soon: number; checking: number; total: number; novos: number; next: Tutorial | null } {
   const all = visibleNow();
   const seen = loadTutSeen();
+  const states = new Map(all.map((t) => [t.id, tutState(t)] as const));
+  rememberTutorials(states);
   const soon = all.filter((t) => t.comingSoon === true).length;
-  const done = all.filter((t) => tutorialDone(t)).length;
-  const pending = all.filter((t) => t.comingSoon !== true && !tutorialDone(t));
+  const done = all.filter((t) => states.get(t.id) === "done").length;
+  const checking = all.filter((t) => states.get(t.id) === "unknown").length;
+  const pending = all.filter((t) => t.comingSoon !== true && states.get(t.id) === "todo");
   const todo = (tourDone() ? 0 : 1) + pending.length;
   const archived = (tourDone() ? 1 : 0) + done;
-  return { todo, archived, soon, total: todo + archived, novos: pending.filter((t) => !seen.has(t.id)).length, next: pending[0] ?? null };
+  return { todo, archived, soon, checking, total: todo + archived + checking, novos: pending.filter((t) => !seen.has(t.id)).length, next: pending[0] ?? null };
 }
 /** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral"; a novidade pulsa mesmo assim. */
 const tutBadgeEl = $<HTMLInputElement>("tut-badge");
@@ -2020,21 +2037,26 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   }
   for (const t of vis) {
     const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
-    const started = view.done.some(Boolean);
+    const state = tutState(t);
+    const known = tutorialKnown(t, guideCtx());
+    const started = known && view.done.some(Boolean);
     const soon = t.comingSoon === true;
-    const done = !soon && view.finished;
-    const next = tutNext && !nextMarked && !soon && !done && tourDone();
+    const done = !soon && state === "done";
+    // Fontes ainda a caminho e sem lembrança: o cartão espera, quieto, em vez de nascer "pendente" e mudar depois.
+    const checking = !soon && state === "unknown";
+    const next = tutNext && !nextMarked && !soon && !done && !checking && tourDone();
     if (next) nextMarked = true;
-    const novo = !done && tutNovoLabels.has(t.id);
-    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}`);
+    const novo = !done && !checking && tutNovoLabels.has(t.id);
+    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}${checking ? " checking" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
     const body = el("div", "tut-body");
     // "NOVO · SEU PRÓXIMO PASSO · TUTORIAL 3 · 2 DE 4 · 3 MIN": número sempre; progresso quando começou.
     const badge = done ? `Tutorial ${t.number} · Concluído`
+      : checking ? `Tutorial ${t.number} · verificando a máquina…`
       : [novo ? "Novo" : null, next ? "Seu próximo passo" : null, `Tutorial ${t.number}`, started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${t.minutes} min` : tutorialBadge(t, false)].filter((x): x is string => x !== null).join(" · ");
     body.append(el("span", "tut-badge", badge), el("h3", "", t.title), el("p", "", t.summary));
-    const start = el("button", soon ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
-    if (soon) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
+    const start = el("button", soon || checking ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : checking ? "Aguarde…" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
+    if (soon || checking) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
     const head = el("div", "tut-head"); head.append(icon, body, start);
     card.append(head);
     // Concluído: "Refazer do zero" desfaz na máquina o que o tutorial fez e volta ao passo 1 (dois cliques).
@@ -2056,6 +2078,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     ...(c.next !== null ? [`próximo: ${c.next.number} · ${c.next.short}`] : []),
     ...(c.novos > 0 ? [`${c.novos} ${c.novos === 1 ? "novo" : "novos"}`] : []),
     ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
+    ...(c.checking > 0 ? [`verificando ${c.checking} na máquina…`] : []),
   ].join(" · ");
   paintTutCount();
   if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
@@ -3596,6 +3619,23 @@ const guideCtx = (): GuideContext => ({
   navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up" },
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), info: crmState },
+  // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
+  // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
+  known: (() => {
+    const remote = caps.install && windowHost !== "" && windowHost !== "local";
+    return {
+      whatsapp: waStatus !== null,
+      claude: clAuth !== null,
+      statusline: statusLineState !== null || !caps.install || windowHost === "",
+      xai: !remote || xaiAuth !== null || xaiKey !== null,
+      fallback: account !== null,
+      support: supportState !== null || !caps.supportClient || windowHost === "" || windowHost === "local",
+      objective: objectiveState !== null || !remote,
+      guarda: guardaState !== null || !remote || (waStatus !== null && waStatus.gateway !== "openclaw"),
+      navegador: navLicenseAsked && (navInstState !== null || !remote),
+      crm: navLicenseAsked && (crmState !== null || !remote),
+    };
+  })(),
 });
 
 /** Tutorial 7, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
@@ -4187,6 +4227,31 @@ function applyRecortes(tab: NavTab, fresh = false): void {
   void run();
 }
 /**
+ * Chrome Web Store dentro da aba: a loja vê que o navegador não é o Chrome (as marcas do client hint do Electron não
+ * têm "Google Chrome"; o User-Agent não resolve) e abre "Mudar para o Chrome?" a cada visita. Aqui a loja É o
+ * lugar certo (electron-chrome-web-store instala por "Usar no Chrome"), então o aviso só atrapalha: um vigia no
+ * documento clica "Agora não" (a loja guarda a escolha) ou, sem botão, tira o diálogo. Idempotente por documento.
+ */
+const NAV_STORE_HOST = "chromewebstore.google.com";
+const NAV_STORE_JS = `(() => {
+  if (window.__meuBotStore) return; window.__meuBotStore = true;
+  const RE = /mudar para o chrome|switch to chrome|cambiar a chrome|passer a chrome|zu chrome wechseln/i;
+  const sweep = () => {
+    for (const d of document.querySelectorAll('[role="dialog"], [role="alertdialog"], dialog')) {
+      if (!RE.test(d.textContent || '')) continue;
+      const no = [...d.querySelectorAll('button, [role="button"]')].find((b) => /agora não|not now|ahora no|plus tard|nicht jetzt/i.test(b.textContent || ''));
+      if (no) no.click(); else d.remove();
+    }
+  };
+  sweep();
+  new MutationObserver(sweep).observe(document.documentElement, { childList: true, subtree: true });
+})(); undefined`;
+function navStoreTweaks(tab: NavTab): void {
+  let host = ""; try { host = new URL(tab.url).hostname; } catch { return; }
+  if (host !== NAV_STORE_HOST) return;
+  try { void tab.wv.executeJavaScript(NAV_STORE_JS).catch(() => undefined); } catch { /* webview ainda não anexado */ }
+}
+/**
  * Pede à página que refaça o layout: sites como o Gmail medem a janela por JS e, se a medida aconteceu com a aba
  * escondida (display:none) ou com o documento rolado, a parte de baixo some (planilha do Streak cortada). Zera a
  * rolagem do documento e dispara `resize`; chamado ao mostrar a aba, ao mudar o tamanho da área e nos recortes.
@@ -4214,13 +4279,11 @@ function paintNavActions(): void {
   if (navEls === null) return;
   const e = navEls;
   e.actions.replaceChildren();
-  // Ícone de ação de cada extensão na barra. Clique: se há URL de atalho nas Configurações, abre ela; senão, popup.
+  // Ícone de ação de cada extensão na barra. Clique abre o popup da extensão.
   for (const x of navExtensions) {
     const b = el("button", `nav-action${navPopupFor === x.id ? " on" : ""}`); b.type = "button"; b.title = x.name;
     if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = x.name; b.append(img); } else b.textContent = x.name.slice(0, 1);
     b.addEventListener("click", () => {
-      const shortcut = settings?.navShortcutUrl ?? "";
-      if (shortcut !== "") { const c = navCurrent(); if (c === null) navNewTab(shortcut); else void c.wv.loadURL(shortcut); return; }
       if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
       navOpenPopup(x.id, x.popup, b);
     });
@@ -4246,10 +4309,35 @@ function navOpenPopup(id: string, url: string, anchor: HTMLElement): void {
   navEls.popup.replaceChildren(wv);
   const r = anchor.getBoundingClientRect(); const bar = navEls.bar.getBoundingClientRect();
   navEls.popup.style.right = `${Math.max(8, bar.right - r.right)}px`;
+  navEls.popup.style.width = ""; navEls.popup.style.height = "";
   navEls.popup.hidden = false;
   navPopupFor = id;
+  // Como no Chrome, o popup tem o tamanho do próprio documento (até 800×600): mede a página depois de carregar e
+  // mais algumas vezes (as extensões montam o conteúdo por JS). A altura vem do fim do último elemento do body,
+  // não só do scrollHeight: um body com height:100% devolveria sempre a caixa atual e o popup nunca encolheria.
+  const fit = async (): Promise<void> => {
+    if (navPopupFor !== id || navEls === null) return;
+    try {
+      const [w, h] = await wv.executeJavaScript(NAV_POPUP_MEASURE_JS) as [number, number];
+      if (navPopupFor !== id || !Number.isFinite(w) || !Number.isFinite(h)) return;
+      const maxH = Math.min(600, Math.floor(window.innerHeight * 0.8));
+      navEls.popup.style.width = `${Math.min(800, Math.max(200, Math.ceil(w)))}px`;
+      navEls.popup.style.height = `${Math.min(maxH, Math.max(60, Math.ceil(h)))}px`;
+    } catch { /* documento trocou ou webview fechou */ }
+  };
+  const fitSoon = (): void => { for (const ms of [0, 150, 500, 1500]) setTimeout(() => { void fit(); }, ms); };
+  wv.addEventListener("dom-ready", fitSoon);
+  wv.addEventListener("did-finish-load", fitSoon);
   paintNavActions();
 }
+const NAV_POPUP_MEASURE_JS = `(() => {
+  const d = document.documentElement, b = document.body;
+  if (!b) return [d.scrollWidth, d.scrollHeight];
+  const cs = getComputedStyle(b);
+  const bottom = Math.max(0, ...[...b.children].map((e) => e.getBoundingClientRect().bottom)) + window.scrollY + (parseFloat(cs.paddingBottom) || 0) + (parseFloat(cs.marginBottom) || 0);
+  const h = bottom > 0 ? Math.min(d.scrollHeight, Math.ceil(bottom)) : d.scrollHeight;
+  return [Math.max(d.scrollWidth, b.scrollWidth), h];
+})()`;
 function navClosePopup(): void {
   if (navEls === null) return;
   navEls.popup.hidden = true; navEls.popup.replaceChildren(); navPopupFor = null;
@@ -4295,12 +4383,12 @@ function navNewTab(url: string = NAV_HOME, activate = true): NavTab | null {
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
-  wv.addEventListener("did-finish-load", () => applyRecortes(tab, true));
+  wv.addEventListener("did-finish-load", () => { applyRecortes(tab, true); navStoreTweaks(tab); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
   wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
-  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
+  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); navStoreTweaks(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
   wv.setAttribute("src", url);
   navEls.box.append(wv);
   navTabs.push(tab);
@@ -4907,24 +4995,26 @@ const alertEmail = $<HTMLInputElement>("alert-email");
 const alertsHint = $<HTMLElement>("alerts-hint");
 let alertPrefsLoaded: { whatsapp: boolean; email: string } | null = null;
 /**
- * Painel "Conta" (lado da pessoa): plano, status, membro desde, ciclo e os devices da conta, só leitura, como as
- * telas de billing do Rambox. Quem muda isso é o admin (pela página Suporte). Montado dinâmico antes dos avisos.
+ * Grupo "Sua conta" (lado da pessoa), o último das Configurações e recolhido como os outros: plano, status, membro
+ * desde, ciclo e os devices da conta, só leitura, como as telas de billing do Rambox. Quem muda isso é o admin
+ * (pela página Suporte). O grupo é fixo no HTML; aqui só o corpo e o resumo da linha do título.
  */
+const licensePanel = $<HTMLDetailsElement>("license-panel");
+const licenseBody = $<HTMLElement>("license-body");
+const licenseSum = $<HTMLElement>("license-sum");
 async function loadLicensePanel(): Promise<void> {
-  if (!caps.chat || windowHost === "local") return;
-  let box = document.getElementById("license-panel");
-  if (box === null) { box = el("div", "settings-group"); box.id = "license-panel"; alertsGroup.parentElement?.insertBefore(box, alertsGroup); }
-  box.replaceChildren(el("p", "hint strong-hint", "Sua conta"));
+  if (!caps.chat || windowHost === "local") { licensePanel.hidden = true; return; }
+  licensePanel.hidden = false;
   const view = await refreshLicense();
-  if (view === null) { box.append(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
+  if (view === null) { licenseSum.textContent = "plano e devices"; licenseBody.replaceChildren(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
+  const l = view.license;
+  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
   const ul = el("ul", "admin-health");
-  for (const l of licenseSummary(view)) ul.append(el("li", l.ok === null ? "" : l.ok ? "ok" : "bad", l.text));
-  box.append(ul);
-  box.append(el("p", "hint strong-hint", "Seus devices"));
+  for (const line of licenseSummary(view)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
   const devs = el("ul", "admin-health");
   for (const d of view.devices) { const dl = deviceLine(d); devs.append(el("li", d.status === "pending" ? "bad" : "ok", d.status === "pending" ? `${dl.text} · pedido enviado ao admin` : dl.text)); }
   if (view.devices.length === 0) devs.append(el("li", "", "Nenhum device ainda."));
-  box.append(devs);
+  licenseBody.replaceChildren(ul, el("p", "hint strong-hint", "Seus devices"), devs);
 }
 async function loadAlertPrefs(): Promise<void> {
   void loadLicensePanel();
@@ -4981,7 +5071,6 @@ form.addEventListener("submit", (ev) => {
     ...(Number.isInteger(every) ? { memoryEveryTurns: every } : {}),
     quickEntryEnabled: quickEnabled.checked,
     ...(quickShortcut.value.trim() === "" ? {} : { quickEntryShortcut: quickShortcut.value.trim() }),
-    navShortcutUrl: navShortcutInput.value.trim(),
     ...(openAtLoginInput.disabled ? {} : { openAtLogin: openAtLoginInput.checked }),
   };
   void saveAlertPrefs();
@@ -5047,6 +5136,12 @@ void (async () => {
   void refreshObjective();
   void refreshClaudeLine();
   void refreshXaiLine();
+  // O que a lista de Tutoriais e o selo precisam saber vem todo na abertura, em paralelo: guarda, licença (Pro),
+  // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
+  void refreshGuarda();
+  void refreshLicense().then(() => paintGuide());
+  void refreshNavInst();
+  void refreshCrm();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
   renderSidebar();
