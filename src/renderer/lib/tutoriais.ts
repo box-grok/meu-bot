@@ -447,7 +447,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "agente", title: "Deixar o agente navegar", target: "chat",
-        text: "Na barra do Navegador, ligue \"agente: pode usar\". Depois vá para a conversa e peça algo como \"abra o site example.com e me diga o título\": cada ação aparece na conversa com 🌐.",
+        text: "Na barra do Navegador, clique no 🤖 para ligar (ele acende quando o agente pode usar). Depois vá para a conversa e peça algo como \"abra o site example.com e me diga o título\": cada ação aparece na conversa com 🌐.",
         done: (_st, f, c) => c.navegador.access === "ok" && f.navAgentUsed,
       },
     ],

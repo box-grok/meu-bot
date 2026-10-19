@@ -4749,7 +4749,10 @@ function paintNav(): void {
   const a = navAgent;
   e.agent.classList.toggle("on", a.on);
   e.agent.disabled = navAgentBusy;
-  e.agent.textContent = !a.on ? "🤖 agente: desligado" : a.state === "up" ? "🤖 agente: pode usar" : a.state === "connecting" ? "🤖 agente: conectando…" : "🤖 agente: sem túnel";
+  // Só o robô: o estado vem da cor (aceso = pode usar) e o texto fica na dica.
+  e.agent.textContent = "🤖";
+  e.agent.classList.toggle("wait", a.on && a.state !== "up");
+  e.agent.setAttribute("aria-label", !a.on ? "agente: desligado" : a.state === "up" ? "agente: pode usar" : a.state === "connecting" ? "agente: conectando" : "agente: sem túnel");
   e.agent.title = a.on ? `O agente da conversa pode abrir, ler e clicar nestas abas (túnel ${a.state === "up" ? `ativo, porta ${a.port}` : a.state}). Clique para desligar.` : "Deixar o agente da conversa usar este navegador (ele avisa antes de agir e não compra/envia nada sem você confirmar). Clique para ligar.";
   paintNavRail();
   if (navPage.tabEl !== null) { const title = navPage.tabEl.querySelector(".tab-title"); if (title !== null) title.textContent = `Navegador${navTabs.length > 1 ? ` (${navTabs.length})` : ""}`; }
@@ -4795,7 +4798,7 @@ async function openNavTab(url?: string): Promise<void> {
     const ext = el("button", "mini-btn nav-ext-btn", "🧩"); ext.type = "button"; ext.title = "Gerenciar extensões";
     const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
     const menu = el("div", "nav-menu"); menu.hidden = true;
-    const agent = el("button", "btn btn-ghost btn-small nav-agent", "🤖 agente: desligado"); agent.type = "button";
+    const agent = el("button", "mini-btn nav-agent", "🤖"); agent.type = "button";
     const star = el("button", "mini-btn nav-star", "☆"); star.type = "button"; star.title = "Guardar esta página nos favoritos";
     const favs = el("div", "nav-favs"); favs.hidden = true;
     const actions = el("div", "nav-actions");

@@ -708,6 +708,9 @@ body.topbar-hidden .topbar { display: none; }
 .nav-rail-add { align-self: flex-start; }
 .nav-bell.on { color: var(--accent); }
 .nav-pin { opacity: .45; filter: grayscale(1); }
+.nav-bar .nav-agent { font-size: 15px; opacity: .45; filter: grayscale(1); border-radius: 8px; }
+.nav-bar .nav-agent.on { opacity: 1; filter: none; box-shadow: 0 0 0 1px var(--ok) inset; }
+.nav-bar .nav-agent.on.wait { box-shadow: 0 0 0 1px var(--warn) inset; }
 .nav-ext-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font: inherit; font-size: 13px; text-align: left; padding: 4px 6px; border: none; border-radius: 6px; background: transparent; color: var(--fg); cursor: pointer; }
 .nav-ext-open:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .nav-ext-icon { width: 16px; height: 16px; border-radius: 3px; flex: none; }
