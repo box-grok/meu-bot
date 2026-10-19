@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { RECORTES, recortesPara, recorteOculto, parseRecortesPref, recorteTitulo } from "../../dist/renderer/lib/recortes.js";
 
 test("recortesPara: só o host exato do site", () => {
-  assert.equal(recortesPara("https://mail.google.com/mail/u/0/#inbox").length, 3);
+  assert.deepEqual(recortesPara("https://mail.google.com/mail/u/0/#inbox").map((r) => r.id), ["gmail-painel", "gmail-menu", "gmail-topo", "gmail-gemini", "gmail-lateral"]);
   assert.deepEqual(recortesPara("https://docs.google.com/"), []);
   assert.deepEqual(recortesPara("não é url"), []);
   assert.deepEqual(recortesPara("https://evil.mail.google.com.example/"), []);

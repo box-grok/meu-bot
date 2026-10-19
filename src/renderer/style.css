@@ -719,6 +719,9 @@ body.topbar-hidden .topbar { display: none; }
 .nav-ext-pin.on { opacity: 1; filter: none; }
 .nav-pin.on { opacity: 1; filter: none; }
 .nav-pin[hidden] { display: none; }
+.nav-zoom { font-size: 11px; min-width: 40px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.nav-zoom.on { color: var(--accent); }
+.nav-zoom[hidden] { display: none; }
 .skill-offer { display: flex; flex-direction: column; gap: 8px; }
 .skill-offer-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .nav-bell[hidden] { display: none; }

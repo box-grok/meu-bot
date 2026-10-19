@@ -4252,7 +4252,7 @@ interface WebviewEl extends HTMLElement {
   src: string; partition: string; allowpopups: boolean;
   loadURL(url: string): Promise<void>; getURL(): string; getTitle(): string; isLoading(): boolean;
   canGoBack(): boolean; canGoForward(): boolean; goBack(): void; goForward(): void; reload(): void; stop(): void; focus(): void;
-  getWebContentsId(): number;
+  getWebContentsId(): number; setZoomFactor(factor: number): void;
   insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
 /** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
@@ -4666,13 +4666,13 @@ function navNewTab(url: string = NAV_HOME, activate = true, serviceId?: string):
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
-  wv.addEventListener("did-finish-load", () => { tab.loadedAt = Date.now(); applyRecortes(tab, true); navStoreTweaks(tab); navNotifyInject(tab); });
+  wv.addEventListener("did-finish-load", () => { tab.loadedAt = Date.now(); navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); navNotifyInject(tab); });
   wv.addEventListener("ipc-message", (ev) => { const e = ev as Event & { channel?: string; args?: unknown[] }; if (e.channel === "nav:notification") void onPageNotification(tab, e.args?.[0]); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
   wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
-  wv.addEventListener("dom-ready", () => { sync(); applyRecortes(tab); navStoreTweaks(tab); navNotifyInject(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
+  wv.addEventListener("dom-ready", () => { sync(); navApplyZoom(tab); applyRecortes(tab); navStoreTweaks(tab); navNotifyInject(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
   wv.setAttribute("src", url);
   navEls.box.append(wv);
   navTabs.push(tab);
@@ -4739,6 +4739,7 @@ function paintNav(): void {
   paintNavStar();
   paintNavBell();
   paintNavPin();
+  paintNavZoom();
   e.back.disabled = cur === null || !cur.wv.canGoBack();
   e.fwd.disabled = cur === null || !cur.wv.canGoForward();
   e.loading.hidden = cur === null || !cur.loading;
@@ -4830,6 +4831,10 @@ async function openNavTab(url?: string): Promise<void> {
     const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button";
     pin.addEventListener("click", () => { void navTogglePin(); });
     bell.insertAdjacentElement("afterend", pin);
+    // Zoom da aba: clique alterna 100% ↔ 75% (o comum para planilhas largas); Cmd+=/-/0 ajusta fino.
+    const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button"; zoom.title = "Zoom deste site (Cmd+= aumenta, Cmd+- diminui, Cmd+0 volta a 100%). Clique para alternar 100% e 75%.";
+    zoom.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; const z = navZoomFor(c); if (Math.abs(z - 1) > 0.001) navZoomStep(0); else { navZoomStep(-1); navZoomStep(-1); navZoomStep(-1); } });
+    pin.insertAdjacentElement("afterend", zoom);
     navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
@@ -4900,6 +4905,34 @@ function navServiceOpen(s: NavService): void {
 function navUpdateActive(fn: (w: NavWorkspace) => NavWorkspace): NavWorkspaces | null {
   const a = navActiveWs(); if (a === null) return null;
   return { ...navWs, lista: navWs.lista.map((w) => (w.id === a.id ? fn(w) : w)) };
+}
+/**
+ * Zoom por site (como no Chrome): sites largos (a planilha do Streak no Gmail) cabem na área do Navegador com
+ * menos zoom. Cmd+= / Cmd+- / Cmd+0 ou o botão "%" na barra; lembrado por host neste Mac e reaplicado a cada carga.
+ */
+const NAV_ZOOM_STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
+function navZoomMap(): Record<string, number> { try { const v = JSON.parse(localStorage.getItem("navZoom") ?? "{}") as Record<string, unknown>; const out: Record<string, number> = {}; for (const [k, n] of Object.entries(v)) if (typeof n === "number" && n >= 0.3 && n <= 3) out[k] = n; return out; } catch { return {}; } }
+const navHostOf = (url: string): string | null => { try { return /^https?:/.test(url) ? new URL(url).hostname : null; } catch { return null; } };
+function navZoomFor(tab: NavTab): number { const h = navHostOf(tab.url); return h === null ? 1 : navZoomMap()[h] ?? 1; }
+function navApplyZoom(tab: NavTab): void { try { tab.wv.setZoomFactor(navZoomFor(tab)); } catch { /* ainda não anexado */ } }
+function navZoomStep(dir: -1 | 0 | 1): void {
+  const cur = navCurrent(); if (cur === null) return;
+  const h = navHostOf(cur.url); if (h === null) return;
+  const z = navZoomFor(cur);
+  let i = NAV_ZOOM_STEPS.findIndex((s) => s >= z - 0.001); if (i < 0) i = NAV_ZOOM_STEPS.length - 1;
+  const next = dir === 0 ? 1 : NAV_ZOOM_STEPS[Math.max(0, Math.min(NAV_ZOOM_STEPS.length - 1, i + dir))]!;
+  const map = navZoomMap(); if (next === 1) delete map[h]; else map[h] = next;
+  try { localStorage.setItem("navZoom", JSON.stringify(map)); } catch { /* opcional */ }
+  for (const t of navTabs) if (navHostOf(t.url) === h) navApplyZoom(t);
+  paintNavZoom(); navRefitSoon();
+}
+function paintNavZoom(): void {
+  if (navEls === null) return;
+  const b = navEls.bar.querySelector<HTMLButtonElement>(".nav-zoom"); if (b === null) return;
+  const cur = navCurrent(); const z = cur === null ? 1 : navZoomFor(cur);
+  b.hidden = cur === null || navHostOf(cur.url) === null;
+  b.textContent = `${Math.round(z * 100)}%`;
+  b.classList.toggle("on", Math.abs(z - 1) > 0.001);
 }
 /** 📌 na barra: fixa a aba atual no espaço ativo (nome = título, ícone = favicon) ou, se já é fixa, solta. */
 async function navTogglePin(): Promise<void> {
@@ -5067,6 +5100,9 @@ window.meuBot.on("browser:ask", (msg) => {
 });
 // Cmd+… apertado com o foco dentro de um webview: o main devolve e o app faz o de sempre.
 window.meuBot.on("browser:key", ({ key, shift }) => {
+  if (key === "=" || key === "+") { navZoomStep(1); return; }
+  if (key === "-") { navZoomStep(-1); return; }
+  if (key === "0") { navZoomStep(0); return; }
   if (key === "k") { if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (key === "\\") { toggleSplit(); return; }
   if (key === "f" && shift) { toggleFavsBar(); return; }

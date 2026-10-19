@@ -322,7 +322,8 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     wc.on("before-input-event", (event, input) => {
       if (input.type !== "keyDown" || !input.meta) return;
       const k = input.key.toLowerCase();
-      if (["k", "j", "n", "b", "w", "t", "l", "[", "]", "\\"].includes(k) || (input.shift && (k === "b" || k === "n" || k === "f"))) {
+      // Cmd+= / Cmd+- / Cmd+0: zoom da aba (o renderer guarda por site).
+      if (["k", "j", "n", "b", "w", "t", "l", "[", "]", "\\", "=", "+", "-", "0"].includes(k) || (input.shift && (k === "b" || k === "n" || k === "f"))) {
         event.preventDefault();
         if (!win.isDestroyed()) { win.webContents.focus(); win.webContents.send("browser:key", { key: k, shift: input.shift }); }
       }
