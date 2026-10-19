@@ -47,6 +47,17 @@ parou de funcionar, **edite este arquivo** (seção "Diário"), para a próxima 
 - A caixa de seleção do cabeçalho não reage a `clicar`; dispare `mousedown`/`mouseup`/`click` nela por `js`.
 - "Excluir caixas" pede para digitar a confirmação literal, ex.: `4 caixas`, e depois Excluir.
 
+## Gerar a chave da API (passo 3 do tutorial "CRM pelo WhatsApp")
+- Caminho (confirmado em 19/10/2026 na agente-box): no Gmail, o botão do Streak na barra de cima
+  (`document.querySelector('.inboxsdk__appButton')`; dispare `mousedown`/`mouseup`/`click` por `js` se `clicar`
+  não abrir) › **"Integrações e Automações"** (irmão de "Configurações"; não entre em Configurações) ›
+  **"Integrações personalizadas – Use nossa API"** › crie a chave (ou copie a existente). O menu "Ativo" ao lado
+  do logo é o status do Google Chat: não é o do Streak.
+- Guarde na máquina, nunca na resposta: `node ~/.local/share/meu-bot/crm/streak.mjs chave-set <chave>`.
+  Ele confere a chave no Streak e grava em `~/.local/share/meu-bot/crm.json` (0600). Só diga à pessoa que a chave
+  foi guardada e quem é o usuário (`usuario` da resposta). Não mostre, não repita e não anote a chave.
+- Depois, o app testa a chave e, se a conta tem um só pipeline, escolhe-o sozinho; com vários, a pessoa escolhe no app.
+
 ## Dados de uma conversa do WhatsApp (OpenClaw na mesma máquina)
 - Sessões: `openclaw sessions --all-agents --json` (chave `agent:main:whatsapp:direct:+55…`).
 - Texto da conversa: banco só leitura `~/.openclaw/agents/main/agent/openclaw-agent.sqlite`

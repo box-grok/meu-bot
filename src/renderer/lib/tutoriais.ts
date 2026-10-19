@@ -469,7 +469,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "config", title: "Chave da API do Streak, pipeline e regras", target: "none", body: "crm-config",
-        text: "No Gmail, clique no botão do Streak na barra de cima › \"Integrações e Automações\" › \"Integrações personalizadas – Use nossa API\" › crie ou copie a sua chave. Cole aqui: ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline e quanto tempo de silêncio na conversa dispara a anotação.",
+        text: "Peça ao agente: ele gera a chave no Gmail pelo Navegador (botão do Streak › Integrações e Automações › Integrações personalizadas) e guarda direto na máquina. Ou faça você: copie a chave lá e cole aqui. Nos dois casos ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline (um só, o app escolhe sozinho) e quanto tempo de silêncio na conversa dispara a anotação.",
         done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.configured === true && c.crm.info.pipelineKey !== null,
       },
       {

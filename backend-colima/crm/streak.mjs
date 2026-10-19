@@ -28,10 +28,12 @@ function saveConfig(c) { fs.mkdirSync(BASE, { recursive: true }); const tmp = `$
 const cfg = loadConfig();
 const out = (o) => { process.stdout.write(`${JSON.stringify(o)}\n`); };
 const fail = (msg, code = 1) => { out({ erro: msg }); process.exit(code); };
-if (typeof cfg.apiKey !== "string" || cfg.apiKey === "") fail("CRM não configurado nesta máquina: falta a chave da API do Streak (tutorial 11 do meu-bot)", 2);
+const argv0 = process.argv[2] ?? "";
+// `chave-set` é justamente o comando que configura: roda sem chave gravada.
+if (argv0 !== "chave-set" && (typeof cfg.apiKey !== "string" || cfg.apiKey === "")) fail("CRM não configurado nesta máquina: falta a chave da API do Streak (tutorial 10 do meu-bot)", 2);
 
-async function api(method, p, body) {
-  const res = await fetch(`${API}${p}`, { method, headers: { Authorization: `Basic ${Buffer.from(`${cfg.apiKey}:`).toString("base64")}`, "Content-Type": "application/json", Accept: "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+async function api(method, p, body, key = cfg.apiKey) {
+  const res = await fetch(`${API}${p}`, { method, headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`, "Content-Type": "application/json", Accept: "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   const text = await res.text();
   let json = null; try { json = text === "" ? null : JSON.parse(text); } catch { json = { raw: text.slice(0, 300) } }
   if (!res.ok) { const e = new Error(res.status === 401 ? "chave da API recusada pelo Streak (confira em Streak › Configurações › API)" : `Streak respondeu ${res.status} em ${method} ${p}${json && json.error ? `: ${json.error}` : ""}`); e.status = res.status; throw e; }
@@ -160,6 +162,16 @@ async function main() {
         if (typeof opt.phone === "string") { const d = digits(opt.phone); if (d) { cfg.telefones = { ...(cfg.telefones ?? {}), [`+${d}`]: opt.box }; saveConfig(cfg); } }
       }
       return out({ ok: true, contato: contactKey, vinculado: linked });
+    }
+    // Guarda a chave da API (gerada no Gmail: botão do Streak › Integrações e Automações › Integrações personalizadas)
+    // depois de conferir no Streak que ela vale. Para o agente do meu-bot configurar o CRM sem a pessoa colar nada no
+    // app. A chave só entra no crm.json (0600); a saída nunca a repete.
+    case "chave-set": {
+      const k = String(pos[0] ?? "").trim();
+      if (k.length < 16 || /\s/.test(k)) throw new Error("uso: chave-set <chave da API do Streak> (a chave tem pelo menos 16 caracteres, sem espaços)");
+      let me; try { me = await api("GET", "/v1/users/me", undefined, k); } catch { throw new Error("o Streak recusou essa chave; gere outra em Integrações e Automações › Integrações personalizadas"); }
+      cfg.apiKey = k; cfg.savedAt = new Date().toISOString(); saveConfig(cfg);
+      return out({ ok: true, usuario: me?.email ?? me?.displayName ?? null, configurado: true });
     }
     case "telefone-set": { const d = digits(pos[0]); if (!d || !pos[1]) throw new Error("uso: telefone-set +N <box>"); cfg.telefones = { ...(cfg.telefones ?? {}), [`+${d}`]: pos[1] }; saveConfig(cfg); return out({ ok: true }); }
     default: throw new Error(`comando desconhecido: ${cmd || "(vazio)"}; veja o cabeçalho do streak.mjs`);

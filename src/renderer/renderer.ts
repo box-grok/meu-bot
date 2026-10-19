@@ -3813,6 +3813,7 @@ async function refreshCrm(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
   try { crmState = await window.meuBot.crmInfo(); } catch { /* máquina fora: fica o que havia */ }
   paintGuide();
+  void crmAutoPipeline();
 }
 window.meuBot.on("crm:progress", ({ line }) => { crmLog = [...crmLog, line].slice(-6); if (crmBusy) paintGuide(); });
 async function crmDo(run: () => Promise<unknown>, okText: string | null): Promise<void> {
@@ -3854,6 +3855,26 @@ function renderCrmInstall(container: HTMLElement): void {
   container.append(box);
 }
 /** Passo 3: chave da API (só vai à máquina), teste, pipeline e regras. */
+const CRM_KEY_PROMPT = "Gere uma chave da API do Streak para mim pelo Navegador e guarde na máquina com `node ~/.local/share/meu-bot/crm/streak.mjs chave-set <chave>` (siga a skill streak-crm-navegador, seção \"Gerar a chave da API\"). Não me mostre a chave: só confirme quando o chave-set responder ok e diga o usuário.";
+/** O agente rodou o `chave-set`? Quando o resultado chegar, consulta o CRM e segue (teste da chave, pipeline único). */
+let crmKeyFromAgent = false;
+async function crmAfterAgentKey(): Promise<void> {
+  crmKeyFromAgent = false;
+  await refreshCrm();
+  if (crmState?.configured !== true) return;
+  await crmDo(async () => { crmDiag = await window.meuBot.crmTest(); if (!crmDiag.ok) throw new Error(crmDiag.erro ?? "falhou"); return null; }, "Chave guardada pelo agente e testada.");
+  await crmAutoPipeline();
+}
+/** Conta com um só pipeline: escolhe sozinho (a pessoa só escolhe quando há mais de um). Uma vez por janela. */
+let crmAutoPipelineDone = false;
+async function crmAutoPipeline(): Promise<void> {
+  if (crmAutoPipelineDone || crmBusy || crmState?.configured !== true || crmState.pipelineKey !== null) return;
+  if (crmDiag?.ok !== true) { try { crmDiag = await window.meuBot.crmTest(); } catch { return; } }
+  if (crmDiag?.ok !== true || crmDiag.pipelines.length !== 1) return;
+  crmAutoPipelineDone = true;
+  const p = crmDiag.pipelines[0]!;
+  await crmDo(() => window.meuBot.setCrm({ pipelineKey: p.key, pipelineName: p.name }), `Pipeline "${p.name}" escolhido sozinho: é o único da conta.`);
+}
 function renderCrmConfig(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const st = crmState;
@@ -3867,6 +3888,19 @@ function renderCrmConfig(container: HTMLElement): void {
   saveKey.addEventListener("click", () => { const k = key.value.trim(); crmKeyDraft = ""; void crmDo(async () => { const r = await window.meuBot.setCrm({ apiKey: k }); crmDiag = await window.meuBot.crmTest(); if (!crmDiag.ok) throw new Error(crmDiag.erro ?? "a chave não funcionou"); return r; }, "Chave guardada e testada no Streak."); });
   key.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !saveKey.disabled) { ev.preventDefault(); saveKey.click(); } });
   keyRow.append(key, saveKey); box.append(keyRow);
+  // Ou o agente faz: gera a chave no Gmail pelo Navegador e grava na máquina com `streak.mjs chave-set` (a skill
+  // streak-crm-navegador tem o caminho). O app percebe a gravação pela linha da ferramenta e segue sozinho.
+  if (st?.configured !== true) {
+    const ag = el("div", "audio-row");
+    const btn = el("button", "btn btn-ghost btn-small", "Pedir ao agente para gerar a chave"); btn.type = "button"; btn.disabled = crmBusy || navInstState !== true;
+    btn.title = navInstState === true ? "Abre a conversa com o Navegador ligado para o agente: ele cria a chave no Streak e guarda na máquina, sem mostrar" : "Antes, conclua o tutorial do Navegador (o agente precisa dele)";
+    btn.addEventListener("click", () => {
+      if (!navAgent.on) void window.meuBot.browserAgent(true).then((s) => { navAgent = s; paintNav(); });
+      void goToChatFromGuide(CRM_KEY_PROMPT, "O agente abre o Gmail na aba Navegador, cria a chave no Streak e guarda na máquina; quando o `chave-set` responder, o passo se conclui aqui sozinho.");
+    });
+    ag.append(btn, el("span", "hint", "precisa da conta do Google logada na aba Navegador"));
+    box.append(ag);
+  }
   if (st?.configured === true) {
     const testRow = el("div", "audio-row");
     const test = el("button", "btn btn-ghost btn-small", crmBusy ? "Testando…" : "Testar a chave e listar pipelines"); test.type = "button"; test.disabled = crmBusy;
@@ -4853,13 +4887,16 @@ function showTool(tab: Tab, tool: ToolEvent): string | null {
   const host = tab.currentAssistant ?? tab.messagesEl;
   let resolved: string | null = tool.name;
   if (tool.kind === "use") {
+    // A chave da API do Streak passa pelo `chave-set`: na tela ela não aparece (fica só no crm.json da máquina).
+    const summary = tool.summary.replace(/(chave-set\s+)(\S+)/g, "$1••••");
+    if (tool.name === "Bash" && /streak\.mjs\s+chave-set/.test(tool.summary)) crmKeyFromAgent = true;
     const d = el("details", "tool-line");
-    const s = el("summary"); s.append(el("span", "tool-name", tool.name === "Bash" ? "rodou" : tool.name), el("code", "", tool.summary || "(sem detalhes)"));
+    const s = el("summary"); s.append(el("span", "tool-name", tool.name === "Bash" ? "rodou" : tool.name), el("code", "", summary || "(sem detalhes)"));
     d.append(s);
     d.dataset["tool"] = tool.name;
     (tab.currentAssistant === null ? tab.messagesEl : host).insertAdjacentElement(tab.currentAssistant === null ? "beforeend" : "beforebegin", d);
     const when = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    activityWrite(`\r\n${ANSI.dim}${when}${ANSI.reset} ${tool.name === "Bash" ? `${ANSI.bold}${ANSI.yellow}$ ${tool.summary}` : `${ANSI.cyan}• ${tool.name} ${tool.summary}`}${ANSI.reset}\r\n`);
+    activityWrite(`\r\n${ANSI.dim}${when}${ANSI.reset} ${tool.name === "Bash" ? `${ANSI.bold}${ANSI.yellow}$ ${summary}` : `${ANSI.cyan}• ${tool.name} ${summary}`}${ANSI.reset}\r\n`);
   } else {
     const lines = [...tab.messagesEl.querySelectorAll<HTMLDetailsElement>(".tool-line")];
     const target = [...lines].reverse().find((d) => !d.classList.contains("done") && (tool.name === null || d.dataset["tool"] === tool.name));
@@ -4879,6 +4916,8 @@ window.meuBot.on("chat:tool", ({ conversationId, tool }) => {
   // "Deixar o agente navegar" só conclui com uma ação do Navegador que deu certo. A tentativa (o `use`) e o erro
   // com "agente pode usar" desligado não contam: antes, qualquer tentativa marcava o passo e o tutorial "concluía".
   if (tool.kind === "result" && tool.ok && name !== null && name.startsWith("mcp__navegador__") && !loadGuideFlags(NAV_TUTORIAL).navAgentUsed) { saveGuideFlag(NAV_TUTORIAL, "navAgentUsed"); paintGuide(); }
+  // O agente acabou de gravar a chave do Streak na máquina: o passo 3 do CRM segue sozinho (teste, pipeline único).
+  if (tool.kind === "result" && crmKeyFromAgent && name === "Bash") void crmAfterAgentKey();
 });
 
 function openSettings(): void {
