@@ -46,7 +46,7 @@ const pos = []; const opt = {};
 for (let i = 1; i < argv.length; i++) { const a = argv[i]; if (a.startsWith("--")) { const k = a.slice(2); const v = argv[i + 1]; if (v !== undefined && !v.startsWith("--")) { opt[k] = v; i++; } else opt[k] = true; } else pos.push(a); }
 const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const digits = (s) => String(s ?? "").replace(/\D/g, "");
-const pipelineKey = () => { const k = opt.pipeline ?? cfg.pipelineKey; if (typeof k !== "string" || k === "") throw new Error("nenhum pipeline escolhido: rode `pipelines` e salve no tutorial 11 (ou passe --pipeline <key>)"); return k; };
+const pipelineKey = () => { const k = opt.pipeline ?? cfg.pipelineKey; if (typeof k !== "string" || k === "") throw new Error("nenhum pipeline escolhido: rode `pipelines` e salve no tutorial 10 (ou passe --pipeline <key>)"); return k; };
 
 async function pipelineInfo(key) {
   const p = await api("GET", `/v1/pipelines/${encodeURIComponent(key)}`);

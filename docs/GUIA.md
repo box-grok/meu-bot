@@ -1914,3 +1914,18 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   `agente-box` (pelo agente com o Navegador) e na documentação do Streak: o botão do Streak na barra do Gmail abre
   um menu com "Integrações e Automações" (irmão de "Configurações"), e a chave fica em "Integrações personalizadas
   – Use nossa API" (criar/copiar). O texto do passo agora segue esses rótulos.
+
+## CRM: o agente gera a chave da API do Streak (19 out 2026)
+
+- Passo 3 do tutorial 10 ganhou "Pedir ao agente para gerar a chave" (só com o Navegador instalado): liga o
+  Navegador para o agente e manda o pedido pronto (`CRM_KEY_PROMPT`). O agente segue a skill
+  `streak-crm-navegador` (seção "Gerar a chave da API": botão do Streak › Integrações e Automações › Integrações
+  personalizadas) e grava com `node ~/.local/share/meu-bot/crm/streak.mjs chave-set <chave>`.
+- `chave-set` (streak.mjs): único subcomando que roda sem chave gravada; confere a chave em `/v1/users/me`
+  antes de salvar (0600, merge) e responde `{ok, usuario}` sem repetir a chave.
+- No app: a linha da ferramenta mascara `chave-set ••••`; ao chegar o resultado do Bash, `crmAfterAgentKey`
+  consulta o CRM, testa a chave e `crmAutoPipeline` escolhe o pipeline sozinho quando a conta tem um só (também
+  roda em todo `refreshCrm`). Com vários, a pessoa escolhe no app, como antes.
+- Verificado localmente: `chave-set abc` recusa pelo formato; chave inválida é recusada pelo Streak (chamada real).
+  Na `agente-box`: streak.mjs novo copiado e a seção da chave acrescentada à skill instalada (a instalação mantém
+  a skill existente, então atualizações do bundle não chegam sozinhas a máquinas já instaladas).
