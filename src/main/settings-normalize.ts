@@ -56,7 +56,7 @@ export interface SettingsFile {
 export const MAX_ESPACOS = 20;
 export const MAX_SERVICOS = 30;
 const ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
-export const emptyWorkspaces = (): NavWorkspaces => ({ tipo: null, ativo: null, lista: [] });
+export const emptyWorkspaces = (): NavWorkspaces => ({ ativo: null, lista: [] });
 const cleanName = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 /** Um estado de espaços válido: ids únicos, nomes 1..40, urls http(s), ícone http(s)/data ou null, ativo existente. */
 export function normalizeNavWorkspaces(v: unknown): NavWorkspaces {
@@ -81,17 +81,18 @@ export function normalizeNavWorkspaces(v: unknown): NavWorkspaces {
       servicos.push({ id: sid, nome: snome, url, icone }); sids.add(sid);
       if (servicos.length >= MAX_SERVICOS) break;
     }
-    lista.push({ id, nome, servicos }); ids.add(id);
+    lista.push({ id, nome, servicos, ...(w["oculto"] === true ? { oculto: true as const } : {}) }); ids.add(id);
     if (lista.length >= MAX_ESPACOS) break;
   }
-  const tipo = p["tipo"] === "projeto" || p["tipo"] === "cliente" ? p["tipo"] : null;
-  const ativo = typeof p["ativo"] === "string" && ids.has(p["ativo"]) ? p["ativo"] : (lista[0]?.id ?? null);
-  return { tipo, ativo, lista };
+  // O ativo nunca é um oculto: cai no primeiro visível (ou nenhum).
+  const visivel = (id: string): boolean => lista.some((w) => w.id === id && w.oculto !== true);
+  const ativo = typeof p["ativo"] === "string" && visivel(p["ativo"]) ? p["ativo"] : (lista.find((w) => w.oculto !== true)?.id ?? null);
+  return { ativo, lista };
 }
 function normalizeNavEspacos(v: unknown): Record<string, NavWorkspaces> {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return {};
   const out: Record<string, NavWorkspaces> = {};
-  for (const [host, w] of Object.entries(v as Record<string, unknown>)) { if (!isValidHost(host)) continue; const n = normalizeNavWorkspaces(w); if (n.lista.length > 0 || n.tipo !== null) out[host] = n; }
+  for (const [host, w] of Object.entries(v as Record<string, unknown>)) { if (!isValidHost(host)) continue; const n = normalizeNavWorkspaces(w); if (n.lista.length > 0) out[host] = n; }
   return out;
 }
 export const NAV_NOTIFY_DEFAULT_INSTRUCTION = "Chegou uma notificação de um site que acompanho. Traduza para português, se estiver em outra língua, e explique em termos simples, para quem não é técnico, o que ela significa e se preciso fazer alguma coisa. Seja breve: no máximo cinco linhas.";

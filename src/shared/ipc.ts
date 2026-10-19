@@ -731,13 +731,12 @@ export interface BrowserExtensionInfo { id: string; name: string; version: strin
 export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState; favoritos: NavFavorito[]; espacos: NavWorkspaces }
 /**
  * Espaços de trabalho do Navegador (do REA do Rambox: grupos/workspaces com apps fixos num trilho). Por máquina.
- * `tipo` = como a pessoa organiza (por projeto ou por cliente; null = ainda não escolheu); cada espaço tem os sites
+ * O que cada espaço representa (um cliente, um projeto…) é a pessoa quem decide pelo nome; cada um tem os sites
  * fixos (serviços), que abrem em abas permanentes enquanto o Navegador existe (as notificações deles chegam).
  */
-export type NavWorkspaceKind = "projeto" | "cliente";
 export interface NavService { id: string; nome: string; url: string; icone: string | null }
-export interface NavWorkspace { id: string; nome: string; servicos: NavService[] }
-export interface NavWorkspaces { tipo: NavWorkspaceKind | null; ativo: string | null; lista: NavWorkspace[] }
+export interface NavWorkspace { id: string; nome: string; servicos: NavService[]; /** Oculto: fora do seletor e sem abas, sem apagar nada; volta pelo grupo "Ocultos". */ oculto?: true }
+export interface NavWorkspaces { ativo: string | null; lista: NavWorkspace[] }
 /** Favorito da barra do Navegador (por máquina; o agente também adiciona/remove pelas ações). */
 export interface NavFavorito { id: string; titulo: string; url: string }
 /** "Agente pode usar" o Navegador: ligado? o túnel reverso está de pé? em que porta da máquina? */

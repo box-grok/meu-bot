@@ -706,6 +706,8 @@ body.topbar-hidden .topbar { display: none; }
 .nav-service:hover .nav-service-x { opacity: 1; }
 .nav-service-x:hover { color: var(--bad); }
 .nav-rail-add { align-self: flex-start; }
+.nav-rail-toggle.on { color: var(--accent); }
+.nav-rail-toggle[hidden] { display: none; }
 .nav-rail-del { color: var(--bad); margin-left: auto; }
 .nav-tab.fixed .nav-tab-title::before { content: "📌 "; font-size: 10px; }
 .nav-box { flex: 1; min-height: 0; background: var(--bg); position: relative; }

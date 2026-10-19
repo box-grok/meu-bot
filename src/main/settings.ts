@@ -133,7 +133,7 @@ export const navEspacos = (host: string): NavWorkspaces => normalizeNavWorkspace
 export function setNavEspacos(host: string, w: unknown): NavWorkspaces {
   if (!isValidHost(host)) throw new Error(`Host SSH inválido: ${JSON.stringify(host)}`);
   const n = normalizeNavWorkspaces(w);
-  const all = { ...file.navEspacos }; if (n.lista.length === 0 && n.tipo === null) delete all[host]; else all[host] = n;
+  const all = { ...file.navEspacos }; if (n.lista.length === 0) delete all[host]; else all[host] = n;
   file.navEspacos = all;
   persist();
   return navEspacos(host);

@@ -118,13 +118,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; notifySkipped: boolean; notifySeen: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, notifySkipped: false, notifySeen: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "notifySkipped" | "notifySeen";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "notifySkipped" | "notifySeen" | "claudeReplied";
 
 export interface GuideStep {
   id: string;
@@ -227,7 +227,10 @@ export const TUTORIAIS: readonly Tutorial[] = [
       {
         id: "resposta", title: "Primeira resposta do agente", target: "chat",
         text: "Vá para a conversa e mande uma mensagem: a resposta vem da sua conta do Claude, nesta máquina.",
-        done: (_st, _f, c) => c.claude.loggedIn === true && c.claude.firstReply,
+        // A primeira resposta é um fato que não se desfaz: fica lembrada na flag (apagar as conversas não reabre o
+        // tutorial). "Não exibir" marca a mesma flag à mão, para quem não quer passar por aqui.
+        done: (_st, f, c) => c.claude.loggedIn === true && (c.claude.firstReply || f.claudeReplied),
+        manual: { label: "Não exibir", flag: "claudeReplied" },
       },
     ],
   },
@@ -497,7 +500,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: [
       {
         id: "fixar", title: "Fixar o site num espaço de trabalho", target: "none", body: "nav-ws",
-        text: "No Navegador, crie um espaço de trabalho (por projeto ou por cliente, como preferir) e fixe o site com 📌 ou \"＋ Adicionar site\". Site fixo fica aberto enquanto o Navegador existe; é assim que as notificações chegam.",
+        text: "No Navegador, crie um espaço de trabalho (um por cliente, por projeto, como preferir: o nome é seu) e fixe o site com 📌 ou \"＋ Adicionar site\". Site fixo fica aberto enquanto o Navegador existe; é assim que as notificações chegam.",
         done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.servicos > 0,
       },
       {

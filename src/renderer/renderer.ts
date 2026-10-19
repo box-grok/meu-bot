@@ -3333,6 +3333,8 @@ window.meuBot.on("chat:done", (done: DoneEvent) => {
     const cur = index.get(tab.id);
     const had = firstReplyOnHost();
     patchIndex(tab.id, { messages: [...(cur?.messages ?? []), { role: "assistant", content: tab.pendingText, ...(done.provider === undefined ? {} : { provider: done.provider }), ...(done.fallback === undefined ? {} : { fallback: done.fallback }) }] });
+    // Tutorial 1: a primeira resposta aconteceu; lembrar na flag, senão apagar as conversas "desfaz" o passo.
+    if (!had && windowHost !== "") { const t1 = TUTORIAIS.find((x) => x.id === "claude-login"); if (t1 !== undefined && !loadGuideFlags(t1).claudeReplied) saveGuideFlag(t1, "claudeReplied"); }
     if (tab.currentAssistant !== null) paintProviderLabel(tab.currentAssistant, tab.model, done.provider, done.fallback);
     // Tutorial 4: a prova de que o grok-4 responde é o X-Provider da resposta, não o que o modelo diz de si.
     const grokNow = done.provider === "grok-4" && !loadGuideFlags(XAI_TUTORIAL).grokReplied;
@@ -4213,10 +4215,12 @@ let navPopupFor: string | null = null;
 /** Barra de favoritos (lista por máquina, do main); mostrar/ocultar é escolha do app (Cmd+Shift+F). */
 let navFavs: NavFavorito[] = [];
 /** Espaços de trabalho desta máquina (do REA do Rambox): sites fixos em abas permanentes, agrupados por projeto ou cliente. */
-let navWs: NavWorkspaces = { tipo: null, ativo: null, lista: [] };
+let navWs: NavWorkspaces = { ativo: null, lista: [] };
 /** Formulário aberto no trilho (adicionar site, novo espaço, renomear) e o erro da última gravação. */
 let navRailForm: { kind: "site" | "espaco" | "renomear" } | null = null;
 let navRailMsg: string | null = null;
+/** Trilho dos espaços à vista? (◧ na barra recolhe/mostra; lembrado neste Mac.) */
+let navRailShown = (() => { try { return localStorage.getItem("navRailShown") !== "0"; } catch { return true; } })();
 let navFavsShown = (() => { try { return parseFavsShown(localStorage.getItem("navFavsShown")); } catch { return true; } })();
 function paintNavFavs(): void {
   if (navEls === null) return;
@@ -4684,6 +4688,9 @@ async function openNavTab(url?: string): Promise<void> {
     panel.classList.add("with-rail");
     panel.append(rail, main);
     panelsEl.append(panel);
+    const railBtn = el("button", "mini-btn nav-rail-toggle", "◧"); railBtn.type = "button";
+    railBtn.addEventListener("click", () => { navRailShown = !navRailShown; try { localStorage.setItem("navRailShown", navRailShown ? "1" : "0"); } catch { /* opcional */ } paintNavRail(); });
+    bar.prepend(railBtn);
     const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button"; pin.title = "Fixar esta aba no espaço de trabalho (vira um site fixo do trilho)";
     pin.addEventListener("click", () => { void navPinCurrent(); });
     star.insertAdjacentElement("afterend", pin);
@@ -4799,38 +4806,48 @@ async function navRemoveWorkspace(): Promise<void> {
   await navSaveWs({ ...navWs, ativo: lista[0]?.id ?? null, lista });
 }
 async function navSelectWorkspace(id: string): Promise<void> {
-  if (!navWs.lista.some((w) => w.id === id) || id === navWs.ativo) return;
-  await navSaveWs({ ...navWs, ativo: id });
+  const w = navWs.lista.find((x) => x.id === id);
+  if (w === undefined || id === navWs.ativo) return;
+  // Um oculto escolhido no seletor volta a aparecer.
+  const lista = w.oculto === true ? navWs.lista.map((x) => (x.id === id ? { id: x.id, nome: x.nome, servicos: x.servicos } : x)) : navWs.lista;
+  await navSaveWs({ ...navWs, ativo: id, lista });
   navMountWorkspace(true);
 }
-const navKindLabel = (plural = false): string => navWs.tipo === "cliente" ? (plural ? "clientes" : "cliente") : (plural ? "projetos" : "projeto");
+/** Oculta o espaço ativo: fecha as abas fixas dele e passa ao próximo visível. Nada é apagado. */
+async function navHideWorkspace(): Promise<void> {
+  const a = navActiveWs(); if (a === null) return;
+  for (const t of [...navTabs]) if (t.serviceId !== undefined && a.servicos.some((s) => s.id === t.serviceId)) navClose(t.id);
+  const lista = navWs.lista.map((w) => (w.id === a.id ? { ...w, oculto: true as const } : w));
+  navRailForm = null;
+  await navSaveWs({ ...navWs, ativo: lista.find((w) => w.oculto !== true)?.id ?? null, lista });
+  navMountWorkspace(true);
+}
 function paintNavRail(): void {
   if (navEls === null) return;
   const r = navEls.rail; r.replaceChildren();
-  r.hidden = navAccess !== "ok";
+  r.hidden = navAccess !== "ok" || !navRailShown;
+  const toggle = navEls.bar.querySelector<HTMLButtonElement>(".nav-rail-toggle");
+  if (toggle !== null) { toggle.classList.toggle("on", navRailShown); toggle.title = navRailShown ? "Recolher os espaços de trabalho" : "Mostrar os espaços de trabalho"; toggle.hidden = navAccess !== "ok"; }
   if (r.hidden) return;
   const head = el("div", "nav-rail-head");
-  // Primeira vez: como organizar? (por projeto ou por cliente). Só rotula; a estrutura é a mesma.
-  if (navWs.tipo === null) {
-    head.append(el("div", "nav-rail-title", "Espaços de trabalho"), el("p", "hint", "Sites fixos, sempre abertos, agrupados do seu jeito. Como você organiza?"));
-    const row = el("div", "nav-rail-row");
-    for (const k of ["projeto", "cliente"] as const) { const b = el("button", "btn btn-small", `Por ${k}`); b.type = "button"; b.addEventListener("click", () => { void navSaveWs({ ...navWs, tipo: k }); navRailForm = { kind: "espaco" }; }); row.append(b); }
-    head.append(row); r.append(head); return;
-  }
-  const sel = document.createElement("select"); sel.className = "nav-rail-select"; sel.title = `Espaço de trabalho (${navKindLabel()})`;
-  const ph = document.createElement("option"); ph.value = ""; ph.textContent = navWs.lista.length === 0 ? `Nenhum ${navKindLabel()} ainda` : `Escolher ${navKindLabel()}…`; ph.disabled = true; ph.selected = navWs.ativo === null; sel.append(ph);
-  for (const w of navWs.lista) { const o = document.createElement("option"); o.value = w.id; o.textContent = w.nome; o.selected = w.id === navWs.ativo; sel.append(o); }
+  head.append(el("div", "nav-rail-title", "Espaços de trabalho"));
+  const sel = document.createElement("select"); sel.className = "nav-rail-select"; sel.title = "Espaço de trabalho (um cliente, um projeto, o que você quiser)";
+  const ph = document.createElement("option"); ph.value = ""; ph.textContent = navWs.lista.length === 0 ? "Nenhum espaço ainda" : "Escolher espaço…"; ph.disabled = true; ph.selected = navWs.ativo === null; sel.append(ph);
+  for (const w of navWs.lista) { if (w.oculto === true) continue; const o = document.createElement("option"); o.value = w.id; o.textContent = w.nome; o.selected = w.id === navWs.ativo; sel.append(o); }
+  // Ocultos ficam num grupo no fim: escolher um traz de volta (e o torna ativo).
+  const ocultos = navWs.lista.filter((w) => w.oculto === true);
+  if (ocultos.length > 0) { const g = document.createElement("optgroup"); g.label = "Ocultos (escolher mostra de novo)"; for (const w of ocultos) { const o = document.createElement("option"); o.value = w.id; o.textContent = w.nome; g.append(o); } sel.append(g); }
   sel.addEventListener("change", () => { void navSelectWorkspace(sel.value); });
-  const newBtn = el("button", "mini-btn", "＋"); newBtn.type = "button"; newBtn.title = `Novo ${navKindLabel()}`;
+  const newBtn = el("button", "mini-btn", "＋"); newBtn.type = "button"; newBtn.title = "Novo espaço de trabalho";
   newBtn.addEventListener("click", () => { navRailForm = navRailForm?.kind === "espaco" ? null : { kind: "espaco" }; paintNavRail(); });
-  const more = el("button", "mini-btn", "⋯"); more.type = "button"; more.title = `Renomear ou remover este ${navKindLabel()}`; more.disabled = navActiveWs() === null;
+  const more = el("button", "mini-btn", "⋯"); more.type = "button"; more.title = "Renomear ou remover este espaço"; more.disabled = navActiveWs() === null;
   more.addEventListener("click", () => { navRailForm = navRailForm?.kind === "renomear" ? null : { kind: "renomear" }; paintNavRail(); });
   const top = el("div", "nav-rail-row"); top.append(sel, newBtn, more); head.append(top);
   r.append(head);
   const form = (kind: "site" | "espaco" | "renomear"): HTMLElement => {
     const f = el("div", "nav-rail-form");
     const name = document.createElement("input"); name.type = "text"; name.className = "nav-rail-input"; name.maxLength = 40;
-    name.placeholder = kind === "site" ? "Nome (ex.: Gmail)" : kind === "espaco" ? `Nome do ${navKindLabel()}` : "Novo nome";
+    name.placeholder = kind === "site" ? "Nome (ex.: Gmail)" : kind === "espaco" ? "Nome do espaço (ex.: Cliente ACME, Projeto X)" : "Novo nome";
     if (kind === "renomear") name.value = navActiveWs()?.nome ?? "";
     f.append(name);
     let urlIn: HTMLInputElement | null = null;
@@ -4841,7 +4858,12 @@ function paintNavRail(): void {
     ok.addEventListener("click", go);
     const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button"; cancel.addEventListener("click", () => { navRailForm = null; paintNavRail(); });
     row.append(ok, cancel);
-    if (kind === "renomear") { const del = el("button", "btn btn-ghost btn-small nav-rail-del", "Remover"); del.type = "button"; del.addEventListener("click", () => armConfirm(del, "Confirmar? remove o espaço", () => { void navRemoveWorkspace(); })); row.append(del); }
+    if (kind === "renomear") {
+      const hide = el("button", "btn btn-ghost btn-small", "Ocultar"); hide.type = "button"; hide.title = "Some do seletor e fecha as abas fixas dele; nada é apagado. Volta pelo grupo \"Ocultos\" do seletor.";
+      hide.addEventListener("click", () => { void navHideWorkspace(); });
+      const del = el("button", "btn btn-ghost btn-small nav-rail-del", "Remover"); del.type = "button"; del.addEventListener("click", () => armConfirm(del, "Confirmar? remove o espaço", () => { void navRemoveWorkspace(); }));
+      row.append(hide, del);
+    }
     f.append(row);
     for (const i of [name, urlIn]) i?.addEventListener("keydown", (ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); go(); } if (ev.key === "Escape") { navRailForm = null; paintNavRail(); } });
     setTimeout(() => name.focus(), 0);
@@ -4850,7 +4872,7 @@ function paintNavRail(): void {
   if (navRailForm !== null && (navRailForm.kind !== "site" || navActiveWs() !== null)) r.append(form(navRailForm.kind));
   const a = navActiveWs();
   const list = el("div", "nav-rail-list");
-  if (a === null) list.append(el("p", "hint", navWs.lista.length === 0 ? `Crie o primeiro ${navKindLabel()} com ＋.` : `Escolha um ${navKindLabel()} acima.`));
+  if (a === null) list.append(el("p", "hint", navWs.lista.length === 0 ? "Crie o primeiro espaço com ＋: um por cliente, por projeto, do seu jeito." : "Escolha um espaço acima."));
   else {
     if (a.servicos.length === 0) list.append(el("p", "hint", "Sem sites fixos ainda: ＋ Adicionar site, ou 📌 na barra fixa a aba aberta."));
     for (const s of a.servicos) {

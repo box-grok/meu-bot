@@ -79,15 +79,18 @@ test("navNotify: padrão desligado (o tutorial liga) com a instrução padrão; 
 
 test("navEspacos: ids e nomes válidos, urls http(s), ícone http(s)/data, ativo existente; lixo cai fora", () => {
   const { normalizeNavWorkspaces } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
-  const w = normalizeNavWorkspaces({ tipo: "cliente", ativo: "nope", lista: [
+  const w = normalizeNavWorkspaces({ ativo: "nope", lista: [
     { id: "w1", nome: "  ACME  ", servicos: [{ id: "s1", nome: "", url: "https://mail.google.com/", icone: "javascript:x" }, { id: "s1", nome: "dup", url: "https://a.com" }, { id: "s2", nome: "ftp", url: "ftp://x" }] },
     { id: "bad id!", nome: "x", servicos: [] },
     { id: "w2", nome: "", servicos: [] },
   ] });
-  assert.deepEqual(w, { tipo: "cliente", ativo: "w1", lista: [{ id: "w1", nome: "ACME", servicos: [{ id: "s1", nome: "mail.google.com", url: "https://mail.google.com/", icone: null }] }] });
-  assert.deepEqual(normalizeNavWorkspaces("nope"), { tipo: null, ativo: null, lista: [] });
-  assert.equal(normalizeNavWorkspaces({ tipo: "x", lista: [] }).tipo, null);
-  const s = normalizeSettings({ navEspacos: { colima: { tipo: "projeto", ativo: "a", lista: [{ id: "a", nome: "Site", servicos: [] }] }, "x y": { tipo: "projeto", lista: [] }, vazio: { lista: [] } } });
+  assert.deepEqual(w, { ativo: "w1", lista: [{ id: "w1", nome: "ACME", servicos: [{ id: "s1", nome: "mail.google.com", url: "https://mail.google.com/", icone: null }] }] });
+  assert.deepEqual(normalizeNavWorkspaces("nope"), { ativo: null, lista: [] });
+  const s = normalizeSettings({ navEspacos: { colima: { ativo: "a", lista: [{ id: "a", nome: "Site", servicos: [] }] }, "x y": { lista: [] }, vazio: { lista: [] } } });
   assert.deepEqual(Object.keys(s.navEspacos), ["colima"]);
   assert.equal(s.navEspacos.colima.ativo, "a");
+  // Oculto: fica na lista (nada se apaga), mas nunca é o ativo; sem visível, ativo é null.
+  const h = normalizeNavWorkspaces({ ativo: "x", lista: [{ id: "x", nome: "Oculto", servicos: [], oculto: true }, { id: "y", nome: "Vivo", servicos: [] }] });
+  assert.deepEqual(h, { ativo: "y", lista: [{ id: "x", nome: "Oculto", servicos: [], oculto: true }, { id: "y", nome: "Vivo", servicos: [] }] });
+  assert.equal(normalizeNavWorkspaces({ lista: [{ id: "x", nome: "Oculto", servicos: [], oculto: true }] }).ativo, null);
 });

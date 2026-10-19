@@ -1954,12 +1954,13 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - **No Rambox:** workspaces são "grupos" (`$workspaces.addGroup/editGroup`, `addApp`) com apps fixos num trilho
   (rail), cada app um webview permanente; os dados ficam na conta Rambox (API `customerApps`), não localmente.
   O que se aproveitou: trilho lateral, sites fixos sempre abertos, agrupamento escolhido pela pessoa.
-- **No meu-bot:** `NavWorkspaces { tipo: projeto|cliente|null, ativo, lista: [{ id, nome, servicos: [{ id, nome,
+- **No meu-bot:** `NavWorkspaces { ativo, lista: [{ id, nome, servicos: [{ id, nome,
   url, icone }] }] }`, por máquina em `settings.json › navEspacos` (`normalizeNavWorkspaces`, limites 20×30),
   gravado inteiro por `browser:workspaces-set` (o main valida e avisa as outras janelas da máquina, evento
   `browser:workspaces`); `browserOpen` devolve `espacos`; `SettingsView.navEspacos` deixa o tutorial saber antes
-  de o Navegador abrir. Trilho (`paintNavRail`): primeira vez pergunta "por projeto ou por cliente" (só rotula),
-  seletor do espaço, ＋ (novo), ⋯ (renomear/remover), lista dos sites fixos, "＋ Adicionar site"; 📌 na barra fixa a
+  de o Navegador abrir. Trilho (`paintNavRail`): sem "tipo" (o que o espaço representa, cliente ou projeto, é o nome que a pessoa
+  dá; a escolha por tipo existiu por umas horas e saiu em 19/10), seletor do espaço (com o grupo "Ocultos": escolher um traz de volta), ＋ (novo), ⋯ (renomear/ocultar/remover; ocultar
+  fecha as abas fixas dele e não apaga nada), lista dos sites fixos, "＋ Adicionar site"; 📌 na barra fixa a
   aba aberta. Abas fixas (`NavTab.serviceId`) nascem com o Navegador (`navMountWorkspace`), sem ✕ na tira; as de
   outros espaços ficam vivas (notificações) mas fora da tira (`navVisibleTabs`).
 - **Tutorial 11 · Notificações do Navegador (Pro)**, depois do 9: fixar o site; decidir a ação (a função nasce
