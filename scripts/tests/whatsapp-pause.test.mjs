@@ -65,3 +65,21 @@ test("pauseRuleSh (python local): acrescenta, não duplica e troca versão antig
   assert.ok(!swapped.includes("v0") && !swapped.includes("Texto velho") && swapped.includes("Não repita"));
   assert.equal(swapped.split("meu-bot:pausa v").length - 1, 2);
 });
+
+test("lista durável de pausados: pausar põe a regra no começo, retomar tira; outras regras ficam; vazia some", () => {
+  const { pausedNumbersOfPolicy, pauseRulePrefixes, withPauseRule, sendPolicySh } = createRequire(import.meta.url)("../../dist/main/whatsapp-pause.js");
+  assert.deepEqual(pauseRulePrefixes("+55 43 8411-4172", ["agent:main:whatsapp:direct:+554384114172", "agent:main:main"]), ["whatsapp:direct:+554384114172"]);
+  assert.deepEqual(pauseRulePrefixes("554384114172", []), ["whatsapp:direct:+554384114172"]);
+  assert.deepEqual(pauseRulePrefixes("5516900000002", ["agent:main:whatsapp:default:direct:+5516900000002"]), ["whatsapp:default:direct:+5516900000002"]);
+  const grupo = { action: "deny", match: { channel: "discord", chatType: "group" } };
+  const p1 = withPauseRule({ rules: [grupo], default: "allow" }, "554384114172", true, ["whatsapp:direct:+554384114172"]);
+  assert.deepEqual(p1, { rules: [{ action: "deny", match: { keyPrefix: "whatsapp:direct:+554384114172" } }, grupo], default: "allow" });
+  assert.deepEqual([...pausedNumbersOfPolicy(p1)], ["554384114172"]);
+  // Pausar de novo não duplica; a regra do Discord nunca conta como pausa.
+  assert.equal(withPauseRule(p1, "554384114172", true, ["whatsapp:direct:+554384114172"]).rules.length, 2);
+  assert.deepEqual(withPauseRule(p1, "554384114172", false, []), { rules: [grupo], default: "allow" });
+  assert.equal(withPauseRule({ rules: [{ action: "deny", match: { keyPrefix: "whatsapp:direct:+554384114172" } }] }, "554384114172", false, []), null);
+  assert.equal(pausedNumbersOfPolicy(null).size, 0);
+  assert.match(sendPolicySh(null), /config unset session\.sendPolicy/);
+  assert.match(sendPolicySh(p1), /config set session\.sendPolicy '\{"rules"/);
+});

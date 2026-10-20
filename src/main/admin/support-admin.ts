@@ -8,32 +8,49 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
 import { applyLicensePatch, buildLicenseView } from "../licenca";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, supportLogSh, type SupportCode } from "../support-code";
+import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
+import { entregar, registrar, registroSh } from "../auditoria";
+import type { Acao } from "../auditoria-core";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
 import { installAudio, probeHost } from "../hostProbe";
 import { xaiAuthInfo } from "../xaiLogin";
 import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
-interface AdminConfig { admin: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: "free" | "pro" }
+/** `superAdmin`: este app lê a central de auditoria (página Auditoria). */
+interface AdminConfig { admin: string; superAdmin: boolean; inbox: { alias: string } }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; inbox?: { alias?: unknown } };
+    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; inbox?: { alias?: unknown } };
     const alias = raw.inbox?.alias;
-    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" } };
+    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", superAdmin: raw.superAdmin === true, inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" } };
   } catch {
-    return { admin: "suporte", inbox: { alias: "" } };
+    return { admin: "suporte", superAdmin: false, inbox: { alias: "" } };
   }
 }
 export const adminName = (): string => adminConfig().admin;
+export const isSuperAdmin = (): boolean => adminConfig().superAdmin;
+/**
+ * ssh para a central de auditoria (usuário "auditoria" na caixa, pelo alias do admin): a chave deste admin, que
+ * lá é presa a um comando forçado. null sem caixa configurada.
+ */
+export function adminAuditoriaSsh(): string[] | null {
+  const alias = adminConfig().inbox.alias;
+  if (alias === "" || !fs.existsSync(ADMIN_KEY)) return null;
+  return ["-i", ADMIN_KEY, "-o", "IdentitiesOnly=yes", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-l", "auditoria", alias];
+}
 
 const storePath = (): string => path.join(app.getPath("userData"), "pessoas.json");
+/** Pessoas conhecidas por id da máquina (o mesmo id do registro de auditoria): nome, alias e se o suporte está ligado. */
+export function pessoasPorMaquina(): Map<string, { nome: string; alias: string; on: boolean }> {
+  return new Map([...load()].map(([id, s]) => [id, { nome: s.nickname || s.code.name, alias: supportAlias(s.code), on: s.code.state === "on" }]));
+}
 function load(): Map<string, Stored> {
   try {
     const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown }>;
@@ -53,7 +70,7 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: "free" | "pro" }> = {};
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: PlanName }> = {};
   for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }) };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
@@ -112,7 +129,7 @@ const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
 const toPerson = (s: Stored): SupportPerson => ({ alias: supportAlias(s.code), name: s.nickname !== "" ? s.nickname : s.code.name, machine: s.code.machine ?? null, hostname: s.code.hostname, port: s.code.port, local: isLocalAddr(s.code.hostname), on: s.code.state === "on", seenAt: s.seenAt, source: s.source, archived: s.archived, plan: s.plan ?? null });
 
 /** Guarda o último plano visto da pessoa (pelo alias) para o selo do seletor; só grava se mudou. */
-function rememberPlan(alias: string, plan: "free" | "pro"): void {
+function rememberPlan(alias: string, plan: PlanName): void {
   const m = load();
   let changed = false;
   for (const s of m.values()) if (supportAlias(s.code) === alias && s.plan !== plan) { s.plan = plan; changed = true; }
@@ -134,10 +151,10 @@ export async function supportPeople(): Promise<{ people: SupportPerson[]; warnin
 }
 
 /** Lê só o plano da licença da máquina (SSH curto, melhor esforço); null = fora do ar, ausente ou inválido. */
-async function readPlan(host: string): Promise<"free" | "pro" | null> {
+async function readPlan(host: string): Promise<PlanName | null> {
   const r = await runSsh(host, `cat "${LICENSE_PATH}" 2>/dev/null; echo\n`, 10_000).catch(() => null);
   if (r === null || r.code !== 0) return null;
-  try { const v = JSON.parse(r.stdout.trim() || "null"); return v && (v.plan === "pro" || v.plan === "free") ? v.plan : null; } catch { return null; }
+  try { const v = JSON.parse(r.stdout.trim() || "null"); return v && (v.plan === "pro" || v.plan === "free" || v.plan === "personalizado") ? v.plan : null; } catch { return null; }
 }
 
 /** Pessoas já conhecidas (sem ler a caixa): a lista do seletor abre na hora. */
@@ -234,7 +251,7 @@ export async function setLicense(host: string, patch: LicensePatch): Promise<Lic
   const current = await fetchJson(host, LICENSE_PATH);
   const next = applyLicensePatch(Object.keys(current).length ? current : null, patch);
   await writeJson(host, LICENSE_PATH, next);
-  await runSsh(host, `${supportLogSh(adminName(), "licença atualizada pelo admin")}\n`, 15_000).catch(() => null);
+  await registrar(host, "licenca.atualizar", "", JSON.stringify(patch).slice(0, 300));
   const view = await readLicenseView(host);
   if (view === null) throw new Error("gravei, mas a máquina não respondeu ao reler");
   rememberPlan(host, view.license.plan);
@@ -255,7 +272,7 @@ export async function approveDevice(host: string, deviceId: string): Promise<Lic
   const curLimit = Number.isInteger((curLic as { deviceLimit?: unknown }).deviceLimit) ? (curLic.deviceLimit as number) : 1;
   const nextLic = applyLicensePatch(Object.keys(curLic).length ? curLic : null, { deviceLimit: Math.max(activeNow, curLimit) });
   await writeJson(host, LICENSE_PATH, nextLic);
-  await runSsh(host, `${supportLogSh(adminName(), "device liberado pelo admin")}\n`, 15_000).catch(() => null);
+  await registrar(host, "device.liberar", String(entry.name ?? deviceId));
   const view = await readLicenseView(host);
   if (view === null) throw new Error("liberei, mas a máquina não respondeu ao reler");
   rememberPlan(host, view.license.plan);
@@ -267,9 +284,10 @@ export async function removeDevice(host: string, deviceId: string): Promise<Lice
   if (!/^[a-f0-9]{12}$/.test(deviceId)) throw new Error("device inválido");
   const machines = await fetchJson(host, MACHINES_PATH);
   if (machines[deviceId] === undefined) throw new Error("device não encontrado na máquina");
+  const nome = String((machines[deviceId] as { name?: unknown } | undefined)?.name ?? deviceId);
   delete machines[deviceId];
   await writeJson(host, MACHINES_PATH, machines);
-  await runSsh(host, `${supportLogSh(adminName(), "device revogado pelo admin")}\n`, 15_000).catch(() => null);
+  await registrar(host, "device.revogar", nome);
   const view = await readLicenseView(host);
   if (view === null) throw new Error("revoguei, mas a máquina não respondeu ao reler");
   rememberPlan(host, view.license.plan);
@@ -339,17 +357,18 @@ export async function adminBotDelete(host: string, sessionId: string): Promise<v
   const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
   if (chat === undefined || (chat.source === "claude" && (!PROJECT_DIR_RE.test(chat.project) || !SESSION_ID_RE.test(sessionId))) || (chat.source === "app" && !APP_CONV_ID_RE.test(sessionId))) throw new Error("conversa não encontrada");
   const file = chat.source === "app" ? `${APP_CONVERSAS_DIR}/${sessionId}.jsonl` : `$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl`;
-  const r = await runSsh(host, `rm -f "${file}"\n${supportLogSh("admin", "apagou uma conversa dela com o meu-bot")}\n`, 20_000);
+  const r = await runSsh(host, `rm -f "${file}"\n${registroSh("meu-bot.apagar-conversa", "", sessionId)}\n`, 20_000);
+  void entregar(host);
   if (r.code !== 0) throw new Error(r.stderr.trim() || "não consegui apagar na máquina");
   log(`[suporte] ${host}: conversa ${sessionId} apagada pelo admin`);
 }
 
-const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
-  "restart-gateway": { what: "reiniciou o gateway do OpenClaw", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
-  "restart-backend": { what: "reiniciou o backend do meu-bot", sh: "systemctl --user restart meu-bot-backend 2>&1" },
-  transcription: { what: "ativou a transcrição de áudio", sh: "" },
-  "transcription-off": { what: "desativou a transcrição de áudio", sh: "" },
-  "support-off": { what: "desligou o suporte", sh: "" },
+const ACTIONS: Record<AdminAction, { acao: Acao; sh: string }> = {
+  "restart-gateway": { acao: "servico.reiniciar-gateway", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
+  "restart-backend": { acao: "servico.reiniciar-backend", sh: "systemctl --user restart meu-bot-backend 2>&1" },
+  transcription: { acao: "audio.ativar", sh: "" },
+  "transcription-off": { acao: "audio.desativar", sh: "" },
+  "support-off": { acao: "suporte.desligar-pelo-admin", sh: "" },
 };
 
 /**
@@ -357,9 +376,15 @@ const ACTIONS: Record<AdminAction, { what: string; sh: string }> = {
  * "desligar" (tira a chave do admin do authorized_keys, entrega "off" na caixa, apaga timer e pasta) e, aqui,
  * a pessoa fica "off" (sai do ~/.ssh/meu-bot-suporte.conf). Ela volta se salvar o nome de novo no tutorial.
  */
-/** Script que desliga o suporte na máquina dela: tira a chave do admin, entrega "off" na caixa, apaga timer/pasta e marca o bloqueio. */
-function supportOffSh(off: SupportCode, what: string): string {
-  return `${authorizedKeysScript(null)}\n${supportLogSh("admin", what)}\n${removeDeliverySh(machineId(off), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`;
+/**
+ * Desliga o suporte na máquina dela: grava a ação e entrega o registro à central ANTES (depois a chave do admin
+ * sai e ele não lê mais a máquina), depois tira as chaves dos admins, entrega "off" na caixa, apaga timer/pasta e
+ * marca o bloqueio.
+ */
+async function supportOff(host: string, off: SupportCode, acao: Acao, alvo = ""): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  await registrar(host, acao, alvo);
+  await entregar(host);
+  return runSsh(host, `${authorizedKeysScript([])}\n${removeDeliverySh(machineId(off), encode(off))}\nrm -f "$HOME/.local/share/meu-bot/progresso.json"\nmkdir -p "$HOME/.local/share/meu-bot" && touch "${SUPPORT_BLOCK_FILE}"\n`, 60_000);
 }
 const lastLine = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou";
 
@@ -368,7 +393,7 @@ async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: stri
   const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
   if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
   const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
-  const r = await runSsh(host, supportOffSh(off, "desligou o suporte"), 60_000);
+  const r = await supportOff(host, off, "suporte.desligar-pelo-admin");
   if (r.code !== 0) return { ok: false, detail: lastLine(r) };
   entry.code = off; save(m); writeSshFiles(m);
   log(`[suporte] ${host}: suporte desligado pelo admin`);
@@ -393,7 +418,7 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
       const keys = [...new Set((await whatsappChats(alias)).flatMap((c) => c.sessionKeys))];
       if (keys.length > 0) { await whatsappClearSessions(alias, keys); cleared = keys.length; }
       const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
-      const r = await runSsh(alias, supportOffSh(off, `excluiu esta máquina do suporte: limpou todo o histórico do WhatsApp (${cleared} ${cleared === 1 ? "conversa" : "conversas"}) e desligou o suporte`), 60_000);
+      const r = await supportOff(alias, off, "suporte.excluir-maquina", `${cleared} ${cleared === 1 ? "conversa" : "conversas"}`);
       if (r.code !== 0) throw new Error(lastLine(r));
       detail = cleared === 0 ? "não havia histórico do WhatsApp para limpar; o suporte foi desligado" : `histórico do WhatsApp limpo (${cleared} ${cleared === 1 ? "conversa" : "conversas"}) e suporte desligado`;
     } catch (e) {
@@ -416,14 +441,14 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
   if (action === "support-off") return turnSupportOff(host);
-  // No registro que a pessoa vê, quem fez é "admin" (sem o nome de quem dá o suporte).
-  const who = "admin";
+  // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {
     const r = await installAudio(host, { kind: "in", ...(action === "transcription-off" ? { off: true } : {}) });
-    await runSsh(host, `${supportLogSh(who, a.what)}\n`, 15_000);
+    await registrar(host, a.acao);
     return { ok: r.ok, detail: r.log.at(-1) ?? "" };
   }
-  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${supportLogSh(who, a.what)}\n${a.sh}\n`, 60_000);
-  log(`[suporte] ${host}: ${a.what} (código ${r.code})`);
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${registroSh(a.acao)}\n${a.sh}\n`, 60_000);
+  void entregar(host);
+  log(`[suporte] ${host}: ${a.acao} (código ${r.code})`);
   return { ok: r.code === 0, detail: (r.stdout.trim() || r.stderr.trim()).split("\n").pop() ?? "" };
 }

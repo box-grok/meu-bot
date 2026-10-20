@@ -1,12 +1,12 @@
 /**
- * Qual app é este: o meu-bot (de cada pessoa) ou o meu-bot-admin (suporte). Mesmo código; o empacotamento
- * grava Resources/variant.json (`scripts/package.mjs --admin`). Em dev: MEU_BOT_VARIANT=admin.
- * A decisão em si é pura (variant-core.ts); aqui só a leitura do arquivo e o cache.
+ * Qual produto é este app: meu-bot (de cada pessoa), meu-bot-admin (suporte) ou meu-bot-crm (meu-bot + CRM
+ * próprio). Mesmo código; o empacotamento grava Resources/variant.json (`scripts/package.mjs --variant <x>`).
+ * Em dev: MEU_BOT_VARIANT=admin|crm. A decisão em si é pura (variant-core.ts); aqui só a leitura e o cache.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { capsFor, resolveVariant, titleFor, type AppVariant, type Capabilities } from "./variant-core";
+import { capsFor, produtoDe, resolveVariant, titleFor, userDataNameFor, type AppVariant, type Capabilities, type Produto } from "./variant-core";
 
 export type { AppVariant, Capabilities };
 let cached: AppVariant | null = null;
@@ -21,6 +21,7 @@ export function appVariant(): AppVariant {
   return cached;
 }
 
-export const isAdmin = (): boolean => appVariant() === "admin";
 export const appTitle = (): string => titleFor(appVariant());
+export const userDataName = (): string | null => userDataNameFor(appVariant());
 export const caps = (): Capabilities => capsFor(appVariant());
+export const produto = (): Produto => produtoDe(appVariant());

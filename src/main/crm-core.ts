@@ -1,6 +1,7 @@
 /**
- * Tutorial 10 · CRM pelo WhatsApp (módulo Pro), parte pura: os scripts de shell que leem/gravam a configuração
- * na máquina (`~/.local/share/meu-bot/crm.json`, 0600, com a chave da API do Streak) e o parse do que volta.
+ * Tutorial 10 · CRM pelo WhatsApp (módulo Pro) e CRM próprio (meu-bot-crm), parte pura: os scripts de shell que
+ * leem/gravam a configuração na máquina (`~/.local/share/meu-bot/crm.json`, 0600; com a chave da API do Streak
+ * só no modo Streak) e o parse do que volta.
  * Mesmo molde do objetivo-core.ts: patch em base64 pelo stdin, merge em python3, gravação atômica. Testado.
  */
 import type { CrmInfo } from "../shared/ipc";
@@ -40,10 +41,10 @@ try:
     c = json.load(open(f)); assert isinstance(c, dict)
 except Exception:
     c = {}
-out = {"configured": isinstance(c.get("apiKey"), str) and c.get("apiKey") != "", "pipelineKey": c.get("pipelineKey"), "pipelineName": c.get("pipelineName"), "silencioMin": c.get("silencioMin", 10), "criarSemPerguntar": c.get("criarSemPerguntar") is True, "savedAt": c.get("savedAt")}
+out = {"configured": (isinstance(c.get("apiKey"), str) and c.get("apiKey") != "") or (isinstance(c.get("pipelineKey"), str) and c.get("pipelineKey") != ""), "pipelineKey": c.get("pipelineKey"), "pipelineName": c.get("pipelineName"), "silencioMin": c.get("silencioMin", 10), "criarSemPerguntar": c.get("criarSemPerguntar") is True, "savedAt": c.get("savedAt")}
 print("C=" + json.dumps(out, ensure_ascii=False))
 ' 2>/dev/null || echo 'C={}'
-[ -f "${CRM_DIR}/crm-job.mjs" ] && [ -f "${CRM_DIR}/streak.mjs" ] && echo I=1 || echo I=0
+[ -f "${CRM_DIR}/crm-job.mjs" ] && { [ -f "${CRM_DIR}/crm.mjs" ] || [ -f "${CRM_DIR}/streak.mjs" ]; } && echo I=1 || echo I=0
 `;
 }
 
@@ -65,10 +66,14 @@ print("CRM=1")
 export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; command -v openclaw >/dev/null 2>&1 && timeout 60 openclaw config set plugins.entries.meu-bot-crm.config.silencioMin ${patch.silencioMin} --strict-json >/dev/null 2>&1 || true` : ""}`;
 }
 
-/** Roda o streak.mjs da máquina para um subcomando sem argumentos da pessoa (diag/pipelines). Linha `S=`. */
+/**
+ * Roda a CLI do CRM da máquina para um subcomando sem argumentos da pessoa (diag/pipelines). Linha `S=`.
+ * Produto meu-bot-crm contratado (ou plano personalizado) → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
+ */
 export function streakSh(sub: "diag" | "pipelines"): string {
   return `export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:/usr/local/bin:$PATH"
-if [ -f "${CRM_DIR}/streak.mjs" ]; then echo "S=$(timeout 60 node "${CRM_DIR}/streak.mjs" ${sub} 2>/dev/null | tail -n1)"; else echo 'S={"erro":"o CRM ainda não foi instalado nesta máquina"}'; fi
+CLI="${CRM_DIR}/streak.mjs"; python3 -c 'import json,os,sys; l=json.load(open(os.path.expandvars("$HOME/.local/share/meu-bot/licenca.json"))); sys.exit(0 if ("meu-bot-crm" in (l.get("produtos") or []) and l.get("status")!="expired") or (l.get("plan")=="personalizado" and l.get("status") in ("active","trialing")) else 1)' 2>/dev/null && [ -f "${CRM_DIR}/crm.mjs" ] && CLI="${CRM_DIR}/crm.mjs"
+if [ -f "$CLI" ]; then echo "S=$(timeout 60 node "$CLI" ${sub} 2>/dev/null | tail -n1)"; else echo 'S={"erro":"o CRM ainda não foi instalado nesta máquina"}'; fi
 `;
 }
 

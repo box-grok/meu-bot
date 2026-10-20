@@ -12,6 +12,8 @@ export const SHARED_CHANNELS = [
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
   // limpar o histórico, pausar o agente e arquivar/excluir por contato: a pessoa e o admin (no admin fica no registro da máquina dela)
   "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark", "whatsapp:names",
+  // meu-bot-crm: guardar a conversa no CRM antes de limpar (o handler recusa fora dele)
+  "whatsapp:archive-crm",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
@@ -57,7 +59,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:produtos-save", "admin:produtos-remove", "admin:produtos-export", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-list", "picker:produtos-save", "picker:produtos-remove", "picker:produtos-export", "picker:auditoria-maquinas", "picker:auditoria-registro", "picker:auditoria-exportar", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

@@ -64,7 +64,7 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
 }
 
 /** Rótulos do plano/status, como as telas de billing do Rambox. */
-export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro" };
+export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro", personalizado: "Personalizado (sob consulta)" };
 export const STATUS_LABEL: Record<LicenseView["license"]["status"], string> = { free: "Free", trialing: "Trialing", active: "Active", expired: "Expired" };
 /** Ciclo de cobrança legível; "-" quando não há (ex.: em trial), como a tela colada. */
 export const billingCycleText = (interval: LicenseView["license"]["interval"]): string => (interval === "month" ? "mensal" : interval === "year" ? "anual" : "-");
@@ -80,7 +80,8 @@ export function fmtDate(iso: string | null): string {
 export function licenseSummary(view: LicenseView, now: number = Date.now()): HealthLine[] {
   const l = view.license;
   const lines: HealthLine[] = [
-    { text: `Plano: ${PLAN_LABEL[l.plan]}`, ok: l.plan === "pro" ? true : null },
+    // `produtos` pode faltar num backend antigo (licença sem o campo): trata como nenhum.
+    { text: `Plano: ${PLAN_LABEL[l.plan]}${(l.produtos ?? []).length > 0 ? ` + ${l.produtos.join(", ")}` : ""}`, ok: l.plan !== "free" || (l.produtos ?? []).length > 0 ? true : null },
     { text: `Status: ${STATUS_LABEL[l.status]}`, ok: l.status === "active" ? true : l.status === "expired" ? false : null },
     { text: `Membro desde: ${fmtDate(l.memberSince)}`, ok: null },
     { text: `Ciclo de cobrança: ${billingCycleText(l.interval)}`, ok: null },
@@ -108,11 +109,17 @@ export function dateInputToIso(value: string): string | null {
 
 /** Rótulo de status de um device. */
 export const deviceStatusLabel = (s: LicenseDevice["status"]): string => (s === "pending" ? "Pendente" : "Ativo");
-/** Uma linha de device para a tabela de máquinas (nome + sistema + versão + status + visto há). */
+/** "meu-bot 0.2.0 · meu-bot-crm 0.2.0" quando o device já se apresentou com mais de um app; senão a versão do app (registro antigo). */
+export function appsText(d: Pick<LicenseDevice, "app" | "apps">): string {
+  const names = Object.keys(d.apps ?? {}).sort();
+  if (names.length === 0) return d.app !== "" ? d.app : "?";
+  return names.map((n) => `${n} ${d.apps[n]?.version || "?"}`).join(" · ");
+}
+/** Uma linha de device para a tabela de máquinas (nome + sistema + apps/versão + status + visto há). */
 export function deviceLine(d: LicenseDevice, now: number = Date.now()): HealthLine {
   const seen = d.status === "pending" ? "mão levantada" : d.lastSeen !== "" ? timeAgo(d.lastSeen, now) : "";
   const name = d.name !== "" ? d.name : d.id;
-  return { text: `${name} · ${d.platform !== "" ? d.platform : "?"} · ${d.app !== "" ? d.app : "?"} · ${deviceStatusLabel(d.status)}${seen !== "" ? ` · ${seen}` : ""}`, ok: d.status === "pending" ? false : true };
+  return { text: `${name} · ${d.platform !== "" ? d.platform : "?"} · ${appsText(d)} · ${deviceStatusLabel(d.status)}${seen !== "" ? ` · ${seen}` : ""}`, ok: d.status === "pending" ? false : true };
 }
 
 export function progressLines(prog: SupportProgress): HealthLine[] {

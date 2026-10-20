@@ -26,7 +26,7 @@ export interface GuideContext {
    * Navegador (módulo Pro): `access` = acesso pela licença (null = não consultado); `installed` = lado da máquina
    * (MCP + regra); `tabs` = abas abertas agora; `extensions` = extensões na sessão; `agentOn` = "agente pode usar".
    */
-  navegador: { access: "ok" | "free" | "expired" | "unknown" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean; /** Sites fixos no espaço de trabalho ativo. */ servicos: number };
+  navegador: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean; /** Sites fixos no espaço de trabalho ativo. */ servicos: number; /** A extensão do CRM próprio (meu-bot-crm) está carregada na sessão. */ extensaoEmbutida: boolean };
   /** Tutorial 11: notificações do Navegador ligadas nas Configurações e quantas conversas "🔔" já existem. */
   notify: { enabled: boolean; conversas: number };
   /**
@@ -37,7 +37,9 @@ export interface GuideContext {
   /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
   /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
-  crm: { access: "ok" | "free" | "expired" | "unknown" | null; info: CrmInfo | null };
+  crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null };
+  /** O produto desta janela (caps): decide quais tutoriais de CRM existem e se há etiqueta Pro. */
+  produto: { planoExigido: "free" | "pro" | "personalizado"; extensaoGmail: boolean; crmStreak: boolean };
   /**
    * Que fontes já foram consultadas nesta janela. "Ainda não consultei" não é "não feito": um tutorial cujas fontes
    * não chegaram fica "verificando", fora da contagem e do selo, em vez de aparecer como pendente e sumir depois.
@@ -55,11 +57,12 @@ export const emptyContext = (): GuideContext => ({
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null },
-  navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0 },
+  navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
   notify: { enabled: false, conversas: 0 },
   fallback: { primary: null, chain: null },
   objective: null,
   crm: { access: null, info: null },
+  produto: { planoExigido: "free", extensaoGmail: false, crmStreak: true },
   known: noneKnown(),
 });
 
@@ -118,13 +121,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "notifySkipped" | "notifySeen" | "claudeReplied";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied";
 
 export interface GuideStep {
   id: string;
@@ -133,7 +136,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "nav-ws" | "nav-notify-config" | "nav-notify-test";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -162,6 +165,10 @@ export interface Tutorial {
   needsSupport?: true;
   /** Só aparece onde o Grok é possível (máquina por SSH com o backend do meu-bot); some neste Mac. */
   needsXai?: true;
+  /** Só no produto com o CRM pelo Streak (meu-bot); some no meu-bot-crm. */
+  needsCrmStreak?: true;
+  /** Só no produto com a extensão do Gmail embutida (meu-bot-crm). */
+  needsExtensaoGmail?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
   /** Fontes do contexto que os passos consultam; enquanto alguma não chegou, o tutorial está "verificando". */
@@ -453,10 +460,47 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
+    id: "crm-gmail",
+    number: 10,
+    needs: ["crm", "navegador"],
+    after: "navegador",
+    needsExtensaoGmail: true,
+    title: "CRM no Gmail e no WhatsApp",
+    short: "CRM",
+    summary: "O CRM do meu-bot-crm mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
+    minutes: 5,
+    icon: "chat",
+    steps: [
+      {
+        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
+        text: "Entra um plugin no OpenClaw da máquina (vê as conversas do WhatsApp e percebe o silêncio) e a ferramenta que o agente usa para anotar. Os dados ficam só na sua máquina; funciona com o app fechado.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
+      },
+      {
+        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail",
+        text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
+        done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
+      },
+      {
+        id: "importar", title: "Trazer os dados do Streak (opcional)", target: "none", body: "crm-importar",
+        text: "Tem pipelines no Streak? Peça ao agente: \"importa do Streak o pipeline X\" com a sua chave da API do Streak. É só uma vez, as chaves e os boxes são preservados, e a chave não fica gravada.",
+        done: (_st, f) => f.crmImportSeen,
+        manual: { label: "Importei (ou não preciso)", flag: "crmImportSeen" },
+      },
+      {
+        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
+        text: "No WhatsApp, abra a conversa com você mesmo e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇; a mudança aparece no Gmail em segundos.",
+        done: (_st, f) => f.crmSeen,
+        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
+      },
+    ],
+  },
+  {
     id: "crm-whatsapp",
     number: 10,
     needs: ["crm"],
     after: "navegador",
+    needsCrmStreak: true,
     title: "CRM pelo WhatsApp (Pro)",
     short: "CRM",
     summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",
@@ -606,6 +650,8 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
   const visible = (t: Tutorial): boolean => {
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
     if (t.needsXai === true && ctx.xai.possible === false) return false;
+    if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
+    if (t.needsExtensaoGmail === true && !ctx.produto.extensaoGmail) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
     return prev !== undefined && visible(prev) && finished(prev);

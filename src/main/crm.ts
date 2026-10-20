@@ -1,21 +1,18 @@
 /**
  * Variante: cliente. Tutorial 10 · CRM pelo WhatsApp (módulo Pro), lado do SSH: lê/grava crm.json na máquina e
  * roda o `streak.mjs diag` dela para conferir a chave e listar os pipelines (crm-core.ts tem a parte pura).
- * Gate Pro aqui também (o renderer bloqueia, o job na máquina recusa sem licença): três camadas, como o Navegador.
+ * Gate aqui também (acesso.ts; o renderer bloqueia, o job na máquina recusa sem licença): três camadas, como o Navegador.
  */
 import type { CrmDiag, CrmInfo } from "../shared/ipc";
 import { crmInfoSh, parseCrmInfo, parseCrmPatch, parseStreakOut, resetCrmSh, setCrmSh, streakSh } from "./crm-core";
 import { runSsh } from "./whatsapp";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
-import { fetchLicense, log } from "./backend";
+import { log } from "./backend";
+import { assertAcesso } from "./acesso";
 
 const lastLine = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split("\n").pop() || "ssh falhou";
-async function requirePro(host: string): Promise<void> {
-  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("PRO_REQUIRED");
-  const lic = await fetchLicense(host);
-  if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED");
-}
+const requirePro = (host: string): Promise<void> => assertAcesso(host);
 
 export async function crmInfo(host: string): Promise<CrmInfo> {
   const none: CrmInfo = { available: false, installed: false, configured: false, pipelineKey: null, pipelineName: null, silencioMin: 10, criarSemPerguntar: false, savedAt: null };

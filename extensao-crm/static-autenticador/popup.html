@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Autenticador</title>
+  <style>
+    :root { --fundo: #10201d; --cartao: #173431; --linha: #24504a; --texto: #e8f5f1; --suave: #9cc3b9; --verde: #5fe3c0; --verde-escuro: #17a689; --erro: #ff8a80; }
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 340px; padding: 16px; background: var(--fundo); color: var(--texto); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .topo { display: flex; align-items: center; gap: 8px; margin: -4px -4px 12px -4px; }
+    .topo .fechar { margin-left: auto; width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; color: var(--texto); font-size: 22px; line-height: 1; cursor: pointer; }
+    .topo .fechar:hover { background: var(--linha); }
+    .topo img { width: 32px; height: 32px; }
+    .topo h1 { margin: 0; font-size: 20px; font-weight: 600; }
+    .aviso { margin: 0 0 12px; color: var(--suave); font-size: 13px; }
+    .erro { color: var(--erro); }
+    .contas { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; max-height: 360px; overflow-y: auto; }
+    .conta { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 10px; padding: 10px 12px; border-radius: 10px; background: var(--cartao); border: 1px solid var(--linha); }
+    .nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sub { grid-column: 1; color: var(--suave); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .codigo { grid-column: 1; justify-self: start; margin: 2px 0 0; padding: 0; border: 0; background: none; color: var(--verde); font: 600 26px/1.1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 2px; cursor: pointer; }
+    .codigo:hover { text-decoration: underline; text-underline-offset: 4px; }
+    .lado { grid-column: 2; grid-row: 1 / span 3; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .anel { width: 28px; height: 28px; }
+    .anel circle { fill: none; stroke-width: 4; }
+    .anel .trilho { stroke: var(--linha); }
+    .anel .resto { stroke: var(--verde); stroke-linecap: round; transform: rotate(-90deg); transform-origin: 50% 50%; transition: stroke-dashoffset 1s linear; }
+    .anel.fim .resto { stroke: #ffd166; }
+    .acoes { display: flex; gap: 2px; }
+    .mini { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--suave); cursor: pointer; font-size: 14px; opacity: .55; }
+    .mini:hover { background: var(--linha); opacity: 1; }
+    .mini.ligado { opacity: 1; background: var(--linha); }
+    .botoes { display: flex; justify-content: flex-end; gap: 6px; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; height: 36px; padding: 0 16px; border: 0; border-radius: 6px; background: var(--verde-escuro); color: #fff; font: 500 14px/1 inherit; cursor: pointer; }
+    .btn:hover { filter: brightness(1.1); }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .btn-texto { background: transparent; color: var(--texto); }
+    form { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    input { height: 34px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--linha); background: var(--cartao); color: var(--texto); font: inherit; }
+    input:focus { outline: 2px solid var(--verde-escuro); outline-offset: -1px; }
+    .copiado { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 12px; border-radius: 6px; background: var(--verde); color: #0b1a18; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header class="topo">
+    <img src="icones/autenticador-128.png" alt="">
+    <h1>Autenticador</h1>
+    <button type="button" class="fechar" id="fechar" title="Fechar (Esc)" aria-label="Fechar">✕</button>
+  </header>
+  <main id="app"><p class="aviso">Carregando…</p></main>
+  <script src="popup.js"></script>
+</body>
+</html>

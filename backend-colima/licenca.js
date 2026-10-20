@@ -9,10 +9,14 @@
  */
 'use strict';
 
-const PLANS = ['free', 'pro'];
+// 'personalizado' (sob consulta) libera tudo do pro e os produtos por assinatura (meu-bot-crm).
+const PLANS = ['free', 'pro', 'personalizado'];
 const STATUSES = ['free', 'trialing', 'active', 'expired'];
 const INTERVALS = ['month', 'year'];
 const DEVICE_STATUSES = ['active', 'pending'];
+/** Produtos contratados por cima do plano (acumulativos): meu-bot-crm, meu-bot-fit… O meu-bot em si não entra. */
+const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const parseProdutos = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && PRODUTO_NOME_RE.test(x) && x !== 'meu-bot-admin'))].sort() : []);
 
 const isIso = (v) => typeof v === 'string' && v !== '' && !Number.isNaN(Date.parse(v));
 const nowIso = (now = Date.now()) => new Date(now).toISOString();
@@ -28,6 +32,7 @@ function defaultLicense(now = Date.now()) {
     trialEnd: null,
     expiresAt: null,
     deviceLimit: 1,
+    produtos: [],
     updatedAt: at,
     updatedBy: 'system',
   };
@@ -50,7 +55,8 @@ function parseLicense(raw, now = Date.now()) {
   const deviceLimit = Number.isInteger(o.deviceLimit) && o.deviceLimit >= 1 && o.deviceLimit <= 100 ? o.deviceLimit : base.deviceLimit;
   const updatedAt = isIso(o.updatedAt) ? o.updatedAt : base.updatedAt;
   const updatedBy = o.updatedBy === 'admin' || o.updatedBy === 'system' ? o.updatedBy : base.updatedBy;
-  return { plan, status, interval, memberSince, trialEnd, expiresAt, deviceLimit, updatedAt, updatedBy };
+  const produtos = parseProdutos(o.produtos);
+  return { plan, status, interval, memberSince, trialEnd, expiresAt, deviceLimit, produtos, updatedAt, updatedBy };
 }
 
 /** Aplica uma mudança do admin (só campos válidos) e carimba updatedAt/updatedBy=admin. */
@@ -64,6 +70,7 @@ function applyLicensePatch(current, patch, now = Date.now()) {
   if (p.trialEnd === null || isIso(p.trialEnd)) next.trialEnd = p.trialEnd ?? null;
   if (p.expiresAt === null || isIso(p.expiresAt)) next.expiresAt = p.expiresAt ?? null;
   if (Number.isInteger(p.deviceLimit) && p.deviceLimit >= 1 && p.deviceLimit <= 100) next.deviceLimit = p.deviceLimit;
+  if (Array.isArray(p.produtos)) next.produtos = parseProdutos(p.produtos);
   next.updatedAt = nowIso(now);
   next.updatedBy = 'admin';
   return next;
@@ -95,8 +102,56 @@ function admitDevice(license, machines, id) {
   return activeCount(all, id) < lic.deviceLimit ? 'active' : 'pending';
 }
 
+/** Licença em vigor: status active/trialing e, se houver validade, ainda não vencida. */
+function isActive(license, now = Date.now()) {
+  const lic = parseLicense(license, now);
+  if (lic.status !== 'active' && lic.status !== 'trialing') return false;
+  return !(lic.expiresAt !== null && Date.parse(lic.expiresAt) < now);
+}
+/** Módulos Pro do meu-bot (Navegador, CRM pelo WhatsApp): pro ou personalizado, em vigor. */
+function proOk(license, now = Date.now()) {
+  const lic = parseLicense(license, now);
+  return (lic.plan === 'pro' || lic.plan === 'personalizado') && isActive(lic, now);
+}
+/**
+ * Um produto contratado (meu-bot-crm, meu-bot-fit…) está liberado? Produtos são acumulativos por cima do plano:
+ * basta estar na lista e a licença não estar vencida (status expired ou validade passada). O plano personalizado
+ * (sob consulta) libera todos.
+ */
+function produtoOk(license, nome, now = Date.now()) {
+  const lic = parseLicense(license, now);
+  if (lic.status === 'expired') return false;
+  if (lic.expiresAt !== null && Date.parse(lic.expiresAt) < now) return false;
+  return lic.plan === 'personalizado' ? isActive(lic, now) : lic.produtos.includes(nome);
+}
+/** O CRM próprio (meu-bot-crm): produto contratado ou plano personalizado em vigor. */
+const crmOk = (license, now = Date.now()) => produtoOk(license, 'meu-bot-crm', now);
+
+const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
+/**
+ * Apps que já se apresentaram deste device (um Mac pode ter o meu-bot e o meu-bot-crm): `apps[produto] =
+ * {version, lastSeen}`. `produto` inválido/ausente (app antigo) conta como "meu-bot".
+ */
+function mergeApps(prev, produto, version, now = Date.now()) {
+  const apps = {};
+  if (prev && typeof prev === 'object' && !Array.isArray(prev)) {
+    for (const [k, v] of Object.entries(prev)) {
+      if (PRODUTO_RE.test(k) && v && typeof v === 'object' && typeof v.version === 'string' && typeof v.lastSeen === 'string') apps[k] = { version: v.version, lastSeen: v.lastSeen };
+    }
+  }
+  const nome = typeof produto === 'string' && PRODUTO_RE.test(produto) ? produto : 'meu-bot';
+  apps[nome] = { version: typeof version === 'string' ? version : '', lastSeen: nowIso(now) };
+  return apps;
+}
+
 module.exports = {
   PLANS,
+  isActive,
+  proOk,
+  produtoOk,
+  crmOk,
+  parseProdutos,
+  mergeApps,
   STATUSES,
   INTERVALS,
   DEVICE_STATUSES,

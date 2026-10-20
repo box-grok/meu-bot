@@ -31,7 +31,8 @@ test("crmInfoSh/parseCrmInfo: configured sem a chave, instalado por I=", () => {
 });
 
 test("streakSh/parseStreakOut: só diag/pipelines; JSON ou erro claro", () => {
-  assert.match(streakSh("diag"), /streak\.mjs" diag/);
+  assert.match(streakSh("diag"), /"\$CLI" diag/);
+  assert.match(streakSh("diag"), /crm\.mjs/, "plano personalizado usa o crm.mjs"); assert.match(streakSh("pipelines"), /streak\.mjs/, "senão o streak.mjs");
   assert.deepEqual(parseStreakOut('S={"ok":true,"pipelines":[]}'), { ok: true, pipelines: [] });
   assert.match(String(parseStreakOut("S=").erro), /não respondeu/);
 });

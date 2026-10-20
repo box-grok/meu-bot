@@ -1,13 +1,20 @@
 import { packager } from "@electron/packager";
-import { copyFileSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { archOf, produtoFromArgv } from "./produtos.mjs";
 
-// `--admin` empacota o meu-bot-admin: mesmo código, outro nome, bundle id e ícone. O app sabe qual é pelo
-// Resources/variant.json e, sendo admin, usa userData próprio (src/main/admin/user-data.ts; o Electron nomearia a
-// pasta pelo productName do package.json, igual nos dois), então os dois apps convivem abertos ao mesmo tempo.
-const admin = process.argv.includes("--admin");
-const name = admin ? "meu-bot-admin" : "meu-bot";
-const arch = process.arch === "arm64" ? "arm64" : "x64";
+// `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/variant-core.ts): mesmo código, outro
+// nome, bundle id e ícone. O app sabe qual é pelo Resources/variant.json e usa userData próprio
+// (src/main/user-data.ts; o Electron nomearia a pasta pelo productName do package.json, igual em todos), então os
+// apps convivem abertos ao mesmo tempo. Produto com extensões embutidas leva build/<extensao> em Resources/.
+const produto = produtoFromArgv();
+const admin = produto.variant === "admin";
+const name = produto.nome;
+const arch = archOf();
+for (const e of produto.extensoes) if (!existsSync(join("build", e, "manifest.json"))) {
+  console.error(`✗ falta build/${e}/manifest.json: rode \`npm run build:extensao\` antes de empacotar o ${name}`);
+  process.exit(1);
+}
 // Só a pasta desta variante: empacotar uma não apaga a outra (nem os .dmg em out/).
 rmSync(join("out", `${name}-darwin-${arch}`), { recursive: true, force: true });
 const paths = await packager({
@@ -18,18 +25,33 @@ const paths = await packager({
   arch,
   asar: true,
   overwrite: true,
-  appBundleId: admin ? "local.meu-bot-admin" : "local.meu-bot",
-  icon: admin ? "assets/icon-admin.icns" : "assets/icon.icns",
+  appBundleId: produto.bundleId,
+  icon: produto.icone,
   appCategoryType: "public.app-category.productivity",
   prune: true,
   // config/ (modelo de hosts ssh) e scripts/alivio/ (script enviado ao pod) vão em Resources/.
   extraResource: ["backend-colima", "config", "scripts/alivio"],
-  ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/config($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/],
+  ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/config($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/, /^\/extensao-crm($|\/)/, /^\/produtos($|\/)/],
 });
 for (const p of paths) {
   const res = join(p, `${name}.app`, "Contents", "Resources");
-  writeFileSync(join(res, "variant.json"), `${JSON.stringify({ variant: admin ? "admin" : "client" })}\n`);
-  // O admin lê a caixa de entrada pelo suporte.json (só dados públicos: nome, pública do admin, endereço da caixa).
-  if (admin && existsSync(join("build", "suporte", "suporte.json"))) copyFileSync(join("build", "suporte", "suporte.json"), join(res, "config", "suporte.json"));
+  writeFileSync(join(res, "variant.json"), `${JSON.stringify({ variant: produto.variant })}\n`);
+  // Extensões embutidas (meu-bot-crm): Resources/<pasta da extensão>/ (manifest.json, content.js, popup.js, …).
+  for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
+  // Client OAuth do Google (Google Contatos → CRM): config/google-oauth.json local, fora do git; sem ele o app só
+  // mostra "configure o Google". Vai junto só nos produtos com extensão do Gmail.
+  if (produto.caps.extensaoGmail && existsSync(join("config", "google-oauth.json"))) copyFileSync(join("config", "google-oauth.json"), join(res, "google-oauth.json"));
+  // O app de cada admin leva o suporte.json DELE (build/suporte/admins/<nome>.json: nome, superAdmin, caixa; só
+  // dados públicos). MEU_BOT_ADMIN_COMO escolhe o admin; sem ele, o super admin. Setup antigo: o suporte.json geral.
+  if (admin) {
+    const como = process.env.MEU_BOT_ADMIN_COMO ?? "";
+    let lista = [];
+    try { lista = JSON.parse(readFileSync(join("build", "suporte", "admins.json"), "utf8")); } catch { /* setup antigo */ }
+    const quem = como !== "" ? lista.find((a) => a.nome === como) : lista.find((a) => a.super === true);
+    if (como !== "" && quem === undefined) throw new Error(`admin "${como}" não está em build/suporte/admins.json (rode scripts/suporte-setup.mjs --admin)`);
+    const origem = quem !== undefined ? join("build", "suporte", "admins", `${quem.nome}.json`) : join("build", "suporte", "suporte.json");
+    if (existsSync(origem)) copyFileSync(origem, join(res, "config", "suporte.json"));
+    if (quem !== undefined) console.log(`meu-bot-admin de ${quem.nome}${quem.super === true ? " (super admin)" : ""}`);
+  }
 }
 console.log("Empacotado em:", paths.join(", "));

@@ -1,19 +1,23 @@
+import { identidade } from "./assinatura.mjs";
 import { flipFuses, FuseVersion, FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync } from "node:fs";
 import path from "node:path";
 
-// `--admin`: o meu-bot-admin (ver scripts/package.mjs).
-const name = process.argv.includes("--admin") ? "meu-bot-admin" : "meu-bot";
-const bundleId = `local.${name}`;
-const app = `out/${name}-darwin-${process.arch === "arm64" ? "arm64" : "x64"}/${name}.app`;
+import { archOf, produtoFromArgv } from "./produtos.mjs";
+
+// `--variant <id>` / `--admin`: qual produto (ver scripts/package.mjs e src/main/variant-core.ts).
+const produto = produtoFromArgv();
+const name = produto.nome;
+const bundleId = produto.bundleId;
+const app = `out/${name}-darwin-${archOf()}/${name}.app`;
 if (!existsSync(app)) {
   console.error(`App não encontrado em ${app}. Rode npm run package primeiro.`);
   process.exit(1);
 }
 // Pacote de suporte (build/suporte, de scripts/suporte-setup.mjs) no meu-bot instalado: só no meu-bot normal,
 // com MEU_BOT_SUPORTE=1 (o ./instalar.sh liga quando build/suporte existe). Antes da assinatura.
-if (name === "meu-bot" && process.env.MEU_BOT_SUPORTE === "1" && existsSync("build/suporte/suporte.json")) {
+if (produto.variant === "client" && process.env.MEU_BOT_SUPORTE === "1" && existsSync("build/suporte/suporte.json")) {
   const cfg = path.join(app, "Contents", "Resources", "config");
   copyFileSync("build/suporte/suporte.json", path.join(cfg, "suporte.json"));
   copyFileSync("build/suporte/known_hosts", path.join(cfg, "suporte-known_hosts"));
@@ -38,8 +42,10 @@ for (const [index, value] of Object.entries(wire)) {
   if (index === "version") continue;
   console.log(`  ${(names[index] ?? index).padEnd(40)} ${value === 49 ? "enabled" : value === 48 ? "disabled" : "removed"}`);
 }
-execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" });
-console.log("Assinatura ad-hoc aplicada em", app);
+// Identidade fixa ("meu-bot local", scripts/assinatura.mjs) quando existe: o chaveiro não pede a senha a cada build.
+const ident = identidade();
+execFileSync("codesign", ["--force", "--deep", "--sign", ident, app], { stdio: "inherit" });
+console.log(ident === "-" ? "Assinatura ad-hoc aplicada em" : `Assinado com "${ident}":`, app);
 
 // Instala em ~/Applications e garante o atalho na área de trabalho. `--no-install` (scripts/release.mjs) para aqui:
 // só empacota e assina, sem tocar nos apps instalados neste Mac.

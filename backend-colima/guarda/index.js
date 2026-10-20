@@ -39,6 +39,15 @@ function injectNote(key, text, logger) {
   } catch (e) { logger.warn(`${PLUGIN_ID}: nota ao agente não agendada: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
+/** Registro de auditoria da máquina (quem: "agente"), pelo auditoria.py que o backend do meu-bot deixa na pasta dele. */
+function auditar(peer, reason, logger) {
+  const py = path.join(os.homedir(), ".local", "share", "meu-bot", "auditoria.py");
+  if (!fs.existsSync(py)) return;
+  const b64 = Buffer.from(JSON.stringify({ quem: { tipo: "agente", nome: "guarda do WhatsApp" }, app: "plugin", acao: "whatsapp.pausa-automatica", alvo: String(peer ?? ""), detalhe: String(reason ?? "").slice(0, 300) }), "utf8").toString("base64url");
+  const p = spawn("python3", [py, "gravar", b64], { stdio: "ignore" });
+  p.on("error", (e) => logger.warn(`${PLUGIN_ID}: auditoria: ${e.message}`));
+}
+
 export default {
   id: PLUGIN_ID,
   name: "meu-bot · guarda do WhatsApp",
@@ -52,6 +61,7 @@ export default {
       await api.runtime.agent.session.patchSessionEntry({ agentId: agentIdOf(key), sessionKey: key, preserveActivity: true, update: () => ({ sendPolicy: "deny" }) });
       logger.warn(`${PLUGIN_ID}: loop com ${peerOf(key)} (${reason}); conversa pausada (sendPolicy deny)`);
       injectNote(key, autoPauseNoteText(reason, whenText(), peerOf(key)), logger);
+      auditar(peerOf(key), reason, logger);
     }
 
     // Confirmação no log de que o hook de entrada chega (exige plugins.entries.meu-bot-guarda.hooks.allowConversationAccess).

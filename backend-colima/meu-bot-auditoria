@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+"""
+meu-bot-auditoria — cópia central do registro de auditoria (usuário Linux "auditoria" na caixa do suporte).
+
+É o comando FORÇADO de cada chave no ~/.ssh/authorized_keys desse usuário (restrict,command="… <papel> <nome>"):
+  admin <nome>   a chave de um admin (o app meu-bot-admin dele): só entrega linhas
+  maquina -      a chave de entrega das pessoas (o meu-bot delas): só entrega linhas
+  super <nome>   a chave do super admin: entrega e lê
+Quem entregou vem da CHAVE (o papel e o nome acima), nunca do que o app diz. O pedido do cliente
+($SSH_ORIGINAL_COMMAND) só escolhe a operação:
+  gravar (padrão)            linhas JSON do auditoria.jsonl de uma máquina, pela entrada padrão
+  maquinas                   (super) ids das máquinas, com nº de registros e o último
+  ler <maquina> [--desde N]  (super) os registros centrais da máquina (a partir do N-ésimo)
+Cada máquina tem registro/<maquina>.jsonl: { n, recebidoEm, via:{papel,nome}, linha, prev, hash }, com corrente
+própria (mesma regra do auditoria.py). Uma linha que já chegou (mesmo hash) não entra de novo. Só acrescenta:
+nada aqui apaga ou muda o que já está gravado.
+"""
+import fcntl, hashlib, json, os, re, sys, time
+
+BASE = os.path.expanduser("~/registro")
+HEX12 = re.compile(r"^[0-9a-f]{12}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+NOME = re.compile(r"^[\w .-]{1,40}$")
+
+
+def canonica(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def selar(obj, prev):
+    obj = dict(obj)
+    obj["prev"] = prev
+    obj["hash"] = hashlib.sha256((prev + canonica(obj)).encode("utf-8")).hexdigest()
+    return obj
+
+
+def recusar(msg):
+    sys.stderr.write(f"recusado: {msg}\n")
+    sys.exit(1)
+
+
+def estado(arq):
+    """(último n, último hash, hashes das linhas já recebidas)."""
+    n, prev, vistos = 0, "", set()
+    try:
+        for l in open(arq, encoding="utf-8"):
+            if not l.strip():
+                continue
+            r = json.loads(l)
+            n, prev = r.get("n", n), r.get("hash", prev)
+            h = (r.get("linha") or {}).get("hash")
+            if h:
+                vistos.add(h)
+    except OSError:
+        pass
+    return n, prev, vistos
+
+
+def gravar(papel, nome):
+    bruto = sys.stdin.buffer.read(4 * 1024 * 1024 + 1)
+    if len(bruto) > 4 * 1024 * 1024:
+        recusar("grande demais")
+    linhas = []
+    for l in bruto.decode("utf-8", "replace").split("\n"):
+        if not l.strip():
+            continue
+        try:
+            o = json.loads(l)
+        except ValueError:
+            recusar("linha que não é JSON")
+        if not isinstance(o, dict) or not HEX12.match(str(o.get("maquina", ""))) or not HEX64.match(str(o.get("hash", ""))):
+            recusar("linha sem máquina ou hash")
+        linhas.append(o)
+    if len({o["maquina"] for o in linhas}) > 1:
+        recusar("uma máquina por entrega")
+    if not linhas:
+        print("ok 0")
+        return
+    os.makedirs(BASE, mode=0o700, exist_ok=True)
+    arq = os.path.join(BASE, linhas[0]["maquina"] + ".jsonl")
+    novas = 0
+    with open(arq + ".lock", "w") as trava:
+        fcntl.flock(trava, fcntl.LOCK_EX)
+        n, prev, vistos = estado(arq)
+        fd = os.open(arq, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as out:
+            for o in linhas:
+                if o["hash"] in vistos:
+                    continue
+                n += 1
+                r = selar({"n": n, "recebidoEm": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "via": {"papel": papel, "nome": nome}, "linha": o}, prev)
+                out.write(canonica(r) + "\n")
+                prev = r["hash"]
+                vistos.add(o["hash"])
+                novas += 1
+    print(f"ok {novas}")
+
+
+def maquinas():
+    try:
+        nomes = sorted(f for f in os.listdir(BASE) if f.endswith(".jsonl") and HEX12.match(f[:-6]))
+    except OSError:
+        nomes = []
+    for f in nomes:
+        n, _, _ = estado(os.path.join(BASE, f))
+        ultimo = ""
+        try:
+            with open(os.path.join(BASE, f), "rb") as h:
+                h.seek(0, 2)
+                h.seek(max(0, h.tell() - 65536))
+                ls = [l for l in h.read().decode("utf-8", "replace").split("\n") if l.strip()]
+            ultimo = json.loads(ls[-1]).get("recebidoEm", "") if ls else ""
+        except (OSError, ValueError):
+            pass
+        print(canonica({"maquina": f[:-6], "registros": n, "ultimo": ultimo}))
+
+
+def ler(maquina, desde):
+    if not HEX12.match(maquina):
+        recusar("máquina inválida")
+    try:
+        for l in open(os.path.join(BASE, maquina + ".jsonl"), encoding="utf-8"):
+            if l.strip() and json.loads(l).get("n", 0) >= desde:
+                sys.stdout.write(l if l.endswith("\n") else l + "\n")
+    except OSError:
+        pass
+
+
+def main():
+    if len(sys.argv) != 3 or sys.argv[1] not in ("admin", "maquina", "super") or not NOME.match(sys.argv[2]):
+        recusar("chave mal configurada")
+    papel, nome = sys.argv[1], sys.argv[2]
+    pedido = (os.environ.get("SSH_ORIGINAL_COMMAND") or "gravar").split()
+    op = pedido[0] if pedido else "gravar"
+    if op == "gravar":
+        gravar(papel, nome)
+    elif op in ("maquinas", "ler"):
+        if papel != "super":
+            recusar("só o super admin lê o registro central")
+        if op == "maquinas":
+            maquinas()
+        else:
+            desde = int(pedido[pedido.index("--desde") + 1]) if "--desde" in pedido and pedido[pedido.index("--desde") + 1:] and pedido[pedido.index("--desde") + 1].isdigit() else 0
+            ler(pedido[1] if len(pedido) > 1 else "", desde)
+    else:
+        recusar("operação desconhecida")
+
+
+if __name__ == "__main__":
+    main()

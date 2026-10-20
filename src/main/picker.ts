@@ -7,7 +7,7 @@
  */
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
-import type { HostProbe, PickerInit } from "../shared/ipc";
+import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
 import { approveTailscaleCheck, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
@@ -269,13 +269,13 @@ export function initPicker(src: PickerSource): void {
   handleShared("picker:plans", async (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const hosts = current().hosts().filter((h) => h !== LOCAL_HOST && isValidHost(h));
-    const out: Record<string, "free" | "pro"> = {};
+    const out: Record<string, PlanName> = {};
     await Promise.all(hosts.map(async (h) => {
       try {
         const r = await runSsh(h, `cat "$HOME/.local/share/meu-bot/licenca.json" 2>/dev/null; echo\n`, 10_000);
         if (r.code !== 0) return;
         const v = JSON.parse(r.stdout.trim() || "null") as { plan?: unknown } | null;
-        if (v && (v.plan === "pro" || v.plan === "free")) out[h] = v.plan;
+        if (v && (v.plan === "pro" || v.plan === "free" || v.plan === "personalizado")) out[h] = v.plan;
       } catch { /* fora do ar, ausente ou JSON inválido: sem selo */ }
     }));
     return out;

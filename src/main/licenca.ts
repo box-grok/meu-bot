@@ -3,19 +3,22 @@
  * maquinas.json). Puro, sem IO: a fronteira dona do formato do lado do admin. Vem de fora = dado, nunca comando.
  * Mesmo esquema do backend-colima/licenca.js (o backend é quem grava de fato); mudar os dois juntos.
  */
-import type { License, LicenseDevice, LicensePatch, LicenseView } from "../shared/ipc";
+import type { License, LicenseDevice, LicensePatch, LicenseView, PlanName } from "../shared/ipc";
 
-const PLANS: License["plan"][] = ["free", "pro"];
+const PLANS: License["plan"][] = ["free", "pro", "personalizado"];
 const STATUSES: License["status"][] = ["free", "trialing", "active", "expired"];
 const INTERVALS: NonNullable<License["interval"]>[] = ["month", "year"];
 
 const isIso = (v: unknown): v is string => typeof v === "string" && v !== "" && !Number.isNaN(Date.parse(v));
 const nowIso = (now: number): string => new Date(now).toISOString();
+/** Produtos contratados (meu-bot-crm, meu-bot-fit…): nomes válidos, únicos, ordenados; o admin não é produto. */
+const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && x !== "meu-bot-admin"))].sort() : []);
 
 /** Licença de uma conta ainda não configurada: grátis, um device. */
 export function defaultLicense(now: number = Date.now()): License {
   const at = nowIso(now);
-  return { plan: "free", status: "free", interval: null, memberSince: at, trialEnd: null, expiresAt: null, deviceLimit: 1, updatedAt: at, updatedBy: "system" };
+  return { plan: "free", status: "free", interval: null, memberSince: at, trialEnd: null, expiresAt: null, deviceLimit: 1, produtos: [], updatedAt: at, updatedBy: "system" };
 }
 
 /** Normaliza o licenca.json lido; campo inválido/ausente cai no default (memberSince preservado). Nunca lança. */
@@ -31,6 +34,7 @@ export function parseLicense(raw: unknown, now: number = Date.now()): License {
     trialEnd: isIso(o.trialEnd) ? o.trialEnd : null,
     expiresAt: isIso(o.expiresAt) ? o.expiresAt : null,
     deviceLimit: Number.isInteger(o.deviceLimit) && (o.deviceLimit as number) >= 1 && (o.deviceLimit as number) <= 100 ? (o.deviceLimit as number) : base.deviceLimit,
+    produtos: parseProdutos(o.produtos),
     updatedAt: isIso(o.updatedAt) ? o.updatedAt : base.updatedAt,
     updatedBy: o.updatedBy === "admin" || o.updatedBy === "system" ? o.updatedBy : base.updatedBy,
   };
@@ -47,12 +51,54 @@ export function applyLicensePatch(current: unknown, patch: LicensePatch, now: nu
   if (p.trialEnd !== undefined && (p.trialEnd === null || isIso(p.trialEnd))) next.trialEnd = p.trialEnd;
   if (p.expiresAt !== undefined && (p.expiresAt === null || isIso(p.expiresAt))) next.expiresAt = p.expiresAt;
   if (p.deviceLimit !== undefined && Number.isInteger(p.deviceLimit) && p.deviceLimit >= 1 && p.deviceLimit <= 100) next.deviceLimit = p.deviceLimit;
+  if (p.produtos !== undefined) next.produtos = parseProdutos(p.produtos);
   next.updatedAt = nowIso(now);
   next.updatedBy = "admin";
   return next;
 }
 
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** Licença em vigor: status active/trialing e, se houver validade, ainda não vencida. */
+export function isActive(l: License, now: number = Date.now()): boolean {
+  if (l.status !== "active" && l.status !== "trialing") return false;
+  return !(l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
+}
+/** Ordem dos planos: cada um libera o que os de baixo liberam. */
+const RANK: Record<PlanName, number> = { free: 0, pro: 1, personalizado: 2 };
+export const planoLibera = (tem: PlanName, exige: PlanName): boolean => RANK[tem] >= RANK[exige];
+/** Módulos Pro do meu-bot (Navegador, CRM pelo WhatsApp): pro ou personalizado, em vigor. */
+export const proOk = (l: License, now: number = Date.now()): boolean => planoLibera(l.plan, "pro") && isActive(l, now);
+
+export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
+/** Licença vencida: status expired ou validade no passado (o plano free, sem validade, não está vencido). */
+const vencida = (l: License, now: number): boolean => l.status === "expired" || (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
+/**
+ * Produto por assinatura (caps.planoExigido !== "free", ex.: meu-bot-crm): produtos são acumulativos por cima do
+ * plano, então basta `produto` estar em `licenca.produtos` (ou o plano personalizado, que libera todos) e a
+ * licença não estar vencida. "ausente" = não contratado; "expirada" = contratado mas vencida; "unknown" = este
+ * Mac ou backend antigo/fora do ar (null). Produto free (meu-bot): sempre "ok" (os módulos Pro têm o gate próprio).
+ */
+export function acessoProduto(view: LicenseView | null, host: string, exige: PlanName, produto: string, now: number = Date.now()): AcessoProduto {
+  if (exige === "free") return "ok";
+  if (host === "local" || view === null) return "unknown";
+  const l = view.license;
+  const contratado = (l.produtos ?? []).includes(produto) || (l.plan === "personalizado" && (l.status === "active" || l.status === "trialing"));
+  if (!contratado) return "ausente";
+  return vencida(l, now) ? "expirada" : "ok";
+}
+
+const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
+function parseApps(raw: unknown): LicenseDevice["apps"] {
+  const out: LicenseDevice["apps"] = {};
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (!PRODUTO_RE.test(k) || v === null || typeof v !== "object") continue;
+    const e = v as Record<string, unknown>;
+    out[k] = { version: str(e.version), lastSeen: str(e.lastSeen) };
+  }
+  return out;
+}
 
 /** Lê o maquinas.json (mapa id → entrada) e devolve os devices; status ausente (registro antigo) = ativo. */
 export function parseDevices(raw: unknown): LicenseDevice[] {
@@ -72,6 +118,7 @@ export function parseDevices(raw: unknown): LicenseDevice[] {
       lastSeen: str(e.lastSeen),
       status,
       requestedAt: isIso(e.requestedAt) ? e.requestedAt : null,
+      apps: parseApps(e.apps),
     });
   }
   // Mais recentes primeiro, como a tabela "Last seen" do Rambox.

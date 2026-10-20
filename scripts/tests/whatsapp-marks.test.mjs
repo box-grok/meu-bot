@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseWaMarks, applyWaMarks, parseWaMarkPatches, waMarkSh, waMarkLogText, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp-marks.js");
+const { parseWaMarks, applyWaMarks, parseWaMarkPatches, waMarkSh, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp-marks.js");
 
 const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, isSelf: false, sessionKeys: [], sessionIds: {}, ownSession: true, paused: false, updatedAt, archived: false, deleted: false });
 
@@ -72,13 +72,3 @@ test("waMarkSh: embute os ajustes em base64, grava com tmp+mv e recusa número i
   assert.throws(() => waMarkSh([{ number: "595994402904", alias: "linha\nnova" }]), /nome inválido/);
 });
 
-test("waMarkLogText: um ajuste da tela registra; migração (com at) e lote não", () => {
-  assert.equal(waMarkLogText([{ number: "5511999990000", archived: true }]), "arquivou a conversa do WhatsApp de +5511999990000");
-  assert.equal(waMarkLogText([{ number: "5511999990000", archived: false }]), "desarquivou a conversa do WhatsApp de +5511999990000");
-  assert.equal(waMarkLogText([{ number: "5511999990000", deleted: true, archived: false }]), "excluiu a conversa do WhatsApp de +5511999990000");
-  assert.equal(waMarkLogText([{ number: "5511999990000", archived: true, at: "2026-10-17T02:10:00Z" }]), null);
-  assert.equal(waMarkLogText([{ number: "1", archived: true }, { number: "2", archived: true }]), null);
-  assert.equal(waMarkLogText([{ number: "595994402904", alias: "Junior (cliente)" }]), 'renomeou a conversa do WhatsApp de +595994402904 para "Junior (cliente)"');
-  assert.equal(waMarkLogText([{ number: "595994402904", alias: "" }]), "tirou o apelido da conversa do WhatsApp de +595994402904");
-  assert.equal(waMarkLogText([{ number: "595994402904", name: "Junior" }]), null, "cache de nome não registra");
-});

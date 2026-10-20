@@ -53,4 +53,6 @@ test("comandos do streak.mjs no Bash viram uma linha 📇 com o subcomando", () 
   const { summarize } = createRequire(import.meta.url)("../../backend-colima/tool-events.js");
   assert.equal(summarize("Bash", { command: "node ~/.local/share/meu-bot/crm/streak.mjs box-find --phone +595994402904" }), "📇 CRM: box-find --phone +595994402904");
   assert.equal(summarize("Bash", { command: "node /x/streak.mjs comment k1 \"fechou o Kommo\"" }), "📇 CRM: comment k1 \"fechou o Kommo\"");
+  assert.equal(summarize("Bash", { command: "node ~/.local/share/meu-bot/crm/crm.mjs box-find --phone +595994402904" }), "📇 CRM: box-find --phone +595994402904", "crm.mjs (meu-bot-crm) igual");
+  assert.equal(summarize("Bash", { command: "node ~/.local/share/meu-bot/crm/importar-streak.mjs --chave SEGREDO --pipeline x --dry-run" }), "📇 CRM: importar do Streak (simulação)", "a chave do Streak nunca aparece");
 });

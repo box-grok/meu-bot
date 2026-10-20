@@ -15,7 +15,7 @@ import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
-import { localWhenText, pauseNoteSh, pauseNoteText, pauseRuleSh, type PauseBy } from "./whatsapp-pause";
+import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
@@ -444,6 +444,7 @@ export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
 echo "self=$(${CREDS_ME})"
 echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
 echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
+${SEND_POLICY_READ_SH}
 `;
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ler as conversas do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
@@ -458,7 +459,10 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
   // O cache de nomes semeia a memória (o pushname lido nesta sessão, se houver, continua valendo mais).
   const names = namesOf(host);
   for (const [n, e] of Object.entries(parsed.names)) if (e.name !== null && !names.has(n)) names.set(n, e.name);
-  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names), parsed);
+  // Pausados pela lista durável do openclaw.json contam mesmo quando a sessão perdeu a marca (conversa limpa).
+  let policy: unknown = null;
+  try { policy = JSON.parse(kv.get("policy") || "null"); } catch { /* sem lista legível: só a marca da sessão */ }
+  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names, pausedNumbersOfPolicy(policy)), parsed);
 }
 
 /**
@@ -509,7 +513,7 @@ export async function whatsappSetMarks(host: string, patches: readonly WaMarkPat
   log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`).join(", ")}`);
 }
 
-export async function whatsappThread(host: string, number: string): Promise<WhatsappThreadMessage[]> {
+export async function whatsappThread(host: string, number: string, limit = 200): Promise<WhatsappThreadMessage[]> {
   if (host === LOCAL_HOST || !isValidHost(host)) return [];
   const want = number.replace(/\D/g, "");
   if (want.length < 8) throw new Error("número inválido");
@@ -517,7 +521,7 @@ export async function whatsappThread(host: string, number: string): Promise<What
   if (chat === undefined) return [];
   const keys = chat.sessionKeys.filter((k) => SAFE_KEY.test(k));
   // Uma linha por sessão: "H<TAB>chave<TAB>json".
-  const lines = keys.map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":200}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
+  const lines = keys.map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":${Math.min(1000, Math.max(1, Math.trunc(limit)))}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${lines}\n`, 90_000);
   if (r.code !== 0) throw new Error(`não consegui ler a conversa: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const histories: SessionHistory[] = [];
@@ -553,24 +557,25 @@ export async function whatsappBranch(host: string, number: string): Promise<Stor
 
 
 /** Conversa inteira para exportar: Markdown legível ou JSON com contato, máquina e mensagens. */
-export async function whatsappExportBody(host: string, number: string, format: "md" | "json"): Promise<{ name: string; body: string }> {
+export async function whatsappExportBody(host: string, number: string, format: "md" | "json", limit = 200): Promise<{ name: string; body: string; messages: WhatsappThreadMessage[] }> {
   const want = number.replace(/\D/g, "");
-  const messages = await whatsappThread(host, want);
+  const messages = await whatsappThread(host, want, limit);
   const name = namesOf(host).get(want) ?? `+${want}`;
   const exportedAt = new Date().toISOString();
   const body = format === "md"
     ? threadToMarkdown(name, want, host, messages, exportedAt)
     : `${JSON.stringify({ channel: "whatsapp", contact: { name, number: `+${want}` }, host, exportedAt, messages }, null, 2)}\n`;
-  return { name, body };
+  return { name, body, messages };
 }
 
-/** O que "Limpar histórico" vai zerar: sessões só do contato e, se houver, a principal (de todos). */
-export async function whatsappClearPlan(host: string, number: string): Promise<{ own: string[]; shared: string[] }> {
+/** O que "Limpar histórico" vai zerar: sessões só do contato e, se houver, a principal (de todos); e se ele está pausado. */
+export async function whatsappClearPlan(host: string, number: string): Promise<{ own: string[]; shared: string[]; paused: boolean }> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const want = number.replace(/\D/g, "");
-  const keys = ((await whatsappChats(host)).find((c) => c.number === want)?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
+  const chat = (await whatsappChats(host)).find((c) => c.number === want);
+  const keys = (chat?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
   const own = ownSessionKeys(want, keys);
-  return { own, shared: keys.filter((k) => !own.includes(k)) };
+  return { own, shared: keys.filter((k) => !own.includes(k)), paused: chat?.paused === true };
 }
 
 /**
@@ -599,18 +604,40 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
  * a regra não desfazem a pausa se falharem.
  */
 export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy): Promise<void> {
-  const { own } = await whatsappClearPlan(host, number);
-  if (own.length === 0) throw new Error("esta pessoa ainda não tem conversa própria com o agente; dá para pausar depois da próxima mensagem dela");
+  const want = number.replace(/\D/g, "");
+  const { own } = await whatsappClearPlan(host, want);
+  // A lista durável (session.sendPolicy do openclaw.json) vale mesmo sem sessão própria e sobrevive a limpar.
+  const policy = withPauseRule(await readSendPolicy(host), want, paused, pauseRulePrefixes(want, own));
   const value = paused ? '"deny"' : "null";
   const note = pauseNoteText(paused ? "pause" : "resume", localWhenText(new Date()), by);
   const patch = own.map((k) => `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.patch --json --params '{"key":"${k}","sendPolicy":${value}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");
   const notes = own.map((k) => pauseNoteSh(k, note)).join("\n");
-  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${patch}\n${notes}\n${pauseRuleSh()}\n`, 120_000);
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${sendPolicySh(policy)}\n${patch}\n${notes}\n${pauseRuleSh()}\n`, 120_000);
   const failed = gatewayFailures(r.stdout, own);
-  if (failed.length > 0) throw new Error(`o OpenClaw não ${paused ? "pausou" : "retomou"} a conversa`);
-  const noteState = /NOTA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
+  if (failed.length > 0 || !/POL=1/.test(r.stdout)) throw new Error(`o OpenClaw não ${paused ? "pausou" : "retomou"} a conversa${failed.length === 0 ? " (lista de pausados do openclaw.json)" : ""}`);
+  const noteState = own.length === 0 ? "sem sessão" : /NOTA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
   const rule = /REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
-  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${number.replace(/\D/g, "")} em ${host} (${by}); nota: ${noteState}; regra do AGENTS.md: ${rule}`);
+  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (${by}); lista do openclaw.json: ok; nota: ${noteState}; regra do AGENTS.md: ${rule}`);
+}
+
+/** session.sendPolicy atual do openclaw.json (null se não há ou não deu para ler). */
+async function readSendPolicy(host: string): Promise<unknown> {
+  const r = await runSsh(host, `${SEND_POLICY_READ_SH}\n`, 30_000);
+  const line = r.stdout.split("\n").find((l) => l.startsWith("policy="));
+  try { return JSON.parse(line?.slice("policy=".length) || "null"); } catch { return null; }
+}
+
+/**
+ * Contato pausado que vai ter a conversa limpa: garante a regra dele na lista durável antes (pausas
+ * antigas só tinham a marca na sessão, que o reset leva). Já na lista: não grava nada.
+ */
+export async function whatsappKeepPaused(host: string, number: string, own: readonly string[]): Promise<void> {
+  const want = number.replace(/\D/g, "");
+  const cur = await readSendPolicy(host);
+  if (pausedNumbersOfPolicy(cur).has(want)) return;
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${sendPolicySh(withPauseRule(cur, want, true, pauseRulePrefixes(want, own)))}\n`, 90_000);
+  if (!/POL=1/.test(r.stdout)) throw new Error("não consegui manter a pausa deste contato (lista de pausados do openclaw.json); nada foi limpo");
+  log(`whatsapp: +${want} pausado entrou na lista do openclaw.json antes de limpar (${host})`);
 }
 
 /**

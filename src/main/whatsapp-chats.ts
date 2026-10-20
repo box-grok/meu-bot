@@ -36,9 +36,10 @@ function participantNumbers(session: Record<string, unknown>): string[] {
 
 /**
  * Lista de conversas a partir do `sessions.list`. Junta por número; `updatedAt` = sessão mais recente do
- * contato. `names` traz o último `senderName` visto (cache do main); `self` marca o próprio aparelho.
+ * contato. `names` traz o último `senderName` visto (cache do main); `self` marca o próprio aparelho;
+ * `pausedNumbers` = pausados pela lista durável do openclaw.json (whatsapp-pause.ts).
  */
-export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
+export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map(), pausedNumbers: ReadonlySet<string> = new Set()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
   const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; updated: number; paused: boolean }>();
   const selfN = self === null ? null : digits(self);
@@ -63,7 +64,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
   return [...byNumber.entries()]
     .map(([number, v]) => ({
       number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
-      ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused, updatedAt: new Date(v.updated).toISOString(),
+      ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused || pausedNumbers.has(number), updatedAt: new Date(v.updated).toISOString(),
       // Arquivado/excluído/apelido vêm do whatsapp-lista.json da máquina (whatsapp-marks.ts aplica depois).
       alias: null, archived: false, deleted: false,
     }))

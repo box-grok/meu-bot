@@ -5,16 +5,21 @@
  *   crm-job.mjs --dono --comando "texto"            pedido do dono sem contato explícito (o agente descobre)
  *   crm-job.mjs --aplicar [n] | --descartar          responde à última proposta pendente
  *   crm-job.mjs transcricao <+N> [--desde <ms>]      imprime a conversa (usado pelo agente em modo dono)
+ *   crm-job.mjs classificar-todos                     contatos do WhatsApp sem caixa → pipeline que já existe (1 vez)
+ *   crm-job.mjs contatos-whatsapp                     números das conversas diretas, com o nome do WhatsApp (para o
+ *                                                     Google Contatos; completa crm/whatsapp-contatos.json)
  * Lê a conversa com `openclaw gateway call chat.history`, pede ao backend local do meu-bot (perfil "agente",
- * sessão crm:+N) que rode `streak.mjs` e devolva um bloco crm-json; manda o resumo ao dono pelo WhatsApp dele.
- * Estado em ~/.local/share/meu-bot/crm/estado.json; log em crm/crm.log. Exige licença Pro (licenca.json).
+ * sessão crm:+N) que rode a CLI do CRM e devolva um bloco crm-json; manda o resumo ao dono pelo WhatsApp dele.
+ * A CLI depende da licença (licenca.json): produto meu-bot-crm contratado (ou plano personalizado) → crm.mjs
+ * (CRM próprio, nesta máquina); senão → streak.mjs (Streak pela API, com a chave em crm.json). Estado em crm/estado.json; log em crm/crm.log.
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { buildPrompt, confirmIndex, lastTimestamp, mergeEstado, normalizePhone, ownerMessage, parseCrmJson, phoneOfSessionKey, threadFromHistory } from "./regras.mjs";
+import { avisoDevido, buildPrompt, confirmIndex, lastTimestamp, mergeEstado, mesclarContatoWhatsapp, nomeDoHistorico, normalizePhone, ownerMessage, parseClassificacao, parseCrmJson, phoneOfSessionKey, promptClassificacao, recuperarDesde, threadFromHistory } from "./regras.mjs";
+import { backendEnv, crmApi } from "./backend.mjs";
 
 const HOME = os.homedir();
 const BASE = path.join(HOME, ".local", "share", "meu-bot");
@@ -23,13 +28,18 @@ const CONFIG = path.join(BASE, "crm.json");
 const LICENCA = path.join(BASE, "licenca.json");
 const ESTADO = path.join(DIR, "estado.json");
 const LOG = path.join(DIR, "crm.log");
-const STREAK = path.join(DIR, "streak.mjs");
-const ENV_FILE = process.env.MEU_BOT_BACKEND_ENV || path.join(HOME, ".hermes", "agente-rene", "backend-sdk-claude", ".env");
+const log = (line) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* cortesia */ } };
+const readJson = (f, dflt) => { try { const v = JSON.parse(fs.readFileSync(f, "utf8")); return v && typeof v === "object" ? v : dflt; } catch { return dflt; } };
+/** Plano personalizado → CRM próprio (crm.mjs); plano pro → Streak (streak.mjs). Decidido na subida, pela licença. */
+const licencaAtual = () => readJson(path.join(BASE, "licenca.json"), {});
+const emVigor = (l) => (l.status === "active" || l.status === "trialing") && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
+const naoVencida = (l) => l.status !== "expired" && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
+/** Produto meu-bot-crm contratado (acumulado por cima do plano) ou plano personalizado em vigor. */
+export const crmProprio = (l = licencaAtual()) => (Array.isArray(l.produtos) && l.produtos.includes("meu-bot-crm") && naoVencida(l)) || (l.plan === "personalizado" && emVigor(l));
+const STREAK = path.join(DIR, crmProprio() ? "crm.mjs" : "streak.mjs");
 const PATH_EXTRA = `${HOME}/.openclaw/bin:${HOME}/.local/bin:/opt/node/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
 fs.mkdirSync(DIR, { recursive: true });
 
-const log = (line) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* cortesia */ } };
-const readJson = (f, dflt) => { try { const v = JSON.parse(fs.readFileSync(f, "utf8")); return v && typeof v === "object" ? v : dflt; } catch { return dflt; } };
 const writeJson = (f, v) => { const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); };
 const argv = process.argv.slice(2);
 const flag = (k) => argv.includes(`--${k}`);
@@ -42,7 +52,7 @@ function ownerPhone() {
   const creds = readJson(path.join(HOME, ".openclaw", "credentials", "whatsapp", "default", "creds.json"), {});
   return normalizePhone(creds?.me?.id ?? "");
 }
-function proOk() { const l = readJson(LICENCA, {}); return l.plan === "pro" && (l.status === "active" || l.status === "trialing") && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now()); }
+function proOk() { const l = readJson(LICENCA, {}); return ((l.plan === "pro" || l.plan === "personalizado") && emVigor(l)) || crmProprio(l); }
 function openclaw(args, timeoutMs = 60_000) { return execFileSync("openclaw", args, { encoding: "utf8", timeout: timeoutMs, env: { ...process.env, PATH: PATH_EXTRA }, stdio: ["ignore", "pipe", "pipe"] }); }
 function sendOwner(text) {
   const to = ownerPhone(); if (to === null) { log("sem número do dono: mensagem não enviada"); return; }
@@ -58,13 +68,9 @@ function history(sessionKey, limit = 200) {
   const raw = openclaw(["gateway", "call", "chat.history", "--json", "--params", JSON.stringify({ sessionKey, limit })], 60_000);
   const i = raw.indexOf("{"); return JSON.parse(i >= 0 ? raw.slice(i) : raw);
 }
-function backendEnv() {
-  const env = {}; try { for (const l of fs.readFileSync(ENV_FILE, "utf8").split("\n")) { const m = /^([A-Z_]+)=(.*)$/.exec(l.trim()); if (m) env[m[1]] = m[2]; } } catch { /* sem .env */ }
-  return { key: env.OPENAI_COMPAT_KEY ?? "", port: Number(env.PORT ?? 8080), host: env.HOST ?? "127.0.0.1" };
-}
-function askAgent(prompt, convId) {
-  const be = backendEnv(); if (be.key === "") throw new Error(`backend do meu-bot não encontrado (${ENV_FILE})`);
-  const body = JSON.stringify({ model: "agente", messages: [{ role: "user", content: prompt }], stream: false });
+function askAgent(prompt, convId, model = "agente") {
+  const be = backendEnv(); if (be.key === "") throw new Error("backend do meu-bot não encontrado nesta máquina (.env do backend)");
+  const body = JSON.stringify({ model, messages: [{ role: "user", content: prompt }], stream: false });
   return new Promise((resolve, reject) => {
     const req = http.request({ host: be.host, port: be.port, path: "/v1/chat/completions", method: "POST", headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), Authorization: `Bearer ${be.key}`, "X-Conversation-Id": convId }, timeout: 10 * 60_000 }, (res) => {
       let s = ""; res.setEncoding("utf8"); res.on("data", (c) => { s += c; });
@@ -84,13 +90,29 @@ async function runForContact(sessionKey, command) {
   const phone = phoneOfSessionKey(sessionKey); if (phone === null) { log(`chave sem telefone: ${sessionKey}`); return; }
   const prev = estado[phone] ?? {};
   const h = history(sessionKey);
-  const delta = threadFromHistory(h, typeof prev.marca === "number" ? prev.marca : 0);
+  const info = streak(["pipeline"]);
+  if (info.erro) {
+    log(`${phone}: pipeline: ${info.erro}`);
+    // Sem pipeline padrão a conversa não é anotada: o dono precisa saber (no máximo um aviso por dia, não a cada contato).
+    if (command !== null || avisoDevido(estado.avisoPipelineEm, Date.now())) { sendOwner(`📇 CRM: as conversas do WhatsApp não estão sendo anotadas. ${info.erro}`); writeJson(ESTADO, { ...estado, avisoPipelineEm: Date.now() }); }
+    return;
+  }
+  // A caixa da pessoa em qualquer pipeline (não só no padrão): senão a classificação criaria outra.
+  let found = streak(["box-find", "--phone", phone, "--todos"]);
+  let knownBox = !found.erro && Array.isArray(found.boxes) && found.boxes.length === 1 ? found.boxes[0] : null;
+  // Número que estava "sem caixa" e agora tem (alguém vinculou o contato): o que foi dito antes também conta.
+  const desde = recuperarDesde(prev, knownBox !== null, Date.now());
+  const delta = threadFromHistory(h, desde);
   if (delta.length === 0 && command === null) { log(`${phone}: nada novo`); return; }
-  const info = streak(["pipeline"]); if (info.erro) { log(`${phone}: pipeline: ${info.erro}`); if (command !== null) sendOwner(`📇 CRM: ${info.erro}`); return; }
-  const found = streak(["box-find", "--phone", phone]);
-  const knownBox = !found.erro && Array.isArray(found.boxes) && found.boxes.length === 1 ? found.boxes[0] : null;
+  if (prev.semBox === true && knownBox !== null) log(`${phone}: agora tem caixa (${knownBox.name}); relendo desde ${new Date(desde).toISOString()}`);
+  // Sem caixa: se a conversa encaixa claramente num pipeline que já existe, a caixa nasce lá (classificação automática).
+  if (knownBox === null && command === null && cfg.classificarAutomatico !== false && (found.total ?? 0) === 0 && !found.erro) {
+    const c = await classificarContato(phone, h);
+    if (c !== null) { found = streak(["box-find", "--phone", phone, "--todos"]); knownBox = Array.isArray(found.boxes) && found.boxes.length === 1 ? found.boxes[0] : null; }
+  }
+  if (knownBox !== null && knownBox.pipelineKey && knownBox.pipelineKey !== info.key) { const outro = streak(["pipeline", "--pipeline", knownBox.pipelineKey]); if (!outro.erro) Object.assign(info, outro); }
   if (knownBox === null && command === null && cfg.criarSemPerguntar !== true && (found.total ?? 0) === 0) {
-    // Sem box e sem pedido do dono: não cria nada sozinho; só lembra para a próxima.
+    // Sem box (e sem pipeline que encaixe) e sem pedido do dono: não cria nada sozinho; só lembra para a próxima.
     log(`${phone}: sem box no pipeline; ignorado (peça "anota no CRM" para criar)`);
     writeJson(ESTADO, mergeEstado(estado, phone, { marca: lastTimestamp(delta) || prev.marca || 0, semBox: true }));
     return;
@@ -100,11 +122,17 @@ async function runForContact(sessionKey, command) {
   const answer = await askAgent(prompt, `crm:${phone}`);
   const parsed = parseCrmJson(answer);
   const marca = lastTimestamp(delta) || prev.marca || 0;
-  if (parsed === null) { log(`${phone}: resposta sem crm-json: ${answer.slice(0, 200).replace(/\n/g, " ")}`); writeJson(ESTADO, mergeEstado(estado, phone, { marca })); if (command !== null) sendOwner(`📇 CRM · ${knownBox?.name ?? phone}: não consegui estruturar a anotação desta vez. Resposta do agente:\n${answer.slice(0, 500)}`); return; }
-  const next = mergeEstado(estado, phone, { marca, nome: knownBox?.name ?? prev.nome ?? null, propostas: parsed.propostas, propostasEm: parsed.propostas.length > 0 ? Date.now() : null });
+  if (parsed === null) { log(`${phone}: resposta sem crm-json: ${answer.slice(0, 200).replace(/\n/g, " ")}`); writeJson(ESTADO, mergeEstado(estado, phone, { marca, semBox: knownBox === null })); if (command !== null) sendOwner(`📇 CRM · ${knownBox?.name ?? phone}: não consegui estruturar a anotação desta vez. Resposta do agente:\n${answer.slice(0, 500)}`); return; }
+  const next = mergeEstado(estado, phone, { marca, semBox: knownBox === null, nome: knownBox?.name ?? prev.nome ?? null, propostas: parsed.propostas, propostasEm: parsed.propostas.length > 0 ? Date.now() : null });
   if (parsed.propostas.length > 0) next.ultimaProposta = phone;
   writeJson(ESTADO, next);
   log(`${phone}: aplicado ${parsed.aplicado.length}, propostas ${parsed.propostas.length}`);
+  // Cartão "Conversa no WhatsApp" do contato no Gmail (só no CRM próprio): resumo da conversa toda, nº de mensagens, última.
+  if (crmProprio()) {
+    const todas = threadFromHistory(h, 0);
+    const r = streak(["whatsapp-set", phone, "--resumo", parsed.resumoConversa || parsed.resumo, "--mensagens", String(todas.length), "--ultima", String(lastTimestamp(todas) || Date.now()), ...(knownBox ? ["--box", knownBox.key] : [])]);
+    if (r.erro) log(`${phone}: whatsapp-set: ${r.erro}`);
+  }
   if (parsed.aplicado.length > 0 || parsed.propostas.length > 0 || command !== null) sendOwner(ownerMessage(knownBox?.name ?? prev.nome ?? phone, parsed));
 }
 
@@ -139,6 +167,78 @@ function applyPending(index) {
   const next = mergeEstado(estado, who, { propostas: rest, propostasEm: rest.length > 0 ? estado[who].propostasEm : null }); if (rest.length === 0) delete next.ultimaProposta; writeJson(ESTADO, next);
   sendOwner(`📇 CRM · ${estado[who]?.nome ?? who}\n${lines.join("\n")}`);
 }
+/**
+ * Classificação automática: contato sem caixa → pipeline que já existe (motor do chat, só texto). Encaixe claro
+ * (confiança ≥ 0,7) cria a caixa na 1ª etapa, com a pessoa vinculada, e avisa o dono; senão não faz nada.
+ * Devolve { key, nome, motivo, box } ou null.
+ */
+async function classificarContato(phone, h, avisar = true) {
+  let pipelines;
+  try {
+    const lista = (await crmApi("GET", "/pipelines", undefined, { por: "whatsapp" })).pipelines ?? [];
+    pipelines = await Promise.all(lista.map(async (p) => {
+      const def = await crmApi("GET", `/pipelines/${encodeURIComponent(p.key)}`, undefined, { por: "whatsapp" });
+      const cx = await crmApi("GET", `/pipelines/${encodeURIComponent(p.key)}/boxes?limit=6`, undefined, { por: "whatsapp" });
+      return { key: p.key, name: p.name, stages: (def.stages ?? []).map((st) => st.name), exemplos: (cx.boxes ?? []).map((b) => b.name) };
+    }));
+  } catch (e) { log(`${phone}: classificar: ${e instanceof Error ? e.message : String(e)}`); return null; }
+  if (pipelines.length === 0) return null;
+  const nomeWa = nomeDoHistorico(h);
+  const mensagens = threadFromHistory(h, 0).slice(-30).map((m) => ({ papel: m.role, texto: m.text }));
+  let resp; try { resp = await askAgent(promptClassificacao({ pipelines, nome: nomeWa, telefone: phone, mensagens }), `crm-classificar:${phone}`, "claudecode"); } catch (e) { log(`${phone}: classificar: ${e instanceof Error ? e.message : String(e)}`); return null; }
+  const c = parseClassificacao(resp, pipelines.map((p) => p.key));
+  writeJson(ESTADO, mergeEstado(readJson(ESTADO, {}), phone, { classificadoEm: Date.now(), classificacao: c ? c.key : null }));
+  if (c === null) { log(`${phone}: classificação: nenhum pipeline claro`); return null; }
+  // Sem nome no WhatsApp, o nome que a conversa revela (ex.: "Rent a Car - WM"); em último caso o telefone.
+  const nome = nomeWa || c.nome;
+  const p = pipelines.find((x) => x.key === c.key);
+  const r = streak(["box-create", "--pipeline", c.key, "--name", nome || phone, "--phone", phone]);
+  if (r.erro) { log(`${phone}: classificação → ${p?.name}: box-create falhou: ${r.erro}`); return null; }
+  log(`${phone}: classificado em "${p?.name}" (${Math.round(c.confianca * 100)}%: ${c.motivo})`);
+  if (avisar) sendOwner(`📇 CRM: coloquei ${nome || phone} no pipeline "${p?.name}" (${c.motivo}). Se não for, apague a caixa no CRM.`);
+  return { key: c.key, nome: nome || phone, pipeline: p?.name ?? c.key, motivo: c.motivo, box: r.box?.key ?? null };
+}
+/** Uma vez: todos os contatos do WhatsApp sem caixa passam pela classificação; o dono recebe um resumo só. */
+async function classificarTodos() {
+  const lista = contatosWhatsapp(); const feitos = []; let vistos = 0;
+  for (const c of lista) {
+    if (vistos >= 60) break;
+    const f = streak(["box-find", "--phone", c.telefone, "--todos"]); if (f.erro || (f.total ?? 0) > 0) continue;
+    vistos++;
+    let h; try { h = history(`agent:main:whatsapp:direct:${c.telefone}`, 40); } catch { continue; }
+    const r = await classificarContato(c.telefone, h, false); if (r) feitos.push(r);
+  }
+  const msg = feitos.length === 0 ? `📇 CRM: olhei ${vistos} contatos do WhatsApp sem caixa; nenhum encaixa claramente num pipeline.` : `📇 CRM: olhei ${vistos} contatos sem caixa e coloquei ${feitos.length} em pipelines:\n${feitos.map((f) => `• ${f.nome} → ${f.pipeline} (${f.motivo})`).join("\n")}`;
+  log(msg.replace(/\n/g, " | ")); sendOwner(msg);
+  console.log(JSON.stringify({ vistos, colocados: feitos }));
+}
+/**
+ * Lista de contatos do WhatsApp: o que o plugin já anotou + toda conversa direta do OpenClaw (backfill), com o
+ * nome tirado do histórico quando faltar (no máximo 1 tentativa por número a cada 24 h; 40 por rodada).
+ */
+function contatosWhatsapp() {
+  const ARQ = path.join(DIR, "whatsapp-contatos.json");
+  let lista = readJson(ARQ, {}).contatos ?? {};
+  const dono = ownerPhone();
+  try {
+    const raw = openclaw(["gateway", "call", "sessions.list", "--json", "--params", JSON.stringify({ limit: 1000 })], 90_000);
+    for (const s of JSON.parse(raw.slice(raw.indexOf("{"))).sessions ?? []) {
+      const key = s.key ?? s.sessionKey; const tel = phoneOfSessionKey(key);
+      if (typeof key !== "string" || !key.includes(":whatsapp") || !key.includes(":direct:") || tel === null || tel === dono || s.createdVia === "run") continue;
+      lista = mesclarContatoWhatsapp(lista, { telefone: tel, em: s.createdAt ?? s.updatedAt });
+    }
+  } catch (e) { log(`contatos-whatsapp: sessions.list falhou: ${e instanceof Error ? e.message : String(e)}`); }
+  let tentativas = 0;
+  for (const [tel, c] of Object.entries(lista)) {
+    if (c.nome || tentativas >= 40 || (c.nomeTentadoEm && Date.now() - c.nomeTentadoEm < 86_400_000)) continue;
+    tentativas++;
+    let nome = ""; try { nome = nomeDoHistorico(history(`agent:main:whatsapp:direct:${tel}`, 30)); } catch { /* sem histórico */ }
+    lista = { ...mesclarContatoWhatsapp(lista, { telefone: tel, nome, em: c.ultimaEm }) };
+    lista[tel] = { ...lista[tel], nomeTentadoEm: Date.now() };
+  }
+  writeJson(ARQ, { contatos: lista });
+  return Object.entries(lista).map(([telefone, c]) => ({ telefone, nome: c.nome ?? "", primeiraEm: c.primeiraEm ?? 0, ultimaEm: c.ultimaEm ?? 0 }));
+}
 function discardPending() {
   const who = estado.ultimaProposta; if (!who) { sendOwner("📇 CRM: não há proposta pendente."); return; }
   const next = mergeEstado(estado, who, { propostas: [], propostasEm: null }); delete next.ultimaProposta; writeJson(ESTADO, next);
@@ -152,8 +252,10 @@ function discardPending() {
     const h = history(`agent:main:whatsapp:direct:${phone}`);
     console.log(JSON.stringify({ telefone: phone, mensagens: threadFromHistory(h, since).slice(-80) })); return;
   }
-  if (!proOk()) { log("sem plano Pro ativo nesta máquina; nada feito"); return; }
-  if (typeof cfg.apiKey !== "string" || cfg.apiKey === "") { log("crm.json sem apiKey; nada feito"); return; }
+  if (argv[0] === "contatos-whatsapp") { console.log(JSON.stringify({ contatos: contatosWhatsapp() })); return; }
+  if (argv[0] === "classificar-todos") return withLock("classificar", () => classificarTodos());
+  if (!proOk()) { log("sem plano pro/personalizado em vigor nesta máquina; nada feito"); return; }
+  if (!crmProprio() && (typeof cfg.apiKey !== "string" || cfg.apiKey === "")) { log("crm.json sem apiKey (Streak); nada feito"); return; }
   if (flag("aplicar")) { const n = optv("aplicar"); const idx = n !== null && /^\d+$/.test(n) ? Number(n) : confirmIndex(optv("texto") ?? ""); return withLock("aplicar", () => applyPending(idx)); }
   if (flag("descartar")) return withLock("aplicar", () => discardPending());
   const command = optv("comando");

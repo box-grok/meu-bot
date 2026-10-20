@@ -4,7 +4,7 @@
  * com dependências explícitas, no padrão de snake.ts: o renderer.ts dá o sistema de páginas e recebe de volta,
  * por `onWhatsapp`, o estado do WhatsApp que a saúde traz (é ele quem pinta a lateral).
  */
-import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus, PlanName } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -23,11 +23,11 @@ export interface SuportePageDeps {
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   fmtPhone(digits: string | null): string;
-  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice">;
+  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice" | "adminProdutos">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
   /** O plano da conta (do card de licença): o renderer pinta o selo "PRO" no canto superior. */
-  onPlan(plan: "free" | "pro" | null): void;
+  onPlan(plan: PlanName | null): void;
   /** Cache desta janela (lib/cache.ts, por máquina): a saúde da última vez aparece na hora, com "há X min". */
   cache: { read<T>(name: string): Cached<T> | null; write(name: string, value: unknown): void };
 }
@@ -38,10 +38,10 @@ export interface SuportePage {
   refreshHealth(): Promise<void>;
 }
 
-interface State { health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null; /** Mudança de licença em andamento. */ licBusy: boolean; licMsg: { text: string; bad: boolean } | null }
+interface State { /** Nomes dos MVPs registrados em Produtos (botões "＋ produto" do card de licença); lidos ao abrir. */ mvps: string[]; health: AdminHealth | null; /** Quando a saúde na tela foi lida de verdade (null = veio do cache ou ainda não leu). */ healthAt: number | null; healthErr: string | null; logs: string | null; busy: AdminAction | "health" | "logs" | null; msg: { text: string; bad: boolean } | null; /** Mudança de licença em andamento. */ licBusy: boolean; licMsg: { text: string; bad: boolean } | null }
 
 export function mountSuportePage(deps: SuportePageDeps): SuportePage {
-  const state: State = { health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null };
+  const state: State = { mvps: [], health: null, healthAt: null, healthErr: null, logs: null, busy: null, msg: null, licBusy: false, licMsg: null };
   // A saúde da última vez aparece na hora (com a idade); a consulta real troca por baixo.
   const cachedHealth = deps.cache.read<AdminHealth>("health");
   if (cachedHealth !== null) { state.health = cachedHealth.value; state.healthAt = cachedHealth.at; deps.onWhatsapp(cachedHealth.value.whatsapp); deps.onPlan(cachedHealth.value.license?.license.plan ?? null); }
@@ -131,6 +131,8 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
         return b;
       };
       const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
+      // Validade/trial/active preservam um plano pago já escolhido (personalizado não vira pro por acidente); de free sobem para pro.
+      const pago: PlanName = view.license.plan === "free" ? "pro" : view.license.plan;
       // Devices da conta: "Aprovar" nos que levantaram a mão, "Revogar" nos ativos (volta no próximo hello se couber).
       const devs = el("div", "admin-devices");
       for (const d of view.devices) {
@@ -155,7 +157,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       const expCtl = el("div", "admin-actions");
       expCtl.append(
         field("Validade", exp),
-        licBtn("Salvar validade", () => setLic("validade", { status: "active", plan: "pro", expiresAt: dateInputToIso(exp.value) })),
+        licBtn("Salvar validade", () => setLic("validade", { status: "active", plan: pago, expiresAt: dateInputToIso(exp.value) })),
         licBtn("Remover validade", () => setLic("validade removida", { expiresAt: null })),
       );
       // Trial (trialEnd).
@@ -163,7 +165,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       const triCtl = el("div", "admin-actions");
       triCtl.append(
         field("Trial termina", tri),
-        licBtn("Salvar trial", () => setLic("trial", { status: "trialing", plan: "pro", trialEnd: dateInputToIso(tri.value) })),
+        licBtn("Salvar trial", () => setLic("trial", { status: "trialing", plan: pago, trialEnd: dateInputToIso(tri.value) })),
       );
       // Ciclo de cobrança (interval).
       const cycle = el("select") as HTMLSelectElement; cycle.disabled = state.licBusy;
@@ -182,12 +184,22 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       // Plano e status rápidos.
       const ctl = el("div", "admin-actions");
       ctl.append(
-        view.license.plan === "pro" ? licBtn("Mudar para Free", () => setLic("plano Free", { plan: "free", status: "free" })) : licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" })),
-        licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: "pro", status: "trialing" })),
-        licBtn("Marcar Active", () => setLic("status Active", { plan: "pro", status: "active" })),
+        ...(view.license.plan !== "free" ? [licBtn("Mudar para Free", () => setLic("plano Free", { plan: "free", status: "free" }))] : []),
+        ...(view.license.plan !== "pro" ? [licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" }))] : []),
+        // Personalizado (sob consulta): libera tudo do Pro e os produtos por assinatura (meu-bot-crm).
+        ...(view.license.plan !== "personalizado" ? [licBtn("Mudar para Personalizado", () => setLic("plano Personalizado", { plan: "personalizado", status: "active" }))] : []),
+        licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: pago, status: "trialing" })),
+        licBtn("Marcar Active", () => setLic("status Active", { plan: pago, status: "active" })),
         licBtn("Marcar Expired", () => setLic("status Expired", { status: "expired" })),
       );
-      lc.append(expCtl, triCtl, cycleCtl, limCtl, ctl);
+      // Produtos contratados, acumulativos por cima do plano: o meu-bot-crm e os MVPs registrados em Produtos.
+      const prodCtl = el("div", "admin-actions");
+      const contratados = view.license.produtos ?? [];
+      prodCtl.append(el("span", "hint", contratados.length === 0 ? "Produtos: nenhum (só o plano)" : `Produtos: ${contratados.join(", ")}`));
+      for (const nome of contratados) prodCtl.append(licBtn(`× ${nome}`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
+      const candidatos = ["meu-bot-crm", ...state.mvps].filter((n) => !contratados.includes(n));
+      for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${nome}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
+      lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl);
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }
     panel.append(lc);
@@ -254,6 +266,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
         const panel = el("section", "acervo-panel admin-panel"); panel.hidden = true;
         deps.panelsEl.append(panel);
         page = deps.definePage("suporte", `Suporte · ${who}`, panel, render);
+        void deps.api.adminProdutos().then((l) => { state.mvps = l.map((p) => p.nome); render(); }).catch(() => { /* sem MVPs: só o meu-bot-crm */ });
         void refreshHealth();
       }
       deps.openPage(page);

@@ -220,7 +220,7 @@ export function backendBundleDir(): string {
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "meu-bot-backend.service", "install.sh",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 
@@ -341,9 +341,9 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   return { ok: true, log: lines };
 }
 const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
-const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md"];
-const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "streak.mjs", "package.json", "openclaw.plugin.json"];
-/** Tutorial 10: instala o plugin meu-bot-crm + streak.mjs + skill na máquina (molde da guarda). */
+const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md", "skill-crm-api.md"];
+const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
+/** Tutorial 10: instala o plugin meu-bot-crm + as CLIs (crm.mjs do CRM próprio, streak.mjs do Pro) + skills na máquina (molde da guarda). */
 export async function installCrm(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: false, log: ["o CRM pelo WhatsApp é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
   const lines: string[] = [];

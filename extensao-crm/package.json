@@ -1,0 +1,17 @@
+{
+  "name": "meu-bot-extensao-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Extensão do Gmail do meu-bot-crm (InboxSDK): o CRM próprio dentro do Gmail, no Navegador do app",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "typecheck": "../node_modules/.bin/tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@inboxsdk/core": "2.2.31",
+    "@types/chrome": "0.3.5",
+    "esbuild": "0.28.2"
+  }
+}

@@ -10,8 +10,66 @@
  *    disse que nenhum aviso chegou). A de retomada aponta para a de pausa, então não há estado a guardar;
  * 2. um bloco padrão no AGENTS.md do workspace do agente explicando o que as notas significam e como agir.
  *
+ * A pausa também fica numa lista durável, as regras `session.sendPolicy.rules` do openclaw.json (`deny` por
+ * prefixo da chave do contato): a marca na sessão some quando a conversa é limpa ou excluída, a regra não. O
+ * OpenClaw olha primeiro a marca da sessão e depois as regras ("primeira negação vence"), então pausar grava as
+ * duas e retomar tira as duas.
+ *
  * Puro (sem Electron): whatsapp.ts e ipc/client.ts rodam os scripts por SSH.
  */
+
+/** Regra de envio do openclaw.json (session.sendPolicy.rules[]). */
+export interface SendPolicyRule { action?: string; match?: { channel?: string; chatType?: string; keyPrefix?: string; rawKeyPrefix?: string } }
+export interface SendPolicy { rules?: SendPolicyRule[]; default?: string }
+
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+/** Número de uma regra de pausa do meu-bot (deny com prefixo `…whatsapp:[conta:]direct:+N`), senão null. */
+function pausedNumberOfRule(r: unknown): string | null {
+  if (!isObj(r) || String(r.action ?? "").toLowerCase() !== "deny" || !isObj(r.match)) return null;
+  const m = r.match;
+  if (m.channel !== undefined || m.chatType !== undefined) return null;
+  const prefix = typeof m.keyPrefix === "string" ? m.keyPrefix : typeof m.rawKeyPrefix === "string" ? m.rawKeyPrefix : "";
+  const x = /(?:^|:)whatsapp:(?:[^:]+:)?direct:\+?(\d{8,15})$/i.exec(prefix);
+  return x === null ? null : x[1]!;
+}
+/** Números pausados pela lista durável (session.sendPolicy do openclaw.json; formato desconhecido = nenhum). */
+export function pausedNumbersOfPolicy(policy: unknown): Set<string> {
+  const out = new Set<string>();
+  if (!isObj(policy) || !Array.isArray(policy.rules)) return out;
+  for (const r of policy.rules) { const n = pausedNumberOfRule(r); if (n !== null) out.add(n); }
+  return out;
+}
+/**
+ * Prefixos das regras para um contato: a chave de cada sessão própria sem o "agent:<id>:" (vale para qualquer
+ * agente); sem sessão própria ainda, a forma padrão `whatsapp:direct:+N` (dmScope per-channel-peer).
+ */
+export function pauseRulePrefixes(number: string, ownKeys: readonly string[]): string[] {
+  const n = number.replace(/\D/g, "");
+  const fromKeys = ownKeys.filter((k) => SAFE_KEY.test(k)).map((k) => k.replace(/^agent:[^:]+:/, "")).filter((k) => new RegExp(`^whatsapp:(?:[^:]+:)?direct:\\+?${n}$`).test(k));
+  return [...new Set(fromKeys.length > 0 ? fromKeys : [`whatsapp:direct:+${n}`])];
+}
+/**
+ * A política com o contato pausado ou retomado: tira as regras de pausa dele e, se pausado, põe as novas no
+ * começo (primeira negação vence). As outras regras e o `default` ficam como estavam. Devolve null quando não
+ * sobra nada para guardar (aí a chave sai do openclaw.json, como era antes da primeira pausa).
+ */
+export function withPauseRule(policy: unknown, number: string, paused: boolean, prefixes: readonly string[]): SendPolicy | null {
+  const n = number.replace(/\D/g, "");
+  const base: SendPolicy = isObj(policy) ? { ...(policy as SendPolicy) } : {};
+  const others = (Array.isArray(base.rules) ? base.rules : []).filter((r) => pausedNumberOfRule(r) !== n);
+  const rules = paused ? [...prefixes.map((p): SendPolicyRule => ({ action: "deny", match: { keyPrefix: p } })), ...others] : others;
+  const out: SendPolicy = { ...base, rules };
+  if (rules.length === 0) delete out.rules;
+  return Object.keys(out).length === 0 ? null : out;
+}
+/** Script que grava a política (ou tira a chave, se null) no openclaw.json; imprime POL=1 se deu certo. */
+export function sendPolicySh(policy: SendPolicy | null): string {
+  if (policy === null) return `timeout 60 openclaw config unset session.sendPolicy >/dev/null 2>&1; echo POL=1`;
+  const json = JSON.stringify(policy).replace(/'/g, "'\\''");
+  return `timeout 60 openclaw config set session.sendPolicy '${json}' --strict-json >/dev/null 2>&1 && echo POL=1 || echo POL=0`;
+}
+/** Leitura da política atual (o openclaw.json é JSON puro): uma linha `policy=<json|null>`. */
+export const SEND_POLICY_READ_SH = `echo "policy=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));print(json.dumps((c.get("session") or {}).get("sendPolicy")))' 2>/dev/null)"`;
 
 export type PauseBy = "dono" | "admin";
 

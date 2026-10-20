@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -32,6 +32,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "net:state",
   "browser:extensions",
   "browser:open-url",
+  "whatsapp:abrir",
   "browser:key",
   "browser:ask",
   "browser:agent",
@@ -61,9 +62,10 @@ const sharedApi: MeuBotSharedApi = {
   hostLocalAddr: () => ipcRenderer.invoke("host:local-addr", {}),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
-  showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
+  showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; deleted: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
   whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
+  archiveWhatsappToCrm: (number: string) => ipcRenderer.invoke("whatsapp:archive-crm", { number }),
   clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
   markWhatsapp: (marks: WaMarkPatch[]) => ipcRenderer.invoke("whatsapp:mark", { marks }),
   learnWhatsappNames: (numbers: string[]) => ipcRenderer.invoke("whatsapp:names", { numbers }),
@@ -171,6 +173,10 @@ const adminApi: MeuBotAdminApi = {
   setLicense: (patch: LicensePatch) => ipcRenderer.invoke("admin:license-set", { patch }),
   approveDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-approve", { deviceId }),
   removeDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-revoke", { deviceId }),
+  adminProdutos: () => ipcRenderer.invoke("admin:produtos-list", {}),
+  adminProdutoSave: (patch: ProdutoMvpPatch) => ipcRenderer.invoke("admin:produtos-save", { patch }),
+  adminProdutoRemove: (nome: string) => ipcRenderer.invoke("admin:produtos-remove", { nome }),
+  adminProdutoExport: (nome: string) => ipcRenderer.invoke("admin:produtos-export", { nome }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

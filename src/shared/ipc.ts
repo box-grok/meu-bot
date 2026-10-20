@@ -105,8 +105,10 @@ export interface AlertPrefs { whatsapp: boolean; email: string }
  * Licença da conta (a máquina da pessoa): plano, status, validade e limite de devices. Mora em licenca.json na
  * máquina; o admin é o dono e grava por SSH. Mesmo esquema do backend-colima/licenca.js e do src/main/licenca.ts.
  */
+/** Planos da licença: free e pro são do meu-bot; "personalizado" (sob consulta) libera tudo do pro e os produtos por assinatura (meu-bot-crm). */
+export type PlanName = "free" | "pro" | "personalizado";
 export interface License {
-  plan: "free" | "pro";
+  plan: PlanName;
   status: "free" | "trialing" | "active" | "expired";
   /** Ciclo de cobrança; null (ex.: em trial) vira "-" na tela. */
   interval: "month" | "year" | null;
@@ -115,6 +117,8 @@ export interface License {
   trialEnd: string | null;
   expiresAt: string | null;
   deviceLimit: number;
+  /** Produtos contratados por cima do plano, acumulativos (meu-bot-crm, meu-bot-fit…); vazio = só o plano. */
+  produtos: string[];
   updatedAt: string;
   updatedBy: "admin" | "system";
 }
@@ -129,6 +133,8 @@ export interface LicenseDevice {
   lastSeen: string;
   status: "active" | "pending";
   requestedAt: string | null;
+  /** Apps que já se apresentaram deste device (meu-bot, meu-bot-crm…), com versão e último visto; vazio em registro antigo. */
+  apps: Record<string, { version: string; lastSeen: string }>;
 }
 /** Licença + devices de uma conta, como o app da pessoa e o admin veem. */
 export interface LicenseView {
@@ -140,12 +146,14 @@ export interface LicenseView {
 }
 /** O que o admin pode mudar na licença de uma pessoa (campos omitidos ficam como estão). */
 export interface LicensePatch {
-  plan?: "free" | "pro";
+  plan?: PlanName;
   status?: "free" | "trialing" | "active" | "expired";
   interval?: "month" | "year" | null;
   trialEnd?: string | null;
   expiresAt?: string | null;
   deviceLimit?: number;
+  /** A lista inteira de produtos contratados (substitui a atual). */
+  produtos?: string[];
 }
 
 /** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
@@ -240,8 +248,8 @@ export interface InstallProgressEvent {
   line: string;
 }
 
-/** Qual app é este: o meu-bot (de cada pessoa) ou o meu-bot-admin (suporte). */
-export type AppVariant = "client" | "admin";
+/** Qual produto é este app: meu-bot (de cada pessoa), meu-bot-admin (suporte) ou meu-bot-crm (meu-bot + CRM próprio). Tabela em src/main/variant-core.ts. */
+export type AppVariant = "client" | "admin" | "crm";
 /**
  * O que esta variante do app pode fazer. O main decide (variant-core.ts) e manda para a janela em WindowInfo;
  * o renderer esconde/mostra por capacidade, nunca por "é admin?". O admin tem tudo false menos supportAdmin.
@@ -264,6 +272,20 @@ export interface Capabilities {
   supportClient: boolean;
   /** Página "Suporte" do admin e as ações de suporte. */
   supportAdmin: boolean;
+  /** Aba Navegador (e o agente navegando por você). */
+  navegador: boolean;
+  /** Tutorial "CRM pelo WhatsApp" via API do Streak (só o meu-bot). */
+  crmStreak: boolean;
+  /** Extensão do Gmail embutida no app (CRM próprio) e o proxy local da API do CRM. */
+  extensaoGmail: boolean;
+  /**
+   * Plano que a licença da máquina precisa ter para o app funcionar. "free" = app grátis com módulos Pro à parte
+   * (etiqueta Pro, "pedir ao admin"); "personalizado" = assinatura do produto inteiro: sem etiqueta, tudo aberto
+   * enquanto ativa, uma tela só quando ausente/vencida.
+   */
+  planoExigido: PlanName;
+  /** Nome do produto ("meu-bot", "meu-bot-admin", "meu-bot-crm"): o renderer nunca o deduz da variante. */
+  produto: string;
 }
 
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */
@@ -357,8 +379,8 @@ export interface SupportInfo {
   name: string;
   /** Sugestão para o campo vazio (nome do git ou do usuário do Mac): salvar liga com um clique. */
   suggestedName: string;
-  /** Últimas linhas do registro de suporte da máquina (mais nova primeiro). */
-  log: { at: string; who: string; what: string }[];
+  /** Últimas linhas do registro de auditoria da máquina (mais nova primeiro); `tipo` = quem: dono, admin, agente, sistema ou legado. */
+  log: { at: string; who: string; what: string; tipo: string }[];
   /** Última entrega do aviso na caixa do admin que deu certo (ISO); null = ainda nenhuma. */
   deliveredAt: string | null;
   /** O que a pessoa deixa o app do admin ver. */
@@ -394,8 +416,8 @@ export interface SupportPerson {
   source: "caixa" | "colado";
   /** O admin tirou da lista (continua com suporte; o interruptor "arquivadas" mostra de volta). */
   archived: boolean;
-  /** Último plano visto da conta (cache, para o selo "PRO" no seletor); null = ainda desconhecido. */
-  plan: "free" | "pro" | null;
+  /** Último plano visto da conta (cache, para o selo no seletor); null = ainda desconhecido. */
+  plan: PlanName | null;
 }
 /** Uma conversa da pessoa com o meu-bot, vista pela transcrição do Claude Code na máquina dela (meu-bot-admin). */
 export interface BotChat {
@@ -506,6 +528,17 @@ export interface CrmDiag { ok: boolean; erro: string | null; usuario: string | n
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
 export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
+/** Resultado de guardar a conversa no CRM antes de limpar (meu-bot-crm): onde ficou e se o resumo foi atualizado. */
+export interface WhatsappArchive {
+  /** Não havia mensagens para guardar (nada foi enviado ao CRM). */
+  vazio: boolean;
+  contato: string | null;
+  box: { key: string; nome: string } | null;
+  arquivo: string | null;
+  mensagens: number;
+  resumo: boolean;
+  aviso: string | null;
+}
 /** De onde veio uma conversa do meu-bot criada a partir do WhatsApp: contato, quantas mensagens e até quando. */
 export interface WhatsappOrigin {
   number: string; name: string; count: number; until: string;
@@ -580,7 +613,7 @@ export type ReliefEvent =
 export interface PickerSharedApi {
   list(): Promise<PickerInit>;
   /** Plano de cada host (lido por SSH, melhor esforço) para o selo "PRO" no seletor; hosts fora do ar ficam de fora. */
-  plans(): Promise<Record<string, "free" | "pro">>;
+  plans(): Promise<Record<string, PlanName>>;
   probe(host: string): Promise<HostProbe>;
   choose(host: string): Promise<void>;
   /** O backend desta máquina está em outra porta: o app passa a usar `port` só para ela (configuração deste Mac; nada escrito na máquina, por isso o admin também pode). */
@@ -647,9 +680,36 @@ export interface PickerAdminApi {
    * lista (e da caixa de entrada). Máquina fora do ar: erro e ela fica; `force` tira da lista mesmo assim.
    */
   supportRemove(alias: string, force: boolean): Promise<{ people: SupportPerson[]; cleared: number; detail: string }>;
+  /** meu-bot-admin: MVPs de produtos (registro local do admin), também no seletor: é lá que um MVP nasce. */
+  produtos(): Promise<ProdutoMvp[]>;
+  produtoSave(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
+  produtoRemove(nome: string): Promise<ProdutoMvp[]>;
+  produtoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
+  /** Auditoria (só no app do super admin; `superAdmin: false` nos outros). */
+  auditoriaMaquinas(): Promise<{ superAdmin: boolean; maquinas: AuditoriaMaquinaView[]; erro: string | null }>;
+  auditoriaRegistro(maquina: string): Promise<AuditoriaVisao>;
+  /** Salva a prova (JSON com os hashes + CSV legível); null = cancelou. */
+  auditoriaExportar(maquina: string): Promise<{ path: string } | null>;
 }
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */
+/** Auditoria (super admin): uma máquina na central, com quem é (pelas pessoas conhecidas do admin). */
+export interface AuditoriaMaquinaView { maquina: string; nome: string | null; alias: string | null; on: boolean; registros: number; ultimo: string }
+/** Uma ação no registro central de uma máquina, já com o texto da tela. */
+export interface AuditoriaLinhaView {
+  em: string; quemTipo: string; quemNome: string; app: string; acao: string; texto: string; detalhe: string;
+  /** Quem entregou à central (carimbado pela chave SSH lá): "admin Fulano", "maquina pessoas"… */
+  via: string; recebidoEm: string;
+  /** false = a central tem e a máquina não tem mais (apagada lá); null = a máquina não foi lida. */
+  naMaquina: boolean | null;
+}
+export interface AuditoriaVisao {
+  maquina: string; nome: string | null; linhas: AuditoriaLinhaView[];
+  /** Corrente da central: null = íntegra; senão o nº do primeiro registro adulterado. */
+  centralQuebraEm: number | null;
+  /** A cópia da máquina: lida (suporte ligado) ou não, e onde a corrente dela quebra. */
+  maquinaLida: boolean; maquinaQuebraEm: number | null; faltamNaMaquina: number; maquinaErro: string | null;
+}
 export type PickerApi = PickerSharedApi & PickerClientApi & PickerAdminApi;
 
 export interface DoneEvent {
@@ -715,7 +775,7 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "pause" | "resume";
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
 export type BotMenuAction = "copy-ref";
@@ -731,7 +791,7 @@ export interface NetState { online: boolean | null; checking: boolean; since: nu
 
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
 /** `icon` = data URL do ícone (para o botão na barra, como no Chrome/Rambox); `popup` = url chrome-extension:// do popup, se houver. */
-export interface BrowserExtensionInfo { id: string; name: string; version: string; icon: string | null; popup: string | null }
+export interface BrowserExtensionInfo { id: string; name: string; version: string; icon: string | null; popup: string | null; /** Vem com o app (extensão do CRM próprio): não se remove. */ embutida?: true }
 export interface BrowserOpenInfo { partition: string; extensions: BrowserExtensionInfo[]; agent: BrowserAgentState; favoritos: NavFavorito[]; espacos: NavWorkspaces }
 /**
  * Espaços de trabalho do Navegador (do REA do Rambox: grupos/workspaces com apps fixos num trilho). Por máquina.
@@ -797,6 +857,8 @@ export interface MainEvents {
   "browser:extensions": BrowserExtensionInfo[];
   /** Navegador: uma página pediu janela nova (target=_blank): abrir como aba interna. */
   "browser:open-url": { url: string };
+  /** A extensão do CRM (Gmail) pediu para abrir a aba da conversa do WhatsApp deste número (só dígitos, com DDI). */
+  "whatsapp:abrir": { number: string };
   /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
   "browser:key": { key: string; shift: boolean };
   /** Navegador: o agente (pelas ações) pede uma aba nova, ativar ou fechar uma aba (id do webContents). */
@@ -843,11 +905,13 @@ export interface MeuBotSharedApi {
   /** Histórico de um contato (número só com dígitos). Só leitura. */
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; ownSession: boolean }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean }): Promise<WhatsappMenuAction | null>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
   whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
+  /** meu-bot-crm: guarda a conversa no CRM (transcrição + resumo) antes de limpar/excluir. */
+  archiveWhatsappToCrm(number: string): Promise<WhatsappArchive>;
   /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
   clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
@@ -999,7 +1063,30 @@ export interface MeuBotClientApi {
 }
 
 /** Variante: admin. Só o meu-bot-admin: a página "Suporte" da máquina da pessoa. */
+/** Variante: admin. Um MVP de produto derivado do meu-bot (meu-bot-fit, meu-bot-vendas…) registrado no meu-bot-admin. */
+export type ProdutoStatus = "ideia" | "mvp" | "beta" | "lancado";
+export interface ProdutoMvp {
+  /** meu-bot-<slug>. */
+  nome: string;
+  vertical: string;
+  pitch: string;
+  publico: string;
+  modulos: { chat: boolean; whatsapp: boolean; navegador: boolean; crm: boolean; extras: string };
+  pipeline: { etapas: string[]; campos: { nome: string; tipo: "TEXT" | "NUMBER" | "DATE" | "DROPDOWN" | "TAG" | "CHECKBOX" }[] };
+  status: ProdutoStatus;
+  notas: string;
+  proximos: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export type ProdutoMvpPatch = { nome: string } & Partial<Omit<ProdutoMvp, "nome" | "createdAt" | "updatedAt">>;
+
 export interface MeuBotAdminApi {
+  /** meu-bot-admin: MVPs de produtos (registro local do admin): listar, criar/editar, remover, exportar a definição. */
+  adminProdutos(): Promise<ProdutoMvp[]>;
+  adminProdutoSave(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
+  adminProdutoRemove(nome: string): Promise<ProdutoMvp[]>;
+  adminProdutoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
   /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
   adminHealth(): Promise<AdminHealth>;
   adminLogs(): Promise<string>;

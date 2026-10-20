@@ -1,0 +1,67 @@
+---
+name: crm-api
+description: "Mexer no CRM próprio do meu-bot-crm (desta máquina, sem navegador) com o crm.mjs: achar/criar/atualizar boxes, campos, comentários, contatos e conversas do Gmail do pipeline configurado. Use quando o pedido envolver o CRM e a máquina tiver ~/.local/share/meu-bot/crm/crm.mjs."
+---
+
+# CRM do meu-bot-crm pela CLI (meu-bot · CRM próprio)
+
+Ferramenta: `node ~/.local/share/meu-bot/crm/crm.mjs <subcomando>` (devolve JSON numa linha; erro = `{"erro":…}`).
+O CRM mora nesta máquina (backend do meu-bot, `/v1/crm/*`); não há chave de API nem serviço de terceiros.
+O pipeline padrão fica em `~/.local/share/meu-bot/crm.json`; `--pipeline <key>` escolhe outro.
+
+## Subcomandos
+- `diag` · `pipelines` · `pipeline [key]` (etapas e campos, com as opções das listas)
+- `box-find --phone +595…` | `--name "Junior"` | `--query "kommo"` | `--email fulano@x.com` | `--email @dominio` | `--thread <threadGmailId>`
+  (procura em **todos os pipelines**; a caixa pode estar em "Aluguel de Carro" etc.; `--pipeline <key>` restringe)
+  → boxes (com os últimos comentários quando acha um só)
+- `box-get <boxKey>` (ficha completa: campos, contatos, conversas vinculadas, comentários)
+- `box-create --name "Fulano" [--stage "Prospecção"] [--notes "…"] [--phone +N] [--email e]`
+- `box-update <boxKey> [--name "…"] [--notes "…"] [--stage "Etapa"]` · `box-delete <boxKey>` (vai para a lixeira)
+- `field-set <boxKey> "Origem" "Redes sociais"` (listas pelo nome da opção; datas dd/mm/aaaa; números; sim/não)
+- `comment <boxKey> "16/10: pediu os links; fecha depois do fim de semana"`
+- `contact-upsert --phone +N --name "Nome Sobrenome" [--email e] --box <boxKey>` (cria/acha o contato e vincula)
+- `telefone-set +N <boxKey>` (o telefone passa a ser de um contato do box)
+- `threads <boxKey>` · `thread-add <boxKey> <threadGmailId>` · `thread-remove <boxKey> <threadGmailId>`
+  (uma conversa do Gmail só pode estar em um box; o id é o hexadecimal da conversa)
+- Pipelines, etapas e campos (os mesmos que o menu ⋯ do CRM no Gmail faz) — **só a pedido explícito do dono**:
+  - `pipeline-create --name "x" --stages "A|B|C"` · `pipeline-rename <pipeline> "Nome"` · `pipeline-delete <pipeline>` (só vazio)
+  - `stage-add <pipeline> "Nome"` · `stage-rename <pipeline> "Atual" "Novo"` · `stage-remove <pipeline> "Etapa" [--mover "Outra"]`
+    (etapa com caixas só sai com `--mover`)
+  - `field-add <pipeline> "Nome" TIPO [--options "a|b"]` (TIPO: TEXT | NUMBER | DATE | DROPDOWN | TAG | CHECKBOX)
+- `config [--pipeline <key>] [--silencio N] [--criar-sem-perguntar true|false]`
+- Responsáveis da caixa: `responsaveis <boxKey>` (mostra) · `responsaveis <boxKey> "a@x.com|b@y.com"` (substitui a lista)
+- Anexos da caixa (📎 no Gmail): `arquivos <boxKey>` · `arquivo-get <boxKey> <arquivoKey> [--saida caminho]` (salva o arquivo; padrão /tmp)
+  · `arquivo-add <boxKey> <caminho>` (até 15 MB) · `arquivo-delete <boxKey> <arquivoKey>` (vai para a lixeira; só a pedido do dono)
+- O agente que responde no WhatsApp recebe, antes de cada resposta a um contato com caixa, só o essencial do CRM
+  (caixa, etapa, próximo passo e visão geral do resumo com IA). Para desligar: `config --contexto-whatsapp false`.
+- Conversa do WhatsApp limpa ("Limpar histórico") no app meu-bot-crm é guardada antes (`POST /v1/crm/whatsapp/arquivar`): a
+  transcrição `conversa-whatsapp-AAAA-MM-DD.md` vira anexo da caixa mais recente do contato (com registro "📦 Conversa
+  do WhatsApp arquivada…"), ou fica no contato sem caixa; o resumo das conversas arquivadas fica no contato
+  (`whatsapp.arquivo.resumo`, separado do resumo da conversa atual). Para reler o que foi dito antes, baixe esse anexo.
+- Contatos (página "Contatos" no Gmail): `contatos [--q texto] [--org <org>]` · `contato <contatoKey>` (dados, organização, caixas, conversas)
+  · `contato-editar <contatoKey> [--name "…"] [--emails "a|b"] [--phones "a|b"] [--cargo "…"] [--notas "…"] [--org <orgKey>|none]`
+  (listas substituem as atuais) · `contato-delete <contatoKey>` (sai das caixas; vai para a lixeira) — apagar só a pedido do dono
+- Organizações (página "Organizações"): `orgs [--q texto]` · `org <orgKey>` · `org-create --name "Empresa" [--dominio empresa.com.br] [--setor "…"]`
+  · `org-editar <orgKey> [--name] [--dominios "a|b"] [--setor] [--site] [--notas]` · `org-delete <orgKey>` (só a pedido do dono)
+  · `box-org-add <boxKey> <orgKey>` · `box-org-remove <boxKey> <orgKey>`
+  (contatos com e-mail do domínio da organização entram nela sozinhos; gmail, hotmail, uol etc. não contam; mesmo domínio = mesma organização)
+
+## Como agir
+1. Sempre comece por `box-find --phone` (telefone do WhatsApp); sem resultado, `--name`; e-mail do Gmail, `--email`.
+2. Antes de anotar, leia os `comentarios` do box para não repetir.
+3. Anotações de conversa vão em `comment` (data + fato + próximo passo), não em `notes` (notes é a ficha fixa).
+4. Criar box, mudar etapa e campos de lista: só com o dono confirmando (no fluxo automático, proponha no bloco
+   `crm-json`; se o dono pediu explicitamente, faça).
+5. Nunca invente valores; o que a conversa não disse fica em branco.
+6. Assunto que não cabe no pipeline configurado: não encaixe. Liste os `pipelines`, proponha 2 ou 3 saídas e
+   espere. Pipeline, etapa e campo novos só com o dono confirmando.
+7. Este crm.mjs é do meu-bot: não o edite. Se faltar uma ação, diga à pessoa o que falta para ela pedir no app.
+8. Dados do Streak: `node ~/.local/share/meu-bot/crm/importar-streak.mjs --chave <chave> --pipeline <key>` traz um
+   pipeline uma vez (a chave não é gravada); nunca mostre a chave na resposta.
+
+## Fluxo automático (plugin meu-bot-crm)
+O job `crm-job.mjs` chama você com a conversa nova e espera no fim um bloco:
+```crm-json
+{"aplicado":["…"],"propostas":[{"acao":"box-update","args":["<boxKey>","--stage","Qualificação do perfil"],"texto":"mover Junior para Qualificação do perfil"}],"resumo":"…"}
+```
+`acao` ∈ box-create | box-update | field-set | comment | contact-upsert; `args` são os argumentos exatos do subcomando.

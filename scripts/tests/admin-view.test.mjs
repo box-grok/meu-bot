@@ -121,4 +121,7 @@ test("licenseSummary: mostra validade e marca expirada no passado", () => {
   const exp = lines.find((l) => l.text.startsWith("Expira:"));
   assert.ok(exp, "tem linha de validade");
   assert.equal(exp.ok, false, "validade no passado marca vermelho");
+  assert.match(lines[0].text, /^Plano: Pro$/, "backend antigo sem `produtos` não quebra");
+  const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-crm", "meu-bot-fit"] } });
+  assert.equal(comProdutos[0].text, "Plano: Pro + meu-bot-crm, meu-bot-fit");
 });

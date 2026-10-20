@@ -41,20 +41,24 @@ test("código de suporte: recusa o que não é do formato (vem de fora)", () => 
   }
 });
 
-test("authorized_keys: liga, religa sem duplicar, desliga sem tocar nas outras chaves", () => {
+test("authorized_keys: um por admin, religa sem duplicar, tira quem saiu e o formato antigo, desliga sem tocar nas outras", () => {
   const home = mkdtempSync(join(tmpdir(), "mb-ak-"));
   mkdirSync(join(home, ".ssh"));
   const ak = join(home, ".ssh", "authorized_keys");
-  writeFileSync(ak, "ssh-ed25519 AAAAdela bianca@mac\n");
-  const run = (pub) => execFileSync("bash", ["-c", m.authorizedKeysScript(pub)], { env: { HOME: home, PATH: process.env.PATH } });
-  run(ADMIN); run(ADMIN);
+  const b = ADMIN.split(" ").slice(0, 2).join(" ");
+  // Linha do formato antigo (um admin só, comentário "meu-bot-admin") tem de sair.
+  writeFileSync(ak, `ssh-ed25519 AAAAdela bianca@mac\nno-agent-forwarding,no-X11-forwarding ${b} meu-bot-admin\n`);
+  const run = (admins) => execFileSync("bash", ["-c", m.authorizedKeysScript(admins)], { env: { HOME: home, PATH: process.env.PATH } });
+  const OUTRA = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB outro";
+  run([{ nome: "Lucas", chave: ADMIN }, { nome: "João Silva", chave: OUTRA }]); run([{ nome: "Lucas", chave: ADMIN }, { nome: "João Silva", chave: OUTRA }]);
   const on = readFileSync(ak, "utf8").trim().split("\n");
-  assert.equal(on.length, 2);
-  assert.equal(on[1], `no-agent-forwarding,no-X11-forwarding ${ADMIN.split(" ").slice(0, 2).join(" ")} meu-bot-admin`);
+  assert.deepEqual(on, ["ssh-ed25519 AAAAdela bianca@mac", `no-agent-forwarding,no-X11-forwarding ${b} meu-bot-admin:Lucas`, `no-agent-forwarding,no-X11-forwarding ${OUTRA.split(" ").slice(0, 2).join(" ")} meu-bot-admin:Joao-Silva`]);
   assert.equal((statSync(ak).mode & 0o777).toString(8), "600");
-  run(null);
+  run([{ nome: "Lucas", chave: ADMIN }]);
+  assert.equal(readFileSync(ak, "utf8").trim().split("\n").length, 2, "quem saiu da lista perde o acesso");
+  run([]);
   assert.equal(readFileSync(ak, "utf8"), "ssh-ed25519 AAAAdela bianca@mac\n");
-  assert.throws(() => m.authorizedKeysScript("não é chave"), /inválida/);
+  assert.throws(() => m.authorizedKeysScript([{ nome: "x", chave: "não é chave" }]), /inválida/);
 });
 
 test("bloco do ~/.ssh/config e known_hosts do admin usam o alias", () => {
@@ -90,15 +94,6 @@ test("progresso nos tutoriais: aceita o formato e recusa o que não é", () => {
   for (const bad of [null, [], { ...ok, at: "ontem" }, { ...ok, tour: "talvez" }, { ...ok, tutorials: "x" },
     { ...ok, tutorials: [{ ...ok.tutorials[0], done: 9 }] }, { ...ok, tutorials: [{ ...ok.tutorials[0], title: "x".repeat(500) }] },
     { ...ok, tutorials: Array(30).fill(ok.tutorials[0]) }]) assert.equal(m.parseSupportProgress(bad), null);
-});
-
-test("supportLogSh: linha no registro da pessoa, texto limpo e curto", () => {
-  const sh = m.supportLogSh("Lucas", "reiniciou o backend; rm -rf / $(x) 'aspas'");
-  assert.match(sh, /suporte\.log"$/);
-  assert.ok(sh.includes("'Lucas'"));
-  assert.ok(sh.includes("'reiniciou o backend rm -rf  (x) aspas'"), sh);
-  assert.ok(!sh.includes("$(x)") && !sh.includes(";"), "sem $, ; nem aspas no texto");
-  assert.ok(m.supportLogSh("a".repeat(300), "b").includes(`'${"a".repeat(120)}'`), "corta em 120");
 });
 
 test("código com o apelido da máquina (machine): vai e volta; inválido cai fora; antigo sem ele vale", () => {

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "meu-bot Autenticador",
+  "description": "Códigos de dois fatores do meu-bot-crm: os segredos ficam na sua máquina, aqui só aparecem os códigos.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw1xVq1AnlQtlcUryWJfRgVndfJfwQ8jgGx3V2Z2haseUVfij82p8BQakHL83193UL9+XjuyGm0+VFR6I2g85jJX9uUZB8Qng5eiSgeqGQXVLOMMQW1SwqJ4L5JQdhdYZHRmEnVFQWOprTvOBCmsOvmFmXOW0WilFfd1PpuWAzR3b8G7tOeZW/Wo+5p4nHaJFxv0A6T4dRb28+DwW0OIQZyb9z2Kn6y3rvMp+nezNEQDlD7RGmluI9YJKN0wEgZOHr2nQ0sWhRVCfMy8isX8RZ3J45lz2aiIb+qH0iW22fZ4DFLofknrc946WfQrnKyesUnw7F+JPj8BWTecFrVUy4QIDAQAB",
+  "icons": { "16": "icones/autenticador-16.png", "32": "icones/autenticador-32.png", "128": "icones/autenticador-128.png" },
+  "action": { "default_title": "Autenticador", "default_popup": "popup.html", "default_icon": { "16": "icones/autenticador-16.png", "32": "icones/autenticador-32.png" } },
+  "permissions": ["clipboardWrite"],
+  "host_permissions": ["http://127.0.0.1/*"]
+}

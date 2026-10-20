@@ -10,6 +10,11 @@ próprio e a VM sob seu controle.
 > Para ligar outra máquina (outro computador do Grok Bot, VM ou o Colima): `docs/PLAYBOOK-nova-maquina.md`.
 > Detalhes de implementação e pegadinhas: `docs/GUIA.md`.
 
+Três produtos saem deste código (tabela em `src/main/variant-core.ts`): **meu-bot** (a pessoa), **meu-bot-admin**
+(suporte) e **meu-bot-crm** (tudo do meu-bot mais um CRM próprio dentro do Gmail, no plano personalizado; a
+extensão do Gmail mora em `extensao-crm/` e o CRM em `backend-colima/crm-*.js`). `npm run dist`, `dist:admin`,
+`dist:crm`; `./instalar.sh [--crm|--admin]`.
+
 ## Requisitos
 
 - macOS, Node.js 24+ e npm.

@@ -16,6 +16,9 @@ import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
 import { addNavFavorito, isNavAgentHost, navEspacos, navFavoritos, removeNavFavorito, setNavAgentHost, setNavEspacos } from "./settings";
 import type { BrowserAgentState } from "../shared/ipc";
 import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
+import { carregarExtensoes, extensaoEmbutida } from "./extensao-gmail/extensao";
+import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
+import { pararSincronizacaoGoogle } from "./google/google";
 
 const PART_PREFIX = "persist:navegador-";
 const sanit = (host: string): string => host.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -45,7 +48,7 @@ function stripOldPolyfill(cur: string): string | null {
  * Prepara os arquivos de uma extensão para rodar no Electron: o polyfill entra no começo do service worker e, por
  * um <script> próprio, nas páginas (popup, opções). Devolve true se mudou algo (então a extensão precisa recarregar).
  */
-function patchExtensionFiles(host: string, ext: Electron.Extension): boolean {
+export function patchExtensionFiles(host: string, ext: Pick<Electron.Extension, "id" | "path" | "name" | "version" | "manifest">): boolean {
   const src = polyfillSource(); if (src === "") return false;
   const m = ext.manifest as { background?: { service_worker?: string; scripts?: string[] }; action?: { default_popup?: string }; options_page?: string; options_ui?: { page?: string }; content_scripts?: { js?: string[]; world?: string }[] };
   let changed = false;
@@ -139,7 +142,9 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
       minimumManifestVersion: 3,
       beforeInstall: async (d) => { log(`[navegador ${host}] instalando extensão ${d.localizedName} (${d.id})`); return { action: "allow" }; },
     }).then(() => { log(`[navegador ${host}] sessão pronta (${ses.getAllExtensions().length} extensões)`); })
-      .catch((e: unknown) => { log(`[navegador ${host}] web store não ligou: ${e instanceof Error ? e.message : String(e)}`); });
+      .catch((e: unknown) => { log(`[navegador ${host}] web store não ligou: ${e instanceof Error ? e.message : String(e)}`); })
+      // Extensões embutidas (meu-bot-crm: CRM no Gmail e Autenticador): descompactadas, com o proxy local da API do CRM.
+      .then(async () => { try { await carregarExtensoes(ses, host, patchExtensionFiles, () => capturarAbaAtiva(host)); } catch (e) { log(`[navegador ${host}] extensões embutidas não carregaram: ${e instanceof Error ? e.message : String(e)}`); } });
     readySessions.set(part, ready);
     ses.on("extension-loaded", (_e, ext) => {
       log(`[navegador ${host}] extensão carregada: ${ext.name} ${ext.version} (${ext.id}); manifest v${(ext.manifest as { manifest_version?: number }).manifest_version ?? "?"}`);
@@ -183,10 +188,10 @@ function extensionInfo(e: Electron.Extension): BrowserExtensionInfo {
   const popup = typeof m.action?.default_popup === "string" && m.action.default_popup !== "" ? `${e.url}${m.action.default_popup.replace(/^\//, "")}` : null;
   return { id: e.id, name: e.name, version: e.version, icon, popup };
 }
-const extensionsOf = (ses: Session): BrowserExtensionInfo[] => ses.getAllExtensions().map(extensionInfo);
+const extensionsOf = (ses: Session, host: string): BrowserExtensionInfo[] => ses.getAllExtensions().map((e) => { const info = extensionInfo(e); return extensaoEmbutida(host, e.path) ? { ...info, embutida: true as const } : info; });
 /** Janelas desta máquina recebem a lista nova de extensões (instalou pela Web Store, removeu…). */
 function publishExtensions(host: string): void {
-  const list = extensionsOf(session.fromPartition(partitionOf(host)));
+  const list = extensionsOf(session.fromPartition(partitionOf(host)), host);
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:extensions", list);
 }
 /** Host de cada janela que abriu o navegador (para os eventos dos webviews voltarem à janela certa). */
@@ -203,7 +208,7 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   log(`[navegador ${host}] aberto na janela ${win.id}`);
   // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
   if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
-  return { partition: partitionOf(host), extensions: extensionsOf(ses), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
+  return { partition: partitionOf(host), extensions: extensionsOf(ses, host), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
 }
 /** Barra de favoritos (por máquina): a pessoa e o agente mexem; toda janela da máquina recebe a lista nova. */
 function publishFavorites(host: string, list: NavFavorito[]): void {
@@ -227,13 +232,15 @@ export const browserExtensions = (host: string): BrowserExtensionInfo[] => {
   const ses = session.fromPartition(partitionOf(host));
   // Diagnóstico no log: os service workers das extensões (MV3) estão rodando?
   try { const running = ses.serviceWorkers.getAllRunning(); const sw = Object.values(running).map((w) => `${w.scope} (${w.scriptUrl})`); log(`[navegador ${host}] extensões: ${ses.getAllExtensions().map((e) => `${e.name}@${e.version}`).join(", ") || "nenhuma"}; service workers: ${sw.join(" | ") || "nenhum"}`); } catch (e) { log(`[navegador ${host}] diagnóstico de extensões falhou: ${e instanceof Error ? e.message : String(e)}`); }
-  return extensionsOf(ses);
+  return extensionsOf(ses, host);
 };
 export async function browserRemoveExtension(host: string, extId: string): Promise<BrowserExtensionInfo[]> {
   const ses = session.fromPartition(partitionOf(host));
+  const ext = ses.getExtension(extId);
+  if (ext !== null && extensaoEmbutida(host, ext.path)) throw new Error("a extensão do CRM vem com o app e não se remove");
   await uninstallExtension(extId, { session: ses, extensionsPath: extensionsDir(host) });
   log(`[navegador ${host}] extensão removida: ${extId}`);
-  return extensionsOf(ses);
+  return extensionsOf(ses, host);
 }
 /** Baixa de novo a extensão da Web Store (arquivos limpos) e carrega; o `extension-loaded` aplica o polyfill. */
 async function reinstallExtension(host: string, extId: string): Promise<void> {
@@ -246,7 +253,7 @@ export function browserForget(winId: number): void {
   const host = windowHosts.get(winId);
   windowHosts.delete(winId);
   // Última janela do host fechou: socket e -R caem, mas a escolha "agente pode usar" fica lembrada para a próxima abertura.
-  if (host !== undefined && ![...windowHosts.values()].includes(host)) agentStop(host);
+  if (host !== undefined && ![...windowHosts.values()].includes(host)) { agentStop(host); stopExtensaoApi(host); pararSincronizacaoGoogle(host); }
 }
 function agentStop(host: string): void {
   if (!agentOn.has(host)) return;
@@ -289,8 +296,20 @@ const consoleLog = new Map<number, string[]>();
 export const browserConsole = (wcId: number): string[] => consoleLog.get(wcId) ?? [];
 /** Service workers rodando na sessão (os das extensões MV3 aparecem aqui). */
 export const browserServiceWorkers = (host: string): string[] => { try { return Object.values(session.fromPartition(partitionOf(host)).serviceWorkers.getAllRunning()).map((w) => `${w.scope} ← ${w.scriptUrl}`); } catch { return []; } };
+/** Foto da aba de página ativa (não o popup de extensão, que também é webview desta sessão): o Autenticador lê o QR dela. */
+async function capturarAbaAtiva(host: string): Promise<Electron.NativeImage> {
+  const ativa = browserActiveWcId(host);
+  const wc = browserWebContents(host).find((w) => w.id === ativa && !w.getURL().startsWith("chrome-extension:"));
+  if (wc === undefined) throw new Error("nenhuma aba aberta no Navegador");
+  return wc.capturePage();
+}
 export const browserWebContents = (host: string): WebContents[] => [...views.values()].filter((v) => v.host === host && !v.wc.isDestroyed()).map((v) => v.wc);
 /** Pede ao renderer da janela do host uma ação de aba (o DOM é dele): nova aba, ativar ou fechar pelo id do webContents. */
+/** Avisa a janela desta máquina (a do app, não o Navegador); false se ela não está aberta. */
+export function avisarJanela<K extends "whatsapp:abrir">(host: string, canal: K, msg: { number: string }): boolean {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send(canal, msg); if (win.isMinimized()) win.restore(); win.focus(); return true; }
+  return false;
+}
 export function browserAsk(host: string, msg: { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number }): boolean {
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send("browser:ask", msg); return true; }
   return false;

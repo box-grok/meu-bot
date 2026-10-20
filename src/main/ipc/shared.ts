@@ -7,10 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { runSsh, whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
-import { parseWaMarkPatches, waMarkLogText } from "../whatsapp-marks";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
+import { parseWaMarkPatches } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
-import { isSupportAlias, supportLogSh } from "../support-code";
+import { isSupportAlias } from "../support-code";
+import { registrar, registrarVarios } from "../auditoria";
+import { acaoDaMarca } from "../auditoria-core";
 import { applyUpdate, checkNow, updateState } from "../updater";
 import { checkNow as netCheckNow, hostIsLocalAddr } from "../net";
 import { claudeAuthInfo } from "../claudeLogin";
@@ -24,6 +26,7 @@ import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { caps } from "../variant";
+import { whatsappArchiveToCrm } from "../whatsapp-crm";
 import { waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
 import { EXTERNAL_URL, hostFromEvent, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
@@ -118,18 +121,29 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
     return { own: own.length, shared: shared.length };
   });
+  // meu-bot-crm: antes de limpar, a conversa vai para o CRM (a tela só limpa depois que isto der certo).
+  handleShared("whatsapp:archive-crm", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    if (!caps().extensaoGmail) throw new Error("só no meu-bot-crm");
+    const r = await whatsappArchiveToCrm(h.host, waNumber(payload));
+    if (!r.vazio) void registrar(h.host, "crm.guardar-conversa", `+${waNumber(payload)}`, r.box !== null ? `caixa ${r.box.nome}` : "no contato");
+    return r;
+  });
   // A confirmação é da tela (inline na lista). Zerar a principal só com `includeShared`: se ela apareceu
   // depois que a pessoa confirmou só a sessão do contato, recusa em vez de zerar sem aviso.
   handleShared("whatsapp:clear", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const includeShared = (payload as { includeShared?: unknown }).includeShared === true;
-    const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
+    const { own, shared, paused } = await whatsappClearPlan(h.host, waNumber(payload));
     if (shared.length > 0 && !includeShared) throw new Error("a conversa mudou; abra Limpar histórico de novo");
     if (own.length + shared.length === 0) throw new Error("não há histórico desta conversa na máquina");
+    // Pausado continua pausado depois de limpar: a pausa vai para a lista durável antes do reset.
+    if (paused) await whatsappKeepPaused(h.host, waNumber(payload), own);
     await whatsappClearSessions(h.host, [...own, ...shared]);
-    // No meu-bot-admin, a pessoa vê no registro dela que o suporte limpou o histórico.
-    if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", `limpou o histórico do WhatsApp de ${waNumber(payload)}`)}\n`, 15_000);
+    // Registro de auditoria: quem limpou (o dono ou o admin pelo nome); a pessoa vê o que o suporte fez.
+    void registrar(h.host, "whatsapp.limpar", `+${waNumber(payload)}`);
   });
 
   // Pausar/retomar o agente para um contato.
@@ -138,19 +152,19 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (h === null) throw new Error("origem inválida");
     const paused = (payload as { paused?: unknown }).paused === true;
     await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono");
-    // No meu-bot-admin, a pessoa vê no registro dela que o suporte pausou/retomou o agente para o contato.
-    if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", `${paused ? "pausou" : "retomou"} o agente do WhatsApp para ${waNumber(payload)}`)}\n`, 15_000);
+    void registrar(h.host, paused ? "whatsapp.pausar" : "whatsapp.retomar", `+${waNumber(payload)}`);
   });
 
   // Arquivar/desarquivar/excluir conversas: a marcação mora na máquina (whatsapp-lista.json), então o meu-bot da
-  // pessoa e o meu-bot-admin veem a mesma lista. No admin, a pessoa vê no registro dela (a migração não registra).
+  // pessoa e o meu-bot-admin veem a mesma lista. Vai para o registro de auditoria (a migração e o cache de nomes não).
   handleShared("whatsapp:mark", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const patches = parseWaMarkPatches(payload);
     await whatsappSetMarks(h.host, patches);
-    const what = waMarkLogText(patches);
-    if (what !== null && caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", what)}\n`, 15_000);
+    // Uma linha por contato (excluir em massa também); migração (com `at`) e cache de nomes ficam de fora.
+    const acoes = patches.flatMap((p) => { const acao = acaoDaMarca(p); return acao === null ? [] : [{ acao, alvo: `+${p.number}`, detalhe: p.alias !== undefined ? `apelido "${p.alias}"` : patches.length > 1 ? `em massa (${patches.length})` : "" }]; });
+    void registrarVarios(h.host, acoes);
   });
 
   // Nomes dos contatos sem nome: lê o histórico deles de uma vez e guarda na máquina (cache; não é ação de suporte).
@@ -169,7 +183,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (h === null) throw new Error("origem inválida");
     const p = payload as { cols?: unknown; rows?: unknown } | null;
     const id = await openTerminal(h.win, h.host, typeof p?.cols === "number" ? p.cols : 80, typeof p?.rows === "number" ? p.rows : 24);
-    if (caps().supportAdmin && isSupportAlias(h.host)) void runSsh(h.host, `${supportLogSh("admin", "abriu um terminal")}\n`, 15_000);
+    if (caps().supportAdmin && isSupportAlias(h.host)) void registrar(h.host, "terminal.abrir");
     return { id };
   });
   const termOf = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent, payload: unknown) => {

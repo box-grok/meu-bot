@@ -192,3 +192,11 @@ test("trava do dono: só o número pareado sem restrição; o resto sem gravar, 
   for (const t of ["write", "edit", "exec"]) assert.ok(NON_OWNER_DENY.includes(t));
   assert.match(sh, /\*unset\*\|\*apply_patch\*\)/, "só grava se vazio ou já for a do meu-bot");
 });
+
+test("chatsFromSessions: pausado pela lista durável conta mesmo sem a marca na sessão (depois de limpar)", () => {
+  const { chatsFromSessions } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const list = { sessions: [{ key: "agent:main:whatsapp:direct:+554384114172", updatedAt: 1 }, { key: "agent:main:whatsapp:direct:+5516900000009", updatedAt: 2 }] };
+  const chats = chatsFromSessions(list, null, new Map(), new Set(["554384114172"]));
+  assert.equal(chats.find((c) => c.number === "554384114172").paused, true);
+  assert.equal(chats.find((c) => c.number === "5516900000009").paused, false);
+});

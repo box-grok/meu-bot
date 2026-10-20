@@ -138,18 +138,3 @@ print("MARKS=1")
 `;
 }
 
-/**
- * Texto do registro de suporte para um ajuste (admin): só um ajuste "de verdade" da tela; migração (com `at`) e
- * cache de nome (`name` sozinho) não registram.
- */
-export function waMarkLogText(patches: readonly WaMarkPatch[]): string | null {
-  if (patches.length !== 1) return null;
-  const p = patches[0]!;
-  if (p.at !== undefined) return null;
-  const who = `a conversa do WhatsApp de +${p.number}`;
-  if (p.deleted === true) return `excluiu ${who}`;
-  if (p.archived === true) return `arquivou ${who}`;
-  if (p.archived === false) return `desarquivou ${who}`;
-  if (p.alias !== undefined) return p.alias === "" ? `tirou o apelido d${who}` : `renomeou ${who} para "${p.alias}"`;
-  return null;
-}

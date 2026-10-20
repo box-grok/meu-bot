@@ -1,20 +1,45 @@
 /**
- * Acesso ao módulo Pro (aba Navegador) a partir da licença da máquina. Puro, testado.
- * - "ok": plano Pro ativo (ou em teste);
+ * Acesso aos módulos Pro (aba Navegador, CRM pelo WhatsApp) a partir da licença da máquina. Puro, testado.
+ * Produto free (meu-bot), `exige === "free"`:
+ * - "ok": plano pro ou personalizado em vigor;
  * - "free": plano grátis → a aba abre bloqueada, com "Pedir o Pro ao admin";
- * - "expired": era Pro e venceu → bloqueada, com a data;
+ * - "expired": tinha o plano e venceu → bloqueada, com a data;
  * - "unknown": este Mac ou backend antigo/fora do ar (sem licença para ler) → bloqueada, "atualize o backend".
+ * Produto por assinatura (meu-bot-crm, `exige === "personalizado"`): sem etiqueta Pro; ou está tudo aberto ("ok")
+ * ou a assinatura falta/venceu ("assinatura"), uma tela só. Mesmas regras do src/main/licenca.ts (lado do main).
  */
-import type { LicenseView } from "../../shared/ipc";
+import type { LicenseView, PlanName } from "../../shared/ipc";
 
-export type ProAccess = "ok" | "free" | "expired" | "unknown";
+export type ProAccess = "ok" | "free" | "expired" | "unknown" | "assinatura";
 
-export function browserAccess(view: LicenseView | null, host: string): ProAccess {
+const RANK: Record<PlanName, number> = { free: 0, pro: 1, personalizado: 2 };
+export const planoLibera = (tem: PlanName, exige: PlanName): boolean => RANK[tem] >= RANK[exige];
+/** Plano que libera os módulos Pro (pro ou personalizado). */
+export const planoLiberaPro = (p: PlanName): boolean => planoLibera(p, "pro");
+const vencida = (l: LicenseView["license"], now: number): boolean => l.status === "expired" || (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
+
+export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
+/**
+ * Produto por assinatura (meu-bot-crm…): produtos são acumulativos por cima do plano; basta estar em
+ * `licenca.produtos` (ou plano personalizado em vigor, que libera todos) e a licença não estar vencida.
+ * Produto free: sempre ok. Mesma regra do src/main/licenca.ts.
+ */
+export function acessoProduto(view: LicenseView | null, host: string, exige: PlanName, produto: string, now: number = Date.now()): AcessoProduto {
+  if (exige === "free") return "ok";
   if (host === "local" || view === null) return "unknown";
   const l = view.license;
-  if (l.plan !== "pro") return "free";
-  if (l.status === "expired") return "expired";
-  if (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < Date.now()) return "expired";
+  // `produtos` pode faltar num backend antigo (licença sem o campo): trata como nenhum.
+  const contratado = (l.produtos ?? []).includes(produto) || (l.plan === "personalizado" && (l.status === "active" || l.status === "trialing"));
+  if (!contratado) return "ausente";
+  return vencida(l, now) ? "expirada" : "ok";
+}
+
+export function browserAccess(view: LicenseView | null, host: string, exige: PlanName = "free", produto: string = "meu-bot", now: number = Date.now()): ProAccess {
+  if (exige !== "free") { const a = acessoProduto(view, host, exige, produto, now); return a === "ok" ? "ok" : a === "unknown" ? "unknown" : "assinatura"; }
+  if (host === "local" || view === null) return "unknown";
+  const l = view.license;
+  if (!planoLiberaPro(l.plan)) return "free";
+  if (vencida(l, now)) return "expired";
   return "ok";
 }
 
@@ -24,8 +49,9 @@ const MODULE_TEXT: Record<ProModule, { name: string; pitch: string; back: string
   navegador: { name: "Navegador", pitch: "Um navegador dentro do meu-bot, com abas, cookies separados por máquina e extensões do Chrome (como o Streak CRM no Gmail). E o agente da conversa pode navegar por você.", back: "a aba volta a abrir" },
   crm: { name: "CRM pelo WhatsApp", pitch: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: cria e atualiza boxes, campos e comentários, e pede sua confirmação antes de mudar de etapa.", back: "o tutorial continua" },
 };
-export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null, modulo: ProModule = "navegador"): { title: string; text: string; askAdmin: boolean } {
+export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null, modulo: ProModule = "navegador", produto: string = "meu-bot"): { title: string; text: string; askAdmin: boolean } {
   const m = MODULE_TEXT[modulo];
+  if (a === "assinatura") return { title: `${produto}: produto não liberado nesta máquina`, text: `O ${produto} é contratado por cima do seu plano${view !== null && (view.license.produtos ?? []).includes(produto) ? `, e a licença desta máquina venceu${view.license.expiresAt ? ` em ${new Date(view.license.expiresAt).toLocaleDateString("pt-BR")}` : ""}` : ", e esta máquina ainda não o tem"}. Fale com o admin para liberar; assim que ele gravar, ${m.back}.`, askAdmin: true };
   if (a === "unknown") return { title: `${m.name} · Pro`, text: "Não consegui ler o plano desta máquina (backend antigo, fora do ar, ou este Mac). Reinstale o backend pelo seletor e tente de novo.", askAdmin: false };
   if (a === "expired") return { title: "Seu Pro venceu", text: `O plano Pro desta máquina venceu${view?.license.expiresAt ? ` em ${new Date(view.license.expiresAt).toLocaleDateString("pt-BR")}` : ""}. Peça ao admin para renovar e ${m.back}.`, askAdmin: true };
   return { title: `${m.name} é do plano Pro`, text: `${m.pitch} Peça o Pro ao admin: ele libera e ${m.back} aqui mesmo.`, askAdmin: true };

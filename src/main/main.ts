@@ -10,10 +10,11 @@ import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
-import { caps } from "./variant";
+import { caps, userDataName } from "./variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
-import { useAdminUserData } from "./admin/user-data";
+import { migrateAdminPessoas } from "./admin/user-data";
+import { herdarDoMeuBot, useVariantUserData } from "./user-data";
 import { registerIpc } from "./ipc";
 import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
@@ -26,8 +27,9 @@ import { initRelief, showRelief } from "./relief";
 import { listSshHosts } from "./sshConfig";
 import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
 
-// O meu-bot-admin tem userData próprio (senão dividiria pasta e trava de instância com o meu-bot normal). Antes de tudo.
-if (caps().supportAdmin) useAdminUserData();
+// Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
+// O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-crm…) nasce como cópia do meu-bot dela.
+{ const ud = userDataName(); if (ud !== null) useVariantUserData(ud, caps().supportAdmin ? migrateAdminPessoas : herdarDoMeuBot); }
 
 // Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
 if (!app.requestSingleInstanceLock()) {

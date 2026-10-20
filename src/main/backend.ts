@@ -1,6 +1,7 @@
 import { LOCAL_HOST } from "./localBackend";
 import os from "node:os";
 import { createHash } from "node:crypto";
+import { appTitle } from "./variant";
 import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
@@ -361,7 +362,8 @@ export function announceMachine(host: string): void {
   const name = os.hostname().replace(/\.local$/, "");
   const user = os.userInfo().username;
   const id = deviceId();
-  void backendJson<{ fresh?: boolean; status?: string }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion() })
+  // `produto` diz qual app se apresentou (meu-bot, meu-bot-crm…): um Mac pode ter os dois; backend antigo ignora o campo.
+  void backendJson<{ fresh?: boolean; status?: string }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion(), produto: appTitle() })
     .then((r) => { if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend (status=${r.status ?? "?"}): a pessoa foi avisada`); });
 }
 

@@ -28,6 +28,7 @@ const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mc
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
+const { createCrmApi } = require('./crm-api');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -52,19 +53,28 @@ const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'con
  * Segurança: quais Macs já usaram o meu-bot desta máquina (maquinas.json) e como avisar quando aparece um novo
  * (alertas.json: WhatsApp da própria pessoa, e e-mail se ela quiser). Como o aviso de "login numa máquina nova"
  * do Rambox. O app se apresenta em POST /v1/meu-bot/hello a cada abertura; o primeiro Mac de todos não avisa
- * (é a instalação), os seguintes avisam e ficam no registro que a pessoa e o admin veem (suporte.log).
+ * (é a instalação), os seguintes avisam e ficam no registro de auditoria da máquina (auditoria.py).
  */
 const MEU_BOT_DIR = path.join(os.homedir(), '.local', 'share', 'meu-bot');
 const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
 const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
 /** Licença da conta (plano, status, validade, limite de devices): o admin é dono e grava por SSH; o app só lê. */
 const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
-const SUPPORT_LOG = path.join(MEU_BOT_DIR, 'suporte.log');
+/** CRM próprio (meu-bot-crm): rotas /v1/crm/* sobre ~/.local/share/meu-bot/crm/db (crm-api.js); exige o plano personalizado. */
+const CRM_CONFIG = path.join(MEU_BOT_DIR, 'crm.json');
+const CRM_DB = process.env.MEU_BOT_CRM_DB || path.join(MEU_BOT_DIR, 'crm', 'db');
 const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
 function writeJson(f, v) { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
 const alertPrefs = () => { const a = readJson(ALERTS_FILE, {}); return { whatsapp: a.whatsapp !== false, email: typeof a.email === 'string' ? a.email.slice(0, 120) : '' }; };
-function supportLogLine(who, what) {
-  try { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); fs.appendFileSync(SUPPORT_LOG, `${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}|${who}|${String(what).replace(/[^\p{L}\p{N} .,:()-]/gu, '').slice(0, 120)}\n`, { mode: 0o600 }); } catch (_) { /* registro é cortesia */ }
+/**
+ * Registro de auditoria da máquina (quem: "sistema"): o auditoria.py ao lado é o dono do formato e da corrente. Na
+ * subida, uma cópia vai para ~/.local/share/meu-bot/auditoria.py, que os plugins do OpenClaw usam (pausa automática).
+ */
+const AUDITORIA_PY = path.join(__dirname, 'auditoria.py');
+try { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); fs.copyFileSync(AUDITORIA_PY, path.join(MEU_BOT_DIR, 'auditoria.py')); } catch (_) { /* sem o arquivo (backend antigo): sem registro */ }
+function auditar(acao, alvo) {
+  const b64 = Buffer.from(JSON.stringify({ quem: { tipo: 'sistema', nome: 'backend' }, app: 'backend', acao, alvo: String(alvo ?? '').slice(0, 120) }), 'utf8').toString('base64url');
+  require('node:child_process').execFile('python3', [AUDITORIA_PY, 'gravar', b64], { timeout: 15_000 }, (err) => { if (err) log(`auditoria: não gravou ${acao}: ${err.message}`); });
 }
 /** Número do próprio WhatsApp (creds do OpenClaw); null sem pareamento. */
 function selfWhatsappNumber() {
@@ -108,13 +118,34 @@ function licenseView() {
   const license = ensureLicense();
   const all = readJson(MACHINES_FILE, {}) || {};
   const devices = Object.entries(all).map(([id, v]) => ({
-    id, name: v.name, user: v.user, platform: v.platform, app: v.app,
+    id, name: v.name, user: v.user, platform: v.platform, app: v.app, apps: v.apps && typeof v.apps === 'object' ? v.apps : {},
     firstSeen: v.firstSeen, lastSeen: v.lastSeen,
     status: licenca.deviceStatus(v), requestedAt: typeof v.requestedAt === 'string' ? v.requestedAt : null,
   })).sort((a, b) => (Date.parse(b.lastSeen) || 0) - (Date.parse(a.lastSeen) || 0));
   const activeCount = devices.filter((d) => d.status === 'active').length;
   const pendingCount = devices.filter((d) => d.status === 'pending').length;
   return { license, devices, activeCount, pendingCount, deviceLimit: license.deviceLimit };
+}
+let crmApiInst = null;
+/** Instância única da API do CRM (abre o db na 1ª chamada; sem CRM instalado só cria a pasta vazia). */
+/**
+ * Texto gerado pelo mesmo motor do chat (perfil "claudecode": só texto, sem ferramentas), para o resumo da caixa
+ * no CRM. Chama este próprio servidor, então segue o fallback de provedores do chat. Conversa nova a cada pedido.
+ */
+function iaTexto(prompt, convId) {
+  const body = JSON.stringify({ model: 'claudecode', messages: [{ role: 'user', content: prompt }], stream: false });
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port: PORT, path: '/v1/chat/completions', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), Authorization: `Bearer ${KEY}`, 'X-Conversation-Id': convId }, timeout: 3 * 60_000 }, (res) => {
+      let t = ''; res.setEncoding('utf8'); res.on('data', (c) => { t += c; });
+      res.on('end', () => { try { const j = JSON.parse(t); if (res.statusCode !== 200) reject(new Error(j.error?.message ?? `motor respondeu ${res.statusCode}`)); else resolve(String(j.choices?.[0]?.message?.content ?? '')); } catch (e) { reject(new Error(`resposta inválida do motor: ${e.message}`)); } });
+    });
+    req.on('timeout', () => req.destroy(new Error('o motor não respondeu em 3 min')));
+    req.on('error', reject); req.write(body); req.end();
+  });
+}
+function crmApi() {
+  if (crmApiInst === null) crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto });
+  return crmApiInst;
 }
 async function announceMachine(m) {
   const machines = readJson(MACHINES_FILE, null);
@@ -128,6 +159,8 @@ async function announceMachine(m) {
   const prev = known || {};
   all[m.id] = {
     name: m.name, user: m.user, platform: m.platform, app: m.app,
+    // Um Mac pode ter o meu-bot e o meu-bot-crm: cada app que se apresenta fica em apps[produto].
+    apps: licenca.mergeApps(prev.apps, m.produto, m.app),
     firstSeen: known ? known.firstSeen : now, lastSeen: now, ips: sshPeers().slice(0, 5),
     status,
     ...(status === 'pending' ? { requestedAt: prev.requestedAt || now } : {}),
@@ -139,10 +172,9 @@ async function announceMachine(m) {
   const extra = status === 'pending'
     ? `\n\nEste device passou do limite do seu plano (${license.deviceLimit}). O pedido foi enviado ao admin para liberar um device a mais.`
     : '';
-  const text = `meu-bot: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\nmeu-bot ${m.app}${ips}\nQuando: ${when}${extra}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
-  supportLogLine('sistema', status === 'pending'
-    ? `pedido de device a mais (mão levantada): ${m.name} (${m.user}, ${m.platform})`
-    : `um Mac novo usou o meu-bot: ${m.name} (${m.user}, ${m.platform})`);
+  const produto = typeof m.produto === 'string' && m.produto !== '' ? m.produto : 'meu-bot';
+  const text = `${produto}: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\n${produto} ${m.app}${ips}\nQuando: ${when}${extra}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
+  auditar(status === 'pending' ? 'device.pedido' : 'device.novo', `${m.name} (${m.user}, ${m.platform})`);
   const prefs = alertPrefs();
   const subject = status === 'pending' ? 'meu-bot: um device a mais pediu acesso' : 'meu-bot: um Mac novo usou a sua máquina';
   const results = await Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, subject, text) : Promise.resolve(null)]);
@@ -412,7 +444,7 @@ async function chatCompletions(req, res) {
   const browserPort = navegador.parseBrowserPort(req.headers['x-meu-bot-browser-port']);
   if (browserPort !== null) {
     const lic = licenseView().license;
-    if (lic.plan !== 'pro' || !['active', 'trialing'].includes(lic.status)) log(`navegador pedido sem Pro (plano ${lic.plan}/${lic.status}); ignorado`);
+    if (!licenca.proOk(lic)) log(`navegador pedido sem Pro (plano ${lic.plan}/${lic.status}); ignorado`);
     else if (!fs.existsSync(NAVEGADOR_MCP)) log(`navegador pedido, mas ${NAVEGADOR_MCP} não existe; ignorado`);
     else browser = { port: browserPort };
   }
@@ -581,13 +613,16 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/v1/meu-bot/hello' && req.method === 'POST') {
     let m;
     try { m = JSON.parse(await readBody(req, 64 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
-    const ok = m && /^[a-f0-9]{12}$/.test(m.id) && [m.name, m.user, m.platform, m.app].every((v) => typeof v === 'string' && MACHINE_FIELD_RE.test(v));
+    const ok = m && /^[a-f0-9]{12}$/.test(m.id) && [m.name, m.user, m.platform, m.app].every((v) => typeof v === 'string' && MACHINE_FIELD_RE.test(v))
+      && (m.produto === undefined || (typeof m.produto === 'string' && /^meu-bot(-[a-z0-9-]{1,30})?$/.test(m.produto)));
     if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
-    const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app });
+    const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app, produto: m.produto });
     return json(res, 200, r);
   }
   // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.
   if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());
+  // CRM próprio (meu-bot-crm): extensão do Gmail (pelo app), agente (crm.mjs), job do WhatsApp e importador.
+  if (url.pathname.startsWith('/v1/crm/') || url.pathname === '/v1/crm') { crmApi().handle(req, res, url).catch((e) => { log(`crm falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {
     let p;

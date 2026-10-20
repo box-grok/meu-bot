@@ -1,9 +1,10 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
+import { mountProdutosPage } from "./admin/produtos-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -22,7 +23,7 @@ import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
-import { browserAccess, displayUrl, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
+import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
 import { clampSplitRatio, parseSplitPref, splitLabel, splitLayout, splitPrefPageId } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor, parseFavsShown } from "./lib/favoritos.js";
@@ -66,7 +67,7 @@ let adminBotMirror: BotMirror | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
 const sessionOpenedAt = new Date().toISOString();
-let caps: Capabilities = { variant: "client", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free" };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -672,7 +673,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:split", kind: "action", label: splitLabel(splitPage?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
   if (navPage !== null && navAccess === "ok") add({ id: "a:favs", kind: "action", label: navFavsShown ? "Navegador: esconder a barra de favoritos" : "Navegador: mostrar a barra de favoritos", detail: "Cmd+Shift+F", keywords: ["favoritos", "barra", "bookmarks", "navegador"] }, () => toggleFavsBar());
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
-  if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: "quick view com extensões do Chrome; o agente pode navegar por você (Pro)", keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
+  if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: `quick view com extensões do Chrome; o agente pode navegar por você${caps.planoExigido === "free" ? " (Pro)" : ""}`, keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
@@ -961,7 +962,7 @@ function applySettings(view: SettingsView): void {
   settings = view;
   setHostNicknames(view.hostNames);
   rethemeTerminals();
-  if (windowHost !== "" && caps.chat) document.title = `meu-bot · ${hostLabel(windowHost)}`;
+  if (windowHost !== "" && caps.chat) document.title = `${caps.produto} · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
@@ -1514,7 +1515,7 @@ function toggleSplit(): void {
   if (splitPage !== null) { splitOff(); return; }
   const candidate = pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1) ?? null;
   if (candidate !== null) { splitOn(candidate); return; }
-  if (caps.chat && browserAccess(license, windowHost) === "ok") void openNavTab().then(() => { if (navPage !== null) splitOn(navPage); });
+  if (caps.chat && browserAccess(license, windowHost, caps.planoExigido, caps.produto) === "ok") void openNavTab().then(() => { if (navPage !== null) splitOn(navPage); });
   else void openTerminalTab("new").then((t) => { if (t !== null) splitOn(t.page); });
 }
 // Divisor: arrasto com pointer events; webview/xterm perdem o mouse durante o arrasto (body.dragging).
@@ -1537,7 +1538,7 @@ async function restoreSplit(): Promise<void> {
   splitRatio = pref.ratio;
   const id = pref.pageId;
   try {
-    if (id === "navegador") { if (!caps.chat) return; await refreshLicense(); if (browserAccess(license, windowHost) !== "ok") { try { localStorage.removeItem(splitKey()); } catch { /* ok */ } return; } await openNavTab(); if (navPage !== null) splitOn(navPage); }
+    if (id === "navegador") { if (!caps.chat) return; await refreshLicense(); if (browserAccess(license, windowHost, caps.planoExigido, caps.produto) !== "ok") { try { localStorage.removeItem(splitKey()); } catch { /* ok */ } return; } await openNavTab(); if (navPage !== null) splitOn(navPage); }
     else if (id.startsWith("term-")) { const t = await openTerminalTab("new"); if (t !== null) splitOn(t.page); }
     else if (id === "atividade") splitOn(activityPage());
     else if (id === "tutoriais") { openPage(tutoriaisPage); splitOn(tutoriaisPage); }
@@ -1876,6 +1877,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderCrmConfig(txt);
       } else if (step.body === "crm-test") {
         renderCrmTest(txt);
+      } else if (step.body === "crm-gmail") {
+        renderNavOpen(txt, "https://mail.google.com/");
+      } else if (step.body === "crm-importar") {
+        txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada."));
       } else if (step.body === "nav-ws") {
         renderNavWsStep(txt);
       } else if (step.body === "nav-notify-config") {
@@ -2477,9 +2482,10 @@ function paintListMode(): void {
   const mode = getListMode();
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
-  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some((c) => isWaArchived(c) && !isWaDeleted(c));
+  // No meu-bot-admin ele também mostra as excluídas (exclusão lógica: a pessoa não vê, o admin vê e restaura).
+  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some((c) => (isWaArchived(c) && !isWaDeleted(c)) || (caps.supportAdmin && isWaDeleted(c)));
   const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
-  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = "arquivadas";
+  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = mode === "whatsapp" && caps.supportAdmin ? "arquivadas e excluídas" : "arquivadas";
   sidebarSearch.placeholder = mode === "whatsapp" ? "Buscar no WhatsApp…" : "Buscar conversas…";
   if (mode === "whatsapp" && waChatsInflight === null && waChatsTimer === null) void refreshWaChats();
 }
@@ -2586,6 +2592,9 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     case "unarchive":
       await markWa({ number: row.number, archived: false }, "Não deu para desarquivar");
       break;
+    case "restore":
+      await markWa({ number: row.number, deleted: false }, "Não deu para restaurar");
+      break;
     case "pause": case "resume": {
       const item = [...sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
       item?.classList.add("wa-busy");
@@ -2599,7 +2608,7 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       break;
     }
     case "clear":
-      void startWaClear(row.number, "clear");
+      void startWaClear(row.number);
       break;
     case "delete":
       void deleteWaChat(row.number);
@@ -2610,72 +2619,95 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
  * "Limpar histórico" confirmado na própria lista, logo abaixo do contato (nada de caixa por cima).
  * Sobrevive às atualizações da lista porque o estado fica aqui, não no DOM.
  */
-type WaClear = { number: string; mode: "clear" | "delete"; phase: "plan" | "confirm" | "run"; shared: boolean; /** Sem histórico na máquina (excluir só tira da lista). */ empty: boolean; err: string | null };
+type WaClear = {
+  number: string; phase: "plan" | "confirm" | "archive" | "run"; shared: boolean; /** Sem histórico na máquina. */ empty: boolean; err: string | null;
+  /** meu-bot-crm: guardar no CRM falhou; o botão vira "Limpar sem guardar" e só limpa se a pessoa escolher. */ crmFalhou?: boolean; /** A pessoa escolheu limpar sem guardar. */ semCrm?: boolean;
+};
 let waClear: WaClear | null = null;
-async function startWaClear(number: string, mode: WaClear["mode"]): Promise<void> {
-  waClear = { number, mode, phase: "plan", shared: false, empty: false, err: null };
+/** Onde a conversa ficou no CRM, mostrado embaixo do contato por alguns segundos depois de limpar. */
+type WaArchiveNote = { number: string; text: string; bad: boolean };
+let waArchiveNote: WaArchiveNote | null = null;
+function archiveNoteText(a: WhatsappArchive): { text: string; bad: boolean } {
+  const onde = a.box !== null ? `na caixa "${a.box.nome}"` : "no contato";
+  return a.resumo ? { text: `Conversa guardada no CRM ${onde} (${a.mensagens} mensagens, com resumo).`, bad: false } : { text: `Transcrição guardada no CRM ${onde}; resumo não atualizado${a.aviso !== null ? ` (${a.aviso})` : ""}.`, bad: true };
+}
+async function startWaClear(number: string): Promise<void> {
+  waClear = { number, phase: "plan", shared: false, empty: false, err: null };
   renderSidebar();
   try {
     const plan = await window.meuBot.whatsappClearPlan(number);
     if (waClear?.number !== number) return;
     waClear = plan.own + plan.shared === 0
-      ? { number, mode, phase: "confirm", shared: false, empty: true, err: mode === "clear" ? "Não há histórico desta conversa na máquina." : null }
-      : { number, mode, phase: "confirm", shared: plan.shared > 0, empty: false, err: null };
+      ? { number, phase: "confirm", shared: false, empty: true, err: "Não há histórico desta conversa na máquina." }
+      : { number, phase: "confirm", shared: plan.shared > 0, empty: false, err: null };
   } catch (err) {
     if (waClear?.number !== number) return;
-    waClear = { number, mode, phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
+    waClear = { number, phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
   }
   renderSidebar();
 }
-/** "Excluir conversa": sem confirmação. Lê o plano e já limpa (a sessão principal inclusive) e tira da lista. */
+/**
+ * "Excluir conversa": sem confirmação, só tira da lista (marca na máquina, some nos dois apps). O agente não
+ * esquece nada e continua de onde parou; mensagem nova do contato traz a conversa de volta. Zerar é o "Limpar".
+ */
 async function deleteWaChat(number: string): Promise<void> {
-  waClear = { number, mode: "delete", phase: "run", shared: false, empty: false, err: null };
-  renderSidebar();
   try {
-    const plan = await window.meuBot.whatsappClearPlan(number);
-    if (waClear?.number !== number) return;
-    await runWaClear({ number, mode: "delete", phase: "run", shared: plan.shared > 0, empty: plan.own + plan.shared === 0, err: null });
-  } catch (err) {
-    if (waClear?.number !== number) return;
-    waClear = { number, mode: "delete", phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
-    renderSidebar();
-  }
+    await window.meuBot.markWhatsapp([{ number, deleted: true, archived: false }]);
+    const g = waChatPages.get(`wa-${number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
+    void refreshWaChats();
+  } catch (err) { sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `Não deu para excluir: ${ipcErrorText(err)}`)); }
 }
 async function runWaClear(c: WaClear): Promise<void> {
+  // meu-bot-crm: a conversa vai antes para o CRM; se não der, volta à confirmação e nunca limpa sem a pessoa escolher.
+  let note: WaArchiveNote | null = null;
+  if (caps.extensaoGmail && c.semCrm !== true) {
+    waClear = { ...c, phase: "archive" };
+    renderSidebar();
+    try {
+      const a = await window.meuBot.archiveWhatsappToCrm(c.number);
+      if (!a.vazio) note = { number: c.number, ...archiveNoteText(a) };
+    } catch (err) {
+      if (waClear?.number === c.number) { waClear = { ...c, phase: "confirm", crmFalhou: true, err: `Não deu para guardar no CRM: ${ipcErrorText(err)}` }; renderSidebar(); }
+      return;
+    }
+  }
   waClear = { ...c, phase: "run" };
   renderSidebar();
   try {
-    // Excluir uma conversa sem histórico na máquina: só sai da lista.
-    if (!(c.mode === "delete" && c.empty)) await window.meuBot.clearWhatsapp(c.number, c.shared);
-    // Na máquina: excluída fica marcada (some nos dois apps); limpar desarquiva, se estava arquivada.
-    const cur = waChats.find((x) => x.number === c.number);
-    if (c.mode === "delete") await window.meuBot.markWhatsapp([{ number: c.number, deleted: true, archived: false }]);
-    else if (cur?.archived === true) await window.meuBot.markWhatsapp([{ number: c.number, archived: false }]);
+    await window.meuBot.clearWhatsapp(c.number, c.shared);
+    // Limpar desarquiva, se estava arquivada.
+    if (waChats.find((x) => x.number === c.number)?.archived === true) await window.meuBot.markWhatsapp([{ number: c.number, archived: false }]);
     waClear = null;
     cacheDrop(`waThread:${c.number}`);
     const g = waChatPages.get(`wa-${c.number}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page);
+    if (note !== null) { waArchiveNote = note; setTimeout(() => { if (waArchiveNote === note) { waArchiveNote = null; renderSidebar(); } }, 10_000); }
     void refreshWaChats();
   } catch (err) { waClear = { ...c, phase: "confirm", err: ipcErrorText(err) }; }
   renderSidebar();
 }
 function waClearBox(c: WaClear): HTMLElement {
   const box = el("div", "wa-clear");
-  const del = c.mode === "delete";
   if (c.phase === "plan") { box.append(el("span", "wa-clear-text", "Verificando o histórico na máquina…")); return box; }
-  if (c.phase === "run") { box.append(el("span", "wa-clear-text", del ? "Excluindo a conversa…" : "Limpando o histórico…")); return box; }
+  if (c.phase === "archive") { box.append(el("span", "wa-clear-text", "Guardando a conversa no CRM…")); return box; }
+  if (c.phase === "run") { box.append(el("span", "wa-clear-text", "Limpando o histórico…")); return box; }
   const cancel = el("button", "btn", c.err !== null && !c.shared ? "Fechar" : "Cancelar"); cancel.type = "button";
   cancel.addEventListener("click", (ev) => { ev.stopPropagation(); waClear = null; renderSidebar(); });
-  if (c.err !== null && !c.shared && /não há histórico/.test(c.err)) { box.append(el("span", "wa-clear-text", c.err), el("div", "wa-clear-actions")); box.lastElementChild!.append(cancel); return box; }
-  box.append(el("strong", "", del ? (c.shared ? "Excluir e limpar o histórico de todos?" : "Excluir a conversa?") : c.shared ? "Limpar o histórico de todos?" : "Limpar o histórico?"));
-  const tail = del ? " A conversa sai desta lista e volta só se o contato mandar outra mensagem." : "";
+  if (c.empty) { box.append(el("span", "wa-clear-text", c.err ?? ""), el("div", "wa-clear-actions")); box.lastElementChild!.append(cancel); return box; }
+  box.append(el("strong", "", c.shared ? "Limpar o histórico de todos?" : "Limpar o histórico?"));
   box.append(el("span", "wa-clear-text", c.shared
-    ? `Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente.${tail}`
-    : del && c.empty ? "Não há histórico desta conversa na máquina: ela só sai desta lista (volta se o contato mandar outra mensagem)."
-    : `O agente esquece o que conversou com este contato e recomeça do zero.${tail}`));
+    ? "Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente."
+    : "O agente esquece o que conversou com este contato e recomeça do zero."));
+  if (caps.extensaoGmail && c.crmFalhou !== true) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para o histórico do contato no CRM (resumo + transcrição)."));
   if (c.err !== null) box.append(el("span", "wa-clear-err", c.err));
-  const go = el("button", "btn btn-bad", del ? (c.shared ? "Excluir e limpar tudo" : "Excluir") : c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
-  go.addEventListener("click", (ev) => { ev.stopPropagation(); void runWaClear(c); });
-  const actions = el("div", "wa-clear-actions"); actions.append(cancel, go);
+  const semCrm = c.crmFalhou === true;
+  const go = el("button", "btn btn-bad", semCrm ? "Limpar sem guardar" : c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
+  go.addEventListener("click", (ev) => { ev.stopPropagation(); void runWaClear(semCrm ? { ...c, semCrm: true } : c); });
+  const actions = el("div", "wa-clear-actions");
+  if (semCrm) {
+    const again = el("button", "btn", "Tentar de novo"); again.type = "button";
+    again.addEventListener("click", (ev) => { ev.stopPropagation(); void runWaClear({ ...c, crmFalhou: false, err: null }); });
+    actions.append(cancel, again, go);
+  } else actions.append(cancel, go);
   box.append(actions);
   box.addEventListener("click", (ev) => ev.stopPropagation());
   return box;
@@ -2709,11 +2741,51 @@ function waRenameBox(row: WhatsappChat): HTMLElement {
   return box;
 }
 const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.alias ?? c.name ?? fmtPhone(c.number));
+/**
+ * Seleção em massa na lista do WhatsApp ("Selecionar"): marca várias conversas e exclui de uma vez. Excluir é só
+ * tirar da lista (o agente continua de onde parou); uma gravação só na máquina, uma linha de auditoria por contato.
+ */
+let waSelecao: Set<string> | null = null;
+function waSelecaoBar(rows: readonly WhatsappChat[]): HTMLElement {
+  const bar = el("div", "wa-sel-bar");
+  if (waSelecao === null) {
+    const sel = el("button", "btn btn-ghost btn-small", "Selecionar"); sel.type = "button"; sel.title = "Marcar várias conversas para excluir de uma vez";
+    sel.addEventListener("click", () => { waSelecao = new Set(); waClear = null; waRename = null; renderSidebar(); });
+    bar.append(sel);
+    return bar;
+  }
+  const s = waSelecao;
+  const visiveis = rows.filter((r) => !isWaDeleted(r));
+  const todas = visiveis.length > 0 && visiveis.every((r) => s.has(r.number));
+  bar.append(el("span", "wa-sel-count", s.size === 0 ? "Nenhuma marcada" : `${s.size} marcada${s.size === 1 ? "" : "s"}`));
+  const tudo = el("button", "btn btn-ghost btn-small", todas ? "Desmarcar todas" : "Marcar todas"); tudo.type = "button";
+  tudo.addEventListener("click", () => { if (todas) s.clear(); else for (const r of visiveis) s.add(r.number); renderSidebar(); });
+  const del = el("button", "btn btn-bad btn-small", s.size === 0 ? "Excluir" : `Excluir ${s.size}`); del.type = "button"; del.disabled = s.size === 0;
+  del.title = "Tira da lista; o agente não esquece nada e a conversa volta se a pessoa escrever";
+  del.addEventListener("click", () => { void excluirSelecionadas([...s]); });
+  const cancel = el("button", "btn btn-small", "Cancelar"); cancel.type = "button";
+  cancel.addEventListener("click", () => { waSelecao = null; renderSidebar(); });
+  bar.append(tudo, del, cancel);
+  return bar;
+}
+async function excluirSelecionadas(numbers: string[]): Promise<void> {
+  if (numbers.length === 0) return;
+  try {
+    // A máquina aceita até 200 ajustes por gravação.
+    for (let i = 0; i < numbers.length; i += 200) await window.meuBot.markWhatsapp(numbers.slice(i, i + 200).map((number) => ({ number, deleted: true, archived: false })));
+    for (const n of numbers) { const g = waChatPages.get(`wa-${n}`); if (g !== undefined && g.page.tabEl !== null) closePage(g.page); }
+    waSelecao = null;
+    void refreshWaChats();
+  } catch (err) { sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `Não deu para excluir: ${ipcErrorText(err)}`)); }
+  renderSidebar();
+}
 function paintWaSidebar(query: string): void {
   sidebarList.replaceChildren();
   const q = normalize(query.trim());
   const showHidden = sidebarArchived.checked;
-  const rows = waChats.filter((c) => !isWaDeleted(c) && (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.alias ?? ""} ${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
+  // Excluir é só tirar da vista da pessoa: no meu-bot-admin o interruptor mostra também as excluídas (para restaurar).
+  const showDeleted = showHidden && caps.supportAdmin;
+  const rows = waChats.filter((c) => (showDeleted || !isWaDeleted(c)) && (showHidden || !isWaArchived(c)) && (q === "" || normalize(`${c.alias ?? ""} ${c.name ?? ""} ${c.number} ${fmtPhone(c.number)}`).includes(q)));
   if (rows.length === 0) {
     const msg = waChatsErr !== null && waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
       : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"
@@ -2721,25 +2793,38 @@ function paintWaSidebar(query: string): void {
     sidebarList.appendChild(el("div", "sidebar-empty", msg));
     return;
   }
+  sidebarList.appendChild(waSelecaoBar(rows));
   for (const group of groupByDate(rows)) {
     sidebarList.appendChild(el("div", "sidebar-group", group.label));
     for (const row of group.items) {
       const archived = isWaArchived(row);
-      const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${archived ? " archived" : ""}`);
+      const deleted = isWaDeleted(row);
+      const item = el("div", `sidebar-item wa-item${pageActive?.id === `wa-${row.number}` ? " active" : ""}${archived || deleted ? " archived" : ""}`);
       item.dataset["number"] = row.number;
       const menu = el("button", "si-menu", "…");
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, ownSession: row.ownSession }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, deleted }).then((a) => waMenuAction(row, a));
       });
+      if (waSelecao !== null) {
+        const sel = waSelecao;
+        const cb = el("input", "wa-sel-check"); cb.type = "checkbox"; cb.checked = sel.has(row.number); cb.disabled = deleted;
+        cb.addEventListener("click", (ev) => ev.stopPropagation());
+        cb.addEventListener("change", () => { if (cb.checked) sel.add(row.number); else sel.delete(row.number); renderSidebar(); });
+        item.append(cb);
+        item.classList.toggle("wa-sel-on", sel.has(row.number));
+      }
       item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
       if (row.paused) item.append(el("span", "si-tab", "pausado"));
+      if (deleted) item.append(el("span", "si-tab", "excluída"));
       item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
       item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number)}${row.paused ? " · pausado: o agente não responde" : ""}`;
-      item.addEventListener("click", () => openWaChat(row));
+      // Selecionando, o clique na linha marca/desmarca em vez de abrir a conversa.
+      item.addEventListener("click", () => { if (waSelecao === null) { openWaChat(row); return; } if (deleted) return; if (waSelecao.has(row.number)) waSelecao.delete(row.number); else waSelecao.add(row.number); renderSidebar(); });
       sidebarList.appendChild(item);
       if (waClear?.number === row.number) sidebarList.appendChild(waClearBox(waClear));
+      if (waArchiveNote?.number === row.number) sidebarList.appendChild(el("div", `wa-archive-note${waArchiveNote.bad ? " bad" : ""}`, waArchiveNote.text));
       if (waRename === row.number) sidebarList.appendChild(waRenameBox(row));
     }
   }
@@ -2757,6 +2842,15 @@ function paintWaChatTab(g: WaChatPage): void {
   g.page.title = waChatTitle(g.chat);
   const t = g.page.tabEl?.querySelector(".tab-title"); if (t !== null && t !== undefined) t.textContent = g.page.title;
 }
+/** A extensão do CRM pediu a conversa deste número: abre a aba (atualiza a lista se ele ainda não está nela). */
+window.meuBot.on("whatsapp:abrir", ({ number }) => {
+  void (async () => {
+    const achar = (): WhatsappChat | undefined => waChats.find((c) => c.number === number || c.number.endsWith(number.slice(-10)));
+    let c = achar();
+    if (c === undefined) { try { waChats = await window.meuBot.whatsappChats(); } catch { /* máquina fora */ } c = achar(); }
+    if (c !== undefined) openWaChat(c);
+  })();
+});
 function openWaChat(c: WhatsappChat): void {
   const id = `wa-${c.number}`;
   let g = waChatPages.get(id);
@@ -2861,7 +2955,13 @@ function renderWaChat(g: WaChatPage): void {
   }
   // Com apelido, o nome original (pushname) continua visível ao lado do número.
   const sub = g.chat.alias !== null && g.chat.name !== null && !g.chat.isSelf ? `${g.chat.name} · ${fmtPhone(g.chat.number)}` : fmtPhone(g.chat.number);
-  head.replaceChildren(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", sub),
+  // ID da conversa (a mesma referência do "Copiar ID" da lista): sessão atual do OpenClaw, clique copia a linha inteira.
+  const sid = g.chat.sessionKeys.map((k) => g.chat.sessionIds[k]).find((x): x is string => typeof x === "string") ?? null;
+  const ref = waReferenceText(g.chat, hostLabel(windowHost));
+  const idBtn = el("button", "wa-chat-id", sid !== null ? `ID ${sid.slice(0, 8)}` : "ID"); idBtn.type = "button";
+  idBtn.title = `${ref}\n\nClique para copiar`;
+  idBtn.addEventListener("click", () => copyReference(ref));
+  head.replaceChildren(el("strong", "", waChatTitle(g.chat)), el("span", "wa-chat-num", sub), idBtn,
     el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
   panel.dataset["rendered"] = "1";
   const keys = g.msgs.map(waMsgKey);
@@ -3445,7 +3545,7 @@ panelsEl.addEventListener("click", (ev) => {
   const link = target.closest<HTMLAnchorElement>("a[href]");
   if (link !== null) {
     ev.preventDefault();
-    void window.meuBot.openExternal(link.href);
+    void abrirLinkDoChat(link.href, ev.metaKey || ev.ctrlKey);
     return;
   }
   const waBtn = target.closest<HTMLButtonElement>(".wa-msg .msg-actions button");
@@ -3689,10 +3789,11 @@ const guideCtx = (): GuideContext => ({
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
   guarda: { installed: guardaState },
-  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up", servicos: navServicosCount() },
+  navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up", servicos: navServicosCount(), extensaoEmbutida: navExtensions.some((x) => x.embutida === true) },
   notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
-  crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost), info: crmState },
+  crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState },
+  produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
   known: (() => {
@@ -3852,13 +3953,13 @@ function renderNavInstall(container: HTMLElement): void {
 /** Tutorial 9, passo 1: o plano desta máquina e o pedido ao admin. */
 function renderNavPro(container: HTMLElement): void {
   const box = el("div", "audio-controls");
-  const a = browserAccess(license, windowHost);
-  if (a === "ok") { box.append(el("p", "audio-ok", `✓ plano Pro ativo em ${hostLabel(windowHost)}`)); container.append(box); return; }
-  const t = proBlockText(a, license);
+  const a = browserAccess(license, windowHost, caps.planoExigido, caps.produto);
+  if (a === "ok") { box.append(el("p", "audio-ok", caps.planoExigido === "free" ? `✓ plano Pro ativo em ${hostLabel(windowHost)}` : `✓ assinatura do ${caps.produto} ativa em ${hostLabel(windowHost)}`)); container.append(box); return; }
+  const t = proBlockText(a, license, "navegador", caps.produto);
   box.append(el("p", "hint", t.text));
   const row = el("div", "audio-row");
   if (t.askAdmin) {
-    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
     b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintGuide(); }).catch(() => { b.disabled = false; }); });
     row.append(b);
   }
@@ -3868,11 +3969,20 @@ function renderNavPro(container: HTMLElement): void {
   box.append(row);
   container.append(box);
 }
+/**
+ * Link de uma mensagem: site (http/https) abre numa aba do Navegador do próprio app, onde o agente também enxerga;
+ * Cmd+clique, outros esquemas (mailto:…) ou Navegador indisponível (sem módulo/assinatura) → navegador do Mac.
+ */
+async function abrirLinkDoChat(url: string, externo: boolean): Promise<void> {
+  if (externo || !caps.navegador || !/^https?:\/\//i.test(url)) { void window.meuBot.openExternal(url); return; }
+  await openNavTab(url);
+  if (navAccess !== "ok" || navPartition === null) void window.meuBot.openExternal(url);
+}
 /** Tutorial 9, passo 3: abrir a aba do Navegador. */
-function renderNavOpen(container: HTMLElement): void {
+function renderNavOpen(container: HTMLElement, url?: string): void {
   const row = el("div", "audio-row");
-  const b = el("button", "btn btn-primary btn-small", navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
-  b.addEventListener("click", () => { void openNavTab(); });
+  const b = el("button", "btn btn-primary btn-small", url !== undefined ? "Abrir o Gmail no Navegador" : navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
+  b.addEventListener("click", () => { void openNavTab(url); });
   row.append(b);
   container.append(row);
 }
@@ -3894,19 +4004,19 @@ async function crmDo(run: () => Promise<unknown>, okText: string | null): Promis
   if (crmBusy) return;
   crmBusy = true; crmMsg = null; paintGuide();
   try { const r = await run(); if (r !== null && typeof r === "object" && "available" in (r as object)) crmState = r as CrmInfo; crmMsg = okText === null ? null : { text: okText, bad: false }; }
-  catch (err) { crmMsg = { text: /PRO_REQUIRED/.test(ipcErrorText(err)) ? "Esta máquina não tem o plano Pro." : ipcErrorText(err), bad: true }; }
+  catch (err) { crmMsg = { text: /ASSINATURA_REQUIRED/.test(ipcErrorText(err)) ? `A assinatura do ${caps.produto} não está ativa nesta máquina.` : /PRO_REQUIRED/.test(ipcErrorText(err)) ? "Esta máquina não tem o plano Pro." : ipcErrorText(err), bad: true }; }
   finally { crmBusy = false; paintGuide(); }
 }
 /** Passo 1: o plano (mesmo gate do Navegador, texto do CRM). */
 function renderCrmPro(container: HTMLElement): void {
   const box = el("div", "audio-controls");
-  const a = browserAccess(license, windowHost);
-  if (a === "ok") { box.append(el("p", "audio-ok", `✓ plano Pro ativo em ${hostLabel(windowHost)}`)); container.append(box); return; }
-  const t = proBlockText(a, license, "crm");
+  const a = browserAccess(license, windowHost, caps.planoExigido, caps.produto);
+  if (a === "ok") { box.append(el("p", "audio-ok", caps.planoExigido === "free" ? `✓ plano Pro ativo em ${hostLabel(windowHost)}` : `✓ assinatura do ${caps.produto} ativa em ${hostLabel(windowHost)}`)); container.append(box); return; }
+  const t = proBlockText(a, license, "crm", caps.produto);
   box.append(el("p", "hint", t.text));
   const row = el("div", "audio-row");
   if (t.askAdmin) {
-    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+    const b = el("button", "btn btn-primary btn-small", navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
     b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintGuide(); }).catch(() => { b.disabled = false; }); });
     row.append(b);
   }
@@ -4241,12 +4351,26 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
   }
   if (supportMsg !== null) container.append(el("p", `hint ${supportMsg.bad ? "guide-pair-note" : "audio-ok"}`, supportMsg.text));
   if (parts.includes("log") && s.log.length > 0) {
-    container.append(el("p", "hint strong-hint", "O que o suporte fez nesta máquina"));
-    const ul = el("ul", "support-log");
-    for (const e of s.log) ul.append(el("li", "", `${new Date(e.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${e.who}: ${e.what}`));
-    container.append(ul);
+    // Registro de auditoria da máquina: por padrão só o que o suporte fez; "ver tudo" mostra também o que você, o
+    // agente e o sistema fizeram.
+    const box = el("div", "support-log-box");
+    const draw = (): void => {
+      const lista = supportLogAll ? s.log : s.log.filter((e) => e.tipo === "admin" || e.tipo === "legado");
+      const head = el("p", "hint strong-hint", supportLogAll ? "Tudo o que aconteceu nesta máquina " : "O que o suporte fez nesta máquina ");
+      const toggle = el("button", "btn btn-ghost btn-small", supportLogAll ? "só o suporte" : "ver tudo"); toggle.type = "button";
+      toggle.addEventListener("click", () => { supportLogAll = !supportLogAll; draw(); });
+      head.append(toggle);
+      const ul = el("ul", "support-log");
+      for (const e of lista) ul.append(el("li", "", `${new Date(e.at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · ${e.who}: ${e.what}`));
+      if (lista.length === 0) ul.append(el("li", "", "O suporte ainda não fez nada nesta máquina."));
+      box.replaceChildren(head, ul);
+    };
+    draw();
+    container.append(box);
   }
 }
+/** "ver tudo" no registro da máquina (Configurações › Suporte). */
+let supportLogAll = false;
 
 /* ---------- Navegador (módulo Pro), como no Rambox: abas internas são <webview> na partição da máquina ---------- */
 /** O <webview> do Electron: só o que usamos (o renderer não tem os tipos do Electron). */
@@ -4566,7 +4690,7 @@ function navExtSetPinned(id: string, on: boolean): void {
 /** Clique numa extensão (na barra ou no 🧩): abre/fecha o popup dela ancorado em `anchor`. */
 function navExtClick(x: BrowserExtensionInfo, anchor: HTMLElement): void {
   if (navPopupFor === x.id || x.popup === null) { navClosePopup(); if (x.popup === null && navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `${x.name} não tem popup; ela age dentro das páginas que suporta.`; } return; }
-  navOpenPopup(x.id, x.popup, anchor);
+  navOpenPopup(x.id, x.popup, anchor, x.embutida === true);
 }
 const navExtIcon = (x: BrowserExtensionInfo): HTMLElement => { if (x.icon !== null) { const img = document.createElement("img"); img.src = x.icon; img.alt = ""; img.className = "nav-ext-icon"; return img; } return el("span", "nav-ext-icon nav-ext-initial", x.name.slice(0, 1)); };
 function paintNavActions(): void {
@@ -4592,14 +4716,20 @@ function paintNavActions(): void {
   }
   try { navActionsHost = cur === null ? "" : new URL(cur.url).hostname; } catch { navActionsHost = ""; }
 }
-function navOpenPopup(id: string, url: string, anchor: HTMLElement): void {
+/** `proprioFechar`: a extensão nativa desenha o próprio ✕ (window.close → evento "close"); as outras ganham o × do app. */
+function navOpenPopup(id: string, url: string, anchor: HTMLElement, proprioFechar: boolean): void {
   if (navEls === null || navPartition === null) return;
   navClosePopup();
   const wv = document.createElement("webview") as WebviewEl;
   wv.setAttribute("partition", navPartition);
   wv.className = "nav-popup-view";
   wv.setAttribute("src", url);
-  navEls.popup.replaceChildren(wv);
+  // O clique na página não chega aqui (o <webview> engole o mousedown): "×" no canto, Esc (com o foco no app) e foco numa aba fecham.
+  const fechar = el("button", "nav-popup-x", "×"); fechar.type = "button"; fechar.title = "Fechar (Esc)";
+  fechar.addEventListener("click", () => navClosePopup());
+  // Toda página de popup pode se fechar sozinha (window.close), como no Chrome.
+  wv.addEventListener("close", () => { if (navPopupFor === id) navClosePopup(); });
+  if (proprioFechar) navEls.popup.replaceChildren(wv); else navEls.popup.replaceChildren(wv, fechar);
   const r = anchor.getBoundingClientRect(); const bar = navEls.bar.getBoundingClientRect();
   navEls.popup.style.right = `${Math.max(8, bar.right - r.right)}px`;
   navEls.popup.style.width = ""; navEls.popup.style.height = "";
@@ -4640,18 +4770,20 @@ let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 let navAgentBusy = false;
 let license: LicenseView | null = null;
 const NAV_HOME = "https://www.google.com";
+/** Página inicial: no produto com a extensão do Gmail embutida (meu-bot-crm), o Gmail; senão o Google. */
+const navHome = (): string => (caps.extensaoGmail ? "https://mail.google.com/" : NAV_HOME);
 const NAV_WEB_STORE = "https://chromewebstore.google.com/";
 /** Licença da máquina (cache; a aba Navegador e as Configurações leem daqui). */
 /** Selo "PRO" no canto superior direito: mostra quando a conta desta janela é Pro (barra cheia e recolhida). */
 const planBadge = $<HTMLElement>("plan-badge");
 const miniPlan = $<HTMLElement>("mini-plan");
-function setPlanBadge(pro: boolean): void { planBadge.hidden = !pro; miniPlan.hidden = !pro; }
+function setPlanBadge(pro: boolean): void { const show = pro && caps.planoExigido === "free"; planBadge.hidden = !show; miniPlan.hidden = !show; }
 let navLicenseAsked = false;
 async function refreshLicense(): Promise<LicenseView | null> {
   if (!caps.chat || windowHost === "local") { license = null; navLicenseAsked = true; setPlanBadge(false); return null; }
   try { license = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar: fica o que havia */ }
   navLicenseAsked = true;
-  setPlanBadge(license?.license.plan === "pro");
+  setPlanBadge(license !== null && planoLiberaPro(license.license.plan));
   return license;
 }
 const NAV_TUTORIAL = TUTORIAIS.find((t) => t.id === "navegador") as Tutorial;
@@ -4659,12 +4791,12 @@ const navCurrent = (): NavTab | null => navTabs.find((t) => t.id === navActive) 
 /** O que a pessoa digitou: endereço, host sem esquema ou busca. */
 function navNormalize(raw: string): string {
   const t = raw.trim();
-  if (t === "") return NAV_HOME;
+  if (t === "") return navHome();
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) && !/^file:/i.test(t)) return t;
   if (/^[\w.-]+\.[a-z]{2,}(\/|$|:|\?)/i.test(t) || /^localhost(:|\/|$)/.test(t)) return `https://${t}`;
   return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
 }
-function navNewTab(url: string = NAV_HOME, activate = true, serviceId?: string): NavTab | null {
+function navNewTab(url: string = navHome(), activate = true, serviceId?: string): NavTab | null {
   if (navEls === null || navPartition === null) return null;
   const wv = document.createElement("webview") as WebviewEl;
   wv.setAttribute("partition", navPartition);
@@ -4713,11 +4845,11 @@ function paintNav(): void {
   e.block.hidden = !blocked; e.tabs.hidden = blocked; e.bar.hidden = blocked; e.box.hidden = blocked; e.favs.hidden = blocked || !navFavsShown;
   if (blocked) {
     const a = navAccess === null || navAccess === "ok" ? "unknown" : navAccess;
-    const t = proBlockText(a, license);
-    e.block.replaceChildren(el("span", "nav-pro-badge", "módulo Pro"), el("h2", "", t.title), el("p", "", t.text));
+    const t = proBlockText(a, license, "navegador", caps.produto);
+    e.block.replaceChildren(...(caps.planoExigido === "free" ? [el("span", "nav-pro-badge", "módulo Pro")] : []), el("h2", "", t.title), el("p", "", t.text));
     const row = el("div", "actions");
     if (t.askAdmin) {
-      const b = el("button", "btn btn-primary", navAskedPro ? "Pedido enviado ao admin ✓" : a === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
+      const b = el("button", "btn btn-primary", navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : a === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = navAskedPro;
       b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { navAskedPro = true; paintNav(); }).catch((err: unknown) => { b.disabled = false; e.note.hidden = false; e.note.textContent = `Não consegui registrar o pedido: ${ipcErrorText(err)}`; }); });
       row.append(b);
     }
@@ -4787,12 +4919,15 @@ function paintNavMenu(): void {
     const on = pinned.has(x.id);
     const pin = el("button", `mini-btn nav-ext-pin${on ? " on" : ""}`, "📌"); pin.type = "button"; pin.title = on ? "Tirar da barra (continua aqui no 🧩)" : "Fixar na barra do Navegador";
     pin.addEventListener("click", () => navExtSetPinned(x.id, !on));
-    const rm = el("button", "btn btn-ghost btn-small", "Remover"); rm.type = "button";
-    rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; navExtSetPinned(x.id, false); paintNavMenu(); paintNavActions(); }); }));
-    row.append(open, pin, rm);
+    if (x.embutida === true) row.append(open, pin, el("span", "hint", "vem com o app"));
+    else {
+      const rm = el("button", "btn btn-ghost btn-small", "Remover"); rm.type = "button";
+      rm.addEventListener("click", () => armConfirm(rm, "remover?", () => { if (navPopupFor === x.id) navClosePopup(); void window.meuBot.browserRemoveExtension(x.id).then((list) => { navExtensions = list; navExtSetPinned(x.id, false); paintNavMenu(); paintNavActions(); }); }));
+      row.append(open, pin, rm);
+    }
     m.append(row);
   }
-  m.append(el("p", "hint", "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
+  m.append(el("p", "hint", caps.extensaoGmail ? "O CRM do meu-bot já vem no Gmail e o Autenticador guarda seus códigos de dois fatores na máquina; outras extensões de conteúdo também funcionam. Se o Streak ainda estiver instalado, pode removê-lo aqui." : "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
 }
 /** Abre a aba Navegador (ou traz para a frente). Sem Pro, abre bloqueada com a explicação e o pedido ao admin. */
 async function openNavTab(url?: string): Promise<void> {
@@ -4858,16 +4993,19 @@ async function openNavTab(url?: string): Promise<void> {
     ext.addEventListener("click", () => { menu.hidden = !menu.hidden; if (!menu.hidden) paintNavMenu(); });
     open.addEventListener("click", () => { const c = navCurrent(); if (c !== null && /^https?:/.test(c.url)) void window.meuBot.openExternal(c.url); });
     box.addEventListener("mousedown", () => { menu.hidden = true; navClosePopup(); });
+    // Clique dentro de uma página (webview) foca o elemento, mas o mousedown não sobe: o foco fecha menu e popup.
+    box.addEventListener("focusin", (ev) => { if ((ev.target as HTMLElement).tagName === "WEBVIEW") { menu.hidden = true; navClosePopup(); } });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && navPopupFor !== null) navClosePopup(); });
     new ResizeObserver(() => navRefitSoon()).observe(box);
     navPage = definePage("navegador", "Navegador", panel, () => { paintNav(); });
   }
   openPage(navPage);
   await refreshLicense();
-  navAccess = browserAccess(license, windowHost);
+  navAccess = browserAccess(license, windowHost, caps.planoExigido, caps.produto);
   paintNav();
   if (navAccess === "ok" && navPartition === null) {
     try { const info = await window.meuBot.browserOpen(); navPartition = info.partition; navExtensions = info.extensions; navAgent = info.agent; navFavs = info.favoritos; navWs = info.espacos; paintNavActions(); paintNavFavs(); navMountWorkspace(false); }
-    catch (err) { navAccess = /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
+    catch (err) { navAccess = /ASSINATURA_REQUIRED/.test(ipcErrorText(err)) ? "assinatura" : /PRO_REQUIRED/.test(ipcErrorText(err)) ? "free" : navAccess; if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Não consegui abrir o navegador: ${ipcErrorText(err)}`; } }
     paintNav();
   }
   if (navAccess === "ok" && navPartition !== null) {
@@ -5493,7 +5631,7 @@ const updateBar = $<HTMLElement>("update-bar");
 const updateText = $<HTMLElement>("update-text");
 const updateApply = $<HTMLButtonElement>("update-apply");
 function showUpdateReady(version: string): void {
-  updateText.textContent = `${caps.variant === "admin" ? "meu-bot-admin" : "meu-bot"} ${version} pronto para instalar (você está na ${appVersion}).`;
+  updateText.textContent = `${caps.produto} ${version} pronto para instalar (você está na ${appVersion}).`;
   updateBar.hidden = false;
 }
 /* ---------- Verificação visível (REA do Rambox): ponto na barra ao abrir + "Sobre e atualização" nas Configurações ---------- */
@@ -5505,8 +5643,7 @@ const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
 const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
 function paintUpdateState(u: UpdateState): void {
-  const name = caps.variant === "admin" ? "meu-bot-admin" : "meu-bot";
-  const t = updateStateText(u, name);
+  const t = updateStateText(u, caps.produto);
   updateCheckDot.hidden = u.phase !== "checking";
   aboutVersion.textContent = `${name} ${u.current} · Apple Silicon`;
   aboutSum.textContent = `versão ${u.current}`;
@@ -5558,7 +5695,7 @@ async function loadLicensePanel(): Promise<void> {
   const view = await refreshLicense();
   if (view === null) { licenseSum.textContent = "plano e devices"; licenseBody.replaceChildren(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
   const l = view.license;
-  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
+  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : l.plan === "personalizado" ? "Personalizado" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
   const ul = el("ul", "admin-health");
   for (const line of licenseSummary(view)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
   const devs = el("ul", "admin-health");
@@ -5648,6 +5785,7 @@ void (async () => {
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
   caps = info.caps;
+  if (caps.supportAdmin) sidebarArchived.parentElement?.setAttribute("title", "Mostrar também as conversas arquivadas e, no WhatsApp, as que a pessoa excluiu (nada foi apagado)");
   appVersion = info.version;
   // Faixa OFFLINE nos dois apps: estado atual da internet e se a máquina desta janela é este próprio Mac.
   void window.meuBot.netCheck().then(setNet).catch(() => { /* a próxima sondagem avisa */ });
@@ -5662,19 +5800,22 @@ void (async () => {
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
       who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
-      onPlan: (plan) => setPlanBadge(plan === "pro"),
+      onPlan: (plan) => setPlanBadge(plan !== null && planoLiberaPro(plan)),
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
         else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }
         paintWhatsapp(); renderSidebar();
       },
     }).open();
+    // Produtos (MVPs de bots verticais): registro local do admin, numa aba própria.
+    const produtosPage = mountProdutosPage({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot });
+    $<HTMLButtonElement>("produtos-line").addEventListener("click", () => produtosPage.open());
     adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();
     tabsReady = true;
     return;
   }
-  document.title = `meu-bot · ${hostLabel(windowHost)}`;
+  document.title = `${caps.produto} · ${hostLabel(windowHost)}`;
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   // Estado do WhatsApp da última vez: o modo WhatsApp e a lista em cache aparecem antes do SSH responder.
   { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }

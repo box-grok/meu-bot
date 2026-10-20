@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "meu-bot CRM",
+  "description": "O CRM do meu-bot-crm dentro do Gmail: pipelines, boxes e conversas, sem Streak.",
+  "version": "0.1.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqZh/5TVuKXqjjntvcXHiNZ3D8V3e/9gQ8O8T52zMi7Vj+l4T0ZiA1XNiPiAYLQK7siugCVBg0lxV91YCSnjP01Js64gp59FzCT5JUILU9AaDjfRLML8twMOYuQ3Ec3sMvm9ExIlDWnMdrD9v9lM0ubAVOcxr90THo1xYobxzcjaKOoXHnsU6Mu0g6JG7H4eYvtFv2+w+BqHRuQcEsVe8znk2PHZnL4SMuMHKREtqWKv+AlVRM8A38qj7yUp34Jg1idNjPDqhg9PfxRrl5pLdWrY5tjq+C6zA1wGEdzTnjb4hHgdqqKrGxCHIG7EEmK1jQHCcnHPhkW2R3d6bOlekEQIDAQAB",
+  "icons": { "16": "icones/crm-16.png", "32": "icones/crm-32.png", "128": "icones/crm-128.png" },
+  "content_scripts": [
+    { "matches": ["https://mail.google.com/*"], "js": ["content.js"], "run_at": "document_end" }
+  ],
+  "background": { "service_worker": "background.js" },
+  "permissions": ["scripting", "storage"],
+  "host_permissions": ["https://mail.google.com/", "http://127.0.0.1/*"],
+  "web_accessible_resources": [
+    { "resources": ["*.map", "pageWorld.js", "icones/*"], "matches": ["https://mail.google.com/*"] }
+  ]
+}

@@ -514,8 +514,13 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   duas políticas quando o número é conhecido, só se o campo estiver vazio ou já for a do meu-bot.
 - Pausar o agente para uma pessoa (menu "…"): `gateway call sessions.patch` com `sendPolicy: "deny"` na
   sessão só do contato (`null` retoma). O OpenClaw ainda recebe e grava a mensagem (e pode rodar o turno),
-  mas não entrega a resposta nem mostra "digitando". Só com sessão própria (`WhatsappChat.ownSession`):
-  pausar a principal calaria todo mundo. Lista com "pausado" e ponto vazado; cabeçalho da conversa avisa.
+  mas não entrega a resposta nem mostra "digitando". A principal nunca é pausada (calaria todo mundo).
+  Lista com "pausado" e ponto vazado; cabeçalho da conversa avisa.
+  Desde 20 out a pausa também vai para a lista durável `session.sendPolicy.rules` do openclaw.json (`deny` com
+  `keyPrefix: "whatsapp:direct:+N"`; muda sem reiniciar o gateway): a marca da sessão some quando a conversa é
+  limpa, a regra não. Retomar tira as duas; lista vazia tira a chave. Pausar vale também sem sessão
+  própria. Limpar/excluir um pausado que só tinha a marca da sessão (pausas antigas, guarda de loop) põe a regra
+  antes do reset (`whatsappKeepPaused`). A lista do app lê as duas (`pausedNumbersOfPolicy`).
 - O agente sabe que foi pausado e que voltou (17 out, `src/main/whatsapp-pause.ts`, puro e testado). Confirmado no
   gateway 2026.9.9: com `deny` o agente roda igual e a entrega é descartada (`suppress / send-policy`); nada o
   avisa, e o `sessions.patch` não tem system prompt por sessão. Então o meu-bot (quem pausa) dá o contexto em duas
@@ -1287,6 +1292,11 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   excluída na máquina. Como o `sessions.list` continua listando a sessão depois do reset, a conversa só volta se
   `updatedAt` ficar maior que a hora da exclusão, ou seja, se o contato mandar outra mensagem. Sem histórico na
   máquina, excluir só marca. No admin a limpeza e a exclusão ficam no registro da pessoa.
+  Desde 20 out (pedido de Lucas), excluir **não** limpa mais: só marca como excluída. O agente continua de onde
+  parou; zerar o contexto é só o "Limpar histórico".
+  Exclusão lógica: no meu-bot-admin o interruptor "arquivadas e excluídas" mostra também as excluídas (chip
+  "excluída"), com menu Exportar / Copiar ID / Restaurar (`restore` → marca `deleted: false`; vai para o registro
+  da pessoa como "restaurou a conversa…"). A pessoa nunca vê as excluídas.
 - Nome do contato em cache na máquina + "Renomear" (17 out): o pushname só vinha ao abrir a conversa (`threadFor` →
   `chatNames` em memória do main) e sumia ao fechar o app; agora `whatsapp-lista.json` guarda `names` por número
   (`name` = pushname em cache, `alias` = apelido do "Renomear", `at`). `whatsappChats` semeia `namesOf(host)` com o
@@ -2010,3 +2020,176 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 - (19/10) Zoom por site no Navegador: botão "%" na barra (alterna 100% ↔ 75%) e Cmd+= / Cmd+- / Cmd+0 (o main devolve as teclas do webview); lembrado por host em `navZoom` (localStorage) e reaplicado em dom-ready/did-finish-load. Resolve a planilha do Streak cortada à direita.
 - (19/10) Recortes do Gmail: "Painel do Gemini" (✦, oculto por padrão: `.aUx:has([aria-label="Gemini"])`) e "Painel lateral direito" (◨, visível por padrão: `.bAw:has([role="complementary"])`, `.WN9Ejb.br3`). Eram eles que espremiam a planilha do Streak; vieram do DOM colado pela pessoa.
 - (19/10) Recortes: a "Barra superior" também estica a área do InboxSDK (`.inboxsdk__custom_view_element{height:100vh}`): ela tinha altura fixa calculada com a barra e sobrava uma faixa em branco embaixo da planilha do Streak (medido ao vivo: 504 px numa aba de 584). Aplicação dos recortes enfileirada por aba (cliques rápidos não se atropelam) e o botão é atualizado no lugar, sem recriar a barra sob o mouse.
+
+## Produtos: meu-bot, meu-bot-admin e meu-bot-crm (19 out 2026)
+
+Um código, três apps, e a porta aberta para mais (meu-bot-vendas, meu-bot-imobiliaria…). O "Mapa de variantes"
+acima continua valendo para admin × cliente; o que mudou é que a variante deixou de ser um `if` e virou uma
+linha numa tabela:
+
+| Onde | O quê |
+|---|---|
+| `src/main/variant-core.ts` | `PRODUTOS`: por produto, `variant`, `nome` (bundle, título, userData, asset da atualização), `bundleId`, `icone`, `userData` (null = pasta padrão), `extensaoGmail` (pasta da extensão embutida ou null) e `caps`. `capsFor` devolve `Capabilities` com `produto`, `planoExigido`, `navegador`, `crmStreak`, `extensaoGmail` além das antigas. |
+| `scripts/produtos.mjs` | a mesma tabela lida de `dist/main/variant-core.js` para `package.mjs`, `fuses.mjs`, `dmg.mjs`, `release.mjs` e `icons.mjs` (`--variant <id>`; `--admin` segue como alias). `release.mjs` publica um zip por produto. |
+| `src/main/user-data.ts` | `useVariantUserData(nome, migrate?)`: userData próprio de qualquer produto que não o meu-bot (o admin só traz o `pessoas.json`). |
+| `src/main/acesso.ts` | `assertAcesso(host)`: um só gate no main. Produto free → módulo Pro exige pro/personalizado (`PRO_REQUIRED`); produto por assinatura → plano exigido em vigor (`ASSINATURA_REQUIRED`). |
+| `src/main/licenca.ts`, `backend-colima/licenca.js` | três planos: `free | pro | personalizado`. `proOk` (pro ou personalizado), `crmOk` (só personalizado), `isActive`, `mergeApps` (apps por device). |
+| `src/renderer/lib/pro.ts` | `browserAccess(view, host, exige)`: no produto por assinatura devolve `ok` ou `assinatura` (uma tela só, sem etiqueta Pro); `planoLiberaPro`, `acessoProduto`. |
+| `src/main/extensao-gmail/` | `extensao.ts` (copia `Resources/<extensão>` para `userData/Navegador/<host>/extensao/`, grava `config.json` 0600 com porta+token, aplica o polyfill e carrega descompactada), `extensao-api.ts` (proxy 127.0.0.1:<porta aleatória> → túnel `-L` → `/v1/crm/*` do backend com a chave do backend; CORS só para a extensão e o Gmail; `Host` conferido), `extensao-api-core.ts` (puro, testado). Ligado em `browser.ts` `prepareSession` quando `caps().extensaoGmail`. |
+| `extensao-crm/` | a extensão do Gmail (InboxSDK `@inboxsdk/core` 2.2.31 fixo, esbuild, DOM vanilla, pt-BR). `npm run build:extensao` → `build/extensao-crm/` (o app em dev carrega daí); o `package.mjs` copia para `Resources/extensao-crm/`. Id estável pelo `key` do manifesto (`scripts/id-da-extensao.mjs`). Dev: `npm run build:extensao && MEU_BOT_VARIANT=crm npm run dev` (ou `MEU_BOT_EXTENSAO_CRM_DIR=<pasta>` para outra cópia). |
+| `backend-colima/crm-modelo.js`, `crm-store.js`, `crm-api.js` | o CRM próprio no host: domínio puro, store em `~/.local/share/meu-bot/crm/db/` (JSON por pipeline, escritor único, feed `mudancas.jsonl`, lixeira, backup diário), rotas `/v1/crm/*` montadas no `server.js` (exige `personalizado`). |
+| `backend-colima/crm/crm.mjs`, `backend.mjs`, `importar-streak.mjs` | CLI do agente (mesmos subcomandos do `streak.mjs`, falando HTTP com o backend), helper do `.env`, importador do Streak (preserva as chaves; idempotente). `crm-job.mjs` escolhe a CLI pela licença: personalizado → `crm.mjs`; pro → `streak.mjs`. |
+| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 10 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
+| `src/main/backend.ts`, `backend-colima/server.js` | o `hello` leva `produto`; o backend guarda `apps[produto] = {version, lastSeen}` por device (um Mac pode ter o meu-bot e o meu-bot-crm: mesmo `deviceId`, não gasta `deviceLimit`); o admin vê em `appsText`. |
+
+Regras novas:
+
+- Produto novo = um membro em `AppVariant`, uma linha em `PRODUTOS`, um `assets/icon-<x>.svg` (`npm run icons`)
+  e, se tiver extensão do Gmail, a pasta de build. Nada mais; nenhum `if (variant === …)`.
+- Planos: no meu-bot, `pro` e `personalizado` liberam os módulos Pro (o personalizado é "sob consulta"); no
+  meu-bot-crm só o `personalizado` funciona e não existe etiqueta Pro. O admin muda o plano em Suporte ›
+  Conta e licença ("Mudar para Personalizado").
+- Dev: `MEU_BOT_VARIANT=crm npm run dev`. Empacotar: `npm run dist:crm` (precisa de `npm run build:extensao`,
+  já encadeado). `./instalar.sh --crm`.
+- O `localBackend.ts` passou a copiar todos os módulos que o `server.js` exige (antes só `server.js` e
+  `session-map.js`: o backend local quebrava no require).
+
+### meu-bot-crm: o CRM próprio no host
+
+- Escritor único: só o `server.js` toca em `crm/db/`. Extensão (pelo proxy do app), agente (`crm.mjs`), job do
+  WhatsApp e importador falam HTTP. A fila em memória serializa; cada mutação grava só os arquivos tocados
+  (tmp+rename, 0600), avança `meta.seq` e acrescenta uma linha em `mudancas.jsonl`; `GET /v1/crm/changes?since=`
+  (com `wait=` para long-poll) é o que a extensão consulta (5 s com visão CRM aberta, 30 s de resto).
+- Formas: pipeline `{key, name, stages[{key,name}], fields[{key,name,type,options[{key,name}]}]}`; box
+  `{key, pipelineKey, name, stageKey, notes, fields{fieldKey: valor}, contatos[key], threads[{gid,…}],
+  comentarios[{key,at,autor,texto}]}`; contato `{key, nome, emails[], telefones[]}`. Tipos: TEXT, NUMBER, DATE
+  (ms UTC), DROPDOWN (chave da opção), TAG (lista de chaves), CHECKBOX. Chaves opacas; as do Streak são
+  preservadas na importação (idempotência e `crm/estado.json` continuam válidos).
+- Extensão: só o service worker conhece o token (config.json fora dos web-acessíveis); o content script manda
+  `{tipo:"crm:fetch"}` por `chrome.runtime.sendMessage`; se o fetch do worker falhar (CORS/rede local), o content
+  script cai no fetch direto por 60 s com a config pedida ao worker. Painel por conversa
+  (`threadView.addSidebarContentPanel`), rotas `meu-bot-crm/home`, `meu-bot-crm/pipeline/:key` e `meu-bot-crm/caixa/:key` (os antigos `crm/…` redirecionam), rótulos nas linhas
+  (`threads/lookup` em lote), botões "Adicionar ao pipeline" e "CRM" na toolbar (sobrevivem aos recortes que
+  escondem o menu esquerdo), item no menu, atalho ctrl+shift+c. Tema pelo `Global.gmailTheme` do SDK.
+- Pendente de verificação real no Navegador (spike da Fase 0 do plano): `host_permissions` do service worker
+  para 127.0.0.1 no Electron, `sendMessage` content ⇄ worker com resposta assíncrona, `key` honrado no
+  `loadExtension`. O desenho tem os dois transportes e o CORS no proxy para cobrir os "se não".
+
+### Produtos no meu-bot-admin (MVPs de bots verticais)
+
+Pedido de 19 out: o admin é o lugar de registrar e dar o pontapé inicial em novos bots personalizados
+(meu-bot-fit para academias e estúdios, por exemplo). Página "Produtos" (`src/renderer/admin/produtos-page.ts`,
+botão `#produtos-line` na lateral, só em `body.admin-mode`): lista os três produtos fixos e os MVPs do admin, com
+formulário (nome `meu-bot-<slug>`, vertical, pitch, público, módulos, pipeline modelo, status ideia/mvp/beta/
+lançado, notas, próximos passos). "Pontapé inicial (exportar)" mostra a definição (`produto.json`) e o checklist do
+que falta para virar variante (linha em `PRODUTOS`, ícone, templates, licença das pessoas, `--variant`). Dados em
+`userData/produtos.json` do admin (0600, atômico); o admin não altera o repositório. Main: `src/main/admin/
+produtos-core.ts` (puro, testado) e `produtos.ts`; canais `admin:produtos-list|save|remove|export` em
+`ADMIN_CHANNELS`, `adminProdutos/adminProdutoSave/adminProdutoRemove/adminProdutoExport` no `adminApi`.
+Pendente: anotar em `pessoas.json` qual produto cada pessoa contratou no plano personalizado.
+
+## Assinatura dos apps e o chaveiro do macOS
+
+Os cookies do Navegador (login do Gmail) são cifrados com a chave "<app> Safe Storage" do chaveiro, que o macOS
+libera só para a assinatura que a criou. Assinatura ad-hoc muda a cada build, então cada reinstalação pedia a senha
+do Mac e, se negada, o Gmail caía deslogado. `npm run assinatura` cria uma vez o certificado autoassinado
+"meu-bot local" no chaveiro de login; `fuses.mjs` e `dmg.mjs` passam a assinar com ele (sem ele, continuam ad-hoc).
+Na primeira abertura depois da troca o macOS pergunta mais uma vez: clique em **Permitir Sempre**. Daí em diante
+os builds seguintes (feitos neste Mac) não perguntam mais.
+
+## CRM → WhatsApp (contexto nas respostas)
+
+O plugin `meu-bot-crm` do OpenClaw também faz o caminho de volta: antes de cada resposta a um contato numa conversa
+direta, o hook `before_prompt_build` busca `GET /v1/crm/contexto?phone=+N` e põe no prompt (`prependContext`) só o
+essencial da caixa dele: nome, pipeline, etapa, próximo passo e visão geral do resumo com IA. Anotações fixas,
+registros e histórico ficam de fora (podem ter coisa interna). Cache de 60 s por telefone; sem caixa, backend fora
+ou `crm.json` com `contextoWhatsapp: false` (`crm.mjs config --contexto-whatsapp false`), nada é acrescentado.
+
+## Limpar histórico do WhatsApp guarda antes no CRM (meu-bot-crm)
+
+No meu-bot-crm, "Limpar histórico" passa antes por "Guardando a conversa no CRM…" ("Excluir conversa" só tira
+da lista, sem zerar o agente, então não precisa guardar): o app
+lê a conversa só deste contato (até 1000 mensagens por sessão, também quando ela está na sessão principal),
+monta o mesmo Markdown da exportação e manda para `POST /v1/crm/whatsapp/arquivar` pelo túnel
+(`src/main/whatsapp-crm.ts`). O backend acha ou cria o contato pelo telefone, grava a transcrição como anexo da
+caixa mais recente dele com um registro na linha do tempo (sem caixa: em `contato.arquivos`, baixável na página
+do contato) e pede ao motor o resumo consolidado, que fica em `whatsapp.arquivo` (o `whatsapp.resumo` da
+conversa atual, escrito pelo crm-job, recomeça). O mesmo texto duas vezes não duplica (sha256). Se guardar falhar,
+a confirmação volta com o erro e os botões "Tentar de novo" e "Limpar sem guardar"; nunca limpa sozinho. Sem IA,
+a transcrição fica e o aviso diz "resumo não atualizado". No meu-bot comum nada muda.
+
+## Google Contatos → CRM (automático)
+
+O meu-bot-crm traz os contatos do Google sozinho: na página Contatos, "Conectar Google Contatos" abre o login do
+Google no navegador do Mac (só leitura, API People oficial, PKCE com retorno em 127.0.0.1). O refresh token fica
+cifrado no Keychain (userData/google-contatos.bin). O app sincroniza 20 s depois de abrir, a cada 30 min e no
+"Sincronizar agora": lê `people/me/connections` e manda para `POST /v1/crm/contacts/import` da máquina (acha por
+id do Google, telefone ou e-mail; completa sem apagar; quem não mudou não é regravado). A ficha ganha
+"Google Contatos ↗". Código: `src/main/google/` e as rotas locais `/v1/crm/google/*` do proxy da extensão.
+
+Configuração única (o client OAuth do app, igual para todos os clientes):
+1. console.cloud.google.com → criar projeto "meu-bot CRM".
+2. APIs e serviços → Biblioteca → ativar **People API**.
+3. Tela de consentimento OAuth → Externo; nome "meu-bot CRM", e-mail de suporte; escopos `contacts.readonly`,
+   `openid`, `email`. Em teste, adicione os e-mails que vão usar (até 100); para todos, publique (o Google pede
+   verificação do app para o escopo de contatos; até lá aparece "app não verificado" no login).
+4. Credenciais → Criar credenciais → ID do cliente OAuth → tipo **App para computador** → baixar o JSON.
+5. Salvar como `config/google-oauth.json` (fora do git) e empacotar, ou copiar para
+   `~/Library/Application Support/meu-bot-crm/google-oauth.json` para testar sem reinstalar.
+
+### WhatsApp → Google Contatos
+
+Todo número novo que conversa com o agente no WhatsApp vai para o Google Contatos, no marcador "WhatsApp" (decisão
+de 2026-10-20; exige a permissão `contacts` com escrita, e o app pede "Reconectar" se a conexão for só leitura).
+O plugin anota cada número em `crm/whatsapp-contatos.json`; `crm-job.mjs contatos-whatsapp` completa com as
+conversas antigas e o nome do WhatsApp (do histórico); o backend expõe `GET /v1/crm/whatsapp/contatos`; a cada
+sincronização o app cria no Google só os que ele ainda não tem (pelos 10 últimos dígitos) e guarda os criados em
+userData/google-whatsapp.json para nunca duplicar.
+
+## Auditoria: quem fez o quê (20 out)
+
+Cada máquina tem um registro de auditoria em `~/.local/share/meu-bot/auditoria.jsonl`, e só o
+`backend-colima/auditoria.py` escreve nele. Cada linha registra `{ em, maquina, quem:{tipo,nome}, app, acao, alvo,
+detalhe, prev, hash }`.
+- **Quem pode aparecer:** `dono`, `admin` (pelo nome do app daquele admin), `agente` (pausa automática da guarda),
+  `sistema` (backend: Mac novo, pedido de device) e `legado` (o antigo `suporte.log`, importado na 1ª gravação).
+- **Corrente:** `hash = sha256(prev + JSON canônico sem hash)`. Se alguém apagar ou mudar uma linha, a corrente
+  quebra dali em diante. `src/main/auditoria-core.ts` confere, e o teste prova que Python e TS calculam o selo igual.
+- **Ações:** formam um catálogo fechado (`ACOES`), e o texto mostrado na tela sai dele.
+- **Como o app grava:** manda o `auditoria.py` pela entrada padrão do SSH (`auditoriaSh`). O backend e a guarda usam a
+  cópia em `~/.local/share/meu-bot/auditoria.py`, que o backend copia na subida.
+- **O que entra:** limpar, excluir, restaurar, arquivar, renomear, pausar e retomar (do dono e do admin), guardar no
+  CRM, parear e desconectar o WhatsApp, quem o agente responde, instalar e desinstalar o CRM, pedir plano, além das
+  ações de suporte do admin (licença, device, reiniciar serviço, áudio, terminal, desligar suporte, excluir máquina).
+
+**Cópia central**
+- Fica no usuário Linux `auditoria` da caixa (agente-box), em `/home/auditoria/registro/<maquina>.jsonl`, com corrente
+  própria e a hora do servidor.
+- Quem entregou vem da chave SSH, não do que o app diz. O `/usr/local/bin/meu-bot-auditoria` é o comando forçado de
+  cada chave, e o `authorized_keys` de lá é do root:
+  - admin: só grava;
+  - chave de entrega das pessoas: só grava;
+  - super admin: grava e lê.
+- Não há fila separada: a máquina é a fila. O app guarda até onde já entregou (`userData/auditoria-entregue.json`)
+  e manda o resto depois de cada gravação. Linhas repetidas são ignoradas.
+- Antes de desligar o suporte, o admin entrega o registro, porque depois perde o acesso à máquina.
+
+**Admins**
+- Cada admin tem um app e uma chave. O `scripts/suporte-setup.mjs` mantém `build/suporte/admins.json` e gera:
+  - o `suporte.json` das pessoas (`admins:[{nome,chave}]`, uma linha `meu-bot-admin:<nome>` por admin no
+    `authorized_keys` delas);
+  - o `admins/<nome>.json` de cada admin (`admin`, `superAdmin`, caixa);
+  - o `authorized_keys` da central.
+- Comandos:
+  - incluir ou trocar a chave de um admin: `--admin "Fulano" --chave "ssh-ed25519 …"`;
+  - tirar um admin: `--remover "Fulano"` (ele perde o acesso quando a pessoa atualiza o app ou religa o suporte);
+  - gerar o app de um admin: `./instalar.sh --admin --como "Fulano"`. Sem `--como`, sai o do super admin.
+
+**Telas**
+- **Pessoa:** Configurações › Suporte mostra "O que o suporte fez nesta máquina" e o botão "ver tudo" (50 últimas).
+- **Super admin:** "🛡 Auditoria" no seletor do meu-bot-admin. Mostra:
+  - as máquinas da central;
+  - a história de cada uma, com filtros por tipo e texto;
+  - os selos "central íntegra" e "cópia da máquina íntegra", e as linhas "apagadas da máquina";
+  - **Exportar prova**: JSON com os hashes e um CSV legível.
+- Os outros admins não veem o botão, e a central recusa a leitura deles.

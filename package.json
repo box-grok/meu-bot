@@ -18,9 +18,14 @@
     "test": "npm run build && node --test scripts/tests/",
     "dmg": "npm run dist && node scripts/dmg.mjs",
     "dist:admin": "npm run build && node scripts/package.mjs --admin && node scripts/fuses.mjs --admin",
+    "build:extensao": "npm --prefix extensao-crm run build",
+    "dev:extensao": "npm --prefix extensao-crm run dev",
+    "dist:crm": "npm run build && npm run build:extensao && node scripts/package.mjs --variant crm && node scripts/fuses.mjs --variant crm",
+    "dmg:crm": "npm run dist:crm && node scripts/dmg.mjs --variant crm",
     "dmg:admin": "npm run dist:admin && node scripts/dmg.mjs --admin",
     "release": "node scripts/release.mjs",
-    "icons": "node scripts/icon.mjs assets/icon.svg assets/icon.icns && node scripts/icon.mjs assets/icon-admin.svg assets/icon-admin.icns"
+    "icons": "npm run build:main && node scripts/icons.mjs",
+    "assinatura": "node scripts/assinatura.mjs --criar"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
@@ -42,6 +47,7 @@
   },
   "dependencies": {
     "electron-chrome-web-store": "^0.13.0",
+    "jsqr": "1.4.0",
     "qrcode": "^1.5.4"
   }
 }

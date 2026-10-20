@@ -16,7 +16,7 @@ function summarize(name, input) {
   const i = input && typeof input === 'object' ? input : {};
   const str = (k) => (typeof i[k] === 'string' ? i[k] : null);
   switch (name) {
-    case 'Bash': return typeof i.command === 'string' && /streak\.mjs\s+\S/.test(i.command) ? crmSummary(i.command) : (str('command') || '');
+    case 'Bash': return typeof i.command === 'string' && /(?:streak|crm|importar-streak)\.mjs\s+\S/.test(i.command) ? crmSummary(i.command) : (str('command') || '');
     case 'Read': case 'Write': case 'Edit': case 'MultiEdit': case 'NotebookEdit': return str('file_path') || str('notebook_path') || '';
     case 'Glob': case 'Grep': return [str('pattern'), str('path')].filter(Boolean).join(' em ');
     case 'WebFetch': return str('url') || '';
@@ -30,9 +30,11 @@ function summarize(name, input) {
   }
 }
 
-/** Comandos do streak.mjs (CRM pelo WhatsApp) em uma linha: "📇 CRM: box-find --phone +595…". */
+/** Comandos do CRM (crm.mjs do meu-bot-crm, streak.mjs do Pro, importar-streak.mjs) em uma linha: "📇 CRM: box-find --phone +595…". */
 function crmSummary(command) {
-  const m = /streak\.mjs\s+(\S+)(.*)$/s.exec(command);
+  const imp = /importar-streak\.mjs\b(.*)$/s.exec(command);
+  if (imp) return `📇 CRM: importar do Streak${/--dry-run/.test(imp[1]) ? ' (simulação)' : ''}`;
+  const m = /(?:streak|crm)\.mjs\s+(\S+)(.*)$/s.exec(command);
   if (!m) return '📇 CRM';
   const rest = m[2].replace(/\s+/g, ' ').trim().slice(0, 70);
   return `📇 CRM: ${m[1]}${rest ? ` ${rest}` : ''}`;

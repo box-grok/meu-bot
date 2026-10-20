@@ -15,6 +15,7 @@ test("defaultLicense: grátis, um device, membro desde carimbado", () => {
   assert.equal(l.status, "free");
   assert.equal(l.interval, null);
   assert.equal(l.deviceLimit, 1);
+  assert.deepEqual(l.produtos, []);
   assert.equal(l.memberSince, "1970-01-01T00:00:00.000Z");
   assert.deepEqual(fe.defaultLicense(0), l, "backend e admin dão o mesmo default");
 });
@@ -56,6 +57,53 @@ test("applyLicensePatch: aplica só o válido e carimba admin", () => {
     assert.equal(next.updatedAt, "1970-01-01T00:00:05.000Z");
     assert.equal(apply(null, { deviceLimit: 999 }).deviceLimit, 1, "limite fora da faixa é ignorado");
   }
+});
+
+test("três planos: personalizado é aceito e libera o Pro; o CRM próprio só com personalizado", () => {
+  for (const parse of [be.parseLicense, fe.parseLicense]) assert.equal(parse({ plan: "personalizado" }).plan, "personalizado");
+  const t = Date.parse("2026-10-19T00:00:00.000Z");
+  const lic = (over) => ({ plan: "free", status: "free", expiresAt: null, ...over });
+  assert.equal(be.proOk(lic({ plan: "pro", status: "active" }), t), true);
+  assert.equal(be.proOk(lic({ plan: "personalizado", status: "trialing" }), t), true, "personalizado libera os módulos Pro");
+  assert.equal(be.proOk(lic({ plan: "pro", status: "expired" }), t), false);
+  assert.equal(be.proOk(lic({ plan: "pro", status: "active", expiresAt: "2026-10-01T00:00:00.000Z" }), t), false, "validade no passado vence");
+  assert.equal(be.proOk(lic({ plan: "free", status: "active" }), t), false);
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "active" }), t), false, "pro sozinho não dá o CRM próprio");
+  assert.equal(be.crmOk(lic({ plan: "personalizado", status: "active" }), t), true, "personalizado libera todos");
+  assert.equal(be.crmOk(lic({ plan: "personalizado", status: "expired" }), t), false);
+  // Produtos acumulativos por cima do plano: free ou pro + meu-bot-crm contratado.
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "active", produtos: ["meu-bot-crm"] }), t), true);
+  assert.equal(be.crmOk(lic({ produtos: ["meu-bot-crm"] }), t), true, "free + produto contratado também vale");
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "expired", produtos: ["meu-bot-crm"] }), t), false, "licença vencida tranca o produto");
+  assert.equal(be.produtoOk(lic({ produtos: ["meu-bot-fit"] }), "meu-bot-fit", t), true);
+  assert.equal(be.produtoOk(lic({ produtos: ["meu-bot-fit"] }), "meu-bot-crm", t), false);
+  assert.deepEqual(be.parseLicense({ produtos: ["meu-bot-crm", "lixo!", "meu-bot-admin", "meu-bot-crm", "meu-bot-fit"] }).produtos, ["meu-bot-crm", "meu-bot-fit"], "nomes válidos, únicos, ordenados; admin não é produto");
+  assert.deepEqual(be.applyLicensePatch(lic({ produtos: ["meu-bot-crm"] }), { produtos: [] }).produtos, [], "patch substitui a lista");
+  assert.deepEqual(fe.parseLicense({ produtos: ["meu-bot-fit"] }).produtos, ["meu-bot-fit"]);
+  // Lado do admin: mesmas regras.
+  assert.equal(fe.proOk(fe.parseLicense(lic({ plan: "personalizado", status: "active" })), t), true);
+  const v = (over) => ({ license: fe.parseLicense(lic(over)), devices: [] });
+  assert.equal(fe.acessoProduto(v({ plan: "personalizado", status: "active" }), "agente-box", "personalizado", "meu-bot-crm", t), "ok");
+  assert.equal(fe.acessoProduto(v({ plan: "pro", status: "active" }), "agente-box", "personalizado", "meu-bot-crm", t), "ausente", "pro sem o produto contratado");
+  assert.equal(fe.acessoProduto(v({ plan: "pro", status: "active", produtos: ["meu-bot-crm"] }), "agente-box", "personalizado", "meu-bot-crm", t), "ok", "pro + produto contratado");
+  assert.equal(fe.acessoProduto(v({ produtos: ["meu-bot-crm"] }), "agente-box", "personalizado", "meu-bot-crm", t), "ok", "free + produto contratado");
+  assert.equal(fe.acessoProduto(v({ plan: "pro", status: "expired", produtos: ["meu-bot-crm"] }), "agente-box", "personalizado", "meu-bot-crm", t), "expirada");
+  assert.equal(fe.acessoProduto(v({ produtos: ["meu-bot-fit"] }), "agente-box", "personalizado", "meu-bot-crm", t), "ausente", "outro produto não serve");
+  assert.equal(fe.acessoProduto(null, "agente-box", "personalizado", "meu-bot-crm", t), "unknown");
+  assert.equal(fe.acessoProduto(null, "agente-box", "free", "meu-bot", t), "ok", "produto free nunca bloqueia o app inteiro");
+});
+
+test("mergeApps: cada app que se apresenta fica em apps[produto]; app antigo sem produto conta como meu-bot", () => {
+  const t = Date.parse("2026-10-19T12:00:00.000Z");
+  const a = be.mergeApps(undefined, undefined, "0.1.0", t);
+  assert.deepEqual(a, { "meu-bot": { version: "0.1.0", lastSeen: "2026-10-19T12:00:00.000Z" } });
+  const b = be.mergeApps(a, "meu-bot-crm", "0.2.0", t + 1000);
+  assert.deepEqual(Object.keys(b).sort(), ["meu-bot", "meu-bot-crm"]);
+  assert.equal(b["meu-bot"].version, "0.1.0", "o outro app fica como estava");
+  assert.equal(be.mergeApps({ "x y": { version: "1", lastSeen: "z" } }, "lixo!", "1", t)["meu-bot"].version, "1", "nome inválido vira meu-bot; entrada inválida some");
+  const devs = fe.parseDevices({ [DEV(1)]: { name: "mac", apps: b } });
+  assert.deepEqual(Object.keys(devs[0].apps).sort(), ["meu-bot", "meu-bot-crm"]);
+  assert.deepEqual(fe.parseDevices({ [DEV(1)]: { name: "mac" } })[0].apps, {}, "registro antigo: sem apps");
 });
 
 test("buildLicenseView (admin): conta ativos/pendentes e ordena por visto há", () => {

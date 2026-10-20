@@ -1,5 +1,5 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
-import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson } from "../shared/ipc";
+import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson, PlanName } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { personSuffix } from "./lib/admin-view.js";
@@ -78,7 +78,7 @@ let hosts: string[] = [];
 /** meu-bot-admin: as pessoas do suporte (null = meu-bot normal). */
 let support: PickerInit["support"] = null;
 /** Plano por host (lido por SSH), para o selo "PRO"; vale nos dois apps. */
-const plans = new Map<string, "free" | "pro">();
+const plans = new Map<string, PlanName>();
 const personOf = (host: string): SupportPerson | undefined => support?.people.find((p) => p.alias === host);
 /** Nome na lista: a pessoa (admin) ou a máquina. */
 const rowLabel = (host: string): string => personOf(host)?.name ?? hostLabel(host);
@@ -105,7 +105,7 @@ function buildRows(): void {
     dot.style.background = hostAccent(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
-    if (person?.plan === "pro" || plans.get(host) === "pro") name.append(el("span", "badge pro", "PRO"));
+    { const plan = person?.plan ?? plans.get(host) ?? null; if (plan === "pro" || plan === "personalizado") name.append(el("span", "badge pro", plan === "pro" ? "PRO" : "PERSONALIZADO")); }
     if (person !== undefined) name.append(el("span", "seen", personSuffix(person)));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);

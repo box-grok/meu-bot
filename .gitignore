@@ -5,3 +5,7 @@ out/
 .DS_Store
 build/
 hermes-agent/
+extensao-crm/node_modules/
+
+# client OAuth do Google (Google Contatos no meu-bot-crm): local, nunca no git
+config/google-oauth.json

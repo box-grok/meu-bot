@@ -15,13 +15,14 @@ import type { SupportInfo, SupportShare } from "../../shared/ipc";
 import { LOCAL_HOST } from "../localBackend";
 import { isValidHost } from "../settings";
 import { log } from "../backend";
-import { DEFAULT_SHARE, SHARE_FILE, SUPPORT_BLOCK_FILE, SUPPORT_DIR, SUPPORT_LOG, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, supportLogSh, type SupportCode } from "../support-code";
+import { ADMIN_KEY_LINE_RE, DEFAULT_SHARE, SHARE_FILE, SUPPORT_BLOCK_FILE, SUPPORT_DIR, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, type SupportAdmin, type SupportCode } from "../support-code";
+import { entregar, lerRegistro, registroSh } from "../auditoria";
+import { textoDaLinha } from "../auditoria-core";
 import { runSsh } from "../whatsapp";
 
-/** O que o .dmg da pessoa leva (Resources/config): nome do admin, pública dele e onde fica a caixa. */
+/** O que o .dmg da pessoa leva (Resources/config): os admins (nome + pública de cada um) e onde fica a caixa. */
 interface SupportBundle {
-  admin: string;
-  adminKey: string;
+  admins: SupportAdmin[];
   inbox: { hostname: string; user: string; port: number; hostKey: string };
   /** Chave só de entrega (privada) e o known_hosts da caixa. */
   keyPath: string;
@@ -36,15 +37,37 @@ export function supportBundle(): SupportBundle | null {
   const keyPath = path.join(dir, app.isPackaged ? "suporte-entrega" : "entrega");
   const knownHostsPath = path.join(dir, app.isPackaged ? "suporte-known_hosts" : "known_hosts");
   try {
-    const raw = JSON.parse(fs.readFileSync(path.join(dir, "suporte.json"), "utf8")) as Partial<SupportBundle>;
+    const raw = JSON.parse(fs.readFileSync(path.join(dir, "suporte.json"), "utf8")) as Partial<SupportBundle> & { admin?: unknown; adminKey?: unknown };
     const inbox = raw.inbox;
-    if (typeof raw.admin !== "string" || typeof raw.adminKey !== "string" || publicKeyBody(raw.adminKey) === null) return null;
+    // Pacote antigo (um admin só: admin + adminKey) continua valendo como uma lista de um.
+    const lista = Array.isArray(raw.admins) ? raw.admins : typeof raw.admin === "string" && typeof raw.adminKey === "string" ? [{ nome: raw.admin, chave: raw.adminKey }] : [];
+    const admins = lista.filter((a): a is SupportAdmin => typeof a?.nome === "string" && typeof a.chave === "string" && publicKeyBody(a.chave) !== null).map((a) => ({ nome: a.nome.slice(0, 40), chave: a.chave }));
+    if (admins.length === 0) return null;
     if (inbox === undefined || typeof inbox.hostname !== "string" || typeof inbox.user !== "string" || typeof inbox.port !== "number" || typeof inbox.hostKey !== "string") return null;
     if (!fs.existsSync(keyPath) || !fs.existsSync(knownHostsPath)) return null;
-    return { admin: raw.admin.slice(0, 40), adminKey: raw.adminKey, inbox, keyPath, knownHostsPath };
+    return { admins, inbox, keyPath, knownHostsPath };
   } catch {
     return null;
   }
+}
+
+/**
+ * ssh para a central de auditoria com a chave de entrega (lá presa a um comando forçado que só grava); null num
+ * meu-bot sem suporte.
+ */
+export function clienteAuditoriaSsh(): string[] | null {
+  const b = supportBundle();
+  if (b === null) return null;
+  return ["-i", chaveEntrega(b), "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
+    "-o", "HostKeyAlias=meu-bot-caixa", "-o", `UserKnownHostsFile=${b.knownHostsPath}`, "-o", "StrictHostKeyChecking=yes",
+    "-p", String(b.inbox.port), `auditoria@${b.inbox.hostname}`];
+}
+
+/** A chave de entrega numa cópia 0600 no userData (a do pacote pode estar legível por outros, e o ssh recusa). */
+function chaveEntrega(b: SupportBundle): string {
+  const tmp = path.join(app.getPath("userData"), "suporte-entrega");
+  fs.writeFileSync(tmp, `${fs.readFileSync(b.keyPath, "utf8").trim()}\n`, { mode: 0o600 });
+  return tmp;
 }
 
 /** Sugestão de nome quando ela ainda não disse (git user.name ou o nome do usuário do Mac): salvar liga com um clique. */
@@ -75,7 +98,6 @@ function saveSupportName(name: string): void {
   try { fs.writeFileSync(namePath(), JSON.stringify({ name }), { mode: 0o600 }); } catch { /* cortesia */ }
 }
 
-const LOG = SUPPORT_LOG;
 const D = SUPPORT_DIR;
 
 /** Como o Mac dela chega na máquina (o que o ssh dela resolve para o alias), para o admin chegar igual. */
@@ -164,13 +186,11 @@ export async function reportSupportProgress(host: string, raw: unknown): Promise
 export async function supportInfo(host: string): Promise<SupportInfo> {
   const b = supportBundle();
   if (b === null || host === LOCAL_HOST || !isValidHost(host)) return { available: false, admin: "", on: false, name: supportName(), suggestedName: suggestedName(), log: [], deliveredAt: null, share: DEFAULT_SHARE, blockedByAdmin: false, staleId: false };
-  const r = await runSsh(host, `grep -q ' meu-bot-admin$' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\ntail -n 15 "${LOG}" 2>/dev/null | sed 's/^/L=/'\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\necho "B=$([ -f "${SUPPORT_BLOCK_FILE}" ] && echo 1 || echo 0)"\necho "I=$(head -n 1 "${D}/codigo" 2>/dev/null)"\necho "K=$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || cut -d' ' -f1,2 /etc/ssh/ssh_host_ecdsa_key.pub 2>/dev/null)"\n`, 20_000);
+  const r = await runSsh(host, `grep -Eq '${ADMIN_KEY_LINE_RE}' "$HOME/.ssh/authorized_keys" 2>/dev/null && echo ON=1 || echo ON=0\necho "E=$(cat "${D}/ultima-entrega" 2>/dev/null)"\necho "S=$(cat "${SHARE_FILE}" 2>/dev/null | tr -d '\\n')"\necho "B=$([ -f "${SUPPORT_BLOCK_FILE}" ] && echo 1 || echo 0)"\necho "I=$(head -n 1 "${D}/codigo" 2>/dev/null)"\necho "K=$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub 2>/dev/null || cut -d' ' -f1,2 /etc/ssh/ssh_host_ecdsa_key.pub 2>/dev/null)"\n`, 20_000);
   if (r.code !== 0) throw new Error("não consegui ler o estado do suporte nesta máquina");
   const lines = r.stdout.split("\n");
-  const entries = lines.filter((l) => l.startsWith("L=")).map((l) => {
-    const [at = "", who = "", what = ""] = l.slice(2).split("|");
-    return { at, who, what };
-  }).reverse();
+  // Registro de auditoria da máquina: as 50 últimas linhas, a mais nova primeiro (a tela filtra o que é do admin).
+  const entries = (await lerRegistro(host, 50).catch(() => [])).map((l) => ({ at: l.em, who: l.quem.tipo === "admin" || l.quem.tipo === "legado" ? l.quem.nome : `${l.quem.nome || l.quem.tipo} (${l.quem.tipo})`, what: textoDaLinha(l), tipo: l.quem.tipo })).reverse();
   supportOn.set(host, lines.includes("ON=1"));
   const e = (lines.find((l) => l.startsWith("E=")) ?? "E=").slice(2).trim();
   const deliveredAt = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/.test(e) ? e : null;
@@ -183,7 +203,7 @@ export async function supportInfo(host: string): Promise<SupportInfo> {
   const hostKey = (lines.find((l) => l.startsWith("K=")) ?? "K=").slice(2).trim();
   let staleId = false;
   if (storedId !== "" && hostKey !== "") { try { const addr = await resolveSsh(host); staleId = storedId !== machineId({ hostKey, user: addr.user, port: addr.port }); } catch { staleId = false; } }
-  return { available: true, admin: b.admin, on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share, blockedByAdmin: lines.includes("B=1"), staleId };
+  return { available: true, admin: b.admins.map((a) => a.nome).join(", "), on: lines.includes("ON=1"), name: supportName(), suggestedName: suggestedName(), log: entries, deliveredAt, share, blockedByAdmin: lines.includes("B=1"), staleId };
 }
 
 /** Liga/desliga o suporte nesta máquina. Ligar exige o nome da pessoa (o admin vê esse nome). */
@@ -196,14 +216,15 @@ export async function setSupport(host: string, on: boolean, name: string): Promi
   if (who !== "") saveSupportName(who);
   const built = await buildCode(host, who || "pessoa", on ? "on" : "off");
   const script = on
-    ? `rm -f "${SUPPORT_BLOCK_FILE}"\n${authorizedKeysScript(b.adminKey)}\n${supportLogSh(who, "ligou o acesso do admin")}\n${installDeliverySh(b, built.id, built.text)}`
-    : `${authorizedKeysScript(null)}\n${supportLogSh(who || "pessoa", "desligou o acesso do admin")}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
+    ? `rm -f "${SUPPORT_BLOCK_FILE}"\n${authorizedKeysScript(b.admins)}\n${registroSh("suporte.ligar")}\n${installDeliverySh(b, built.id, built.text)}`
+    : `${authorizedKeysScript([])}\n${registroSh("suporte.desligar")}\n${removeDeliverySh(built.id, built.text)}\nrm -f "${PROGRESS}"`;
   lastProgress.delete(host);
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ${on ? "ligar" : "desligar"} o suporte: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   // Se a máquina dela não alcança a caixa (saída bloqueada), o Mac entrega no lugar dela.
   if (!r.stdout.includes("ENTREGUE=1")) await deliverFromMacAndMark(host, b, built.id, built.text, on);
   log(`[suporte] ${host}: ${on ? "ligado" : "desligado"} (${who})`);
+  void entregar(host);
   return supportInfo(host);
 }
 
@@ -262,8 +283,7 @@ export async function supportCodeText(host: string): Promise<string> {
 
 /** Entrega pelo próprio Mac (quando a máquina dela não consegue sair por SSH). A chave vai num arquivo 600. */
 function deliverFromMac(b: SupportBundle, id: string, codeText: string): Promise<void> {
-  const tmp = path.join(app.getPath("userData"), "suporte-entrega");
-  fs.writeFileSync(tmp, `${fs.readFileSync(b.keyPath, "utf8").trim()}\n`, { mode: 0o600 });
+  const tmp = chaveEntrega(b);
   return new Promise((resolve, reject) => {
     const child = execFile("ssh", ["-i", tmp, "-o", "IdentitiesOnly=yes", "-o", "IdentityAgent=none", "-o", "BatchMode=yes", "-o", "ConnectTimeout=20",
       "-o", "HostKeyAlias=meu-bot-caixa", "-o", `UserKnownHostsFile=${b.knownHostsPath}`, "-o", "StrictHostKeyChecking=yes",

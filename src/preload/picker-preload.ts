@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { HostProbe, InstallBackendResult, PickerApi, PickerAdminApi, PickerClientApi, PickerSharedApi, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "../shared/ipc";
+import type { HostProbe, InstallBackendResult, PickerApi, PickerAdminApi, PickerClientApi, PickerSharedApi, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult, ProdutoMvpPatch } from "../shared/ipc";
 
 const EVENTS = ["picker:init", "picker:install-progress"] as const;
 
@@ -51,6 +51,13 @@ const adminApi: PickerAdminApi = {
   supportArchive: (alias: string, archived: boolean) => ipcRenderer.invoke("picker:support-archive", { alias, archived }),
   supportRename: (alias: string, name: string) => ipcRenderer.invoke("picker:support-rename", { alias, name }),
   supportRemove: (alias: string, force: boolean) => ipcRenderer.invoke("picker:support-remove", { alias, force }),
+  produtos: () => ipcRenderer.invoke("picker:produtos-list", {}),
+  produtoSave: (patch: ProdutoMvpPatch) => ipcRenderer.invoke("picker:produtos-save", { patch }),
+  produtoRemove: (nome: string) => ipcRenderer.invoke("picker:produtos-remove", { nome }),
+  produtoExport: (nome: string) => ipcRenderer.invoke("picker:produtos-export", { nome }),
+  auditoriaMaquinas: () => ipcRenderer.invoke("picker:auditoria-maquinas", {}),
+  auditoriaRegistro: (maquina: string) => ipcRenderer.invoke("picker:auditoria-registro", { maquina }),
+  auditoriaExportar: (maquina: string) => ipcRenderer.invoke("picker:auditoria-exportar", { maquina }),
 };
 
 const api: PickerApi = { ...sharedApi, ...clientApi, ...adminApi };

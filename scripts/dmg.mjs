@@ -8,22 +8,25 @@
 //
 // Para mandar a outra pessoa: o config/ssh-hosts.conf do app (as suas máquinas e IPs) é trocado por um
 // modelo vazio e o app é reassinado ad-hoc. `--com-minhas-maquinas` mantém o arquivo como está.
+import { identidade } from "./assinatura.mjs";
 import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { archOf, produtoFromArgv } from "./produtos.mjs";
 
 const DMGBUILD = "dmgbuild==1.6.7";
 const root = resolve(import.meta.dirname, "..");
 // --admin: o meu-bot-admin (só para o admin; leva as máquinas dele). --suporte: o .dmg das pessoas leva o
 // pacote de suporte de build/suporte (scripts/suporte-setup.mjs): pública do admin, chave só de entrega e
 // endereço/chave do servidor da caixa de entrada.
-const admin = process.argv.includes("--admin");
+const produto = produtoFromArgv();
+const admin = produto.variant === "admin";
 const support = process.argv.includes("--suporte");
-const name = admin ? "meu-bot-admin" : "meu-bot";
+const name = produto.nome;
 const keepHosts = admin || process.argv.includes("--com-minhas-maquinas");
 const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
-const arch = process.arch === "arm64" ? "arm64" : "x64";
+const arch = archOf();
 const appSrc = join(root, "out", `${name}-darwin-${arch}`, `${name}.app`);
 const out = join(root, "out", `${name}-${version}-${arch}${support ? "-suporte" : ""}.dmg`);
 if (admin && support) { console.error("✗ --suporte é para o .dmg das pessoas, não para o admin"); process.exit(64); }
@@ -94,7 +97,7 @@ try {
       "",
     ].join("\n"));
   }
-  if (!keepHosts || support) run("codesign", ["--force", "--deep", "--sign", "-", app]);
+  if (!keepHosts || support) run("codesign", ["--force", "--deep", "--sign", identidade(), app]);
 
   // 3. dmgbuild: janela 660×400 sem barras, ícones de 128, app à esquerda e Aplicativos à direita.
   step("criando o .dmg");
@@ -102,7 +105,7 @@ try {
   writeFileSync(settings, `
 files = [${py(app)}]
 symlinks = {"Aplicativos": "/Applications"}
-icon = ${py(join(root, "assets", admin ? "icon-admin.icns" : "icon.icns"))}
+icon = ${py(join(root, produto.icone))}
 background = ${py(tiff)}
 format = "UDZO"
 compression_level = 9

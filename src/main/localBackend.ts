@@ -103,7 +103,9 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
       const d = dir();
       fs.mkdirSync(path.join(d, "data"), { recursive: true });
       const bundle = backendBundleDir();
-      for (const f of ["server.js", "session-map.js"]) fs.copyFileSync(path.join(bundle, f), path.join(d, f));
+      // Tudo que o server.js exige ao lado (mesma lista do install.sh): sem um deles o require falha na subida.
+      for (const f of ["server.js", "session-map.js", "providers.js", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "autenticador.js"]) fs.copyFileSync(path.join(bundle, f), path.join(d, f));
+      if (!fs.existsSync(path.join(d, "providers.json"))) fs.copyFileSync(path.join(bundle, "providers.json"), path.join(d, "providers.json"));
       const apiKey = readOrCreateEnv(d, claude);
       if (state !== undefined) { try { state.child.kill("SIGTERM"); } catch { /* já morto */ } state = undefined; }
       if (await portOpen(LOCAL_PORT)) throw new Error(`A porta ${LOCAL_PORT} já está em uso neste Mac por outro programa.`);

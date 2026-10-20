@@ -9,6 +9,8 @@ import path from "node:path";
 import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
+import { assertAcesso } from "../acesso";
+import { caps } from "../variant";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
 import { pauseRuleSh } from "../whatsapp-pause";
@@ -36,7 +38,7 @@ import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient, onClient } from "./registry";
 import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../browser";
-import { supportLogSh } from "../support-code";
+import { registrar } from "../auditoria";
 
 /**
  * Padrão do app: máquina com OpenClaw pareada entende áudios. Depois de parear, se não há transcritor, instala
@@ -150,9 +152,7 @@ export function registerClientIpc(): void {
   const ctxOf = (event: Electron.IpcMainInvokeEvent) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return h; };
   handleClient("browser:open", async (event) => {
     const h = ctxOf(event);
-    if (h.host === "local") throw new Error("PRO_REQUIRED");
-    const lic = await fetchLicense(h.host);
-    if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED");
+    await assertAcesso(h.host);
     return browserOpen(h.win, h.host);
   });
   handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
@@ -162,13 +162,13 @@ export function registerClientIpc(): void {
   handleClient("browser:favorite-add", (event, payload: unknown) => { const p = payload as { titulo?: unknown; url?: unknown } | null; if (typeof p?.url !== "string") throw new Error("falta url"); return browserFavoriteAdd(ctxOf(event).host, { titulo: typeof p.titulo === "string" ? p.titulo : "", url: p.url }); });
   handleClient("browser:favorite-remove", (event, payload: unknown) => { const id = (payload as { id?: unknown } | null)?.id; if (typeof id !== "string" || id === "") throw new Error("falta id"); return browserFavoriteRemove(ctxOf(event).host, id); });
   handleClient("browser:workspaces-set", (event, payload: unknown) => { const h = ctxOf(event); return browserWorkspacesSet(h.host, (payload as { espacos?: unknown } | null)?.espacos, h.win); });
-  handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); await runSsh(h.host, `${supportLogSh("pessoa", "pediu o plano Pro (aba Navegador)")}\n`, 20_000); log(`[navegador] ${h.host}: pediu o Pro`); });
+  handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); const pedido = caps().planoExigido === "free" ? "pediu o plano Pro (aba Navegador)" : `pediu para liberar o ${caps().produto} (assinatura)`; await registrar(h.host, "plano.pedir", pedido); log(`[navegador] ${h.host}: ${pedido}`); });
   // Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
-  handleClient("crm:install", async (event) => { const h = ctxOf(event); const lic = await fetchLicense(h.host); if (lic === null || lic.license.plan !== "pro" || lic.license.status === "expired") throw new Error("PRO_REQUIRED"); return installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); });
+  handleClient("crm:install", async (event) => { const h = ctxOf(event); await assertAcesso(h.host); const r = await installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); if (r.ok) void registrar(h.host, "crm.instalar"); return r; });
   handleClient("crm:set", (event, payload: unknown) => setCrm(ctxOf(event).host, payload));
   handleClient("crm:test", (event) => crmTest(ctxOf(event).host));
-  handleClient("crm:reset", async (event) => { const h = ctxOf(event); await uninstallCrm(h.host).catch(() => undefined); return resetCrm(h.host); });
+  handleClient("crm:reset", async (event) => { const h = ctxOf(event); await uninstallCrm(h.host).catch(() => undefined); void registrar(h.host, "crm.desinstalar"); return resetCrm(h.host); });
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
   handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
   handleClient("navegador:status", (event) => navegadorInstalled(ctxOf(event).host));
@@ -212,7 +212,7 @@ export function registerClientIpc(): void {
     let connected = false;
     const send = (ev: WhatsappEvent): void => { if (ev.kind === "connected") connected = true; if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); };
     await startPairing(h.host, reset, send);
-    if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); }
+    if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); void registrar(h.host, "whatsapp.parear"); }
   });
   handleClient("whatsapp:audio", (event, payload: unknown) => {
     const h = hostFromEvent(event);
@@ -226,7 +226,7 @@ export function registerClientIpc(): void {
   handleClient("whatsapp:logout", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return whatsappLogout(h.host);
+    return whatsappLogout(h.host).then(() => { void registrar(h.host, "whatsapp.desconectar"); });
   });
   handleClient("whatsapp:dm-policy", (event, payload: unknown) => {
     const h = hostFromEvent(event);
@@ -236,7 +236,7 @@ export function registerClientIpc(): void {
     if (policy !== "open" && policy !== "self" && policy !== "list") throw new Error("política inválida");
     const numbers = Array.isArray(p?.numbers) ? p.numbers.filter((n): n is string => typeof n === "string") : [];
     if (policy === "list" && numbers.length === 0) throw new Error("a lista precisa de pelo menos um número");
-    return setDmPolicy(h.host, policy, numbers);
+    return setDmPolicy(h.host, policy, numbers).then((r) => { void registrar(h.host, "whatsapp.quem-responde", policy === "open" ? "todo mundo" : policy === "self" ? "só você" : `você e ${numbers.length} números`); return r; });
   });
   handleClient("whatsapp:branch", (event, payload: unknown) => {
     const h = hostFromEvent(event);

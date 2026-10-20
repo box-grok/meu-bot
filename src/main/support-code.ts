@@ -95,21 +95,31 @@ export function publicKeyBody(pub: string): string | null {
   return `${type} ${body}`;
 }
 
+/** Um admin do suporte no pacote das pessoas: nome (vai no comentário da chave) e a pública dele. */
+export interface SupportAdmin { nome: string; chave: string }
+/** Comentário da linha de um admin no authorized_keys: "meu-bot-admin:<nome>" (antes era só "meu-bot-admin"). */
+export const adminKeyComment = (nome: string): string => `${ADMIN_KEY_TAG}:${nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9._-]+/g, "-").slice(0, 40) || "admin"}`;
+/** Reconhece as linhas de admin do meu-bot no authorized_keys (formato antigo e novo), para o grep da máquina. */
+export const ADMIN_KEY_LINE_RE = ` ${ADMIN_KEY_TAG}(:[A-Za-z0-9._-]*)?$`;
+
 /**
- * Script remoto que liga/desliga a chave do admin no authorized_keys: tira qualquer linha marcada com o
- * comentário do admin e, ligando, acrescenta a linha nova. Idempotente; permissões do OpenSSH (700/600).
+ * Script remoto que liga/desliga as chaves dos admins no authorized_keys: tira toda linha marcada como admin do
+ * meu-bot e, ligando, põe uma por admin da lista (quem saiu da lista perde o acesso aqui). Idempotente;
+ * permissões do OpenSSH (700/600). Lista vazia = desligado.
  */
-export function authorizedKeysScript(adminPub: string | null): string {
-  const body = adminPub === null ? null : publicKeyBody(adminPub);
-  if (adminPub !== null && body === null) throw new Error("chave pública do admin inválida");
-  const line = body === null ? "" : `${ADMIN_KEY_OPTIONS} ${body} ${ADMIN_KEY_TAG}`;
+export function authorizedKeysScript(admins: readonly SupportAdmin[]): string {
+  const lines = admins.map((a) => {
+    const body = publicKeyBody(a.chave);
+    if (body === null) throw new Error(`chave pública do admin ${a.nome} inválida`);
+    return `${ADMIN_KEY_OPTIONS} ${body} ${adminKeyComment(a.nome)}`;
+  });
   return [
     "set -e",
     "umask 077",
     'mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"',
     'AK="$HOME/.ssh/authorized_keys"; touch "$AK"',
-    `grep -v ' ${ADMIN_KEY_TAG}$' "$AK" > "$AK.meu-bot.tmp" || true`,
-    ...(line === "" ? [] : [`printf '%s\\n' '${line}' >> "$AK.meu-bot.tmp"`]),
+    `grep -Ev '${ADMIN_KEY_LINE_RE}' "$AK" > "$AK.meu-bot.tmp" || true`,
+    ...lines.map((l) => `printf '%s\\n' '${l}' >> "$AK.meu-bot.tmp"`),
     'chmod 600 "$AK.meu-bot.tmp"; mv "$AK.meu-bot.tmp" "$AK"',
   ].join("\n");
 }
@@ -148,14 +158,6 @@ systemctl --user daemon-reload >/dev/null 2>&1 || true
 rm -rf "${SUPPORT_DIR}"
 `;
 }
-/** Registro de suporte na máquina da pessoa (ela vê nas Configurações; o admin anota as ações dele aqui). */
-export const SUPPORT_LOG = "$HOME/.local/share/meu-bot/suporte.log";
-/** Linha do registro de suporte: "2026-10-16T12:00:00Z|quem|o quê" (o texto é só letras, números e " .,:()-"). */
-export const supportLogSh = (who: string, what: string): string => {
-  const clean = (s: string): string => s.replace(/[^\p{L}\p{N} .,:()-]/gu, "").slice(0, 120);
-  return `mkdir -p "$HOME/.local/share/meu-bot" && printf '%s|%s|%s\\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${clean(who)}' '${clean(what)}' >> "${SUPPORT_LOG}"`;
-};
-
 /**
  * Progresso da pessoa nos tutoriais (tipo em shared/ipc.ts), gravado pelo meu-bot dela na máquina (só com o
  * suporte ligado) e lido pelo admin: mostra quem está avançando e onde trava. Vem de fora: validado aqui.

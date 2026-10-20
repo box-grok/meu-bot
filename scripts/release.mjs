@@ -1,6 +1,6 @@
-// Publica uma release no GitHub com os dois apps zipados: é daí que a atualização automática (src/main/updater.ts)
+// Publica uma release no GitHub com todos os produtos zipados (tabela em src/main/variant-core.ts): é daí que a atualização automática (src/main/updater.ts)
 // baixa. Uso: `npm run release` (versão do package.json; a tag vira v<versão>). Exige `gh` logado
-// (`gh auth login`) e a árvore limpa. Gera out/meu-bot-<v>-<arch>.zip e out/meu-bot-admin-<v>-<arch>.zip com
+// (`gh auth login`) e a árvore limpa. Gera out/<produto>-<v>-<arch>.zip (meu-bot, meu-bot-admin, meu-bot-crm) com
 // `ditto -c -k --keepParent` (preserva symlinks e a assinatura ad-hoc). O .dmg continua sendo o instalador da
 // primeira vez (`npm run dmg`); a release só precisa dos .zip.
 import { execFileSync, execSync } from "node:child_process";
@@ -16,11 +16,16 @@ if (execSync("git status --porcelain", { encoding: "utf8" }).trim() !== "") { co
 try { execFileSync("gh", ["auth", "status"], { stdio: "ignore" }); } catch { console.error("✗ gh não está logado: rode `gh auth login`"); process.exit(64); }
 if (execSync(`git tag -l ${tag}`, { encoding: "utf8" }).trim() !== "") { console.error(`✗ a tag ${tag} já existe: suba a versão no package.json`); process.exit(64); }
 
+// A tabela de produtos vem do build (dist/main/variant-core.js): compila o main antes de a ler.
+step("compilando para ler a tabela de produtos");
+execSync("npm run build:main", { stdio: "inherit" });
+const { PRODUTOS } = await import("./produtos.mjs");
 const zips = [];
-for (const admin of [false, true]) {
-  const name = admin ? "meu-bot-admin" : "meu-bot";
+for (const p of PRODUTOS) {
+  const name = p.nome;
   step(`empacotando ${name}`);
-  execSync(`npm run build && node scripts/package.mjs${admin ? " --admin" : ""} && node scripts/fuses.mjs${admin ? " --admin" : ""} --no-install`, { stdio: "inherit" });
+  const extensao = p.extensoes.length === 0 ? "" : " && npm run build:extensao";
+  execSync(`npm run build${extensao} && node scripts/package.mjs --variant ${p.variant} && node scripts/fuses.mjs --variant ${p.variant} --no-install`, { stdio: "inherit" });
   const app = join("out", `${name}-darwin-${arch}`, `${name}.app`);
   if (!existsSync(app)) { console.error(`✗ não achei ${app}`); process.exit(1); }
   const zip = join("out", `${name}-${version}-${arch}.zip`);
