@@ -5,6 +5,8 @@
  * ~/.ssh/config, com instalar o backend, sincronizar o ~/.ssh/config, renomear e remover; no meu-bot-admin
  * (admin/picker-source.ts) a lista são as pessoas do suporte. Os handlers comuns ficam em initPicker.
  */
+import { caps } from "./variant";
+import { deveAtualizar } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
@@ -93,7 +95,8 @@ function ensureGuarda(host: string, probe: HostProbe): void {
   if (!probe.reachable || probe.gateway !== "openclaw" || host === LOCAL_HOST || guardaTried.has(host)) return;
   const want = bundledGuardaVersion();
   const missing = probe.guarda === false;
-  const outdated = probe.guarda === true && want !== null && probe.guardaVersion !== want;
+  // Só sobe de versão (o estável e o staging dividem a máquina: um não rebaixa a guarda do outro).
+  const outdated = probe.guarda === true && deveAtualizar(probe.guardaVersion ?? null, want);
   if (!missing && !outdated) return;
   guardaTried.add(host);
   log(`[guarda] ${host}: ${missing ? "máquina com OpenClaw sem a guarda" : `guarda ${probe.guardaVersion ?? "sem versão"} → ${want}`}; instalando em segundo plano`);
@@ -146,7 +149,8 @@ const { fromPicker, hostArg } = ctx;
  * Include no ~/.ssh/config): são as máquinas das pessoas que o admin atende, não máquinas desta pessoa.
  */
 export const clientPickerSource: PickerSource = {
-  title: "meu-bot · escolher máquina",
+  // Nome do app (meu-bot-staging inclusive, com a versão): diz qual build está aberto.
+  get title() { return `${caps().titulo} · escolher máquina`; },
   hosts: () => [LOCAL_HOST, ...listSshHosts().filter((h) => !isSupportAlias(h))],
   support: () => null,
   registerIpc: ({ fromPicker, hostArg, forgetProbe, progress, closePicker }) => {
@@ -369,6 +373,8 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
   pickerWin = win;
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());
+  // O título é o do main (nome do app, staging com a versão), não o <title> fixo do picker.html.
+  win.on("page-title-updated", (e) => e.preventDefault());
   win.webContents.once("did-finish-load", () => { if (!win.isDestroyed()) win.webContents.send("picker:init", initPayload()); });
   win.on("closed", () => { if (pickerWin === win) pickerWin = null; });
   void win.loadFile(path.join(__dirname, "..", "renderer", "picker.html"));

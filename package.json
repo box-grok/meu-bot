@@ -21,9 +21,12 @@
     "build:extensao": "npm --prefix extensao-crm run build",
     "dev:extensao": "npm --prefix extensao-crm run dev",
     "dist:crm": "npm run build && npm run build:extensao && node scripts/package.mjs --variant crm && node scripts/fuses.mjs --variant crm",
+    "dist:staging": "npm run build && node scripts/package.mjs --variant client-staging && node scripts/fuses.mjs --variant client-staging",
+    "dist:crm-staging": "npm run build && npm run build:extensao && node scripts/package.mjs --variant crm-staging && node scripts/fuses.mjs --variant crm-staging",
     "dmg:crm": "npm run dist:crm && node scripts/dmg.mjs --variant crm",
     "dmg:admin": "npm run dist:admin && node scripts/dmg.mjs --admin",
     "release": "node scripts/release.mjs",
+    "release:staging": "node scripts/release.mjs --staging",
     "icons": "npm run build:main && node scripts/icons.mjs",
     "assinatura": "node scripts/assinatura.mjs --criar"
   },

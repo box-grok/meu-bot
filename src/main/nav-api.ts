@@ -10,16 +10,15 @@
  * · POST /voltar|/avancar|/recarregar {aba?} · POST /js {aba?, codigo}
  * · /favoritos · POST /favoritar {url, titulo?} · POST /desfavoritar {id?|url?}  (barra de favoritos da máquina)
  */
+import { controlDir } from "./control-dir";
 import http from "node:http";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { WebContents } from "electron";
 import { browserActiveWcId, browserAsk, browserConsole, browserExtensions, browserFavoriteAdd, browserFavoriteRemove, browserFavorites, browserServiceWorkers, browserWebContents } from "./browser";
 import { log } from "./tunnel";
 
 const sanit = (h: string): string => h.replace(/[^A-Za-z0-9_-]/g, "_");
-function controlDir(): string { const dir = path.join("/tmp", `meu-bot-${os.userInfo().uid}`); fs.mkdirSync(dir, { mode: 0o700, recursive: true }); return dir; }
 export const navSocketPath = (host: string): string => path.join(controlDir(), `nav-${sanit(host)}.sock`);
 
 const servers = new Map<string, http.Server>();

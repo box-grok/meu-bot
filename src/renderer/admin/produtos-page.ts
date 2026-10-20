@@ -39,6 +39,7 @@ const FIXOS = [
   { nome: "meu-bot", texto: "O app da pessoa: chat, WhatsApp, Navegador (Pro), CRM pelo Streak (Pro). Planos free, pro e personalizado." },
   { nome: "meu-bot-admin", texto: "Este app: suporte, licenças, espelho das máquinas e o registro de produtos." },
   { nome: "meu-bot-crm", texto: "Tudo do meu-bot mais o CRM próprio dentro do Gmail. Só no plano personalizado (assinatura)." },
+  { nome: "meu-bot-staging · meu-bot-crm-staging", texto: "Canal de teste, ao lado do estável (como o VS Code Insiders): recebe o que está em teste; a licença é a do estável." },
 ];
 const STATUS: { id: ProdutoStatus; label: string }[] = [{ id: "ideia", label: "Ideia" }, { id: "mvp", label: "MVP" }, { id: "beta", label: "Beta" }, { id: "lancado", label: "Lançado" }];
 

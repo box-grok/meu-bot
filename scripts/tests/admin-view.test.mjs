@@ -86,6 +86,8 @@ test("versão do meu-bot dela na saúde: atrás da do admin acusa; igual ou à f
   assert.equal(compareVersions("0.1.0", "0.2.0"), -1);
   assert.equal(compareVersions("1.0.0", "0.9.9"), 1);
   assert.equal(compareVersions("0.1", "0.1.0"), 0);
+  assert.equal(compareVersions("0.2.0-staging.3", "0.2.0-staging.10"), -1, "mesma regra semver do updater-core");
+  assert.equal(compareVersions("0.2.0-staging.10", "0.2.0"), -1);
   assert.equal(agoText(new Date(now - 20_000).toISOString(), now), "agora");
 });
 

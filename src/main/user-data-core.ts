@@ -1,6 +1,6 @@
 /**
- * Parte pura da herança de dados entre produtos: um produto novo (meu-bot-crm, meu-bot-fit…) nasce como cópia do
- * meu-bot da mesma pessoa (tutoriais feitos, conversas, memória, favoritos, logins do Navegador), em vez de
+ * Parte pura da herança de dados entre produtos: um produto novo (meu-bot-crm, um staging, meu-bot-fit…) nasce como
+ * cópia do app de origem da mesma pessoa (Produto.herdaDe) (tutoriais feitos, conversas, memória, favoritos, logins do Navegador), em vez de
  * vazio. Decide quando herdar e o que copiar. Testado.
  */
 
@@ -9,8 +9,13 @@ const PULAR = [
   /^meu-bot\.log$/, /^backend-local(\.log)?$/, /^update$/, /^Singleton/, /^Crashpad$/, /^DevToolsActivePort$/,
   /Cache$/i, /^Code Cache$/, /^blob_storage$/, /^DIPS$/, /^Trust Tokens/, /^declarative_performance_observer\.db/,
   /^pessoas\.json$/, /^produtos\.json$/, /\.tmp$/,
+  // Cifrados pelo chaveiro com o nome do app ("<app> Safe Storage"): no app novo não abrem; ele pede de novo.
+  /^google-contatos\.bin$/, /^tailscale-oauth\.bin$/,
 ];
 export const entradaHerdavel = (nome: string): boolean => !PULAR.some((re) => re.test(nome));
+
+/** Carimbo da herança, por origem: ".herdado-de-meu-bot", ".herdado-de-meu-bot-crm". */
+export const carimboDe = (origem: string): string => `.herdado-de-${origem}`;
 
 /**
  * Herdar só numa pasta "nova": sem o carimbo e sem conversas de verdade (arquivo ausente, lista vazia, ou só a

@@ -13,13 +13,14 @@
 #   ./instalar.sh --crm         gera e instala o meu-bot-crm (meu-bot + CRM próprio) em vez do meu-bot
 #   ./instalar.sh --admin       gera e instala o meu-bot-admin (do super admin)
 #   ./instalar.sh --admin --como "Fulano"   o meu-bot-admin de outro admin (build/suporte/admins.json)
+#   ./instalar.sh --staging     o meu-bot-staging (canal de teste, ao lado do meu-bot); com --crm, o meu-bot-crm-staging
 set -euo pipefail
 
 cd "$(dirname "$0")"
 
 abrir=0
 suporte=0; [ -f build/suporte/suporte.json ] && suporte=1
-app=meu-bot; dist=dist; como=""; prox=""
+app=meu-bot; dist=dist; como=""; prox=""; staging=0
 for a in "$@"; do
   if [ "$prox" = como ]; then como="$a"; prox=""; continue; fi
   case "$a" in
@@ -28,10 +29,19 @@ for a in "$@"; do
     --sem-suporte) suporte=0 ;;
     --crm) app=meu-bot-crm; dist=dist:crm; suporte=0 ;;
     --admin) app=meu-bot-admin; dist=dist:admin; suporte=0 ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte, --crm, --admin ou --help)" >&2; exit 2 ;;
+    --staging) staging=1 ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte, --crm, --admin, --staging, --como ou --help)" >&2; exit 2 ;;
   esac
 done
+
+if [ "$staging" -eq 1 ]; then
+  case "$app" in
+    meu-bot) app=meu-bot-staging; dist=dist:staging ;;
+    meu-bot-crm) app=meu-bot-crm-staging; dist=dist:crm-staging ;;
+    *) echo "--staging só vale para o meu-bot e o meu-bot-crm (o admin é só estável)" >&2; exit 2 ;;
+  esac
+fi
 
 command -v npm >/dev/null 2>&1 || { echo "npm não encontrado; instale o Node.js 24+." >&2; exit 1; }
 

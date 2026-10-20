@@ -249,7 +249,9 @@ export interface InstallProgressEvent {
 }
 
 /** Qual produto é este app: meu-bot (de cada pessoa), meu-bot-admin (suporte) ou meu-bot-crm (meu-bot + CRM próprio). Tabela em src/main/variant-core.ts. */
-export type AppVariant = "client" | "admin" | "crm";
+export type AppVariant = "client" | "admin" | "crm" | "client-staging" | "crm-staging";
+/** Canal do app: estável (só o aprovado) ou staging (o que está em teste), como VS Code e VS Code Insiders. */
+export type Canal = "estavel" | "staging";
 /**
  * O que esta variante do app pode fazer. O main decide (variant-core.ts) e manda para a janela em WindowInfo;
  * o renderer esconde/mostra por capacidade, nunca por "é admin?". O admin tem tudo false menos supportAdmin.
@@ -284,8 +286,17 @@ export interface Capabilities {
    * enquanto ativa, uma tela só quando ausente/vencida.
    */
   planoExigido: PlanName;
-  /** Nome do produto ("meu-bot", "meu-bot-admin", "meu-bot-crm"): o renderer nunca o deduz da variante. */
+  /**
+   * Nome do produto contratado ("meu-bot", "meu-bot-admin", "meu-bot-crm"): é o que a licença libera. No staging
+   * continua o do estável (meu-bot-staging → "meu-bot"); o nome do app é outro (appTitle). O renderer nunca o deduz.
+   */
   produto: string;
+  /** Canal deste app (estável ou staging). */
+  canal: Canal;
+  /** Nome do app ("meu-bot-staging"): texto da atualização, nome do .app. */
+  nome: string;
+  /** Título da janela: o nome, e no staging a versão junto ("meu-bot-staging 0.2.0-staging.3"). */
+  titulo: string;
 }
 
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */

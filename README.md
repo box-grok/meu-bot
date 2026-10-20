@@ -95,6 +95,21 @@ Produz `out/meu-bot-darwin-arm64/meu-bot.app` com os fuses do Electron travados
 (RunAsNode e inspeção por linha de comando desligados, integridade do ASAR ligada)
 e assinatura ad-hoc para uso local.
 
+### Canais: estável e staging
+
+Como o VS Code e o VS Code Insiders: o `meu-bot-staging` e o `meu-bot-crm-staging` ficam ao lado do estável, com
+ícone de faixa laranja, dados e porta próprios, e recebem o que está em teste. A release estável só sai de um commit
+já publicado como staging.
+
+```bash
+./instalar.sh --staging            # meu-bot-staging (com --crm: meu-bot-crm-staging)
+npm run release:staging            # pre-release v<versão>-staging.N
+npm run release                    # promoção para v<versão> (exige a tag staging no commit)
+```
+
+Limitações: o backend da máquina remota é um só para os dois canais (o que se instala testando no staging vale
+também para o estável), e o meu-bot e o meu-bot-crm estáveis dividem a porta 8790 do backend local.
+
 ## Como funciona
 
 - `src/main/tunnel.ts`: lê a chave do backend na VM via `ssh`, abre `ssh -N -L` para a porta

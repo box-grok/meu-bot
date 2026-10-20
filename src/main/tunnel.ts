@@ -6,6 +6,7 @@
  * Cada conversa pertence a um host; conversas em hosts diferentes convivem com túneis
  * independentes. Trocar o host padrão nas Configurações não mexe em túnel nenhum.
  */
+import { controlDir } from "./control-dir";
 import { app } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
@@ -85,19 +86,6 @@ export function onTunnelState(cb: (host: string, s: TunnelState, detail: string)
   return () => listeners.delete(cb);
 }
 
-/** Diretório curto para o socket de controle: o caminho em userData passa dos 104 bytes do sun_path. */
-function controlDir(): string {
-  const dir = path.join(os.tmpdir().startsWith("/") ? "/tmp" : os.tmpdir(), `meu-bot-${os.userInfo().uid}`);
-  try {
-    fs.mkdirSync(dir, { mode: 0o700 });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-  }
-  const st = fs.lstatSync(dir);
-  if (st.isSymbolicLink() || !st.isDirectory() || st.uid !== os.userInfo().uid) throw new Error(`Diretório de controle inseguro: ${dir}`);
-  if ((st.mode & 0o077) !== 0) fs.chmodSync(dir, 0o700);
-  return dir;
-}
 
 const muxOpts = (host: string): string[] => [
   "-o", `ControlPath=${path.join(controlDir(), "cm-%C")}`,

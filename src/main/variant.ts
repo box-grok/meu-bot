@@ -1,7 +1,7 @@
 /**
  * Qual produto é este app: meu-bot (de cada pessoa), meu-bot-admin (suporte) ou meu-bot-crm (meu-bot + CRM
  * próprio). Mesmo código; o empacotamento grava Resources/variant.json (`scripts/package.mjs --variant <x>`).
- * Em dev: MEU_BOT_VARIANT=admin|crm. A decisão em si é pura (variant-core.ts); aqui só a leitura e o cache.
+ * Em dev: MEU_BOT_VARIANT=admin|crm|client-staging|crm-staging. A decisão em si é pura (variant-core.ts); aqui só a leitura e o cache.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -23,5 +23,5 @@ export function appVariant(): AppVariant {
 
 export const appTitle = (): string => titleFor(appVariant());
 export const userDataName = (): string | null => userDataNameFor(appVariant());
-export const caps = (): Capabilities => capsFor(appVariant());
+export const caps = (): Capabilities => capsFor(appVariant(), app.getVersion());
 export const produto = (): Produto => produtoDe(appVariant());

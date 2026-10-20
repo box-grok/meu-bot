@@ -67,7 +67,7 @@ let adminBotMirror: BotMirror | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
 const sessionOpenedAt = new Date().toISOString();
-let caps: Capabilities = { variant: "client", produto: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free" };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free" };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -962,7 +962,7 @@ function applySettings(view: SettingsView): void {
   settings = view;
   setHostNicknames(view.hostNames);
   rethemeTerminals();
-  if (windowHost !== "" && caps.chat) document.title = `${caps.produto} · ${hostLabel(windowHost)}`;
+  if (windowHost !== "" && caps.chat) document.title = `${caps.titulo} · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   backendModelSelect.value = view.backendModelForHost;
@@ -5631,7 +5631,7 @@ const updateBar = $<HTMLElement>("update-bar");
 const updateText = $<HTMLElement>("update-text");
 const updateApply = $<HTMLButtonElement>("update-apply");
 function showUpdateReady(version: string): void {
-  updateText.textContent = `${caps.produto} ${version} pronto para instalar (você está na ${appVersion}).`;
+  updateText.textContent = `${caps.nome} ${version} pronto para instalar (você está na ${appVersion}).`;
   updateBar.hidden = false;
 }
 /* ---------- Verificação visível (REA do Rambox): ponto na barra ao abrir + "Sobre e atualização" nas Configurações ---------- */
@@ -5643,7 +5643,7 @@ const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
 const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
 function paintUpdateState(u: UpdateState): void {
-  const t = updateStateText(u, caps.produto);
+  const t = updateStateText(u, caps.nome);
   updateCheckDot.hidden = u.phase !== "checking";
   aboutVersion.textContent = `${name} ${u.current} · Apple Silicon`;
   aboutSum.textContent = `versão ${u.current}`;
@@ -5815,7 +5815,7 @@ void (async () => {
     tabsReady = true;
     return;
   }
-  document.title = `${caps.produto} · ${hostLabel(windowHost)}`;
+  document.title = `${caps.titulo} · ${hostLabel(windowHost)}`;
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   // Estado do WhatsApp da última vez: o modo WhatsApp e a lista em cache aparecem antes do SSH responder.
   { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }

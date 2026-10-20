@@ -19,7 +19,7 @@ DIR = os.path.expanduser("~/.local/share/meu-bot")
 ARQ = os.path.join(DIR, "auditoria.jsonl")
 LEGADO = os.path.join(DIR, "suporte.log")
 TIPOS = ("dono", "admin", "agente", "sistema", "legado")
-APPS = ("meu-bot", "meu-bot-crm", "meu-bot-admin", "backend", "plugin", "legado")
+APPS = ("meu-bot", "meu-bot-crm", "meu-bot-admin", "meu-bot-staging", "meu-bot-crm-staging", "backend", "plugin", "legado")
 ACAO_RE = re.compile(r"^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$")
 
 
@@ -94,7 +94,7 @@ def gravar(b64):
     acao = str(e.get("acao") or "")
     if tipo is None or not ACAO_RE.match(acao) or len(acao) > 60:
         raise SystemExit("recusado: entrada inválida")
-    app = e.get("app") if e.get("app") in APPS[:5] else "meu-bot"
+    app = e.get("app") if e.get("app") in APPS[:-1] else "meu-bot"
     os.makedirs(DIR, mode=0o700, exist_ok=True)
     with open(os.path.join(DIR, ".auditoria.lock"), "w") as trava:
         fcntl.flock(trava, fcntl.LOCK_EX)

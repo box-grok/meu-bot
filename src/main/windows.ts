@@ -9,7 +9,7 @@ import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { hostBusy } from "./conversation";
 import { getBackendPort, getWindowBounds, setWindowBounds } from "./settings";
 import { closeTunnel, ensureTunnel, log } from "./tunnel";
-import { appTitle, caps } from "./variant";
+import { caps } from "./variant";
 import { closeTerminalsOfWindow } from "./terminal";
 import { browserForget } from "./browser";
 
@@ -108,7 +108,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
     ...initialBounds(host),
     minWidth: 640,
     minHeight: 480,
-    title: `${appTitle()} · ${host}`,
+    title: `${caps().titulo} · ${host}`,
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
     webPreferences: {

@@ -1,14 +1,18 @@
 /**
- * Qual produto é este app (meu-bot, meu-bot-admin, meu-bot-crm) e o que cada um pode fazer. Puro: testável com
+ * Qual produto é este app (meu-bot, meu-bot-admin, meu-bot-crm e os staging) e o que cada um pode fazer. Puro: testável com
  * node --test. Ler o variant.json e o ambiente é tarefa do variant.ts; aqui só a decisão e a tabela.
  *
  * PRODUTOS é a única fonte: o runtime (caps, título, userData) e os scripts de empacotamento
  * (scripts/produtos.mjs lê dist/main/variant-core.js) saem daqui. Produto novo (meu-bot-vendas,
  * meu-bot-imobiliaria…) = um membro em AppVariant, uma linha aqui e um ícone em assets/.
+ *
+ * Canais (modelo VS Code / Insiders): meu-bot e meu-bot-crm têm uma cópia staging lado a lado, com nome, ícone,
+ * dados e porta próprios, que recebe o que está em teste; a linha staging sai da estável (`staging()`), não é
+ * escrita à mão. O meu-bot-admin é só estável.
  */
-import type { AppVariant, Capabilities, PlanName } from "../shared/ipc";
+import type { AppVariant, Canal, Capabilities, PlanName } from "../shared/ipc";
 
-export type { AppVariant, Capabilities };
+export type { AppVariant, Canal, Capabilities };
 
 export interface Produto {
   variant: AppVariant;
@@ -21,23 +25,42 @@ export interface Produto {
   userData: string | null;
   /** Extensões embutidas (meu-bot CRM no Gmail, Autenticador): pastas de saída do build (relativas a build/ em dev, Resources/ empacotado). */
   extensoes: readonly string[];
-  caps: Omit<Capabilities, "variant" | "produto">;
+  canal: Canal;
+  /** Produto contratado que a licença libera (no staging, o do estável): vira `caps.produto`. */
+  licenca: string;
+  /** Pasta de dados de onde a primeira abertura copia (uma vez só); null = começa vazio. */
+  herdaDe: string | null;
+  /** Porta do backend local deste Mac (host "local"): apps abertos juntos não podem dividir. */
+  portaLocal: number;
+  caps: Omit<Capabilities, "variant" | "produto" | "canal" | "nome" | "titulo">;
 }
 
-const PESSOA: Omit<Capabilities, "variant" | "produto"> = {
+const PESSOA: Produto["caps"] = {
   chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false,
   navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free",
 };
-const ADMIN: Omit<Capabilities, "variant" | "produto"> = {
+const ADMIN: Produto["caps"] = {
   chat: false, pair: false, login: false, manageWa: false, tunnel: false, install: false, supportClient: false, supportAdmin: true,
   navegador: false, crmStreak: false, extensaoGmail: false, planoExigido: "free",
 };
 
+const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: [], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, caps: PESSOA };
+// meu-bot-crm: tudo do meu-bot, sem o CRM pelo Streak, com o CRM próprio no Gmail; só funciona no plano personalizado.
+// Nasce como cópia do meu-bot da pessoa. Divide a porta 8790 com o meu-bot (pendência antiga: os dois juntos no "local").
+const CRM: Produto = { variant: "crm", nome: "meu-bot-crm", bundleId: "local.meu-bot-crm", icone: "assets/icon-crm.icns", userData: "meu-bot-crm", extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot-crm", herdaDe: "meu-bot", portaLocal: 8790, caps: { ...PESSOA, crmStreak: false, extensaoGmail: true, planoExigido: "personalizado" } };
+
+/** A cópia staging de um app estável: "<nome>-staging", ícone com a faixa, dados próprios herdados dele, porta própria. */
+function staging(base: Produto, variant: AppVariant, portaLocal: number): Produto {
+  const nome = `${base.nome}-staging`;
+  return { ...base, variant, nome, bundleId: `${base.bundleId}.staging`, icone: base.icone.replace(/\.icns$/, "-staging.icns"), userData: nome, canal: "staging", herdaDe: base.nome, portaLocal };
+}
+
 export const PRODUTOS: readonly Produto[] = [
-  { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: [], caps: PESSOA },
-  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], caps: ADMIN },
-  // meu-bot-crm: tudo do meu-bot, sem o CRM pelo Streak, com o CRM próprio no Gmail; só funciona no plano personalizado.
-  { variant: "crm", nome: "meu-bot-crm", bundleId: "local.meu-bot-crm", icone: "assets/icon-crm.icns", userData: "meu-bot-crm", extensoes: ["extensao-crm", "extensao-autenticador"], caps: { ...PESSOA, crmStreak: false, extensaoGmail: true, planoExigido: "personalizado" } },
+  CLIENT,
+  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, caps: ADMIN },
+  CRM,
+  staging(CLIENT, "client-staging", 8791),
+  staging(CRM, "crm-staging", 8792),
 ];
 
 export function produtoDe(v: AppVariant): Produto {
@@ -62,11 +85,12 @@ export function resolveVariant(i: VariantInput): AppVariant {
   return isVariant(v) ? v : "client";
 }
 
-export const titleFor = (v: AppVariant): string => produtoDe(v).nome;
+/** Nome do app; no staging com a versão junto ("meu-bot-staging 0.2.0-staging.3"): a janela diz qual build está aberto. */
+export const titleFor = (v: AppVariant, versao?: string): string => { const p = produtoDe(v); return p.canal === "staging" && versao !== undefined && versao !== "" ? `${p.nome} ${versao}` : p.nome; };
 export const userDataNameFor = (v: AppVariant): string | null => produtoDe(v).userData;
 
 /** O admin só lê e faz as ações de suporte; os outros produtos fazem tudo o mais (ver a tabela). */
-export function capsFor(variant: AppVariant): Capabilities {
+export function capsFor(variant: AppVariant, versao?: string): Capabilities {
   const p = produtoDe(variant);
-  return { variant, produto: p.nome, ...p.caps };
+  return { variant, produto: p.licenca, canal: p.canal, nome: p.nome, titulo: titleFor(variant, versao), ...p.caps };
 }

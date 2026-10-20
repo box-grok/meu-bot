@@ -18,5 +18,13 @@ export function produtoFromArgv(argv = process.argv) {
   return p;
 }
 export const archOf = () => (process.arch === "arm64" ? "arm64" : "x64");
+/** `--versao <x>` (o release staging passa "0.2.0-staging.3"); sem ela, a do package.json. */
+export function versaoFromArgv(argv = process.argv) {
+  const i = argv.indexOf("--versao");
+  if (i < 0) return null;
+  const v = argv[i + 1] ?? "";
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v)) { console.error(`✗ versão inválida "${v}" (ex.: 0.2.0 ou 0.2.0-staging.3)`); process.exit(64); }
+  return v;
+}
 /** Ícone .svg de origem do produto (mesmo nome do .icns). */
 export const svgOf = (p) => p.icone.replace(/\.icns$/, ".svg");

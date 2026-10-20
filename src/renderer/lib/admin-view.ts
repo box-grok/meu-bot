@@ -13,10 +13,26 @@ export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: 
   { id: "support-off", label: "Desligar o suporte desta pessoa", confirm: "Confirmar? o seu acesso a esta máquina acaba agora" },
 ];
 
-/** Compara versões "a.b.c" (números); negativo = a é mais antiga. Partes que não são número contam como 0. */
+/** Compara versões na ordem do semver (mesma regra de src/main/updater-core.ts); negativo = a é mais antiga. */
 export function compareVersions(a: string, b: string): number {
-  const pa = a.split(/[.+-]/).map((x) => Number.parseInt(x, 10) || 0), pb = b.split(/[.+-]/).map((x) => Number.parseInt(x, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] ?? 0) - (pb[i] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
+  // Núcleo "x.y.z" numérico; depois a pre-release: sem ela vence ("0.2.0" > "0.2.0-staging.9"); com as duas,
+  // compara parte a parte (número com número, texto com texto, número < texto, mais partes > menos).
+  const parse = (v: string): { nucleo: number[]; pre: string[] } => {
+    const [semMeta = ""] = v.trim().replace(/^v/, "").split("+");
+    const i = semMeta.indexOf("-");
+    const nucleo = (i < 0 ? semMeta : semMeta.slice(0, i)).split(".").map((x) => Number.parseInt(x, 10) || 0);
+    return { nucleo, pre: i < 0 ? [] : semMeta.slice(i + 1).split(".") };
+  };
+  const x = parse(a), y = parse(b);
+  for (let k = 0; k < Math.max(x.nucleo.length, y.nucleo.length); k++) { const d = (x.nucleo[k] ?? 0) - (y.nucleo[k] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
+  if (x.pre.length === 0 || y.pre.length === 0) return x.pre.length === y.pre.length ? 0 : x.pre.length === 0 ? 1 : -1;
+  for (let k = 0; k < Math.max(x.pre.length, y.pre.length); k++) {
+    const p = x.pre[k], q = y.pre[k];
+    if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
+    const np = /^\d+$/.test(p), nq = /^\d+$/.test(q);
+    const d = np && nq ? Number(p) - Number(q) : np ? -1 : nq ? 1 : p < q ? -1 : p > q ? 1 : 0;
+    if (d !== 0) return d < 0 ? -1 : 1;
+  }
   return 0;
 }
 

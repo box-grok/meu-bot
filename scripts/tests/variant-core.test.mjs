@@ -60,10 +60,28 @@ test("PRODUTOS: ids, nomes e bundle ids únicos; bundle id = local.<nome>; ícon
   const ids = PRODUTOS.map((p) => p.variant), nomes = PRODUTOS.map((p) => p.nome), bundles = PRODUTOS.map((p) => p.bundleId);
   assert.equal(new Set(ids).size, ids.length); assert.equal(new Set(nomes).size, nomes.length); assert.equal(new Set(bundles).size, bundles.length);
   for (const p of PRODUTOS) {
-    assert.equal(p.bundleId, `local.${p.nome}`);
-    assert.match(p.icone, /^assets\/icon(-[a-z]+)?\.icns$/);
+    assert.equal(p.bundleId, p.canal === "staging" ? `local.${p.nome.replace(/-staging$/, "")}.staging` : `local.${p.nome}`);
+    assert.match(p.icone, /^assets\/icon(-[a-z]+)*\.icns$/);
     for (const e of p.extensoes) assert.doesNotMatch(e, /[\/]/, "pasta da extensão sem barras");
     assert.equal(produtoDe(p.variant), p);
   }
   assert.throws(() => produtoDe("vendas"));
+});
+
+test("canal staging: as linhas saem da estável (nome, bundle, ícone, dados, porta, herança, licença)", () => {
+  const st = produtoDe("client-staging"), cst = produtoDe("crm-staging");
+  assert.deepEqual([st.nome, st.bundleId, st.icone, st.userData, st.herdaDe, st.portaLocal, st.licenca, st.canal], ["meu-bot-staging", "local.meu-bot.staging", "assets/icon-staging.icns", "meu-bot-staging", "meu-bot", 8791, "meu-bot", "staging"]);
+  assert.deepEqual([cst.nome, cst.bundleId, cst.icone, cst.userData, cst.herdaDe, cst.portaLocal, cst.licenca], ["meu-bot-crm-staging", "local.meu-bot-crm.staging", "assets/icon-crm-staging.icns", "meu-bot-crm-staging", "meu-bot-crm", 8792, "meu-bot-crm"]);
+  assert.deepEqual(cst.caps, produtoDe("crm").caps, "mesmas capacidades do estável");
+  assert.deepEqual(cst.extensoes, produtoDe("crm").extensoes);
+  assert.equal(PRODUTOS.some((p) => p.variant === "admin-staging"), false, "o admin é só estável");
+  // A licença libera pelo produto do estável; o nome do app e o título são outros.
+  const c = capsFor("client-staging", "0.2.0-staging.3");
+  assert.deepEqual([c.produto, c.canal, c.nome, c.titulo], ["meu-bot", "staging", "meu-bot-staging", "meu-bot-staging 0.2.0-staging.3"]);
+  assert.equal(capsFor("client", "0.2.0").titulo, "meu-bot", "o estável não mostra a versão no título");
+  assert.equal(titleFor("crm-staging"), "meu-bot-crm-staging");
+  assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: { variant: "crm-staging" } }), "crm-staging");
+  assert.equal(resolveVariant({ packaged: false, env: "client-staging", variantJson: undefined }), "client-staging");
+  // Portas: os apps que podem abrir juntos com o estável não dividem a dele.
+  assert.notEqual(st.portaLocal, produtoDe("client").portaLocal); assert.notEqual(cst.portaLocal, produtoDe("crm").portaLocal); assert.notEqual(st.portaLocal, cst.portaLocal);
 });

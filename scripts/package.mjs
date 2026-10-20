@@ -1,13 +1,16 @@
 import { packager } from "@electron/packager";
 import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { archOf, produtoFromArgv } from "./produtos.mjs";
+import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 
 // `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/variant-core.ts): mesmo código, outro
 // nome, bundle id e ícone. O app sabe qual é pelo Resources/variant.json e usa userData próprio
 // (src/main/user-data.ts; o Electron nomearia a pasta pelo productName do package.json, igual em todos), então os
 // apps convivem abertos ao mesmo tempo. Produto com extensões embutidas leva build/<extensao> em Resources/.
 const produto = produtoFromArgv();
+// `--versao <x>`: a versão do build (o release staging passa "0.2.0-staging.N"). Vai no Info.plist (appVersion) e no
+// package.json de dentro do app (hook antes do asar), que é o que app.getVersion() lê: os dois batem.
+const versao = versaoFromArgv();
 const admin = produto.variant === "admin";
 const name = produto.nome;
 const arch = archOf();
@@ -28,6 +31,10 @@ const paths = await packager({
   appBundleId: produto.bundleId,
   icon: produto.icone,
   appCategoryType: "public.app-category.productivity",
+  ...(versao !== null ? {
+    appVersion: versao,
+    afterCopy: [async ({ buildPath }) => { const f = join(buildPath, "package.json"); const pkg = JSON.parse(readFileSync(f, "utf8")); pkg.version = versao; writeFileSync(f, `${JSON.stringify(pkg, null, 2)}\n`); }],
+  } : {}),
   prune: true,
   // config/ (modelo de hosts ssh) e scripts/alivio/ (script enviado ao pod) vão em Resources/.
   extraResource: ["backend-colima", "config", "scripts/alivio"],
@@ -54,4 +61,4 @@ for (const p of paths) {
     if (quem !== undefined) console.log(`meu-bot-admin de ${quem.nome}${quem.super === true ? " (super admin)" : ""}`);
   }
 }
-console.log("Empacotado em:", paths.join(", "));
+console.log("Empacotado em:", paths.join(", "), versao !== null ? `(versão ${versao})` : "");

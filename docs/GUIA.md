@@ -595,7 +595,7 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 
 ### Onda D — túnel e streaming no cliente
 - `src/main/tunnel.ts`: `ssh -M -N -f` com `ControlMaster=yes`, `ControlPersist=600`, socket em
-  `/tmp/meu-bot-<uid>/cm-%C` (userData passa do limite de 104 bytes). Chave, forward e checagens são
+  `/tmp/<app>-<uid>/cm-%C` (por app desde o canal staging: `src/main/control-dir.ts`) (userData passa do limite de 104 bytes). Chave, forward e checagens são
   clientes `ControlMaster=no` do mesmo master. Estados `idle | connecting | ready | degraded | error`.
   Liveness = `-O check` **mais** um `ssh … true` real. `powerMonitor`: suspend marca suspeito,
   resume/unlock revalidam. Forward morto reinicia (orçamento 5) antes de refazer o master.
@@ -1489,7 +1489,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   (`browser:request-pro` → linha no suporte.log); o main recusa `browser:open` sem Pro (PRO_REQUIRED); o
   backend ignora o navegador sem licença Pro. Só no meu-bot da pessoa (`caps.chat`; escondido no admin).
   **Agente navega** (o desenho simples, em vez de emular o CDP para o puppeteer): `src/main/nav-api.ts` serve
-  ações JSON num socket Unix 0700 (`/tmp/meu-bot-<uid>/nav-<host>.sock`: abas, abrir, ler — texto + elementos
+  ações JSON num socket Unix 0700 (`/tmp/<app>-<uid>/nav-<host>.sock`: abas, abrir, ler — texto + elementos
   numerados —, clicar, digitar com `insertText`, tecla, print, voltar/avancar/recarregar, js); o interruptor
   "🤖 agente: pode usar" na barra (`browserAgent`) sobe o socket e pede ao túnel um `-R 127.0.0.1:<porta>:<socket>`
   (`tunnel.ts`: `setReverseWanted`/`reconcileReverse`, porta livre por python3 na máquina, prontidão por curl
@@ -2193,3 +2193,46 @@ detalhe, prev, hash }`.
   - os selos "central íntegra" e "cópia da máquina íntegra", e as linhas "apagadas da máquina";
   - **Exportar prova**: JSON com os hashes e um CSV legível.
 - Os outros admins não veem o botão, e a central recusa a leitura deles.
+
+## Canal staging (20 out), como VS Code e VS Code Insiders
+
+O meu-bot e o meu-bot-crm têm uma cópia **staging** ao lado do estável: `meu-bot-staging` e `meu-bot-crm-staging`.
+O meu-bot-admin é só estável.
+
+**Como a cópia staging é definida** (`staging()` em `src/main/variant-core.ts`): ela sai da linha estável. Recebe:
+- nome `<app>-staging` e bundle `local.<app>.staging`;
+- ícone com a faixa laranja (`assets/icon*-staging.svg`);
+- userData próprio, herdado do estável uma vez só;
+- porta local própria: meu-bot 8790, meu-bot-staging 8791, crm-staging 8792. O meu-bot-crm ainda divide a 8790 com o
+  meu-bot (pendência).
+
+**Licença e título**
+- `caps.produto` é a **licença**, a mesma do estável. É por ela que a licença meu-bot-crm libera o crm-staging.
+- `caps.nome` é o app. `caps.titulo` mostra a versão no staging ("meu-bot-staging 0.2.0-staging.3").
+
+**Isolamento**
+- Pasta de controle por app (`/tmp/<app>-<uid>`): mestre do SSH e socket do Navegador do agente. Os dois apps abertos
+  juntos não fecham os túneis um do outro nem trocam o Navegador do agente.
+- A cópia inicial não leva o que o chaveiro cifra com o nome do app (`google-contatos.bin`, `tailscale-oauth.bin`).
+  O staging pede de novo o login do Google Contatos; o Gmail do Navegador provavelmente também.
+
+**Versões**
+- O `package.json` guarda a próxima estável (0.2.0). Os builds staging são `0.2.0-staging.N`.
+- `compareVersions` segue o semver: `0.2.0-staging.3 < 0.2.0-staging.10 < 0.2.0`.
+- O staging se atualiza pela maior pre-release `v*-staging.*` que tenha o `.zip` dele. O estável continua com
+  `/releases/latest`.
+
+**Publicar**
+- `npm run release:staging` publica a pre-release `v<versão>-staging.N` com os dois apps staging.
+- `npm run release` é a promoção: só roda num commit com a tag `v<versão>-staging.N`; sem ela, sai com 64. A regra
+  fica em `scripts/release-core.mjs`.
+- Instalar localmente: `./instalar.sh --staging` e `./instalar.sh --crm --staging`.
+
+**Máquina compartilhada**
+- O estável e o staging falam com a mesma máquina, e a guarda só sobe de versão (`deveAtualizar`): um app não rebaixa
+  a do outro.
+- O backend da máquina (server.js, crm-api, auditoria.py, plugins) é um só para os dois canais. O que se instala
+  testando no staging vale também para o estável.
+- O navegador-mcp da máquina atende um app por vez.
+
+**Auditoria:** o campo `app` grava o nome real, então o registro mostra quando a ação veio de um app staging.

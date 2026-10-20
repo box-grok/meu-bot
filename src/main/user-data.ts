@@ -8,7 +8,7 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { deveHerdar, entradaHerdavel } from "./user-data-core";
+import { carimboDe, deveHerdar, entradaHerdavel } from "./user-data-core";
 
 /** `migrate(dir, appData)` roda uma vez depois de apontar o userData (ex.: o admin traz o pessoas.json). */
 export function useVariantUserData(name: string, migrate?: (dir: string, appData: string) => void): void {
@@ -21,16 +21,16 @@ export function useVariantUserData(name: string, migrate?: (dir: string, appData
   if (migrate) migrate(dir, appData);
 }
 
-const CARIMBO = ".herdado-de-meu-bot";
 /**
- * Um produto da pessoa (meu-bot-crm, meu-bot-fit…) nasce como cópia do meu-bot dela: tutoriais feitos, conversas,
- * memória, favoritos, espaços de trabalho e os logins do Navegador (Gmail) vêm juntos, em vez de começar do zero.
- * Só na primeira vez (carimbo) e só enquanto o produto novo não tem conversas próprias; depois cada app segue
- * sozinho. Caches, logs e o backend local ficam de fora (user-data-core.ts).
+ * Um app da pessoa (meu-bot-crm, um staging, meu-bot-fit…) nasce como cópia do app de origem dela (Produto.herdaDe):
+ * tutoriais feitos, conversas, memória, favoritos e espaços de trabalho vêm juntos, em vez de começar do zero. Só na
+ * primeira vez (carimbo por origem) e só enquanto o app novo não tem conversas próprias; depois cada app segue
+ * sozinho. Caches, logs, o backend local e o que o chaveiro cifra com o nome do app ficam de fora (user-data-core.ts):
+ * logins do Google Contatos e, em geral, do Navegador precisam ser refeitos no app novo.
  */
-export function herdarDoMeuBot(dir: string, appData: string): void {
-  const origem = path.join(appData, "meu-bot");
-  const carimbo = path.join(dir, CARIMBO);
+export const herdarDe = (nomeOrigem: string) => (dir: string, appData: string): void => {
+  const origem = path.join(appData, nomeOrigem);
+  const carimbo = path.join(dir, carimboDe(nomeOrigem));
   if (!fs.existsSync(path.join(origem, "settings.json"))) return;
   let conversas: string | null = null;
   try { conversas = fs.readFileSync(path.join(dir, "conversations.json"), "utf8"); } catch { conversas = null; }
@@ -44,4 +44,4 @@ export function herdarDoMeuBot(dir: string, appData: string): void {
     catch { /* uma entrada que não copiou não impede as outras */ }
   }
   fs.writeFileSync(carimbo, `${new Date().toISOString()} ${n} entradas de ${origem}\n`);
-}
+};

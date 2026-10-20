@@ -29,13 +29,14 @@ test("auditoria.py: importa o suporte.log antigo, grava em corrente (Python e TS
   mkdirSync(join(home, ".local", "share", "meu-bot"), { recursive: true });
   writeFileSync(join(home, ".local", "share", "meu-bot", "suporte.log"), "2026-10-16T12:00:00Z|admin|reiniciou o gateway do OpenClaw\n2026-10-16T12:05:00Z|Ana|ligou o acesso do admin\n");
   const l1 = JSON.parse(gravar(home, { quem: { tipo: "admin", nome: "Lucas" }, app: "meu-bot-admin", acao: "whatsapp.pausar", alvo: "+5511999990000" }));
-  gravar(home, { quem: { tipo: "dono", nome: "Ana Lúcia" }, app: "meu-bot-crm", acao: "whatsapp.excluir", alvo: "+5511999990000", detalhe: "linha\ncom quebra" });
+  gravar(home, { quem: { tipo: "dono", nome: "Ana Lúcia" }, app: "meu-bot-crm-staging", acao: "whatsapp.excluir", alvo: "+5511999990000", detalhe: "linha\ncom quebra" });
   assert.ok(existsSync(join(home, ".local", "share", "meu-bot", "suporte.log.importado")));
   const linhas = a.parseLinhas(ler(home));
   assert.equal(linhas.length, 4);
   assert.deepEqual(linhas.map((x) => x.linha.quem.tipo), ["legado", "legado", "admin", "dono"]);
   assert.match(l1.maquina, /^[0-9a-f]{12}$/);
   assert.equal(linhas[3].linha.detalhe, "linha com quebra", "sem quebra de linha no registro");
+  assert.equal(linhas[3].linha.app, "meu-bot-crm-staging", "o canal staging aparece no registro");
   assert.equal(a.quebraDaCorrente(linhas.map((x) => x.bruto)), null, "corrente íntegra (o selo do Python confere no TS)");
   assert.equal(a.parseLinhas(ler(home, "--n", "1"))[0].linha.quem.nome, "Ana Lúcia");
   assert.equal(a.parseLinhas(ler(home, "--apos", l1.hash)).length, 1, "só o que veio depois");

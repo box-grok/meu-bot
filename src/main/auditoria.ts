@@ -11,7 +11,7 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
-import { auditoriaLerSh, auditoriaSh, parseCentral, parseLinhas, type Acao, type AuditoriaCentral, type AuditoriaEntrada, type AuditoriaLinha } from "./auditoria-core";
+import { auditoriaLerSh, auditoriaSh, isApp, parseCentral, parseLinhas, type Acao, type AuditoriaCentral, type AuditoriaEntrada, type AuditoriaLinha } from "./auditoria-core";
 import { adminAuditoriaSsh, adminName } from "./admin/support-admin";
 import { clienteAuditoriaSsh, supportName } from "./client/support";
 import { backendBundleDir } from "./hostProbe";
@@ -32,7 +32,8 @@ export function auditoriaPy(): string {
 export function quemDoApp(): AuditoriaEntrada["quem"] {
   return caps().supportAdmin ? { tipo: "admin", nome: adminName() } : { tipo: "dono", nome: supportName() || "dono" };
 }
-const appDoApp = (): AuditoriaEntrada["app"] => (caps().produto === "meu-bot-admin" ? "meu-bot-admin" : caps().produto === "meu-bot-crm" ? "meu-bot-crm" : "meu-bot");
+/** O app que agiu, pelo nome real (meu-bot-staging inclusive): a história mostra de qual canal veio a ação. */
+const appDoApp = (): AuditoriaEntrada["app"] => { const n = caps().nome; return isApp(n) ? n : "meu-bot"; };
 
 /** Trecho de script que grava a ação (para ir junto de outro script na mesma conexão). */
 export function registroSh(acao: Acao, alvo = "", detalhe = ""): string {

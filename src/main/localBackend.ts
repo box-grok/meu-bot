@@ -11,10 +11,14 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { backendBundleDir } from "./hostProbe";
+import { produto } from "./variant";
 
 export const LOCAL_HOST = "local";
-/** Porta fixa, fora da 8080 (que o Lima do Colima costuma encaminhar para o Mac). */
-export const LOCAL_PORT = 8790;
+/**
+ * Porta fixa por app (Produto.portaLocal), fora da 8080 que o Lima do Colima costuma encaminhar para o Mac: o
+ * estável e o staging abertos juntos não podem dividir (meu-bot 8790, meu-bot-staging 8791, crm-staging 8792).
+ */
+const localPort = (): number => produto().portaLocal;
 
 const HOME = os.homedir();
 
@@ -70,7 +74,7 @@ function readOrCreateEnv(d: string, claude: string): string {
   fs.mkdirSync(path.join(ws, "chat"), { recursive: true });
   fs.mkdirSync(path.join(ws, "agente"), { recursive: true });
   const body = [
-    `OPENAI_COMPAT_KEY=${key}`, `PORT=${LOCAL_PORT}`, "HOST=127.0.0.1", `CLAUDE_BIN=${claude}`,
+    `OPENAI_COMPAT_KEY=${key}`, `PORT=${localPort()}`, "HOST=127.0.0.1", `CLAUDE_BIN=${claude}`,
     `WORKSPACE=${path.join(ws, "chat")}`, `AGENT_WORKSPACE=${path.join(ws, "agente")}`, "",
   ].join("\n");
   fs.writeFileSync(envPath, body, { mode: 0o600 });
@@ -94,7 +98,7 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
   if (starting !== undefined) return starting;
   starting = (async () => {
     try {
-      if (localBackendAlive() && (await portOpen(LOCAL_PORT))) return { localPort: LOCAL_PORT, apiKey: state!.apiKey };
+      if (localBackendAlive() && (await portOpen(localPort()))) return { localPort: localPort(), apiKey: state!.apiKey };
       const node = findNode();
       if (node === null) throw new Error("Node.js não encontrado neste Mac (procurei em Homebrew, /usr/local, ~/.local e nvm). Instale o Node 18+ para usar a máquina \"local\".");
       const claude = findClaude();
@@ -108,7 +112,7 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
       if (!fs.existsSync(path.join(d, "providers.json"))) fs.copyFileSync(path.join(bundle, "providers.json"), path.join(d, "providers.json"));
       const apiKey = readOrCreateEnv(d, claude);
       if (state !== undefined) { try { state.child.kill("SIGTERM"); } catch { /* já morto */ } state = undefined; }
-      if (await portOpen(LOCAL_PORT)) throw new Error(`A porta ${LOCAL_PORT} já está em uso neste Mac por outro programa.`);
+      if (await portOpen(localPort())) throw new Error(`A porta ${localPort()} já está em uso neste Mac por outro programa.`);
       onStatus?.("subindo o backend neste Mac…");
       const logFd = fs.openSync(path.join(app.getPath("userData"), "backend-local.log"), "a");
       const extraPath = [path.dirname(node), path.dirname(claude), "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"].join(":");
@@ -126,7 +130,7 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
       const deadline = Date.now() + 12_000;
       while (Date.now() < deadline) {
         if (child.exitCode !== null) throw new Error(`O backend local morreu ao iniciar (código ${child.exitCode}). Veja backend-local.log em ${app.getPath("userData")}.`);
-        if (await portOpen(LOCAL_PORT)) { log(`backend local pid ${child.pid ?? "?"} pronto em ${Date.now() - mine.startedAt} ms (node=${node} claude=${claude})`); return { localPort: LOCAL_PORT, apiKey }; }
+        if (await portOpen(localPort())) { log(`backend local pid ${child.pid ?? "?"} pronto em ${Date.now() - mine.startedAt} ms (node=${node} claude=${claude})`); return { localPort: localPort(), apiKey }; }
         await new Promise((r) => setTimeout(r, 200));
       }
       try { child.kill("SIGKILL"); } catch { /* ok */ }
@@ -148,5 +152,5 @@ export function stopLocalBackend(): void {
 }
 
 export async function checkLocalBackend(): Promise<boolean> {
-  return localBackendAlive() && portOpen(LOCAL_PORT);
+  return localBackendAlive() && portOpen(localPort());
 }

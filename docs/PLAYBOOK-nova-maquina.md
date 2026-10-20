@@ -204,7 +204,7 @@ curl -s -H "Authorization: Bearer $K" -H 'Content-Type: application/json' 127.0.
   `claude` presente, logado (`oauthAccount`), Node, modelos anunciados.
 - Estados e o que fazer: **inacessível** → rede/pod (seção 6); **Claude não logado** → passo 2;
   **sem backend** → botão Instalar (3a); **instalado mas parado** → Reinstalar sobe o serviço.
-- Cada conversa guarda o `host`; o túnel é um por máquina (ControlMaster em `/tmp/meu-bot-<uid>/`,
+- Cada conversa guarda o `host`; o túnel é um por máquina (ControlMaster em `/tmp/<app>-<uid>/`,
   forward `-N -L`, chave lida por ssh, nunca persistida). Log: `~/Library/Application Support/meu-bot/meu-bot.log`,
   linhas `[tunnel] [host]`.
 - A sondagem também detecta **computador do Grok Bot** (PID 1 `pod-daemon` ou cgroup `pod-…`) e o

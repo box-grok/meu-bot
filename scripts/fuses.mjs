@@ -15,9 +15,10 @@ if (!existsSync(app)) {
   console.error(`App não encontrado em ${app}. Rode npm run package primeiro.`);
   process.exit(1);
 }
-// Pacote de suporte (build/suporte, de scripts/suporte-setup.mjs) no meu-bot instalado: só no meu-bot normal,
-// com MEU_BOT_SUPORTE=1 (o ./instalar.sh liga quando build/suporte existe). Antes da assinatura.
-if (produto.variant === "client" && process.env.MEU_BOT_SUPORTE === "1" && existsSync("build/suporte/suporte.json")) {
+// Pacote de suporte (build/suporte, de scripts/suporte-setup.mjs) no meu-bot instalado: só no meu-bot normal e no
+// meu-bot-staging (licença "meu-bot"), com MEU_BOT_SUPORTE=1 (o ./instalar.sh liga quando build/suporte existe).
+// Antes da assinatura.
+if (produto.licenca === "meu-bot" && produto.caps.supportClient && process.env.MEU_BOT_SUPORTE === "1" && existsSync("build/suporte/suporte.json")) {
   const cfg = path.join(app, "Contents", "Resources", "config");
   copyFileSync("build/suporte/suporte.json", path.join(cfg, "suporte.json"));
   copyFileSync("build/suporte/known_hosts", path.join(cfg, "suporte-known_hosts"));

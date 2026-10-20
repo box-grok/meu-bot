@@ -11,7 +11,7 @@ export const STATUS_LABEL: Record<ProdutoStatus, string> = { ideia: "Ideia", mvp
 export const TIPOS_CAMPO = ["TEXT", "NUMBER", "DATE", "DROPDOWN", "TAG", "CHECKBOX"] as const;
 /** meu-bot-<slug>: minúsculas, dígitos e hífen; nunca os nomes já tomados pela tabela de produtos. */
 const SLUG_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVADOS = new Set(["meu-bot", "meu-bot-admin", "meu-bot-crm"]);
+const RESERVADOS = new Set(["meu-bot", "meu-bot-admin", "meu-bot-crm", "meu-bot-staging", "meu-bot-crm-staging"]);
 export const nomeValido = (n: unknown): n is string => typeof n === "string" && SLUG_RE.test(n) && n.length <= 40 && !RESERVADOS.has(n);
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const texto = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\r\n?/g, "\n").trim().slice(0, max) : "");

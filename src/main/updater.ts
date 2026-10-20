@@ -11,9 +11,9 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import { log } from "./backend";
-import { appTitle } from "./variant";
+import { appTitle, caps } from "./variant";
 import { broadcast } from "./windows";
-import { UPDATE_REPO, pickUpdate, type UpdateCandidate } from "./updater-core";
+import { pickUpdate, releasesUrl, type UpdateCandidate } from "./updater-core";
 import { noteNetworkError } from "./net";
 import { offlineMessage } from "./net-core";
 
@@ -60,11 +60,11 @@ async function check(): Promise<void> {
   if (timer !== null) { clearTimeout(timer); timer = null; }
   state.checking = true; state.error = null; setPhase("checking");
   try {
-    const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" } });
+    const res = await fetch(releasesUrl(caps().canal), { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" } });
     state.checkedAt = new Date().toISOString();
     if (res.status === 404) { state.available = null; setPhase("up-to-date"); return; } // ainda sem release: a instalada é a mais recente
     if (!res.ok) throw new Error(`GitHub respondeu ${res.status}`);
-    const cand = pickUpdate(await res.json(), { app: appTitle(), arch: arch(), current: state.current });
+    const cand = pickUpdate(await res.json(), { app: appTitle(), arch: arch(), current: state.current, canal: caps().canal });
     if (cand === null) { state.available = null; setPhase("up-to-date"); return; }
     state.available = cand.version;
     if (state.ready === cand.version) { setPhase("ready"); return; }
