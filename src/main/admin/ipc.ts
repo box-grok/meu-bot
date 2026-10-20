@@ -11,6 +11,7 @@ import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
+import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
 const adminHost = (event: Electron.IpcMainInvokeEvent): string => {
@@ -26,6 +27,15 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:produtos-remove", (_event, payload: unknown) => removeProduto((payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:produtos-export", (_event, payload: unknown) => exportProduto((payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:health", (event) => adminHealth(adminHost(event)));
+  // Backup e mudança de máquina (backup-admin.ts): o progresso vai para a janela que pediu.
+  const arq = (payload: unknown): string => { const a = String((payload as { arquivo?: unknown } | null)?.arquivo ?? ""); if (!/^[a-z0-9-]+\.mbbak$/.test(a)) throw new Error("backup inválido"); return a; };
+  const subst = (payload: unknown): boolean => (payload as { substituir?: unknown } | null)?.substituir === true;
+  const enviar = (event: Electron.IpcMainInvokeEvent) => (p: { bytes?: number; line?: string }): void => { if (!event.sender.isDestroyed()) event.sender.send("admin:backup-progress", p); };
+  handleAdmin("admin:backup-listar", (event, payload: unknown) => listarBackups((payload as { todos?: unknown } | null)?.todos === true ? undefined : adminHost(event)));
+  handleAdmin("admin:backup-criar", (event) => criarBackup(adminHost(event), (bytes) => enviar(event)({ bytes })));
+  handleAdmin("admin:backup-conferir", (event, payload: unknown) => conferirRestauracao(arq(payload), adminHost(event), subst(payload)));
+  handleAdmin("admin:backup-restaurar", (event, payload: unknown) => restaurarBackup(arq(payload), adminHost(event), subst(payload), (line) => enviar(event)({ line })));
+  handleAdmin("admin:backup-whatsapp", (event, payload: unknown) => trocarWhatsapp(arq(payload), adminHost(event), (payload as { antigaDesligada?: unknown } | null)?.antigaDesligada === true));
   handleAdmin("admin:logs", (event) => adminLogs(adminHost(event)));
   handleAdmin("admin:bot-chats", (event) => adminBotChats(adminHost(event)));
   handleAdmin("admin:bot-thread", (event, payload: unknown) => adminBotThread(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));

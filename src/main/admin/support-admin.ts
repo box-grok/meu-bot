@@ -20,22 +20,24 @@ import { xaiAuthInfo } from "../xaiLogin";
 import { getBackendPort, isValidHost } from "../settings";
 import { log } from "../backend";
 
-/** `superAdmin`: este app lê a central de auditoria (página Auditoria). */
-interface AdminConfig { admin: string; superAdmin: boolean; inbox: { alias: string } }
+/** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
+interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string } }
 interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; inbox?: { alias?: unknown } };
+    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; backupDestinatario?: unknown; inbox?: { alias?: unknown } };
     const alias = raw.inbox?.alias;
-    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", superAdmin: raw.superAdmin === true, inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" } };
+    const dest = typeof raw.backupDestinatario === "string" && /^age1[0-9a-z]{58}$/.test(raw.backupDestinatario) ? raw.backupDestinatario : "";
+    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", superAdmin: raw.superAdmin === true, backupDestinatario: dest, inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" } };
   } catch {
-    return { admin: "suporte", superAdmin: false, inbox: { alias: "" } };
+    return { admin: "suporte", superAdmin: false, backupDestinatario: "", inbox: { alias: "" } };
   }
 }
 export const adminName = (): string => adminConfig().admin;
 export const isSuperAdmin = (): boolean => adminConfig().superAdmin;
+export const backupDestinatario = (): string => adminConfig().backupDestinatario;
 /**
  * ssh para a central de auditoria (usuário "auditoria" na caixa, pelo alias do admin): a chave deste admin, que
  * lá é presa a um comando forçado. null sem caixa configurada.
@@ -197,7 +199,7 @@ export function personInfo(alias: string): { name: string; machine: string | nul
 export const adminKeyExists = (): boolean => fs.existsSync(ADMIN_KEY);
 
 /** O que ela deixa este app ver (compartilha.json na máquina dela); sem arquivo, tudo. */
-async function readShare(host: string): Promise<SupportShare> {
+export async function readShare(host: string): Promise<SupportShare> {
   const r = await runSsh(host, `cat "${SHARE_FILE}" 2>/dev/null\n`, 15_000).catch(() => null);
   try { return parseSupportShare(JSON.parse(r?.stdout ?? "")); } catch { return parseSupportShare({}); }
 }

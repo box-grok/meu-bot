@@ -10,7 +10,10 @@
 //   5. Auditoria: usuário "auditoria" na caixa (criado por --root, uma vez) com backend-colima/meu-bot-auditoria
 //      (/usr/local/bin, do root) como comando forçado de cada chave: admins e pessoas só entregam linhas; o super
 //      admin lê. O authorized_keys de lá é do root (ninguém por SSH o muda).
-//   6. build/suporte/admins/<nome>.json: o suporte.json do meu-bot-admin de cada admin (nome, superAdmin, caixa).
+//   6. build/suporte/admins/<nome>.json: o suporte.json do meu-bot-admin de cada admin (nome, superAdmin, caixa,
+//      backupDestinatario).
+//   7. Backup: par age X25519 do super admin. A identidade fica só neste Mac (~/.ssh/meu-bot-backup.age, 0600; é ela
+//      que abre os backups); a pública vai no app de todos os admins (qualquer um gera, só o super admin abre).
 // Admins: build/suporte/admins.json ([{ nome, chave, super }]). Quem roda sem --admin é o super admin, com a
 // ~/.ssh/meu-bot-admin deste Mac. Outro admin gera a chave dele no Mac dele
 // (ssh-keygen -t ed25519 -C meu-bot-admin -f ~/.ssh/meu-bot-admin) e manda a pública; aqui:
@@ -75,9 +78,18 @@ const inbox = { alias: caixa, hostname: g.get("hostname"), user: g.get("user"), 
 // O .dmg das pessoas: todos os admins (cada um ganha uma linha no authorized_keys delas ao ligar o suporte).
 const cfg = { admins: admins.map((a) => ({ nome: a.nome, chave: a.chave })), inbox };
 writeFileSync(join(dir, "suporte.json"), `${JSON.stringify(cfg, null, 2)}\n`);
-// O app de cada admin: nome, se é super admin e o alias da caixa (o meu-bot-admin lê a caixa por aqui).
+// Par de backup (age): criado uma vez; perder a identidade = perder todos os backups (guarde uma cópia offline).
+const backupId = join(homedir(), ".ssh", "meu-bot-backup.age");
+const age = await import("age-encryption");
+if (!existsSync(backupId)) {
+  step("criando ~/.ssh/meu-bot-backup.age (a chave que abre os backups; guarde uma cópia offline)");
+  const id = await age.generateX25519Identity();
+  writeFileSync(backupId, `# meu-bot: abre os backups completos das máquinas (meu-bot-admin do super admin)\n${id}\n`, { mode: 0o600 });
+}
+const backupDestinatario = await age.identityToRecipient(readFileSync(backupId, "utf8").split("\n").find((l) => l.startsWith("AGE-SECRET-KEY-")).trim());
+// O app de cada admin: nome, se é super admin, o alias da caixa (o meu-bot-admin lê a caixa por aqui) e a pública de backup.
 mkdirSync(join(dir, "admins"), { recursive: true });
-for (const a of admins) writeFileSync(join(dir, "admins", `${a.nome}.json`), `${JSON.stringify({ admin: a.nome, superAdmin: a.super === true, inbox }, null, 2)}\n`);
+for (const a of admins) writeFileSync(join(dir, "admins", `${a.nome}.json`), `${JSON.stringify({ admin: a.nome, superAdmin: a.super === true, backupDestinatario, inbox }, null, 2)}\n`);
 
 step(`auditoria: usuário "auditoria" e chaves em ${root_}`);
 const auditoria = readFileSync(join(root, "backend-colima", "meu-bot-auditoria"), "utf8");

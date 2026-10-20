@@ -406,7 +406,8 @@ export interface SupportInfo {
  * conversas) e registros (journal). O app do admin respeita; o acesso SSH em si continua enquanto o suporte
  * está ligado (desligar o interruptor corta tudo). Fica na máquina dela, em ~/.local/share/meu-bot.
  */
-export interface SupportShare { progress: boolean; whatsapp: boolean; logs: boolean; chat: boolean }
+/** `backup`: o admin pode fazer backup completo (sessão do WhatsApp e logins inclusive); padrão desligado. */
+export interface SupportShare { progress: boolean; whatsapp: boolean; logs: boolean; chat: boolean; backup: boolean }
 
 /** Suporte, lado do admin: uma pessoa (uma máquina) que entregou ou colou o código. */
 export interface SupportPerson {
@@ -849,6 +850,8 @@ export interface MainEvents {
   "navegador:progress": { line: string };
   /** Instalação do CRM pelo WhatsApp (tutorial 10): uma linha de progresso. */
   "crm:progress": { line: string };
+  /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
+  "admin:backup-progress": { bytes?: number; line?: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
@@ -1092,6 +1095,10 @@ export interface ProdutoMvp {
 }
 export type ProdutoMvpPatch = { nome: string } & Partial<Omit<ProdutoMvp, "nome" | "createdAt" | "updatedAt">>;
 
+/** Um backup no Mac do admin (sem segredos: o pacote fica cifrado). */
+export interface BackupIndiceView { arquivo: string; pessoa: string; maquina: string; criadoEm: string; tamanho: number; por: string; usuario: string; whatsapp: boolean; arquivos: number }
+/** Pré-voo da restauração num destino: o que impede, o que pede atenção. */
+export interface BackupRestauracao { bloqueios: string[]; avisos: string[]; podeRestaurar: boolean; destinoUsuario: string; whatsappNoDestino: boolean }
 export interface MeuBotAdminApi {
   /** meu-bot-admin: MVPs de produtos (registro local do admin): listar, criar/editar, remover, exportar a definição. */
   adminProdutos(): Promise<ProdutoMvp[]>;
@@ -1100,6 +1107,12 @@ export interface MeuBotAdminApi {
   adminProdutoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
   /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
   adminHealth(): Promise<AdminHealth>;
+  /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */
+  adminBackupListar(todos?: boolean): Promise<{ backups: BackupIndiceView[]; podeRestaurar: boolean; podeCriar: boolean }>;
+  adminBackupCriar(): Promise<BackupIndiceView>;
+  adminBackupConferir(arquivo: string, substituir: boolean): Promise<BackupRestauracao>;
+  adminBackupRestaurar(arquivo: string, substituir: boolean): Promise<{ log: string[] }>;
+  adminBackupWhatsapp(arquivo: string, antigaDesligada: boolean): Promise<{ log: string[] }>;
   adminLogs(): Promise<string>;
   adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
   /** Conversas dela com o meu-bot (transcrições do Claude Code na máquina), só leitura. */

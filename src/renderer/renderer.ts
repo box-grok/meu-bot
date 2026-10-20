@@ -4377,6 +4377,14 @@ function renderSupportParts(container: HTMLElement, parts: readonly SupportPart[
     }
     container.append(list);
   }
+  // Backup completo pelo admin: sempre visível (é a única permissão desligada por padrão) e sempre escolha da pessoa.
+  if (parts.includes("share") && s.on) {
+    const sw = el("label", "switch switch-row");
+    const box = el("input"); box.type = "checkbox"; box.checked = s.share.backup; box.disabled = supportBusy;
+    sw.append(box, el("span", "track"), el("span", "switch-label", "Permitir backup completo pelo admin (para mudar de máquina; inclui a sessão do WhatsApp e seus logins)"));
+    box.addEventListener("change", () => { void supportDo(() => window.meuBot.setSupportShare({ ...s.share, backup: box.checked }), null); });
+    container.append(sw);
+  }
   if (parts.includes("delivery") && s.on) {
     const box = el("div", "support-delivery");
     // "Avisar o admin agora": entrega o aviso na hora e o admin sincroniza (a máquina também avisa sozinha a cada 30 min).

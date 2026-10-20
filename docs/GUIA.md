@@ -2236,3 +2236,34 @@ O meu-bot-admin é só estável.
 - O navegador-mcp da máquina atende um app por vez.
 
 **Auditoria:** o campo `app` grava o nome real, então o registro mostra quando a ação veio de um app staging.
+
+## Backup completo e mudança de máquina (20 out)
+
+O admin faz o backup de tudo o que é da pessoa numa VM e restaura numa outra.
+- **Permissão:** só com a pessoa ligando "Permitir backup completo pelo admin" em Configurações › Suporte
+  (`SupportShare.backup`, padrão desligado).
+- **Na VM** (`backend-colima/meu-bot-backup.sh`, vai pela linha de comando do SSH em base64):
+  - **criar:** para o gateway e o backend por ~1 min, empacota `.openclaw`, `.local/share/meu-bot`, `.hermes`,
+    `.claude`, `.local/bin` e o crontab. Ficam fora os modelos de transcrição e voz, os caches, `npm`, `tmp` e
+    `stage`. Grava um manifesto com o sha256 de cada arquivo e religa o que estava ligado.
+  - **restaurar:** confere os sha256, guarda o que havia em `~/.meu-bot-antes-da-restauracao-<ts>/`, troca o `$HOME`
+    antigo pelo novo nos arquivos conhecidos e deixa o gateway DESATIVADO.
+  - **ativar-whatsapp** e **desativar-whatsapp:** fazem a troca. Nunca há `channels logout`, porque ele mataria a
+    sessão nas duas máquinas.
+- **No Mac** (`src/main/admin/backup-admin.ts`, regras em `backup-core.ts`):
+  - o stdout do ssh passa pela cifra **age** para o destinatário de backup e vai direto para
+    `userData/backups/*.mbbak`. Na volta, o arquivo é decifrado em stream direto no stdin do ssh. Não há texto claro
+    em disco;
+  - o par é criado pelo `suporte-setup.mjs`: a identidade fica em `~/.ssh/meu-bot-backup.age`, só no Mac do super
+    admin (**guarde uma cópia offline**: sem ela os backups não abrem). A pública vai no app de todos os admins
+    (`backupDestinatario`);
+  - qualquer admin gera um backup; só o super admin restaura.
+- **Mudança:**
+  1. a pessoa instala o meu-bot na VM nova e liga o suporte;
+  2. no admin, a página Suporte da máquina nova mostra "Restaurar um backup aqui", com o pré-voo (espaço, OpenClaw,
+     WhatsApp já pareado, usuário);
+  3. o app restaura e reinstala Claude Code, backend, guarda, CRM, transcrição e status line;
+  4. "Trocar o WhatsApp para esta máquina" desliga o gateway na antiga, se ela ainda estiver no suporte, e liga na nova.
+- **Auditoria:** registra `backup.criar`, `backup.restaurar` (com a máquina e o último hash da origem),
+  `backup.desativar-origem` e `backup.ativar-whatsapp`.
+- **Fora do pacote:** o hermes-agent instalado por npm em `~/.local/lib` e a voz das respostas (religar no tutorial).

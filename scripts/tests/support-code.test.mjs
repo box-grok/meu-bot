@@ -105,11 +105,12 @@ test("código com o apelido da máquina (machine): vai e volta; inválido cai fo
   assert.ok(bad.ok); assert.equal("machine" in bad.code, false, "apelido inválido é ignorado, não derruba o código");
 });
 
-test("parseSupportShare: tudo compartilhado por padrão; só false desliga", () => {
-  assert.deepEqual(m.parseSupportShare(undefined), { progress: true, whatsapp: true, logs: true, chat: true });
-  assert.deepEqual(m.parseSupportShare({ whatsapp: false, chat: false }), { progress: true, whatsapp: false, logs: true, chat: false });
-  assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0 }), { progress: true, whatsapp: true, logs: true, chat: true });
-  assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true, chat: true });
+test("parseSupportShare: tudo compartilhado por padrão, só false desliga; o backup completo só com true", () => {
+  assert.deepEqual(m.parseSupportShare(undefined), { progress: true, whatsapp: true, logs: true, chat: true, backup: false });
+  assert.deepEqual(m.parseSupportShare({ whatsapp: false, chat: false }), { progress: true, whatsapp: false, logs: true, chat: false, backup: false });
+  assert.deepEqual(m.parseSupportShare({ progress: "não", logs: 0, backup: "sim" }), { progress: true, whatsapp: true, logs: true, chat: true, backup: false });
+  assert.equal(m.parseSupportShare({ backup: true }).backup, true);
+  assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true, chat: true, backup: false });
 });
 
 test("parseSupportProgress: `app` opcional (versão e abertura); inválido some, o resto vale", () => {

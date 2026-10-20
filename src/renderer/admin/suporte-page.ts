@@ -4,6 +4,7 @@
  * com dependências explícitas, no padrão de snake.ts: o renderer.ts dá o sistema de páginas e recebe de volta,
  * por `onWhatsapp`, o estado do WhatsApp que a saúde traz (é ele quem pinta a lateral).
  */
+import { mountBackupCard } from "./backup-card.js";
 import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus, PlanName } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -23,7 +24,7 @@ export interface SuportePageDeps {
   /** Botão de dois cliques (o segundo confirma). */
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   fmtPhone(digits: string | null): string;
-  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice" | "adminProdutos">;
+  api: Pick<MeuBotApi, "adminHealth" | "adminLogs" | "adminAction" | "setLicense" | "approveDevice" | "removeDevice" | "adminProdutos" | "adminBackupListar" | "adminBackupCriar" | "adminBackupConferir" | "adminBackupRestaurar" | "adminBackupWhatsapp" | "on">;
   /** A saúde trouxe o WhatsApp da máquina (null = ela não compartilha ou não tem): o renderer atualiza a lateral. */
   onWhatsapp(status: WhatsappStatus | null): void;
   /** O plano da conta (do card de licença): o renderer pinta o selo "PRO" no canto superior. */
@@ -49,6 +50,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
   /** Registros recolhidos por padrão: só lê o journal da máquina quando a pessoa abre. */
   let logsOpen = false;
   const who = deps.who.person ?? deps.who.host;
+  const backup = mountBackupCard({ api: deps.api, armConfirm: deps.armConfirm, who });
 
   async function refreshHealth(): Promise<void> {
     state.busy = "health"; render();
@@ -234,6 +236,9 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     if (note !== null) a.append(el("p", "hint", note));
     if (state.msg !== null) a.append(el("p", `hint ${state.msg.bad ? "guide-pair-note" : "audio-ok"}`, state.msg.text));
     panel.append(a);
+    // Backup e mudança de máquina (backup-card.ts): só com a permissão dela; restaurar só no app do super admin.
+    backup.refresh(hp?.share.backup === true);
+    panel.append(backup.el);
 
     // Registros: recolhido por padrão (é o que menos se olha e o mais pesado de ler). Só se ela compartilha.
     if (hp !== null && !hp.share.logs) {

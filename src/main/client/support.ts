@@ -258,7 +258,7 @@ export async function setSupportShare(host: string, raw: unknown): Promise<Suppo
   if (r.code !== 0) throw new Error("não consegui gravar a escolha nesta máquina");
   shareOf.set(host, share);
   if (!share.progress) lastProgress.delete(host);
-  log(`[suporte] ${host}: compartilha progresso=${share.progress} whatsapp=${share.whatsapp} registros=${share.logs}`);
+  log(`[suporte] ${host}: compartilha progresso=${share.progress} whatsapp=${share.whatsapp} registros=${share.logs} backup=${share.backup}`);
   return supportInfo(host);
 }
 

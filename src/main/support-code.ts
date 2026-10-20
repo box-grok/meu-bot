@@ -194,9 +194,10 @@ export function parseSupportProgress(raw: unknown): SupportProgress | null {
 
 /** Onde a escolha do que compartilhar fica na máquina dela (fora da pasta do suporte: sobrevive a desligar/ligar). */
 export const SHARE_FILE = "$HOME/.local/share/meu-bot/compartilha.json";
-export const DEFAULT_SHARE: SupportShare = { progress: true, whatsapp: true, logs: true, chat: true };
+// O backup completo leva a sessão do WhatsApp e os logins: só com a pessoa ligando (padrão false, ao contrário do resto).
+export const DEFAULT_SHARE: SupportShare = { progress: true, whatsapp: true, logs: true, chat: true, backup: false };
 /** Lê a escolha gravada (ou vinda do renderer); o que falta ou não é booleano conta como compartilhado. */
 export function parseSupportShare(raw: unknown): SupportShare {
   const o = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  return { progress: o.progress !== false, whatsapp: o.whatsapp !== false, logs: o.logs !== false, chat: o.chat !== false };
+  return { progress: o.progress !== false, whatsapp: o.whatsapp !== false, logs: o.logs !== false, chat: o.chat !== false, backup: o.backup === true };
 }
