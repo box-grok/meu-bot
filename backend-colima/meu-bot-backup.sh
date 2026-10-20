@@ -24,7 +24,7 @@ export PATH="$H/.openclaw/bin:$H/.local/bin:/opt/node/bin:/usr/local/bin:$PATH"
 FORMATO=1
 INCLUIR=(.openclaw .local/share/meu-bot .hermes .claude .local/bin)
 EXCLUIR=(
-  .openclaw/cache .openclaw/tmp .openclaw/npm .openclaw/logs
+  .openclaw/cache .openclaw/tmp .openclaw/logs
   .local/share/meu-bot/transcricao .local/share/meu-bot/voz .local/share/meu-bot/stage
   .claude/cache .claude/downloads .claude/paste-cache .claude/shell-snapshots .claude/session-env
 )
@@ -122,10 +122,16 @@ if man.get("formato") != 1:
     sys.exit(f"recusado: formato de backup {man.get('formato')} desconhecido")
 esperado = {e["caminho"]: e["sha256"] for e in man["entradas"]}
 vistos = 0
+links = set()
 with tarfile.open(os.path.join(t, "dados.tar")) as tf:
     for m in tf:
-        if os.path.isabs(m.name) or ".." in m.name.split("/") or m.issym() and (os.path.isabs(m.linkname) or ".." in m.linkname.split("/")):
+        # Link com destino absoluto é normal (plugins do OpenClaw); perigoso é um caminho fora do $HOME ou um arquivo
+        # do pacote que passa por um link (gravaria onde o link aponta).
+        partes = m.name.split("/")
+        if os.path.isabs(m.name) or ".." in partes or any("/".join(partes[:k]) in links for k in range(1, len(partes))):
             sys.exit(f"recusado: caminho perigoso no backup: {m.name}")
+        if m.issym() or m.islnk():
+            links.add(m.name.rstrip("/"))
         if not m.isfile():
             continue
         h = hashlib.sha256(); f = tf.extractfile(m)
@@ -141,6 +147,7 @@ PY
   OLD=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["home"])' "$T/manifesto.json")
   parar
   ANTES="$H/.meu-bot-antes-da-restauracao-$TS"
+  mkdir -p "$ANTES"
   for i in "${INCLUIR[@]}"; do
     if [ -e "$H/$i" ]; then mkdir -p "$ANTES/$(dirname "$i")"; mv "$H/$i" "$ANTES/$i"; fi
   done
@@ -162,6 +169,11 @@ for a in arqs:
         open(a, "w", encoding="utf-8").write(n)
         print(f"CAMINHO={a}")
 PY
+    # Links que apontavam para dentro do $HOME antigo passam a apontar para o mesmo lugar no novo.
+    while IFS= read -r -d '' L; do
+      ALVO=$(readlink "$L")
+      case "$ALVO" in "$OLD"/*) ln -sfn "$H${ALVO#"$OLD"}" "$L" ;; esac
+    done < <(find "${INCLUIR[@]/#/$H/}" -type l -print0 2>/dev/null)
   fi
   [ -s "$T/crontab.txt" ] && crontab "$T/crontab.txt"
   # O WhatsApp só liga aqui depois que a máquina antiga for desligada (ativar-whatsapp).

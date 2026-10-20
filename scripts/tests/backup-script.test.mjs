@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
@@ -34,6 +34,10 @@ test("backup.sh: criar → restaurar em outro usuário devolve os dados, sem cac
   escrever(origem, ".hermes/agente-rene/backend-sdk-claude/.env", `CLAUDE_BIN=${origem}/.local/bin/claude\nOPENAI_COMPAT_KEY=k\n`);
   escrever(origem, ".claude/projects/x.jsonl", "{}");
   escrever(origem, ".claude/cache/c", "C");
+  escrever(origem, ".openclaw/npm/projects/wa/skills/wacli/SKILL.md", "plugin do WhatsApp");
+  mkdirSync(join(origem, ".openclaw/plugin-skills"), { recursive: true });
+  symlinkSync(`${origem}/.openclaw/npm/projects/wa/skills/wacli`, join(origem, ".openclaw/plugin-skills/wacli"));
+  symlinkSync("/opt/node/lib/node_modules/openclaw/skills/canvas", join(origem, ".openclaw/plugin-skills/canvas"));
   writeFileSync(join(a.raiz, "cron-box"), `*/5 * * * * ${origem}/.local/bin/tarefa\n`);
   writeFileSync(join(a.raiz, "ativo-openclaw-gateway"), "");
   // Destino com coisa própria (deve ir para "antes-da-restauracao", não sumir).
@@ -53,6 +57,9 @@ test("backup.sh: criar → restaurar em outro usuário devolve os dados, sem cac
   assert.equal(existsSync(join(destino, ".openclaw/cache/lixo.bin")), false, "cache fica fora");
   assert.equal(existsSync(join(destino, ".local/share/meu-bot/transcricao")), false, "modelo fica fora");
   assert.equal(existsSync(join(destino, ".claude/cache")), false);
+  assert.equal(readFileSync(join(destino, ".openclaw/npm/projects/wa/skills/wacli/SKILL.md"), "utf8"), "plugin do WhatsApp", "o plugin do WhatsApp (npm do OpenClaw) vai junto");
+  assert.equal(readlinkSync(join(destino, ".openclaw/plugin-skills/wacli")), `${destino}/.openclaw/npm/projects/wa/skills/wacli`, "link para o $HOME antigo aponta para o novo");
+  assert.equal(readlinkSync(join(destino, ".openclaw/plugin-skills/canvas")), "/opt/node/lib/node_modules/openclaw/skills/canvas", "link para fora do $HOME fica como está");
   const cfg = JSON.parse(readFileSync(join(destino, ".openclaw/openclaw.json"), "utf8"));
   assert.equal(cfg.workspace, `${destino}/.openclaw/workspace`, "$HOME trocado");
   assert.equal(cfg.outro, `${origem}x/nao`, "só o caminho exato, não prefixo de outro nome");
@@ -88,4 +95,22 @@ test("backup.sh: desativar-whatsapp para e desativa o gateway sem logout; ativar
   const vazio = join(a.raiz, "vazio"); mkdirSync(vazio);
   assert.notEqual(spawnSync("bash", [SH, "criar", "abcdef123456"], { env: a.env(vazio) }).status, 0);
   assert.match(readFileSync(a.log, "utf8").split("\n").filter((l) => /start openclaw-gateway/.test(l)).join(), /start/, "religou mesmo com erro");
+});
+
+test("backup.sh: recusa pacote com arquivo que passa por um link (gravaria fora do $HOME)", () => {
+  const a = ambiente();
+  const t = join(a.raiz, "mal"); mkdirSync(join(t, "d/.openclaw"), { recursive: true });
+  symlinkSync("/tmp", join(t, "d/.openclaw/x"));
+  writeFileSync(join(t, "arq"), "invasor");
+  // dados.tar com ./.openclaw/x (link para /tmp) e depois ./.openclaw/x/arq
+  execFileSync("tar", ["-C", join(t, "d"), "-cf", join(t, "dados.tar"), "./.openclaw/x"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  mkdirSync(join(t, "e/.openclaw/x"), { recursive: true }); writeFileSync(join(t, "e/.openclaw/x/arq"), "invasor");
+  execFileSync("tar", ["-C", join(t, "e"), "-rf", join(t, "dados.tar"), "./.openclaw/x/arq"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  const sha = execFileSync("shasum", ["-a", "256", join(t, "e/.openclaw/x/arq")], { encoding: "utf8" }).split(" ")[0];
+  writeFileSync(join(t, "manifesto.json"), JSON.stringify({ formato: 1, maquina: "abcdef123456", home: "/home/x", entradas: [{ caminho: "./.openclaw/x/arq", sha256: sha }] }));
+  writeFileSync(join(t, "crontab.txt"), "");
+  const pacote = execFileSync("tar", ["-C", t, "-czf", "-", "manifesto.json", "crontab.txt", "dados.tar"], { env: { ...process.env, COPYFILE_DISABLE: "1" } });
+  const destino = join(a.raiz, "dest"); mkdirSync(destino);
+  const r = spawnSync("bash", [SH, "restaurar"], { env: a.env(destino), input: pacote });
+  assert.notEqual(r.status, 0); assert.match(String(r.stderr), /caminho perigoso/);
 });
