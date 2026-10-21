@@ -2343,3 +2343,22 @@ O passo "quem" do tutorial 2 aponta para este tutorial quando a máquina tem gru
 **Monitor.** `skills/whatsapp-grupos/scripts/monitor.py` lê o SQLite do OpenClaw (`session_nodes` →
 `transcript_events`, `event_zstd` quando houver) em modo só leitura e segue o `/new` sozinho. Também junta os alertas
 do journal e esconde tokens. Vai com a guarda 1.3.0.
+
+## Vigia do gateway e wa-admin.sh fora do gateway (21 out)
+
+**O que aconteceu na box-lv.** O agente chamou o `wa-admin.sh listar` de dentro da conversa do WhatsApp. O
+`systemctl stop` ficou esperando a própria execução que o chamou (`draining … rootRequests=1`), e depois de ~5 min o
+systemd matou tudo junto, inclusive o "religar". O WhatsApp só voltou porque o processo pendurado ainda religou no
+fim. O número continuou vinculado: parar o gateway nunca pede QR de novo; só um logout pede.
+
+**Consertos (guarda 1.4.0):**
+- O `wa-admin.sh` detecta que está no cgroup do `openclaw-gateway.service` e se relança fora, com `systemd-run --user`,
+  devolvendo na hora (o log fica em `data/wa-admin-ultimo.log`). Ele também recusa argumentos de exemplo
+  (`<trecho do nome>`) e grava a trava `~/.cache/meu-bot/wa-admin.lock`.
+- `guarda/vigia-gateway.sh` roda pelo timer de usuário `meu-bot-vigia-gateway.timer`, a cada minuto, instalado pelo
+  `install-guarda.sh` e removido pelo uninstall. Ele religa o gateway habilitado que está `inactive` ou `failed`,
+  desde que a trava esteja livre (ou tenha mais de 15 min). A cada 5 min reinicia o gateway se o WhatsApp está
+  "linked but disconnected" há 3 checagens seguidas. Nunca desloga e nunca mexe em credenciais. O
+  `disable --now` da migração de máquina é respeitado: serviço desabilitado não é tocado. Cada ação vai para
+  `~/.cache/meu-bot/vigia-gateway.log` e para a auditoria (`servico.religar-gateway`, quem: sistema).
+- O "Atualizar lista" do app dá até 7 min para o `wa-admin.sh`, porque o gateway pode demorar para drenar.

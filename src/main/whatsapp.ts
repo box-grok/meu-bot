@@ -814,9 +814,9 @@ export async function whatsappRefreshGroups(host: string): Promise<WhatsappGroup
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 [ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] || { echo "SKILL=0"; exit 0; }
-L=$(mktemp); timeout 240 bash "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" listar --json >/dev/null 2>"$L"; echo "RC=$?"
+L=$(mktemp); timeout 420 bash "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" listar --json >/dev/null 2>"$L"; echo "RC=$?"
 tail -n 2 "$L" 2>/dev/null | sed 's/^/LOG=/'; rm -f "$L"
-`, 300_000);
+`, 480_000);
   if (/SKILL=0/.test(r.stdout)) throw new Error("a skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor");
   if (!/RC=0/.test(r.stdout)) throw new Error(`não consegui listar os grupos: ${r.stdout.split("\n").filter((l) => l.startsWith("LOG=")).map((l) => l.slice(4)).join(" ").trim() || r.stderr.trim().split("\n").pop() || "sem resposta"}`);
   log(`whatsapp: lista de grupos atualizada em ${host}`);

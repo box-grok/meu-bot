@@ -3,5 +3,8 @@
 set -uo pipefail
 export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"
 command -v openclaw >/dev/null 2>&1 && timeout 90 openclaw plugins uninstall meu-bot-guarda >/dev/null 2>&1
+systemctl --user disable --now meu-bot-vigia-gateway.timer >/dev/null 2>&1
+rm -f "$HOME/.config/systemd/user/meu-bot-vigia-gateway.timer" "$HOME/.config/systemd/user/meu-bot-vigia-gateway.service"
+systemctl --user daemon-reload >/dev/null 2>&1
 rm -rf "$HOME/.local/share/meu-bot/guarda" "$HOME/.openclaw/extensions/meu-bot-guarda"
 echo "guarda removida"

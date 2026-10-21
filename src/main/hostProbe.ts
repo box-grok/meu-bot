@@ -352,7 +352,7 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
-const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json"];
+const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
 const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md", "skill-crm-api.md"];
 const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
 /** Tutorial 10: instala o plugin meu-bot-crm + as CLIs (crm.mjs do CRM próprio, streak.mjs do Pro) + skills na máquina (molde da guarda). */

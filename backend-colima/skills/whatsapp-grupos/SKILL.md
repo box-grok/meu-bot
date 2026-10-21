@@ -179,6 +179,11 @@ $J | grep -i -E 'inbound|group'              # chegou? foi gating de menção?
   Teste com reply a uma mensagem do agente, ou `--sempre`.
 - Remetente fora de `groupAllowFrom`/`allowFrom` → bloqueado antes da menção (reply NÃO autoriza remetente).
 - `/status` sozinho no grupo mostra o modo de ativação da sessão.
+- `wa-admin.sh` chamado pelo agente do WhatsApp (dentro do próprio gateway) roda sozinho FORA dele
+  (`systemd-run`) e devolve na hora: o resultado fica em `data/wa-admin-ultimo.log`. Sem isso, parar o gateway
+  esperava esta execução e o systemd matava tudo junto, inclusive o "religar".
+- O vigia da guarda (`meu-bot-vigia-gateway.timer`, a cada minuto) religa o gateway parado sem ninguém para religar;
+  não mexe enquanto o `wa-admin.sh` trabalha nem quando o serviço foi desabilitado (migração de máquina).
 - Gateway não voltou após `wa-admin.sh`: `systemctl --user start openclaw-gateway.service`; se pedir QR,
   restaurar `~/.openclaw/credentials/backups/whatsapp-<ts>.tar.gz` em `~/.openclaw/credentials/` e religar.
 

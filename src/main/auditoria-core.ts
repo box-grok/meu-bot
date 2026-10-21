@@ -34,6 +34,7 @@ export const ACOES = {
   "meu-bot.apagar-conversa": () => "apagou uma conversa dela com o meu-bot",
   "backend.instalar": (a: string) => `instalou o backend do meu-bot${a ? ` (${a})` : ""}`,
   "servico.reiniciar-gateway": () => "reiniciou o gateway do OpenClaw",
+  "servico.religar-gateway": (a: string) => `o vigia religou sozinho o gateway do OpenClaw${a ? ` (${a})` : ""}`,
   "servico.reiniciar-backend": () => "reiniciou o backend do meu-bot",
   "audio.ativar": () => "ativou a transcrição de áudio",
   "audio.desativar": () => "desativou a transcrição de áudio",

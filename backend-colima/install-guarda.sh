@@ -11,6 +11,15 @@ command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw; 
 SRC=$HOME/.local/share/meu-bot/guarda
 mkdir -p "$SRC"
 cp "$HERE/guarda/index.js" "$HERE/guarda/regras.mjs" "$HERE/guarda/package.json" "$HERE/guarda/openclaw.plugin.json" "$SRC/"
+# Vigia do gateway: timer de usuário a cada minuto que religa o openclaw-gateway parado sem ninguém para religar
+# (ex.: wa-admin.sh morto no meio). Respeita o "disable" da migração de máquina; nunca desloga.
+if [ -f "$HERE/guarda/vigia-gateway.sh" ] && command -v systemctl >/dev/null 2>&1; then
+  cp "$HERE/guarda/vigia-gateway.sh" "$SRC/"; chmod 755 "$SRC/vigia-gateway.sh"
+  U=$HOME/.config/systemd/user; mkdir -p "$U"
+  printf '[Unit]\nDescription=meu-bot: religa o gateway do OpenClaw se ele ficou parado\n\n[Service]\nType=oneshot\nExecStart=/bin/bash %s/vigia-gateway.sh\n' "$SRC" > "$U/meu-bot-vigia-gateway.service"
+  printf '[Unit]\nDescription=meu-bot: vigia do gateway do OpenClaw (a cada minuto)\n\n[Timer]\nOnBootSec=2min\nOnUnitActiveSec=1min\nAccuracySec=15s\n\n[Install]\nWantedBy=timers.target\n' > "$U/meu-bot-vigia-gateway.timer"
+  systemctl --user daemon-reload >/dev/null 2>&1 && systemctl --user enable --now meu-bot-vigia-gateway.timer >/dev/null 2>&1 && echo "vigia do gateway ligado (a cada minuto)" || echo "aviso: não consegui ligar o vigia do gateway (systemd de usuário)"
+fi
 # Skill whatsapp-grupos (grupos do agente: listar, habilitar com --remetentes, criar), junto da guarda: scripts e
 # SKILL.md regravados a cada atualização; data/ (cache nome↔JID desta conta) nunca é tocado.
 if [ -f "$HERE/skills/whatsapp-grupos/SKILL.md" ]; then
