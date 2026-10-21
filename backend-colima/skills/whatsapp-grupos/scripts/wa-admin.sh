@@ -37,7 +37,11 @@ if [[ -z "${MEU_BOT_WA_ADMIN_FORA:-}" ]] && grep -q "$SVC" /proc/self/cgroup 2>/
 fi
 [[ -n "${MEU_BOT_WA_ADMIN_LOG:-}" ]] && exec >"$MEU_BOT_WA_ADMIN_LOG" 2>&1
 # Trava: o vigia do gateway (guarda) não religa enquanto este script trabalha com o gateway parado.
-LOCK="$HOME/.cache/meu-bot/wa-admin.lock"; mkdir -p "$(dirname "$LOCK")"; echo $$ > "$LOCK"
+LOCK="$HOME/.cache/meu-bot/wa-admin.lock"; mkdir -p "$(dirname "$LOCK")"
+# Uma de cada vez na máquina: duas listagens juntas (dois cliques, ou os dois apps) uma religava o gateway no meio da outra.
+exec 9>"$LOCK.flock"
+flock -n 9 || { echo "❌ já há uma listagem/ação de grupos em andamento nesta máquina; espere ela terminar (uns 30 s a alguns minutos)." >&2; exit 4; }
+echo $$ > "$LOCK"
 
 # 0) confere o que a listagem precisa ANTES de parar o gateway (máquina que atende clientes não fica parada à toa)
 NODE=/opt/node/bin/node; [[ -x "$NODE" ]] || NODE=$(command -v node)
