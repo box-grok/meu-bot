@@ -2680,7 +2680,8 @@ type WaArchiveNote = { number: string; text: string; bad: boolean };
 let waArchiveNote: WaArchiveNote | null = null;
 function archiveNoteText(a: WhatsappArchive): { text: string; bad: boolean } {
   const onde = a.box !== null ? `na caixa "${a.box.nome}"` : "no contato";
-  return a.resumo ? { text: `Conversa guardada no CRM ${onde} (${a.mensagens} mensagens, com resumo).`, bad: false } : { text: `Transcrição guardada no CRM ${onde}; resumo não atualizado${a.aviso !== null ? ` (${a.aviso})` : ""}.`, bad: true };
+  const drive = a.drive !== null ? ` Cópia no Google Drive: ${a.drive}.` : " Google Drive: não conectado neste Mac (só no CRM).";
+  return a.resumo ? { text: `Conversa guardada no CRM ${onde} (${a.mensagens} mensagens, com resumo).${drive}`, bad: false } : { text: `Transcrição guardada no CRM ${onde}; resumo não atualizado${a.aviso !== null ? ` (${a.aviso})` : ""}.${drive}`, bad: true };
 }
 async function startWaClear(number: string): Promise<void> {
   waClear = { number, phase: "plan", shared: false, empty: false, err: null };
@@ -2718,7 +2719,7 @@ async function runWaClear(c: WaClear): Promise<void> {
       const a = await window.meuBot.archiveWhatsappToCrm(c.number);
       if (!a.vazio) note = { number: c.number, ...archiveNoteText(a) };
     } catch (err) {
-      if (waClear?.number === c.number) { waClear = { ...c, phase: "confirm", crmFalhou: true, err: `Não deu para guardar no CRM: ${ipcErrorText(err)}` }; renderSidebar(); }
+      if (waClear?.number === c.number) { waClear = { ...c, phase: "confirm", crmFalhou: true, err: `Não deu para guardar: ${ipcErrorText(err)}` }; renderSidebar(); }
       return;
     }
   }

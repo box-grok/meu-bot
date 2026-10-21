@@ -16,7 +16,7 @@ import { randomBytes } from "node:crypto";
 import { ensureTunnel, log } from "../tunnel";
 import { getBackendPort } from "../settings";
 import { browserAsk, browserWebContents } from "../browser";
-import { CAMPOS_PESSOA, URL_TOKEN, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, pessoaParaContato, pkce, temEscrita, urlDeAutorizacao, type ClienteOAuth, type ContatoGoogle, type ContatoWhatsapp } from "./google-core";
+import { CAMPOS_PESSOA, URL_TOKEN, caminhoNoDrive, consultaPasta, corpoUpload, temDrive, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, pessoaParaContato, pkce, temEscrita, urlDeAutorizacao, type ClienteOAuth, type ContatoGoogle, type ContatoWhatsapp } from "./google-core";
 
 export interface GoogleStatus { configurado: boolean; conectado: boolean; conectando: boolean; escrita: boolean; precisaReconectar: boolean; email: string | null; sincronizando: boolean; ultimaSync: string | null; total: number | null; criados: number | null; atualizados: number | null; whatsappSalvos: number | null; whatsappErro: string | null; erro: string | null }
 const ARQ_TOKEN = (): string => path.join(app.getPath("userData"), "google-contatos.bin");
@@ -45,7 +45,8 @@ const conectando = new Set<string>();
 export function googleStatus(host: string): GoogleStatus {
   const t = lerToken();
   const escrita = t !== null && temEscrita(t.escopo);
-  return { configurado: cliente() !== null, conectado: t !== null, conectando: conectando.has(host), escrita, precisaReconectar: t !== null && !escrita, email: t?.email ?? null, sincronizando: sincronizando.has(host), ...lerEstado() };
+  // Reconectar também quando falta o Drive (guardar as conversas do WhatsApp ao limpar o histórico).
+  return { configurado: cliente() !== null, conectado: t !== null, conectando: conectando.has(host), escrita, precisaReconectar: t !== null && (!escrita || !temDrive(t.escopo)), email: t?.email ?? null, sincronizando: sincronizando.has(host), ...lerEstado() };
 }
 
 async function postForm(url: string, corpo: Record<string, string>): Promise<Record<string, unknown>> {
@@ -203,3 +204,34 @@ export function agendarSincronizacaoGoogle(host: string): void {
   const i = setInterval(rodar, INTERVALO); i.unref(); agendados.set(host, i);
 }
 export function pararSincronizacaoGoogle(host: string): void { const i = agendados.get(host); if (i) clearInterval(i); agendados.delete(host); }
+
+/**
+ * Guarda a conversa no Google Drive (só `drive.file`): meu-bot / <máquina> / WhatsApp / <contato> / conversa-….md.
+ * null = o Google não está conectado neste Mac (o Drive não foi configurado: a limpeza segue só com o CRM). Conectado
+ * sem a permissão do Drive, ou falha da API, é erro: quem chama não limpa.
+ */
+export async function guardarNoDrive(maquina: string, nome: string, numero: string, conteudo: string, ultimaEm: number): Promise<{ link: string; caminho: string } | null> {
+  const c = cliente(); const t = lerToken();
+  if (c === null || t === null) return null;
+  if (!temDrive(t.escopo)) throw new Error("o Google deste Mac está conectado sem a permissão do Drive: clique em \"Reconectar\" na aba Pessoas do CRM (Gmail)");
+  const tok = await postForm(URL_TOKEN, { refresh_token: t.refresh, client_id: c.clientId, client_secret: c.clientSecret, grant_type: "refresh_token" });
+  const auth = { authorization: `Bearer ${String(tok["access_token"])}` };
+  const api = async (url: string, init: RequestInit = {}): Promise<Record<string, unknown>> => {
+    const r = await fetch(url, { ...init, headers: { ...auth, ...(init.headers ?? {}) }, signal: AbortSignal.timeout(60_000) });
+    const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!r.ok) throw new Error(`Google Drive respondeu ${r.status}${typeof (j["error"] as { message?: unknown } | undefined)?.message === "string" ? `: ${(j["error"] as { message: string }).message}` : ""}`);
+    return j;
+  };
+  const { pastas, arquivo } = caminhoNoDrive(maquina, nome, numero, ultimaEm);
+  let pai = "root";
+  for (const p of pastas) {
+    const achou = await api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaPasta(p, pai), fields: "files(id)", spaces: "drive", pageSize: "1" })}`);
+    const id = Array.isArray(achou["files"]) && typeof (achou["files"][0] as { id?: unknown } | undefined)?.id === "string" ? (achou["files"][0] as { id: string }).id : null;
+    pai = id ?? String((await api("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [pai] }) }))["id"]);
+  }
+  const fronteira = `meu-bot-${Date.now().toString(36)}`;
+  const up = await api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", { method: "POST", headers: { "content-type": `multipart/related; boundary=${fronteira}` }, body: corpoUpload({ name: arquivo, parents: [pai], mimeType: "text/markdown" }, conteudo, fronteira) });
+  const caminho = [...pastas, arquivo].join(" / ");
+  log(`[google] conversa guardada no Drive: ${caminho}`);
+  return { link: typeof up["webViewLink"] === "string" ? up["webViewLink"] : "", caminho };
+}

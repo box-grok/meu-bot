@@ -2382,3 +2382,18 @@ fica na auditoria (`navegador.whatsapp-ligar`/`-desligar`).
   repassar senhas nem dados privados.
 - **Conserto junto:** sessões de grupo não entram mais na conversa de um contato. Antes, "Limpar histórico" de quem
   falava num grupo zerava a memória do agente no grupo.
+
+## Conversas no Google Drive ao limpar (21 out)
+
+No meu-bot-crm, "Limpar histórico" guarda a conversa no CRM da máquina e também no Google Drive da conta ligada
+neste Mac (`guardarNoDrive`, em `google.ts`). O caminho é `meu-bot / <alias SSH da máquina> / WhatsApp /
+<contato (+número)> / conversa-whatsapp-AAAA-MM-DD-HHMM.md`: cada máquina tem a própria pasta, então projetos não
+se misturam. O alias SSH é estável; o apelido da tela pode mudar.
+
+- **Permissão:** só `drive.file`, em que o app enxerga apenas o que ele mesmo cria. Contas conectadas antes pedem
+  "Reconectar o Google (Contatos e Drive)" na aba Pessoas da extensão (`precisaReconectar`).
+- **Regras:** se falhar o CRM ou o Drive, nada é limpo. Tentar de novo não duplica no CRM (o `sha256` é o mesmo).
+  Com o Google nunca conectado neste Mac, o Drive é pulado e a nota avisa "só no CRM".
+- **Leitura da conversa:** sessão que o gateway não devolve a tempo é erro, nunca conversa vazia, para não limpar
+  sem guardar.
+- **Requisito:** a Drive API precisa estar ativada no projeto do Google Cloud do client OAuth do app.

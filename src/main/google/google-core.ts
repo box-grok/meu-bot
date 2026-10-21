@@ -10,7 +10,13 @@ import { createHash, randomBytes } from "node:crypto";
  * nada além disso. O e-mail da conta vem da própria API People, se ela der.
  */
 export const ESCOPO_ESCRITA = "https://www.googleapis.com/auth/contacts";
-export const ESCOPOS = [ESCOPO_ESCRITA] as const;
+/**
+ * Drive só com `drive.file` (decisão do dono, 2026-10-21): o app enxerga apenas os arquivos e pastas que ele mesmo
+ * cria, nada do resto do Drive. Serve para guardar a conversa do WhatsApp ao limpar o histórico (junto do CRM).
+ */
+export const ESCOPO_DRIVE = "https://www.googleapis.com/auth/drive.file";
+export const ESCOPOS = [ESCOPO_ESCRITA, ESCOPO_DRIVE] as const;
+export const temDrive = (escopo: unknown): boolean => typeof escopo === "string" && escopo.split(/\s+/).includes(ESCOPO_DRIVE);
 /** A autorização guardada permite criar contatos? (a antiga, só leitura, pede "Reconectar"). */
 export const temEscrita = (escopo: unknown): boolean => typeof escopo === "string" && escopo.split(/\s+/).includes(ESCOPO_ESCRITA);
 export const URL_AUTORIZACAO = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -90,4 +96,28 @@ export function pessoaDoWhatsapp(c: ContatoWhatsapp, grupo: string | null): Reco
     phoneNumbers: [{ value: c.telefone, type: "mobile" }],
     ...(grupo ? { memberships: [{ contactGroupMembership: { contactGroupResourceName: grupo } }] } : {}),
   };
+}
+
+/** Nome seguro para pasta/arquivo do Drive: sem barra nem controle, espaços colapsados, até 80 caracteres. */
+const nomeDrive = (s: string): string => s.replace(/[\/\\\u0000-\u001f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "sem nome";
+/**
+ * Onde a conversa fica no Drive: uma pasta por máquina (o alias SSH, estável; o apelido da tela pode mudar), uma por
+ * contato (nome + número, para o mesmo contato cair sempre na mesma pasta) e o arquivo com data e hora da última mensagem.
+ */
+export function caminhoNoDrive(maquina: string, nome: string, numero: string, ultimaEm: number): { pastas: string[]; arquivo: string } {
+  const n = numero.replace(/\D/g, "");
+  const quem = nome.replace(/\D/g, "") === n || nome.trim() === "" ? `+${n}` : `${nomeDrive(nome)} (+${n})`;
+  const d = new Date(ultimaEm > 0 ? ultimaEm : Date.now());
+  const p = (x: number): string => String(x).padStart(2, "0");
+  const quando = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
+  return { pastas: ["meu-bot", nomeDrive(maquina), "WhatsApp", quem], arquivo: `conversa-whatsapp-${quando}.md` };
+}
+/** Busca do Drive por nome exato de pasta dentro de outra (aspas e barras escapadas como a API pede). */
+export function consultaPasta(nome: string, pai: string): string {
+  const esc = (s: string): string => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return `name = '${esc(nome)}' and mimeType = 'application/vnd.google-apps.folder' and '${esc(pai)}' in parents and trashed = false`;
+}
+/** Corpo multipart/related do upload (metadados JSON + conteúdo). */
+export function corpoUpload(meta: Record<string, unknown>, conteudo: string, fronteira: string): string {
+  return `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${fronteira}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${conteudo}\r\n--${fronteira}--`;
 }

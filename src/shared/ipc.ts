@@ -591,6 +591,8 @@ export interface WhatsappArchive {
   mensagens: number;
   resumo: boolean;
   aviso: string | null;
+  /** Cópia no Google Drive: o caminho (meu-bot / máquina / WhatsApp / contato / arquivo); null = Google não conectado. */
+  drive: string | null;
 }
 /** De onde veio uma conversa do meu-bot criada a partir do WhatsApp: contato, quantas mensagens e até quando. */
 export interface WhatsappOrigin {
