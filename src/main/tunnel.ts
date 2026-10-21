@@ -55,6 +55,8 @@ interface HostTunnel {
   /** Socket local que a máquina deve alcançar por -R (null = nenhum). O reconcile abre/fecha conforme. */
   reverseWanted: string | null;
   reverseBusy: boolean;
+  /** Porta do backend do último túnel aberto: o vigia do -R reconstrói o túnel sem esperar a janela pedir. */
+  lastRemotePort?: number;
 }
 
 const hosts = new Map<string, HostTunnel>();
@@ -78,6 +80,8 @@ function setState(h: HostTunnel, next: TunnelState, detail: string): void {
   if (h.state !== next) log(`[${h.host}] state ${h.state}→${next} (${detail})`);
   h.state = next;
   for (const cb of listeners) cb(h.host, next, detail);
+  // Túnel de volta (aberto, reconstruído ou revalidado depois de acordar): o -R do Navegador volta junto.
+  if (next === "ready" && h.reverseWanted !== null) queueMicrotask(() => { void reconcileReverse(h); });
 }
 
 export const getTunnelState = (host: string): TunnelState => hosts.get(host)?.state ?? "idle";
@@ -314,6 +318,7 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
   const h = entry(host);
   if (host === LOCAL_HOST) return ensureLocal(h, onStatus);
   if (h.pending !== undefined) return h.pending;
+  h.lastRemotePort = remotePort;
   h.pending = (async () => {
     try {
       const live = h.live;
@@ -341,7 +346,6 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
       const forward = await withRetry("túnel SSH", () => startForward(h, localPort, remotePort), onStatus);
       h.live = { remotePort, localPort, apiKey, forward, forwardRestarts: 0 };
       setState(h, "ready", "túnel pronto");
-      void reconcileReverse(h);
       return { localPort, apiKey };
     } catch (err) {
       setState(h, "error", err instanceof Error ? err.message : String(err));
@@ -365,7 +369,28 @@ export const reversePort = (host: string): number | null => hosts.get(host)?.liv
 export function setReverseWanted(host: string, localSocket: string | null): void {
   const h = entry(host);
   h.reverseWanted = localSocket;
+  if (localSocket !== null) startReverseKeeper();
   void reconcileReverse(h);
+}
+/**
+ * Vigia do -R (a cada 30 s): o agente do WhatsApp usa o Navegador a qualquer hora, não só quando alguém olha a janela.
+ * Com o -R pedido e fora (queda longa de rede, Mac que acordou, orçamento de reinícios esgotado), reconstrói o túnel
+ * principal (que reabre o -R ao ficar pronto) ou só o -R.
+ */
+let reverseKeeper: ReturnType<typeof setInterval> | null = null;
+function startReverseKeeper(): void {
+  if (reverseKeeper !== null) return;
+  reverseKeeper = setInterval(() => {
+    for (const h of hosts.values()) {
+      if (h.reverseWanted === null || h.host === LOCAL_HOST || h.pending !== undefined || h.reverseBusy || h.stopping) continue;
+      if (h.live?.reverse !== undefined && h.live.reverse.child.exitCode === null) continue;
+      if (h.state === "ready" && h.live !== undefined) { void reconcileReverse(h); continue; }
+      if (h.lastRemotePort === undefined) continue;
+      log(`[${h.host}] vigia do navegador: túnel fora (${h.state}); reconstruindo`);
+      void ensureTunnel(h.host, h.lastRemotePort).catch((e: unknown) => log(`[${h.host}] vigia do navegador: ${e instanceof Error ? e.message : String(e)}`));
+    }
+  }, 30_000);
+  reverseKeeper.unref?.();
 }
 async function reconcileReverse(h: HostTunnel): Promise<void> {
   if (h.reverseBusy) return;
