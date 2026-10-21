@@ -26,7 +26,7 @@ import { log } from "../backend";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName; /** Entrou por "ssh <host>" (conta do admin, sem o meu-bot dela): o admin prepara Claude Code, login e backend. */ adotada?: true }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
@@ -59,7 +59,7 @@ export function pessoasPorMaquina(): Map<string, { nome: string; alias: string; 
 }
 function load(): Map<string, Stored> {
   try {
-    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown }>;
+    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown; adotada?: unknown }>;
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
@@ -68,7 +68,7 @@ function load(): Map<string, Stored> {
       const key = machineId(d.code);
       const prev = m.get(key);
       if (prev !== undefined && prev.seenAt >= (typeof v.seenAt === "string" ? v.seenAt : "")) continue;
-      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "", ...(v.plan === "pro" || v.plan === "free" ? { plan: v.plan } : {}) });
+      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "", ...(v.plan === "pro" || v.plan === "free" ? { plan: v.plan } : {}), ...(v.adotada === true ? { adotada: true as const } : {}) });
     }
     return m;
   } catch {
@@ -76,8 +76,8 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: PlanName }> = {};
-  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }) };
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: PlanName; adotada?: true }> = {};
+  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }), ...(s.adotada === true ? { adotada: true as const } : {}) };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
 const encode = (c: SupportCode): string => `MBS1.${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
@@ -153,6 +153,8 @@ export async function supportPeople(): Promise<{ people: SupportPerson[]; warnin
   }));
   save(m);
   writeSshFiles(m);
+  // Contas adotadas que ainda não ficaram prontas retomam sozinhas, uma vez por sessão (sem adicionar de novo).
+  for (const s of m.values()) if (s.adotada === true && s.code.state === "on" && !prepareTried.has(supportAlias(s.code))) startPrepare(supportAlias(s.code));
   return { people: [...m.values()].map(toPerson).sort((a, b) => a.name.localeCompare(b.name)), warning };
 }
 
@@ -174,7 +176,7 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
   const host = text.trim().startsWith("MBS1.") ? null : parseSshAddTarget(text);
   const code = host !== null ? await adoptSshHost(host) : (() => { const d = decodeSupportCode(text); if (!d.ok) throw new Error(d.reason); return d.code; })();
   const m = load();
-  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" };
+  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };
   m.set(machineId(code), s);
   save(m);
   writeSshFiles(m);
@@ -182,9 +184,18 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
     // Confere que a chave do admin entra mesmo pelo alias novo (known_hosts e authorized_keys certos).
     const r = await runSsh(supportAlias(code), "true\n", 20_000);
     if (r.code !== 0) throw new Error(`adicionada, mas a chave do admin não entrou: ${lastLine(r)}`);
-    void prepareAdopted(supportAlias(code)).catch((e: unknown) => { log(`[adotar] ${supportAlias(code)}: ${e instanceof Error ? e.message : String(e)}`); });
+    startPrepare(supportAlias(code));
   }
   return toPerson(s);
+}
+
+/** Preparações rodando agora (uma por conta) e as já tentadas nesta sessão do app pelo "Atualizar pessoas". */
+const preparing = new Set<string>();
+const prepareTried = new Set<string>();
+function startPrepare(alias: string): void {
+  if (preparing.has(alias)) return;
+  preparing.add(alias); prepareTried.add(alias);
+  void prepareAdopted(alias).catch((e: unknown) => { log(`[adotar] ${alias}: ${e instanceof Error ? e.message : String(e)}`); }).finally(() => preparing.delete(alias));
 }
 
 const LOGIN_WAIT_MS = 15 * 60_000;
