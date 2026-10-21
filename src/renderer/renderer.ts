@@ -5329,6 +5329,21 @@ function navSelect(id: string): void {
   const cur = navCurrent();
   if (cur !== null) { cur.wv.focus(); try { window.meuBot.browserActive(cur.wv.getWebContentsId()); } catch { /* ainda não anexado: o dom-ready avisa */ } }
 }
+/** Quem está usando cada aba (wcId → conversa), vindo do main: selo e ID na faixa de abas. */
+let navDonos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }> = {};
+window.meuBot.on("browser:donos", ({ donos }) => { navDonos = donos; paintNav(); });
+/**
+ * A conversa dona de uma aba, como aparece no app: no WhatsApp, o nome do contato/grupo e os 8 primeiros caracteres da
+ * sessão do OpenClaw (o mesmo "ID" da aba da conversa); no meu-bot, o título e o começo do id da conversa.
+ */
+function navDonoView(d: { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }): { icone: string; nome: string; curto: string; sessao: string | null } {
+  if (d.origem === "meu-bot") { const conv = d.id.replace(/^meu-bot:/, ""); return { icone: "🤖", nome: d.rotulo, curto: conv.slice(0, 8), sessao: null }; }
+  const grupo = waGroups?.grupos.find((g) => g.sessionKey === d.id);
+  if (grupo !== undefined) return { icone: "📱", nome: waGroupTitle(grupo), curto: grupo.sessionId?.slice(0, 8) ?? "", sessao: grupo.sessionId };
+  const chat = waChats.find((c) => c.sessionKeys.includes(d.id));
+  if (chat !== undefined) { const sid = chat.sessionIds[d.id] ?? null; return { icone: "📱", nome: waChatTitle(chat), curto: sid?.slice(0, 8) ?? "", sessao: sid }; }
+  return { icone: "📱", nome: d.rotulo, curto: /^agent:/.test(d.id) ? "" : d.id.slice(-8), sessao: null };
+}
 const navTabByWc = (wcId: number): NavTab | null => navTabs.find((t) => { try { return t.wv.getWebContentsId() === wcId; } catch { return false; } }) ?? null;
 function navClose(id: string): void {
   const i = navTabs.findIndex((t) => t.id === id);
@@ -5365,6 +5380,17 @@ function paintNav(): void {
     const tabEl = el("div", `nav-tab${t.id === navActive ? " active" : ""}${fixed ? " fixed" : ""}`);
     if (t.favicon !== null) { const img = document.createElement("img"); img.src = t.favicon; img.alt = ""; tabEl.append(img); }
     tabEl.append(el("span", "nav-tab-title", tabLabel(t.title, t.url)));
+    // ID da aba (o número que o agente usa) e, se uma conversa a está usando, o selo com o ID da conversa; clique copia.
+    let wcId: number | null = null; try { wcId = t.wv.getWebContentsId(); } catch { /* ainda não anexada */ }
+    if (wcId !== null) {
+      const d = navDonos[wcId];
+      const v = d === undefined ? null : navDonoView(d);
+      const ref = `navegador · ${hostLabel(windowHost)} · aba ${wcId} · ${t.url}${d === undefined ? " · da pessoa" : ` · dono: ${d.origem === "whatsapp" ? "WhatsApp" : "meu-bot"} ${v!.nome} · ${d.id}${v!.sessao !== null ? ` · sessão ${v!.sessao}` : ""}`}`;
+      const chip = el("button", `nav-tab-id${d !== undefined ? ` dono ${d.origem}` : ""}`, v === null ? `aba ${wcId}` : `${v.icone} ${v.curto || v.nome}`); chip.type = "button";
+      chip.title = `${v === null ? `Aba ${wcId} (da pessoa)` : `Aba ${wcId} · em uso por ${v.nome}${v.curto !== "" ? ` · ID ${v.curto}` : ""}`}\n\nClique para copiar o ID`;
+      chip.addEventListener("click", (ev) => { ev.stopPropagation(); copyReference(ref); });
+      tabEl.append(chip);
+    }
     // Aba fixa de um serviço: não fecha pela tira (sai do trilho, com ×); a solta fecha como sempre.
     if (!fixed) { const x = el("button", "tab-close", "×"); x.type = "button"; x.title = "Fechar aba"; x.addEventListener("click", (ev) => { ev.stopPropagation(); navClose(t.id); }); tabEl.append(x); }
     else tabEl.title = "Site fixo do espaço de trabalho";
@@ -5754,7 +5780,8 @@ window.meuBot.on("browser:favorites", (list) => { navFavs = list; paintNavFavs()
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.
 window.meuBot.on("browser:ask", (msg) => {
   if (navPage === null || navPartition === null) return;
-  if (msg.kind === "new-tab") { navNewTab(msg.url); if (!pageShown(navPage)) openPage(navPage); return; }
+  // Pedido do WhatsApp (fundo): a aba nasce em segundo plano e a tela da pessoa não muda.
+  if (msg.kind === "new-tab") { navNewTab(msg.url, msg.fundo !== true); if (msg.fundo !== true && !pageShown(navPage)) openPage(navPage); return; }
   const t = navTabByWc(msg.wcId); if (t === null) return;
   if (msg.kind === "activate") { navSelect(t.id); if (!pageShown(navPage)) openPage(navPage); }
   else navClose(t.id);

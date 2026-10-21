@@ -340,9 +340,13 @@ export function avisarJanela<K extends "whatsapp:abrir">(host: string, canal: K,
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send(canal, msg); if (win.isMinimized()) win.restore(); win.focus(); return true; }
   return false;
 }
-export function browserAsk(host: string, msg: { kind: "new-tab"; url: string } | { kind: "activate" | "close"; wcId: number }): boolean {
+export function browserAsk(host: string, msg: { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number }): boolean {
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send("browser:ask", msg); return true; }
   return false;
+}
+/** Quem está usando cada aba (wcId → conversa), para o selo e o ID na faixa de abas da janela desta máquina. */
+export function browserDonos(host: string, donos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }>): void {
+  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:donos", { donos });
 }
 
 // Cada <webview> anexado a uma janela que abriu o navegador: popups viram aba interna; Cmd+… volta ao app.

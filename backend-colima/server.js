@@ -302,7 +302,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
     // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).
-    if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
+    if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, dono: browser.dono, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
     if (system) args.push('--append-system-prompt', system);
     if (resume) args.push('--resume', resume);
     if (model) args.push('--model', model);
@@ -450,6 +450,8 @@ async function chatCompletions(req, res) {
   }
   const convRaw = req.headers['x-conversation-id'];
   const convId = typeof convRaw === 'string' && CONV_ID_RE.test(convRaw) ? convRaw : null;
+  // Dono das abas que este turno abrir no Navegador (cada conversa trabalha nas próprias abas): id da conversa + título.
+  if (browser !== null && convId !== null) browser.dono = { id: `meu-bot:${convId}`, rotulo: navegador.parseRotulo(req.headers['x-meu-bot-browser-rotulo']) };
   const hash = sysHash(messages);
   const id = `chatcmpl-${crypto.randomBytes(8).toString('hex')}`;
   const created = Math.floor(Date.now() / 1000);

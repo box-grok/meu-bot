@@ -911,3 +911,9 @@ body.topbar-hidden .topbar { display: none; }
 .grupos-add input { flex: 1; min-width: 0; font: inherit; font-size: 13px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); }
 .grupos-todos summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 .grupos-todos[open] { display: flex; flex-direction: column; gap: 8px; }
+
+/* ID da aba do Navegador e selo da conversa que a está usando (nav-donos-core.ts). */
+.nav-tab-id { flex: none; font: inherit; font-size: 10px; line-height: 1.4; padding: 0 5px; border-radius: 4px; border: 1px solid var(--line); background: none; color: var(--muted); cursor: pointer; }
+.nav-tab-id:hover { color: var(--fg); border-color: var(--fg); }
+.nav-tab-id.dono { color: var(--accent); border-color: var(--accent); }
+.nav-tab-id.dono.whatsapp { color: var(--ok); border-color: var(--ok); }

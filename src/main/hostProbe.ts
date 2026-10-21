@@ -5,6 +5,7 @@
  *
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
+import { NAV_MCP_VERSAO } from "./navegador-whatsapp-core";
 import { isVozId } from "./vozes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -333,7 +334,9 @@ const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill
 /** O lado da máquina do Navegador está instalado? (null para este Mac) */
 export async function navegadorInstalled(host: string): Promise<boolean | null> {
   if (host === LOCAL_HOST || !isValidHost(host)) return null;
-  const r = await run("ssh", [...sshBase(host), "--", host, `[ -f "$HOME/.local/share/meu-bot/navegador-mcp.mjs" ] && grep -q "meu-bot:navegador" "$HOME/agent-workspace/CLAUDE.md" 2>/dev/null && echo nav=1 || echo nav=0`], 25_000);
+  const r = await run("ssh", [...sshBase(host), "--", host, `[ -f "$HOME/.local/share/meu-bot/navegador-mcp.mjs" ] && grep -q "meu-bot:navegador" "$HOME/agent-workspace/CLAUDE.md" 2>/dev/null && echo nav=1 || echo nav=0; grep -qs "${NAV_MCP_VERSAO}" "$HOME/.local/share/meu-bot/navegador-mcp.mjs" && echo ver=ok || echo ver=velha`], 25_000);
+  // Instalado, mas com o servidor antigo (abas sem dono por conversa): atualiza em segundo plano.
+  if (r.stdout.includes("nav=1") && r.stdout.includes("ver=velha")) void installNavegador(host).catch(() => undefined);
   return r.stdout.includes("nav=1");
 }
 /** Instala o lado da máquina do Navegador (MCP + regra no CLAUDE.md). Mesmo molde da status line. */

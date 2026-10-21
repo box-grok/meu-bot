@@ -2397,3 +2397,26 @@ se misturam. O alias SSH é estável; o apelido da tela pode mudar.
 - **Leitura da conversa:** sessão que o gateway não devolve a tempo é erro, nunca conversa vazia, para não limpar
   sem guardar.
 - **Requisito:** a Drive API precisa estar ativada no projeto do Google Cloud do client OAuth do app.
+
+## Abas do Navegador com dono por conversa (21 out)
+
+Várias conversas usam o mesmo Navegador: as do meu-bot, a DM e cada grupo do WhatsApp. Cada pedido do servidor do
+Navegador (`navegador-mcp.mjs` v2) leva `X-Meu-Bot-Dono` (base64 de `{id, rotulo, origem}`):
+- **meu-bot:** `--dono meu-bot:<conversa> --rotulo <título>`, vindos do backend (`X-Conversation-Id` mais o
+  `X-Meu-Bot-Browser-Rotulo` que o app manda).
+- **WhatsApp:** a chave da sessão do OpenClaw (`OPENCLAW_TOOLS_MCP_AGENT_SESSION_KEY`) se vier no ambiente; senão, um
+  id por processo.
+- **Backend antigo, sem cabeçalho:** conta como uma conversa só, `meu-bot:legado`.
+
+Regras em `src/main/nav-donos-core.ts` (testadas), aplicadas em `nav-api.ts`:
+- `abrir` sem aba cria ou reaproveita uma aba da própria conversa, nunca a da frente; no máximo 3 por conversa.
+- Ações sem aba vão para a aba da conversa. Ler e print valem em qualquer aba.
+- Mexer na aba de outra conversa é recusado ("em uso por outra conversa; use abrir com nova=true").
+- A posse expira em 10 min sem uso. Ações na mesma aba entram numa fila.
+- Ferramenta nova `fechar`, só para aba da própria conversa.
+- Pedido do WhatsApp abre a aba em segundo plano (`browser:ask` com `fundo`): a tela da pessoa não muda.
+
+**Na tela:** cada aba mostra o ID (`aba <n>`, o número que o agente usa) ou o selo da conversa dona: `📱 d585b772`
+(os 8 primeiros caracteres da sessão do OpenClaw, o mesmo "ID" da aba da conversa) ou `🤖 <id da conversa>`. Um clique
+copia a referência: máquina, aba, url e dono, com chave e sessão. A máquina com o servidor v1 é atualizada sozinha
+(`navegadorInstalled` e `mcpfile` conferem o marcador `meu-bot-navegador v2`).

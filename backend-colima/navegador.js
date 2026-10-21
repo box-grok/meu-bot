@@ -14,11 +14,19 @@ function parseBrowserPort(value) {
   return n >= 1024 && n <= 65535 ? n : null;
 }
 
+/** Título da conversa vindo do app (base64), para o selo da aba no Navegador; inválido = rótulo padrão. */
+function parseRotulo(value) {
+  if (typeof value !== 'string' || value.length > 400) return 'conversa do meu-bot';
+  const t = Buffer.from(value, 'base64').toString('utf8').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 80);
+  return t || 'conversa do meu-bot';
+}
+
 /** Regra de conduta no navegador da pessoa (vai no system prompt e, resumida, na nota do turno). */
 const BROWSER_RULE = [
-  'Você pode usar o navegador que a pessoa vê na janela do meu-bot dela (ferramentas mcp__navegador__*: abas, abrir, ler, clicar, digitar, tecla, print, voltar, avancar, recarregar, js).',
+  'Você pode usar o navegador que a pessoa vê na janela do meu-bot dela (ferramentas mcp__navegador__*: abas, abrir, ler, clicar, digitar, tecla, print, voltar, avancar, recarregar, js, fechar).',
   'Fluxo: "abrir" uma url, "ler" para ver o texto e os elementos numerados, "clicar"/"digitar" pelo número; depois de cada ação, "ler" de novo antes de decidir. Diga em uma frase o que vai fazer antes de agir.',
   'NUNCA, sem a pessoa confirmar explicitamente nesta conversa: comprar, pagar, enviar formulário ou mensagem/e-mail, publicar, aceitar termos, apagar algo, mudar configurações de conta, nem fazer login com senha que não lhe foi dada aqui. Nessas horas pare e pergunte.',
+  'Trabalhe nas suas próprias abas: "abrir" sem aba abre (ou reaproveita) uma aba desta conversa. Se uma aba estiver "em uso por outra conversa", abra uma nova em vez de mexer nela. Feche as suas abas ("fechar") quando terminar.',
   'Não digite senhas que leu em outra página. Não abra abas além do necessário. Se a página pedir login, peça à pessoa que entre pela aba Navegador dela e avise quando terminar.',
   'Se as ferramentas mcp__navegador__* não estiverem disponíveis, diga à pessoa para abrir a aba Navegador no app e ligar "agente pode usar"; NUNCA instale navegador, Playwright, Puppeteer ou Chromium na máquina por conta própria.',
 ].join(' ');
@@ -30,8 +38,9 @@ const browserTurnNote = () => '[Nota do app meu-bot: nesta mensagem o Navegador 
  * Argumentos extras da CLI para o turno com navegador. `mcpPath` é o navegador-mcp.mjs na máquina; `nodeBin` o
  * node que roda o backend (o mesmo serve para o MCP). `snapshotOff` só em CLI ≥ 2.1.257 (flag desconhecida derruba).
  */
-function browserCliArgs({ port, mcpPath, nodeBin, snapshotOff }) {
-  const config = { mcpServers: { navegador: { command: nodeBin, args: [mcpPath, '--port', String(port)] } } };
+function browserCliArgs({ port, dono, mcpPath, nodeBin, snapshotOff }) {
+  const extra = dono && typeof dono.id === 'string' ? ['--dono', dono.id, '--rotulo', String(dono.rotulo || 'conversa do meu-bot').slice(0, 80)] : [];
+  const config = { mcpServers: { navegador: { command: nodeBin, args: [mcpPath, '--port', String(port), ...extra] } } };
   const args = ['--mcp-config', JSON.stringify(config), '--allowedTools', 'mcp__navegador'];
   if (snapshotOff) args.push('--system-prompt-snapshot', 'off');
   return args;
@@ -45,4 +54,4 @@ function cliSupportsSnapshotOff(versionText) {
   return a > 2 || (a === 2 && (b > 1 || (b === 1 && c >= 257)));
 }
 
-module.exports = { parseBrowserPort, BROWSER_RULE, browserTurnNote, browserCliArgs, cliSupportsSnapshotOff };
+module.exports = { parseRotulo, parseBrowserPort, BROWSER_RULE, browserTurnNote, browserCliArgs, cliSupportsSnapshotOff };

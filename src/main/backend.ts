@@ -513,7 +513,7 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     // Retomada de sessão no backend: diz quantas mensagens do começo ele já conhece.
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
     const browserPort = browserAgentPort(host);
-    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId(), ...(browserPort === null ? {} : { "X-Meu-Bot-Browser-Port": String(browserPort) }) };
+    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId(), ...(browserPort === null ? {} : { "X-Meu-Bot-Browser-Port": String(browserPort), "X-Meu-Bot-Browser-Rotulo": Buffer.from((conv.title ?? "conversa do meu-bot").slice(0, 80), "utf8").toString("base64") }) };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
     let fallbackNote: string | undefined;
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {

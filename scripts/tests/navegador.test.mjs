@@ -24,3 +24,14 @@ test("cliSupportsSnapshotOff: 2.1.257 em diante", () => {
   assert.equal(cliSupportsSnapshotOff("2.1.302 (Claude Code)"), true); assert.equal(cliSupportsSnapshotOff("2.1.257"), true);
   assert.equal(cliSupportsSnapshotOff("2.1.256"), false); assert.equal(cliSupportsSnapshotOff("1.9.9"), false); assert.equal(cliSupportsSnapshotOff(""), false);
 });
+
+test("dono da conversa vai para o servidor do Navegador (--dono/--rotulo); título vem em base64 do app", async () => {
+  const { browserCliArgs, parseRotulo } = await import("../../backend-colima/navegador.js");
+  const args = browserCliArgs({ port: 19123, dono: { id: "meu-bot:conv-1", rotulo: "Análise do Instagram" }, mcpPath: "/m.mjs", nodeBin: "/node", snapshotOff: false });
+  const cfg = JSON.parse(args[args.indexOf("--mcp-config") + 1]);
+  assert.deepEqual(cfg.mcpServers.navegador.args, ["/m.mjs", "--port", "19123", "--dono", "meu-bot:conv-1", "--rotulo", "Análise do Instagram"]);
+  const sem = JSON.parse(browserCliArgs({ port: 19123, mcpPath: "/m.mjs", nodeBin: "/node" })[1]);
+  assert.deepEqual(sem.mcpServers.navegador.args, ["/m.mjs", "--port", "19123"]);
+  assert.equal(parseRotulo(Buffer.from("Minha conversa\n").toString("base64")), "Minha conversa");
+  assert.equal(parseRotulo(undefined), "conversa do meu-bot");
+});

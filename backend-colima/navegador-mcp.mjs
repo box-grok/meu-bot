@@ -6,7 +6,10 @@
  * ou --port-file <arquivo>: o agente do WhatsApp (OpenClaw, ligado 24 h) lê a porta a cada chamada do arquivo que o
  * app grava quando o túnel sobe; sem arquivo ou sem resposta, o Navegador está fechado (app fechado no Mac do dono).
  * Protocolo: JSON-RPC 2.0, uma mensagem por linha (initialize, tools/list, tools/call, ping, notifications).
+ * Cada pedido leva quem está pedindo (cabeçalho X-Meu-Bot-Dono): cada conversa trabalha nas próprias abas.
+ * meu-bot-navegador v2
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import readline from 'node:readline';
@@ -18,14 +21,25 @@ if (!fixedPort && !portFile) { process.stderr.write('navegador-mcp: falta --port
 const FECHADO = portFile
   ? 'o Navegador do dono está fechado: o app meu-bot precisa estar aberto no Mac dele, com "agente pode usar" ligado na aba Navegador. Avise quem pediu e siga sem o navegador.'
   : 'o Navegador da pessoa não está ligado para o agente (abra a aba Navegador no app e ligue "agente pode usar")';
+/**
+ * Quem pede: no meu-bot, a conversa (--dono/--rotulo, do backend); no agente do WhatsApp (--port-file), a sessão do
+ * OpenClaw se ela vier no ambiente, senão um id deste processo (o Claude Code de cada sessão abre o seu).
+ */
+const sessaoOpenClaw = (process.env.OPENCLAW_TOOLS_MCP_AGENT_SESSION_KEY || '').trim();
+const DONO = arg('--dono')
+  ? { id: arg('--dono'), rotulo: arg('--rotulo') || 'conversa do meu-bot', origem: 'meu-bot' }
+  : portFile
+    ? { id: /^agent:[\w:+.@=-]{1,190}$/.test(sessaoOpenClaw) ? sessaoOpenClaw : `whatsapp-${crypto.randomBytes(4).toString('hex')}`, rotulo: 'WhatsApp', origem: 'whatsapp' }
+    : null;
+const DONO_HDR = DONO ? Buffer.from(JSON.stringify(DONO), 'utf8').toString('base64') : null;
 function porta() {
   if (fixedPort) return fixedPort;
   try { const n = Number(fs.readFileSync(portFile, 'utf8').trim()); return Number.isInteger(n) && n > 1024 && n < 65536 ? n : 0; } catch { return 0; }
 }
 
 const TOOLS = [
-  { name: 'abas', description: 'Lista as abas abertas no Navegador da pessoa (id, url, título, qual está ativa).', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
-  { name: 'abrir', description: 'Abre uma url (http/https) na aba ativa, ou numa aba nova com nova=true. Espera carregar e devolve título/url.', inputSchema: { type: 'object', properties: { url: { type: 'string' }, nova: { type: 'boolean' }, aba: { type: 'number' } }, required: ['url'], additionalProperties: false } },
+  { name: 'abas', description: 'Lista as abas abertas no Navegador da pessoa (id, url, título, qual está ativa e de quem é: esta conversa, outra conversa ou da pessoa).', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
+  { name: 'abrir', description: 'Abre uma url (http/https) numa aba desta conversa (a primeira vez cria uma; depois reaproveita), ou numa aba nova com nova=true. Nunca na aba que a pessoa está usando. Espera carregar e devolve título/url.', inputSchema: { type: 'object', properties: { url: { type: 'string' }, nova: { type: 'boolean' }, aba: { type: 'number' } }, required: ['url'], additionalProperties: false } },
   { name: 'ler', description: 'Lê a página: título, url, texto visível e a lista numerada de links, botões e campos. Use os números em clicar/digitar. Leia de novo depois de cada ação.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
   { name: 'clicar', description: 'Clica num elemento: por número da última leitura (n), por texto visível (texto) ou por seletor CSS (seletor).', inputSchema: { type: 'object', properties: { n: { type: 'number' }, texto: { type: 'string' }, seletor: { type: 'string' }, aba: { type: 'number' } }, additionalProperties: false } },
   { name: 'digitar', description: 'Digita texto num campo (por número n, seletor, ou no campo focado), apagando o que havia; enter=true confirma com Enter.', inputSchema: { type: 'object', properties: { texto: { type: 'string' }, n: { type: 'number' }, seletor: { type: 'string' }, enter: { type: 'boolean' }, aba: { type: 'number' } }, required: ['texto'], additionalProperties: false } },
@@ -37,6 +51,7 @@ const TOOLS = [
   { name: 'favoritos', description: 'Lista a barra de favoritos do Navegador da pessoa (id, título, url).', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'favoritar', description: 'Adiciona uma url à barra de favoritos do Navegador da pessoa (título opcional; url repetida só atualiza o título).', inputSchema: { type: 'object', properties: { url: { type: 'string' }, titulo: { type: 'string' } }, required: ['url'], additionalProperties: false } },
   { name: 'desfavoritar', description: 'Tira um favorito da barra, pelo id (veja favoritos) ou pela url.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' } }, additionalProperties: false } },
+  { name: 'fechar', description: 'Fecha uma aba desta conversa (sem aba: a mais recente dela). Abas da pessoa ou de outra conversa não fecham. Feche as suas quando terminar.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
   { name: 'js', description: 'Roda JavaScript na página e devolve o resultado (último recurso; prefira ler/clicar/digitar).', inputSchema: { type: 'object', properties: { codigo: { type: 'string' }, aba: { type: 'number' } }, required: ['codigo'], additionalProperties: false } },
 ];
 
@@ -45,7 +60,7 @@ function call(route, body) {
     const port = porta();
     if (!port) { reject(new Error(FECHADO)); return; }
     const data = JSON.stringify(body || {});
-    const req = http.request({ host: '127.0.0.1', port, path: `/${route}`, method: route === 'abas' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, timeout: 60_000 }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port, path: `/${route}`, method: route === 'abas' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...(DONO_HDR ? { 'X-Meu-Bot-Dono': DONO_HDR } : {}) }, timeout: 60_000 }, (res) => {
       let out = ''; res.setEncoding('utf8'); res.on('data', (c) => { out += c; });
       res.on('end', () => { try { const j = JSON.parse(out || '{}'); if (res.statusCode !== 200) reject(new Error(j.erro || `HTTP ${res.statusCode}`)); else resolve(j); } catch (e) { reject(new Error(`resposta inválida do app: ${e.message}`)); } });
     });
@@ -67,7 +82,7 @@ const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   let msg; try { msg = JSON.parse(line); } catch { return; }
   const { id, method, params } = msg;
-  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '1.0.0' } } });
+  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '2.0.0' } } });
   if (method === 'notifications/initialized' || (typeof method === 'string' && method.startsWith('notifications/'))) return;
   if (method === 'ping') return send({ jsonrpc: '2.0', id, result: {} });
   if (method === 'tools/list') return send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
