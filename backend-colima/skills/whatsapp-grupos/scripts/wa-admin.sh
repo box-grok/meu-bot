@@ -39,6 +39,11 @@ fi
 # Trava: o vigia do gateway (guarda) não religa enquanto este script trabalha com o gateway parado.
 LOCK="$HOME/.cache/meu-bot/wa-admin.lock"; mkdir -p "$(dirname "$LOCK")"; echo $$ > "$LOCK"
 
+# 0) confere o que a listagem precisa ANTES de parar o gateway (máquina que atende clientes não fica parada à toa)
+NODE=/opt/node/bin/node; [[ -x "$NODE" ]] || NODE=$(command -v node)
+[[ -n "$NODE" ]] || { echo "❌ node não encontrado" >&2; exit 3; }
+"$NODE" "$S/wa-grupos.js" checar >&2 || { echo "❌ nada foi parado: corrija o problema acima e tente de novo." >&2; exit 3; }
+
 # 1) backup (mantém os 3 últimos)
 mkdir -p "$BK_DIR" && chmod 700 "$BK_DIR"
 BK="$BK_DIR/whatsapp-$(date +%Y%m%d-%H%M%S).tar.gz"
@@ -73,6 +78,6 @@ if [[ "$WAS_ACTIVE" == "active" ]]; then
 fi
 
 # 3) comando
-/opt/node/bin/node "$S/wa-grupos.js" "$@"
+"$NODE" "$S/wa-grupos.js" "$@"
 RC=$?
 exit $RC

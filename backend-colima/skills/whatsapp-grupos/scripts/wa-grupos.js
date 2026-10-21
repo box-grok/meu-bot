@@ -23,7 +23,23 @@ const path = require('path');
 const os = require('os');
 const { execSync } = require('child_process');
 
-const PLUGIN_NM = path.join(os.homedir(), '.openclaw/extensions/whatsapp/node_modules');
+/**
+ * node_modules do plugin do WhatsApp, onde estão o baileys e o pino: o layout antigo (~/.openclaw/extensions/whatsapp)
+ * ou o novo do OpenClaw (~/.openclaw/npm/projects/openclaw-whatsapp-<hash>/…, a instalação mais recente primeiro).
+ * null = não achou (wa-admin.sh confere com "checar" antes de parar o gateway).
+ */
+function pluginNodeModules() {
+  const home = os.homedir();
+  const cands = [path.join(home, '.openclaw/extensions/whatsapp/node_modules')];
+  const proj = path.join(home, '.openclaw/npm/projects');
+  try {
+    const dirs = fs.readdirSync(proj).filter((n) => n.startsWith('openclaw-whatsapp-')).map((n) => path.join(proj, n));
+    dirs.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+    for (const d of dirs) cands.push(path.join(d, 'node_modules/@openclaw/whatsapp/node_modules'), path.join(d, 'node_modules'));
+  } catch { /* sem o layout novo */ }
+  return cands.find((c) => fs.existsSync(path.join(c, 'baileys'))) || null;
+}
+const PLUGIN_NM = pluginNodeModules();
 const AUTH_DIR = path.join(os.homedir(), '.openclaw/credentials/whatsapp/default');
 const CACHE = path.join(__dirname, '..', 'data', 'grupos-live.json');
 const OPENCLAW_VERSION = '2026.7.1-2'; // igual ao browser[] que o plugin anuncia
@@ -43,6 +59,15 @@ if (!cmd || flags.has('--help')) {
   process.exit(0);
 }
 
+// "checar": só confere o que a listagem precisa (sem parar nada). O wa-admin.sh roda isto ANTES de parar o gateway.
+if (cmd === 'checar') {
+  if (!PLUGIN_NM) die('não achei o baileys do plugin do WhatsApp (procurei em ~/.openclaw/extensions/whatsapp e ~/.openclaw/npm/projects/openclaw-whatsapp-*): reinstale o plugin com openclaw plugins install');
+  if (!fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) die(`creds.json não encontrado em ${AUTH_DIR}`);
+  console.log(`ok: ${PLUGIN_NM}`);
+  process.exit(0);
+}
+if (!PLUGIN_NM) die('não achei o baileys do plugin do WhatsApp');
+
 // Guarda: gateway precisa estar parado (a menos que --forcar, por sua conta e risco).
 try {
   const st = execSync('systemctl --user is-active openclaw-gateway.service', { encoding: 'utf8' }).trim();
@@ -55,13 +80,13 @@ try {
 
 if (!fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) die(`creds.json não encontrado em ${AUTH_DIR}`);
 
-const baileys = require(path.join(PLUGIN_NM, 'baileys'));
+const baileys = require(require.resolve('baileys', { paths: [PLUGIN_NM] }));
 const makeWASocket = baileys.default;
 const { useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, DisconnectReason } = baileys;
 
 let pino;
 try {
-  pino = require(path.join(PLUGIN_NM, 'pino'));
+  pino = require(require.resolve('pino', { paths: [PLUGIN_NM] }));
 } catch {
   pino = null;
 }
