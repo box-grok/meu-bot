@@ -1445,7 +1445,7 @@ function closePage(page: PageTab): void {
   if (splitPage === page) splitOff(false);
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
   if (page.id.startsWith("term-")) disposeTerminal(page.id);
-  if (page.id === "navegador") disposeNav();
+  if (page.id === "navegador") { navMarcarAberto(false); disposeNav(); }
   const wasActive = pageActive === page;
   if (wasActive) deactivatePage();
   page.tabEl.remove();
@@ -5304,7 +5304,7 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   wv.className = "nav-view";
   wv.hidden = true;
   const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map(), ...(serviceId !== undefined ? { serviceId } : {}) };
-  const sync = (): void => { tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); };
+  const sync = (): void => { const antes = tab.url; tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); if (tab.url !== antes) navSalvarAbas(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
@@ -5319,10 +5319,12 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   navEls.box.append(wv);
   navTabs.push(tab);
   if (activate || navActive === null) navSelect(tab.id); else paintNav();
+  navSalvarAbas();
   return tab;
 }
 function navSelect(id: string): void {
   navActive = id;
+  navSalvarAbas();
   for (const t of navTabs) t.wv.hidden = t.id !== id;
   paintNav();
   navRefitSoon();
@@ -5345,6 +5347,27 @@ function navDonoView(d: { id: string; rotulo: string; origem: "meu-bot" | "whats
   return { icone: "📱", nome: d.rotulo, curto: /^agent:/.test(d.id) ? "" : d.id.slice(-8), sessao: null };
 }
 const navTabByWc = (wcId: number): NavTab | null => navTabs.find((t) => { try { return t.wv.getWebContentsId() === wcId; } catch { return false; } }) ?? null;
+/**
+ * O Navegador volta como estava ao reabrir o app: as abas soltas desta máquina (endereço, ordem, qual na frente) e se
+ * ele estava aberto. Fechar o app não conta como fechar o Navegador; só o × da aba dele. Os sites fixos voltam pelos
+ * espaços de trabalho, como sempre. Sem o Navegador aberto, o agente (do meu-bot e do WhatsApp) não tem onde abrir páginas.
+ */
+const navAbasKey = (): string => `navAbas:${windowHost}`;
+const navAbertoKey = (): string => `navAberto:${windowHost}`;
+function navSalvarAbas(): void {
+  const soltas = navTabs.filter((t) => t.serviceId === undefined && /^https?:\/\//.test(t.url));
+  const ativa = soltas.findIndex((t) => t.id === navActive);
+  try { localStorage.setItem(navAbasKey(), JSON.stringify({ urls: soltas.map((t) => t.url).slice(0, 30), ativa })); } catch { /* opcional */ }
+}
+function navAbasSalvas(): { urls: string[]; ativa: number } {
+  try {
+    const j = JSON.parse(localStorage.getItem(navAbasKey()) ?? "null") as { urls?: unknown; ativa?: unknown } | null;
+    const urls = Array.isArray(j?.urls) ? j!.urls.filter((u): u is string => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 30) : [];
+    return { urls, ativa: typeof j?.ativa === "number" ? j.ativa : 0 };
+  } catch { return { urls: [], ativa: 0 }; }
+}
+function navMarcarAberto(aberto: boolean): void { try { if (aberto) localStorage.setItem(navAbertoKey(), "1"); else localStorage.removeItem(navAbertoKey()); } catch { /* opcional */ } }
+const navEstavaAberto = (): boolean => { try { return localStorage.getItem(navAbertoKey()) === "1"; } catch { return false; } };
 function navClose(id: string): void {
   const i = navTabs.findIndex((t) => t.id === id);
   if (i < 0) return;
@@ -5352,6 +5375,7 @@ function navClose(id: string): void {
   t!.wv.remove();
   if (navActive === id) { const next = navTabs[Math.min(i, navTabs.length - 1)]; if (next !== undefined) navSelect(next.id); else { navActive = null; paintNav(); } }
   else paintNav();
+  navSalvarAbas();
 }
 function paintNav(): void {
   if (navEls === null || navPage === null) return;
@@ -5461,8 +5485,9 @@ function paintNavMenu(): void {
   m.append(el("p", "hint", caps.extensaoGmail ? "O CRM do meu-bot já vem no Gmail e o Autenticador guarda seus códigos de dois fatores na máquina; outras extensões de conteúdo também funcionam. Se o Streak ainda estiver instalado, pode removê-lo aqui." : "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
 }
 /** Abre a aba Navegador (ou traz para a frente). Sem Pro, abre bloqueada com a explicação e o pedido ao admin. */
-async function openNavTab(url?: string): Promise<void> {
+async function openNavTab(url?: string, frente = true): Promise<void> {
   if (!caps.chat) return; // só o meu-bot da pessoa (o admin não tem conversas nem licença própria)
+  navMarcarAberto(true);
   if (navPage === null) {
     const panel = el("section", "nav-panel"); panel.hidden = true;
     const tabsEl2 = el("div", "nav-tabs");
@@ -5538,7 +5563,7 @@ async function openNavTab(url?: string): Promise<void> {
     new ResizeObserver(() => navRefitSoon()).observe(box);
     navPage = definePage("navegador", "Navegador", panel, () => { paintNav(); });
   }
-  openPage(navPage);
+  openPage(navPage, frente);
   await refreshLicense();
   navAccess = browserAccess(license, windowHost, caps.planoExigido, caps.produto);
   paintNav();
@@ -5549,7 +5574,12 @@ async function openNavTab(url?: string): Promise<void> {
   }
   if (navAccess === "ok" && navPartition !== null) {
     if (url !== undefined) navNewTab(navNormalize(url));
-    else if (navTabs.length === 0) navNewTab();
+    else if (navTabs.length === 0) {
+      // Reabrindo o app: as abas de antes, na mesma ordem e com a mesma na frente; sem nenhuma guardada, a página inicial.
+      const salvas = navAbasSalvas();
+      if (salvas.urls.length === 0) navNewTab();
+      else { const criadas = salvas.urls.map((u) => navNewTab(u, false)); const na = criadas[Math.min(Math.max(salvas.ativa, 0), criadas.length - 1)]; if (na) navSelect(na.id); }
+    }
     else if (navCurrent() === null) { const first = navVisibleTabs()[0]; if (first !== undefined) navSelect(first.id); }
     else navCurrent()?.wv.focus();
   }
@@ -6363,6 +6393,8 @@ void (async () => {
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
   void refreshStatusLine();
   void refreshWhatsapp();
+  // O Navegador estava aberto quando o app fechou: volta sozinho, em segundo plano, com as abas de antes.
+  if (caps.chat && windowHost !== "" && navEstavaAberto()) void openNavTab(undefined, false);
   void refreshSupportState();
   void refreshObjective();
   void refreshClaudeLine();
