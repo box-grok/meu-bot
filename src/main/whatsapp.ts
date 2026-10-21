@@ -34,6 +34,16 @@ const SSH_OPTS = [
  * \`channels status\` responder. Só para gateway local sob systemd; sob supervisord (computador do Grok Bot)
  * ou modo remoto, não mexe. Imprime a porta nova em stdout; falha em silêncio (código 1).
  */
+/**
+ * O plugin do WhatsApp do OpenClaw está instalado e ligado? Pelo id exato ("whatsapp") no `plugins list --json`:
+ * contar a palavra no texto da lista dava falso positivo com os plugins do meu-bot ("guarda do WhatsApp",
+ * "CRM pelo WhatsApp"), e numa VM nova o login caía num assistente que se cancela ("wizard cancelled").
+ */
+const WA_PLUGIN_SH = `wa_plugin() { timeout 40 openclaw plugins list --json 2>/dev/null | python3 -c 'import json,sys
+t=sys.stdin.read(); i=t.find("{")
+try: d=json.loads(t[i:]) if i>=0 else {}
+except Exception: d={}
+print(int(any(p.get("id")=="whatsapp" and p.get("enabled",True) is not False for p in d.get("plugins",[]) if isinstance(p,dict))))' 2>/dev/null || echo 0; }`;
 const GATEWAY_FIX_SH = `
 gw_mismatch() { timeout 25 openclaw channels status --json 2>&1 | grep -q 'token mismatch'; }
 gw_fix() {
@@ -72,7 +82,8 @@ if command -v openclaw >/dev/null 2>&1; then
   echo "ver=$(timeout 10 openclaw --version 2>/dev/null | head -1)"
   [ -f "$HOME/.openclaw/openclaw.json" ] && echo cfg=1 || echo cfg=0
   # Plugin do WhatsApp instalado? (não vem de fábrica; é do ClawHub)
-  echo "plugin=$(timeout 25 openclaw plugins list 2>/dev/null | grep -ci whatsapp)"
+  ${WA_PLUGIN_SH}
+  echo "plugin=$(wa_plugin)"
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null)"
   # Sem config não há gateway; pular o channels status poupa 25 s.
   [ -f "$HOME/.openclaw/openclaw.json" ] || exit 0
@@ -159,7 +170,7 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const plugin = Number(kv.get("plugin") ?? "0") > 0;
   const cfg = kv.get("cfg") === "1";
   if (!plugin || !cfg) {
-    const faltas = [...(!cfg ? ["sem configuração (~/.openclaw/openclaw.json)"] : []), ...(!plugin ? ["sem o plugin do WhatsApp: `openclaw plugins install clawhub:@openclaw/whatsapp`"] : [])];
+    const faltas = [...(!cfg ? ["sem configuração (~/.openclaw/openclaw.json)"] : []), ...(!plugin ? ["sem o plugin do WhatsApp (o \"Gerar QR\" instala sozinho, na versão do OpenClaw da máquina)"] : [])];
     return { present: true, gateway: "openclaw", agent, ready: false, missing: faltas.join("\n"), connected: false, state: "sem configurar", number: null, loggedOut: false, detail: `OpenClaw instalado, mas ${!cfg ? "sem configurar" : "sem o plugin do WhatsApp"}`, dmPolicy: null, channelConfig: null };
   }
   let oc: { linked?: unknown; connected?: unknown; state?: unknown; lifecycle?: unknown; loggedOut?: unknown; e164?: unknown; starting?: unknown } = {};
@@ -278,7 +289,17 @@ fi
 if command -v openclaw >/dev/null 2>&1; then
   echo '{"event":"meu-bot","step":"openclaw"}'
   if [ ! -f "$HOME/.openclaw/openclaw.json" ]; then echo '{"event":"error","error":"OpenClaw instalado, mas sem configurar nesta máquina (não há ~/.openclaw/openclaw.json); rode o onboarding do OpenClaw antes de parear"}'; exit 2; fi
-  if ! timeout 25 openclaw plugins list 2>/dev/null | grep -qi whatsapp; then echo '{"event":"error","error":"OpenClaw sem o plugin do WhatsApp; na máquina: openclaw plugins install clawhub:@openclaw/whatsapp"}'; exit 2; fi
+  # Sem o plugin do WhatsApp (VM nova: ele não vem de fábrica), instala do ClawHub e segue para o QR.
+  ${WA_PLUGIN_SH}
+  if [ "$(wa_plugin)" != "1" ]; then
+    echo '{"event":"meu-bot","step":"plugin-installing"}'
+    # Na versão do OpenClaw da máquina: a última do ClawHub costuma exigir um runtime mais novo ("requires plugin API").
+    OCV=$(timeout 20 openclaw --version 2>/dev/null | grep -Eo '[0-9]+\\.[0-9]+\\.[0-9]+' | head -n1)
+    { [ -n "$OCV" ] && timeout 300 openclaw plugins install "clawhub:@openclaw/whatsapp@$OCV" >/dev/null 2>&1; } || timeout 300 openclaw plugins install clawhub:@openclaw/whatsapp >/dev/null 2>&1 || true
+    timeout 60 openclaw plugins enable whatsapp >/dev/null 2>&1 || true
+    if [ "$(wa_plugin)" != "1" ]; then echo "{\\"event\\":\\"error\\",\\"error\\":\\"OpenClaw sem o plugin do WhatsApp e a instalação automática falhou; na máquina: openclaw plugins install clawhub:@openclaw/whatsapp@$OCV\\"}"; exit 2; fi
+    echo '{"event":"meu-bot","step":"plugin-installed"}'
+  fi
   # Padrão do OpenClaw é "pairing": qualquer desconhecido que mandar DM recebe um código. Antes de conectar, sem
   # política autorada, deixa silencioso (ninguém é respondido); a pessoa escolhe depois, no app ou no tutorial.
   if [ -z "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" ] || openclaw config get channels.whatsapp.dmPolicy 2>&1 | grep -q unset; then
@@ -384,6 +405,8 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
+          else if (ev.step === "plugin-installing") send({ kind: "step", text: "esta máquina não tinha o plugin do WhatsApp do OpenClaw; instalando (até 1–2 min)" });
+          else if (ev.step === "plugin-installed") send({ kind: "step", text: "plugin do WhatsApp instalado" });
           else if (ev.step === "silent") send({ kind: "step", text: "padrão: só você fala com o agente; ninguém mais recebe resposta nem código" });
           else if (ev.step === "gateway-started") send({ kind: "step", text: "gateway de volta no ar" });
           else if (ev.step === "gateway-port") send({ kind: "step", text: `o gateway desta conta apontava para o gateway de outra conta da máquina; ganhou a porta própria ${String(ev.port ?? "?")}` });
