@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -64,6 +64,11 @@ const sharedApi: MeuBotSharedApi = {
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),
   whatsappThread: (number: string) => ipcRenderer.invoke("whatsapp:thread", { number }),
   showWhatsappMenu: (number: string, state: { archived: boolean; paused: boolean; deleted: boolean }) => ipcRenderer.invoke("ui:wa-menu", { number, state }),
+  whatsappGroups: () => ipcRenderer.invoke("whatsapp:groups", {}),
+  whatsappGroupThread: (jid: string) => ipcRenderer.invoke("whatsapp:group-thread", { jid }),
+  setWhatsappGroup: (jid: string, patch: WhatsappGroupPatch) => ipcRenderer.invoke("whatsapp:group-set", { jid, patch }),
+  refreshWhatsappGroups: () => ipcRenderer.invoke("whatsapp:groups-refresh", {}),
+  showWhatsappGroupMenu: (jid: string, state: { agente: WhatsappGroupAgent }) => ipcRenderer.invoke("ui:wa-group-menu", { jid, state }),
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
   whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
   archiveWhatsappToCrm: (number: string) => ipcRenderer.invoke("whatsapp:archive-crm", { number }),

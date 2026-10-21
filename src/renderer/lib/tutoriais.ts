@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappStatus, CrmInfo } from "../../shared/ipc";
+import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -38,6 +38,11 @@ export interface GuideContext {
   objective: ObjectiveInfo | null;
   /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null };
+  /**
+   * Tutorial 12: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
+   * o agente já respondeu nesse grupo.
+   */
+  grupos: { info: WhatsappGroups | null; alvo: string | null; respondeu: boolean };
   /** O produto desta janela (caps): decide quais tutoriais de CRM existem e se há etiqueta Pro. */
   produto: { planoExigido: "free" | "pro" | "personalizado"; extensaoGmail: boolean; crmStreak: boolean };
   /**
@@ -47,9 +52,9 @@ export interface GuideContext {
   known: Record<GuideSource, boolean>;
 }
 /** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
-export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm";
-export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm"];
-const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false });
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false });
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
@@ -62,6 +67,7 @@ export const emptyContext = (): GuideContext => ({
   fallback: { primary: null, chain: null },
   objective: null,
   crm: { access: null, info: null },
+  grupos: { info: null, alvo: null, respondeu: false },
   produto: { planoExigido: "free", extensaoGmail: false, crmStreak: true },
   known: noneKnown(),
 });
@@ -121,13 +127,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested";
 
 export interface GuideStep {
   id: string;
@@ -136,7 +142,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -206,6 +212,20 @@ const WHATSAPP_STEPS: GuideStep[] = [
     manual: { label: "Testei, funcionou", flag: "tested" },
   },
 ];
+
+/**
+ * Grupo do tutorial 12: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
+ * ligado (máquina que já tem grupo configurado entra com os passos concluídos pelo estado real).
+ */
+export function grupoAlvo(info: WhatsappGroups | null, escolhido: string | null): WhatsappGroup | null {
+  if (info === null) return null;
+  return info.grupos.find((g) => g.jid === escolhido) ?? info.grupos.find((g) => g.agente !== "desligado") ?? null;
+}
+/** Quem aciona o agente nos grupos já foi escolhido de propósito (lista própria ou "todos"), não herdado das diretas. */
+export const quemEscolhido = (info: WhatsappGroups | null): boolean =>
+  info !== null && !info.quemAcionaHerdado && (info.quemAciona === "todos" || info.quemAciona.length > 0);
+export const GRUPOS_AVISO = "Só grupos internos, com gente de casa. Nunca ligue o agente num grupo com clientes.";
+export const GRUPOS_QUEM_NOTA = "Quem não está nesta lista pode escrever no grupo à vontade: o agente simplesmente não responde a essa pessoa. A lista vale para todos os grupos com o agente ligado.";
 
 /** Os tutoriais, na ordem em que aparecem (e dos números). */
 export const TUTORIAIS: readonly Tutorial[] = [
@@ -562,6 +582,40 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "Com a função ligada, mande um e-mail para você mesmo (ou espere o próximo). A conversa \"🔔 <site>\" aparece sozinha com a resposta do agente, e a notificação do Mac leva até ela.",
         done: (_st, f, c) => f.notifySkipped || f.notifySeen || c.notify.conversas > 0,
         manual: { label: "Vi a conversa aparecer", flag: "notifySeen" },
+      },
+    ],
+  },
+  {
+    id: "whatsapp-grupos",
+    number: 12,
+    needs: ["grupos"],
+    after: "whatsapp-openclaw",
+    title: "O agente nos grupos do WhatsApp",
+    short: "Grupos",
+    summary: "Ligue o agente num grupo interno sem virar bagunça: só quem você escolher conversa com ele, e ele responde só quando for chamado.",
+    minutes: 3,
+    icon: "chat",
+    steps: [
+      {
+        id: "grupo", title: "Escolher o grupo", target: "none", body: "grupos-escolher",
+        text: "Os grupos em que o número do agente está. Escolha um grupo interno; se ele não aparece, atualize a lista (o WhatsApp do agente fica parado uns 30 segundos).",
+        done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null,
+      },
+      {
+        id: "quem", title: "Quem pode conversar com o agente no grupo", target: "none", body: "grupos-quem",
+        text: "Comece só por você: o número pessoal que você usa no grupo. Acrescente as pessoas de casa que também podem chamar o agente.",
+        done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null && quemEscolhido(c.grupos.info),
+      },
+      {
+        id: "modo", title: "Como ele responde", target: "none", body: "grupos-modo",
+        text: "Ligue o agente neste grupo e diga quando ele fala. O padrão é o que evita bagunça: só quando alguém da lista o chama.",
+        done: (_st, _f, c) => (grupoAlvo(c.grupos.info, c.grupos.alvo)?.agente ?? "desligado") !== "desligado",
+      },
+      {
+        id: "teste", title: "Testar no grupo", target: "none", body: "grupos-teste",
+        text: "De um número da lista, mande no grupo: \"@agente oi\" (mencione o número do agente ou responda a uma mensagem dele). O passo se marca sozinho quando a resposta aparecer.",
+        done: (_st, f, c) => c.grupos.respondeu || f.gruposTested,
+        manual: { label: "Testei, funcionou", flag: "gruposTested" },
       },
     ],
   },

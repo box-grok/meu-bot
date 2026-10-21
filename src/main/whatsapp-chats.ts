@@ -75,7 +75,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
 const MEDIA_PARTS = new Set(["image", "audio", "video", "document", "file", "sticker", "media"]);
 
 /** Texto de uma mensagem: string, ou partes `{type:"text", text}`; só mídia (sem texto) vira "[mídia]". */
-function textOf(content: unknown): string {
+export function textOf(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
   const texts: string[] = [];
@@ -94,7 +94,7 @@ function textOf(content: unknown): string {
  * `stopReason: "tool_use"` e sem `runId`: sem isto, o espelho não via a resposta e o balão de "digitando" ficava
  * preso. Devolve o texto falado, ou null se não é uma resposta em voz.
  */
-function spokenText(content: unknown): string | null {
+export function spokenText(content: unknown): string | null {
   if (!Array.isArray(content)) return null;
   const calls = new Map<string, string>();
   for (const p of content) {
@@ -117,7 +117,7 @@ function spokenText(content: unknown): string | null {
  * as importadas do CLI sem `runId` são o rascunho interno (ferramentas, textos intermediários) e nunca saem
  * do agente. Parada por ferramenta (`stopReason: "tool_use"`) também é meio de turno.
  */
-function isDelivered(m: Record<string, unknown>): boolean {
+export function isDelivered(m: Record<string, unknown>): boolean {
   const meta = isObj(m.__openclaw) ? m.__openclaw : {};
   if (m.stopReason === "tool_use") return false;
   return !(meta.importedFrom === "claude-cli" && typeof meta.runId !== "string");

@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -15,7 +15,7 @@ import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js";
 import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost, type PageNotification } from "./lib/nav-notify.js";
-import { FALLBACK_PRIMARIES, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
@@ -1856,6 +1856,13 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderReplyCards(cards, replyChoiceNow(st), waPolicySaving || !st.connected, chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
         renderChannelEditor(txt);
+        // Grupos têm a própria lista de quem conversa com o agente (tutorial 12).
+        if ((waGroups?.grupos.length ?? 0) > 0 && TUT_GRUPOS !== null) {
+          const tg = TUT_GRUPOS;
+          const p = el("p", "hint"); p.append("Isto vale para as conversas diretas. Nos grupos, quem conversa com o agente é outra lista: ");
+          const b = el("button", "linkish", `tutorial ${tg.number}, ${tg.title}`); b.type = "button"; b.addEventListener("click", () => openGuide(tg));
+          p.append(b, "."); txt.append(p);
+        }
       } else if (step.body === "audio") {
         renderAudioControls(txt);
       } else if (step.body === "statusline-install") {
@@ -1905,6 +1912,15 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
       } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
         renderSupportParts(txt, step.body === "support-name" ? ["name"] : ["share", "delivery", "log"]);
+      } else if (step.body === "grupos-escolher") {
+        renderGruposEscolher(txt);
+      } else if (step.body === "grupos-quem") {
+        const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+        if (alvo !== null) { txt.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`)); renderGruposQuem(txt, alvo); }
+      } else if (step.body === "grupos-modo") {
+        renderGruposModo(txt);
+      } else if (step.body === "grupos-teste") {
+        renderGruposTeste(txt);
       } else if (step.body === "objective-choice") {
         renderObjectiveChoice(txt);
       } else if (step.body === "objective-level") {
@@ -2032,6 +2048,7 @@ function openGuide(t: Tutorial): void {
   if (t.id === "navegador") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
   if (t.id === "crm-whatsapp") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
   if (t.id === "xai-login") void refreshXaiLine();
+  if (t.id === "whatsapp-grupos") void refreshWaGroups();
   paintGuide();
 }
 
@@ -2537,7 +2554,7 @@ function refreshWaChats(): Promise<void> {
   // Primeira leitura: a lista da última vez aparece na hora (cache desta janela) e a leitura real troca por baixo.
   if (waChats.length === 0 && !waChatsFromCache) { waChatsFromCache = true; const c = cacheRead<WhatsappChat[]>("waChats"); if (c !== null && c.value.length > 0) { waChats = c.value; if (getListMode() === "whatsapp") renderSidebar(); } }
   waChatsInflight = (async () => {
-    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); cacheWrite("waChats", waChats); void learnMissingWaNames(); }
+    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); cacheWrite("waChats", waChats); void learnMissingWaNames(); if (Date.now() - waGroupsAt > 60_000) void refreshWaGroups(); }
     catch (err) { waChatsErr = err instanceof Error ? err.message : String(err); }
     finally { waChatsInflight = null; }
     for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); } }
@@ -2882,6 +2899,7 @@ function paintWaSidebar(query: string): void {
       : waChatsInflight !== null && waChats.length === 0 ? "Carregando conversas do WhatsApp…"
       : q !== "" ? "Nada encontrado." : "Nenhuma conversa do WhatsApp ainda.";
     sidebarList.appendChild(el("div", "sidebar-empty", msg));
+    sidebarList.append(...waGroupsSection(q));
     return;
   }
   sidebarList.appendChild(waSelecaoBar(rows));
@@ -2920,6 +2938,349 @@ function paintWaSidebar(query: string): void {
       if (waRename === row.number) sidebarList.appendChild(waRenameBox(row));
     }
   }
+  sidebarList.append(...waGroupsSection(q));
+}
+
+// ---- Grupos do WhatsApp: a área "Grupos" no fim da lista, a página de cada grupo (só leitura, com o autor de cada
+// mensagem) e os passos do tutorial 12. As regras (nunca "*", nunca ligar sem quem aciona, desligar o último fecha o
+// canal de grupos) moram no main (whatsapp-grupos-core.ts); aqui só a tela. Lidos a cada minuto no modo WhatsApp.
+let waGroups: WhatsappGroups | null = null;
+let waGroupsErr: string | null = null;
+let waGroupsInflight: Promise<void> | null = null;
+let waGroupsAt = 0;
+/** "Atualizar lista" em andamento (o gateway fica parado ~30 s) e o último recado da área. */
+let waGroupsListing = false;
+let waGroupsMsg: { text: string; bad: boolean } | null = null;
+/** Grupo com gravação em andamento (desliga os botões dele). */
+let waGroupSaving: string | null = null;
+/** O agente já respondeu neste grupo (jid → sim/não), para o passo "Testar" do tutorial 12. */
+const waGroupReplied = new Map<string, boolean>();
+const waGroupCheckedAt = new Map<string, number>();
+const TUT_GRUPOS = TUTORIAIS.find((t) => t.id === "whatsapp-grupos") ?? null;
+const waGroupsOpenKey = (): string => `waGruposAberto:${windowHost}`;
+const waGrupoAlvoKey = (): string => `waGrupoAlvo:${windowHost}`;
+function waGroupsOpen(): boolean { try { return localStorage.getItem(waGroupsOpenKey()) !== "0"; } catch { return true; } }
+function loadGrupoAlvo(): string | null { try { return localStorage.getItem(waGrupoAlvoKey()); } catch { return null; } }
+function saveGrupoAlvo(jid: string): void { try { localStorage.setItem(waGrupoAlvoKey(), jid); } catch { /* opcional */ } }
+const waGroupTitle = (g: WhatsappGroup): string => g.nome ?? "Grupo sem nome";
+const WA_GROUP_AGENTE: Record<WhatsappGroup["agente"], string> = { mencao: "agente: só quando chamado", sempre: "agente: sempre", desligado: "agente desligado" };
+/** Nome de um número para a tela: apelido/pushname das conversas, senão o telefone formatado. */
+const waNumberLabel = (n: string): string => { const c = waChats.find((x) => x.number === n); const nome = c?.alias ?? c?.name ?? null; return nome !== null ? `${nome} (${fmtPhone(n)})` : fmtPhone(n); };
+const waQuemTexto = (q: WhatsappGroups): string =>
+  q.quemAciona === "todos" ? "qualquer pessoa do grupo" : q.quemAciona.length === 0 ? "ninguém escolhido ainda" : q.quemAciona.map(waNumberLabel).join(", ");
+
+function refreshWaGroups(): Promise<void> {
+  if (waGroupsInflight !== null) return waGroupsInflight;
+  if (waGroups === null) { const c = cacheRead<WhatsappGroups>("waGroups"); if (c !== null) waGroups = c.value; }
+  waGroupsInflight = (async () => {
+    try { waGroups = await window.meuBot.whatsappGroups(); waGroupsErr = null; cacheWrite("waGroups", waGroups); }
+    catch (err) { waGroupsErr = ipcErrorText(err); }
+    finally { waGroupsInflight = null; waGroupsAt = Date.now(); }
+    afterWaGroups();
+  })();
+  return waGroupsInflight;
+}
+/** Grupos mudaram: páginas abertas, lista e guia acompanham. */
+function afterWaGroups(): void {
+  for (const g of waGroupPages.values()) {
+    const x = waGroups?.grupos.find((y) => y.jid === g.grupo.jid);
+    if (x !== undefined) g.grupo = x;
+    paintWaGroupTab(g);
+    if (pageShown(g.page)) renderWaGroup(g);
+  }
+  if (getListMode() === "whatsapp") renderSidebar();
+  paintGuide();
+}
+async function setWaGroup(jid: string, patch: WhatsappGroupPatch): Promise<boolean> {
+  waGroupSaving = jid; waGroupsMsg = null; afterWaGroups();
+  try { waGroups = await window.meuBot.setWhatsappGroup(jid, patch); cacheWrite("waGroups", waGroups); return true; }
+  catch (err) { waGroupsMsg = { text: `Não deu para mudar: ${ipcErrorText(err)}`, bad: true }; return false; }
+  finally { waGroupSaving = null; afterWaGroups(); }
+}
+async function listarWaGroups(): Promise<void> {
+  if (waGroupsListing) return;
+  if (!window.confirm("Atualizar a lista de grupos pelo WhatsApp?\n\nO WhatsApp do agente fica parado uns 30 segundos. As mensagens que chegarem nesse tempo são entregues quando ele voltar.")) return;
+  waGroupsListing = true; waGroupsMsg = null; afterWaGroups();
+  try { waGroups = await window.meuBot.refreshWhatsappGroups(); cacheWrite("waGroups", waGroups); waGroupsMsg = { text: `✓ Lista atualizada: ${waGroups.grupos.length} ${waGroups.grupos.length === 1 ? "grupo" : "grupos"}.`, bad: false }; }
+  catch (err) { waGroupsMsg = { text: `Não deu para atualizar a lista: ${ipcErrorText(err)}`, bad: true }; }
+  finally { waGroupsListing = false; afterWaGroups(); }
+}
+/** Ligar pelo menu: com a lista de quem aciona já escolhida, liga em "só quando chamado"; sem ela, o tutorial 12. */
+async function ligarWaGroup(g: WhatsappGroup): Promise<void> {
+  saveGrupoAlvo(g.jid);
+  if (waGroups === null || !quemEscolhido(waGroups) || TUT_GRUPOS === null) { if (TUT_GRUPOS !== null) openGuide(TUT_GRUPOS); return; }
+  if (!window.confirm(`Ligar o agente em "${waGroupTitle(g)}"?\n\nEle responde só quando alguém da lista o chamar: ${waQuemTexto(waGroups)}.\n\n${GRUPOS_AVISO}`)) return;
+  await setWaGroup(g.jid, { agente: "mencao" });
+}
+function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null): void {
+  if (a === null) return;
+  if (a === "group-copy-id") { void navigator.clipboard.writeText(g.jid); return; }
+  if (a === "groups-refresh") { void listarWaGroups(); return; }
+  if (a === "group-who") { openWaGroup(g, true); return; }
+  if (a === "group-off") { void setWaGroup(g.jid, { agente: "desligado" }); return; }
+  void ligarWaGroup(g);
+}
+/** Área "Grupos (N)" no fim da lista do WhatsApp: recolhível; cada grupo com o selo do agente e o menu "…". */
+function waGroupsSection(q: string): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  const grupos = (waGroups?.grupos ?? []).filter((g) => q === "" || normalize(`${g.nome ?? ""} ${g.jid}`).includes(q));
+  const open = waGroupsOpen();
+  const head = el("button", "sidebar-group wa-groups-head", `${open ? "▾" : "▸"} Grupos${waGroups !== null ? ` (${waGroups.grupos.length})` : ""}`); head.type = "button";
+  head.title = open ? "Recolher os grupos" : "Mostrar os grupos";
+  head.addEventListener("click", () => { try { localStorage.setItem(waGroupsOpenKey(), open ? "0" : "1"); } catch { /* opcional */ } renderSidebar(); });
+  out.push(head);
+  if (!open) return out;
+  if (waGroups?.todosAdmitidos === true) out.push(el("div", "wa-archive-note bad", "⚠ A configuração admite TODOS os grupos deste número. Ligue o agente só nos grupos certos (menu \"…\" de cada um) para fechar o resto."));
+  if (waGroupsMsg !== null) out.push(el("div", `wa-archive-note${waGroupsMsg.bad ? " bad" : ""}`, waGroupsMsg.text));
+  if (waGroupsListing) out.push(el("div", "wa-archive-note", "Atualizando a lista de grupos… o WhatsApp do agente volta em uns 30 segundos."));
+  if (waGroups === null) { out.push(el("div", "sidebar-empty", waGroupsErr !== null ? `Não consegui ler os grupos: ${waGroupsErr}` : "Lendo os grupos…")); return out; }
+  if (grupos.length === 0) {
+    const empty = el("div", "sidebar-empty wa-groups-empty");
+    if (q !== "") empty.textContent = "Nenhum grupo com esse nome.";
+    else {
+      empty.append(el("span", "", waGroups.cacheEm === null ? "Nenhum grupo listado ainda · " : "Nenhum grupo · "));
+      const b = el("button", "linkish", "Atualizar lista"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
+      b.title = waGroups.skill ? "Lê os grupos pelo WhatsApp (o agente fica parado ~30 s)" : "A skill whatsapp-grupos não está nesta máquina: atualize a guarda pelo seletor";
+      b.addEventListener("click", () => { void listarWaGroups(); });
+      empty.append(b);
+    }
+    out.push(empty);
+    return out;
+  }
+  for (const g of grupos) {
+    const item = el("div", `sidebar-item wa-item wa-group-item${pageActive?.id === `wag-${g.jid}` ? " active" : ""}`);
+    item.dataset["jid"] = g.jid;
+    item.append(el("span", `wa-group-dot ${g.agente}`), el("span", "si-title", waGroupTitle(g)));
+    item.append(el("span", `si-tab wa-group-badge ${g.agente}`, g.agente === "desligado" ? "desligado" : g.agente === "mencao" ? "quando chamado" : "sempre"));
+    if (waGroupSaving === g.jid) item.append(el("span", "si-date", "gravando…"));
+    else if (g.updatedAt !== null) item.append(el("span", "si-date", shortDate(g.updatedAt)));
+    const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações do grupo";
+    menu.addEventListener("click", (ev) => { ev.stopPropagation(); void window.meuBot.showWhatsappGroupMenu(g.jid, { agente: g.agente }).then((a) => waGroupMenuAction(g, a)); });
+    item.append(menu);
+    item.title = `${waGroupTitle(g)}${g.membros !== null ? ` · ${g.membros} membros` : ""} · ${WA_GROUP_AGENTE[g.agente]}`;
+    item.addEventListener("click", () => openWaGroup(g));
+    out.push(item);
+  }
+  return out;
+}
+
+interface WaGroupPage { page: PageTab; grupo: WhatsappGroup; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null; editQuem: boolean; shown?: string | undefined }
+const waGroupPages = new Map<string, WaGroupPage>();
+function paintWaGroupTab(g: WaGroupPage): void {
+  g.page.title = `👥 ${waGroupTitle(g.grupo)}`;
+  const t = g.page.tabEl?.querySelector(".tab-title"); if (t !== null && t !== undefined) t.textContent = g.page.title;
+}
+function openWaGroup(grupo: WhatsappGroup, editQuem = false): void {
+  const id = `wag-${grupo.jid}`;
+  let g = waGroupPages.get(id);
+  if (g === undefined) {
+    const panel = el("section", "wa-chat-panel"); panel.hidden = true;
+    panelsEl.append(panel);
+    const created: WaGroupPage = { page: null as unknown as PageTab, grupo, msgs: [], err: null, loaded: false, inflight: null, timer: null, editQuem };
+    created.page = definePage(id, `👥 ${waGroupTitle(grupo)}`, panel, () => renderWaGroup(created));
+    waGroupPages.set(id, created);
+    g = created;
+  } else { g.grupo = grupo; if (editQuem) g.editQuem = true; }
+  openPage(g.page);
+  paintWaGroupTab(g);
+  renderSidebar();
+}
+function refreshWaGroupThread(g: WaGroupPage): Promise<void> {
+  if (g.inflight !== null) return g.inflight;
+  if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; }
+  g.inflight = (async () => {
+    try { g.msgs = await window.meuBot.whatsappGroupThread(g.grupo.jid); g.err = null; noteGroupReplied(g.grupo.jid, g.msgs); }
+    catch (err) { g.err = ipcErrorText(err); }
+    finally { g.loaded = true; g.inflight = null; }
+    if (pageShown(g.page)) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaGroupThread(g); }, 8_000); renderWaGroup(g); }
+  })();
+  return g.inflight;
+}
+function noteGroupReplied(jid: string, msgs: readonly WhatsappThreadMessage[]): void {
+  const yes = msgs.some((m) => m.role === "agent");
+  waGroupCheckedAt.set(jid, Date.now());
+  if (waGroupReplied.get(jid) !== yes) { waGroupReplied.set(jid, yes); paintGuide(); }
+}
+/** Passo "Testar" do tutorial 12: relê a conversa do grupo (no máximo a cada 8 s) até aparecer a resposta do agente. */
+function checkGroupReplied(jid: string): void {
+  if (waGroupReplied.get(jid) === true || Date.now() - (waGroupCheckedAt.get(jid) ?? 0) < 8_000) return;
+  waGroupCheckedAt.set(jid, Date.now());
+  void window.meuBot.whatsappGroupThread(jid).then((msgs) => noteGroupReplied(jid, msgs)).catch(() => undefined)
+    .finally(() => { if (waGroupReplied.get(jid) !== true) window.setTimeout(() => { if (activeGuide()?.id === "whatsapp-grupos") paintGuide(); }, 8_500); });
+}
+/** Resumo no topo da página do grupo: como o agente está aqui e quem o aciona, com os atalhos. */
+function waGroupSummary(g: WaGroupPage): HTMLElement {
+  const box = el("div", "wa-group-summary");
+  const q = waGroups;
+  box.append(el("p", `wa-group-state ${g.grupo.agente}`, g.grupo.agente === "desligado" ? "O agente está desligado neste grupo: ele não lê nem responde nada aqui."
+    : g.grupo.agente === "mencao" ? "O agente responde aqui só quando alguém da lista o menciona ou responde a uma mensagem dele."
+      : "O agente lê tudo aqui e entra quando acha que ajuda."));
+  if (q !== null) box.append(el("p", "hint", `Quem pode conversar com ele nos grupos: ${waQuemTexto(q)}${q.quemAcionaHerdado ? " (herdado das conversas diretas: escolha uma lista própria)" : ""}.`));
+  const acts = el("div", "wa-group-acts");
+  const quem = el("button", "btn btn-ghost btn-small", g.editQuem ? "Fechar a lista" : "Quem pode conversar…"); quem.type = "button";
+  quem.addEventListener("click", () => { g.editQuem = !g.editQuem; grupoQuemDraft = null; renderWaGroup(g); });
+  const saving = waGroupSaving === g.grupo.jid;
+  const liga = el("button", `btn btn-small ${g.grupo.agente === "desligado" ? "btn-primary" : "btn-ghost"}`, saving ? "gravando…" : g.grupo.agente === "desligado" ? "Ligar o agente…" : "Desligar o agente"); liga.type = "button"; liga.disabled = saving;
+  liga.addEventListener("click", () => { if (g.grupo.agente === "desligado") void ligarWaGroup(g.grupo); else void setWaGroup(g.grupo.jid, { agente: "desligado" }); });
+  acts.append(quem, liga);
+  box.append(acts);
+  if (waGroupsMsg !== null && waGroupsMsg.bad) box.append(el("p", "hint guide-pair-note", waGroupsMsg.text));
+  if (g.editQuem) renderGruposQuem(box, g.grupo);
+  return box;
+}
+function renderWaGroup(g: WaGroupPage): void {
+  const panel = g.page.panel;
+  const first = panel.dataset["rendered"] !== "1";
+  const atEnd = first || panel.scrollHeight - panel.scrollTop - panel.clientHeight < 60;
+  let head = panel.querySelector<HTMLElement>(".wa-chat-head");
+  let summary = panel.querySelector<HTMLElement>(".wa-group-summary");
+  let list = panel.querySelector<HTMLElement>(".wa-chat-msgs");
+  if (head === null || list === null || summary === null) {
+    head = el("div", "wa-chat-head"); summary = el("div", "wa-group-summary"); list = el("div", "wa-chat-msgs");
+    panel.replaceChildren(head, summary, list);
+  }
+  const idBtn = el("button", "wa-chat-id", "ID"); idBtn.type = "button";
+  idBtn.title = `${g.grupo.jid}\n\nClique para copiar`;
+  idBtn.addEventListener("click", () => { void navigator.clipboard.writeText(g.grupo.jid); });
+  head.replaceChildren(el("strong", "", `👥 ${waGroupTitle(g.grupo)}`), el("span", "wa-chat-num", g.grupo.membros !== null ? `${g.grupo.membros} membros` : "grupo"), idBtn,
+    el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"));
+  // O editor da lista tem campo de texto: só redesenha o resumo quando ele não está em uso.
+  if (!summary.contains(document.activeElement)) summary.replaceWith(summary = waGroupSummary(g));
+  panel.dataset["rendered"] = "1";
+  const key = g.msgs.map(waMsgKey).join("\n");
+  if (!g.loaded) { list.replaceChildren(waSkeleton()); g.shown = undefined; }
+  else if (g.shown !== key) {
+    list.replaceChildren();
+    if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa do grupo: ${g.err}`));
+    else if (g.msgs.length === 0) list.append(el("p", "hint wa-fade", g.grupo.sessionKey === null ? "O agente ainda não viu nenhuma mensagem deste grupo (ele só guarda a conversa dos grupos em que está ligado)." : "Sem mensagens ainda."));
+    let lastDay = "";
+    for (const m of g.msgs) {
+      const day = new Date(m.at).toLocaleDateString("pt-BR");
+      if (day !== lastDay) { list.append(el("div", "wa-day", day)); lastDay = day; }
+      list.append(waBubble(m));
+    }
+    g.shown = key;
+    if (atEnd) panel.scrollTo({ top: panel.scrollHeight, behavior: "auto" });
+  }
+  if (pageShown(g.page) && g.inflight === null && g.timer === null) void refreshWaGroupThread(g);
+}
+
+/** Rascunho da lista de quem aciona (editor do tutorial 12 e da página do grupo). */
+let grupoQuemDraft: { nums: string[]; todosArmado: boolean; bad: string | null } | null = null;
+/** "Quem pode conversar com o agente no grupo": só você por padrão; gente de casa pelos membros ou digitando; "todos" escondido atrás de aviso. */
+function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): void {
+  const q = waGroups;
+  if (q === null) { container.append(el("p", "hint", "Lendo os grupos…")); return; }
+  const self = q.self;
+  if (grupoQuemDraft === null) grupoQuemDraft = { nums: q.quemAciona === "todos" ? [] : q.quemAciona.filter((n) => n !== self), todosArmado: false, bad: null };
+  const d = grupoQuemDraft;
+  const box = el("div", "wa-list-editor grupos-quem");
+  if (q.quemAciona === "todos") box.append(el("p", "guide-note bad", "Hoje qualquer pessoa do grupo conversa com o agente. Salve uma lista abaixo para voltar ao controle."));
+  else if (q.quemAcionaHerdado) box.append(el("p", "hint", "Ainda não há uma lista para os grupos. Comece por você: o número pessoal que você usa no grupo."));
+  const chips = el("div", "grupos-chips");
+  if (d.nums.length === 0) chips.append(el("span", "hint", "Ninguém na lista ainda."));
+  for (const n of d.nums) {
+    const chip = el("span", "grupos-chip", waNumberLabel(n));
+    const x = el("button", "grupos-chip-x", "×"); x.type = "button"; x.title = "Tirar da lista";
+    x.addEventListener("click", () => { d.nums = d.nums.filter((y) => y !== n); paintGuide(); afterWaGroups(); });
+    chip.append(x); chips.append(chip);
+  }
+  box.append(chips);
+  const membros = grupo.participantes.filter((n) => n !== self && !d.nums.includes(n));
+  if (membros.length > 0) {
+    const sug = el("div", "grupos-sug"); sug.append(el("span", "hint", "Membros do grupo:"));
+    for (const n of membros) {
+      const b = el("button", "btn btn-ghost btn-small", `+ ${waNumberLabel(n)}`); b.type = "button";
+      b.addEventListener("click", () => { d.nums.push(n); paintGuide(); afterWaGroups(); });
+      sug.append(b);
+    }
+    box.append(sug);
+  }
+  const row = el("div", "grupos-add");
+  const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = "Digite um número com DDD (ex. 11 99999-8888)";
+  const add = el("button", "btn btn-ghost btn-small", "Adicionar"); add.type = "button";
+  const doAdd = (): void => { const r = parseWaNumbers(input.value); for (const n of r.ok) if (n !== self && !d.nums.includes(n)) d.nums.push(n); d.bad = r.bad.length > 0 ? `Não entendi: ${r.bad.join(", ")}` : null; input.value = ""; paintGuide(); afterWaGroups(); };
+  add.addEventListener("click", doAdd);
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); doAdd(); } });
+  row.append(input, add);
+  box.append(row);
+  if (d.bad !== null) box.append(el("p", "hint guide-pair-note", d.bad));
+  box.append(el("p", "hint", GRUPOS_QUEM_NOTA));
+  const saving = waGroupSaving !== null;
+  const save = el("button", "btn btn-primary btn-small", saving ? "gravando…" : "Salvar quem pode conversar"); save.type = "button";
+  save.disabled = saving || d.nums.length === 0;
+  save.addEventListener("click", () => { void setWaGroup(grupo.jid, { quemAciona: d.nums.map((n) => `+${n}`) }).then((ok) => { if (ok) grupoQuemDraft = null; afterWaGroups(); }); });
+  box.append(save);
+  // "Todo mundo do grupo": não é uma opção da lista; fica recolhido, com aviso vermelho e confirmação extra.
+  const det = el("details", "grupos-todos");
+  det.append(el("summary", "", "Outras opções"));
+  det.append(el("p", "guide-note bad", "Todo mundo do grupo: qualquer pessoa que estiver no grupo, hoje ou no futuro, conversa com o agente e gasta a sua conta. Só faz sentido em grupo pequeno, só de gente de casa e sem outro robô. Vale para todos os grupos com o agente ligado."));
+  const todos = el("button", "btn btn-bad btn-small", d.todosArmado ? "Confirmar: todo mundo do grupo" : "Liberar para todo mundo do grupo"); todos.type = "button"; todos.disabled = saving || q.quemAciona === "todos";
+  todos.addEventListener("click", () => {
+    if (!d.todosArmado) { d.todosArmado = true; paintGuide(); afterWaGroups(); return; }
+    if (!window.confirm("Tem certeza? Qualquer pessoa dos grupos com o agente ligado vai poder conversar com ele.")) { d.todosArmado = false; paintGuide(); afterWaGroups(); return; }
+    void setWaGroup(grupo.jid, { quemAciona: "todos" }).then((ok) => { if (ok) grupoQuemDraft = null; afterWaGroups(); });
+  });
+  det.append(todos);
+  if (d.todosArmado) det.open = true;
+  box.append(det);
+  container.append(box);
+}
+/** Tutorial 12, passo 1: os grupos como cartões; aviso fixo de "só grupos internos". */
+function renderGruposEscolher(container: HTMLElement): void {
+  container.append(el("p", "guide-note bad", GRUPOS_AVISO));
+  if (waGroups === null) { container.append(el("p", "hint", waGroupsErr !== null ? `Não consegui ler os grupos: ${waGroupsErr}` : "Lendo os grupos…")); if (waGroupsInflight === null) void refreshWaGroups(); return; }
+  const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+  const cards = el("div", "reply-cards guide-cards");
+  for (const g of waGroups.grupos) {
+    const card = el("button", `reply-card${alvo?.jid === g.jid ? " on" : ""}`); card.type = "button";
+    const body = el("div", "reply-body");
+    const title = el("div", "reply-title"); title.append(el("strong", "", waGroupTitle(g)));
+    body.append(title, el("p", "", `${g.membros !== null ? `${g.membros} membros · ` : ""}${WA_GROUP_AGENTE[g.agente]}`));
+    card.append(el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { saveGrupoAlvo(g.jid); grupoQuemDraft = null; paintGuide(); });
+    cards.append(card);
+  }
+  if (waGroups.grupos.length === 0) container.append(el("p", "hint", "Nenhum grupo listado ainda. Atualize a lista; se o grupo é novo, ponha o número do agente nele antes."));
+  else container.append(cards);
+  if (waGroups.todosAdmitidos) container.append(el("p", "guide-note bad", "⚠ Hoje a configuração admite TODOS os grupos deste número. Ao ligar o agente num grupo pelo passo 3, os outros ficam de fora."));
+  const b = el("button", "btn btn-ghost btn-small", waGroupsListing ? "Atualizando… (uns 30 s)" : "Atualizar lista de grupos"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
+  b.addEventListener("click", () => { void listarWaGroups(); });
+  container.append(b);
+  if (!waGroups.skill) container.append(el("p", "hint", "A skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor."));
+  if (waGroupsMsg !== null) container.append(el("p", `hint${waGroupsMsg.bad ? " guide-pair-note" : ""}`, waGroupsMsg.text));
+}
+/** Tutorial 12, passo 3: ligar no grupo, "só quando chamado" (padrão) ou "sempre". */
+function renderGruposModo(container: HTMLElement): void {
+  const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+  if (alvo === null) return;
+  container.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`));
+  const cards = el("div", "reply-cards guide-cards");
+  const opts: { id: "mencao" | "sempre"; title: string; text: string; padrao: boolean }[] = [
+    { id: "mencao", title: "Só quando alguém o chamar", text: "Responde quando alguém da lista menciona o número do agente ou responde a uma mensagem dele. O resto da conversa ele não responde.", padrao: true },
+    { id: "sempre", title: "Sempre que tiver algo útil", text: "Lê tudo e entra quando acha que ajuda. Nunca use num grupo com outro robô: os dois ficam respondendo um ao outro.", padrao: false },
+  ];
+  const saving = waGroupSaving === alvo.jid;
+  for (const o of opts) {
+    const card = el("button", `reply-card${alvo.agente === o.id ? " on" : ""}`); card.type = "button"; card.disabled = saving;
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
+    if (o.padrao) title.append(el("span", "reply-default", "Padrão"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { void setWaGroup(alvo.jid, { agente: o.id }); });
+    cards.append(card);
+  }
+  container.append(cards);
+  if (waGroupsMsg !== null && waGroupsMsg.bad) container.append(el("p", "hint guide-pair-note", waGroupsMsg.text));
+}
+/** Tutorial 12, passo 4: abrir o grupo e esperar a resposta do agente aparecer. */
+function renderGruposTeste(container: HTMLElement): void {
+  const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+  if (alvo === null) return;
+  checkGroupReplied(alvo.jid);
+  const b = el("button", "btn btn-primary btn-small", `Abrir o grupo ${waGroupTitle(alvo)}`); b.type = "button";
+  b.addEventListener("click", () => openWaGroup(alvo));
+  container.append(b, el("p", "hint", "Se ele não responder: confira se quem mandou está na lista do passo 2 e se mencionou o número do agente (não basta escrever o nome)."));
 }
 
 interface WaChatPage {
@@ -2979,6 +3340,8 @@ function waBubble(m: WhatsappThreadMessage): HTMLElement {
   const body = el("div", "wa-body");
   if (m.role === "agent") body.append(renderMarkdown(m.text)); else body.textContent = m.text;
   bubble.dataset["waAt"] = m.at;
+  // Grupos: o autor de cada mensagem em cima da bolha.
+  if (m.autor !== undefined && m.role === "contact") bubble.append(el("span", "wa-author", m.autor));
   bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`));
   return bubble;
 }
@@ -3181,6 +3544,7 @@ function refreshWhatsapp(): Promise<void> {
     try { waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); if (waStatus.present) cacheWrite("waStatus", waStatus); else cacheDrop("waStatus"); } catch { waStatus = null; }
     finally { waRefreshing = false; waInflight = null; }
     paintWhatsapp();
+    if (waStatus?.connected === true && waStatus.gateway === "openclaw" && waGroups === null && waGroupsInflight === null && waGroupsAt === 0) void refreshWaGroups();
     if (waPairing && waStatus?.connected === true) waShowSuccess(waStatus.number);
     const soon = waStatus !== null && waStatus.present && !waStatus.connected;
     waTimer = setTimeout(() => { void refreshWhatsapp(); }, waPairing && !waConnected ? 8_000 : soon ? 10_000 : 60_000);
@@ -3885,6 +4249,7 @@ const guideCtx = (): GuideContext => ({
   notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState },
+  grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && waGroupReplied.get(alvo.jid) === true }; })(),
   produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
@@ -3901,6 +4266,7 @@ const guideCtx = (): GuideContext => ({
       guarda: guardaState !== null || !remote || (waStatus !== null && waStatus.gateway !== "openclaw"),
       navegador: navLicenseAsked && (navInstState !== null || !remote),
       crm: navLicenseAsked && (crmState !== null || !remote),
+      grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
     };
   })(),
 });

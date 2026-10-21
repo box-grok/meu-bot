@@ -543,7 +543,40 @@ export interface CrmInfo {
 export interface CrmDiag { ok: boolean; erro: string | null; usuario: string | null; pipelines: { key: string; name: string }[]; pipeline: { name: string; stages: string[]; fields: string[] } | null }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
-export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string }
+export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string; /** Grupos: quem mandou (nome ou +número). */ autor?: string }
+/** Como o agente fica num grupo: desligado, "só quando mencionado" (requireMention) ou "sempre". */
+export type WhatsappGroupAgent = "desligado" | "mencao" | "sempre";
+export interface WhatsappGroup {
+  /** "<dígitos>@g.us". */
+  jid: string;
+  nome: string | null;
+  /** Do cache da skill whatsapp-grupos; null sem cache. */
+  membros: number | null;
+  /** Números (só dígitos) dos membros, do cache; vazio sem cache. */
+  participantes: string[];
+  agente: WhatsappGroupAgent;
+  /** Sessão do agente neste grupo (null = ninguém falou com ele ainda). */
+  sessionKey: string | null;
+  updatedAt: string | null;
+}
+/** Grupos da máquina e quem aciona o agente neles (groupAllowFrom vale para TODOS os grupos ligados). */
+export interface WhatsappGroups {
+  grupos: WhatsappGroup[];
+  /** Números (só dígitos) que acionam o agente nos grupos, ou "todos" (qualquer membro). */
+  quemAciona: string[] | "todos";
+  /** Sem groupAllowFrom: o OpenClaw usa a lista das conversas diretas (allowFrom). */
+  quemAcionaHerdado: boolean;
+  /** Config que admite todos os grupos (groups vazio ou "*" com grupos ligados): perigoso. */
+  todosAdmitidos: boolean;
+  /** Quando a lista de grupos foi lida do WhatsApp (cache da skill); null = nunca. */
+  cacheEm: string | null;
+  /** A skill whatsapp-grupos está na máquina (sem ela não dá para atualizar a lista). */
+  skill: boolean;
+  /** Número do próprio agente (só dígitos). */
+  self: string | null;
+}
+/** Mudança pedida num grupo: ligar/desligar e/ou quem aciona (lista de números ou "todos", que exige confirmação). */
+export interface WhatsappGroupPatch { agente?: WhatsappGroupAgent; quemAciona?: string[] | "todos" }
 /** Resultado de guardar a conversa no CRM antes de limpar (meu-bot-crm): onde ficou e se o resumo foi atualizado. */
 export interface WhatsappArchive {
   /** Não havia mensagens para guardar (nada foi enviado ao CRM). */
@@ -791,6 +824,8 @@ export interface StoredConversationView {
   pendingNote?: string;
 }
 
+/** Menu "…" de um grupo na área "Grupos". */
+export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "groups-refresh";
 export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
@@ -924,6 +959,16 @@ export interface MeuBotSharedApi {
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
   showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean }): Promise<WhatsappMenuAction | null>;
+  /** Grupos do WhatsApp desta máquina: agente ligado ou não, quem o aciona, membros (cache da skill). Só leitura. */
+  whatsappGroups(): Promise<WhatsappGroups>;
+  /** Conversa de um grupo (jid "…@g.us"), com o autor de cada mensagem. Só leitura. */
+  whatsappGroupThread(jid: string): Promise<WhatsappThreadMessage[]>;
+  /** Liga/desliga o agente num grupo e/ou muda quem o aciona; relê e confere. Os dois apps (registrado na auditoria). */
+  setWhatsappGroup(jid: string, patch: WhatsappGroupPatch): Promise<WhatsappGroups>;
+  /** Relê a lista de grupos pelo WhatsApp (para o gateway ~30 s). */
+  refreshWhatsappGroups(): Promise<WhatsappGroups>;
+  /** Menu "…" de um grupo. */
+  showWhatsappGroupMenu(jid: string, state: { agente: WhatsappGroupAgent }): Promise<WhatsappGroupMenuAction | null>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */

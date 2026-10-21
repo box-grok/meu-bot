@@ -322,7 +322,7 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
-const WA_GRUPOS_SCRIPTS = ["habilitar.py", "listar.sh", "wa-admin.sh", "wa-grupos.js"];
+const WA_GRUPOS_SCRIPTS = ["habilitar.py", "listar.sh", "monitor.py", "wa-admin.sh", "wa-grupos.js"];
 /** Versão da guarda que vem neste app (package.json do plugin); o seletor atualiza máquinas com versão diferente. */
 export function bundledGuardaVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }

@@ -14,7 +14,8 @@ import { isVozId } from "./vozes-core";
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
-import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
+import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
+import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
@@ -736,4 +737,88 @@ timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1
   if (out === "none") throw new Error("não achei WhatsApp configurado nesta máquina");
   if (out === "still" || out === undefined) throw new Error(`não consegui desconectar${r.stderr.trim() !== "" ? `: ${r.stderr.trim().split("\n").pop()}` : ""}`);
   log(`[whatsapp] desconectado em ${host} (${out})`);
+}
+
+// ── Grupos (área "Grupos" da lista e tutorial 12). As regras ficam em whatsapp-grupos-core.ts; aqui só o IO. ──
+const WA_GRUPOS_DIR = "$HOME/.claude/skills/whatsapp-grupos";
+/** channels.whatsapp do openclaw.json (só essa seção: nada de tokens). */
+const WA_CONFIG_SH = `echo "wa=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));print(json.dumps((c.get("channels") or {}).get("whatsapp") or {}))' 2>/dev/null)"`;
+const kvOf = (out: string): Map<string, string> => {
+  const kv = new Map<string, string>();
+  for (const line of out.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
+  return kv;
+};
+const jsonOr = (v: string | undefined): unknown => { try { return JSON.parse(v || "null"); } catch { return null; } };
+
+/** Grupos da máquina: sessões de grupo, a config de grupos e o cache da skill, numa leitura só. */
+export async function whatsappGroups(host: string): Promise<WhatsappGroups> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
+echo "self=$(${CREDS_ME})"
+echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+${WA_CONFIG_SH}
+echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
+echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
+`;
+  const r = await runSsh(host, script, 60_000);
+  if (r.code !== 0) throw new Error(`não consegui ler os grupos do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const kv = kvOf(r.stdout);
+  const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null);
+  return { ...g, skill: kv.get("skill") === "1" };
+}
+
+/** Conversa de um grupo (só leitura), com o autor de cada mensagem. */
+export async function whatsappGroupThread(host: string, jid: string, limit = 200): Promise<WhatsappThreadMessage[]> {
+  if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  const grupo = (await whatsappGroups(host)).grupos.find((x) => x.jid === jid);
+  if (grupo === undefined || grupo.sessionKey === null || !SAFE_KEY.test(grupo.sessionKey)) return [];
+  const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\ntimeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${grupo.sessionKey}","limit":${n}}' 2>/dev/null | tr -d '\n'\n`, 90_000);
+  if (r.code !== 0) throw new Error(`não consegui ler a conversa do grupo: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  return threadDoGrupo(jsonOr(r.stdout.trim()), namesOf(host), grupo.nome);
+}
+
+/**
+ * Liga/desliga o agente num grupo e/ou muda quem o aciona: `openclaw config patch --stdin` (validado, com
+ * recarga do canal, como o habilitar.py da skill), relê e confere. Devolve os grupos já com a mudança.
+ */
+export async function whatsappSetGroup(host: string, jid: string, pedido: WhatsappGroupPatch): Promise<WhatsappGroups> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  const read = await runSsh(host, `echo "self=$(${CREDS_ME})"\n${WA_CONFIG_SH}\n`, 30_000);
+  const kv = kvOf(read.stdout);
+  const wa = jsonOr(kv.get("wa"));
+  if (wa === null) throw new Error("não consegui ler a configuração do WhatsApp nesta máquina (~/.openclaw/openclaw.json)");
+  const self = phoneOf(kv.get("self") ?? "");
+  const patch = patchGrupo(wa, jid, pedido, self);
+  if (patch !== null) {
+    const b64 = Buffer.from(JSON.stringify(patch), "utf8").toString("base64");
+    const w = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\nprintf '%s' '${b64}' | base64 -d | timeout 60 openclaw config patch --stdin 2>&1 | tail -n 3\necho "rc=\${PIPESTATUS[2]}"\n`, 90_000);
+    if (!/rc=0/.test(w.stdout)) throw new Error(`o OpenClaw recusou a mudança: ${w.stdout.replace(/rc=\d+/, "").trim().split("\n").pop() || w.stderr.trim().split("\n").pop() || "sem resposta"}`);
+  }
+  const depois = await whatsappGroups(host);
+  // Confere pelo openclaw.json relido: o que ficou gravado tem de ser o que o patch pedia.
+  const reread = await runSsh(host, `${WA_CONFIG_SH}\n`, 30_000);
+  const gravado = jsonOr(kvOf(reread.stdout).get("wa"));
+  const esperado = patch === null ? wa : aplicarPatch(wa, patch);
+  if (estadoDoGrupo(gravado, jid) !== estadoDoGrupo(esperado, jid)) throw new Error("a mudança não ficou gravada na máquina (o openclaw.json relido não bate); tente de novo");
+  log(`whatsapp: grupo ${jid} em ${host}: ${patch === null ? "sem mudança" : JSON.stringify(patch)}`);
+  return depois;
+}
+
+/**
+ * Atualiza a lista de grupos pelo WhatsApp (skill whatsapp-grupos: `wa-admin.sh listar`). Ela PARA o gateway
+ * ~30 s (o WhatsApp do agente fica parado; as mensagens chegam quando ele volta): a tela pede confirmação antes.
+ */
+export async function whatsappRefreshGroups(host: string): Promise<WhatsappGroups> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
+[ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] || { echo "SKILL=0"; exit 0; }
+L=$(mktemp); timeout 240 bash "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" listar --json >/dev/null 2>"$L"; echo "RC=$?"
+tail -n 2 "$L" 2>/dev/null | sed 's/^/LOG=/'; rm -f "$L"
+`, 300_000);
+  if (/SKILL=0/.test(r.stdout)) throw new Error("a skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor");
+  if (!/RC=0/.test(r.stdout)) throw new Error(`não consegui listar os grupos: ${r.stdout.split("\n").filter((l) => l.startsWith("LOG=")).map((l) => l.slice(4)).join(" ").trim() || r.stderr.trim().split("\n").pop() || "sem resposta"}`);
+  log(`whatsapp: lista de grupos atualizada em ${host}`);
+  return whatsappGroups(host);
 }

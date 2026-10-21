@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -23,7 +23,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // O 10 existe em duas versões, uma por produto (CRM no Gmail no meu-bot-crm; CRM pelo Streak no meu-bot): nunca juntas.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12]);
   for (const produto of [{ planoExigido: "free", extensaoGmail: false, crmStreak: true }, { planoExigido: "personalizado", extensaoGmail: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -248,4 +248,34 @@ test("parseTutMemory: só ids válidos com booleano; lixo vira vazio", () => {
   assert.deepEqual(parseTutMemory("nope"), {});
   assert.deepEqual(parseTutMemory(null), {});
   assert.deepEqual(parseTutMemory("[true]"), {});
+});
+
+test("tutorial 12 (grupos): escolher, quem aciona (nunca herdado), ligar e testar; pelo estado real da máquina", () => {
+  const t12 = byId("whatsapp-grupos");
+  assert.equal(t12.number, 12);
+  assert.equal(t12.after, "whatsapp-openclaw");
+  assert.deepEqual(t12.steps.map((s) => s.id), ["grupo", "quem", "modo", "teste"]);
+  assert.match(GRUPOS_AVISO, /Nunca ligue o agente num grupo com clientes/);
+  const G1 = { jid: "120363000000000001@g.us", nome: "Casa", membros: 2, participantes: [], agente: "desligado", sessionKey: null, updatedAt: null };
+  const G2 = { ...G1, jid: "120363000000000002@g.us", nome: "Time", agente: "mencao" };
+  const info = (over = {}) => ({ grupos: [G1], quemAciona: [], quemAcionaHerdado: true, todosAdmitidos: false, cacheEm: null, skill: true, self: null, ...over });
+  const ctx = (grupos) => ({ ...emptyContext(), grupos });
+  const at = (c, f = emptyFlags()) => guideView(t12, null, f, c).current;
+  // Sem grupos lidos ou sem escolha: passo 1.
+  assert.equal(at(ctx({ info: null, alvo: null, respondeu: false })), 0);
+  assert.equal(at(ctx({ info: info(), alvo: null, respondeu: false })), 0);
+  // Escolheu, mas a lista é herdada das diretas (com "todo mundo" seria ["*"]): passo 2.
+  assert.equal(at(ctx({ info: info({ quemAciona: "todos" }), alvo: G1.jid, respondeu: false })), 1);
+  // Lista própria: passo 3 até ligar; ligado: passo 4; respondeu (ou "Testei"): concluído.
+  assert.equal(at(ctx({ info: info({ quemAciona: ["5511999998888"], quemAcionaHerdado: false }), alvo: G1.jid, respondeu: false })), 2);
+  const ligado = info({ grupos: [G1, G2], quemAciona: ["5511999998888"], quemAcionaHerdado: false });
+  assert.equal(at(ctx({ info: ligado, alvo: G2.jid, respondeu: false })), 3);
+  assert.equal(guideView(t12, null, emptyFlags(), ctx({ info: ligado, alvo: G2.jid, respondeu: true })).finished, true);
+  assert.equal(guideView(t12, null, { ...emptyFlags(), gruposTested: true }, ctx({ info: ligado, alvo: G2.jid, respondeu: false })).finished, true);
+  // Sem escolha guardada, o primeiro grupo com o agente ligado é o do tutorial; escolha que sumiu também cai nele.
+  assert.equal(grupoAlvo(ligado, null).jid, G2.jid);
+  assert.equal(grupoAlvo(ligado, "999999999999@g.us").jid, G2.jid);
+  assert.equal(grupoAlvo(ligado, G1.jid).jid, G1.jid);
+  assert.equal(quemEscolhido(info({ quemAciona: "todos", quemAcionaHerdado: false })), true);
+  assert.equal(quemEscolhido(info({ quemAciona: ["5511999998888"], quemAcionaHerdado: true })), false);
 });

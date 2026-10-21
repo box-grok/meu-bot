@@ -5,9 +5,10 @@
 import { app, dialog, Menu, nativeTheme, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SettingsUpdate, SettingsView, WhatsappMenuAction } from "../../shared/ipc";
+import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread } from "../whatsapp";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup } from "../whatsapp";
+import { JID_RE } from "../whatsapp-grupos-core";
 import { parseWaMarkPatches } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias } from "../support-code";
@@ -27,7 +28,7 @@ import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { caps } from "../variant";
 import { whatsappArchiveToCrm } from "../whatsapp-crm";
-import { waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
+import { waGroupAgente, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
 import { EXTERNAL_URL, hostFromEvent, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
 
@@ -94,6 +95,66 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
             : { label: e.label, enabled: e.enabled, ...(e.action === null ? {} : { click: () => pick(e.action) }) };
       const menu = Menu.buildFromTemplate(entries.map(toItem));
       // O callback de fechamento corre antes do click; o adiamento deixa o click vencer.
+      menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
+    });
+  });
+  // Grupos: a área "Grupos" da lista e o tutorial 12. As regras (nunca "*", nunca ligar sem quem aciona, desligar o
+  // último fecha o canal de grupos) moram em whatsapp-grupos-core.ts; as mudanças vão para a auditoria.
+  const waJid = (payload: unknown): string => {
+    const jid = (payload as { jid?: unknown } | null)?.jid;
+    if (typeof jid !== "string" || !JID_RE.test(jid)) throw new Error("grupo inválido");
+    return jid;
+  };
+  handleShared("whatsapp:groups", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappGroups(h.host);
+  });
+  handleShared("whatsapp:group-thread", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappGroupThread(h.host, waJid(payload));
+  });
+  handleShared("whatsapp:group-set", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const jid = waJid(payload);
+    const raw = (payload as { patch?: { agente?: unknown; quemAciona?: unknown } } | null)?.patch ?? {};
+    const patch: WhatsappGroupPatch = {};
+    if (raw.agente !== undefined) {
+      if (raw.agente !== "desligado" && raw.agente !== "mencao" && raw.agente !== "sempre") throw new Error("modo inválido");
+      patch.agente = raw.agente;
+    }
+    if (raw.quemAciona !== undefined) {
+      if (raw.quemAciona === "todos") patch.quemAciona = "todos";
+      else if (Array.isArray(raw.quemAciona) && raw.quemAciona.length <= 50 && raw.quemAciona.every((n) => typeof n === "string")) patch.quemAciona = raw.quemAciona as string[];
+      else throw new Error("lista de números inválida");
+    }
+    const antes = await whatsappGroups(h.host);
+    const depois = await whatsappSetGroup(h.host, jid, patch);
+    const g = depois.grupos.find((x) => x.jid === jid);
+    const alvo = g?.nome ?? jid;
+    const era = antes.grupos.find((x) => x.jid === jid)?.agente ?? "desligado";
+    const acoes: { acao: "whatsapp.grupo-ligar" | "whatsapp.grupo-desligar" | "whatsapp.grupo-quem"; alvo: string; detalhe: string }[] = [];
+    if (g !== undefined && g.agente !== era) acoes.push(g.agente === "desligado" ? { acao: "whatsapp.grupo-desligar", alvo, detalhe: jid } : { acao: "whatsapp.grupo-ligar", alvo, detalhe: `${g.agente === "mencao" ? "só quando mencionado" : "sempre"} · ${jid}` });
+    const quem = (q: string[] | "todos"): string => (q === "todos" ? "todos do grupo" : q.map((n) => `+${n}`).join(", "));
+    if (quem(antes.quemAciona) !== quem(depois.quemAciona)) acoes.push({ acao: "whatsapp.grupo-quem", alvo: quem(depois.quemAciona), detalhe: `antes: ${quem(antes.quemAciona) || "ninguém"}` });
+    void registrarVarios(h.host, acoes);
+    return depois;
+  });
+  handleShared("whatsapp:groups-refresh", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappRefreshGroups(h.host);
+  });
+  handleShared("ui:wa-group-menu", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) return null;
+    waJid(payload);
+    return new Promise<WhatsappGroupMenuAction | null>((resolve) => {
+      let settled = false;
+      const pick = (action: WhatsappGroupMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
+      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });

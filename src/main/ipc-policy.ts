@@ -14,6 +14,8 @@ export const SHARED_CHANNELS = [
   "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark", "whatsapp:names",
   // meu-bot-crm: guardar a conversa no CRM antes de limpar (o handler recusa fora dele)
   "whatsapp:archive-crm",
+  // grupos: ler, ligar/desligar o agente, quem aciona e reler a lista (a pessoa e o admin; mudanças na auditoria)
+  "whatsapp:groups", "whatsapp:group-thread", "whatsapp:group-set", "whatsapp:groups-refresh", "ui:wa-group-menu",
   "claude-login:auth", "xai-login:auth", "xai-key:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",

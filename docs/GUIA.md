@@ -2305,3 +2305,41 @@ então as máquinas que já a têm recebem a skill na próxima abertura do app. 
 
 Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
 manda sempre usar `--remetentes`.
+
+## Grupos no app, tutorial 12 e monitor (21 out)
+
+**Área "Grupos" na lista do WhatsApp.** Fica no fim da lista e pode ser recolhida. Junta três fontes:
+- as sessões de grupo do `sessions.list`;
+- o `channels.whatsapp` do openclaw.json;
+- o cache da skill (`data/grupos-live.json`).
+
+Cada grupo leva um selo: "quando chamado", "sempre" ou "desligado". A página do grupo mostra a conversa só para
+leitura, com o autor de cada mensagem, e o resumo de quem aciona o agente. O menu "…" oferece:
+- Ligar/Desligar;
+- Quem pode conversar…;
+- Copiar ID;
+- Atualizar lista (pede confirmação, porque para o gateway ~30 s).
+
+O dono das regras é `src/main/whatsapp-grupos-core.ts`, com as mesmas regras do `habilitar.py`:
+- ligar usa `allowlist` mais `groups[jid]`;
+- desligar o último grupo volta para `groupPolicy: disabled` e apaga `groups`, porque vazio admitiria todos;
+- `groupAllowFrom` nunca fica vazio com o agente ligado, porque herdaria o `allowFrom ["*"]` das diretas;
+- "todos do grupo" é `groupPolicy: open`, nunca um `*` na lista, e na tela fica atrás de um aviso vermelho com
+  confirmação dupla.
+
+A gravação usa `openclaw config patch --stdin`; depois o app relê o openclaw.json e confere. Os canais IPC são
+`whatsapp:groups`, `whatsapp:group-thread`, `whatsapp:group-set`, `whatsapp:groups-refresh` e `ui:wa-group-menu`,
+compartilhados pela pessoa e pelo admin. Na auditoria entram `whatsapp.grupo-ligar`, `grupo-desligar` e
+`grupo-quem`.
+
+**Tutorial 12 · O agente nos grupos do WhatsApp** (after 2). Os passos são:
+1. escolher o grupo, com o aviso fixo "nunca grupo com clientes";
+2. quem pode conversar: só você por padrão, mais os membros ou números digitados;
+3. como responde: só quando chamado (padrão) ou sempre;
+4. testar: o passo se conclui quando aparece uma resposta do agente no grupo.
+
+O passo "quem" do tutorial 2 aponta para este tutorial quando a máquina tem grupos.
+
+**Monitor.** `skills/whatsapp-grupos/scripts/monitor.py` lê o SQLite do OpenClaw (`session_nodes` →
+`transcript_events`, `event_zstd` quando houver) em modo só leitura e segue o `/new` sozinho. Também junta os alertas
+do journal e esconde tokens. Vai com a guarda 1.3.0.

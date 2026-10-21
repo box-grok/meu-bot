@@ -2,7 +2,7 @@
  * Itens do menu "…" de uma conversa do WhatsApp na lista lateral. Puro (ipc/shared.ts converte para o Menu do
  * Electron): sem manageWa (o meu-bot-admin) não há "Conversar com o meu-bot"; arquivar é só deste app.
  */
-import type { Capabilities, WhatsappMenuAction } from "../shared/ipc";
+import type { Capabilities, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../shared/ipc";
 
 /** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). */
 export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean }
@@ -46,4 +46,20 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
 export const waMenuState = (payload: unknown): WaMenuState => {
   const s = (payload as { state?: { archived?: unknown; paused?: unknown; deleted?: unknown } } | null)?.state ?? {};
   return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true };
+};
+
+/** Menu "…" de um grupo: ligar/desligar, quem pode conversar, copiar o id e reler a lista (para o gateway ~30 s). */
+export type WaGroupMenuEntry = { label: string; action: WhatsappGroupMenuAction } | { separator: true };
+export function waGroupMenuTemplate(agente: WhatsappGroupAgent): WaGroupMenuEntry[] {
+  return [
+    agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
+    { label: "Quem pode conversar…", action: "group-who" },
+    { label: "Copiar ID", action: "group-copy-id" },
+    { separator: true },
+    { label: "Atualizar lista de grupos…", action: "groups-refresh" },
+  ];
+}
+export const waGroupAgente = (payload: unknown): WhatsappGroupAgent => {
+  const a = (payload as { state?: { agente?: unknown } } | null)?.state?.agente;
+  return a === "mencao" || a === "sempre" ? a : "desligado";
 };
