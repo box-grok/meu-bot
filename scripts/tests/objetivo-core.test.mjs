@@ -43,7 +43,8 @@ test("skillMarkdown: frontmatter que o OpenClaw lê + regras do nível em portug
 test("toolsBySenderFor: o dono conforme o nível; qualquer outro sem as ferramentas que mudam a máquina", () => {
   const age = JSON.parse(toolsBySenderFor("age", "5521999990000"));
   assert.deepEqual(age["e164:+5521999990000"], {});
-  assert.deepEqual(age["*"].deny, ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"]);
+  assert.deepEqual(age["*"].deny.filter((t) => !t.startsWith("navegador__")), ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"]);
+  assert.ok(age["*"].deny.includes("navegador__*")); // o Navegador do dono nunca vale para "*"
   assert.deepEqual(JSON.parse(toolsBySenderFor("conversa", "1"))["e164:+1"].deny, ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"]);
   assert.deepEqual(JSON.parse(toolsBySenderFor("consulta", "1"))["e164:+1"].deny, ["exec", "process", "cron", "gateway"]);
 });

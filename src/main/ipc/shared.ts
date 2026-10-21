@@ -9,6 +9,7 @@ import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGro
 import { slugify } from "../export";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup } from "../whatsapp";
 import { JID_RE } from "../whatsapp-grupos-core";
+import { setNavWhatsapp } from "../navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp-marks";
 import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTerminal, writeTerminal } from "../terminal";
 import { isSupportAlias } from "../support-code";
@@ -140,6 +141,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const quem = (q: string[] | "todos"): string => (q === "todos" ? "todos do grupo" : q.map((n) => `+${n}`).join(", "));
     if (quem(antes.quemAciona) !== quem(depois.quemAciona)) acoes.push({ acao: "whatsapp.grupo-quem", alvo: quem(depois.quemAciona), detalhe: `antes: ${quem(antes.quemAciona) || "ninguém"}` });
     void registrarVarios(h.host, acoes);
+    if (quem(antes.quemAciona) !== quem(depois.quemAciona)) void setNavWhatsapp(h.host, "sincronizar").catch(() => undefined);
     return depois;
   });
   handleShared("whatsapp:groups-refresh", (event) => {

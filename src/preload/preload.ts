@@ -127,6 +127,7 @@ const clientApi: MeuBotClientApi = {
   browserOpen: () => ipcRenderer.invoke("browser:open", {}),
   browserExtensions: () => ipcRenderer.invoke("browser:extensions", {}),
   browserAgent: (on: boolean) => ipcRenderer.invoke("browser:agent", { on }),
+  browserAgentWhatsapp: (on?: boolean) => ipcRenderer.invoke("browser:agent-whatsapp", on === undefined ? {} : { on }),
   browserActive: (wcId: number) => ipcRenderer.send("browser:active", { wcId }),
   browserRemoveExtension: (extId: string) => ipcRenderer.invoke("browser:remove-extension", { extId }),
   browserRequestPro: () => ipcRenderer.invoke("browser:request-pro", {}),

@@ -1071,6 +1071,8 @@ export interface MeuBotClientApi {
   browserExtensions(): Promise<BrowserExtensionInfo[]>;
   /** Liga/desliga "agente pode usar" (socket de ações + túnel reverso); estado em browser:agent. */
   browserAgent(on: boolean): Promise<BrowserAgentState>;
+  /** O agente do WhatsApp também usa o Navegador (sem `on`: só lê). `liberados` = números (só dígitos) que podem. */
+  browserAgentWhatsapp(on?: boolean): Promise<{ on: boolean; liberados: string[] }>;
   /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
   browserActive(wcId: number): void;
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;

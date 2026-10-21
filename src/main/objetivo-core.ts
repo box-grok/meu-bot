@@ -5,6 +5,7 @@
  * trava as ferramentas do dono conforme o nível. Testável sem Electron; o SSH fica em objetivo.ts.
  */
 import type { FreedomLevel, MachineSkill, ObjectiveChoice, ObjectiveInfo } from "../shared/ipc";
+import { NAV_DENY } from "./navegador-whatsapp-core";
 
 /** Nome fixo da skill: salvar de novo substitui a anterior (uma por máquina). */
 export const OBJECTIVE_SKILL = "objetivo-whatsapp";
@@ -12,6 +13,8 @@ export const OBJECTIVE_FILE = "$HOME/.local/share/meu-bot/objetivo.json";
 
 /** O que um contato que não é o dono nunca pode usar (a mesma trava do pareamento, whatsapp.ts). */
 const OTHERS_DENY = ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"] as const;
+/** O "*" da trava: o que muda a máquina e o Navegador do dono (liberado por remetente em navegador-whatsapp-core.ts). */
+const STAR_DENY: readonly string[] = [...OTHERS_DENY, ...NAV_DENY];
 
 /** Os três níveis: o que o agente pode fazer, para o dono. A trava do OpenClaw segue `deny`. */
 export const LEVELS: readonly { id: FreedomLevel; title: string; text: string; rules: string[]; deny: readonly string[] }[] = [
@@ -104,12 +107,12 @@ export function skillMarkdown(objective: ObjectiveChoice, level: FreedomLevel, m
 /** A trava `tools.toolsBySender` para o nível: o dono conforme o nível; qualquer outro remetente sem as ferramentas que mudam a máquina. */
 export function toolsBySenderFor(level: FreedomLevel, ownerNumber: string): string {
   const lv = levelOf(level) ?? LEVELS[0]!;
-  return JSON.stringify({ [`e164:+${ownerNumber}`]: lv.deny.length === 0 ? {} : { deny: lv.deny }, "*": { deny: OTHERS_DENY } });
+  return JSON.stringify({ [`e164:+${ownerNumber}`]: lv.deny.length === 0 ? {} : { deny: lv.deny }, "*": { deny: STAR_DENY } });
 }
 
 const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
 /** Workspace do agente: o de agents.defaults.workspace no openclaw.json, senão ~/.openclaw/workspace. */
-const WORKSPACE_SH = `W=$(python3 -c 'import json,os,sys
+export const WORKSPACE_SH = `W=$(python3 -c 'import json,os,sys
 try:
     d=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
     w=(d.get("agents") or {}).get("defaults",{}).get("workspace") or ""
@@ -169,7 +172,7 @@ printf '%s' '${b64(md)}' | base64 -d > "$W/skills/${OBJECTIVE_SKILL}/SKILL.md.tm
 echo "SKILL=$W/skills/${OBJECTIVE_SKILL}/SKILL.md"
 N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
 if [ -n "$N" ] && command -v openclaw >/dev/null 2>&1; then
-  LOCK=$(python3 -c 'import json,sys;lv=sys.argv[1];n=sys.argv[2];others=${JSON.stringify(OTHERS_DENY)};deny={"conversa":others,"consulta":["exec","process","cron","gateway"],"age":[]}[lv];print(json.dumps({"e164:+"+n:({"deny":deny} if deny else {}),"*":{"deny":others}}))' '${level}' "$N")
+  LOCK=$(python3 -c 'import json,sys;lv=sys.argv[1];n=sys.argv[2];others=${JSON.stringify(OTHERS_DENY)};star=${JSON.stringify(STAR_DENY)};deny={"conversa":others,"consulta":["exec","process","cron","gateway"],"age":[]}[lv];print(json.dumps({"e164:+"+n:({"deny":deny} if deny else {}),"*":{"deny":star}}))' '${level}' "$N")
   openclaw config set tools.toolsBySender "$LOCK" --strict-json >/dev/null 2>&1 && echo LOCK=1 || echo LOCK=0
 else
   echo LOCK=skip
@@ -186,7 +189,7 @@ rm -rf "$W/skills/${OBJECTIVE_SKILL}"
 rm -f "${OBJECTIVE_FILE}"
 N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
 if [ -n "$N" ] && command -v openclaw >/dev/null 2>&1; then
-  LOCK=$(python3 -c 'import json,sys;n=sys.argv[1];others=${JSON.stringify(OTHERS_DENY)};print(json.dumps({"e164:+"+n:{},"*":{"deny":others}}))' "$N")
+  LOCK=$(python3 -c 'import json,sys;n=sys.argv[1];star=${JSON.stringify(STAR_DENY)};print(json.dumps({"e164:+"+n:{},"*":{"deny":star}}))' "$N")
   openclaw config set tools.toolsBySender "$LOCK" --strict-json >/dev/null 2>&1 || true
 fi
 echo RESET=1

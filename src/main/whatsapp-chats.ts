@@ -45,6 +45,9 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
   const selfN = self === null ? null : digits(self);
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string") continue;
+    // Sessão de grupo é do grupo (área "Grupos"), nunca de um contato: senão "Limpar histórico" de quem fala no grupo
+    // zerava a memória do agente no grupo inteiro.
+    if (/:whatsapp:(?:[^:]+:)?group:/.test(s.key) || s.chatType === "group") continue;
     const peer = peerOfSessionKey(s.key);
     // Na sessão principal o próprio aparelho aparece como participante mesmo sem mensagens (avisos do gateway):
     // fica de fora; conversa consigo mesmo ganha sessão própria com o isolamento por contato.

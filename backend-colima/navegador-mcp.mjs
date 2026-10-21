@@ -3,13 +3,25 @@
  * navegador-mcp.mjs — servidor MCP (stdio) do Navegador do meu-bot, um arquivo só, sem dependências.
  * Apresenta ao Claude as ações do navegador da pessoa e repassa cada uma por HTTP para 127.0.0.1:<porta>,
  * onde o túnel SSH reverso entrega ao app no Mac. Uso: node navegador-mcp.mjs --port 19123
+ * ou --port-file <arquivo>: o agente do WhatsApp (OpenClaw, ligado 24 h) lê a porta a cada chamada do arquivo que o
+ * app grava quando o túnel sobe; sem arquivo ou sem resposta, o Navegador está fechado (app fechado no Mac do dono).
  * Protocolo: JSON-RPC 2.0, uma mensagem por linha (initialize, tools/list, tools/call, ping, notifications).
  */
+import fs from 'node:fs';
 import http from 'node:http';
 import readline from 'node:readline';
 
-const port = Number((process.argv.find((a, i) => process.argv[i - 1] === '--port')) || process.env.MEU_BOT_BROWSER_PORT || 0);
-if (!port) { process.stderr.write('navegador-mcp: falta --port\n'); process.exit(2); }
+const arg = (name) => process.argv.find((a, i) => process.argv[i - 1] === name);
+const fixedPort = Number(arg('--port') || process.env.MEU_BOT_BROWSER_PORT || 0);
+const portFile = arg('--port-file') || '';
+if (!fixedPort && !portFile) { process.stderr.write('navegador-mcp: falta --port ou --port-file\n'); process.exit(2); }
+const FECHADO = portFile
+  ? 'o Navegador do dono está fechado: o app meu-bot precisa estar aberto no Mac dele, com "agente pode usar" ligado na aba Navegador. Avise quem pediu e siga sem o navegador.'
+  : 'o Navegador da pessoa não está ligado para o agente (abra a aba Navegador no app e ligue "agente pode usar")';
+function porta() {
+  if (fixedPort) return fixedPort;
+  try { const n = Number(fs.readFileSync(portFile, 'utf8').trim()); return Number.isInteger(n) && n > 1024 && n < 65536 ? n : 0; } catch { return 0; }
+}
 
 const TOOLS = [
   { name: 'abas', description: 'Lista as abas abertas no Navegador da pessoa (id, url, título, qual está ativa).', inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
@@ -30,13 +42,15 @@ const TOOLS = [
 
 function call(route, body) {
   return new Promise((resolve, reject) => {
+    const port = porta();
+    if (!port) { reject(new Error(FECHADO)); return; }
     const data = JSON.stringify(body || {});
     const req = http.request({ host: '127.0.0.1', port, path: `/${route}`, method: route === 'abas' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, timeout: 60_000 }, (res) => {
       let out = ''; res.setEncoding('utf8'); res.on('data', (c) => { out += c; });
       res.on('end', () => { try { const j = JSON.parse(out || '{}'); if (res.statusCode !== 200) reject(new Error(j.erro || `HTTP ${res.statusCode}`)); else resolve(j); } catch (e) { reject(new Error(`resposta inválida do app: ${e.message}`)); } });
     });
     req.on('timeout', () => { req.destroy(new Error('o app não respondeu em 60 s')); });
-    req.on('error', (e) => reject(new Error(e.code === 'ECONNREFUSED' ? 'o Navegador da pessoa não está ligado para o agente (abra a aba Navegador no app e ligue "agente pode usar")' : e.message)));
+    req.on('error', (e) => reject(new Error(e.code === 'ECONNREFUSED' ? FECHADO : e.message)));
     if (route !== 'abas') req.write(data);
     req.end();
   });

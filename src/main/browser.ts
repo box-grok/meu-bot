@@ -19,6 +19,7 @@ import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces 
 import { carregarExtensoes, extensaoEmbutida } from "./extensao-gmail/extensao";
 import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
 import { pararSincronizacaoGoogle } from "./google/google";
+import { gravarPortaNavegador } from "./navegador-whatsapp";
 
 const PART_PREFIX = "persist:navegador-";
 const sanit = (host: string): string => host.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -296,7 +297,11 @@ const tellAgent = (host: string, st: BrowserAgentState): void => {
   agentState.set(host, st);
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:agent", st);
 };
-onReverseState((host, state, port) => { if (agentOn.has(host)) tellAgent(host, { on: true, state, port }); });
+onReverseState((host, state, port) => {
+  if (agentOn.has(host)) tellAgent(host, { on: true, state, port });
+  // O agente do WhatsApp (OpenClaw, 24 h) acha o túnel por este arquivo na máquina (navegador-mcp.mjs --port-file).
+  if (state !== "connecting") void gravarPortaNavegador(host, state === "up" ? port : null);
+});
 export function browserAgent(host: string, on: boolean): void {
   setNavAgentHost(host, on);
   if (on) {

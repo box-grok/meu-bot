@@ -4873,7 +4873,7 @@ let navPartition: string | null = null;
 let navExtensions: BrowserExtensionInfo[] = [];
 let navAccess: ProAccess | null = null;
 let navAskedPro = false;
-let navEls: { rail: HTMLElement; favs: HTMLElement; star: HTMLButtonElement; tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
+let navEls: { rail: HTMLElement; favs: HTMLElement; star: HTMLButtonElement; tabs: HTMLElement; url: HTMLInputElement; back: HTMLButtonElement; fwd: HTMLButtonElement; reload: HTMLButtonElement; loading: HTMLElement; box: HTMLElement; block: HTMLElement; note: HTMLElement; menu: HTMLElement; bar: HTMLElement; agent: HTMLButtonElement; wa: HTMLButtonElement; actions: HTMLElement; popup: HTMLElement } | null = null;
 let navPopupFor: string | null = null;
 /** Barra de favoritos (lista por máquina, do main); mostrar/ocultar é escolha do app (Cmd+Shift+F). */
 let navFavs: NavFavorito[] = [];
@@ -5250,6 +5250,10 @@ function navClosePopup(): void {
 }
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 let navAgentBusy = false;
+/** O agente do WhatsApp também pode usar o Navegador (null = ainda não lido nesta janela). */
+let navWa: { on: boolean; liberados: string[] } | null = null;
+let navWaBusy = false;
+function refreshNavWa(): void { void window.meuBot.browserAgentWhatsapp().then((r) => { navWa = r; paintNav(); }).catch(() => undefined); }
 let license: LicenseView | null = null;
 const NAV_HOME = "https://www.google.com";
 /** Página inicial: no produto com a extensão do Gmail embutida (meu-bot-crm), o Gmail; senão o Google. */
@@ -5378,6 +5382,11 @@ function paintNav(): void {
   e.agent.textContent = "🤖";
   e.agent.classList.toggle("wait", a.on && a.state !== "up");
   e.agent.setAttribute("aria-label", !a.on ? "agente: desligado" : a.state === "up" ? "agente: pode usar" : a.state === "connecting" ? "agente: conectando" : "agente: sem túnel");
+  e.wa.classList.toggle("on", navWa?.on === true);
+  e.wa.disabled = navWaBusy || navWa === null;
+  e.wa.title = navWaBusy ? "gravando na máquina…" : navWa === null ? "lendo a máquina…" : navWa.on
+    ? `O agente do WhatsApp também usa este Navegador: ${navWa.liberados.map((n) => fmtPhone(n)).join(", ") || "ninguém"} (na conversa direta e nos grupos). Para os outros contatos ele fica bloqueado. Clique para desligar.`
+    : "Deixar o agente do WhatsApp usar este Navegador (só você e quem pode conversar com ele nos grupos). Clique para ligar.";
   e.agent.title = a.on ? `O agente da conversa pode abrir, ler e clicar nestas abas (túnel ${a.state === "up" ? `ativo, porta ${a.port}` : a.state}). Clique para desligar.` : "Deixar o agente da conversa usar este navegador (ele avisa antes de agir e não compra/envia nada sem você confirmar). Clique para ligar.";
   paintNavRail();
   if (navPage.tabEl !== null) { const title = navPage.tabEl.querySelector(".tab-title"); if (title !== null) title.textContent = `Navegador${navTabs.length > 1 ? ` (${navTabs.length})` : ""}`; }
@@ -5427,11 +5436,19 @@ async function openNavTab(url?: string): Promise<void> {
     const open = el("button", "mini-btn", "↗"); open.type = "button"; open.title = "Abrir esta página no navegador do Mac";
     const menu = el("div", "nav-menu"); menu.hidden = true;
     const agent = el("button", "mini-btn nav-agent", "🤖"); agent.type = "button";
+    const wa = el("button", "mini-btn nav-agent nav-wa", "📱"); wa.type = "button";
+    wa.addEventListener("click", () => {
+      const ligar = navWa?.on !== true;
+      if (ligar && !window.confirm("Deixar o agente do WhatsApp usar este Navegador (com os seus logins)?\n\nSó você e quem pode conversar com o agente nos grupos (tutorial 12) conseguem pedir isso, na conversa direta ou nos grupos. Para todos os outros contatos, o Navegador fica bloqueado no próprio OpenClaw.\n\nFunciona enquanto o meu-bot estiver aberto neste Mac.")) return;
+      navWaBusy = true; paintNav();
+      void window.meuBot.browserAgentWhatsapp(ligar).then((r) => { navWa = r; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `WhatsApp: ${ipcErrorText(err)}`; } }).finally(() => { navWaBusy = false; paintNav(); });
+    });
     const star = el("button", "mini-btn nav-star", "☆"); star.type = "button"; star.title = "Guardar esta página nos favoritos";
     const favs = el("div", "nav-favs"); favs.hidden = true;
     const actions = el("div", "nav-actions");
     const popup = el("div", "nav-popup"); popup.hidden = true;
-    bar.append(back, fwd, reload, urlEl, loading, star, agent, actions, ext, open, menu, popup);
+    bar.append(back, fwd, reload, urlEl, loading, star, agent, wa, actions, ext, open, menu, popup);
+    refreshNavWa();
     star.addEventListener("click", () => toggleFavCurrent());
     agent.addEventListener("click", () => {
       navAgentBusy = true; paintNav();
@@ -5462,7 +5479,7 @@ async function openNavTab(url?: string): Promise<void> {
     const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button"; zoom.title = "Zoom deste site (Cmd+= aumenta, Cmd+- diminui, Cmd+0 volta a 100%). Clique para alternar 100% e 75%.";
     zoom.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; const z = navZoomFor(c); if (Math.abs(z - 1) > 0.001) navZoomStep(0); else { navZoomStep(-1); navZoomStep(-1); navZoomStep(-1); } });
     pin.insertAdjacentElement("afterend", zoom);
-    navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, actions, popup };
+    navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, wa, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
     fwd.addEventListener("click", () => navCurrent()?.wv.goForward());
     reload.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; if (c.loading) c.wv.stop(); else c.wv.reload(); });

@@ -15,6 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
+import { NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
@@ -301,7 +302,7 @@ export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process"
  * Só grava se estiver vazio ou já for a do meu-bot (tem `apply_patch`): uma regra feita à mão fica.
  */
 export const ownerLockSh = (number: string): string => {
-  const lock = JSON.stringify({ [`e164:+${number}`]: {}, "*": { deny: NON_OWNER_DENY } });
+  const lock = JSON.stringify({ [`e164:+${number}`]: {}, "*": { deny: [...NON_OWNER_DENY, ...NAV_DENY] } });
   return `{ cur=$(openclaw config get tools.toolsBySender 2>&1 || true); case "$cur" in *unset*|*apply_patch*) openclaw config set tools.toolsBySender '${lock}' --strict-json >/dev/null ;; esac; }`;
 };
 
@@ -508,7 +509,7 @@ const chatNames = new Map<string, Map<string, string>>();
 const namesOf = (host: string): Map<string, string> => { let m = chatNames.get(host); if (m === undefined) { m = new Map(); chatNames.set(host, m); } return m; };
 /** Só chaves que o próprio OpenClaw gera entram no script remoto (vão dentro de aspas simples). */
 const SAFE_KEY = /^[A-Za-z0-9:+._-]{1,200}$/;
-const CREDS_ME = `python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null`;
+export const CREDS_ME = `python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null`;
 
 export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
   if (host === LOCAL_HOST || !isValidHost(host)) return [];

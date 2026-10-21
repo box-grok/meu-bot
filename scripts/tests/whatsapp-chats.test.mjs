@@ -188,7 +188,9 @@ test("trava do dono: só o número pareado sem restrição; o resto sem gravar, 
   const { ownerLockSh, NON_OWNER_DENY } = createRequire(import.meta.url)("../../dist/main/whatsapp.js");
   const sh = ownerLockSh("5521900000001");
   const lock = JSON.parse(/'(\{.*\})'/.exec(sh)[1]);
-  assert.deepEqual(lock, { "e164:+5521900000001": {}, "*": { deny: [...NON_OWNER_DENY] } });
+  assert.equal(lock["*"].deny.includes("navegador__abrir"), true); // o Navegador do dono nunca vale para "*"
+  assert.deepEqual(lock["*"].deny.filter((t) => !t.startsWith("navegador__")), [...NON_OWNER_DENY]);
+  assert.deepEqual(lock["e164:+5521900000001"], {});
   for (const t of ["write", "edit", "exec"]) assert.ok(NON_OWNER_DENY.includes(t));
   assert.match(sh, /\*unset\*\|\*apply_patch\*\)/, "só grava se vazio ou já for a do meu-bot");
 });
@@ -210,4 +212,15 @@ test("política gravada: open sem \"*\" é erro (descartaria tudo); a leitura ve
   assert.equal(politicaNaoBate("self", { dmPolicy: "allowlist", allowFrom: ["+5521900000001"] }), null);
   assert.match(politicaNaoBate("list", { dmPolicy: "open", allowFrom: ["*"] }), /open/);
   assert.equal(politicaGravada("nada"), null);
+});
+
+test("sessão de grupo não entra na conversa de quem fala nela (Limpar histórico do contato não zera o grupo)", () => {
+  const G = "120363000000000001@g.us";
+  const l = { sessions: [
+    { key: `agent:main:whatsapp:direct:${ANA}`, updatedAt: 5000, participants: [wa(ANA)] },
+    { key: `agent:main:whatsapp:group:${G}`, chatType: "group", updatedAt: 9000, participants: [wa(ANA), wa(BIA)] },
+  ] };
+  const chats = chatsFromSessions(l, SELF);
+  assert.deepEqual(chats.map((c) => c.number), [ANA.slice(1)]);
+  assert.deepEqual(chats[0].sessionKeys, [`agent:main:whatsapp:direct:${ANA}`]);
 });

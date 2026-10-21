@@ -11,6 +11,7 @@ import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, Whatsap
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
 import { assertAcesso } from "../acesso";
+import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
 import { caps } from "../variant";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
@@ -117,12 +118,13 @@ export function registerClientIpc(): void {
   handleClient("objective:save", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return saveObjectiveSkill(h.host, getHostNames()[h.host] ?? h.host);
+    // A trava do objetivo regrava toolsBySender: o Navegador do WhatsApp (se ligado) refaz a lista dos liberados.
+    return saveObjectiveSkill(h.host, getHostNames()[h.host] ?? h.host).finally(() => { void setNavWhatsapp(h.host, "sincronizar").catch(() => undefined); });
   });
   handleClient("objective:reset", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return resetObjective(h.host);
+    return resetObjective(h.host).finally(() => { void setNavWhatsapp(h.host, "sincronizar").catch(() => undefined); });
   });
   // "Refazer do zero" do tutorial de suporte: desliga e esquece o nome.
   handleClient("support:reset", (event) => {
@@ -157,6 +159,16 @@ export function registerClientIpc(): void {
     return browserOpen(h.win, h.host);
   });
   handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
+  // O agente do WhatsApp também usa o Navegador: só o número do agente e a lista dos grupos (trava do OpenClaw por remetente).
+  handleClient("browser:agent-whatsapp", async (event, payload: unknown) => {
+    const h = ctxOf(event);
+    const on = (payload as { on?: unknown } | null)?.on;
+    if (typeof on !== "boolean") return navWhatsappInfo(h.host);
+    await assertAcesso(h.host);
+    const r = await setNavWhatsapp(h.host, on);
+    void registrar(h.host, on ? "navegador.whatsapp-ligar" : "navegador.whatsapp-desligar", r.liberados.map((n) => `+${n}`).join(", "));
+    return r;
+  });
   handleClient("browser:agent", (event, payload: unknown) => { const h = ctxOf(event); browserAgent(h.host, (payload as { on?: unknown } | null)?.on === true); return browserAgentInfo(h.host); });
   onClient("browser:active", (event, payload: unknown) => { const h = hostFromEvent(event); const id = (payload as { wcId?: unknown } | null)?.wcId; if (h !== null && typeof id === "number") browserSetActive(h.host, id); });
   handleClient("browser:remove-extension", (event, payload: unknown) => { const id = (payload as { extId?: unknown } | null)?.extId; if (typeof id !== "string" || !/^[a-p]{32}$/.test(id)) throw new Error("id de extensão inválido"); return browserRemoveExtension(ctxOf(event).host, id); });
