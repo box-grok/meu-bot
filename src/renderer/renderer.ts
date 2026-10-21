@@ -5254,7 +5254,20 @@ let navAgentBusy = false;
 /** O agente do WhatsApp também pode usar o Navegador (null = ainda não lido nesta janela). */
 let navWa: { on: boolean; liberados: string[] } | null = null;
 let navWaBusy = false;
-function refreshNavWa(): void { void window.meuBot.browserAgentWhatsapp().then((r) => { navWa = r; paintNav(); }).catch(() => undefined); }
+/** Ligado por padrão: ao abrir o Navegador, liga sozinho; quem desligar de propósito fica desligado (lembrado por máquina). */
+const navWaOffKey = (): string => `navWaDesligado:${windowHost}`;
+function refreshNavWa(): void {
+  void window.meuBot.browserAgentWhatsapp().then((r) => {
+    navWa = r; paintNav();
+    let off = false; try { off = localStorage.getItem(navWaOffKey()) === "1"; } catch { /* opcional */ }
+    if (!r.on && !off && !navWaBusy) setNavWa(true);
+  }).catch(() => undefined);
+}
+function setNavWa(ligar: boolean): void {
+  try { if (ligar) localStorage.removeItem(navWaOffKey()); else localStorage.setItem(navWaOffKey(), "1"); } catch { /* opcional */ }
+  navWaBusy = true; paintNav();
+  void window.meuBot.browserAgentWhatsapp(ligar).then((r) => { navWa = r; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `WhatsApp: ${ipcErrorText(err)}`; } }).finally(() => { navWaBusy = false; paintNav(); });
+}
 let license: LicenseView | null = null;
 const NAV_HOME = "https://www.google.com";
 /** Página inicial: no produto com a extensão do Gmail embutida (meu-bot-crm), o Gmail; senão o Google. */
@@ -5440,9 +5453,9 @@ async function openNavTab(url?: string): Promise<void> {
     const wa = el("button", "mini-btn nav-agent nav-wa", "📱"); wa.type = "button";
     wa.addEventListener("click", () => {
       const ligar = navWa?.on !== true;
-      if (ligar && !window.confirm("Deixar o agente do WhatsApp usar este Navegador (com os seus logins)?\n\nSó você e quem pode conversar com o agente nos grupos (tutorial 12) conseguem pedir isso, na conversa direta ou nos grupos. Para todos os outros contatos, o Navegador fica bloqueado no próprio OpenClaw.\n\nFunciona enquanto o meu-bot estiver aberto neste Mac.")) return;
-      navWaBusy = true; paintNav();
-      void window.meuBot.browserAgentWhatsapp(ligar).then((r) => { navWa = r; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `WhatsApp: ${ipcErrorText(err)}`; } }).finally(() => { navWaBusy = false; paintNav(); });
+      // Desligar pergunta (fica lembrado nesta máquina); ligar é o padrão e não pergunta.
+      if (!ligar && !window.confirm("Tirar o Navegador do agente do WhatsApp?\n\nEle volta a não conseguir abrir páginas pelo WhatsApp. Fica desligado nesta máquina até você ligar de novo no 📱.")) return;
+      setNavWa(ligar);
     });
     const star = el("button", "mini-btn nav-star", "☆"); star.type = "button"; star.title = "Guardar esta página nos favoritos";
     const favs = el("div", "nav-favs"); favs.hidden = true;
