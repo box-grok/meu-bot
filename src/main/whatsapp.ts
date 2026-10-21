@@ -601,8 +601,11 @@ export async function whatsappThread(host: string, number: string, limit = 200):
   for (const line of r.stdout.split("\n")) {
     const parts = line.split("\t");
     if (parts[0] !== "H" || parts.length < 3) continue;
-    try { histories.push({ sessionKey: parts[1]!, history: JSON.parse(parts.slice(2).join("\t")) }); } catch { /* sessão sem resposta: fica de fora */ }
+    try { histories.push({ sessionKey: parts[1]!, history: JSON.parse(parts.slice(2).join("\t")) }); } catch { /* sessão sem resposta: conta como falha abaixo */ }
   }
+  // Sessão sem resposta (gateway ocupado: tempo esgotado) é erro, nunca "conversa vazia": senão guardar no CRM antes de
+  // limpar via "nada a guardar" e o histórico era zerado sem ir para o CRM.
+  if (histories.length < keys.length) throw new Error("o gateway do OpenClaw não devolveu a conversa inteira a tempo; nada foi limpo. Tente de novo em instantes");
   const t = threadFor(want, histories);
   // Pushname novo ou mudado: memória e cache na máquina acompanham (em segundo plano; a conversa já está lida).
   if (t.name !== null && namesOf(host).get(want) !== t.name) {
