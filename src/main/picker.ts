@@ -10,7 +10,7 @@ import { deveAtualizar } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
-import { approveTailscaleCheck, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost } from "./hostProbe";
+import { approveTailscaleCheck, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "./whatsapp";
@@ -161,9 +161,7 @@ export const clientPickerSource: PickerSource = {
       // livre quando a do app está tomada nesta máquina, senão a do app. Instalou em outra: fica gravada só para ela.
       const probe = await probeCached(host);
       const configured = getBackendPort(host);
-      const port = probe.backendInstalled && probe.backendPort !== null ? probe.backendPort
-        : !probe.backendInstalled && probe.portBusy && probe.freePort !== null ? probe.freePort
-        : configured;
+      const port = portaParaInstalar(probe, configured);
       if (port !== configured) progress(host, `porta ${configured} ${probe.backendInstalled ? "não é a do backend desta máquina" : "já ocupada nesta máquina"}: usando ${port} para ${host}`);
       const r = await installBackend(host, port, (line) => progress(host, line));
       if (r.ok && port !== configured) { setBackendPortForHost(host, port); closeTunnel(host); broadcast("settings:changed", settingsView()); }

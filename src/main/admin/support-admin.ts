@@ -16,7 +16,7 @@ import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedK
 import { entregar, registrar, registroSh } from "../auditoria";
 import type { Acao } from "../auditoria-core";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
-import { installAudio, installBackend, installClaudeCode, probeHost } from "../hostProbe";
+import { installAudio, installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../hostProbe";
 import { claudeAuthStatus } from "../claudeLogin";
 import { closeTunnel } from "../tunnel";
 import { broadcast } from "../windows";
@@ -228,7 +228,7 @@ async function prepareAdopted(alias: string): Promise<void> {
     p = await probeHost(alias, getBackendPort(alias));
   }
   const configured = getBackendPort(alias);
-  const port = p.backendInstalled && p.backendPort !== null ? p.backendPort : !p.backendInstalled && p.portBusy && p.freePort !== null ? p.freePort : configured;
+  const port = portaParaInstalar(p, configured);
   step(`instalando o backend na porta ${port}`);
   const r = await installBackend(alias, port, step);
   if (!r.ok) throw new Error(`backend não instalou: ${r.log.at(-1) ?? "?"}`);
@@ -441,6 +441,7 @@ export async function adminBotDelete(host: string, sessionId: string): Promise<v
 }
 
 const ACTIONS: Record<AdminAction, { acao: Acao; sh: string }> = {
+  "install-backend": { acao: "backend.instalar", sh: "" },
   "restart-gateway": { acao: "servico.reiniciar-gateway", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
   "restart-backend": { acao: "servico.reiniciar-backend", sh: "systemctl --user restart meu-bot-backend 2>&1" },
   transcription: { acao: "audio.ativar", sh: "" },
@@ -514,10 +515,31 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
   return { people: knownPeople(), cleared, detail };
 }
 
+/**
+ * "Instalar o backend do meu-bot" pelo admin: mesma porta que o seletor da pessoa escolheria (portaParaInstalar:
+ * a do backend existente, senão a primeira livre, porque contas da mesma máquina não dividem porta), o mesmo
+ * instalador, e a porta fica gravada para esta pessoa (o túnel do admin passa a usá-la). O app dela lê a porta do
+ * .env na sondagem. Claude deslogado não impede (o backend responde 401 até o login, que é dela).
+ */
+async function instalarBackend(host: string): Promise<{ ok: boolean; detail: string }> {
+  const configurada = getBackendPort(host);
+  const probe = await probeHost(host, configurada);
+  if (!probe.reachable) return { ok: false, detail: "a máquina não respondeu" };
+  const porta = portaParaInstalar(probe, configurada);
+  const r = await installBackend(host, porta);
+  if (r.ok) {
+    if (porta !== configurada) { setBackendPortForHost(host, porta); closeTunnel(host); broadcast("settings:changed", settingsView()); }
+    await registrar(host, "backend.instalar", `porta ${porta}`);
+  }
+  log(`[suporte] ${host}: backend ${r.ok ? "instalado" : "falhou"} na porta ${porta}`);
+  return { ok: r.ok, detail: r.ok ? `backend instalado na porta ${porta}${probe.claudeLoggedIn ? "" : "; falta ela entrar no Claude Code"}` : (r.log.at(-1) ?? "falhou") };
+}
+
 /** Ação de suporte: roda na máquina da pessoa e fica no registro que ela vê. */
 export async function adminAction(host: string, action: AdminAction): Promise<{ ok: boolean; detail: string }> {
   const a = ACTIONS[action];
   if (action === "support-off") return turnSupportOff(host);
+  if (action === "install-backend") return instalarBackend(host);
   // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {
     const r = await installAudio(host, { kind: "in", ...(action === "transcription-off" ? { off: true } : {}) });

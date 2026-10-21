@@ -32,6 +32,7 @@ export const ACOES = {
   "device.pedido": (a: string) => `pedido de device a mais${a ? `: ${a}` : ""}`,
   "plano.pedir": (a: string) => a || "pediu um plano",
   "meu-bot.apagar-conversa": () => "apagou uma conversa dela com o meu-bot",
+  "backend.instalar": (a: string) => `instalou o backend do meu-bot${a ? ` (${a})` : ""}`,
   "servico.reiniciar-gateway": () => "reiniciou o gateway do OpenClaw",
   "servico.reiniciar-backend": () => "reiniciou o backend do meu-bot",
   "audio.ativar": () => "ativou a transcrição de áudio",

@@ -458,7 +458,7 @@ export interface SupportProgress {
   app?: { version: string; openedAt: string };
 }
 /** Ações do admin na máquina da pessoa. "support-off" tira o próprio acesso (ex.: deixou de pagar); só o admin desliga. */
-export type AdminAction = "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off";
+export type AdminAction = "install-backend" | "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off";
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
 export type VoiceReplyMode = "off" | "inbound" | "always";

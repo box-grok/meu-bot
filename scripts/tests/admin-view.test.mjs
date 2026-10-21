@@ -127,3 +127,11 @@ test("licenseSummary: mostra validade e marca expirada no passado", () => {
   const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-crm", "meu-bot-fit"] } });
   assert.equal(comProdutos[0].text, "Plano: Pro + meu-bot-crm, meu-bot-fit");
 });
+
+test("visibleActions: Instalar o backend só sem backend (com ele, Reiniciar); sem saúde, não aparece", () => {
+  const h = (backendInstalled) => ({ probe: { reachable: true, backendInstalled }, whatsapp: null, share: {}, progress: null, xai: null, license: null });
+  const ids = (x) => visibleActions(x).map((o) => o.id);
+  assert.ok(ids(h(false)).includes("install-backend")); assert.ok(!ids(h(false)).includes("restart-backend"));
+  assert.ok(!ids(h(true)).includes("install-backend")); assert.ok(ids(h(true)).includes("restart-backend"));
+  assert.ok(!ids(null).includes("install-backend"));
+});

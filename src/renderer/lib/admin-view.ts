@@ -6,6 +6,7 @@ import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, SupportPerso
 import { tutorialNumber } from "./tutoriais.js";
 
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
+  { id: "install-backend", label: "Instalar o backend do meu-bot", confirm: "Confirmar? instala na conta dela (porta livre escolhida sozinha)" },
   { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
   { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
@@ -166,6 +167,9 @@ export const progressUpdatedText = (at: string): string =>
  */
 export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_ACTIONS)[number][] =>
   ADMIN_ACTIONS.filter((o) => {
+    // Instalar só aparece quando a máquina está sem backend (com ele, "Reiniciar"); sem saúde ainda, não aparece.
+    if (o.id === "install-backend") return h !== null && h.probe.reachable && !h.probe.backendInstalled;
+    if (o.id === "restart-backend") return h === null || h.probe.backendInstalled;
     if (o.id !== "transcription" && o.id !== "transcription-off") return true;
     const wa = h?.whatsapp ?? null;
     if (wa === null || !wa.present || wa.gateway !== "openclaw") return false;

@@ -225,6 +225,16 @@ const BUNDLE_FILES = [
 ];
 
 /** Copia o bundle para o host e roda o instalador; `onLine` recebe o progresso linha a linha. */
+/**
+ * Porta para instalar o backend nesta máquina (regra única do seletor e do admin): a do backend já instalado
+ * (reinstalar não muda o .env), a primeira livre quando a do app está tomada (outra conta da mesma máquina), senão a do app.
+ */
+export function portaParaInstalar(probe: Pick<HostProbe, "backendInstalled" | "backendPort" | "portBusy" | "freePort">, configurada: number): number {
+  if (probe.backendInstalled && probe.backendPort !== null) return probe.backendPort;
+  if (!probe.backendInstalled && probe.portBusy && probe.freePort !== null) return probe.freePort;
+  return configurada;
+}
+
 export async function installBackend(host: string, port: number, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: true, log: ["o backend deste Mac vai dentro do app; nada a instalar"] };
   const lines: string[] = [];
