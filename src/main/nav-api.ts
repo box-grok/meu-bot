@@ -31,6 +31,12 @@ export async function startNavApi(host: string): Promise<string> {
   if (servers.has(host)) return sock;
   try { fs.unlinkSync(sock); } catch { /* não existia */ }
   const server = http.createServer((req, res) => { void handle(host, req, res); });
+  // Pedido malformado (o Node recusa antes do handler): fica no log e volta com o motivo, nunca um 400 mudo.
+  server.on("clientError", (err: NodeJS.ErrnoException, socket) => {
+    log(`[navegador ${host}] pedido malformado: ${err.code ?? err.message}`);
+    const body = JSON.stringify({ erro: `pedido malformado (${err.code ?? "erro"}); tente de novo` });
+    if (socket.writable) socket.end(`HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`);
+  });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(sock, () => { server.off("error", reject); resolve(); }); });
   fs.chmodSync(sock, 0o600);
   servers.set(host, server);

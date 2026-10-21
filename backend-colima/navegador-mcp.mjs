@@ -7,7 +7,7 @@
  * app grava quando o túnel sobe; sem arquivo ou sem resposta, o Navegador está fechado (app fechado no Mac do dono).
  * Protocolo: JSON-RPC 2.0, uma mensagem por linha (initialize, tools/list, tools/call, ping, notifications).
  * Cada pedido leva quem está pedindo (cabeçalho X-Meu-Bot-Dono): cada conversa trabalha nas próprias abas.
- * meu-bot-navegador v2
+ * meu-bot-navegador v3
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -60,9 +60,12 @@ function call(route, body) {
     const port = porta();
     if (!port) { reject(new Error(FECHADO)); return; }
     const data = JSON.stringify(body || {});
-    const req = http.request({ host: '127.0.0.1', port, path: `/${route}`, method: route === 'abas' ? 'GET' : 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data), ...(DONO_HDR ? { 'X-Meu-Bot-Dono': DONO_HDR } : {}) }, timeout: 60_000 }, (res) => {
+    // GET sem corpo não declara Content-Length (declarar 2 bytes e não mandar fazia o app engolir o começo do pedido
+    // seguinte na mesma conexão: "abas" e depois "ler" dava HTTP 400). E uma conexão por pedido (agent: false).
+    const get = route === 'abas';
+    const req = http.request({ host: '127.0.0.1', port, path: `/${route}`, method: get ? 'GET' : 'POST', agent: false, headers: { ...(get ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }), ...(DONO_HDR ? { 'X-Meu-Bot-Dono': DONO_HDR } : {}) }, timeout: 60_000 }, (res) => {
       let out = ''; res.setEncoding('utf8'); res.on('data', (c) => { out += c; });
-      res.on('end', () => { try { const j = JSON.parse(out || '{}'); if (res.statusCode !== 200) reject(new Error(j.erro || `HTTP ${res.statusCode}`)); else resolve(j); } catch (e) { reject(new Error(`resposta inválida do app: ${e.message}`)); } });
+      res.on('end', () => { try { const j = JSON.parse(out || '{}'); if (res.statusCode !== 200) reject(new Error(j.erro || `o app recusou o pedido (HTTP ${res.statusCode}${out ? `: ${out.slice(0, 120)}` : ''}); tente de novo`)); else resolve(j); } catch (e) { reject(new Error(`resposta inválida do app: ${e.message}`)); } });
     });
     req.on('timeout', () => { req.destroy(new Error('o app não respondeu em 60 s')); });
     req.on('error', (e) => reject(new Error(e.code === 'ECONNREFUSED' ? FECHADO : e.message)));
@@ -82,7 +85,7 @@ const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   let msg; try { msg = JSON.parse(line); } catch { return; }
   const { id, method, params } = msg;
-  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '2.0.0' } } });
+  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '3.0.0' } } });
   if (method === 'notifications/initialized' || (typeof method === 'string' && method.startsWith('notifications/'))) return;
   if (method === 'ping') return send({ jsonrpc: '2.0', id, result: {} });
   if (method === 'tools/list') return send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
