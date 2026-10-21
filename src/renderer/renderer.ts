@@ -19,7 +19,7 @@ import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEsco
 import { renderMarkdown } from "./lib/markdown.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
-import { conversationReferenceText, waReferenceText } from "./lib/reference.js";
+import { conversationReferenceText, grupoReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
@@ -2552,9 +2552,11 @@ function refreshWaChats(): Promise<void> {
   if (waChatsInflight !== null) return waChatsInflight;
   if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
   // Primeira leitura: a lista da última vez aparece na hora (cache desta janela) e a leitura real troca por baixo.
+  // Grupos em paralelo (não esperam a lista de conversas), no máximo a cada minuto.
+  if (Date.now() - waGroupsAt > 60_000) void refreshWaGroups();
   if (waChats.length === 0 && !waChatsFromCache) { waChatsFromCache = true; const c = cacheRead<WhatsappChat[]>("waChats"); if (c !== null && c.value.length > 0) { waChats = c.value; if (getListMode() === "whatsapp") renderSidebar(); } }
   waChatsInflight = (async () => {
-    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); cacheWrite("waChats", waChats); void learnMissingWaNames(); if (Date.now() - waGroupsAt > 60_000) void refreshWaGroups(); }
+    try { waChats = await window.meuBot.whatsappChats(); waChatsErr = null; await migrateWaMarks(); cacheWrite("waChats", waChats); void learnMissingWaNames(); }
     catch (err) { waChatsErr = err instanceof Error ? err.message : String(err); }
     finally { waChatsInflight = null; }
     for (const g of waChatPages.values()) { const c = waChats.find((x) => x.number === g.chat.number); if (c !== undefined) { g.chat = c; paintWaChatTab(g); } }
@@ -2969,9 +2971,17 @@ const waNumberLabel = (n: string): string => { const c = waChats.find((x) => x.n
 const waQuemTexto = (q: WhatsappGroups): string =>
   q.quemAciona === "todos" ? "qualquer pessoa do grupo" : q.quemAciona.length === 0 ? "ninguém escolhido ainda" : q.quemAciona.map(waNumberLabel).join(", ");
 
+/** Grupos da última vez (cache desta janela), uma vez: a área aparece na hora e a leitura real troca por baixo. */
+let waGroupsFromCache = false;
+function waGroupsSeed(): void {
+  if (waGroups !== null || waGroupsFromCache) return;
+  waGroupsFromCache = true;
+  const c = cacheRead<WhatsappGroups>("waGroups");
+  if (c !== null) waGroups = c.value;
+}
 function refreshWaGroups(): Promise<void> {
   if (waGroupsInflight !== null) return waGroupsInflight;
-  if (waGroups === null) { const c = cacheRead<WhatsappGroups>("waGroups"); if (c !== null) waGroups = c.value; }
+  waGroupsSeed();
   waGroupsInflight = (async () => {
     try { waGroups = await window.meuBot.whatsappGroups(); waGroupsErr = null; cacheWrite("waGroups", waGroups); }
     catch (err) { waGroupsErr = ipcErrorText(err); }
@@ -3014,7 +3024,7 @@ async function ligarWaGroup(g: WhatsappGroup): Promise<void> {
 }
 function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null): void {
   if (a === null) return;
-  if (a === "group-copy-id") { void navigator.clipboard.writeText(g.jid); return; }
+  if (a === "group-copy-id") { copyReference(grupoReferenceText(g, hostLabel(windowHost))); return; }
   if (a === "groups-refresh") { void listarWaGroups(); return; }
   if (a === "group-who") { openWaGroup(g, true); return; }
   if (a === "group-off") { void setWaGroup(g.jid, { agente: "desligado" }); return; }
@@ -3023,6 +3033,7 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
 /** Área "Grupos (N)" no fim da lista do WhatsApp: recolhível; cada grupo com o selo do agente e o menu "…". */
 function waGroupsSection(q: string): HTMLElement[] {
   const out: HTMLElement[] = [];
+  waGroupsSeed();
   const grupos = (waGroups?.grupos ?? []).filter((g) => q === "" || normalize(`${g.nome ?? ""} ${g.jid}`).includes(q));
   const open = waGroupsOpen();
   const head = el("button", "sidebar-group wa-groups-head", `${open ? "▾" : "▸"} Grupos${waGroups !== null ? ` (${waGroups.grupos.length})` : ""}`); head.type = "button";
@@ -3064,7 +3075,7 @@ function waGroupsSection(q: string): HTMLElement[] {
   return out;
 }
 
-interface WaGroupPage { page: PageTab; grupo: WhatsappGroup; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null; editQuem: boolean; shown?: string | undefined }
+interface WaGroupPage { page: PageTab; grupo: WhatsappGroup; msgs: WhatsappThreadMessage[]; err: string | null; loaded: boolean; inflight: Promise<void> | null; timer: number | null; editQuem: boolean; shown?: string | undefined; /** O que está na tela veio do cache; a leitura real ainda não chegou. */ stale?: boolean }
 const waGroupPages = new Map<string, WaGroupPage>();
 function paintWaGroupTab(g: WaGroupPage): void {
   g.page.title = `👥 ${waGroupTitle(g.grupo)}`;
@@ -3077,6 +3088,9 @@ function openWaGroup(grupo: WhatsappGroup, editQuem = false): void {
     const panel = el("section", "wa-chat-panel"); panel.hidden = true;
     panelsEl.append(panel);
     const created: WaGroupPage = { page: null as unknown as PageTab, grupo, msgs: [], err: null, loaded: false, inflight: null, timer: null, editQuem };
+    // A conversa da última vez aparece na hora (cache desta janela, até 200 mensagens); a leitura real troca por baixo.
+    const cached = cacheRead<WhatsappThreadMessage[]>(`waGroupThread:${grupo.jid}`);
+    if (cached !== null && cached.value.length > 0) { created.msgs = cached.value; created.loaded = true; created.stale = true; }
     created.page = definePage(id, `👥 ${waGroupTitle(grupo)}`, panel, () => renderWaGroup(created));
     waGroupPages.set(id, created);
     g = created;
@@ -3089,7 +3103,7 @@ function refreshWaGroupThread(g: WaGroupPage): Promise<void> {
   if (g.inflight !== null) return g.inflight;
   if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; }
   g.inflight = (async () => {
-    try { g.msgs = await window.meuBot.whatsappGroupThread(g.grupo.jid); g.err = null; noteGroupReplied(g.grupo.jid, g.msgs); }
+    try { g.msgs = await window.meuBot.whatsappGroupThread(g.grupo.jid); g.err = null; g.stale = false; cacheWrite(`waGroupThread:${g.grupo.jid}`, g.msgs.slice(-200)); noteGroupReplied(g.grupo.jid, g.msgs); }
     catch (err) { g.err = ipcErrorText(err); }
     finally { g.loaded = true; g.inflight = null; }
     if (pageShown(g.page)) { g.timer = window.setTimeout(() => { g.timer = null; void refreshWaGroupThread(g); }, 8_000); renderWaGroup(g); }
@@ -3139,11 +3153,13 @@ function renderWaGroup(g: WaGroupPage): void {
     head = el("div", "wa-chat-head"); summary = el("div", "wa-group-summary"); list = el("div", "wa-chat-msgs");
     panel.replaceChildren(head, summary, list);
   }
-  const idBtn = el("button", "wa-chat-id", "ID"); idBtn.type = "button";
-  idBtn.title = `${g.grupo.jid}\n\nClique para copiar`;
-  idBtn.addEventListener("click", () => { void navigator.clipboard.writeText(g.grupo.jid); });
+  // ID do grupo (o mesmo do "Copiar ID" do menu): sessão atual do OpenClaw e o .jsonl do Claude Code; clique copia.
+  const ref = grupoReferenceText(g.grupo, hostLabel(windowHost));
+  const idBtn = el("button", "wa-chat-id", g.grupo.sessionId !== null ? `ID ${g.grupo.sessionId.slice(0, 8)}` : "ID"); idBtn.type = "button";
+  idBtn.title = `${ref}\n\nClique para copiar`;
+  idBtn.addEventListener("click", () => copyReference(ref));
   head.replaceChildren(el("strong", "", `👥 ${waGroupTitle(g.grupo)}`), el("span", "wa-chat-num", g.grupo.membros !== null ? `${g.grupo.membros} membros` : "grupo"), idBtn,
-    el("span", "wa-chat-hint", "somente leitura · atualiza sozinho"));
+    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : "somente leitura · atualiza sozinho"));
   // O editor da lista tem campo de texto: só redesenha o resumo quando ele não está em uso.
   if (!summary.contains(document.activeElement)) summary.replaceWith(summary = waGroupSummary(g));
   panel.dataset["rendered"] = "1";

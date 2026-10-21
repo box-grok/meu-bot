@@ -72,13 +72,18 @@ export function quemAcionaDe(wa: Record<string, unknown>): { quem: string[] | "t
  * Grupos da máquina: junta a sessão (houve conversa), a config (o agente está ligado) e o cache (nome e membros
  * mesmo sem conversa). Ordem: com agente ligado primeiro, depois pela conversa mais recente, depois pelo nome.
  */
-export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown, self: string | null = null): WhatsappGroups {
+/** Sessões de grupo lidas do banco do OpenClaw (só leitura): chave → UUID, transcrição do Claude Code, assunto e hora. */
+export interface SessaoDoBanco { sessionId?: unknown; jsonl?: unknown; subject?: unknown; updatedAt?: unknown }
+const UUID_RE = /^[A-Za-z0-9-]{8,80}$/;
+const JSONL_RE = /^~\/\.claude\/projects\/[A-Za-z0-9._-]+\/[A-Za-z0-9-]{8,80}\.jsonl$/;
+
+export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown, self: string | null = null, banco: unknown = null): WhatsappGroups {
   const wa = isObj(waConfig) ? waConfig : {};
   const c = parseCacheGrupos(cache);
   const byJid = new Map<string, WhatsappGroup>();
   const get = (jid: string): WhatsappGroup => {
     let g = byJid.get(jid);
-    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, updatedAt: null }; byJid.set(jid, g); }
+    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null }; byJid.set(jid, g); }
     return g;
   };
   for (const e of c.grupos) { const g = get(e.jid); g.nome = e.nome || null; g.membros = e.membros; g.participantes = e.participantes; }
@@ -90,8 +95,24 @@ export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown
     const g = get(jid);
     const updated = typeof s.updatedAt === "number" ? s.updatedAt : 0;
     if (g.updatedAt === null || updated > Date.parse(g.updatedAt)) { g.sessionKey = s.key; g.updatedAt = new Date(updated).toISOString(); }
+    if (g.sessionKey === s.key && typeof s.sessionId === "string" && UUID_RE.test(s.sessionId)) g.sessionId = s.sessionId;
     const nome = typeof s.subject === "string" && s.subject !== "" ? s.subject : typeof s.displayName === "string" && s.displayName !== "" ? s.displayName : null;
     if (g.nome === null && nome !== null) g.nome = nome;
+  }
+  // O banco completa (e substitui, quando o gateway não respondeu ao sessions.list): UUID, .jsonl, assunto e hora.
+  for (const [key, raw] of Object.entries(isObj(banco) ? banco : {})) {
+    const jid = groupOfSessionKey(key);
+    if (jid === null || !isObj(raw)) continue;
+    const b = raw as SessaoDoBanco;
+    const g = get(jid);
+    const updated = typeof b.updatedAt === "number" ? b.updatedAt : 0;
+    if (g.sessionKey === null || g.sessionKey === key) {
+      g.sessionKey = key;
+      if (typeof b.sessionId === "string" && UUID_RE.test(b.sessionId)) g.sessionId = b.sessionId;
+      if (typeof b.jsonl === "string" && JSONL_RE.test(b.jsonl)) g.transcript = b.jsonl;
+      if (g.updatedAt === null && updated > 0) g.updatedAt = new Date(updated).toISOString();
+    }
+    if (g.nome === null && typeof b.subject === "string" && b.subject !== "") g.nome = b.subject;
   }
   const groups = isObj(wa.groups) ? wa.groups : {};
   for (const jid of Object.keys(groups)) if (JID_RE.test(jid)) get(jid);

@@ -31,3 +31,11 @@ test("whatsapp: número, chave e sessão; uma linha por sessão; sem UUID omite;
   assert.equal(two[1], "whatsapp · colima · +5516992294486 · agent:main:main · sessão m-1");
   assert.match(waReferenceText({ number: "5516992294486", sessionKeys: [], sessionIds: {} }, "colima"), /sem sessão/);
 });
+
+test("ID do grupo: nome, jid, chave e sessão do OpenClaw e o .jsonl do Claude Code na segunda linha", async () => {
+  const { grupoReferenceText } = await import("../../dist/renderer/lib/reference.js");
+  const g = { jid: "120363000000000001@g.us", nome: "Time", sessionKey: "agent:main:whatsapp:group:120363000000000001@g.us", sessionId: "22bb9aae-56c4", transcript: "~/.claude/projects/-home-x--openclaw-workspace/e23e862d.jsonl" };
+  assert.equal(grupoReferenceText(g, "box-lv"), 'whatsapp · box-lv · grupo "Time" · 120363000000000001@g.us · agent:main:whatsapp:group:120363000000000001@g.us · sessão 22bb9aae-56c4\nwhatsapp · box-lv · ~/.claude/projects/-home-x--openclaw-workspace/e23e862d.jsonl');
+  assert.match(grupoReferenceText({ ...g, transcript: null }, "m"), /sessão 22bb9aae-56c4$/);
+  assert.match(grupoReferenceText({ ...g, sessionKey: null }, "m"), /sem sessão no OpenClaw ainda/);
+});

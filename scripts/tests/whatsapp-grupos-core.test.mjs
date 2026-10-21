@@ -118,3 +118,18 @@ test("conversa do grupo: autor pelo cache de nomes; senderName com o nome do gru
   ]);
   assert.equal(threadDoGrupo({ messages: [user(DONO, "Time de casa", "x", 1)] }, new Map(), "Time de casa")[0].autor, DONO);
 });
+
+test("banco do OpenClaw: UUID e .jsonl para o ID da aba; vale mesmo sem sessions.list (gateway ocupado)", () => {
+  const banco = { [`agent:main:whatsapp:group:${G1}`]: { sessionId: "22bb9aae-56c4-46de-8a2c-34dcdb3bcc26", jsonl: "~/.claude/projects/-home-x--openclaw-workspace/e23e862d-7ca3-44bb-bd84-fcb0feab8721.jsonl", subject: "Time de casa", updatedAt: 7000 },
+    [`agent:main:whatsapp:group:${G2}`]: { sessionId: "x; rm -rf", jsonl: "/etc/passwd", subject: "VIP", updatedAt: 1 } };
+  const r = gruposDaMaquina({ ok: false }, ligado, null, null, banco);
+  const g1 = r.grupos.find((g) => g.jid === G1);
+  assert.equal(g1.sessionKey, `agent:main:whatsapp:group:${G1}`);
+  assert.equal(g1.sessionId, "22bb9aae-56c4-46de-8a2c-34dcdb3bcc26");
+  assert.match(g1.transcript, /e23e862d-7ca3-44bb-bd84-fcb0feab8721\.jsonl$/);
+  assert.equal(g1.nome, "Time de casa");
+  const g2 = r.grupos.find((g) => g.jid === G2);
+  assert.equal(g2.sessionId, null); // valores estranhos não passam
+  assert.equal(g2.transcript, null);
+  assert.equal(g2.nome, "VIP");
+});

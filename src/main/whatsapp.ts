@@ -750,6 +750,34 @@ const kvOf = (out: string): Map<string, string> => {
 };
 const jsonOr = (v: string | undefined): unknown => { try { return JSON.parse(v || "null"); } catch { return null; } };
 
+/**
+ * Sessões de grupo pelo banco do OpenClaw, só leitura: UUID atual, a transcrição do Claude Code (o .jsonl do runtime
+ * claude-cli, para o ID da aba), assunto e hora. Vale também quando o gateway não responde ao sessions.list.
+ */
+const GRUPOS_DO_BANCO_SH = `echo "banco=$(python3 - <<'MEUBOT_PY' 2>/dev/null
+import sqlite3, os, json, glob, re
+db = os.path.expanduser("~/.openclaw/agents/main/agent/openclaw-agent.sqlite")
+out = {}
+try:
+    c = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=5)
+    for k, e in c.execute("select session_key, entry_json from session_nodes where session_key like '%:group:%'"):
+        try:
+            d = json.loads(e or "{}") or {}
+        except Exception:
+            d = {}
+        cli = ((d.get("cliSessionBindings") or {}).get("claude-cli") or {}).get("sessionId") or (d.get("cliSessionIds") or {}).get("claude-cli")
+        j = None
+        if isinstance(cli, str) and re.fullmatch(r"[A-Za-z0-9-]{8,80}", cli):
+            m = glob.glob(os.path.expanduser("~/.claude/projects/*/" + cli + ".jsonl"))
+            if m:
+                j = "~" + m[0][len(os.path.expanduser("~")):]
+        out[k] = {"sessionId": d.get("sessionId"), "jsonl": j, "subject": d.get("subject"), "updatedAt": d.get("updatedAt")}
+except Exception:
+    pass
+print(json.dumps(out))
+MEUBOT_PY
+)"`;
+
 /** Grupos da máquina: sessões de grupo, a config de grupos e o cache da skill, numa leitura só. */
 export async function whatsappGroups(host: string): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
@@ -759,11 +787,12 @@ echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"l
 ${WA_CONFIG_SH}
 echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
 echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
+${GRUPOS_DO_BANCO_SH}
 `;
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ler os grupos do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const kv = kvOf(r.stdout);
-  const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null);
+  const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null, jsonOr(kv.get("banco")));
   return { ...g, skill: kv.get("skill") === "1" };
 }
 

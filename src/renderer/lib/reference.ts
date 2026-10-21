@@ -5,7 +5,7 @@
  *   whatsapp · colima · +5516992294486 · agent:main:whatsapp:direct:+5516992294486 · sessão <uuid>
  *   meu-bot · colima · conversa <id do app> (ainda sem transcrição na máquina: mande uma mensagem e copie de novo)
  */
-import type { BotChat, ClaudeSessionRef, WhatsappChat } from "../../shared/ipc";
+import type { BotChat, ClaudeSessionRef, WhatsappChat, WhatsappGroup } from "../../shared/ipc";
 
 /** Conversa dela com o meu-bot vista no espelho do admin: o .jsonl do Claude Code, ou o diário do backend (Grok/Hermes). */
 export const botReferenceText = (chat: Pick<BotChat, "project" | "sessionId"> & { source?: BotChat["source"] }, machine: string): string =>
@@ -33,4 +33,15 @@ export function waReferenceText(chat: Pick<WhatsappChat, "number" | "sessionKeys
   const head = `whatsapp · ${machine} · +${chat.number}`;
   if (chat.sessionKeys.length === 0) return `${head} · (sem sessão no OpenClaw ainda)`;
   return chat.sessionKeys.map((k) => { const id = chat.sessionIds[k]; return `${head} · ${k}${id === undefined ? "" : ` · sessão ${id}`}`; }).join("\n");
+}
+
+/**
+ * Grupo do WhatsApp: nome, jid, chave e UUID da sessão do OpenClaw e, quando achada, a transcrição do Claude Code
+ * (o .jsonl que o agente grava na máquina), numa segunda linha.
+ */
+export function grupoReferenceText(g: Pick<WhatsappGroup, "jid" | "nome" | "sessionKey" | "sessionId" | "transcript">, machine: string): string {
+  const head = `whatsapp · ${machine} · grupo "${g.nome ?? "sem nome"}" · ${g.jid}`;
+  if (g.sessionKey === null) return `${head} · (sem sessão no OpenClaw ainda: o agente não recebeu nada deste grupo)`;
+  const linha = `${head} · ${g.sessionKey}${g.sessionId === null ? "" : ` · sessão ${g.sessionId}`}`;
+  return g.transcript === null ? linha : `${linha}\nwhatsapp · ${machine} · ${g.transcript}`;
 }

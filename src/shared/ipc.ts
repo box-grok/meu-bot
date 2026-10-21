@@ -557,6 +557,10 @@ export interface WhatsappGroup {
   agente: WhatsappGroupAgent;
   /** Sessão do agente neste grupo (null = ninguém falou com ele ainda). */
   sessionKey: string | null;
+  /** UUID atual da sessão no OpenClaw (troca a cada /new ou limpar); para o ID da aba. */
+  sessionId: string | null;
+  /** Transcrição do Claude Code desta sessão na máquina (~/.claude/projects/…/<id>.jsonl), se achada. */
+  transcript: string | null;
   updatedAt: string | null;
 }
 /** Grupos da máquina e quem aciona o agente neles (groupAllowFrom vale para TODOS os grupos ligados). */
