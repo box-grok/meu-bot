@@ -1431,8 +1431,7 @@ function openPage(page: PageTab, activateIt = true): void {
     tabEl.addEventListener("click", () => activatePage(page));
     closeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
-      // Terminal com shell vivo: dois cliques (fechar mata o shell).
-      if (page.id.startsWith("term-") && termAlive(page.id)) { armConfirm(closeBtn, "fechar?", () => closePage(page)); return; }
+      // Fecha direto, terminal inclusive (o shell vivo é encerrado ao fechar a aba).
       closePage(page);
     });
     tabsEl.appendChild(tabEl);
@@ -5357,7 +5356,6 @@ interface TermTab {
 }
 const terminals = new Map<string, TermTab>();
 let termCounter = 0;
-const termAlive = (pageId: string): boolean => { const t = terminals.get(pageId); return t !== undefined && t.id !== null && t.exited === null; };
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const isDark = (): boolean => document.documentElement.dataset["theme"] === "dark" || (document.documentElement.dataset["theme"] !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
 const themeNow = (): Record<string, string> => xtermTheme({ bg: cssVar("--bg"), fg: cssVar("--fg"), muted: cssVar("--muted"), accent: cssVar("--accent"), dark: isDark() });
