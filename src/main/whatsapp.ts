@@ -796,15 +796,70 @@ ${GRUPOS_DO_BANCO_SH}
   return { ...g, skill: kv.get("skill") === "1" };
 }
 
+/**
+ * Mensagens da sessão atual de um grupo direto do banco do OpenClaw (só leitura): o mesmo formato do `chat.history`
+ * (`{ messages: [...] }`), sem depender do gateway (que ocupado demorava minutos e a tela via "sem mensagens").
+ * Sem o banco (OpenClaw antigo), cai no `chat.history`. Imprime `OK <json>` ou `FALHA <motivo>`.
+ */
+const grupoThreadSh = (jid: string, n: number): string => `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
+python3 - '${jid}' ${n} <<'MEUBOT_PY'
+import sqlite3, os, json, sys, subprocess
+jid, n = sys.argv[1], int(sys.argv[2])
+db = os.path.expanduser("~/.openclaw/agents/main/agent/openclaw-agent.sqlite")
+def ev(js, zb):
+    if js:
+        return json.loads(js)
+    if zb is None:
+        return None
+    try:
+        import zstandard
+        return json.loads(zstandard.ZstdDecompressor().decompress(zb))
+    except ImportError:
+        p = subprocess.run(["zstd", "-dc"], input=bytes(zb), capture_output=True, timeout=10)
+        return json.loads(p.stdout) if p.returncode == 0 else None
+try:
+    c = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=5)
+    row = next((r for r in c.execute("select session_key, current_session_id from session_nodes where session_key like ?", ("%:group:" + jid,))), None)
+    if row is None:
+        print("OK " + json.dumps({"messages": []}))
+        sys.exit(0)
+    msgs = []
+    for js, zb in c.execute("select event_json, event_zstd from (select seq, event_json, event_zstd from transcript_events where session_id=? order by seq desc limit ?) order by seq", (row[1], n * 4)):
+        try:
+            e = ev(js, zb)
+        except Exception:
+            continue
+        if isinstance(e, dict) and e.get("type") == "message" and isinstance(e.get("message"), dict):
+            msgs.append(e["message"])
+    print("OK " + json.dumps({"messages": msgs[-n:]}))
+except Exception as e:
+    print("FALHA " + type(e).__name__)
+MEUBOT_PY
+`;
+
 /** Conversa de um grupo (só leitura), com o autor de cada mensagem. */
 export async function whatsappGroupThread(host: string, jid: string, limit = 200): Promise<WhatsappThreadMessage[]> {
   if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
+  const nome = (): Promise<string | null> => whatsappGroups(host).then((g) => g.grupos.find((x) => x.jid === jid)?.nome ?? null, () => null);
+  const r = await runSsh(host, grupoThreadSh(jid, n), 60_000);
+  const ok = /^OK (.*)$/m.exec(r.stdout);
+  if (ok !== null) return threadDoGrupo(jsonOr(ok[1]), namesOf(host), await nomeEmCache(host, jid, nome));
+  // Sem o banco legível: o gateway (formato igual); vazio por tempo esgotado vira erro, não "sem mensagens".
   const grupo = (await whatsappGroups(host)).grupos.find((x) => x.jid === jid);
   if (grupo === undefined || grupo.sessionKey === null || !SAFE_KEY.test(grupo.sessionKey)) return [];
-  const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
-  const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\ntimeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${grupo.sessionKey}","limit":${n}}' 2>/dev/null | tr -d '\n'\n`, 90_000);
-  if (r.code !== 0) throw new Error(`não consegui ler a conversa do grupo: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
-  return threadDoGrupo(jsonOr(r.stdout.trim()), namesOf(host), grupo.nome);
+  const h = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\ntimeout 60 openclaw gateway call chat.history --json --params '{"sessionKey":"${grupo.sessionKey}","limit":${n}}' 2>/dev/null | tr -d '\n'\n`, 90_000);
+  const hist = jsonOr(h.stdout.trim());
+  if (h.code !== 0 || hist === null) throw new Error("não consegui ler a conversa do grupo: o gateway do OpenClaw não respondeu a tempo");
+  return threadDoGrupo(hist, namesOf(host), grupo.nome);
+}
+/** Nome do grupo para filtrar o senderName (lido junto da lista; guardado por máquina para não reler a cada 8 s). */
+const groupNames = new Map<string, string | null>();
+async function nomeEmCache(host: string, jid: string, ler: () => Promise<string | null>): Promise<string | null> {
+  const k = `${host}|${jid}`;
+  if (!groupNames.has(k)) groupNames.set(k, await ler());
+  return groupNames.get(k) ?? null;
 }
 
 /**
