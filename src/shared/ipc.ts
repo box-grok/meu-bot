@@ -371,6 +371,8 @@ export interface WhatsappStatus {
   audioIn?: boolean;
   /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
+  /** Voz das respostas em áudio instalada na máquina (null = nenhuma escolhida ainda; a faber de antes conta como faber). */
+  audioVoice?: VozId | null;
   /** O que o app consertou sozinho nesta consulta (pt-BR), para a pessoa saber que a máquina mudou (ex.: gateway em porta própria). */
   repaired?: string;
 }
@@ -464,7 +466,9 @@ export type AdminAction = "install-backend" | "restart-gateway" | "restart-backe
 export type VoiceReplyMode = "off" | "inbound" | "always";
 /** Instaladores de áudio do agente do WhatsApp: ouvir (transcrição) ou falar (voz, com o modo). */
 /** "in" liga a transcrição (padrão do app ao parear); `off: true` desliga. "out" é a voz, pelo modo. */
-export type AudioSetup = { kind: "in"; off?: boolean } | { kind: "out"; mode: VoiceReplyMode };
+/** Voz das respostas em áudio: faber (masculina, Piper), dora (feminina, Kokoro), alex (masculina natural, Kokoro). */
+export type VozId = "faber" | "dora" | "alex";
+export type AudioSetup = { kind: "in"; off?: boolean } | { kind: "out"; mode: VoiceReplyMode; voz?: VozId };
 
 export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 

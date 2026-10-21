@@ -200,3 +200,14 @@ test("chatsFromSessions: pausado pela lista durável conta mesmo sem a marca na 
   assert.equal(chats.find((c) => c.number === "554384114172").paused, true);
   assert.equal(chats.find((c) => c.number === "5516900000009").paused, false);
 });
+
+test("política gravada: open sem \"*\" é erro (descartaria tudo); a leitura vem da linha POLICY/ALLOW", () => {
+  const { politicaGravada, politicaNaoBate } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const g = politicaGravada('Updated…\nPOLICY=open ALLOW=[]\n');
+  assert.deepEqual(g, { dmPolicy: "open", allowFrom: [] });
+  assert.match(politicaNaoBate("open", g), /descartadas/);
+  assert.equal(politicaNaoBate("open", { dmPolicy: "open", allowFrom: ["*"] }), null);
+  assert.equal(politicaNaoBate("self", { dmPolicy: "allowlist", allowFrom: ["+5521900000001"] }), null);
+  assert.match(politicaNaoBate("list", { dmPolicy: "open", allowFrom: ["*"] }), /open/);
+  assert.equal(politicaGravada("nada"), null);
+});

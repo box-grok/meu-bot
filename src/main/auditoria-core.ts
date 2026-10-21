@@ -37,6 +37,7 @@ export const ACOES = {
   "servico.reiniciar-backend": () => "reiniciou o backend do meu-bot",
   "audio.ativar": () => "ativou a transcrição de áudio",
   "audio.desativar": () => "desativou a transcrição de áudio",
+  "audio.voz": (a: string) => `escolheu a voz ${a} para as respostas em áudio`,
   "terminal.abrir": () => "abriu um terminal",
   "whatsapp.limpar": (a: string) => `limpou o histórico do WhatsApp de ${a}`,
   "whatsapp.excluir": (a: string) => `excluiu a conversa do WhatsApp de ${a}`,

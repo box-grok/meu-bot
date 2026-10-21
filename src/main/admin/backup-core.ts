@@ -8,7 +8,7 @@
 
 export interface BackupManifesto {
   formato: number; criadoEm: string; maquina: string; usuario: string; home: string; ultimoHashAuditoria: string;
-  versoes: { openclaw: string; node: string; guarda: string; crm: boolean; transcricao: boolean; voz: boolean; statusline: boolean };
+  versoes: { openclaw: string; node: string; guarda: string; crm: boolean; transcricao: boolean; voz: boolean; vozid: string; statusline: boolean };
   whatsapp: boolean; arquivos: number; bytes: number;
 }
 export interface BackupIndice { arquivo: string; pessoa: string; alias: string; maquina: string; criadoEm: string; tamanho: number; sha256: string; por: string; manifesto: BackupManifesto }
@@ -24,7 +24,7 @@ export function parseManifesto(raw: unknown): BackupManifesto | null {
   const v = isObj(raw.versoes) ? raw.versoes : {};
   return {
     formato: 1, criadoEm: str(raw.criadoEm), maquina: str(raw.maquina), usuario: str(raw.usuario), home: str(raw.home), ultimoHashAuditoria: str(raw.ultimoHashAuditoria),
-    versoes: { openclaw: str(v.openclaw), node: str(v.node), guarda: str(v.guarda), crm: v.crm === true, transcricao: v.transcricao === true, voz: v.voz === true, statusline: v.statusline === true },
+    versoes: { openclaw: str(v.openclaw), node: str(v.node), guarda: str(v.guarda), crm: v.crm === true, transcricao: v.transcricao === true, voz: v.voz === true, vozid: ["faber", "dora", "alex"].includes(str(v.vozid)) ? str(v.vozid) : "", statusline: v.statusline === true },
     whatsapp: raw.whatsapp === true, arquivos: num(raw.arquivos), bytes: num(raw.bytes),
   };
 }

@@ -2267,3 +2267,28 @@ O admin faz o backup de tudo o que é da pessoa numa VM e restaura numa outra.
 - **Auditoria:** registra `backup.criar`, `backup.restaurar` (com a máquina e o último hash da origem),
   `backup.desativar-origem` e `backup.ativar-whatsapp`.
 - **Fora do pacote:** o hermes-agent instalado por npm em `~/.local/lib` e a voz das respostas (religar no tutorial).
+
+## Voz das respostas em áudio e o modelo do agente (20 out)
+
+**Voz das respostas.** `install-voz.sh <modo> [voz]` oferece três vozes, todas locais e grátis:
+- `faber`: masculina, Piper (~70 MB);
+- `dora`: feminina, Kokoro (`kokoro-onnx` 0.4.9 num venv, mais ~350 MB);
+- `alex`: masculina natural, Kokoro.
+
+Como funciona:
+- O provedor no OpenClaw é sempre o `tts-local-cli`; só o `meu-bot-falar` muda de motor. A voz atual fica em
+  `voz/voz-atual`.
+- Se o teste do OpenClaw falhar, a voz volta para a anterior.
+- A Microsoft "grátis" foi descartada: o serviço devolve 403 e 429.
+- **Pela tela:** no tutorial de áudio, uma seção "Voz" com três cartões.
+- **Pelo chat** (e pelo dono no WhatsApp): o instalador deixa uma cópia de si em `voz/install-voz.sh` e a skill
+  `~/.claude/skills/voz-das-respostas`. No `~/.claude/settings.json` libera só esses comandos.
+- O backup guarda a voz (`versoes.vozid`), e a restauração reinstala a mesma.
+
+**Modelo do agente.** Um OpenClaw recém-instalado fica sem `agents.defaults.model` e cai num padrão sem chave
+(`openai/gpt-6-astra`): o WhatsApp conecta, mas o agente não responde. O status do WhatsApp e o "Gerar QR"
+(`oc_model_ensure`) configuram, com o Claude Code logado, o Claude pelo runtime `claude-cli`: Opus 5.5 como principal,
+mais Sonnet e Haiku. Um modelo já escolhido nunca é trocado.
+
+**"Todo mundo" no WhatsApp.** O app grava `allowFrom: ["*"]` antes do `dmPolicy: open`, porque `open` sem `*`
+descarta tudo. Depois relê o que ficou gravado (`politicaNaoBate`).

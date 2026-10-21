@@ -82,7 +82,7 @@ man = {
     "usuario": usuario, "home": home, "ultimoHashAuditoria": ultimo,
     "versoes": {"openclaw": openclaw, "node": nodev, "guarda": versao(os.path.join(d, "guarda", "package.json")),
                 "crm": os.path.exists(os.path.join(d, "crm", "crm.mjs")), "transcricao": os.path.isdir(os.path.join(d, "transcricao")),
-                "voz": os.path.isdir(os.path.join(d, "voz")), "statusline": os.path.exists(os.path.join(home, ".claude", "statusline.sh"))},
+                "voz": os.path.isdir(os.path.join(d, "voz")), "vozid": (open(os.path.join(d, "voz", "voz-atual")).read().strip() if os.path.exists(os.path.join(d, "voz", "voz-atual")) else ("faber" if os.path.exists(os.path.join(d, "voz", "faber.onnx")) else "")), "statusline": os.path.exists(os.path.join(home, ".claude", "statusline.sh"))},
     "whatsapp": os.path.exists(os.path.join(home, ".openclaw", "credentials", "whatsapp", "default", "creds.json")),
     "arquivos": len(entradas), "bytes": sum(e["tamanho"] for e in entradas), "entradas": entradas,
 }

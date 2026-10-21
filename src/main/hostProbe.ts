@@ -5,6 +5,7 @@
  *
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
+import { isVozId } from "./vozes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -285,7 +286,7 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
-  const arg = setup.kind === "out" ? ` ${setup.mode}` : setup.off === true ? " off" : "";
+  const arg = setup.kind === "out" ? ` ${setup.mode}${setup.voz !== undefined && isVozId(setup.voz) ? ` ${setup.voz}` : ""}` : setup.off === true ? " off" : "";
   const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
   const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), file), `${host}:${REMOTE_STAGE}/`], 60_000);

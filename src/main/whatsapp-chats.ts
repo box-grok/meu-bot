@@ -229,3 +229,15 @@ export function threadToMarkdown(contact: string, number: string, host: string, 
   }
   return `${lines.join("\n").trimEnd()}\n`;
 }
+
+/** Linha "POLICY=… ALLOW=[…]" que o setDmPolicy relê da máquina depois de gravar; null se não veio. */
+export function politicaGravada(stdout: string): { dmPolicy: string; allowFrom: string[] } | null {
+  const m = /POLICY=(\S*) ALLOW=(\[.*\])/.exec(stdout);
+  if (m === null) return null;
+  try { const a = JSON.parse(m[2]!) as unknown; return { dmPolicy: m[1]!, allowFrom: Array.isArray(a) ? a.filter((x): x is string => typeof x === "string") : [] }; } catch { return null; }
+}
+/** O que ficou gravado não bate com a escolha? Devolve o motivo (open sem "*" descarta tudo), ou null se bate. */
+export function politicaNaoBate(escolha: "open" | "self" | "list", g: { dmPolicy: string; allowFrom: string[] }): string | null {
+  if (escolha === "open") return g.dmPolicy !== "open" ? `dmPolicy ficou "${g.dmPolicy}"` : g.allowFrom.includes("*") ? null : "allowFrom sem \"*\" (todas as mensagens seriam descartadas)";
+  return g.dmPolicy === "allowlist" ? null : `dmPolicy ficou "${g.dmPolicy}"`;
+}

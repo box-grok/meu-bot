@@ -7,6 +7,7 @@
  * direto para o stdin do ssh. Qualquer admin gera; só o super admin (com ~/.ssh/meu-bot-backup.age) restaura.
  * Só com a permissão `backup` que a pessoa liga no meu-bot dela.
  */
+import { isVozId } from "../vozes-core";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -149,7 +150,14 @@ export async function restaurarBackup(arquivo: string, alias: string, substituir
     say(`instalando ${nome}…`);
     try { const r = await fn(); say(r.ok ? `✓ ${nome}` : `✗ ${nome}: ${r.log.at(-1) ?? "falhou"}`); } catch (e) { say(`✗ ${nome}: ${e instanceof Error ? e.message : String(e)}`); }
   }
-  if (m.versoes.voz) say("• a voz das respostas estava ligada na origem: ligue de novo no tutorial de áudio (o modo não vai no backup)");
+  // Voz das respostas: o modo está no openclaw.json restaurado; o motor (Piper/Kokoro) se reinstala com a mesma voz.
+  if (m.versoes.voz && isVozId(m.versoes.vozid)) {
+    const modo = /MODO=(inbound|always)/.exec((await runSsh(alias, `echo "MODO=$(openclaw config get tts.auto 2>/dev/null | tr -d '"')"\n`, 30_000)).stdout)?.[1] as "inbound" | "always" | undefined;
+    if (modo !== undefined) {
+      say(`instalando a voz das respostas (${m.versoes.vozid})…`);
+      try { const r = await installAudio(alias, { kind: "out", mode: modo, voz: m.versoes.vozid }); say(r.ok ? "✓ voz das respostas" : `✗ voz das respostas: ${r.log.at(-1) ?? "falhou"}`); } catch (e) { say(`✗ voz das respostas: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+  }
   // A história continua: a primeira linha nova aponta para a máquina e o último registro da origem.
   await registrar(alias, "backup.restaurar", m.maquina, `último registro da origem: ${m.ultimoHashAuditoria || "nenhum"}; backup de ${m.criadoEm} (${arquivo})`);
   say("O WhatsApp continua DESLIGADO nesta máquina: use \"Trocar o WhatsApp para esta máquina\" quando a antiga estiver desligada.");

@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -2297,6 +2297,15 @@ const VOICE_OPTIONS: readonly { id: VoiceReplyMode; title: string; text: string;
   { id: "inbound", title: "Quando receber áudio", text: "Áudio vira áudio; texto continua texto.", isDefault: false },
   { id: "always", title: "Sempre", text: "Toda resposta vira nota de voz.", isDefault: false },
 ];
+/** Vozes (cópia mínima de src/main/vozes-core.ts; o teste confere que batem). */
+const VOZES_UI: readonly { id: VozId; rotulo: string; texto: string; padrao: boolean }[] = [
+  { id: "faber", rotulo: "Masculina", texto: "Voz local (Piper). Na primeira vez baixa ~70 MB.", padrao: true },
+  { id: "dora", rotulo: "Feminina", texto: "Voz local natural (Kokoro). Na primeira vez baixa ~350 MB.", padrao: false },
+  { id: "alex", rotulo: "Masculina natural", texto: "Voz local natural (Kokoro). Na primeira vez baixa ~350 MB.", padrao: false },
+];
+/** Voz escolhida com o áudio desligado: guardada aqui e aplicada ao ligar. */
+let waVozEscolhida: VozId | null = null;
+let waVozBusy: VozId | null = null;
 /** O que está sendo aplicado agora ("in" = transcrição; um modo = voz) e o último recado (erro ou aviso). */
 let waAudioBusy: "in" | VoiceReplyMode | null = null;
 let waAudioMsg: { text: string; bad: boolean } | null = null;
@@ -2331,16 +2340,40 @@ function renderAudioControls(container: HTMLElement): void {
     if (saving) title.append(el("span", "reply-saving", o.id === "off" ? "aplicando…" : "instalando a voz…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id }); });
+    card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id, ...(o.id !== "off" ? { voz: waVozEscolhida ?? st?.audioVoice ?? "faber" } : {}) }); });
     cards.append(card);
   }
-  box.append(cards, el("div", "guide-note", "Voz local em português (Piper), sem custo. Na primeira vez baixa ~70 MB."));
+  box.append(cards);
+  // Voz: com o áudio ligado, troca na hora; desligado, fica guardada para quando ligar. Todas rodam na máquina.
+  box.append(el("p", "hint strong-hint", "Voz"));
+  const vozes = el("div", "reply-cards voice-cards");
+  const vozAtual: VozId = waVozBusy ?? waVozEscolhida ?? st?.audioVoice ?? "faber";
+  for (const v of VOZES_UI) {
+    const saving = waVozBusy === v.id;
+    const card = el("button", `reply-card${vozAtual === v.id ? " on" : ""}${saving ? " saving" : ""}`);
+    card.type = "button"; card.disabled = waAudioBusy !== null || waVozBusy !== null || st === null || !st.connected;
+    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(vozAtual === v.id));
+    const title = el("div", "reply-title"); title.append(el("strong", "", v.rotulo));
+    if (v.padrao) title.append(el("span", "reply-default", "Padrão"));
+    if (saving) title.append(el("span", "reply-saving", "instalando a voz…"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", v.texto));
+    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
+    card.addEventListener("click", () => {
+      if (v.id === vozAtual) return;
+      waVozEscolhida = v.id;
+      if (current === "off") { waAudioMsg = { text: `Voz ${v.rotulo.toLowerCase()} escolhida: vale quando ligar a resposta em áudio.`, bad: false }; paintGuide(); return; }
+      waVozBusy = v.id; paintGuide();
+      void runAudioSetup({ kind: "out", mode: current, voz: v.id }).finally(() => { waVozBusy = null; paintGuide(); });
+    });
+    vozes.append(card);
+  }
+  box.append(vozes, el("div", "guide-note", "Todas as vozes rodam na própria máquina, sem custo; o texto das respostas não sai dela."));
   if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
   container.append(box);
 }
 async function runAudioSetup(setup: AudioSetup): Promise<void> {
   if (waAudioBusy !== null) return;
-  waAudioBusy = setup.kind === "in" ? "in" : setup.mode; waAudioMsg = null;
+  waAudioBusy = setup.kind === "in" ? "in" : waVozBusy !== null ? null : setup.mode; waAudioMsg = null;
   paintGuide();
   try {
     const r = await window.meuBot.whatsappAudio(setup);

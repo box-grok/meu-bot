@@ -9,6 +9,8 @@
  *   whatsapp` para parear. O QR sai como blocos no terminal; qr-blocks.ts o vira imagem. Depois de
  *   vinculado, reinicia o gateway (supervisord se ele o gerencia, senão `openclaw gateway restart`).
  */
+import { politicaGravada, politicaNaoBate } from "./whatsapp-chats";
+import { isVozId } from "./vozes-core";
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
@@ -58,6 +60,17 @@ gw_fix() {
   systemctl --user reset-failed openclaw-gateway.service >/dev/null 2>&1
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; if timeout 20 openclaw channels status --json >/dev/null 2>&1; then echo "$N"; return 0; fi; done
   return 1
+}
+# Agente do WhatsApp sem modelo (OpenClaw recém-instalado cai num padrão sem chave, ex. openai/gpt-6-astra, e não
+# responde nada): com o Claude Code logado nesta conta, usa o Claude por ele (runtime claude-cli), como na agente-box.
+# Modelo já escolhido (à mão ou antes) nunca é trocado. Imprime "set" quando gravou.
+oc_model_ensure() {
+  M=$(openclaw config get agents.defaults.model 2>&1 || true)
+  case "$M" in *unset*|"") ;; *) return 0 ;; esac
+  { [ -s "$HOME/.claude/.credentials.json" ] || grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null; } || return 0
+  openclaw config set agents.defaults.models '{"anthropic/claude-opus-5-5":{"agentRuntime":{"id":"claude-cli"}},"anthropic/claude-sonnet-5-5":{"agentRuntime":{"id":"claude-cli"}},"anthropic/claude-haiku-5-5":{"agentRuntime":{"id":"claude-cli"}}}' --strict-json >/dev/null 2>&1 || return 1
+  openclaw config set agents.defaults.model '{"primary":"anthropic/claude-opus-5-5"}' --strict-json >/dev/null 2>&1 || return 1
+  echo set
 }
 # Conta nova (outra conta de uma VM já usada, ou VM recém-criada) sem o serviço do gateway: sem ele o QR vincula,
 # mas o WhatsApp nunca fica "conectado". Instala como o onboarding do OpenClaw faria: modo local, primeira porta livre
@@ -117,11 +130,14 @@ m=(c.get("tools") or {}).get("media") or {}
 print("audioin=%d" % any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x, dict)))
 t=c.get("tts") or {}
 print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))' 2>/dev/null
+  echo "vozid=$(cat "$HOME/.local/share/meu-bot/voz/voz-atual" 2>/dev/null || { [ -s "$HOME/.local/share/meu-bot/voz/faber.onnx" ] && echo faber; })"
   # Uma consulta só; "token mismatch" = esta conta aponta para o gateway de outra: conserta e consulta de novo.
   CS=$(timeout 25 openclaw channels status --channel whatsapp --json 2>&1)
   if printf '%s' "$CS" | grep -q 'token mismatch'; then
     if N=$(gw_fix); then echo "gwfix=$N"; CS=$(timeout 25 openclaw channels status --channel whatsapp --json 2>&1); else echo "gwfix=fail"; fi
   fi
+  # Agente sem modelo e Claude logado: configura o Claude (uma vez; depois o modelo existe e isto não faz nada).
+  echo "ocmodel=$(oc_model_ensure 2>/dev/null)"
   echo "oc=$(printf '%s' "$CS" | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
@@ -212,10 +228,12 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   } catch { /* sem bloco ainda */ }
   const voz = kv.get("voz");
   const audioOut: VoiceReplyMode | null = voz === "inbound" || voz === "always" ? voz : voz === undefined || voz === "" ? null : "off";
+  const vozid = (kv.get("vozid") ?? "").trim();
+  const audioVoice = isVozId(vozid) ? vozid : null;
   const gwfix = kv.get("gwfix") ?? "";
   const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
   const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", audioOut, ...(repaired !== null ? { repaired } : {}) };
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", audioOut, audioVoice, ...(repaired !== null ? { repaired } : {}) };
 }
 
 /**
@@ -241,7 +259,8 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   let script: string;
   if (policy === "open") {
-    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${await ownerLockFor(host)}`;
+    // O "*" antes do "open": "open" com allowFrom sem "*" descarta TODAS as mensagens (e foi o que sobrou numa máquina).
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.allowFrom '["*"]' --strict-json && openclaw config set channels.whatsapp.dmPolicy open && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${await ownerLockFor(host)}`;
   } else if (policy === "list") {
     // Você + os números escolhidos: allowlist com allowFrom explícito. O dono entra sempre (sem ele, a pessoa
     // perdia o próprio agente); a trava de ferramentas continua só para o dono.
@@ -254,8 +273,13 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
   } else {
     script = `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
   }
-  const r = await runSsh(host, `${script}\n`, 60_000);
+  // Relê o que ficou gravado: a política só vale se dmPolicy e allowFrom batem com a escolha.
+  const confere = `python3 -c 'import json,os;w=((json.load(open(os.path.expanduser("~/.openclaw/openclaw.json"))).get("channels") or {}).get("whatsapp") or {});print("POLICY=%s ALLOW=%s" % (w.get("dmPolicy",""), json.dumps(w.get("allowFrom",[]))))'`;
+  const r = await runSsh(host, `${script}\n${confere}\n`, 60_000);
   if (r.code !== 0) throw new Error(`não consegui mudar a política: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const ficou = politicaGravada(r.stdout);
+  const erro = ficou === null ? null : politicaNaoBate(policy, ficou);
+  if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
   log(`[whatsapp] ${host}: dmPolicy=${policy}`);
   return whatsappStatus(host);
 }
@@ -323,6 +347,8 @@ if command -v openclaw >/dev/null 2>&1; then
   if [ -z "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" ] || openclaw config get channels.whatsapp.dmPolicy 2>&1 | grep -q unset; then
     ( ${SELF_POLICY_SH} ) >/dev/null 2>&1 && echo '{"event":"meu-bot","step":"silent"}'
   fi
+  # Agente sem modelo: com o Claude Code logado, usa o Claude (senão o WhatsApp conecta e nada responde).
+  [ "$(oc_model_ensure 2>/dev/null)" = set ] && echo '{"event":"meu-bot","step":"model-set"}'
   # Sem o serviço do gateway nesta conta: instala antes do QR (senão vincula e nunca conecta).
   if GWN=$(gw_ensure); then [ -n "$GWN" ] && echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-installed\\",\\"port\\":$GWN}"; else echo '{"event":"error","error":"esta conta não tem o gateway do OpenClaw como serviço e não consegui instalar. Na máquina: chmod go-w ~/.config ~/.config/systemd ~/.config/systemd/user; openclaw config set gateway.mode local; openclaw gateway install --port <porta livre>"}'; exit 2; fi
   # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
@@ -425,6 +451,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
+          else if (ev.step === "model-set") send({ kind: "step", text: "o agente desta conta não tinha modelo; passou a usar o Claude (pelo Claude Code logado aqui)" });
           else if (ev.step === "gateway-installed") send({ kind: "step", text: `esta conta não tinha o gateway do OpenClaw; instalado na porta ${String(ev.port ?? "?")}` });
           else if (ev.step === "plugin-installing") send({ kind: "step", text: "esta máquina não tinha o plugin do WhatsApp do OpenClaw; instalando (até 1–2 min)" });
           else if (ev.step === "plugin-installed") send({ kind: "step", text: "plugin do WhatsApp instalado" });

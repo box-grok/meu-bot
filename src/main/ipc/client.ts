@@ -3,6 +3,7 @@
  * logins, instalar coisas na máquina, suporte do lado da pessoa. No meu-bot-admin cada canal daqui vira um
  * stub que recusa (ipc/registry.ts): o admin só lê e usa as ações de suporte.
  */
+import { VOZES, isVozId } from "../vozes-core";
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -214,14 +215,17 @@ export function registerClientIpc(): void {
     await startPairing(h.host, reset, send);
     if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); void registrar(h.host, "whatsapp.parear"); }
   });
-  handleClient("whatsapp:audio", (event, payload: unknown) => {
+  handleClient("whatsapp:audio", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const p = payload as { kind?: unknown; mode?: unknown } | null;
+    const voz = (p as { voz?: unknown } | null)?.voz;
     const setup: AudioSetup | null = p?.kind === "in" ? { kind: "in", ...((p as { off?: unknown }).off === true ? { off: true } : {}) }
-      : p?.kind === "out" && (p.mode === "off" || p.mode === "inbound" || p.mode === "always") ? { kind: "out", mode: p.mode } : null;
+      : p?.kind === "out" && (p.mode === "off" || p.mode === "inbound" || p.mode === "always") ? { kind: "out", mode: p.mode, ...(isVozId(voz) ? { voz } : {}) } : null;
     if (setup === null) throw new Error("pedido inválido");
-    return installAudio(h.host, setup);
+    const r = await installAudio(h.host, setup);
+    if (r.ok && setup.kind === "out" && setup.voz !== undefined) void registrar(h.host, "audio.voz", VOZES.find((v) => v.id === setup.voz)?.rotulo.toLowerCase() ?? setup.voz);
+    return r;
   });
   handleClient("whatsapp:logout", (event) => {
     const h = hostFromEvent(event);
