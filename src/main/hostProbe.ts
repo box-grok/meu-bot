@@ -322,6 +322,7 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
+const WA_GRUPOS_SCRIPTS = ["habilitar.py", "listar.sh", "wa-admin.sh", "wa-grupos.js"];
 /** Versão da guarda que vem neste app (package.json do plugin); o seletor atualiza máquinas com versão diferente. */
 export function bundledGuardaVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
@@ -402,6 +403,12 @@ export async function installGuarda(host: string, onLine?: (line: string) => voi
   if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
   const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_PLUGIN_FILES.map((f) => path.join(dir, "guarda", f)), `${host}:${REMOTE_STAGE}/guarda/`], 60_000);
   if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
+  // Skill whatsapp-grupos vai junto (o install-guarda.sh a põe em ~/.claude/skills).
+  const sk = path.join(dir, "skills", "whatsapp-grupos");
+  const mk2 = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/skills/whatsapp-grupos/scripts`], 20_000);
+  const scp3 = mk2.code !== 0 ? mk2 : await run("scp", ["-q", ...sshBase(host), "--", path.join(sk, "SKILL.md"), `${host}:${REMOTE_STAGE}/skills/whatsapp-grupos/`], 60_000);
+  const scp4 = scp3.code !== 0 ? scp3 : await run("scp", ["-q", ...sshBase(host), "--", ...WA_GRUPOS_SCRIPTS.map((f) => path.join(sk, "scripts", f)), `${host}:${REMOTE_STAGE}/skills/whatsapp-grupos/scripts/`], 60_000);
+  if (scp4.code !== 0) say(`aviso: a skill whatsapp-grupos não foi enviada (${lastLine(scp4.stderr)}); a guarda segue`);
   say("rodando o instalador…");
   const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-guarda.sh 2>&1`], 4 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };

@@ -11,6 +11,15 @@ command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw; 
 SRC=$HOME/.local/share/meu-bot/guarda
 mkdir -p "$SRC"
 cp "$HERE/guarda/index.js" "$HERE/guarda/regras.mjs" "$HERE/guarda/package.json" "$HERE/guarda/openclaw.plugin.json" "$SRC/"
+# Skill whatsapp-grupos (grupos do agente: listar, habilitar com --remetentes, criar), junto da guarda: scripts e
+# SKILL.md regravados a cada atualização; data/ (cache nome↔JID desta conta) nunca é tocado.
+if [ -f "$HERE/skills/whatsapp-grupos/SKILL.md" ]; then
+  K=$HOME/.claude/skills/whatsapp-grupos
+  mkdir -p "$K/scripts" "$K/data"; chmod 700 "$K/data"
+  cp "$HERE/skills/whatsapp-grupos/SKILL.md" "$K/"
+  cp "$HERE/skills/whatsapp-grupos/scripts/"* "$K/scripts/"; chmod 755 "$K/scripts/"*
+  echo "skill whatsapp-grupos em $K"
+fi
 # Uma cópia antiga dentro de extensions/ (instalação à mão) confunde o registro: a fonte é o link.
 [ -d "$HOME/.openclaw/extensions/meu-bot-guarda" ] && [ ! -L "$HOME/.openclaw/extensions/meu-bot-guarda" ] && rm -rf "$HOME/.openclaw/extensions/meu-bot-guarda"
 # Regra de encerramento no AGENTS.md do workspace do agente: a guarda pausa de fora; esta regra evita que o loop

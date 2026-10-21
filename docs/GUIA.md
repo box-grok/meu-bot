@@ -2292,3 +2292,16 @@ mais Sonnet e Haiku. Um modelo já escolhido nunca é trocado.
 
 **"Todo mundo" no WhatsApp.** O app grava `allowFrom: ["*"]` antes do `dmPolicy: open`, porque `open` sem `*`
 descarta tudo. Depois relê o que ficou gravado (`politicaNaoBate`).
+
+## Skill whatsapp-grupos (21 out)
+
+Grupos do WhatsApp do agente: listar (`wa-admin.sh listar` para o gateway por ~30 s, com backup das credenciais),
+habilitar e desabilitar (`habilitar.py`: diagnóstico primeiro, depois `--aplicar --remetentes +55…`) e criar grupo.
+Ela foi adaptada da skill da máquina agente-openclaw e fica em `backend-colima/skills/whatsapp-grupos`, com o
+`SKILL.md` genérico (descobre conta e modelo na hora).
+
+O `install-guarda.sh` a instala em `~/.claude/skills/whatsapp-grupos` junto da guarda. A guarda subiu para a 1.2.0,
+então as máquinas que já a têm recebem a skill na próxima abertura do app. O cache `data/` da conta nunca é tocado.
+
+Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
+manda sempre usar `--remetentes`.
