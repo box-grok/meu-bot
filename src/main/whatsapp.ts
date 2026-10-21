@@ -58,6 +58,24 @@ gw_fix() {
   systemctl --user reset-failed openclaw-gateway.service >/dev/null 2>&1
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do sleep 3; if timeout 20 openclaw channels status --json >/dev/null 2>&1; then echo "$N"; return 0; fi; done
   return 1
+}
+# Conta nova (outra conta de uma VM já usada, ou VM recém-criada) sem o serviço do gateway: sem ele o QR vincula,
+# mas o WhatsApp nunca fica "conectado". Instala como o onboarding do OpenClaw faria: modo local, primeira porta livre
+# a partir da configurada (18789; outra conta pode ter a dela) e as pastas do systemd sem escrita de grupo (contas com
+# umask 002 nascem assim e o OpenClaw recusa instalar). Imprime a porta; sem systemd ou sob supervisord, não faz nada.
+gw_ensure() {
+  [ -d /run/systemd/system ] || return 0
+  supervisorctl status 2>/dev/null | grep -q openclaw-gateway && return 0
+  systemctl --user cat openclaw-gateway.service >/dev/null 2>&1 && return 0
+  mkdir -p "$HOME/.config/systemd/user"
+  for d in "$HOME/.config" "$HOME/.config/systemd" "$HOME/.config/systemd/user"; do [ -O "$d" ] && chmod go-w "$d"; done
+  case "$(openclaw config get gateway.mode 2>/dev/null | tr -d '"')" in local) ;; *) openclaw config set gateway.mode local >/dev/null 2>&1 || return 1 ;; esac
+  P=$(openclaw config get gateway.port 2>/dev/null); case "$P" in *unset*) P=;; esac; P=$(printf '%s' "$P" | tr -dc 0-9); [ -n "$P" ] || P=18789
+  L=$(ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null)
+  N=$P; while echo "$L" | grep -q ":$N "; do N=$((N+1)); [ $N -gt $((P+30)) ] && return 1; done
+  openclaw config set gateway.port "$N" >/dev/null 2>&1 || return 1
+  timeout 150 openclaw gateway install --force --port "$N" >/dev/null 2>&1 || return 1
+  echo "$N"
 }`;
 
 const STATUS_SCRIPT = `
@@ -305,6 +323,8 @@ if command -v openclaw >/dev/null 2>&1; then
   if [ -z "$(openclaw config get channels.whatsapp.dmPolicy 2>/dev/null | tr -d '"')" ] || openclaw config get channels.whatsapp.dmPolicy 2>&1 | grep -q unset; then
     ( ${SELF_POLICY_SH} ) >/dev/null 2>&1 && echo '{"event":"meu-bot","step":"silent"}'
   fi
+  # Sem o serviço do gateway nesta conta: instala antes do QR (senão vincula e nunca conecta).
+  if GWN=$(gw_ensure); then [ -n "$GWN" ] && echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-installed\\",\\"port\\":$GWN}"; else echo '{"event":"error","error":"esta conta não tem o gateway do OpenClaw como serviço e não consegui instalar. Na máquina: chmod go-w ~/.config ~/.config/systemd ~/.config/systemd/user; openclaw config set gateway.mode local; openclaw gateway install --port <porta livre>"}'; exit 2; fi
   # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
   if gw_mismatch; then
     if N=$(gw_fix); then echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-port\\",\\"port\\":$N}"; else echo '{"event":"error","error":"o gateway do OpenClaw desta conta aponta para o gateway de outra conta desta máquina (token diferente) e não consegui dar a ele uma porta própria. Na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>"}'; exit 2; fi
@@ -405,6 +425,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
+          else if (ev.step === "gateway-installed") send({ kind: "step", text: `esta conta não tinha o gateway do OpenClaw; instalado na porta ${String(ev.port ?? "?")}` });
           else if (ev.step === "plugin-installing") send({ kind: "step", text: "esta máquina não tinha o plugin do WhatsApp do OpenClaw; instalando (até 1–2 min)" });
           else if (ev.step === "plugin-installed") send({ kind: "step", text: "plugin do WhatsApp instalado" });
           else if (ev.step === "silent") send({ kind: "step", text: "padrão: só você fala com o agente; ninguém mais recebe resposta nem código" });
