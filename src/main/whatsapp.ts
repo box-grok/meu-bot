@@ -783,7 +783,7 @@ export async function whatsappGroups(host: string): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 echo "self=$(${CREDS_ME})"
-echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+echo "list=$(timeout 15 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
 ${WA_CONFIG_SH}
 echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
 echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
@@ -819,7 +819,7 @@ def ev(js, zb):
         return json.loads(p.stdout) if p.returncode == 0 else None
 try:
     c = sqlite3.connect("file:" + db + "?mode=ro", uri=True, timeout=5)
-    row = next((r for r in c.execute("select session_key, current_session_id from session_nodes where session_key like ?", ("%:group:" + jid,))), None)
+    row = next((r for r in c.execute("select session_key, current_session_id, entry_json from session_nodes where session_key like ?", ("%:group:" + jid,))), None)
     if row is None:
         print("OK " + json.dumps({"messages": []}))
         sys.exit(0)
@@ -831,7 +831,11 @@ try:
             continue
         if isinstance(e, dict) and e.get("type") == "message" and isinstance(e.get("message"), dict):
             msgs.append(e["message"])
-    print("OK " + json.dumps({"messages": msgs[-n:]}))
+    try:
+        subject = (json.loads(row[2] or "{}") or {}).get("subject")
+    except Exception:
+        subject = None
+    print("OK " + json.dumps({"messages": msgs[-n:], "subject": subject}))
 except Exception as e:
     print("FALHA " + type(e).__name__)
 MEUBOT_PY
@@ -842,10 +846,10 @@ export async function whatsappGroupThread(host: string, jid: string, limit = 200
   if (!JID_RE.test(jid)) throw new Error("grupo inválido");
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
-  const nome = (): Promise<string | null> => whatsappGroups(host).then((g) => g.grupos.find((x) => x.jid === jid)?.nome ?? null, () => null);
   const r = await runSsh(host, grupoThreadSh(jid, n), 60_000);
   const ok = /^OK (.*)$/m.exec(r.stdout);
-  if (ok !== null) return threadDoGrupo(jsonOr(ok[1]), namesOf(host), await nomeEmCache(host, jid, nome));
+  // O nome do grupo (para filtrar o senderName) vem na mesma leitura: nada espera o gateway.
+  if (ok !== null) { const h = jsonOr(ok[1]) as { subject?: unknown } | null; return threadDoGrupo(h, namesOf(host), typeof h?.subject === "string" ? h.subject : null); }
   // Sem o banco legível: o gateway (formato igual); vazio por tempo esgotado vira erro, não "sem mensagens".
   const grupo = (await whatsappGroups(host)).grupos.find((x) => x.jid === jid);
   if (grupo === undefined || grupo.sessionKey === null || !SAFE_KEY.test(grupo.sessionKey)) return [];
@@ -853,13 +857,6 @@ export async function whatsappGroupThread(host: string, jid: string, limit = 200
   const hist = jsonOr(h.stdout.trim());
   if (h.code !== 0 || hist === null) throw new Error("não consegui ler a conversa do grupo: o gateway do OpenClaw não respondeu a tempo");
   return threadDoGrupo(hist, namesOf(host), grupo.nome);
-}
-/** Nome do grupo para filtrar o senderName (lido junto da lista; guardado por máquina para não reler a cada 8 s). */
-const groupNames = new Map<string, string | null>();
-async function nomeEmCache(host: string, jid: string, ler: () => Promise<string | null>): Promise<string | null> {
-  const k = `${host}|${jid}`;
-  if (!groupNames.has(k)) groupNames.set(k, await ler());
-  return groupNames.get(k) ?? null;
 }
 
 /**
