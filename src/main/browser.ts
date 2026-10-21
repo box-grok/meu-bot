@@ -27,6 +27,25 @@ const extensionsDir = (host: string): string => path.join(app.getPath("userData"
 const hostOfPartition = (part: string): string | null => (part.startsWith(PART_PREFIX) ? part.slice(PART_PREFIX.length) : null);
 
 const readySessions = new Map<string, Promise<void>>();
+/**
+ * Login do Google: mesmo sem "Electron" no User-Agent, o Google vê o app embutido pelas client hints (Sec-CH-UA traz
+ * "Chromium" sem "Google Chrome") e recusa ("Esse navegador ou app pode não ser seguro"). Só em accounts.google.com
+ * o Navegador se apresenta como Firefox (que não manda client hints), no cabeçalho e no navigator.userAgent; fora
+ * dele, nada muda. É o que o Ferdium e o Rambox fazem. Versão do Firefox ≈ a do Chromium embutido + 1 (mesma época).
+ */
+const GOOGLE_LOGIN = /^https:\/\/accounts\.google\.com\//;
+const FIREFOX_UA = (() => { const v = Number.parseInt(process.versions.chrome ?? "130", 10) + 1; return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${v}.0) Gecko/20100101 Firefox/${v}.0`; })();
+/** Troca o navigator.userAgent da aba (ou do popup de login) ao entrar e ao sair do login do Google. */
+function googleLoginUa(wc: WebContents): void {
+  const normal = wc.session.getUserAgent();
+  wc.on("did-start-navigation", (ev) => {
+    const d = ev as unknown as { url?: string; isMainFrame?: boolean };
+    if (d.isMainFrame !== true || typeof d.url !== "string") return;
+    const want = GOOGLE_LOGIN.test(d.url) ? FIREFOX_UA : normal;
+    if (wc.getUserAgent() !== want) wc.setUserAgent(want);
+  });
+  wc.on("did-create-window", (child) => googleLoginUa(child.webContents));
+}
 const POLYFILL_MARK = "/*meu-bot-polyfill v3*/";
 const POLYFILL_END = "/*meu-bot-polyfill:fim*/";
 /** O polyfill como script puro: o tsc emite cabeçalho CommonJS (`exports`), que não existe num service worker. */
@@ -127,6 +146,12 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     ses.on("will-download", (_e, item) => { log(`[navegador ${host}] download: ${item.getFilename()}`); });
     // Sem a assinatura do Electron no User-Agent: o login do Google e outros tratam app embutido como inseguro.
     ses.setUserAgent(ses.getUserAgent().replace(/ Electron\/\S+/, "").replace(/ meu-bot[^ ]*\/\S+/, ""));
+    ses.webRequest.onBeforeSendHeaders({ urls: ["https://accounts.google.com/*"] }, (d, cb) => {
+      const h: Record<string, string | string[]> = {};
+      for (const [k, v] of Object.entries(d.requestHeaders)) if (!/^sec-ch-ua/i.test(k) && k.toLowerCase() !== "user-agent") h[k] = v;
+      h["User-Agent"] = FIREFOX_UA;
+      cb({ requestHeaders: h });
+    });
     // Polyfill das APIs chrome.* que o Electron não tem, no service worker e nas páginas das extensões (ver ext-polyfill.ts).
     const polyfill = path.join(__dirname, "..", "preload", "ext-polyfill.js");
     try { ses.registerPreloadScript({ type: "service-worker", filePath: polyfill }); ses.registerPreloadScript({ type: "frame", filePath: polyfill }); }
@@ -323,6 +348,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     const host = windowHosts.get(win.id);
     if (host === undefined) return;
     views.set(wc.id, { wc, host, winId: win.id });
+    googleLoginUa(wc);
     wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); });
     wc.on("console-message", (ev) => {
       if (ev.level !== "warning" && ev.level !== "error") return;
