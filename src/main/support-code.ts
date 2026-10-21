@@ -124,6 +124,49 @@ export function authorizedKeysScript(admins: readonly SupportAdmin[]): string {
   ].join("\n");
 }
 
+/**
+ * "Adicionar pessoa" por um host do ~/.ssh/config do admin ("ssh agente-box-lv" ou só "agente-box-lv"): para
+ * contas em que o admin já entra com a chave dele e que não têm o meu-bot para gerar o código. null = não é isso.
+ */
+export function parseSshAddTarget(raw: string): string | null {
+  const m = /^(?:ssh\s+)?([A-Za-z0-9][A-Za-z0-9._-]{0,63})$/.exec(raw.trim());
+  return m === null ? null : m[1]!;
+}
+
+/** O que o `ssh -G <host>` resolve (hostname, user, port); null se faltar ou não passar na validação do código. */
+export function parseSshG(out: string): { hostname: string; user: string; port: number } | null {
+  const kv = new Map<string, string>();
+  for (const line of out.split("\n")) { const [k, ...v] = line.trim().split(" "); if (k !== undefined && k !== "" && !kv.has(k)) kv.set(k, v.join(" ")); }
+  const hostname = kv.get("hostname") ?? "", user = kv.get("user") ?? "", port = Number(kv.get("port"));
+  if (!HOSTNAME_RE.test(hostname) || hostname.startsWith("-") || !USER_RE.test(user) || !Number.isInteger(port) || port < 1 || port > 65535) return null;
+  return { hostname, user, port };
+}
+
+/**
+ * Script remoto da adoção por SSH: põe a linha do admin no authorized_keys sem tirar as dos outros admins
+ * (idempotente) e imprime a chave ed25519 do servidor (`HOSTKEY <tipo> <base64>`), lida pela sessão já confiável.
+ */
+export function adoptScript(admin: SupportAdmin): string {
+  const body = publicKeyBody(admin.chave);
+  if (body === null) throw new Error(`chave pública do admin ${admin.nome} inválida`);
+  return [
+    "set -e",
+    "umask 077",
+    'mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"',
+    'AK="$HOME/.ssh/authorized_keys"; touch "$AK"',
+    `grep -qF '${body}' "$AK" || printf '%s\\n' '${ADMIN_KEY_OPTIONS} ${body} ${adminKeyComment(admin.nome)}' >> "$AK"`,
+    'chmod 600 "$AK"',
+    "printf 'HOSTKEY %s\\n' \"$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)\"",
+  ].join("\n");
+}
+
+/** A chave do servidor na saída do adoptScript; null se não veio uma válida. */
+export function parseAdoptHostKey(out: string): string | null {
+  const line = out.split("\n").find((l) => l.startsWith("HOSTKEY "));
+  const key = line?.slice("HOSTKEY ".length).trim() ?? "";
+  return HOSTKEY_RE.test(key) ? key : null;
+}
+
 /** Bloco do ~/.ssh/config do admin para uma pessoa. */
 export function adminSshBlock(c: SupportCode, identityFile: string): string {
   return [

@@ -127,3 +127,28 @@ test("removeDeliverySh: entrega o off uma última vez, derruba timer e cron, apa
   assert.ok(sh.includes("printf '%s\\n%s\\n' '116367d39cee' 'MBS1.abc'"), sh);
   assert.ok(sh.includes("systemctl --user disable --now meu-bot-suporte.timer") && sh.includes("grep -v meu-bot-suporte") && sh.includes(`rm -rf "${m.SUPPORT_DIR}"`));
 });
+
+test("adicionar por host do ~/.ssh/config: alvo, ssh -G, script e chave do servidor", () => {
+  assert.equal(m.parseSshAddTarget("ssh agente-box-lv\n"), "agente-box-lv");
+  assert.equal(m.parseSshAddTarget("agente-box-lv"), "agente-box-lv");
+  assert.equal(m.parseSshAddTarget("ssh -o ProxyCommand=x h"), null);
+  assert.equal(m.parseSshAddTarget("ssh a; rm -rf /"), null);
+  assert.equal(m.parseSshAddTarget("-oProxyCommand=x"), null);
+  assert.deepEqual(m.parseSshG("host agente-box-lv\nuser box-lv\nhostname 187.127.41.175\nport 22\n"), { hostname: "187.127.41.175", user: "box-lv", port: 22 });
+  assert.equal(m.parseSshG("user box-lv\nhostname -oProxy\nport 22\n"), null);
+  assert.equal(m.parseAdoptHostKey(`lixo\nHOSTKEY ${HOSTKEY}\n`), HOSTKEY);
+  assert.equal(m.parseAdoptHostKey("HOSTKEY \n"), null);
+
+  // O script põe a linha do admin uma vez só e não tira as dos outros admins.
+  const home = mkdtempSync(join(tmpdir(), "adopt-"));
+  mkdirSync(join(home, ".ssh"));
+  const outro = `no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAAOutro meu-bot-admin:Outro`;
+  writeFileSync(join(home, ".ssh", "authorized_keys"), `${outro}\n`);
+  const sh = m.adoptScript({ nome: "Lucas", chave: ADMIN });
+  for (let i = 0; i < 2; i++) execFileSync("bash", ["-c", sh], { env: { ...process.env, HOME: home } });
+  const ak = readFileSync(join(home, ".ssh", "authorized_keys"), "utf8").trim().split("\n");
+  assert.equal(ak.length, 2);
+  assert.equal(ak[0], outro);
+  assert.match(ak[1], / meu-bot-admin:Lucas$/);
+  assert.equal(statSync(join(home, ".ssh", "authorized_keys")).mode & 0o777, 0o600);
+});

@@ -1,6 +1,6 @@
 /**
  * Variante: admin. O que o seletor do meu-bot-admin tem a mais: textos de "pessoas", o "Adicionar pessoa"
- * (colar o código MBS1.…), a leitura da caixa de entrada na primeira abertura e a linha vazia. O picker.ts
+ * (colar o código MBS1.… ou um host do ~/.ssh/config), a leitura da caixa de entrada na primeira abertura e a linha vazia. O picker.ts
  * continua dono da lista e das linhas; aqui só o que é exclusivo do admin.
  */
 import type { PickerApi, PickerInit } from "../../shared/ipc";
@@ -68,14 +68,14 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       addBox.className = "add-person";
       const open = el("button", "btn btn-ghost btn-small", "Adicionar pessoa"); open.type = "button";
       const form = el("div", "add-form"); form.hidden = true;
-      const input = el("textarea"); input.rows = 2; input.placeholder = "Cole aqui o código de suporte (MBS1.…) que a pessoa mandou";
+      const input = el("textarea"); input.rows = 2; input.placeholder = "Cole o código de suporte (MBS1.…) que a pessoa mandou, ou um host do seu ~/.ssh/config (ssh agente-box-lv)";
       const add = el("button", "btn btn-primary btn-small", "Adicionar"); add.type = "button";
       const msg = el("p", "add-msg"); msg.hidden = true;
       open.addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) input.focus(); });
       add.addEventListener("click", () => {
         add.disabled = true;
         void deps.api.supportAdd(input.value).then(async (p) => {
-          msg.hidden = false; msg.textContent = `✓ ${p.name} adicionada`; input.value = ""; form.hidden = true;
+          msg.hidden = false; msg.textContent = input.value.trim().startsWith("MBS1.") ? `✓ ${p.name} adicionada` : `✓ ${p.name} adicionada · preparando sozinho: Claude Code, login (abre no Terminal se faltar) e backend`; input.value = ""; form.hidden = true;
           deps.reinit(await deps.api.list(), p.alias);
         }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
       });

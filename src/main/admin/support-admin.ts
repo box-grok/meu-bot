@@ -4,6 +4,7 @@
  * arquivo só do suporte (~/.ssh/meu-bot-suporte.conf, incluído no topo do ~/.ssh/config) com known_hosts
  * próprio: o admin entra pela chave ~/.ssh/meu-bot-admin, que só funciona enquanto a pessoa deixar.
  */
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -11,13 +12,16 @@ import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
 import { applyLicensePatch, buildLicenseView } from "../licenca";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
+import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
 import { entregar, registrar, registroSh } from "../auditoria";
 import type { Acao } from "../auditoria-core";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
-import { installAudio, probeHost } from "../hostProbe";
+import { installAudio, installBackend, installClaudeCode, probeHost } from "../hostProbe";
+import { claudeAuthStatus } from "../claudeLogin";
+import { closeTunnel } from "../tunnel";
+import { broadcast } from "../windows";
 import { xaiAuthInfo } from "../xaiLogin";
-import { getBackendPort, isValidHost } from "../settings";
+import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from "../settings";
 import { log } from "../backend";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
@@ -162,16 +166,76 @@ async function readPlan(host: string): Promise<PlanName | null> {
 /** Pessoas já conhecidas (sem ler a caixa): a lista do seletor abre na hora. */
 export const knownPeople = (): SupportPerson[] => [...load().values()].map(toPerson).sort((a, b) => a.name.localeCompare(b.name));
 
-/** "Adicionar pessoa" colando o código (plano B da entrega automática). */
-export function addSupportCode(text: string): SupportPerson {
-  const d = decodeSupportCode(text);
-  if (!d.ok) throw new Error(d.reason);
+/**
+ * "Adicionar pessoa" colando o código (plano B da entrega automática) ou um host do ~/.ssh/config do admin
+ * ("ssh agente-box-lv"): aí o admin entra com o acesso que já tem e monta o código sozinho (adoptSshHost).
+ */
+export async function addSupportCode(text: string): Promise<SupportPerson> {
+  const host = text.trim().startsWith("MBS1.") ? null : parseSshAddTarget(text);
+  const code = host !== null ? await adoptSshHost(host) : (() => { const d = decodeSupportCode(text); if (!d.ok) throw new Error(d.reason); return d.code; })();
   const m = load();
-  const s: Stored = { code: d.code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" };
-  m.set(machineId(d.code), s);
+  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "" };
+  m.set(machineId(code), s);
   save(m);
   writeSshFiles(m);
+  if (host !== null) {
+    // Confere que a chave do admin entra mesmo pelo alias novo (known_hosts e authorized_keys certos).
+    const r = await runSsh(supportAlias(code), "true\n", 20_000);
+    if (r.code !== 0) throw new Error(`adicionada, mas a chave do admin não entrou: ${lastLine(r)}`);
+    void prepareAdopted(supportAlias(code)).catch((e: unknown) => { log(`[adotar] ${supportAlias(code)}: ${e instanceof Error ? e.message : String(e)}`); });
+  }
   return toPerson(s);
+}
+
+const LOGIN_WAIT_MS = 15 * 60_000;
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Conta adotada por SSH (do próprio admin, sem o meu-bot dela para preparar): em segundo plano instala o Claude
+ * Code se faltar, abre o login no Terminal se estiver deslogado (aprovar no navegador é o único passo à mão) e,
+ * logado, instala o backend, numa porta livre se a do app já tiver dono nesta máquina (outra conta da mesma VM).
+ */
+async function prepareAdopted(alias: string): Promise<void> {
+  const step = (line: string): void => log(`[adotar] ${alias}: ${line}`);
+  let p = await probeHost(alias, getBackendPort(alias));
+  if (!p.reachable) throw new Error(`inacessível: ${p.error ?? "sem detalhes"}`);
+  if (p.backendInstalled && p.backendListening) { step("backend já no ar"); return; }
+  if (p.claudePath === null) {
+    step("instalando o Claude Code");
+    const r = await installClaudeCode(alias, step);
+    if (!r.ok) throw new Error(`Claude Code não instalou: ${r.log.at(-1) ?? "?"}`);
+    p = await probeHost(alias, getBackendPort(alias));
+  }
+  if (!p.claudeLoggedIn) {
+    step("Claude Code deslogado: abrindo o login no Terminal");
+    spawn("osascript", ["-e", `tell application "Terminal" to do script "ssh -t ${alias} 'export PATH=$HOME/.local/bin:$PATH; claude auth login'"`, "-e", 'tell application "Terminal" to activate'], { stdio: "ignore" }).on("error", () => { /* sem Terminal: a sondagem segue mostrando o login */ });
+    const until = Date.now() + LOGIN_WAIT_MS;
+    while ((await claudeAuthStatus(alias))?.loggedIn !== true) {
+      if (Date.now() > until) throw new Error("o login do Claude Code não terminou em 15 min; adicione de novo para retomar");
+      await sleep(10_000);
+    }
+    p = await probeHost(alias, getBackendPort(alias));
+  }
+  const configured = getBackendPort(alias);
+  const port = p.backendInstalled && p.backendPort !== null ? p.backendPort : !p.backendInstalled && p.portBusy && p.freePort !== null ? p.freePort : configured;
+  step(`instalando o backend na porta ${port}`);
+  const r = await installBackend(alias, port, step);
+  if (!r.ok) throw new Error(`backend não instalou: ${r.log.at(-1) ?? "?"}`);
+  if (port !== configured) { setBackendPortForHost(alias, port); closeTunnel(alias); broadcast("settings:changed", settingsView()); }
+  step("pronto: Claude Code logado e backend no ar");
+}
+
+/** Resolve o host pelo ~/.ssh/config, instala a chave do admin lá (pelo acesso que já existe) e monta o código. */
+async function adoptSshHost(host: string): Promise<SupportCode> {
+  if (!fs.existsSync(`${ADMIN_KEY}.pub`)) throw new Error("falta a chave ~/.ssh/meu-bot-admin.pub deste admin");
+  const g = spawnSync("ssh", ["-G", "--", host], { encoding: "utf8", timeout: 10_000 });
+  const target = g.status === 0 ? parseSshG(g.stdout) : null;
+  if (target === null) throw new Error(`não consegui resolver "${host}" no ~/.ssh/config`);
+  const r = await runSsh(host, adoptScript({ nome: adminName(), chave: fs.readFileSync(`${ADMIN_KEY}.pub`, "utf8") }), 30_000);
+  if (r.code !== 0) throw new Error(`não consegui entrar em ${host}: ${lastLine(r)}`);
+  const hostKey = parseAdoptHostKey(r.stdout);
+  if (hostKey === null) throw new Error(`${host} não tem chave ed25519 do servidor`);
+  return { v: 1, name: host.slice(0, 40), ...target, hostKey, state: "on", at: new Date().toISOString(), ...(/^[A-Za-z0-9._-]{1,64}$/.test(host) ? { machine: host } : {}) };
 }
 
 /** Apelido do admin para a pessoa (vence o nome que veio no código; vazio tira). O alias não muda. */
