@@ -189,7 +189,7 @@ test("trava do dono: só o número pareado sem restrição; o resto sem gravar, 
   const sh = ownerLockSh("5521900000001");
   const lock = JSON.parse(/'(\{.*\})'/.exec(sh)[1]);
   assert.equal(lock["*"].deny.includes("navegador__abrir"), true); // o Navegador do dono nunca vale para "*"
-  assert.deepEqual(lock["*"].deny.filter((t) => !t.startsWith("navegador__")), [...NON_OWNER_DENY]);
+  assert.deepEqual(lock["*"].deny.filter((t) => !t.startsWith("navegador__")), [...NON_OWNER_DENY, "read"]); // desconhecido também não lê arquivos
   assert.deepEqual(lock["e164:+5521900000001"], {});
   for (const t of ["write", "edit", "exec"]) assert.ok(NON_OWNER_DENY.includes(t));
   assert.match(sh, /\*unset\*\|\*apply_patch\*\)/, "só grava se vazio ou já for a do meu-bot");

@@ -15,7 +15,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
-import { NAV_DENY } from "./navegador-whatsapp-core";
+import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
@@ -294,7 +294,7 @@ export const SELF_POLICY_SH = `openclaw config set session.dmScope per-channel-p
 const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : `${SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`)} && ${ownerLockSh(number)}`;
 
 /** O que um contato que não é o dono não pode usar: gravar, editar, rodar comandos, agendar, mexer no gateway. */
-export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"] as const;
+export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway"] as const;
 /**
  * Trava do dono (`tools.toolsBySender`): o número pareado sem restrição; qualquer outro remetente sem as
  * ferramentas que mudam a máquina ou o próprio agente (nome, personalidade, arquivos). Sem isso, um contato
@@ -302,7 +302,7 @@ export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process"
  * Só grava se estiver vazio ou já for a do meu-bot (tem `apply_patch`): uma regra feita à mão fica.
  */
 export const ownerLockSh = (number: string): string => {
-  const lock = JSON.stringify({ [`e164:+${number}`]: {}, "*": { deny: [...NON_OWNER_DENY, ...NAV_DENY] } });
+  const lock = JSON.stringify({ [`e164:+${number}`]: {}, "*": { deny: [...NON_OWNER_DENY, ...DESCONHECIDO_DENY, ...NAV_DENY] } });
   return `{ cur=$(openclaw config get tools.toolsBySender 2>&1 || true); case "$cur" in *unset*|*apply_patch*) openclaw config set tools.toolsBySender '${lock}' --strict-json >/dev/null ;; esac; }`;
 };
 

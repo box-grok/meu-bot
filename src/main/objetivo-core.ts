@@ -5,16 +5,16 @@
  * trava as ferramentas do dono conforme o nível. Testável sem Electron; o SSH fica em objetivo.ts.
  */
 import type { FreedomLevel, MachineSkill, ObjectiveChoice, ObjectiveInfo } from "../shared/ipc";
-import { NAV_DENY } from "./navegador-whatsapp-core";
+import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 
 /** Nome fixo da skill: salvar de novo substitui a anterior (uma por máquina). */
 export const OBJECTIVE_SKILL = "objetivo-whatsapp";
 export const OBJECTIVE_FILE = "$HOME/.local/share/meu-bot/objetivo.json";
 
 /** O que um contato que não é o dono nunca pode usar (a mesma trava do pareamento, whatsapp.ts). */
-const OTHERS_DENY = ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"] as const;
+const OTHERS_DENY = ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway"] as const;
 /** O "*" da trava: o que muda a máquina e o Navegador do dono (liberado por remetente em navegador-whatsapp-core.ts). */
-const STAR_DENY: readonly string[] = [...OTHERS_DENY, ...NAV_DENY];
+const STAR_DENY: readonly string[] = [...OTHERS_DENY, ...DESCONHECIDO_DENY, ...NAV_DENY];
 
 /** Os três níveis: o que o agente pode fazer, para o dono. A trava do OpenClaw segue `deny`. */
 export const LEVELS: readonly { id: FreedomLevel; title: string; text: string; rules: string[]; deny: readonly string[] }[] = [
@@ -26,7 +26,7 @@ export const LEVELS: readonly { id: FreedomLevel; title: string; text: string; r
   {
     id: "consulta", title: "Consulta e organiza", text: "Lê arquivos e a internet, anota e organiza no seu workspace, mas não roda comandos nem agenda.",
     rules: ["Você pode ler arquivos e pesquisar, e pode anotar e organizar no seu workspace (notas, listas, memória).", "Não rode comandos no sistema, não agende tarefas e não mexa no gateway."],
-    deny: ["exec", "process", "cron", "gateway"],
+    deny: ["exec", "process", "code_execution", "cron", "gateway"],
   },
   {
     id: "age", title: "Age por mim", text: "Faz o que for preciso: roda comandos, mexe em arquivos e agenda, como se fosse o dono.",

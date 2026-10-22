@@ -26,6 +26,10 @@ test("trava ligada: liberados sem o Navegador negado (mantendo o resto do '*'), 
   assert.deepEqual(t[`e164:+${SELF}`], {});
   assert.deepEqual(t[`e164:+${DONO2}`], { deny: OTHERS }); // nada mais muda para ele: só ganha o Navegador
   assert.deepEqual(t["*"].deny, [...OTHERS, ...NAV_DENY]);
+  // "*" com "read" (só de desconhecido): quem é liberado não herda o "read".
+  const comRead = travaNavegador({ "*": { deny: [...OTHERS, "read"] } }, ["5511911112222"], true);
+  assert.deepEqual(comRead["e164:+5511911112222"], { deny: OTHERS });
+  assert.ok(comRead["*"].deny.includes("read"));
   assert.deepEqual(t["e164:+5511900000009"].deny, ["exec", ...NAV_DENY]);
   // Sem trava nenhuma antes: só o Navegador fica negado aos outros.
   const vazio = travaNavegador(null, [SELF], true);

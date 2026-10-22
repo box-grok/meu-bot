@@ -15,6 +15,12 @@ export const NAV_TOOLS = ["abas", "abrir", "ler", "clicar", "digitar", "tecla", 
 export const NAV_MCP_VERSAO = "meu-bot-navegador v4";
 /** Negar o Navegador: o curinga e cada nome (a lista explícita vale mesmo se a política não aceitar curinga). */
 export const NAV_DENY: readonly string[] = [`${NAV_SERVER}__*`, ...NAV_TOOLS.map((t) => `${NAV_SERVER}__${t}`)];
+/**
+ * Só para quem não tem regra própria ("*": clientes e números desconhecidos, com o WhatsApp aberto): também sem ler
+ * arquivos da máquina. Sem isso, um desconhecido pedia e o agente lia ~/.config (tokens) ou a configuração com chaves.
+ * A equipe liberada por número continua lendo.
+ */
+export const DESCONHECIDO_DENY: readonly string[] = ["read"];
 /** Arquivo da porta do túnel reverso na máquina (o app grava ao subir, apaga ao cair). */
 export const NAV_PORT_FILE = ".local/share/meu-bot/navegador-porta";
 
@@ -43,7 +49,9 @@ export function travaNavegador(atual: unknown, liberados: readonly string[], lig
   const baseStar = (out["*"]?.deny ?? []).filter((t) => !isNav(t));
   out["*"] = { ...(out["*"] ?? {}), deny: uniq([...baseStar, ...NAV_DENY]) };
   const chaves = new Set(liberados.map((n) => `e164:+${n}`));
-  if (ligar) for (const k of chaves) if (out[k] === undefined) out[k] = baseStar.length > 0 ? { deny: [...baseStar] } : {};
+  // Quem é liberado ganha a trava do "*" menos o que é só de desconhecido (a equipe continua lendo arquivos).
+  const baseEquipe = baseStar.filter((t) => !DESCONHECIDO_DENY.includes(t));
+  if (ligar) for (const k of chaves) if (out[k] === undefined) out[k] = baseEquipe.length > 0 ? { deny: [...baseEquipe] } : {};
   for (const [k, r] of Object.entries(out)) {
     if (k === "*") continue;
     const sem = (r.deny ?? []).filter((t) => !isNav(t));
