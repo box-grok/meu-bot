@@ -2420,3 +2420,22 @@ Regras em `src/main/nav-donos-core.ts` (testadas), aplicadas em `nav-api.ts`:
 (os 8 primeiros caracteres da sessão do OpenClaw, o mesmo "ID" da aba da conversa) ou `🤖 <id da conversa>`. Um clique
 copia a referência: máquina, aba, url e dono, com chave e sessão. A máquina com o servidor v1 é atualizada sozinha
 (`navegadorInstalled` e `mcpfile` conferem o marcador `meu-bot-navegador v2`).
+
+## Primeiro pipeline do CRM no tutorial 10 (21 out)
+
+O CRM só anota conversas do WhatsApp com um pipeline padrão. A box-lv tinha o CRM instalado e nenhum pipeline, e a
+pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
+
+- **Tutorial 10 (`crm-gmail`):** ganhou o passo **"Criar o primeiro pipeline"**, antes do Streak e do teste. Ele conclui
+  pelo estado real (`ctx.crm.local.padrao`): quem já tem pipeline padrão continua concluído.
+- **Corpo do passo** (`renderCrmPipeline`):
+  - modelos prontos (Vendas, Atendimento, Agendamentos) ou "Do meu jeito", em `lib/crm-modelos.ts` com
+    `validarPipeline`: de 2 a 12 etapas, sem repetir;
+  - com vários pipelines e nenhum padrão, escolher qual o WhatsApp usa.
+- **Main** (`crm-local.ts`): `GET /v1/crm/pipelines` e `/config`, `POST /pipelines` e `PUT /config`, pelo túnel. Canais
+  `crm:local`, `crm:pipeline-criar` e `crm:pipeline-padrao`; na auditoria, `crm.pipeline-criar` e
+  `crm.pipeline-padrao`.
+- **Aviso no WhatsApp:** `regras.mjs` › `avisoSemPipeline` dá o caminho no app (e "me peça aqui: cria um pipeline…"),
+  com texto próprio para o CRM próprio e para o Streak.
+- **O plugin do CRM agora se atualiza sozinho:** o probe lê `crm` e `crmVersion` e o seletor roda `installCrm` quando
+  `deveAtualizar`. Só onde o CRM já está instalado. Versão 1.1.0.

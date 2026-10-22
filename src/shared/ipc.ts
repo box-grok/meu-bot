@@ -224,6 +224,9 @@ export interface HostProbe {
   guarda: boolean | null;
   /** Versão da guarda instalada (package.json do plugin); null = sem guarda ou desconhecida. */
   guardaVersion: string | null;
+  /** CRM do meu-bot instalado na máquina (null = não consultado) e a versão do plugin. */
+  crm: boolean | null;
+  crmVersion: string | null;
   /** OpenClaw: o agente do WhatsApp entende áudio (transcritor configurado); null = sem OpenClaw. */
   audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
@@ -524,6 +527,8 @@ export interface ObjectiveInfo {
 }
 
 /** Tutorial 10 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
+/** CRM próprio da máquina (meu-bot-crm): pipelines e o padrão do WhatsApp (null = nenhum: nada é anotado). */
+export interface CrmLocal { pipelines: { key: string; name: string; boxes: number }[]; padrao: string | null }
 export interface CrmInfo {
   /** Janela de máquina por SSH (neste Mac não há agente). */
   available: boolean;
@@ -1077,6 +1082,12 @@ export interface MeuBotClientApi {
   browserAgent(on: boolean): Promise<BrowserAgentState>;
   /** O agente do WhatsApp também usa o Navegador (sem `on`: só lê). `liberados` = números (só dígitos) que podem. */
   browserAgentWhatsapp(on?: boolean): Promise<{ on: boolean; liberados: string[] }>;
+  /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp. */
+  crmLocal(): Promise<CrmLocal>;
+  /** meu-bot-crm: cria um pipeline (o único vira o padrão do WhatsApp). */
+  crmCriarPipeline(name: string, stages: string[]): Promise<CrmLocal>;
+  /** meu-bot-crm: escolhe o pipeline onde as conversas do WhatsApp são anotadas. */
+  crmDefinirPadrao(key: string): Promise<CrmLocal>;
   /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
   browserActive(wcId: number): void;
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;

@@ -12,6 +12,7 @@ import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
 import { assertAcesso } from "../acesso";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
+import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
 import { caps } from "../variant";
 import { disableSshCheck, restoreLastPolicy } from "../tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
@@ -178,6 +179,25 @@ export function registerClientIpc(): void {
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); const pedido = caps().planoExigido === "free" ? "pediu o plano Pro (aba Navegador)" : `pediu para liberar o ${caps().produto} (assinatura)`; await registrar(h.host, "plano.pedir", pedido); log(`[navegador] ${h.host}: ${pedido}`); });
   // Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
+  // Tutorial 10 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.
+  handleClient("crm:local", (event) => crmLocal(ctxOf(event).host));
+  handleClient("crm:pipeline-criar", async (event, payload: unknown) => {
+    const h = ctxOf(event); await assertAcesso(h.host);
+    const p = payload as { name?: unknown; stages?: unknown } | null;
+    if (typeof p?.name !== "string" || p.name.trim() === "" || p.name.length > 60) throw new Error("nome inválido");
+    if (!Array.isArray(p.stages) || p.stages.length < 2 || p.stages.length > 12 || !p.stages.every((s) => typeof s === "string" && s.trim() !== "" && s.length <= 40)) throw new Error("etapas inválidas (2 a 12)");
+    const r = await crmCriarPipeline(h.host, p.name.trim(), (p.stages as string[]).map((s) => s.trim()));
+    void registrar(h.host, "crm.pipeline-criar", `"${p.name.trim()}"`);
+    return r;
+  });
+  handleClient("crm:pipeline-padrao", async (event, payload: unknown) => {
+    const h = ctxOf(event); await assertAcesso(h.host);
+    const key = (payload as { key?: unknown } | null)?.key;
+    if (typeof key !== "string" || !/^[\w-]{1,80}$/.test(key)) throw new Error("pipeline inválido");
+    const r = await crmDefinirPadrao(h.host, key);
+    void registrar(h.host, "crm.pipeline-padrao", `"${r.pipelines.find((x) => x.key === key)?.name ?? key}"`);
+    return r;
+  });
   handleClient("crm:install", async (event) => { const h = ctxOf(event); await assertAcesso(h.host); const r = await installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); if (r.ok) void registrar(h.host, "crm.instalar"); return r; });
   handleClient("crm:set", (event, payload: unknown) => setCrm(ctxOf(event).host, payload));
   handleClient("crm:test", (event) => crmTest(ctxOf(event).host));

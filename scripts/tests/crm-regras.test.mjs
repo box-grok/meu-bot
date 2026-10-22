@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { SilenceTracker, buildPrompt, confirmIndex, isConfirm, isDirectWhatsapp, isReject, lastTimestamp, mergeEstado, normalizePhone, ownerCommand, ownerMessage, parseCrmJson, phoneOfSessionKey, threadFromHistory } from "../../backend-colima/crm/regras.mjs";
+import { avisoSemPipeline, SilenceTracker, buildPrompt, confirmIndex, isConfirm, isDirectWhatsapp, isReject, lastTimestamp, mergeEstado, normalizePhone, ownerCommand, ownerMessage, parseCrmJson, phoneOfSessionKey, threadFromHistory } from "../../backend-colima/crm/regras.mjs";
 
 test("chave de sessão → telefone; só diretas do WhatsApp", () => {
   assert.equal(phoneOfSessionKey("agent:main:whatsapp:direct:+595994402904"), "+595994402904");
@@ -168,4 +168,12 @@ test("classificação: prompt leva pipelines/exemplos/mensagens; resposta só va
   assert.equal(parseClassificacao('{"pipeline":"p_inventado","confianca":0.99}', ["p_carro"]), null);
   assert.equal(parseClassificacao('{"pipeline":null,"confianca":0.9}', ["p_carro"]), null);
   assert.equal(parseClassificacao("sem json", ["p_carro"]), null);
+});
+
+test("aviso sem pipeline: português simples, com o caminho no app; nunca o comando da CLI", () => {
+  const sem = avisoSemPipeline("nenhum pipeline padrão: escolha um com `config --pipeline <key>` (veja `pipelines`)", true);
+  assert.match(sem, /não tem um pipeline/); assert.match(sem, /CRM no Gmail e no WhatsApp/); assert.match(sem, /cria um pipeline Vendas/);
+  assert.match(avisoSemPipeline("o pipeline padrão (p_x) não existe no CRM próprio", true), /foi apagado/);
+  assert.match(avisoSemPipeline("sem pipeline", false), /Streak/);
+  for (const t of [sem, avisoSemPipeline("x não existe", false)]) assert.doesNotMatch(t, /config --pipeline|<key>/);
 });

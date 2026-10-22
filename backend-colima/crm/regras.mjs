@@ -213,3 +213,20 @@ export function parseClassificacao(texto, keys, minimo = 0.7) {
   if (!keys.includes(key) || !Number.isFinite(confianca) || confianca < minimo) return null;
   return { key, confianca, motivo: typeof v.motivo === "string" ? v.motivo.trim().slice(0, 200) : "", nome: typeof v.nome === "string" ? v.nome.trim().slice(0, 120) : "" };
 }
+
+/**
+ * Aviso ao dono quando as conversas não estão sendo anotadas por falta de pipeline padrão. Em português simples, com o
+ * caminho no app (o erro da CLI, com `config --pipeline <key>`, é para o agente, não para a pessoa). `proprio` = CRM
+ * próprio (meu-bot-crm); senão Streak (meu-bot).
+ */
+export function avisoSemPipeline(erro, proprio) {
+  const apagado = /não existe/.test(String(erro || ""));
+  if (proprio) {
+    return apagado
+      ? '📇 CRM: as conversas do WhatsApp não estão sendo anotadas porque o pipeline que o CRM usava foi apagado. Escolha outro no meu-bot-crm (Tutoriais › CRM no Gmail e no WhatsApp) ou me diga aqui qual usar.'
+      : '📇 CRM: as conversas do WhatsApp ainda não estão sendo anotadas porque o CRM não tem um pipeline. Crie o primeiro no meu-bot-crm (Tutoriais › CRM no Gmail e no WhatsApp) ou me peça aqui: "cria um pipeline Vendas com as etapas Novo contato, Conversando, Proposta, Fechado".';
+  }
+  return apagado
+    ? '📇 CRM: as conversas do WhatsApp não estão sendo anotadas porque o pipeline do Streak que o CRM usava não existe mais. Escolha outro no meu-bot (Tutoriais › CRM pelo WhatsApp).'
+    : '📇 CRM: as conversas do WhatsApp ainda não estão sendo anotadas porque nenhum pipeline do Streak foi escolhido. Escolha um no meu-bot (Tutoriais › CRM pelo WhatsApp).';
+}

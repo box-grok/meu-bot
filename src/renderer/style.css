@@ -917,3 +917,6 @@ body.topbar-hidden .topbar { display: none; }
 .nav-tab-id:hover { color: var(--fg); border-color: var(--fg); }
 .nav-tab-id.dono { color: var(--accent); border-color: var(--accent); }
 .nav-tab-id.dono.whatsapp { color: var(--ok); border-color: var(--ok); }
+
+/* Tutorial 10: editor do primeiro pipeline do CRM. */
+.crm-pipe-editor input, .crm-pipe-editor textarea { font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }

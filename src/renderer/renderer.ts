@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -17,6 +17,7 @@ import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js"
 import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost, type PageNotification } from "./lib/nav-notify.js";
 import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
+import { MODELOS_PIPELINE, etapasDoTexto, validarPipeline } from "./lib/crm-modelos.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
 import { conversationReferenceText, grupoReferenceText, waReferenceText } from "./lib/reference.js";
@@ -1885,6 +1886,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderCrmTest(txt);
       } else if (step.body === "crm-gmail") {
         renderNavOpen(txt, "https://mail.google.com/");
+      } else if (step.body === "crm-pipeline") {
+        renderCrmPipeline(txt);
       } else if (step.body === "crm-importar") {
         txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada."));
       } else if (step.body === "nav-ws") {
@@ -2046,7 +2049,7 @@ function openGuide(t: Tutorial): void {
   if (t.id === "claude-login") void refreshClaudeLine();
   if (t.id === "guarda-whatsapp") void refreshGuarda();
   if (t.id === "navegador") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
-  if (t.id === "crm-whatsapp") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
+  if (t.id === "crm-whatsapp" || t.id === "crm-gmail") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
   if (t.id === "xai-login") void refreshXaiLine();
   if (t.id === "whatsapp-grupos") void refreshWaGroups();
   paintGuide();
@@ -4265,7 +4268,7 @@ const guideCtx = (): GuideContext => ({
   navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up", servicos: navServicosCount(), extensaoEmbutida: navExtensions.some((x) => x.embutida === true) },
   notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
-  crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState },
+  crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState, local: crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && waGroupReplied.get(alvo.jid) === true }; })(),
   produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
@@ -4282,7 +4285,7 @@ const guideCtx = (): GuideContext => ({
       objective: objectiveState !== null || !remote,
       guarda: guardaState !== null || !remote || (waStatus !== null && waStatus.gateway !== "openclaw"),
       navegador: navLicenseAsked && (navInstState !== null || !remote),
-      crm: navLicenseAsked && (crmState !== null || !remote),
+      crm: navLicenseAsked && (crmState !== null || !remote) && (!caps.extensaoGmail || !remote || crmLocalState !== null),
       grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
     };
   })(),
@@ -4468,9 +4471,77 @@ let crmLog: string[] = [];
 let crmMsg: { text: string; bad: boolean } | null = null;
 let crmDiag: CrmDiag | null = null;
 let crmKeyDraft = "";
+/** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp (tutorial 10, passo "Criar o primeiro pipeline"). */
+let crmLocalState: CrmLocal | null = null;
+let crmPipeDraft: { modelo: string; nome: string; etapas: string } | null = null;
+let crmPipeNovo = false;
+let crmPipeBusy = false;
+let crmPipeMsg: { text: string; bad: boolean } | null = null;
+/** Tutorial 10: escolher um modelo (ou do meu jeito), ajustar nome e etapas e criar; com vários e nenhum padrão, escolher. */
+function renderCrmPipeline(container: HTMLElement): void {
+  const st = crmLocalState;
+  if (crmPipeMsg !== null) container.append(el("p", `hint${crmPipeMsg.bad ? " guide-pair-note" : ""}`, crmPipeMsg.text));
+  if (st === null) { container.append(el("p", "hint", "Lendo o CRM desta máquina…")); void refreshCrm(); return; }
+  const gmail = el("button", "linkish", "Ver no Gmail"); gmail.type = "button";
+  gmail.addEventListener("click", () => { void openNavTab("https://mail.google.com/"); });
+  if (st.padrao !== null) {
+    const p = el("p", "hint"); p.append(`Pipeline do WhatsApp: ${st.pipelines.find((x) => x.key === st.padrao)?.name ?? st.padrao}. `, gmail); container.append(p);
+    return;
+  }
+  // Já há pipelines (importados ou criados no Gmail), mas nenhum é o do WhatsApp: escolher um.
+  if (st.pipelines.length > 0 && !crmPipeNovo) {
+    container.append(el("p", "hint", "Seu CRM já tem pipelines. Qual deles o WhatsApp usa para anotar as conversas?"));
+    const cards = el("div", "reply-cards guide-cards");
+    for (const pl of st.pipelines) {
+      const card = el("button", "reply-card"); card.type = "button"; card.disabled = crmPipeBusy;
+      const body = el("div", "reply-body"); const title = el("div", "reply-title"); title.append(el("strong", "", pl.name));
+      body.append(title, el("p", "", pl.boxes === 1 ? "1 caixa" : `${pl.boxes} caixas`));
+      card.append(el("span", "reply-radio"), body);
+      card.addEventListener("click", () => {
+        crmPipeBusy = true; paintGuide();
+        void window.meuBot.crmDefinirPadrao(pl.key).then((r) => { crmLocalState = r; crmPipeMsg = { text: `✓ O WhatsApp passa a anotar no pipeline "${pl.name}".`, bad: false }; })
+          .catch((e: unknown) => { crmPipeMsg = { text: `Não deu: ${ipcErrorText(e)}`, bad: true }; }).finally(() => { crmPipeBusy = false; paintGuide(); });
+      });
+      cards.append(card);
+    }
+    const outro = el("button", "linkish", "Criar outro pipeline"); outro.type = "button";
+    outro.addEventListener("click", () => { crmPipeNovo = true; paintGuide(); });
+    container.append(cards, outro);
+    return;
+  }
+  const cards = el("div", "reply-cards guide-cards");
+  for (const m of MODELOS_PIPELINE) {
+    const card = el("button", `reply-card${crmPipeDraft?.modelo === m.id ? " on" : ""}`); card.type = "button"; card.disabled = crmPipeBusy;
+    const body = el("div", "reply-body"); const title = el("div", "reply-title"); title.append(el("strong", "", m.titulo));
+    if (m.id === "vendas") title.append(el("span", "reply-default", "Mais usado"));
+    body.append(title, el("p", "", m.etapas.length > 0 ? `${m.texto} Etapas: ${m.etapas.join(" › ")}.` : m.texto));
+    card.append(el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { crmPipeDraft = { modelo: m.id, nome: m.nome, etapas: m.etapas.join("\n") }; crmPipeMsg = null; paintGuide(); });
+    cards.append(card);
+  }
+  container.append(cards);
+  const d = crmPipeDraft;
+  if (d === null) return;
+  const box = el("div", "wa-list-editor crm-pipe-editor");
+  const nome = el("input") as HTMLInputElement; nome.type = "text"; nome.placeholder = "Nome do pipeline (ex.: Vendas LV)"; nome.value = d.nome;
+  nome.addEventListener("input", () => { d.nome = nome.value; });
+  const etapas = document.createElement("textarea"); etapas.rows = 5; etapas.placeholder = "Uma etapa por linha (de 2 a 12)"; etapas.value = d.etapas;
+  etapas.addEventListener("input", () => { d.etapas = etapas.value; });
+  const criar = el("button", "btn btn-primary btn-small", crmPipeBusy ? "criando…" : "Criar pipeline"); criar.type = "button"; criar.disabled = crmPipeBusy;
+  criar.addEventListener("click", () => {
+    const v = validarPipeline(d.nome, etapasDoTexto(d.etapas));
+    if (!v.ok) { crmPipeMsg = { text: v.erro, bad: true }; paintGuide(); return; }
+    crmPipeBusy = true; crmPipeMsg = null; paintGuide();
+    void window.meuBot.crmCriarPipeline(v.name, v.stages).then((r) => { crmLocalState = r; crmPipeDraft = null; crmPipeNovo = false; crmPipeMsg = { text: `✓ Pipeline "${v.name}" criado: as conversas do WhatsApp passam a ser anotadas nele.`, bad: false }; })
+      .catch((e: unknown) => { crmPipeMsg = { text: `Não deu para criar: ${ipcErrorText(e)}`, bad: true }; }).finally(() => { crmPipeBusy = false; paintGuide(); });
+  });
+  box.append(el("span", "hint", "Nome"), nome, el("span", "hint", "Etapas, na ordem do seu atendimento (uma por linha)"), etapas, criar);
+  container.append(box);
+}
 async function refreshCrm(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
   try { crmState = await window.meuBot.crmInfo(); } catch { /* máquina fora: fica o que havia */ }
+  if (caps.extensaoGmail) { try { crmLocalState = await window.meuBot.crmLocal(); } catch { /* backend fora: fica o que havia */ } }
   paintGuide();
   void crmAutoPipeline();
 }

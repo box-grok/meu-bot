@@ -10,7 +10,7 @@ import { deveAtualizar } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
-import { approveTailscaleCheck, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
+import { approveTailscaleCheck, bundledCrmVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "./whatsapp";
@@ -79,6 +79,7 @@ function probeCached(host: string): Promise<HostProbe> {
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
     if (probe.reachable) setPodHost(host, probe.grokPod);
     ensureGuarda(host, probe);
+    ensureCrmAtual(host, probe);
     return probe;
   }).finally(() => inflight.delete(host));
   inflight.set(host, p);
@@ -104,6 +105,21 @@ function ensureGuarda(host: string, probe: HostProbe): void {
     log(`[guarda] ${host}: ${r.ok ? "instalada sozinha" : `instalação automática falhou: ${r.log.at(-1) ?? "?"}`}`);
     const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, guarda: true, guardaVersion: bundledGuardaVersion() }, at: hit.at });
   }).catch((e: unknown) => { log(`[guarda] ${host}: instalação automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+/**
+ * Plugin do CRM numa versão anterior à deste app: atualiza em segundo plano (só sobe de versão, e só onde o CRM já está
+ * instalado; nunca instala do zero). Uma tentativa por máquina por sessão do app.
+ */
+const crmTried = new Set<string>();
+function ensureCrmAtual(host: string, probe: HostProbe): void {
+  if (!probe.reachable || probe.crm !== true || host === LOCAL_HOST || crmTried.has(host)) return;
+  const want = bundledCrmVersion();
+  if (!deveAtualizar(probe.crmVersion ?? null, want)) return;
+  crmTried.add(host);
+  log(`[crm] ${host}: plugin do CRM ${probe.crmVersion ?? "sem versão"} → ${want}; atualizando em segundo plano`);
+  void installCrm(host).then((r) => { log(`[crm] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${r.log.at(-1) ?? "?"}`}`); })
+    .catch((e: unknown) => { log(`[crm] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 
 const current = (): PickerSource => { if (source === null) throw new Error("seletor sem fonte: initPicker não rodou"); return source; };

@@ -18,7 +18,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { avisoDevido, buildPrompt, confirmIndex, lastTimestamp, mergeEstado, mesclarContatoWhatsapp, nomeDoHistorico, normalizePhone, ownerMessage, parseClassificacao, parseCrmJson, phoneOfSessionKey, promptClassificacao, recuperarDesde, threadFromHistory } from "./regras.mjs";
+import { avisoSemPipeline, avisoDevido, buildPrompt, confirmIndex, lastTimestamp, mergeEstado, mesclarContatoWhatsapp, nomeDoHistorico, normalizePhone, ownerMessage, parseClassificacao, parseCrmJson, phoneOfSessionKey, promptClassificacao, recuperarDesde, threadFromHistory } from "./regras.mjs";
 import { backendEnv, crmApi } from "./backend.mjs";
 
 const HOME = os.homedir();
@@ -94,7 +94,7 @@ async function runForContact(sessionKey, command) {
   if (info.erro) {
     log(`${phone}: pipeline: ${info.erro}`);
     // Sem pipeline padrão a conversa não é anotada: o dono precisa saber (no máximo um aviso por dia, não a cada contato).
-    if (command !== null || avisoDevido(estado.avisoPipelineEm, Date.now())) { sendOwner(`📇 CRM: as conversas do WhatsApp não estão sendo anotadas. ${info.erro}`); writeJson(ESTADO, { ...estado, avisoPipelineEm: Date.now() }); }
+    if (command !== null || avisoDevido(estado.avisoPipelineEm, Date.now())) { sendOwner(avisoSemPipeline(info.erro, crmProprio())); writeJson(ESTADO, { ...estado, avisoPipelineEm: Date.now() }); }
     return;
   }
   // A caixa da pessoa em qualquer pipeline (não só no padrão): senão a classificação criaria outra.

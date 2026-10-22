@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
+import type { CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -37,7 +37,7 @@ export interface GuideContext {
   /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
   /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
-  crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null };
+  crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null; /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp (null = ainda não lido). */ local: CrmLocal | null };
   /**
    * Tutorial 12: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
    * o agente já respondeu nesse grupo.
@@ -66,7 +66,7 @@ export const emptyContext = (): GuideContext => ({
   notify: { enabled: false, conversas: 0 },
   fallback: { primary: null, chain: null },
   objective: null,
-  crm: { access: null, info: null },
+  crm: { access: null, info: null, local: null },
   grupos: { info: null, alvo: null, respondeu: false },
   produto: { planoExigido: "free", extensaoGmail: false, crmStreak: true },
   known: noneKnown(),
@@ -142,7 +142,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -500,6 +500,11 @@ export const TUTORIAIS: readonly Tutorial[] = [
         id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail",
         text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
         done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
+      },
+      {
+        id: "pipeline", title: "Criar o primeiro pipeline", target: "none", body: "crm-pipeline",
+        text: "O CRM anota cada conversa do WhatsApp numa caixa de um pipeline (as etapas do seu atendimento). Sem pipeline, nada é anotado. Escolha um modelo, ajuste o nome e as etapas e crie: ele vira o pipeline do WhatsApp.",
+        done: (_st, _f, c) => (c.crm.local?.padrao ?? null) !== null,
       },
       {
         id: "importar", title: "Trazer os dados do Streak (opcional)", target: "none", body: "crm-importar",

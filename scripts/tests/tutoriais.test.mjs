@@ -279,3 +279,17 @@ test("tutorial 12 (grupos): escolher, quem aciona (nunca herdado), ligar e testa
   assert.equal(quemEscolhido(info({ quemAciona: "todos", quemAcionaHerdado: false })), true);
   assert.equal(quemEscolhido(info({ quemAciona: ["5511999998888"], quemAcionaHerdado: true })), false);
 });
+
+test("tutorial 10 (CRM no Gmail): passo do primeiro pipeline antes do teste; conclui pelo pipeline padrão do WhatsApp", () => {
+  const t10 = byId("crm-gmail");
+  assert.deepEqual(t10.steps.map((s) => s.id), ["instalar", "gmail", "pipeline", "importar", "testar"]);
+  const base = { ...emptyContext(), crm: { access: "ok", info: { installed: true }, local: null }, navegador: { ...emptyContext().navegador, extensaoEmbutida: true, tabs: 1 } };
+  const feito = { ...emptyFlags(), crmImportSeen: true, crmSeen: true };
+  const comLocal = (local) => ({ ...base, crm: { ...base.crm, local } });
+  // Sem pipeline (box-lv): para no passo novo, mesmo com "importei" e "recebi" marcados.
+  assert.equal(guideView(t10, null, feito, comLocal({ pipelines: [], padrao: null })).current, 2);
+  // Vários pipelines e nenhum padrão: ainda pendente.
+  assert.equal(guideView(t10, null, feito, comLocal({ pipelines: [{ key: "p_a", name: "A", boxes: 0 }, { key: "p_b", name: "B", boxes: 0 }], padrao: null })).current, 2);
+  // Com padrão (agente-box): concluído.
+  assert.equal(guideView(t10, null, feito, comLocal({ pipelines: [{ key: "p_a", name: "A", boxes: 3 }], padrao: "p_a" })).finished, true);
+});
