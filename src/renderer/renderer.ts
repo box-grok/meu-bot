@@ -27,7 +27,7 @@ import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
-import { favLabel, favOf, favTitleFor, parseFavsShown } from "./lib/favoritos.js";
+import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
@@ -5279,7 +5279,9 @@ let navRailForm: { kind: "site" | "espaco" | "renomear" } | null = null;
 let navRailMsg: string | null = null;
 /** Trilho dos espaços à vista? (◧ na barra recolhe/mostra; lembrado neste Mac.) */
 let navRailShown = (() => { try { return localStorage.getItem("navRailShown") !== "0"; } catch { return true; } })();
-let navFavsShown = (() => { try { return parseFavsShown(localStorage.getItem("navFavsShown")); } catch { return true; } })();
+/** A barra de favoritos sempre começa à vista; esconder (Cmd+Shift+F, paleta) vale só até fechar o app. */
+let navFavsShown = true;
+try { localStorage.removeItem("navFavsShown"); } catch { /* opcional */ }
 function paintNavFavs(): void {
   if (navEls === null) return;
   const e = navEls;
@@ -5327,12 +5329,11 @@ function toggleFavCurrent(): void {
   const cur = navCurrent(); if (cur === null || !/^https?:/.test(cur.url)) return;
   const fav = favOf(navFavs, cur.url);
   const p = fav === null ? window.meuBot.browserFavoriteAdd({ titulo: favTitleFor(cur.title, cur.url), url: cur.url }) : window.meuBot.browserFavoriteRemove(fav.id);
-  void p.then((list) => { navFavs = list; if (fav === null && !navFavsShown) { navFavsShown = true; try { localStorage.setItem("navFavsShown", "1"); } catch { /* opcional */ } } paintNavFavs(); })
+  void p.then((list) => { navFavs = list; if (fav === null && !navFavsShown) navFavsShown = true; paintNavFavs(); })
     .catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Favoritos: ${ipcErrorText(err)}`; } });
 }
 function toggleFavsBar(): void {
   navFavsShown = !navFavsShown;
-  try { localStorage.setItem("navFavsShown", navFavsShown ? "1" : "0"); } catch { /* opcional */ }
   paintNavFavs();
 }
 /** Recortes (partes do site ocultas, ver lib/recortes.ts): escolha por recorte, lembrada no app. */
@@ -5716,10 +5717,33 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   navSalvarAbas();
   return tab;
 }
+/**
+ * Divisão dentro do Navegador: uma aba dele fixada ao lado da ativa (Option+clique na aba; de novo tira). A ativa fica
+ * à esquerda e manda na barra de endereço; a do lado só aparece. Clicar na aba do lado troca as duas de lugar.
+ */
+let navLado: string | null = null;
+function navAplicarLado(): void {
+  const e = navEls; if (e === null) return;
+  const lado = navLado !== null && navLado !== navActive ? navTabs.find((t) => t.id === navLado) ?? null : null;
+  if (lado === null) navLado = null;
+  e.box.classList.toggle("lado", lado !== null);
+  for (const t of navTabs) {
+    t.wv.hidden = t.id !== navActive && t.id !== lado?.id;
+    t.wv.classList.toggle("nav-view-esq", lado !== null && t.id === navActive);
+    t.wv.classList.toggle("nav-view-dir", lado !== null && t.id === lado.id);
+  }
+}
+function navLadoToggle(id: string): void {
+  if (navLado === id) navLado = null;
+  else if (id === navActive) { if (navLado === null) return; const outra = navLado; navLado = id; navSelect(outra); return; } // a ativa vai para o lado e a do lado vem para a frente
+  else navLado = id;
+  navAplicarLado(); paintNav(); navSalvarAbas();
+}
 function navSelect(id: string): void {
+  if (navLado === id) navLado = navActive; // clicou na aba do lado: as duas trocam de lugar
   navActive = id;
   navSalvarAbas();
-  for (const t of navTabs) t.wv.hidden = t.id !== id;
+  navAplicarLado();
   paintNav();
   navRefitSoon();
   const cur = navCurrent();
@@ -5753,14 +5777,15 @@ const navAbertoKey = (): string => `navAberto:${windowHost}`;
 function navSalvarAbas(): void {
   const soltas = navTabs.filter((t) => t.serviceId === undefined && /^https?:\/\//.test(t.url));
   const ativa = soltas.findIndex((t) => t.id === navActive);
-  try { localStorage.setItem(navAbasKey(), JSON.stringify({ urls: soltas.map((t) => t.url).slice(0, 30), ativa })); } catch { /* opcional */ }
+  const lado = navLado === null ? -1 : soltas.findIndex((t) => t.id === navLado);
+  try { localStorage.setItem(navAbasKey(), JSON.stringify({ urls: soltas.map((t) => t.url).slice(0, 30), ativa, lado })); } catch { /* opcional */ }
 }
-function navAbasSalvas(): { urls: string[]; ativa: number } {
+function navAbasSalvas(): { urls: string[]; ativa: number; lado: number } {
   try {
-    const j = JSON.parse(localStorage.getItem(navAbasKey()) ?? "null") as { urls?: unknown; ativa?: unknown } | null;
+    const j = JSON.parse(localStorage.getItem(navAbasKey()) ?? "null") as { urls?: unknown; ativa?: unknown; lado?: unknown } | null;
     const urls = Array.isArray(j?.urls) ? j!.urls.filter((u): u is string => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 30) : [];
-    return { urls, ativa: typeof j?.ativa === "number" ? j.ativa : 0 };
-  } catch { return { urls: [], ativa: 0 }; }
+    return { urls, ativa: typeof j?.ativa === "number" ? j.ativa : 0, lado: typeof j?.lado === "number" ? j.lado : -1 };
+  } catch { return { urls: [], ativa: 0, lado: -1 }; }
 }
 function navMarcarAberto(aberto: boolean): void { try { if (aberto) localStorage.setItem(navAbertoKey(), "1"); else localStorage.removeItem(navAbertoKey()); } catch { /* opcional */ } }
 const navEstavaAberto = (): boolean => { try { return localStorage.getItem(navAbertoKey()) === "1"; } catch { return false; } };
@@ -5769,6 +5794,7 @@ function navClose(id: string): void {
   if (i < 0) return;
   const [t] = navTabs.splice(i, 1);
   t!.wv.remove();
+  if (navLado === id) { navLado = null; navAplicarLado(); }
   if (navActive === id) { const next = navTabs[Math.min(i, navTabs.length - 1)]; if (next !== undefined) navSelect(next.id); else { navActive = null; paintNav(); } }
   else paintNav();
   navSalvarAbas();
@@ -5814,8 +5840,9 @@ function paintNav(): void {
     // Aba fixa de um serviço: não fecha pela tira (sai do trilho, com ×); a solta fecha como sempre.
     if (!fixed) { const x = el("button", "tab-close", "×"); x.type = "button"; x.title = "Fechar aba"; x.addEventListener("click", (ev) => { ev.stopPropagation(); navClose(t.id); }); tabEl.append(x); }
     else tabEl.title = "Site fixo do espaço de trabalho";
-    tabEl.title = t.url;
-    tabEl.addEventListener("click", () => navSelect(t.id));
+    tabEl.title = `${t.url}\n\nOption+clique: ${t.id === navLado ? "tira do lado" : "mostra ao lado da aba ativa"}`;
+    if (t.id === navLado) { tabEl.classList.add("lado"); tabEl.append(el("span", "nav-tab-lado", "ao lado")); }
+    tabEl.addEventListener("click", (ev) => { if (ev.altKey) navLadoToggle(t.id); else navSelect(t.id); });
     e.tabs.append(tabEl);
   }
   const add = el("button", "nav-tab-add", "+"); add.type = "button"; add.title = "Nova aba (Cmd+T)";
@@ -5917,6 +5944,15 @@ async function openNavTab(url?: string, frente = true): Promise<void> {
     });
     const note = el("div", "nav-note"); note.hidden = true;
     const box = el("div", "nav-box");
+    // Divisor da divisão interna (aba ativa | aba ao lado): arrasto com pointer events; os webviews perdem o mouse (body.dragging).
+    const navHandle = el("div", "nav-split-handle"); navHandle.title = "Arraste para redimensionar"; box.append(navHandle);
+    navHandle.addEventListener("pointerdown", (ev) => {
+      ev.preventDefault(); navHandle.setPointerCapture(ev.pointerId); document.body.classList.add("dragging");
+      const rect = box.getBoundingClientRect();
+      const move = (e: PointerEvent): void => { const r = Math.min(0.8, Math.max(0.2, (e.clientX - rect.left) / rect.width)); box.style.setProperty("--nav-split", `${(r * 100).toFixed(2)}%`); };
+      const up = (): void => { document.body.classList.remove("dragging"); navHandle.removeEventListener("pointermove", move); navHandle.removeEventListener("pointerup", up); navHandle.removeEventListener("pointercancel", up); };
+      navHandle.addEventListener("pointermove", move); navHandle.addEventListener("pointerup", up); navHandle.addEventListener("pointercancel", up);
+    });
     const block = el("div", "nav-block"); block.hidden = true;
     // Trilho dos espaços de trabalho à esquerda; a coluna da direita é o navegador de sempre.
     const rail = el("aside", "nav-rail");
@@ -5974,7 +6010,11 @@ async function openNavTab(url?: string, frente = true): Promise<void> {
       // Reabrindo o app: as abas de antes, na mesma ordem e com a mesma na frente; sem nenhuma guardada, a página inicial.
       const salvas = navAbasSalvas();
       if (salvas.urls.length === 0) navNewTab();
-      else { const criadas = salvas.urls.map((u) => navNewTab(u, false)); const na = criadas[Math.min(Math.max(salvas.ativa, 0), criadas.length - 1)]; if (na) navSelect(na.id); }
+      else {
+        const criadas = salvas.urls.map((u) => navNewTab(u, false));
+        const na = criadas[Math.min(Math.max(salvas.ativa, 0), criadas.length - 1)]; if (na) navSelect(na.id);
+        const ld = salvas.lado >= 0 ? criadas[salvas.lado] : undefined; if (ld && ld.id !== navActive) { navLado = ld.id; navAplicarLado(); paintNav(); }
+      }
     }
     else if (navCurrent() === null) { const first = navVisibleTabs()[0]; if (first !== undefined) navSelect(first.id); }
     else navCurrent()?.wv.focus();

@@ -18,4 +18,3 @@ export function favTitleFor(pageTitle: string, url: string): string {
   if (t !== "") return t.slice(0, 60);
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url.slice(0, 60); }
 }
-export const parseFavsShown = (v: string | null): boolean => v !== "0";

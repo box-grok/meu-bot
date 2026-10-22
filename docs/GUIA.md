@@ -2493,6 +2493,11 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   "controle local (sem identificação)". Evento `term:dono`.
 - **Várias abas:** botão "+ Novo terminal" no topo do terminal, Option+clique em "Terminal" na lateral ou
   Cmd+Shift+J.
+- **Divisão dentro do Navegador (22 out):** `navLado` = aba fixada ao lado da ativa (Option+clique na aba; de novo
+  tira; clicar na aba do lado troca as duas; fechar uma delas desfaz). `navAplicarLado()` põe `.nav-box.lado` em grid
+  (ativa | divisor `.nav-split-handle` | lado) e marca os webviews com `nav-view-esq`/`nav-view-dir`; a barra de
+  endereço, ←/→ e ★ seguem a ativa. Lembrado em `navAbas:<host>` (`lado`). A barra de favoritos sempre começa à
+  vista: esconder vale só até fechar o app (`navFavsShown` só em memória; a chave antiga `navFavsShown` é apagada).
 - **Várias colunas:** `splitPages` (lista) em vez de uma página só. **Nada muda de lugar no DOM** (mover um
   `<webview>` recarrega o Navegador): com a divisão ligada, `#panels` vira um grid (`--grade`: o que está na frente |
   divisor | colunas) e cada painel à vista ganha `split-cell` + `grid-column`; `layoutSplit()` deriva o layout inteiro

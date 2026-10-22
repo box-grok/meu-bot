@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { favLabel, favOf, favTitleFor, parseFavsShown } from "../../dist/renderer/lib/favoritos.js";
+import { favLabel, favOf, favTitleFor } from "../../dist/renderer/lib/favoritos.js";
 
 test("favLabel: título curto, senão host+caminho, com reticências", () => {
   assert.equal(favLabel({ id: "a", titulo: "Pipeline Parceiros", url: "https://x" }), "Pipeline Parceiros");
@@ -21,6 +21,3 @@ test("favTitleFor: título da página ou host", () => {
   assert.equal(favTitleFor("", "https://www.streak.com/a/b"), "streak.com");
 });
 
-test("parseFavsShown: só '0' esconde", () => {
-  assert.equal(parseFavsShown(null), true); assert.equal(parseFavsShown("1"), true); assert.equal(parseFavsShown("0"), false);
-});
