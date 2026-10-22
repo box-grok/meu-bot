@@ -929,6 +929,8 @@ export interface MainEvents {
   "browser:key": { key: string; shift: boolean };
   /** Navegador: o agente (pelas ações) pede uma aba nova, ativar ou fechar uma aba (id do webContents). */
   "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number };
+  /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
+  "term:ask": { kind: "new" };
   /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
   "browser:donos": { donos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }> };
   /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */

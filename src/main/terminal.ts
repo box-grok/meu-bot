@@ -120,4 +120,25 @@ export function closeTerminal(s: TermSession): void {
 export function closeTerminalsOfWindow(winId: number): void {
   for (const s of [...sessions.values()]) if (s.winId === winId) closeTerminal(s);
 }
+/** Terminais vivos (para a Terminal API): id, máquina, janela e posição entre os da janela (1 = o mais antigo). */
+export function liveTerminals(): { id: string; host: string; winId: number; n: number }[] {
+  const out: { id: string; host: string; winId: number; n: number }[] = [];
+  const porJanela = new Map<number, number>();
+  for (const s of sessions.values()) {
+    if (s.exited !== null) continue;
+    const n = (porJanela.get(s.winId) ?? 0) + 1; porJanela.set(s.winId, n);
+    out.push({ id: s.id, host: s.host, winId: s.winId, n });
+  }
+  return out;
+}
+export const terminalById = (id: string): TermSession | null => { const s = sessions.get(id); return s !== undefined && s.exited === null ? s : null; };
+/** Espera a janela abrir uma sessão que não está em `antes` (a aba nova pedida pela API). */
+export async function waitNewTerminal(winId: number, antes: ReadonlySet<string>, ms = 20_000): Promise<string | null> {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) {
+    for (const s of sessions.values()) if (s.winId === winId && !antes.has(s.id) && s.exited === null) return s.id;
+    await new Promise((r) => setTimeout(r, 150));
+  }
+  return null;
+}
 export const terminalsOfWindow = (winId: number): number => [...sessions.values()].filter((s) => s.winId === winId && s.exited === null).length;

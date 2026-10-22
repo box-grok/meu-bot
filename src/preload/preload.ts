@@ -36,6 +36,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "whatsapp:abrir",
   "browser:key",
   "browser:ask",
+  "term:ask",
   "browser:donos",
   "browser:agent",
   "browser:favorites",

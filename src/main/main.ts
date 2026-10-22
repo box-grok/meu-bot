@@ -5,7 +5,7 @@
  */
 import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
 import { LOCAL_HOST } from "./localBackend";
-import { closeTunnel, ensureTunnel, markSuspect, onTunnelState, revalidate } from "./tunnel";
+import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
@@ -19,6 +19,7 @@ import { registerIpc } from "./ipc";
 import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
 import { installBrowserHooks } from "./browser";
+import { startTermApi } from "./term-api";
 import { getBackendPort } from "./settings";
 import { installAppMenu } from "./menu";
 import { clientPickerSource, initPicker, showPicker } from "./picker";
@@ -70,6 +71,7 @@ app.whenReady().then(() => {
   // caíram e refaz a checagem de atualização se ela falhou por rede.
   initNet();
   installBrowserHooks();
+  void startTermApi().catch((e: unknown) => { log(`[terminal] controle local não subiu: ${e instanceof Error ? e.message : String(e)}`); });
   onBackOnline(() => {
     markSuspect(); void revalidate();
     const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));

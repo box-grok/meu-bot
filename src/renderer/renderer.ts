@@ -6027,7 +6027,9 @@ function paintTermHead(t: TermTab): void {
   find.addEventListener("click", () => termSearch(t));
   const toChat = el("button", "btn btn-ghost btn-small", "Últimas linhas → conversa"); toChat.type = "button"; toChat.title = "Leva as últimas 50 linhas do terminal para o compositor da conversa";
   toChat.addEventListener("click", () => { void askAgentAbout(lastTermLines(t, 50)); });
-  t.head.append(find, toChat);
+  const novo = el("button", "btn btn-ghost btn-small", "+ Novo terminal"); novo.type = "button"; novo.title = "Abre mais uma aba de terminal nesta máquina (Cmd+Shift+J)";
+  novo.addEventListener("click", () => { void openTerminalTab("new"); });
+  t.head.append(novo, find, toChat);
 }
 
 async function connectTerminal(t: TermTab): Promise<void> {
@@ -6149,7 +6151,9 @@ window.meuBot.on("term:data", ({ id, data }) => {
 window.meuBot.on("term:exit", ({ id, code, detail }) => {
   for (const t of terminals.values()) if (t.id === id) { t.exited = { code, detail }; paintTermHead(t); paintTerminalCount(); return; }
 });
-$<HTMLButtonElement>("terminal-line").addEventListener("click", () => { void openTerminalTab("focus"); });
+window.meuBot.on("term:ask", () => { void openTerminalTab("new"); });
+// Clique foca o último terminal; Option+clique (ou o "+" na aba) abre mais um.
+$<HTMLButtonElement>("terminal-line").addEventListener("click", (ev) => { void openTerminalTab(ev.altKey ? "new" : "focus"); });
 
 /* ---------- Atividade do agente: o que o modo agente roda (chat:tool), na conversa e numa aba só leitura ---------- */
 let activity: { page: PageTab; term: InstanceType<XTermCtor> | null; fit: InstanceType<typeof window.FitAddon.FitAddon> | null; box: HTMLElement; pending: string[] } | null = null;
