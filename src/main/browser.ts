@@ -20,6 +20,9 @@ import { carregarExtensoes, extensaoEmbutida } from "./extensao-gmail/extensao";
 import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
 import { pararSincronizacaoGoogle } from "./google/google";
 import { gravarPortaNavegador } from "./navegador-whatsapp";
+import { spawn } from "node:child_process";
+import { sshMuxArgs } from "./tunnel";
+import { LOCAL_HOST } from "./localBackend";
 
 const PART_PREFIX = "persist:navegador-";
 const sanit = (host: string): string => host.replace(/[^A-Za-z0-9_-]/g, "_");
@@ -36,6 +39,45 @@ const readySessions = new Map<string, Promise<void>>();
  */
 const GOOGLE_LOGIN = /^https:\/\/accounts\.google\.com\//;
 const FIREFOX_UA = (() => { const v = Number.parseInt(process.versions.chrome ?? "130", 10) + 1; return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:${v}.0) Gecko/20100101 Firefox/${v}.0`; })();
+/**
+ * Retorno de login de CLI (wrangler login, gh auth, claude…): a página manda o navegador para http://localhost:<porta>/…,
+ * onde a CLI espera. A CLI roda NA MÁQUINA (terminal por SSH), mas o Navegador está no Mac: o retorno caía no Mac e o
+ * login nunca terminava. Na janela de uma máquina por SSH, esse retorno é entregue lá (curl pela conexão SSH) e a aba
+ * segue para a página que a CLI devolver (ou mostra o resultado).
+ */
+const RETORNO_LOCAL = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{2,5}\/\S*$/;
+const pareceRetorno = (url: string): boolean => RETORNO_LOCAL.test(url) && /[?&](code|token|state|oauth_token)=|callback|oauth|auth/i.test(url);
+function entregarNaMaquina(host: string, url: string): Promise<{ code: number; location: string | null; erro: string | null }> {
+  return sshMuxArgs(host).then((args) => new Promise((resolve) => {
+    const b64 = Buffer.from(url, "utf8").toString("base64");
+    const child = spawn("ssh", [...args, "bash -s"], { stdio: ["pipe", "pipe", "pipe"] });
+    let out = ""; const t = setTimeout(() => child.kill("SIGKILL"), 40_000);
+    child.stdout.on("data", (d: Buffer) => { out += d.toString("utf8"); });
+    child.on("close", () => { clearTimeout(t); const m = /^(\d{3})\s(.*)$/m.exec(out.trim()); resolve(m ? { code: Number(m[1]), location: m[2]!.trim() || null, erro: null } : { code: 0, location: null, erro: "a máquina não respondeu (a CLI ainda está esperando o login?)" }); });
+    child.on("error", (e) => { clearTimeout(t); resolve({ code: 0, location: null, erro: e.message }); });
+    child.stdin.end(`U=$(printf '%s' '${b64}' | base64 -d); curl -s -m 30 -o /dev/null -w '%{http_code} %{redirect_url}\\n' -- "$U"\n`);
+  }));
+}
+const paginaRetorno = (host: string, ok: boolean, texto: string): string =>
+  `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><title>${ok ? "Login concluído" : "Login não concluído"}</title><body style="font:16px system-ui;display:grid;place-items:center;min-height:90vh;color:#333"><div style="max-width:30rem;text-align:center"><h2>${ok ? "✓ Login concluído" : "✗ Login não concluído"}</h2><p>${texto.replace(/[<>&]/g, "")}</p><p style="color:#888">Retorno entregue na máquina ${host.replace(/[<>&]/g, "")}. Pode voltar ao terminal.</p></div>`)}`;
+function retornoParaMaquina(wc: WebContents, host: string): void {
+  if (host === LOCAL_HOST) return;
+  const tratar = (ev: Electron.Event, arg?: unknown): void => {
+    const url = typeof arg === "string" ? arg : (ev as unknown as { url?: string }).url ?? "";
+    if (!pareceRetorno(url)) return;
+    ev.preventDefault();
+    log(`[navegador ${host}] retorno de login para ${url.split("?")[0]}: entregando na máquina`);
+    void entregarNaMaquina(host, url).then((r) => {
+      if (wc.isDestroyed()) return;
+      log(`[navegador ${host}] retorno de login: HTTP ${r.code}${r.erro ? ` (${r.erro})` : ""}`);
+      if (r.location !== null && /^https:\/\//.test(r.location)) void wc.loadURL(r.location);
+      else void wc.loadURL(paginaRetorno(host, r.code >= 200 && r.code < 400, r.erro ?? `A ferramenta na máquina respondeu (HTTP ${r.code}).`));
+    });
+  };
+  wc.on("will-navigate", tratar);
+  wc.on("will-redirect", tratar);
+  wc.on("did-create-window", (child) => retornoParaMaquina(child.webContents, host));
+}
 /** Troca o navigator.userAgent da aba (ou do popup de login) ao entrar e ao sair do login do Google. */
 function googleLoginUa(wc: WebContents): void {
   const normal = wc.session.getUserAgent();
@@ -358,6 +400,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     if (host === undefined) return;
     views.set(wc.id, { wc, host, winId: win.id });
     googleLoginUa(wc);
+    retornoParaMaquina(wc, host);
     wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); });
     wc.on("console-message", (ev) => {
       if (ev.level !== "warning" && ev.level !== "error") return;

@@ -5983,7 +5983,7 @@ function renderTerminal(t: TermTab): void {
     const fit = new window.FitAddon.FitAddon();
     term.loadAddon(fit);
     term.loadAddon(new window.Unicode11Addon.Unicode11Addon()); term.unicode.activeVersion = "11";
-    term.loadAddon(new window.WebLinksAddon.WebLinksAddon((_ev: MouseEvent, uri: string) => { void window.meuBot.openExternal(uri); }));
+    term.loadAddon(new window.WebLinksAddon.WebLinksAddon((ev: MouseEvent, uri: string) => { void abrirLinkDoChat(uri, ev.metaKey); }));
     const search = new window.SearchAddon.SearchAddon(); term.loadAddon(search);
     term.open(t.box);
     try { const gl = new window.WebglAddon.WebglAddon(); gl.onContextLoss(() => gl.dispose()); term.loadAddon(gl); } catch { /* fica no renderer DOM */ }
@@ -6167,7 +6167,7 @@ function activityPage(): PageTab {
       const Term = xtermClass();
       const term = new Term({ fontFamily: cssVar("--mono") || "ui-monospace, Menlo, monospace", fontSize: 12.5, lineHeight: 1.2, scrollback: 20_000, disableStdin: true, cursorBlink: false, cursorStyle: "underline", theme: themeNow(), allowProposedApi: true });
       const fit = new window.FitAddon.FitAddon(); term.loadAddon(fit);
-      term.loadAddon(new window.WebLinksAddon.WebLinksAddon((_ev: MouseEvent, uri: string) => { void window.meuBot.openExternal(uri); }));
+      term.loadAddon(new window.WebLinksAddon.WebLinksAddon((ev: MouseEvent, uri: string) => { void abrirLinkDoChat(uri, ev.metaKey); }));
       term.open(box);
       a.term = term; a.fit = fit;
       new ResizeObserver(() => { if (!panel.hidden) fit.fit(); }).observe(box);
