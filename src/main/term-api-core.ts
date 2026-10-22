@@ -30,5 +30,8 @@ export function entradaDigitar(b: { texto?: unknown; enter?: unknown; tecla?: un
   }
   if (typeof b.texto !== "string" || b.texto === "") return { erro: "falta texto (ou tecla)" };
   if (b.texto.length > MAX_ENTRADA) return { erro: `texto acima de ${MAX_ENTRADA} caracteres` };
-  return { dados: b.texto + (b.enter === true ? "\r" : "") };
+  // Só texto: controles e ESC não entram por aqui (teclas especiais vão por `tecla`); \n vira Enter como no teclado.
+  const limpo = b.texto.replace(/\r\n?|\n/g, "\r").replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f\u007f]/g, "");
+  if (limpo === "") return { erro: "texto só com caracteres de controle" };
+  return { dados: limpo + (b.enter === true ? "\r" : "") };
 }

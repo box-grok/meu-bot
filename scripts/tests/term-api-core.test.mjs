@@ -18,4 +18,6 @@ test("digitar: texto (com enter opcional), teclas conhecidas, recusa vazio, desc
   assert.ok("erro" in entradaDigitar({ tecla: "f13" }));
   assert.ok("erro" in entradaDigitar({}));
   assert.ok("erro" in entradaDigitar({ texto: "x".repeat(MAX_ENTRADA + 1) }));
+  assert.deepEqual(entradaDigitar({ texto: "a\x1b[Ab\x03c\nd" }), { dados: "a[Abc\rd" }); // ESC e Ctrl-C não entram como texto; \n vira Enter
+  assert.ok("erro" in entradaDigitar({ texto: "\x1b\x07" }));
 });

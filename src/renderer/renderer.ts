@@ -282,6 +282,7 @@ function activate(id: string): void {
   const tab = tabs.get(id);
   inputEl.value = tab?.draft ?? "";
   if (tab !== undefined) scrollToBottom(tab);
+  relayoutSplit();
   syncComposer();
   renderSidebar();
   syncRest();
@@ -1393,7 +1394,7 @@ function definePage(id: string, title: string, panel: HTMLElement, render: () =>
 }
 
 function activatePage(page: PageTab): void {
-  if (splitOnAny() && !semRotaSplit) {
+  if (splitOnAny() && !semRotaSplit && pageActive !== page) {
     // Janela estreita demais (direita recolhida): a página clicada não apareceria; sai da divisão e mostra a página.
     if (contentEl.classList.contains("split-collapsed")) splitOff();
     else { if (!splitPages.includes(page)) splitOn(page, "trocar"); else focusSplit(page); return; }
@@ -1408,8 +1409,9 @@ function activatePage(page: PageTab): void {
   pageActive = page;
   for (const t of tabs.values()) { t.tabEl.classList.remove("active"); t.messagesEl.hidden = true; }
   page.tabEl?.classList.add("active");
-  page.render();
   page.panel.hidden = false;
+  relayoutSplit();
+  page.render();
   inputEl.value = "";
   syncComposer();
   renderSidebar();
@@ -1423,6 +1425,7 @@ function deactivatePage(): void {
   pageActive.panel.hidden = true;
   pageActive.tabEl?.classList.remove("active");
   pageActive = null;
+  relayoutSplit();
   paintGuideTargets();
 }
 
@@ -1470,19 +1473,21 @@ function closePage(page: PageTab): void {
   syncRest();
 }
 
-// ---- Modo dividido: conversa à esquerda (#panels), uma página fixada à direita (#split-panel), divisor arrastável.
-// Os painéis de página são absolutos (inset:0): mover o elemento para o #split-panel basta. Páginas sempre vão
-// para a direita enquanto a divisão está ligada; conversas, para a esquerda. Lembrado por máquina.
+// ---- Modo dividido: o que está na frente (conversa do meu-bot, WhatsApp ou outra página) fica à esquerda e as
+// páginas fixadas viram colunas à direita, quantas a largura comportar. NADA muda de lugar no DOM: todos os painéis
+// continuam filhos de #panels (mover um <webview> no DOM recarrega o Navegador); com a divisão ligada, #panels vira
+// um grid e cada painel à vista recebe a sua coluna (`split-cell` + grid-column). `layoutSplit()` deriva o layout
+// inteiro do estado (`splitPages` + o que está na frente) e é chamado depois de qualquer mudança. Lembrado por máquina.
 const contentEl = $<HTMLElement>("content-root");
-const splitPanelEl = $<HTMLElement>("split-panel");
 const splitHandle = $<HTMLElement>("split-handle");
+panelsEl.append(splitHandle); // o divisor vive dentro do grid de #panels (coluna 2)
 /** Páginas fixadas à direita, em colunas (da esquerda para a direita). Quantas aparecem depende da largura. */
 let splitPages: PageTab[] = [];
 /** Coluna onde abre a próxima página clicada (a vazia, senão a última em que a pessoa clicou). */
 let splitAlvo: PageTab | null = null;
 /**
  * Coluna vazia: a cobrinha da tela vazia num espaço reservado. Clicar numa página (aba, lateral, paleta) com a tela
- * dividida abre ali; fechar a página de uma coluna deixa a coluna vazia em vez de desfazer a divisão.
+ * dividida abre ali; fechar a página de uma coluna deixa a coluna vazia, desde que outra página de verdade siga ao lado.
  */
 let vaziaSeq = 0;
 const vazias = new Map<string, { stop(): void; start(): void }>();
@@ -1494,6 +1499,7 @@ function novaVazia(): PageTab {
   const dica = el("div", "split-vazia-dica", "Clique numa aba, no Terminal ou no Navegador: abre aqui");
   const x = el("button", "split-vazia-x", "×"); x.type = "button"; x.title = "Tirar esta coluna";
   panel.append(canvas, dica, x);
+  panelsEl.append(panel);
   const jogo = mountSnake(canvas);
   vazias.set(id, jogo);
   const page = definePage(id, "Coluna vazia", panel, () => { jogo.start(); });
@@ -1502,17 +1508,15 @@ function novaVazia(): PageTab {
 }
 function largarVazia(page: PageTab): void {
   vazias.get(page.id)?.stop(); vazias.delete(page.id);
-  splitCols.get(page.id)?.remove(); splitCols.delete(page.id);
   page.panel.remove(); pages.delete(page.id);
 }
 /** Para onde vai a próxima página: a primeira coluna vazia, senão a escolhida, senão a última. */
 const alvoAtual = (): PageTab | null => splitPages.find(ehVazia) ?? (splitAlvo !== null && splitPages.includes(splitAlvo) ? splitAlvo : splitPages.at(-1) ?? null);
 function pintarAlvo(): void {
   const alvo = splitPages.length > 1 ? alvoAtual() : null;
-  for (const p of splitPages) splitCols.get(p.id)?.classList.toggle("alvo", p === alvo);
+  for (const p of splitPages) p.panel.classList.toggle("alvo", p === alvo);
 }
 let splitRatio = 0.55;
-const splitCols = new Map<string, HTMLElement>();
 const splitKey = (): string => `split:${windowHost}`;
 const splitOnAny = (): boolean => splitPages.length > 0;
 /** A página está à vista (na frente ou fixada ao lado)? Quem repinta por `pageActive === page` usa isto. */
@@ -1523,47 +1527,53 @@ function saveSplit(): void {
 }
 /** Colunas que cabem nesta largura; as outras ficam escondidas (continuam fixadas e voltam quando couber). */
 const splitVisiveis = (): number => Math.min(splitPages.length, maxColunas(contentEl.clientWidth));
+/** O elemento que está na frente (à esquerda): a página ativa, a conversa ativa ou, no limite, a tela vazia. */
+const esquerdaEl = (): HTMLElement => pageActive?.panel ?? (activeId !== null ? tabs.get(activeId)?.messagesEl : undefined) ?? restEl;
+const CELL = "split-cell";
+/** Tira de todo filho de #panels a marca de célula do grid (o layout é refeito do zero a cada vez). */
+function limparCelulas(): void {
+  for (const c of panelsEl.querySelectorAll<HTMLElement>(`.${CELL}`)) { c.classList.remove(CELL, "col-dir", "split-fora"); c.style.removeProperty("grid-column"); }
+}
 function applySplitRatio(): void {
   const w = contentEl.clientWidth;
   const n = splitVisiveis();
   const r = clampSplitRatio(splitRatio, w, SPLIT_MIN_PX, minDireita(n));
-  contentEl.classList.toggle("split-collapsed", splitLayout(w) === "collapsed" || r === null);
+  const recolhida = splitLayout(w) === "collapsed" || r === null;
+  contentEl.classList.toggle("split-collapsed", recolhida);
+  panelsEl.classList.toggle("split", splitOnAny() && !recolhida);
   if (r !== null) contentEl.style.setProperty("--split", `${(r * 100).toFixed(2)}%`);
-  splitPages.forEach((p, i) => { const col = splitCols.get(p.id); if (col !== undefined) col.hidden = i >= n; });
+  panelsEl.style.setProperty("--grade", `minmax(${SPLIT_MIN_PX}px, var(--split, 55%)) 6px repeat(${Math.max(1, n)}, minmax(0, 1fr))`);
+  splitPages.forEach((p, i) => { p.panel.classList.toggle("split-fora", i >= n); });
 }
-/** Monta as colunas na ordem de `splitPages` (cada painel absoluto vai dentro da sua coluna). */
+/** Deriva o layout do estado: célula 1 = o que está na frente; células 3… = as colunas; classes do grid. */
 function layoutSplit(): void {
-  for (const [id, col] of splitCols) if (!splitPages.some((p) => p.id === id)) { col.remove(); splitCols.delete(id); }
-  for (const p of splitPages) {
-    let col = splitCols.get(p.id);
-    if (col === undefined) {
-      col = el("div", "split-col"); splitCols.set(p.id, col);
-      // Clicar numa coluna faz dela o lugar da próxima página (captura: webview e xterm não engolem).
-      col.addEventListener("pointerdown", () => { splitAlvo = p; pintarAlvo(); }, true);
-    }
-    if (p.panel.parentElement !== col) col.append(p.panel);
-    splitPanelEl.append(col); // na ordem
-  }
-  contentEl.classList.toggle("split", splitOnAny());
-  if (!splitOnAny()) contentEl.classList.remove("split-collapsed");
+  limparCelulas();
+  const on = splitOnAny();
+  contentEl.classList.toggle("split", on);
+  if (!on) { contentEl.classList.remove("split-collapsed"); panelsEl.classList.remove("split"); return; }
+  const esq = esquerdaEl();
+  esq.classList.add(CELL); esq.style.gridColumn = "1";
+  splitPages.forEach((p, i) => { p.panel.classList.add(CELL, "col-dir"); p.panel.style.gridColumn = String(i + 3); });
   applySplitRatio();
   pintarAlvo();
 }
+/** Quem muda o que está na frente (activate, activatePage, syncRest…) chama isto para o grid acompanhar. */
+function relayoutSplit(): void { if (splitOnAny()) layoutSplit(); }
 function unpin(page: PageTab): void {
   if (splitAlvo === page) splitAlvo = null;
+  page.panel.classList.remove(CELL, "col-dir", "split-fora", "alvo"); page.panel.style.removeProperty("grid-column");
   if (ehVazia(page)) { largarVazia(page); return; }
   page.panel.hidden = true;
-  panelsEl.append(page.panel);
   page.tabEl?.classList.remove("split", "active");
 }
 /**
- * Fixa a página ao lado da conversa. `modo`: "coluna" acrescenta uma coluna (substitui a última se não couber mais);
- * "trocar" põe no lugar da coluna alvo (a vazia, senão a última clicada): clicar numa aba com a tela dividida.
+ * Fixa a página ao lado. `modo`: "coluna" acrescenta uma coluna (substitui a última se não couber mais); "trocar" põe
+ * no lugar da coluna alvo (a vazia, senão a última clicada): clicar numa aba com a tela dividida.
  */
 function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   if (splitPages.includes(page)) { focusSplit(page); return; }
-  // A esquerda fica com o que está na frente (conversa do meu-bot, WhatsApp ou outra página). Se o que está na frente
-  // é a própria página que vai para o lado, entra a conversa de antes, senão outra aba aberta; sem nada, não divide.
+  // A esquerda fica com o que está na frente. Se o que está na frente é a própria página que vai para o lado, entra a
+  // conversa de antes, senão outra aba aberta; sem nada para pôr à esquerda, não divide (a página fica em tela cheia).
   const frenteOk = (pageActive !== null && pageActive !== page) || (pageActive === null && activeId !== null);
   let esquerda: { conv: string } | { pag: PageTab } | null = null;
   if (!frenteOk) {
@@ -1573,7 +1583,7 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
     if (esquerda === null) {
       if (ehVazia(page)) { largarVazia(page); return; }
       if (splitOnAny()) splitOff();
-      activatePage(page); return; // nada para pôr ao lado: tela cheia
+      activatePage(page); return;
     }
   }
   const max = maxColunas(contentEl.clientWidth);
@@ -1581,21 +1591,18 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   // Acrescentar com uma coluna vazia aberta também ocupa a vazia (ela existe para isso).
   const ocupar = alvo !== null && (modo === "trocar" || ehVazia(alvo));
   const ids = ocupar ? splitPages.map((p) => (p === alvo ? page.id : p.id)) : splitAdd(splitPages.map((p) => p.id), page.id, Math.max(max, 1));
-  for (const old of splitPages) if (!ids.includes(old.id)) unpin(old);
+  const antes = splitPages;
+  splitPages = ids.map((id) => (id === page.id ? page : antes.find((p) => p.id === id)!));
+  for (const old of antes) if (!splitPages.includes(old)) unpin(old);
   if (pageActive === page) deactivatePage();
-  if (esquerda !== null) {
-    if ("conv" in esquerda) { pagePrev = null; activate(esquerda.conv); }
-    else mostrarNaEsquerda(esquerda.pag);
-  }
-  splitPages = ids.map((id) => (id === page.id ? page : splitPages.find((p) => p.id === id)!));
-  layoutSplit();
-  // Janela estreita com a lateral aberta: esconde a lateral para a coluna caber (Cmd+B traz de volta).
-  if (contentEl.classList.contains("split-collapsed") && !sidebarEl.hidden) { toggleSidebar(false); applySplitRatio(); }
+  if (esquerda !== null) { if ("conv" in esquerda) { pagePrev = null; activate(esquerda.conv); } else mostrarNaEsquerda(esquerda.pag); }
   page.panel.hidden = false;
   page.tabEl?.classList.add("split");
   page.render();
   if (ocupar) splitAlvo = page;
-  pintarAlvo();
+  layoutSplit();
+  // Janela estreita com a lateral aberta: esconde a lateral para a coluna caber (Cmd+B traz de volta).
+  if (contentEl.classList.contains("split-collapsed") && !sidebarEl.hidden) { toggleSidebar(false); applySplitRatio(); }
   if (!ehVazia(page)) focusSplit(page);
   saveSplit();
   syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
@@ -1618,29 +1625,28 @@ function preencherEsquerda(): boolean {
   if (p === undefined) { splitOff(false); return false; }
   splitPages = splitPages.filter((x) => x !== p);
   unpin(p);
-  if (!splitPages.some((x) => !ehVazia(x))) splitOff(false); else { layoutSplit(); saveSplit(); }
+  if (!splitPages.some((x) => !ehVazia(x))) { for (const v of splitPages) unpin(v); splitPages = []; } // só vazias: saem junto
   mostrarNaEsquerda(p);
+  layoutSplit(); saveSplit();
   return true;
 }
 /** A página de uma coluna fechou: vira coluna vazia se ainda há outra página de verdade ao lado; senão a divisão acaba. */
 function vaziaNoLugar(page: PageTab): void {
-  const i = splitPages.indexOf(page); if (i < 0) return;
+  if (!splitPages.includes(page)) return;
   if (!splitPages.some((p) => p !== page && !ehVazia(p))) { splitOff(false); return; }
   const v = novaVazia();
   splitPages = splitPages.map((p) => (p === page ? v : p));
   unpin(page);
-  layoutSplit();
   v.panel.hidden = false; v.render();
-  splitAlvo = v; pintarAlvo();
-  saveSplit();
+  splitAlvo = v;
+  layoutSplit(); saveSplit();
 }
 /** Tira uma página das colunas (ou todas, sem argumento); ela volta a ser uma aba comum. */
 function splitOff(keepPref = false, page?: PageTab): void {
-  if (!splitOnAny()) return;
   const sai = page === undefined ? splitPages : splitPages.filter((p) => p === page);
-  if (sai.length === 0) return;
   splitPages = splitPages.filter((p) => !sai.includes(p));
   for (const p of sai) unpin(p);
+  if (!splitPages.some((p) => !ehVazia(p))) { for (const v of splitPages) unpin(v); splitPages = []; } // só vazias: acabou
   layoutSplit();
   if (!keepPref) saveSplit();
   syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
@@ -1661,59 +1667,65 @@ splitHandle.addEventListener("pointerdown", (ev) => {
   document.body.classList.add("dragging"); contentEl.classList.add("dragging");
   const rect = contentEl.getBoundingClientRect();
   const move = (e: PointerEvent): void => { const r = clampSplitRatio((e.clientX - rect.left) / rect.width, rect.width, SPLIT_MIN_PX, minDireita(splitVisiveis())); if (r !== null) { splitRatio = r; applySplitRatio(); } };
-  const up = (): void => { document.body.classList.remove("dragging"); contentEl.classList.remove("dragging"); splitHandle.removeEventListener("pointermove", move); splitHandle.removeEventListener("pointerup", up); saveSplit(); };
+  const up = (): void => { document.body.classList.remove("dragging"); contentEl.classList.remove("dragging"); splitHandle.removeEventListener("pointermove", move); splitHandle.removeEventListener("pointerup", up); splitHandle.removeEventListener("pointercancel", up); saveSplit(); };
   splitHandle.addEventListener("pointermove", move);
   splitHandle.addEventListener("pointerup", up);
+  splitHandle.addEventListener("pointercancel", up);
 });
 new ResizeObserver(() => { if (splitOnAny()) applySplitRatio(); }).observe(contentEl);
 
-// Arrastar a aba de uma página para a área de conteúdo: soltar na metade direita põe lado a lado; soltar na
-// esquerda (estando lado a lado) volta a tela inteira. A camada cobre o conteúdo durante o arrasto porque o
-// <webview> do Navegador engole os eventos de arrastar.
+// Arrastar a aba de uma página para a área de conteúdo: soltar à direita fixa numa coluna; soltar à esquerda traz a
+// página para a frente. A camada cobre o conteúdo durante o arrasto porque o <webview> engole os eventos de arrastar.
 const splitDrop = el("div", "split-drop"); splitDrop.hidden = true;
 const splitDropLeft = el("div", "split-drop-zone split-drop-left");
 const splitDropRight = el("div", "split-drop-zone split-drop-right", "Soltar aqui: lado a lado");
 splitDrop.append(splitDropLeft, splitDropRight);
 contentEl.append(splitDrop);
 let draggingPage: PageTab | null = null;
-/** Lado do soltar pela divisória de verdade (com a tela dividida, a esquerda é a conversa; sem, a metade). */
+/** Lado do soltar pela divisória de verdade (com a tela dividida, a esquerda é o que está na frente; sem, a metade). */
 const dropSide = (ev: DragEvent): "left" | "right" => (ev.clientX >= splitDropRight.getBoundingClientRect().left ? "right" : "left");
+function esconderDrop(): void { splitDrop.hidden = true; splitDrop.classList.remove("over-left", "over-right"); draggingPage = null; }
 function pageDragStart(page: PageTab, tabEl: HTMLElement, ev: DragEvent): void {
   draggingPage = page;
   tabEl.classList.add("dragging");
   ev.dataTransfer?.setData("text/plain", page.id);
   if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-  splitDropLeft.textContent = splitPages.includes(page) ? "Soltar aqui: tirar do lado" : "";
-  splitDropRight.textContent = splitPages.includes(page) ? "Já está ao lado" : splitOnAny() ? (splitPages.length >= maxColunas(contentEl.clientWidth) ? "Soltar aqui: no lugar da última coluna" : "Soltar aqui: mais uma coluna") : "Soltar aqui: lado a lado";
+  const naFrente = pageActive === page;
+  splitDropLeft.textContent = naFrente ? "Já está na frente" : "Soltar aqui: trazer para a frente";
+  splitDropRight.textContent = splitPages.includes(page) ? "Já está ao lado" : splitOnAny() ? (splitPages.some(ehVazia) ? "Soltar aqui: na coluna vazia" : splitPages.length >= maxColunas(contentEl.clientWidth) ? "Soltar aqui: no lugar da última coluna" : "Soltar aqui: mais uma coluna") : "Soltar aqui: lado a lado";
   // Mostrar a camada no mesmo tique cancela o arrasto no Chromium.
   setTimeout(() => { if (draggingPage === page) splitDrop.hidden = false; }, 0);
 }
 // Rede de segurança: qualquer fim de arrasto (ou clique) com a camada à vista a esconde.
-for (const evName of ["dragend", "mouseup"] as const) document.addEventListener(evName, () => { if (!splitDrop.hidden && (evName === "mouseup" || draggingPage === null)) { splitDrop.hidden = true; splitDrop.classList.remove("over-left", "over-right"); draggingPage = null; } }, true);
-function pageDragEnd(tabEl: HTMLElement): void {
-  tabEl.classList.remove("dragging");
-  draggingPage = null;
-  splitDrop.hidden = true;
-  splitDrop.classList.remove("over-left", "over-right");
-}
+for (const evName of ["dragend", "mouseup"] as const) document.addEventListener(evName, () => { if (!splitDrop.hidden && (evName === "mouseup" || draggingPage === null)) esconderDrop(); }, true);
+function pageDragEnd(tabEl: HTMLElement): void { tabEl.classList.remove("dragging"); esconderDrop(); }
 splitDrop.addEventListener("dragover", (ev) => {
   if (draggingPage === null) return;
   ev.preventDefault();
   if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
   const side = dropSide(ev);
-  splitDrop.classList.toggle("over-right", side === "right");
-  splitDrop.classList.toggle("over-left", side === "left" && splitPages.includes(draggingPage));
+  splitDrop.classList.toggle("over-right", side === "right" && !splitPages.includes(draggingPage));
+  splitDrop.classList.toggle("over-left", side === "left" && pageActive !== draggingPage);
 });
 splitDrop.addEventListener("dragleave", (ev) => { if (ev.target === splitDrop) splitDrop.classList.remove("over-left", "over-right"); });
 splitDrop.addEventListener("drop", (ev) => {
   ev.preventDefault();
   const page = draggingPage;
-  // Some já no soltar: se o dragend da aba não vier (aba recriada, foco num webview), a camada não fica presa.
-  splitDrop.hidden = true; splitDrop.classList.remove("over-left", "over-right"); draggingPage = null;
+  esconderDrop(); // some já no soltar: se o dragend da aba não vier (foco num webview), a camada não fica presa
   if (page === null) return;
-  if (dropSide(ev) === "right") splitOn(page);
-  else if (splitPages.includes(page)) { splitOff(false, page); if (!splitOnAny()) activatePage(page); }
-  saveSplit();
+  if (dropSide(ev) === "right") { if (!splitPages.includes(page)) splitOn(page); return; }
+  // Esquerda: a página vem para a frente (sai da coluna, se estava numa; o que estava na frente vai para trás).
+  if (pageActive === page) return;
+  if (splitPages.includes(page)) {
+    if (splitPages.some((p) => p !== page && !ehVazia(p)) || activeId !== null || (pageActive !== null && !ehVazia(pageActive))) {
+      // Sobra algo de verdade: a página sai da coluna e vai para a frente; a coluna some (nada de cobrinha no lugar).
+      splitPages = splitPages.filter((p) => p !== page); unpin(page);
+      if (!splitPages.some((p) => !ehVazia(p))) { for (const v of splitPages) unpin(v); splitPages = []; }
+      mostrarNaEsquerda(page); layoutSplit(); saveSplit();
+    } else { splitOff(false, page); activatePage(page); }
+    return;
+  }
+  mostrarNaEsquerda(page);
 });
 /** Ao abrir a janela: volta dividida com a página lembrada, se ela puder abrir. */
 async function restoreSplit(): Promise<void> {
@@ -3993,6 +4005,7 @@ function syncRest(): void {
   restEl.hidden = !show;
   newBtn.classList.toggle("shine", show);
   if (show) rest.start(); else rest.stop();
+  relayoutSplit();
 }
 let lastFeedback: Feedback | undefined;
 let feedbackTimer: number | null = null;

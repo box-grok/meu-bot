@@ -16,11 +16,13 @@ export const NAV_MCP_VERSAO = "meu-bot-navegador v4";
 /** Negar o Navegador: o curinga e cada nome (a lista explícita vale mesmo se a política não aceitar curinga). */
 export const NAV_DENY: readonly string[] = [`${NAV_SERVER}__*`, ...NAV_TOOLS.map((t) => `${NAV_SERVER}__${t}`)];
 /**
- * Só para quem não tem regra própria ("*": clientes e números desconhecidos, com o WhatsApp aberto): também sem ler
- * arquivos da máquina. Sem isso, um desconhecido pedia e o agente lia ~/.config (tokens) ou a configuração com chaves.
- * A equipe liberada por número continua lendo.
+ * Só para quem não tem regra própria ("*": clientes e números desconhecidos, com o WhatsApp aberto). Sem isto, um
+ * desconhecido pedia e o agente lia ~/.config (tokens) ou a configuração com chaves (`read`; no claude-cli o Grep
+ * entra na mesma capacidade), lia o histórico de outros clientes (`group:sessions`), mandava mensagem a terceiros
+ * (`message`), usava o navegador/terminal/tela do OpenClaw (`group:ui`) ou buscava URLs internas como o gateway
+ * (`web_fetch`). A equipe liberada por número não herda nada disto.
  */
-export const DESCONHECIDO_DENY: readonly string[] = ["read"];
+export const DESCONHECIDO_DENY: readonly string[] = ["read", "web_fetch", "message", "group:sessions", "group:ui"];
 /** Arquivo da porta do túnel reverso na máquina (o app grava ao subir, apaga ao cair). */
 export const NAV_PORT_FILE = ".local/share/meu-bot/navegador-porta";
 

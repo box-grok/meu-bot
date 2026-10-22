@@ -1,5 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createRequire as _cr } from "node:module";
+const { DESCONHECIDO_DENY } = _cr(import.meta.url)("../../dist/main/navegador-whatsapp-core.js");
 import { createRequire } from "node:module";
 const { LEVELS, OBJECTIVE_SKILL, parseObjectiveChoice, parseObjectiveFile, parseMachineSkills, skillMarkdown, toolsBySenderFor, saveObjectiveSh, setObjectiveSh, resetObjectiveSh, objectiveInfoSh } = createRequire(import.meta.url)("../../dist/main/objetivo-core.js");
 
@@ -43,10 +45,12 @@ test("skillMarkdown: frontmatter que o OpenClaw lê + regras do nível em portug
 test("toolsBySenderFor: o dono conforme o nível; qualquer outro sem as ferramentas que mudam a máquina", () => {
   const age = JSON.parse(toolsBySenderFor("age", "5521999990000"));
   assert.deepEqual(age["e164:+5521999990000"], {});
-  assert.deepEqual(age["*"].deny.filter((t) => !t.startsWith("navegador__")), ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway", "read"]);
+  const OUTROS = ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway", "group:automation", "group:nodes", "terminal", "skill_workshop", "sessions_spawn"];
+  assert.deepEqual(age["*"].deny.filter((t) => !t.startsWith("navegador__")), [...OUTROS, ...DESCONHECIDO_DENY]);
   assert.ok(age["*"].deny.includes("navegador__*")); // o Navegador do dono nunca vale para "*"
-  assert.deepEqual(JSON.parse(toolsBySenderFor("conversa", "1"))["e164:+1"].deny, ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway"]);
-  assert.deepEqual(JSON.parse(toolsBySenderFor("consulta", "1"))["e164:+1"].deny, ["exec", "process", "code_execution", "cron", "gateway"]);
+  assert.deepEqual(JSON.parse(toolsBySenderFor("conversa", "1"))["e164:+1"].deny, OUTROS);
+  assert.deepEqual(JSON.parse(toolsBySenderFor("consulta", "1"))["e164:+1"].deny, ["exec", "process", "code_execution", "cron", "gateway", "group:automation", "group:nodes", "terminal", "skill_workshop", "sessions_spawn"]);
+  for (const t of ["read", "group:sessions", "message"]) assert.ok(!JSON.parse(toolsBySenderFor("conversa", "1"))["e164:+1"].deny.includes(t), `dono não perde ${t}`);
 });
 
 test("scripts remotos: base64 para o que vem da tela, tmp+mv, workspace do openclaw.json com fallback", () => {

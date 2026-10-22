@@ -30,20 +30,18 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .body { display: flex; min-height: 0; }
 .content { flex: 1; min-width: 0; display: grid; grid-template-rows: auto 1fr; grid-template-columns: 1fr 0 0; min-height: 0; }
 .content > .tabs-row { grid-column: 1 / -1; }
-/* Modo dividido: conversa (#panels) à esquerda, página fixada (#split-panel) à direita, divisor no meio. */
-.content.split { grid-template-columns: minmax(300px, var(--split, 55%)) 6px minmax(260px, 1fr); }
-.split-handle, .split-panel { display: none; }
-.content.split .split-handle { display: block; cursor: col-resize; background: var(--line); position: relative; }
-.content.split .split-handle::after { content: ""; position: absolute; inset: 0 -4px; }
-.content.split .split-handle:hover, .content.split.dragging .split-handle { background: var(--accent); }
-.content.split .split-panel { display: flex; position: relative; overflow: hidden; border-left: 1px solid var(--line); }
+/* Modo dividido: #panels vira um grid (o que está na frente | divisor | colunas); nada muda de lugar no DOM. */
+.content > .panels { grid-column: 1 / -1; grid-row: 2; }
+.split-handle { display: none; }
+.panels.split { display: grid; grid-template-columns: var(--grade, 55% 6px 1fr); grid-template-rows: minmax(0, 1fr); }
+.panels.split > .split-cell { position: relative; inset: auto; grid-row: 1; min-width: 0; min-height: 0; }
+.panels.split > .split-cell.col-dir { border-left: 1px solid var(--line); }
+.panels.split > .split-cell.split-fora, .content.split-collapsed .panels > .col-dir { display: none; }
+.panels.split > .split-handle { display: block; grid-row: 1; grid-column: 2; cursor: col-resize; background: var(--line); position: relative; }
+.split-handle::after { content: ""; position: absolute; inset: 0 -4px; }
+.panels.split > .split-handle:hover, .content.dragging .split-handle { background: var(--accent); }
 /* Uma coluna por página fixada; as que não cabem na largura ficam [hidden] até caber. */
-.split-col { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; }
-.split-col[hidden] { display: none; }
-.split-col + .split-col { border-left: 1px solid var(--line); }
 /* Estreito demais para os dois: a conversa fica, a página recolhe (volta sozinha ao alargar). */
-.content.split.split-collapsed { grid-template-columns: 1fr 0 0; }
-.content.split.split-collapsed .split-handle, .content.split.split-collapsed .split-panel { display: none; }
 body.dragging webview, body.dragging .term-box, body.dragging iframe { pointer-events: none; }
 /* Arrastar a aba de uma página para o conteúdo: metade direita = lado a lado; esquerda = tela inteira. */
 .split-drop { grid-row: 2; grid-column: 1 / -1; z-index: 50; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
@@ -937,6 +935,6 @@ body.topbar-hidden .topbar { display: none; }
 .split-vazia-dica { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 12px; color: var(--muted); pointer-events: none; }
 .split-vazia-x { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 16px; line-height: 1; padding: 2px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
 .split-vazia-x:hover { color: var(--fg); border-color: var(--fg); }
-.split-col.alvo::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); z-index: 5; pointer-events: none; }
+.panels.split > .split-cell.alvo::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); z-index: 5; pointer-events: none; }
 /* Com a tela dividida, as zonas de soltar seguem a divisória (esquerda = conversa). */
 .content.split:not(.split-collapsed) .split-drop { grid-template-columns: var(--split, 55%) 1fr; }
