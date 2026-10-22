@@ -11,7 +11,7 @@ import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, Whatsap
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
 import { assertAcesso, assertFinance } from "../acesso";
-import { financeCategorias, financeComprovante, financeCorrigir, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
+import { financeCategorias, financeComprovante, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
 import { caps } from "../variant";
@@ -201,10 +201,20 @@ export function registerClientIpc(): void {
     const p = (payload ?? {}) as Record<string, unknown>; const host = await fin(event); const id = idOk(p.id);
     const patch: Record<string, string | null> = {};
     for (const [k, max] of [["valor", 30], ["favorecido", 80], ["categoria", 80], ["data", 12], ["notas", 500]] as const) if (typeof p[k] === "string") patch[k] = String(p[k]).slice(0, max);
+    if (p.linha === null || typeof p.linha === "string") patch.linha = p.linha === null || p.linha === "" ? null : String(p.linha).slice(0, 80);
     if (p.conta === null || typeof p.conta === "string") patch.conta = p.conta === null || p.conta === "" ? null : String(p.conta).slice(0, 80);
     if (Object.keys(patch).length === 0) throw new Error("nada para corrigir");
     const l = await financeCorrigir(host, id, patch); void registrar(host, "finance.corrigir", `${l.valor} · ${l.categoriaNome}`); return l;
   });
+  handleClient("finance:linha-salvar", async (event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>; const host = await fin(event);
+    const nome = txt(p.nome, 80); if (nome === undefined) throw new Error("dê um nome à linha");
+    if (p.tipo !== "custo" && p.tipo !== "ganho-direto" && p.tipo !== "ganho-indireto") throw new Error("tipo de linha inválido");
+    const key = p.key === undefined ? undefined : idOk(p.key);
+    await financeLinhaSalvar(host, { ...(key ? { key } : {}), nome, tipo: p.tipo, valor: typeof p.valor === "string" && p.valor.trim() !== "" ? p.valor.slice(0, 30) : null, ...(typeof p.notas === "string" ? { notas: p.notas.slice(0, 500) } : {}) });
+    void registrar(host, "finance.linha", `${nome} (${p.tipo})`);
+  });
+  handleClient("finance:linha-remover", async (event, payload: unknown) => { const host = await fin(event); const key = idOk((payload as { key?: unknown } | null)?.key); await financeLinhaRemover(host, key); void registrar(host, "finance.linha", `removeu ${key}`); });
   handleClient("finance:comprovante", async (event, payload: unknown) => { const sha = (payload as { sha256?: unknown } | null)?.sha256; if (typeof sha !== "string" || !/^[0-9a-f]{64}$/.test(sha)) throw new Error("comprovante inválido"); return financeComprovante(await fin(event), sha); });
   handleClient("finance:confirmar-todas", async (event) => financeConfirmarTodas(await fin(event)));
   handleClient("finance:conta-criar", async (event, payload: unknown) => { const p = (payload ?? {}) as Record<string, unknown>; const nome = txt(p.nome, 80); if (nome === undefined) throw new Error("dê um nome à conta"); return financeContaCriar(await fin(event), { nome, ...(txt(p.tipo, 20) ? { tipo: txt(p.tipo, 20)! } : {}), ...(txt(p.saldoInicial, 30) ? { saldoInicial: txt(p.saldoInicial, 30)! } : {}) }); });

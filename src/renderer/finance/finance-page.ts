@@ -4,7 +4,7 @@
  * mês por categoria. Os números moram na máquina (/v1/finance pelo túnel, via main › finance-local.ts); aqui só se
  * mostra e se pede. Fábrica com dependências explícitas, como admin/produtos-page.ts.
  */
-import type { BackendModel, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
+import type { BackendModel, FinanceLinhaDre, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -15,7 +15,7 @@ export interface FinancePageDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "installFinance" | "financePedir" | "on">;
+  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "installFinance" | "financePedir" | "on">;
   host(): string;
   license(): LicenseView | null;
   /** A licença desta janela já foi lida (antes disso, nada de bloqueio precipitado). */
@@ -69,17 +69,19 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
   };
   /** Cartões recolhíveis (Contas, Lançar à mão): fechados por padrão; o que a pessoa abriu continua aberto ao repintar. */
   const abertos = new Set<string>();
-  const dobra = (id: string, titulo: string, resumo?: string): HTMLElement => {
-    const d = el("details", "admin-card admin-logs-card finance-dobra"); d.open = abertos.has(id);
+  const fechados = new Set<string>();
+  const dobra = (id: string, titulo: string, resumo?: string, abertoPorPadrao = false): HTMLElement => {
+    const d = el("details", "admin-card admin-logs-card finance-dobra"); d.open = abertoPorPadrao ? !fechados.has(id) : abertos.has(id);
     const sm = el("summary", "admin-card-head"); sm.append(el("strong", "", titulo)); if (resumo) sm.append(el("span", "hint", resumo));
     d.append(sm);
-    d.addEventListener("toggle", () => { if (d.open) abertos.add(id); else abertos.delete(id); });
+    d.addEventListener("toggle", () => { if (d.open) { abertos.add(id); fechados.delete(id); } else { abertos.delete(id); fechados.add(id); } });
     return d;
   };
   const card = (titulo: string, extra?: HTMLElement): HTMLElement => { const c = el("div", "admin-card"); const h = el("div", "admin-card-head"); h.append(el("strong", "", titulo)); if (extra) h.append(extra); c.append(h); return c; };
 
   /** Lançamento aberto (detalhe e edição) e as fotos de comprovante já lidas da máquina (sha256 → data URL). */
   let aberto: string | null = null;
+  let linhaAberta: string | null = null;
   const fotos = new Map<string, string | null>();
   const contasDe = (): { key: string; nome: string }[] => info?.estado?.contas ?? [];
   const dataBr = (d: string): string => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`;
@@ -106,17 +108,20 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     const conta = el("select"); conta.disabled = busy;
     for (const c of [{ key: "", nome: "sem conta" }, ...contasDe()]) { const o = el("option", "", c.nome); o.value = c.key; if ((l.conta ?? "") === c.key) o.selected = true; conta.append(o); }
     const notas = input("notas (opcional)", l.notas ?? "", 500);
-    f.append(field("Valor", valor), field("Data", data), field("Onde", fav), field("Categoria", cat), field("Conta", conta), field("Notas", notas));
+    const linhaSel = el("select"); linhaSel.disabled = busy;
+    for (const x of [{ key: "", nome: "nenhuma" }, ...(info?.estado?.resumo.dre?.linhas ?? [])]) { const o = el("option", "", x.nome); o.value = x.key; if ((l.linha ?? "") === x.key) o.selected = true; linhaSel.append(o); }
+    f.append(field("Valor", valor), field("Data", data), field("Onde", fav), field("Categoria", cat), field("Conta", conta), field("Linha da DRE", linhaSel), field("Notas", notas));
     box.append(f);
     const acoes = el("div", "admin-actions");
     acoes.append(btn("Salvar", "btn-primary", () => {
-      const patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string } = {};
+      const patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string; linha?: string | null } = {};
       if (valor.value.trim() !== "" && valor.value.trim() !== (Math.abs(l.valorCent) / 100).toFixed(2).replace(".", ",")) patch.valor = valor.value.trim();
       if (data.value.trim() !== dataBr(l.data)) patch.data = data.value.trim();
       if (fav.value.trim() !== l.favorecido) patch.favorecido = fav.value.trim();
       if (cat.value !== l.categoria) patch.categoria = cat.value;
       if (conta.value !== (l.conta ?? "")) patch.conta = conta.value === "" ? null : conta.value;
       if (notas.value.trim() !== (l.notas ?? "")) patch.notas = notas.value.trim();
+      if (linhaSel.value !== (l.linha ?? "")) patch.linha = linhaSel.value === "" ? null : linhaSel.value;
       if (Object.keys(patch).length === 0) { aberto = null; render(); return; }
       void agir(() => deps.api.financeCorrigir(l.id, patch), "lançamento corrigido");
     }));
@@ -267,26 +272,51 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     f.append(field("Valor", valor), field("Tipo", tipoL), field("Onde", fav), field("Categoria", cat), btn("Lançar", "btn-primary", () => { if (valor.value.trim() === "") return; void agir(() => deps.api.financeLancar({ valor: valor.value, favorecido: fav.value, tipo: tipoL.value === "gasto" ? "gasto" : "renda", ...(tipoL.value === "indireto" ? { retorno: "indireto" as const } : tipoL.value === "direto" ? { retorno: "direto" as const } : {}), categoria: cat.value }), "lançado"); }));
     lc.append(f);
 
-    // Meta de ganhos (projeção): o que se espera receber no mês. Puxa só o projetado; o realizado continua o que entrou.
-    const pj = r.projecao; const mt = r.meta ?? null;
-    const metaCard = dobra("meta", "Meta de ganhos (projeção)", mt === null ? "sem meta: a projeção segue o ritmo de hoje" : `diretos ${mt.direto} · indiretos ${mt.indireto}${mt.herdadoDe ? " (mantida do mês anterior)" : ""}`);
-    if (pj) metaCard.append(el("p", "hint", `Para empatar com o investimento projetado (${pj.empate}) o agente precisa trazer ${pj.empate} em ganhos no mês. Projeção atual de ganhos: ${pj.ganhos} (${pj.ganhosBase === "meta" ? "pela meta" : pj.ganhosBase === "real" ? "real" : "no ritmo de hoje"}).`));
-    if (mt?.notas) metaCard.append(el("p", "hint", `Como a meta foi calculada: ${mt.notas}`));
-    const mf = el("div", "admin-actions");
-    const md = input("ex.: 1.000", mt ? (mt.diretoCent / 100).toFixed(2).replace(".", ",") : "", 20);
-    const mi = input("ex.: 500", mt ? (mt.indiretoCent / 100).toFixed(2).replace(".", ",") : "", 20);
-    const mn = input("como chegou no valor (opcional)", mt?.notas ?? "", 500);
-    mf.append(field("Ganho direto esperado", md), field("Ganho indireto esperado", mi), field("Conta", mn), btn("Salvar meta", "btn-ghost", () => {
-      void agir(() => deps.api.financeMes(e.mes, { metaDireto: md.value.trim() === "" ? null : md.value, metaIndireto: mi.value.trim() === "" ? null : mi.value, metaNotas: mn.value }), "meta do mês salva");
-    }));
-    metaCard.append(mf);
+    // DRE do mês: as fontes de ganho e os custos que certamente existem, com previsto (recorrente) e realizado.
+    const dre = r.dre ?? { linhas: [] as FinanceLinhaDre[], aDefinir: [] as string[], custoPrevistoCent: 0, ganhoDiretoPrevistoCent: 0, ganhoIndiretoPrevistoCent: 0, resultadoPrevistoCent: 0, resultadoPrevisto: "R$ 0,00" };
+    const dreCard = dobra("dre", `DRE do mês · ${r.nome}`, `resultado previsto ${dre.resultadoPrevisto}${dre.aDefinir.length > 0 ? ` · ${dre.aDefinir.length} a definir` : ""}`, true);
+    dreCard.append(el("p", "hint", "Previsto vale todo mês até você mudar. Custo evitado (uma ferramenta que você deixaria de contratar) conta como ganho indireto. Ligue um lançamento a uma linha no detalhe dele para ter o realizado."));
+    const GRUPOS: [FinanceTipoLinha, string][] = [["ganho-direto", "Ganhos diretos (receita que entra)"], ["ganho-indireto", "Ganhos indiretos (custo evitado, tempo poupado)"], ["custo", "Custos (o que o agente custa)"]];
+    const tabela = el("div", "finance-dre");
+    const cab = el("div", "finance-dre-row cab"); cab.append(el("span", "", ""), el("span", "hint", "Previsto/mês"), el("span", "hint", "Realizado")); tabela.append(cab);
+    for (const [tipo, titulo] of GRUPOS) {
+      const ls = dre.linhas.filter((x) => x.tipo === tipo);
+      tabela.append(el("div", "finance-dre-grupo", titulo));
+      if (ls.length === 0) tabela.append(el("div", "finance-dre-vazio hint", tipo === "ganho-direto" ? "nenhuma fonte de receita ainda (ex.: vendas pelo WhatsApp, clientes atendidos pelo agente)" : tipo === "ganho-indireto" ? "nada ainda (ex.: ferramenta que você não precisa contratar, horas de atendimento poupadas)" : "nenhum custo previsto"));
+      for (const ln of ls) {
+        const row = el("div", `finance-dre-row${linhaAberta === ln.key ? " aberto" : ""}`);
+        const nm = el("span", "finance-clicavel finance-dre-nome", ln.nome); nm.tabIndex = 0; nm.setAttribute("role", "button"); nm.title = "Editar a linha";
+        const abrir = (): void => { linhaAberta = linhaAberta === ln.key ? null : ln.key; render(); };
+        nm.addEventListener("click", abrir); nm.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); abrir(); } });
+        row.append(nm, el("span", `finance-dre-num${ln.previstoCent === null ? " a-definir" : ""}`, ln.previsto), el("span", "finance-dre-num", ln.realizado));
+        tabela.append(row);
+        if (ln.notas && linhaAberta !== ln.key) tabela.append(el("div", "finance-dre-nota hint", ln.notas));
+        if (linhaAberta === ln.key) {
+          const ed = el("div", "admin-actions finance-dre-edicao");
+          const vn = input("nome", ln.nome); const vv = input("a definir", ln.previstoCent === null ? "" : (ln.previstoCent / 100).toFixed(2).replace(".", ","), 20); const vt = el("textarea"); vt.rows = 3; vt.value = ln.notas ?? ""; vt.placeholder = "anotações: por que essa linha existe, de onde vem o valor"; vt.className = "finance-dre-notas";
+          ed.append(field("Nome", vn), field("Previsto por mês", vv), field("Anotações", vt), btn("Salvar", "btn-primary", () => { linhaAberta = null; void agir(() => deps.api.financeLinhaSalvar({ key: ln.key, nome: vn.value, tipo: ln.tipo, valor: vv.value.trim() === "" ? null : vv.value, notas: vt.value }), "linha salva"); }));
+          const rm = btn("Remover", "btn-ghost", () => { deps.armConfirm(rm, "Confirmar? tira a linha da DRE", () => { linhaAberta = null; void agir(() => deps.api.financeLinhaRemover(ln.key), "linha removida"); }); });
+          ed.append(rm, btn("Fechar", "btn-ghost", () => { linhaAberta = null; render(); }));
+          tabela.append(ed);
+        }
+      }
+    }
+    const tot = el("div", "finance-dre-row total"); tot.append(el("strong", "", "= Resultado previsto do mês"), el("strong", `finance-dre-num finance-valor ${dre.resultadoPrevistoCent < 0 ? "gasto" : "renda"}`, dre.resultadoPrevisto), el("span", "", "")); tabela.append(tot);
+    dreCard.append(tabela);
+    if (dre.aDefinir.length > 0) dreCard.append(el("p", "hint", `A definir: ${dre.aDefinir.join(", ")}. A linha já entra na DRE; o valor conta quando você preencher.`));
+    const novaLinha = el("div", "admin-actions");
+    const nNome = input("ex.: Leona que não precisa contratar"); const nTipo = el("select"); nTipo.disabled = busy;
+    for (const [k, t] of [["ganho-indireto", "Ganho indireto"], ["ganho-direto", "Ganho direto"], ["custo", "Custo"]] as const) { const o = el("option", "", t); o.value = k; nTipo.append(o); }
+    const nValor = input("a definir", "", 20);
+    novaLinha.append(field("Nova linha", nNome), field("Tipo", nTipo), field("Previsto por mês", nValor), btn("Adicionar", "btn-ghost", () => { if (nNome.value.trim() === "") return; void agir(() => deps.api.financeLinhaSalvar({ nome: nNome.value, tipo: nTipo.value as FinanceTipoLinha, valor: nValor.value.trim() === "" ? null : nValor.value }), "linha adicionada"); }));
+    dreCard.append(novaLinha);
 
     // Últimos lançamentos.
     const uc = card("Últimos lançamentos");
     if (ultimos.length === 0) uc.append(el("p", "hint", "Nada lançado ainda."));
     for (const l of ultimos) uc.append(linhaLanc(l, false));
     // Ordem: o mês e o que o agente lançou primeiro; depois o que depende da pessoa; contas e lançar à mão no fim.
-    panel.append(mc, metaCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, lc);
+    panel.append(mc, dreCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, lc);
   }
 
   const page = deps.definePage("financas", "Finanças", panel, () => { render(); void refresh(); });

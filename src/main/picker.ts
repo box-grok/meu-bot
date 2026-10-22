@@ -7,11 +7,11 @@
  */
 import { caps } from "./variant";
 import { parseLicense } from "./licenca";
-import { deveAtualizar } from "./updater-core";
+import { deveAtualizar, precisaAtualizarBackend } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
-import { approveTailscaleCheck, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
+import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "./whatsapp";
@@ -79,9 +79,12 @@ function probeCached(host: string): Promise<HostProbe> {
     probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
     if (probe.reachable) setPodHost(host, probe.grokPod);
-    ensureGuarda(host, probe);
-    ensureCrmAtual(host, probe);
-    ensureFinanceAtual(host, probe);
+    // Backend antes dos plugins: o plugin do financeiro (e o do CRM) chamam a API dele.
+    void ensureBackendAtual(host, probe).finally(() => {
+      ensureGuarda(host, probe);
+      ensureCrmAtual(host, probe);
+      ensureFinanceAtual(host, probe);
+    });
     return probe;
   }).finally(() => inflight.delete(host));
   inflight.set(host, p);
@@ -122,6 +125,27 @@ function ensureCrmAtual(host: string, probe: HostProbe): void {
   log(`[crm] ${host}: plugin do CRM ${probe.crmVersion ?? "sem versão"} → ${want}; atualizando em segundo plano`);
   void installCrm(host).then((r) => { log(`[crm] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${r.log.at(-1) ?? "?"}`}`); })
     .catch((e: unknown) => { log(`[crm] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+/**
+ * Backend da máquina numa versão anterior à deste app (a API do financeiro e do CRM, a licença): reinstala em segundo
+ * plano, só para cima e só ocioso (o install.sh reinicia o serviço). Ocupado = tenta na próxima sondagem; instalação
+ * feita ou falha = uma tentativa por máquina por sessão do app. A porta é a do backend instalado (o .env fica).
+ */
+const backendTried = new Set<string>();
+async function ensureBackendAtual(host: string, probe: HostProbe): Promise<void> {
+  if (!probe.reachable || host === LOCAL_HOST || backendTried.has(host)) return;
+  const want = bundledBackendVersion();
+  const decisao = precisaAtualizarBackend(probe, want);
+  if (decisao === "nao") return;
+  if (decisao === "ocupado") { log(`[backend] ${host}: ${probe.backendVersion ?? "sem versão"} → ${want ?? "?"}, mas há ${probe.backendBusy} chat(s) em andamento; tenta na próxima sondagem`); return; }
+  backendTried.add(host);
+  log(`[backend] ${host}: backend ${probe.backendVersion ?? "sem versão"} → ${want ?? "?"}; atualizando em segundo plano`);
+  try {
+    const r = await installBackend(host, portaParaInstalar(probe, getBackendPort(host)));
+    log(`[backend] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${r.log.at(-1) ?? "?"}`}`);
+    const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, backendVersion: want }, at: hit.at });
+  } catch (e) { log(`[backend] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
 /** Mesmo trato para o financeiro: só sobe de versão onde ele já está instalado (instalar é o tutorial 14). */

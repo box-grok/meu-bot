@@ -97,6 +97,58 @@ test("crm-job.mjs sobe (sem erro de inicialização) e, sem licença, só regist
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
+test("crmProprio: personalizado cru em vigor conta como Pro; vencido ou o add-on antigo não", async () => {
+  const { createRequire } = await import("node:module");
+  const be = createRequire(import.meta.url)("../../backend-colima/licenca.js");
+  const { crmProprio, motorCrm } = await import("../../backend-colima/crm/licenca-crm.mjs");
+  const t = Date.parse("2026-10-22T15:00:00.000Z");
+  const casos = [{}, null, [], { plan: "pro", status: "active" }, { plan: "pro", status: "trialing" }, { plan: "pro", status: "expired" }, { plan: "pro", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, { plan: "pro", status: "active", expiresAt: "2027-01-01T00:00:00.000Z" }, { plan: "pro", status: "active", expiresAt: "nao-e-data" }, { plan: "pro", status: "active", expiresAt: 0 }, { plan: "personalizado", status: "active" }, { plan: "personalizado", status: "trialing", expiresAt: "2027-01-01T00:00:00.000Z" }, { plan: "personalizado", status: "expired" }, { plan: "personalizado", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, { plan: "personalizado" }, { plan: "free", status: "active", produtos: ["meu-bot-crm"] }, { plan: "pro", status: "active", produtos: ["meu-bot-crm"] }, { plan: "foo", status: "active" }, { plan: "pro", status: "foo" }];
+  for (const c of casos) assert.equal(crmProprio(c, t), be.crmOk(c, t), JSON.stringify(c));
+  assert.equal(crmProprio({ plan: "personalizado", status: "active" }, t), true);
+  assert.equal(crmProprio({ plan: "personalizado", status: "trialing" }, t), true);
+  assert.equal(crmProprio({ plan: "personalizado", status: "active", expiresAt: "2026-10-23T00:00:00.000Z" }, t), true);
+  assert.equal(crmProprio({ plan: "personalizado", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, t), false, "expiresAt no passado vence, como no backend");
+  assert.equal(crmProprio({ plan: "personalizado", status: "expired", expiresAt: "2027-01-01T00:00:00.000Z" }, t), false);
+  assert.equal(crmProprio({ plan: "pro", status: "active" }, t), true);
+  assert.equal(crmProprio({ plan: "pro", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, t), false);
+  assert.equal(crmProprio({ plan: "free", status: "active", produtos: ["meu-bot-crm"] }, t), false, "o add-on meu-bot-crm não libera");
+  assert.equal(motorCrm({ plan: "personalizado", status: "active" }, { apiKey: "chave-do-streak" }, t), "proprio", "antes da migração não cai no Streak");
+  assert.equal(motorCrm({ plan: "pro", status: "active", produtos: ["meu-bot-crm"] }, { apiKey: "chave" }, t), "proprio", "Pro que ainda tem o add-on no arquivo cru segue no próprio");
+  assert.equal(motorCrm({ plan: "free", status: "active", produtos: ["meu-bot-crm"] }, { apiKey: "chave" }, t), "streak");
+  assert.equal(motorCrm({ plan: "personalizado", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, { apiKey: "chave" }, t), "streak");
+  assert.equal(motorCrm({ plan: "pro", status: "active" }, { apiKey: "chave" }, t), "streak");
+  assert.equal(motorCrm({ plan: "pro", status: "active" }, {}, t), "proprio");
+  assert.equal(motorCrm({ plan: "pro", status: "active" }, { motor: "streak" }, t), "streak");
+});
+
+test("crm-job.mjs com personalizado cru em vigor passa do gate; vencido registra sem plano", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os"); const { join } = await import("node:path");
+  const job = new URL("../../backend-colima/crm/crm-job.mjs", import.meta.url).pathname;
+  const roda = (lic) => {
+    const home = mkdtempSync(join(tmpdir(), "crm-job-"));
+    const base = join(home, ".local", "share", "meu-bot");
+    mkdirSync(base, { recursive: true });
+    writeFileSync(join(base, "licenca.json"), JSON.stringify(lic));
+    try {
+      execFileSync(process.execPath, [job], { env: { ...process.env, HOME: home }, stdio: "pipe" });
+      const log = readFileSync(join(base, "crm", "crm.log"), "utf8");
+      return { status: 0, log };
+    } catch (e) {
+      let log = ""; try { log = readFileSync(join(base, "crm", "crm.log"), "utf8"); } catch { /* gate passou e saiu no uso, sem log */ }
+      return { status: e.status, stderr: String(e.stderr ?? ""), log };
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  };
+  const ok = roda({ plan: "personalizado", status: "active" });
+  assert.equal(ok.status, 2, "passou da licença e parou no uso");
+  assert.match(ok.stderr, /uso: crm-job/);
+  assert.doesNotMatch(ok.log, /sem plano Pro/);
+  const vencido = roda({ plan: "personalizado", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" });
+  assert.equal(vencido.status, 0);
+  assert.match(vencido.log, /sem plano Pro em vigor/);
+});
+
 test("parseCrmJson lê resumoConversa (opcional)", async () => {
   const { parseCrmJson } = await import("../../backend-colima/crm/regras.mjs");
   assert.equal(parseCrmJson('```crm-json\n{"aplicado":[],"propostas":[],"resumo":"r","resumoConversa":"tudo"}\n```').resumoConversa, "tudo");

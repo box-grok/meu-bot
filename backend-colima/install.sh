@@ -118,6 +118,8 @@ fi
 
 K=$(grep '^OPENAI_COMPAT_KEY=' "$DEST/.env" | cut -d= -f2-)
 if curl -s -m 5 -H "Authorization: Bearer $K" "http://127.0.0.1:$PORT/v1/models" | grep -q claudecode; then echo "OK: backend respondendo em 127.0.0.1:$PORT"; else echo "AVISO: backend ainda não respondeu em 127.0.0.1:$PORT"; exit 1; fi
+# Versão só depois de responder: instalação que falhou no meio continua "desatualizada" e o app tenta de novo.
+if [ -f "$HERE/VERSION" ]; then cp "$HERE/VERSION" "$DEST/VERSION"; echo "versão do backend: $(cat "$DEST/VERSION")"; fi
 
 # Status line do Claude (Sessão/Semanal no app) vai junto quando o instalador está ao lado. Não derruba o
 # backend: numa máquina com statusLine gerenciada ele sai com 3 e explica.

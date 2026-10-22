@@ -133,3 +133,23 @@ test("meta de ganhos: puxa os ganhos projetados (nunca o realizado), é herdada 
   await call("PUT", "/meses/2026-11", { metaDireto: null, metaIndireto: null });
   r = (await call("GET", "/resumo?mes=2026-11")).j; assert.equal(r.meta, null); assert.equal(r.projecao.ganhosBase, "ritmo");
 });
+
+test("DRE prevista: plano Claude Code nasce como custo a definir; linhas de ganho e custo puxam o projetado; lançamento ligado dá o realizado", async () => {
+  let r = (await call("GET", "/resumo?mes=2026-11")).j;
+  const plano = r.dre.linhas.find((x) => x.key === "plano-claude-code");
+  assert.deepEqual([plano.tipo, plano.previsto], ["custo", "a definir"]); assert.ok(r.dre.aDefinir.includes(plano.nome));
+  const chip = (await call("POST", "/linhas", { nome: "Chip do agente", tipo: "custo", valor: "97" })).j.linha;
+  await call("POST", "/linhas", { nome: "Leona que não precisa contratar", tipo: "ganho-indireto", valor: "130", notas: "app de um número só" });
+  assert.equal((await call("POST", "/linhas", { nome: "x", tipo: "lucro" })).status, 400);
+  const l = (await call("POST", "/lancamentos", { valor: "68,84", favorecido: "Chip", categoria: "assinaturas", linha: "chip do agente", data: "2026-11-10" })).j.lancamento;
+  assert.equal(l.linhaNome, "Chip do agente");
+  r = (await call("GET", "/resumo?mes=2026-11")).j;
+  const c = r.dre.linhas.find((x) => x.key === chip.key);
+  assert.deepEqual([c.previstoCent, c.realizadoCent], [9700, 6884]);
+  assert.equal(r.dre.ganhoIndiretoPrevistoCent, 13000);
+  assert.ok(r.projecao.ganhoIndiretoCent >= 300000, "o maior entre ritmo, meta e linhas");
+  await call("PUT", `/linhas/plano-claude-code`, { valor: "200" });
+  r = (await call("GET", "/resumo?mes=2026-11")).j; assert.equal(r.dre.aDefinir.length, 0); assert.equal(r.dre.custoPrevistoCent, 9700 + 20000);
+  await call("POST", `/linhas/${chip.key}/remover`, {});
+  assert.equal((await call("GET", `/lancamentos/${l.id}`)).j.lancamento.linha, undefined, "lançamento sai da linha removida");
+});

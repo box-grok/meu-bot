@@ -62,6 +62,44 @@ function novaCategoria(input, existentes) {
   return { key, nome, grupo: str(input?.grupo, LIMITES.nome) || (input?.renda === true ? 'Renda' : 'Outros'), renda: input?.renda === true };
 }
 
+// ---- linhas previstas (a DRE projetada) --------------------------------------------------------------------------
+/**
+ * Uma linha prevista do mês, recorrente até mudar: um custo que certamente vai existir ("Plano Claude Code") ou uma fonte
+ * de ganho (direto: receita; indireto: tempo poupado, ferramenta que deixou de pagar). `valorMensalCent` null = a definir
+ * (a linha aparece mesmo sem valor). Lançamentos se ligam a uma linha pelo campo `linha` para ter o realizado dela.
+ */
+const TIPOS_LINHA = ['custo', 'ganho-direto', 'ganho-indireto'];
+/** Linhas com que todo financeiro nasce: custos obrigatórios do produto. A pessoa pode editar o valor; se apagar, não volta. */
+const LINHAS_PADRAO = [
+  { key: 'plano-claude-code', nome: 'Plano Claude Code (assinatura com a gente)', tipo: 'custo', valorMensalCent: null, notas: 'Obrigatório: a infraestrutura do agente é nossa, então o plano do Claude Code é assinado conosco (parceiros não têm outra opção).' },
+];
+function novaLinha(input, existentes, now) {
+  const nome = str(input?.nome, LIMITES.nome);
+  if (nome === '') throw invalido('a linha precisa de nome');
+  const tipo = TIPOS_LINHA.includes(input?.tipo) ? input.tipo : null;
+  if (tipo === null) throw invalido(`tipo de linha inválido (${TIPOS_LINHA.join(', ')})`);
+  const key = isKey(input?.key) ? input.key : slug(nome).slice(0, 60);
+  if (key.length < 2) throw invalido('nome de linha inválido');
+  if (existentes.some((l) => l.key === key)) throw new ErroFinance('conflito', `a linha "${nome}" já existe`);
+  return { key, nome, tipo, valorMensalCent: valorLinha(input?.valor ?? input?.valorMensal ?? null), notas: str(input?.notas, LIMITES.notas), criadaEm: now, atualizadaEm: now };
+}
+/** "a definir", "", null → null; "0" → 0; "97,00" → 9700. */
+function valorLinha(v) {
+  if (v === null || v === undefined || (typeof v === 'string' && /^\s*(a definir|-|)\s*$/i.test(v))) return null;
+  const c = parseValorBRL(v);
+  if (c === null || c < 0) throw invalido('valor da linha inválido: use um valor mensal (ex.: 97,00), 0 ou "a definir"');
+  return c;
+}
+function patchLinha(cur, patch, now) {
+  const out = { ...cur, atualizadaEm: now };
+  if (patch.nome !== undefined) { const n = str(patch.nome, LIMITES.nome); if (n === '') throw invalido('a linha precisa de nome'); out.nome = n; }
+  if (patch.tipo !== undefined) { if (!TIPOS_LINHA.includes(patch.tipo)) throw invalido('tipo de linha inválido'); out.tipo = patch.tipo; }
+  if (patch.valor !== undefined) out.valorMensalCent = valorLinha(patch.valor);
+  if (patch.notas !== undefined) out.notas = str(patch.notas, LIMITES.notas);
+  return out;
+}
+const findLinha = (linhas, want) => { const w = norm(want); if (w === '') return null; return linhas.find((l) => l.key === want || norm(l.nome) === w) ?? linhas.find((l) => norm(l.nome).startsWith(w)) ?? linhas.find((l) => w.length >= 4 && norm(l.nome).includes(w)) ?? null; };
+
 // ---- valores e datas ------------------------------------------------------------------------------------------------
 /**
  * "R$ 1.234,56", "48", "12,5", "1234.56", "48 reais", -12,30 → centavos (inteiro, com sinal). null se não é valor.
@@ -243,13 +281,15 @@ function novoLancamento(input, ctx) {
   }
   if (!certa) duvidas.push('categoria');
   if (conta === null && contas.some((c) => !c.fechada)) duvidas.push('conta');
+  let linha = null;
+  if (typeof input?.linha === 'string' && input.linha.trim() !== '') { const ln = findLinha(ctx.linhas ?? [], input.linha); if (ln === null) throw new ErroFinance('nao_encontrado', `não achei a linha "${input.linha}" da DRE`, { linhas: (ctx.linhas ?? []).map((x) => x.nome) }); linha = ln.key; }
   const origem = ORIGENS.includes(input?.origem) ? input.origem : 'app';
   if (origem === 'foto') duvidas.push('valor');
   const status = STATUS.includes(input?.status) ? input.status : duvidas.length > 0 ? 'pendente' : 'confirmado';
   const midia = input?.midia && typeof input.midia === 'object' && /^[0-9a-f]{64}$/.test(String(input.midia.sha256 ?? '')) ? { sha256: input.midia.sha256, nome: str(input.midia.nome, 120) || 'comprovante' } : undefined;
   return {
     id: novaChave('l', rnd), data, valorCent: cent, favorecido, categoria, conta: conta?.key ?? null, notas: str(input?.notas, LIMITES.notas),
-    origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
+    ...(linha ? { linha } : {}), origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
     criadoEm: now, atualizadoEm: now,
   };
 }
@@ -267,6 +307,7 @@ function patchLancamento(cur, patch, ctx) {
   if (patch.categoria !== undefined) { const c = findCategoria(categorias, patch.categoria); if (c === null) throw new ErroFinance('nao_encontrado', `não achei a categoria "${patch.categoria}"`, { categorias: categorias.map((x) => x.nome) }); out.categoria = c.key; }
   if (patch.conta !== undefined) { if (patch.conta === null || patch.conta === '') out.conta = null; else { const c = findConta(contas, patch.conta); if (c === null) throw new ErroFinance('nao_encontrado', `não achei a conta "${patch.conta}"`); out.conta = c.key; } }
   if (patch.notas !== undefined) out.notas = str(patch.notas, LIMITES.notas);
+  if (patch.linha !== undefined) { if (patch.linha === null || patch.linha === '') delete out.linha; else { const ln = findLinha(ctx.linhas ?? [], patch.linha); if (ln === null) throw new ErroFinance('nao_encontrado', `não achei a linha "${patch.linha}" da DRE`); out.linha = ln.key; } }
   if (patch.status !== undefined) { if (!STATUS.includes(patch.status)) throw invalido('status inválido'); out.status = patch.status; }
   if (out.status === 'confirmado') out.duvidas = [];
   return out;
@@ -319,4 +360,5 @@ module.exports = {
   nomeFavorecido, favorecidoKey, categoriaAprendida, aprender, categoriaSemente,
   novoLancamento, patchLancamento, duplicadoDe,
   saldoConta, resumoMes, retornoResumo, linhaLancamento,
+  TIPOS_LINHA, LINHAS_PADRAO, novaLinha, patchLinha, findLinha, valorLinha,
 };

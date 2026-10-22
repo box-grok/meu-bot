@@ -5,6 +5,7 @@
  *
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
+import { BUNDLE_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES } from "./backend-bundle-core";
 import { NAV_MCP_VERSAO } from "./navegador-whatsapp-core";
 import { isVozId } from "./vozes-core";
 import { spawn, spawnSync } from "node:child_process";
@@ -83,6 +84,8 @@ function probeScript(port: number): string {
     `echo "arch=$(uname -m 2>/dev/null)"`,
     `[ -f ${BACKEND_DIR}/.env ] && echo env=1 || echo env=0`,
     `[ -f ${BACKEND_DIR}/server.js ] && echo server=1 || echo server=0`,
+    // Versão do backend instalado (o install.sh grava VERSION só quando ele respondeu); sem arquivo = anterior ao versionamento.
+    `echo "backendver=$(cat ${BACKEND_DIR}/VERSION 2>/dev/null)"`,
     // A porta do backend é a do .env dele (o app pode estar com outra); sem backend, é a que o app usa.
     `EP=$(grep '^PORT=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9); echo "envport=$EP"`,
     `L=$( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) ); BP=\${EP:-${port}}`,
@@ -116,6 +119,8 @@ function probeScript(port: number): string {
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
     `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
+    // Chats em andamento no backend (/health, sem chave): o app só reinstala o backend, que reinicia o serviço, com zero.
+    `echo "backendbusy=$(curl -s -m 4 http://127.0.0.1:$BP/health 2>/dev/null | grep -o '"ativos":[0-9]*' | cut -d: -f2)"`,
     `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:$BP/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
 }
@@ -145,7 +150,7 @@ function parseKv(stdout: string): Map<string, string> {
 export async function probeHost(host: string, port: number): Promise<HostProbe> {
   if (host === LOCAL_HOST) return probeLocal(port);
   const base: HostProbe = {
-    host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
+    host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false, backendVersion: null, backendBusy: null,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
     claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
@@ -172,6 +177,8 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     arch: kv.get("arch") || null,
     backendInstalled: kv.get("env") === "1" && kv.get("server") === "1",
     backendListening: kv.get("port") === "1",
+    backendVersion: kv.get("backendver") || null,
+    backendBusy: /^\d+$/.test(kv.get("backendbusy") ?? "") ? Number(kv.get("backendbusy")) : null,
     backendPort: parsePort(kv.get("envport")),
     portBusy: kv.get("busy") === "1",
     freePort: parsePort(kv.get("freeport")),
@@ -219,7 +226,7 @@ function probeLocal(port: number): HostProbe {
   if (node !== null) { try { nodeVersion = spawnSync(node, ["-v"], { encoding: "utf8", timeout: 5000 }).stdout.trim() || null; } catch { /* sem versão */ } }
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
-    backendInstalled: true, backendListening: localBackendAlive(), appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
+    backendInstalled: true, backendListening: localBackendAlive(), backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
     node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
@@ -229,12 +236,6 @@ export function backendBundleDir(): string {
   return app.isPackaged ? path.join(process.resourcesPath, "backend-colima") : path.join(app.getAppPath(), "backend-colima");
 }
 
-// Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
-// e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
-const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh",
-  "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
-];
 
 /** Copia o bundle para o host e roda o instalador; `onLine` recebe o progresso linha a linha. */
 /**
@@ -331,10 +332,12 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
 }
 
 const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-statusline.sh"];
-/** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
-const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
 const WA_GRUPOS_SCRIPTS = ["habilitar.py", "listar.sh", "monitor.py", "wa-admin.sh", "wa-grupos.js"];
 /** Versão do plugin do CRM que vem neste app (crm/package.json); o seletor atualiza máquinas com o CRM numa versão anterior. */
+/** Versão do backend que vem neste app (backend-colima/VERSION); o seletor atualiza máquinas com o backend numa versão anterior. */
+export function bundledBackendVersion(): string | null {
+  try { return fs.readFileSync(path.join(backendBundleDir(), "VERSION"), "utf8").trim() || null; } catch { return null; }
+}
 /** Versão do plugin do financeiro que vem neste app; o seletor atualiza máquinas que já o têm numa versão anterior. */
 export function bundledFinanceVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "finance", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
@@ -373,9 +376,6 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
-const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
-const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md", "skill-crm-api.md"];
-const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
 /** Tutorial 10: instala o plugin meu-bot-crm + as CLIs (crm.mjs do CRM próprio, streak.mjs do Pro) + skills na máquina (molde da guarda). */
 export async function installCrm(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: false, log: ["o CRM pelo WhatsApp é do agente do WhatsApp (OpenClaw) de uma máquina por SSH"] };
@@ -394,8 +394,6 @@ export async function installCrm(host: string, onLine?: (line: string) => void):
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
-const FINANCE_FILES = ["install-finance.sh", "skill-finance-api.md"];
-const FINANCE_PLUGIN_FILES = ["index.js", "regras.mjs", "backend.mjs", "finance.mjs", "package.json", "openclaw.plugin.json"];
 /**
  * Financeiro (produto meu-bot-finance): instala a CLI finance.mjs do agente, a skill finance-api e o plugin
  * meu-bot-finance do WhatsApp na máquina. Os dados (finance/db) ficam no backend; o instalador nunca os apaga.

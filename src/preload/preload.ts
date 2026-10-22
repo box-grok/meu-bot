@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceLancarInput } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -158,7 +158,9 @@ const clientApi: MeuBotClientApi = {
   financeLancar: (input: FinanceLancarInput) => ipcRenderer.invoke("finance:lancar", input),
   financeConfirmar: (id: string, categoria?: string) => ipcRenderer.invoke("finance:confirmar", { id, categoria }),
   financeDescartar: (id: string) => ipcRenderer.invoke("finance:descartar", { id }),
-  financeCorrigir: (id: string, patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string }) => ipcRenderer.invoke("finance:corrigir", { id, ...patch }),
+  financeCorrigir: (id: string, patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string; linha?: string | null }) => ipcRenderer.invoke("finance:corrigir", { id, ...patch }),
+  financeLinhaSalvar: (linha: { key?: string; nome: string; tipo: FinanceTipoLinha; valor: string | null; notas?: string }) => ipcRenderer.invoke("finance:linha-salvar", linha),
+  financeLinhaRemover: (key: string) => ipcRenderer.invoke("finance:linha-remover", { key }),
   financeComprovante: (sha256: string) => ipcRenderer.invoke("finance:comprovante", { sha256 }),
   financeConfirmarTodas: () => ipcRenderer.invoke("finance:confirmar-todas", {}),
   financeContaCriar: (input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }) => ipcRenderer.invoke("finance:conta-criar", input),

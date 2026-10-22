@@ -7,10 +7,17 @@
 // <versão> é a do package.json (a próxima estável; "meu-bot 2.0" = `npm version 2.0.0 --no-git-tag-version`). Exige
 // `gh` logado (`gh auth login`) e a árvore limpa. Gera out/<app>-<v>-<arch>.zip com `ditto -c -k --keepParent`
 // (preserva symlinks e a assinatura). O .dmg continua sendo o instalador da primeira vez; a release só precisa dos .zip.
+// Cada zip sai assinado com a chave Ed25519 da release (npm run chave-release) num <zip>.sig: o app só instala o que
+// confere com a chave pública embutida (UPDATE_PUBLIC_KEY), como o SUPublicEDKey do Sparkle no Brave.
+// Antes de empacotar, recusa publicar um componente da máquina (backend, financeiro, CRM, guarda) que mudou desde a
+// última release sem subir a versão: o seletor só atualiza para cima, então a mudança nunca chegaria às máquinas.
+import { createPrivateKey, sign } from "node:crypto";
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { CHAVE_RELEASE } from "./chave-release.mjs";
+import { componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
 const base = JSON.parse(readFileSync("package.json", "utf8")).version;
@@ -29,9 +36,26 @@ if (!staging) {
   if (recusa !== null) { console.error(`✗ ${recusa}`); process.exit(64); }
 }
 
-// A tabela de produtos vem do build (dist/main/variant-core.js): compila o main antes de a ler.
+if (!existsSync(CHAVE_RELEASE)) { console.error(`✗ falta a chave da release (${CHAVE_RELEASE}): rode \`npm run chave-release\` (uma vez) e cole a pública em UPDATE_PUBLIC_KEY`); process.exit(64); }
+const chave = createPrivateKey(readFileSync(CHAVE_RELEASE));
+
+// A tabela de produtos e os componentes da máquina vêm do build (dist/main): compila o main antes de os ler.
 step("compilando para ler a tabela de produtos");
 execSync("npm run build:main", { stdio: "inherit" });
+
+step("conferindo as versões dos componentes da máquina");
+let ultima = null;
+try { ultima = execSync('git describe --tags --abbrev=0 --match "v*"', { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null; } catch { /* primeira release: nada a comparar */ }
+if (ultima === null) console.log("  primeira release: sem tag anterior para comparar");
+else {
+  const { COMPONENTES } = createRequire(import.meta.url)("../dist/main/backend-bundle-core.js");
+  const mudancas = execSync(`git diff --name-only ${ultima}..HEAD`, { encoding: "utf8" }).split("\n");
+  const naTag = (f) => { try { return execFileSync("git", ["show", `${ultima}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; } };
+  const versoes = Object.fromEntries(COMPONENTES.map((c) => [c.nome, { antes: lerVersao(c.versao, naTag(c.versao)), agora: lerVersao(c.versao, existsSync(c.versao) ? readFileSync(c.versao, "utf8") : null) }]));
+  const falta = componentesSemVersao(COMPONENTES, mudancas, versoes);
+  if (falta.length > 0) { console.error(`✗ desde ${ultima}:\n  ${falta.join("\n  ")}`); process.exit(64); }
+  console.log(`  ok desde ${ultima}`);
+}
 const { PRODUTOS } = await import("./produtos.mjs");
 const zips = [];
 for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
@@ -44,9 +68,11 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   const zip = join("out", `${name}-${version}-${arch}.zip`);
   rmSync(zip, { force: true });
   execFileSync("ditto", ["-c", "-k", "--keepParent", app, zip]);
-  zips.push(zip);
+  writeFileSync(`${zip}.sig`, `${sign(null, readFileSync(zip), chave).toString("base64")}\n`);
+  zips.push(zip, `${zip}.sig`);
 }
 step(`criando a release ${tag}`);
 execFileSync("git", ["tag", tag]); execFileSync("git", ["push", "origin", tag], { stdio: "inherit" });
 execFileSync("gh", ["release", "create", tag, ...zips, "--title", `meu-bot ${version}`, "--generate-notes", ...(staging ? ["--prerelease"] : [])], { stdio: "inherit" });
 console.log(`\n✓ ${tag} publicada com ${zips.join(", ")}. Os apps instalados atualizam sozinhos na próxima verificação (até 6 h) ou ao reabrir.`);
+if (!staging) console.log(`\n▸ próximo passo: suba a versão base para a próxima estável (ex.: npm version minor --no-git-tag-version) e commite; os builds locais e os staging seguintes saem dela.`);

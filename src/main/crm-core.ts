@@ -14,7 +14,7 @@ export type CrmMotor = "proprio" | "streak";
 export interface CrmPatch { apiKey?: string; pipelineKey?: string | null; pipelineName?: string | null; silencioMin?: number; criarSemPerguntar?: boolean; motor?: CrmMotor | null }
 /**
  * Motor em vigor (mesma regra do crm-job.mjs): o gravado; sem ele, quem tem a chave do Streak segue no Streak e o resto
- * com Pro usa o próprio. (Quem tinha o CRM contratado antes de 22 out ganhou o motor gravado na migração da licença.)
+ * com Pro usa o próprio. A licença crua "personalizado" em vigor é tratada no `streakSh` (não espera a migração).
  */
 export const motorEfetivo = (gravado: CrmMotor | null, streakKey: boolean, crmProprio: boolean): CrmMotor =>
   gravado ?? (streakKey ? "streak" : crmProprio ? "proprio" : "streak");
@@ -77,18 +77,32 @@ export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; command 
 /**
  * Roda a CLI do CRM da máquina para um subcomando sem argumentos da pessoa (diag/pipelines). Linha `S=`.
  * Plano Pro em vigor → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
+ * "personalizado" cru em vigor conta como Pro (e fica no próprio mesmo com a chave do Streak). `expiresAt` no passado vence.
  */
 export function streakSh(sub: "diag" | "pipelines"): string {
   return `export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:/usr/local/bin:$PATH"
 CLI="${CRM_DIR}/streak.mjs"; python3 -c '
-import json, os, sys
+import json, os, sys, datetime
 def j(p):
     try: return json.load(open(os.path.expandvars(p)))
     except Exception: return {}
+def expirada(l):
+    exp = l.get("expiresAt")
+    if not isinstance(exp, str) or exp == "": return False
+    try:
+        t = datetime.datetime.fromisoformat(exp.replace("Z", "+00:00"))
+        if t.tzinfo is None: t = t.replace(tzinfo=datetime.timezone.utc)
+        return t.timestamp() < datetime.datetime.now(datetime.timezone.utc).timestamp()
+    except Exception:
+        return False
 l = j("$HOME/.local/share/meu-bot/licenca.json"); c = j("${CRM_FILE}")
-lic = l.get("plan") == "pro" and l.get("status") in ("active", "trialing")
+plano = "pro" if l.get("plan") == "personalizado" else l.get("plan")
+vigor = plano == "pro" and l.get("status") in ("active", "trialing") and not expirada(l)
 key = isinstance(c.get("apiKey"), str) and c.get("apiKey") != ""
-m = c.get("motor") if c.get("motor") in ("proprio", "streak") else ("streak" if key else "proprio" if lic else "streak")
+produtos = l.get("produtos") if isinstance(l.get("produtos"), list) else []
+legado = vigor and (l.get("plan") == "personalizado" or "meu-bot-crm" in produtos)
+gravado = c.get("motor") if c.get("motor") in ("proprio", "streak") else None
+m = gravado if gravado else ("proprio" if legado else ("streak" if key else ("proprio" if vigor else "streak")))
 sys.exit(0 if m == "proprio" else 1)' 2>/dev/null && [ -f "${CRM_DIR}/crm.mjs" ] && CLI="${CRM_DIR}/crm.mjs"
 if [ -f "$CLI" ]; then echo "S=$(timeout 60 node "$CLI" ${sub} 2>/dev/null | tail -n1)"; else echo 'S={"erro":"o CRM ainda não foi instalado nesta máquina"}'; fi
 `;

@@ -6848,6 +6848,9 @@ const updateBar = $<HTMLElement>("update-bar");
 const updateText = $<HTMLElement>("update-text");
 const updateApply = $<HTMLButtonElement>("update-apply");
 function showUpdateReady(version: string): void {
+  // Staging (como as trilhas de teste do Cursor): sem faixa; a versão nova entra calada ao fechar o app.
+  // Em Configurações › Sobre e atualização ela continua visível, com o botão.
+  if (caps.canal === "staging") return;
   updateText.textContent = `${caps.nome} ${version} pronto para instalar (você está na ${appVersion}).`;
   updateBar.hidden = false;
 }

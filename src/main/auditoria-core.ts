@@ -61,6 +61,7 @@ export const ACOES = {
   "crm.instalar": () => "instalou o CRM pelo WhatsApp",
   "finance.instalar": () => "instalou o financeiro (WhatsApp e chat)",
   "finance.lancar": (a: string) => `lançou ${a} no financeiro pelo app`,
+  "finance.linha": (a: string) => `mudou a DRE prevista do financeiro (${a})`,
   "finance.corrigir": (a: string) => `corrigiu um lançamento do financeiro (${a})`,
   "finance.descartar": (a: string) => `descartou o lançamento ${a} do financeiro`,
   "finance.fechar-mes": (a: string) => `fechou o mês ${a} no financeiro`,

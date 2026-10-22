@@ -20,13 +20,13 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { CATEGORIAS_PADRAO, MES_RE, mesDe } = require('./finance-modelo');
+const { CATEGORIAS_PADRAO, LINHAS_PADRAO, MES_RE, mesDe } = require('./finance-modelo');
 
 const VERSAO = 1;
 const FEED_MAX = 20000;
 const FEED_KEEP = 5000;
 const BACKUPS = 7;
-const COLECOES = ['contas', 'categorias', 'favorecidos', 'meses'];
+const COLECOES = ['contas', 'categorias', 'favorecidos', 'meses', 'linhas'];
 
 const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (e) { if (e && e.code === 'ENOENT') return fallback; throw new Error(`arquivo do financeiro corrompido: ${f} (${e.message}); restaure de db/backup/`); } };
 function writeJson(f, v) { fs.mkdirSync(path.dirname(f), { recursive: true, mode: 0o700 }); const tmp = `${f}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
@@ -44,7 +44,7 @@ function openStore(dir, deps = {}) {
   const state = { meta: null, cols: new Map(COLECOES.map((c) => [c, new Map()])), lanc: new Map(), mesDoId: new Map() };
   function load() {
     const m = readJson(P.meta, null);
-    state.meta = m && Number.isInteger(m.seq) ? { versao: VERSAO, seq: m.seq, ultimoBackup: typeof m.ultimoBackup === 'string' ? m.ultimoBackup : '' } : { versao: VERSAO, seq: 0, ultimoBackup: '' };
+    state.meta = m && Number.isInteger(m.seq) ? { versao: VERSAO, seq: m.seq, ultimoBackup: typeof m.ultimoBackup === 'string' ? m.ultimoBackup : '', linhasSemeadas: Array.isArray(m.linhasSemeadas) ? m.linhasSemeadas.map(String) : [] } : { versao: VERSAO, seq: 0, ultimoBackup: '', linhasSemeadas: [] };
     for (const c of COLECOES) {
       const map = state.cols.get(c); map.clear();
       const v = readJson(arq(c), { itens: {} });
@@ -53,6 +53,8 @@ function openStore(dir, deps = {}) {
     // Primeira abertura: as categorias padrão já existem (a pessoa não começa do nada).
     // Categorias padrão: as que faltam entram (primeira abertura ou padrão novo, como os ganhos do ROI); as da pessoa ficam.
     for (const c of CATEGORIAS_PADRAO) { const cur = state.cols.get('categorias').get(c.key); if (cur === undefined) state.cols.get('categorias').set(c.key, { ...c }); else if (c.retorno && cur.retorno !== c.retorno) state.cols.get('categorias').set(c.key, { ...cur, retorno: c.retorno }); }
+    // Linhas padrão (custos obrigatórios do produto): entram uma vez; se a pessoa apagar, não voltam.
+    for (const l of LINHAS_PADRAO) if (!state.meta.linhasSemeadas.includes(l.key)) { if (!state.cols.get('linhas').has(l.key)) state.cols.get('linhas').set(l.key, { ...l, criadaEm: 0, atualizadaEm: 0 }); state.meta.linhasSemeadas.push(l.key); }
     state.lanc.clear(); state.mesDoId.clear();
     if (fs.existsSync(P.lanc)) for (const f of fs.readdirSync(P.lanc)) {
       const ym = f.replace(/\.json$/, '');
@@ -126,7 +128,7 @@ function openStore(dir, deps = {}) {
       try {
         backupDiario(t);
         // Categorias padrão ainda só na memória vão para o disco na primeira escrita.
-        tocadas.add('categorias');
+        tocadas.add('categorias'); tocadas.add('linhas');
         for (const c of tocadas) writeJson(arq(c), { itens: Object.fromEntries(state.cols.get(c)) });
         for (const ym of mesesTocados) {
           const m = state.lanc.get(ym);

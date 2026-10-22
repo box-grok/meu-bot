@@ -3,12 +3,29 @@
  * arquitetura) e como comparar versões. O download, a troca do .app e o reinício ficam em updater.ts.
  * Puro: testável com node --test.
  */
+import { createPublicKey, verify } from "node:crypto";
 
 /** Repositório público de onde vêm as releases (`scripts/release.mjs` publica lá). */
 export const UPDATE_REPO = "diegofornalha/meu-bot";
 
 export interface ReleaseAsset { name: string; url: string; size: number }
-export interface UpdateCandidate { version: string; asset: ReleaseAsset }
+/** `sig` = o `<zip>.sig` que o release publica ao lado (assinatura Ed25519 do zip, em base64). */
+export interface UpdateCandidate { version: string; asset: ReleaseAsset; sig: ReleaseAsset }
+
+/**
+ * Chave pública Ed25519 das releases (SPKI DER em base64; a privada fica só no Mac de quem publica, criada por
+ * `npm run chave-release`). Como o SUPublicEDKey do Sparkle: o app só instala o zip que ela confere.
+ */
+export const UPDATE_PUBLIC_KEY = "MCowBQYDK2VwAyEABo4DH23ayzUorwJWeJ8yfYnLmI89dGZSGgv/Z1hoDg0=";
+
+/** O zip baixado é o que a chave da release assinou? `sig` é o conteúdo do .sig (base64); qualquer erro = não. */
+export function verificaAssinatura(zip: Buffer, sig: string, chavePublica: string = UPDATE_PUBLIC_KEY): boolean {
+  try {
+    const s = Buffer.from(sig.trim(), "base64");
+    if (s.length !== 64) return false;
+    return verify(null, zip, createPublicKey({ key: Buffer.from(chavePublica, "base64"), format: "der", type: "spki" }), s);
+  } catch { return false; }
+}
 
 /** Nome do asset de um app numa release: `meu-bot-0.2.0-arm64.zip` (o .app zipado com ditto). */
 export const assetName = (app: string, version: string, arch: string): string => `${app}-${version}-${arch}.zip`;
@@ -72,14 +89,17 @@ function candidato(raw: unknown, want: { app: string; arch: string; current: str
   if (compareVersions(version, want.current) <= 0) return null;
   if (!Array.isArray(r.assets)) return null;
   const name = assetName(want.app, version, want.arch);
-  for (const a of r.assets) {
-    if (a === null || typeof a !== "object") continue;
-    const o = a as { name?: unknown; browser_download_url?: unknown; size?: unknown };
-    if (o.name === name && typeof o.browser_download_url === "string" && /^https:\/\//.test(o.browser_download_url)) {
-      return { version, asset: { name, url: o.browser_download_url, size: typeof o.size === "number" ? o.size : 0 } };
+  const achar = (n: string): ReleaseAsset | null => {
+    for (const a of r.assets as unknown[]) {
+      if (a === null || typeof a !== "object") continue;
+      const o = a as { name?: unknown; browser_download_url?: unknown; size?: unknown };
+      if (o.name === n && typeof o.browser_download_url === "string" && /^https:\/\//.test(o.browser_download_url)) return { name: n, url: o.browser_download_url, size: typeof o.size === "number" ? o.size : 0 };
     }
-  }
-  return null;
+    return null;
+  };
+  // Sem o .sig ao lado não é candidata: zip que ninguém assinou nunca é instalado.
+  const asset = achar(name), sig = achar(`${name}.sig`);
+  return asset === null || sig === null ? null : { version, asset, sig };
 }
 
 /**
@@ -90,4 +110,38 @@ function candidato(raw: unknown, want: { app: string; arch: string; current: str
 export function deveAtualizar(instalada: string | null, doApp: string | null): boolean {
   if (doApp === null) return false;
   return instalada === null || compareVersions(doApp, instalada) > 0;
+}
+
+/**
+ * Reinstalar o backend da máquina (o install.sh reinicia o serviço) na sondagem: só onde ele já está instalado, só
+ * para subir de versão (backend sem VERSION conta como antigo) e só ocioso, com zero chats em andamento. "ocupado" =
+ * precisa, mas espera a próxima sondagem; null `busy` (backend antigo, sem o contador) conta como ocioso.
+ */
+export function precisaAtualizarBackend(p: { backendInstalled: boolean; backendVersion: string | null; backendBusy: number | null }, doApp: string | null): "atualizar" | "ocupado" | "nao" {
+  if (!p.backendInstalled || !deveAtualizar(p.backendVersion, doApp)) return "nao";
+  return p.backendBusy !== null && p.backendBusy > 0 ? "ocupado" : "atualizar";
+}
+
+/**
+ * Atualização recém-aplicada, ainda sem prova de que a versão nova abre: `userData/update-pendente.json`, gravado na
+ * troca dos .app. `antigos` = os `<app>.antigo` guardados para voltar; `tentativas` = aberturas já feitas na nova.
+ */
+export interface UpdatePendente { de: string; para: string; antigos: string[]; tentativas: number }
+export function parsePendente(raw: unknown): UpdatePendente | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.de !== "string" || typeof o.para !== "string" || !Array.isArray(o.antigos)) return null;
+  const antigos = o.antigos.filter((x): x is string => typeof x === "string" && x.endsWith(".app.antigo"));
+  return { de: o.de, para: o.para, antigos, tentativas: Number.isInteger(o.tentativas) && (o.tentativas as number) >= 0 ? (o.tentativas as number) : 0 };
+}
+/** Aberturas da versão nova sem chegar a 30 s de vida antes de voltar à anterior. */
+export const TENTATIVAS_ATE_VOLTAR = 3;
+/**
+ * O que fazer ao abrir com uma atualização pendente: "aguardar" (conta a tentativa e confirma se o app ficar de pé),
+ * "voltar" (a nova não passou das primeiras aberturas: restaura os .antigo) ou "descartar" (esta não é a versão
+ * pendente: já voltou ou a pessoa instalou outra por fora; só limpa o registro).
+ */
+export function decideRollback(p: UpdatePendente, versaoAtual: string): "aguardar" | "voltar" | "descartar" {
+  if (versaoAtual !== p.para) return "descartar";
+  return p.tentativas + 1 >= TENTATIVAS_ATE_VOLTAR ? "voltar" : "aguardar";
 }

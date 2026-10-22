@@ -26,6 +26,7 @@
     "release:staging": "node scripts/release.mjs --staging",
     "icons": "npm run build:main && node scripts/icons.mjs",
     "assinatura": "node scripts/assinatura.mjs --criar",
+    "chave-release": "node scripts/chave-release.mjs --criar",
     "dist:finance-staging": "npm run build && npm run build:extensao && node scripts/package.mjs --variant finance-staging && node scripts/fuses.mjs --variant finance-staging"
   },
   "devDependencies": {

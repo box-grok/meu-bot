@@ -625,9 +625,11 @@ async function chatCompletions(req, res) {
   return run();
 }
 
+/** Pedidos de chat em andamento: o app só reinstala o backend (que reinicia o serviço) com zero. */
+let chatsAtivos = 0;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id) });
+  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
   // Status line do app: conta e limites do Claude Code desta máquina. O cache de limites é renovado aqui
   // quando está velho (o claude -p não roda a status line); o motivo de não renovar vai ao log quando muda.
@@ -697,6 +699,7 @@ const server = http.createServer(async (req, res) => {
     return json(res, 200, { removed });
   }
   if (url.pathname === '/v1/chat/completions' && req.method === 'POST') {
+    chatsAtivos += 1; res.once('close', () => { chatsAtivos -= 1; });
     // Limite de devices: um device "pending" (passou do limite, aguarda o admin) não usa o agente ainda.
     const devId = String(req.headers['x-device-id'] || '');
     if (/^[a-f0-9]{12}$/.test(devId)) {

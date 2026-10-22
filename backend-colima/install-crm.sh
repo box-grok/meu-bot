@@ -12,7 +12,7 @@ command -v node >/dev/null 2>&1 || { echo "esta máquina não tem node; reinstal
 [ -f "$HERE/crm/index.js" ] || { echo "a pasta crm/ não está ao lado deste script"; exit 1; }
 SRC=$HOME/.local/share/meu-bot/crm
 mkdir -p "$SRC/db"
-for f in index.js regras.mjs crm-job.mjs backend.mjs crm.mjs streak.mjs importar-streak.mjs package.json openclaw.plugin.json; do
+for f in index.js regras.mjs licenca-crm.mjs crm-job.mjs backend.mjs crm.mjs streak.mjs importar-streak.mjs package.json openclaw.plugin.json; do
   [ -f "$HERE/crm/$f" ] && cp "$HERE/crm/$f" "$SRC/"
 done
 chmod 700 "$SRC" "$SRC/db"; chmod 644 "$SRC"/*.js "$SRC"/*.mjs "$SRC"/*.json

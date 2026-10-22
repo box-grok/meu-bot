@@ -2,7 +2,7 @@
 name: finance-api
 description: Financeiro pessoal do dono desta máquina (produto meu-bot-finance). Use sempre que o dono falar de dinheiro — gasto, compra, pagamento, conta, cartão, pix, salário, renda, saldo, "quanto gastei", fatura, boleto — ou mandar foto de comprovante, nota fiscal ou recibo. Lança, corrige, confirma e consulta pela CLI finance.mjs.
 ---
-<!-- meu-bot-finance skill v4 (o instalador atualiza enquanto esta linha existir; apague-a para manter sua versão) -->
+<!-- meu-bot-finance skill v5 (o instalador atualiza enquanto esta linha existir; apague-a para manter sua versão) -->
 
 # Financeiro do dono
 
@@ -46,6 +46,12 @@ Valores como o dono escreve (`48`, `12,50`, `1.234,56`); datas `hoje`, `ontem`, 
 6. **Nunca apague** sem o dono pedir (`descartar` só a pedido). Duplicado suspeito fica pendente: pergunte.
 7. **ROI:** `estado` traz o mês e o acumulado desde o início: ganhos diretos e indiretos e o ROI só com os diretos
    (realizado) e com os indiretos (perspectiva). Sempre diga os dois quando falar de retorno, e onde mais se gastou.
+7. **DRE prevista (linhas):** custos que certamente existem e fontes de ganho, por mês, recorrentes até mudar
+   (`linhas`, `linha-criar --nome "x" --tipo custo|ganho-direto|ganho-indireto --valor V` ou `--valor "a definir"`).
+   Custo evitado (ferramenta que o dono deixou de contratar porque o agente faz) é **ganho indireto**: ex.: "Leona que
+   não precisa contratar" R$ 130/mês. Não conte o mesmo valor duas vezes (tempo poupado e ferramenta evitada podem se
+   sobrepor: pergunte). Ao lançar algo de uma linha (o chip, o plano), use `lancar … --linha <chave>`. O "Plano Claude
+   Code (assinatura com a gente)" é custo obrigatório de todo parceiro: só se assina conosco.
 7a. **Meta e projeção:** o ROI projetado usa a meta de ganhos do mês (`mes <mês> --meta-direto V --meta-indireto V
    --meta-notas "como chegou no valor"`) ou o ritmo real, o que for maior. Meta é expectativa: nunca a apresente como
    ganho realizado. Ajude o dono a chegar numa meta com conta (conversas atendidas × minutos × valor da hora; vendas

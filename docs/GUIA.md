@@ -1765,11 +1765,43 @@ meu-bot é assinado ad-hoc, então o `autoUpdater` do Electron (Squirrel) não s
 - No app (`src/main/updater.ts`, só empacotado; `MEU_BOT_NO_UPDATE=1` desliga): 20 s depois de abrir e a cada
   6 h consulta `/releases/latest` (sem token; 404 = ainda sem release), escolhe o asset desta variante e
   arquitetura (`pickUpdate`, puro, testado), baixa para `userData/update`, extrai, confere a versão e o bundle
-  id do Info.plist, tira a quarentena e reassina ad-hoc. Pronta, avisa as janelas (`update:ready`): faixa
+  id do Info.plist e tira a quarentena (assinatura e identidade: ver a revisão de 22 out abaixo). Pronta, avisa as janelas (`update:ready`): faixa
   "meu-bot X pronto para instalar · Reiniciar e atualizar" (`update:apply` troca o .app que está rodando e as
   cópias em `~/Applications` e na mesa com o mesmo bundle id, e reabre). Sem clique, a troca acontece calada ao
   sair do app (`will-quit`): a próxima abertura já é a nova. Canais comuns (`update:state`, `update:apply`).
 - A versão do meu-bot de cada pessoa aparece para o admin na saúde da máquina (abaixo).
+
+### Revisão no molde do Brave/Sparkle (22 out 2026)
+
+REA do Brave 155→156 (Sparkle: `SUPublicEDKey`, delta baixado em `~/Library/Caches/…/PersistentDownloads`) e do
+Cursor 3.26.16 (Squirrel + trilhas `dogfood/candidate/stable`, `update.mode` com `silentlyApplyOnQuit`). O que
+mudou no meu-bot (o texto acima segue valendo onde não é contradito):
+
+- **Assinatura Ed25519 das releases:** `npm run chave-release` (uma vez) cria a privada em
+  `~/.config/meu-bot/release-ed25519.pem` (fora do repo; guarde um backup) e mostra a pública, embutida em
+  `UPDATE_PUBLIC_KEY` (`updater-core.ts`). O `release.mjs` publica `<zip>.sig` ao lado de cada zip; `pickUpdate`
+  ignora release sem `.sig` e o `stage()` só extrai se `verificaAssinatura` conferir.
+- **Nada é reassinado:** o zip do `ditto` preserva a assinatura "meu-bot local" (conferido); o `stage()` exige
+  `codesign --verify --deep --strict` e o mesmo designated requirement do app em execução. Assim o chaveiro
+  ("Safe Storage", cookies do Navegador) não pede senha a cada atualização.
+- **Volta sozinho:** a troca guarda cada anterior como `<app>.antigo` e grava `userData/update-pendente.json`.
+  A versão nova que fica 30 s de pé é confirmada (os `.antigo` saem); na 3ª abertura sem confirmar
+  (`decideRollback`), os `.antigo` voltam ao lugar e o app reabre na anterior.
+- **Staging calado:** os apps do canal staging não mostram a faixa "pronto para instalar"; a versão entra ao
+  fechar o app (Configurações › Sobre e atualização continua mostrando e oferecendo o botão). O estável mantém a
+  faixa e nunca reinicia sozinho.
+- **Backend da máquina se atualiza sozinho:** `backend-colima/VERSION` vai no app; o `install.sh` grava
+  `$DEST/VERSION` só depois de o backend responder. A sondagem lê `backendver` e `backendbusy` (`/health` agora
+  traz `ativos`, os chats em andamento) e `ensureBackendAtual` (`picker.ts`) reinstala para cima, só ocioso, antes
+  dos plugins (o do financeiro chama a API). Decisão pura em `precisaAtualizarBackend`.
+- **O release barra versão esquecida:** `componentesSemVersao` (`release-core.mjs`) compara com a última tag `v*`
+  cada componente de `COMPONENTES` (`src/main/backend-bundle-core.ts`, a mesma lista que o `hostProbe.ts` instala):
+  backend → `VERSION`; financeiro, CRM e guarda → o `package.json` do plugin. Mudou sem subir, sai com 64.
+
+**Fluxo de trabalho:** desenvolver e testar com `dist:staging`/`dist:finance-staging` (build local, versão do
+`package.json` sem sufixo, que vence o staging publicado) → `npm run release:staging` (os staging instalados se
+atualizam) → testar → `npm run release` no mesmo commit (os meu-bot dos usuários baixam, verificam e aplicam; na
+abertura seguinte o seletor atualiza backend e plugins das máquinas) → subir a versão base no `package.json`.
 
 ## Terminal na aba (16 out 2026)
 

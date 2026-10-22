@@ -23,3 +23,30 @@ export function recusaPromocao(versao, tagsNoHead) {
 
 /** Produtos que cada canal publica: staging = as linhas staging; estável = as estáveis (o admin inclusive). */
 export const produtosDoCanal = (produtos, canal) => produtos.filter((p) => p.canal === canal);
+
+/**
+ * Componentes que mudaram desde a última release sem subir a versão (as máquinas só atualizam para cima: sem a
+ * versão nova, a mudança nunca chega a elas). `componentes` vem de dist/main/backend-bundle-core.js (COMPONENTES);
+ * `mudancas` = caminhos do `git diff --name-only <tag>..HEAD`; `versoes[nome]` = {antes, agora} lidas do arquivo de
+ * versão nos dois pontos. Devolve uma linha por componente a corrigir (vazio = pode publicar).
+ */
+export function componentesSemVersao(componentes, mudancas, versoes) {
+  const mudou = new Set(mudancas.map((m) => m.trim()).filter(Boolean));
+  const out = [];
+  for (const c of componentes) {
+    const tocados = c.arquivos.filter((f) => mudou.has(f));
+    if (tocados.length === 0) continue;
+    const v = versoes[c.nome] ?? { antes: null, agora: null };
+    if (v.agora !== null && v.agora !== v.antes) continue;
+    out.push(`${c.nome}: mudou (${tocados.slice(0, 3).join(", ")}${tocados.length > 3 ? ` e mais ${tocados.length - 3}` : ""}) e a versão em ${c.versao} continua ${v.agora ?? "sem versão"}; suba a versão`);
+  }
+  return out;
+}
+
+/** Versão de um arquivo de versão: VERSION é texto puro; package.json, o campo `version`. null = ausente/ilegível. */
+export function lerVersao(caminho, conteudo) {
+  if (conteudo === null || conteudo === undefined) return null;
+  if (caminho.endsWith(".json")) { try { const v = JSON.parse(conteudo).version; return typeof v === "string" && v !== "" ? v : null; } catch { return null; } }
+  const t = String(conteudo).trim();
+  return t === "" ? null : t;
+}

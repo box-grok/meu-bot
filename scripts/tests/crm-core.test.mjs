@@ -1,5 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createRequire } from "node:module";
 const { parseCrmPatch, parseCrmInfo, parseStreakOut, setCrmSh, crmInfoSh, streakSh, motorEfetivo } = createRequire(import.meta.url)("../../dist/main/crm-core.js");
 
@@ -48,4 +52,33 @@ test("motor do CRM: patch aceita proprio/streak/null; a regra sem motor gravado 
   const info = parseCrmInfo('C={"motor":"proprio","streakKey":false,"configured":true}\nI=1');
   assert.equal(info.motor, "proprio"); assert.equal(info.streakKey, false);
   assert.match(streakSh("diag"), /c\.get\("motor"\)/, "a escolha do CLI na máquina olha o motor gravado");
+});
+
+test("streakSh: personalizado cru em vigor usa o CRM próprio; expiresAt no passado não", () => {
+  const py = streakSh("diag").match(/python3 -c '([\s\S]*)' 2>\/dev\/null/)?.[1];
+  assert.equal(typeof py, "string");
+  const decide = (lic, crm = {}) => {
+    const home = mkdtempSync(join(tmpdir(), "crm-sh-"));
+    const base = join(home, ".local", "share", "meu-bot");
+    mkdirSync(base, { recursive: true });
+    writeFileSync(join(base, "licenca.json"), JSON.stringify(lic));
+    writeFileSync(join(base, "crm.json"), JSON.stringify(crm));
+    try {
+      execFileSync("python3", ["-c", py], { env: { ...process.env, HOME: home }, stdio: "pipe" });
+      return "proprio";
+    } catch (e) {
+      assert.equal(e.status, 1, String(e.stderr ?? e.message));
+      return "streak";
+    } finally { rmSync(home, { recursive: true, force: true }); }
+  };
+  const chave = { apiKey: "abcdefghij1234567890" };
+  assert.equal(decide({ plan: "personalizado", status: "active" }, chave), "proprio");
+  assert.equal(decide({ plan: "pro", status: "active", produtos: ["meu-bot-crm"] }, chave), "proprio");
+  assert.equal(decide({ plan: "personalizado", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }, chave), "streak");
+  assert.equal(decide({ plan: "personalizado", status: "expired" }), "streak");
+  assert.equal(decide({ plan: "pro", status: "active" }), "proprio");
+  assert.equal(decide({ plan: "pro", status: "active" }, chave), "streak");
+  assert.equal(decide({ plan: "pro", status: "active", expiresAt: "2020-01-01T00:00:00.000Z" }), "streak");
+  assert.equal(decide({ plan: "free", status: "active", produtos: ["meu-bot-crm"] }), "streak");
+  assert.equal(decide({ plan: "pro", status: "active" }, { ...chave, motor: "streak" }), "streak");
 });

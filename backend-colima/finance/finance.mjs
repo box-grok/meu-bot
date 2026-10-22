@@ -16,6 +16,8 @@
  *   conta-editar <conta> [--nome "x"] [--tipo t] [--saldo V] [--padrao] [--fechar]
  *   categorias · categoria-criar --nome "x" [--grupo "g"] [--renda]
  *   mes <AAAA-MM> [--meta-direto V] [--meta-indireto V] [--meta-notas "conta"] [--orcamento V] [--renda-prevista V] [--dinheiro-informado sim|nao]   (orçamento = quanto gastar no mês; vale para os meses seguintes até mudar)
+ *   linhas · linha-criar --nome "x" --tipo custo|ganho-direto|ganho-indireto [--valor V|"a definir"] [--notas "…"]
+ *   linha-editar <chave> [--nome] [--tipo] [--valor V|"a definir"] [--notas] · linha-remover <chave>   (DRE prevista do mês)
  *   fechar-mes [--mes AAAA-MM]               (padrão: o mês anterior; recusa com pendências)
  */
 import fs from "node:fs";
@@ -48,7 +50,7 @@ async function main() {
       return out(await api("POST", "/lancamentos", {
         valor: precisa(opt.valor, "--valor"), favorecido: opt.favorecido ?? "", tipo: opt.tipo === "renda" ? "renda" : "gasto",
         ...(opt.categoria ? { categoria: opt.categoria } : {}), ...(opt.conta ? { conta: opt.conta } : {}), ...(opt.data ? { data: opt.data } : {}),
-        ...(opt.forma ? { formaPagamento: opt.forma } : {}), ...(opt.notas ? { notas: opt.notas } : {}),
+        ...(opt.forma ? { formaPagamento: opt.forma } : {}), ...(typeof opt.linha === "string" ? { linha: opt.linha } : {}), ...(opt.notas ? { notas: opt.notas } : {}),
         origem: midia ? "foto" : opt.origem ?? "agente", ...(opt.pendente ? { status: "pendente" } : {}), ...(opt.forcar ? { forcar: true } : {}), ...(midia ? { midia } : {}),
       }));
     }
@@ -64,7 +66,7 @@ async function main() {
     case "descartar": return out(await api("POST", `/lancamentos/${encodeURIComponent(precisa(pos[0], "o id do lançamento"))}/descartar`, {}));
     case "corrigir": {
       const id = precisa(pos[0], "o id do lançamento"); const b = {};
-      for (const k of ["valor", "favorecido", "categoria", "conta", "data", "notas"]) if (typeof opt[k] === "string") b[k] = opt[k];
+      for (const k of ["valor", "favorecido", "categoria", "conta", "data", "notas", "linha"]) if (typeof opt[k] === "string") b[k] = opt[k];
       if (Object.keys(b).length === 0) fail("nada para corrigir: use --valor, --favorecido, --categoria, --conta, --data ou --notas");
       return out(await api("PUT", `/lancamentos/${encodeURIComponent(id)}`, b));
     }
@@ -86,6 +88,10 @@ async function main() {
       if (opt["dinheiro-informado"] !== undefined) b.dinheiroInformado = sim(opt["dinheiro-informado"]);
       return out(await api("PUT", `/meses/${encodeURIComponent(ym)}`, b));
     }
+    case "linhas": return out(await api("GET", "/linhas"));
+    case "linha-criar": return out(await api("POST", "/linhas", { nome: precisa(opt.nome, "--nome"), tipo: precisa(opt.tipo, "--tipo (custo, ganho-direto ou ganho-indireto)"), ...(opt.valor !== undefined ? { valor: opt.valor === true ? null : opt.valor } : {}), ...(typeof opt.notas === "string" ? { notas: opt.notas } : {}) }));
+    case "linha-editar": { const k = precisa(pos[0], "a chave da linha (veja 'linhas')"); const b = {}; for (const x of ["nome", "tipo", "notas"]) if (typeof opt[x] === "string") b[x] = opt[x]; if (opt.valor !== undefined) b.valor = opt.valor === true ? null : opt.valor; return out(await api("PUT", `/linhas/${encodeURIComponent(k)}`, b)); }
+    case "linha-remover": return out(await api("POST", `/linhas/${encodeURIComponent(precisa(pos[0], "a chave da linha"))}/remover`, {}));
     case "fechar-mes": return out(await api("POST", "/fechamento", opt.mes ? { mes: opt.mes } : {}));
     default: fail(`comando desconhecido: ${cmd || "(nenhum)"}; veja o cabeçalho de finance.mjs`);
   }

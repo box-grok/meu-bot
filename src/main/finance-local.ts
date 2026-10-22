@@ -60,6 +60,11 @@ export async function financeComprovante(host: string, sha256: string): Promise<
     return `data:${tipo};base64,${base64}`;
   } catch { return null; }
 }
+export async function financeLinhaSalvar(host: string, l: { key?: string; nome: string; tipo: string; valor: string | null; notas?: string }): Promise<void> {
+  const corpo = { nome: l.nome, tipo: l.tipo, valor: l.valor, ...(l.notas !== undefined ? { notas: l.notas } : {}) };
+  if (l.key === undefined) await api(host, "POST", "/linhas", corpo); else await api(host, "PUT", `/linhas/${encodeURIComponent(l.key)}`, corpo);
+}
+export const financeLinhaRemover = async (host: string, key: string): Promise<void> => { await api(host, "POST", `/linhas/${encodeURIComponent(key)}/remover`, {}); };
 export const financeConfirmarTodas = (host: string): Promise<{ confirmados: number; restantes: number }> => api(host, "POST", "/pendencias/confirmar-todas", {});
 export const financeContaCriar = async (host: string, input: { nome: string; tipo?: string; saldoInicial?: string }): Promise<FinanceConta> => (await api<{ conta: FinanceConta }>(host, "POST", "/contas", input)).conta;
 export const financeMes = async (host: string, mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };

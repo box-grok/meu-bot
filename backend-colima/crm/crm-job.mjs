@@ -10,7 +10,8 @@
  *                                                     Google Contatos; completa crm/whatsapp-contatos.json)
  * Lê a conversa com `openclaw gateway call chat.history`, pede ao backend local do meu-bot (perfil "agente",
  * sessão crm:+N) que rode a CLI do CRM e devolva um bloco crm-json; manda o resumo ao dono pelo WhatsApp dele.
- * A CLI depende da licença (licenca.json): plano Pro em vigor (ou motor "proprio" gravado em crm.json) → crm.mjs
+ * A CLI depende da licença (licenca.json): plano Pro em vigor — a licença crua "personalizado" conta como Pro, pela
+ * mesma regra do backend, sem esperar o server.js regravar o arquivo — ou motor "proprio" gravado em crm.json → crm.mjs
  * (CRM próprio, nesta máquina); senão → streak.mjs (Streak pela API, com a chave em crm.json). Estado em crm/estado.json; log em crm/crm.log.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -18,8 +19,10 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { avisoSemPipeline, avisoDevido, buildPrompt, confirmIndex, lastTimestamp, mergeEstado, mesclarContatoWhatsapp, nomeDoHistorico, normalizePhone, ownerMessage, parseClassificacao, parseCrmJson, phoneOfSessionKey, promptClassificacao, recuperarDesde, threadFromHistory } from "./regras.mjs";
 import { backendEnv, crmApi } from "./backend.mjs";
+import { crmProprio as crmProprioDe, motorCrm as motorCrmDe } from "./licenca-crm.mjs";
 
 const HOME = os.homedir();
 const BASE = path.join(HOME, ".local", "share", "meu-bot");
@@ -30,29 +33,28 @@ const ESTADO = path.join(DIR, "estado.json");
 const LOG = path.join(DIR, "crm.log");
 const log = (line) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* cortesia */ } };
 const readJson = (f, dflt) => { try { const v = JSON.parse(fs.readFileSync(f, "utf8")); return v && typeof v === "object" ? v : dflt; } catch { return dflt; } };
-/** Plano Pro → CRM próprio (crm.mjs); plano gratuito → Streak (streak.mjs). Decidido na subida, pela licença. */
+/** Plano Pro em vigor, lendo o licenca.json cru (personalizado já conta; ver licenca-crm.mjs). */
 const licencaAtual = () => readJson(path.join(BASE, "licenca.json"), {});
-const emVigor = (l) => (l.status === "active" || l.status === "trialing") && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
-/** Plano Pro em vigor (a licença antiga, "personalizado", é migrada para Pro pelo backend). */
-export const crmProprio = (l = licencaAtual()) => l.plan === "pro" && emVigor(l);
-/**
- * Motor do CRM nesta máquina: `motor` gravado em crm.json ("proprio" | "streak"); sem ele, quem tem a chave do Streak
- * segue no Streak e o resto com Pro usa o CRM próprio. (Quem tinha o CRM contratado antes de 22 out ganhou o motor
- * "proprio" gravado na migração da licença, no server.js.)
- */
-export const motorCrm = (l = licencaAtual(), c = readJson(path.join(BASE, "crm.json"), {})) =>
-  c.motor === "proprio" || c.motor === "streak" ? c.motor : typeof c.apiKey === "string" && c.apiKey !== "" ? "streak" : crmProprio(l) ? "proprio" : "streak";
-const STREAK = path.join(DIR, motorCrm() === "proprio" ? "crm.mjs" : "streak.mjs");
+export const crmProprio = (l = licencaAtual(), now = Date.now()) => crmProprioDe(l, now);
+/** Motor do CRM nesta máquina. Sem motor gravado, a licença crua decide (licenca-crm.mjs). */
+export const motorCrm = (l = licencaAtual(), c = readJson(path.join(BASE, "crm.json"), {}), now = Date.now()) => motorCrmDe(l, c, now);
+let STREAK = path.join(DIR, "streak.mjs");
 const PATH_EXTRA = `${HOME}/.openclaw/bin:${HOME}/.local/bin:/opt/node/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
-fs.mkdirSync(DIR, { recursive: true });
 
 const writeJson = (f, v) => { const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); };
 const argv = process.argv.slice(2);
 const flag = (k) => argv.includes(`--${k}`);
 const optv = (k) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] !== undefined && !argv[i + 1].startsWith("--") ? argv[i + 1] : null; };
 
-const cfg = readJson(CONFIG, {});
-const estado = readJson(ESTADO, {});
+let cfg = {};
+let estado = {};
+/** IO só quando o arquivo é o programa (o teste importa `crmProprio`/`motorCrm` sem mexer na licença da máquina). */
+function boot() {
+  fs.mkdirSync(DIR, { recursive: true });
+  cfg = readJson(CONFIG, {});
+  estado = readJson(ESTADO, {});
+  STREAK = path.join(DIR, motorCrm() === "proprio" ? "crm.mjs" : "streak.mjs");
+}
 function ownerPhone() {
   if (typeof cfg.dono === "string" && cfg.dono !== "") return cfg.dono;
   const creds = readJson(path.join(HOME, ".openclaw", "credentials", "whatsapp", "default", "creds.json"), {});
@@ -251,7 +253,15 @@ function discardPending() {
   log(`${who}: propostas descartadas`); sendOwner("📇 CRM: proposta descartada.");
 }
 
-(async () => {
+const ranAsScript = (() => {
+  const entry = process.argv[1];
+  if (typeof entry !== "string" || entry === "") return false;
+  try { return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return path.resolve(entry) === path.resolve(fileURLToPath(import.meta.url)); }
+})();
+if (ranAsScript) {
+  boot();
+  (async () => {
   if (argv[0] === "transcricao") {
     const phone = normalizePhone(argv[1]); if (phone === null) { console.log(JSON.stringify({ erro: "uso: transcricao +N" })); process.exit(1); }
     const since = Number(optv("desde") ?? 0) || 0;
@@ -268,4 +278,5 @@ function discardPending() {
   if (flag("dono")) return withLock("dono", () => runForOwner(command ?? ""));
   const sessionKey = argv.find((a) => a.startsWith("agent:")); if (!sessionKey) { console.error("uso: crm-job.mjs <sessionKey> [--comando txt] | --dono --comando txt | --aplicar [n] | --descartar"); process.exit(2); }
   return withLock(phoneOfSessionKey(sessionKey) ?? sessionKey, () => runForContact(sessionKey, command));
-})().catch((e) => { log(`erro: ${e instanceof Error ? e.stack ?? e.message : String(e)}`); process.exit(1); });
+  })().catch((e) => { log(`erro: ${e instanceof Error ? e.stack ?? e.message : String(e)}`); process.exit(1); });
+}
