@@ -2547,6 +2547,10 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 - **Skill `subir-site-cloudflare`** (semente em `backend-colima/`, cartão no Acervo): projeto Pages, deploy com
   `npx wrangler@4`, domínio no projeto, CNAME com proxy, espera `active` e testa por `@1.1.1.1` + `curl --resolve`
   para não envenenar o cache de DNS negativo do computador (o Tailscale guardou o NXDOMAIN por ~30 min no teste).
+- **Chaveiro em staging (22 out):** `main.ts` passa `--use-mock-keychain` ao Chromium nas variantes `*-staging`: a
+  chave dos cookies (e do `safeStorage`) deixa de ficar no Keychain, então o rebuild não pede mais a senha do Mac. Na
+  troca, cookies do Navegador e blobs do `safeStorage` (Google, Tailscale) daquela variante ficam ilegíveis uma vez
+  (refazer o login). Produção continua no Keychain.
 - **Chaveiro a cada rebuild:** o item "<app> Safe Storage" guarda uma lista `partition_id` com o **cdhash** de cada
   build (certificado autoassinado não tem Team ID), então cada rebuild pede a senha de novo mesmo com "Permitir
   Sempre". A regra do certificado (`certificate leaf`) já é estável; só um certificado Apple (Team ID) resolve de vez.

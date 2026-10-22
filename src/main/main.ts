@@ -10,7 +10,7 @@ import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
-import { caps, produto, userDataName } from "./variant";
+import { appVariant, caps, produto, userDataName } from "./variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
@@ -22,6 +22,7 @@ import { installBrowserHooks } from "./browser";
 import { startTermApi } from "./term-api";
 import { getBackendPort } from "./settings";
 import { installAppMenu } from "./menu";
+import { changeWindowZoom } from "./zoom";
 import { clientPickerSource, initPicker, showPicker } from "./picker";
 import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
 import { initRelief, showRelief } from "./relief";
@@ -31,6 +32,12 @@ import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastF
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-crm…) nasce como cópia do meu-bot dela.
 { const ud = userDataName(); const de = produto().herdaDe; if (ud !== null) useVariantUserData(ud, caps().supportAdmin ? migrateAdminPessoas : de !== null ? herdarDe(de) : undefined); }
+
+// Staging (recompilado várias vezes por dia): o Chromium não guarda a chave dos cookies no Keychain. Com assinatura
+// própria (sem Team ID da Apple) cada build é "outro app" para o macOS e o pedido de senha voltava a cada rebuild,
+// mesmo com "Permitir Sempre". Produção segue no Keychain até haver certificado Apple. Custo em staging, uma vez na
+// troca: os logins do Navegador e o que o safeStorage guardou (Google, Tailscale) precisam ser refeitos.
+if (appVariant().endsWith("-staging")) app.commandLine.appendSwitch("use-mock-keychain");
 
 // Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
 if (!app.requestSingleInstanceLock()) {
@@ -63,6 +70,7 @@ app.whenReady().then(() => {
       const win = BrowserWindow.getFocusedWindow() ?? lastFocusedWindow();
       if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:toggle-settings", {});
     },
+    zoom: (action) => { changeWindowZoom(action); },
   });
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   initRelief();
