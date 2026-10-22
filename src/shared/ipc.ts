@@ -945,10 +945,12 @@ export interface MainEvents {
   "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number };
   /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
   "term:ask": { kind: "new" };
+  /** Controle local (term-api.ts): dividir a tela com uma página à direita, ou voltar à tela inteira. */
+  "ui:split": { alvo: "terminal"; id: string } | { alvo: "navegador" | "tutoriais" | "acervo" } | { alvo: "juntar" };
   /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
   "browser:donos": { donos: Record<number, DonoInfo> };
   /** Terminal: quem o está usando pelo controle local (term-api.ts) e o que fez por último; null = ninguém (só a pessoa). */
-  "term:dono": { id: string; dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou"; em: number }) | null };
+  "term:dono": { id: string; dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou" | "dividiu"; em: number }) | null };
   /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */
   "browser:agent": BrowserAgentState;
   /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */

@@ -6,6 +6,7 @@
  *
  * API (JSON): GET /terminais · POST /abrir {maquina?} (aba nova na janela da máquina) · POST /ler {id, linhas?}
  * · POST /digitar {id, texto, enter?} | {id, tecla}
+ * · POST /dividir {id} (terminal à direita) | {pagina: "navegador"|"tutoriais"|"acervo", maquina?} · POST /juntar {maquina?}
  * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (o mesmo do Navegador, nav-donos-core.ts) e aparece como selo no
  * terminal ("✳️ Claude Code (Mac) · digitou"), para a pessoa saber quem está mexendo.
  */
@@ -22,7 +23,8 @@ import { log } from "./backend";
 
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
 
-interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown }
+interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown }
+const PAGINAS = ["navegador", "tutoriais", "acervo"] as const;
 
 /** Janela da máquina pedida (ou a última focada que tenha máquina). */
 function janela(maquina: unknown): BrowserWindow {
@@ -47,7 +49,7 @@ const info = (t: { id: string; host: string; n: number }) => ({ id: t.id, maquin
 /** Pedido sem identidade: ainda é alguém neste Mac (o socket é 0600), só sem nome. */
 const SEM_ID: Dono = { id: "local:sem-id", rotulo: "controle local (sem identificação)", origem: "claude-code" };
 /** Selo no terminal: quem usou por último e o quê. */
-function marcar(s: { id: string; winId: number }, dono: Dono, acao: "abriu" | "leu" | "digitou"): void {
+function marcar(s: { id: string; winId: number }, dono: Dono, acao: "abriu" | "leu" | "digitou" | "dividiu"): void {
   const w = BrowserWindow.fromId(s.winId);
   if (w !== null && !w.isDestroyed()) w.webContents.send("term:dono", { id: s.id, dono: { ...dono, acao, em: Date.now() } });
 }
@@ -79,6 +81,21 @@ async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
       marcar(s, dono, "digitou");
       return { ok: true };
     }
+    case "/dividir": {
+      if (typeof b.id === "string") {
+        const s = sessao(b.id);
+        const w = BrowserWindow.fromId(s.winId);
+        if (w === null || w.isDestroyed()) throw new Error("a janela desse terminal fechou");
+        w.webContents.send("ui:split", { alvo: "terminal", id: s.id });
+        marcar(s, dono, "dividiu");
+        return { ok: true, direita: `terminal ${s.id}` };
+      }
+      const pagina = PAGINAS.find((x) => x === b.pagina);
+      if (pagina === undefined) throw new Error(`diga o terminal (id) ou a página: ${PAGINAS.join(", ")}`);
+      janela(b.maquina).webContents.send("ui:split", { alvo: pagina });
+      return { ok: true, direita: pagina };
+    }
+    case "/juntar": { janela(b.maquina).webContents.send("ui:split", { alvo: "juntar" }); return { ok: true }; }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });
   }
 }
@@ -106,7 +123,7 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
   const dono = parseDono(req.headers["x-meu-bot-dono"]) ?? SEM_ID;
   try {
     send(200, await act(route, body, dono));
-    if (route === "/abrir" || route === "/digitar") log(`[terminal] controle (${dono.origem}: ${dono.id}): ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
+    if (route !== "/terminais" && route !== "/ler") log(`[terminal] controle (${dono.origem}: ${dono.id}): ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
   } catch (e) {
     const st = (e as { status?: number }).status ?? 400;
     send(st, { erro: e instanceof Error ? e.message : String(e) });

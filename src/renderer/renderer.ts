@@ -6097,7 +6097,7 @@ interface TermTab {
   n: number;
   resizeTimer: number | null;
   /** Quem usou este terminal pelo controle local por último (term-api.ts); some depois de TERM_DONO_MS. */
-  dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou"; em: number }) | null;
+  dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou" | "dividiu"; em: number }) | null;
   donoTimer: number | null;
 }
 const terminals = new Map<string, TermTab>();
@@ -6347,6 +6347,14 @@ window.meuBot.on("term:exit", ({ id, code, detail }) => {
   for (const t of terminals.values()) if (t.id === id) { t.exited = { code, detail }; paintTermHead(t); paintTerminalCount(); return; }
 });
 window.meuBot.on("term:ask", () => { void openTerminalTab("new"); });
+// Controle local pedindo a tela dividida: a página vai para a direita, como arrastar a aba.
+window.meuBot.on("ui:split", (msg) => {
+  if (msg.alvo === "juntar") { splitOff(); return; }
+  if (msg.alvo === "terminal") { const t = [...terminals.values()].find((x) => x.id === msg.id); if (t !== undefined) { splitOn(t.page); focusSplit(); } return; }
+  if (msg.alvo === "navegador") { void openNavTab(undefined, false).then(() => { if (navPage !== null) splitOn(navPage); }); return; }
+  const page = msg.alvo === "tutoriais" ? tutoriaisPage : acervoPage;
+  openPage(page, false); splitOn(page);
+});
 // Clique foca o último terminal; Option+clique (ou o "+" na aba) abre mais um.
 $<HTMLButtonElement>("terminal-line").addEventListener("click", (ev) => { void openTerminalTab(ev.altKey ? "new" : "focus"); });
 
