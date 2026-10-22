@@ -412,6 +412,7 @@ function afterTabGone(id: string): void {
   const last = [...tabs.keys()].at(-1);
   if (last !== undefined) { activate(last); return; }
   activeId = null;
+  if (semConversaNaDivisao()) return;
   inputEl.value = "";
   syncComposer();
   renderSidebar();
@@ -1579,9 +1580,22 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
 }
 /** Mais uma coluna, vazia (a cobrinha), à espera da próxima página clicada. */
 function splitColunaVazia(): void { splitOn(novaVazia()); }
-/** A página de uma coluna fechou: a coluna fica vazia no lugar (a divisão continua). */
+/**
+ * A cobrinha só fica ao lado de algo de verdade. Fechou a última conversa com a tela dividida: as vazias somem e a
+ * divisão acaba; a página da coluna alvo (senão a última) fica na frente, em tela cheia. Devolve se agiu.
+ */
+function semConversaNaDivisao(): boolean {
+  if (!splitOnAny()) return false;
+  const alvo = alvoAtual();
+  const frente = alvo !== null && !ehVazia(alvo) ? alvo : splitPages.filter((p) => !ehVazia(p)).at(-1) ?? null;
+  splitOff(false);
+  if (frente !== null) activatePage(frente); else { syncComposer(); renderSidebar(); syncRest(); }
+  return true;
+}
+/** A página de uma coluna fechou: vira coluna vazia se ainda há outra página de verdade ao lado; senão a divisão acaba. */
 function vaziaNoLugar(page: PageTab): void {
   const i = splitPages.indexOf(page); if (i < 0) return;
+  if (!splitPages.some((p) => p !== page && !ehVazia(p))) { splitOff(false); return; }
   const v = novaVazia();
   splitPages = splitPages.map((p) => (p === page ? v : p));
   unpin(page);

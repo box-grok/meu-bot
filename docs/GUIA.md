@@ -2500,7 +2500,10 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   última coluna. Preferência `{pageIds, ratio}` (aceita o antigo `{pageId}`). Controle local: `/dividir` acrescenta,
   `/juntar {id|pagina}` tira uma, `/juntar {}` tira todas.
 - **Coluna vazia (a cobrinha):** página `vazia-N` sem aba, com a cobrinha da tela vazia (`mountSnake`), uma dica e ×.
-  Fechar a página de uma coluna deixa uma vazia no lugar (`vaziaNoLugar`) em vez de desfazer a divisão. A próxima
+  A cobrinha só fica ao lado de algo de verdade: fechar a página de uma coluna deixa uma vazia no lugar
+  (`vaziaNoLugar`) só se outra página de verdade continua ao lado (senão a divisão acaba); fechar a última conversa
+  com a tela dividida (`semConversaNaDivisao`, em `afterTabGone`) tira as vazias, acaba a divisão e põe a página da
+  coluna alvo em tela cheia (sem página nenhuma, fica a cobrinha da tela vazia). A próxima
   página aberta com a tela dividida (aba, lateral, paleta, controle local) entra na **coluna alvo** (`alvoAtual`: a
   primeira vazia, senão a última clicada, marcada com um fio no topo). Paleta "Nova coluna vazia";
   `/dividir {pagina:"vazia"}`. As vazias não entram na preferência lembrada.
