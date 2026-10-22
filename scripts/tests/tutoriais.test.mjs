@@ -293,3 +293,16 @@ test("tutorial 10 (CRM no Gmail): passo do primeiro pipeline antes do teste; con
   // Com padrão (agente-box): concluído.
   assert.equal(guideView(t10, null, feito, comLocal({ pipelines: [{ key: "p_a", name: "A", boxes: 3 }], padrao: "p_a" })).finished, true);
 });
+
+test("passos que são fatos (abriu um site, viu o Gmail, o agente respondeu no grupo) ficam lembrados: a janela carregando não reabre o tutorial", () => {
+  const t9 = byId("navegador");
+  const abrir = t9.steps.find((s) => s.id === "abrir");
+  assert.equal(abrir.lembrar, true);
+  const ctx = (tabs) => ({ ...emptyContext(), navegador: { ...emptyContext().navegador, access: "ok", installed: true, tabs } });
+  const f = { ...emptyFlags(), navAgentUsed: true };
+  // Ainda sem abas nesta janela (o Navegador está restaurando): sem a lembrança, o tutorial voltava a "falta fazer".
+  assert.equal(guideView(t9, null, f, ctx(0)).current, 2);
+  assert.equal(guideView(t9, null, { ...f, feitos: ["abrir"] }, ctx(0)).finished, true);
+  assert.equal(guideView(t9, null, f, ctx(2)).finished, true);
+  for (const [tut, passo] of [["crm-gmail", "gmail"], ["statusline", "limites"], ["whatsapp-grupos", "teste"]]) assert.equal(byId(tut).steps.find((s) => s.id === passo).lembrar, true, `${tut}/${passo}`);
+});

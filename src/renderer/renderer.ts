@@ -1807,7 +1807,19 @@ function reportProgress(): void {
   }, 3000);
 }
 
+/** Passos `lembrar` concluídos agora pelo estado real ficam gravados (o tutorial não volta a "falta fazer" depois). */
+function lembrarFeitos(): void {
+  const c = guideCtx();
+  for (const t of TUTORIAIS) {
+    const novos = t.steps.filter((s) => s.lembrar === true && s.done(waStatus, loadGuideFlags(t), c)).map((s) => s.id);
+    if (novos.length === 0) continue;
+    const f = loadGuideFlags(t); const antes = f.feitos ?? [];
+    if (novos.every((id) => antes.includes(id))) continue;
+    try { localStorage.setItem(guideFlagsKey(t), JSON.stringify({ ...f, feitos: [...new Set([...antes, ...novos])] })); } catch { /* opcional */ }
+  }
+}
 function paintGuide(): void {
+  lembrarFeitos();
   reportProgress();
   paintTutCount();
   for (const { tutorial } of guidePages.values()) reconcileGuideFlags(tutorial);
@@ -2996,6 +3008,9 @@ function refreshWaGroups(): Promise<void> {
 }
 /** Grupos mudaram: páginas abertas, lista e guia acompanham. */
 function afterWaGroups(): void {
+  // O agente já respondeu no grupo do tutorial 12: é um fato que não se desfaz (limpar o grupo não reabre o tutorial).
+  const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+  if (TUT_GRUPOS !== null && alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) && !loadGuideFlags(TUT_GRUPOS).gruposTested) saveGuideFlag(TUT_GRUPOS, "gruposTested");
   for (const g of waGroupPages.values()) {
     const x = waGroups?.grupos.find((y) => y.jid === g.grupo.jid);
     if (x !== undefined) g.grupo = x;
@@ -3117,7 +3132,7 @@ function refreshWaGroupThread(g: WaGroupPage): Promise<void> {
 function noteGroupReplied(jid: string, msgs: readonly WhatsappThreadMessage[]): void {
   const yes = msgs.some((m) => m.role === "agent");
   waGroupCheckedAt.set(jid, Date.now());
-  if (waGroupReplied.get(jid) !== yes) { waGroupReplied.set(jid, yes); paintGuide(); }
+  if (waGroupReplied.get(jid) !== yes) { waGroupReplied.set(jid, yes); if (yes && TUT_GRUPOS !== null && grupoAlvo(waGroups, loadGrupoAlvo())?.jid === jid && !loadGuideFlags(TUT_GRUPOS).gruposTested) saveGuideFlag(TUT_GRUPOS, "gruposTested"); paintGuide(); }
 }
 /** Passo "Testar" do tutorial 12: relê a conversa do grupo (no máximo a cada 8 s) até aparecer a resposta do agente. */
 function checkGroupReplied(jid: string): void {
@@ -4269,7 +4284,7 @@ const guideCtx = (): GuideContext => ({
   notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState, local: crmLocalState },
-  grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && waGroupReplied.get(alvo.jid) === true }; })(),
+  grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) }; })(),
   produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".

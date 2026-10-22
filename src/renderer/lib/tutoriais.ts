@@ -127,7 +127,7 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; number: string | null }
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
 export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
@@ -147,7 +147,15 @@ export interface GuideStep {
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
   manual?: { label: string; flag: GuideFlagName };
+  /**
+   * Fato que não se desfaz ("abriu um site", "viu os limites"): concluído uma vez, fica concluído (flags.feitos). Sem
+   * isso, o estado de agora (abas abertas, resposta recente) faz o tutorial ir e voltar enquanto a janela carrega.
+   */
+  lembrar?: true;
 }
+/** O passo está concluído: pelo estado real ou, se for um fato `lembrar`, porque já foi visto concluído. */
+export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext): boolean =>
+  s.done(status, flags, ctx) || (s.lembrar === true && (flags.feitos ?? []).includes(s.id));
 
 export interface Tutorial {
   /** Identificador estável (kebab-case). */
@@ -302,7 +310,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
         manual: { label: "Apareceu certo", flag: "statusTested" },
       },
       {
-        id: "limites", title: "Ver os limites na conversa", target: "chat",
+        id: "limites", title: "Ver os limites na conversa", target: "chat", lembrar: true,
         text: "Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal, os limites da sua conta do Claude nesta máquina.",
         done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
       },
@@ -468,7 +476,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.installed === true,
       },
       {
-        id: "abrir", title: "Abrir o Navegador e entrar num site", target: "none", body: "navegador-open",
+        id: "abrir", title: "Abrir o Navegador e entrar num site", target: "none", body: "navegador-open", lembrar: true,
         text: "Abra a aba Navegador, digite um endereço e navegue. Cookies e logins ficam guardados só nesta máquina; \"abrir no Mac\" leva a página para o seu navegador de sempre. ☆ guarda a página na barra de favoritos (Cmd+Shift+F mostra ou esconde a barra); o agente também pode favoritar um link para você.",
         done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
       },
@@ -497,7 +505,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
       },
       {
-        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail",
+        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail", lembrar: true,
         text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
         done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
       },
@@ -617,7 +625,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => (grupoAlvo(c.grupos.info, c.grupos.alvo)?.agente ?? "desligado") !== "desligado",
       },
       {
-        id: "teste", title: "Testar no grupo", target: "none", body: "grupos-teste",
+        id: "teste", title: "Testar no grupo", target: "none", body: "grupos-teste", lembrar: true,
         text: "De um número da lista, mande no grupo: \"@agente oi\" (mencione o número do agente ou responda a uma mensagem dele). O passo se marca sozinho quando a resposta aparecer.",
         done: (_st, f, c) => c.grupos.respondeu || f.gruposTested,
         manual: { label: "Testei, funcionou", flag: "gruposTested" },
@@ -694,7 +702,7 @@ export function parseTutMemory(json: string | null): Record<string, boolean> {
 export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext = emptyContext()): GuideView {
   const done: boolean[] = [];
   let chain = true;
-  for (const s of t.steps) { chain = chain && s.done(status, flags, ctx); done.push(chain); }
+  for (const s of t.steps) { chain = chain && passoFeito(s, status, flags, ctx); done.push(chain); }
   const current = done.indexOf(false);
   return { done, current, finished: current === -1 };
 }

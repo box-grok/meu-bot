@@ -775,7 +775,16 @@ try:
             m = glob.glob(os.path.expanduser("~/.claude/projects/*/" + cli + ".jsonl"))
             if m:
                 j = "~" + m[0][len(os.path.expanduser("~")):]
-        out[k] = {"sessionId": d.get("sessionId"), "jsonl": j, "subject": d.get("subject"), "updatedAt": d.get("updatedAt")}
+        resp = False
+        for (ev,) in c.execute("select event_json from transcript_events where session_id=? and event_json is not null order by seq desc limit 200", (d.get("sessionId") or "",)):
+            try:
+                m = (json.loads(ev) or {}).get("message") or {}
+            except Exception:
+                continue
+            if m.get("role") == "assistant" and m.get("stopReason") != "tool_use":
+                resp = True
+                break
+        out[k] = {"sessionId": d.get("sessionId"), "jsonl": j, "subject": d.get("subject"), "updatedAt": d.get("updatedAt"), "respondeu": resp}
 except Exception:
     pass
 print(json.dumps(out))

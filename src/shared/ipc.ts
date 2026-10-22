@@ -566,6 +566,8 @@ export interface WhatsappGroup {
   sessionId: string | null;
   /** Transcrição do Claude Code desta sessão na máquina (~/.claude/projects/…/<id>.jsonl), se achada. */
   transcript: string | null;
+  /** O agente já respondeu neste grupo (sessão atual, pelo banco do OpenClaw): tutorial 12, passo "Testar". */
+  agenteRespondeu: boolean;
   updatedAt: string | null;
 }
 /** Grupos da máquina e quem aciona o agente neles (groupAllowFrom vale para TODOS os grupos ligados). */

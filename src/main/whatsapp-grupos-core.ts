@@ -73,7 +73,7 @@ export function quemAcionaDe(wa: Record<string, unknown>): { quem: string[] | "t
  * mesmo sem conversa). Ordem: com agente ligado primeiro, depois pela conversa mais recente, depois pelo nome.
  */
 /** Sessões de grupo lidas do banco do OpenClaw (só leitura): chave → UUID, transcrição do Claude Code, assunto e hora. */
-export interface SessaoDoBanco { sessionId?: unknown; jsonl?: unknown; subject?: unknown; updatedAt?: unknown }
+export interface SessaoDoBanco { sessionId?: unknown; jsonl?: unknown; subject?: unknown; updatedAt?: unknown; respondeu?: unknown }
 const UUID_RE = /^[A-Za-z0-9-]{8,80}$/;
 const JSONL_RE = /^~\/\.claude\/projects\/[A-Za-z0-9._-]+\/[A-Za-z0-9-]{8,80}\.jsonl$/;
 
@@ -83,7 +83,7 @@ export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown
   const byJid = new Map<string, WhatsappGroup>();
   const get = (jid: string): WhatsappGroup => {
     let g = byJid.get(jid);
-    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null }; byJid.set(jid, g); }
+    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false }; byJid.set(jid, g); }
     return g;
   };
   for (const e of c.grupos) { const g = get(e.jid); g.nome = e.nome || null; g.membros = e.membros; g.participantes = e.participantes; }
@@ -110,6 +110,7 @@ export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown
       g.sessionKey = key;
       if (typeof b.sessionId === "string" && UUID_RE.test(b.sessionId)) g.sessionId = b.sessionId;
       if (typeof b.jsonl === "string" && JSONL_RE.test(b.jsonl)) g.transcript = b.jsonl;
+      if (b.respondeu === true) g.agenteRespondeu = true;
       if (g.updatedAt === null && updated > 0) g.updatedAt = new Date(updated).toISOString();
     }
     if (g.nome === null && typeof b.subject === "string" && b.subject !== "") g.nome = b.subject;
