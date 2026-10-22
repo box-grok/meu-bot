@@ -933,3 +933,8 @@ body.topbar-hidden .topbar { display: none; }
 .nav-tab-id.dono.claude-code { color: #d97757; border-color: #d97757; }
 .term-head .nav-tab-id { margin-left: 6px; }
 .tab-page .nav-tab-id { margin-left: 4px; font-size: 9px; }
+/* Coluna vazia da tela dividida: a cobrinha no espaço reservado; a coluna alvo ganha um fio no topo. */
+.split-vazia-dica { position: absolute; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 12px; color: var(--muted); pointer-events: none; }
+.split-vazia-x { position: absolute; top: 8px; right: 8px; font: inherit; font-size: 16px; line-height: 1; padding: 2px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--muted); cursor: pointer; }
+.split-vazia-x:hover { color: var(--fg); border-color: var(--fg); }
+.split-col.alvo::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--accent); z-index: 5; pointer-events: none; }

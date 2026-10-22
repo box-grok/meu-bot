@@ -946,7 +946,7 @@ export interface MainEvents {
   /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
   "term:ask": { kind: "new" };
   /** Controle local (term-api.ts): mais uma coluna com a página à direita; juntar tira uma (id/pagina) ou todas. */
-  "ui:split": { alvo: "terminal"; id: string } | { alvo: "navegador" | "tutoriais" | "acervo" } | { alvo: "juntar"; id?: string; pagina?: "navegador" | "tutoriais" | "acervo" };
+  "ui:split": { alvo: "terminal"; id: string } | { alvo: "navegador" | "tutoriais" | "acervo" | "vazia" } | { alvo: "juntar"; id?: string; pagina?: "navegador" | "tutoriais" | "acervo" };
   /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
   "browser:donos": { donos: Record<number, DonoInfo> };
   /** Terminal: quem o está usando pelo controle local (term-api.ts) e o que fez por último; null = ninguém (só a pessoa). */

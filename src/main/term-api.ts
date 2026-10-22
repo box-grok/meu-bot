@@ -6,7 +6,7 @@
  *
  * API (JSON): GET /terminais · POST /abrir {maquina?} (aba nova na janela da máquina) · POST /ler {id, linhas?}
  * · POST /digitar {id, texto, enter?} | {id, tecla}
- * · POST /dividir {id} | {pagina: "navegador"|"tutoriais"|"acervo", maquina?}: mais uma coluna à direita (quantas a
+ * · POST /dividir {id} | {pagina: "navegador"|"tutoriais"|"acervo"|"vazia", maquina?}: mais uma coluna à direita (quantas a
  *   largura da janela comportar) · POST /juntar {id?|pagina?, maquina?}: tira essa coluna, ou todas
  * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (o mesmo do Navegador, nav-donos-core.ts) e aparece como selo no
  * terminal ("✳️ Claude Code (Mac) · digitou"), para a pessoa saber quem está mexendo.
@@ -25,7 +25,7 @@ import { log } from "./backend";
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
 
 interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown }
-const PAGINAS = ["navegador", "tutoriais", "acervo"] as const;
+const PAGINAS = ["navegador", "tutoriais", "acervo", "vazia"] as const;
 
 /** Janela da máquina pedida (ou a última focada que tenha máquina). */
 function janela(maquina: unknown): BrowserWindow {
@@ -103,7 +103,7 @@ async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
         return { ok: true };
       }
       const pagina = PAGINAS.find((x) => x === b.pagina);
-      janela(b.maquina).webContents.send("ui:split", pagina === undefined ? { alvo: "juntar" } : { alvo: "juntar", pagina });
+      janela(b.maquina).webContents.send("ui:split", pagina === undefined || pagina === "vazia" ? { alvo: "juntar" } : { alvo: "juntar", pagina });
       return { ok: true };
     }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });

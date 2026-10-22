@@ -671,6 +671,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
+  add({ id: "a:split-vazia", kind: "action", label: "Nova coluna vazia", detail: "a próxima página que você abrir entra nela", keywords: ["coluna", "dividir", "vazia", "split", "tela"] }, () => splitColunaVazia());
   add({ id: "a:split", kind: "action", label: splitLabel(splitPages.at(-1)?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
   if (navPage !== null && navAccess === "ok") add({ id: "a:favs", kind: "action", label: navFavsShown ? "Navegador: esconder a barra de favoritos" : "Navegador: mostrar a barra de favoritos", detail: "Cmd+Shift+F", keywords: ["favoritos", "barra", "bookmarks", "navegador"] }, () => toggleFavsBar());
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
@@ -1445,7 +1446,7 @@ function openPage(page: PageTab, activateIt = true): void {
 
 function closePage(page: PageTab): void {
   if (page.tabEl === null) return;
-  if (splitPages.includes(page)) splitOff(false, page);
+  if (splitPages.includes(page)) vaziaNoLugar(page);
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
   if (page.id.startsWith("term-")) disposeTerminal(page.id);
   if (page.id === "navegador") { navMarcarAberto(false); disposeNav(); }
@@ -1471,6 +1472,39 @@ const splitPanelEl = $<HTMLElement>("split-panel");
 const splitHandle = $<HTMLElement>("split-handle");
 /** Páginas fixadas à direita, em colunas (da esquerda para a direita). Quantas aparecem depende da largura. */
 let splitPages: PageTab[] = [];
+/** Coluna onde abre a próxima página clicada (a vazia, senão a última em que a pessoa clicou). */
+let splitAlvo: PageTab | null = null;
+/**
+ * Coluna vazia: a cobrinha da tela vazia num espaço reservado. Clicar numa página (aba, lateral, paleta) com a tela
+ * dividida abre ali; fechar a página de uma coluna deixa a coluna vazia em vez de desfazer a divisão.
+ */
+let vaziaSeq = 0;
+const vazias = new Map<string, { stop(): void; start(): void }>();
+const ehVazia = (p: PageTab | null | undefined): boolean => p?.id.startsWith("vazia-") === true;
+function novaVazia(): PageTab {
+  const id = `vazia-${++vaziaSeq}`;
+  const panel = el("section", "rest split-vazia"); panel.hidden = true;
+  const canvas = document.createElement("canvas"); canvas.className = "rest-canvas";
+  const dica = el("div", "split-vazia-dica", "Clique numa aba, no Terminal ou no Navegador: abre aqui");
+  const x = el("button", "split-vazia-x", "×"); x.type = "button"; x.title = "Tirar esta coluna";
+  panel.append(canvas, dica, x);
+  const jogo = mountSnake(canvas);
+  vazias.set(id, jogo);
+  const page = definePage(id, "Coluna vazia", panel, () => { jogo.start(); });
+  x.addEventListener("click", () => { splitOff(false, page); });
+  return page;
+}
+function largarVazia(page: PageTab): void {
+  vazias.get(page.id)?.stop(); vazias.delete(page.id);
+  splitCols.get(page.id)?.remove(); splitCols.delete(page.id);
+  page.panel.remove(); pages.delete(page.id);
+}
+/** Para onde vai a próxima página: a primeira coluna vazia, senão a escolhida, senão a última. */
+const alvoAtual = (): PageTab | null => splitPages.find(ehVazia) ?? (splitAlvo !== null && splitPages.includes(splitAlvo) ? splitAlvo : splitPages.at(-1) ?? null);
+function pintarAlvo(): void {
+  const alvo = splitPages.length > 1 ? alvoAtual() : null;
+  for (const p of splitPages) splitCols.get(p.id)?.classList.toggle("alvo", p === alvo);
+}
 let splitRatio = 0.55;
 const splitCols = new Map<string, HTMLElement>();
 const splitKey = (): string => `split:${windowHost}`;
@@ -1478,7 +1512,8 @@ const splitOnAny = (): boolean => splitPages.length > 0;
 /** A página está à vista (na frente ou fixada ao lado)? Quem repinta por `pageActive === page` usa isto. */
 const pageShown = (page: PageTab | null): boolean => page !== null && (pageActive === page || splitPages.includes(page));
 function saveSplit(): void {
-  try { if (!splitOnAny()) localStorage.removeItem(splitKey()); else localStorage.setItem(splitKey(), JSON.stringify({ pageIds: splitPrefPageIds(splitPages.map((p) => p.id)), ratio: splitRatio })); } catch { /* opcional */ }
+  const ids = splitPages.filter((p) => !ehVazia(p)).map((p) => p.id);
+  try { if (ids.length === 0) localStorage.removeItem(splitKey()); else localStorage.setItem(splitKey(), JSON.stringify({ pageIds: splitPrefPageIds(ids), ratio: splitRatio })); } catch { /* opcional */ }
 }
 /** Colunas que cabem nesta largura; as outras ficam escondidas (continuam fixadas e voltam quando couber). */
 const splitVisiveis = (): number => Math.min(splitPages.length, maxColunas(contentEl.clientWidth));
@@ -1495,27 +1530,37 @@ function layoutSplit(): void {
   for (const [id, col] of splitCols) if (!splitPages.some((p) => p.id === id)) { col.remove(); splitCols.delete(id); }
   for (const p of splitPages) {
     let col = splitCols.get(p.id);
-    if (col === undefined) { col = el("div", "split-col"); splitCols.set(p.id, col); }
+    if (col === undefined) {
+      col = el("div", "split-col"); splitCols.set(p.id, col);
+      // Clicar numa coluna faz dela o lugar da próxima página (captura: webview e xterm não engolem).
+      col.addEventListener("pointerdown", () => { splitAlvo = p; pintarAlvo(); }, true);
+    }
     if (p.panel.parentElement !== col) col.append(p.panel);
     splitPanelEl.append(col); // na ordem
   }
   contentEl.classList.toggle("split", splitOnAny());
   if (!splitOnAny()) contentEl.classList.remove("split-collapsed");
   applySplitRatio();
+  pintarAlvo();
 }
 function unpin(page: PageTab): void {
+  if (splitAlvo === page) splitAlvo = null;
+  if (ehVazia(page)) { largarVazia(page); return; }
   page.panel.hidden = true;
   panelsEl.append(page.panel);
   page.tabEl?.classList.remove("split", "active");
 }
 /**
  * Fixa a página ao lado da conversa. `modo`: "coluna" acrescenta uma coluna (substitui a última se não couber mais);
- * "trocar" põe no lugar da última (clicar numa aba com a tela dividida).
+ * "trocar" põe no lugar da coluna alvo (a vazia, senão a última clicada): clicar numa aba com a tela dividida.
  */
 function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   if (splitPages.includes(page)) { focusSplit(page); return; }
   const max = maxColunas(contentEl.clientWidth);
-  const ids = modo === "trocar" && splitPages.length > 0 ? [...splitPages.slice(0, -1).map((p) => p.id), page.id] : splitAdd(splitPages.map((p) => p.id), page.id, Math.max(max, 1));
+  const alvo = alvoAtual();
+  // Acrescentar com uma coluna vazia aberta também ocupa a vazia (ela existe para isso).
+  const ocupar = alvo !== null && (modo === "trocar" || ehVazia(alvo));
+  const ids = ocupar ? splitPages.map((p) => (p === alvo ? page.id : p.id)) : splitAdd(splitPages.map((p) => p.id), page.id, Math.max(max, 1));
   for (const old of splitPages) if (!ids.includes(old.id)) unpin(old);
   if (pageActive === page) deactivatePage();
   else if (pageActive !== null) deactivatePage();
@@ -1526,8 +1571,24 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   page.panel.hidden = false;
   page.tabEl?.classList.add("split");
   page.render();
+  if (ocupar) splitAlvo = page;
+  pintarAlvo();
+  if (!ehVazia(page)) focusSplit(page);
   saveSplit();
   syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
+}
+/** Mais uma coluna, vazia (a cobrinha), à espera da próxima página clicada. */
+function splitColunaVazia(): void { splitOn(novaVazia()); }
+/** A página de uma coluna fechou: a coluna fica vazia no lugar (a divisão continua). */
+function vaziaNoLugar(page: PageTab): void {
+  const i = splitPages.indexOf(page); if (i < 0) return;
+  const v = novaVazia();
+  splitPages = splitPages.map((p) => (p === page ? v : p));
+  unpin(page);
+  layoutSplit();
+  v.panel.hidden = false; v.render();
+  splitAlvo = v; pintarAlvo();
+  saveSplit();
 }
 /** Tira uma página das colunas (ou todas, sem argumento); ela volta a ser uma aba comum. */
 function splitOff(keepPref = false, page?: PageTab): void {
@@ -6394,6 +6455,7 @@ window.meuBot.on("ui:split", (msg) => {
     splitOff(false, page); return;
   }
   if (msg.alvo === "terminal") { const t = [...terminals.values()].find((x) => x.id === msg.id); if (t !== undefined) splitOn(t.page); return; }
+  if (msg.alvo === "vazia") { splitColunaVazia(); return; }
   if (msg.alvo === "navegador") { void openNavTab(undefined, false).then(() => { if (navPage !== null) splitOn(navPage); }); return; }
   const page = msg.alvo === "tutoriais" ? tutoriaisPage : acervoPage;
   openPage(page, false); splitOn(page);
