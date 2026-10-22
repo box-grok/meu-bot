@@ -36,12 +36,15 @@ const emVigor = (l) => (l.status === "active" || l.status === "trialing") && !(t
 const naoVencida = (l) => l.status !== "expired" && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
 /** Plano Pro ou superior em vigor, ou o produto meu-bot-crm contratado (acumulado por cima do plano). */
 export const crmProprio = (l = licencaAtual()) => ((l.plan === "pro" || l.plan === "personalizado") && emVigor(l)) || (Array.isArray(l.produtos) && l.produtos.includes("meu-bot-crm") && naoVencida(l));
+/** Regra de antes da fusão: o produto meu-bot-crm contratado ou o plano personalizado já davam o CRM próprio. */
+const crmContratado = (l) => (Array.isArray(l.produtos) && l.produtos.includes("meu-bot-crm") && naoVencida(l)) || (l.plan === "personalizado" && emVigor(l));
 /**
- * Motor do CRM nesta máquina: `motor` gravado em crm.json ("proprio" | "streak"); sem ele, quem tem a chave do Streak
- * fica no Streak (nada muda em silêncio para quem já o usa), senão Pro/produto → CRM próprio, senão Streak.
+ * Motor do CRM nesta máquina: `motor` gravado em crm.json ("proprio" | "streak"); sem ele, nada muda em silêncio para
+ * quem já estava num dos dois: quem tinha o CRM contratado segue no próprio, quem tem a chave do Streak segue no Streak;
+ * só o resto (Pro sem Streak) passa a usar o CRM próprio.
  */
 export const motorCrm = (l = licencaAtual(), c = readJson(path.join(BASE, "crm.json"), {})) =>
-  c.motor === "proprio" || c.motor === "streak" ? c.motor : typeof c.apiKey === "string" && c.apiKey !== "" ? "streak" : crmProprio(l) ? "proprio" : "streak";
+  c.motor === "proprio" || c.motor === "streak" ? c.motor : crmContratado(l) ? "proprio" : typeof c.apiKey === "string" && c.apiKey !== "" ? "streak" : crmProprio(l) ? "proprio" : "streak";
 const STREAK = path.join(DIR, motorCrm() === "proprio" ? "crm.mjs" : "streak.mjs");
 const PATH_EXTRA = `${HOME}/.openclaw/bin:${HOME}/.local/bin:/opt/node/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
 fs.mkdirSync(DIR, { recursive: true });

@@ -24,7 +24,8 @@ import { conversationReferenceText, grupoReferenceText, waReferenceText } from "
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
-import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk } from "./lib/pro.js";
+import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk, acessoProduto } from "./lib/pro.js";
+import { mountFinancePage } from "./finance/finance-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
@@ -5666,8 +5667,8 @@ function setNavWa(ligar: boolean): void {
 let license: LicenseView | null = null;
 /** CRM próprio nesta máquina, pela licença (Pro ou superior, ou o produto meu-bot-crm); fechado enquanto a licença não chegou. */
 const crmProprio = (): boolean => crmProprioOk(license, windowHost);
-/** Motor do CRM em uso: o gravado em crm.json; sem ele, chave do Streak → Streak, senão licença → próprio (regra do crm-core.ts). */
-const motorCrm = (): "proprio" | "streak" => crmState?.motor ?? (crmState?.streakKey === true ? "streak" : crmProprio() ? "proprio" : "streak");
+/** Motor do CRM em uso: o gravado em crm.json; sem ele, CRM contratado → próprio, chave do Streak → Streak, senão licença (regra do crm-core.ts). */
+const motorCrm = (): "proprio" | "streak" => crmState?.motor ?? (acessoProduto(license, windowHost, "personalizado", "meu-bot-crm") === "ok" ? "proprio" : crmState?.streakKey === true ? "streak" : crmProprio() ? "proprio" : "streak");
 const NAV_HOME = "https://www.google.com";
 /** Página inicial: com o CRM próprio liberado nesta máquina, o Gmail (onde o CRM mora); senão o Google. */
 const navHome = (): string => (crmProprio() ? "https://mail.google.com/" : NAV_HOME);
