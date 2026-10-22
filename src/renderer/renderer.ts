@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -1426,9 +1426,11 @@ function openPage(page: PageTab, activateIt = true): void {
     const titleEl = el("span", "tab-title", page.title);
     const closeBtn = el("button", "tab-close", "×");
     closeBtn.type = "button"; closeBtn.title = "Fechar aba";
-    const splitBtn = el("button", "tab-split", "⫿"); splitBtn.type = "button"; splitBtn.title = "Mostrar ao lado da conversa (Cmd+\\)";
-    splitBtn.addEventListener("click", (ev) => { ev.stopPropagation(); if (splitPage === page) splitOff(); else splitOn(page); });
-    tabEl.append(titleEl, splitBtn, closeBtn);
+    tabEl.append(titleEl, closeBtn);
+    tabEl.title = "Arraste para o lado para ver ao lado da conversa";
+    tabEl.draggable = true;
+    tabEl.addEventListener("dragstart", (ev) => { pageDragStart(page, tabEl, ev); });
+    tabEl.addEventListener("dragend", () => { pageDragEnd(tabEl); });
     tabEl.addEventListener("click", () => activatePage(page));
     closeBtn.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1530,6 +1532,48 @@ splitHandle.addEventListener("pointerdown", (ev) => {
   splitHandle.addEventListener("pointerup", up);
 });
 new ResizeObserver(() => { if (splitPage !== null) applySplitRatio(); }).observe(contentEl);
+
+// Arrastar a aba de uma página para a área de conteúdo: soltar na metade direita põe lado a lado; soltar na
+// esquerda (estando lado a lado) volta a tela inteira. A camada cobre o conteúdo durante o arrasto porque o
+// <webview> do Navegador engole os eventos de arrastar.
+const splitDrop = el("div", "split-drop"); splitDrop.hidden = true;
+const splitDropLeft = el("div", "split-drop-zone split-drop-left");
+const splitDropRight = el("div", "split-drop-zone split-drop-right", "Soltar aqui: lado a lado");
+splitDrop.append(splitDropLeft, splitDropRight);
+contentEl.append(splitDrop);
+let draggingPage: PageTab | null = null;
+const dropSide = (ev: DragEvent): "left" | "right" => { const r = splitDrop.getBoundingClientRect(); return ev.clientX > r.left + r.width / 2 ? "right" : "left"; };
+function pageDragStart(page: PageTab, tabEl: HTMLElement, ev: DragEvent): void {
+  draggingPage = page;
+  tabEl.classList.add("dragging");
+  ev.dataTransfer?.setData("text/plain", page.id);
+  if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+  splitDropLeft.textContent = splitPage === page ? "Soltar aqui: tela inteira" : "";
+  // Mostrar a camada no mesmo tique cancela o arrasto no Chromium.
+  setTimeout(() => { if (draggingPage === page) splitDrop.hidden = false; }, 0);
+}
+function pageDragEnd(tabEl: HTMLElement): void {
+  tabEl.classList.remove("dragging");
+  draggingPage = null;
+  splitDrop.hidden = true;
+  splitDrop.classList.remove("over-left", "over-right");
+}
+splitDrop.addEventListener("dragover", (ev) => {
+  if (draggingPage === null) return;
+  ev.preventDefault();
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+  const side = dropSide(ev);
+  splitDrop.classList.toggle("over-right", side === "right");
+  splitDrop.classList.toggle("over-left", side === "left" && splitPage === draggingPage);
+});
+splitDrop.addEventListener("dragleave", (ev) => { if (ev.target === splitDrop) splitDrop.classList.remove("over-left", "over-right"); });
+splitDrop.addEventListener("drop", (ev) => {
+  ev.preventDefault();
+  const page = draggingPage; if (page === null) return;
+  if (dropSide(ev) === "right") { splitOn(page); focusSplit(); }
+  else if (splitPage === page) { splitOff(); activatePage(page); }
+  saveSplit();
+});
 /** Ao abrir a janela: volta dividida com a página lembrada, se ela puder abrir. */
 async function restoreSplit(): Promise<void> {
   let pref: ReturnType<typeof parseSplitPref> = null;
@@ -5418,13 +5462,14 @@ function navSelect(id: string): void {
   if (cur !== null) { cur.wv.focus(); try { window.meuBot.browserActive(cur.wv.getWebContentsId()); } catch { /* ainda não anexado: o dom-ready avisa */ } }
 }
 /** Quem está usando cada aba (wcId → conversa), vindo do main: selo e ID na faixa de abas. */
-let navDonos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }> = {};
+let navDonos: Record<number, DonoInfo> = {};
 window.meuBot.on("browser:donos", ({ donos }) => { navDonos = donos; paintNav(); });
 /**
  * A conversa dona de uma aba, como aparece no app: no WhatsApp, o nome do contato/grupo e os 8 primeiros caracteres da
  * sessão do OpenClaw (o mesmo "ID" da aba da conversa); no meu-bot, o título e o começo do id da conversa.
  */
-function navDonoView(d: { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }): { icone: string; nome: string; curto: string; sessao: string | null } {
+function navDonoView(d: DonoInfo): { icone: string; nome: string; curto: string; sessao: string | null } {
+  if (d.origem === "claude-code") return { icone: "✳️", nome: d.rotulo, curto: "", sessao: null };
   if (d.origem === "meu-bot") { const conv = d.id.replace(/^meu-bot:/, ""); return { icone: "🤖", nome: d.rotulo, curto: conv.slice(0, 8), sessao: null }; }
   const grupo = waGroups?.grupos.find((g) => g.sessionKey === d.id);
   if (grupo !== undefined) return { icone: "📱", nome: waGroupTitle(grupo), curto: grupo.sessionId?.slice(0, 8) ?? "", sessao: grupo.sessionId };
@@ -5432,6 +5477,7 @@ function navDonoView(d: { id: string; rotulo: string; origem: "meu-bot" | "whats
   if (chat !== undefined) { const sid = chat.sessionIds[d.id] ?? null; return { icone: "📱", nome: waChatTitle(chat), curto: sid?.slice(0, 8) ?? "", sessao: sid }; }
   return { icone: "📱", nome: d.rotulo, curto: /^agent:/.test(d.id) ? "" : d.id.slice(-8), sessao: null };
 }
+const origemNome = (o: DonoInfo["origem"]): string => (o === "whatsapp" ? "WhatsApp" : o === "claude-code" ? "Claude Code" : "meu-bot");
 const navTabByWc = (wcId: number): NavTab | null => navTabs.find((t) => { try { return t.wv.getWebContentsId() === wcId; } catch { return false; } }) ?? null;
 /**
  * O Navegador volta como estava ao reabrir o app: as abas soltas desta máquina (endereço, ordem, qual na frente) e se
@@ -5495,7 +5541,7 @@ function paintNav(): void {
     if (wcId !== null) {
       const d = navDonos[wcId];
       const v = d === undefined ? null : navDonoView(d);
-      const ref = `navegador · ${hostLabel(windowHost)} · aba ${wcId} · ${t.url}${d === undefined ? " · da pessoa" : ` · dono: ${d.origem === "whatsapp" ? "WhatsApp" : "meu-bot"} ${v!.nome} · ${d.id}${v!.sessao !== null ? ` · sessão ${v!.sessao}` : ""}`}`;
+      const ref = `navegador · ${hostLabel(windowHost)} · aba ${wcId} · ${t.url}${d === undefined ? " · da pessoa" : ` · dono: ${origemNome(d.origem)} ${v!.nome} · ${d.id}${v!.sessao !== null ? ` · sessão ${v!.sessao}` : ""}`}`;
       const chip = el("button", `nav-tab-id${d !== undefined ? ` dono ${d.origem}` : ""}`, v === null ? `aba ${wcId}` : `${v.icone} ${v.curto || v.nome}`); chip.type = "button";
       chip.title = `${v === null ? `Aba ${wcId} (da pessoa)` : `Aba ${wcId} · em uso por ${v.nome}${v.curto !== "" ? ` · ID ${v.curto}` : ""}`}\n\nClique para copiar o ID`;
       chip.addEventListener("click", (ev) => { ev.stopPropagation(); copyReference(ref); });
@@ -5942,8 +5988,12 @@ interface TermTab {
   opening: boolean;
   n: number;
   resizeTimer: number | null;
+  /** Quem usou este terminal pelo controle local por último (term-api.ts); some depois de TERM_DONO_MS. */
+  dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou"; em: number }) | null;
+  donoTimer: number | null;
 }
 const terminals = new Map<string, TermTab>();
+const TERM_DONO_MS = 10 * 60_000;
 let termCounter = 0;
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const isDark = (): boolean => document.documentElement.dataset["theme"] === "dark" || (document.documentElement.dataset["theme"] !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -5968,7 +6018,7 @@ async function openTerminalTab(mode: "new" | "focus" = "new"): Promise<TermTab |
   const bar = el("div", "term-selbar"); bar.hidden = true;
   panel.append(head, box, bar);
   panelsEl.append(panel);
-  const t: TermTab = { page: null as unknown as PageTab, term: null, fit: null, search: null, box, head, bar, id: null, exited: null, opening: false, n, resizeTimer: null };
+  const t: TermTab = { page: null as unknown as PageTab, term: null, fit: null, search: null, box, head, bar, id: null, exited: null, opening: false, n, resizeTimer: null, dono: null, donoTimer: null };
   t.page = definePage(pageId, `Terminal ${n} · ${hostLabel(windowHost)}`, panel, () => renderTerminal(t));
   terminals.set(pageId, t);
   openPage(t.page);
@@ -6012,9 +6062,46 @@ function renderTerminal(t: TermTab): void {
   requestAnimationFrame(() => { t.fit?.fit(); t.term?.focus(); });
 }
 
+/** Selo de quem está usando o terminal (vale até TERM_DONO_MS depois do último uso). */
+const termDonoVivo = (t: TermTab): TermTab["dono"] => (t.dono !== null && Date.now() - t.dono.em < TERM_DONO_MS ? t.dono : null);
+function termDonoChip(t: TermTab): HTMLElement | null {
+  const d = termDonoVivo(t); if (d === null) return null;
+  const v = navDonoView(d);
+  const hora = new Date(d.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const chip = el("span", `nav-tab-id dono ${d.origem}`, `${v.icone} ${v.nome}`);
+  chip.title = `${origemNome(d.origem)}: ${v.nome} ${d.acao} às ${hora}${v.curto !== "" ? ` · ID ${v.curto}` : ""}`;
+  return chip;
+}
+/** Selo também na aba da página (Terminal N), para ver de longe quem está mexendo. */
+function paintTermTab(t: TermTab): void {
+  const tabEl = t.page.tabEl; if (tabEl === null) return;
+  tabEl.querySelector(".nav-tab-id")?.remove();
+  const chip = termDonoChip(t);
+  if (chip !== null) tabEl.querySelector(".tab-title")?.after(chip);
+}
+window.meuBot.on("term:dono", ({ id, dono }) => {
+  for (const t of terminals.values()) if (t.id === id) {
+    t.dono = dono;
+    if (t.donoTimer !== null) clearTimeout(t.donoTimer);
+    t.donoTimer = dono === null ? null : window.setTimeout(() => { t.donoTimer = null; paintTermHead(t); paintTermTab(t); }, TERM_DONO_MS);
+    paintTermHead(t); paintTermTab(t);
+    return;
+  }
+});
+
 function paintTermHead(t: TermTab): void {
   t.head.replaceChildren();
   t.head.append(el("span", "term-where", `${hostLabel(windowHost)}${windowHost === "local" ? " · shell deste Mac" : " · shell por SSH"}`));
+  // ID do terminal (o que o controle local usa em /ler e /digitar); clique copia a referência.
+  if (t.id !== null) {
+    const id = t.id;
+    const chip = el("button", "nav-tab-id", `ID ${id}`); chip.type = "button";
+    chip.title = `Terminal ${t.n} · ID ${id}\n\nClique para copiar o ID`;
+    chip.addEventListener("click", () => { copyReference(`terminal · ${hostLabel(windowHost)} · Terminal ${t.n} · ID ${id}`); });
+    t.head.append(chip);
+  }
+  const quem = termDonoChip(t);
+  if (quem !== null) { const d = termDonoVivo(t)!; quem.textContent += ` · ${d.acao} às ${new Date(d.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`; t.head.append(quem); }
   if (t.opening) t.head.append(el("span", "hint", "conectando…"));
   if (t.exited !== null) {
     t.head.append(el("span", "term-exit", `sessão encerrada (código ${t.exited.code})${t.exited.detail !== null ? ` · ${t.exited.detail}` : ""}`));

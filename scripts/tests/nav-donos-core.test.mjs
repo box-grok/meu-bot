@@ -10,6 +10,8 @@ const BOT = { id: "meu-bot:conv-1", rotulo: "Análise do Instagram", origem: "me
 test("identidade: base64 de {id, rotulo, origem}; inválida vira null (regra antiga)", () => {
   assert.deepEqual(parseDono(b64(WA)), WA);
   assert.deepEqual(parseDono(b64({ id: "x:1" })), { id: "x:1", rotulo: "meu-bot", origem: "meu-bot" });
+  assert.deepEqual(parseDono(b64({ id: "claude-code:mac", origem: "claude-code" })), { id: "claude-code:mac", rotulo: "Claude Code", origem: "claude-code" });
+  assert.equal(parseDono(b64({ id: "x:2", origem: "outra" })).origem, "meu-bot");
   for (const ruim of [undefined, "", "@@@", b64({ id: "a b; rm" }), b64({ rotulo: "x" })]) assert.equal(parseDono(ruim), null);
 });
 

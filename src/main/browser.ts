@@ -14,7 +14,7 @@ import { installChromeWebStore, installExtension, uninstallExtension } from "ele
 import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
 import { addNavFavorito, isNavAgentHost, navEspacos, navFavoritos, removeNavFavorito, setNavAgentHost, setNavEspacos } from "./settings";
-import type { BrowserAgentState } from "../shared/ipc";
+import type { BrowserAgentState, DonoInfo } from "../shared/ipc";
 import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
 import { carregarExtensoes, extensaoEmbutida } from "./extensao-gmail/extensao";
 import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
@@ -387,7 +387,7 @@ export function browserAsk(host: string, msg: { kind: "new-tab"; url: string; fu
   return false;
 }
 /** Quem está usando cada aba (wcId → conversa), para o selo e o ID na faixa de abas da janela desta máquina. */
-export function browserDonos(host: string, donos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }>): void {
+export function browserDonos(host: string, donos: Record<number, DonoInfo>): void {
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:donos", { donos });
 }
 

@@ -4,7 +4,8 @@
  * outra, e sem aba indicada ninguém mexe na aba que a pessoa está olhando. Ler e tirar print de qualquer aba continua
  * livre ("veja o que eu estou vendo"). Pedido sem identidade (servidor antigo) segue a regra de antes: aba da frente.
  */
-export type Origem = "meu-bot" | "whatsapp";
+import type { OrigemDono } from "../shared/ipc";
+export type Origem = OrigemDono;
 export interface Dono { id: string; rotulo: string; origem: Origem }
 export interface Posse extends Dono { em: number }
 /** Posse sem uso por mais que isso some: a aba volta a ser "da pessoa". */
@@ -20,9 +21,9 @@ export function parseDono(header: unknown): Dono | null {
   try {
     const j = JSON.parse(Buffer.from(header, "base64").toString("utf8")) as Record<string, unknown>;
     if (typeof j.id !== "string" || !ID_RE.test(j.id)) return null;
-    const origem: Origem = j.origem === "whatsapp" ? "whatsapp" : "meu-bot";
+    const origem: Origem = j.origem === "whatsapp" || j.origem === "claude-code" ? j.origem : "meu-bot";
     const rotulo = typeof j.rotulo === "string" ? j.rotulo.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, 80) : "";
-    return { id: j.id, rotulo: rotulo || (origem === "whatsapp" ? "WhatsApp" : "meu-bot"), origem };
+    return { id: j.id, rotulo: rotulo || (origem === "whatsapp" ? "WhatsApp" : origem === "claude-code" ? "Claude Code" : "meu-bot"), origem };
   } catch { return null; }
 }
 

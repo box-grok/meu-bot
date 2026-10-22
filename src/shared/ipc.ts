@@ -2,6 +2,9 @@
 
 export type BackendModel = "claudecode" | "agente" | "rene-dm" | "rene" | "grok-4";
 export type Theme = "system" | "light" | "dark";
+/** Quem usa uma aba do Navegador ou um terminal: conversa do meu-bot, conversa do WhatsApp ou o Claude Code deste Mac. */
+export type OrigemDono = "meu-bot" | "whatsapp" | "claude-code";
+export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
 export type QuickEntryStatus = "registered" | "taken" | "invalid" | "disabled";
 
 export interface SettingsView {
@@ -932,7 +935,9 @@ export interface MainEvents {
   /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
   "term:ask": { kind: "new" };
   /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
-  "browser:donos": { donos: Record<number, { id: string; rotulo: string; origem: "meu-bot" | "whatsapp" }> };
+  "browser:donos": { donos: Record<number, DonoInfo> };
+  /** Terminal: quem o está usando pelo controle local (term-api.ts) e o que fez por último; null = ninguém (só a pessoa). */
+  "term:dono": { id: string; dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou"; em: number }) | null };
   /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */
   "browser:agent": BrowserAgentState;
   /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */

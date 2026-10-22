@@ -6,6 +6,8 @@
  *
  * API (JSON): GET /terminais · POST /abrir {maquina?} (aba nova na janela da máquina) · POST /ler {id, linhas?}
  * · POST /digitar {id, texto, enter?} | {id, tecla}
+ * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (o mesmo do Navegador, nav-donos-core.ts) e aparece como selo no
+ * terminal ("✳️ Claude Code (Mac) · digitou"), para a pessoa saber quem está mexendo.
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -15,6 +17,7 @@ import { controlDir } from "./control-dir";
 import { hostOfWindow, lastFocusedWindow } from "./windows";
 import { liveTerminals, replayTerminal, terminalById, waitNewTerminal, writeTerminal } from "./terminal";
 import { entradaDigitar, textoDoTerminal } from "./term-api-core";
+import { parseDono, type Dono } from "./nav-donos-core";
 import { log } from "./backend";
 
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
@@ -41,7 +44,15 @@ const sessao = (id: unknown) => {
 };
 const info = (t: { id: string; host: string; n: number }) => ({ id: t.id, maquina: t.host, terminal: t.n });
 
-async function act(route: string, b: Req): Promise<unknown> {
+/** Pedido sem identidade: ainda é alguém neste Mac (o socket é 0600), só sem nome. */
+const SEM_ID: Dono = { id: "local:sem-id", rotulo: "controle local (sem identificação)", origem: "claude-code" };
+/** Selo no terminal: quem usou por último e o quê. */
+function marcar(s: { id: string; winId: number }, dono: Dono, acao: "abriu" | "leu" | "digitou"): void {
+  const w = BrowserWindow.fromId(s.winId);
+  if (w !== null && !w.isDestroyed()) w.webContents.send("term:dono", { id: s.id, dono: { ...dono, acao, em: Date.now() } });
+}
+
+async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
   switch (route) {
     case "/terminais": return { terminais: liveTerminals().map(info) };
     case "/abrir": {
@@ -51,11 +62,13 @@ async function act(route: string, b: Req): Promise<unknown> {
       const id = await waitNewTerminal(w.id, antes);
       if (id === null) throw new Error("a aba nova do terminal não abriu a tempo (veja a janela do app)");
       const t = liveTerminals().find((x) => x.id === id)!;
+      marcar(t, dono, "abriu");
       await new Promise((r) => setTimeout(r, 800)); // o prompt chegar
       return { ...info(t), tela: textoDoTerminal(replayTerminal(terminalById(id)!), 20) };
     }
     case "/ler": {
       const s = sessao(b.id);
+      marcar(s, dono, "leu");
       return { id: s.id, maquina: s.host, tela: textoDoTerminal(replayTerminal(s), typeof b.linhas === "number" ? b.linhas : 60) };
     }
     case "/digitar": {
@@ -63,6 +76,7 @@ async function act(route: string, b: Req): Promise<unknown> {
       const e = entradaDigitar(b);
       if ("erro" in e) throw new Error(e.erro);
       writeTerminal(s, e.dados);
+      marcar(s, dono, "digitou");
       return { ok: true };
     }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });
@@ -89,9 +103,10 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     const chunks: Buffer[] = []; for await (const c of req) chunks.push(c as Buffer);
     try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as Req; } catch { return send(400, { erro: "JSON inválido" }); }
   }
+  const dono = parseDono(req.headers["x-meu-bot-dono"]) ?? SEM_ID;
   try {
-    send(200, await act(route, body));
-    if (route === "/abrir" || route === "/digitar") log(`[terminal] controle: ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
+    send(200, await act(route, body, dono));
+    if (route === "/abrir" || route === "/digitar") log(`[terminal] controle (${dono.origem}: ${dono.id}): ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
   } catch (e) {
     const st = (e as { status?: number }).status ?? 400;
     send(st, { erro: e instanceof Error ? e.message : String(e) });

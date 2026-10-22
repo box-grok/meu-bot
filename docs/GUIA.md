@@ -1610,7 +1610,8 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   colunas (`--split`, mínimos de 320 px; `< 760 px` recolhe a direita com `split-collapsed`); os painéis de
   página já são absolutos, então `splitOn(page)` só **move o elemento** para `#split-panel` e `splitOff` devolve
   ao `#panels`. Regras: com a divisão ligada, páginas sempre vão para a direita (`activatePage` → `splitOn`) e
-  conversas para a esquerda; ⫿ na aba da página, Cmd+\ (também vindo do webview) e a paleta ("Dividir a tela
+  conversas para a esquerda; arrastar a aba da página para a metade direita do conteúdo (camada `.split-drop`,
+  por cima do webview; soltar à esquerda volta a tela inteira), Cmd+\ (também vindo do webview) e a paleta ("Dividir a tela
   com …"); fechar a página desfaz. `pageShown(page)` substitui `pageActive === page` nas repinturas (guia,
   Tutoriais, Acervo, polling do WhatsApp, pedidos do agente ao Navegador); `activeGuide()` considera a página
   fixada, então o guia pulsa os alvos ao lado da conversa. Divisor com pointer capture e `body.dragging`

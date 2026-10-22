@@ -37,6 +37,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:key",
   "browser:ask",
   "term:ask",
+  "term:dono",
   "browser:donos",
   "browser:agent",
   "browser:favorites",
