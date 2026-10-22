@@ -338,7 +338,7 @@ export function bundledGuardaVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
 }
 /** Navegador do agente (módulo Pro): o servidor MCP (um arquivo) e o instalador. */
-const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md"];
+const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md", "skill-cloudflare-token.md"];
 
 /** O lado da máquina do Navegador está instalado? (null para este Mac) */
 export async function navegadorInstalled(host: string): Promise<boolean | null> {

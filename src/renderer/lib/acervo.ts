@@ -15,10 +15,27 @@ export interface Skill {
   install: string[];
   /** Como o agente confere que ficou instalada (comando ou arquivo esperado). */
   check: string;
+  /**
+   * Skill que já vem com o meu-bot (instalada sozinha na máquina): o cartão é para USAR. Pedido pronto ao agente e o
+   * texto do botão; sem isto, o cartão pede para instalar.
+   */
+  usar?: { botao: string; pedido: string };
 }
 
-/** As skills do acervo, na ordem em que aparecem. Vazio por enquanto. */
-export const ACERVO_SKILLS: readonly Skill[] = [];
+/** As skills do acervo, na ordem em que aparecem. */
+export const ACERVO_SKILLS: readonly Skill[] = [
+  {
+    id: "cloudflare-token",
+    name: "Token do Cloudflare (só leitura)",
+    summary: "O agente cria pelo Navegador um token do Cloudflare que só lê o DNS de um domínio, guarda na máquina sem o valor passar pela conversa e testa. Ele para antes de criar para você conferir.",
+    install: ["A skill vem com o Navegador do meu-bot: confira ~/.claude/skills/cloudflare-token/SKILL.md. Se faltar, peça ao dono para abrir a aba Navegador no app (ela é instalada junto)."],
+    check: "test -f ~/.claude/skills/cloudflare-token/SKILL.md",
+    usar: {
+      botao: "Criar o token",
+      pedido: "Use a skill cloudflare-token: crie um token do Cloudflare só de leitura (DNS e zona) para o meu domínio. Se não souber qual domínio, me pergunte. Pare antes do \"Create Token\" para eu conferir o resumo, e nunca mostre o valor do token.",
+    },
+  },
+];
 
 /** Pedido pronto ao agente da máquina: instalar a skill sem interação e relatar. */
 export function installPrompt(skill: Skill, hostLabel: string): string {

@@ -1613,12 +1613,12 @@ const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel")
   for (const skill of ACERVO_SKILLS) {
     const info = el("div", "grow");
     info.append(el("strong", "", skill.name), el("span", "", skill.summary));
-    const btn = el("button", "btn btn-primary btn-small", "Pedir ao agente para instalar");
+    const btn = el("button", "btn btn-primary btn-small", skill.usar?.botao ?? "Pedir ao agente para instalar");
     btn.type = "button";
     btn.addEventListener("click", () => {
       void (async () => {
         const tab = await newTab();
-        await sendText(tab, installPrompt(skill, hostLabel(windowHost)));
+        await sendText(tab, skill.usar?.pedido ?? installPrompt(skill, hostLabel(windowHost)));
       })();
     });
     const item = el("div", "acervo-item");

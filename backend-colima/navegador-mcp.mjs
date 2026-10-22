@@ -7,10 +7,12 @@
  * app grava quando o túnel sobe; sem arquivo ou sem resposta, o Navegador está fechado (app fechado no Mac do dono).
  * Protocolo: JSON-RPC 2.0, uma mensagem por linha (initialize, tools/list, tools/call, ping, notifications).
  * Cada pedido leva quem está pedindo (cabeçalho X-Meu-Bot-Dono): cada conversa trabalha nas próprias abas.
- * meu-bot-navegador v3
+ * meu-bot-navegador v4
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import http from 'node:http';
 import readline from 'node:readline';
 
@@ -52,6 +54,7 @@ const TOOLS = [
   { name: 'favoritar', description: 'Adiciona uma url à barra de favoritos do Navegador da pessoa (título opcional; url repetida só atualiza o título).', inputSchema: { type: 'object', properties: { url: { type: 'string' }, titulo: { type: 'string' } }, required: ['url'], additionalProperties: false } },
   { name: 'desfavoritar', description: 'Tira um favorito da barra, pelo id (veja favoritos) ou pela url.', inputSchema: { type: 'object', properties: { id: { type: 'string' }, url: { type: 'string' } }, additionalProperties: false } },
   { name: 'fechar', description: 'Fecha uma aba desta conversa (sem aba: a mais recente dela). Abas da pessoa ou de outra conversa não fecham. Feche as suas quando terminar.', inputSchema: { type: 'object', properties: { aba: { type: 'number' } }, additionalProperties: false } },
+  { name: 'guardar', description: 'Guarda um segredo da página (token, chave de API) direto num arquivo desta máquina, SEM que o valor passe pela conversa: devolve só quantos caracteres gravou. Diga onde está o valor: seletor CSS (o value/texto do elemento) ou padrao (expressão regular no texto da página; o grupo 1, se houver). arquivo: caminho dentro de ~/.config/ (ex.: ~/.config/cloudflare/token); gravado com permissão 600. Use sempre que for salvar uma credencial.', inputSchema: { type: 'object', properties: { aba: { type: 'number' }, seletor: { type: 'string' }, padrao: { type: 'string' }, arquivo: { type: 'string' } }, required: ['arquivo'], additionalProperties: false } },
   { name: 'js', description: 'Roda JavaScript na página e devolve o resultado (último recurso; prefira ler/clicar/digitar).', inputSchema: { type: 'object', properties: { codigo: { type: 'string' }, aba: { type: 'number' } }, required: ['codigo'], additionalProperties: false } },
 ];
 
@@ -74,6 +77,32 @@ function call(route, body) {
   });
 }
 
+/**
+ * "guardar": lê o valor na página (pela mesma ação js do app) e grava direto no arquivo desta máquina. O valor nunca volta
+ * ao modelo; só o tamanho. Só dentro de ~/.config/ (sem "..", sem link), pasta 0700 e arquivo 0600, troca atômica.
+ */
+async function guardar(a) {
+  const home = os.homedir();
+  const alvo = path.resolve(String(a.arquivo || '').replace(/^~(?=\/)/, home));
+  const base = path.join(home, '.config') + path.sep;
+  if (!alvo.startsWith(base) || alvo.includes(`${path.sep}..`) || path.basename(alvo).startsWith('.')) throw new Error('arquivo precisa ficar dentro de ~/.config/ (ex.: ~/.config/cloudflare/token)');
+  if (typeof a.seletor !== 'string' && typeof a.padrao !== 'string') throw new Error('diga onde está o valor: seletor ou padrao');
+  const codigo = typeof a.seletor === 'string'
+    ? `(() => { const e = document.querySelector(${JSON.stringify(a.seletor)}); if (!e) return ""; return String(("value" in e && e.value) || e.innerText || e.textContent || "").trim(); })()`
+    : `(() => { const m = document.body.innerText.match(new RegExp(${JSON.stringify(a.padrao)})); return m ? String(m[1] ?? m[0]).trim() : ""; })()`;
+  const r = await call('js', { aba: a.aba, codigo });
+  const valor = typeof r.resultado === 'string' ? r.resultado.replace(/^"|"$/g, '') : '';
+  if (valor === '' || valor === 'null') throw new Error('não achei o valor na página (confira o seletor ou o padrão com "ler", sem copiar o valor)');
+  if (valor.length > 4096) throw new Error('o valor achado é grande demais para ser uma credencial: confira o seletor');
+  const pasta = path.dirname(alvo);
+  fs.mkdirSync(pasta, { recursive: true, mode: 0o700 });
+  for (let p = pasta; p.startsWith(base); p = path.dirname(p)) { if (fs.lstatSync(p).isSymbolicLink()) throw new Error('caminho com link simbólico: recusado'); }
+  const tmp = `${alvo}.tmp-${process.pid}`;
+  fs.writeFileSync(tmp, valor, { mode: 0o600 });
+  fs.renameSync(tmp, alvo);
+  return { ok: true, arquivo: alvo.replace(home, '~'), caracteres: valor.length };
+}
+
 function textOfRead(r) {
   const head = `# ${r.title || '(sem título)'}\n${r.url}\n\n`;
   const els = r.elements && r.elements.length ? `## Elementos (use o número em clicar/digitar)\n${r.elements.join('\n')}\n\n` : '## Elementos\n(nenhum interativo visível)\n\n';
@@ -85,7 +114,7 @@ const rl = readline.createInterface({ input: process.stdin });
 rl.on('line', async (line) => {
   let msg; try { msg = JSON.parse(line); } catch { return; }
   const { id, method, params } = msg;
-  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '3.0.0' } } });
+  if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-navegador', version: '4.0.0' } } });
   if (method === 'notifications/initialized' || (typeof method === 'string' && method.startsWith('notifications/'))) return;
   if (method === 'ping') return send({ jsonrpc: '2.0', id, result: {} });
   if (method === 'tools/list') return send({ jsonrpc: '2.0', id, result: { tools: TOOLS } });
@@ -93,6 +122,7 @@ rl.on('line', async (line) => {
     const name = params?.name; const args = params?.arguments || {};
     try {
       if (!TOOLS.some((t) => t.name === name)) throw new Error(`ferramenta desconhecida: ${name}`);
+      if (name === 'guardar') return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(await guardar(args)) }] } });
       const r = await call(name, args);
       if (name === 'print') return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'image', data: r.png_base64, mimeType: 'image/png' }] } });
       const text = name === 'ler' ? textOfRead(r) : JSON.stringify(r, null, 1);

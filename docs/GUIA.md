@@ -2439,3 +2439,17 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   com texto próprio para o CRM próprio e para o Streak.
 - **O plugin do CRM agora se atualiza sozinho:** o probe lê `crm` e `crmVersion` e o seletor roda `installCrm` quando
   `deveAtualizar`. Só onde o CRM já está instalado. Versão 1.1.0.
+
+## Skill do token do Cloudflare e ferramenta `guardar` (22 out)
+
+- **Ferramenta `guardar` do Navegador** (`navegador-mcp.mjs` v4): lê um valor na página, por seletor ou por expressão
+  regular, e grava direto num arquivo da máquina. Só dentro de `~/.config/`, sem link, com pasta 0700 e arquivo 0600.
+  Ao modelo volta só o número de caracteres: a credencial não passa pela conversa. A trava do WhatsApp nega
+  `navegador__guardar` para quem não está liberado, como as outras ferramentas.
+- **Skill `cloudflare-token`** (`backend-colima/skill-cloudflare-token.md`): é semeada pelo `install-navegador-mcp.sh`
+  junto com o Navegador e não sobrescreve a versão que o agente tiver ajustado. Ela cria um token só de leitura
+  (DNS:Read e Zone:Read, uma zona) pelo dashboard. Escolhe as opções das listas de React por `js` com `[role=option]`,
+  para antes do "Create Token" para o dono conferir, usa `guardar` e testa com `verify` e uma leitura do DNS. Recusa
+  pelo WhatsApp. Se algo do token vazar, faz "Roll". Validada na agente-box-lv em 22 out.
+- **Acervo:** o primeiro cartão é "Token do Cloudflare (só leitura)". Skills que já vêm com o meu-bot têm `usar`, com o
+  botão "Criar o token" e o pedido pronto, em vez de "Pedir ao agente para instalar".
