@@ -71,6 +71,13 @@ export const planoLibera = (tem: PlanName, exige: PlanName): boolean => RANK[tem
 export const proOk = (l: License, now: number = Date.now()): boolean => planoLibera(l.plan, "pro") && isActive(l, now);
 
 export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
+/**
+ * CRM próprio (no Gmail e no WhatsApp) nesta máquina: plano Pro ou superior em vigor, ou o produto meu-bot-crm
+ * contratado por cima do plano. É por máquina (a licença mora nela), nunca por variante do app. Mesma regra do
+ * renderer (lib/pro.ts) e do backend (licenca.js crmOk).
+ */
+export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
+  host !== "local" && view !== null && (proOk(view.license, now) || acessoProduto(view, host, "personalizado", "meu-bot-crm", now) === "ok");
 /** Licença vencida: status expired ou validade no passado (o plano free, sem validade, não está vencido). */
 const vencida = (l: License, now: number): boolean => l.status === "expired" || (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
 /**

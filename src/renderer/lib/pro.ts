@@ -34,6 +34,13 @@ export function acessoProduto(view: LicenseView | null, host: string, exige: Pla
   return vencida(l, now) ? "expirada" : "ok";
 }
 
+/**
+ * CRM próprio (no Gmail e no WhatsApp) nesta máquina: Pro ou superior em vigor, ou o produto meu-bot-crm contratado.
+ * Decide o que a janela mostra (tutorial 10, home do Navegador, "guardar no CRM"); o main e o backend conferem de novo.
+ */
+export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
+  host !== "local" && view !== null && ((planoLiberaPro(view.license.plan) && (view.license.status === "active" || view.license.status === "trialing") && !vencida(view.license, now)) || acessoProduto(view, host, "personalizado", "meu-bot-crm", now) === "ok");
+
 export function browserAccess(view: LicenseView | null, host: string, exige: PlanName = "free", produto: string = "meu-bot", now: number = Date.now()): ProAccess {
   if (exige !== "free") { const a = acessoProduto(view, host, exige, produto, now); return a === "ok" ? "ok" : a === "unknown" ? "unknown" : "assinatura"; }
   if (host === "local" || view === null) return "unknown";

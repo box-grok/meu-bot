@@ -10,7 +10,10 @@ export const CRM_FILE = "$HOME/.local/share/meu-bot/crm.json";
 export const CRM_DIR = "$HOME/.local/share/meu-bot/crm";
 const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
 
-export interface CrmPatch { apiKey?: string; pipelineKey?: string | null; pipelineName?: string | null; silencioMin?: number; criarSemPerguntar?: boolean }
+export type CrmMotor = "proprio" | "streak";
+export interface CrmPatch { apiKey?: string; pipelineKey?: string | null; pipelineName?: string | null; silencioMin?: number; criarSemPerguntar?: boolean; motor?: CrmMotor | null }
+/** Motor em vigor: o gravado; sem ele, chave do Streak → Streak, senão Pro/produto → próprio, senão Streak (mesma regra do crm-job.mjs). */
+export const motorEfetivo = (gravado: CrmMotor | null, streakKey: boolean, crmProprio: boolean): CrmMotor => gravado ?? (streakKey ? "streak" : crmProprio ? "proprio" : "streak");
 
 /** Valida o que a tela mandou; devolve o patch limpo ou lança com a mensagem para a pessoa. */
 export function parseCrmPatch(payload: unknown): CrmPatch {
@@ -28,6 +31,7 @@ export function parseCrmPatch(payload: unknown): CrmPatch {
   }
   if ("silencioMin" in p) { const n = Number(p["silencioMin"]); if (!Number.isInteger(n) || n < 1 || n > 240) throw new Error("o silêncio vai de 1 a 240 minutos"); out.silencioMin = n; }
   if ("criarSemPerguntar" in p) { if (typeof p["criarSemPerguntar"] !== "boolean") throw new Error("valor inválido"); out.criarSemPerguntar = p["criarSemPerguntar"]; }
+  if ("motor" in p) { const m = p["motor"]; if (m !== null && m !== "proprio" && m !== "streak") throw new Error("motor inválido"); out.motor = m; }
   if (Object.keys(out).length === 0) throw new Error("nada para gravar");
   return out;
 }
@@ -41,7 +45,7 @@ try:
     c = json.load(open(f)); assert isinstance(c, dict)
 except Exception:
     c = {}
-out = {"configured": (isinstance(c.get("apiKey"), str) and c.get("apiKey") != "") or (isinstance(c.get("pipelineKey"), str) and c.get("pipelineKey") != ""), "pipelineKey": c.get("pipelineKey"), "pipelineName": c.get("pipelineName"), "silencioMin": c.get("silencioMin", 10), "criarSemPerguntar": c.get("criarSemPerguntar") is True, "savedAt": c.get("savedAt")}
+out = {"motor": c.get("motor") if c.get("motor") in ("proprio", "streak") else None, "streakKey": isinstance(c.get("apiKey"), str) and c.get("apiKey") != "", "configured": (isinstance(c.get("apiKey"), str) and c.get("apiKey") != "") or (isinstance(c.get("pipelineKey"), str) and c.get("pipelineKey") != ""), "pipelineKey": c.get("pipelineKey"), "pipelineName": c.get("pipelineName"), "silencioMin": c.get("silencioMin", 10), "criarSemPerguntar": c.get("criarSemPerguntar") is True, "savedAt": c.get("savedAt")}
 print("C=" + json.dumps(out, ensure_ascii=False))
 ' 2>/dev/null || echo 'C={}'
 [ -f "${CRM_DIR}/crm-job.mjs" ] && { [ -f "${CRM_DIR}/crm.mjs" ] || [ -f "${CRM_DIR}/streak.mjs" ]; } && echo I=1 || echo I=0
@@ -68,11 +72,20 @@ export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; command 
 
 /**
  * Roda a CLI do CRM da máquina para um subcomando sem argumentos da pessoa (diag/pipelines). Linha `S=`.
- * Produto meu-bot-crm contratado (ou plano personalizado) → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
+ * Pro ou superior em vigor (ou o produto meu-bot-crm contratado) → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
  */
 export function streakSh(sub: "diag" | "pipelines"): string {
   return `export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:/usr/local/bin:$PATH"
-CLI="${CRM_DIR}/streak.mjs"; python3 -c 'import json,os,sys; l=json.load(open(os.path.expandvars("$HOME/.local/share/meu-bot/licenca.json"))); sys.exit(0 if ("meu-bot-crm" in (l.get("produtos") or []) and l.get("status")!="expired") or (l.get("plan")=="personalizado" and l.get("status") in ("active","trialing")) else 1)' 2>/dev/null && [ -f "${CRM_DIR}/crm.mjs" ] && CLI="${CRM_DIR}/crm.mjs"
+CLI="${CRM_DIR}/streak.mjs"; python3 -c '
+import json, os, sys
+def j(p):
+    try: return json.load(open(os.path.expandvars(p)))
+    except Exception: return {}
+l = j("$HOME/.local/share/meu-bot/licenca.json"); c = j("${CRM_FILE}")
+lic = ("meu-bot-crm" in (l.get("produtos") or []) and l.get("status") != "expired") or (l.get("plan") in ("pro", "personalizado") and l.get("status") in ("active", "trialing"))
+key = isinstance(c.get("apiKey"), str) and c.get("apiKey") != ""
+m = c.get("motor") if c.get("motor") in ("proprio", "streak") else ("streak" if key else ("proprio" if lic else "streak"))
+sys.exit(0 if m == "proprio" else 1)' 2>/dev/null && [ -f "${CRM_DIR}/crm.mjs" ] && CLI="${CRM_DIR}/crm.mjs"
 if [ -f "$CLI" ]; then echo "S=$(timeout 60 node "$CLI" ${sub} 2>/dev/null | tail -n1)"; else echo 'S={"erro":"o CRM ainda não foi instalado nesta máquina"}'; fi
 `;
 }
@@ -88,6 +101,8 @@ export function parseCrmInfo(stdout: string): Omit<CrmInfo, "available"> {
   return {
     installed: stdout.includes("I=1"),
     configured: raw["configured"] === true,
+    streakKey: raw["streakKey"] === true,
+    motor: raw["motor"] === "proprio" || raw["motor"] === "streak" ? raw["motor"] : null,
     pipelineKey: typeof raw["pipelineKey"] === "string" ? raw["pipelineKey"] : null,
     pipelineName: typeof raw["pipelineName"] === "string" ? raw["pipelineName"] : null,
     silencioMin: Number.isInteger(n) && n >= 1 && n <= 240 ? n : 10,

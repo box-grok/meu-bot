@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseCrmPatch, parseCrmInfo, parseStreakOut, setCrmSh, crmInfoSh, streakSh } = createRequire(import.meta.url)("../../dist/main/crm-core.js");
+const { parseCrmPatch, parseCrmInfo, parseStreakOut, setCrmSh, crmInfoSh, streakSh, motorEfetivo } = createRequire(import.meta.url)("../../dist/main/crm-core.js");
 
 test("parseCrmPatch: chave válida, pipeline, silêncio 1–240, flag; recusa o resto", () => {
   assert.deepEqual(parseCrmPatch({ apiKey: "  abcdefghij1234567890  " }), { apiKey: "abcdefghij1234567890" });
@@ -26,8 +26,8 @@ test("setCrmSh: patch em base64 pelo stdin (a chave não aparece em claro), 0600
 test("crmInfoSh/parseCrmInfo: configured sem a chave, instalado por I=", () => {
   assert.match(crmInfoSh(), /crm\.json/); assert.match(crmInfoSh(), /crm-job\.mjs/);
   const info = parseCrmInfo('C={"configured": true, "pipelineKey": "k1", "pipelineName": "P", "silencioMin": 7, "criarSemPerguntar": false, "savedAt": "2026-10-18T00:00:00Z"}\nI=1\n');
-  assert.deepEqual(info, { installed: true, configured: true, pipelineKey: "k1", pipelineName: "P", silencioMin: 7, criarSemPerguntar: false, savedAt: "2026-10-18T00:00:00Z" });
-  assert.deepEqual(parseCrmInfo("lixo"), { installed: false, configured: false, pipelineKey: null, pipelineName: null, silencioMin: 10, criarSemPerguntar: false, savedAt: null });
+  assert.deepEqual(info, { installed: true, configured: true, streakKey: false, motor: null, pipelineKey: "k1", pipelineName: "P", silencioMin: 7, criarSemPerguntar: false, savedAt: "2026-10-18T00:00:00Z" });
+  assert.deepEqual(parseCrmInfo("lixo"), { installed: false, configured: false, streakKey: false, motor: null, pipelineKey: null, pipelineName: null, silencioMin: 10, criarSemPerguntar: false, savedAt: null });
 });
 
 test("streakSh/parseStreakOut: só diag/pipelines; JSON ou erro claro", () => {
@@ -35,4 +35,17 @@ test("streakSh/parseStreakOut: só diag/pipelines; JSON ou erro claro", () => {
   assert.match(streakSh("diag"), /crm\.mjs/, "plano personalizado usa o crm.mjs"); assert.match(streakSh("pipelines"), /streak\.mjs/, "senão o streak.mjs");
   assert.deepEqual(parseStreakOut('S={"ok":true,"pipelines":[]}'), { ok: true, pipelines: [] });
   assert.match(String(parseStreakOut("S=").erro), /não respondeu/);
+});
+
+test("motor do CRM: patch aceita proprio/streak/null; a regra sem motor gravado segue a chave do Streak, depois a licença", () => {
+  assert.deepEqual(parseCrmPatch({ motor: "proprio" }), { motor: "proprio" });
+  assert.deepEqual(parseCrmPatch({ motor: null }), { motor: null });
+  assert.throws(() => parseCrmPatch({ motor: "outro" }), /motor inválido/);
+  assert.equal(motorEfetivo("streak", false, true), "streak", "gravado vence");
+  assert.equal(motorEfetivo(null, true, true), "streak", "quem já tem a chave do Streak não muda em silêncio");
+  assert.equal(motorEfetivo(null, false, true), "proprio");
+  assert.equal(motorEfetivo(null, false, false), "streak");
+  const info = parseCrmInfo('C={"motor":"proprio","streakKey":false,"configured":true}\nI=1');
+  assert.equal(info.motor, "proprio"); assert.equal(info.streakKey, false);
+  assert.match(streakSh("diag"), /c\.get\("motor"\)/, "a escolha do CLI na máquina olha o motor gravado");
 });

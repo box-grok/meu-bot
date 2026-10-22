@@ -59,7 +59,7 @@ test("applyLicensePatch: aplica só o válido e carimba admin", () => {
   }
 });
 
-test("três planos: personalizado é aceito e libera o Pro; o CRM próprio só com personalizado", () => {
+test("três planos: personalizado é aceito e libera o Pro; o CRM próprio com Pro ou superior, ou o produto contratado", () => {
   for (const parse of [be.parseLicense, fe.parseLicense]) assert.equal(parse({ plan: "personalizado" }).plan, "personalizado");
   const t = Date.parse("2026-10-19T00:00:00.000Z");
   const lic = (over) => ({ plan: "free", status: "free", expiresAt: null, ...over });
@@ -68,7 +68,10 @@ test("três planos: personalizado é aceito e libera o Pro; o CRM próprio só c
   assert.equal(be.proOk(lic({ plan: "pro", status: "expired" }), t), false);
   assert.equal(be.proOk(lic({ plan: "pro", status: "active", expiresAt: "2026-10-01T00:00:00.000Z" }), t), false, "validade no passado vence");
   assert.equal(be.proOk(lic({ plan: "free", status: "active" }), t), false);
-  assert.equal(be.crmOk(lic({ plan: "pro", status: "active" }), t), false, "pro sozinho não dá o CRM próprio");
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "active" }), t), true, "Pro em vigor libera o CRM próprio");
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "trialing" }), t), true, "trial do Pro também");
+  assert.equal(be.crmOk(lic({ plan: "pro", status: "expired" }), t), false);
+  assert.equal(be.crmOk(lic({ plan: "free", status: "active" }), t), false, "gratuito sem produto não");
   assert.equal(be.crmOk(lic({ plan: "personalizado", status: "active" }), t), true, "personalizado libera todos");
   assert.equal(be.crmOk(lic({ plan: "personalizado", status: "expired" }), t), false);
   // Produtos acumulativos por cima do plano: free ou pro + meu-bot-crm contratado.
@@ -91,6 +94,14 @@ test("três planos: personalizado é aceito e libera o Pro; o CRM próprio só c
   assert.equal(fe.acessoProduto(v({ produtos: ["meu-bot-fit"] }), "agente-box", "personalizado", "meu-bot-crm", t), "ausente", "outro produto não serve");
   assert.equal(fe.acessoProduto(null, "agente-box", "personalizado", "meu-bot-crm", t), "unknown");
   assert.equal(fe.acessoProduto(null, "agente-box", "free", "meu-bot", t), "ok", "produto free nunca bloqueia o app inteiro");
+  // crmProprioOk (lado do app): por máquina; Pro em vigor ou produto contratado; este Mac e sem licença = não.
+  assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "active" }), "agente-box", t), true);
+  assert.equal(fe.crmProprioOk(v({ plan: "personalizado", status: "trialing" }), "agente-box", t), true);
+  assert.equal(fe.crmProprioOk(v({ produtos: ["meu-bot-crm"] }), "agente-box", t), true, "gratuito + produto contratado");
+  assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "expired" }), "agente-box", t), false);
+  assert.equal(fe.crmProprioOk(v({}), "agente-box", t), false);
+  assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "active" }), "local", t), false, "este Mac não tem CRM próprio");
+  assert.equal(fe.crmProprioOk(null, "agente-box", t), false, "sem licença lida: fechado");
 });
 
 test("mergeApps: cada app que se apresenta fica em apps[produto]; app antigo sem produto conta como meu-bot", () => {

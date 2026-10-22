@@ -539,6 +539,10 @@ export interface CrmInfo {
   installed: boolean;
   /** Há chave da API do Streak gravada (a chave nunca volta ao app). */
   configured: boolean;
+  /** Só a chave do Streak (sem contar pipeline). */
+  streakKey: boolean;
+  /** Motor gravado em crm.json; null = decidido pela regra (chave do Streak → Streak; senão Pro/produto → próprio). */
+  motor: "proprio" | "streak" | null;
   pipelineKey: string | null;
   pipelineName: string | null;
   /** Minutos de silêncio na conversa antes de o agente anotar. */

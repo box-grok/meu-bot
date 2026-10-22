@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acessoProduto, browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel } from "../../dist/renderer/lib/pro.js";
+import { acessoProduto, browserAccess, crmProprioOk, displayUrl, planoLiberaPro, proBlockText, tabLabel } from "../../dist/renderer/lib/pro.js";
 
 const lic = (over) => ({ license: { plan: "free", status: "free", interval: null, memberSince: "2026-10-18T00:00:00Z", trialEnd: null, expiresAt: null, deviceLimit: 1, produtos: [], updatedAt: "2026-10-18T00:00:00Z", updatedBy: "admin", ...over }, devices: [] });
 
@@ -52,4 +52,15 @@ test("tabLabel e displayUrl", () => {
   assert.equal(tabLabel("Um título muito comprido que não cabe na aba interna", "https://a.b"), "Um título muito comprido qu…");
   assert.equal(displayUrl("https://mail.google.com/"), "mail.google.com");
   assert.equal(displayUrl("http://localhost:3000/x"), "http://localhost:3000/x");
+});
+
+test("crmProprioOk: Pro ou superior em vigor, ou o produto meu-bot-crm; nunca neste Mac nem sem licença", () => {
+  assert.equal(crmProprioOk(lic({ plan: "pro", status: "active" }), "agente-box"), true);
+  assert.equal(crmProprioOk(lic({ plan: "pro", status: "trialing", trialEnd: "2027-01-01T00:00:00Z" }), "agente-box"), true);
+  assert.equal(crmProprioOk(lic({ produtos: ["meu-bot-crm"] }), "agente-box"), true);
+  assert.equal(crmProprioOk(lic({ plan: "pro", status: "expired" }), "agente-box"), false);
+  assert.equal(crmProprioOk(lic({ plan: "pro", status: "active", expiresAt: "2020-01-01T00:00:00Z" }), "agente-box"), false);
+  assert.equal(crmProprioOk(lic({}), "agente-box"), false);
+  assert.equal(crmProprioOk(lic({ plan: "pro", status: "active" }), "local"), false);
+  assert.equal(crmProprioOk(null, "agente-box"), false);
 });

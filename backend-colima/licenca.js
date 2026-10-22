@@ -124,8 +124,8 @@ function produtoOk(license, nome, now = Date.now()) {
   if (lic.expiresAt !== null && Date.parse(lic.expiresAt) < now) return false;
   return lic.plan === 'personalizado' ? isActive(lic, now) : lic.produtos.includes(nome);
 }
-/** O CRM próprio (meu-bot-crm): produto contratado ou plano personalizado em vigor. */
-const crmOk = (license, now = Date.now()) => produtoOk(license, 'meu-bot-crm', now);
+/** O CRM próprio (no Gmail e no WhatsApp): plano Pro ou superior em vigor, ou o produto meu-bot-crm contratado. */
+const crmOk = (license, now = Date.now()) => proOk(license, now) || produtoOk(license, 'meu-bot-crm', now);
 
 const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
 /**

@@ -15,7 +15,7 @@ const lastLine = (r: { stdout: string; stderr: string }): string => (r.stderr.tr
 const requirePro = (host: string): Promise<void> => assertAcesso(host);
 
 export async function crmInfo(host: string): Promise<CrmInfo> {
-  const none: CrmInfo = { available: false, installed: false, configured: false, pipelineKey: null, pipelineName: null, silencioMin: 10, criarSemPerguntar: false, savedAt: null };
+  const none: CrmInfo = { available: false, installed: false, configured: false, streakKey: false, motor: null, pipelineKey: null, pipelineName: null, silencioMin: 10, criarSemPerguntar: false, savedAt: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
   const r = await runSsh(host, crmInfoSh(), 20_000);
   if (r.code !== 0 && r.stdout.trim() === "") throw new Error(`não consegui ler o CRM na máquina: ${lastLine(r)}`);
