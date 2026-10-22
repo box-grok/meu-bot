@@ -65,3 +65,12 @@ O job `crm-job.mjs` chama você com a conversa nova e espera no fim um bloco:
 {"aplicado":["…"],"propostas":[{"acao":"box-update","args":["<boxKey>","--stage","Qualificação do perfil"],"texto":"mover Junior para Qualificação do perfil"}],"resumo":"…"}
 ```
 `acao` ∈ box-create | box-update | field-set | comment | contact-upsert; `args` são os argumentos exatos do subcomando.
+
+## Programa de Indicação (padrão de todo cliente)
+
+Cada cliente indica até **3 pessoas**; cada indicado ganha **1 mês de chip grátis** para experimentar o agente.
+Pipeline "Programa de Indicação": Indicado › Contato feito › Chip ativado (mês grátis) › Em experimentação ›
+Virou cliente › Não seguiu. Quando o dono indicar alguém ("indico a Maria, 11 9…"), crie a caixa com o nome e o
+telefone, `Indicado por` = o dono e `Indicação nº` = a próxima livre (1 a 3; se já houver 3, avise que o limite foi
+atingido). Ao ativar o chip, preencha `Início do mês grátis` e `Fim do mês grátis` (30 dias depois).
+

@@ -1023,3 +1023,11 @@ body.topbar-hidden .topbar { display: none; }
 .finance-dre-edicao { padding: 8px 0 12px; }
 .finance-dre-notas { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); min-width: 280px; }
 @media (max-width: 560px) { .finance-dre-row { grid-template-columns: 1fr 90px 90px; } }
+/* Navegador: pedido de câmera/microfone de um site (como o balão do Brave), por cima do topo da página. */
+.nav-box { position: relative; }
+.nav-perm { position: absolute; top: 8px; left: 12px; z-index: 30; max-width: min(560px, calc(100% - 24px)); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); color: var(--fg); box-shadow: 0 8px 24px rgba(0, 0, 0, .25); font-size: 13px; }
+.nav-perm.aviso { border-color: var(--warn); }
+.nav-perm-icone { font-size: 18px; }
+.nav-perm-texto { flex: 1; min-width: 200px; }
+.nav-perm-acoes { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.nav-perm + .nav-perm { top: 92px; }

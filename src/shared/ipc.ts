@@ -967,6 +967,8 @@ export interface MainEvents {
   "browser:extensions": BrowserExtensionInfo[];
   /** Navegador: uma página pediu janela nova (target=_blank): abrir como aba interna. */
   "browser:open-url": { url: string };
+  /** Navegador: um site pede câmera/microfone (balão como o do Brave); `fechar` = o pedido expirou; `aviso` = só um recado (macOS bloqueou). */
+  "browser:permissao": { id: string; origem: string; tipos: ("camera" | "microfone")[]; texto: string; fechar?: boolean; aviso?: boolean };
   /** A extensão do CRM (Gmail) pediu para abrir a aba da conversa do WhatsApp deste número (só dígitos, com DDI). */
   "whatsapp:abrir": { number: string };
   /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
@@ -1153,6 +1155,10 @@ export interface MeuBotClientApi {
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
   /** Free pediu o Pro: fica no registro do suporte da máquina. */
   browserRequestPro(): Promise<void>;
+  /** Resposta ao balão de câmera/microfone de um site do Navegador. */
+  browserPermissao(id: string, decisao: "sempre" | "agora" | "nunca"): Promise<void>;
+  /** Esquece as permissões de câmera/microfone dadas aos sites (uma origem ou todas) nesta máquina. */
+  browserPermissoesEsquecer(origem?: string): Promise<void>;
   /** Barra de favoritos do Navegador (por máquina): adicionar (url repetida só atualiza o título) e remover por id. */
   browserFavoriteAdd(f: { titulo: string; url: string }): Promise<NavFavorito[]>;
   browserFavoriteRemove(id: string): Promise<NavFavorito[]>;

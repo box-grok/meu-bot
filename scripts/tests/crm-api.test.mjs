@@ -402,3 +402,20 @@ test("whatsapp/arquivar: transcrição vira anexo + registro na caixa, ou fica n
   assert.equal((await call("POST", "/whatsapp/arquivar", { phone: "+5511955554444", transcricao: "  " })).status, 400);
   iaFake = async () => "";
 });
+
+test("programa de indicação: nasce uma vez com semearIndicacao, nunca vira o pipeline do WhatsApp, apagado não volta", async () => {
+  const d2 = mkdtempSync(join(tmpdir(), "crm-ind-")); const cfg2 = join(d2, "crm.json");
+  const mk = () => createCrmApi({ dir: join(d2, "db"), configFile: cfg2, licenseOk: () => true, readJson, writeJson: (f, v) => writeFileSync(f, JSON.stringify(v)), json, readBody, log: () => {}, iaTexto: async () => "", semearIndicacao: true });
+  const a2 = mk();
+  const srv = http.createServer((req, res) => a2.handle(req, res, new URL(req.url, "http://x"))); await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const u = `http://127.0.0.1:${srv.address().port}/v1/crm`;
+  const ps = (await (await fetch(`${u}/pipelines`)).json()).pipelines;
+  assert.deepEqual(ps.map((p) => p.name), ["Programa de Indicação"]);
+  const cfgv = await (await fetch(`${u}/config`)).json();
+  assert.equal(cfgv.pipelineKey, null, "sozinho, o programa não vira o padrão do WhatsApp");
+  const full = a2.store.listPipelines()[0];
+  assert.deepEqual(full.stages.map((s) => s.name).slice(0, 3), ["Indicado", "Contato feito", "Chip ativado (mês grátis)"]);
+  assert.deepEqual(full.fields.find((f) => f.name === "Indicação nº").options.map((o) => o.name), ["1", "2", "3"]);
+  assert.equal(JSON.parse(readFileSync(cfg2, "utf8")).indicacaoSemeada, true);
+  srv.close(); rmSync(d2, { recursive: true, force: true });
+});

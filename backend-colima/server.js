@@ -164,7 +164,7 @@ function iaTexto(prompt, convId) {
   });
 }
 function crmApi() {
-  if (crmApiInst === null) crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto });
+  if (crmApiInst === null) crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto, semearIndicacao: true });
   return crmApiInst;
 }
 let financeApiInst = null;

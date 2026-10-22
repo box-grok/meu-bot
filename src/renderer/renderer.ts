@@ -6406,6 +6406,22 @@ function disposeNav(): void {
 }
 window.meuBot.on("browser:extensions", (list) => { navExtensions = list; paintNavActions(); if (navEls !== null && !navEls.menu.hidden) paintNavMenu(); });
 window.meuBot.on("browser:open-url", ({ url }) => { if (navPage !== null && navPartition !== null) { navNewTab(url); } });
+/* Câmera/microfone de um site (como o Brave): balão embaixo da barra do Navegador com as três respostas. */
+const navPermBaloes = new Map<string, HTMLElement>();
+window.meuBot.on("browser:permissao", (p) => {
+  const antigo = navPermBaloes.get(p.id); if (antigo !== undefined) { antigo.remove(); navPermBaloes.delete(p.id); }
+  if (p.fechar === true) return;
+  if (navPage !== null && !pageShown(navPage)) openPage(navPage);
+  const host = (navEls?.box ?? document.body);
+  const b = el("div", `nav-perm${p.aviso === true ? " aviso" : ""}`); b.setAttribute("role", "dialog"); b.setAttribute("aria-label", "Permissão do site");
+  b.append(el("span", "nav-perm-icone", p.tipos.includes("camera") ? "📷" : "🎙"), el("span", "nav-perm-texto", p.texto));
+  const acoes = el("div", "nav-perm-acoes");
+  const fechar = (): void => { b.remove(); navPermBaloes.delete(p.id); };
+  const btn = (rotulo: string, cls: string, d: "sempre" | "agora" | "nunca"): HTMLButtonElement => { const x = el("button", `btn ${cls} btn-small`, rotulo); x.type = "button"; x.addEventListener("click", () => { void window.meuBot.browserPermissao(p.id, d); fechar(); }); return x; };
+  if (p.aviso === true) { const ok = el("button", "btn btn-ghost btn-small", "Entendi"); ok.type = "button"; ok.addEventListener("click", fechar); acoes.append(ok); }
+  else acoes.append(btn("Permitir sempre neste site", "btn-primary", "sempre"), btn("Permitir desta vez", "btn-ghost", "agora"), btn("Não permitir", "btn-ghost", "nunca"));
+  b.append(acoes); host.prepend(b); navPermBaloes.set(p.id, b);
+});
 window.meuBot.on("browser:agent", (st) => { navAgent = st; paintNav(); });
 window.meuBot.on("browser:favorites", (list) => { navFavs = list; paintNavFavs(); });
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.

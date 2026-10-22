@@ -17,6 +17,25 @@ const { openStore } = require('./crm-store');
 const { createAutenticador } = require('./autenticador');
 
 const POR_RE = /^[a-z]{2,20}$/;
+/**
+ * Programa de indicação (padrão em todo cliente com o CRM próprio): cada cliente indica até 3 pessoas; cada indicado
+ * ganha 1 mês de chip grátis para experimentar o agente. Nasce uma vez por máquina (crm.json › indicacaoSemeada); se
+ * a pessoa apagar, não volta. Nunca é o pipeline padrão das conversas do WhatsApp.
+ */
+const PROGRAMA_INDICACAO = {
+  name: 'Programa de Indicação',
+  stages: ['Indicado', 'Contato feito', 'Chip ativado (mês grátis)', 'Em experimentação', 'Virou cliente', 'Não seguiu'],
+  fields: [
+    { name: 'Indicado por', type: 'TEXT' },
+    { name: 'Indicação nº', type: 'DROPDOWN', options: ['1', '2', '3'] },
+    { name: 'Início do mês grátis', type: 'DATE' },
+    { name: 'Fim do mês grátis', type: 'DATE' },
+    { name: 'Plano depois do teste', type: 'DROPDOWN', options: ['Chip (R$ 97/mês)', 'Chip + Plano Claude Code', 'Ainda não decidiu', 'Não vai seguir'] },
+    { name: 'Observações', type: 'TEXT' },
+  ],
+  origem: { programa: 'indicacao' },
+};
+const ehIndicacao = (p) => p?.origem?.programa === 'indicacao';
 /** JSON com as chaves em ordem (para comparar objetos sem depender da ordem dos campos). */
 const estavel = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.keys(x).sort().map((c) => [c, x[c]])) : x));
 /** Anexo de caixa: até 15 MB (o corpo vem em base64, ~4/3 disso). */
@@ -46,7 +65,8 @@ function createCrmApi(deps) {
     const c = cfg();
     if (typeof c.pipelineKey === 'string' && store.getPipeline(c.pipelineKey) !== null) return { key: c.pipelineKey, invalido: null };
     const invalido = typeof c.pipelineKey === 'string' && c.pipelineKey !== '' ? c.pipelineKey : null;
-    const ps = store.listPipelines();
+    // O programa de indicação não conta: sozinho, ele não vira o pipeline das conversas do WhatsApp.
+    const ps = store.listPipelines().filter((p) => !ehIndicacao(p));
     if (ps.length !== 1) return { key: null, invalido };
     const unico = ps[0];
     try { deps.writeJson(deps.configFile, { ...c, pipelineKey: unico.key, pipelineName: unico.name, savedAt: new Date().toISOString() }); log(`crm: pipeline padrão ${invalido ? `inválido (${invalido.slice(0, 12)}…)` : 'vazio'} → "${unico.name}" (${unico.key}), o único do CRM`); } catch (e) { log(`crm: não consegui corrigir o crm.json: ${e.message}`); }
@@ -628,11 +648,26 @@ function createCrmApi(deps) {
     return { ok: true, ...rel };
   }
 
+  /** Cria o pipeline do programa de indicação uma vez por máquina (só com o CRM liberado; deps.semearIndicacao). */
+  let semeando = null;
+  function semearIndicacao() {
+    if (deps.semearIndicacao !== true || semeando !== null) return semeando ?? Promise.resolve();
+    const c = cfg();
+    if (c.indicacaoSemeada === true) { semeando = Promise.resolve(); return semeando; }
+    const marcar = () => { try { deps.writeJson(deps.configFile, { ...cfg(), indicacaoSemeada: true }); } catch (e) { log(`crm: não marquei o programa de indicação: ${e.message}`); } };
+    if (store.listPipelines().some(ehIndicacao)) { marcar(); semeando = Promise.resolve(); return semeando; }
+    semeando = store.mutate('sistema', (tx) => { const pl = modelo.novoPipeline(PROGRAMA_INDICACAO, tx.now, tx.rnd); tx.setPipeline(pl); tx.mudar('pipeline.create', { pipeline: pl.key }); })
+      .then(() => { marcar(); log('crm: pipeline "Programa de Indicação" criado (padrão de todo cliente)'); })
+      .catch((e) => { semeando = null; log(`crm: não criei o programa de indicação: ${e.message}`); });
+    return semeando;
+  }
+
   /** Trata uma requisição /v1/crm/*; sempre responde. */
   async function handle(req, res, url) {
     // O Autenticador (códigos 2FA) vem com todo meu-bot e não é CRM: passa sem a licença do CRM (a API key já foi conferida).
     const livre = /^\/v1\/crm\/autenticador(\/|$)/.test(url.pathname);
     if (!livre && !deps.licenseOk()) return erroHttp(res, json, 403, 'o CRM próprio precisa do plano Pro (ou superior) ou do produto meu-bot-crm nesta máquina, ou a licença venceu', 'crm_license', 'forbidden');
+    if (!livre) await semearIndicacao();
     const porHdr = String(req.headers['x-crm-por'] || '').toLowerCase();
     const por = POR_RE.test(porHdr) ? porHdr : 'app';
     const t0 = Date.now();

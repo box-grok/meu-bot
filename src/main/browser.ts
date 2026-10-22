@@ -15,6 +15,8 @@ import { log, onReverseState, reversePort, setReverseWanted } from "./tunnel";
 import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
 import { addNavFavorito, isNavAgentHost, navEspacos, navFavoritos, removeNavFavorito, setNavAgentHost, setNavEspacos } from "./settings";
 import type { BrowserAgentState, DonoInfo } from "../shared/ipc";
+import { esquecerAba, pedirPermissao, permissaoJaDada } from "./nav-permissoes";
+import { origemDe, tiposDe } from "./nav-permissoes-core";
 import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
 import { carregarExtensoes, extensaoEmbutida, sincronizarExtensaoCrm } from "./extensao-gmail/extensao";
 import { crmProprioOk } from "./licenca";
@@ -186,8 +188,21 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
   let ready = readySessions.get(part);
   if (ready === undefined) {
     const allowed = new Set(["fullscreen", "pointerLock", "clipboard-sanitized-write"]);
-    ses.setPermissionRequestHandler((_wc, permission, cb) => cb(allowed.has(permission)));
-    ses.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
+    // Câmera e microfone: como no Brave, a página pede e a janela pergunta (permitir sempre neste site, desta vez ou não).
+    const janelaDe = (wc: WebContents | null): BrowserWindow | null => { const v = wc ? views.get(wc.id) : undefined; const w = v ? BrowserWindow.fromId(v.winId) : null; return w ?? BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && windowHosts.get(x.id) === host) ?? null; };
+    ses.setPermissionRequestHandler((wc, permission, cb, details) => {
+      if (allowed.has(permission)) return cb(true);
+      const origem = origemDe(details.requestingUrl ?? wc.getURL());
+      if (permission !== "media" || origem === null) return cb(false);
+      void pedirPermissao(host, janelaDe(wc), wc.id, origem, tiposDe((details as { mediaTypes?: string[] }).mediaTypes)).then(cb, () => cb(false));
+    });
+    ses.setPermissionCheckHandler((wc, permission, requestingOrigin, details) => {
+      if (allowed.has(permission)) return true;
+      if (permission !== "media") return false;
+      const origem = origemDe(requestingOrigin); if (origem === null) return false;
+      const mt = (details as { mediaType?: string }).mediaType;
+      return permissaoJaDada(host, wc?.id ?? -1, origem, mt === "video" ? ["camera"] : mt === "audio" ? ["microfone"] : ["camera", "microfone"]);
+    });
     ses.on("will-download", (_e, item) => { log(`[navegador ${host}] download: ${item.getFilename()}`); });
     // Sem a assinatura do Electron no User-Agent: o login do Google e outros tratam app embutido como inseguro.
     ses.setUserAgent(ses.getUserAgent().replace(/ Electron\/\S+/, "").replace(/ meu-bot[^ ]*\/\S+/, ""));
@@ -425,7 +440,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     views.set(wc.id, { wc, host, winId: win.id });
     googleLoginUa(wc);
     retornoParaMaquina(wc, host);
-    wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); });
+    wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); esquecerAba(wc.id); });
     wc.on("console-message", (ev) => {
       if (ev.level !== "warning" && ev.level !== "error") return;
       const list = consoleLog.get(wc.id) ?? [];
