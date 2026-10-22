@@ -412,7 +412,7 @@ function afterTabGone(id: string): void {
   const last = [...tabs.keys()].at(-1);
   if (last !== undefined) { activate(last); return; }
   activeId = null;
-  if (semConversaNaDivisao()) return;
+  if (preencherEsquerda()) return;
   inputEl.value = "";
   syncComposer();
   renderSidebar();
@@ -1393,7 +1393,7 @@ function definePage(id: string, title: string, panel: HTMLElement, render: () =>
 }
 
 function activatePage(page: PageTab): void {
-  if (splitOnAny()) {
+  if (splitOnAny() && !semRotaSplit) {
     // Janela estreita demais (direita recolhida): a página clicada não apareceria; sai da divisão e mostra a página.
     if (contentEl.classList.contains("split-collapsed")) splitOff();
     else { if (!splitPages.includes(page)) splitOn(page, "trocar"); else focusSplit(page); return; }
@@ -1464,6 +1464,7 @@ function closePage(page: PageTab): void {
   pagePrev = null;
   if (back !== undefined) { activate(back); return; }
   activeId = null;
+  if (preencherEsquerda()) return;
   syncComposer();
   renderSidebar();
   syncRest();
@@ -1560,13 +1561,21 @@ function unpin(page: PageTab): void {
  * "trocar" põe no lugar da coluna alvo (a vazia, senão a última clicada): clicar numa aba com a tela dividida.
  */
 function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
-  // Sem conversa não há o que pôr à esquerda: a página vai para a frente em tela cheia (nada de cobrinha ao lado).
-  if (tabs.size === 0) {
-    if (splitOnAny()) splitOff();
-    if (ehVazia(page)) { largarVazia(page); return; }
-    activatePage(page); return;
-  }
   if (splitPages.includes(page)) { focusSplit(page); return; }
+  // A esquerda fica com o que está na frente (conversa do meu-bot, WhatsApp ou outra página). Se o que está na frente
+  // é a própria página que vai para o lado, entra a conversa de antes, senão outra aba aberta; sem nada, não divide.
+  const frenteOk = (pageActive !== null && pageActive !== page) || (pageActive === null && activeId !== null);
+  let esquerda: { conv: string } | { pag: PageTab } | null = null;
+  if (!frenteOk) {
+    const conv = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1);
+    const outra = [...pages.values()].filter((p) => p.tabEl !== null && p !== page && !ehVazia(p) && !splitPages.includes(p)).at(-1);
+    esquerda = conv !== undefined ? { conv } : outra !== undefined ? { pag: outra } : null;
+    if (esquerda === null) {
+      if (ehVazia(page)) { largarVazia(page); return; }
+      if (splitOnAny()) splitOff();
+      activatePage(page); return; // nada para pôr ao lado: tela cheia
+    }
+  }
   const max = maxColunas(contentEl.clientWidth);
   const alvo = alvoAtual();
   // Acrescentar com uma coluna vazia aberta também ocupa a vazia (ela existe para isso).
@@ -1574,9 +1583,10 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   const ids = ocupar ? splitPages.map((p) => (p === alvo ? page.id : p.id)) : splitAdd(splitPages.map((p) => p.id), page.id, Math.max(max, 1));
   for (const old of splitPages) if (!ids.includes(old.id)) unpin(old);
   if (pageActive === page) deactivatePage();
-  else if (pageActive !== null) deactivatePage();
-  // A esquerda precisa de uma conversa: a que estava antes da página, senão a última.
-  if (activeId === null) { const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1); pagePrev = null; if (back !== undefined) activate(back); }
+  if (esquerda !== null) {
+    if ("conv" in esquerda) { pagePrev = null; activate(esquerda.conv); }
+    else mostrarNaEsquerda(esquerda.pag);
+  }
   splitPages = ids.map((id) => (id === page.id ? page : splitPages.find((p) => p.id === id)!));
   layoutSplit();
   // Janela estreita com a lateral aberta: esconde a lateral para a coluna caber (Cmd+B traz de volta).
@@ -1592,16 +1602,24 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
 }
 /** Mais uma coluna, vazia (a cobrinha), à espera da próxima página clicada. */
 function splitColunaVazia(): void { splitOn(novaVazia()); }
+/** Põe a página na frente (à esquerda) sem a regra "páginas vão para a direita" da tela dividida. */
+let semRotaSplit = false;
+function mostrarNaEsquerda(p: PageTab): void { semRotaSplit = true; try { activatePage(p); } finally { semRotaSplit = false; } }
 /**
- * A cobrinha só fica ao lado de algo de verdade. Fechou a última conversa com a tela dividida: as vazias somem e a
- * divisão acaba; a página da coluna alvo (senão a última) fica na frente, em tela cheia. Devolve se agiu.
+ * A esquerda ficou vazia com a tela dividida (fechou a conversa ou a página da frente): entra outra conversa; sem
+ * conversa, a primeira página das colunas passa para a esquerda. Sem página de verdade nas colunas, a divisão acaba
+ * (a cobrinha só fica ao lado de algo de verdade). Devolve se pôs algo à esquerda.
  */
-function semConversaNaDivisao(): boolean {
-  if (!splitOnAny()) return false;
-  const alvo = alvoAtual();
-  const frente = alvo !== null && !ehVazia(alvo) ? alvo : splitPages.filter((p) => !ehVazia(p)).at(-1) ?? null;
-  splitOff(false);
-  if (frente !== null) activatePage(frente); else { syncComposer(); renderSidebar(); syncRest(); }
+function preencherEsquerda(): boolean {
+  if (!splitOnAny() || activeId !== null || pageActive !== null) return false;
+  const conv = [...tabs.keys()].at(-1);
+  if (conv !== undefined) { activate(conv); return true; }
+  const p = splitPages.find((x) => !ehVazia(x));
+  if (p === undefined) { splitOff(false); return false; }
+  splitPages = splitPages.filter((x) => x !== p);
+  unpin(p);
+  if (!splitPages.some((x) => !ehVazia(x))) splitOff(false); else { layoutSplit(); saveSplit(); }
+  mostrarNaEsquerda(p);
   return true;
 }
 /** A página de uma coluna fechou: vira coluna vazia se ainda há outra página de verdade ao lado; senão a divisão acaba. */
@@ -3295,7 +3313,7 @@ function openWaGroup(grupo: WhatsappGroup, editQuem = false, aoLado = false): vo
     waGroupPages.set(id, created);
     g = created;
   } else { g.grupo = grupo; if (editQuem) g.editQuem = true; }
-  if (aoLado && tabs.size > 0) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
+  if (aoLado) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
   paintWaGroupTab(g);
   renderSidebar();
 }
@@ -3535,7 +3553,7 @@ function openWaChat(c: WhatsappChat, aoLado = false): void {
     waChatPages.set(id, created);
     g = created;
   } else { g.chat = c; }
-  if (aoLado && tabs.size > 0) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
+  if (aoLado) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
   paintWaChatTab(g);
   renderSidebar();
 }
