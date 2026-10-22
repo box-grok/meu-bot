@@ -2418,7 +2418,8 @@ Regras em `src/main/nav-donos-core.ts` (testadas), aplicadas em `nav-api.ts`:
 - Pedido do WhatsApp abre a aba em segundo plano (`browser:ask` com `fundo`): a tela da pessoa não muda.
 
 **Na tela:** cada aba mostra o ID (`aba <n>`, o número que o agente usa) ou o selo da conversa dona: `📱 d585b772`
-(os 8 primeiros caracteres da sessão do OpenClaw, o mesmo "ID" da aba da conversa) ou `🤖 <id da conversa>`. Um clique
+(os 8 primeiros caracteres da sessão do OpenClaw, o mesmo "ID" da aba da conversa), `🤖 <id da conversa>` ou
+`✳️ Claude Code (Mac)` (origem `claude-code`, o Claude Code deste Mac pelo socket). Um clique
 copia a referência: máquina, aba, url e dono, com chave e sessão. A máquina com o servidor v1 é atualizada sozinha
 (`navegadorInstalled` e `mcpfile` conferem o marcador `meu-bot-navegador v2`).
 
@@ -2477,3 +2478,36 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
     `contas:evento`.
   - **Quem usa a conta:** a credencial fica na máquina. No WhatsApp, só o dono tem `exec`; grupos e as outras pessoas
     da lista não rodam comandos.
+
+## Terminal controlado de fora, divisão por arrasto e trava de leitura (22 out)
+
+- **Terminal API** (`src/main/term-api.ts`, núcleo `term-api-core.ts` testado): socket `term.sock` em
+  `/tmp/<app>-<uid>/` (0600), **só neste Mac**: nunca vai pelo túnel (lá quem pede seria o agente, e o terminal é o
+  shell da pessoa). `GET /terminais`; `POST /abrir {maquina?}` manda `term:ask` à janela da máquina e espera a sessão
+  nova (`waitNewTerminal`); `POST /ler {id, linhas?}` devolve a tela sem ANSI (o `\r` recomeça a linha); `POST
+  /digitar {id, texto, enter?}` ou `{id, tecla}` (`enter`, `tab`, `esc`, `ctrl+c`…, até 4000 caracteres). O
+  conteúdo digitado nunca vai para o log.
+- **ID e selo no terminal:** o topo de cada terminal mostra `ID <sessão>` (clique copia a referência) e, por 10 min
+  depois do último uso pela API, o selo de quem usou e o quê (`✳️ Claude Code (Mac) · digitou às 00:19`); o selo
+  também aparece na aba "Terminal N". Quem pede manda `X-Meu-Bot-Dono` (o mesmo do Navegador); sem cabeçalho vira
+  "controle local (sem identificação)". Evento `term:dono`.
+- **Várias abas:** botão "+ Novo terminal" no topo do terminal, Option+clique em "Terminal" na lateral ou
+  Cmd+Shift+J.
+- **Divisão por arrasto:** sai o ⫿ da aba. Arrastar a aba de uma página para a metade direita do conteúdo põe lado a
+  lado; para a esquerda (estando lado a lado) volta à tela inteira. A camada `.split-drop` cobre o conteúdo durante o
+  arrasto (o `<webview>` engole os eventos) e aparece um tique depois do `dragstart` (no mesmo tique o Chromium
+  cancela o arrasto).
+- **Abas novas pedidas cedo demais:** `browser:ask` de aba nova chegando antes de o Navegador ficar pronto (app
+  abrindo, partição ainda nula, ou a página fechada) era descartado e o agente recebia "a aba nova não apareceu".
+  Agora entra em `navPedidosNovos` e é atendido no fim de `openNavTab`; com o Navegador fechado, ele abre.
+- **Trava de leitura para desconhecidos:** com o WhatsApp aberto (`dmPolicy: open`), o `"*"` do
+  `tools.toolsBySender` não negava `read`: um cliente podia pedir o conteúdo de `~/.config` (tokens) ou da
+  configuração. `DESCONHECIDO_DENY = ["read"]` (`navegador-whatsapp-core.ts`) entra só no `"*"`; quem é liberado por
+  número (equipe) não herda (`travaNavegador`). `code_execution` (do `group:runtime`) passa a ser negado junto com
+  `exec` para todos que não são o dono. Aplicado à mão na box-lv (backup `openclaw.json.bak-trava-*`, hot reload).
+- **Skill `subir-site-cloudflare`** (semente em `backend-colima/`, cartão no Acervo): projeto Pages, deploy com
+  `npx wrangler@4`, domínio no projeto, CNAME com proxy, espera `active` e testa por `@1.1.1.1` + `curl --resolve`
+  para não envenenar o cache de DNS negativo do computador (o Tailscale guardou o NXDOMAIN por ~30 min no teste).
+- **Chaveiro a cada rebuild:** o item "<app> Safe Storage" guarda uma lista `partition_id` com o **cdhash** de cada
+  build (certificado autoassinado não tem Team ID), então cada rebuild pede a senha de novo mesmo com "Permitir
+  Sempre". A regra do certificado (`certificate leaf`) já é estável; só um certificado Apple (Team ID) resolve de vez.

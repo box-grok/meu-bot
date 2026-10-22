@@ -141,7 +141,7 @@ async function act(host: string, route: string, b: Req, dono: Dono | null): Prom
       if (d.modo === "nova") {
         const before = new Set(list.map((w) => w.id));
         if (!browserAsk(host, { kind: "new-tab", url, fundo })) throw new Error("a aba Navegador não está aberta no app");
-        wc = await new Promise<WebContents>((resolve, reject) => { const t0 = Date.now(); const tick = (): void => { const n = tabsOf(host).find((w) => !before.has(w.id)); if (n !== undefined) resolve(n); else if (Date.now() - t0 > 10_000) reject(new Error("a aba nova não apareceu")); else setTimeout(tick, 100); }; tick(); });
+        wc = await new Promise<WebContents>((resolve, reject) => { const t0 = Date.now(); const tick = (): void => { const n = tabsOf(host).find((w) => !before.has(w.id)); if (n !== undefined) resolve(n); else if (Date.now() - t0 > 25_000) reject(new Error("a aba nova não apareceu: o Navegador do app pode estar sem acesso (plano) ou travado; chame 'abas' e tente de novo")); else setTimeout(tick, 100); }; tick(); });
         tomar(m, wc.id, dono, Date.now()); publicar(host);
       } else {
         wc = list.find((w) => w.id === d.aba)!;

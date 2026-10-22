@@ -5795,6 +5795,7 @@ async function openNavTab(url?: string, frente = true): Promise<void> {
     }
     else if (navCurrent() === null) { const first = navVisibleTabs()[0]; if (first !== undefined) navSelect(first.id); }
     else navCurrent()?.wv.focus();
+    navAtenderPedidos();
   }
 }
 window.meuBot.on("browser:workspaces", (w) => { navWs = w; navMountWorkspace(false); paintNav(); });
@@ -6021,10 +6022,24 @@ window.meuBot.on("browser:open-url", ({ url }) => { if (navPage !== null && navP
 window.meuBot.on("browser:agent", (st) => { navAgent = st; paintNav(); });
 window.meuBot.on("browser:favorites", (list) => { navFavs = list; paintNavFavs(); });
 // O agente (pelas ações do main) pede aba nova, ativar ou fechar; o DOM é nosso.
-window.meuBot.on("browser:ask", (msg) => {
+/**
+ * Abas novas pedidas pelo agente enquanto o Navegador ainda se prepara (app abrindo, abas sendo restauradas): antes
+ * eram descartadas em silêncio e o agente recebia "a aba nova não apareceu". Ficam aqui até o Navegador ficar pronto.
+ */
+const navPedidosNovos: { url: string; fundo: boolean }[] = [];
+function navAtenderPedidos(): void {
   if (navPage === null || navPartition === null) return;
-  // Pedido do WhatsApp (fundo): a aba nasce em segundo plano e a tela da pessoa não muda.
-  if (msg.kind === "new-tab") { navNewTab(msg.url, msg.fundo !== true); if (msg.fundo !== true && !pageShown(navPage)) openPage(navPage); return; }
+  for (const p of navPedidosNovos.splice(0)) { navNewTab(p.url, !p.fundo); if (!p.fundo && !pageShown(navPage)) openPage(navPage); }
+}
+window.meuBot.on("browser:ask", (msg) => {
+  if (msg.kind === "new-tab") {
+    // Pedido do WhatsApp (fundo): a aba nasce em segundo plano e a tela da pessoa não muda.
+    navPedidosNovos.push({ url: msg.url, fundo: msg.fundo === true });
+    if (navPage === null) void openNavTab(undefined, msg.fundo !== true); // fechado: abre (e restaura as abas de antes)
+    navAtenderPedidos();
+    return;
+  }
+  if (navPage === null || navPartition === null) return;
   const t = navTabByWc(msg.wcId); if (t === null) return;
   if (msg.kind === "activate") { navSelect(t.id); if (!pageShown(navPage)) openPage(navPage); }
   else navClose(t.id);
