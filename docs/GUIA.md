@@ -2429,7 +2429,7 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 - **Tutorial 10 (`crm-gmail`):** ganhou o passo **"Criar o primeiro pipeline"**, antes do Streak e do teste. Ele conclui
   pelo estado real (`ctx.crm.local.padrao`): quem já tem pipeline padrão continua concluído.
 - **Corpo do passo** (`renderCrmPipeline`):
-  - modelos prontos (Vendas, Atendimento, Agendamentos) ou "Do meu jeito", em `lib/crm-modelos.ts` com
+  - modelos prontos de mídia paga ("Operação de mídia paga" e "Testes de anúncio") ou "Do meu jeito", em `lib/crm-modelos.ts` com
     `validarPipeline`: de 2 a 12 etapas, sem repetir;
   - com vários pipelines e nenhum padrão, escolher qual o WhatsApp usa.
 - **Main** (`crm-local.ts`): `GET /v1/crm/pipelines` e `/config`, `POST /pipelines` e `PUT /config`, pelo túnel. Canais

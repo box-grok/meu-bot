@@ -224,7 +224,7 @@ export function avisoSemPipeline(erro, proprio) {
   if (proprio) {
     return apagado
       ? '📇 CRM: as conversas do WhatsApp não estão sendo anotadas porque o pipeline que o CRM usava foi apagado. Escolha outro no meu-bot-crm (Tutoriais › CRM no Gmail e no WhatsApp) ou me diga aqui qual usar.'
-      : '📇 CRM: as conversas do WhatsApp ainda não estão sendo anotadas porque o CRM não tem um pipeline. Crie o primeiro no meu-bot-crm (Tutoriais › CRM no Gmail e no WhatsApp) ou me peça aqui: "cria um pipeline Vendas com as etapas Novo contato, Conversando, Proposta, Fechado".';
+      : '📇 CRM: as conversas do WhatsApp ainda não estão sendo anotadas porque o CRM não tem um pipeline. Crie o primeiro no meu-bot-crm (Tutoriais › CRM no Gmail e no WhatsApp) ou me peça aqui: "cria um pipeline Operação de Mídia Paga com as etapas Briefing, Criativo, Aprovação, No ar, Otimização, Relatório".';
   }
   return apagado
     ? '📇 CRM: as conversas do WhatsApp não estão sendo anotadas porque o pipeline do Streak que o CRM usava não existe mais. Escolha outro no meu-bot (Tutoriais › CRM pelo WhatsApp).'

@@ -503,7 +503,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "pipeline", title: "Criar o primeiro pipeline", target: "none", body: "crm-pipeline",
-        text: "O CRM anota cada conversa do WhatsApp numa caixa de um pipeline (as etapas do seu atendimento). Sem pipeline, nada é anotado. Escolha um modelo, ajuste o nome e as etapas e crie: ele vira o pipeline do WhatsApp.",
+        text: "O CRM anota cada conversa do WhatsApp numa caixa de um pipeline (as etapas da sua operação de mídia paga). Sem pipeline, nada é anotado. Escolha um modelo, ajuste o nome e as etapas e crie: ele vira o pipeline do WhatsApp.",
         done: (_st, _f, c) => (c.crm.local?.padrao ?? null) !== null,
       },
       {

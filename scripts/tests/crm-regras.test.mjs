@@ -172,7 +172,7 @@ test("classificação: prompt leva pipelines/exemplos/mensagens; resposta só va
 
 test("aviso sem pipeline: português simples, com o caminho no app; nunca o comando da CLI", () => {
   const sem = avisoSemPipeline("nenhum pipeline padrão: escolha um com `config --pipeline <key>` (veja `pipelines`)", true);
-  assert.match(sem, /não tem um pipeline/); assert.match(sem, /CRM no Gmail e no WhatsApp/); assert.match(sem, /cria um pipeline Vendas/);
+  assert.match(sem, /não tem um pipeline/); assert.match(sem, /CRM no Gmail e no WhatsApp/); assert.match(sem, /cria um pipeline Operação de Mídia Paga/);
   assert.match(avisoSemPipeline("o pipeline padrão (p_x) não existe no CRM próprio", true), /foi apagado/);
   assert.match(avisoSemPipeline("sem pipeline", false), /Streak/);
   for (const t of [sem, avisoSemPipeline("x não existe", false)]) assert.doesNotMatch(t, /config --pipeline|<key>/);

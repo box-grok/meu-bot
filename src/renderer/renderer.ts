@@ -4513,7 +4513,7 @@ function renderCrmPipeline(container: HTMLElement): void {
   for (const m of MODELOS_PIPELINE) {
     const card = el("button", `reply-card${crmPipeDraft?.modelo === m.id ? " on" : ""}`); card.type = "button"; card.disabled = crmPipeBusy;
     const body = el("div", "reply-body"); const title = el("div", "reply-title"); title.append(el("strong", "", m.titulo));
-    if (m.id === "vendas") title.append(el("span", "reply-default", "Mais usado"));
+    if (m.id === "midia-paga") title.append(el("span", "reply-default", "Mais usado"));
     body.append(title, el("p", "", m.etapas.length > 0 ? `${m.texto} Etapas: ${m.etapas.join(" › ")}.` : m.texto));
     card.append(el("span", "reply-radio"), body);
     card.addEventListener("click", () => { crmPipeDraft = { modelo: m.id, nome: m.nome, etapas: m.etapas.join("\n") }; crmPipeMsg = null; paintGuide(); });

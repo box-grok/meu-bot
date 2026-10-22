@@ -5,9 +5,8 @@
 export interface ModeloPipeline { id: string; titulo: string; texto: string; nome: string; etapas: readonly string[] }
 
 export const MODELOS_PIPELINE: readonly ModeloPipeline[] = [
-  { id: "vendas", titulo: "Vendas", texto: "Para quem vende pelo WhatsApp: do primeiro contato ao fechamento.", nome: "Vendas", etapas: ["Novo contato", "Conversando", "Proposta enviada", "Fechado", "Perdido"] },
-  { id: "atendimento", titulo: "Atendimento", texto: "Para pedidos e suporte: acompanhe cada atendimento até resolver.", nome: "Atendimento", etapas: ["Novo pedido", "Em atendimento", "Aguardando o cliente", "Resolvido"] },
-  { id: "agenda", titulo: "Agendamentos", texto: "Para quem marca horários: do interesse ao retorno.", nome: "Agendamentos", etapas: ["Interessado", "Agendado", "Atendido", "Retorno"] },
+  { id: "midia-paga", titulo: "Operação de mídia paga", texto: "Cada campanha ou pedido de anúncio, do briefing ao relatório.", nome: "Operação de Mídia Paga", etapas: ["Briefing", "Criativo", "Aprovação", "No ar", "Otimização", "Relatório"] },
+  { id: "testes", titulo: "Testes de anúncio", texto: "Cada teste de anúncio: só escala o que gerou venda; o resto pausa com o aprendizado anotado.", nome: "Testes de Anúncios", etapas: ["Ideia", "Aprovado", "No ar", "Medindo (7 dias)", "Escalar", "Pausado"] },
   { id: "livre", titulo: "Do meu jeito", texto: "Você dá o nome e escreve as etapas.", nome: "", etapas: [] },
 ];
 
