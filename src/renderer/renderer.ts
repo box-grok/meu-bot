@@ -2055,6 +2055,14 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       row.append(`Claude Code · ${clAuth?.email ?? "logado"}. `, swap);
       manage.append(row);
       panel.append(manage);
+    } else if (t.id === "contas-cli") {
+      // Concluído, os passos viram só "concluído": trocar de conta, reconectar e sair ficam aqui.
+      const manage = el("div", "guide-manage");
+      for (const id of ["cloudflare", "github"] as const) {
+        manage.append(el("p", "hint strong-hint", id === "cloudflare" ? "Cloudflare nesta máquina" : "GitHub nesta máquina"));
+        renderConta(manage, id);
+      }
+      panel.append(manage);
     }
   }
   // Concluído: o mesmo "Refazer do zero" dos cartões arquivados, aqui no fim do guia (dois cliques).
