@@ -2493,6 +2493,12 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   "controle local (sem identificação)". Evento `term:dono`.
 - **Várias abas:** botão "+ Novo terminal" no topo do terminal, Option+clique em "Terminal" na lateral ou
   Cmd+Shift+J.
+- **Várias colunas:** `splitPages` (lista) em vez de uma página só; cada página fica numa `.split-col` dentro do
+  `#split-panel` (flex). Quantas aparecem segue a largura (`maxColunas`: 320 px da conversa + 260 px por coluna, teto
+  8); as que não cabem ficam `[hidden]` e voltam ao alargar. Arrastar outra aba para a direita acrescenta coluna
+  (cheia: substitui a última, `splitAdd`); para a esquerda tira só aquela; clicar numa aba com a tela dividida troca a
+  última coluna. Preferência `{pageIds, ratio}` (aceita o antigo `{pageId}`). Controle local: `/dividir` acrescenta,
+  `/juntar {id|pagina}` tira uma, `/juntar {}` tira todas.
 - **Divisão por arrasto:** sai o ⫿ da aba. Arrastar a aba de uma página para a metade direita do conteúdo põe lado a
   lado; para a esquerda (estando lado a lado) volta à tela inteira. A camada `.split-drop` cobre o conteúdo durante o
   arrasto (o `<webview>` engole os eventos) e aparece um tique depois do `dragstart` (no mesmo tique o Chromium

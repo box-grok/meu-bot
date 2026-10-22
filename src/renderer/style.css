@@ -36,7 +36,11 @@ dialog textarea { font: inherit; font-size: 13px; padding: 7px 9px; border-radiu
 .content.split .split-handle { display: block; cursor: col-resize; background: var(--line); position: relative; }
 .content.split .split-handle::after { content: ""; position: absolute; inset: 0 -4px; }
 .content.split .split-handle:hover, .content.split.dragging .split-handle { background: var(--accent); }
-.content.split .split-panel { display: block; position: relative; overflow: hidden; border-left: 1px solid var(--line); }
+.content.split .split-panel { display: flex; position: relative; overflow: hidden; border-left: 1px solid var(--line); }
+/* Uma coluna por página fixada; as que não cabem na largura ficam [hidden] até caber. */
+.split-col { position: relative; flex: 1 1 0; min-width: 0; overflow: hidden; }
+.split-col[hidden] { display: none; }
+.split-col + .split-col { border-left: 1px solid var(--line); }
 /* Estreito demais para os dois: a conversa fica, a página recolhe (volta sozinha ao alargar). */
 .content.split.split-collapsed { grid-template-columns: 1fr 0 0; }
 .content.split.split-collapsed .split-handle, .content.split.split-collapsed .split-panel { display: none; }

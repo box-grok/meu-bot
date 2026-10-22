@@ -25,7 +25,7 @@ import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
-import { clampSplitRatio, parseSplitPref, splitLabel, splitLayout, splitPrefPageId } from "./lib/split.js";
+import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor, parseFavsShown } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
@@ -671,7 +671,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
-  add({ id: "a:split", kind: "action", label: splitLabel(splitPage?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
+  add({ id: "a:split", kind: "action", label: splitLabel(splitPages.at(-1)?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
   if (navPage !== null && navAccess === "ok") add({ id: "a:favs", kind: "action", label: navFavsShown ? "Navegador: esconder a barra de favoritos" : "Navegador: mostrar a barra de favoritos", detail: "Cmd+Shift+F", keywords: ["favoritos", "barra", "bookmarks", "navegador"] }, () => toggleFavsBar());
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: `quick view com extensões do Chrome; o agente pode navegar por você${caps.planoExigido === "free" ? " (Pro)" : ""}`, keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
@@ -1391,7 +1391,7 @@ function definePage(id: string, title: string, panel: HTMLElement, render: () =>
 }
 
 function activatePage(page: PageTab): void {
-  if (splitPage !== null) { if (splitPage !== page) splitOn(page); else focusSplit(); return; }
+  if (splitOnAny()) { if (!splitPages.includes(page)) splitOn(page, "trocar"); else focusSplit(page); return; }
   if (pageActive === page) return;
   if (pageActive === null) {
     const prev = active();
@@ -1445,7 +1445,7 @@ function openPage(page: PageTab, activateIt = true): void {
 
 function closePage(page: PageTab): void {
   if (page.tabEl === null) return;
-  if (splitPage === page) splitOff(false);
+  if (splitPages.includes(page)) splitOff(false, page);
   if (page.id.startsWith("tut-")) setTimeout(paintGuideTargets, 0); // a aba do guia saiu: nada mais pulsa
   if (page.id.startsWith("term-")) disposeTerminal(page.id);
   if (page.id === "navegador") { navMarcarAberto(false); disposeNav(); }
@@ -1469,52 +1469,81 @@ function closePage(page: PageTab): void {
 const contentEl = $<HTMLElement>("content-root");
 const splitPanelEl = $<HTMLElement>("split-panel");
 const splitHandle = $<HTMLElement>("split-handle");
-let splitPage: PageTab | null = null;
+/** Páginas fixadas à direita, em colunas (da esquerda para a direita). Quantas aparecem depende da largura. */
+let splitPages: PageTab[] = [];
 let splitRatio = 0.55;
+const splitCols = new Map<string, HTMLElement>();
 const splitKey = (): string => `split:${windowHost}`;
+const splitOnAny = (): boolean => splitPages.length > 0;
 /** A página está à vista (na frente ou fixada ao lado)? Quem repinta por `pageActive === page` usa isto. */
-const pageShown = (page: PageTab | null): boolean => page !== null && (pageActive === page || splitPage === page);
+const pageShown = (page: PageTab | null): boolean => page !== null && (pageActive === page || splitPages.includes(page));
 function saveSplit(): void {
-  try { if (splitPage === null) localStorage.removeItem(splitKey()); else localStorage.setItem(splitKey(), JSON.stringify({ pageId: splitPrefPageId(splitPage.id), ratio: splitRatio })); } catch { /* opcional */ }
+  try { if (!splitOnAny()) localStorage.removeItem(splitKey()); else localStorage.setItem(splitKey(), JSON.stringify({ pageIds: splitPrefPageIds(splitPages.map((p) => p.id)), ratio: splitRatio })); } catch { /* opcional */ }
 }
+/** Colunas que cabem nesta largura; as outras ficam escondidas (continuam fixadas e voltam quando couber). */
+const splitVisiveis = (): number => Math.min(splitPages.length, maxColunas(contentEl.clientWidth));
 function applySplitRatio(): void {
   const w = contentEl.clientWidth;
-  const r = clampSplitRatio(splitRatio, w);
+  const n = splitVisiveis();
+  const r = clampSplitRatio(splitRatio, w, SPLIT_MIN_PX, minDireita(n));
   contentEl.classList.toggle("split-collapsed", splitLayout(w) === "collapsed" || r === null);
   if (r !== null) contentEl.style.setProperty("--split", `${(r * 100).toFixed(2)}%`);
+  splitPages.forEach((p, i) => { const col = splitCols.get(p.id); if (col !== undefined) col.hidden = i >= n; });
 }
-function splitOn(page: PageTab): void {
-  if (splitPage === page) return;
-  if (splitPage !== null) { const prev = splitPage; splitPage = null; prev.panel.hidden = true; panelsEl.append(prev.panel); prev.tabEl?.classList.remove("split", "active"); }
+/** Monta as colunas na ordem de `splitPages` (cada painel absoluto vai dentro da sua coluna). */
+function layoutSplit(): void {
+  for (const [id, col] of splitCols) if (!splitPages.some((p) => p.id === id)) { col.remove(); splitCols.delete(id); }
+  for (const p of splitPages) {
+    let col = splitCols.get(p.id);
+    if (col === undefined) { col = el("div", "split-col"); splitCols.set(p.id, col); }
+    if (p.panel.parentElement !== col) col.append(p.panel);
+    splitPanelEl.append(col); // na ordem
+  }
+  contentEl.classList.toggle("split", splitOnAny());
+  if (!splitOnAny()) contentEl.classList.remove("split-collapsed");
+  applySplitRatio();
+}
+function unpin(page: PageTab): void {
+  page.panel.hidden = true;
+  panelsEl.append(page.panel);
+  page.tabEl?.classList.remove("split", "active");
+}
+/**
+ * Fixa a página ao lado da conversa. `modo`: "coluna" acrescenta uma coluna (substitui a última se não couber mais);
+ * "trocar" põe no lugar da última (clicar numa aba com a tela dividida).
+ */
+function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
+  if (splitPages.includes(page)) { focusSplit(page); return; }
+  const max = maxColunas(contentEl.clientWidth);
+  const ids = modo === "trocar" && splitPages.length > 0 ? [...splitPages.slice(0, -1).map((p) => p.id), page.id] : splitAdd(splitPages.map((p) => p.id), page.id, Math.max(max, 1));
+  for (const old of splitPages) if (!ids.includes(old.id)) unpin(old);
   if (pageActive === page) deactivatePage();
-  else if (pageActive !== null) { const other = pageActive; deactivatePage(); void other; }
+  else if (pageActive !== null) deactivatePage();
   // A esquerda precisa de uma conversa: a que estava antes da página, senão a última.
   if (activeId === null) { const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1); pagePrev = null; if (back !== undefined) activate(back); }
-  splitPage = page;
-  splitPanelEl.append(page.panel);
-  contentEl.classList.add("split");
-  applySplitRatio();
+  splitPages = ids.map((id) => (id === page.id ? page : splitPages.find((p) => p.id === id)!));
+  layoutSplit();
   page.panel.hidden = false;
   page.tabEl?.classList.add("split");
   page.render();
   saveSplit();
   syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
 }
-/** Desfaz a divisão; a página volta a ser uma aba comum (fechada ou atrás da conversa). */
-function splitOff(keepPref = false): void {
-  const page = splitPage; if (page === null) return;
-  splitPage = null;
-  page.panel.hidden = true;
-  panelsEl.append(page.panel);
-  page.tabEl?.classList.remove("split");
-  contentEl.classList.remove("split", "split-collapsed");
+/** Tira uma página das colunas (ou todas, sem argumento); ela volta a ser uma aba comum. */
+function splitOff(keepPref = false, page?: PageTab): void {
+  if (!splitOnAny()) return;
+  const sai = page === undefined ? splitPages : splitPages.filter((p) => p === page);
+  if (sai.length === 0) return;
+  splitPages = splitPages.filter((p) => !sai.includes(p));
+  for (const p of sai) unpin(p);
+  layoutSplit();
   if (!keepPref) saveSplit();
   syncComposer(); renderSidebar(); syncRest(); paintGuideTargets();
 }
-function focusSplit(): void { const p = splitPage; if (p === null) return; if (p.id === "navegador") navCurrent()?.wv.focus(); else (p.panel.querySelector<HTMLElement>("textarea, input, .xterm-helper-textarea") ?? p.panel).focus?.(); }
+function focusSplit(page: PageTab | null = splitPages.at(-1) ?? null): void { const p = page; if (p === null) return; if (p.id === "navegador") navCurrent()?.wv.focus(); else (p.panel.querySelector<HTMLElement>("textarea, input, .xterm-helper-textarea") ?? p.panel).focus?.(); }
 /** Cmd+\: alterna. Sem página à vista, divide a última aberta; sem nenhuma, abre o Navegador (Pro) ou o Terminal. */
 function toggleSplit(): void {
-  if (splitPage !== null) { splitOff(); return; }
+  if (splitOnAny()) { splitOff(); return; }
   const candidate = pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1) ?? null;
   if (candidate !== null) { splitOn(candidate); return; }
   if (caps.chat && browserAccess(license, windowHost, caps.planoExigido, caps.produto) === "ok") void openNavTab().then(() => { if (navPage !== null) splitOn(navPage); });
@@ -1526,12 +1555,12 @@ splitHandle.addEventListener("pointerdown", (ev) => {
   splitHandle.setPointerCapture(ev.pointerId);
   document.body.classList.add("dragging"); contentEl.classList.add("dragging");
   const rect = contentEl.getBoundingClientRect();
-  const move = (e: PointerEvent): void => { const r = clampSplitRatio((e.clientX - rect.left) / rect.width, rect.width); if (r !== null) { splitRatio = r; applySplitRatio(); } };
+  const move = (e: PointerEvent): void => { const r = clampSplitRatio((e.clientX - rect.left) / rect.width, rect.width, SPLIT_MIN_PX, minDireita(splitVisiveis())); if (r !== null) { splitRatio = r; applySplitRatio(); } };
   const up = (): void => { document.body.classList.remove("dragging"); contentEl.classList.remove("dragging"); splitHandle.removeEventListener("pointermove", move); splitHandle.removeEventListener("pointerup", up); saveSplit(); };
   splitHandle.addEventListener("pointermove", move);
   splitHandle.addEventListener("pointerup", up);
 });
-new ResizeObserver(() => { if (splitPage !== null) applySplitRatio(); }).observe(contentEl);
+new ResizeObserver(() => { if (splitOnAny()) applySplitRatio(); }).observe(contentEl);
 
 // Arrastar a aba de uma página para a área de conteúdo: soltar na metade direita põe lado a lado; soltar na
 // esquerda (estando lado a lado) volta a tela inteira. A camada cobre o conteúdo durante o arrasto porque o
@@ -1548,7 +1577,8 @@ function pageDragStart(page: PageTab, tabEl: HTMLElement, ev: DragEvent): void {
   tabEl.classList.add("dragging");
   ev.dataTransfer?.setData("text/plain", page.id);
   if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
-  splitDropLeft.textContent = splitPage === page ? "Soltar aqui: tela inteira" : "";
+  splitDropLeft.textContent = splitPages.includes(page) ? "Soltar aqui: tirar do lado" : "";
+  splitDropRight.textContent = splitPages.includes(page) ? "Já está ao lado" : splitOnAny() ? (splitPages.length >= maxColunas(contentEl.clientWidth) ? "Soltar aqui: no lugar da última coluna" : "Soltar aqui: mais uma coluna") : "Soltar aqui: lado a lado";
   // Mostrar a camada no mesmo tique cancela o arrasto no Chromium.
   setTimeout(() => { if (draggingPage === page) splitDrop.hidden = false; }, 0);
 }
@@ -1564,14 +1594,14 @@ splitDrop.addEventListener("dragover", (ev) => {
   if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
   const side = dropSide(ev);
   splitDrop.classList.toggle("over-right", side === "right");
-  splitDrop.classList.toggle("over-left", side === "left" && splitPage === draggingPage);
+  splitDrop.classList.toggle("over-left", side === "left" && splitPages.includes(draggingPage));
 });
 splitDrop.addEventListener("dragleave", (ev) => { if (ev.target === splitDrop) splitDrop.classList.remove("over-left", "over-right"); });
 splitDrop.addEventListener("drop", (ev) => {
   ev.preventDefault();
   const page = draggingPage; if (page === null) return;
-  if (dropSide(ev) === "right") { splitOn(page); focusSplit(); }
-  else if (splitPage === page) { splitOff(); activatePage(page); }
+  if (dropSide(ev) === "right") splitOn(page);
+  else if (splitPages.includes(page)) { splitOff(false, page); if (!splitOnAny()) activatePage(page); }
   saveSplit();
 });
 /** Ao abrir a janela: volta dividida com a página lembrada, se ela puder abrir. */
@@ -1580,15 +1610,16 @@ async function restoreSplit(): Promise<void> {
   try { pref = parseSplitPref(localStorage.getItem(splitKey())); } catch { /* opcional */ }
   if (pref === null) return;
   splitRatio = pref.ratio;
-  const id = pref.pageId;
-  try {
-    if (id === "navegador") { if (!caps.chat) return; await refreshLicense(); if (browserAccess(license, windowHost, caps.planoExigido, caps.produto) !== "ok") { try { localStorage.removeItem(splitKey()); } catch { /* ok */ } return; } await openNavTab(); if (navPage !== null) splitOn(navPage); }
-    else if (id.startsWith("term-")) { const t = await openTerminalTab("new"); if (t !== null) splitOn(t.page); }
-    else if (id === "atividade") splitOn(activityPage());
-    else if (id === "tutoriais") { openPage(tutoriaisPage); splitOn(tutoriaisPage); }
-    else if (id === "acervo") { openPage(acervoPage); splitOn(acervoPage); }
-    else if (id.startsWith("tut-")) { const t = TUTORIAIS.find((x) => `tut-${x.id}` === id); if (t !== undefined) { openGuide(t); const g = pages.get(id); if (g !== undefined) splitOn(g); } }
-  } catch { /* a página não abriu: segue sem dividir */ }
+  for (const id of pref.pageIds) {
+    try {
+      if (id === "navegador") { if (!caps.chat) continue; await refreshLicense(); if (browserAccess(license, windowHost, caps.planoExigido, caps.produto) !== "ok") continue; await openNavTab(); if (navPage !== null) splitOn(navPage); }
+      else if (id.startsWith("term-")) { const t = await openTerminalTab("new"); if (t !== null) splitOn(t.page); }
+      else if (id === "atividade") splitOn(activityPage());
+      else if (id === "tutoriais") { openPage(tutoriaisPage); splitOn(tutoriaisPage); }
+      else if (id === "acervo") { openPage(acervoPage); splitOn(acervoPage); }
+      else if (id.startsWith("tut-")) { const t = TUTORIAIS.find((x) => `tut-${x.id}` === id); if (t !== undefined) { openGuide(t); const g = pages.get(id); if (g !== undefined) splitOn(g); } }
+    } catch { /* essa página não abriu: segue com as outras */ }
+  }
 }
 
 // ---- Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
@@ -1774,9 +1805,9 @@ function reconcileGuideFlags(t: Tutorial): void {
 }
 /** O guia na frente, se a aba ativa é de um tutorial. */
 function activeGuide(): Tutorial | null {
-  const shown = pageActive ?? splitPage;
+  const shown = pageActive ?? splitPages.at(-1) ?? null;
   if (shown === null) return null;
-  return guidePages.get(shown.id)?.tutorial ?? guidePages.get(splitPage?.id ?? "")?.tutorial ?? null;
+  return guidePages.get(shown.id)?.tutorial ?? splitPages.map((p) => guidePages.get(p.id)?.tutorial).find((t) => t !== undefined) ?? null;
 }
 const guideTargets = (): Record<Exclude<GuideTarget, "none">, HTMLElement[]> => ({
   "wa-line": [], "wa-agent": [waAgentBtn], "wa-pair": [waPairBtn], "wa-policy": [waPolicyCards], "chat": [],
@@ -6357,8 +6388,12 @@ window.meuBot.on("term:exit", ({ id, code, detail }) => {
 window.meuBot.on("term:ask", () => { void openTerminalTab("new"); });
 // Controle local pedindo a tela dividida: a página vai para a direita, como arrastar a aba.
 window.meuBot.on("ui:split", (msg) => {
-  if (msg.alvo === "juntar") { splitOff(); return; }
-  if (msg.alvo === "terminal") { const t = [...terminals.values()].find((x) => x.id === msg.id); if (t !== undefined) { splitOn(t.page); focusSplit(); } return; }
+  if (msg.alvo === "juntar") {
+    const page = msg.id !== undefined ? [...terminals.values()].find((x) => x.id === msg.id)?.page : msg.pagina === "navegador" ? navPage : msg.pagina === "tutoriais" ? tutoriaisPage : msg.pagina === "acervo" ? acervoPage : undefined;
+    if (page === null || (page === undefined && (msg.id !== undefined || msg.pagina !== undefined))) return;
+    splitOff(false, page); return;
+  }
+  if (msg.alvo === "terminal") { const t = [...terminals.values()].find((x) => x.id === msg.id); if (t !== undefined) splitOn(t.page); return; }
   if (msg.alvo === "navegador") { void openNavTab(undefined, false).then(() => { if (navPage !== null) splitOn(navPage); }); return; }
   const page = msg.alvo === "tutoriais" ? tutoriaisPage : acervoPage;
   openPage(page, false); splitOn(page);
