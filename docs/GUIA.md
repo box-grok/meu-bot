@@ -2481,6 +2481,11 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 
 ## Terminal controlado de fora, divisão por arrasto e trava de leitura (22 out)
 
+- **MCP de controle do app para o Claude Code** (`scripts/app-mcp.mjs`, um arquivo, sem npm; registrado com
+  `claude mcp add --scope user meu-bot-app -- node …/scripts/app-mcp.mjs`): fala com os sockets de `/tmp/<app>-<uid>/`
+  (`term.sock` e `nav-<máquina>.sock`) e expõe `apps`, `app_abrir`, `terminais`, `terminal_abrir/ler/digitar`,
+  `tela_dividir/juntar` e `nav_*` (abas, abrir, ler, clicar, digitar, tecla, print, recarregar, voltar, js, fechar), com
+  a identidade `claude-code:mac`. Ao fechar a entrada, espera as chamadas em andamento (`app_abrir` leva segundos).
 - **Terminal API** (`src/main/term-api.ts`, núcleo `term-api-core.ts` testado): socket `term.sock` em
   `/tmp/<app>-<uid>/` (0600), **só neste Mac**: nunca vai pelo túnel (lá quem pede seria o agente, e o terminal é o
   shell da pessoa). `GET /terminais`; `POST /abrir {maquina?}` manda `term:ask` à janela da máquina e espera a sessão

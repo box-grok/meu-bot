@@ -108,7 +108,14 @@ async function call(name, args) {
 
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const rl = readline.createInterface({ input: process.stdin });
+/** Chamadas em andamento: ao fechar a entrada, espera-as terminar (app_abrir leva segundos) antes de sair. */
+let pendentes = 0; let fechando = false;
+const terminou = () => { pendentes -= 1; if (fechando && pendentes === 0) process.exit(0); };
 rl.on('line', async (line) => {
+  pendentes += 1;
+  try { await tratar(line); } finally { terminou(); }
+});
+async function tratar(line) {
   let msg; try { msg = JSON.parse(line); } catch { return; }
   const { id, method, params } = msg;
   if (method === 'initialize') return send({ jsonrpc: '2.0', id, result: { protocolVersion: params?.protocolVersion || '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'meu-bot-app', version: '1.0.0' } } });
@@ -125,5 +132,5 @@ rl.on('line', async (line) => {
     } catch (e) { return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Erro: ${e.message}` }], isError: true } }); }
   }
   if (id !== undefined) send({ jsonrpc: '2.0', id, error: { code: -32601, message: `método não suportado: ${method}` } });
-});
-rl.on('close', () => process.exit(0));
+}
+rl.on('close', () => { fechando = true; if (pendentes === 0) process.exit(0); });
