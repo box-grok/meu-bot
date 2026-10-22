@@ -15,7 +15,7 @@ import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js";
 import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost, type PageNotification } from "./lib/nav-notify.js";
-import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
+import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { MODELOS_PIPELINE, etapasDoTexto, validarPipeline } from "./lib/crm-modelos.js";
 import { groupByDate, matches, normalize, shortDate, type SidebarConversation } from "./lib/sidebar.js";
@@ -1958,8 +1958,18 @@ function markTutSeen(ids: string[]): void {
 }
 /** Ids que eram novidade quando Tutoriais abriu desta vez: ganham "Novo" no cartão enquanto a página está à vista. */
 let tutNovoLabels = new Set<string>();
+/**
+ * Pulados por máquina ("Pular" no cartão): o pendente vai para Arquivados e sai da contagem, sem desfazer nada na
+ * máquina; "Retomar" o traz de volta. Concluir de fato vence o pulo (um concluído nunca aparece como pulado).
+ */
+const tutPuladoKey = (): string => `tutPulado:${windowHost}`;
+function loadTutPulados(): Set<string> { try { return parseTutPulados(localStorage.getItem(tutPuladoKey())); } catch { return new Set(); } }
+function setTutPulado(id: string, pulado: boolean): void {
+  const s = loadTutPulados(); if (pulado) s.add(id); else s.delete(id);
+  try { localStorage.setItem(tutPuladoKey(), JSON.stringify([...s])); } catch { /* opcional */ }
+}
 /** Contagem dos tutoriais: para fazer (inclui o tour), arquivados (concluídos), "em breve", total, novidades e o próximo. */
-function tutCounts(): { todo: number; archived: number; soon: number; checking: number; total: number; novos: number; next: Tutorial | null } {
+function tutCounts(): { todo: number; archived: number; pulados: number; soon: number; checking: number; total: number; novos: number; next: Tutorial | null } {
   const all = visibleNow();
   const seen = loadTutSeen();
   const states = new Map(all.map((t) => [t.id, tutState(t)] as const));
@@ -1967,10 +1977,12 @@ function tutCounts(): { todo: number; archived: number; soon: number; checking: 
   const soon = all.filter((t) => t.comingSoon === true).length;
   const done = all.filter((t) => states.get(t.id) === "done").length;
   const checking = all.filter((t) => states.get(t.id) === "unknown").length;
-  const pending = all.filter((t) => t.comingSoon !== true && states.get(t.id) === "todo");
+  const pulados = loadTutPulados();
+  const abertos = all.filter((t) => t.comingSoon !== true && states.get(t.id) === "todo");
+  const pending = abertos.filter((t) => !pulados.has(t.id));
   const todo = (tourDone() ? 0 : 1) + pending.length;
-  const archived = (tourDone() ? 1 : 0) + done;
-  return { todo, archived, soon, checking, total: todo + archived + checking, novos: pending.filter((t) => !seen.has(t.id)).length, next: pending[0] ?? null };
+  const archived = (tourDone() ? 1 : 0) + done + (abertos.length - pending.length);
+  return { todo, archived, pulados: abertos.length - pending.length, soon, checking, total: todo + archived + checking, novos: pending.filter((t) => !seen.has(t.id)).length, next: pending[0] ?? null };
 }
 /** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral"; a novidade pulsa mesmo assim. */
 const tutBadgeEl = $<HTMLInputElement>("tut-badge");
@@ -2425,6 +2437,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   if (unseen.length > 0) { markTutSeen(unseen); for (const id of unseen) tutNovoLabels.add(id); }
   const active: HTMLElement[] = [];
   const archived: HTMLElement[] = [];
+  const pulados = loadTutPulados();
   // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela.
   {
     const done = tourDone();
@@ -2448,20 +2461,31 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     const done = !soon && state === "done";
     // Fontes ainda a caminho e sem lembrança: o cartão espera, quieto, em vez de nascer "pendente" e mudar depois.
     const checking = !soon && state === "unknown";
-    const next = tutNext && !nextMarked && !soon && !done && !checking && tourDone();
+    const pulado = !soon && !done && !checking && pulados.has(t.id);
+    const next = tutNext && !nextMarked && !soon && !done && !checking && !pulado && tourDone();
     if (next) nextMarked = true;
-    const novo = !done && !checking && tutNovoLabels.has(t.id);
-    const card = el("article", `tut-card${done ? " finished archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}${checking ? " checking" : ""}`);
+    const novo = !done && !checking && !pulado && tutNovoLabels.has(t.id);
+    const card = el("article", `tut-card${done ? " finished archived" : ""}${pulado ? " archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}${checking ? " checking" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
     const body = el("div", "tut-body");
     // "NOVO · SEU PRÓXIMO PASSO · TUTORIAL 3 · 2 DE 4 · 3 MIN": número sempre; progresso quando começou.
     const badge = done ? `Tutorial ${t.number} · Concluído`
+      : pulado ? `Tutorial ${t.number} · Pulado${started ? ` · ${view.done.filter(Boolean).length} de ${t.steps.length}` : ""}`
       : checking ? `Tutorial ${t.number} · verificando a máquina…`
       : [novo ? "Novo" : null, next ? "Seu próximo passo" : null, `Tutorial ${t.number}`, started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${t.minutes} min` : tutorialBadge(t, false)].filter((x): x is string => x !== null).join(" · ");
     body.append(el("span", "tut-badge", badge), el("h3", "", t.title), el("p", "", t.summary));
-    const start = el("button", soon || checking ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : checking ? "Aguarde…" : done ? "Rever" : started ? "Continuar" : "Começar"); start.type = "button";
-    if (soon || checking) start.disabled = true; else start.addEventListener("click", () => { tutNext = false; openGuide(t); });
-    const head = el("div", "tut-head"); head.append(icon, body, start);
+    const start = el("button", soon || checking ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : checking ? "Aguarde…" : done ? "Rever" : pulado ? "Retomar" : started ? "Continuar" : "Começar"); start.type = "button";
+    if (soon || checking) start.disabled = true;
+    else start.addEventListener("click", () => { tutNext = false; if (pulado) { setTutPulado(t.id, false); paintTutCount(); } openGuide(t); });
+    const head = el("div", "tut-head"); head.append(icon, body);
+    // "Pular": o pendente sai da lista e da contagem (vai para Arquivados, de onde "Retomar" o traz de volta).
+    if (!soon && !checking && !done && !pulado) {
+      const skip = el("button", "btn btn-ghost btn-small tut-skip", "Pular"); skip.type = "button";
+      skip.title = "Tira este tutorial da lista (fica em Arquivados; nada muda na máquina)";
+      skip.addEventListener("click", () => { setTutPulado(t.id, true); paintTutCount(); tutoriaisPage.render(); });
+      head.append(skip);
+    }
+    head.append(start);
     card.append(head);
     // Concluído: "Refazer do zero" desfaz na máquina o que o tutorial fez e volta ao passo 1 (dois cliques).
     if (done && t.reset !== undefined && caps.install) {
@@ -2473,15 +2497,16 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
       if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
       card.append(foot);
     }
-    (done ? archived : active).push(card);
+    (done || pulado ? archived : active).push(card);
   }
   // Resumo: "Você fez 2 de 6 · próximo: 3 · Status line · 1 novo · 2 em breve" (o tour conta; "em breve" não).
   const c = tutCounts();
   $<HTMLElement>("tutoriais-summary").textContent = [
-    c.todo === 0 ? `Você fez ${c.total} de ${c.total}: tudo feito` : `Você fez ${c.archived} de ${c.total}`,
+    c.todo === 0 && c.pulados === 0 ? `Você fez ${c.total} de ${c.total}: tudo feito` : `Você fez ${c.archived - c.pulados} de ${c.total}`,
     ...(c.next !== null ? [`próximo: ${c.next.number} · ${c.next.short}`] : []),
     ...(c.novos > 0 ? [`${c.novos} ${c.novos === 1 ? "novo" : "novos"}`] : []),
     ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
+    ...(c.pulados > 0 ? [`${c.pulados} ${c.pulados === 1 ? "pulado" : "pulados"}`] : []),
     ...(c.checking > 0 ? [`verificando ${c.checking} na máquina…`] : []),
   ].join(" · ");
   paintTutCount();

@@ -434,6 +434,7 @@ dialog .zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: ta
 .tut-body p { margin: 0; font-size: 14px; color: var(--muted); }
 .tut-start { flex: none; background: color-mix(in srgb, var(--ok) 70%, #fff); border-color: transparent; color: #0d1f14; font-weight: 700; padding: 12px 22px; border-radius: 10px; }
 .tut-start:hover { background: var(--ok); color: #fff; }
+.tut-skip { flex: none; }
 .tut-steps { list-style: none; margin: 18px 0 0; padding: 18px 0 0; border-top: 1px solid color-mix(in srgb, var(--ok) 30%, var(--line)); display: flex; flex-direction: column; gap: 14px; }
 .tut-steps[hidden] { display: none; }
 .tut-steps li { display: flex; gap: 14px; align-items: flex-start; }

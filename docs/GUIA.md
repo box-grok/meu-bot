@@ -399,6 +399,10 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - Tutoriais concluídos (o tour feito, um guia terminado) saem da lista e vão para "arquivados", como as
   conversas: interruptor `#tut-archived` no topo da aba (`localStorage tutArchived`), seção "Arquivados" com
   "Rever". A contagem da lateral mostra só os ativos ("tudo feito" quando não sobra nenhum).
+- **Pular** (22 out): todo tutorial pendente tem "Pular" ao lado de Começar/Continuar. O pulado vai para
+  "Arquivados" com "Tutorial N · Pulado" e o botão "Retomar" (que tira o pulo e abre o guia); sai da contagem da
+  lateral e do "próximo", e o resumo diz "N pulados". Nada é desfeito na máquina; concluir de fato vence o pulo.
+  Por máquina: `localStorage tutPulado:<host>` (`parseTutPulados`, testado).
 
 ### Páginas em aba própria: Acervo e Tutoriais
 - `definePage/openPage/activatePage/closePage` em `renderer.ts`: abas que não são conversa, uma de cada vez

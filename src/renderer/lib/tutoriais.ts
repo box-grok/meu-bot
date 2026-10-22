@@ -776,6 +776,14 @@ export function tutorialState(t: Tutorial, status: WhatsappStatus | null, flags:
   return guideView(t, status, flags, ctx).finished ? "done" : "todo";
 }
 /** Lembrança por máquina (`tutLembrado:<host>`): id → concluído na última vez em que as fontes chegaram. */
+/** Tutoriais que a pessoa pulou nesta máquina (localStorage): ids válidos, sem repetir; lixo vira vazio. */
+export function parseTutPulados(json: string | null): Set<string> {
+  if (json === null || json === "") return new Set();
+  try {
+    const v = JSON.parse(json) as unknown;
+    return Array.isArray(v) ? new Set(v.filter((x): x is string => typeof x === "string" && /^[a-z0-9-]+$/.test(x))) : new Set();
+  } catch { return new Set(); }
+}
 export function parseTutMemory(json: string | null): Record<string, boolean> {
   if (json === null || json === "") return {};
   try {

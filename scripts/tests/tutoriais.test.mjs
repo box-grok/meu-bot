@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -334,4 +334,10 @@ test("tutorial 14 (financeiro): só com a licença do financeiro; passos conclu�
   assert.equal(guideView(t, null, emptyFlags(), com(est({ contas: [{}], orcamentoDefinido: true, porOrigem: { whatsapp: 1 }, totalLancamentos: 2, pendencias: 1 }))).current, 4, "foto");
   const pronto = est({ contas: [{}], orcamentoDefinido: true, porOrigem: { whatsapp: 1, foto: 1 }, totalLancamentos: 2, pendencias: 0 });
   assert.equal(guideView(t, null, emptyFlags(), com(pronto)).finished, true);
+});
+
+test("parseTutPulados: só ids válidos, sem repetir; lixo vira vazio", () => {
+  assert.deepEqual([...parseTutPulados('["fallback-contas","xai-login","fallback-contas","X Y",3]')], ["fallback-contas", "xai-login"]);
+  assert.equal(parseTutPulados(null).size, 0); assert.equal(parseTutPulados("").size, 0);
+  assert.equal(parseTutPulados("lixo").size, 0); assert.equal(parseTutPulados('{"a":1}').size, 0);
 });
