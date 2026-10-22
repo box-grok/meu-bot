@@ -139,3 +139,13 @@ test("parseDevices (admin): ignora ids inválidos e normaliza status", () => {
   assert.equal(devices.length, 1);
   assert.equal(devices[0].status, "active", "status desconhecido vira ativo");
 });
+
+test("financeOk (backend): só o produto meu-bot-finance ou o personalizado; o Pro sozinho não libera", () => {
+  const t = Date.parse("2026-10-22T12:00:00Z");
+  const l = (x) => ({ plan: "free", status: "free", produtos: [], ...x });
+  assert.equal(be.financeOk(l({ plan: "pro", status: "active" }), t), false, "Pro não libera o financeiro");
+  assert.equal(be.financeOk(l({ produtos: ["meu-bot-finance"] }), t), true);
+  assert.equal(be.financeOk(l({ produtos: ["meu-bot-finance"], status: "expired" }), t), false);
+  assert.equal(be.financeOk(l({ plan: "personalizado", status: "active" }), t), true);
+  assert.equal(be.financeOk(l({ produtos: ["meu-bot-crm"] }), t), false);
+});

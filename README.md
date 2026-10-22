@@ -13,7 +13,7 @@ próprio e a VM sob seu controle.
 Três produtos saem deste código (tabela em `src/main/variant-core.ts`): **meu-bot** (a pessoa), **meu-bot-admin**
 (suporte). O CRM próprio dentro do Gmail vem no meu-bot e abre pela licença da máquina (Pro ou superior); a
 extensão do Gmail e o Autenticador moram em `extensao-crm/` e o CRM em `backend-colima/crm-*.js`. O antigo
-meu-bot-crm está encerrado (só avisa "use o meu-bot"). `npm run dist`, `dist:admin`; `./instalar.sh [--admin]`.
+meu-bot-crm saiu: o meu-bot funde a pasta dele na primeira abertura. `npm run dist`, `dist:admin`; `./instalar.sh [--admin]`.
 
 ## Requisitos
 

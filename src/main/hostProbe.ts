@@ -102,6 +102,9 @@ function probeScript(port: number): string {
     // CRM do meu-bot (plugin meu-bot-crm + crm-job): instalado? e a versão (o seletor atualiza a que estiver atrás).
     `[ -f "$HOME/.local/share/meu-bot/crm/index.js" ] && echo crm=1 || echo crm=0`,
     `echo "crmver=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$HOME/.local/share/meu-bot/crm/package.json" 2>/dev/null)"`,
+    // Financeiro (produto meu-bot-finance: CLI finance.mjs + plugin meu-bot-finance): instalado? e a versão.
+    `[ -f "$HOME/.local/share/meu-bot/finance/finance.mjs" ] && echo finance=1 || echo finance=0`,
+    `echo "financever=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$HOME/.local/share/meu-bot/finance/package.json" 2>/dev/null)"`,
     // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
     `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
@@ -144,7 +147,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
-    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, audioIn: null, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -183,6 +186,8 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     guardaVersion: kv.get("guardaver") || null,
     crm: kv.get("crm") === "1",
     crmVersion: kv.get("crmver") || null,
+    finance: kv.get("finance") === "1",
+    financeVersion: kv.get("financever") || null,
     audioIn: kv.get("gateway") === "openclaw" ? kv.get("audioin") === "1" : null,
     gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : null,
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
@@ -215,7 +220,7 @@ function probeLocal(port: number): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendListening: localBackendAlive(), appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 
@@ -227,7 +232,7 @@ export function backendBundleDir(): string {
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim.
 const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 
@@ -330,6 +335,10 @@ const STATUSLINE_FILES = ["statusline.sh", "install-statusline.sh", "uninstall-s
 const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
 const WA_GRUPOS_SCRIPTS = ["habilitar.py", "listar.sh", "monitor.py", "wa-admin.sh", "wa-grupos.js"];
 /** Versão do plugin do CRM que vem neste app (crm/package.json); o seletor atualiza máquinas com o CRM numa versão anterior. */
+/** Versão do plugin do financeiro que vem neste app; o seletor atualiza máquinas que já o têm numa versão anterior. */
+export function bundledFinanceVersion(): string | null {
+  try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "finance", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
+}
 export function bundledCrmVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "crm", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
 }
@@ -382,6 +391,29 @@ export async function installCrm(host: string, onLine?: (line: string) => void):
   if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
   say("rodando o instalador…");
   const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-crm.sh 2>&1`], 4 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+const FINANCE_FILES = ["install-finance.sh", "skill-finance-api.md"];
+const FINANCE_PLUGIN_FILES = ["index.js", "regras.mjs", "backend.mjs", "finance.mjs", "package.json", "openclaw.plugin.json"];
+/**
+ * Financeiro (produto meu-bot-finance): instala a CLI finance.mjs do agente, a skill finance-api e o plugin
+ * meu-bot-finance do WhatsApp na máquina. Os dados (finance/db) ficam no backend; o instalador nunca os apaga.
+ */
+export async function installFinance(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["o financeiro mora numa máquina por SSH (é onde ficam o agente do WhatsApp e os dados)"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  say(`enviando o financeiro para ${host}:${REMOTE_STAGE}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/finance`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_PLUGIN_FILES.map((f) => path.join(dir, "finance", f)), `${host}:${REMOTE_STAGE}/finance/`], 60_000);
+  if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-finance.sh 2>&1`], 4 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }

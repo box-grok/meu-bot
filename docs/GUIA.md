@@ -2030,7 +2030,7 @@ linha numa tabela:
 
 | Onde | O quê |
 |---|---|
-| `src/main/variant-core.ts` | `PRODUTOS`: por produto, `variant`, `nome` (bundle, título, userData, asset da atualização), `bundleId`, `icone`, `userData` (null = pasta padrão), `extensoes` (pastas de build das extensões embutidas), `licenca`, `herdaDe`, `fundeDe`, `encerrado`, `portaLocal`, `caps`. O que depende da licença (CRM próprio) não está nas caps: é por máquina (22 out). |
+| `src/main/variant-core.ts` | `PRODUTOS`: por produto, `variant`, `nome` (bundle, título, userData, asset da atualização), `bundleId`, `icone`, `userData` (null = pasta padrão), `extensoes` (pastas de build das extensões embutidas), `licenca`, `herdaDe`, `fundeDe`, `portaLocal`, `caps`. O que depende da licença (CRM próprio) não está nas caps: é por máquina (22 out). |
 | `scripts/produtos.mjs` | a mesma tabela lida de `dist/main/variant-core.js` para `package.mjs`, `fuses.mjs`, `dmg.mjs`, `release.mjs` e `icons.mjs` (`--variant <id>`; `--admin` segue como alias). `release.mjs` publica um zip por produto. |
 | `src/main/user-data.ts` | `useVariantUserData(nome, migrate?)`: userData próprio de qualquer produto que não o meu-bot (o admin só traz o `pessoas.json`). |
 | `src/main/acesso.ts` | `assertAcesso(host)`: um só gate no main. Produto free → módulo Pro exige pro/personalizado (`PRO_REQUIRED`); produto por assinatura → plano exigido em vigor (`ASSINATURA_REQUIRED`). |
@@ -2050,7 +2050,7 @@ Regras novas:
 - Planos: `pro` e `personalizado` liberam os módulos Pro (Navegador, CRM pelo WhatsApp) e, desde 22 out, o CRM
   próprio no Gmail (`crmProprioOk`); o produto `meu-bot-crm` contratado por cima do plano gratuito também libera o
   CRM. O admin muda o plano em Suporte › Conta e licença.
-- Dev: `MEU_BOT_VARIANT=crm npm run dev` só mostra o aviso do app encerrado. Empacotar o meu-bot: `npm run dist`
+- Empacotar o meu-bot: `npm run dist`
   (encadeia `build:extensao`). `./instalar.sh`.
 - O `localBackend.ts` passou a copiar todos os módulos que o `server.js` exige (antes só `server.js` e
   `session-map.js`: o backend local quebrava no require).
@@ -2581,9 +2581,9 @@ O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`ext
   done se qualquer); `memory.json` fica a mais recente; `google-whatsapp.json` une `criados`; o resto só se faltar
   (`COPIAR_SE_FALTAR`, `POR_MAQUINA`). Nunca os `.bin` do chaveiro nem o leveldb da sessão. Aviso único na abertura
   (`relatorioFusao`).
-- **App encerrado:** o produto `crm` fica na tabela com `encerrado: true` e `extensoes: []` por várias releases (o
-  updater só olha `/latest`; sem o asset, quem não abriu nunca vê o aviso): `main.ts` mostra o diálogo
-  (`encerrado.ts`: "Abrir o meu-bot" ou baixar) e sai antes do single-instance lock. `crm-staging` saiu da tabela.
+- **App removido (22 out):** o produto `crm` saiu da tabela, com o `encerrado.ts` e o campo `encerrado` (nenhuma
+  release chegou a ser publicada, então ninguém o recebeu pelo updater). `crm-staging` também saiu. O meu-bot segue
+  com `fundeDe: "meu-bot-crm"`: a pasta antiga ainda é fundida na primeira abertura.
   `mergeApps` apaga `meu-bot-crm` quando o `meu-bot` se apresenta (sem fantasma no admin).
 - **Build:** `dist` e `dist:staging` encadeiam `build:extensao`; `package.mjs` copia `google-oauth.json` quando o
   produto traz `extensao-crm`. Somem `dist:crm`, `dist:crm-staging`, `dmg:crm`, `instalar.sh --crm`.

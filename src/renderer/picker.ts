@@ -60,8 +60,8 @@ function arrive(animate: boolean): void {
 
 /** Brilho atrás do cabeçalho: a cor da máquina em foco e a de uma vizinha. */
 function paintGlow(primary: string): void {
-  glowEl.style.setProperty("--g1", hostAccent(primary));
-  glowEl.style.setProperty("--g2", hostAccent(hosts.find((h) => h !== primary) ?? primary));
+  glowEl.style.setProperty("--g1", accentOf(primary));
+  glowEl.style.setProperty("--g2", accentOf(hosts.find((h) => h !== primary) ?? primary));
   glowEl.classList.add("on");
 }
 const cancelBtn = $<HTMLButtonElement>("pk-cancel");
@@ -95,6 +95,9 @@ function showError(prefix: string, err: unknown): void {
   errorEl.textContent = `${prefix}: ${ipcErrorText(err)}`;
 }
 
+/** Cor da máquina: no admin, pela máquina como a pessoa a chama no ~/.ssh dela (a mesma cor que ela vê); sem isso, pelo host. */
+const accentOf = (host: string): string => hostAccent(personOf(host)?.machine ?? host);
+
 function buildRows(): void {
   listEl.replaceChildren();
   rows.clear();
@@ -102,7 +105,7 @@ function buildRows(): void {
     const li = el("li", "row");
     li.setAttribute("role", "option");
     const dot = el("span", "dot");
-    dot.style.background = hostAccent(host);
+    dot.style.background = accentOf(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
     { const plan = person?.plan ?? plans.get(host) ?? null; if (plan === "pro" || plan === "personalizado") name.append(el("span", "badge pro", plan === "pro" ? "PRO" : "PERSONALIZADO")); }
@@ -249,7 +252,7 @@ function paintDetail(): void {
 
 function select(host: string | null): void {
   selected = host;
-  if (host !== null) glowEl.style.setProperty("--g1", hostAccent(host)); // o brilho acompanha a máquina em foco
+  if (host !== null) glowEl.style.setProperty("--g1", accentOf(host)); // o brilho acompanha a máquina em foco
   for (const r of rows.values()) r.li.classList.toggle("selected", r.host === host);
   if (host !== null) rows.get(host)?.li.scrollIntoView({ block: "nearest" });
   logEl.hidden = true;

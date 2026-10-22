@@ -58,7 +58,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
     paint: (support) => {
       document.body.classList.add("admin");
       const h1 = document.querySelector("h1"); if (h1 !== null) h1.textContent = "Suporte: escolha uma pessoa";
-      const sub = document.querySelector(".sub"); if (sub !== null) sub.textContent = "Cada pessoa é uma janela, só leitura + ações de suporte. ↑↓ escolhe · Enter abre · Esc fecha";
+      const sub = document.querySelector(".sub"); if (sub !== null) sub.textContent = "Cada pessoa é uma janela de suporte. ↑↓ escolhe · Enter abre · Esc fecha";
       deps.filterEl.placeholder = "filtrar pessoas…";
       document.title = "meu-bot-admin · escolher pessoa";
       if (!support.adminKey) { deps.noteEl.hidden = false; deps.noteEl.textContent = MISSING_ADMIN_KEY_TEXT; }

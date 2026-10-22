@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BackendModel, NavNotifyPref, NavWorkspaces, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
+import { clampZoom } from "./zoom-core";
 import {
   defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
   type SettingsFile, type WindowBounds,
@@ -57,6 +58,14 @@ export const getTheme = (): Theme => file.theme;
 export const getContextBudget = (): number => file.contextBudgetTokens;
 export const getMemoryEveryTurns = (): number => file.memoryEveryTurns;
 export const getFontSize = (): number => file.fontSize;
+/** Zoom da interface (nível -8..8, 0 = 100%); quem aplica nas janelas é zoom.ts. */
+export const getZoomLevel = (): number => file.zoomLevel;
+export function setZoomLevel(level: number): void {
+  const next = clampZoom(level);
+  if (next === file.zoomLevel) return;
+  file.zoomLevel = next;
+  try { persist(); } catch { /* cortesia: o zoom vale até fechar */ }
+}
 export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ enabled: file.quickEntryEnabled, shortcut: file.quickEntryShortcut });
 
 export const getWindowBounds = (host: string): WindowBounds | undefined => file.windowBounds[host];
@@ -153,6 +162,7 @@ export const settingsView = (host?: string): SettingsView => ({
   backendPort: file.backendPort,
   backendPortForHost: getBackendPort(host),
   fontSize: file.fontSize,
+  zoomLevel: file.zoomLevel,
   theme: file.theme,
   notifications: file.notifications,
   contextBudgetTokens: file.contextBudgetTokens,

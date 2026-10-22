@@ -1,4 +1,4 @@
-// Identidade de assinatura estável para os apps (meu-bot, meu-bot-admin, meu-bot-crm).
+// Identidade de assinatura estável para os apps (meu-bot, meu-bot-admin e os staging).
 //
 // Assinatura ad-hoc ("-") muda a cada build; o macOS amarra a chave "<app> Safe Storage" do chaveiro (que cifra
 // os cookies do Navegador) à assinatura exata, então cada reinstalação pede a senha do Mac e, se negado, o Gmail

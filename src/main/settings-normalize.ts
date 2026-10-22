@@ -5,6 +5,7 @@
  */
 import type { BackendModel, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, Theme } from "../shared/ipc";
 import { parseAccelerator } from "./accelerator";
+import { isZoomLevel } from "./zoom-core";
 
 export const BACKEND_MODELS: readonly BackendModel[] = ["claudecode", "agente", "rene-dm", "rene", "grok-4"];
 export const isBackendModel = (v: unknown): v is BackendModel =>
@@ -28,6 +29,8 @@ export interface SettingsFile {
   /** Porta por máquina; vence a padrão (duas contas na mesma máquina não cabem na mesma porta). */
   backendPortByHost: Record<string, number>;
   fontSize: number;
+  /** Zoom da interface inteira (nível do Chromium, -8..8; 0 = 100%). Um só para todas as janelas. */
+  zoomLevel: number;
   theme: Theme;
   notifications: boolean;
   contextBudgetTokens: number;
@@ -165,7 +168,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 };
 
 export const defaultSettings = (): SettingsFile => ({
-  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT,
+  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
   quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {},
 });
@@ -197,6 +200,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     backendPort: isPort(p["backendPort"]) ? p["backendPort"] : DEFAULT_PORT,
     backendPortByHost: portByHost,
     fontSize: isFont(p["fontSize"]) ? p["fontSize"] : DEFAULT_FONT,
+    zoomLevel: isZoomLevel(p["zoomLevel"]) ? p["zoomLevel"] : 0,
     theme: isTheme(p["theme"]) ? p["theme"] : "system",
     notifications: typeof p["notifications"] === "boolean" ? p["notifications"] : true,
     contextBudgetTokens: isBudget(p["contextBudgetTokens"]) ? p["contextBudgetTokens"] : DEFAULT_BUDGET,

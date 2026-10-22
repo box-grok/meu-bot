@@ -13,8 +13,7 @@ test("resolveVariant: em dev manda a variável de ambiente; empacotado manda o v
   assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: "lixo" }), "client");
   assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: null }), "client");
   assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: { variant: 1 } }), "client");
-  assert.equal(resolveVariant({ packaged: false, env: "crm", variantJson: undefined }), "crm", "dev: MEU_BOT_VARIANT=crm");
-  assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: { variant: "crm" } }), "crm");
+  assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: { variant: "crm" } }), "client", "o antigo meu-bot-crm saiu da tabela");
   assert.equal(resolveVariant({ packaged: true, env: undefined, variantJson: { variant: "vendas" } }), "client", "produto que não está na tabela cai no cliente");
 });
 
@@ -34,23 +33,18 @@ test("capsFor: o admin só tem supportAdmin; o cliente tem tudo menos isso (o CR
   assert.deepEqual(Object.keys(admin).sort(), Object.keys(client).sort());
 });
 
-test("meu-bot traz as duas extensões e funde a pasta do antigo meu-bot-crm; o crm está encerrado (sem extensões, sem herança)", () => {
-  const client = produtoDe("client"), crm = produtoDe("crm");
+test("meu-bot traz as duas extensões e funde a pasta do antigo meu-bot-crm", () => {
+  const client = produtoDe("client");
   assert.deepEqual(client.extensoes, ["extensao-crm", "extensao-autenticador"]);
-  assert.equal(client.fundeDe, "meu-bot-crm"); assert.equal(client.encerrado, false);
-  assert.equal(crm.encerrado, true); assert.deepEqual(crm.extensoes, []); assert.equal(crm.herdaDe, null); assert.equal(crm.fundeDe, null);
-  assert.equal(capsFor("crm").produto, "meu-bot-crm", "a licença antiga continua identificável");
-  assert.equal(capsFor("crm").planoExigido, "free");
-  for (const p of PRODUTOS) if (p.variant !== "crm") assert.equal(p.encerrado, false, `${p.nome} em uso`);
+  assert.equal(client.fundeDe, "meu-bot-crm");
+  assert.equal(PRODUTOS.some((p) => p.nome === "meu-bot-crm"), false, "o app meu-bot-crm saiu: o CRM vem no meu-bot");
 });
 
 test("titleFor e userDataNameFor", () => {
   assert.equal(titleFor("admin"), "meu-bot-admin");
   assert.equal(titleFor("client"), "meu-bot");
-  assert.equal(titleFor("crm"), "meu-bot-crm");
   assert.equal(userDataNameFor("client"), null, "o meu-bot fica na pasta padrão do Electron");
   assert.equal(userDataNameFor("admin"), "meu-bot-admin");
-  assert.equal(userDataNameFor("crm"), "meu-bot-crm");
 });
 
 test("PRODUTOS: ids, nomes e bundle ids únicos; bundle id = local.<nome>; ícone .icns", () => {
@@ -70,7 +64,7 @@ test("canal staging: as linhas saem da estável (nome, bundle, ícone, dados, po
   assert.deepEqual([st.nome, st.bundleId, st.icone, st.userData, st.herdaDe, st.portaLocal, st.licenca, st.canal], ["meu-bot-staging", "local.meu-bot.staging", "assets/icon-staging.icns", "meu-bot-staging", "meu-bot", 8791, "meu-bot", "staging"]);
   assert.deepEqual(st.extensoes, produtoDe("client").extensoes, "as extensões do estável");
   assert.equal(st.fundeDe, "meu-bot-crm-staging", "funde a pasta do antigo crm-staging");
-  assert.equal(PRODUTOS.some((p) => p.variant === "crm-staging"), false, "o crm encerrado não tem staging");
+  assert.equal(PRODUTOS.some((p) => p.variant === "crm-staging"), false, "o crm não tem staging");
   assert.equal(PRODUTOS.some((p) => p.variant === "admin-staging"), false, "o admin é só estável");
   // A licença libera pelo produto do estável; o nome do app e o título são outros.
   const c = capsFor("client-staging", "0.2.0-staging.3");
@@ -80,4 +74,12 @@ test("canal staging: as linhas saem da estável (nome, bundle, ícone, dados, po
   assert.equal(resolveVariant({ packaged: false, env: "client-staging", variantJson: undefined }), "client-staging");
   // Portas: os apps que podem abrir juntos com o estável não dividem a dele.
   assert.notEqual(st.portaLocal, produtoDe("client").portaLocal);
+});
+
+test("meu-bot-finance-staging: cópia do staging com nome, ícone, dados e porta próprios; a licença continua a do meu-bot", () => {
+  const f = produtoDe("finance-staging");
+  assert.deepEqual([f.nome, f.bundleId, f.icone, f.userData, f.herdaDe, f.canal, f.licenca, f.fundeDe], ["meu-bot-finance-staging", "local.meu-bot-finance.staging", "assets/icon-finance-staging.icns", "meu-bot-finance-staging", "meu-bot-staging", "staging", "meu-bot", null]);
+  const portas = PRODUTOS.filter((p) => p.variant !== "admin").map((p) => p.portaLocal);
+  assert.equal(new Set(portas).size, portas.length, "meu-bot, staging e finance-staging abrem juntos");
+  assert.deepEqual(f.caps, produtoDe("client").caps);
 });

@@ -7,6 +7,11 @@ export type OrigemDono = "meu-bot" | "whatsapp" | "claude-code";
 export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
 export type QuickEntryStatus = "registered" | "taken" | "invalid" | "disabled";
 
+/** Zoom da janela (interface inteira): um passo para cima/baixo, um nível exato ou voltar a 100%. */
+export type ZoomAction = { action: "step"; delta: 1 | -1 } | { action: "set"; level: number } | { action: "reset" };
+/** Nível aplicado (-8..8), fator (1.2^nível) e percentual arredondado, como o Chromium mostra. */
+export interface ZoomState { level: number; factor: number; percent: number }
+
 export interface SettingsView {
   /** Última máquina aberta (pré-seleção do seletor); null antes da primeira escolha. */
   lastHost: string | null;
@@ -23,6 +28,8 @@ export interface SettingsView {
   /** Espaços de trabalho do Navegador da máquina da janela (para o tutorial saber antes de o Navegador abrir). */
   navEspacos: NavWorkspaces;
   fontSize: number;
+  /** Zoom da interface inteira (nível -8..8, 0 = 100%). Muda só por `zoomWindow`, nunca por setSettings. */
+  zoomLevel: number;
   theme: Theme;
   /** Avisar com notificação do sistema quando uma resposta terminar em segundo plano. */
   notifications: boolean;
@@ -230,6 +237,9 @@ export interface HostProbe {
   /** CRM do meu-bot instalado na máquina (null = não consultado) e a versão do plugin. */
   crm: boolean | null;
   crmVersion: string | null;
+  /** Financeiro (produto meu-bot-finance) instalado na máquina (null = não consultado) e a versão do plugin. */
+  finance: boolean | null;
+  financeVersion: string | null;
   /** OpenClaw: o agente do WhatsApp entende áudio (transcritor configurado); null = sem OpenClaw. */
   audioIn: boolean | null;
   /** Agente de chat da máquina (openclaw tem preferência quando os dois existem). */
@@ -256,9 +266,9 @@ export interface InstallProgressEvent {
 
 /**
  * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)
- * ou "crm" (o antigo meu-bot-crm, encerrado: só avisa "use o meu-bot"). Tabela em src/main/variant-core.ts.
+ * e os staging. Tabela em src/main/variant-core.ts.
  */
-export type AppVariant = "client" | "admin" | "crm" | "client-staging";
+export type AppVariant = "client" | "admin" | "client-staging" | "finance-staging";
 /** Canal do app: estável (só o aprovado) ou staging (o que está em teste), como VS Code e VS Code Insiders. */
 export type Canal = "estavel" | "staging";
 /**
@@ -531,6 +541,16 @@ export interface ObjectiveInfo {
 /** Tutorial 10 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
 /** CRM próprio da máquina (meu-bot-crm): pipelines e o padrão do WhatsApp (null = nenhum: nada é anotado). */
 export interface CrmLocal { pipelines: { key: string; name: string; boxes: number }[]; padrao: string | null }
+/** Financeiro (produto meu-bot-finance), como GET /v1/finance/estado devolve; valores em centavos e já formatados. */
+export interface FinanceConta { key: string; nome: string; tipo: "corrente" | "poupanca" | "cartao" | "dinheiro" | "outra"; padrao: boolean; fechada: boolean; saldoInicialCent: number; saldoCent: number; saldo: string }
+export interface FinanceLancamento { id: string; data: string; valorCent: number; valor: string; favorecido: string; categoria: string; categoriaNome: string; conta: string | null; contaNome: string | null; status: "pendente" | "confirmado"; duvidas: string[]; origem: "whatsapp" | "foto" | "chat" | "app" | "agente"; notas?: string; duplicadoDe?: string; /** Foto do comprovante guardada na máquina (sha256). */ midia?: { sha256: string; nome: string } }
+export interface FinanceResumo { mes: string; nome: string; gastosCent: number; rendaCent: number; saldoCent: number; gastos: string; renda: string; saldo: string; porCategoria: { key: string; nome: string; cent: number; valor: string }[]; total: number; pendencias: number; /** Retorno do investimento no mês: ganho direto (dinheiro que entrou) e indireto (estimado); ROI em % (null sem gasto). */ ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; ganhoDireto: string; ganhoIndireto: string; roiDireto: number | null; roiTotal: number | null; /** Quanto a pessoa decidiu gastar no mês (herdado do último mês que tinha, até ela mudar); null = nunca definiu. */ orcamento: { cent: number; valor: string; herdadoDe: string | null; restanteCent: number; restante: string; usadoPct: number } | null; rendaPrevistaCent: number | null; fechadoEm: number | null; dinheiroInformadoEm: number | null }
+export interface FinanceEstado { instalado: boolean; hoje: string; mes: string; /** Desde o início: investido, ganhos e ROI (o retorno costuma vir depois do gasto). */ acumulado: { gastosCent: number; gastos: string; ganhosCent: number; ganhos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; roiDireto: number | null; roiTotal: number | null }; mesAnterior: string; contas: FinanceConta[]; resumo: FinanceResumo; pendencias: number; totalLancamentos: number; porOrigem: Record<string, number>; rendaInformada: boolean; orcamentoDefinido: boolean; dinheiroInformado: boolean; anteriorFechado: boolean; checklist: { id: string; titulo: string; feito: boolean }[]; seq: number }
+export interface FinanceCategoria { key: string; nome: string; grupo: string; renda: boolean; retorno?: "direto" | "indireto" }
+/** Estado do financeiro para a janela: o módulo na máquina (CLI + plugin) e os números do backend; null = indisponível. */
+export interface FinanceInfo { modulo: boolean | null; estado: FinanceEstado | null; erro: string | null }
+export interface FinanceLancarInput { valor: string; favorecido: string; tipo?: "gasto" | "renda"; /** Entrada: ganho direto (padrão) ou indireto. */ retorno?: "direto" | "indireto"; categoria?: string; conta?: string; data?: string; notas?: string }
+
 export interface CrmInfo {
   /** Janela de máquina por SSH (neste Mac não há agente). */
   available: boolean;
@@ -918,6 +938,8 @@ export interface MainEvents {
   "navegador:progress": { line: string };
   /** Instalação do CRM pelo WhatsApp (tutorial 10): uma linha de progresso. */
   "crm:progress": { line: string };
+  /** Instalação do financeiro na máquina, linha a linha (tutorial 14). */
+  "finance:progress": { line: string };
   /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
   "admin:backup-progress": { bytes?: number; line?: string };
   /** Login do Claude Code em andamento. */
@@ -959,6 +981,8 @@ export interface MainEvents {
   /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */
   "browser:favorites": NavFavorito[];
   "browser:workspaces": NavWorkspaces;
+  /** Zoom da janela mudou (atalho, menu Visualizar, paleta, Configurações ou outra janela); vale para todas. */
+  "window:zoom-changed": ZoomState;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -1028,6 +1052,10 @@ export interface MeuBotSharedApi {
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
+  /** Zoom da janela (interface inteira, todas as janelas): Cmd+= / Cmd+- / Cmd+0 fora do Navegador, menu Visualizar, paleta. */
+  zoomWindow(action: ZoomAction): Promise<ZoomState>;
+  /** Fator de zoom desta janela agora (síncrono, do webFrame): para a barra de título compensar os semáforos já na primeira pintura. */
+  zoomFactorNow(): number;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void;
@@ -1133,6 +1161,24 @@ export interface MeuBotClientApi {
   uninstallGuarda(): Promise<InstallBackendResult>;
   /** Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
   crmInfo(): Promise<CrmInfo>;
+  /** Financeiro (produto meu-bot-finance): estado do módulo e dos números; lançamentos e ações da página Finanças. */
+  financeInfo(): Promise<FinanceInfo>;
+  financeLancamentos(filtro?: { mes?: string; status?: "pendente" | "confirmado"; limite?: number }): Promise<{ total: number; lancamentos: FinanceLancamento[] }>;
+  financeCategorias(): Promise<FinanceCategoria[]>;
+  financeLancar(input: FinanceLancarInput): Promise<FinanceLancamento>;
+  financeConfirmar(id: string, categoria?: string): Promise<FinanceLancamento>;
+  financeDescartar(id: string): Promise<void>;
+  /** Corrige um lançamento (o que vier muda; categoria/conta pelo nome ou chave, data dd/mm ou AAAA-MM-DD). */
+  financeCorrigir(id: string, patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string }): Promise<FinanceLancamento>;
+  /** A foto do comprovante de um lançamento (data URL), ou null se não está na máquina. */
+  financeComprovante(sha256: string): Promise<string | null>;
+  financeConfirmarTodas(): Promise<{ confirmados: number; restantes: number }>;
+  financeContaCriar(input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }): Promise<FinanceConta>;
+  financeMes(mes: string, patch: { orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void>;
+  financeFecharMes(mes: string): Promise<void>;
+  installFinance(): Promise<InstallBackendResult>;
+  /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */
+  financePedir(): Promise<void>;
   installCrm(): Promise<InstallBackendResult>;
   setCrm(patch: { apiKey?: string; pipelineKey?: string | null; pipelineName?: string; silencioMin?: number; criarSemPerguntar?: boolean }): Promise<CrmInfo>;
   crmTest(): Promise<CrmDiag>;

@@ -56,7 +56,7 @@ function pedir(socketPath, route, body) {
   });
 }
 const S = (props, required = []) => ({ type: 'object', properties: props, required });
-const APP = { app: { type: 'string', description: 'qual app (meu-bot, meu-bot-crm-staging…); opcional se só um está aberto' } };
+const APP = { app: { type: 'string', description: 'qual app (meu-bot, meu-bot-finance-staging…); opcional se só um está aberto' } };
 const MAQ = { maquina: { type: 'string', description: 'máquina da janela (ex.: agente-box-lv); opcional se só uma' } };
 const ABA = { aba: { type: 'number', description: 'id da aba do Navegador (veja nav_abas); sem ele, a aba desta conversa' } };
 const TOOLS = [

@@ -10,7 +10,7 @@ import { deveAtualizar } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../shared/ipc";
-import { approveTailscaleCheck, bundledCrmVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
+import { approveTailscaleCheck, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "./support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "./whatsapp";
@@ -80,6 +80,7 @@ function probeCached(host: string): Promise<HostProbe> {
     if (probe.reachable) setPodHost(host, probe.grokPod);
     ensureGuarda(host, probe);
     ensureCrmAtual(host, probe);
+    ensureFinanceAtual(host, probe);
     return probe;
   }).finally(() => inflight.delete(host));
   inflight.set(host, p);
@@ -120,6 +121,18 @@ function ensureCrmAtual(host: string, probe: HostProbe): void {
   log(`[crm] ${host}: plugin do CRM ${probe.crmVersion ?? "sem versão"} → ${want}; atualizando em segundo plano`);
   void installCrm(host).then((r) => { log(`[crm] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${r.log.at(-1) ?? "?"}`}`); })
     .catch((e: unknown) => { log(`[crm] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
+/** Mesmo trato para o financeiro: só sobe de versão onde ele já está instalado (instalar é o tutorial 14). */
+const financeTried = new Set<string>();
+function ensureFinanceAtual(host: string, probe: HostProbe): void {
+  if (!probe.reachable || probe.finance !== true || host === LOCAL_HOST || financeTried.has(host)) return;
+  const want = bundledFinanceVersion();
+  if (!deveAtualizar(probe.financeVersion ?? null, want)) return;
+  financeTried.add(host);
+  log(`[finance] ${host}: financeiro ${probe.financeVersion ?? "sem versão"} → ${want}; atualizando em segundo plano`);
+  void installFinance(host).then((r) => { log(`[finance] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${r.log.at(-1) ?? "?"}`}`); })
+    .catch((e: unknown) => { log(`[finance] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 
 const current = (): PickerSource => { if (source === null) throw new Error("seletor sem fonte: initPicker não rodou"); return source; };
@@ -384,6 +397,8 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false,
     },
   });
+  // Zoom isolado em 100%: o zoom da janela principal (Cmd+=) não vaza para esta janela de tamanho fixo.
+  win.webContents.setZoomMode("isolated"); win.webContents.setZoomLevel(0);
   pickerWin = win;
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());

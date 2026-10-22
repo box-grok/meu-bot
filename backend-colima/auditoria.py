@@ -19,7 +19,7 @@ DIR = os.path.expanduser("~/.local/share/meu-bot")
 ARQ = os.path.join(DIR, "auditoria.jsonl")
 LEGADO = os.path.join(DIR, "suporte.log")
 TIPOS = ("dono", "admin", "agente", "sistema", "legado")
-APPS = ("meu-bot", "meu-bot-crm", "meu-bot-admin", "meu-bot-staging", "meu-bot-crm-staging", "backend", "plugin", "legado")
+APPS = ("meu-bot", "meu-bot-crm", "meu-bot-admin", "meu-bot-staging", "meu-bot-crm-staging", "meu-bot-finance-staging", "backend", "plugin", "legado")
 ACAO_RE = re.compile(r"^[a-z][a-z0-9-]*(\.[a-z0-9-]+)*$")
 
 

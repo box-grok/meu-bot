@@ -7,7 +7,8 @@ import { BrowserWindow, nativeTheme, screen, shell } from "electron";
 import path from "node:path";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { hostBusy } from "./conversation";
-import { getBackendPort, getWindowBounds, setWindowBounds } from "./settings";
+import { getBackendPort, getWindowBounds, getZoomLevel, setWindowBounds } from "./settings";
+import { zoomFactor, zoomState } from "./zoom-core";
 import { closeTunnel, ensureTunnel, log } from "./tunnel";
 import { caps } from "./variant";
 import { closeTerminalsOfWindow } from "./terminal";
@@ -120,9 +121,18 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
       spellcheck: false,
       // Aba Navegador: as abas internas são <webview> (como no Rambox), na partição da máquina.
       webviewTag: true,
+      // Zoom da interface (Cmd+= / Cmd+-): já nasce no nível guardado, como o Cursor faz com window.zoomLevel.
+      zoomFactor: zoomFactor(getZoomLevel()),
     },
   });
   byId.set(win.id, { win, host });
+  // Reforça assim que o DOM existe: o Electron guarda níveis por página em <userData>/Preferences e o zoomFactor inicial é
+  // só o padrão quando não há entrada; o settings.json é que manda. Os scripts (type=module) já rodaram: o renderer ouve.
+  win.webContents.once("dom-ready", () => {
+    if (win.isDestroyed()) return;
+    win.webContents.setZoomLevel(getZoomLevel());
+    win.webContents.send("window:zoom-changed", zoomState(getZoomLevel()));
+  });
   lastFocusedId = win.id;
   lastFocusedHost = host;
   win.webContents.setWindowOpenHandler(({ url }) => {

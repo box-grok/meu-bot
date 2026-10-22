@@ -1,8 +1,8 @@
 // Publica uma release no GitHub com os produtos de um canal zipados (tabela em src/main/variant-core.ts): é daí que a
 // atualização automática (src/main/updater.ts) baixa. Dois modos (regras em release-core.mjs):
-//   npm run release:staging  → pre-release v<versão>-staging.N com os apps staging (meu-bot-staging, meu-bot-crm-staging);
+//   npm run release:staging  → pre-release v<versão>-staging.N com os apps staging (meu-bot-staging, meu-bot-finance-staging);
 //                              N = próximo pelas tags que já existem. Os staging instalados atualizam sozinhos.
-//   npm run release          → promoção: release v<versão> com os estáveis (meu-bot, meu-bot-admin, meu-bot-crm), SÓ
+//   npm run release          → promoção: release v<versão> com os estáveis (meu-bot, meu-bot-admin), SÓ
 //                              num commit que já tem a tag v<versão>-staging.N (o staging aprovado); senão sai com 64.
 // <versão> é a do package.json (a próxima estável; "meu-bot 2.0" = `npm version 2.0.0 --no-git-tag-version`). Exige
 // `gh` logado (`gh auth login`) e a árvore limpa. Gera out/<app>-<v>-<arch>.zip com `ditto -c -k --keepParent`

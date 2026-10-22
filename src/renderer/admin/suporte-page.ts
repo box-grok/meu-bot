@@ -10,7 +10,7 @@ import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, dateInputToIso, deviceLine, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, type HealthLine } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, produtoLabel, type HealthLine } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
@@ -107,7 +107,8 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     const h = el("div", "admin-card");
     const hHead = el("div", "admin-card-head"); hHead.append(el("strong", "", "Saúde da máquina"));
     if (state.health !== null && state.healthAt !== null && (state.busy === "health" || Date.now() - state.healthAt > 90_000)) hHead.append(el("span", "hint", state.busy === "health" ? `como estava ${cacheAgeText(state.healthAt)} · atualizando…` : `como estava ${cacheAgeText(state.healthAt)}`));
-    hHead.append(smallBtn(state.busy === "health" ? "Consultando…" : "Atualizar", () => { void refreshHealth(); }));
+    // Enquanto consulta, o aviso "como estava … · atualizando…" já diz; o botão só fica desabilitado (smallBtn).
+    hHead.append(smallBtn("Atualizar", () => { void refreshHealth(); }));
     h.append(hHead);
     const hp = state.health;
     if (state.healthErr !== null) h.append(el("p", "hint guide-pair-note", state.healthErr));
@@ -132,6 +133,12 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
         b.addEventListener("click", run);
         return b;
       };
+      // O que tira algo da pessoa (acesso, plano, validade, produto) pede o segundo clique, como as ações de suporte.
+      const licBtnConfirm = (label: string, confirm: string, run: () => void): HTMLButtonElement => {
+        const b = el("button", "btn btn-ghost btn-small", label); b.type = "button"; b.disabled = state.licBusy;
+        b.addEventListener("click", () => deps.armConfirm(b, confirm, run));
+        return b;
+      };
       const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
       // Validade/trial/active preservam um plano pago já escolhido (personalizado não vira pro por acidente); de free sobem para pro.
       const pago: PlanName = view.license.plan === "free" ? "pro" : view.license.plan;
@@ -139,10 +146,13 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       const devs = el("div", "admin-devices");
       for (const d of view.devices) {
         const row = el("div", "admin-device-row");
-        const dl = deviceLine(d);
-        row.append(el("span", d.status === "pending" ? "bad" : "ok", dl.text));
+        const dp = deviceParts(d);
+        const main = el("div", "admin-device-main");
+        main.append(el("strong", "admin-device-name", dp.name), el("span", "admin-device-meta hint", dp.meta));
+        const st = el("span", `admin-device-status ${dp.ok ? "ok" : "bad"}`, dp.seen !== "" ? `${dp.status} · ${dp.seen}` : dp.status);
+        row.append(main, st);
         if (d.status === "pending") row.append(licBtn(state.licBusy ? "Liberando…" : "Aprovar", () => { void runLicense(`device ${d.name || d.id} liberado`, () => deps.api.approveDevice(d.id)); }));
-        else row.append(licBtn(state.licBusy ? "Revogando…" : "Revogar", () => { void runLicense(`device ${d.name || d.id} revogado`, () => deps.api.removeDevice(d.id)); }));
+        else row.append(licBtnConfirm(state.licBusy ? "Revogando…" : "Revogar", "Confirmar? ela perde o acesso até aprovar de novo", () => { void runLicense(`device ${d.name || d.id} revogado`, () => deps.api.removeDevice(d.id)); }));
         devs.append(row);
       }
       if (view.devices.length === 0) devs.append(el("p", "hint", "Nenhum device registrado ainda."));
@@ -160,7 +170,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       expCtl.append(
         field("Validade", exp),
         licBtn("Salvar validade", () => setLic("validade", { status: "active", plan: pago, expiresAt: dateInputToIso(exp.value) })),
-        licBtn("Remover validade", () => setLic("validade removida", { expiresAt: null })),
+        licBtnConfirm("Remover validade", "Confirmar? tira a data de validade", () => setLic("validade removida", { expiresAt: null })),
       );
       // Trial (trialEnd).
       const tri = dateInput(view.license.trialEnd);
@@ -186,21 +196,22 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       // Plano e status rápidos.
       const ctl = el("div", "admin-actions");
       ctl.append(
-        ...(view.license.plan !== "free" ? [licBtn("Mudar para Free", () => setLic("plano Free", { plan: "free", status: "free" }))] : []),
+        ...(view.license.plan !== "free" ? [licBtnConfirm("Mudar para Free", "Confirmar? ela perde o Pro agora", () => setLic("plano Free", { plan: "free", status: "free" }))] : []),
         ...(view.license.plan !== "pro" ? [licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" }))] : []),
         // Personalizado (sob consulta): libera tudo do Pro e os produtos por assinatura (meu-bot-crm).
         ...(view.license.plan !== "personalizado" ? [licBtn("Mudar para Personalizado", () => setLic("plano Personalizado", { plan: "personalizado", status: "active" }))] : []),
         licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: pago, status: "trialing" })),
         licBtn("Marcar Active", () => setLic("status Active", { plan: pago, status: "active" })),
-        licBtn("Marcar Expired", () => setLic("status Expired", { status: "expired" })),
+        licBtnConfirm("Marcar Expired", "Confirmar? a licença expira agora", () => setLic("status Expired", { status: "expired" })),
       );
       // Produtos contratados, acumulativos por cima do plano: o meu-bot-crm e os MVPs registrados em Produtos.
       const prodCtl = el("div", "admin-actions");
       const contratados = view.license.produtos ?? [];
-      prodCtl.append(el("span", "hint", contratados.length === 0 ? "Produtos: nenhum (só o plano)" : `Produtos: ${contratados.join(", ")}`));
-      for (const nome of contratados) prodCtl.append(licBtn(`× ${nome}`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
-      const candidatos = ["meu-bot-crm", ...state.mvps].filter((n) => !contratados.includes(n));
-      for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${nome}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
+      const candidatos = ["meu-bot-crm", "meu-bot-finance", ...state.mvps].filter((n) => !contratados.includes(n));
+      // Os chips dizem tudo: "× nome" é contratado (tira), "＋ nome" é disponível (inclui). Texto só quando não há nenhum.
+      prodCtl.append(el("span", "hint", contratados.length === 0 && candidatos.length === 0 ? "Produtos: nenhum (só o plano)" : "Produtos (por cima do plano):"));
+      for (const nome of contratados) prodCtl.append(licBtnConfirm(`× ${produtoLabel(nome)}`, `Confirmar? tira o ${produtoLabel(nome)} dela`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
+      for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${produtoLabel(nome)}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
       lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl);
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }

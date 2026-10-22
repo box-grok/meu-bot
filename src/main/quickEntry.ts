@@ -70,6 +70,8 @@ function createQuickWindow(): BrowserWindow {
     },
   });
   win.setAlwaysOnTop(true, "floating");
+  // Zoom isolado em 100%: o zoom da janela principal (Cmd+=) não vaza para esta janela de tamanho fixo.
+  win.webContents.setZoomMode("isolated"); win.webContents.setZoomLevel(0);
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   win.webContents.on("will-navigate", (e) => e.preventDefault());

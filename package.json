@@ -25,7 +25,8 @@
     "release": "node scripts/release.mjs",
     "release:staging": "node scripts/release.mjs --staging",
     "icons": "npm run build:main && node scripts/icons.mjs",
-    "assinatura": "node scripts/assinatura.mjs --criar"
+    "assinatura": "node scripts/assinatura.mjs --criar",
+    "dist:finance-staging": "npm run build && npm run build:extensao && node scripts/package.mjs --variant finance-staging && node scripts/fuses.mjs --variant finance-staging"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",

@@ -23,7 +23,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -320,4 +320,18 @@ test("tutorial 13 · contas: Cloudflare conectado conclui o 1; GitHub conectado 
   assert.deepEqual(t.steps.map((s) => s.body), ["conta-cloudflare", "conta-github"]);
   const mac = { ...emptyContext(), xai: { possible: false, hermes: null, loggedIn: null, label: null } };
   assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "contas-cli"), "só em máquina por SSH");
+});
+
+test("tutorial 14 (financeiro): só com a licença do financeiro; passos concluídos pelo estado da máquina", () => {
+  const t = byId("financeiro");
+  const sem = { ...emptyContext(), finance: { access: false, info: null } };
+  assert.ok(!visibleTutorials(sem, () => true).some((x) => x.id === "financeiro"), "sem o produto, some");
+  const com = (estado, modulo = true) => ({ ...emptyContext(), finance: { access: true, info: { modulo, estado, erro: null } } });
+  assert.ok(visibleTutorials(com(null), (x) => x.id === "claude-login").some((x) => x.id === "financeiro"));
+  const est = (o) => ({ contas: [], orcamentoDefinido: false, porOrigem: {}, pendencias: 0, totalLancamentos: 0, ...o });
+  assert.equal(guideView(t, null, emptyFlags(), com(null, false)).current, 0);
+  assert.equal(guideView(t, null, emptyFlags(), com(est({}))).current, 1);
+  assert.equal(guideView(t, null, emptyFlags(), com(est({ contas: [{}], orcamentoDefinido: true, porOrigem: { whatsapp: 1 }, totalLancamentos: 2, pendencias: 1 }))).current, 4, "foto");
+  const pronto = est({ contas: [{}], orcamentoDefinido: true, porOrigem: { whatsapp: 1, foto: 1 }, totalLancamentos: 2, pendencias: 0 });
+  assert.equal(guideView(t, null, emptyFlags(), com(pronto)).finished, true);
 });

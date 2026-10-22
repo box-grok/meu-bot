@@ -1,12 +1,12 @@
 /**
- * Qual produto é este app (meu-bot, meu-bot-admin, meu-bot-crm e os staging) e o que cada um pode fazer. Puro: testável com
+ * Qual produto é este app (meu-bot, meu-bot-admin e os staging) e o que cada um pode fazer. Puro: testável com
  * node --test. Ler o variant.json e o ambiente é tarefa do variant.ts; aqui só a decisão e a tabela.
  *
  * PRODUTOS é a única fonte: o runtime (caps, título, userData) e os scripts de empacotamento
  * (scripts/produtos.mjs lê dist/main/variant-core.js) saem daqui. Produto novo (meu-bot-vendas,
  * meu-bot-imobiliaria…) = um membro em AppVariant, uma linha aqui e um ícone em assets/.
  *
- * Canais (modelo VS Code / Insiders): meu-bot e meu-bot-crm têm uma cópia staging lado a lado, com nome, ícone,
+ * Canais (modelo VS Code / Insiders): o meu-bot tem cópias staging lado a lado, com nome, ícone,
  * dados e porta próprios, que recebe o que está em teste; a linha staging sai da estável (`staging()`), não é
  * escrita à mão. O meu-bot-admin é só estável.
  */
@@ -34,8 +34,6 @@ export interface Produto {
   portaLocal: number;
   /** Pasta de dados de um app antecessor que a primeira abertura funde (união, sem apagar a origem); null = nenhum. */
   fundeDe: string | null;
-  /** App que deixou de existir: só mostra o aviso "virou o meu-bot" e sai (fica publicado para quem ainda o tem atualizar até ver o aviso). */
-  encerrado: boolean;
   caps: Omit<Capabilities, "variant" | "produto" | "canal" | "nome" | "titulo">;
 }
 
@@ -50,10 +48,7 @@ const ADMIN: Produto["caps"] = {
 
 // meu-bot: o app da pessoa. Traz as duas extensões; o CRM próprio no Gmail abre pela licença da máquina (Pro ou superior,
 // ou o produto meu-bot-crm contratado), nunca por variante. Funde a pasta do antigo meu-bot-crm na primeira abertura.
-const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", encerrado: false, caps: PESSOA };
-// meu-bot-crm (encerrado): era o meu-bot com o CRM próprio e assinatura personalizada. Continua publicado só para quem
-// ainda o tem instalado atualizar e ver o aviso "virou o meu-bot"; não abre janela, não toca nos dados.
-const CRM: Produto = { variant: "crm", nome: "meu-bot-crm", bundleId: "local.meu-bot-crm", icone: "assets/icon-crm.icns", userData: "meu-bot-crm", extensoes: [], canal: "estavel", licenca: "meu-bot-crm", herdaDe: null, portaLocal: 8790, fundeDe: null, encerrado: true, caps: PESSOA };
+const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", caps: PESSOA };
 
 /** A cópia staging de um app estável: "<nome>-staging", ícone com a faixa, dados próprios herdados dele, porta própria. */
 function staging(base: Produto, variant: AppVariant, portaLocal: number): Produto {
@@ -63,9 +58,12 @@ function staging(base: Produto, variant: AppVariant, portaLocal: number): Produt
 
 export const PRODUTOS: readonly Produto[] = [
   CLIENT,
-  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, encerrado: false, caps: ADMIN },
-  CRM,
+  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, caps: ADMIN },
   staging(CLIENT, "client-staging", 8791),
+  // meu-bot-finance-staging: o meu-bot em teste com o financeiro na frente (abre na página Finanças). O financeiro em si
+  // é liberado pela licença da máquina (produto meu-bot-finance), como o CRM próprio; o app só tem nome, ícone, dados
+  // e porta próprios para conviver com o meu-bot e o meu-bot-staging. Nasce como cópia dos dados do meu-bot-staging.
+  { ...staging(CLIENT, "finance-staging", 8792), nome: "meu-bot-finance-staging", bundleId: "local.meu-bot-finance.staging", icone: "assets/icon-finance-staging.icns", userData: "meu-bot-finance-staging", herdaDe: "meu-bot-staging", fundeDe: null },
 ];
 
 export function produtoDe(v: AppVariant): Produto {

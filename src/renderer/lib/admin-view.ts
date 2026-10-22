@@ -94,11 +94,14 @@ export function fmtDate(iso: string | null): string {
 }
 
 /** O resumo da conta (plano, status, membro desde, ciclo, validade, devices), como o painel do Rambox. */
+/** Nome do produto para o admin ler ("Financeiro", "CRM próprio"); MVP sem nome conhecido fica com o id. */
+const PRODUTO_LABEL: Record<string, string> = { "meu-bot-finance": "Financeiro", "meu-bot-crm": "CRM próprio" };
+export const produtoLabel = (id: string): string => PRODUTO_LABEL[id] ?? id;
 export function licenseSummary(view: LicenseView, now: number = Date.now()): HealthLine[] {
   const l = view.license;
   const lines: HealthLine[] = [
     // `produtos` pode faltar num backend antigo (licença sem o campo): trata como nenhum.
-    { text: `Plano: ${PLAN_LABEL[l.plan]}${(l.produtos ?? []).length > 0 ? ` + ${l.produtos.join(", ")}` : ""}`, ok: l.plan !== "free" || (l.produtos ?? []).length > 0 ? true : null },
+    { text: `Plano: ${PLAN_LABEL[l.plan]}${(l.produtos ?? []).length > 0 ? ` + ${l.produtos.map(produtoLabel).join(", ")}` : ""}`, ok: l.plan !== "free" || (l.produtos ?? []).length > 0 ? true : null },
     { text: `Status: ${STATUS_LABEL[l.status]}`, ok: l.status === "active" ? true : l.status === "expired" ? false : null },
     { text: `Membro desde: ${fmtDate(l.memberSince)}`, ok: null },
     { text: `Ciclo de cobrança: ${billingCycleText(l.interval)}`, ok: null },
@@ -132,11 +135,16 @@ export function appsText(d: Pick<LicenseDevice, "app" | "apps">): string {
   if (names.length === 0) return d.app !== "" ? d.app : "?";
   return names.map((n) => `${n} ${d.apps[n]?.version || "?"}`).join(" · ");
 }
+/** Um device em partes: nome em destaque, metadados (sistema · apps) em cinza, status e "visto há" (ou "mão levantada"). */
+export interface DeviceParts { name: string; meta: string; status: string; seen: string; ok: boolean }
+export function deviceParts(d: LicenseDevice, now: number = Date.now()): DeviceParts {
+  const seen = d.status === "pending" ? "mão levantada" : d.lastSeen !== "" ? timeAgo(d.lastSeen, now) : "";
+  return { name: d.name !== "" ? d.name : d.id, meta: `${d.platform !== "" ? d.platform : "?"} · ${appsText(d)}`, status: deviceStatusLabel(d.status), seen, ok: d.status !== "pending" };
+}
 /** Uma linha de device para a tabela de máquinas (nome + sistema + apps/versão + status + visto há). */
 export function deviceLine(d: LicenseDevice, now: number = Date.now()): HealthLine {
-  const seen = d.status === "pending" ? "mão levantada" : d.lastSeen !== "" ? timeAgo(d.lastSeen, now) : "";
-  const name = d.name !== "" ? d.name : d.id;
-  return { text: `${name} · ${d.platform !== "" ? d.platform : "?"} · ${appsText(d)} · ${deviceStatusLabel(d.status)}${seen !== "" ? ` · ${seen}` : ""}`, ok: d.status === "pending" ? false : true };
+  const p = deviceParts(d, now);
+  return { text: `${p.name} · ${p.meta} · ${p.status}${p.seen !== "" ? ` · ${p.seen}` : ""}`, ok: p.ok };
 }
 
 export function progressLines(prog: SupportProgress): HealthLine[] {

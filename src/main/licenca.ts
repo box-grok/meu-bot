@@ -78,6 +78,12 @@ export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
  */
 export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
   host !== "local" && view !== null && (proOk(view.license, now) || acessoProduto(view, host, "personalizado", "meu-bot-crm", now) === "ok");
+/**
+ * Financeiro (produto meu-bot-finance) nesta máquina: só o produto contratado ou o plano personalizado em vigor (o Pro
+ * não libera). Mesma regra do renderer (lib/pro.ts) e do backend (licenca.js financeOk).
+ */
+export const financeOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
+  host !== "local" && acessoProduto(view, host, "personalizado", "meu-bot-finance", now) === "ok";
 /** Licença vencida: status expired ou validade no passado (o plano free, sem validade, não está vencido). */
 const vencida = (l: License, now: number): boolean => l.status === "expired" || (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
 /**

@@ -96,3 +96,10 @@ test("navEspacos: ids e nomes válidos, urls http(s), ícone http(s)/data, ativo
   assert.deepEqual(h, { ativo: "y", lista: [{ id: "x", nome: "Oculto", servicos: [], oculto: true }, { id: "y", nome: "Vivo", servicos: [] }] });
   assert.equal(normalizeNavWorkspaces({ lista: [{ id: "x", nome: "Oculto", servicos: [], oculto: true }] }).ativo, null);
 });
+
+test("zoomLevel: inteiro -8..8 fica; o resto vira 0", () => {
+  assert.equal(normalizeSettings({ zoomLevel: 3 }).zoomLevel, 3);
+  assert.equal(normalizeSettings({ zoomLevel: -8 }).zoomLevel, -8);
+  for (const bad of [9, -9, 1.5, "2", null]) assert.equal(normalizeSettings({ zoomLevel: bad }).zoomLevel, 0, String(bad));
+  assert.equal(defaultSettings().zoomLevel, 0);
+});

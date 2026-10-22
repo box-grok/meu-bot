@@ -31,6 +31,7 @@ const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
 const { createCrmApi } = require('./crm-api');
+const { createFinanceApi } = require('./finance-api');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -65,6 +66,8 @@ const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
 /** CRM próprio (meu-bot-crm): rotas /v1/crm/* sobre ~/.local/share/meu-bot/crm/db (crm-api.js); exige o plano personalizado. */
 const CRM_CONFIG = path.join(MEU_BOT_DIR, 'crm.json');
 const CRM_DB = process.env.MEU_BOT_CRM_DB || path.join(MEU_BOT_DIR, 'crm', 'db');
+/** Financeiro (produto meu-bot-finance): rotas /v1/finance/* sobre ~/.local/share/meu-bot/finance/db (finance-api.js). */
+const FINANCE_DB = process.env.MEU_BOT_FINANCE_DB || path.join(MEU_BOT_DIR, 'finance', 'db');
 const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
 function writeJson(f, v) { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
 const alertPrefs = () => { const a = readJson(ALERTS_FILE, {}); return { whatsapp: a.whatsapp !== false, email: typeof a.email === 'string' ? a.email.slice(0, 120) : '' }; };
@@ -148,6 +151,12 @@ function iaTexto(prompt, convId) {
 function crmApi() {
   if (crmApiInst === null) crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto });
   return crmApiInst;
+}
+let financeApiInst = null;
+/** Instância única da API do financeiro (abre o db na 1ª chamada). */
+function financeApi() {
+  if (financeApiInst === null) financeApiInst = createFinanceApi({ dir: FINANCE_DB, licenseOk: () => licenca.financeOk(ensureLicense()), json, readBody, log });
+  return financeApiInst;
 }
 async function announceMachine(m) {
   const machines = readJson(MACHINES_FILE, null);
@@ -630,6 +639,7 @@ const server = http.createServer(async (req, res) => {
   // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.
   if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());
   // CRM próprio (meu-bot-crm): extensão do Gmail (pelo app), agente (crm.mjs), job do WhatsApp e importador.
+  if (url.pathname.startsWith('/v1/finance/') || url.pathname === '/v1/finance') { financeApi().handle(req, res, url).catch((e) => { log(`finance falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname.startsWith('/v1/crm/') || url.pathname === '/v1/crm') { crmApi().handle(req, res, url).catch((e) => { log(`crm falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {

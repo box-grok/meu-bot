@@ -28,6 +28,8 @@ import { applyQuickEntryShortcut } from "../quickEntry";
 import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
+import { changeWindowZoom, currentZoom } from "../zoom";
+import { parseZoomAction } from "../zoom-core";
 import { caps } from "../variant";
 import { whatsappArchiveToCrm } from "../whatsapp-crm";
 import { assertCrmProprio } from "../acesso";
@@ -47,6 +49,12 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const c = caps();
     const p = c.supportAdmin ? deps.person(ctx.host) : null;
     return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion() };
+  });
+  // Zoom da janela (interface inteira): só de uma janela de máquina; payload fora do contrato é ignorado.
+  handleShared("window:zoom", (event, action: unknown) => {
+    if (hostFromEvent(event) === null) return currentZoom();
+    const a = parseZoomAction(action);
+    return a === null ? currentZoom() : changeWindowZoom(a);
   });
   handleShared("ui:open-picker", () => showPicker());
   handleShared("shell:open-external", (_event, payload: unknown) => {

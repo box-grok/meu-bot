@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
+import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo, FinanceInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -46,6 +46,11 @@ export interface GuideContext {
   /** Tutorial 13: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
   contas: readonly ContaEstado[] | null;
   /**
+   * Tutorial 14 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
+   * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
+   */
+  finance: { access: boolean | null; info: FinanceInfo | null };
+  /**
    * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
    * está liberado e é o motor em uso; `crmStreak` = o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak).
    */
@@ -57,9 +62,9 @@ export interface GuideContext {
   known: Record<GuideSource, boolean>;
 }
 /** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
-export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas";
-export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas"];
-const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false });
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false });
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
@@ -74,6 +79,7 @@ export const emptyContext = (): GuideContext => ({
   crm: { access: null, info: null, local: null },
   grupos: { info: null, alvo: null, respondeu: false },
   contas: null,
+  finance: { access: null, info: null },
   produto: { planoExigido: "free", crmProprio: false, crmStreak: true },
   known: noneKnown(),
 });
@@ -133,13 +139,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; financeFotoPulada: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, financeFotoPulada: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "financeFotoPulada";
 
 export interface GuideStep {
   id: string;
@@ -148,7 +154,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "conta-cloudflare" | "conta-github";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -189,6 +195,8 @@ export interface Tutorial {
   needsCrmStreak?: true;
   /** Só quando o CRM próprio no Gmail está liberado pela licença (Pro ou superior) e é o motor em uso. */
   needsCrmProprio?: true;
+  /** Só quando a licença da máquina libera o financeiro (produto meu-bot-finance ou plano personalizado). */
+  needsFinance?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
   /** Fontes do contexto que os passos consultam; enquanto alguma não chegou, o tutorial está "verificando". */
@@ -666,6 +674,51 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
     ],
   },
+  {
+    id: "financeiro",
+    number: 14,
+    needs: ["finance"],
+    after: "claude-login",
+    needsFinance: true,
+    title: "Seu financeiro no WhatsApp",
+    short: "Financeiro",
+    summary: "O agente vira o seu financeiro: você conta o gasto (ou manda a foto do comprovante) e ele lança, categoriza e só pede o que depende de você.",
+    minutes: 5,
+    icon: "target",
+    steps: [
+      {
+        id: "ativar", title: "Ativar o financeiro nesta máquina", target: "none", body: "finance-install",
+        text: "Instala na máquina a ferramenta do agente e o financeiro do WhatsApp. Seus números ficam só nela.",
+        done: (_st, _f, c) => c.finance.info?.modulo === true,
+      },
+      {
+        id: "contas", title: "Cadastrar suas contas", target: "none", body: "finance-contas",
+        text: "Diga quais contas você usa: o banco, o cartão de crédito e o dinheiro vivo. O agente lança em cada uma pelo jeito de pagar (\"no crédito\", \"em dinheiro\").",
+        done: (_st, _f, c) => (c.finance.info?.estado?.contas.length ?? 0) > 0,
+      },
+      {
+        id: "orcamento", title: "Dizer quanto quer gastar no mês", target: "none", body: "finance-renda",
+        text: "Só você decide o orçamento: quanto quer gastar no mês. O agente acompanha os gastos contra ele e avisa aos 80% e se estourar. No mês seguinte ele continua o mesmo até você mudar.",
+        done: (_st, _f, c) => c.finance.info?.estado?.orcamentoDefinido === true, lembrar: true,
+      },
+      {
+        id: "primeiro", title: "Lançar o primeiro gasto pelo agente", target: "none", body: "finance-testar",
+        text: "Mande no WhatsApp, para você mesmo, ou aqui no chat: \"gastei 48 no mercado\". O agente lança, categoriza e responde.",
+        done: (_st, _f, c) => { const o = c.finance.info?.estado?.porOrigem ?? {}; return (o.whatsapp ?? 0) + (o.agente ?? 0) + (o.chat ?? 0) + (o.foto ?? 0) > 0; }, lembrar: true,
+      },
+      {
+        id: "foto", title: "Mandar a foto de um comprovante", target: "none", body: "finance-foto",
+        text: "Tire foto de uma nota ou comprovante e mande para o agente no WhatsApp. Ele lê o valor, a data e o lugar e deixa para você confirmar.",
+        done: (_st, f, c) => (c.finance.info?.estado?.porOrigem.foto ?? 0) > 0 || f.financeFotoPulada, lembrar: true,
+        manual: { label: "Pular por agora", flag: "financeFotoPulada" },
+      },
+      {
+        id: "pendencias", title: "Confirmar o que ficou pendente", target: "none", body: "finance-pendencias",
+        text: "Quando o agente fica na dúvida (categoria nova, foto, possível repetição), o lançamento espera você. Confirme na página Finanças: ele aprende e da próxima vez acerta sozinho.",
+        done: (_st, _f, c) => { const e = c.finance.info?.estado; return e !== undefined && e !== null && e.pendencias === 0 && e.totalLancamentos > 0; },
+      },
+    ],
+  },
 ];
 
 /** Tutorial 7, passo 1: os cartões de objetivo (o rótulo vai para o SKILL.md; "outro" exige a frase). */
@@ -753,6 +806,7 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.needsXai === true && ctx.xai.possible === false) return false;
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
     if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
+    if (t.needsFinance === true && ctx.finance.access !== true) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
     return prev !== undefined && visible(prev) && finished(prev);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ADMIN_ACTIONS, actionResultText, agoText, compareVersions, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
+import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, compareVersions, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
 
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
@@ -125,7 +125,7 @@ test("licenseSummary: mostra validade e marca expirada no passado", () => {
   assert.equal(exp.ok, false, "validade no passado marca vermelho");
   assert.match(lines[0].text, /^Plano: Pro$/, "backend antigo sem `produtos` não quebra");
   const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-crm", "meu-bot-fit"] } });
-  assert.equal(comProdutos[0].text, "Plano: Pro + meu-bot-crm, meu-bot-fit");
+  assert.equal(comProdutos[0].text, "Plano: Pro + CRM próprio, meu-bot-fit");
 });
 
 test("visibleActions: Instalar o backend só sem backend (com ele, Reiniciar); sem saúde, não aparece", () => {
@@ -134,4 +134,21 @@ test("visibleActions: Instalar o backend só sem backend (com ele, Reiniciar); s
   assert.ok(ids(h(false)).includes("install-backend")); assert.ok(!ids(h(false)).includes("restart-backend"));
   assert.ok(!ids(h(true)).includes("install-backend")); assert.ok(ids(h(true)).includes("restart-backend"));
   assert.ok(!ids(null).includes("install-backend"));
+});
+
+test("deviceParts separa nome, metadados, status e visto há; deviceLine é a junção", () => {
+  const now = Date.parse("2026-10-22T12:00:00Z");
+  const d = { id: "abc", name: "cursor", platform: "macOS 25.6.0", app: "", apps: { "meu-bot-staging": { version: "0.1.0" } }, status: "active", lastSeen: "2026-10-22T11:55:00Z" };
+  const p = deviceParts(d, now);
+  assert.equal(p.name, "cursor"); assert.equal(p.meta, "macOS 25.6.0 · meu-bot-staging 0.1.0"); assert.equal(p.status, "Ativo"); assert.ok(p.ok); assert.ok(p.seen !== "");
+  assert.equal(deviceLine(d, now).text, `cursor · macOS 25.6.0 · meu-bot-staging 0.1.0 · Ativo · ${p.seen}`);
+  const q = deviceParts({ ...d, name: "", status: "pending", lastSeen: "" }, now);
+  assert.equal(q.name, "abc"); assert.equal(q.seen, "mão levantada"); assert.equal(q.ok, false);
+});
+
+test("produtos com nome para o admin: o financeiro e o CRM próprio; MVP fica com o id", async () => {
+  const { produtoLabel } = await import("../../dist/renderer/lib/admin-view.js");
+  assert.equal(produtoLabel("meu-bot-finance"), "Financeiro"); assert.equal(produtoLabel("meu-bot-crm"), "CRM próprio"); assert.equal(produtoLabel("meu-bot-fit"), "meu-bot-fit");
+  const view = { license: { plan: "pro", status: "active", produtos: ["meu-bot-finance"], memberSince: null, interval: null, trialEnd: null, expiresAt: null }, activeCount: 1, deviceLimit: 1, pendingCount: 0 };
+  assert.equal(licenseSummary(view)[0].text, "Plano: Pro + Financeiro");
 });

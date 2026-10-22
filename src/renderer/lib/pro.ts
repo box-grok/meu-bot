@@ -41,6 +41,10 @@ export function acessoProduto(view: LicenseView | null, host: string, exige: Pla
 export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
   host !== "local" && view !== null && ((planoLiberaPro(view.license.plan) && (view.license.status === "active" || view.license.status === "trialing") && !vencida(view.license, now)) || acessoProduto(view, host, "personalizado", "meu-bot-crm", now) === "ok");
 
+/** Financeiro (produto meu-bot-finance): só o produto contratado ou o plano personalizado em vigor. Mesma regra do main e do backend. */
+export const financeOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
+  host !== "local" && acessoProduto(view, host, "personalizado", "meu-bot-finance", now) === "ok";
+
 export function browserAccess(view: LicenseView | null, host: string, exige: PlanName = "free", produto: string = "meu-bot", now: number = Date.now()): ProAccess {
   if (exige !== "free") { const a = acessoProduto(view, host, exige, produto, now); return a === "ok" ? "ok" : a === "unknown" ? "unknown" : "assinatura"; }
   if (host === "local" || view === null) return "unknown";
@@ -51,9 +55,10 @@ export function browserAccess(view: LicenseView | null, host: string, exige: Pla
 }
 
 /** Texto do bloqueio, por situação. */
-export type ProModule = "navegador" | "crm";
+export type ProModule = "navegador" | "crm" | "finance";
 const MODULE_TEXT: Record<ProModule, { name: string; pitch: string; back: string }> = {
   navegador: { name: "Navegador", pitch: "Um navegador dentro do meu-bot, com abas, cookies separados por máquina e extensões do Chrome (como o Streak CRM no Gmail). E o agente da conversa pode navegar por você.", back: "a aba volta a abrir" },
+  finance: { name: "Financeiro", pitch: "Seu financeiro no WhatsApp: o agente lança os gastos que você conta ou fotografa, categoriza sozinho e só pede o que depende de você.", back: "a página Finanças abre" },
   crm: { name: "CRM pelo WhatsApp", pitch: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: cria e atualiza boxes, campos e comentários, e pede sua confirmação antes de mudar de etapa.", back: "o tutorial continua" },
 };
 export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null, modulo: ProModule = "navegador", produto: string = "meu-bot"): { title: string; text: string; askAdmin: boolean } {

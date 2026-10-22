@@ -136,6 +136,8 @@ export function showRelief(host: string): void {
       contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false,
     },
   });
+  // Zoom isolado em 100%: o zoom da janela principal (Cmd+=) não vaza para esta janela de tamanho fixo.
+  win.webContents.setZoomMode("isolated"); win.webContents.setZoomLevel(0);
   reliefWin = win;
   resetOpenedByHand = false;
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));

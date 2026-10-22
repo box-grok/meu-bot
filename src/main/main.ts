@@ -10,8 +10,7 @@ import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
-import { appTitle, appVariant, caps, produto, userDataName } from "./variant";
-import { encerrar } from "./encerrado";
+import { appVariant, caps, produto, userDataName } from "./variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
@@ -31,19 +30,16 @@ import { listSshHosts } from "./sshConfig";
 import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
-// O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-crm…) nasce como cópia do meu-bot dela.
+// O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
 { const ud = userDataName(); const de = produto().herdaDe; if (ud !== null) useVariantUserData(ud, caps().supportAdmin ? migrateAdminPessoas : de !== null ? herdarDe(de) : undefined); }
 // O meu-bot adota a pasta do antigo meu-bot-crm (uma vez; a origem fica como backup). Depois de herdar, antes de ler qualquer coisa.
-{ const fd = produto().fundeDe; if (fd !== null && !produto().encerrado && !app.commandLine.hasSwitch("user-data-dir")) fundirDe(fd)(app.getPath("userData"), app.getPath("appData")); }
+{ const fd = produto().fundeDe; if (fd !== null && !app.commandLine.hasSwitch("user-data-dir")) fundirDe(fd)(app.getPath("userData"), app.getPath("appData")); }
 
 // Staging (recompilado várias vezes por dia): o Chromium não guarda a chave dos cookies no Keychain. Com assinatura
 // própria (sem Team ID da Apple) cada build é "outro app" para o macOS e o pedido de senha voltava a cada rebuild,
 // mesmo com "Permitir Sempre". Produção segue no Keychain até haver certificado Apple. Custo em staging, uma vez na
 // troca: os logins do Navegador e o que o safeStorage guardou (Google, Tailscale) precisam ser refeitos.
 if (appVariant().endsWith("-staging")) app.commandLine.appendSwitch("use-mock-keychain");
-
-// App encerrado (o antigo meu-bot-crm): só o aviso "virou o meu-bot" e sai, antes de qualquer outra coisa.
-if (produto().encerrado) void app.whenReady().then(() => encerrar(appTitle()));
 
 // Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
 if (!app.requestSingleInstanceLock()) {

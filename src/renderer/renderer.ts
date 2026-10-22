@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
+import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -62,6 +62,8 @@ const dialog = $<HTMLDialogElement>("settings-dialog");
 const form = $<HTMLFormElement>("settings-form");
 /** Máquina desta janela; vem do main em window:info e não muda. */
 let windowHost = "";
+/** meu-bot-admin: nome da pessoa desta janela (o mesmo da aba e do seletor); null no app da pessoa. */
+let windowPersonName: string | null = null;
 /** Janela do meu-bot-admin (suporte): espelho só leitura + ações de suporte. */
 /** O que esta variante pode fazer (vem do main em window:info); até lá, o padrão do meu-bot normal. */
 /** meu-bot-admin: espelho das conversas dela com o meu-bot (admin/bot-mirror.ts); null no meu-bot normal. */
@@ -106,7 +108,6 @@ const modeLabel = $<HTMLSpanElement>("mode-label");
 const modeMenu = $<HTMLDivElement>("mode-menu");
 const modeList = $<HTMLUListElement>("mode-list");
 const topbarMini = $<HTMLElement>("topbar-mini");
-const miniDot = $<HTMLSpanElement>("mini-dot");
 const miniText = $<HTMLSpanElement>("mini-text");
 const topbarHideBtn = $<HTMLButtonElement>("btn-topbar-hide");
 const topbarShowBtn = $<HTMLButtonElement>("btn-topbar-show");
@@ -238,15 +239,27 @@ let warnedThreshold = 0;
 
 /** Status line no rodapé da conversa, no modelo do statusline.sh da box: modelo | Ctx | conta | Sessão | Semanal. */
 function paintContext(tab: Tab | null): void {
-  if (tab === null) { ctxLine.hidden = true; return; }
+  // Zoom da janela fora de 100%: um segmento no fim (clique volta ao tamanho real), como a entrada de status do Cursor.
+  const zoomSeg = (): HTMLElement => {
+    const span = el("span", "seg seg-zoom", `Zoom ${Math.round(Math.pow(1.2, zoomLevel) * 100)}%`);
+    span.title = "Zoom da janela (Cmd+= / Cmd+-). Clique para voltar a 100%.";
+    span.addEventListener("click", () => zoomWindow({ action: "reset" }));
+    return span;
+  };
+  if (tab === null) {
+    if (zoomLevel === 0) { ctxLine.hidden = true; return; }
+    ctxLine.hidden = false; ctxLine.replaceChildren(zoomSeg()); ctxLine.title = ""; return;
+  }
   const ctx = tab.context !== null && tab.context.tokens !== undefined && tab.context.budget !== undefined ? { tokens: tab.context.tokens, budget: tab.context.budget } : null;
   const segs = buildSegments({ model: tab.model, ctx, turn: tab.lastTurn, account, segments: statusLineSegs ?? account?.segments ?? null });
   ctxLine.hidden = false;
-  ctxLine.replaceChildren(...segs.flatMap((s, i) => {
+  const nodes = segs.flatMap((s, i) => {
     const span = el("span", `seg seg-${s.kind}`, s.text);
     if (s.title !== undefined) span.title = s.title;
     return i === 0 ? [span] : [el("span", "seg-sep", "|"), span];
-  }));
+  });
+  if (zoomLevel !== 0) nodes.push(...(nodes.length > 0 ? [el("span", "seg-sep", "|")] : []), zoomSeg());
+  ctxLine.replaceChildren(...nodes);
   if (tab.context !== null && tab.context.total > 0) ctxLine.title = describeContext(tab.context);
 }
 
@@ -594,8 +607,7 @@ function paintMini(): void {
   const st = hostStatus.get(windowHost);
   const tab = active();
   const off = net.online === false;
-  miniDot.className = `mini-dot ${off ? "bad" : st === undefined ? "" : st.state === "ready" ? "ok" : st.state === "error" ? "bad" : "warn"}`;
-  miniText.textContent = `${hostLabel(windowHost)}${tab !== null ? ` · ${tab.model}` : ""}${off ? " · sem internet" : st !== undefined ? ` · ${st.detail}` : ""}`;
+  miniText.textContent = `${windowPersonName ?? hostLabel(windowHost)}${tab !== null ? ` · ${tab.model}` : ""}${off ? " · sem internet" : st !== undefined ? ` · ${st.detail}` : ""}`;
 }
 
 /** Botão e menu "Modos do agente", espelhando o <select> escondido (que continua sendo a fonte do valor). */
@@ -640,10 +652,83 @@ function showModeToast(model: string): void {
   modeToast.classList.add("in");
   modeToastTimer = setTimeout(() => { modeToast.classList.remove("in"); modeToastTimer = setTimeout(() => { modeToast.hidden = true; modeToastTimer = null; }, 240); }, 2000);
 }
+/** O mesmo toast com um texto qualquer (zoom da janela): mascote na cor neutra, nome e descrição. */
+function showTextToast(name: string, desc: string): void {
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const icon = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+  icon.removeAttribute("class"); icon.style.setProperty("--hue", "200");
+  modeToast.querySelector(".mt-icon")?.replaceChildren(icon);
+  const nameEl = modeToast.querySelector(".mt-name"); if (nameEl !== null) nameEl.textContent = name;
+  const descEl = modeToast.querySelector(".mt-desc"); if (descEl !== null) descEl.textContent = desc;
+  if (modeToastTimer !== null) clearTimeout(modeToastTimer);
+  modeToast.classList.remove("in"); modeToast.hidden = false; void modeToast.offsetWidth;
+  modeToast.classList.add("in");
+  modeToastTimer = setTimeout(() => { modeToast.classList.remove("in"); modeToastTimer = setTimeout(() => { modeToast.hidden = true; modeToastTimer = null; }, 240); }, 2000);
+}
 
+/* ---------- Zoom da janela (interface inteira; modelo do Cursor/VS Code) ----------
+ * Nível -8..8 (fator 1.2^nível), um só para todas as janelas, guardado em settings.json pelo main. Cmd+= / Cmd+- /
+ * Cmd+0 com o foco na página do Navegador (webview, barra de endereço, botões dela) continuam sendo o zoom do site;
+ * em qualquer outro lugar são o zoom da janela. O menu Visualizar, a paleta e as Configurações são sempre da janela. */
+let zoomLevel = 0;
+const zoomPctEl = $<HTMLElement>("zoom-pct");
+/** O foco está na página do Navegador (webview ativa ou a barra dela)? Aí Cmd+=/-/0 são do site, não da janela. */
+function navHasFocus(): boolean {
+  if (navPage === null || navPage.panel.hidden) return false;
+  const a = document.activeElement;
+  if (a !== null && a !== document.body && navPage.panel.contains(a)) return true;
+  // Nada focado (clique numa área da barra do Navegador que não recebe foco) com o Navegador na frente: ainda é dele.
+  return (a === null || a === document.body) && pageActive === navPage;
+}
+function zoomWindow(action: ZoomAction): void { void window.meuBot.zoomWindow(action).catch(() => { /* a janela fica como está */ }); }
+/** Pinta o nível: variável CSS (a barra de título compensa os semáforos), rodapé, Configurações e, se mudou, o toast. */
+function applyZoomState(st: ZoomState, announce: boolean): void {
+  const changed = st.level !== zoomLevel;
+  zoomLevel = st.level;
+  document.documentElement.style.setProperty("--zoom-factor", String(st.factor));
+  document.documentElement.dataset["zoom"] = String(st.level);
+  zoomPctEl.textContent = `${st.percent}%`;
+  paintContext(active());
+  if (announce && changed) showTextToast(`Zoom ${st.percent}%`, st.level === 0 ? "tamanho real" : "Cmd+0 volta a 100%");
+}
+window.meuBot.on("window:zoom-changed", (st) => applyZoomState(st, true));
+$<HTMLButtonElement>("zoom-in").addEventListener("click", () => zoomWindow({ action: "step", delta: 1 }));
+$<HTMLButtonElement>("zoom-out").addEventListener("click", () => zoomWindow({ action: "step", delta: -1 }));
+$<HTMLButtonElement>("zoom-reset").addEventListener("click", () => zoomWindow({ action: "reset" }));
+
+/* Janela estreita (em CSS px, então o zoom entra na conta): a lateral recolhe sozinha e volta quando cabe de novo, sem
+ * mexer na preferência (localStorage). Cmd+B / ☰ nesse estado mostram a lateral por cima do conteúdo até o próximo
+ * clique fora, como a barra lateral do Cursor em modo compacto. 760 ≈ 260 da lateral + 300 do mínimo da conversa + folga. */
+const narrowMq = window.matchMedia("(max-width: 760px)");
+let sidebarAutoHidden = false;
+let sidebarPeek = false;
+function applyNarrow(): void {
+  const narrow = narrowMq.matches;
+  document.body.classList.toggle("narrow", narrow);
+  if (narrow) {
+    if (!sidebarEl.hidden && !sidebarPeek) { sidebarEl.hidden = true; sidebarAutoHidden = true; }
+  } else {
+    if (sidebarPeek) { sidebarPeek = false; sidebarEl.classList.remove("peek"); }
+    if (sidebarAutoHidden) { sidebarAutoHidden = false; sidebarEl.hidden = false; }
+  }
+}
+narrowMq.addEventListener("change", applyNarrow);
+document.addEventListener("pointerdown", (ev) => {
+  if (!sidebarPeek) return;
+  const t = ev.target as HTMLElement | null;
+  if (t?.closest("#sidebar, #btn-sidebar") != null) return;
+  toggleSidebar(false);
+});
 function toggleSidebar(force?: boolean): void {
   const hidden = force === undefined ? !sidebarEl.hidden : !force;
   sidebarEl.hidden = hidden;
+  if (document.body.classList.contains("narrow")) {
+    // Estreita: é só uma espiada por cima; a preferência fica como estava.
+    sidebarPeek = !hidden;
+    sidebarEl.classList.toggle("peek", !hidden);
+    if (!hidden) onboardEvent("sidebar");
+    return;
+  }
   if (!hidden) {
     // Entra deslizando com um brilho curto: quem apertou Cmd+B olhando o teclado percebe que ela apareceu.
     sidebarEl.classList.remove("reveal");
@@ -683,6 +768,9 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
+  add({ id: "a:zoom-in", kind: "action", label: "Aumentar zoom da janela", detail: "Cmd+= (fora da página do Navegador)", keywords: ["zoom", "ampliar", "maior", "aumentar", "fonte"] }, () => zoomWindow({ action: "step", delta: 1 }));
+  add({ id: "a:zoom-out", kind: "action", label: "Diminuir zoom da janela", detail: "Cmd+-", keywords: ["zoom", "reduzir", "menor", "diminuir", "fonte"] }, () => zoomWindow({ action: "step", delta: -1 }));
+  add({ id: "a:zoom-reset", kind: "action", label: "Restaurar zoom da janela (100%)", detail: "Cmd+0", keywords: ["zoom", "restaurar", "100", "tamanho real"] }, () => zoomWindow({ action: "reset" }));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "tutorial 1: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => enterClaude());
   add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes ou OpenClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
@@ -985,6 +1073,7 @@ function applySettings(view: SettingsView): void {
   openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
   quickStatus.textContent = view.quickEntryStatus === "registered" ? "ativo" : view.quickEntryStatus === "taken" ? "em uso por outro app" : view.quickEntryStatus === "invalid" ? "inválido" : "desligado";
   document.documentElement.style.setProperty("--chat-font", `${view.fontSize}px`);
+  applyZoomState({ level: view.zoomLevel, factor: Math.pow(1.2, view.zoomLevel), percent: Math.round(Math.pow(1.2, view.zoomLevel) * 100) }, false);
   document.documentElement.dataset["theme"] = view.theme;
   syncComposer();
 }
@@ -2135,6 +2224,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         renderGruposModo(txt);
       } else if (step.body === "conta-cloudflare" || step.body === "conta-github") {
         renderConta(txt, step.body === "conta-cloudflare" ? "cloudflare" : "github");
+      } else if (step.body !== undefined && step.body.startsWith("finance-")) {
+        renderFinanceStep(txt, step.body);
       } else if (step.body === "grupos-teste") {
         renderGruposTeste(txt);
       } else if (step.body === "objective-choice") {
@@ -2271,6 +2362,7 @@ function openGuide(t: Tutorial): void {
   if (t.id === "guarda-whatsapp") void refreshGuarda();
   if (t.id === "navegador") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
   if (t.id === "crm-whatsapp" || t.id === "crm-gmail") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
+  if (t.id === "financeiro") void refreshLicense().then(() => financePage?.refresh());
   if (t.id === "xai-login") void refreshXaiLine();
   if (t.id === "whatsapp-grupos") void refreshWaGroups();
   if (t.id === "contas-cli") void refreshContas();
@@ -4405,8 +4497,14 @@ document.addEventListener("keydown", (ev) => {
   if (inTerm && ev.ctrlKey && !ev.metaKey) return;
   if (ev.metaKey && (ev.key === "j" || ev.key === "J")) { ev.preventDefault(); void openTerminalTab(ev.shiftKey ? "new" : "focus"); return; }
   const mod = ev.metaKey || ev.ctrlKey;
-  // Zoom da aba do Navegador também com o foco fora da página (barra de endereço, botões): Cmd+= / Cmd++ / Cmd+- / Cmd+0.
-  if (ev.metaKey && navPage !== null && pageShown(navPage) && ["=", "+", "-", "0"].includes(ev.key)) { ev.preventDefault(); navZoomStep(ev.key === "-" ? -1 : ev.key === "0" ? 0 : 1); return; }
+  // Cmd+= / Cmd++ / Cmd+- / Cmd+0: com o foco na página do Navegador (webview, barra de endereço, botões dela) é o zoom
+  // do site; clicou fora (lateral, conversa, terminal, outra aba) é o zoom da janela inteira, como no Cursor.
+  if (mod && !ev.altKey && ["=", "+", "-", "0"].includes(ev.key)) {
+    ev.preventDefault();
+    const dir = ev.key === "-" ? -1 : ev.key === "0" ? 0 : 1;
+    if (navHasFocus()) navZoomStep(dir); else zoomWindow(dir === 0 ? { action: "reset" } : { action: "step", delta: dir });
+    return;
+  }
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
@@ -4505,6 +4603,7 @@ const guideCtx = (): GuideContext => ({
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState, local: crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) }; })(),
   contas: contasState,
+  finance: { access: navLicenseAsked ? financeOk(license, windowHost) : null, info: financeState },
   produto: (() => { const proprio = crmProprio() && motorCrm() === "proprio"; return { planoExigido: caps.planoExigido, crmProprio: proprio, crmStreak: !proprio }; })(),
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
@@ -4523,6 +4622,7 @@ const guideCtx = (): GuideContext => ({
       crm: navLicenseAsked && (crmState !== null || !remote) && (!crmProprio() || !remote || crmLocalState !== null),
       grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
       contas: contasState !== null || !remote,
+      finance: navLicenseAsked && (!remote || !financeOk(license, windowHost) || financeState !== null),
     };
   })(),
 });
@@ -5684,7 +5784,39 @@ async function refreshLicense(): Promise<LicenseView | null> {
   try { license = await window.meuBot.getLicense(); } catch { /* backend antigo/fora do ar: fica o que havia */ }
   navLicenseAsked = true;
   setPlanBadge(license !== null && planoLiberaPro(license.license.plan));
+  paintFinanceLine();
+  // Financeiro liberado agora (ou na abertura): lê o estado para a lateral e o tutorial 14.
+  if (financePage !== null && ((financeOk(license, windowHost) && financeState === null) || caps.variant === "finance-staging")) void financePage.refresh();
   return license;
+}
+
+/* ---------- Financeiro (produto meu-bot-finance): página Finanças, lateral e tutorial 14 ---------- */
+let financePage: ReturnType<typeof mountFinancePage> | null = null;
+let financeState: FinanceInfo | null = null;
+/** Botão "Finanças" da lateral: só com a licença do financeiro; o número são as pendências. */
+function paintFinanceLine(): void {
+  const b = document.getElementById("financas-line"); if (b === null) return;
+  // No meu-bot-finance-staging o financeiro é a razão do app: o botão fica sempre (sem licença, a página diz como liberar).
+  b.hidden = !caps.chat || (!financeOk(license, windowHost) && caps.variant !== "finance-staging");
+  const n = financeState?.estado?.pendencias ?? 0;
+  const c = document.getElementById("financas-count"); if (c !== null) c.textContent = n > 0 ? `${n} para confirmar` : "";
+}
+/** Corpo dos passos do tutorial 14: atalhos para a página, para o chat e a instalação na máquina. */
+function renderFinanceStep(txt: HTMLElement, body: string): void {
+  const row = el("div", "admin-actions");
+  const abrir = el("button", "btn btn-ghost btn-small", "Abrir Finanças"); abrir.type = "button"; abrir.addEventListener("click", () => financePage?.open());
+  const chat = (label: string, msg: string, hint: string): HTMLButtonElement => { const b = el("button", "btn btn-primary btn-small", label); b.type = "button"; b.addEventListener("click", () => { void goToChatFromGuide(msg, hint, "agente"); }); return b; };
+  if (body === "finance-install") {
+    const b = el("button", "btn btn-primary btn-small", financeState?.modulo === true ? "Ativado" : "Ativar agora"); b.type = "button"; b.disabled = financeState?.modulo === true;
+    b.addEventListener("click", () => { financePage?.open(); });
+    row.append(b);
+    txt.append(el("p", "hint", "A ativação mostra o progresso na página Finanças. Sem o agente do WhatsApp (OpenClaw) nesta máquina, o financeiro funciona pelo chat do app."));
+  } else if (body === "finance-contas") row.append(chat("Contar ao agente", "Quero cadastrar minhas contas no financeiro: ", "Complete com o seu banco, o cartão e se usa dinheiro vivo (ex.: Nubank, cartão Nubank e carteira). O agente cria cada conta."), abrir);
+  else if (body === "finance-renda") row.append(chat("Contar ao agente", "Meu orçamento para gastar este mês é ", "Complete com o valor (ex.: 3.000). O agente grava e passa a acompanhar os gastos contra ele."), abrir);
+  else if (body === "finance-testar") row.append(chat("Testar no chat", "gastei 48 no mercado", "O agente lança no financeiro desta máquina e responde. No WhatsApp é igual: mande para você mesmo."));
+  else if (body === "finance-foto") txt.append(el("p", "hint", "Funciona no WhatsApp: mande a foto para você mesmo. O lançamento fica pendente até você confirmar o valor e a categoria."));
+  else if (body === "finance-pendencias") { row.append(abrir); const n = financeState?.estado?.pendencias ?? 0; if (n > 0) txt.append(el("p", "hint", `${n} ${n === 1 ? "lançamento espera" : "lançamentos esperam"} você.`)); }
+  if (row.childElementCount > 0) txt.append(row);
 }
 const NAV_TUTORIAL = TUTORIAIS.find((t) => t.id === "navegador") as Tutorial;
 const navCurrent = (): NavTab | null => navTabs.find((t) => t.id === navActive) ?? null;
@@ -5701,13 +5833,15 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   const wv = document.createElement("webview") as WebviewEl;
   wv.setAttribute("partition", navPartition);
   wv.setAttribute("allowpopups", "");
+  // O guest herda o zoom da janela (Cmd+= do app) ao anexar; o zoom aqui é por site, então nasce em 100% e navApplyZoom manda.
+  wv.setAttribute("webpreferences", "zoomFactor=1");
   wv.className = "nav-view";
   wv.hidden = true;
   const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map(), ...(serviceId !== undefined ? { serviceId } : {}) };
   const sync = (): void => { const antes = tab.url; tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); if (tab.url !== antes) navSalvarAbas(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
-  wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); sync(); });
+  wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); navApplyZoom(tab); sync(); });
   wv.addEventListener("did-finish-load", () => { tab.loadedAt = Date.now(); navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); navNotifyInject(tab); });
   wv.addEventListener("ipc-message", (ev) => { const e = ev as Event & { channel?: string; args?: unknown[] }; if (e.channel === "nav:notification") void onPageNotification(tab, e.args?.[0]); });
   wv.addEventListener("did-navigate-in-page", sync);
@@ -6361,9 +6495,9 @@ function renderTerminal(t: TermTab): void {
     const search = new window.SearchAddon.SearchAddon(); term.loadAddon(search);
     term.open(t.box);
     try { const gl = new window.WebglAddon.WebglAddon(); gl.onContextLoss(() => gl.dispose()); term.loadAddon(gl); } catch { /* fica no renderer DOM */ }
-    // Cmd+K/N/B/W/J/F são do app; o resto (inclusive Ctrl+*) é do shell. Cmd+C sem seleção vira ^C.
+    // Cmd+K/N/B/W/J/F e o zoom da janela (Cmd+=/-/0) são do app; o resto (inclusive Ctrl+*) é do shell. Cmd+C sem seleção vira ^C.
     term.attachCustomKeyEventHandler((ev) => {
-      if (ev.metaKey && ["k", "n", "b", "w", "j", "f"].includes(ev.key.toLowerCase())) { if (ev.key.toLowerCase() === "f" && ev.type === "keydown") { ev.preventDefault(); termSearch(t); } return false; }
+      if (ev.metaKey && ["k", "n", "b", "w", "j", "f", "=", "+", "-", "0"].includes(ev.key.toLowerCase())) { if (ev.key.toLowerCase() === "f" && ev.type === "keydown") { ev.preventDefault(); termSearch(t); } return false; }
       return true;
     });
     term.onData((d) => { if (t.id !== null) window.meuBot.termInput(t.id, d); });
@@ -6862,6 +6996,9 @@ form.addEventListener("submit", (ev) => {
 void (async () => {
   // Lista de conversas oculta por padrão (Cmd+B ou ☰ mostra); só fica visível se a pessoa a abriu antes.
   try { sidebarEl.hidden = localStorage.getItem("sidebarShown") !== "1"; } catch { sidebarEl.hidden = true; }
+  // A barra de título compensa os semáforos pelo fator de zoom: lê o atual já na primeira pintura (o main confirma em seguida).
+  try { document.documentElement.style.setProperty("--zoom-factor", String(window.meuBot.zoomFactorNow())); } catch { /* fica em 1 */ }
+  applyNarrow();
   // Barra recolhida por padrão (como a lista): só fica aberta se a pessoa a mostrou da última vez.
   try { setTopbarHidden(localStorage.getItem("topbarShown") !== "1"); } catch { setTopbarHidden(true); }
   const info = await window.meuBot.getWindowInfo();
@@ -6878,7 +7015,9 @@ void (async () => {
     // sem conversas com o agente, sem logins nem pareamento (o main nem registra esses canais no admin).
     document.body.classList.add("admin-mode");
     document.title = `${info.person ?? windowHost} · suporte`;
-    document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
+    windowPersonName = info.person;
+    // A mesma cor que a pessoa vê na janela dela: pela máquina como ela a chama; sem isso, pelo alias de suporte.
+    document.documentElement.style.setProperty("--host-accent", hostAccent(info.machine ?? windowHost));
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     mountSuportePage({
@@ -6904,6 +7043,12 @@ void (async () => {
   { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
+  financePage = mountFinancePage({
+    panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked,
+    goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
+  });
+  $<HTMLButtonElement>("financas-line").addEventListener("click", () => financePage?.open());
+  if (caps.variant === "finance-staging") paintFinanceLine();
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
   void refreshStatusLine();
   void refreshWhatsapp();
@@ -6924,6 +7069,8 @@ void (async () => {
   await restoreTabs();
   renderSidebar();
   tabsReady = true;
+  // meu-bot-finance-staging: depois de restaurar as abas, o financeiro fica na frente.
+  if (caps.variant === "finance-staging") financePage?.open();
   void restoreSplit();
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);

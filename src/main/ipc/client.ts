@@ -10,7 +10,8 @@ import path from "node:path";
 import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
 import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
-import { assertAcesso } from "../acesso";
+import { assertAcesso, assertFinance } from "../acesso";
+import { financeCategorias, financeComprovante, financeCorrigir, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
 import { caps } from "../variant";
@@ -36,7 +37,7 @@ import { getHostNames, isBackendModel } from "../settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
 import { crmInfo, crmTest, resetCrm, setCrm } from "../crm";
 import { toggleQuickEntry } from "../quickEntry";
-import { guardaInstalled, installAudio, installCrm, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
+import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
 import { readSegments, writeSegments } from "../statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../windows";
@@ -180,6 +181,37 @@ export function registerClientIpc(): void {
   handleClient("browser:workspaces-set", (event, payload: unknown) => { const h = ctxOf(event); return browserWorkspacesSet(h.host, (payload as { espacos?: unknown } | null)?.espacos, h.win); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); const pedido = caps().planoExigido === "free" ? "pediu o plano Pro (aba Navegador)" : `pediu para liberar o ${caps().produto} (assinatura)`; await registrar(h.host, "plano.pedir", pedido); log(`[navegador] ${h.host}: ${pedido}`); });
   // Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
+  // Financeiro (produto meu-bot-finance): página Finanças e tutorial 14. Tudo passa pelo gate da licença (o backend confere de novo).
+  const fin = async (event: Electron.IpcMainInvokeEvent): Promise<string> => { const h = ctxOf(event); await assertFinance(h.host); return h.host; };
+  const txt = (v: unknown, max = 200): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : undefined);
+  const mesOk = (v: unknown): string => { if (typeof v !== "string" || !/^\d{4}-\d{2}$/.test(v)) throw new Error("mês inválido"); return v; };
+  const idOk = (v: unknown): string => { if (typeof v !== "string" || !/^[A-Za-z0-9_-]{2,80}$/.test(v)) throw new Error("lançamento inválido"); return v; };
+  handleClient("finance:info", async (event) => financeInfo(await fin(event)));
+  handleClient("finance:lancamentos", async (event, payload: unknown) => { const p = (payload ?? {}) as { mes?: unknown; status?: unknown; limite?: unknown }; return financeLancamentos(await fin(event), { ...(p.mes !== undefined ? { mes: mesOk(p.mes) } : {}), ...(p.status === "pendente" || p.status === "confirmado" ? { status: p.status } : {}), ...(typeof p.limite === "number" ? { limite: Math.min(500, Math.max(1, Math.trunc(p.limite))) } : {}) }); });
+  handleClient("finance:categorias", async (event) => financeCategorias(await fin(event)));
+  handleClient("finance:lancar", async (event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>; const host = await fin(event);
+    const valor = txt(p.valor, 30); if (valor === undefined) throw new Error("diga o valor");
+    const l = await financeLancar(host, { valor, favorecido: txt(p.favorecido, 80) ?? "", ...(p.tipo === "renda" ? { tipo: "renda" as const } : {}), ...(p.retorno === "indireto" || p.retorno === "direto" ? { retorno: p.retorno } : {}), ...(txt(p.categoria) ? { categoria: txt(p.categoria)! } : {}), ...(txt(p.conta) ? { conta: txt(p.conta)! } : {}), ...(txt(p.data, 12) ? { data: txt(p.data, 12)! } : {}), ...(txt(p.notas, 500) ? { notas: txt(p.notas, 500)! } : {}) });
+    void registrar(host, "finance.lancar", `${l.valor} · ${l.categoriaNome}`); return l;
+  });
+  handleClient("finance:confirmar", async (event, payload: unknown) => { const p = (payload ?? {}) as { id?: unknown; categoria?: unknown }; return financeConfirmar(await fin(event), idOk(p.id), txt(p.categoria)); });
+  handleClient("finance:descartar", async (event, payload: unknown) => { const host = await fin(event); const id = idOk((payload as { id?: unknown } | null)?.id); await financeDescartar(host, id); void registrar(host, "finance.descartar", id); });
+  handleClient("finance:corrigir", async (event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>; const host = await fin(event); const id = idOk(p.id);
+    const patch: Record<string, string | null> = {};
+    for (const [k, max] of [["valor", 30], ["favorecido", 80], ["categoria", 80], ["data", 12], ["notas", 500]] as const) if (typeof p[k] === "string") patch[k] = String(p[k]).slice(0, max);
+    if (p.conta === null || typeof p.conta === "string") patch.conta = p.conta === null || p.conta === "" ? null : String(p.conta).slice(0, 80);
+    if (Object.keys(patch).length === 0) throw new Error("nada para corrigir");
+    const l = await financeCorrigir(host, id, patch); void registrar(host, "finance.corrigir", `${l.valor} · ${l.categoriaNome}`); return l;
+  });
+  handleClient("finance:comprovante", async (event, payload: unknown) => { const sha = (payload as { sha256?: unknown } | null)?.sha256; if (typeof sha !== "string" || !/^[0-9a-f]{64}$/.test(sha)) throw new Error("comprovante inválido"); return financeComprovante(await fin(event), sha); });
+  handleClient("finance:confirmar-todas", async (event) => financeConfirmarTodas(await fin(event)));
+  handleClient("finance:conta-criar", async (event, payload: unknown) => { const p = (payload ?? {}) as Record<string, unknown>; const nome = txt(p.nome, 80); if (nome === undefined) throw new Error("dê um nome à conta"); return financeContaCriar(await fin(event), { nome, ...(txt(p.tipo, 20) ? { tipo: txt(p.tipo, 20)! } : {}), ...(txt(p.saldoInicial, 30) ? { saldoInicial: txt(p.saldoInicial, 30)! } : {}) }); });
+  handleClient("finance:mes", async (event, payload: unknown) => { const p = (payload ?? {}) as Record<string, unknown>; return financeMes(await fin(event), mesOk(p.mes), { ...(p.orcamento === null || typeof p.orcamento === "string" ? { orcamento: p.orcamento as string | null } : {}), ...(p.rendaPrevista === null || typeof p.rendaPrevista === "string" ? { rendaPrevista: p.rendaPrevista as string | null } : {}), ...(typeof p.dinheiroInformado === "boolean" ? { dinheiroInformado: p.dinheiroInformado } : {}) }); });
+  handleClient("finance:fechar-mes", async (event, payload: unknown) => { const host = await fin(event); const mes = mesOk((payload as { mes?: unknown } | null)?.mes); await financeFecharMes(host, mes); void registrar(host, "finance.fechar-mes", mes); });
+  handleClient("finance:install", async (event) => { const h = ctxOf(event); await assertFinance(h.host); const r = await installFinance(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("finance:progress", { line }); }); if (r.ok) void registrar(h.host, "finance.instalar"); return r; });
+  handleClient("finance:pedir", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pedir", "pediu para liberar o meu-bot-finance (financeiro)"); log(`[finance] ${h.host}: pediu o meu-bot-finance`); });
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
   // Tutorial 10 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.
   handleClient("crm:local", (event) => crmLocal(ctxOf(event).host));

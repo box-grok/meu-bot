@@ -126,6 +126,8 @@ function produtoOk(license, nome, now = Date.now()) {
 }
 /** O CRM próprio (no Gmail e no WhatsApp): plano Pro ou superior em vigor, ou o produto meu-bot-crm contratado. */
 const crmOk = (license, now = Date.now()) => proOk(license, now) || produtoOk(license, 'meu-bot-crm', now);
+/** O financeiro: só o produto meu-bot-finance contratado (ou o plano personalizado, que libera todos). O Pro não libera. */
+const financeOk = (license, now = Date.now()) => produtoOk(license, 'meu-bot-finance', now);
 
 const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
 /**
@@ -153,6 +155,7 @@ module.exports = {
   proOk,
   produtoOk,
   crmOk,
+  financeOk,
   parseProdutos,
   mergeApps,
   STATUSES,

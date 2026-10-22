@@ -10,3 +10,10 @@ test("hostAccent é determinística, válida e distinta", () => {
   const set = new Set(["colima", "grokbot-1", "agente-box", "local"].map(hostAccent));
   assert.equal(set.size, 4);
 });
+
+test("alias de suporte do admin tem a mesma cor que a máquina no app da pessoa", () => {
+  assert.equal(hostAccent("suporte-agente-box-lv-c793"), hostAccent("agente-box-lv"));
+  assert.equal(hostAccent("suporte-lucas-d28b"), hostAccent("lucas"));
+  // sufixo fora do padrão (não é alias do suporte): o nome inteiro conta
+  assert.notEqual(hostAccent("suporte-agente-box-lv-xyz"), hostAccent("agente-box-lv"));
+});

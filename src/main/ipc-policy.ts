@@ -8,7 +8,7 @@
 /** Os dois apps: leituras da máquina e o que é só deste Mac (configurações, memória, arquivar). */
 export const SHARED_CHANNELS = [
   // janela principal
-  "window:info", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
+  "window:info", "window:zoom", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
   // limpar o histórico, pausar o agente e arquivar/excluir por contato: a pessoa e o admin (no admin fica no registro da máquina dela)
   "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark", "whatsapp:names",
@@ -47,7 +47,7 @@ export const CLIENT_CHANNELS = [
   "contas:entrar", "contas:cancelar", "contas:sair",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
-  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",
+  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "finance:info", "finance:lancamentos", "finance:categorias", "finance:lancar", "finance:confirmar", "finance:descartar", "finance:corrigir", "finance:comprovante", "finance:confirmar-todas", "finance:conta-criar", "finance:mes", "finance:fechar-mes", "finance:install", "finance:pedir", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",
   // aba Navegador (módulo Pro)
   "browser:open", "browser:agent-whatsapp", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove", "browser:workspaces-set",
   "tailscale:disable-check", "tailscale:restore",

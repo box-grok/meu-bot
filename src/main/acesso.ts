@@ -5,7 +5,7 @@
  * → "ASSINATURA_REQUIRED". Nunca decide por variante: só por caps().planoExigido e caps().produto.
  */
 import { fetchLicense } from "./backend";
-import { acessoProduto, crmProprioOk, proOk } from "./licenca";
+import { acessoProduto, crmProprioOk, financeOk, proOk } from "./licenca";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
 import { caps } from "./variant";
@@ -21,6 +21,13 @@ export async function assertAcesso(host: string): Promise<void> {
     return;
   }
   if (lic === null || !proOk(lic.license)) throw new Error("PRO_REQUIRED");
+}
+
+/** Financeiro nesta máquina: o produto meu-bot-finance (ou o plano personalizado) em vigor. "FINANCE_REQUIRED". */
+export async function assertFinance(host: string): Promise<void> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("FINANCE_REQUIRED");
+  const lic = await fetchLicense(host);
+  if (!financeOk(lic, host)) throw new Error("FINANCE_REQUIRED");
 }
 
 /** CRM próprio nesta máquina (guardar conversa no CRM…): Pro ou superior em vigor, ou o produto meu-bot-crm. "CRM_REQUIRED". */

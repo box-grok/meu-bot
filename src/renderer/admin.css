@@ -10,8 +10,26 @@ body.admin-mode #wa-line, body.admin-mode #rest { display: none !important; }
 body.admin-mode #produtos-line[hidden] { display: flex !important; }
 .admin-panel { display: flex; flex-direction: column; gap: 14px; }
 .admin-field { display: flex; flex-direction: column; gap: 4px; }
-.admin-field input[type="text"], .admin-field textarea, .admin-field select { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: inherit; }
+/* Todo campo do admin segue o tema (data, número, seleção incluídos): fundo e texto do tema, controles nativos no esquema de
+   cores do tema (color-scheme) em vez do branco padrão do Chromium no escuro. */
+.admin-field input:not([type="checkbox"]):not([type="radio"]), .admin-field textarea, .admin-field select { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); color-scheme: inherit; }
+.admin-field input:focus-visible, .admin-field textarea:focus-visible, .admin-field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.admin-field input::-webkit-calendar-picker-indicator { cursor: pointer; opacity: .8; }
+/* Rótulo + campo + botões na mesma linha: o campo cresce, os botões ficam alinhados pela base do campo (não esticados até
+   o topo do rótulo), e em janela estreita quebram para a linha de baixo. */
+.admin-actions { align-items: flex-end; }
+.admin-actions > .admin-field { flex: 1 1 200px; min-width: 160px; max-width: 320px; }
+.admin-actions > .btn { flex: none; }
 .admin-field textarea { resize: vertical; }
+/* Devices da conta: nome em destaque, sistema/apps em cinza (encolhem com reticências), status e o botão sempre à direita. */
+.admin-devices { display: flex; flex-direction: column; gap: 6px; }
+.admin-device-row { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.admin-device-main { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; }
+.admin-device-name { flex: none; }
+.admin-device-meta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-device-status { flex: none; font-size: 12px; }
+.admin-device-status.ok { color: var(--ok); } .admin-device-status.bad { color: var(--bad); }
+.admin-device-row > .btn { flex: none; }
 .admin-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); }
 .admin-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .admin-health { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }

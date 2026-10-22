@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 
 export type QuemTipo = "dono" | "admin" | "agente" | "sistema" | "legado";
 export interface Quem { tipo: QuemTipo; nome: string }
-export const APPS = ["meu-bot", "meu-bot-crm", "meu-bot-admin", "meu-bot-staging", "meu-bot-crm-staging", "backend", "plugin", "legado"] as const;
+export const APPS = ["meu-bot", "meu-bot-crm", "meu-bot-admin", "meu-bot-staging", "meu-bot-crm-staging", "meu-bot-finance-staging", "backend", "plugin", "legado"] as const;
 export type AuditoriaApp = (typeof APPS)[number];
 export const isApp = (v: string): v is AuditoriaApp => (APPS as readonly string[]).includes(v);
 export interface AuditoriaLinha { v: number; em: string; maquina: string; quem: Quem; app: string; acao: string; alvo: string; detalhe: string; prev: string; hash: string }
@@ -59,6 +59,11 @@ export const ACOES = {
   "whatsapp.quem-responde": (a: string) => `mudou quem o agente responde no WhatsApp${a ? ` (${a})` : ""}`,
   "crm.guardar-conversa": (a: string) => `guardou no CRM a conversa do WhatsApp de ${a}`,
   "crm.instalar": () => "instalou o CRM pelo WhatsApp",
+  "finance.instalar": () => "instalou o financeiro (WhatsApp e chat)",
+  "finance.lancar": (a: string) => `lançou ${a} no financeiro pelo app`,
+  "finance.corrigir": (a: string) => `corrigiu um lançamento do financeiro (${a})`,
+  "finance.descartar": (a: string) => `descartou o lançamento ${a} do financeiro`,
+  "finance.fechar-mes": (a: string) => `fechou o mês ${a} no financeiro`,
   "crm.pipeline-criar": (a: string) => `criou o pipeline ${a} no CRM`,
   "crm.pipeline-padrao": (a: string) => `escolheu o pipeline ${a} para as conversas do WhatsApp`,
   "crm.desinstalar": () => "desinstalou o CRM pelo WhatsApp",

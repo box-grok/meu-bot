@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId } from "../shared/ipc";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceLancarInput } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -22,6 +22,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "guarda:progress",
   "navegador:progress",
   "crm:progress",
+  "finance:progress",
   "admin:backup-progress",
   "claude-login:event",
   "xai-login:event",
@@ -44,6 +45,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:agent",
   "browser:favorites",
   "browser:workspaces",
+  "window:zoom-changed",
 ];
 
 /** Os dois apps. */
@@ -85,6 +87,8 @@ const sharedApi: MeuBotSharedApi = {
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
   contasStatus: () => ipcRenderer.invoke("contas:status", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
+  zoomWindow: (action: ZoomAction): Promise<ZoomState> => ipcRenderer.invoke("window:zoom", action),
+  zoomFactorNow: (): number => webFrame.getZoomFactor(),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);
     const listener = (_event: Electron.IpcRendererEvent, payload: MainEvents[K]): void => callback(payload);
@@ -148,6 +152,20 @@ const clientApi: MeuBotClientApi = {
   installNavegador: () => ipcRenderer.invoke("navegador:install", {}),
   installGuarda: () => ipcRenderer.invoke("guarda:install", {}),
   crmInfo: () => ipcRenderer.invoke("crm:info", {}),
+  financeInfo: () => ipcRenderer.invoke("finance:info", {}),
+  financeLancamentos: (filtro?: { mes?: string; status?: "pendente" | "confirmado"; limite?: number }) => ipcRenderer.invoke("finance:lancamentos", filtro ?? {}),
+  financeCategorias: () => ipcRenderer.invoke("finance:categorias", {}),
+  financeLancar: (input: FinanceLancarInput) => ipcRenderer.invoke("finance:lancar", input),
+  financeConfirmar: (id: string, categoria?: string) => ipcRenderer.invoke("finance:confirmar", { id, categoria }),
+  financeDescartar: (id: string) => ipcRenderer.invoke("finance:descartar", { id }),
+  financeCorrigir: (id: string, patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string }) => ipcRenderer.invoke("finance:corrigir", { id, ...patch }),
+  financeComprovante: (sha256: string) => ipcRenderer.invoke("finance:comprovante", { sha256 }),
+  financeConfirmarTodas: () => ipcRenderer.invoke("finance:confirmar-todas", {}),
+  financeContaCriar: (input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }) => ipcRenderer.invoke("finance:conta-criar", input),
+  financeMes: (mes: string, patch: { orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }) => ipcRenderer.invoke("finance:mes", { mes, ...patch }),
+  financeFecharMes: (mes: string) => ipcRenderer.invoke("finance:fechar-mes", { mes }),
+  installFinance: () => ipcRenderer.invoke("finance:install", {}),
+  financePedir: () => ipcRenderer.invoke("finance:pedir", {}),
   installCrm: () => ipcRenderer.invoke("crm:install", {}),
   setCrm: (patch: { apiKey?: string; pipelineKey?: string | null; pipelineName?: string; silencioMin?: number; criarSemPerguntar?: boolean }) => ipcRenderer.invoke("crm:set", patch),
   crmTest: () => ipcRenderer.invoke("crm:test", {}),
