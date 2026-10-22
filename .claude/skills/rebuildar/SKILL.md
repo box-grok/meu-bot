@@ -12,8 +12,8 @@ O app instalado é empacotado: mudança no código só vale depois de rebuildar.
    `pgrep -f "meu-bot-admin.app/Contents/MacOS"`. Se estiver aberto, avise o usuário e só feche com `osascript -e 'quit app "meu-bot-admin"'` se ele concordar.
 3. **Empacote a variante certa** pelo que mudou (`git status --short` / `git diff --name-only`):
    - Sempre: `npm run dist:admin` (instala em ~/Applications/meu-bot-admin.app e atualiza o atalho na Área de Trabalho).
-   - Mudou `extensao-crm/` ou algo do CRM: também `npm run dist:crm`.
-   - Mudou algo fora de `src/*/admin/` que o app comum usa: também `npm run dist`.
+   - Mudou algo fora de `src/*/admin/` que o app comum usa (inclui `extensao-crm/` e o CRM): também `npm run dist`.
+   - Mudou algo que os staging usam: também `npm run dist:staging` e `npm run dist:finance-staging`.
    Use timeout de 10 min. Confira na saída "Assinado com" e "Instalado em".
 4. **Avise em pt-BR**, em poucas linhas: o que foi rebuildado, onde ficou instalado e que é só abrir o app de novo.
 
