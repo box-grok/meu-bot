@@ -24,7 +24,7 @@ import { conversationReferenceText, grupoReferenceText, waReferenceText } from "
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
-import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk, acessoProduto } from "./lib/pro.js";
+import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk } from "./lib/pro.js";
 import { mountFinancePage } from "./finance/finance-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
@@ -5768,7 +5768,7 @@ let license: LicenseView | null = null;
 /** CRM próprio nesta máquina, pela licença (Pro ou superior, ou o produto meu-bot-crm); fechado enquanto a licença não chegou. */
 const crmProprio = (): boolean => crmProprioOk(license, windowHost);
 /** Motor do CRM em uso: o gravado em crm.json; sem ele, CRM contratado → próprio, chave do Streak → Streak, senão licença (regra do crm-core.ts). */
-const motorCrm = (): "proprio" | "streak" => crmState?.motor ?? (acessoProduto(license, windowHost, "personalizado", "meu-bot-crm") === "ok" ? "proprio" : crmState?.streakKey === true ? "streak" : crmProprio() ? "proprio" : "streak");
+const motorCrm = (): "proprio" | "streak" => crmState?.motor ?? (crmState?.streakKey === true ? "streak" : crmProprio() ? "proprio" : "streak");
 const NAV_HOME = "https://www.google.com";
 /** Página inicial: com o CRM próprio liberado nesta máquina, o Gmail (onde o CRM mora); senão o Google. */
 const navHome = (): string => (crmProprio() ? "https://mail.google.com/" : NAV_HOME);
@@ -6912,7 +6912,7 @@ async function loadLicensePanel(): Promise<void> {
   const view = await refreshLicense();
   if (view === null) { licenseSum.textContent = "plano e devices"; licenseBody.replaceChildren(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
   const l = view.license;
-  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : l.plan === "personalizado" ? "Personalizado" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
+  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
   const ul = el("ul", "admin-health");
   for (const line of licenseSummary(view)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
   const devs = el("ul", "admin-health");

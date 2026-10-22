@@ -219,9 +219,12 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
       ["Gastos (investido)", r.gastos, "gasto", orcTile ? `${orcTile.usadoPct}% do orçamento` : ""],
       ["Orçamento do mês", orcTile ? orcTile.valor : "—", "", orcTile ? (orcTile.restanteCent >= 0 ? `restam ${orcTile.restante}` : `passou ${brl(-orcTile.restanteCent)}`) : "defina no checklist"],
       ["Ganhos", r.ganhos ?? "R$ 0,00", "renda", `diretos ${r.ganhoDireto ?? "R$ 0,00"} · indiretos ${r.ganhoIndireto ?? "R$ 0,00"}`],
-      ["ROI do mês", roiTxt(r.roiTotal ?? null), (r.roiTotal ?? 0) < 0 ? "gasto" : "renda", `só diretos ${roiTxt(r.roiDireto ?? null)}`],
+      // Projetado até o fim do mês (investimento = orçamento; ganhos no ritmo de hoje); embaixo, o de hoje para comparar.
+      ...(r.projecao ? [["ROI do mês projetado", roiTxt(r.projecao.roiTotal), (r.projecao.roiTotal ?? 0) < 0 ? "gasto" : "renda", `hoje ${roiTxt(r.roiTotal ?? null)} · projetado só diretos ${roiTxt(r.projecao.roiDireto)} · ${r.projecao.base === "real" ? "mês encerrado: é o real" : `até o dia ${r.projecao.diasMes}: investimento ${r.projecao.gastos}${r.projecao.base === "orcamento" ? " (o orçamento)" : " (no ritmo de hoje)"}, ganhos ${r.projecao.ganhos} no ritmo de hoje`}`] as [string, string, string, string]] : [["ROI do mês", roiTxt(r.roiTotal ?? null), (r.roiTotal ?? 0) < 0 ? "gasto" : "renda", `só diretos ${roiTxt(r.roiDireto ?? null)}`] as [string, string, string, string]]),
     ];
-    for (const [rot, v, cls, sub] of tiles) { const b = el("div", "finance-num"); b.append(el("span", "hint", rot), el("strong", `finance-valor ${cls}`, v)); if (sub) b.append(el("span", "hint finance-sub", sub)); nums.append(b); }
+    // O ROI projetado é o número da página: vem primeiro e em destaque.
+    const ordem = [...tiles.filter((t) => t[0].includes("projetado")), ...tiles.filter((t) => !t[0].includes("projetado"))];
+    for (const [rot, v, cls, sub] of ordem) { const b = el("div", `finance-num${rot.includes("projetado") ? " destaque" : ""}`); b.append(el("span", "hint", rot), el("strong", `finance-valor ${cls}`, v)); if (sub) b.append(el("span", "hint finance-sub", sub)); nums.append(b); }
     mc.append(nums);
     const o = r.orcamento ?? null; // backend antigo não manda o orçamento
     if (o !== null) {
@@ -264,12 +267,26 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     f.append(field("Valor", valor), field("Tipo", tipoL), field("Onde", fav), field("Categoria", cat), btn("Lançar", "btn-primary", () => { if (valor.value.trim() === "") return; void agir(() => deps.api.financeLancar({ valor: valor.value, favorecido: fav.value, tipo: tipoL.value === "gasto" ? "gasto" : "renda", ...(tipoL.value === "indireto" ? { retorno: "indireto" as const } : tipoL.value === "direto" ? { retorno: "direto" as const } : {}), categoria: cat.value }), "lançado"); }));
     lc.append(f);
 
+    // Meta de ganhos (projeção): o que se espera receber no mês. Puxa só o projetado; o realizado continua o que entrou.
+    const pj = r.projecao; const mt = r.meta ?? null;
+    const metaCard = dobra("meta", "Meta de ganhos (projeção)", mt === null ? "sem meta: a projeção segue o ritmo de hoje" : `diretos ${mt.direto} · indiretos ${mt.indireto}${mt.herdadoDe ? " (mantida do mês anterior)" : ""}`);
+    if (pj) metaCard.append(el("p", "hint", `Para empatar com o investimento projetado (${pj.empate}) o agente precisa trazer ${pj.empate} em ganhos no mês. Projeção atual de ganhos: ${pj.ganhos} (${pj.ganhosBase === "meta" ? "pela meta" : pj.ganhosBase === "real" ? "real" : "no ritmo de hoje"}).`));
+    if (mt?.notas) metaCard.append(el("p", "hint", `Como a meta foi calculada: ${mt.notas}`));
+    const mf = el("div", "admin-actions");
+    const md = input("ex.: 1.000", mt ? (mt.diretoCent / 100).toFixed(2).replace(".", ",") : "", 20);
+    const mi = input("ex.: 500", mt ? (mt.indiretoCent / 100).toFixed(2).replace(".", ",") : "", 20);
+    const mn = input("como chegou no valor (opcional)", mt?.notas ?? "", 500);
+    mf.append(field("Ganho direto esperado", md), field("Ganho indireto esperado", mi), field("Conta", mn), btn("Salvar meta", "btn-ghost", () => {
+      void agir(() => deps.api.financeMes(e.mes, { metaDireto: md.value.trim() === "" ? null : md.value, metaIndireto: mi.value.trim() === "" ? null : mi.value, metaNotas: mn.value }), "meta do mês salva");
+    }));
+    metaCard.append(mf);
+
     // Últimos lançamentos.
     const uc = card("Últimos lançamentos");
     if (ultimos.length === 0) uc.append(el("p", "hint", "Nada lançado ainda."));
     for (const l of ultimos) uc.append(linhaLanc(l, false));
     // Ordem: o mês e o que o agente lançou primeiro; depois o que depende da pessoa; contas e lançar à mão no fim.
-    panel.append(mc, uc, ck, ...(pendCard ? [pendCard] : []), cc, lc);
+    panel.append(mc, metaCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, lc);
   }
 
   const page = deps.definePage("financas", "Finanças", panel, () => { render(); void refresh(); });

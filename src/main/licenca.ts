@@ -5,15 +5,19 @@
  */
 import type { License, LicenseDevice, LicensePatch, LicenseView, PlanName } from "../shared/ipc";
 
-const PLANS: License["plan"][] = ["free", "pro", "personalizado"];
+const PLANS: License["plan"][] = ["free", "pro"];
 const STATUSES: License["status"][] = ["free", "trialing", "active", "expired"];
 const INTERVALS: NonNullable<License["interval"]>[] = ["month", "year"];
 
 const isIso = (v: unknown): v is string => typeof v === "string" && v !== "" && !Number.isNaN(Date.parse(v));
 const nowIso = (now: number): string => new Date(now).toISOString();
-/** Produtos contratados (meu-bot-crm, meu-bot-fit…): nomes válidos, únicos, ordenados; o admin não é produto. */
+/** Add-ons contratados (meu-bot-finance, meu-bot-fit…): nomes válidos, únicos, ordenados. */
 const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && x !== "meu-bot-admin"))].sort() : []);
+/** Nomes que não são add-on: o admin, e o meu-bot-crm (o CRM veio para o Pro em 22 out). */
+const NAO_ADDON = new Set(["meu-bot-admin", "meu-bot-crm"]);
+export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && !NAO_ADDON.has(x)))].sort() : []);
+/** O plano "personalizado" (removido em 22 out) liberava o Pro e todos os add-ons; quem o tinha vira Pro com estes. */
+const ADDONS_DO_PERSONALIZADO = ["meu-bot-finance"];
 
 /** Licença de uma conta ainda não configurada: grátis, um device. */
 export function defaultLicense(now: number = Date.now()): License {
@@ -26,15 +30,16 @@ export function parseLicense(raw: unknown, now: number = Date.now()): License {
   const base = defaultLicense(now);
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return base;
   const o = raw as Record<string, unknown>;
+  const personalizado = o.plan === "personalizado";
   return {
-    plan: PLANS.includes(o.plan as License["plan"]) ? (o.plan as License["plan"]) : base.plan,
+    plan: personalizado ? "pro" : PLANS.includes(o.plan as License["plan"]) ? (o.plan as License["plan"]) : base.plan,
     status: STATUSES.includes(o.status as License["status"]) ? (o.status as License["status"]) : base.status,
     interval: INTERVALS.includes(o.interval as NonNullable<License["interval"]>) ? (o.interval as License["interval"]) : null,
     memberSince: isIso(o.memberSince) ? o.memberSince : base.memberSince,
     trialEnd: isIso(o.trialEnd) ? o.trialEnd : null,
     expiresAt: isIso(o.expiresAt) ? o.expiresAt : null,
     deviceLimit: Number.isInteger(o.deviceLimit) && (o.deviceLimit as number) >= 1 && (o.deviceLimit as number) <= 100 ? (o.deviceLimit as number) : base.deviceLimit,
-    produtos: parseProdutos(o.produtos),
+    produtos: parseProdutos(personalizado ? [...(Array.isArray(o.produtos) ? o.produtos : []), ...ADDONS_DO_PERSONALIZADO] : o.produtos),
     updatedAt: isIso(o.updatedAt) ? o.updatedAt : base.updatedAt,
     updatedBy: o.updatedBy === "admin" || o.updatedBy === "system" ? o.updatedBy : base.updatedBy,
   };
@@ -65,41 +70,40 @@ export function isActive(l: License, now: number = Date.now()): boolean {
   return !(l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
 }
 /** Ordem dos planos: cada um libera o que os de baixo liberam. */
-const RANK: Record<PlanName, number> = { free: 0, pro: 1, personalizado: 2 };
+const RANK: Record<PlanName, number> = { free: 0, pro: 1 };
 export const planoLibera = (tem: PlanName, exige: PlanName): boolean => RANK[tem] >= RANK[exige];
-/** Módulos Pro do meu-bot (Navegador, CRM pelo WhatsApp): pro ou personalizado, em vigor. */
+/** Módulos Pro do meu-bot (Navegador, CRM no Gmail e no WhatsApp): plano pro em vigor. */
 export const proOk = (l: License, now: number = Date.now()): boolean => planoLibera(l.plan, "pro") && isActive(l, now);
 
 export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
 /**
- * CRM próprio (no Gmail e no WhatsApp) nesta máquina: plano Pro ou superior em vigor, ou o produto meu-bot-crm
- * contratado por cima do plano. É por máquina (a licença mora nela), nunca por variante do app. Mesma regra do
- * renderer (lib/pro.ts) e do backend (licenca.js crmOk).
+ * CRM próprio (no Gmail e no WhatsApp) nesta máquina: faz parte do plano Pro em vigor. É por máquina (a licença mora
+ * nela), nunca por variante do app. Mesma regra do renderer (lib/pro.ts) e do backend (licenca.js crmOk).
  */
 export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
-  host !== "local" && view !== null && (proOk(view.license, now) || acessoProduto(view, host, "personalizado", "meu-bot-crm", now) === "ok");
+  host !== "local" && view !== null && proOk(view.license, now);
 /**
- * Financeiro (produto meu-bot-finance) nesta máquina: só o produto contratado ou o plano personalizado em vigor (o Pro
- * não libera). Mesma regra do renderer (lib/pro.ts) e do backend (licenca.js financeOk).
+ * Financeiro nesta máquina: o add-on meu-bot-finance contratado, com ou sem o Pro (o Pro sozinho não libera). Mesma
+ * regra do renderer (lib/pro.ts) e do backend (licenca.js financeOk).
  */
 export const financeOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
-  host !== "local" && acessoProduto(view, host, "personalizado", "meu-bot-finance", now) === "ok";
+  host !== "local" && acessoAddon(view, host, "meu-bot-finance", now) === "ok";
 /** Licença vencida: status expired ou validade no passado (o plano free, sem validade, não está vencido). */
 const vencida = (l: License, now: number): boolean => l.status === "expired" || (l.expiresAt !== null && !Number.isNaN(Date.parse(l.expiresAt)) && Date.parse(l.expiresAt) < now);
 /**
- * Produto por assinatura (caps.planoExigido !== "free", ex.: meu-bot-crm): produtos são acumulativos por cima do
- * plano, então basta `produto` estar em `licenca.produtos` (ou o plano personalizado, que libera todos) e a
- * licença não estar vencida. "ausente" = não contratado; "expirada" = contratado mas vencida; "unknown" = este
- * Mac ou backend antigo/fora do ar (null). Produto free (meu-bot): sempre "ok" (os módulos Pro têm o gate próprio).
+ * Add-on contratado (meu-bot-finance…): add-ons são acumulativos por cima do plano, então basta `produto` estar em
+ * `licenca.produtos` e a licença não estar vencida. "ausente" = não contratado; "expirada" = contratado mas vencida;
+ * "unknown" = este Mac ou backend antigo/fora do ar (null).
  */
-export function acessoProduto(view: LicenseView | null, host: string, exige: PlanName, produto: string, now: number = Date.now()): AcessoProduto {
-  if (exige === "free") return "ok";
+export function acessoAddon(view: LicenseView | null, host: string, produto: string, now: number = Date.now()): AcessoProduto {
   if (host === "local" || view === null) return "unknown";
   const l = view.license;
-  const contratado = (l.produtos ?? []).includes(produto) || (l.plan === "personalizado" && (l.status === "active" || l.status === "trialing"));
-  if (!contratado) return "ausente";
+  if (!(l.produtos ?? []).includes(produto)) return "ausente";
   return vencida(l, now) ? "expirada" : "ok";
 }
+/** O app inteiro (caps.planoExigido): "free" nunca bloqueia (os módulos Pro têm o gate próprio); acima disso, o add-on `produto`. */
+export const acessoProduto = (view: LicenseView | null, host: string, exige: PlanName, produto: string, now: number = Date.now()): AcessoProduto =>
+  exige === "free" ? "ok" : acessoAddon(view, host, produto, now);
 
 const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
 function parseApps(raw: unknown): LicenseDevice["apps"] {

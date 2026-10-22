@@ -108,7 +108,7 @@ function buildRows(): void {
     dot.style.background = accentOf(host);
     const name = el("span", "name", rowLabel(host));
     const person = personOf(host);
-    { const plan = person?.plan ?? plans.get(host) ?? null; if (plan === "pro" || plan === "personalizado") name.append(el("span", "badge pro", plan === "pro" ? "PRO" : "PERSONALIZADO")); }
+    { const plan = person?.plan ?? plans.get(host) ?? null; if (plan === "pro") name.append(el("span", "badge pro", "PRO")); }
     if (person !== undefined) name.append(el("span", "seen", personSuffix(person)));
     const badge = el("span", "badge open", "janela aberta");
     badge.hidden = !openHosts.has(host);

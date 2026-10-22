@@ -62,5 +62,5 @@ export async function financeComprovante(host: string, sha256: string): Promise<
 }
 export const financeConfirmarTodas = (host: string): Promise<{ confirmados: number; restantes: number }> => api(host, "POST", "/pendencias/confirmar-todas", {});
 export const financeContaCriar = async (host: string, input: { nome: string; tipo?: string; saldoInicial?: string }): Promise<FinanceConta> => (await api<{ conta: FinanceConta }>(host, "POST", "/contas", input)).conta;
-export const financeMes = async (host: string, mes: string, patch: { orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };
+export const financeMes = async (host: string, mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };
 export const financeFecharMes = async (host: string, mes: string): Promise<void> => { await api(host, "POST", "/fechamento", { mes }); };

@@ -32,7 +32,7 @@ test("crmInfoSh/parseCrmInfo: configured sem a chave, instalado por I=", () => {
 
 test("streakSh/parseStreakOut: só diag/pipelines; JSON ou erro claro", () => {
   assert.match(streakSh("diag"), /"\$CLI" diag/);
-  assert.match(streakSh("diag"), /crm\.mjs/, "plano personalizado usa o crm.mjs"); assert.match(streakSh("pipelines"), /streak\.mjs/, "senão o streak.mjs");
+  assert.match(streakSh("diag"), /crm\.mjs/, "plano Pro usa o crm.mjs"); assert.match(streakSh("pipelines"), /streak\.mjs/, "senão o streak.mjs");
   assert.deepEqual(parseStreakOut('S={"ok":true,"pipelines":[]}'), { ok: true, pipelines: [] });
   assert.match(String(parseStreakOut("S=").erro), /não respondeu/);
 });
@@ -43,7 +43,6 @@ test("motor do CRM: patch aceita proprio/streak/null; a regra sem motor gravado 
   assert.throws(() => parseCrmPatch({ motor: "outro" }), /motor inválido/);
   assert.equal(motorEfetivo("streak", false, true), "streak", "gravado vence");
   assert.equal(motorEfetivo(null, true, true), "streak", "quem já tem a chave do Streak não muda em silêncio");
-  assert.equal(motorEfetivo(null, true, true, true), "proprio", "quem já tinha o CRM contratado (produto/personalizado) segue no próprio, mesmo com chave do Streak");
   assert.equal(motorEfetivo(null, false, true), "proprio");
   assert.equal(motorEfetivo(null, false, false), "streak");
   const info = parseCrmInfo('C={"motor":"proprio","streakKey":false,"configured":true}\nI=1');

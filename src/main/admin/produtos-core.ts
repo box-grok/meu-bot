@@ -52,7 +52,7 @@ export function parseProdutos(raw: unknown, now: number = Date.now()): ProdutoMv
 export function parseProdutoPatch(payload: unknown): ProdutoMvpPatch {
   const o = payload !== null && typeof payload === "object" ? (payload as Record<string, unknown>) : {};
   const nome = str(o["nome"], 60).toLowerCase();
-  if (!nomeValido(nome)) throw new Error("o nome precisa ser meu-bot-<algo> (minúsculas, dígitos e hífen; meu-bot, meu-bot-admin e meu-bot-crm já existem)");
+  if (!nomeValido(nome)) throw new Error("o nome precisa ser meu-bot-<algo> (minúsculas, dígitos e hífen; meu-bot, meu-bot-admin e meu-bot-finance já existem)");
   const p = parseProduto({ ...o, nome });
   if (p === null) throw new Error("produto inválido");
   const patch: ProdutoMvpPatch = { nome };
@@ -69,7 +69,7 @@ export function aplicarPatch(cur: ProdutoMvp | null, patch: ProdutoMvpPatch, now
 export function definicao(p: ProdutoMvp): Record<string, unknown> {
   const variant = p.nome.replace(/^meu-bot-/, "");
   return {
-    produto: p.nome, variant, bundleId: `local.${p.nome}`, icone: `assets/icon-${variant}.icns`, userData: p.nome, planoExigido: "personalizado",
+    produto: p.nome, variant, bundleId: `local.${p.nome}`, icone: `assets/icon-${variant}.icns`, userData: p.nome, planoExigido: "free", addon: p.nome,
     vertical: p.vertical, pitch: p.pitch, publico: p.publico, status: p.status,
     caps: { chat: p.modulos.chat, pair: p.modulos.whatsapp, manageWa: p.modulos.whatsapp, navegador: p.modulos.navegador, crm: p.modulos.crm },
     extras: p.modulos.extras,
@@ -88,7 +88,7 @@ export function checklist(p: ProdutoMvp): string[] {
     `Adicionar "${variant}" em AppVariant (src/shared/ipc.ts) e a linha em PRODUTOS (src/main/variant-core.ts)`,
     `Desenhar assets/icon-${variant}.svg e rodar npm run icons`,
     p.modulos.crm ? "Templates do pipeline em produtos/" + p.nome + "/ (etapas e campos iniciais)" : "",
-    "Marcar a licença das pessoas com o plano personalizado e anotar o produto contratado",
+    `Liberar pela licença: o add-on ${p.nome} em Suporte › Conta e licença (com ou sem o Pro)`,
     `Empacotar: node scripts/package.mjs --variant ${variant} (e dist:${variant} no package.json)`,
   ].filter((x) => x !== "");
 }

@@ -81,7 +81,7 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
 }
 
 /** Rótulos do plano/status, como as telas de billing do Rambox. */
-export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro", personalizado: "Personalizado (sob consulta)" };
+export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro" };
 export const STATUS_LABEL: Record<LicenseView["license"]["status"], string> = { free: "Free", trialing: "Trialing", active: "Active", expired: "Expired" };
 /** Ciclo de cobrança legível; "-" quando não há (ex.: em trial), como a tela colada. */
 export const billingCycleText = (interval: LicenseView["license"]["interval"]): string => (interval === "month" ? "mensal" : interval === "year" ? "anual" : "-");
@@ -94,8 +94,8 @@ export function fmtDate(iso: string | null): string {
 }
 
 /** O resumo da conta (plano, status, membro desde, ciclo, validade, devices), como o painel do Rambox. */
-/** Nome do produto para o admin ler ("Financeiro", "CRM próprio"); MVP sem nome conhecido fica com o id. */
-const PRODUTO_LABEL: Record<string, string> = { "meu-bot-finance": "Financeiro", "meu-bot-crm": "CRM próprio" };
+/** Nome do add-on para o admin ler ("Financeiro"); MVP sem nome conhecido fica com o id. */
+const PRODUTO_LABEL: Record<string, string> = { "meu-bot-finance": "Financeiro" };
 export const produtoLabel = (id: string): string => PRODUTO_LABEL[id] ?? id;
 export function licenseSummary(view: LicenseView, now: number = Date.now()): HealthLine[] {
   const l = view.license;

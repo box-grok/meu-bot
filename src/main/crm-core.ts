@@ -13,11 +13,11 @@ const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
 export type CrmMotor = "proprio" | "streak";
 export interface CrmPatch { apiKey?: string; pipelineKey?: string | null; pipelineName?: string | null; silencioMin?: number; criarSemPerguntar?: boolean; motor?: CrmMotor | null }
 /**
- * Motor em vigor (mesma regra do crm-job.mjs): o gravado; sem ele, quem já tinha o CRM contratado (produto meu-bot-crm ou
- * personalizado) segue no próprio, quem tem a chave do Streak segue no Streak, e só o resto com Pro passa ao próprio.
+ * Motor em vigor (mesma regra do crm-job.mjs): o gravado; sem ele, quem tem a chave do Streak segue no Streak e o resto
+ * com Pro usa o próprio. (Quem tinha o CRM contratado antes de 22 out ganhou o motor gravado na migração da licença.)
  */
-export const motorEfetivo = (gravado: CrmMotor | null, streakKey: boolean, crmProprio: boolean, contratado = false): CrmMotor =>
-  gravado ?? (contratado ? "proprio" : streakKey ? "streak" : crmProprio ? "proprio" : "streak");
+export const motorEfetivo = (gravado: CrmMotor | null, streakKey: boolean, crmProprio: boolean): CrmMotor =>
+  gravado ?? (streakKey ? "streak" : crmProprio ? "proprio" : "streak");
 
 /** Valida o que a tela mandou; devolve o patch limpo ou lança com a mensagem para a pessoa. */
 export function parseCrmPatch(payload: unknown): CrmPatch {
@@ -76,7 +76,7 @@ export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; command 
 
 /**
  * Roda a CLI do CRM da máquina para um subcomando sem argumentos da pessoa (diag/pipelines). Linha `S=`.
- * Pro ou superior em vigor (ou o produto meu-bot-crm contratado) → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
+ * Plano Pro em vigor → crm.mjs (CRM próprio); senão streak.mjs (Streak pela API), a mesma escolha do crm-job.mjs.
  */
 export function streakSh(sub: "diag" | "pipelines"): string {
   return `export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:/usr/local/bin:$PATH"
@@ -86,11 +86,9 @@ def j(p):
     try: return json.load(open(os.path.expandvars(p)))
     except Exception: return {}
 l = j("$HOME/.local/share/meu-bot/licenca.json"); c = j("${CRM_FILE}")
-vig = l.get("status") in ("active", "trialing")
-contratado = ("meu-bot-crm" in (l.get("produtos") or []) and l.get("status") != "expired") or (l.get("plan") == "personalizado" and vig)
-lic = contratado or (l.get("plan") in ("pro", "personalizado") and vig)
+lic = l.get("plan") == "pro" and l.get("status") in ("active", "trialing")
 key = isinstance(c.get("apiKey"), str) and c.get("apiKey") != ""
-m = c.get("motor") if c.get("motor") in ("proprio", "streak") else ("proprio" if contratado else "streak" if key else "proprio" if lic else "streak")
+m = c.get("motor") if c.get("motor") in ("proprio", "streak") else ("streak" if key else "proprio" if lic else "streak")
 sys.exit(0 if m == "proprio" else 1)' 2>/dev/null && [ -f "${CRM_DIR}/crm.mjs" ] && CLI="${CRM_DIR}/crm.mjs"
 if [ -f "$CLI" ]; then echo "S=$(timeout 60 node "$CLI" ${sub} 2>/dev/null | tail -n1)"; else echo 'S={"erro":"o CRM ainda não foi instalado nesta máquina"}'; fi
 `;

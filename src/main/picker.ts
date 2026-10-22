@@ -6,6 +6,7 @@
  * (admin/picker-source.ts) a lista são as pessoas do suporte. Os handlers comuns ficam em initPicker.
  */
 import { caps } from "./variant";
+import { parseLicense } from "./licenca";
 import { deveAtualizar } from "./updater-core";
 import { BrowserWindow, shell } from "electron";
 import path from "node:path";
@@ -305,8 +306,8 @@ export function initPicker(src: PickerSource): void {
       try {
         const r = await runSsh(h, `cat "$HOME/.local/share/meu-bot/licenca.json" 2>/dev/null; echo\n`, 10_000);
         if (r.code !== 0) return;
-        const v = JSON.parse(r.stdout.trim() || "null") as { plan?: unknown } | null;
-        if (v && (v.plan === "pro" || v.plan === "free" || v.plan === "personalizado")) out[h] = v.plan;
+        const v: unknown = JSON.parse(r.stdout.trim() || "null");
+        if (v !== null && typeof v === "object" && !Array.isArray(v)) out[h] = parseLicense(v).plan;
       } catch { /* fora do ar, ausente ou JSON inválido: sem selo */ }
     }));
     return out;

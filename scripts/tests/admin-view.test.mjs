@@ -124,8 +124,8 @@ test("licenseSummary: mostra validade e marca expirada no passado", () => {
   assert.ok(exp, "tem linha de validade");
   assert.equal(exp.ok, false, "validade no passado marca vermelho");
   assert.match(lines[0].text, /^Plano: Pro$/, "backend antigo sem `produtos` não quebra");
-  const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-crm", "meu-bot-fit"] } });
-  assert.equal(comProdutos[0].text, "Plano: Pro + CRM próprio, meu-bot-fit");
+  const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-finance", "meu-bot-fit"] } });
+  assert.equal(comProdutos[0].text, "Plano: Pro + Financeiro, meu-bot-fit");
 });
 
 test("visibleActions: Instalar o backend só sem backend (com ele, Reiniciar); sem saúde, não aparece", () => {
@@ -146,9 +146,9 @@ test("deviceParts separa nome, metadados, status e visto há; deviceLine é a ju
   assert.equal(q.name, "abc"); assert.equal(q.seen, "mão levantada"); assert.equal(q.ok, false);
 });
 
-test("produtos com nome para o admin: o financeiro e o CRM próprio; MVP fica com o id", async () => {
+test("add-ons com nome para o admin: o financeiro; MVP fica com o id", async () => {
   const { produtoLabel } = await import("../../dist/renderer/lib/admin-view.js");
-  assert.equal(produtoLabel("meu-bot-finance"), "Financeiro"); assert.equal(produtoLabel("meu-bot-crm"), "CRM próprio"); assert.equal(produtoLabel("meu-bot-fit"), "meu-bot-fit");
+  assert.equal(produtoLabel("meu-bot-finance"), "Financeiro"); assert.equal(produtoLabel("meu-bot-fit"), "meu-bot-fit");
   const view = { license: { plan: "pro", status: "active", produtos: ["meu-bot-finance"], memberSince: null, interval: null, trialEnd: null, expiresAt: null }, activeCount: 1, deviceLimit: 1, pendingCount: 0 };
   assert.equal(licenseSummary(view)[0].text, "Plano: Pro + Financeiro");
 });

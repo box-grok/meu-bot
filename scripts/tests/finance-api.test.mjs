@@ -113,3 +113,23 @@ test("ganhos e ROI no estado: mês e acumulado desde o início; categorias de re
   assert.equal(cats.find((x) => x.key === "ganho-indireto").retorno, "indireto");
   assert.match((await call("GET", "/contexto")).j.texto, /ROI 900% \(só diretos\), 1200% \(com indiretos\)/);
 });
+
+test("ROI projetado: investimento = orçamento; ganhos no ritmo de hoje até o fim do mês; mês passado = real", async () => {
+  // 03/11 (agora): orçamento 2.500 definido; ganhos de 1.300 em 3 dias → 13.000 em 30 dias.
+  const r = (await call("GET", "/resumo?mes=2026-11")).j;
+  assert.equal(r.projecao.base, "orcamento"); assert.equal(r.projecao.gastosCent, 250000); assert.equal(r.projecao.dia, 3); assert.equal(r.projecao.diasMes, 30);
+  assert.equal(r.projecao.ganhosCent, 1300000); assert.equal(r.projecao.roiTotal, 420);
+  const out = (await call("GET", "/resumo?mes=2026-10")).j;
+  assert.equal(out.projecao.base, "real"); assert.equal(out.projecao.gastosCent, out.gastosCent);
+});
+
+test("meta de ganhos: puxa os ganhos projetados (nunca o realizado), é herdada e some com null", async () => {
+  await call("PUT", "/meses/2026-11", { metaDireto: "20.000", metaIndireto: "1.500", metaNotas: "40 conversas × 30 min × R$ 75/h" });
+  let r = (await call("GET", "/resumo?mes=2026-11")).j;
+  assert.equal(r.meta.diretoCent, 2000000); assert.equal(r.meta.notas, "40 conversas × 30 min × R$ 75/h"); assert.equal(r.projecao.ganhosBase, "meta");
+  assert.equal(r.projecao.ganhoDiretoCent, 2000000, "meta acima do ritmo manda"); assert.equal(r.projecao.ganhoIndiretoCent, 300000, "ritmo acima da meta manda");
+  assert.equal(r.ganhoDiretoCent, 100000, "o realizado não muda");
+  assert.equal((await call("PUT", "/meses/2026-11", { metaDireto: "muito" })).status, 400);
+  await call("PUT", "/meses/2026-11", { metaDireto: null, metaIndireto: null });
+  r = (await call("GET", "/resumo?mes=2026-11")).j; assert.equal(r.meta, null); assert.equal(r.projecao.ganhosBase, "ritmo");
+});

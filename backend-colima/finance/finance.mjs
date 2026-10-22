@@ -15,7 +15,7 @@
  *   contas · conta-criar --nome "x" [--tipo corrente|poupanca|cartao|dinheiro|outra] [--saldo V] [--padrao]
  *   conta-editar <conta> [--nome "x"] [--tipo t] [--saldo V] [--padrao] [--fechar]
  *   categorias · categoria-criar --nome "x" [--grupo "g"] [--renda]
- *   mes <AAAA-MM> [--orcamento V] [--renda-prevista V] [--dinheiro-informado sim|nao]   (orçamento = quanto gastar no mês; vale para os meses seguintes até mudar)
+ *   mes <AAAA-MM> [--meta-direto V] [--meta-indireto V] [--meta-notas "conta"] [--orcamento V] [--renda-prevista V] [--dinheiro-informado sim|nao]   (orçamento = quanto gastar no mês; vale para os meses seguintes até mudar)
  *   fechar-mes [--mes AAAA-MM]               (padrão: o mês anterior; recusa com pendências)
  */
 import fs from "node:fs";
@@ -79,6 +79,9 @@ async function main() {
     case "mes": {
       const ym = precisa(pos[0], "o mês (AAAA-MM)"); const b = {};
       if (opt.orcamento !== undefined) b.orcamento = opt.orcamento;
+      if (opt["meta-direto"] !== undefined) b.metaDireto = opt["meta-direto"];
+      if (opt["meta-indireto"] !== undefined) b.metaIndireto = opt["meta-indireto"];
+      if (typeof opt["meta-notas"] === "string") b.metaNotas = opt["meta-notas"];
       if (opt["renda-prevista"] !== undefined) b.rendaPrevista = opt["renda-prevista"];
       if (opt["dinheiro-informado"] !== undefined) b.dinheiroInformado = sim(opt["dinheiro-informado"]);
       return out(await api("PUT", `/meses/${encodeURIComponent(ym)}`, b));

@@ -2,7 +2,7 @@
 name: finance-api
 description: Financeiro pessoal do dono desta máquina (produto meu-bot-finance). Use sempre que o dono falar de dinheiro — gasto, compra, pagamento, conta, cartão, pix, salário, renda, saldo, "quanto gastei", fatura, boleto — ou mandar foto de comprovante, nota fiscal ou recibo. Lança, corrige, confirma e consulta pela CLI finance.mjs.
 ---
-<!-- meu-bot-finance skill v3 (o instalador atualiza enquanto esta linha existir; apague-a para manter sua versão) -->
+<!-- meu-bot-finance skill v4 (o instalador atualiza enquanto esta linha existir; apague-a para manter sua versão) -->
 
 # Financeiro do dono
 
@@ -46,6 +46,10 @@ Valores como o dono escreve (`48`, `12,50`, `1.234,56`); datas `hoje`, `ontem`, 
 6. **Nunca apague** sem o dono pedir (`descartar` só a pedido). Duplicado suspeito fica pendente: pergunte.
 7. **ROI:** `estado` traz o mês e o acumulado desde o início: ganhos diretos e indiretos e o ROI só com os diretos
    (realizado) e com os indiretos (perspectiva). Sempre diga os dois quando falar de retorno, e onde mais se gastou.
+7a. **Meta e projeção:** o ROI projetado usa a meta de ganhos do mês (`mes <mês> --meta-direto V --meta-indireto V
+   --meta-notas "como chegou no valor"`) ou o ritmo real, o que for maior. Meta é expectativa: nunca a apresente como
+   ganho realizado. Ajude o dono a chegar numa meta com conta (conversas atendidas × minutos × valor da hora; vendas
+   esperadas × ticket) e diga quanto falta para empatar com o investimento.
 7b. **Perguntas** ("quanto gastei com comida?", "qual meu saldo?") → `resumo`, `estado` ou `lancamentos --categoria`.
    Responda com o número e uma linha de contexto; nada de tabelas longas no WhatsApp.
 8. **Orçamento do mês:** quando o dono disser quanto quer gastar ("meu orçamento é 3 mil"), `mes <mês atual> --orcamento 3000`.

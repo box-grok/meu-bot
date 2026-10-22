@@ -27,7 +27,7 @@ async function call(method, path, body, headers = {}) {
 }
 
 let P, S, F, B1, B2;
-test("sem licença personalizado: 403 crm_license em qualquer rota", async () => {
+test("sem o plano Pro: 403 crm_license em qualquer rota", async () => {
   licenca = false;
   const r = await call("GET", "/status"); assert.equal(r.status, 403); assert.equal(r.j.error.code, "crm_license");
   licenca = true;

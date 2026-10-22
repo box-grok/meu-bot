@@ -115,8 +115,8 @@ export interface AlertPrefs { whatsapp: boolean; email: string }
  * Licença da conta (a máquina da pessoa): plano, status, validade e limite de devices. Mora em licenca.json na
  * máquina; o admin é o dono e grava por SSH. Mesmo esquema do backend-colima/licenca.js e do src/main/licenca.ts.
  */
-/** Planos da licença: free e pro são do meu-bot; "personalizado" (sob consulta) libera tudo do pro e os produtos por assinatura (meu-bot-crm). */
-export type PlanName = "free" | "pro" | "personalizado";
+/** Planos da licença: free (a base) e pro (Navegador e CRM). Módulos pagos à parte (meu-bot-finance…) são add-ons em `produtos`. */
+export type PlanName = "free" | "pro";
 export interface License {
   plan: PlanName;
   status: "free" | "trialing" | "active" | "expired";
@@ -297,12 +297,11 @@ export interface Capabilities {
   navegador: boolean;
   /**
    * Plano que a licença da máquina precisa ter para o app funcionar. "free" = app grátis com módulos Pro à parte
-   * (etiqueta Pro, "pedir ao admin"); "personalizado" = assinatura do produto inteiro: sem etiqueta, tudo aberto
-   * enquanto ativa, uma tela só quando ausente/vencida.
+   * (etiqueta Pro, "pedir ao admin"); acima disso o app inteiro dependeria do add-on `produto` (hoje nenhum app usa).
    */
   planoExigido: PlanName;
   /**
-   * Nome do produto contratado ("meu-bot", "meu-bot-admin", "meu-bot-crm"): é o que a licença libera. No staging
+   * Nome do produto ("meu-bot", "meu-bot-admin"): é o que a licença libera. No staging
    * continua o do estável (meu-bot-staging → "meu-bot"); o nome do app é outro (appTitle). O renderer nunca o deduz.
    */
   produto: string;
@@ -544,7 +543,7 @@ export interface CrmLocal { pipelines: { key: string; name: string; boxes: numbe
 /** Financeiro (produto meu-bot-finance), como GET /v1/finance/estado devolve; valores em centavos e já formatados. */
 export interface FinanceConta { key: string; nome: string; tipo: "corrente" | "poupanca" | "cartao" | "dinheiro" | "outra"; padrao: boolean; fechada: boolean; saldoInicialCent: number; saldoCent: number; saldo: string }
 export interface FinanceLancamento { id: string; data: string; valorCent: number; valor: string; favorecido: string; categoria: string; categoriaNome: string; conta: string | null; contaNome: string | null; status: "pendente" | "confirmado"; duvidas: string[]; origem: "whatsapp" | "foto" | "chat" | "app" | "agente"; notas?: string; duplicadoDe?: string; /** Foto do comprovante guardada na máquina (sha256). */ midia?: { sha256: string; nome: string } }
-export interface FinanceResumo { mes: string; nome: string; gastosCent: number; rendaCent: number; saldoCent: number; gastos: string; renda: string; saldo: string; porCategoria: { key: string; nome: string; cent: number; valor: string }[]; total: number; pendencias: number; /** Retorno do investimento no mês: ganho direto (dinheiro que entrou) e indireto (estimado); ROI em % (null sem gasto). */ ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; ganhoDireto: string; ganhoIndireto: string; roiDireto: number | null; roiTotal: number | null; /** Quanto a pessoa decidiu gastar no mês (herdado do último mês que tinha, até ela mudar); null = nunca definiu. */ orcamento: { cent: number; valor: string; herdadoDe: string | null; restanteCent: number; restante: string; usadoPct: number } | null; rendaPrevistaCent: number | null; fechadoEm: number | null; dinheiroInformadoEm: number | null }
+export interface FinanceResumo { mes: string; nome: string; gastosCent: number; rendaCent: number; saldoCent: number; gastos: string; renda: string; saldo: string; porCategoria: { key: string; nome: string; cent: number; valor: string }[]; total: number; pendencias: number; /** Retorno do investimento no mês: ganho direto (dinheiro que entrou) e indireto (estimado); ROI em % (null sem gasto). */ ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; ganhoDireto: string; ganhoIndireto: string; roiDireto: number | null; roiTotal: number | null; /** Até o fim do mês: investimento = orçamento (ou gasto no ritmo), ganhos no ritmo de hoje; mês passado = real. */ projecao: { gastosCent: number; gastos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; roiDireto: number | null; roiTotal: number | null; empateCent: number; empate: string; dia: number; diasMes: number; base: "real" | "orcamento" | "ritmo"; ganhosBase: "real" | "meta" | "ritmo" }; /** Meta de ganhos do mês (expectativa; puxa só a projeção), herdada até mudar; null = sem meta. */ meta: { diretoCent: number; direto: string; indiretoCent: number; indireto: string; herdadoDe: string | null; notas: string | null } | null; /** Quanto a pessoa decidiu gastar no mês (herdado do último mês que tinha, até ela mudar); null = nunca definiu. */ orcamento: { cent: number; valor: string; herdadoDe: string | null; restanteCent: number; restante: string; usadoPct: number } | null; rendaPrevistaCent: number | null; fechadoEm: number | null; dinheiroInformadoEm: number | null }
 export interface FinanceEstado { instalado: boolean; hoje: string; mes: string; /** Desde o início: investido, ganhos e ROI (o retorno costuma vir depois do gasto). */ acumulado: { gastosCent: number; gastos: string; ganhosCent: number; ganhos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; roiDireto: number | null; roiTotal: number | null }; mesAnterior: string; contas: FinanceConta[]; resumo: FinanceResumo; pendencias: number; totalLancamentos: number; porOrigem: Record<string, number>; rendaInformada: boolean; orcamentoDefinido: boolean; dinheiroInformado: boolean; anteriorFechado: boolean; checklist: { id: string; titulo: string; feito: boolean }[]; seq: number }
 export interface FinanceCategoria { key: string; nome: string; grupo: string; renda: boolean; retorno?: "direto" | "indireto" }
 /** Estado do financeiro para a janela: o módulo na máquina (CLI + plugin) e os números do backend; null = indisponível. */
@@ -1174,7 +1173,7 @@ export interface MeuBotClientApi {
   financeComprovante(sha256: string): Promise<string | null>;
   financeConfirmarTodas(): Promise<{ confirmados: number; restantes: number }>;
   financeContaCriar(input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }): Promise<FinanceConta>;
-  financeMes(mes: string, patch: { orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void>;
+  financeMes(mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void>;
   financeFecharMes(mes: string): Promise<void>;
   installFinance(): Promise<InstallBackendResult>;
   /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */

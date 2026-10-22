@@ -10,7 +10,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
-import { applyLicensePatch, buildLicenseView } from "../licenca";
+import { applyLicensePatch, buildLicenseView, parseLicense } from "../licenca";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
 import { entregar, registrar, registroSh } from "../auditoria";
@@ -162,7 +162,7 @@ export async function supportPeople(): Promise<{ people: SupportPerson[]; warnin
 async function readPlan(host: string): Promise<PlanName | null> {
   const r = await runSsh(host, `cat "${LICENSE_PATH}" 2>/dev/null; echo\n`, 10_000).catch(() => null);
   if (r === null || r.code !== 0) return null;
-  try { const v = JSON.parse(r.stdout.trim() || "null"); return v && (v.plan === "pro" || v.plan === "free" || v.plan === "personalizado") ? v.plan : null; } catch { return null; }
+  try { const v: unknown = JSON.parse(r.stdout.trim() || "null"); return v !== null && typeof v === "object" && !Array.isArray(v) ? parseLicense(v).plan : null; } catch { return null; }
 }
 
 /** Pessoas já conhecidas (sem ler a caixa): a lista do seletor abre na hora. */

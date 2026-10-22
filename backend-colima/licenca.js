@@ -9,14 +9,24 @@
  */
 'use strict';
 
-// 'personalizado' (sob consulta) libera tudo do pro e os produtos por assinatura (meu-bot-crm).
-const PLANS = ['free', 'pro', 'personalizado'];
+// Planos: free (a base) e pro (Navegador e CRM). Os módulos pagos à parte (meu-bot-finance…) são add-ons em `produtos`,
+// contratados com ou sem o Pro.
+const PLANS = ['free', 'pro'];
 const STATUSES = ['free', 'trialing', 'active', 'expired'];
 const INTERVALS = ['month', 'year'];
 const DEVICE_STATUSES = ['active', 'pending'];
-/** Produtos contratados por cima do plano (acumulativos): meu-bot-crm, meu-bot-fit… O meu-bot em si não entra. */
+/** Add-ons contratados por cima do plano (acumulativos): meu-bot-finance, meu-bot-fit… O meu-bot em si não entra. */
 const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const parseProdutos = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && PRODUTO_NOME_RE.test(x) && x !== 'meu-bot-admin'))].sort() : []);
+/** Nomes que não são add-on: o admin, e o meu-bot-crm (o CRM veio para o Pro em 22 out). */
+const NAO_ADDON = new Set(['meu-bot-admin', 'meu-bot-crm']);
+const parseProdutos = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && PRODUTO_NOME_RE.test(x) && !NAO_ADDON.has(x)))].sort() : []);
+/** O plano "personalizado" (removido em 22 out) liberava o Pro e todos os add-ons; quem o tinha vira Pro com estes. */
+const ADDONS_DO_PERSONALIZADO = ['meu-bot-finance'];
+/**
+ * Licença gravada antes de 22 out que ainda dava o CRM próprio sem passar pelo Pro (plano personalizado ou add-on
+ * meu-bot-crm). O server.js usa isto uma vez, ao migrar o arquivo, para fixar o motor do CRM no próprio.
+ */
+const legadoCrmContratado = (raw) => raw !== null && typeof raw === 'object' && (raw.plan === 'personalizado' || (Array.isArray(raw.produtos) && raw.produtos.includes('meu-bot-crm')));
 
 const isIso = (v) => typeof v === 'string' && v !== '' && !Number.isNaN(Date.parse(v));
 const nowIso = (now = Date.now()) => new Date(now).toISOString();
@@ -46,7 +56,8 @@ function parseLicense(raw, now = Date.now()) {
   const base = defaultLicense(now);
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return base;
   const o = raw;
-  const plan = PLANS.includes(o.plan) ? o.plan : base.plan;
+  const personalizado = o.plan === 'personalizado';
+  const plan = personalizado ? 'pro' : PLANS.includes(o.plan) ? o.plan : base.plan;
   const status = STATUSES.includes(o.status) ? o.status : base.status;
   const interval = INTERVALS.includes(o.interval) ? o.interval : null;
   const memberSince = isIso(o.memberSince) ? o.memberSince : base.memberSince;
@@ -55,7 +66,7 @@ function parseLicense(raw, now = Date.now()) {
   const deviceLimit = Number.isInteger(o.deviceLimit) && o.deviceLimit >= 1 && o.deviceLimit <= 100 ? o.deviceLimit : base.deviceLimit;
   const updatedAt = isIso(o.updatedAt) ? o.updatedAt : base.updatedAt;
   const updatedBy = o.updatedBy === 'admin' || o.updatedBy === 'system' ? o.updatedBy : base.updatedBy;
-  const produtos = parseProdutos(o.produtos);
+  const produtos = parseProdutos(personalizado ? [...(Array.isArray(o.produtos) ? o.produtos : []), ...ADDONS_DO_PERSONALIZADO] : o.produtos);
   return { plan, status, interval, memberSince, trialEnd, expiresAt, deviceLimit, produtos, updatedAt, updatedBy };
 }
 
@@ -108,25 +119,24 @@ function isActive(license, now = Date.now()) {
   if (lic.status !== 'active' && lic.status !== 'trialing') return false;
   return !(lic.expiresAt !== null && Date.parse(lic.expiresAt) < now);
 }
-/** Módulos Pro do meu-bot (Navegador, CRM pelo WhatsApp): pro ou personalizado, em vigor. */
+/** Módulos Pro do meu-bot (Navegador, CRM no Gmail e no WhatsApp): plano pro em vigor. */
 function proOk(license, now = Date.now()) {
   const lic = parseLicense(license, now);
-  return (lic.plan === 'pro' || lic.plan === 'personalizado') && isActive(lic, now);
+  return lic.plan === 'pro' && isActive(lic, now);
 }
 /**
- * Um produto contratado (meu-bot-crm, meu-bot-fit…) está liberado? Produtos são acumulativos por cima do plano:
- * basta estar na lista e a licença não estar vencida (status expired ou validade passada). O plano personalizado
- * (sob consulta) libera todos.
+ * Um add-on (meu-bot-finance…) está liberado? Add-ons são acumulativos por cima do plano, com ou sem o Pro: basta
+ * estar na lista e a licença não estar vencida (status expired ou validade passada).
  */
 function produtoOk(license, nome, now = Date.now()) {
   const lic = parseLicense(license, now);
   if (lic.status === 'expired') return false;
   if (lic.expiresAt !== null && Date.parse(lic.expiresAt) < now) return false;
-  return lic.plan === 'personalizado' ? isActive(lic, now) : lic.produtos.includes(nome);
+  return lic.produtos.includes(nome);
 }
-/** O CRM próprio (no Gmail e no WhatsApp): plano Pro ou superior em vigor, ou o produto meu-bot-crm contratado. */
-const crmOk = (license, now = Date.now()) => proOk(license, now) || produtoOk(license, 'meu-bot-crm', now);
-/** O financeiro: só o produto meu-bot-finance contratado (ou o plano personalizado, que libera todos). O Pro não libera. */
+/** O CRM próprio (no Gmail e no WhatsApp) faz parte do Pro. */
+const crmOk = proOk;
+/** O financeiro: o add-on meu-bot-finance contratado (o Pro sozinho não libera). */
 const financeOk = (license, now = Date.now()) => produtoOk(license, 'meu-bot-finance', now);
 
 const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
@@ -156,6 +166,7 @@ module.exports = {
   produtoOk,
   crmOk,
   financeOk,
+  legadoCrmContratado,
   parseProdutos,
   mergeApps,
   STATUSES,

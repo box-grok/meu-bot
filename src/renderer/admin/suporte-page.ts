@@ -140,8 +140,8 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
         return b;
       };
       const setLic = (label: string, patch: LicensePatch): void => { void runLicense(label, () => deps.api.setLicense(patch)); };
-      // Validade/trial/active preservam um plano pago já escolhido (personalizado não vira pro por acidente); de free sobem para pro.
-      const pago: PlanName = view.license.plan === "free" ? "pro" : view.license.plan;
+      // Validade/trial/active são do plano pago: de free sobem para pro.
+      const pago: PlanName = "pro";
       // Devices da conta: "Aprovar" nos que levantaram a mão, "Revogar" nos ativos (volta no próximo hello se couber).
       const devs = el("div", "admin-devices");
       for (const d of view.devices) {
@@ -198,18 +198,16 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       ctl.append(
         ...(view.license.plan !== "free" ? [licBtnConfirm("Mudar para Free", "Confirmar? ela perde o Pro agora", () => setLic("plano Free", { plan: "free", status: "free" }))] : []),
         ...(view.license.plan !== "pro" ? [licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" }))] : []),
-        // Personalizado (sob consulta): libera tudo do Pro e os produtos por assinatura (meu-bot-crm).
-        ...(view.license.plan !== "personalizado" ? [licBtn("Mudar para Personalizado", () => setLic("plano Personalizado", { plan: "personalizado", status: "active" }))] : []),
         licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: pago, status: "trialing" })),
         licBtn("Marcar Active", () => setLic("status Active", { plan: pago, status: "active" })),
         licBtnConfirm("Marcar Expired", "Confirmar? a licença expira agora", () => setLic("status Expired", { status: "expired" })),
       );
-      // Produtos contratados, acumulativos por cima do plano: o meu-bot-crm e os MVPs registrados em Produtos.
+      // Add-ons, acumulativos por cima do plano (com ou sem o Pro): o Financeiro e os MVPs registrados em Produtos.
       const prodCtl = el("div", "admin-actions");
       const contratados = view.license.produtos ?? [];
-      const candidatos = ["meu-bot-crm", "meu-bot-finance", ...state.mvps].filter((n) => !contratados.includes(n));
+      const candidatos = ["meu-bot-finance", ...state.mvps].filter((n) => !contratados.includes(n));
       // Os chips dizem tudo: "× nome" é contratado (tira), "＋ nome" é disponível (inclui). Texto só quando não há nenhum.
-      prodCtl.append(el("span", "hint", contratados.length === 0 && candidatos.length === 0 ? "Produtos: nenhum (só o plano)" : "Produtos (por cima do plano):"));
+      prodCtl.append(el("span", "hint", contratados.length === 0 && candidatos.length === 0 ? "Add-ons: nenhum (só o plano)" : "Add-ons (por cima do plano):"));
       for (const nome of contratados) prodCtl.append(licBtnConfirm(`× ${produtoLabel(nome)}`, `Confirmar? tira o ${produtoLabel(nome)} dela`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
       for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${produtoLabel(nome)}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
       lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl);

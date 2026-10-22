@@ -4,7 +4,7 @@
  * crm-store.js. Clientes: a extensão do Gmail (pelo proxy do app no Mac), o agente da máquina (crm/crm.mjs), o
  * job do WhatsApp (crm/crm-job.mjs) e o importador do Streak. Payloads enxutos: o agente paga em tokens.
  *
- * Exige o plano personalizado em vigor (licenca.crmOk); sem ele, 403 crm_license. `X-Crm-Por` diz quem mudou.
+ * Exige o plano Pro em vigor (licenca.crmOk); sem ele, 403 crm_license. `X-Crm-Por` diz quem mudou.
  */
 'use strict';
 
@@ -27,7 +27,7 @@ const erroHttp = (res, json, status, message, code, type) => json(res, status, {
 
 /**
  * `deps`: dir do db, `configFile` (crm.json: pipeline padrão e regras do WhatsApp), `licenseOk()` (plano
- * personalizado em vigor), `readJson/writeJson/json/readBody/log` do server.js.
+ * Pro em vigor), `readJson/writeJson/json/readBody/log` do server.js.
  */
 function createCrmApi(deps) {
   const { json, readBody, log } = deps;

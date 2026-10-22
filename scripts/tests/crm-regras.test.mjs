@@ -93,7 +93,7 @@ test("crm-job.mjs sobe (sem erro de inicialização) e, sem licença, só regist
   const home = mkdtempSync(join(tmpdir(), "crm-job-"));
   try {
     execFileSync(process.execPath, [new URL("../../backend-colima/crm/crm-job.mjs", import.meta.url).pathname], { env: { ...process.env, HOME: home }, stdio: "pipe" });
-    assert.match(readFileSync(join(home, ".local/share/meu-bot/crm/crm.log"), "utf8"), /sem plano pro\/personalizado/);
+    assert.match(readFileSync(join(home, ".local/share/meu-bot/crm/crm.log"), "utf8"), /sem plano Pro em vigor/);
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
 

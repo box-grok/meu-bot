@@ -1,8 +1,8 @@
 /**
  * Um só ponto de gate dos módulos pagos no main (o renderer bloqueia na tela; na máquina o backend recusa de
- * novo: três camadas). Produto free (meu-bot): o módulo Pro exige pro/personalizado → "PRO_REQUIRED". Produto por
- * assinatura (meu-bot-crm): o produto precisa estar contratado (acumulado por cima do plano) e a licença em vigor
- * → "ASSINATURA_REQUIRED". Nunca decide por variante: só por caps().planoExigido e caps().produto.
+ * novo: três camadas). Produto free (meu-bot): o módulo Pro exige o plano pro → "PRO_REQUIRED". Um app que exigisse
+ * mais que o free precisaria do add-on `caps().produto` contratado e em vigor → "ASSINATURA_REQUIRED". Nunca decide
+ * por variante: só por caps().planoExigido e caps().produto.
  */
 import { fetchLicense } from "./backend";
 import { acessoProduto, crmProprioOk, financeOk, proOk } from "./licenca";
@@ -23,14 +23,14 @@ export async function assertAcesso(host: string): Promise<void> {
   if (lic === null || !proOk(lic.license)) throw new Error("PRO_REQUIRED");
 }
 
-/** Financeiro nesta máquina: o produto meu-bot-finance (ou o plano personalizado) em vigor. "FINANCE_REQUIRED". */
+/** Financeiro nesta máquina: o add-on meu-bot-finance contratado e em vigor. "FINANCE_REQUIRED". */
 export async function assertFinance(host: string): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("FINANCE_REQUIRED");
   const lic = await fetchLicense(host);
   if (!financeOk(lic, host)) throw new Error("FINANCE_REQUIRED");
 }
 
-/** CRM próprio nesta máquina (guardar conversa no CRM…): Pro ou superior em vigor, ou o produto meu-bot-crm. "CRM_REQUIRED". */
+/** CRM próprio nesta máquina (guardar conversa no CRM…): plano Pro em vigor. "CRM_REQUIRED". */
 export async function assertCrmProprio(host: string): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("CRM_REQUIRED");
   const lic = await fetchLicense(host);

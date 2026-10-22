@@ -4,7 +4,7 @@
  * a persistência em finance-store.js. Clientes: o app no Mac (página Finanças, pelo túnel), o agente da máquina
  * (finance/finance.mjs) e o plugin do WhatsApp (finance/index.js). Payloads enxutos: o agente paga em tokens.
  *
- * Exige o produto meu-bot-finance (ou o plano personalizado) em vigor; sem ele, 403 finance_license.
+ * Exige o add-on meu-bot-finance em vigor (com ou sem o Pro); sem ele, 403 finance_license.
  * `X-Finance-Por` diz quem mudou (agente | whatsapp | app | pessoa).
  */
 'use strict';
@@ -37,18 +37,36 @@ function createFinanceApi(deps) {
    * Orçamento do mês (quanto a pessoa decidiu gastar): o do próprio mês ou, se ela ainda não mexeu, o do último mês que
    * tinha um. Assim a virada do mês não pede nada de novo; mudar é opcional. null = nunca definiu.
    */
-  function orcamentoDe(ym) {
-    const proprio = mesInfo(ym).orcamentoCent;
+  /** Um valor do mês (orçamento, metas) ou, se a pessoa ainda não mexeu, o do último mês que tinha um. */
+  function herdado(ym, campo) {
+    const proprio = mesInfo(ym)[campo];
     if (Number.isSafeInteger(proprio)) return { cent: proprio, herdadoDe: null };
-    const ant = store.list('meses').filter((x) => x.key < ym && Number.isSafeInteger(x.orcamentoCent)).sort((a, b) => b.key.localeCompare(a.key))[0];
-    return ant ? { cent: ant.orcamentoCent, herdadoDe: ant.key } : null;
+    const ant = store.list('meses').filter((x) => x.key < ym && Number.isSafeInteger(x[campo])).sort((a, b) => b.key.localeCompare(a.key))[0];
+    return ant ? { cent: ant[campo], herdadoDe: ant.key } : null;
   }
+  const orcamentoDe = (ym) => herdado(ym, 'orcamentoCent');
   function resumo(ym) {
     const r = modelo.resumoMes(store.listLanc(ym), store.list('categorias'), ym);
     const info = mesInfo(ym);
     const orc = orcamentoDe(ym);
     const orcamento = orc === null ? null : { cent: orc.cent, valor: modelo.formatBRL(orc.cent), herdadoDe: orc.herdadoDe, restanteCent: orc.cent - r.gastosCent, restante: modelo.formatBRL(orc.cent - r.gastosCent), usadoPct: orc.cent > 0 ? Math.round((r.gastosCent / orc.cent) * 100) : 0 };
-    return { ...r, orcamento, ganhos: modelo.formatBRL(r.ganhosCent), ganhoDireto: modelo.formatBRL(r.ganhoDiretoCent), ganhoIndireto: modelo.formatBRL(r.ganhoIndiretoCent), nome: modelo.mesPorExtenso(ym), gastos: modelo.formatBRL(r.gastosCent), renda: modelo.formatBRL(r.rendaCent), saldo: modelo.formatBRL(r.saldoCent), porCategoria: r.porCategoria.map((c) => ({ ...c, valor: modelo.formatBRL(c.cent) })), rendaPrevistaCent: info.rendaPrevistaCent ?? null, fechadoEm: info.fechadoEm ?? null, dinheiroInformadoEm: info.dinheiroInformadoEm ?? null };
+    // Projeção até o fim do mês: investimento = o orçamento (ou o gasto, se já passou dele; sem orçamento, o gasto no
+    // ritmo de hoje); ganhos = os de até hoje no mesmo ritmo. Mês que já acabou: projeção = real.
+    const hj = hoje(); const atual = hj.slice(0, 7);
+    const diasMes = new Date(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0).getDate();
+    const dia = ym === atual ? Number(hj.slice(8, 10)) : diasMes;
+    const fator = ym > atual ? 1 : diasMes / Math.max(1, dia);
+    const gastosProj = ym < atual ? r.gastosCent : orc !== null ? Math.max(orc.cent, r.gastosCent) : Math.round(r.gastosCent * fator);
+    // Ganhos projetados: a meta do mês (expectativa da pessoa, herdada até ela mudar) ou o ritmo real, o que for maior;
+    // mês que já acabou fica no real. A meta nunca entra no realizado.
+    const metaD = herdado(ym, 'metaDiretoCent'); const metaI = herdado(ym, 'metaIndiretoCent');
+    const passado = ym < atual;
+    const diretoProj = passado ? r.ganhoDiretoCent : Math.max(Math.round(r.ganhoDiretoCent * fator), metaD?.cent ?? 0);
+    const indiretoProj = passado ? r.ganhoIndiretoCent : Math.max(Math.round(r.ganhoIndiretoCent * fator), metaI?.cent ?? 0);
+    const pr = modelo.retornoResumo(gastosProj, diretoProj, indiretoProj);
+    const meta = metaD === null && metaI === null ? null : { diretoCent: metaD?.cent ?? 0, direto: modelo.formatBRL(metaD?.cent ?? 0), indiretoCent: metaI?.cent ?? 0, indireto: modelo.formatBRL(metaI?.cent ?? 0), herdadoDe: metaD?.herdadoDe ?? metaI?.herdadoDe ?? null, notas: mesInfo(ym).metaNotas ?? (metaD?.herdadoDe ? mesInfo(metaD.herdadoDe).metaNotas : undefined) ?? null };
+    const projecao = { gastosCent: gastosProj, gastos: modelo.formatBRL(gastosProj), ganhoDiretoCent: diretoProj, ganhoIndiretoCent: indiretoProj, ganhosCent: pr.ganhosCent, ganhos: modelo.formatBRL(pr.ganhosCent), roiDireto: pr.roiDireto, roiTotal: pr.roiTotal, empateCent: gastosProj, empate: modelo.formatBRL(gastosProj), dia, diasMes, base: passado ? 'real' : orc !== null ? 'orcamento' : 'ritmo', ganhosBase: passado ? 'real' : meta !== null ? 'meta' : 'ritmo' };
+    return { ...r, orcamento, meta, projecao, ganhos: modelo.formatBRL(r.ganhosCent), ganhoDireto: modelo.formatBRL(r.ganhoDiretoCent), ganhoIndireto: modelo.formatBRL(r.ganhoIndiretoCent), nome: modelo.mesPorExtenso(ym), gastos: modelo.formatBRL(r.gastosCent), renda: modelo.formatBRL(r.rendaCent), saldo: modelo.formatBRL(r.saldoCent), porCategoria: r.porCategoria.map((c) => ({ ...c, valor: modelo.formatBRL(c.cent) })), rendaPrevistaCent: info.rendaPrevistaCent ?? null, fechadoEm: info.fechadoEm ?? null, dinheiroInformadoEm: info.dinheiroInformadoEm ?? null };
   }
   /**
    * Tudo o que o app e os tutoriais precisam numa chamada só: contas com saldo, mês atual, pendências e o checklist do
@@ -82,6 +100,9 @@ function createFinanceApi(deps) {
     const e = estado();
     const linhas = [`Financeiro do dono (${e.resumo.nome}): gastos ${e.resumo.gastos}, renda ${e.resumo.renda}, saldo do mês ${e.resumo.saldo}.`];
     const roi = (v) => (v === null ? 'sem gasto ainda' : `${v}%`);
+    const pj = e.resumo.projecao;
+    if (e.resumo.meta) linhas.push(`Meta de ganhos do mês (projeção, não é realizado): diretos ${e.resumo.meta.direto}, indiretos ${e.resumo.meta.indireto}${e.resumo.meta.notas ? ` (${e.resumo.meta.notas})` : ''}.`);
+    linhas.push(`Projeção até o fim do mês (${pj.base === 'orcamento' ? 'investimento = o orçamento' : 'no ritmo de hoje'}, dia ${pj.dia} de ${pj.diasMes}): investido ${pj.gastos}, ganhos ${pj.ganhos}, ROI projetado ${roi(pj.roiTotal)} (só diretos ${roi(pj.roiDireto)}).`);
     linhas.push(`Retorno do investimento no mês: ganhos diretos ${e.resumo.ganhoDireto}, indiretos ${e.resumo.ganhoIndireto}; ROI ${roi(e.resumo.roiDireto)} (só diretos), ${roi(e.resumo.roiTotal)} (com indiretos). Desde o início: investido ${e.acumulado.gastos}, ganhos ${e.acumulado.ganhos}, ROI ${roi(e.acumulado.roiTotal)}.`);
     const o = e.resumo.orcamento;
     linhas.push(o === null ? 'Orçamento do mês: ainda não definido (pergunte quanto ele quer gastar no mês).' : `Orçamento do mês: ${o.valor}; já usou ${o.usadoPct}%, ${o.restanteCent >= 0 ? `restam ${o.restante}` : `passou ${modelo.formatBRL(-o.restanteCent)}`}.`);
@@ -200,6 +221,12 @@ function createFinanceApi(deps) {
       const ym = mesOk(b); const input = await body(req);
       const info = await store.mutate(por, (tx) => {
         const cur = tx.get('meses', ym) ?? { key: ym }; const out = { ...cur, key: ym };
+        // Metas de ganho do mês (projeção): direto e indireto, com a conta que as justifica em `metaNotas`.
+        for (const [k, campo] of [['metaDireto', 'metaDiretoCent'], ['metaIndireto', 'metaIndiretoCent']]) {
+          if (input[k] === null) delete out[campo];
+          else if (input[k] !== undefined) { const v = modelo.parseValorBRL(input[k]); if (v === null || !Number.isSafeInteger(v) || v < 0) throw erro('invalido', 'meta inválida: diga quanto espera ganhar no mês, ex.: 500'); out[campo] = v; }
+        }
+        if (typeof input.metaNotas === 'string') { const n = input.metaNotas.trim().slice(0, 500); if (n === '') delete out.metaNotas; else out.metaNotas = n; }
         if (input.orcamento === null) delete out.orcamentoCent;
         else if (input.orcamento !== undefined) { const v = modelo.parseValorBRL(input.orcamento); if (v === null || !Number.isSafeInteger(v) || v <= 0) throw erro('invalido', 'orçamento inválido: diga quanto quer gastar no mês, ex.: 3.000'); out.orcamentoCent = v; }
         if (input.rendaPrevista !== undefined) { const v = input.rendaPrevista === null ? null : modelo.parseValorBRL(input.rendaPrevista); if (v !== null && (!Number.isSafeInteger(v) || v < 0)) throw erro('invalido', 'renda prevista inválida'); if (v === null) delete out.rendaPrevistaCent; else out.rendaPrevistaCent = v; }
@@ -230,7 +257,7 @@ function createFinanceApi(deps) {
 
   /** Trata uma requisição /v1/finance/*; sempre responde. */
   async function handle(req, res, url) {
-    if (!deps.licenseOk()) return json(res, 403, { error: { message: 'o financeiro precisa do produto meu-bot-finance (ou do plano personalizado) nesta máquina, ou a licença venceu', type: 'forbidden', code: 'finance_license' } });
+    if (!deps.licenseOk()) return json(res, 403, { error: { message: 'o financeiro precisa do add-on meu-bot-finance nesta máquina, ou a licença venceu', type: 'forbidden', code: 'finance_license' } });
     const porHdr = String(req.headers['x-finance-por'] || '').toLowerCase();
     const por = POR_RE.test(porHdr) ? porHdr : 'app';
     const t0 = Date.now();

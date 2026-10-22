@@ -36,11 +36,10 @@ export interface ProdutosPageDeps {
   api: Pick<MeuBotApi, "adminProdutos" | "adminProdutoSave" | "adminProdutoRemove" | "adminProdutoExport">;
 }
 const FIXOS = [
-  { nome: "meu-bot", texto: "O app da pessoa: chat, WhatsApp, Navegador (Pro), CRM pelo Streak (Pro). Planos free, pro e personalizado." },
+  { nome: "meu-bot", texto: "O app da pessoa: chat e WhatsApp no plano Free; Navegador e CRM próprio no Gmail no Pro. Add-ons por cima, com ou sem o Pro." },
   { nome: "meu-bot-admin", texto: "Este app: suporte, licenças, espelho das máquinas e o registro de produtos." },
-  { nome: "meu-bot-crm", texto: "Tudo do meu-bot mais o CRM próprio dentro do Gmail. Só no plano personalizado (assinatura)." },
-  { nome: "meu-bot-finance", texto: "Módulo do meu-bot liberado pela licença (produto ou personalizado): o agente vira o financeiro da pessoa no WhatsApp e no chat; página Finanças e tutorial 14." },
-  { nome: "meu-bot-staging · meu-bot-crm-staging", texto: "Canal de teste, ao lado do estável (como o VS Code Insiders): recebe o que está em teste; a licença é a do estável." },
+  { nome: "meu-bot-finance", texto: "Add-on do meu-bot (com ou sem o Pro): o agente vira o financeiro da pessoa no WhatsApp e no chat; página Finanças e tutorial 14." },
+  { nome: "meu-bot-staging · meu-bot-finance-staging", texto: "Canal de teste, ao lado do estável (como o VS Code Insiders): recebe o que está em teste; a licença é a do estável." },
 ];
 const STATUS: { id: ProdutoStatus; label: string }[] = [{ id: "ideia", label: "Ideia" }, { id: "mvp", label: "MVP" }, { id: "beta", label: "Beta" }, { id: "lancado", label: "Lançado" }];
 

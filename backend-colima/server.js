@@ -63,7 +63,7 @@ const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
 const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
 /** Licença da conta (plano, status, validade, limite de devices): o admin é dono e grava por SSH; o app só lê. */
 const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
-/** CRM próprio (meu-bot-crm): rotas /v1/crm/* sobre ~/.local/share/meu-bot/crm/db (crm-api.js); exige o plano personalizado. */
+/** CRM próprio: rotas /v1/crm/* sobre ~/.local/share/meu-bot/crm/db (crm-api.js); exige o plano Pro (licenca.crmOk). */
 const CRM_CONFIG = path.join(MEU_BOT_DIR, 'crm.json');
 const CRM_DB = process.env.MEU_BOT_CRM_DB || path.join(MEU_BOT_DIR, 'crm', 'db');
 /** Financeiro (produto meu-bot-finance): rotas /v1/finance/* sobre ~/.local/share/meu-bot/finance/db (finance-api.js). */
@@ -116,7 +116,22 @@ function sshPeers() {
 function ensureLicense() {
   const raw = readJson(LICENSE_FILE, null);
   if (raw === null) { const lic = licenca.defaultLicense(); writeJson(LICENSE_FILE, lic); return lic; }
-  return licenca.parseLicense(raw);
+  const lic = licenca.parseLicense(raw);
+  if (licenca.legadoCrmContratado(raw)) migrarLicencaLegada(raw, lic);
+  return lic;
+}
+/**
+ * Uma vez por máquina: a licença de antes de 22 out (plano personalizado ou add-on meu-bot-crm) é regravada já no
+ * formato novo (personalizado → Pro + Finance; meu-bot-crm sai, o CRM vem do Pro). Quem tinha o CRM contratado seguia
+ * no CRM próprio mesmo com a chave do Streak; sem motor gravado, ele é fixado no próprio para nada mudar em silêncio.
+ */
+function migrarLicencaLegada(raw, lic) {
+  try {
+    const crm = readJson(CRM_CONFIG, null);
+    if (raw.status !== 'expired' && crm !== null && crm.motor !== 'proprio' && crm.motor !== 'streak') writeJson(CRM_CONFIG, { ...crm, motor: 'proprio' });
+    writeJson(LICENSE_FILE, { ...lic, updatedAt: new Date().toISOString(), updatedBy: 'system' });
+    log(`licença migrada: plano ${raw.plan} → ${lic.plan}; add-ons ${JSON.stringify(lic.produtos)}`);
+  } catch (e) { log(`licença: migração falhou (${e.message}); segue lendo o formato antigo`); }
 }
 /** Licença + devices (ativos/pendentes) da conta, como o app e o admin veem. */
 function licenseView() {
@@ -699,6 +714,8 @@ const server = http.createServer(async (req, res) => {
 server.keepAliveTimeout = 65000;
 server.headersTimeout = 70000;
 server.requestTimeout = 0;
+// Na subida: migra a licença de antes de 22 out (personalizado/meu-bot-crm) antes que o job do CRM a leia crua.
+try { ensureLicense(); } catch (e) { log(`licença: ${e.message}`); }
 server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=${listedModels().map((m) => m.id).join(',')} fallback=${PROVIDERS.map((p) => `${p.name}${p.available ? '' : '(indisponível)'}`).join('→')} claude=${CLAUDE_BIN} workspace=${WORKSPACE} auth=${KEY ? 'bearer' : 'DESLIGADA'}`));
 
 process.on('SIGTERM', () => { log('SIGTERM; encerrando'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); });

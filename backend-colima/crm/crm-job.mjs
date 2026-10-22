@@ -10,7 +10,7 @@
  *                                                     Google Contatos; completa crm/whatsapp-contatos.json)
  * Lê a conversa com `openclaw gateway call chat.history`, pede ao backend local do meu-bot (perfil "agente",
  * sessão crm:+N) que rode a CLI do CRM e devolva um bloco crm-json; manda o resumo ao dono pelo WhatsApp dele.
- * A CLI depende da licença (licenca.json): produto meu-bot-crm contratado (ou plano personalizado) → crm.mjs
+ * A CLI depende da licença (licenca.json): plano Pro em vigor (ou motor "proprio" gravado em crm.json) → crm.mjs
  * (CRM próprio, nesta máquina); senão → streak.mjs (Streak pela API, com a chave em crm.json). Estado em crm/estado.json; log em crm/crm.log.
  */
 import { execFileSync, spawnSync } from "node:child_process";
@@ -30,21 +30,18 @@ const ESTADO = path.join(DIR, "estado.json");
 const LOG = path.join(DIR, "crm.log");
 const log = (line) => { try { fs.appendFileSync(LOG, `${new Date().toISOString()} ${line}\n`); } catch { /* cortesia */ } };
 const readJson = (f, dflt) => { try { const v = JSON.parse(fs.readFileSync(f, "utf8")); return v && typeof v === "object" ? v : dflt; } catch { return dflt; } };
-/** Pro ou superior (ou o produto meu-bot-crm) → CRM próprio (crm.mjs); plano gratuito → Streak (streak.mjs). Decidido na subida, pela licença. */
+/** Plano Pro → CRM próprio (crm.mjs); plano gratuito → Streak (streak.mjs). Decidido na subida, pela licença. */
 const licencaAtual = () => readJson(path.join(BASE, "licenca.json"), {});
 const emVigor = (l) => (l.status === "active" || l.status === "trialing") && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
-const naoVencida = (l) => l.status !== "expired" && !(typeof l.expiresAt === "string" && Date.parse(l.expiresAt) < Date.now());
-/** Plano Pro ou superior em vigor, ou o produto meu-bot-crm contratado (acumulado por cima do plano). */
-export const crmProprio = (l = licencaAtual()) => ((l.plan === "pro" || l.plan === "personalizado") && emVigor(l)) || (Array.isArray(l.produtos) && l.produtos.includes("meu-bot-crm") && naoVencida(l));
-/** Regra de antes da fusão: o produto meu-bot-crm contratado ou o plano personalizado já davam o CRM próprio. */
-const crmContratado = (l) => (Array.isArray(l.produtos) && l.produtos.includes("meu-bot-crm") && naoVencida(l)) || (l.plan === "personalizado" && emVigor(l));
+/** Plano Pro em vigor (a licença antiga, "personalizado", é migrada para Pro pelo backend). */
+export const crmProprio = (l = licencaAtual()) => l.plan === "pro" && emVigor(l);
 /**
- * Motor do CRM nesta máquina: `motor` gravado em crm.json ("proprio" | "streak"); sem ele, nada muda em silêncio para
- * quem já estava num dos dois: quem tinha o CRM contratado segue no próprio, quem tem a chave do Streak segue no Streak;
- * só o resto (Pro sem Streak) passa a usar o CRM próprio.
+ * Motor do CRM nesta máquina: `motor` gravado em crm.json ("proprio" | "streak"); sem ele, quem tem a chave do Streak
+ * segue no Streak e o resto com Pro usa o CRM próprio. (Quem tinha o CRM contratado antes de 22 out ganhou o motor
+ * "proprio" gravado na migração da licença, no server.js.)
  */
 export const motorCrm = (l = licencaAtual(), c = readJson(path.join(BASE, "crm.json"), {})) =>
-  c.motor === "proprio" || c.motor === "streak" ? c.motor : crmContratado(l) ? "proprio" : typeof c.apiKey === "string" && c.apiKey !== "" ? "streak" : crmProprio(l) ? "proprio" : "streak";
+  c.motor === "proprio" || c.motor === "streak" ? c.motor : typeof c.apiKey === "string" && c.apiKey !== "" ? "streak" : crmProprio(l) ? "proprio" : "streak";
 const STREAK = path.join(DIR, motorCrm() === "proprio" ? "crm.mjs" : "streak.mjs");
 const PATH_EXTRA = `${HOME}/.openclaw/bin:${HOME}/.local/bin:/opt/node/bin:/usr/local/bin:${process.env.PATH ?? ""}`;
 fs.mkdirSync(DIR, { recursive: true });
@@ -61,7 +58,7 @@ function ownerPhone() {
   const creds = readJson(path.join(HOME, ".openclaw", "credentials", "whatsapp", "default", "creds.json"), {});
   return normalizePhone(creds?.me?.id ?? "");
 }
-function proOk() { const l = readJson(LICENCA, {}); return ((l.plan === "pro" || l.plan === "personalizado") && emVigor(l)) || crmProprio(l); }
+function proOk() { return crmProprio(readJson(LICENCA, {})); }
 function openclaw(args, timeoutMs = 60_000) { return execFileSync("openclaw", args, { encoding: "utf8", timeout: timeoutMs, env: { ...process.env, PATH: PATH_EXTRA }, stdio: ["ignore", "pipe", "pipe"] }); }
 function sendOwner(text) {
   const to = ownerPhone(); if (to === null) { log("sem número do dono: mensagem não enviada"); return; }
@@ -263,7 +260,7 @@ function discardPending() {
   }
   if (argv[0] === "contatos-whatsapp") { console.log(JSON.stringify({ contatos: contatosWhatsapp() })); return; }
   if (argv[0] === "classificar-todos") return withLock("classificar", () => classificarTodos());
-  if (!proOk()) { log("sem plano pro/personalizado em vigor nesta máquina; nada feito"); return; }
+  if (!proOk()) { log("sem plano Pro em vigor nesta máquina; nada feito"); return; }
   if (motorCrm() === "streak" && (typeof cfg.apiKey !== "string" || cfg.apiKey === "")) { log("crm.json sem apiKey (Streak); nada feito"); return; }
   if (flag("aplicar")) { const n = optv("aplicar"); const idx = n !== null && /^\d+$/.test(n) ? Number(n) : confirmIndex(optv("texto") ?? ""); return withLock("aplicar", () => applyPending(idx)); }
   if (flag("descartar")) return withLock("aplicar", () => discardPending());

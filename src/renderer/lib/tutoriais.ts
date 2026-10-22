@@ -54,7 +54,7 @@ export interface GuideContext {
    * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
    * está liberado e é o motor em uso; `crmStreak` = o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak).
    */
-  produto: { planoExigido: "free" | "pro" | "personalizado"; crmProprio: boolean; crmStreak: boolean };
+  produto: { planoExigido: "free" | "pro"; crmProprio: boolean; crmStreak: boolean };
   /**
    * Que fontes já foram consultadas nesta janela. "Ainda não consultei" não é "não feito": um tutorial cujas fontes
    * não chegaram fica "verificando", fora da contagem e do selo, em vez de aparecer como pendente e sumir depois.
@@ -193,9 +193,9 @@ export interface Tutorial {
   needsXai?: true;
   /** Só quando o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak escolhido). */
   needsCrmStreak?: true;
-  /** Só quando o CRM próprio no Gmail está liberado pela licença (Pro ou superior) e é o motor em uso. */
+  /** Só quando o CRM próprio no Gmail está liberado pela licença (plano Pro) e é o motor em uso. */
   needsCrmProprio?: true;
-  /** Só quando a licença da máquina libera o financeiro (produto meu-bot-finance ou plano personalizado). */
+  /** Só quando a licença da máquina libera o financeiro (add-on meu-bot-finance). */
   needsFinance?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;

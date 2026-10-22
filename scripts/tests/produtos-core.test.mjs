@@ -27,7 +27,7 @@ test("aplicarPatch e parseProdutos: cria com defaults, edita preservando created
 test("definicao e checklist: o insumo da implementação como variante", () => {
   const p = vazio("meu-bot-fit", T);
   const d = definicao({ ...p, modulos: { ...p.modulos, whatsapp: false } });
-  assert.equal(d.variant, "fit"); assert.equal(d.bundleId, "local.meu-bot-fit"); assert.equal(d.icone, "assets/icon-fit.icns"); assert.equal(d.planoExigido, "personalizado"); assert.equal(d.caps.pair, false); assert.equal(d.caps.crm, true);
+  assert.equal(d.variant, "fit"); assert.equal(d.bundleId, "local.meu-bot-fit"); assert.equal(d.icone, "assets/icon-fit.icns"); assert.equal(d.planoExigido, "free"); assert.equal(d.addon, "meu-bot-fit"); assert.equal(d.caps.pair, false); assert.equal(d.caps.crm, true);
   const c = checklist(p);
   assert.ok(c[0].startsWith("Escrever o pitch")); assert.ok(c.some((x) => x.includes("variant-core.ts"))); assert.ok(c.some((x) => x.includes("icon-fit.svg"))); assert.ok(c.some((x) => x.includes("--variant fit")));
   const pronto = checklist({ ...p, pitch: "x", publico: "y", pipeline: { etapas: ["A"], campos: [] } });

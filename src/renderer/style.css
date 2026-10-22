@@ -1006,3 +1006,6 @@ body.topbar-hidden .topbar { display: none; }
 .finance-sub { font-size: 11px; }
 .finance-acumulado { margin: 2px 0 0; }
 .finance-num { flex: 1 1 150px; }
+.finance-num.destaque { flex: 1 1 100%; border: 2px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); padding: 14px 16px; }
+.finance-num.destaque .finance-valor { font-size: 30px; }
+.finance-num.destaque > .hint:first-child { color: var(--fg); font-weight: 600; }

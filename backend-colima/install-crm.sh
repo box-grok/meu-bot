@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Instala o CRM do meu-bot nesta máquina: a pasta crm/ (plugin do OpenClaw meu-bot-crm + crm-job.mjs + as CLIs
-# crm.mjs [CRM próprio, plano personalizado] e streak.mjs [Streak pela API, plano pro] + importador) em
+# crm.mjs [CRM próprio, plano pro] e streak.mjs [Streak pela API, plano free] + importador) em
 # ~/.local/share/meu-bot/crm, registrada por `openclaw plugins install --link`, com a permissão de hooks de
 # conversa; e as skills para o agente. Rodar no host, com a pasta crm/ e as skills ao lado. Idempotente.
 # Nunca apaga crm/db/ (os dados do CRM próprio). Sai com 2 sem OpenClaw.
@@ -32,8 +32,9 @@ for par in "skill-crm-api.md:crm-api" "skill-streak-crm-api.md:streak-crm-api"; 
     if [ -f "$SK" ]; then echo "skill $nome já existe (mantida)"; else mkdir -p "$(dirname "$SK")"; cp "$src" "$SK"; echo "skill $nome instalada"; fi
   fi
 done
+# Lê o arquivo cru (o backend pode ainda não ter migrado a licença antiga): "personalizado" virou Pro em 22 out.
 PLANO=$(python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.local/share/meu-bot/licenca.json"))).get("plan","free"))' 2>/dev/null || echo free)
-if [ "$PLANO" = "personalizado" ]; then FALTA="o CRM próprio está nesta máquina: escolha ou importe um pipeline no app"; else FALTA="falta a chave da API do Streak, pelo tutorial 10"; fi
+if [ "$PLANO" = "pro" ] || [ "$PLANO" = "personalizado" ]; then FALTA="o CRM próprio está nesta máquina: escolha ou importe um pipeline no app"; else FALTA="falta a chave da API do Streak, pelo tutorial 10"; fi
 if timeout 60 openclaw plugins inspect meu-bot-crm --runtime 2>/dev/null | grep -q "^Status: loaded"; then
   echo "pronto: CRM instalado ($FALTA)"
 else
