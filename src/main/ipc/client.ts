@@ -315,9 +315,9 @@ export function registerClientIpc(): void {
   handleClient("contas:entrar", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    const p = (payload ?? {}) as { id?: unknown; navegador?: unknown };
+    const p = (payload ?? {}) as { id?: unknown; navegador?: unknown; trocar?: unknown };
     if (!isContaId(p.id)) throw new Error("conta desconhecida");
-    return entrarConta(h.host, p.id, p.navegador === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
+    return entrarConta(h.host, p.id, p.navegador === true, p.trocar === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
   });
   handleClient("contas:cancelar", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelarConta(); });
   handleClient("contas:sair", (event, payload: unknown) => {

@@ -1166,8 +1166,11 @@ export interface MeuBotClientApi {
   xaiLogin(): Promise<void>;
   xaiLoginCancel(): Promise<void>;
   xaiLogout(): Promise<ClaudeAuthInfo | null>;
-  /** Login por SSH; o link vem em contas:evento (abrir no Navegador). `navegador` false = Cloudflare por código. */
-  contasEntrar(id: ContaId, navegador: boolean): Promise<void>;
+  /**
+   * Login por SSH; o link vem em contas:evento (abrir no Navegador). `navegador` false = Cloudflare por código;
+   * `trocar` = entrar com outra conta (a página não cai na conta que o Navegador já tem).
+   */
+  contasEntrar(id: ContaId, navegador: boolean, trocar: boolean): Promise<void>;
   contasCancelar(): Promise<void>;
   contasSair(id: ContaId): Promise<ContaEstado[] | null>;
 }

@@ -4745,7 +4745,7 @@ async function refreshGuarda(): Promise<void> {
 }
 /** Tutorial 13: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
 let contasState: ContaEstado[] | null = null;
-let contaLogin: { id: ContaId; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
+let contaLogin: { id: ContaId; trocar: boolean; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
 async function refreshContas(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
   try { const r = await window.meuBot.contasStatus(); if (r !== null) contasState = r; } catch { /* máquina fora: fica o que havia */ }
@@ -4753,11 +4753,11 @@ async function refreshContas(): Promise<void> {
 }
 /** O link do login abre no Navegador do app: é por ele que o retorno do Cloudflare chega ao localhost da máquina. */
 const navegadorPronto = (): boolean => caps.chat && caps.navegador && browserAccess(license, windowHost, caps.planoExigido, caps.produto) === "ok";
-async function entrarConta(id: ContaId): Promise<void> {
+async function entrarConta(id: ContaId, trocar = false): Promise<void> {
   if (contaLogin?.rodando === true) return;
-  contaLogin = { id, url: null, codigo: null, texto: "Pedindo o login na máquina…", rodando: true, ok: null };
+  contaLogin = { id, trocar, url: null, codigo: null, texto: "Pedindo o login na máquina…", rodando: true, ok: null };
   paintGuide();
-  try { await window.meuBot.contasEntrar(id, navegadorPronto()); }
+  try { await window.meuBot.contasEntrar(id, navegadorPronto(), trocar); }
   catch (err) { contaLogin = { ...contaLogin, texto: `✗ ${ipcErrorText(err)}`, ok: false }; }
   finally { if (contaLogin !== null) contaLogin.rodando = false; paintGuide(); }
 }
@@ -4765,7 +4765,9 @@ window.meuBot.on("contas:evento", (ev: ContaEvento) => {
   if (contaLogin === null || contaLogin.id !== ev.id) return;
   if (ev.kind === "url") {
     contaLogin.url = ev.url; contaLogin.codigo = ev.codigo;
-    contaLogin.texto = ev.codigo !== null ? "A página abriu no Navegador: cole o código abaixo e autorize." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
+    contaLogin.texto = contaLogin.trocar
+      ? ev.id === "github" ? "A página abriu no Navegador: entre com a outra conta do GitHub, cole o código abaixo e autorize. A conta antiga sai desta máquina quando a nova entrar." : "A página abriu no Navegador, já fora da conta antiga: entre com a outra conta do Cloudflare e autorize."
+      : ev.codigo !== null ? "A página abriu no Navegador: cole o código abaixo e autorize." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
     void abrirLinkDoChat(ev.url, false);
   } else if (ev.kind === "log") contaLogin.texto = ev.text;
   else {
@@ -4783,10 +4785,20 @@ function renderConta(container: HTMLElement, id: ContaId): void {
   else if (st !== null && !st.presente) row.append(el("span", "hint", id === "github" ? "O GitHub CLI (gh) não está instalado nesta máquina." : "Esta máquina não tem o Node (npx) para o Cloudflare."));
   else {
     if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
-    const b = el("button", `btn ${st?.conectado === true ? "btn-ghost" : "btn-primary"} btn-small`, login?.rodando === true ? "Esperando a autorização…" : st?.conectado === true ? "Conectar de novo" : "Conectar"); b.type = "button";
-    b.disabled = contaLogin?.rodando === true;
-    b.addEventListener("click", () => { void entrarConta(id); });
-    row.append(b);
+    // Conectada: "Trocar de conta" (outra conta); "Conectar de novo" só quando o acesso é amplo (mesma conta, só sites).
+    const conectada = st?.conectado === true;
+    if (!conectada || st?.amplo === true || login?.rodando === true) {
+      const b = el("button", `btn ${conectada ? "btn-ghost" : "btn-primary"} btn-small`, login?.rodando === true ? "Esperando a autorização…" : conectada ? "Conectar de novo (só sites)" : "Conectar"); b.type = "button";
+      b.disabled = contaLogin?.rodando === true;
+      b.addEventListener("click", () => { void entrarConta(id); });
+      row.append(b);
+    }
+    if (conectada && login?.rodando !== true) {
+      const t = el("button", "btn btn-ghost btn-small", "Trocar de conta"); t.type = "button";
+      t.disabled = contaLogin?.rodando === true;
+      t.addEventListener("click", () => { void entrarConta(id, true); });
+      row.append(t);
+    }
     if (login?.rodando === true) {
       const c = el("button", "btn btn-ghost btn-small", "Cancelar"); c.type = "button";
       c.addEventListener("click", () => { void window.meuBot.contasCancelar(); });

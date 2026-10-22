@@ -174,7 +174,7 @@ const clientApi: MeuBotClientApi = {
   xaiLogin: () => ipcRenderer.invoke("xai-login:start", {}),
   xaiLoginCancel: () => ipcRenderer.invoke("xai-login:cancel", {}),
   xaiLogout: () => ipcRenderer.invoke("xai-login:logout", {}),
-  contasEntrar: (id: ContaId, navegador: boolean) => ipcRenderer.invoke("contas:entrar", { id, navegador }),
+  contasEntrar: (id: ContaId, navegador: boolean, trocar: boolean) => ipcRenderer.invoke("contas:entrar", { id, navegador, trocar }),
   contasCancelar: () => ipcRenderer.invoke("contas:cancelar", {}),
   contasSair: (id: ContaId) => ipcRenderer.invoke("contas:sair", { id }),
 };

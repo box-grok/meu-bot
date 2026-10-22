@@ -296,6 +296,16 @@ export function browserFavoriteAdd(host: string, f: { titulo: string; url: strin
 export function browserFavoriteRemove(host: string, idOrUrl: string): NavFavorito[] {
   const list = removeNavFavorito(host, idOrUrl); publishFavorites(host, list); return list;
 }
+/** Tira do Navegador desta máquina os cookies de um site (e subdomínios): a próxima página dele pede o login de novo. */
+export async function sairDoSite(host: string, dominio: string): Promise<number> {
+  const ses = session.fromPartition(partitionOf(host));
+  const cookies = await ses.cookies.get({ domain: dominio });
+  for (const c of cookies) {
+    const url = `https://${(c.domain ?? dominio).replace(/^\./, "")}${c.path ?? "/"}`;
+    try { await ses.cookies.remove(url, c.name); } catch { /* já saiu */ }
+  }
+  return cookies.length;
+}
 export const browserExtensions = (host: string): BrowserExtensionInfo[] => {
   const ses = session.fromPartition(partitionOf(host));
   // Diagnóstico no log: os service workers das extensões (MV3) estão rodando?

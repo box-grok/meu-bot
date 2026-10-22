@@ -6,7 +6,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { ContaEvento } from "../shared/ipc";
 import { log } from "./backend";
-import { comandoEntrar, comandoSair, lerLink, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
+import { sairDoSite } from "./browser";
+import { comandoEntrar, comandoSair, comandoSairDoGithub, GITHUB_OUTRA_CONTA, lerLink, SAIR_DO_SITE, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
 
@@ -41,12 +42,22 @@ export async function contasStatus(host: string): Promise<ContaEstado[] | null> 
   return lista.length === 0 ? null : lista;
 }
 
-/** `navegador`: a janela abre o link no Navegador do app (senão Cloudflare vai por código, como o GitHub). */
-export function entrarConta(host: string, id: ContaId, navegador: boolean, send: (ev: ContaEvento) => void): Promise<void> {
+/**
+ * `navegador`: a janela abre o link no Navegador do app (senão Cloudflare vai por código, como o GitHub). `trocar`:
+ * entrar com outra conta (a página não pode cair direto na conta que já está logada no Navegador).
+ */
+export async function entrarConta(host: string, id: ContaId, navegador: boolean, trocar: boolean, send: (ev: ContaEvento) => void): Promise<void> {
   const nome = NOME_CONTA[id];
   if (!remota(host)) { send({ kind: "done", id, ok: false, text: "só numa máquina por SSH" }); return Promise.resolve(); }
   if (atual !== null) { send({ kind: "done", id, ok: false, text: `já há um login (${NOME_CONTA[atual.id]}) em andamento` }); return Promise.resolve(); }
   const { cmd, tty } = comandoEntrar(id, navegador);
+  // GitHub guarda várias contas: a de antes sai quando outra entra (uma conta por máquina, sem dúvida de qual vale).
+  const antes = id === "github" ? (await contasStatus(host))?.find((c) => c.id === id)?.conta ?? null : null;
+  const dominio = SAIR_DO_SITE[id];
+  if (trocar && navegador && dominio !== null) {
+    const n = await sairDoSite(host, dominio);
+    log(`[contas] ${host}: trocar ${id}: ${n} cookies de ${dominio} saíram do Navegador`);
+  }
   return new Promise((resolve) => {
     // Com `-tt` o stdin fica aberto (o pty precisa dele) e é fechado quando o processo termina ou a pessoa cancela.
     const child = spawn("ssh", [...(tty ? ["-tt"] : []), ...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${cmd}`], { stdio: [tty ? "pipe" : "ignore", "pipe", "pipe"] });
@@ -58,7 +69,7 @@ export function entrarConta(host: string, id: ContaId, navegador: boolean, send:
       saida = (saida + d.toString("utf8")).slice(-20_000);
       if (enviado) return;
       const { url, codigo } = lerLink(id, saida);
-      if (url !== null) { enviado = true; send({ kind: "url", id, url, codigo }); }
+      if (url !== null) { enviado = true; send({ kind: "url", id, url: trocar && id === "github" ? GITHUB_OUTRA_CONTA : url, codigo }); }
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
@@ -70,7 +81,13 @@ export function entrarConta(host: string, id: ContaId, navegador: boolean, send:
       try { child.stdin?.end(); } catch { /* ok */ }
       void (async () => {
         const disse = loginConcluiu(id, saida);
-        const st = (await contasStatus(host))?.find((c) => c.id === id) ?? null;
+        let st = (await contasStatus(host))?.find((c) => c.id === id) ?? null;
+        const sairCmd = antes !== null && st?.conectado === true && st.conta !== antes ? comandoSairDoGithub(antes) : null;
+        if (sairCmd !== null) {
+          await ssh(host, sairCmd, 60_000);
+          log(`[contas] ${host}: GitHub ${antes} saiu (entrou ${st?.conta ?? "?"})`);
+          st = (await contasStatus(host))?.find((c) => c.id === id) ?? st;
+        }
         const ok = st?.conectado === true;
         log(`[contas] ${host}: login ${id} saiu com ${code}; concluiu=${disse} conectado=${ok}`);
         const falha = !enviado && /command not found|not found/i.test(saida) ? `o ${nome} não está instalado nesta máquina` : `o login do ${nome} não concluiu`;

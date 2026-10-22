@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { comandoEntrar, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS } = createRequire(import.meta.url)("../../dist/main/contas-cli-core.js");
+const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE } = createRequire(import.meta.url)("../../dist/main/contas-cli-core.js");
 
 const WHOAMI_AMPLO = `👋 You are logged in with an OAuth Token, associated with the email lv@exemplo.com.
 Scope (Access)
@@ -69,4 +69,18 @@ test("comando: Cloudflare só com os escopos de sites; código sem o Navegador; 
   assert.equal(comandoEntrar("github", true).tty, false);
   assert.equal(isContaId("github"), true);
   assert.equal(isContaId("aws"), false);
+});
+
+test("trocar de conta: GitHub com várias contas vale a ativa; sair só da anterior; Cloudflare limpa a sessão do Navegador", () => {
+  const gh = `github.com
+  ✓ Logged in to github.com account conta-antiga (keyring)
+  - Active account: false
+  - Git operations protocol: https
+  ✓ Logged in to github.com account conta-nova (keyring)
+  - Active account: true`;
+  assert.equal(lerStatus(`<<github\n${gh}\n>>`)[0].conta, "conta-nova");
+  assert.equal(comandoSairDoGithub("conta-antiga"), "gh auth logout -h github.com -u conta-antiga </dev/null 2>&1 | tail -2");
+  assert.equal(comandoSairDoGithub("x; rm -rf ~"), null, "nome fora do formato do GitHub não vira comando");
+  assert.match(GITHUB_OUTRA_CONTA, /^https:\/\/github\.com\/login\?add_account=1&return_to=%2Flogin%2Fdevice$/);
+  assert.deepEqual(SAIR_DO_SITE, { cloudflare: "cloudflare.com", github: null });
 });
