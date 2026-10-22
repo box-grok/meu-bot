@@ -2507,6 +2507,12 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   página aberta com a tela dividida (aba, lateral, paleta, controle local) entra na **coluna alvo** (`alvoAtual`: a
   primeira vazia, senão a última clicada, marcada com um fio no topo). Paleta "Nova coluna vazia";
   `/dividir {pagina:"vazia"}`. As vazias não entram na preferência lembrada.
+- **WhatsApp lado a lado e janela estreita:** Option+clique numa conversa ou grupo da lista abre numa coluna nova
+  (`openWaChat`/`openWaGroup` com `aoLado`). Mínimos menores (conversa 300 px, coluna 260 px; recolhe abaixo de
+  566 px); se mesmo assim a direita recolher com a lateral aberta, `splitOn` esconde a lateral (Cmd+B traz). Sem
+  conversa do meu-bot não há divisão: a página vai para a frente em tela cheia, e com qualquer aba de página aberta a
+  cobrinha não aparece (`syncRest` traz a última página). Janela estreita com a direita recolhida: clicar numa página
+  sai da divisão.
 - **Divisão por arrasto:** sai o ⫿ da aba. Arrastar a aba de uma página para a metade direita do conteúdo põe lado a
   lado; para a esquerda (estando lado a lado) volta à tela inteira. A camada `.split-drop` cobre o conteúdo durante o
   arrasto (o `<webview>` engole os eventos) e aparece um tique depois do `dragstart` (no mesmo tique o Chromium

@@ -4,15 +4,15 @@ import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, spli
 
 test("clampSplitRatio: mínimos dos dois lados; sem largura para os dois, null", () => {
   assert.equal(clampSplitRatio(0.55, 1000), 0.55);
-  assert.ok(Math.abs(clampSplitRatio(0.1, 1000) - 0.32) < 1e-9);
-  assert.ok(Math.abs(clampSplitRatio(0.95, 1000) - 0.68) < 1e-9);
+  assert.ok(Math.abs(clampSplitRatio(0.1, 1000) - 0.30) < 1e-9);
+  assert.ok(Math.abs(clampSplitRatio(0.95, 1000) - 0.70) < 1e-9);
   assert.equal(clampSplitRatio(NaN, 1000), 0.55);
-  assert.equal(clampSplitRatio(0.5, 600), null);
+  assert.equal(clampSplitRatio(0.5, 590), null);
 });
 test("várias colunas: a direita precisa de 260 px por coluna; sem espaço, null", () => {
-  assert.equal(minDireita(1), 320); assert.equal(minDireita(3), 780);
-  assert.equal(clampSplitRatio(0.55, 1000, 320, minDireita(3)), null);
-  assert.ok(Math.abs(clampSplitRatio(0.55, 1400, 320, minDireita(3)) - (1 - 780 / 1400)) < 1e-9);
+  assert.equal(minDireita(1), 260); assert.equal(minDireita(3), 780);
+  assert.equal(clampSplitRatio(0.55, 1000, 300, minDireita(3)), null);
+  assert.ok(Math.abs(clampSplitRatio(0.55, 1400, 300, minDireita(3)) - (1 - 780 / 1400)) < 1e-9);
 });
 test("splitAdd: já aberta fica; com espaço entra no fim; cheia substitui a última", () => {
   assert.deepEqual(splitAdd([], "navegador"), ["navegador"]);
@@ -25,7 +25,7 @@ test("maxColunas: quantas cabem pela largura (260 px cada + a conversa), entre 1
   assert.equal(maxColunas(700), 1); assert.equal(maxColunas(1200), 3); assert.equal(maxColunas(1920), 6);
   assert.equal(maxColunas(10_000), MAX_SPLIT); assert.equal(maxColunas(NaN), 1);
 });
-test("splitLayout: recolhe abaixo de 760", () => { assert.equal(splitLayout(759), "collapsed"); assert.equal(splitLayout(760), "split"); });
+test("splitLayout: recolhe quando não cabem a conversa e uma coluna (566 px)", () => { assert.equal(splitLayout(565), "collapsed"); assert.equal(splitLayout(566), "split"); });
 test("parseSplitPref: só páginas conhecidas, sem repetir, até o teto; formato antigo aceito; lixo é null", () => {
   assert.deepEqual(parseSplitPref(JSON.stringify({ pageId: "navegador", ratio: 0.4 })), { pageIds: ["navegador"], ratio: 0.4 });
   assert.deepEqual(parseSplitPref(JSON.stringify({ pageIds: ["term-1", "navegador", "term-1", "../x", "acervo", "tutoriais"], ratio: 5 })), { pageIds: ["term-1", "navegador", "acervo", "tutoriais"], ratio: 0.55 });

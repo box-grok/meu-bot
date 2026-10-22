@@ -1579,6 +1579,8 @@ function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
   if (activeId === null) { const back = pagePrev !== null && tabs.has(pagePrev) ? pagePrev : [...tabs.keys()].at(-1); pagePrev = null; if (back !== undefined) activate(back); }
   splitPages = ids.map((id) => (id === page.id ? page : splitPages.find((p) => p.id === id)!));
   layoutSplit();
+  // Janela estreita com a lateral aberta: esconde a lateral para a coluna caber (Cmd+B traz de volta).
+  if (contentEl.classList.contains("split-collapsed") && !sidebarEl.hidden) { toggleSidebar(false); applySplitRatio(); }
   page.panel.hidden = false;
   page.tabEl?.classList.add("split");
   page.render();
@@ -3126,7 +3128,8 @@ function paintWaSidebar(query: string): void {
       item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
       item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : fmtPhone(row.number)}${row.paused ? " · pausado: o agente não responde" : ""}`;
       // Selecionando, o clique na linha marca/desmarca em vez de abrir a conversa.
-      item.addEventListener("click", () => { if (waSelecao === null) { openWaChat(row); return; } if (deleted) return; if (waSelecao.has(row.number)) waSelecao.delete(row.number); else waSelecao.add(row.number); renderSidebar(); });
+      item.title = "Option+clique: abre ao lado (tela dividida)";
+      item.addEventListener("click", (ev) => { if (waSelecao === null) { openWaChat(row, ev.altKey); return; } if (deleted) return; if (waSelecao.has(row.number)) waSelecao.delete(row.number); else waSelecao.add(row.number); renderSidebar(); });
       sidebarList.appendChild(item);
       if (waClear?.number === row.number) sidebarList.appendChild(waClearBox(waClear));
       if (waArchiveNote?.number === row.number) sidebarList.appendChild(el("div", `wa-archive-note${waArchiveNote.bad ? " bad" : ""}`, waArchiveNote.text));
@@ -3265,7 +3268,8 @@ function waGroupsSection(q: string): HTMLElement[] {
     menu.addEventListener("click", (ev) => { ev.stopPropagation(); void window.meuBot.showWhatsappGroupMenu(g.jid, { agente: g.agente }).then((a) => waGroupMenuAction(g, a)); });
     item.append(menu);
     item.title = `${waGroupTitle(g)}${g.membros !== null ? ` · ${g.membros} membros` : ""} · ${WA_GROUP_AGENTE[g.agente]}`;
-    item.addEventListener("click", () => openWaGroup(g));
+    item.title = "Option+clique: abre ao lado (tela dividida)";
+    item.addEventListener("click", (ev) => openWaGroup(g, false, ev.altKey));
     out.push(item);
   }
   return out;
@@ -3277,7 +3281,7 @@ function paintWaGroupTab(g: WaGroupPage): void {
   g.page.title = `👥 ${waGroupTitle(g.grupo)}`;
   const t = g.page.tabEl?.querySelector(".tab-title"); if (t !== null && t !== undefined) t.textContent = g.page.title;
 }
-function openWaGroup(grupo: WhatsappGroup, editQuem = false): void {
+function openWaGroup(grupo: WhatsappGroup, editQuem = false, aoLado = false): void {
   const id = `wag-${grupo.jid}`;
   let g = waGroupPages.get(id);
   if (g === undefined) {
@@ -3291,7 +3295,7 @@ function openWaGroup(grupo: WhatsappGroup, editQuem = false): void {
     waGroupPages.set(id, created);
     g = created;
   } else { g.grupo = grupo; if (editQuem) g.editQuem = true; }
-  openPage(g.page);
+  if (aoLado && tabs.size > 0) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
   paintWaGroupTab(g);
   renderSidebar();
 }
@@ -3516,7 +3520,8 @@ window.meuBot.on("whatsapp:abrir", ({ number }) => {
     if (c !== undefined) openWaChat(c);
   })();
 });
-function openWaChat(c: WhatsappChat): void {
+/** `aoLado`: Option+clique na lista abre numa coluna nova da tela dividida (para ver duas conversas juntas). */
+function openWaChat(c: WhatsappChat, aoLado = false): void {
   const id = `wa-${c.number}`;
   let g = waChatPages.get(id);
   if (g === undefined) {
@@ -3530,7 +3535,7 @@ function openWaChat(c: WhatsappChat): void {
     waChatPages.set(id, created);
     g = created;
   } else { g.chat = c; }
-  openPage(g.page);
+  if (aoLado && tabs.size > 0) { openPage(g.page, false); splitOn(g.page); } else openPage(g.page);
   paintWaChatTab(g);
   renderSidebar();
 }

@@ -3,9 +3,10 @@
  * do divisor com mínimos, quando recolher por falta de largura, como entra uma coluna nova, a preferência lembrada por
  * máquina e o rótulo da ação.
  */
-export const SPLIT_MIN_PX = 320;
+export const SPLIT_MIN_PX = 300;
 export const SPLIT_COL_MIN_PX = 260;
-export const SPLIT_COLLAPSE_PX = 760;
+/** Abaixo disso não cabem a conversa e uma coluna: a direita recolhe. */
+export const SPLIT_COLLAPSE_PX = SPLIT_MIN_PX + 6 + SPLIT_COL_MIN_PX;
 /** Teto absoluto de páginas ao lado (lembradas); quantas aparecem depende da largura (`maxColunas`). */
 export const MAX_SPLIT = 8;
 /** Quantas colunas de página cabem ao lado da conversa nesta largura (no mínimo 1). */
@@ -13,7 +14,7 @@ export const maxColunas = (width: number): number =>
   Math.min(MAX_SPLIT, Math.max(1, Math.floor(((Number.isFinite(width) ? width : 0) - SPLIT_MIN_PX - 6) / (SPLIT_COL_MIN_PX + 1))));
 
 /** Largura mínima da direita com `n` colunas. */
-export const minDireita = (n: number): number => Math.max(SPLIT_MIN_PX, Math.max(1, n) * SPLIT_COL_MIN_PX);
+export const minDireita = (n: number): number => Math.max(1, n) * SPLIT_COL_MIN_PX;
 
 /** Proporção (0..1) da esquerda que respeita os mínimos dos dois lados; null quando eles não cabem. */
 export function clampSplitRatio(ratio: number, totalWidth: number, min = SPLIT_MIN_PX, minRight = min): number | null {
