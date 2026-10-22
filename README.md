@@ -103,12 +103,19 @@ já publicado como staging.
 
 ```bash
 ./instalar.sh --staging            # meu-bot-staging
+npm run chave-release              # uma vez: chave Ed25519 das releases (~/.config/meu-bot, fora do repo)
 npm run release:staging            # pre-release v<versão>-staging.N
 npm run release                    # promoção para v<versão> (exige a tag staging no commit)
 ```
 
+Sequência completa (subir a versão dos componentes da máquina, staging, aprovação, estável, versão base) na skill
+`.claude/skills/publicar` e em `docs/GUIA.md` › "Revisão no molde do Brave/Sparkle". Cada zip sai com um `.sig`: o
+app só instala o que a chave da release assinou, não reassina, e volta sozinho para a versão anterior se a nova
+não abrir. O backend e os plugins da máquina se atualizam na abertura do app, só para cima (o release recusa um
+componente que mudou sem subir a versão).
+
 Limitações: o backend da máquina remota é um só para os dois canais (o que se instala testando no staging vale
-também para o estável).
+também para o estável; como só sobe de versão, o estável nunca rebaixa o que o staging instalou).
 
 ## Como funciona
 
