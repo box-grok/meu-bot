@@ -1393,7 +1393,11 @@ function definePage(id: string, title: string, panel: HTMLElement, render: () =>
 }
 
 function activatePage(page: PageTab): void {
-  if (splitOnAny()) { if (!splitPages.includes(page)) splitOn(page, "trocar"); else focusSplit(page); return; }
+  if (splitOnAny()) {
+    // Janela estreita demais (direita recolhida): a página clicada não apareceria; sai da divisão e mostra a página.
+    if (contentEl.classList.contains("split-collapsed")) splitOff();
+    else { if (!splitPages.includes(page)) splitOn(page, "trocar"); else focusSplit(page); return; }
+  }
   if (pageActive === page) return;
   if (pageActive === null) {
     const prev = active();
@@ -1556,6 +1560,12 @@ function unpin(page: PageTab): void {
  * "trocar" põe no lugar da coluna alvo (a vazia, senão a última clicada): clicar numa aba com a tela dividida.
  */
 function splitOn(page: PageTab, modo: "coluna" | "trocar" = "coluna"): void {
+  // Sem conversa não há o que pôr à esquerda: a página vai para a frente em tela cheia (nada de cobrinha ao lado).
+  if (tabs.size === 0) {
+    if (splitOnAny()) splitOff();
+    if (ehVazia(page)) { largarVazia(page); return; }
+    activatePage(page); return;
+  }
   if (splitPages.includes(page)) { focusSplit(page); return; }
   const max = maxColunas(contentEl.clientWidth);
   const alvo = alvoAtual();
@@ -1646,7 +1656,8 @@ const splitDropRight = el("div", "split-drop-zone split-drop-right", "Soltar aqu
 splitDrop.append(splitDropLeft, splitDropRight);
 contentEl.append(splitDrop);
 let draggingPage: PageTab | null = null;
-const dropSide = (ev: DragEvent): "left" | "right" => { const r = splitDrop.getBoundingClientRect(); return ev.clientX > r.left + r.width / 2 ? "right" : "left"; };
+/** Lado do soltar pela divisória de verdade (com a tela dividida, a esquerda é a conversa; sem, a metade). */
+const dropSide = (ev: DragEvent): "left" | "right" => (ev.clientX >= splitDropRight.getBoundingClientRect().left ? "right" : "left");
 function pageDragStart(page: PageTab, tabEl: HTMLElement, ev: DragEvent): void {
   draggingPage = page;
   tabEl.classList.add("dragging");
@@ -1657,6 +1668,8 @@ function pageDragStart(page: PageTab, tabEl: HTMLElement, ev: DragEvent): void {
   // Mostrar a camada no mesmo tique cancela o arrasto no Chromium.
   setTimeout(() => { if (draggingPage === page) splitDrop.hidden = false; }, 0);
 }
+// Rede de segurança: qualquer fim de arrasto (ou clique) com a camada à vista a esconde.
+for (const evName of ["dragend", "mouseup"] as const) document.addEventListener(evName, () => { if (!splitDrop.hidden && (evName === "mouseup" || draggingPage === null)) { splitDrop.hidden = true; splitDrop.classList.remove("over-left", "over-right"); draggingPage = null; } }, true);
 function pageDragEnd(tabEl: HTMLElement): void {
   tabEl.classList.remove("dragging");
   draggingPage = null;
@@ -1674,7 +1687,10 @@ splitDrop.addEventListener("dragover", (ev) => {
 splitDrop.addEventListener("dragleave", (ev) => { if (ev.target === splitDrop) splitDrop.classList.remove("over-left", "over-right"); });
 splitDrop.addEventListener("drop", (ev) => {
   ev.preventDefault();
-  const page = draggingPage; if (page === null) return;
+  const page = draggingPage;
+  // Some já no soltar: se o dragend da aba não vier (aba recriada, foco num webview), a camada não fica presa.
+  splitDrop.hidden = true; splitDrop.classList.remove("over-left", "over-right"); draggingPage = null;
+  if (page === null) return;
   if (dropSide(ev) === "right") splitOn(page);
   else if (splitPages.includes(page)) { splitOff(false, page); if (!splitOnAny()) activatePage(page); }
   saveSplit();
@@ -3945,6 +3961,11 @@ const tabPlus = $<HTMLButtonElement>("tab-plus");
 tabPlus.addEventListener("click", () => { void newTab(); });
 function syncRest(): void {
   tabPlus.hidden = tabs.size > 0; // a aba "+" só existe quando não há aba de conversa
+  // Com alguma aba de página aberta (Navegador, Tutoriais…) a cobrinha não aparece: a última página vem para a frente.
+  if (tabs.size === 0 && pageActive === null && !splitOnAny()) {
+    const aberta = [...pages.values()].filter((p) => p.tabEl !== null && !ehVazia(p)).at(-1);
+    if (aberta !== undefined) { activatePage(aberta); return; }
+  }
   const show = tabs.size === 0 && onboard === null && pageActive === null && document.getElementById("tour-welcome")?.hidden !== false;
   restEl.hidden = !show;
   newBtn.classList.toggle("shine", show);
