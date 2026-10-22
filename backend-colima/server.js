@@ -25,6 +25,8 @@ const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
 const navegador = require('./navegador');
 const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mcp.mjs');
+/** Passos por mensagem quando o Navegador está ligado (o perfil "agente" tem 30 sem ele). */
+const BROWSER_MAX_TURNS = 100;
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
@@ -366,6 +368,8 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         usage = ev.usage || null;
         if (typeof ev.result === 'string') resultText = ev.result;
         if (resultText && LIMIT_RE.test(resultText) && !released) { fail('model_limit', resultText.trim().split('\n')[0].slice(0, 200)); return; }
+        // Limite de passos desta mensagem: a resposta parava no meio sem dizer nada. Avisa e diz como seguir.
+        if (ev.subtype === 'error_max_turns' && text) emit(`\n\n_(Parei aqui: cheguei ao limite de ${maxTurns} passos desta mensagem. Mande "continua" que eu sigo de onde parei.)_`);
         if (ev.is_error && !text) { fail(looksLikeResumeFailure(ev, stderr) ? 'resume_failed' : 'cli_failed', resultText || ev.subtype || 'erro da CLI'); }
       }
     }
@@ -498,7 +502,9 @@ async function chatCompletions(req, res) {
       let model = Date.now() < limitUntil ? MODEL_FALLBACK : undefined;
       // No reserva, o modelo sabe que é ele (a identidade padrão não diz o modelo).
       const withModel = (p) => (model ? { ...p, system: `${p.system}\n\nNeste turno o modelo é o ${MODEL_FALLBACK_LABEL} (${MODEL_FALLBACK}): o modelo padrão da conta bateu o limite de uso.` } : p);
-      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns: profile.maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model });
+      // Com o Navegador, cada clique, leitura e print é um passo: 30 acabava no meio de um formulário (Cloudflare, 22 out).
+      const maxTurns = browser ? Math.max(profile.maxTurns, BROWSER_MAX_TURNS) : profile.maxTurns;
+      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model });
       let out;
       for (let tries = 0; ; tries++) {
         try { out = await call(); break; }
