@@ -2493,8 +2493,11 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   "controle local (sem identificação)". Evento `term:dono`.
 - **Várias abas:** botão "+ Novo terminal" no topo do terminal, Option+clique em "Terminal" na lateral ou
   Cmd+Shift+J.
-- **Várias colunas:** `splitPages` (lista) em vez de uma página só; cada página fica numa `.split-col` dentro do
-  `#split-panel` (flex). Quantas aparecem segue a largura (`maxColunas`: 320 px da conversa + 260 px por coluna, teto
+- **Várias colunas:** `splitPages` (lista) em vez de uma página só. **Nada muda de lugar no DOM** (mover um
+  `<webview>` recarrega o Navegador): com a divisão ligada, `#panels` vira um grid (`--grade`: o que está na frente |
+  divisor | colunas) e cada painel à vista ganha `split-cell` + `grid-column`; `layoutSplit()` deriva o layout inteiro
+  do estado e roda depois de qualquer mudança (`relayoutSplit` em `activate`, `activatePage`, `deactivatePage`,
+  `syncRest`). O `#split-panel` saiu do HTML; o `#split-handle` vive dentro de `#panels` (coluna 2). Quantas aparecem segue a largura (`maxColunas`: 320 px da conversa + 260 px por coluna, teto
   8); as que não cabem ficam `[hidden]` e voltam ao alargar. Arrastar outra aba para a direita acrescenta coluna
   (cheia: substitui a última, `splitAdd`); para a esquerda tira só aquela; clicar numa aba com a tela dividida troca a
   última coluna. Preferência `{pageIds, ratio}` (aceita o antigo `{pageId}`). Controle local: `/dividir` acrescenta,
@@ -2520,6 +2523,12 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 - **Abas novas pedidas cedo demais:** `browser:ask` de aba nova chegando antes de o Navegador ficar pronto (app
   abrindo, partição ainda nula, ou a página fechada) era descartado e o agente recebia "a aba nova não apareceu".
   Agora entra em `navPedidosNovos` e é atendido no fim de `openNavTab`; com o Navegador fechado, ele abre.
+- **Trava por remetente (22 out, 2ª rodada):** no claude-cli o OpenClaw passa `--tools` só com as nativas permitidas e
+  trata `grep` como a capacidade `read` (Glob/LS nem existem no mapa), então negar `read` já cobre o Grep. O que vazava
+  eram as ferramentas do próprio OpenClaw (MCP `openclaw`): `DESCONHECIDO_DENY` ganhou `web_fetch` (alcança o gateway
+  local), `message` (mensagem a terceiros), `group:sessions` (histórico de outros clientes) e `group:ui`
+  (navegador/terminal/tela); `NON_OWNER_DENY`/`OTHERS_DENY` ganharam `group:automation`, `group:nodes`, `terminal`,
+  `skill_workshop` e `sessions_spawn`. Aplicado à mão na box-lv (backup `openclaw.json.bak-trava2-*`).
 - **Trava de leitura para desconhecidos:** com o WhatsApp aberto (`dmPolicy: open`), o `"*"` do
   `tools.toolsBySender` não negava `read`: um cliente podia pedir o conteúdo de `~/.config` (tokens) ou da
   configuração. `DESCONHECIDO_DENY = ["read"]` (`navegador-whatsapp-core.ts`) entra só no `"*"`; quem é liberado por
