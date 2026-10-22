@@ -19,6 +19,8 @@ import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whats
 import { pauseRuleSh } from "../whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../xaiLogin";
+import { cancelarConta, entrarConta, sairConta } from "../contas-cli";
+import { isContaId } from "../contas-cli-core";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
   getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
@@ -310,6 +312,21 @@ export function registerClientIpc(): void {
   });
   handleClient("xai-login:cancel", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelXaiLogin(); });
   handleClient("xai-login:logout", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiLogout(h.host); });
+  handleClient("contas:entrar", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const p = (payload ?? {}) as { id?: unknown; navegador?: unknown };
+    if (!isContaId(p.id)) throw new Error("conta desconhecida");
+    return entrarConta(h.host, p.id, p.navegador === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
+  });
+  handleClient("contas:cancelar", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelarConta(); });
+  handleClient("contas:sair", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const id = (payload as { id?: unknown } | null)?.id;
+    if (!isContaId(id)) throw new Error("conta desconhecida");
+    return sairConta(h.host, id);
+  });
 
   handleClient("backend:account", async (event) => {
     const host = hostFromEvent(event)?.host;

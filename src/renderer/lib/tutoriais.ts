@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
+import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -43,6 +43,8 @@ export interface GuideContext {
    * o agente já respondeu nesse grupo.
    */
   grupos: { info: WhatsappGroups | null; alvo: string | null; respondeu: boolean };
+  /** Tutorial 13: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
+  contas: readonly ContaEstado[] | null;
   /** O produto desta janela (caps): decide quais tutoriais de CRM existem e se há etiqueta Pro. */
   produto: { planoExigido: "free" | "pro" | "personalizado"; extensaoGmail: boolean; crmStreak: boolean };
   /**
@@ -52,9 +54,9 @@ export interface GuideContext {
   known: Record<GuideSource, boolean>;
 }
 /** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
-export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos";
-export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos"];
-const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false });
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false });
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
@@ -68,6 +70,7 @@ export const emptyContext = (): GuideContext => ({
   objective: null,
   crm: { access: null, info: null, local: null },
   grupos: { info: null, alvo: null, respondeu: false },
+  contas: null,
   produto: { planoExigido: "free", extensaoGmail: false, crmStreak: true },
   known: noneKnown(),
 });
@@ -127,13 +130,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado";
 
 export interface GuideStep {
   id: string;
@@ -142,7 +145,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline";
+  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "conta-cloudflare" | "conta-github";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -234,6 +237,9 @@ export const quemEscolhido = (info: WhatsappGroups | null): boolean =>
   info !== null && !info.quemAcionaHerdado && (info.quemAciona === "todos" || info.quemAciona.length > 0);
 export const GRUPOS_AVISO = "Só grupos internos, com gente de casa. Nunca ligue o agente num grupo com clientes.";
 export const GRUPOS_QUEM_NOTA = "Quem não está nesta lista pode escrever no grupo à vontade: o agente simplesmente não responde a essa pessoa. A lista vale para todos os grupos com o agente ligado.";
+
+/** A conta está logada na máquina (pelo último status lido). */
+export const contaConectada = (c: GuideContext, id: ContaEstado["id"]): boolean => c.contas?.some((x) => x.id === id && x.conectado) === true;
 
 /** Os tutoriais, na ordem em que aparecem (e dos números). */
 export const TUTORIAIS: readonly Tutorial[] = [
@@ -629,6 +635,31 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "De um número da lista, mande no grupo: \"@agente oi\" (mencione o número do agente ou responda a uma mensagem dele). O passo se marca sozinho quando a resposta aparecer.",
         done: (_st, f, c) => c.grupos.respondeu || f.gruposTested,
         manual: { label: "Testei, funcionou", flag: "gruposTested" },
+      },
+    ],
+  },
+  {
+    id: "contas-cli",
+    number: 13,
+    needs: ["contas"],
+    after: "claude-login",
+    needsXai: true,
+    title: "Conectar contas na máquina",
+    short: "Contas",
+    summary: "Um clique e a conta fica ligada na máquina: o agente passa a subir sites no Cloudflare e mexer no GitHub por você, sem terminal.",
+    minutes: 2,
+    icon: "target",
+    steps: [
+      {
+        id: "cloudflare", title: "Conectar o Cloudflare (subir sites)", target: "none", body: "conta-cloudflare",
+        text: "Clique em Conectar: a página do Cloudflare abre aqui no Navegador, você entra e autoriza. O acesso é só para sites (Pages) e ver os domínios; nada de e-mail, bancos ou o resto da conta.",
+        done: (_st, _f, c) => contaConectada(c, "cloudflare"),
+      },
+      {
+        id: "github", title: "Conectar o GitHub (opcional)", target: "none", body: "conta-github",
+        text: "Clique em Conectar: a página do GitHub abre no Navegador e pede um código de 8 letras, que aparece aqui com o botão de copiar. Se você não usa GitHub, pule.",
+        done: (_st, f, c) => contaConectada(c, "github") || f.githubPulado,
+        manual: { label: "Não uso GitHub", flag: "githubPulado" },
       },
     ],
   },

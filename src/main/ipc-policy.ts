@@ -16,7 +16,7 @@ export const SHARED_CHANNELS = [
   "whatsapp:archive-crm",
   // grupos: ler, ligar/desligar o agente, quem aciona e reler a lista (a pessoa e o admin; mudanças na auditoria)
   "whatsapp:groups", "whatsapp:group-thread", "whatsapp:group-set", "whatsapp:groups-refresh", "ui:wa-group-menu",
-  "claude-login:auth", "xai-login:auth", "xai-key:status",
+  "claude-login:auth", "xai-login:auth", "xai-key:status", "contas:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // atualização automática do próprio app
@@ -44,6 +44,7 @@ export const CLIENT_CHANNELS = [
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
+  "contas:entrar", "contas:cancelar", "contas:sair",
   // instalar e configurar a máquina
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
   "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",

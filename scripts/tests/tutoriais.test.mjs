@@ -23,7 +23,7 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // O 10 existe em duas versões, uma por produto (CRM no Gmail no meu-bot-crm; CRM pelo Streak no meu-bot): nunca juntas.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12]);
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13]);
   for (const produto of [{ planoExigido: "free", extensaoGmail: false, crmStreak: true }, { planoExigido: "personalizado", extensaoGmail: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -37,7 +37,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo", "notificacoes-navegador"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "notificacoes-navegador"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "notificacoes-navegador", "contas-cli"]);
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM) só depois do 9 (Navegador); o antigo 10 de extensões foi removido");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só no produto com a extensão embutida");
   const crm = { ...emptyContext(), produto: { planoExigido: "personalizado", extensaoGmail: true, crmStreak: false } };
@@ -305,4 +305,19 @@ test("passos que são fatos (abriu um site, viu o Gmail, o agente respondeu no g
   assert.equal(guideView(t9, null, { ...f, feitos: ["abrir"] }, ctx(0)).finished, true);
   assert.equal(guideView(t9, null, f, ctx(2)).finished, true);
   for (const [tut, passo] of [["crm-gmail", "gmail"], ["statusline", "limites"], ["whatsapp-grupos", "teste"]]) assert.equal(byId(tut).steps.find((s) => s.id === passo).lembrar, true, `${tut}/${passo}`);
+});
+
+test("tutorial 13 · contas: Cloudflare conectado conclui o 1; GitHub conectado ou \"Não uso GitHub\"; some neste Mac", () => {
+  const t = byId("contas-cli");
+  const c = (contas) => ({ ...emptyContext(), contas });
+  const cf = (conectado) => ({ id: "cloudflare", presente: true, conectado, conta: conectado ? "a@b" : null, amplo: false });
+  const gh = (conectado) => ({ id: "github", presente: true, conectado, conta: conectado ? "lv" : null, amplo: false });
+  assert.equal(guideView(t, null, emptyFlags(), c(null)).current, 0, "não consultado ainda");
+  assert.equal(guideView(t, null, emptyFlags(), c([cf(false), gh(true)])).current, 0, "sequencial: o GitHub não pula o Cloudflare");
+  assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(false)])).current, 1);
+  assert.equal(guideView(t, null, { ...emptyFlags(), githubPulado: true }, c([cf(true), gh(false)])).finished, true);
+  assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(true)])).finished, true);
+  assert.deepEqual(t.steps.map((s) => s.body), ["conta-cloudflare", "conta-github"]);
+  const mac = { ...emptyContext(), xai: { possible: false, hermes: null, loggedIn: null, label: null } };
+  assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "contas-cli"), "só em máquina por SSH");
 });

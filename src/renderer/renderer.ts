@@ -1,4 +1,4 @@
-import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments , DonoInfo } from "../shared/ipc";
+import type { BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -1978,6 +1978,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         if (alvo !== null) { txt.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`)); renderGruposQuem(txt, alvo); }
       } else if (step.body === "grupos-modo") {
         renderGruposModo(txt);
+      } else if (step.body === "conta-cloudflare" || step.body === "conta-github") {
+        renderConta(txt, step.body === "conta-cloudflare" ? "cloudflare" : "github");
       } else if (step.body === "grupos-teste") {
         renderGruposTeste(txt);
       } else if (step.body === "objective-choice") {
@@ -2108,6 +2110,7 @@ function openGuide(t: Tutorial): void {
   if (t.id === "crm-whatsapp" || t.id === "crm-gmail") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }
   if (t.id === "xai-login") void refreshXaiLine();
   if (t.id === "whatsapp-grupos") void refreshWaGroups();
+  if (t.id === "contas-cli") void refreshContas();
   paintGuide();
 }
 
@@ -4329,6 +4332,7 @@ const guideCtx = (): GuideContext => ({
   objective: objectiveState,
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState, local: crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) }; })(),
+  contas: contasState,
   produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
@@ -4346,6 +4350,7 @@ const guideCtx = (): GuideContext => ({
       navegador: navLicenseAsked && (navInstState !== null || !remote),
       crm: navLicenseAsked && (crmState !== null || !remote) && (!caps.extensaoGmail || !remote || crmLocalState !== null),
       grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
+      contas: contasState !== null || !remote,
     };
   })(),
 });
@@ -4737,6 +4742,82 @@ async function refreshGuarda(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
   try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
   paintGuide();
+}
+/** Tutorial 13: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
+let contasState: ContaEstado[] | null = null;
+let contaLogin: { id: ContaId; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
+async function refreshContas(): Promise<void> {
+  if (!caps.install || windowHost === "" || windowHost === "local") return;
+  try { const r = await window.meuBot.contasStatus(); if (r !== null) contasState = r; } catch { /* máquina fora: fica o que havia */ }
+  paintGuide();
+}
+/** O link do login abre no Navegador do app: é por ele que o retorno do Cloudflare chega ao localhost da máquina. */
+const navegadorPronto = (): boolean => caps.chat && caps.navegador && browserAccess(license, windowHost, caps.planoExigido, caps.produto) === "ok";
+async function entrarConta(id: ContaId): Promise<void> {
+  if (contaLogin?.rodando === true) return;
+  contaLogin = { id, url: null, codigo: null, texto: "Pedindo o login na máquina…", rodando: true, ok: null };
+  paintGuide();
+  try { await window.meuBot.contasEntrar(id, navegadorPronto()); }
+  catch (err) { contaLogin = { ...contaLogin, texto: `✗ ${ipcErrorText(err)}`, ok: false }; }
+  finally { if (contaLogin !== null) contaLogin.rodando = false; paintGuide(); }
+}
+window.meuBot.on("contas:evento", (ev: ContaEvento) => {
+  if (contaLogin === null || contaLogin.id !== ev.id) return;
+  if (ev.kind === "url") {
+    contaLogin.url = ev.url; contaLogin.codigo = ev.codigo;
+    contaLogin.texto = ev.codigo !== null ? "A página abriu no Navegador: cole o código abaixo e autorize." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
+    void abrirLinkDoChat(ev.url, false);
+  } else if (ev.kind === "log") contaLogin.texto = ev.text;
+  else {
+    contaLogin.ok = ev.ok; contaLogin.texto = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
+    if (ev.estado != null) { const est = ev.estado; contasState = [...(contasState ?? []).filter((c) => c.id !== est.id), est]; }
+  }
+  paintGuide();
+});
+function renderConta(container: HTMLElement, id: ContaId): void {
+  const box = el("div", "audio-controls");
+  const st = contasState?.find((c) => c.id === id) ?? null;
+  const login = contaLogin?.id === id ? contaLogin : null;
+  const row = el("div", "audio-row");
+  if (contasState === null) row.append(el("span", "hint", "Consultando a máquina…"));
+  else if (st !== null && !st.presente) row.append(el("span", "hint", id === "github" ? "O GitHub CLI (gh) não está instalado nesta máquina." : "Esta máquina não tem o Node (npx) para o Cloudflare."));
+  else {
+    if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
+    const b = el("button", `btn ${st?.conectado === true ? "btn-ghost" : "btn-primary"} btn-small`, login?.rodando === true ? "Esperando a autorização…" : st?.conectado === true ? "Conectar de novo" : "Conectar"); b.type = "button";
+    b.disabled = contaLogin?.rodando === true;
+    b.addEventListener("click", () => { void entrarConta(id); });
+    row.append(b);
+    if (login?.rodando === true) {
+      const c = el("button", "btn btn-ghost btn-small", "Cancelar"); c.type = "button";
+      c.addEventListener("click", () => { void window.meuBot.contasCancelar(); });
+      row.append(c);
+    } else if (st?.conectado === true) {
+      const sair = el("button", "btn btn-ghost btn-small", "Sair"); sair.type = "button";
+      sair.addEventListener("click", () => armConfirm(sair, "Confirmar? o agente perde o acesso", () => {
+        void window.meuBot.contasSair(id).then((r) => { if (r !== null) contasState = r; contaLogin = null; paintGuide(); });
+      }));
+      row.append(sair);
+    }
+  }
+  box.append(row);
+  if (st?.amplo === true && login?.rodando !== true) box.append(el("p", "hint", "Esta conta foi logada com acesso amplo (Workers, D1, e-mail…). \"Conectar de novo\" troca por um acesso só para sites."));
+  if (login !== null) {
+    box.append(el("p", login.ok === false ? "hint bad-hint" : "hint", login.texto));
+    if (login.codigo !== null && login.rodando) {
+      const cr = el("div", "audio-row");
+      const code = el("code", "conta-codigo", login.codigo);
+      const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
+      copy.addEventListener("click", () => { void navigator.clipboard.writeText(login.codigo ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+      cr.append(code, copy);
+      box.append(cr);
+    }
+    if (login.url !== null && login.rodando) {
+      const again = el("button", "btn btn-ghost btn-small", "Abrir a página de novo"); again.type = "button";
+      again.addEventListener("click", () => { if (login.url !== null) void abrirLinkDoChat(login.url, false); });
+      box.append(again);
+    }
+  }
+  container.append(box);
 }
 window.meuBot.on("guarda:progress", ({ line }) => { guardaLog = [...guardaLog, line].slice(-6); if (guardaBusy) paintGuide(); });
 function renderGuardaInstall(container: HTMLElement): void {
@@ -6579,6 +6660,7 @@ void (async () => {
   // O que a lista de Tutoriais e o selo precisam saber vem todo na abertura, em paralelo: guarda, licença (Pro),
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
   void refreshGuarda();
+  void refreshContas();
   void refreshLicense().then(() => paintGuide());
   void refreshNavInst();
   void refreshCrm();

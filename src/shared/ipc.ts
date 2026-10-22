@@ -633,6 +633,16 @@ export type ClaudeLoginEvent =
   | { kind: "log"; text: string }
   | { kind: "done"; ok: boolean; text: string };
 
+/** Contas de CLI na máquina (tutorial 13). */
+export type ContaId = "cloudflare" | "github";
+/** `presente` = a ferramenta existe na máquina; `amplo` = logada com mais acesso que o necessário (refazer limita). */
+export interface ContaEstado { id: ContaId; presente: boolean; conectado: boolean; conta: string | null; amplo: boolean }
+/** Login de uma conta de CLI: o link (e o código de dispositivo, se a página pedir) e o fim, com o estado conferido. */
+export type ContaEvento =
+  | { kind: "url"; id: ContaId; url: string; codigo: string | null }
+  | { kind: "log"; id: ContaId; text: string }
+  | { kind: "done"; id: ContaId; ok: boolean; text: string; estado?: ContaEstado | null };
+
 /** Credencial do OAuth client do Tailscale: só o estado, nunca o valor. */
 export interface TailscaleCredentialState { configured: boolean; encryptionAvailable: boolean }
 
@@ -911,6 +921,7 @@ export interface MainEvents {
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
   "xai-login:event": ClaudeLoginEvent;
+  "contas:evento": ContaEvento;
   /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
   "term:data": { id: string; data: Uint8Array };
   "term:exit": { id: string; code: number; detail: string | null };
@@ -1009,6 +1020,8 @@ export interface MeuBotSharedApi {
   claudeAuth(): Promise<ClaudeAuthInfo | null>;
   /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
+  /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
+  contasStatus(): Promise<ContaEstado[] | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Abre um link http(s) no navegador do sistema. */
   openExternal(url: string): Promise<void>;
@@ -1153,6 +1166,10 @@ export interface MeuBotClientApi {
   xaiLogin(): Promise<void>;
   xaiLoginCancel(): Promise<void>;
   xaiLogout(): Promise<ClaudeAuthInfo | null>;
+  /** Login por SSH; o link vem em contas:evento (abrir no Navegador). `navegador` false = Cloudflare por código. */
+  contasEntrar(id: ContaId, navegador: boolean): Promise<void>;
+  contasCancelar(): Promise<void>;
+  contasSair(id: ContaId): Promise<ContaEstado[] | null>;
 }
 
 /** Variante: admin. Só o meu-bot-admin: a página "Suporte" da máquina da pessoa. */

@@ -19,6 +19,7 @@ import { applyUpdate, checkNow, updateState } from "../updater";
 import { checkNow as netCheckNow, hostIsLocalAddr } from "../net";
 import { claudeAuthInfo } from "../claudeLogin";
 import { xaiAuthInfo } from "../xaiLogin";
+import { contasStatus } from "../contas-cli";
 import { xaiKeyStatus } from "../xaiKey";
 import { closeTunnel } from "../tunnel";
 import { anyConversationBusy } from "../conversation";
@@ -76,6 +77,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return claudeAuthInfo(h.host);
   });
   handleShared("xai-login:auth", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return xaiAuthInfo(h.host); });
+  handleShared("contas:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return contasStatus(h.host); });
   handleShared("xai-key:status", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");

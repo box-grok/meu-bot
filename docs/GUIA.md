@@ -2454,3 +2454,26 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
   pelo WhatsApp. Se algo do token vazar, faz "Roll". Validada na agente-box-lv em 22 out.
 - **Acervo:** o primeiro cartão é "Token do Cloudflare (só leitura)". Skills que já vêm com o meu-bot têm `usar`, com o
   botão "Criar o token" e o pedido pronto, em vez de "Pedir ao agente para instalar".
+
+## Links do terminal e tutorial 13 · Conectar contas na máquina (22 out)
+
+- **Links do terminal** abrem no Navegador do app (Cmd+clique abre no navegador do Mac).
+- **Retorno de login de CLI** (`browser.ts` › `retornoParaMaquina`): numa janela de máquina por SSH, quando a página vai
+  para `http://localhost:<porta>/…` com cara de retorno OAuth, o app entrega esse endereço na máquina por SSH (`curl`) e
+  segue para o redirecionamento ou mostra "Login concluído". É assim que o `wrangler login` termina, mesmo com o
+  navegador no Mac.
+- **Tutorial 13 (`contas-cli`, after 1, só em máquina por SSH):** "Conectar" roda o login da ferramenta na máquina e o
+  link abre sozinho no Navegador. Não precisa de terminal.
+  - **Cloudflare:** `wrangler login --scopes account:read user:read pages:write zone:read`, só sites e domínios.
+    - O `wrangler login` puro pede quase a conta inteira: Workers, D1, e-mail e segredos.
+    - Quando a conta foi logada com mais que isso, o passo avisa "acesso amplo" e "Conectar de novo" troca o acesso.
+    - Sem o Navegador (sem Pro), o login vai por código de dispositivo (`--device`).
+  - **GitHub:** `gh auth login -w` sem terminal, por código de dispositivo. O código aparece no passo com o botão
+    Copiar. O passo é opcional: "Não uso GitHub".
+  - **Status:** `contas-cli-core.ts` › `STATUS_SH`, um SSH só.
+    - Sem o arquivo de login do wrangler, não chama o `npx`.
+    - A saída vai para um arquivo com `timeout`: num pipe, o `npm exec` às vezes fica pendurado.
+  - **Canais:** `contas:status` (shared); `contas:entrar`, `contas:cancelar` e `contas:sair` (client); evento
+    `contas:evento`.
+  - **Quem usa a conta:** a credencial fica na máquina. No WhatsApp, só o dono tem `exec`; grupos e as outras pessoas
+    da lista não rodam comandos.

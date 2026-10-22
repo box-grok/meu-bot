@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -25,6 +25,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "admin:backup-progress",
   "claude-login:event",
   "xai-login:event",
+  "contas:evento",
   "term:data",
   "term:exit",
   "ui:claude-login",
@@ -81,6 +82,7 @@ const sharedApi: MeuBotSharedApi = {
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
   claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
+  contasStatus: () => ipcRenderer.invoke("contas:status", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
     if (!MAIN_EVENT_CHANNELS.includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);
@@ -172,6 +174,9 @@ const clientApi: MeuBotClientApi = {
   xaiLogin: () => ipcRenderer.invoke("xai-login:start", {}),
   xaiLoginCancel: () => ipcRenderer.invoke("xai-login:cancel", {}),
   xaiLogout: () => ipcRenderer.invoke("xai-login:logout", {}),
+  contasEntrar: (id: ContaId, navegador: boolean) => ipcRenderer.invoke("contas:entrar", { id, navegador }),
+  contasCancelar: () => ipcRenderer.invoke("contas:cancelar", {}),
+  contasSair: (id: ContaId) => ipcRenderer.invoke("contas:sair", { id }),
 };
 
 /** Só o meu-bot-admin. */
