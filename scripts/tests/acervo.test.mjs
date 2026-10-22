@@ -31,3 +31,12 @@ test("cartão de uso: a skill do Cloudflare já vem com o Navegador; o pedido ma
   assert.match(t, /^---\nname: cloudflare-token\n/);
   assert.match(t, /guardar/); assert.match(t, /PARE aqui/); assert.match(t, /WhatsApp/);
 });
+
+test("cartão de uso: subir site pelo Cloudflare vem com o Navegador; nunca sobrescreve registro e para no token de edição", async () => {
+  const { readFileSync } = await import("node:fs");
+  const s = ACERVO_SKILLS.find((x) => x.id === "subir-site-cloudflare");
+  assert.ok(s?.usar); assert.match(s.usar.pedido, /nunca mostre o valor/);
+  const t = readFileSync(new URL("../../backend-colima/skill-subir-site-cloudflare.md", import.meta.url), "utf8");
+  assert.match(t, /^---\nname: subir-site-cloudflare\n/);
+  assert.match(t, /Nunca sobrescreva um registro existente/); assert.match(t, /WhatsApp/); assert.match(t, /@1\.1\.1\.1/);
+});

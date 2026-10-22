@@ -35,6 +35,17 @@ export const ACERVO_SKILLS: readonly Skill[] = [
       pedido: "Use a skill cloudflare-token: crie um token do Cloudflare só de leitura (DNS e zona) para o meu domínio. Se não souber qual domínio, me pergunte. Pare antes do \"Create Token\" para eu conferir o resumo, e nunca mostre o valor do token.",
     },
   },
+  {
+    id: "subir-site-cloudflare",
+    name: "Site num subdomínio (Cloudflare)",
+    summary: "O agente publica uma página no seu domínio, como teste.seudominio.com, pelo Cloudflare Pages: cria o site, liga o subdomínio e testa o HTTPS. Nunca mexe em registros que já existem.",
+    install: ["A skill vem com o Navegador do meu-bot: confira ~/.claude/skills/subir-site-cloudflare/SKILL.md. Se faltar, peça ao dono para abrir a aba Navegador no app (ela é instalada junto)."],
+    check: "test -f ~/.claude/skills/subir-site-cloudflare/SKILL.md",
+    usar: {
+      botao: "Subir um site",
+      pedido: "Use a skill subir-site-cloudflare: quero publicar uma página num subdomínio do meu domínio. Me pergunte o nome do subdomínio e o que a página deve ter, se eu não disse. Se o token de edição do Cloudflare ainda não existir, pare no resumo antes de criar para eu conferir, e nunca mostre o valor dele.",
+    },
+  },
 ];
 
 /** Pedido pronto ao agente da máquina: instalar a skill sem interação e relatar. */
