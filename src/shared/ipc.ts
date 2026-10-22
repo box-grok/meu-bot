@@ -254,8 +254,11 @@ export interface InstallProgressEvent {
   line: string;
 }
 
-/** Qual produto é este app: meu-bot (de cada pessoa), meu-bot-admin (suporte) ou meu-bot-crm (meu-bot + CRM próprio). Tabela em src/main/variant-core.ts. */
-export type AppVariant = "client" | "admin" | "crm" | "client-staging" | "crm-staging";
+/**
+ * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)
+ * ou "crm" (o antigo meu-bot-crm, encerrado: só avisa "use o meu-bot"). Tabela em src/main/variant-core.ts.
+ */
+export type AppVariant = "client" | "admin" | "crm" | "client-staging";
 /** Canal do app: estável (só o aprovado) ou staging (o que está em teste), como VS Code e VS Code Insiders. */
 export type Canal = "estavel" | "staging";
 /**
@@ -282,10 +285,6 @@ export interface Capabilities {
   supportAdmin: boolean;
   /** Aba Navegador (e o agente navegando por você). */
   navegador: boolean;
-  /** Tutorial "CRM pelo WhatsApp" via API do Streak (só o meu-bot). */
-  crmStreak: boolean;
-  /** Extensão do Gmail embutida no app (CRM próprio) e o proxy local da API do CRM. */
-  extensaoGmail: boolean;
   /**
    * Plano que a licença da máquina precisa ter para o app funcionar. "free" = app grátis com módulos Pro à parte
    * (etiqueta Pro, "pedir ao admin"); "personalizado" = assinatura do produto inteiro: sem etiqueta, tudo aberto

@@ -42,7 +42,7 @@ import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupport
 import { openMainWindow, sendWhenLoaded } from "../windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient, onClient } from "./registry";
-import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../browser";
+import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserSincronizarCrm, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../browser";
 import { registrar } from "../auditoria";
 
 /**
@@ -159,7 +159,7 @@ export function registerClientIpc(): void {
   handleClient("browser:open", async (event) => {
     const h = ctxOf(event);
     await assertAcesso(h.host);
-    return browserOpen(h.win, h.host);
+    return browserOpen(h.win, h.host, await fetchLicense(h.host).catch(() => null)); // a extensão do CRM segue a licença
   });
   handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
   // O agente do WhatsApp também usa o Navegador: só o número do agente e a lista dos grupos (trava do OpenClaw por remetente).
@@ -472,7 +472,12 @@ export function registerClientIpc(): void {
     n.show();
   });
   // Licença e devices desta conta (licenca.json + maquinas.json, via backend): plano, status e máquinas.
-  handleClient("license:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchLicense(h.host); });
+  handleClient("license:get", async (event) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const lic = await fetchLicense(h.host);
+    void browserSincronizarCrm(h.host, lic); // a extensão do CRM acompanha a licença relida (admin liberou o Pro com o app aberto)
+    return lic;
+  });
   // Avisos de segurança desta máquina (alertas.json, via backend): um Mac novo usou o meu-bot dela.
   handleClient("alerts:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchAlertPrefs(h.host); });
   handleClient("alerts:set", (event, payload: unknown) => {

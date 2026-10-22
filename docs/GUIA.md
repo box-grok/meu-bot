@@ -2030,13 +2030,13 @@ linha numa tabela:
 
 | Onde | O quê |
 |---|---|
-| `src/main/variant-core.ts` | `PRODUTOS`: por produto, `variant`, `nome` (bundle, título, userData, asset da atualização), `bundleId`, `icone`, `userData` (null = pasta padrão), `extensaoGmail` (pasta da extensão embutida ou null) e `caps`. `capsFor` devolve `Capabilities` com `produto`, `planoExigido`, `navegador`, `crmStreak`, `extensaoGmail` além das antigas. |
+| `src/main/variant-core.ts` | `PRODUTOS`: por produto, `variant`, `nome` (bundle, título, userData, asset da atualização), `bundleId`, `icone`, `userData` (null = pasta padrão), `extensoes` (pastas de build das extensões embutidas), `licenca`, `herdaDe`, `fundeDe`, `encerrado`, `portaLocal`, `caps`. O que depende da licença (CRM próprio) não está nas caps: é por máquina (22 out). |
 | `scripts/produtos.mjs` | a mesma tabela lida de `dist/main/variant-core.js` para `package.mjs`, `fuses.mjs`, `dmg.mjs`, `release.mjs` e `icons.mjs` (`--variant <id>`; `--admin` segue como alias). `release.mjs` publica um zip por produto. |
 | `src/main/user-data.ts` | `useVariantUserData(nome, migrate?)`: userData próprio de qualquer produto que não o meu-bot (o admin só traz o `pessoas.json`). |
 | `src/main/acesso.ts` | `assertAcesso(host)`: um só gate no main. Produto free → módulo Pro exige pro/personalizado (`PRO_REQUIRED`); produto por assinatura → plano exigido em vigor (`ASSINATURA_REQUIRED`). |
-| `src/main/licenca.ts`, `backend-colima/licenca.js` | três planos: `free | pro | personalizado`. `proOk` (pro ou personalizado), `crmOk` (só personalizado), `isActive`, `mergeApps` (apps por device). |
+| `src/main/licenca.ts`, `backend-colima/licenca.js` | três planos: `free | pro | personalizado`. `proOk` (pro ou personalizado), `crmOk` (Pro ou superior em vigor, ou o produto meu-bot-crm contratado), `isActive`, `mergeApps` (apps por device). |
 | `src/renderer/lib/pro.ts` | `browserAccess(view, host, exige)`: no produto por assinatura devolve `ok` ou `assinatura` (uma tela só, sem etiqueta Pro); `planoLiberaPro`, `acessoProduto`. |
-| `src/main/extensao-gmail/` | `extensao.ts` (copia `Resources/<extensão>` para `userData/Navegador/<host>/extensao/`, grava `config.json` 0600 com porta+token, aplica o polyfill e carrega descompactada), `extensao-api.ts` (proxy 127.0.0.1:<porta aleatória> → túnel `-L` → `/v1/crm/*` do backend com a chave do backend; CORS só para a extensão e o Gmail; `Host` conferido), `extensao-api-core.ts` (puro, testado). Ligado em `browser.ts` `prepareSession` quando `caps().extensaoGmail`. |
+| `src/main/extensao-gmail/` | `extensao.ts` (copia `Resources/<pasta>` para `userData/Navegador/<host>/<pasta>/` por extensão, refeito pelo carimbo `.origem`; grava `config.json` 0600 com porta+token, aplica o polyfill e carrega descompactada), `extensao-api.ts` (proxy 127.0.0.1:<porta aleatória> → túnel `-L` → `/v1/crm/*` do backend com a chave do backend; CORS só para a extensão e o Gmail; `Host` conferido), `extensao-api-core.ts` (puro, testado). Ligado em `browser.ts`: o Autenticador na cadeia `ready` da sessão; a extensão do CRM em `browserOpen`/`license:get` por `sincronizarExtensaoCrm`, pela licença da máquina (22 out). |
 | `extensao-crm/` | a extensão do Gmail (InboxSDK `@inboxsdk/core` 2.2.31 fixo, esbuild, DOM vanilla, pt-BR). `npm run build:extensao` → `build/extensao-crm/` (o app em dev carrega daí); o `package.mjs` copia para `Resources/extensao-crm/`. Id estável pelo `key` do manifesto (`scripts/id-da-extensao.mjs`). Dev: `npm run build:extensao && MEU_BOT_VARIANT=crm npm run dev` (ou `MEU_BOT_EXTENSAO_CRM_DIR=<pasta>` para outra cópia). |
 | `backend-colima/crm-modelo.js`, `crm-store.js`, `crm-api.js` | o CRM próprio no host: domínio puro, store em `~/.local/share/meu-bot/crm/db/` (JSON por pipeline, escritor único, feed `mudancas.jsonl`, lixeira, backup diário), rotas `/v1/crm/*` montadas no `server.js` (exige `personalizado`). |
 | `backend-colima/crm/crm.mjs`, `backend.mjs`, `importar-streak.mjs` | CLI do agente (mesmos subcomandos do `streak.mjs`, falando HTTP com o backend), helper do `.env`, importador do Streak (preserva as chaves; idempotente). `crm-job.mjs` escolhe a CLI pela licença: personalizado → `crm.mjs`; pro → `streak.mjs`. |
@@ -2047,11 +2047,11 @@ Regras novas:
 
 - Produto novo = um membro em `AppVariant`, uma linha em `PRODUTOS`, um `assets/icon-<x>.svg` (`npm run icons`)
   e, se tiver extensão do Gmail, a pasta de build. Nada mais; nenhum `if (variant === …)`.
-- Planos: no meu-bot, `pro` e `personalizado` liberam os módulos Pro (o personalizado é "sob consulta"); no
-  meu-bot-crm só o `personalizado` funciona e não existe etiqueta Pro. O admin muda o plano em Suporte ›
-  Conta e licença ("Mudar para Personalizado").
-- Dev: `MEU_BOT_VARIANT=crm npm run dev`. Empacotar: `npm run dist:crm` (precisa de `npm run build:extensao`,
-  já encadeado). `./instalar.sh --crm`.
+- Planos: `pro` e `personalizado` liberam os módulos Pro (Navegador, CRM pelo WhatsApp) e, desde 22 out, o CRM
+  próprio no Gmail (`crmProprioOk`); o produto `meu-bot-crm` contratado por cima do plano gratuito também libera o
+  CRM. O admin muda o plano em Suporte › Conta e licença.
+- Dev: `MEU_BOT_VARIANT=crm npm run dev` só mostra o aviso do app encerrado. Empacotar o meu-bot: `npm run dist`
+  (encadeia `build:extensao`). `./instalar.sh`.
 - O `localBackend.ts` passou a copiar todos os módulos que o `server.js` exige (antes só `server.js` e
   `session-map.js`: o backend local quebrava no require).
 
@@ -2131,7 +2131,7 @@ id do Google, telefone ou e-mail; completa sem apagar; quem não mudou não é r
 Configuração única (o client OAuth do app, igual para todos os clientes):
 1. console.cloud.google.com → criar projeto "meu-bot CRM".
 2. APIs e serviços → Biblioteca → ativar **People API**.
-3. Tela de consentimento OAuth → Externo; nome "meu-bot CRM", e-mail de suporte; escopos `contacts.readonly`,
+3. Tela de consentimento OAuth → Externo; nome "meu-bot CRM", e-mail de suporte; escopos `contacts` e `drive.file`,
    `openid`, `email`. Em teste, adicione os e-mails que vão usar (até 100); para todos, publique (o Google pede
    verificação do app para o escopo de contatos; até lá aparece "app não verificado" no login).
 4. Credenciais → Criar credenciais → ID do cliente OAuth → tipo **App para computador** → baixar o JSON.
@@ -2554,3 +2554,38 @@ pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 - **Chaveiro a cada rebuild:** o item "<app> Safe Storage" guarda uma lista `partition_id` com o **cdhash** de cada
   build (certificado autoassinado não tem Team ID), então cada rebuild pede a senha de novo mesmo com "Permitir
   Sempre". A regra do certificado (`certificate leaf`) já é estável; só um certificado Apple (Team ID) resolve de vez.
+
+## Um app só: o CRM próprio vira capacidade por licença (22 out)
+
+O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`extensaoGmail`, `crmStreak: false`,
+`planoExigido: "personalizado"`), mas isso virava binário, ícone, pasta de dados, porta dividida e 5 builds. Agora:
+
+- **Uma regra, por máquina:** `crmProprioOk(view, host)` (`src/main/licenca.ts`, `src/renderer/lib/pro.ts`;
+  `crmOk` em `backend-colima/licenca.js`) = Pro ou superior em vigor, **ou** o produto `meu-bot-crm` contratado;
+  nunca neste Mac nem sem licença lida (fail closed). `Capabilities` perdeu `extensaoGmail`/`crmStreak`; o renderer
+  usa `crmProprio()` (do `license` da janela) onde olhava `caps.extensaoGmail` (limpar histórico guarda no CRM,
+  `navHome`, `refreshCrm`, textos); o main usa `assertCrmProprio(host)` (`acesso.ts`, erro `CRM_REQUIRED`) no
+  `whatsapp:archive-crm`.
+- **Motor explícito na máquina:** `crm.json.motor: "proprio" | "streak"`; sem ele, quem tem a chave do Streak fica no
+  Streak (nada muda em silêncio para quem já o usava com Pro), senão a licença decide (`motorCrm` em `crm-job.mjs`,
+  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 10 é `crm-gmail` quando
+  `crmProprio && motor === "proprio"`, senão `crm-whatsapp` (Streak); `ctx.produto = { planoExigido, crmProprio, crmStreak }`.
+- **Extensões:** o meu-bot traz as duas (`CLIENT.extensoes`). O Autenticador carrega na cadeia `ready` da sessão; a do
+  CRM entra por `sincronizarExtensaoCrm` (idempotente: carrega/`removeExtension`) em `browserOpen` (que recebe a
+  licença de quem abre) e sempre que `license:get` relê a licença (`browserSincronizarCrm`). No servidor, as rotas
+  `/v1/crm/autenticador/*` passam sem `licenseOk` (`crm-api.js handle`): o Autenticador não é CRM.
+- **Fusão de dados** (`Produto.fundeDe`; `fundirDe` em `user-data.ts`, regras puras em `user-data-core.ts`,
+  testadas): o meu-bot adota `appData/meu-bot-crm` (o staging, `meu-bot-crm-staging`) uma vez (carimbo
+  `.fundido-de-<origem>`), sem tocar na origem: conversas unem por id (empate → `updatedAt` maior, transcrições
+  junto); `settings.json` mescla (origem prevalece; mapas por máquina e listas unem; favoritos por url; `onboarding`
+  done se qualquer); `memory.json` fica a mais recente; `google-whatsapp.json` une `criados`; o resto só se faltar
+  (`COPIAR_SE_FALTAR`, `POR_MAQUINA`). Nunca os `.bin` do chaveiro nem o leveldb da sessão. Aviso único na abertura
+  (`relatorioFusao`).
+- **App encerrado:** o produto `crm` fica na tabela com `encerrado: true` e `extensoes: []` por várias releases (o
+  updater só olha `/latest`; sem o asset, quem não abriu nunca vê o aviso): `main.ts` mostra o diálogo
+  (`encerrado.ts`: "Abrir o meu-bot" ou baixar) e sai antes do single-instance lock. `crm-staging` saiu da tabela.
+  `mergeApps` apaga `meu-bot-crm` quando o `meu-bot` se apresenta (sem fantasma no admin).
+- **Build:** `dist` e `dist:staging` encadeiam `build:extensao`; `package.mjs` copia `google-oauth.json` quando o
+  produto traz `extensao-crm`. Somem `dist:crm`, `dist:crm-staging`, `dmg:crm`, `instalar.sh --crm`.
+- Fica como está: o projeto `extensao-crm/` gera as duas extensões (um build); separar o Autenticador num projeto
+  próprio é só organização de pasta, sem efeito na licença.

@@ -16,7 +16,9 @@ import { navSocketPath, startNavApi, stopNavApi } from "./nav-api";
 import { addNavFavorito, isNavAgentHost, navEspacos, navFavoritos, removeNavFavorito, setNavAgentHost, setNavEspacos } from "./settings";
 import type { BrowserAgentState, DonoInfo } from "../shared/ipc";
 import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
-import { carregarExtensoes, extensaoEmbutida } from "./extensao-gmail/extensao";
+import { carregarExtensoes, extensaoEmbutida, sincronizarExtensaoCrm } from "./extensao-gmail/extensao";
+import { crmProprioOk } from "./licenca";
+import type { LicenseView } from "../shared/ipc";
 import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
 import { pararSincronizacaoGoogle } from "./google/google";
 import { gravarPortaNavegador } from "./navegador-whatsapp";
@@ -211,7 +213,7 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
       beforeInstall: async (d) => { log(`[navegador ${host}] instalando extensão ${d.localizedName} (${d.id})`); return { action: "allow" }; },
     }).then(() => { log(`[navegador ${host}] sessão pronta (${ses.getAllExtensions().length} extensões)`); })
       .catch((e: unknown) => { log(`[navegador ${host}] web store não ligou: ${e instanceof Error ? e.message : String(e)}`); })
-      // Extensões embutidas (meu-bot-crm: CRM no Gmail e Autenticador): descompactadas, com o proxy local da API do CRM.
+      // Extensões embutidas (Autenticador; a do CRM entra depois, pela licença): descompactadas, com o proxy local da API do CRM.
       .then(async () => { try { await carregarExtensoes(ses, host, patchExtensionFiles, () => capturarAbaAtiva(host)); } catch (e) { log(`[navegador ${host}] extensões embutidas não carregaram: ${e instanceof Error ? e.message : String(e)}`); } });
     readySessions.set(part, ready);
     ses.on("extension-loaded", (_e, ext) => {
@@ -266,9 +268,11 @@ function publishExtensions(host: string): void {
 const windowHosts = new Map<number, string>();
 
 /** Prepara a sessão e devolve o que o renderer precisa para criar os `<webview>`. */
-export async function browserOpen(win: BrowserWindow, host: string): Promise<BrowserOpenInfo> {
+export async function browserOpen(win: BrowserWindow, host: string, lic: LicenseView | null = null): Promise<BrowserOpenInfo> {
   const { ses, ready } = prepareSession(host);
   await ready;
+  // A extensão do CRM segue a licença desta máquina (quem abre já a leu; sem licença = fechado), nunca a variante.
+  await browserSincronizarCrm(host, lic);
   // Os service workers das extensões precisam estar de pé antes de a página carregar (o content script do Streak
   // conecta no primeiro instante); espera um pouco por eles, sem travar a abertura se algum não subir.
   await Promise.race([Promise.all([...workers.values()].filter((w) => w.host === host).map((w) => w.up)), new Promise((r) => setTimeout(r, 4_000))]);
@@ -277,6 +281,16 @@ export async function browserOpen(win: BrowserWindow, host: string): Promise<Bro
   // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
   if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
   return { partition: partitionOf(host), extensions: extensionsOf(ses, host), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
+}
+/**
+ * Carrega ou tira a extensão do CRM conforme a licença da máquina (Pro ou superior, ou o produto meu-bot-crm). Chamado ao
+ * abrir o Navegador e quando a licença é relida (`license:get`); sem o Navegador desta máquina aberto, não faz nada.
+ */
+export async function browserSincronizarCrm(host: string, lic: LicenseView | null): Promise<void> {
+  const part = partitionOf(host);
+  if (!readySessions.has(part)) return;
+  try { await sincronizarExtensaoCrm(session.fromPartition(part), host, crmProprioOk(lic, host), patchExtensionFiles, () => capturarAbaAtiva(host)); }
+  catch (e) { log(`[navegador ${host}] extensão do CRM: ${e instanceof Error ? e.message : String(e)}`); }
 }
 /** Barra de favoritos (por máquina): a pessoa e o agente mexem; toda janela da máquina recebe a lista nova. */
 function publishFavorites(host: string, list: NavFavorito[]): void {

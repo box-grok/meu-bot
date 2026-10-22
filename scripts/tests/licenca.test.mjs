@@ -114,6 +114,9 @@ test("mergeApps: cada app que se apresenta fica em apps[produto]; app antigo sem
   assert.equal(be.mergeApps({ "x y": { version: "1", lastSeen: "z" } }, "lixo!", "1", t)["meu-bot"].version, "1", "nome inválido vira meu-bot; entrada inválida some");
   const devs = fe.parseDevices({ [DEV(1)]: { name: "mac", apps: b } });
   assert.deepEqual(Object.keys(devs[0].apps).sort(), ["meu-bot", "meu-bot-crm"]);
+  // Um app só: quando o meu-bot (sucessor) se apresenta, o meu-bot-crm sai da lista; o inverso não apaga nada.
+  assert.deepEqual(Object.keys(be.mergeApps(b, "meu-bot", "0.3.0", t + 2000)), ["meu-bot"]);
+  assert.deepEqual(Object.keys(be.mergeApps({ "meu-bot-staging": { version: "1", lastSeen: "z" }, "meu-bot-crm-staging": { version: "1", lastSeen: "z" } }, "meu-bot-staging", "2", t)), ["meu-bot-staging"]);
   assert.deepEqual(fe.parseDevices({ [DEV(1)]: { name: "mac" } })[0].apps, {}, "registro antigo: sem apps");
 });
 

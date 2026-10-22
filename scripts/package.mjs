@@ -47,7 +47,7 @@ for (const p of paths) {
   for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
   // Client OAuth do Google (Google Contatos → CRM): config/google-oauth.json local, fora do git; sem ele o app só
   // mostra "configure o Google". Vai junto só nos produtos com extensão do Gmail.
-  if (produto.caps.extensaoGmail && existsSync(join("config", "google-oauth.json"))) copyFileSync(join("config", "google-oauth.json"), join(res, "google-oauth.json"));
+  if (produto.extensoes.includes("extensao-crm") && existsSync(join("config", "google-oauth.json"))) copyFileSync(join("config", "google-oauth.json"), join(res, "google-oauth.json"));
   // O app de cada admin leva o suporte.json DELE (build/suporte/admins/<nome>.json: nome, superAdmin, caixa; só
   // dados públicos). MEU_BOT_ADMIN_COMO escolhe o admin; sem ele, o super admin. Setup antigo: o suporte.json geral.
   if (admin) {

@@ -32,35 +32,40 @@ export interface Produto {
   herdaDe: string | null;
   /** Porta do backend local deste Mac (host "local"): apps abertos juntos não podem dividir. */
   portaLocal: number;
+  /** Pasta de dados de um app antecessor que a primeira abertura funde (união, sem apagar a origem); null = nenhum. */
+  fundeDe: string | null;
+  /** App que deixou de existir: só mostra o aviso "virou o meu-bot" e sai (fica publicado para quem ainda o tem atualizar até ver o aviso). */
+  encerrado: boolean;
   caps: Omit<Capabilities, "variant" | "produto" | "canal" | "nome" | "titulo">;
 }
 
 const PESSOA: Produto["caps"] = {
   chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false,
-  navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free",
+  navegador: true, planoExigido: "free",
 };
 const ADMIN: Produto["caps"] = {
   chat: false, pair: false, login: false, manageWa: false, tunnel: false, install: false, supportClient: false, supportAdmin: true,
-  navegador: false, crmStreak: false, extensaoGmail: false, planoExigido: "free",
+  navegador: false, planoExigido: "free",
 };
 
-const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: [], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, caps: PESSOA };
-// meu-bot-crm: tudo do meu-bot, sem o CRM pelo Streak, com o CRM próprio no Gmail; só funciona no plano personalizado.
-// Nasce como cópia do meu-bot da pessoa. Divide a porta 8790 com o meu-bot (pendência antiga: os dois juntos no "local").
-const CRM: Produto = { variant: "crm", nome: "meu-bot-crm", bundleId: "local.meu-bot-crm", icone: "assets/icon-crm.icns", userData: "meu-bot-crm", extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot-crm", herdaDe: "meu-bot", portaLocal: 8790, caps: { ...PESSOA, crmStreak: false, extensaoGmail: true, planoExigido: "personalizado" } };
+// meu-bot: o app da pessoa. Traz as duas extensões; o CRM próprio no Gmail abre pela licença da máquina (Pro ou superior,
+// ou o produto meu-bot-crm contratado), nunca por variante. Funde a pasta do antigo meu-bot-crm na primeira abertura.
+const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", encerrado: false, caps: PESSOA };
+// meu-bot-crm (encerrado): era o meu-bot com o CRM próprio e assinatura personalizada. Continua publicado só para quem
+// ainda o tem instalado atualizar e ver o aviso "virou o meu-bot"; não abre janela, não toca nos dados.
+const CRM: Produto = { variant: "crm", nome: "meu-bot-crm", bundleId: "local.meu-bot-crm", icone: "assets/icon-crm.icns", userData: "meu-bot-crm", extensoes: [], canal: "estavel", licenca: "meu-bot-crm", herdaDe: null, portaLocal: 8790, fundeDe: null, encerrado: true, caps: PESSOA };
 
 /** A cópia staging de um app estável: "<nome>-staging", ícone com a faixa, dados próprios herdados dele, porta própria. */
 function staging(base: Produto, variant: AppVariant, portaLocal: number): Produto {
   const nome = `${base.nome}-staging`;
-  return { ...base, variant, nome, bundleId: `${base.bundleId}.staging`, icone: base.icone.replace(/\.icns$/, "-staging.icns"), userData: nome, canal: "staging", herdaDe: base.nome, portaLocal };
+  return { ...base, variant, nome, bundleId: `${base.bundleId}.staging`, icone: base.icone.replace(/\.icns$/, "-staging.icns"), userData: nome, canal: "staging", herdaDe: base.nome, portaLocal, fundeDe: base.fundeDe === null ? null : `${base.fundeDe}-staging` };
 }
 
 export const PRODUTOS: readonly Produto[] = [
   CLIENT,
-  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, caps: ADMIN },
+  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, encerrado: false, caps: ADMIN },
   CRM,
   staging(CLIENT, "client-staging", 8791),
-  staging(CRM, "crm-staging", 8792),
 ];
 
 export function produtoDe(v: AppVariant): Produto {

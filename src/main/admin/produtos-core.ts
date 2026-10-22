@@ -71,7 +71,7 @@ export function definicao(p: ProdutoMvp): Record<string, unknown> {
   return {
     produto: p.nome, variant, bundleId: `local.${p.nome}`, icone: `assets/icon-${variant}.icns`, userData: p.nome, planoExigido: "personalizado",
     vertical: p.vertical, pitch: p.pitch, publico: p.publico, status: p.status,
-    caps: { chat: p.modulos.chat, pair: p.modulos.whatsapp, manageWa: p.modulos.whatsapp, navegador: p.modulos.navegador, extensaoGmail: p.modulos.crm, crmStreak: false },
+    caps: { chat: p.modulos.chat, pair: p.modulos.whatsapp, manageWa: p.modulos.whatsapp, navegador: p.modulos.navegador, crm: p.modulos.crm },
     extras: p.modulos.extras,
     pipelineModelo: { etapas: p.pipeline.etapas, campos: p.pipeline.campos },
     notas: p.notas, proximos: p.proximos, createdAt: p.createdAt, updatedAt: p.updatedAt,

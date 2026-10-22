@@ -1,5 +1,5 @@
 /**
- * Variante: crm. Google Contatos → CRM da máquina, automático. O login é o oficial do Google para apps de desktop
+ * Google Contatos → CRM da máquina, automático (anda com a extensão do CRM, que segue a licença da máquina). O login é o oficial do Google para apps de desktop
  * (navegador do Mac + retorno em 127.0.0.1, PKCE), só leitura de contatos. O refresh token fica cifrado pelo
  * safeStorage (Keychain) em userData/google-contatos.bin e nunca sai do Mac. A sincronização lê a API People e
  * manda para o POST /v1/crm/contacts/import da máquina pelo túnel (completa sem apagar; quem não mudou não é

@@ -10,10 +10,9 @@
 #   ./instalar.sh --abrir       gera, instala e abre o seletor
 #   ./instalar.sh --sem-suporte sem o pacote de suporte (por padrão ele entra quando build/suporte existe,
 #                               para este Mac também ver Configurações › Suporte e o tutorial "Ligar o suporte")
-#   ./instalar.sh --crm         gera e instala o meu-bot-crm (meu-bot + CRM próprio) em vez do meu-bot
 #   ./instalar.sh --admin       gera e instala o meu-bot-admin (do super admin)
 #   ./instalar.sh --admin --como "Fulano"   o meu-bot-admin de outro admin (build/suporte/admins.json)
-#   ./instalar.sh --staging     o meu-bot-staging (canal de teste, ao lado do meu-bot); com --crm, o meu-bot-crm-staging
+#   ./instalar.sh --staging     o meu-bot-staging (canal de teste, ao lado do meu-bot)
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -27,19 +26,17 @@ for a in "$@"; do
     --como) prox=como ;;
     --abrir) abrir=1 ;;
     --sem-suporte) suporte=0 ;;
-    --crm) app=meu-bot-crm; dist=dist:crm; suporte=0 ;;
     --admin) app=meu-bot-admin; dist=dist:admin; suporte=0 ;;
     --staging) staging=1 ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte, --crm, --admin, --staging, --como ou --help)" >&2; exit 2 ;;
+    *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte, --admin, --staging, --como ou --help)" >&2; exit 2 ;;
   esac
 done
 
 if [ "$staging" -eq 1 ]; then
   case "$app" in
     meu-bot) app=meu-bot-staging; dist=dist:staging ;;
-    meu-bot-crm) app=meu-bot-crm-staging; dist=dist:crm-staging ;;
-    *) echo "--staging só vale para o meu-bot e o meu-bot-crm (o admin é só estável)" >&2; exit 2 ;;
+    *) echo "--staging só vale para o meu-bot (o admin é só estável)" >&2; exit 2 ;;
   esac
 fi
 

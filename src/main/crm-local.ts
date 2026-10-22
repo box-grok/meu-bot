@@ -1,5 +1,5 @@
 /**
- * Variante: crm. O CRM próprio da máquina pelo túnel (o mesmo caminho de whatsapp-crm.ts): os pipelines, qual é o
+ * CRM próprio da máquina (liberado pela licença: Pro ou superior, ou produto meu-bot-crm) pelo túnel (o mesmo caminho de whatsapp-crm.ts): os pipelines, qual é o
  * padrão do WhatsApp (sem ele nada é anotado), criar um pipeline e escolher o padrão. Tutorial 10, passo
  * "Criar o primeiro pipeline". A validação final é da máquina (crm-modelo.js › novoPipeline).
  */

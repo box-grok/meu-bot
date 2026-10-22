@@ -3,18 +3,19 @@
  * energia. Os handlers IPC moram em ipc/ (comuns e do meu-bot normal) e admin/ (meu-bot-admin); aqui só se
  * compõe: registerIpc, initPicker e o que depende da variante (caps()).
  */
-import { app, BrowserWindow, nativeTheme, powerMonitor } from "electron";
+import { app, BrowserWindow, dialog, nativeTheme, powerMonitor } from "electron";
 import { LOCAL_HOST } from "./localBackend";
 import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import { loadConversations } from "./conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
 import { loadMemory } from "./memory";
-import { appVariant, caps, produto, userDataName } from "./variant";
+import { appTitle, appVariant, caps, produto, userDataName } from "./variant";
+import { encerrar } from "./encerrado";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
-import { herdarDe, useVariantUserData } from "./user-data";
+import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./user-data";
 import { registerIpc } from "./ipc";
 import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
@@ -32,12 +33,17 @@ import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastF
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-crm…) nasce como cópia do meu-bot dela.
 { const ud = userDataName(); const de = produto().herdaDe; if (ud !== null) useVariantUserData(ud, caps().supportAdmin ? migrateAdminPessoas : de !== null ? herdarDe(de) : undefined); }
+// O meu-bot adota a pasta do antigo meu-bot-crm (uma vez; a origem fica como backup). Depois de herdar, antes de ler qualquer coisa.
+{ const fd = produto().fundeDe; if (fd !== null && !produto().encerrado && !app.commandLine.hasSwitch("user-data-dir")) fundirDe(fd)(app.getPath("userData"), app.getPath("appData")); }
 
 // Staging (recompilado várias vezes por dia): o Chromium não guarda a chave dos cookies no Keychain. Com assinatura
 // própria (sem Team ID da Apple) cada build é "outro app" para o macOS e o pedido de senha voltava a cada rebuild,
 // mesmo com "Permitir Sempre". Produção segue no Keychain até haver certificado Apple. Custo em staging, uma vez na
 // troca: os logins do Navegador e o que o safeStorage guardou (Google, Tailscale) precisam ser refeitos.
 if (appVariant().endsWith("-staging")) app.commandLine.appendSwitch("use-mock-keychain");
+
+// App encerrado (o antigo meu-bot-crm): só o aviso "virou o meu-bot" e sai, antes de qualquer outra coisa.
+if (produto().encerrado) void app.whenReady().then(() => encerrar(appTitle()));
 
 // Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
 if (!app.requestSingleInstanceLock()) {
@@ -63,6 +69,11 @@ app.whenReady().then(() => {
   loadMemory();
   loadConversations();
   registerIpc({ person: personInfo });
+  // Aviso único depois de adotar a pasta do antigo meu-bot-crm: o que veio e o que precisa ser refeito.
+  if (relatorioFusao !== null) {
+    const r = relatorioFusao;
+    void dialog.showMessageBox({ type: "info", title: "meu-bot", message: `Trouxe o que você tinha no ${r.origem}.`, detail: `${r.conversas} ${r.conversas === 1 ? "conversa veio" : "conversas vieram"} junto, com favoritos, memória e preferências. O CRM no Gmail abre com o seu plano. Só o login do Google (tutorial 10) e os logins do Navegador precisam ser refeitos uma vez. A pasta do ${r.origem} ficou intacta, como cópia de segurança.`, buttons: ["Entendi"] });
+  }
   installAppMenu({
     openPicker: () => showPicker(),
     toggleSettings: () => {

@@ -1,5 +1,5 @@
 /**
- * Variante crm (Autenticador). Acha o QR de verificação em duas etapas numa captura da aba (bitmap BGRA do
+ * Autenticador (vem com todo meu-bot). Acha o QR de verificação em duas etapas numa captura da aba (bitmap BGRA do
  * NativeImage, a ordem do macOS) e devolve o otpauth:// dele. Puro: testado com QR gerado pelo `qrcode`.
  */
 import jsQR from "jsqr";

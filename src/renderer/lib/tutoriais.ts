@@ -45,8 +45,11 @@ export interface GuideContext {
   grupos: { info: WhatsappGroups | null; alvo: string | null; respondeu: boolean };
   /** Tutorial 13: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
   contas: readonly ContaEstado[] | null;
-  /** O produto desta janela (caps): decide quais tutoriais de CRM existem e se há etiqueta Pro. */
-  produto: { planoExigido: "free" | "pro" | "personalizado"; extensaoGmail: boolean; crmStreak: boolean };
+  /**
+   * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
+   * está liberado e é o motor em uso; `crmStreak` = o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak).
+   */
+  produto: { planoExigido: "free" | "pro" | "personalizado"; crmProprio: boolean; crmStreak: boolean };
   /**
    * Que fontes já foram consultadas nesta janela. "Ainda não consultei" não é "não feito": um tutorial cujas fontes
    * não chegaram fica "verificando", fora da contagem e do selo, em vez de aparecer como pendente e sumir depois.
@@ -71,7 +74,7 @@ export const emptyContext = (): GuideContext => ({
   crm: { access: null, info: null, local: null },
   grupos: { info: null, alvo: null, respondeu: false },
   contas: null,
-  produto: { planoExigido: "free", extensaoGmail: false, crmStreak: true },
+  produto: { planoExigido: "free", crmProprio: false, crmStreak: true },
   known: noneKnown(),
 });
 
@@ -182,10 +185,10 @@ export interface Tutorial {
   needsSupport?: true;
   /** Só aparece onde o Grok é possível (máquina por SSH com o backend do meu-bot); some neste Mac. */
   needsXai?: true;
-  /** Só no produto com o CRM pelo Streak (meu-bot); some no meu-bot-crm. */
+  /** Só quando o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak escolhido). */
   needsCrmStreak?: true;
-  /** Só no produto com a extensão do Gmail embutida (meu-bot-crm). */
-  needsExtensaoGmail?: true;
+  /** Só quando o CRM próprio no Gmail está liberado pela licença (Pro ou superior) e é o motor em uso. */
+  needsCrmProprio?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
   /** Fontes do contexto que os passos consultam; enquanto alguma não chegou, o tutorial está "verificando". */
@@ -498,10 +501,10 @@ export const TUTORIAIS: readonly Tutorial[] = [
     number: 10,
     needs: ["crm", "navegador"],
     after: "navegador",
-    needsExtensaoGmail: true,
+    needsCrmProprio: true,
     title: "CRM no Gmail e no WhatsApp",
     short: "CRM",
-    summary: "O CRM do meu-bot-crm mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
+    summary: "O CRM do meu-bot mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
     minutes: 5,
     icon: "chat",
     steps: [
@@ -749,7 +752,7 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
     if (t.needsXai === true && ctx.xai.possible === false) return false;
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
-    if (t.needsExtensaoGmail === true && !ctx.produto.extensaoGmail) return false;
+    if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
     return prev !== undefined && visible(prev) && finished(prev);

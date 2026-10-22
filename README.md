@@ -11,9 +11,9 @@ próprio e a VM sob seu controle.
 > Detalhes de implementação e pegadinhas: `docs/GUIA.md`.
 
 Três produtos saem deste código (tabela em `src/main/variant-core.ts`): **meu-bot** (a pessoa), **meu-bot-admin**
-(suporte) e **meu-bot-crm** (tudo do meu-bot mais um CRM próprio dentro do Gmail, no plano personalizado; a
-extensão do Gmail mora em `extensao-crm/` e o CRM em `backend-colima/crm-*.js`). `npm run dist`, `dist:admin`,
-`dist:crm`; `./instalar.sh [--crm|--admin]`.
+(suporte). O CRM próprio dentro do Gmail vem no meu-bot e abre pela licença da máquina (Pro ou superior); a
+extensão do Gmail e o Autenticador moram em `extensao-crm/` e o CRM em `backend-colima/crm-*.js`. O antigo
+meu-bot-crm está encerrado (só avisa "use o meu-bot"). `npm run dist`, `dist:admin`; `./instalar.sh [--admin]`.
 
 ## Requisitos
 
@@ -97,18 +97,18 @@ e assinatura ad-hoc para uso local.
 
 ### Canais: estável e staging
 
-Como o VS Code e o VS Code Insiders: o `meu-bot-staging` e o `meu-bot-crm-staging` ficam ao lado do estável, com
+Como o VS Code e o VS Code Insiders: o `meu-bot-staging` fica ao lado do estável, com
 ícone de faixa laranja, dados e porta próprios, e recebem o que está em teste. A release estável só sai de um commit
 já publicado como staging.
 
 ```bash
-./instalar.sh --staging            # meu-bot-staging (com --crm: meu-bot-crm-staging)
+./instalar.sh --staging            # meu-bot-staging
 npm run release:staging            # pre-release v<versão>-staging.N
 npm run release                    # promoção para v<versão> (exige a tag staging no commit)
 ```
 
 Limitações: o backend da máquina remota é um só para os dois canais (o que se instala testando no staging vale
-também para o estável), e o meu-bot e o meu-bot-crm estáveis dividem a porta 8790 do backend local.
+também para o estável).
 
 ## Como funciona
 

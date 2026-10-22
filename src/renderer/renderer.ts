@@ -24,7 +24,7 @@ import { conversationReferenceText, grupoReferenceText, waReferenceText } from "
 import { providerLabel } from "./lib/provider-label.js";
 import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
-import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess } from "./lib/pro.js";
+import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk } from "./lib/pro.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
@@ -68,7 +68,7 @@ let adminBotMirror: BotMirror | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
 const sessionOpenedAt = new Date().toISOString();
-let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, crmStreak: true, extensaoGmail: false, planoExigido: "free" };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free" };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -2934,9 +2934,9 @@ async function deleteWaChat(number: string): Promise<void> {
   } catch (err) { sidebarList.prepend(el("div", "sidebar-empty wa-menu-err", `Não deu para excluir: ${ipcErrorText(err)}`)); }
 }
 async function runWaClear(c: WaClear): Promise<void> {
-  // meu-bot-crm: a conversa vai antes para o CRM; se não der, volta à confirmação e nunca limpa sem a pessoa escolher.
+  // Com o CRM próprio: a conversa vai antes para o CRM; se não der, volta à confirmação e nunca limpa sem a pessoa escolher.
   let note: WaArchiveNote | null = null;
-  if (caps.extensaoGmail && c.semCrm !== true) {
+  if (crmProprio() && c.semCrm !== true) {
     waClear = { ...c, phase: "archive" };
     renderSidebar();
     try {
@@ -2973,7 +2973,7 @@ function waClearBox(c: WaClear): HTMLElement {
   box.append(el("span", "wa-clear-text", c.shared
     ? "Esta conversa está na sessão principal do agente, que mistura os contatos. Limpar zera ela inteira, com os outros contatos e o que você conversou direto com o agente."
     : "O agente esquece o que conversou com este contato e recomeça do zero."));
-  if (caps.extensaoGmail && c.crmFalhou !== true) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para o histórico do contato no CRM (resumo + transcrição)."));
+  if (crmProprio() && c.crmFalhou !== true) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para o histórico do contato no CRM (resumo + transcrição)."));
   if (c.err !== null) box.append(el("span", "wa-clear-err", c.err));
   const semCrm = c.crmFalhou === true;
   const go = el("button", "btn btn-bad", semCrm ? "Limpar sem guardar" : c.shared ? "Limpar tudo" : "Limpar"); go.type = "button";
@@ -3030,7 +3030,7 @@ function waLimpezaBox(l: WaLimpezaMassa): HTMLElement {
   const box = el("div", "wa-clear");
   box.addEventListener("click", (ev) => ev.stopPropagation());
   const n = l.numeros.length;
-  if (l.fase === "rodando") { box.append(el("span", "wa-clear-text", `${caps.extensaoGmail ? "Guardando no CRM e limpando" : "Limpando"} ${Math.min(l.feito + 1, n)} de ${n}…`)); return box; }
+  if (l.fase === "rodando") { box.append(el("span", "wa-clear-text", `${crmProprio() ? "Guardando no CRM e limpando" : "Limpando"} ${Math.min(l.feito + 1, n)} de ${n}…`)); return box; }
   const acoes = el("div", "wa-clear-actions");
   if (l.fase === "fim") {
     box.append(el("strong", "", `${l.limpas} ${l.limpas === 1 ? "conversa limpa" : "conversas limpas"}${l.puladas.length > 0 ? ` · ${l.puladas.length} ${l.puladas.length === 1 ? "ficou" : "ficaram"} de fora` : ""}`));
@@ -3042,7 +3042,7 @@ function waLimpezaBox(l: WaLimpezaMassa): HTMLElement {
   }
   box.append(el("strong", "", `Limpar o histórico de ${n} ${n === 1 ? "conversa" : "conversas"}?`));
   box.append(el("span", "wa-clear-text", "O agente esquece o que conversou com cada contato e recomeça do zero. Conversas que estão na sessão principal do agente (mistura os contatos) ficam de fora: limpe essas uma por uma."));
-  if (caps.extensaoGmail) box.append(el("span", "wa-clear-text", "Antes, cada conversa vai para o histórico do contato no CRM (resumo + transcrição); a que não for guardada não é limpa."));
+  if (crmProprio()) box.append(el("span", "wa-clear-text", "Antes, cada conversa vai para o histórico do contato no CRM (resumo + transcrição); a que não for guardada não é limpa."));
   const cancel = el("button", "btn", "Cancelar"); cancel.type = "button";
   cancel.addEventListener("click", () => { waLimpeza = null; renderSidebar(); });
   const go = el("button", "btn btn-bad", `Limpar ${n}`); go.type = "button";
@@ -3061,7 +3061,7 @@ async function limparSelecionadas(numeros: string[]): Promise<void> {
       else if (plano.shared > 0) l.puladas.push({ numero, motivo: "está na sessão principal do agente; limpe sozinha" });
       else {
         let guardou = true;
-        if (caps.extensaoGmail) { try { await window.meuBot.archiveWhatsappToCrm(numero); } catch (err) { guardou = false; l.puladas.push({ numero, motivo: `não guardou no CRM (${ipcErrorText(err)}); não foi limpa` }); } }
+        if (crmProprio()) { try { await window.meuBot.archiveWhatsappToCrm(numero); } catch (err) { guardou = false; l.puladas.push({ numero, motivo: `não guardou no CRM (${ipcErrorText(err)}); não foi limpa` }); } }
         if (guardou) {
           await window.meuBot.clearWhatsapp(numero, false);
           l.limpas++;
@@ -4504,7 +4504,7 @@ const guideCtx = (): GuideContext => ({
   crm: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), info: crmState, local: crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(waGroups, loadGrupoAlvo()); return { info: waGroups, alvo: loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) }; })(),
   contas: contasState,
-  produto: { planoExigido: caps.planoExigido, extensaoGmail: caps.extensaoGmail, crmStreak: caps.crmStreak },
+  produto: (() => { const proprio = crmProprio() && motorCrm() === "proprio"; return { planoExigido: caps.planoExigido, crmProprio: proprio, crmStreak: !proprio }; })(),
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
   // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
   known: (() => {
@@ -4519,7 +4519,7 @@ const guideCtx = (): GuideContext => ({
       objective: objectiveState !== null || !remote,
       guarda: guardaState !== null || !remote || (waStatus !== null && waStatus.gateway !== "openclaw"),
       navegador: navLicenseAsked && (navInstState !== null || !remote),
-      crm: navLicenseAsked && (crmState !== null || !remote) && (!caps.extensaoGmail || !remote || crmLocalState !== null),
+      crm: navLicenseAsked && (crmState !== null || !remote) && (!crmProprio() || !remote || crmLocalState !== null),
       grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
       contas: contasState !== null || !remote,
     };
@@ -4776,7 +4776,7 @@ function renderCrmPipeline(container: HTMLElement): void {
 async function refreshCrm(): Promise<void> {
   if (!caps.install || windowHost === "" || windowHost === "local") return;
   try { crmState = await window.meuBot.crmInfo(); } catch { /* máquina fora: fica o que havia */ }
-  if (caps.extensaoGmail) { try { crmLocalState = await window.meuBot.crmLocal(); } catch { /* backend fora: fica o que havia */ } }
+  if (crmProprio()) { try { crmLocalState = await window.meuBot.crmLocal(); } catch { /* backend fora: fica o que havia */ } }
   paintGuide();
   void crmAutoPipeline();
 }
@@ -5664,9 +5664,13 @@ function setNavWa(ligar: boolean): void {
   void window.meuBot.browserAgentWhatsapp(ligar).then((r) => { navWa = r; }).catch((err: unknown) => { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `WhatsApp: ${ipcErrorText(err)}`; } }).finally(() => { navWaBusy = false; paintNav(); });
 }
 let license: LicenseView | null = null;
+/** CRM próprio nesta máquina, pela licença (Pro ou superior, ou o produto meu-bot-crm); fechado enquanto a licença não chegou. */
+const crmProprio = (): boolean => crmProprioOk(license, windowHost);
+/** Motor do CRM em uso: o gravado em crm.json; sem ele, chave do Streak → Streak, senão licença → próprio (regra do crm-core.ts). */
+const motorCrm = (): "proprio" | "streak" => crmState?.motor ?? (crmState?.streakKey === true ? "streak" : crmProprio() ? "proprio" : "streak");
 const NAV_HOME = "https://www.google.com";
-/** Página inicial: no produto com a extensão do Gmail embutida (meu-bot-crm), o Gmail; senão o Google. */
-const navHome = (): string => (caps.extensaoGmail ? "https://mail.google.com/" : NAV_HOME);
+/** Página inicial: com o CRM próprio liberado nesta máquina, o Gmail (onde o CRM mora); senão o Google. */
+const navHome = (): string => (crmProprio() ? "https://mail.google.com/" : NAV_HOME);
 const NAV_WEB_STORE = "https://chromewebstore.google.com/";
 /** Licença da máquina (cache; a aba Navegador e as Configurações leem daqui). */
 /** Selo "PRO" no canto superior direito: mostra quando a conta desta janela é Pro (barra cheia e recolhida). */
@@ -5905,7 +5909,7 @@ function paintNavMenu(): void {
     }
     m.append(row);
   }
-  m.append(el("p", "hint", caps.extensaoGmail ? "O CRM do meu-bot já vem no Gmail e o Autenticador guarda seus códigos de dois fatores na máquina; outras extensões de conteúdo também funcionam. Se o Streak ainda estiver instalado, pode removê-lo aqui." : "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
+  m.append(el("p", "hint", crmProprio() ? "O CRM do meu-bot já vem no Gmail e o Autenticador guarda seus códigos de dois fatores na máquina; outras extensões de conteúdo também funcionam. Se o Streak ainda estiver instalado, pode removê-lo aqui." : "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
 }
 /** Abre a aba Navegador (ou traz para a frente). Sem Pro, abre bloqueada com a explicação e o pedido ao admin. */
 async function openNavTab(url?: string, frente = true): Promise<void> {

@@ -30,6 +30,7 @@ import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { caps } from "../variant";
 import { whatsappArchiveToCrm } from "../whatsapp-crm";
+import { assertCrmProprio } from "../acesso";
 import { waGroupAgente, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
 import { EXTERNAL_URL, hostFromEvent, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
@@ -186,11 +187,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const { own, shared } = await whatsappClearPlan(h.host, waNumber(payload));
     return { own: own.length, shared: shared.length };
   });
-  // meu-bot-crm: antes de limpar, a conversa vai para o CRM (a tela só limpa depois que isto der certo).
+  // Com o CRM próprio liberado na máquina: antes de limpar, a conversa vai para o CRM (a tela só limpa depois que isto der certo).
   handleShared("whatsapp:archive-crm", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    if (!caps().extensaoGmail) throw new Error("só no meu-bot-crm");
+    await assertCrmProprio(h.host);
     const r = await whatsappArchiveToCrm(h.host, waNumber(payload));
     if (!r.vazio) void registrar(h.host, "crm.guardar-conversa", `+${waNumber(payload)}`, r.box !== null ? `caixa ${r.box.nome}` : "no contato");
     return r;

@@ -630,7 +630,9 @@ function createCrmApi(deps) {
 
   /** Trata uma requisição /v1/crm/*; sempre responde. */
   async function handle(req, res, url) {
-    if (!deps.licenseOk()) return erroHttp(res, json, 403, 'o CRM próprio (meu-bot-crm) não está contratado nesta máquina, ou a licença venceu', 'crm_license', 'forbidden');
+    // O Autenticador (códigos 2FA) vem com todo meu-bot e não é CRM: passa sem a licença do CRM (a API key já foi conferida).
+    const livre = /^\/v1\/crm\/autenticador(\/|$)/.test(url.pathname);
+    if (!livre && !deps.licenseOk()) return erroHttp(res, json, 403, 'o CRM próprio precisa do plano Pro (ou superior) ou do produto meu-bot-crm nesta máquina, ou a licença venceu', 'crm_license', 'forbidden');
     const porHdr = String(req.headers['x-crm-por'] || '').toLowerCase();
     const por = POR_RE.test(porHdr) ? porHdr : 'app';
     const t0 = Date.now();

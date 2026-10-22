@@ -22,9 +22,9 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 });
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
-  // O 10 existe em duas versões, uma por produto (CRM no Gmail no meu-bot-crm; CRM pelo Streak no meu-bot): nunca juntas.
+  // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
   assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13]);
-  for (const produto of [{ planoExigido: "free", extensaoGmail: false, crmStreak: true }, { planoExigido: "personalizado", extensaoGmail: true, crmStreak: false }]) {
+  for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
   }
@@ -39,10 +39,10 @@ test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo", "notificacoes-navegador"]);
   assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "notificacoes-navegador", "contas-cli"]);
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM) só depois do 9 (Navegador); o antigo 10 de extensões foi removido");
-  assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só no produto com a extensão embutida");
-  const crm = { ...emptyContext(), produto: { planoExigido: "personalizado", extensaoGmail: true, crmStreak: false } };
+  assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
+  const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };
   const idsCrm = visibleTutorials(crm, (x) => x.id === "claude-login" || x.id === "navegador").map((x) => x.id);
-  assert.ok(idsCrm.includes("crm-gmail") && !idsCrm.includes("crm-whatsapp"), "no meu-bot-crm o 10 é o CRM no Gmail, sem o do Streak");
+  assert.ok(idsCrm.includes("crm-gmail") && !idsCrm.includes("crm-whatsapp"), "com o CRM próprio o 10 é o CRM no Gmail, sem o do Streak");
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
   assert.deepEqual(ids(), ids(() => false), "sem `finished`, nada da trilha destravado");
 });

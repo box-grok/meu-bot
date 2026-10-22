@@ -132,6 +132,7 @@ const PRODUTO_RE = /^meu-bot(-[a-z0-9-]{1,30})?$/;
  * Apps que já se apresentaram deste device (um Mac pode ter o meu-bot e o meu-bot-crm): `apps[produto] =
  * {version, lastSeen}`. `produto` inválido/ausente (app antigo) conta como "meu-bot".
  */
+const SUCEDE = { 'meu-bot': ['meu-bot-crm'], 'meu-bot-staging': ['meu-bot-crm-staging'] };
 function mergeApps(prev, produto, version, now = Date.now()) {
   const apps = {};
   if (prev && typeof prev === 'object' && !Array.isArray(prev)) {
@@ -140,6 +141,8 @@ function mergeApps(prev, produto, version, now = Date.now()) {
     }
   }
   const nome = typeof produto === 'string' && PRODUTO_RE.test(produto) ? produto : 'meu-bot';
+  // O meu-bot sucedeu o meu-bot-crm (um app só): quando o sucessor se apresenta, o antecessor sai (senão ficaria fantasma para sempre).
+  for (const antigo of SUCEDE[nome] || []) delete apps[antigo];
   apps[nome] = { version: typeof version === 'string' ? version : '', lastSeen: nowIso(now) };
   return apps;
 }
