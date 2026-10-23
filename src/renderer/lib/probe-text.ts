@@ -27,7 +27,7 @@ const slNote = (p: HostProbe): string => `${p.statusLine ? "" : " · sem status 
 const slInstall = (p: HostProbe): "statusline" | "transcricao" | "guarda" | null => (!p.statusLine ? "statusline" : p.audioIn === false ? "transcricao" : p.guarda === false ? "guarda" : null);
 
 export function describeProbe(p: HostProbe): ProbeText {
-  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : ""}`;
+  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : p.gateway === "picoclaw" ? " · PicoClaw" : ""}`;
   if (p.host === "local") {
     if (p.error !== null || p.claudePath === null || !p.claudeLoggedIn) {
       const why = p.error ?? (p.claudePath === null ? "Claude Code não encontrado" : "Claude Code não está logado");

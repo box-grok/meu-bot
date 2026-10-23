@@ -18,7 +18,46 @@ export const ESCOPO_DRIVE = "https://www.googleapis.com/auth/drive.file";
 export const ESCOPOS = [ESCOPO_ESCRITA, ESCOPO_DRIVE] as const;
 export const temDrive = (escopo: unknown): boolean => typeof escopo === "string" && escopo.split(/\s+/).includes(ESCOPO_DRIVE);
 /** A autorização guardada permite criar contatos? (a antiga, só leitura, pede "Reconectar"). */
-export const temEscrita = (escopo: unknown): boolean => typeof escopo === "string" && escopo.split(/\s+/).includes(ESCOPO_ESCRITA);
+export const temEscrita = (escopo: unknown): boolean => temEscopo(escopo, ESCOPO_ESCRITA);
+/** `email`/`profile` voltam do Google como as URLs de userinfo; tratados como equivalentes ao pedir e ao conferir. */
+const ALIASES_ESCOPO: Record<string, readonly string[]> = {
+  email: ["email", "https://www.googleapis.com/auth/userinfo.email"],
+  profile: ["profile", "https://www.googleapis.com/auth/userinfo.profile"],
+};
+/** O escopo guardado inclui `alvo` (ou um apelido equivalente)? (compara por token, ignorando a ordem). */
+export const temEscopo = (escopoGuardado: unknown, alvo: string): boolean => {
+  if (typeof escopoGuardado !== "string") return false;
+  const tokens = escopoGuardado.split(/\s+/);
+  return (ALIASES_ESCOPO[alvo] ?? [alvo]).some((e) => tokens.includes(e));
+};
+/** Todos os escopos de `alvos` estão no guardado? (para "precisa reconectar"). */
+export const temTodosEscopos = (escopoGuardado: unknown, alvos: readonly string[]): boolean => alvos.every((a) => temEscopo(escopoGuardado, a));
+
+/** Conta Google geral (login + Gmail + Agenda + Sheets + Drive): escopos da decisão do usuário. */
+export const ESCOPOS_CONTA = [
+  "openid", "email", "profile",
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/drive.metadata.readonly",
+] as const;
+
+/**
+ * Perfil do id_token. `foto` e a URL que o Google devolveu (preservada como veio); `fotoLocal` e essa imagem ja
+ * baixada como data URL, porque a tela roda com CSP `img-src 'self' data:` e nao busca nada no Google.
+ */
+export interface PerfilGoogle { sub: string; email: string | null; emailVerificado: boolean; nome: string | null; foto: string | null; fotoLocal: string | null }
+/** Payload do id_token (JWT) do Google. Não verifica a assinatura: o token veio direto do endpoint oficial por HTTPS. */
+export function parseIdToken(idToken: unknown): PerfilGoogle | null {
+  if (typeof idToken !== "string") return null;
+  const partes = idToken.split(".");
+  if (partes.length !== 3) return null;
+  try {
+    const p = JSON.parse(Buffer.from(partes[1] as string, "base64url").toString("utf8")) as Record<string, unknown>;
+    if (typeof p["sub"] !== "string") return null;
+    return { sub: p["sub"], email: typeof p["email"] === "string" ? p["email"] : null, emailVerificado: p["email_verified"] === true, nome: typeof p["name"] === "string" ? p["name"] : null, foto: typeof p["picture"] === "string" ? p["picture"] : null, fotoLocal: null };
+  } catch { return null; }
+}
 export const URL_AUTORIZACAO = "https://accounts.google.com/o/oauth2/v2/auth";
 export const URL_TOKEN = "https://oauth2.googleapis.com/token";
 export const CAMPOS_PESSOA = "names,emailAddresses,phoneNumbers,organizations,urls,biographies,metadata";
@@ -38,8 +77,8 @@ export function pkce(): { verifier: string; challenge: string } {
   const verifier = randomBytes(48).toString("base64url");
   return { verifier, challenge: createHash("sha256").update(verifier).digest("base64url") };
 }
-export function urlDeAutorizacao(o: { clientId: string; redirect: string; challenge: string; state: string }): string {
-  const p = new URLSearchParams({ client_id: o.clientId, redirect_uri: o.redirect, response_type: "code", scope: ESCOPOS.join(" "), code_challenge: o.challenge, code_challenge_method: "S256", state: o.state, access_type: "offline", prompt: "consent" });
+export function urlDeAutorizacao(o: { clientId: string; redirect: string; challenge: string; state: string; scope?: string }): string {
+  const p = new URLSearchParams({ client_id: o.clientId, redirect_uri: o.redirect, response_type: "code", scope: o.scope ?? ESCOPOS.join(" "), code_challenge: o.challenge, code_challenge_method: "S256", state: o.state, access_type: "offline", prompt: "consent" });
   return `${URL_AUTORIZACAO}?${p.toString()}`;
 }
 /** E-mail principal do `people/me` (pode não vir só com contacts.readonly: aí a página mostra só "conectado"). */
@@ -120,4 +159,24 @@ export function consultaPasta(nome: string, pai: string): string {
 /** Corpo multipart/related do upload (metadados JSON + conteúdo). */
 export function corpoUpload(meta: Record<string, unknown>, conteudo: string, fronteira: string): string {
   return `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${fronteira}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${conteudo}\r\n--${fronteira}--`;
+}
+
+// ---- Conta Google: parse puro das respostas das APIs (testável sem rede) ---------------------------------------
+export interface GmailMensagemView { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }
+/** Uma mensagem do Gmail (format=metadata) → view. */
+export function gmailMensagemDeRaw(id: string, m: Record<string, unknown>): GmailMensagemView {
+  const h = (((m["payload"] as { headers?: unknown } | undefined)?.headers) ?? []) as { name?: string; value?: string }[];
+  const hv = (n: string): string => h.find((x) => (x.name ?? "").toLowerCase() === n)?.value ?? "";
+  const labels = Array.isArray(m["labelIds"]) ? (m["labelIds"] as unknown[]).map(String) : [];
+  return { id, de: hv("from"), assunto: hv("subject") || "(sem assunto)", data: hv("date"), resumo: typeof m["snippet"] === "string" ? m["snippet"] : "", naoLida: labels.includes("UNREAD") };
+}
+export interface AgendaEventoView { id: string; titulo: string; inicio: string; fim: string; local: string; link: string }
+/** Um evento do Calendar → view (dateTime, ou date para o dia inteiro). */
+export function agendaEventoDeRaw(e: Record<string, unknown>): AgendaEventoView {
+  const dt = (v: unknown): string => { const o = v as { dateTime?: unknown; date?: unknown } | undefined; return typeof o?.dateTime === "string" ? o.dateTime : typeof o?.date === "string" ? o.date : ""; };
+  return { id: String(e["id"] ?? ""), titulo: typeof e["summary"] === "string" ? e["summary"] : "(sem título)", inicio: dt(e["start"]), fim: dt(e["end"]), local: typeof e["location"] === "string" ? e["location"] : "", link: typeof e["htmlLink"] === "string" ? e["htmlLink"] : "" };
+}
+/** `values` da Sheets → matriz de strings (células ausentes viram ""). */
+export function planilhaValoresDeRaw(j: Record<string, unknown>): string[][] {
+  return Array.isArray(j["values"]) ? (j["values"] as unknown[]).map((l) => (Array.isArray(l) ? l.map((c) => String(c ?? "")) : [])) : [];
 }

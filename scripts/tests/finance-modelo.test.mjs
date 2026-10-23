@@ -100,3 +100,40 @@ test("ROI: entradas como ganho direto (padrão) ou indireto; salário não conta
   assert.deepEqual([r.ganhoDiretoCent, r.ganhoIndiretoCent, r.roiDireto, r.roiTotal], [50000, 10000, 150, 200]);
   assert.equal(m.resumoMes([d], c.categorias, "2026-10").roiTotal, null);
 });
+
+test("moeda: parseValor detecta guaraní/real/dólar, casas por moeda; formatMoeda com símbolo e casas certas", () => {
+  assert.deepEqual(m.parseValor("R$ 48,90"), { valorCent: 4890, moeda: "BRL" });
+  assert.deepEqual(m.parseValor("US$ 20"), { valorCent: 2000, moeda: "USD" });
+  assert.deepEqual(m.parseValor("20 dólares"), { valorCent: 2000, moeda: "USD" });
+  assert.deepEqual(m.parseValor("₲ 10.000.000"), { valorCent: 10000000, moeda: "PYG" });
+  assert.deepEqual(m.parseValor("10.000.000 guaranis"), { valorCent: 10000000, moeda: "PYG" });
+  assert.equal(m.parseValor("₲ 10,5"), null); // guaraní não tem centavos
+  assert.deepEqual(m.parseValor("50000", "PYG"), { valorCent: 50000, moeda: "PYG" }); // sem marca usa o padrão
+  assert.equal(m.formatMoeda(10000000, "PYG"), "₲ 10.000.000");
+  assert.equal(m.formatMoeda(4890, "BRL"), "R$ 48,90");
+  assert.equal(m.formatMoeda(-2000, "USD"), "-US$ 20,00");
+});
+
+test("moeda: paraExib converte pela taxa (unidades por US$); mesma moeda não mexe", () => {
+  const t = m.TAXAS_PADRAO; // USD:1, BRL:5, PYG:7300
+  assert.equal(m.paraExib(500000, "BRL", t, "USD"), 100000); // R$ 5.000 → US$ 1.000
+  assert.equal(m.paraExib(7300000, "PYG", t, "USD"), 100000); // ₲ 7.300.000 → US$ 1.000
+  assert.equal(m.paraExib(2000, "USD", t, "USD"), 2000);
+  assert.equal(m.paraExib(100000, "USD", t, "BRL"), 500000); // US$ 1.000 → R$ 5.000
+});
+
+test("moeda: conta em guaraní; falar em outra moeda converte e guarda o original; resumo consolida em dólar", () => {
+  const c = base();
+  const py = m.novaConta({ nome: "Caixa Guaraní", moeda: "PYG" }, c.contas, 1, rnd);
+  assert.equal(py.moeda, "PYG");
+  c.contas.push(py);
+  const g = m.novoLancamento({ valor: "₲ 7.300.000", favorecido: "Mídia paga", categoria: "lazer", conta: py.key }, c);
+  assert.equal(g.moeda, "PYG"); assert.equal(g.valorCent, -7300000); assert.equal(g.moedaOriginal, undefined);
+  // falar em real numa conta guaraní: converte para guaraní e guarda o original
+  const r = m.novoLancamento({ valor: "R$ 50", favorecido: "x", categoria: "lazer", conta: py.key }, c);
+  assert.equal(r.moeda, "PYG"); assert.equal(r.moedaOriginal, "BRL"); assert.equal(r.valorOriginalCent, 5000);
+  assert.equal(r.valorCent, -73000); // R$ 50 = US$ 10 = ₲ 73.000
+  const conv = { taxas: m.TAXAS_PADRAO, moedaExib: "USD" };
+  const s = m.resumoMes([g, r], c.categorias, "2026-10", conv);
+  assert.equal(s.gastosCent, 101000); // US$ 1.000 + US$ 10 = US$ 1.010
+});

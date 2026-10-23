@@ -51,6 +51,15 @@ const FIREFOX_UA = (() => { const v = Number.parseInt(process.versions.chrome ??
  */
 const RETORNO_LOCAL = /^http:\/\/(?:localhost|127\.0\.0\.1):\d{2,5}\/\S*$/;
 const pareceRetorno = (url: string): boolean => RETORNO_LOCAL.test(url) && /[?&](code|token|state|oauth_token)=|callback|oauth|auth/i.test(url);
+/**
+ * Portas de loopback que são do PRÓPRIO app neste Mac (o OAuth do Google: contatos do CRM e a Conta Google, que
+ * sobem um http.Server em 127.0.0.1 na main). O retorno delas tem de chegar nesse servidor local, não ser entregue
+ * por SSH na máquina remota (isso é só para login de CLI que roda lá). Cada fluxo reserva a sua porta enquanto o
+ * servidor escuta e libera ao fechar.
+ */
+const portasLocaisDoApp = new Set<number>();
+export function reservarRetornoLocal(port: number): () => void { portasLocaisDoApp.add(port); return () => { portasLocaisDoApp.delete(port); }; }
+const portaDe = (url: string): number => { try { return Number(new URL(url).port) || 0; } catch { return 0; } }
 function entregarNaMaquina(host: string, url: string): Promise<{ code: number; location: string | null; erro: string | null }> {
   return sshMuxArgs(host).then((args) => new Promise((resolve) => {
     const b64 = Buffer.from(url, "utf8").toString("base64");
@@ -69,6 +78,7 @@ function retornoParaMaquina(wc: WebContents, host: string): void {
   const tratar = (ev: Electron.Event, arg?: unknown): void => {
     const url = typeof arg === "string" ? arg : (ev as unknown as { url?: string }).url ?? "";
     if (!pareceRetorno(url)) return;
+    if (portasLocaisDoApp.has(portaDe(url))) return; // loopback do próprio app (OAuth do Google): deixa chegar no servidor local do Mac
     ev.preventDefault();
     log(`[navegador ${host}] retorno de login para ${url.split("?")[0]}: entregando na máquina`);
     void entregarNaMaquina(host, url).then((r) => {

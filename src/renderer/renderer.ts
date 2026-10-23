@@ -1,4 +1,4 @@
-import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
+import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, CrmCaixaEscolha, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -26,6 +26,7 @@ import { updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk } from "./lib/pro.js";
 import { mountFinancePage } from "./finance/finance-page.js";
+import { mountContaGoogle } from "./conta-google/conta-google-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
@@ -772,7 +773,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:zoom-out", kind: "action", label: "Diminuir zoom da janela", detail: "Cmd+-", keywords: ["zoom", "reduzir", "menor", "diminuir", "fonte"] }, () => zoomWindow({ action: "step", delta: -1 }));
   add({ id: "a:zoom-reset", kind: "action", label: "Restaurar zoom da janela (100%)", detail: "Cmd+0", keywords: ["zoom", "restaurar", "100", "tamanho real"] }, () => zoomWindow({ action: "reset" }));
   add({ id: "a:claude-login", kind: "action", label: "Entrar no Claude Code nesta máquina", detail: "tutorial 1: link no navegador + código", keywords: ["login", "claude", "deslogado", "entrar"] }, () => enterClaude());
-  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes ou OpenClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); } });
+  add({ id: "a:whatsapp", kind: "action", label: "WhatsApp: estado e pareamento por QR", detail: waStatus?.present ? (waStatus.connected ? `conectado · ${fmtPhone(waStatus.number)}` : "desconectado") : "só em máquinas com Hermes, OpenClaw ou PicoClaw", keywords: ["whatsapp", "qr", "parear", "hermes", "openclaw", "picoclaw"] }, async () => { await refreshWhatsapp(); if (waStatus?.present) openWhatsapp(); else { const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes, OpenClaw ou PicoClaw).", "warn"); } });
   add({ id: "a:tailscale-off", kind: "action", label: "Tailscale: desligar verificação do SSH", detail: "edita a política do tailnet: check → accept", keywords: ["tailscale", "ssh", "check", "verificação"] }, async () => {
     const r = await window.meuBot.disableTailscaleCheck();
     const tab = active();
@@ -2062,7 +2063,7 @@ function runGuideAction(target: GuideTarget, t: Tutorial): void {
     else void goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");
     return;
   }
-  if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes ou OpenClaw).", "warn"); return; }
+  if (waStatus === null || !waStatus.present) { void refreshWhatsapp(); const tab = active(); if (tab !== null) addNotice(tab, "Esta máquina não tem agente com WhatsApp (Hermes, OpenClaw ou PicoClaw).", "warn"); return; }
   if (target === "wa-agent") { requestAgentPrepare(); return; }
   if (target === "wa-pair") {
     if (waPairing) return;
@@ -3375,8 +3376,101 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
   if (a === "groups-refresh") { void listarWaGroups(); return; }
   if (a === "group-who") { openWaGroup(g, true); return; }
   if (a === "group-off") { void setWaGroup(g.jid, { agente: "desligado" }); return; }
+  if (a === "group-clear") { void startWaGroupClear(g); return; }
   void ligarWaGroup(g);
 }
+/**
+ * "Limpar histórico" de um grupo, confirmado na própria lista (mesmo padrão da conversa). Grupo não tem contato
+ * único, então a caixa do CRM é escolhida aqui na primeira vez; o vínculo fica gravado e não pergunta de novo.
+ */
+type WaGroupClear = {
+  jid: string; nome: string;
+  fase: "plano" | "confirmar" | "escolher" | "rodando";
+  vazio: boolean; err: string | null;
+  caixas: CrmCaixaEscolha[]; boxKey: string | null; passo: string;
+};
+let waGroupClear: WaGroupClear | null = null;
+let waGroupClearNote: { jid: string; text: string; bad: boolean } | null = null;
+
+async function startWaGroupClear(g: WhatsappGroup): Promise<void> {
+  const base = { jid: g.jid, nome: waGroupTitle(g), caixas: [] as CrmCaixaEscolha[], boxKey: null, passo: "" };
+  waGroupClear = { ...base, fase: "plano", vazio: false, err: null };
+  waGroupClearNote = null;
+  renderSidebar();
+  try {
+    const plano = await window.meuBot.whatsappGroupClearPlan(g.jid);
+    if (waGroupClear?.jid !== g.jid) return;
+    waGroupClear = { ...base, fase: "confirmar", vazio: plano.sessoes === 0, err: plano.sessoes === 0 ? "O agente ainda não tem histórico neste grupo." : null };
+  } catch (err) {
+    if (waGroupClear?.jid !== g.jid) return;
+    waGroupClear = { ...base, fase: "confirmar", vazio: true, err: ipcErrorText(err) };
+  }
+  renderSidebar();
+}
+
+/** Guardar no CRM e só então limpar. Falhou o CRM, nada é limpo: a mesma regra da conversa de contato. */
+async function runWaGroupClear(c: WaGroupClear): Promise<void> {
+  const andar = (passo: string): void => { waGroupClear = { ...c, fase: "rodando", passo }; renderSidebar(); };
+  try {
+    let onde = "";
+    if (crmProprio()) {
+      andar("Guardando a conversa no CRM…");
+      const r = await window.meuBot.archiveWhatsappGroupToCrm(c.jid, c.boxKey ?? undefined);
+      if (waGroupClear?.jid !== c.jid) return;
+      // Falta escolher a caixa: volta a perguntar em vez de limpar. Nada foi guardado nem apagado.
+      if (r.precisaCaixa) {
+        waGroupClear = { ...c, fase: "escolher", caixas: r.caixas, boxKey: r.caixas[0]?.key ?? null, err: r.caixas.length === 0 ? "O CRM ainda não tem nenhuma caixa; crie uma antes." : null };
+        renderSidebar();
+        return;
+      }
+      if (!r.vazio) onde = r.box !== null ? ` Guardada na caixa "${r.box.nome}"${r.resumo ? " com resumo" : "; resumo não atualizado"}.` : "";
+    }
+    andar("Limpando o histórico…");
+    await window.meuBot.clearWhatsappGroup(c.jid);
+    waGroupClear = null;
+    waGroupClearNote = { jid: c.jid, text: `Histórico do grupo limpo.${onde}`, bad: false };
+    void listarWaGroups();
+  } catch (err) {
+    if (waGroupClear?.jid !== c.jid) return;
+    waGroupClear = { ...c, fase: "confirmar", err: ipcErrorText(err) };
+  }
+  renderSidebar();
+}
+
+/** A caixa embaixo do grupo: confirmação, escolha da caixa do CRM, andamento e erro. */
+function waGroupClearBox(c: WaGroupClear): HTMLElement {
+  const box = el("div", "wa-clear");
+  if (c.fase === "plano") { box.append(el("span", "wa-clear-text", "Consultando…")); return box; }
+  if (c.fase === "rodando") { box.append(el("span", "wa-clear-text", c.passo)); return box; }
+  const acoes = el("div", "wa-clear-actions");
+  const cancelar = el("button", "btn", "Cancelar"); cancelar.type = "button";
+  cancelar.addEventListener("click", () => { waGroupClear = null; renderSidebar(); });
+
+  if (c.fase === "escolher") {
+    box.append(el("strong", "", `Em qual caixa guardar "${c.nome}"?`));
+    box.append(el("span", "wa-clear-text", "Este grupo ainda não está ligado a nenhuma caixa do CRM. Escolha uma: da próxima vez não pergunto mais."));
+    if (c.err !== null) box.append(el("span", "wa-clear-text wa-clear-err", c.err));
+    const sel = el("select", "wa-clear-select") as HTMLSelectElement;
+    for (const k of c.caixas) { const o = el("option", "", k.pipeline !== null ? `${k.nome} · ${k.pipeline}` : k.nome) as HTMLOptionElement; o.value = k.key; sel.append(o); }
+    sel.value = c.boxKey ?? "";
+    sel.addEventListener("change", () => { waGroupClear = { ...c, boxKey: sel.value }; });
+    if (c.caixas.length > 0) box.append(sel);
+    const go = el("button", "btn btn-bad", "Guardar e limpar"); go.type = "button"; go.disabled = c.caixas.length === 0;
+    go.addEventListener("click", () => { void runWaGroupClear({ ...c, boxKey: sel.value || c.boxKey }); });
+    acoes.append(cancelar, go); box.append(acoes);
+    return box;
+  }
+
+  box.append(el("strong", "", `Limpar o histórico de "${c.nome}"?`));
+  box.append(el("span", "wa-clear-text", "O agente esquece o que foi conversado neste grupo e recomeça do zero. As mensagens no WhatsApp das pessoas não mudam."));
+  if (crmProprio()) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para uma caixa do CRM (transcrição + resumo); se não for guardada, nada é limpo."));
+  if (c.err !== null) box.append(el("span", "wa-clear-text wa-clear-err", c.err));
+  acoes.append(cancelar);
+  if (!c.vazio) { const go = el("button", "btn btn-bad", "Limpar"); go.type = "button"; go.addEventListener("click", () => { void runWaGroupClear(c); }); acoes.append(go); }
+  box.append(acoes);
+  return box;
+}
+
 /** Área "Grupos (N)" no fim da lista do WhatsApp: recolhível; cada grupo com o selo do agente e o menu "…". */
 function waGroupsSection(q: string): HTMLElement[] {
   const out: HTMLElement[] = [];
@@ -3419,6 +3513,8 @@ function waGroupsSection(q: string): HTMLElement[] {
     item.title = "Option+clique: abre ao lado (tela dividida)";
     item.addEventListener("click", (ev) => openWaGroup(g, false, ev.altKey));
     out.push(item);
+    if (waGroupClear?.jid === g.jid) out.push(waGroupClearBox(waGroupClear));
+    else if (waGroupClearNote?.jid === g.jid) out.push(el("div", `wa-archive-note${waGroupClearNote.bad ? " bad" : ""}`, waGroupClearNote.text));
   }
   return out;
 }
@@ -3864,7 +3960,7 @@ function paintWhatsapp(): void {
   // Ponto verde conectado; cinza no resto (limpo: vermelho só assusta, e o clique já leva à solução).
   waLine.className = `wa-line ${st.connected ? "on" : ""}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
-  const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : "WhatsApp";
+  const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : st.gateway === "picoclaw" ? "WhatsApp (PicoClaw)" : "WhatsApp";
   if (!st.ready) {
     waLine.replaceChildren(el("span", "dot"), el("span", "", `${via} · sem configurar`));
     waStatusEl.textContent = `${st.agent}.\nFalta:\n${(st.missing ?? "?").split("\n").map((l) => `• ${l}`).join("\n")}`;
@@ -5755,6 +5851,9 @@ function navOpenPopup(id: string, url: string, anchor: HTMLElement, proprioFecha
   const fitSoon = (): void => { for (const ms of [0, 150, 500, 1500]) setTimeout(() => { void fit(); }, ms); };
   wv.addEventListener("dom-ready", fitSoon);
   wv.addEventListener("did-finish-load", fitSoon);
+  // O conteúdo muda depois de aberto (o Autenticador mostra o formulário ao achar o QR): continua medindo enquanto o
+  // popup estiver aberto, como o Chrome, que redimensiona o popup quando o documento cresce ou encolhe.
+  const acompanhar = window.setInterval(() => { if (navPopupFor !== id || !wv.isConnected) { window.clearInterval(acompanhar); return; } void fit(); }, 400);
   paintNavActions();
 }
 const NAV_POPUP_MEASURE_JS = `(() => {
@@ -7087,6 +7186,8 @@ void (async () => {
   { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
+  const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot });
+  $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
   financePage = mountFinancePage({
     panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked,
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },

@@ -5,6 +5,14 @@ export type Theme = "system" | "light" | "dark";
 /** Quem usa uma aba do Navegador ou um terminal: conversa do meu-bot, conversa do WhatsApp ou o Claude Code deste Mac. */
 export type OrigemDono = "meu-bot" | "whatsapp" | "claude-code";
 export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
+/** `foto`: a URL do Google, como veio. `fotoLocal`: a mesma imagem em data URL, baixada no main (a tela tem CSP `img-src 'self' data:`). */
+export interface GooglePerfil { sub: string; email: string | null; emailVerificado: boolean; nome: string | null; foto: string | null; fotoLocal: string | null }
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[] }
+export interface GmailMensagem { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }
+export interface GmailResumo { email: string | null; naoLidas: number; mensagens: GmailMensagem[] }
+export interface AgendaEvento { id: string; titulo: string; inicio: string; fim: string; local: string; link: string }
+export interface PlanilhaLeitura { intervalo: string; valores: string[][] }
+
 export type QuickEntryStatus = "registered" | "taken" | "invalid" | "disabled";
 
 /** Zoom da janela (interface inteira): um passo para cima/baixo, um nível exato ou voltar a 100%. */
@@ -359,11 +367,14 @@ export interface PickerInit {
 }
 
 /** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */
-export type Gateway = "hermes" | "openclaw";
+export type Gateway = "hermes" | "openclaw" | "picoclaw";
 
-/** WhatsApp do agente da máquina (Hermes: bridge em ~/.hermes/whatsapp; OpenClaw: `openclaw channels`). */
+/**
+ * WhatsApp do agente da máquina (Hermes: bridge em ~/.hermes/whatsapp; OpenClaw: `openclaw channels`;
+ * PicoClaw: canal `whatsapp_native` do ~/.picoclaw/config.json, sessão em store.db e /health do gateway).
+ */
 export interface WhatsappStatus {
-  /** A máquina tem um agente com WhatsApp (Hermes ou OpenClaw). */
+  /** A máquina tem um agente com WhatsApp (Hermes, OpenClaw ou PicoClaw). */
   present: boolean;
   gateway: Gateway | null;
   /** O que foi encontrado, para humanos: "OpenClaw 2026.9.9 em /usr/local/bin (global, todos os usuários)". */
@@ -545,8 +556,12 @@ export interface ObjectiveInfo {
 /** CRM próprio da máquina (meu-bot-crm): pipelines e o padrão do WhatsApp (null = nenhum: nada é anotado). */
 export interface CrmLocal { pipelines: { key: string; name: string; boxes: number }[]; padrao: string | null }
 /** Financeiro (produto meu-bot-finance), como GET /v1/finance/estado devolve; valores em centavos e já formatados. */
-export interface FinanceConta { key: string; nome: string; tipo: "corrente" | "poupanca" | "cartao" | "dinheiro" | "outra"; padrao: boolean; fechada: boolean; saldoInicialCent: number; saldoCent: number; saldo: string }
-export interface FinanceLancamento { id: string; data: string; valorCent: number; valor: string; favorecido: string; categoria: string; categoriaNome: string; conta: string | null; contaNome: string | null; status: "pendente" | "confirmado"; duvidas: string[]; origem: "whatsapp" | "foto" | "chat" | "app" | "agente"; notas?: string; duplicadoDe?: string; /** Linha da DRE prevista a que o lançamento pertence. */ linha?: string; linhaNome?: string; /** Foto do comprovante guardada na máquina (sha256). */ midia?: { sha256: string; nome: string } }
+/** Moedas do financeiro: real, guaraní, dólar. Os valores ficam em minor units (× 10^casas: BRL/USD 2, PYG 0). */
+export type FinanceMoeda = "BRL" | "PYG" | "USD";
+/** Config de moeda do sistema: taxas (unidades por 1 US$) e a moeda de exibição (padrão do sistema; a LV usa USD). */
+export interface FinanceConfig { taxas: Record<FinanceMoeda, number>; moedaExibicao: FinanceMoeda; moedas: FinanceMoeda[]; moedaInfo: Record<FinanceMoeda, { casas: number; simbolo: string }> }
+export interface FinanceConta { key: string; nome: string; tipo: "corrente" | "poupanca" | "cartao" | "dinheiro" | "outra"; moeda: FinanceMoeda; padrao: boolean; fechada: boolean; saldoInicialCent: number; saldoCent: number; saldo: string; /** Saldo convertido para a moeda de exibição do sistema. */ saldoExibCent: number; saldoExib: string }
+export interface FinanceLancamento { id: string; data: string; valorCent: number; moeda: FinanceMoeda; valor: string; /** Valor convertido para a moeda de exibição do sistema. */ valorExibCent: number; valorExib: string; /** Se a pessoa falou numa moeda diferente da conta, o original preservado. */ moedaOriginal?: FinanceMoeda; valorOriginalCent?: number; valorOriginal?: string; favorecido: string; categoria: string; categoriaNome: string; conta: string | null; contaNome: string | null; status: "pendente" | "confirmado"; duvidas: string[]; origem: "whatsapp" | "foto" | "chat" | "app" | "agente"; notas?: string; duplicadoDe?: string; /** Linha da DRE prevista a que o lançamento pertence. */ linha?: string; linhaNome?: string; /** Foto do comprovante guardada na máquina (sha256). */ midia?: { sha256: string; nome: string } }
 export interface FinanceResumo { mes: string; nome: string; gastosCent: number; rendaCent: number; saldoCent: number; gastos: string; renda: string; saldo: string; porCategoria: { key: string; nome: string; cent: number; valor: string }[]; total: number; pendencias: number; /** Retorno do investimento no mês: ganho direto (dinheiro que entrou) e indireto (estimado); ROI em % (null sem gasto). */ ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; ganhoDireto: string; ganhoIndireto: string; roiDireto: number | null; roiTotal: number | null; /** Até o fim do mês: investimento = orçamento (ou gasto no ritmo), ganhos no ritmo de hoje; mês passado = real. */ projecao: { gastosCent: number; gastos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; ganhosCent: number; ganhos: string; roiDireto: number | null; roiTotal: number | null; empateCent: number; empate: string; dia: number; diasMes: number; base: "real" | "orcamento" | "ritmo"; ganhosBase: "real" | "meta" | "ritmo" }; /** DRE prevista do mês: linhas recorrentes (custos certos e fontes de ganho), cada uma com previsto (null = a definir) e realizado. */ dre: { linhas: FinanceLinhaDre[]; aDefinir: string[]; custoPrevistoCent: number; ganhoDiretoPrevistoCent: number; ganhoIndiretoPrevistoCent: number; resultadoPrevistoCent: number; resultadoPrevisto: string }; /** Meta de ganhos do mês (expectativa; puxa só a projeção), herdada até mudar; null = sem meta. */ meta: { diretoCent: number; direto: string; indiretoCent: number; indireto: string; herdadoDe: string | null; notas: string | null } | null; /** Quanto a pessoa decidiu gastar no mês (herdado do último mês que tinha, até ela mudar); null = nunca definiu. */ orcamento: { cent: number; valor: string; herdadoDe: string | null; restanteCent: number; restante: string; usadoPct: number } | null; rendaPrevistaCent: number | null; fechadoEm: number | null; dinheiroInformadoEm: number | null }
 export interface FinanceEstado { instalado: boolean; hoje: string; mes: string; /** Desde o início: investido, ganhos e ROI (o retorno costuma vir depois do gasto). */ acumulado: { gastosCent: number; gastos: string; ganhosCent: number; ganhos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; roiDireto: number | null; roiTotal: number | null }; mesAnterior: string; contas: FinanceConta[]; resumo: FinanceResumo; pendencias: number; totalLancamentos: number; porOrigem: Record<string, number>; rendaInformada: boolean; orcamentoDefinido: boolean; dinheiroInformado: boolean; anteriorFechado: boolean; checklist: { id: string; titulo: string; feito: boolean }[]; seq: number }
 export type FinanceTipoLinha = "custo" | "ganho-direto" | "ganho-indireto";
@@ -631,6 +646,23 @@ export interface WhatsappArchive {
   aviso: string | null;
   /** Cópia no Google Drive: o caminho (meu-bot / máquina / WhatsApp / contato / arquivo); null = Google não conectado. */
   drive: string | null;
+}
+/** Caixa do CRM oferecida na escolha ao limpar um grupo pela primeira vez (as mais ativas primeiro). */
+export interface CrmCaixaEscolha { key: string; nome: string; pipeline: string | null }
+/**
+ * Resultado de guardar a conversa de um grupo no CRM. `precisaCaixa` = o grupo ainda não está ligado a nenhuma
+ * caixa e nenhuma foi escolhida: nada foi guardado nem limpo, a tela pergunta e chama de novo com a caixa.
+ */
+export interface WhatsappGroupArchive {
+  vazio: boolean;
+  precisaCaixa: boolean;
+  /** Caixas para oferecer na escolha; só vem preenchido quando `precisaCaixa`. */
+  caixas: CrmCaixaEscolha[];
+  box: { key: string; nome: string } | null;
+  arquivo: string | null;
+  mensagens: number;
+  resumo: boolean;
+  aviso: string | null;
 }
 /** De onde veio uma conversa do meu-bot criada a partir do WhatsApp: contato, quantas mensagens e até quando. */
 export interface WhatsappOrigin {
@@ -879,7 +911,7 @@ export interface StoredConversationView {
 }
 
 /** Menu "…" de um grupo na área "Grupos". */
-export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "groups-refresh";
+export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-clear" | "groups-refresh";
 export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
@@ -990,6 +1022,8 @@ export interface MainEvents {
   "browser:workspaces": NavWorkspaces;
   /** Zoom da janela mudou (atalho, menu Visualizar, paleta, Configurações ou outra janela); vale para todas. */
   "window:zoom-changed": ZoomState;
+  /** Conta Google deste Mac conectou/desconectou: a página Conta Google relê o estado. */
+  "google-conta:changed": GoogleContaStatus;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -1046,6 +1080,12 @@ export interface MeuBotSharedApi {
   archiveWhatsappToCrm(number: string): Promise<WhatsappArchive>;
   /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
   clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
+  /** O que "Limpar histórico" de um grupo vai zerar (0 = o agente nunca falou nele). */
+  whatsappGroupClearPlan(jid: string): Promise<{ sessoes: number }>;
+  /** Guarda a conversa do grupo no CRM antes de limpar. Sem `boxKey` e sem vínculo, devolve `precisaCaixa`. */
+  archiveWhatsappGroupToCrm(jid: string, boxKey?: string): Promise<WhatsappGroupArchive>;
+  /** Limpa na máquina o histórico do agente neste grupo. */
+  clearWhatsappGroup(jid: string): Promise<void>;
   /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
   markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
   /** Descobre o nome (pushname) de contatos sem nome lendo o histórico deles de uma vez (até 20) e guarda na máquina. Devolve só os achados. */
@@ -1059,6 +1099,15 @@ export interface MeuBotSharedApi {
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
+  /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
+  googleContaStatus(): Promise<GoogleContaStatus>;
+  googleContaConectar(): Promise<GoogleContaStatus>;
+  googleContaDesconectar(): Promise<GoogleContaStatus>;
+  gmailResumo(): Promise<GmailResumo>;
+  agendaProximos(dias?: number): Promise<AgendaEvento[]>;
+  agendaCriar(evento: { titulo: string; inicio: string; fim: string; descricao?: string }): Promise<AgendaEvento>;
+  planilhaLer(id: string, intervalo: string): Promise<PlanilhaLeitura>;
+  planilhaEscrever(id: string, intervalo: string, valores: string[][]): Promise<{ celulasAtualizadas: number }>;
   /** Zoom da janela (interface inteira, todas as janelas): Cmd+= / Cmd+- / Cmd+0 fora do Navegador, menu Visualizar, paleta. */
   zoomWindow(action: ZoomAction): Promise<ZoomState>;
   /** Fator de zoom desta janela agora (síncrono, do webFrame): para a barra de título compensar os semáforos já na primeira pintura. */
@@ -1187,8 +1236,11 @@ export interface MeuBotClientApi {
   /** A foto do comprovante de um lançamento (data URL), ou null se não está na máquina. */
   financeComprovante(sha256: string): Promise<string | null>;
   financeConfirmarTodas(): Promise<{ confirmados: number; restantes: number }>;
-  financeContaCriar(input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }): Promise<FinanceConta>;
+  financeContaCriar(input: { nome: string; tipo?: FinanceConta["tipo"]; moeda?: FinanceMoeda; saldoInicial?: string }): Promise<FinanceConta>;
   financeMes(mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void>;
+  /** Config de moeda do sistema: taxas (unidades por 1 US$) e a moeda de exibição. */
+  financeConfigLer(): Promise<FinanceConfig>;
+  financeConfig(patch: { taxas?: Record<string, number>; moedaExibicao?: FinanceMoeda }): Promise<FinanceConfig>;
   financeFecharMes(mes: string): Promise<void>;
   installFinance(): Promise<InstallBackendResult>;
   /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */

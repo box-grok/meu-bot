@@ -23,7 +23,8 @@ Tudo em pt-BR, respostas curtas.
   economizadas × valor da hora, custo evitado). Pergunte como o dono chegou no valor do indireto e anote em `--notas`.
 - `lancamentos [--mes AAAA-MM] [--status pendente] [--categoria c] [--busca "x"]` · `pendencias`
 - `confirmar <id|todas> [--categoria c]` · `descartar <id>` · `corrigir <id> [--valor V] [--categoria c] [--data d] [--conta c] [--favorecido "x"]`
-- `contas` · `conta-criar --nome "x" [--tipo corrente|poupanca|cartao|dinheiro|outra] [--saldo V]` · `conta-editar <conta> …`
+- `contas` · `conta-criar --nome "x" [--tipo corrente|poupanca|cartao|dinheiro|outra] [--moeda BRL|PYG|USD] [--saldo V]` · `conta-editar <conta> …`
+- **Moeda:** o `--valor` entende real, guaraní e dólar pelo texto: `--valor "₲ 50.000"`, `--valor "US$ 20"`, `--valor "R$ 48,90"`. Sem marca, usa a moeda da conta. Se falar numa moeda diferente da conta, o valor é convertido para a moeda da conta e o original fica guardado. O dono vê tudo na moeda de exibição do sistema (a LV vê em dólar); não converta na mão nem invente taxa.
 - `categorias` · `categoria-criar --nome "x" [--grupo "g"]`
 - `mes AAAA-MM [--orcamento V] [--renda-prevista V] [--dinheiro-informado sim]` · `fechar-mes [--mes AAAA-MM]`
   (orçamento = quanto o dono quer gastar no mês; vale para os meses seguintes até ele mudar)

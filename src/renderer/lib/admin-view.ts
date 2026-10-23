@@ -7,7 +7,7 @@ import { tutorialNumber } from "./tutoriais.js";
 
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
   { id: "install-backend", label: "Instalar o backend do meu-bot", confirm: "Confirmar? instala na conta dela (porta livre escolhida sozinha)" },
-  { id: "restart-gateway", label: "Reiniciar o gateway do OpenClaw", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
+  { id: "restart-gateway", label: "Reiniciar o gateway do WhatsApp (OpenClaw ou PicoClaw)", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
   { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
   { id: "transcription-off", label: "Desativar a transcrição de áudio", confirm: "Confirmar? o agente dela deixa de entender áudios" },
@@ -189,7 +189,7 @@ export function transcriptionNote(h: AdminHealth | null): string | null {
   if (h === null) return null;
   if (h.whatsapp === null) return h.share.whatsapp ? "Transcrição de áudio: a máquina não tem agente com WhatsApp." : "Transcrição de áudio: ela não compartilha o WhatsApp.";
   if (!h.whatsapp.present) return "Transcrição de áudio: a máquina não tem OpenClaw (a transcrição é do agente do WhatsApp dele).";
-  if (h.whatsapp.gateway !== "openclaw") return "Transcrição de áudio: só com OpenClaw (esta máquina usa Hermes).";
+  if (h.whatsapp.gateway !== "openclaw") return `Transcrição de áudio: só com OpenClaw (esta máquina usa ${h.whatsapp.gateway === "picoclaw" ? "PicoClaw" : "Hermes"}).`;
   return null;
 }
 

@@ -7,16 +7,18 @@
 // <versão> é a do package.json (a próxima estável; "meu-bot 2.0" = `npm version 2.0.0 --no-git-tag-version`). Exige
 // `gh` logado (`gh auth login`) e a árvore limpa. Gera out/<app>-<v>-<arch>.zip com `ditto -c -k --keepParent`
 // (preserva symlinks e a assinatura). O .dmg continua sendo o instalador da primeira vez; a release só precisa dos .zip.
-// Cada zip sai assinado com a chave Ed25519 da release (npm run chave-release) num <zip>.sig: o app só instala o que
-// confere com a chave pública embutida (UPDATE_PUBLIC_KEY), como o SUPublicEDKey do Sparkle no Brave.
+// Cada zip sai assinado com a chave Ed25519 principal (no Chaveiro: o macOS pede a aprovação do dono) num <zip>.sig, e
+// cada .sig é conferido com UPDATE_PUBLIC_KEYS do build antes do upload: o app só instala o que confere com uma delas,
+// como o SUPublicEDKey do Sparkle no Brave. Emergência (principal perdida ou vazada, troca de chave):
+// `-- --emergencia --chave-arquivo <arquivo>` assina com a reserva (scripts/chave-release.mjs, skill publicar).
 // Antes de empacotar, recusa publicar um componente da máquina (backend, financeiro, CRM, guarda) que mudou desde a
 // última release sem subir a versão: o seletor só atualiza para cima, então a mudança nunca chegaria às máquinas.
-import { createPrivateKey, sign } from "node:crypto";
+import { sign } from "node:crypto";
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { CHAVE_RELEASE } from "./chave-release.mjs";
+import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
 import { componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
@@ -36,8 +38,23 @@ if (!staging) {
   if (recusa !== null) { console.error(`✗ ${recusa}`); process.exit(64); }
 }
 
-if (!existsSync(CHAVE_RELEASE)) { console.error(`✗ falta a chave da release (${CHAVE_RELEASE}): rode \`npm run chave-release\` (uma vez) e cole a pública em UPDATE_PUBLIC_KEY`); process.exit(64); }
-const chave = createPrivateKey(readFileSync(CHAVE_RELEASE));
+// A chave vem do Chaveiro (o macOS pede aprovação) antes de qualquer trabalho: negou, nada é publicado.
+const iArq = process.argv.indexOf("--chave-arquivo");
+let chave;
+if (iArq >= 0) {
+  if (!process.argv.includes("--emergencia")) { console.error("✗ --chave-arquivo é o caminho de emergência (troca de chave): confirme com --emergencia"); process.exit(64); }
+  try { chave = lerChaveArquivo(process.argv[iArq + 1] ?? ""); } catch (e) { console.error(`✗ não li a chave do arquivo: ${e.message}`); process.exit(64); }
+  console.log("⚠ emergência: assinando com a chave do arquivo, não com a principal do Chaveiro");
+} else {
+  step("lendo a chave da release no Chaveiro (aprove na janela do macOS)");
+  chave = lerChavePrincipal();
+  if (chave === null) {
+    console.error(existsSync(CHAVE_RELEASE_ANTIGA)
+      ? `✗ a chave ainda está no arquivo antigo (${CHAVE_RELEASE_ANTIGA}): rode \`npm run chave-release -- --migrar\``
+      : "✗ não li a chave principal no Chaveiro (acesso negado, ou ela não está lá). Perdida? Veja \"Chave perdida ou vazada\" na skill publicar");
+    process.exit(64);
+  }
+}
 
 // A tabela de produtos e os componentes da máquina vêm do build (dist/main): compila o main antes de os ler.
 step("compilando para ler a tabela de produtos");
@@ -68,7 +85,11 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   const zip = join("out", `${name}-${version}-${arch}.zip`);
   rmSync(zip, { force: true });
   execFileSync("ditto", ["-c", "-k", "--keepParent", app, zip]);
-  writeFileSync(`${zip}.sig`, `${sign(null, readFileSync(zip), chave).toString("base64")}\n`);
+  const sig = sign(null, readFileSync(zip), chave).toString("base64");
+  // Nunca publicar o que os apps recusariam: a assinatura precisa conferir com UPDATE_PUBLIC_KEYS deste build.
+  const { verificaAssinatura } = createRequire(import.meta.url)("../dist/main/updater-core.js");
+  if (!verificaAssinatura(readFileSync(zip), sig)) { console.error("✗ a assinatura não confere com nenhuma chave de UPDATE_PUBLIC_KEYS: nada foi publicado"); process.exit(1); }
+  writeFileSync(`${zip}.sig`, `${sig}\n`);
   zips.push(zip, `${zip}.sig`);
 }
 step(`criando a release ${tag}`);

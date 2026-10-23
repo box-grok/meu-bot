@@ -4,7 +4,7 @@
  * mês por categoria. Os números moram na máquina (/v1/finance pelo túnel, via main › finance-local.ts); aqui só se
  * mostra e se pede. Fábrica com dependências explícitas, como admin/produtos-page.ts.
  */
-import type { BackendModel, FinanceLinhaDre, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
+import type { BackendModel, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -15,7 +15,7 @@ export interface FinancePageDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "installFinance" | "financePedir" | "on">;
+  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "financeConfigLer" | "financeConfig" | "installFinance" | "financePedir" | "on">;
   host(): string;
   license(): LicenseView | null;
   /** A licença desta janela já foi lida (antes disso, nada de bloqueio precipitado). */
@@ -28,12 +28,20 @@ export interface FinancePageDeps {
 const ORIGEM: Record<string, string> = { whatsapp: "WhatsApp", foto: "foto", chat: "chat", app: "app", agente: "agente" };
 const TIPOS: [string, string][] = [["corrente", "Conta corrente"], ["cartao", "Cartão de crédito"], ["poupanca", "Poupança"], ["dinheiro", "Dinheiro vivo"], ["outra", "Outra"]];
 const dataCurta = (d: string): string => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
-const brl = (cent: number): string => (cent / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export function mountFinancePage(deps: FinancePageDeps): { open: () => void; refresh: () => Promise<void>; info: () => FinanceInfo | null } {
   const panel = el("section", "acervo-panel finance-panel"); panel.hidden = true;
   deps.panelsEl.append(panel);
   let info: FinanceInfo | null = null;
+  // Config de moeda do sistema (taxas + moeda de exibição). A LV exibe em dólar; o padrão é real.
+  let cfg: FinanceConfig | null = null;
+  const MOEDA_INFO_FB: Record<FinanceMoeda, { casas: number; simbolo: string }> = { BRL: { casas: 2, simbolo: "R$" }, PYG: { casas: 0, simbolo: "₲" }, USD: { casas: 2, simbolo: "US$" } };
+  const infoMoeda = (m: FinanceMoeda): { casas: number; simbolo: string } => cfg?.moedaInfo?.[m] ?? MOEDA_INFO_FB[m] ?? MOEDA_INFO_FB.BRL;
+  const moedaExib = (): FinanceMoeda => cfg?.moedaExibicao ?? "BRL";
+  const fmtMoeda = (cent: number, m: FinanceMoeda): string => { const { casas, simbolo } = infoMoeda(m); const mult = 10 ** casas; const n = Math.abs(Math.trunc(cent)); const inteiro = Math.floor(n / mult).toLocaleString("pt-BR"); const dec = casas > 0 ? `,${String(n % mult).padStart(casas, "0")}` : ""; return `${cent < 0 ? "-" : ""}${simbolo} ${inteiro}${dec}`; };
+  const fmt = (cent: number): string => fmtMoeda(cent, moedaExib());
+  // Minor units → texto editável na moeda (BRL/USD 2 casas, PYG 0): para os campos de valor.
+  const centParaInput = (cent: number, m: FinanceMoeda): string => { const casas = infoMoeda(m).casas; const mult = 10 ** casas; return casas > 0 ? (Math.abs(cent) / mult).toFixed(casas).replace(".", ",") : String(Math.round(Math.abs(cent) / mult)); };
   let ultimos: FinanceLancamento[] = [];
   let pendentes: FinanceLancamento[] = [];
   let categorias: FinanceCategoria[] = [];
@@ -45,6 +53,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     if (!financeOk(deps.license(), deps.host())) { info = null; deps.onInfo(null); render(); return; }
     try {
       info = await deps.api.financeInfo();
+      cfg = await deps.api.financeConfigLer().catch(() => cfg);
       if (info.estado !== null) {
         const [l, p, c] = await Promise.all([deps.api.financeLancamentos({ limite: 15 }), deps.api.financeLancamentos({ status: "pendente", limite: 100 }), categorias.length > 0 ? Promise.resolve(categorias) : deps.api.financeCategorias()]);
         ultimos = l.lancamentos; pendentes = p.lancamentos; categorias = c;
@@ -101,7 +110,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
       else { const img = el("img", "finance-foto"); img.src = foto; img.alt = `Comprovante: ${l.midia.nome}`; img.addEventListener("click", () => img.classList.toggle("grande")); box.append(img); }
     }
     const f = el("div", "admin-actions");
-    const valor = input("48,90", (Math.abs(l.valorCent) / 100).toFixed(2).replace(".", ","), 20);
+    const valor = input("48,90", centParaInput(l.valorCent, l.moeda), 20);
     const data = input("dd/mm/aaaa", dataBr(l.data), 12);
     const fav = input("onde / de quem", l.favorecido);
     const cat = selectCategoria(l.categoria, l.valorCent > 0);
@@ -115,7 +124,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     const acoes = el("div", "admin-actions");
     acoes.append(btn("Salvar", "btn-primary", () => {
       const patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string; linha?: string | null } = {};
-      if (valor.value.trim() !== "" && valor.value.trim() !== (Math.abs(l.valorCent) / 100).toFixed(2).replace(".", ",")) patch.valor = valor.value.trim();
+      if (valor.value.trim() !== "" && valor.value.trim() !== centParaInput(l.valorCent, l.moeda)) patch.valor = valor.value.trim();
       if (data.value.trim() !== dataBr(l.data)) patch.data = data.value.trim();
       if (fav.value.trim() !== l.favorecido) patch.favorecido = fav.value.trim();
       if (cat.value !== l.categoria) patch.categoria = cat.value;
@@ -143,7 +152,9 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     main.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); alternar(); } });
     main.append(el("span", "finance-data", dataCurta(l.data)), el("strong", "finance-fav", l.favorecido || "(sem nome)"), el("span", "hint finance-meta", [l.categoriaNome, l.contaNome, ORIGEM[l.origem] ?? l.origem].filter(Boolean).join(" · ")));
     if (l.midia) main.append(el("span", "finance-clip", "📎"));
-    row.append(main, el("span", `finance-valor ${l.valorCent < 0 ? "gasto" : "renda"}`, l.valor));
+    const vcell = el("span", `finance-valor ${l.valorCent < 0 ? "gasto" : "renda"}`, l.valorExib);
+    if (l.moeda !== moedaExib() || l.moedaOriginal) vcell.title = `registrado: ${l.moedaOriginal ? l.valorOriginal : l.valor}`;
+    row.append(main, vcell);
     if (comAcoes) {
       const acoes = el("div", "finance-acoes");
       if (l.duplicadoDe) acoes.append(el("span", "hint bad-hint", "parece repetido"));
@@ -222,7 +233,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     const orcTile = r.orcamento ?? null;
     const tiles: [string, string, string, string][] = [
       ["Gastos (investido)", r.gastos, "gasto", orcTile ? `${orcTile.usadoPct}% do orçamento` : ""],
-      ["Orçamento do mês", orcTile ? orcTile.valor : "—", "", orcTile ? (orcTile.restanteCent >= 0 ? `restam ${orcTile.restante}` : `passou ${brl(-orcTile.restanteCent)}`) : "defina no checklist"],
+      ["Orçamento do mês", orcTile ? orcTile.valor : "—", "", orcTile ? (orcTile.restanteCent >= 0 ? `restam ${orcTile.restante}` : `passou ${fmt(-orcTile.restanteCent)}`) : "defina no checklist"],
       ["Ganhos", r.ganhos ?? "R$ 0,00", "renda", `diretos ${r.ganhoDireto ?? "R$ 0,00"} · indiretos ${r.ganhoIndireto ?? "R$ 0,00"}`],
       // Projetado até o fim do mês (investimento = orçamento; ganhos no ritmo de hoje); embaixo, o de hoje para comparar.
       ...(r.projecao ? [["ROI do mês projetado", roiTxt(r.projecao.roiTotal), (r.projecao.roiTotal ?? 0) < 0 ? "gasto" : "renda", `hoje ${roiTxt(r.roiTotal ?? null)} · projetado só diretos ${roiTxt(r.projecao.roiDireto)} · ${r.projecao.base === "real" ? "mês encerrado: é o real" : `até o dia ${r.projecao.diasMes}: investimento ${r.projecao.gastos}${r.projecao.base === "orcamento" ? " (o orçamento)" : " (no ritmo de hoje)"}, ganhos ${r.projecao.ganhos} no ritmo de hoje`}`] as [string, string, string, string]] : [["ROI do mês", roiTxt(r.roiTotal ?? null), (r.roiTotal ?? 0) < 0 ? "gasto" : "renda", `só diretos ${roiTxt(r.roiDireto ?? null)}`] as [string, string, string, string]]),
@@ -235,7 +246,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     if (o !== null) {
       const linha = el("div", "finance-orcamento");
       const bar = el("div", `finance-bar${o.usadoPct >= 100 ? " estourou" : o.usadoPct >= 80 ? " alerta" : ""}`); const fill = el("span", "finance-bar-fill"); fill.style.width = `${Math.min(100, o.usadoPct)}%`; bar.append(fill);
-      linha.append(el("span", "", `Orçamento ${o.valor} · ${o.usadoPct}% usado · ${o.restanteCent >= 0 ? `restam ${o.restante}` : `passou ${brl(-o.restanteCent)}`}`), bar);
+      linha.append(el("span", "", `Orçamento ${o.valor} · ${o.usadoPct}% usado · ${o.restanteCent >= 0 ? `restam ${o.restante}` : `passou ${fmt(-o.restanteCent)}`}`), bar);
       mc.append(linha);
     } else mc.append(el("p", "hint", "Sem orçamento ainda: diga quanto quer gastar no mês (no checklist) e o agente acompanha e avisa antes de estourar."));
     const ac = e.acumulado;
@@ -247,20 +258,33 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     for (const c of gastosCat) {
       const linha = el("div", "finance-bar-row");
       const bar = el("div", "finance-bar"); const fill = el("span", "finance-bar-fill"); fill.style.width = `${Math.round((-c.cent / maior) * 100)}%`; bar.append(fill);
-      linha.append(el("span", "finance-bar-nome", c.nome), bar, el("span", "finance-bar-valor", brl(-c.cent)));
+      linha.append(el("span", "finance-bar-nome", c.nome), bar, el("span", "finance-bar-valor", fmt(-c.cent)));
       mc.append(linha);
     }
 
     // Contas.
-    const total = e.contas.reduce((n, c) => n + c.saldoCent, 0);
-    const cc = dobra("contas", "Contas do Agente", e.contas.length === 0 ? "nenhuma ainda" : `${e.contas.length} · saldo ${brl(total)}`);
+    const total = e.contas.reduce((n, c) => n + c.saldoExibCent, 0);
+    const cc = dobra("contas", "Contas do Agente", e.contas.length === 0 ? "nenhuma ainda" : `${e.contas.length} · saldo ${fmt(total)}`);
     if (e.contas.length === 0) cc.append(el("p", "hint", "Nenhuma conta ainda. Crie as que você usa (banco, cartão, dinheiro vivo): o agente lança em cada uma pelo jeito de pagar."));
-    for (const c of e.contas) { const row = el("div", "finance-row"); const m = el("div", "finance-row-main"); m.append(el("strong", "finance-fav", c.nome), el("span", "hint finance-meta", `${TIPOS.find(([k]) => k === c.tipo)?.[1] ?? c.tipo}${c.padrao ? " · padrão" : ""}`)); row.append(m, el("span", `finance-valor ${c.saldoCent < 0 ? "gasto" : "renda"}`, c.saldo)); cc.append(row); }
+    for (const c of e.contas) { const row = el("div", "finance-row"); const m = el("div", "finance-row-main"); m.append(el("strong", "finance-fav", c.nome), el("span", "hint finance-meta", `${TIPOS.find(([k]) => k === c.tipo)?.[1] ?? c.tipo} · ${c.moeda}${c.padrao ? " · padrão" : ""}`)); const vc = el("span", `finance-valor ${c.saldoExibCent < 0 ? "gasto" : "renda"}`, c.saldoExib); if (c.moeda !== moedaExib()) vc.title = `na moeda da conta: ${c.saldo}`; row.append(m, vc); cc.append(row); }
     const nova = el("div", "admin-actions");
     const nome = input("Nubank, Itaú, Carteira…"); const tipo = el("select"); tipo.disabled = busy; for (const [k, t] of TIPOS) { const o = el("option", "", t); o.value = k; tipo.append(o); }
+    const moedaSel = el("select"); moedaSel.disabled = busy; for (const mo of (cfg?.moedas ?? ["BRL", "PYG", "USD"])) { const o = el("option", "", `${mo} · ${infoMoeda(mo).simbolo}`); o.value = mo; if (mo === "BRL") o.selected = true; moedaSel.append(o); }
     const saldo = input("saldo hoje (opcional)", "", 20);
-    nova.append(field("Nova conta", nome), field("Tipo", tipo), field("Saldo", saldo), btn("Criar conta", "btn-ghost", () => { if (nome.value.trim() === "") return; void agir(() => deps.api.financeContaCriar({ nome: nome.value, tipo: tipo.value as never, ...(saldo.value.trim() !== "" ? { saldoInicial: saldo.value } : {}) }), "conta criada"); }));
+    nova.append(field("Nova conta", nome), field("Tipo", tipo), field("Moeda", moedaSel), field("Saldo", saldo), btn("Criar conta", "btn-ghost", () => { if (nome.value.trim() === "") return; void agir(() => deps.api.financeContaCriar({ nome: nome.value, tipo: tipo.value as never, moeda: moedaSel.value as FinanceMoeda, ...(saldo.value.trim() !== "" ? { saldoInicial: saldo.value } : {}) }), "conta criada"); }));
     cc.append(nova);
+
+    // Moeda do sistema: em qual moeda você vê tudo (US$ na LV) e as taxas que convertem (unidades por 1 US$).
+    const naoUsd = (cfg?.moedas ?? ["BRL", "PYG", "USD"]).filter((x) => x !== "USD");
+    const moedaCard = dobra("moeda", "Moeda & taxas", `vê em ${moedaExib()}${naoUsd.length > 0 ? ` · ${naoUsd.map((x) => `1 US$ = ${(cfg?.taxas?.[x] ?? 0).toLocaleString("pt-BR")} ${x}`).join(" · ")}` : ""}`);
+    moedaCard.append(el("p", "hint", "O financeiro aceita gasto em real, guaraní ou dólar; aqui você escolhe em qual moeda ver tudo. A conversão usa as taxas abaixo, que você define — nada é buscado na internet."));
+    const moedaForm = el("div", "admin-actions");
+    const exibSel = el("select"); exibSel.disabled = busy; for (const mo of (cfg?.moedas ?? ["BRL", "PYG", "USD"])) { const o = el("option", "", `${mo} · ${infoMoeda(mo).simbolo}`); o.value = mo; if (mo === moedaExib()) o.selected = true; exibSel.append(o); }
+    const taxaInputs: Partial<Record<FinanceMoeda, HTMLInputElement>> = {};
+    const campos: HTMLElement[] = [field("Ver em", exibSel)];
+    for (const mo of naoUsd) { const ti = input(`${mo} por 1 US$`, cfg?.taxas?.[mo] ? String(cfg.taxas[mo]) : "", 15); taxaInputs[mo] = ti; campos.push(field(`1 US$ = ? ${mo}`, ti)); }
+    moedaForm.append(...campos, btn("Salvar moeda", "btn-ghost", () => { const taxas: Record<string, number> = {}; for (const [mo, ti] of Object.entries(taxaInputs)) { const v = Number(String(ti?.value ?? "").replace(/\./g, "").replace(",", ".")); if (Number.isFinite(v) && v > 0) taxas[mo] = v; } void agir(() => deps.api.financeConfig({ moedaExibicao: exibSel.value as FinanceMoeda, taxas }), "moeda atualizada"); }));
+    moedaCard.append(moedaForm);
 
     // Lançar à mão.
     const lc = dobra("lancar", "Lançar à mão", "o agente lança pelo WhatsApp e pelo chat");
@@ -293,7 +317,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
         if (ln.notas && linhaAberta !== ln.key) tabela.append(el("div", "finance-dre-nota hint", ln.notas));
         if (linhaAberta === ln.key) {
           const ed = el("div", "admin-actions finance-dre-edicao");
-          const vn = input("nome", ln.nome); const vv = input("a definir", ln.previstoCent === null ? "" : (ln.previstoCent / 100).toFixed(2).replace(".", ","), 20); const vt = el("textarea"); vt.rows = 3; vt.value = ln.notas ?? ""; vt.placeholder = "anotações: por que essa linha existe, de onde vem o valor"; vt.className = "finance-dre-notas";
+          const vn = input("nome", ln.nome); const vv = input("a definir", ln.previstoCent === null ? "" : centParaInput(ln.previstoCent, moedaExib()), 20); const vt = el("textarea"); vt.rows = 3; vt.value = ln.notas ?? ""; vt.placeholder = "anotações: por que essa linha existe, de onde vem o valor"; vt.className = "finance-dre-notas";
           ed.append(field("Nome", vn), field("Previsto por mês", vv), field("Anotações", vt), btn("Salvar", "btn-primary", () => { linhaAberta = null; void agir(() => deps.api.financeLinhaSalvar({ key: ln.key, nome: vn.value, tipo: ln.tipo, valor: vv.value.trim() === "" ? null : vv.value, notas: vt.value }), "linha salva"); }));
           const rm = btn("Remover", "btn-ghost", () => { deps.armConfirm(rm, "Confirmar? tira a linha da DRE", () => { linhaAberta = null; void agir(() => deps.api.financeLinhaRemover(ln.key), "linha removida"); }); });
           ed.append(rm, btn("Fechar", "btn-ghost", () => { linhaAberta = null; render(); }));
@@ -316,7 +340,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     if (ultimos.length === 0) uc.append(el("p", "hint", "Nada lançado ainda."));
     for (const l of ultimos) uc.append(linhaLanc(l, false));
     // Ordem: o mês e o que o agente lançou primeiro; depois o que depende da pessoa; contas e lançar à mão no fim.
-    panel.append(mc, dreCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, lc);
+    panel.append(mc, dreCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, moedaCard, lc);
   }
 
   const page = deps.definePage("financas", "Finanças", panel, () => { render(); void refresh(); });

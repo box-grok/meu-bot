@@ -33,8 +33,8 @@ test("waMenuState saneia o payload", () => {
 test("menu do grupo: ligar (desligado) ou desligar, quem pode conversar, copiar ID e atualizar a lista", async () => {
   const { waGroupMenuTemplate, waGroupAgente } = await import("../../dist/main/wa-menu.js");
   const acts = (a) => waGroupMenuTemplate(a).filter((e) => !("separator" in e)).map((e) => e.action);
-  assert.deepEqual(acts("desligado"), ["group-on", "group-who", "group-copy-id", "groups-refresh"]);
-  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "groups-refresh"]);
+  assert.deepEqual(acts("desligado"), ["group-on", "group-who", "group-copy-id", "group-clear", "groups-refresh"]);
+  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "group-clear", "groups-refresh"]);
   assert.equal(waGroupAgente({ state: { agente: "sempre" } }), "sempre");
   assert.equal(waGroupAgente({ state: { agente: "x" } }), "desligado");
   assert.equal(waGroupAgente(null), "desligado");

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { pickUpdate, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEY, parsePendente, decideRollback } = createRequire(import.meta.url)("../../dist/main/updater-core.js");
+const { pickUpdate, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback } = createRequire(import.meta.url)("../../dist/main/updater-core.js");
 import { generateKeyPairSync, sign } from "node:crypto";
 
 // Cada zip publicado vem com o .sig ao lado (o release assina); sem ele não há candidata (teste próprio abaixo).
@@ -99,7 +99,22 @@ test("verificaAssinatura: só o zip que a chave da release assinou", () => {
   assert.equal(verificaAssinatura(zip, "", pub), false);
   assert.equal(verificaAssinatura(zip, sig, "lixo"), false, "chave inválida não lança");
   assert.equal(verificaAssinatura(zip, sig), false, "a chave embutida não é a do teste");
-  assert.match(UPDATE_PUBLIC_KEY, /^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/, "SPKI de uma chave Ed25519");
+  for (const k of UPDATE_PUBLIC_KEYS) assert.match(k.chave, /^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$/, `${k.id}: SPKI de uma chave Ed25519`);
+});
+
+test("verificaAssinatura com várias chaves: a principal ou a reserva servem; outra, não", () => {
+  const par = () => { const { privateKey, publicKey } = generateKeyPairSync("ed25519"); return { priv: privateKey, pub: publicKey.export({ type: "spki", format: "der" }).toString("base64") }; };
+  const principal = par(), reserva = par(), intrusa = par();
+  const zip = Buffer.from("release");
+  const assina = (k) => sign(null, zip, k.priv).toString("base64");
+  const lista = [principal.pub, reserva.pub];
+  assert.equal(verificaAssinatura(zip, assina(principal), lista), true);
+  assert.equal(verificaAssinatura(zip, assina(reserva), lista), true, "a reserva vale (troca de chave sem reinstalar)");
+  assert.equal(verificaAssinatura(zip, assina(intrusa), lista), false);
+  assert.equal(verificaAssinatura(zip, assina(principal), []), false, "lista vazia não aceita nada");
+  assert.equal(verificaAssinatura(zip, assina(reserva), ["lixo", reserva.pub]), true, "uma chave inválida na lista não derruba as outras");
+  assert.deepEqual(UPDATE_PUBLIC_KEYS.map((k) => k.id), ["principal-2026-10", "reserva-2026-10"]);
+  assert.equal(new Set(UPDATE_PUBLIC_KEYS.map((k) => k.chave)).size, UPDATE_PUBLIC_KEYS.length, "sem chave repetida");
 });
 
 test("rollback: a nova tem duas aberturas para ficar de pé; na terceira volta; outra versão só limpa", () => {

@@ -20,7 +20,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { CATEGORIAS_PADRAO, LINHAS_PADRAO, MES_RE, mesDe } = require('./finance-modelo');
+const { CATEGORIAS_PADRAO, LINHAS_PADRAO, MES_RE, mesDe, MOEDA_PADRAO, MOEDA_EXIB_PADRAO, taxasNormalizadas, moedaValida } = require('./finance-modelo');
 
 const VERSAO = 1;
 const FEED_MAX = 20000;
@@ -45,11 +45,16 @@ function openStore(dir, deps = {}) {
   function load() {
     const m = readJson(P.meta, null);
     state.meta = m && Number.isInteger(m.seq) ? { versao: VERSAO, seq: m.seq, ultimoBackup: typeof m.ultimoBackup === 'string' ? m.ultimoBackup : '', linhasSemeadas: Array.isArray(m.linhasSemeadas) ? m.linhasSemeadas.map(String) : [] } : { versao: VERSAO, seq: 0, ultimoBackup: '', linhasSemeadas: [] };
+    // Config de moeda: taxas (unidades por 1 US$) e moeda de exibição (padrão US$). Preferência do sistema, editável.
+    state.meta.taxas = taxasNormalizadas(m && m.taxas);
+    state.meta.moedaExibicao = m && moedaValida(m.moedaExibicao) ? m.moedaExibicao : MOEDA_EXIB_PADRAO;
     for (const c of COLECOES) {
       const map = state.cols.get(c); map.clear();
       const v = readJson(arq(c), { itens: {} });
       for (const [k, x] of Object.entries(v.itens ?? {})) if (x && typeof x === 'object') map.set(k, x);
     }
+    // Contas antigas (antes do multi-moeda) assumem real; persiste na próxima escrita da conta.
+    for (const x of state.cols.get('contas').values()) if (!moedaValida(x.moeda)) x.moeda = MOEDA_PADRAO;
     // Primeira abertura: as categorias padrão já existem (a pessoa não começa do nada).
     // Categorias padrão: as que faltam entram (primeira abertura ou padrão novo, como os ganhos do ROI); as da pessoa ficam.
     for (const c of CATEGORIAS_PADRAO) { const cur = state.cols.get('categorias').get(c.key); if (cur === undefined) state.cols.get('categorias').set(c.key, { ...c }); else if (c.retorno && cur.retorno !== c.retorno) state.cols.get('categorias').set(c.key, { ...cur, retorno: c.retorno }); }
@@ -156,7 +161,20 @@ function openStore(dir, deps = {}) {
   /** Últimas mudanças do feed (para "o que o agente fez hoje"). */
   function ultimas(n = 50) { try { return fs.readFileSync(P.feed, 'utf8').split('\n').filter(Boolean).slice(-n).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean).reverse(); } catch { return []; } }
 
-  return { dir, meta, list, get, getLanc, listLanc, meses, mutate, guardarComprovante, lerComprovante, ultimas, reload: load };
+  /** Config de moeda (taxas, moeda de exibição): grava meta e registra no feed, na mesma fila das escritas. */
+  function setConfig(patch, por = 'app') {
+    const run = async () => {
+      const t = now();
+      if (patch && patch.taxas !== undefined) state.meta.taxas = taxasNormalizadas(patch.taxas);
+      if (patch && patch.moedaExibicao !== undefined) { if (!moedaValida(patch.moedaExibicao)) throw new Error('moeda de exibição inválida'); state.meta.moedaExibicao = patch.moedaExibicao; }
+      const seq = ++state.meta.seq;
+      try { writeJson(P.meta, state.meta); appendFeed([{ seq, at: t, tipo: 'config.moeda', por }]); } catch (e) { load(); throw new Error(`não consegui gravar a config do financeiro: ${e.message}`); }
+      return { taxas: { ...state.meta.taxas }, moedaExibicao: state.meta.moedaExibicao };
+    };
+    const p = fila.then(run, run); fila = p.catch(() => {}); return p;
+  }
+
+  return { dir, meta, list, get, getLanc, listLanc, meses, mutate, setConfig, guardarComprovante, lerComprovante, ultimas, reload: load };
 }
 
 module.exports = { openStore, VERSAO };

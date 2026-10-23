@@ -10,6 +10,15 @@ mkdir -p "$D"
 cp "$HERE/navegador-mcp.mjs" "$D/navegador-mcp.mjs"
 chmod 644 "$D/navegador-mcp.mjs"
 echo "navegador-mcp.mjs em $D"
+# Portão de senha dos sites no Cloudflare Pages (a skill subir-site-cloudflare copia este arquivo para
+# functions/_middleware.js). É do app, como o navegador-mcp.mjs: sobrescreve a cada instalação.
+if [ -f "$HERE/site-middleware.js" ]; then
+  cp "$HERE/site-middleware.js" "$D/site-middleware.js"
+  chmod 644 "$D/site-middleware.js"
+  echo "site-middleware.js em $D"
+else
+  echo "site-middleware.js não está ao lado deste script; sites com senha vão precisar dele"
+fi
 RULE='<!-- meu-bot:navegador v4 inicio -->
 ## Navegador da pessoa (meu-bot)
 Quando as ferramentas mcp__navegador__* estiverem disponíveis, você pode usar o navegador que a pessoa vê na janela do meu-bot dela.

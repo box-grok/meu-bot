@@ -698,7 +698,7 @@ body.topbar-hidden .topbar { display: none; }
 .nav-action { width: 28px; height: 28px; padding: 4px; border-radius: 6px; border: 1px solid transparent; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--fg); font: 12px/1 inherit; }
 .nav-action:hover, .nav-action.on { border-color: var(--line); background: var(--card); }
 .nav-action img { width: 18px; height: 18px; }
-.nav-popup { position: absolute; top: 100%; right: 8px; z-index: 8; width: 420px; height: 560px; max-height: 80vh; transition: width .15s ease, height .15s ease; border-radius: 10px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 8px 28px rgba(0,0,0,.3); overflow: hidden; }
+.nav-popup { position: absolute; top: 100%; right: 8px; z-index: 8; width: 420px; height: 560px; max-height: 80vh; max-width: calc(100% - 16px); transition: width .15s ease, height .15s ease; border-radius: 10px; border: 1px solid var(--line); background: var(--card); box-shadow: 0 8px 28px rgba(0,0,0,.3); overflow: hidden; }
 .nav-popup[hidden] { display: none; }
 .nav-popup-view { width: 100%; height: 100%; display: flex; border: 0; }
 .nav-popup-x { position: absolute; top: 6px; right: 6px; z-index: 2; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 16px; line-height: 1; cursor: pointer; opacity: .75; }
@@ -809,6 +809,7 @@ body.topbar-hidden .topbar { display: none; }
 .sidebar-item.wa-sel-on { background: rgba(127,127,127,.14); }
 .wa-archive-note { margin: 2px 10px 6px; padding: 6px 8px; border-radius: 6px; font-size: 12px; line-height: 1.4; color: var(--muted); background: rgba(127,127,127,.08); }
 .wa-archive-note.bad { color: var(--bad); }
+.wa-clear-select { width: 100%; font: inherit; font-size: 12px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .wa-clear-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
 .wa-clear-actions .btn { padding: 4px 12px; font-size: 12px; }
 .wa-clear .btn-bad:hover { background: var(--bad); color: #fff; }
@@ -1031,3 +1032,14 @@ body.topbar-hidden .topbar { display: none; }
 .nav-perm-texto { flex: 1; min-width: 200px; }
 .nav-perm-acoes { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
 .nav-perm + .nav-perm { top: 92px; }
+
+/* Conta Google: perfil, mensagens do Gmail, eventos e a tabela da planilha. */
+.conta-perfil { display: flex; align-items: center; gap: 10px; }
+.conta-foto { width: 40px; height: 40px; border-radius: 50%; }
+.conta-msg { display: flex; flex-direction: column; gap: 1px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.conta-msg.nova .conta-msg-assunto { color: var(--accent); }
+.conta-msg-resumo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conta-evento { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.conta-google-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.conta-tabela { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+.conta-tabela td { border: 1px solid var(--line); padding: 4px 8px; }

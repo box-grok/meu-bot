@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup } from "../whatsapp";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup } from "../whatsapp";
 import { JID_RE } from "../whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp-marks";
@@ -28,13 +28,15 @@ import { applyQuickEntryShortcut } from "../quickEntry";
 import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
+import { contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
+import { agendaCriar, agendaProximos, gmailResumo, planilhaEscrever, planilhaLer } from "../google/apis";
 import { changeWindowZoom, currentZoom } from "../zoom";
 import { parseZoomAction } from "../zoom-core";
 import { caps } from "../variant";
-import { whatsappArchiveToCrm } from "../whatsapp-crm";
+import { whatsappArchiveToCrm, whatsappGroupArchiveToCrm } from "../whatsapp-crm";
 import { assertCrmProprio } from "../acesso";
 import { waGroupAgente, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
-import { EXTERNAL_URL, hostFromEvent, waNumber, windowFromEvent } from "./context";
+import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
 
 export interface SharedIpcDeps {
@@ -57,6 +59,37 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return a === null ? currentZoom() : changeWindowZoom(a);
   });
   handleShared("ui:open-picker", () => showPicker());
+  // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
+  handleShared("google-conta:status", () => {
+    // A foto pode faltar num token gravado antes do cache; busca em segundo plano e avisa quando entrar.
+    void garantirFotoPerfil().then((r) => { if (r !== null) broadcast("google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
+    return contaStatus();
+  });
+  handleShared("google-conta:conectar", async (event) => { const ctx = hostFromEvent(event); const r = await contaConectar(ctx?.host ?? ""); broadcast("google-conta:changed", r); return r; });
+  handleShared("google-conta:desconectar", async () => { const r = await contaDesconectar(); broadcast("google-conta:changed", r); return r; });
+  handleShared("google-conta:gmail", () => gmailResumo());
+  handleShared("google-conta:agenda", (_event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(typeof d === "number" ? d : 7); });
+  handleShared("google-conta:agenda-criar", (_event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>;
+    const s = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
+    const titulo = s(p["titulo"], 200), inicio = s(p["inicio"], 40), fim = s(p["fim"], 40);
+    if (titulo === "" || inicio === "" || fim === "") throw new Error("preencha título, início e fim");
+    return agendaCriar({ titulo, inicio, fim, ...(typeof p["descricao"] === "string" ? { descricao: p["descricao"].slice(0, 2000) } : {}) });
+  });
+  handleShared("google-conta:planilha-ler", (_event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>;
+    const id = typeof p["id"] === "string" ? p["id"].trim() : ""; const intervalo = typeof p["intervalo"] === "string" ? p["intervalo"].trim().slice(0, 100) : "";
+    if (!/^[A-Za-z0-9_-]{10,80}$/.test(id) || intervalo === "") throw new Error("informe o id da planilha e o intervalo (ex.: Página1!A1:C10)");
+    return planilhaLer(id, intervalo);
+  });
+  handleShared("google-conta:planilha-escrever", (_event, payload: unknown) => {
+    const p = (payload ?? {}) as Record<string, unknown>;
+    const id = typeof p["id"] === "string" ? p["id"].trim() : ""; const intervalo = typeof p["intervalo"] === "string" ? p["intervalo"].trim().slice(0, 100) : "";
+    if (!/^[A-Za-z0-9_-]{10,80}$/.test(id) || intervalo === "") throw new Error("informe o id da planilha e o intervalo");
+    const vs = Array.isArray(p["valores"]) ? (p["valores"] as unknown[]).slice(0, 1000).map((l) => (Array.isArray(l) ? l.slice(0, 50).map((c) => String(c ?? "")) : [])) : [];
+    if (vs.length === 0) throw new Error("nada para gravar");
+    return planilhaEscrever(id, intervalo, vs);
+  });
   handleShared("shell:open-external", (_event, payload: unknown) => {
     const url = (payload as { url?: unknown })?.url;
     if (typeof url === "string" && EXTERNAL_URL.test(url)) void shell.openExternal(url);
@@ -218,6 +251,31 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     await whatsappClearSessions(h.host, [...own, ...shared]);
     // Registro de auditoria: quem limpou (o dono ou o admin pelo nome); a pessoa vê o que o suporte fez.
     void registrar(h.host, "whatsapp.limpar", `+${waNumber(payload)}`);
+  });
+
+  // Grupos: mesmo trio do contato (plano › guardar no CRM › limpar). A caixa do CRM é escolhida pela tela,
+  // porque grupo não tem contato único; sem ela a máquina responde `precisaCaixa` e nada é guardado nem limpo.
+  handleShared("whatsapp:group-clear-plan", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return whatsappGroupClearPlan(h.host, waJid(payload));
+  });
+  handleShared("whatsapp:group-archive-crm", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    await assertCrmProprio(h.host);
+    const bk = (payload as { boxKey?: unknown }).boxKey;
+    const jid = waJid(payload);
+    const r = await whatsappGroupArchiveToCrm(h.host, jid, typeof bk === "string" && bk !== "" ? bk : undefined);
+    if (!r.vazio && !r.precisaCaixa) void registrar(h.host, "crm.guardar-conversa", jid, r.box !== null ? `caixa ${r.box.nome}` : "grupo");
+    return r;
+  });
+  handleShared("whatsapp:group-clear", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const jid = waJid(payload);
+    await whatsappGroupClear(h.host, jid);
+    void registrar(h.host, "whatsapp.limpar", jid);
   });
 
   // Pausar/retomar o agente para um contato.

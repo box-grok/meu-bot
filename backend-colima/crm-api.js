@@ -388,6 +388,62 @@ function createCrmApi(deps) {
     // (tentou de novo depois de uma limpeza que falhou) não duplica. Sem IA, o arquivo fica e `resumo` volta false.
     if (a === 'whatsapp' && b === 'arquivar' && m === 'POST') {
       const input = await body(req, ARQUIVO_MAX * 2 + 4096);
+      // Grupo: nao tem contato unico, entao a conversa vai para uma caixa que o dono liga ao jid uma vez
+      // (fields.whatsappGrupo). Sem vinculo e sem boxKey, responde precisaCaixa: nada e gravado nem limpo.
+      const grupo = input.grupo && typeof input.grupo === 'object' ? input.grupo : null;
+      if (grupo !== null) {
+        const jid = typeof grupo.jid === 'string' && /^\d{10,25}(-\d+)?@g\.us$/.test(grupo.jid) ? grupo.jid : null;
+        if (jid === null) throw new modelo.ErroCrm('invalido', 'grupo invalido');
+        const transcricao = typeof input.transcricao === 'string' ? input.transcricao : '';
+        if (transcricao.trim() === '') throw new modelo.ErroCrm('invalido', 'conversa vazia');
+        const dados = Buffer.from(transcricao, 'utf8');
+        if (dados.length > ARQUIVO_MAX) throw new modelo.ErroCrm('invalido', 'conversa maior que 15 MB');
+        const sha256 = crypto.createHash('sha256').update(dados).digest('hex');
+        const mensagens = Number.isInteger(input.mensagens) && input.mensagens > 0 ? input.mensagens : 0;
+        const de = Number.isFinite(input.primeiraEm) && input.primeiraEm > 0 ? input.primeiraEm : 0;
+        const ate = Number.isFinite(input.ultimaEm) && input.ultimaEm > 0 ? input.ultimaEm : 0;
+        const dia = (x) => new Date(x).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        const ligada = store.allBoxes().find((x) => (x.fields ?? {}).whatsappGrupo === jid) ?? null;
+        const pedida = typeof input.boxKey === 'string' && modelo.isKey(input.boxKey) ? store.getBox(input.boxKey) : null;
+        const alvo = ligada ?? pedida;
+        if (!alvo) return { ok: true, precisaCaixa: true };
+        const g = await store.mutate(por, (tx) => {
+          const cur = tx.getBox ? tx.getBox(alvo.key) : boxOr404(alvo.key);
+          const bx = cur ?? boxOr404(alvo.key);
+          const ja = (bx.arquivos ?? []).find((x) => x.sha256 === sha256);
+          if (ja) return { box: bx, arquivo: ja, repetido: true };
+          const nome = `conversa-grupo-${new Date(ate || tx.now).toISOString().slice(0, 10)}.md`;
+          const x = gravarArquivo(tx, bx.key, { nome, tipo: 'text/markdown' }, dados, por, { sha256, mensagens, de, ate });
+          const periodo = de && ate ? `, de ${dia(de)} a ${dia(ate)}` : '';
+          const titulo = typeof grupo.nome === 'string' && grupo.nome.trim() !== '' ? grupo.nome.trim().slice(0, 120) : jid;
+          const { box } = modelo.addComment(
+            { ...bx, arquivos: [...(bx.arquivos ?? []), x], fields: { ...(bx.fields ?? {}), whatsappGrupo: jid }, updatedAt: tx.now },
+            `\u{1F4E6} Conversa do grupo "${titulo}" arquivada antes de limpar: ${mensagens} mensagens${periodo}. Transcricao no anexo "${nome}".`,
+            'whatsapp', tx.now, tx.rnd,
+          );
+          tx.setBox(box); tx.mudar('box.comment', { pipeline: box.pipelineKey, box: box.key });
+          return { box: bx, arquivo: x, repetido: false };
+        });
+        const saida = { ok: true, precisaCaixa: false, box: { key: g.box.key, nome: g.box.name }, arquivo: arquivoView(g.arquivo), repetido: g.repetido };
+        if (g.repetido || typeof deps.iaTexto !== 'function') return { ...saida, resumo: false, ...(g.repetido ? {} : { aviso: 'o motor de IA nao esta disponivel nesta maquina' }) };
+        let resumo;
+        const anterior = (g.box.fields ?? {}).whatsappGrupoResumo;
+        try {
+          resumo = modelo.parseConsolidacao(await deps.iaTexto(
+            modelo.promptConsolidacao({ nome: typeof grupo.nome === 'string' ? grupo.nome : jid, telefone: jid, resumoAnterior: typeof anterior === 'string' ? anterior : '', transcricao }),
+            `crm-consolidar-grupo-${jid}-${Date.now()}`,
+          ));
+        } catch (e) {
+          log(`crm: resumo da conversa de grupo ${jid} falhou: ${e.message}`);
+          return { ...saida, resumo: false, aviso: `resumo nao atualizado: ${e.message}` };
+        }
+        await store.mutate(por, (tx) => {
+          const cur = boxOr404(g.box.key);
+          tx.setBox({ ...cur, fields: { ...(cur.fields ?? {}), whatsappGrupo: jid, whatsappGrupoResumo: resumo }, updatedAt: tx.now });
+          tx.mudar('box.update', { pipeline: cur.pipelineKey, box: cur.key });
+        });
+        return { ...saida, resumo: true };
+      }
       const tel = modelo.normalizePhone(input.phone); if (tel === null) throw new modelo.ErroCrm('invalido', 'telefone inválido');
       const transcricao = typeof input.transcricao === 'string' ? input.transcricao : '';
       if (transcricao.trim() === '') throw new modelo.ErroCrm('invalido', 'conversa vazia');

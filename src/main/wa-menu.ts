@@ -55,6 +55,8 @@ export function waGroupMenuTemplate(agente: WhatsappGroupAgent): WaGroupMenuEntr
     agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
     { label: "Quem pode conversar…", action: "group-who" },
     { label: "Copiar ID", action: "group-copy-id" },
+    // Zera a sessão do agente neste grupo; antes, a conversa vai para uma caixa do CRM (a tela escolhe qual).
+    { label: "Limpar histórico…", action: "group-clear" },
     { separator: true },
     { label: "Atualizar lista de grupos…", action: "groups-refresh" },
   ];

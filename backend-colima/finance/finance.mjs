@@ -12,7 +12,7 @@
  *   lancamentos [--mes AAAA-MM] [--status pendente|confirmado] [--categoria c] [--conta c] [--busca "x"] [--limite N]
  *   pendencias · confirmar <id|todas> [--categoria c] [--conta c] · descartar <id>
  *   corrigir <id> [--valor V] [--favorecido "x"] [--categoria c] [--conta c] [--data d] [--notas "…"]
- *   contas · conta-criar --nome "x" [--tipo corrente|poupanca|cartao|dinheiro|outra] [--saldo V] [--padrao]
+ *   contas · conta-criar --nome "x" [--tipo corrente|poupanca|cartao|dinheiro|outra] [--moeda BRL|PYG|USD] [--saldo V] [--padrao]
  *   conta-editar <conta> [--nome "x"] [--tipo t] [--saldo V] [--padrao] [--fechar]
  *   categorias · categoria-criar --nome "x" [--grupo "g"] [--renda]
  *   mes <AAAA-MM> [--meta-direto V] [--meta-indireto V] [--meta-notas "conta"] [--orcamento V] [--renda-prevista V] [--dinheiro-informado sim|nao]   (orçamento = quanto gastar no mês; vale para os meses seguintes até mudar)
@@ -71,7 +71,7 @@ async function main() {
       return out(await api("PUT", `/lancamentos/${encodeURIComponent(id)}`, b));
     }
     case "contas": return out(await api("GET", `/contas${opt.todas ? "?todas=1" : ""}`));
-    case "conta-criar": return out(await api("POST", "/contas", { nome: precisa(opt.nome, "--nome"), ...(opt.tipo ? { tipo: opt.tipo } : {}), ...(opt.saldo ? { saldoInicial: opt.saldo } : {}), ...(opt.padrao ? { padrao: true } : {}) }));
+    case "conta-criar": return out(await api("POST", "/contas", { nome: precisa(opt.nome, "--nome"), ...(opt.tipo ? { tipo: opt.tipo } : {}), ...(opt.moeda ? { moeda: String(opt.moeda).toUpperCase() } : {}), ...(opt.saldo ? { saldoInicial: opt.saldo } : {}), ...(opt.padrao ? { padrao: true } : {}) }));
     case "conta-editar": {
       const k = precisa(pos[0], "a chave da conta (veja 'contas')");
       return out(await api("PUT", `/contas/${encodeURIComponent(k)}`, { ...(opt.nome ? { nome: opt.nome } : {}), ...(opt.tipo ? { tipo: opt.tipo } : {}), ...(opt.saldo ? { saldoInicial: opt.saldo } : {}), ...(opt.padrao ? { padrao: true } : {}), ...(opt.fechar ? { fechada: true } : {}) }));

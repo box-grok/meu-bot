@@ -9,13 +9,14 @@
  * Cloud baixa para um client "Desktop app").
  */
 import { app, safeStorage, shell } from "electron";
+import { acessoDeRefresh, cliente, gravar, postForm } from "./comum";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { ensureTunnel, log } from "../tunnel";
 import { getBackendPort } from "../settings";
-import { browserAsk, browserWebContents } from "../browser";
+import { browserAsk, browserWebContents, reservarRetornoLocal } from "../browser";
 import { CAMPOS_PESSOA, URL_TOKEN, caminhoNoDrive, consultaPasta, corpoUpload, temDrive, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, pessoaParaContato, pkce, temEscrita, urlDeAutorizacao, type ClienteOAuth, type ContatoGoogle, type ContatoWhatsapp } from "./google-core";
 
 export interface GoogleStatus { configurado: boolean; conectado: boolean; conectando: boolean; escrita: boolean; precisaReconectar: boolean; email: string | null; sincronizando: boolean; ultimaSync: string | null; total: number | null; criados: number | null; atualizados: number | null; whatsappSalvos: number | null; whatsappErro: string | null; erro: string | null }
@@ -25,13 +26,6 @@ const ARQ_ESTADO = (): string => path.join(app.getPath("userData"), "google-cont
 const ARQ_WA = (): string => path.join(app.getPath("userData"), "google-whatsapp.json");
 const INTERVALO = 30 * 60_000;
 
-function cliente(): ClienteOAuth | null {
-  for (const f of [path.join(app.getPath("userData"), "google-oauth.json"), path.join(process.resourcesPath ?? "", "google-oauth.json")]) {
-    try { const c = parseClienteOAuth(JSON.parse(fs.readFileSync(f, "utf8"))); if (c) return c; } catch { /* próximo */ }
-  }
-  return null;
-}
-function gravar(f: string, dados: Buffer | string): void { const tmp = `${f}.${process.pid}.tmp`; fs.writeFileSync(tmp, dados, { mode: 0o600 }); fs.renameSync(tmp, f); }
 function lerToken(): { refresh: string; email: string | null; escopo: string } | null {
   try { const j = JSON.parse(safeStorage.decryptString(fs.readFileSync(ARQ_TOKEN()))) as { refresh?: unknown; email?: unknown; escopo?: unknown }; return typeof j.refresh === "string" ? { refresh: j.refresh, email: typeof j.email === "string" ? j.email : null, escopo: typeof j.escopo === "string" ? j.escopo : "" } : null; } catch { return null; }
 }
@@ -49,12 +43,6 @@ export function googleStatus(host: string): GoogleStatus {
   return { configurado: cliente() !== null, conectado: t !== null, conectando: conectando.has(host), escrita, precisaReconectar: t !== null && (!escrita || !temDrive(t.escopo)), email: t?.email ?? null, sincronizando: sincronizando.has(host), ...lerEstado() };
 }
 
-async function postForm(url: string, corpo: Record<string, string>): Promise<Record<string, unknown>> {
-  const r = await fetch(url, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams(corpo).toString() });
-  const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!r.ok) throw new Error(typeof j["error_description"] === "string" ? j["error_description"] : typeof j["error"] === "string" ? j["error"] : `Google respondeu ${r.status}`);
-  return j;
-}
 
 /**
  * Abre o login do Google no navegador do Mac e volta na hora (`conectando: true`); o retorno no loopback (até 5
@@ -86,7 +74,9 @@ async function fluxoLogin(host: string, c: ClienteOAuth): Promise<void> {
     let redirect = "";
     const t = setTimeout(() => { srv.close(); reject(new Error("o login do Google não foi concluído em 5 minutos")); }, 5 * 60_000);
     srv.listen(0, "127.0.0.1", () => {
-      const a = srv.address(); redirect = `http://127.0.0.1:${typeof a === "object" && a !== null ? a.port : 0}/oauth`;
+      const a = srv.address(); const port = typeof a === "object" && a !== null ? a.port : 0;
+      srv.on("close", reservarRetornoLocal(port)); // o retorno deste loopback é local (Mac), não entrega por SSH
+      redirect = `http://127.0.0.1:${port}/oauth`;
       // Numa aba do Navegador do app (já logado na conta do Gmail); sem o Navegador aberto, no navegador do Mac.
       const url = urlDeAutorizacao({ clientId: c.clientId, redirect, challenge, state });
       const navAberto = browserWebContents(host).some((w) => { try { return w.getURL().startsWith("http"); } catch { return false; } });

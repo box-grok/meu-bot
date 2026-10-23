@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
+import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -47,6 +47,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:favorites",
   "browser:workspaces",
   "window:zoom-changed",
+  "google-conta:changed",
 ];
 
 /** Os dois apps. */
@@ -79,6 +80,9 @@ const sharedApi: MeuBotSharedApi = {
   showWhatsappGroupMenu: (jid: string, state: { agente: WhatsappGroupAgent }) => ipcRenderer.invoke("ui:wa-group-menu", { jid, state }),
   pauseWhatsapp: (number: string, paused: boolean) => ipcRenderer.invoke("whatsapp:pause", { number, paused }),
   whatsappClearPlan: (number: string) => ipcRenderer.invoke("whatsapp:clear-plan", { number }),
+  whatsappGroupClearPlan: (jid: string) => ipcRenderer.invoke("whatsapp:group-clear-plan", { jid }),
+  archiveWhatsappGroupToCrm: (jid: string, boxKey?: string) => ipcRenderer.invoke("whatsapp:group-archive-crm", { jid, boxKey }),
+  clearWhatsappGroup: (jid: string) => ipcRenderer.invoke("whatsapp:group-clear", { jid }),
   archiveWhatsappToCrm: (number: string) => ipcRenderer.invoke("whatsapp:archive-crm", { number }),
   clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
   markWhatsapp: (marks: WaMarkPatch[]) => ipcRenderer.invoke("whatsapp:mark", { marks }),
@@ -88,6 +92,14 @@ const sharedApi: MeuBotSharedApi = {
   xaiAuth: () => ipcRenderer.invoke("xai-login:auth", {}),
   contasStatus: () => ipcRenderer.invoke("contas:status", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
+  googleContaStatus: () => ipcRenderer.invoke("google-conta:status", {}),
+  googleContaConectar: () => ipcRenderer.invoke("google-conta:conectar", {}),
+  googleContaDesconectar: () => ipcRenderer.invoke("google-conta:desconectar", {}),
+  gmailResumo: () => ipcRenderer.invoke("google-conta:gmail", {}),
+  agendaProximos: (dias?: number) => ipcRenderer.invoke("google-conta:agenda", { dias }),
+  agendaCriar: (evento: { titulo: string; inicio: string; fim: string; descricao?: string }) => ipcRenderer.invoke("google-conta:agenda-criar", evento),
+  planilhaLer: (id: string, intervalo: string) => ipcRenderer.invoke("google-conta:planilha-ler", { id, intervalo }),
+  planilhaEscrever: (id: string, intervalo: string, valores: string[][]) => ipcRenderer.invoke("google-conta:planilha-escrever", { id, intervalo, valores }),
   zoomWindow: (action: ZoomAction): Promise<ZoomState> => ipcRenderer.invoke("window:zoom", action),
   zoomFactorNow: (): number => webFrame.getZoomFactor(),
   on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void {
@@ -166,8 +178,10 @@ const clientApi: MeuBotClientApi = {
   financeLinhaRemover: (key: string) => ipcRenderer.invoke("finance:linha-remover", { key }),
   financeComprovante: (sha256: string) => ipcRenderer.invoke("finance:comprovante", { sha256 }),
   financeConfirmarTodas: () => ipcRenderer.invoke("finance:confirmar-todas", {}),
-  financeContaCriar: (input: { nome: string; tipo?: FinanceConta["tipo"]; saldoInicial?: string }) => ipcRenderer.invoke("finance:conta-criar", input),
+  financeContaCriar: (input: { nome: string; tipo?: FinanceConta["tipo"]; moeda?: FinanceMoeda; saldoInicial?: string }) => ipcRenderer.invoke("finance:conta-criar", input),
   financeMes: (mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }) => ipcRenderer.invoke("finance:mes", { mes, ...patch }),
+  financeConfigLer: () => ipcRenderer.invoke("finance:config-ler", {}),
+  financeConfig: (patch: { taxas?: Record<string, number>; moedaExibicao?: FinanceMoeda }) => ipcRenderer.invoke("finance:config-salvar", patch),
   financeFecharMes: (mes: string) => ipcRenderer.invoke("finance:fechar-mes", { mes }),
   installFinance: () => ipcRenderer.invoke("finance:install", {}),
   financePedir: () => ipcRenderer.invoke("finance:pedir", {}),

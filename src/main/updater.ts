@@ -2,7 +2,7 @@
  * Atualização automática no molde do Sparkle (Brave), sem assinatura da Apple (o meu-bot é assinado com o
  * certificado próprio "meu-bot local", então o autoUpdater/Squirrel do Electron não serve): consulta a release
  * mais nova do repositório no GitHub, baixa o .zip do app desta variante e o .sig ao lado, só segue se a
- * assinatura Ed25519 confere com UPDATE_PUBLIC_KEY, extrai em userData/update, confere que o app baixado tem a
+ * assinatura Ed25519 confere com uma de UPDATE_PUBLIC_KEYS, extrai em userData/update, confere que o app baixado tem a
  * MESMA identidade de assinatura do que está rodando (nunca reassina: o chaveiro amarra os cookies a ela) e
  * avisa as janelas. Trocar o .app acontece quando a pessoa clica "Reiniciar e atualizar" ou, calado, ao sair
  * do app. A versão anterior fica guardada (<app>.antigo) até a nova ficar 30 s de pé; se a nova não passar das

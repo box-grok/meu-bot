@@ -233,6 +233,26 @@ export function threadToMarkdown(contact: string, number: string, host: string, 
   return `${lines.join("\n").trimEnd()}\n`;
 }
 
+/**
+ * Markdown da conversa de um grupo. Difere do de contato em duas coisas: identifica quem mandou cada mensagem
+ * (`autor`, que `threadDoGrupo` já resolve para nome ou +número) e traz o jid no lugar do telefone.
+ */
+export function grupoToMarkdown(nome: string, jid: string, host: string, messages: readonly WhatsappThreadMessage[], exportedAt: string): string {
+  const day = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR"); };
+  const autores = new Set(messages.flatMap((m) => (m.role === "contact" && m.autor !== undefined ? [m.autor] : [])));
+  const lines = [`# WhatsApp (grupo): ${nome}`, "", `- Grupo: ${nome} (${jid})`, `- Máquina: ${host}`, `- Mensagens: ${messages.length}`];
+  if (autores.size > 0) lines.push(`- Quem falou: ${[...autores].join(", ")}`);
+  if (messages.length > 0) lines.push(`- Período: ${stamp(messages[0]!.at)} a ${stamp(messages.at(-1)!.at)}`);
+  lines.push(`- Exportada em: ${stamp(exportedAt)}`, "");
+  let lastDay = "";
+  for (const m of messages) {
+    const d = day(m.at);
+    if (d !== lastDay) { lines.push(`## ${d}`, ""); lastDay = d; }
+    lines.push(`**${m.role === "agent" ? "Agente" : m.autor ?? "Alguém"}** · ${stamp(m.at).slice(6)}`, "", m.text.trim(), "");
+  }
+  return `${lines.join("\n").trimEnd()}\n`;
+}
+
 /** Linha "POLICY=… ALLOW=[…]" que o setDmPolicy relê da máquina depois de gravar; null se não veio. */
 export function politicaGravada(stdout: string): { dmPolicy: string; allowFrom: string[] } | null {
   const m = /POLICY=(\S*) ALLOW=(\[.*\])/.exec(stdout);

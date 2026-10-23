@@ -101,14 +101,42 @@ function patchLinha(cur, patch, now) {
 const findLinha = (linhas, want) => { const w = norm(want); if (w === '') return null; return linhas.find((l) => l.key === want || norm(l.nome) === w) ?? linhas.find((l) => norm(l.nome).startsWith(w)) ?? linhas.find((l) => w.length >= 4 && norm(l.nome).includes(w)) ?? null; };
 
 // ---- valores e datas ------------------------------------------------------------------------------------------------
+// ---- moedas ---------------------------------------------------------------------------------------------------------
 /**
- * "R$ 1.234,56", "48", "12,5", "1234.56", "48 reais", -12,30 → centavos (inteiro, com sinal). null se não é valor.
- * Vírgula é sempre decimal; ponto é decimal só quando é o único e tem 1 ou 2 casas depois ("1.234" = mil e duzentos).
+ * Multi-moeda: cada conta tem uma moeda (BRL, PYG guaraní, USD dólar); o lançamento guarda o valor na moeda da conta
+ * (minor units = valor × 10^casas; BRL/USD = 2 casas, PYG = 0) e, se a pessoa falou em outra moeda, o original em
+ * `valorOriginalCent`/`moedaOriginal`. A camada de padronização (US$ por padrão) converte pelas `taxas` que o usuário
+ * define (unidades por 1 US$), sem buscar cotação na internet.
  */
-function parseValorBRL(v) {
-  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 100) : null;
-  let s = String(v ?? '').toLowerCase().replace(/r\$|reais|real|brl/g, '').replace(/\s+/g, '');
-  if (s === '') return null;
+const MOEDAS = ['BRL', 'PYG', 'USD'];
+const MOEDA_INFO = { BRL: { casas: 2, simbolo: 'R$' }, PYG: { casas: 0, simbolo: '₲' }, USD: { casas: 2, simbolo: 'US$' } };
+const MOEDA_PADRAO = 'BRL';
+// Moeda de exibição padrão = a mesma dos lançamentos (real), para não surpreender quem já usa. Cada sistema troca na
+// config (a LV usa dólar). Assim um financeiro só em real nunca depende de taxa.
+const MOEDA_EXIB_PADRAO = 'BRL';
+/** Taxas iniciais plausíveis (unidades por 1 US$); o usuário ajusta na config. */
+const TAXAS_PADRAO = { USD: 1, BRL: 5, PYG: 7300 };
+const moedaValida = (m) => MOEDAS.includes(m);
+const casasDe = (m) => (MOEDA_INFO[m] ?? MOEDA_INFO.BRL).casas;
+const simboloDe = (m) => (MOEDA_INFO[m] ?? MOEDA_INFO.BRL).simbolo;
+const multDe = (m) => 10 ** casasDe(m);
+const TETO_VALOR_WHOLE = 1e11; // teto por lançamento, em unidades inteiras da moeda (≈ 100 bi)
+const valorAltoDemais = (cent, moeda) => Math.abs(cent) / multDe(moeda) > TETO_VALOR_WHOLE;
+/** Taxa (unidades por 1 US$) da moeda; cai no padrão se ausente ou inválida. */
+const taxaDe = (taxas, m) => { const t = taxas && taxas[m]; return (typeof t === 'number' && t > 0) ? t : (TAXAS_PADRAO[m] ?? 1); };
+/** Normaliza o objeto de taxas vindo do usuário: só moedas válidas, números > 0; completa com o padrão. */
+function taxasNormalizadas(taxas) {
+  const out = { ...TAXAS_PADRAO };
+  if (taxas && typeof taxas === 'object') for (const m of MOEDAS) { const t = taxas[m]; if (typeof t === 'number' && Number.isFinite(t) && t > 0) out[m] = t; }
+  out.USD = 1; // o dólar é a âncora
+  return out;
+}
+/** Detecta a moeda pelos símbolos/palavras no texto; null se não houver marca. */
+const RE_MOEDA = [['USD', /us\$|u\$s|\busd\b|d[óo]lar(es)?|dollars?/], ['PYG', /₲|\bgs\b|guaran[íi]?(es|s)?|\bpyg\b/], ['BRL', /r\$|\breais\b|\breal\b|\bbrl\b/]];
+function detectarMoeda(texto) { const t = String(texto ?? '').toLowerCase(); for (const [m, re] of RE_MOEDA) if (re.test(t)) return m; return null; }
+const stripMoeda = (s) => s.replace(/us\$|u\$s|usd|d[óo]lar(es)?|dollars?|₲|\bgs\b|guaran[íi]?(es|s)?|pyg|r\$|reais|real|brl/g, '');
+/** Núcleo numérico pt-BR com `casas` decimais: "1.234,56"/"1234.56"/"48". Devolve minor units (× 10^casas), com sinal. */
+function parseMinor(s, casas) {
   let sinal = 1;
   if (s.startsWith('-')) { sinal = -1; s = s.slice(1); } else if (s.startsWith('+')) s = s.slice(1);
   if (!/^[\d.,]+$/.test(s) || !/\d/.test(s)) return null;
@@ -116,23 +144,57 @@ function parseValorBRL(v) {
   if (s.includes(',')) {
     const i = s.lastIndexOf(',');
     inteiro = s.slice(0, i).replace(/\./g, ''); dec = s.slice(i + 1);
-    if (dec.includes(',') || dec.length > 2) return null;
+    if (dec.includes(',') || dec.length > casas) return null;
   } else {
     const pontos = s.split('.').length - 1;
     const depois = s.slice(s.lastIndexOf('.') + 1);
-    if (pontos === 1 && depois.length >= 1 && depois.length <= 2) { inteiro = s.slice(0, s.lastIndexOf('.')); dec = depois; }
+    if (casas > 0 && pontos === 1 && depois.length >= 1 && depois.length <= casas) { inteiro = s.slice(0, s.lastIndexOf('.')); dec = depois; }
     else { if (pontos > 0 && !/^\d{1,3}(\.\d{3})+$/.test(s)) return null; inteiro = s.replace(/\./g, ''); }
   }
   if (inteiro === '') inteiro = '0';
   if (!/^\d+$/.test(inteiro) || !/^\d*$/.test(dec)) return null;
-  const cent = Number(inteiro) * 100 + Number((dec + '00').slice(0, 2));
-  return Number.isSafeInteger(cent) ? sinal * cent : null;
+  const mult = 10 ** casas;
+  const minor = Number(inteiro) * mult + (casas > 0 ? Number((dec + '0'.repeat(casas)).slice(0, casas)) : 0);
+  return Number.isSafeInteger(minor) ? sinal * minor : null;
 }
-/** 4800 → "R$ 48,00"; -123456 → "-R$ 1.234,56". */
-function formatBRL(cent) {
+/**
+ * Valor com moeda. Detecta a moeda pelo texto ("paguei ₲50.000", "US$ 20", "R$ 48,90"); sem marca, usa `moedaPadrao`
+ * (a da conta). Número puro vira valor na moedaPadrao. Devolve { valorCent, moeda } ou null.
+ */
+function parseValor(v, moedaPadrao = MOEDA_PADRAO) {
+  const padrao = moedaValida(moedaPadrao) ? moedaPadrao : MOEDA_PADRAO;
+  if (typeof v === 'number') return Number.isFinite(v) ? { valorCent: Math.round(v * multDe(padrao)), moeda: padrao } : null;
+  const txt = String(v ?? '').toLowerCase();
+  const moeda = detectarMoeda(txt) ?? padrao;
+  const s = stripMoeda(txt).replace(/\s+/g, '');
+  if (s === '') return null;
+  const cent = parseMinor(s, casasDe(moeda));
+  return cent === null ? null : { valorCent: cent, moeda };
+}
+/** "R$ 1.234,56", "48", "48 reais", -12,30 → centavos BRL (compat: só real). null se não é valor. */
+function parseValorBRL(v) {
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 100) : null;
+  const s = String(v ?? '').toLowerCase().replace(/r\$|reais|real|brl/g, '').replace(/\s+/g, '');
+  return s === '' ? null : parseMinor(s, 2);
+}
+/** Minor units → texto na moeda: 4800/BRL → "R$ 48,00"; 10000000/PYG → "₲ 10.000.000"; -2000/USD → "-US$ 20,00". */
+function formatMoeda(cent, moeda) {
+  const casas = casasDe(moeda); const mult = 10 ** casas;
   const n = Math.abs(Math.trunc(cent));
-  const reais = String(Math.floor(n / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${cent < 0 ? '-' : ''}R$ ${reais},${String(n % 100).padStart(2, '0')}`;
+  const inteiro = String(Math.floor(n / mult)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const dec = casas > 0 ? `,${String(n % mult).padStart(casas, '0')}` : '';
+  return `${cent < 0 ? '-' : ''}${simboloDe(moeda)} ${inteiro}${dec}`;
+}
+/** Compat BRL. */
+const formatBRL = (cent) => formatMoeda(cent, 'BRL');
+/** Converte `cent` (minor units de `moedaOrig`) para minor units de `moedaExib`, pelas taxas (unidades por 1 US$). */
+function paraExib(cent, moedaOrig, taxas, moedaExib) {
+  const mo = moedaValida(moedaOrig) ? moedaOrig : MOEDA_PADRAO;
+  const me = moedaValida(moedaExib) ? moedaExib : MOEDA_EXIB_PADRAO;
+  if (mo === me) return Math.trunc(cent);
+  const wholeOrig = cent / multDe(mo);
+  const wholeUsd = wholeOrig / taxaDe(taxas, mo);
+  return Math.round(wholeUsd * taxaDe(taxas, me) * multDe(me));
 }
 const dataValida = (d) => { if (!DATA_RE.test(d)) return false; const t = Date.parse(`${d}T12:00:00Z`); return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === d; };
 /** AAAA-MM-DD a partir de ms no fuso local da máquina (é o "hoje" da pessoa). */
@@ -171,9 +233,10 @@ function novaConta(input, existentes, now, rnd) {
   if (nome === '') throw invalido('conta precisa de nome');
   if (existentes.some((c) => !c.fechada && norm(c.nome) === norm(nome))) throw new ErroFinance('conflito', `a conta "${nome}" já existe`);
   const tipo = TIPOS_CONTA.includes(input?.tipo) ? input.tipo : tipoPeloNome(nome);
-  const saldo = input?.saldoInicialCent !== undefined ? input.saldoInicialCent : input?.saldoInicial !== undefined ? parseValorBRL(input.saldoInicial) : 0;
-  if (!Number.isSafeInteger(saldo) || Math.abs(saldo) > LIMITES.valorMaxCent) throw invalido('saldo inicial inválido');
-  return { key: isKey(input?.key) ? input.key : novaChave('c', rnd), nome, tipo, saldoInicialCent: saldo, padrao: existentes.filter((c) => !c.fechada).length === 0 || input?.padrao === true, fechada: false, criadaEm: now, atualizadaEm: now };
+  const moeda = moedaValida(input?.moeda) ? input.moeda : MOEDA_PADRAO;
+  const saldo = input?.saldoInicialCent !== undefined ? input.saldoInicialCent : input?.saldoInicial !== undefined ? (parseValor(input.saldoInicial, moeda)?.valorCent ?? null) : 0;
+  if (!Number.isSafeInteger(saldo) || valorAltoDemais(saldo, moeda)) throw invalido('saldo inicial inválido');
+  return { key: isKey(input?.key) ? input.key : novaChave('c', rnd), nome, tipo, moeda, saldoInicialCent: saldo, padrao: existentes.filter((c) => !c.fechada).length === 0 || input?.padrao === true, fechada: false, criadaEm: now, atualizadaEm: now };
 }
 function tipoPeloNome(nome) {
   const n = norm(nome);
@@ -186,7 +249,8 @@ function patchConta(cur, patch, outras, now) {
   const out = { ...cur, atualizadaEm: now };
   if (patch.nome !== undefined) { const n = str(patch.nome, LIMITES.nome); if (n === '') throw invalido('conta precisa de nome'); if (outras.some((c) => c.key !== cur.key && !c.fechada && norm(c.nome) === norm(n))) throw new ErroFinance('conflito', `a conta "${n}" já existe`); out.nome = n; }
   if (patch.tipo !== undefined) { if (!TIPOS_CONTA.includes(patch.tipo)) throw invalido(`tipo de conta inválido (${TIPOS_CONTA.join(', ')})`); out.tipo = patch.tipo; }
-  if (patch.saldoInicialCent !== undefined || patch.saldoInicial !== undefined) { const s = patch.saldoInicialCent ?? parseValorBRL(patch.saldoInicial); if (!Number.isSafeInteger(s)) throw invalido('saldo inicial inválido'); out.saldoInicialCent = s; }
+  if (patch.moeda !== undefined) { if (!moedaValida(patch.moeda)) throw invalido(`moeda inválida (${MOEDAS.join(', ')})`); out.moeda = patch.moeda; }
+  if (patch.saldoInicialCent !== undefined || patch.saldoInicial !== undefined) { const s = patch.saldoInicialCent ?? parseValor(patch.saldoInicial, out.moeda ?? MOEDA_PADRAO)?.valorCent; if (!Number.isSafeInteger(s)) throw invalido('saldo inicial inválido'); out.saldoInicialCent = s; }
   if (patch.fechada !== undefined) out.fechada = patch.fechada === true;
   if (patch.padrao === true) out.padrao = true;
   return out;
@@ -249,13 +313,8 @@ function categoriaSemente(nome) { const n = norm(nome); if (n === '') return nul
  */
 function novoLancamento(input, ctx) {
   const { contas, categorias, favorecidos, now, rnd, hoje } = ctx;
-  let cent = input?.valorCent !== undefined ? input.valorCent : parseValorBRL(input?.valor);
-  if (!Number.isSafeInteger(cent) || cent === 0) throw invalido('valor inválido: diga quanto foi, ex.: 48,90');
-  if (Math.abs(cent) > LIMITES.valorMaxCent) throw invalido('valor alto demais');
   const tipo = input?.tipo === 'renda' ? 'renda' : input?.tipo === 'gasto' || input?.tipo === undefined ? 'gasto' : null;
   if (tipo === null) throw invalido('tipo inválido (gasto ou renda)');
-  // Sem sinal explícito, o tipo decide; com sinal no valor, o sinal decide (estorno de cartão = gasto positivo).
-  if (input?.valorCent === undefined && !/^\s*[-+]/.test(String(input?.valor ?? ''))) cent = tipo === 'renda' ? Math.abs(cent) : -Math.abs(cent);
   const data = input?.data === undefined || input?.data === null ? hoje : parseData(input.data, hoje);
   if (data === null) throw invalido('data inválida: use dd/mm, dd/mm/aaaa, hoje ou ontem');
   const favorecido = nomeFavorecido(input?.favorecido);
@@ -263,6 +322,15 @@ function novoLancamento(input, ctx) {
   if (typeof input?.conta === 'string' && input.conta.trim() !== '') { conta = findConta(contas, input.conta); if (conta === null) throw new ErroFinance('nao_encontrado', `não achei a conta "${input.conta}"`, { contas: contas.filter((c) => !c.fechada).map((c) => c.nome) }); }
   else if (input?.formaPagamento === 'cartao' || input?.formaPagamento === 'dinheiro') conta = contas.find((c) => !c.fechada && c.tipo === input.formaPagamento) ?? contaPadrao(contas);
   else conta = contaPadrao(contas);
+  // Valor na moeda da conta; se a pessoa falou em outra moeda ("₲50.000" numa conta BRL), converte e guarda o original.
+  const moedaDefault = conta?.moeda ?? (moedaValida(input?.moeda) ? input.moeda : MOEDA_PADRAO);
+  const parsed = input?.valorCent !== undefined ? { valorCent: input.valorCent, moeda: moedaValida(input?.moeda) ? input.moeda : moedaDefault } : parseValor(input?.valor, moedaDefault);
+  if (parsed === null || !Number.isSafeInteger(parsed.valorCent) || parsed.valorCent === 0) throw invalido('valor inválido: diga quanto foi, ex.: 48,90');
+  let cent = parsed.valorCent; const moeda = conta ? conta.moeda : parsed.moeda; let original;
+  if (conta && parsed.moeda !== conta.moeda) { original = { valorOriginalCent: parsed.valorCent, moedaOriginal: parsed.moeda }; cent = paraExib(parsed.valorCent, parsed.moeda, ctx.taxas, conta.moeda); }
+  if (valorAltoDemais(cent, moeda)) throw invalido('valor alto demais');
+  // Sem sinal explícito, o tipo decide; com sinal no valor, o sinal decide (estorno de cartão = gasto positivo).
+  if (input?.valorCent === undefined && !/^\s*[-+]/.test(String(input?.valor ?? ''))) cent = tipo === 'renda' ? Math.abs(cent) : -Math.abs(cent);
   let categoria = null; let certa = false; const duvidas = [];
   if (typeof input?.categoria === 'string' && input.categoria.trim() !== '') {
     const c = findCategoria(categorias, input.categoria);
@@ -288,7 +356,7 @@ function novoLancamento(input, ctx) {
   const status = STATUS.includes(input?.status) ? input.status : duvidas.length > 0 ? 'pendente' : 'confirmado';
   const midia = input?.midia && typeof input.midia === 'object' && /^[0-9a-f]{64}$/.test(String(input.midia.sha256 ?? '')) ? { sha256: input.midia.sha256, nome: str(input.midia.nome, 120) || 'comprovante' } : undefined;
   return {
-    id: novaChave('l', rnd), data, valorCent: cent, favorecido, categoria, conta: conta?.key ?? null, notas: str(input?.notas, LIMITES.notas),
+    id: novaChave('l', rnd), data, valorCent: cent, moeda, ...(original ?? {}), favorecido, categoria, conta: conta?.key ?? null, notas: str(input?.notas, LIMITES.notas),
     ...(linha ? { linha } : {}), origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
     criadoEm: now, atualizadoEm: now,
   };
@@ -297,7 +365,7 @@ function patchLancamento(cur, patch, ctx) {
   const { contas, categorias, hoje, now } = ctx;
   const out = { ...cur, atualizadoEm: now };
   if (patch.valor !== undefined || patch.valorCent !== undefined) {
-    let c = patch.valorCent ?? parseValorBRL(patch.valor);
+    let c = patch.valorCent ?? parseValor(patch.valor, cur.moeda ?? MOEDA_PADRAO)?.valorCent;
     if (!Number.isSafeInteger(c) || c === 0) throw invalido('valor inválido');
     if (patch.valorCent === undefined && !/^\s*[-+]/.test(String(patch.valor))) c = cur.valorCent < 0 ? -Math.abs(c) : Math.abs(c);
     out.valorCent = c;
@@ -322,19 +390,23 @@ function duplicadoDe(l, existentes) {
 // ---- contas e meses: números --------------------------------------------------------------------------------------
 function saldoConta(conta, lancamentos) { return conta.saldoInicialCent + lancamentos.filter((l) => l.conta === conta.key).reduce((s, l) => s + l.valorCent, 0); }
 /** Resumo de um mês: gastos e renda (centavos), saldo do mês, por categoria (maior gasto primeiro), pendências. */
-function resumoMes(lancamentos, categorias, ym) {
+function resumoMes(lancamentos, categorias, ym, conv = null) {
+  // `conv` = { taxas, moedaExib }: converte cada lançamento para a moeda de exibição antes de somar (moedas diferentes
+  // não somam cruas). Sem conv, assume que tudo está na mesma moeda (compat).
+  const toExib = conv ? (l) => paraExib(l.valorCent, l.moeda ?? MOEDA_PADRAO, conv.taxas, conv.moedaExib) : (l) => l.valorCent;
   const doMes = lancamentos.filter((l) => mesDe(l.data) === ym);
   const porCat = new Map();
   let gastos = 0; let renda = 0;
   for (const l of doMes) {
-    if (l.valorCent < 0) gastos += -l.valorCent; else renda += l.valorCent;
-    porCat.set(l.categoria, (porCat.get(l.categoria) ?? 0) + l.valorCent);
+    const v = toExib(l);
+    if (v < 0) gastos += -v; else renda += v;
+    porCat.set(l.categoria, (porCat.get(l.categoria) ?? 0) + v);
   }
   const nomeCat = (k) => categorias.find((c) => c.key === k)?.nome ?? k;
   // Retorno do investimento: entradas em categorias de retorno; ROI = (retorno − gastos) / gastos.
   const retornoDe = (k) => categorias.find((c) => c.key === k)?.retorno;
   let direto = 0; let indireto = 0;
-  for (const l of doMes) if (l.valorCent > 0) { const r = retornoDe(l.categoria); if (r === 'direto') direto += l.valorCent; else if (r === 'indireto') indireto += l.valorCent; }
+  for (const l of doMes) { const v = toExib(l); if (v > 0) { const r = retornoDe(l.categoria); if (r === 'direto') direto += v; else if (r === 'indireto') indireto += v; } }
   const porCategoria = [...porCat.entries()].map(([key, cent]) => ({ key, nome: nomeCat(key), cent })).sort((a, b) => a.cent - b.cent);
   return { mes: ym, gastosCent: gastos, rendaCent: renda, saldoCent: renda - gastos, porCategoria, total: doMes.length, pendencias: doMes.filter((l) => l.status === 'pendente').length, ...retornoResumo(gastos, direto, indireto) };
 }
@@ -348,7 +420,8 @@ function linhaLancamento(l, categorias, contas = []) {
   const cat = categorias.find((c) => c.key === l.categoria)?.nome ?? l.categoria;
   const conta = l.conta ? contas.find((c) => c.key === l.conta)?.nome : null;
   const fav = l.favorecido && norm(l.favorecido) !== norm(cat) ? ` · ${l.favorecido}` : '';
-  return `${dataCurta(l.data)} · ${cat}${fav} · ${formatBRL(l.valorCent)}${conta ? ` · ${conta}` : ''}${l.status === 'pendente' ? ' (pendente)' : ''}`;
+  const orig = l.moedaOriginal ? ` (${formatMoeda(l.valorOriginalCent, l.moedaOriginal)})` : '';
+  return `${dataCurta(l.data)} · ${cat}${fav} · ${formatMoeda(l.valorCent, l.moeda ?? MOEDA_PADRAO)}${orig}${conta ? ` · ${conta}` : ''}${l.status === 'pendente' ? ' (pendente)' : ''}`;
 }
 
 module.exports = {
@@ -356,6 +429,8 @@ module.exports = {
   ErroFinance, norm, slug, isKey, novaChave,
   findCategoria, novaCategoria,
   parseValorBRL, formatBRL, parseData, hojeDe, somaDias, diasEntre, mesDe, mesPorExtenso, mesAnterior, dataCurta,
+  MOEDAS, MOEDA_INFO, MOEDA_PADRAO, MOEDA_EXIB_PADRAO, TAXAS_PADRAO, moedaValida, casasDe, simboloDe, detectarMoeda,
+  parseValor, parseMinor, formatMoeda, paraExib, taxaDe, taxasNormalizadas, valorAltoDemais,
   novaConta, patchConta, contaPadrao, findConta, tipoPeloNome,
   nomeFavorecido, favorecidoKey, categoriaAprendida, aprender, categoriaSemente,
   novoLancamento, patchLancamento, duplicadoDe,

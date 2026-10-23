@@ -17,7 +17,7 @@ import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
-import { chatsFromSessions, ownSessionKeys, gatewayFailures, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
+import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
@@ -145,6 +145,39 @@ d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
   exit 0
 fi
+# PicoClaw (sipeed): o canal "whatsapp" do config.json em modo nativo (whatsmeow dentro do gateway). A sessão
+# é o store.db na pasta do canal; "no ar" é o /health do gateway. Serviço: runit no Termux, systemd de usuário fora.
+if command -v picoclaw >/dev/null 2>&1 && [ -f "$HOME/.picoclaw/config.json" ]; then
+  echo gateway=picoclaw; echo present=1
+  echo "bin=$(command -v picoclaw)"
+  echo "ver=$(NO_COLOR=1 timeout 10 picoclaw version 2>/dev/null | grep -o 'picoclaw [^ ]*' | head -1)"
+  python3 - <<'PY' 2>/dev/null
+import json, os, sqlite3
+h = os.path.expanduser("~/.picoclaw")
+c = json.load(open(h + "/config.json"))
+w = (c.get("channel_list") or {}).get("whatsapp") or {}
+s = w.get("settings") or {}
+print("enabled=%d" % bool(w.get("enabled")))
+print("type=%s" % (w.get("type") or ""))
+print("native=%d" % bool(s.get("use_native")))
+print("selfchat=%d" % bool(s.get("self_chat_only")))
+print("allow=%s" % ",".join(str(x) for x in (w.get("allow_from") or [])))
+print("port=%s" % ((c.get("gateway") or {}).get("port") or 18790))
+ws = ((c.get("agents") or {}).get("defaults") or {}).get("workspace") or (h + "/workspace")
+db = os.path.join(s.get("session_store_path") or os.path.join(ws, "whatsapp"), "store.db")
+print("store=%d" % os.path.exists(db))
+print("channel=%s" % json.dumps(w))
+try:
+    r = sqlite3.connect(db).execute("select jid from whatsmeow_device").fetchone()
+    print("me=%s" % (r[0] if r else ""))
+except Exception:
+    print("me=")
+PY
+  P=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.picoclaw/config.json")));print((c.get("gateway") or {}).get("port") or 18790)' 2>/dev/null)
+  echo "health=$(curl -s -m 3 "http://127.0.0.1:\${P:-18790}/health" 2>/dev/null | tr -d '\\n')"
+  echo "svc=$( { [ -n "$PREFIX" ] && SVDIR=$PREFIX/var/service sv status picoclaw 2>/dev/null; } || systemctl --user is-active picoclaw-gateway 2>/dev/null)"
+  exit 0
+fi
 echo present=0
 `;
 
@@ -164,7 +197,7 @@ export function runSsh(host: string, script: string, timeoutMs: number): Promise
 
 const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.exec(jid); return m === null ? null : m[1]!; };
 
-/** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes nem OpenClaw. */
+/** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes, OpenClaw nem PicoClaw. */
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
@@ -174,8 +207,9 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1).trim()); }
   if (kv.get("present") !== "1") return none;
-  const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : "hermes";
+  const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "picoclaw" ? "picoclaw" : "hermes";
   if (gateway === "openclaw") return openclawStatus(kv);
+  if (gateway === "picoclaw") return picoclawStatus(kv);
   const agent = describeInstall("Hermes", kv);
   const ready = kv.get("bridge") === "1";
   if (!ready) return { present: true, gateway, agent, ready, missing: "o bridge do WhatsApp não está nesta instalação do Hermes", connected: false, state: "sem bridge", number: null, loggedOut: false, detail: "Hermes sem o bridge do WhatsApp", dmPolicy: null, channelConfig: null };
@@ -196,7 +230,8 @@ function describeInstall(name: string, kv: Map<string, string>): string {
   const bin = kv.get("bin") ?? "";
   const real = kv.get("real") ?? "";
   const where = bin === "" ? "" : ` em ${bin.replace(/\/[^/]+$/, "")}`;
-  const scope = bin === "" ? "" : bin.startsWith("/home/") || bin.startsWith("/Users/") || bin.startsWith("/root/") ? " (só deste usuário)" : ` (global, todos os usuários${real !== "" && real !== bin ? `; ${real.replace(/\/[^/]+$/, "")}` : ""})`;
+  // /data/data/<app>/ é a área do app no Android (Termux): também é só desta conta.
+  const scope = bin === "" ? "" : bin.startsWith("/home/") || bin.startsWith("/Users/") || bin.startsWith("/root/") || bin.startsWith("/data/data/") ? " (só deste usuário)" : ` (global, todos os usuários${real !== "" && real !== bin ? `; ${real.replace(/\/[^/]+$/, "")}` : ""})`;
   return `${name}${ver === "" ? "" : ` ${ver}`}${where}${scope}`;
 }
 
@@ -236,6 +271,35 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
   const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
   const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
   return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", audioOut, audioVoice, ...(repaired !== null ? { repaired } : {}) };
+}
+
+/**
+ * PicoClaw: o canal `whatsapp` do config.json (modo nativo), a sessão (store.db) e o /health do gateway. Puro
+ * sobre o `chave=valor` do STATUS_SCRIPT, para o teste. Sem `channels status` como o OpenClaw: "conectado" é
+ * sessão pareada + gateway no ar (o canal reconecta sozinho ao subir).
+ */
+export function picoclawStatus(kv: Map<string, string>): WhatsappStatus {
+  const agent = describeInstall("PicoClaw", kv);
+  const enabled = kv.get("enabled") === "1";
+  const native = kv.get("type") === "whatsapp_native" || kv.get("native") === "1";
+  if (!enabled || !native) {
+    const missing = !enabled ? "o canal whatsapp está desligado no ~/.picoclaw/config.json (channel_list.whatsapp.enabled)" : "o canal whatsapp não está em modo nativo (type \"whatsapp_native\" + settings.use_native no config.json)";
+    return { present: true, gateway: "picoclaw", agent, ready: false, missing, connected: false, state: "sem configurar", number: null, loggedOut: false, detail: `PicoClaw instalado, mas ${!enabled ? "com o WhatsApp desligado" : "sem o WhatsApp nativo"}`, dmPolicy: null, channelConfig: null };
+  }
+  const number = phoneOf(kv.get("me") ?? "");
+  const paired = kv.get("store") === "1" && number !== null;
+  let running = false;
+  try { const h = JSON.parse(kv.get("health") || "{}") as { status?: unknown }; running = h.status === "ok"; } catch { /* gateway fora do ar */ }
+  const svc = (kv.get("svc") ?? "").trim();
+  const state = running ? (paired ? "conectado" : "sem sessão") : svc.startsWith("down") ? "gateway parado" : svc.startsWith("run") ? "gateway iniciando" : "gateway fora do ar";
+  const connected = running && paired;
+  const detail = connected ? "conectado" : !paired ? "sem sessão; precisa parear (o QR sai no registro do gateway)" : state === "gateway parado" ? "sessão pareada, gateway parado (serviço picoclaw)" : `sessão pareada, ${state}`;
+  // Quem responde: self_chat_only = só a conversa do próprio número; allow_from = lista; nada = todo mundo.
+  const allow = (kv.get("allow") ?? "").split(",").map((x) => x.trim()).filter((x) => x !== "");
+  const dmPolicy: WhatsappDmPolicy = kv.get("selfchat") === "1" || allow.length > 0 ? "allowlist" : "open";
+  let channelConfig: string | null = null;
+  try { const raw = kv.get("channel") ?? ""; if (raw !== "") channelConfig = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* bloco ilegível */ }
+  return { present: true, gateway: "picoclaw", agent, ready: true, missing: null, connected, state, number, loggedOut: false, detail, dmPolicy, channelConfig, ...(allow.length > 0 ? { allowFrom: allow } : {}) };
 }
 
 /**
@@ -642,6 +706,34 @@ export async function whatsappExportBody(host: string, number: string, format: "
     ? threadToMarkdown(name, want, host, messages, exportedAt)
     : `${JSON.stringify({ channel: "whatsapp", contact: { name, number: `+${want}` }, host, exportedAt, messages }, null, 2)}\n`;
   return { name, body, messages };
+}
+
+/** A sessão do agente neste grupo, saneada; null = ninguém falou com ele no grupo ainda (nada a limpar). */
+async function grupoSessionKey(host: string, jid: string): Promise<string | null> {
+  if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  const g = (await whatsappGroups(host)).grupos.find((x) => x.jid === jid);
+  return g?.sessionKey !== null && g?.sessionKey !== undefined && SAFE_KEY.test(g.sessionKey) ? g.sessionKey : null;
+}
+
+/** Transcrição de um grupo para guardar no CRM, no mesmo formato do export de contato. */
+export async function whatsappGroupExportBody(host: string, jid: string, limit = 200): Promise<{ nome: string; body: string; messages: WhatsappThreadMessage[] }> {
+  const messages = await whatsappGroupThread(host, jid, limit);
+  const g = (await whatsappGroups(host)).grupos.find((x) => x.jid === jid);
+  const nome = g?.nome ?? jid;
+  return { nome, body: grupoToMarkdown(nome, jid, host, messages, new Date().toISOString()), messages };
+}
+
+/** O que "Limpar histórico" de um grupo vai zerar: a sessão do agente nele (grupo não tem sessão principal). */
+export async function whatsappGroupClearPlan(host: string, jid: string): Promise<{ sessoes: number }> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  return { sessoes: (await grupoSessionKey(host, jid)) === null ? 0 : 1 };
+}
+
+/** Zera a sessão do agente no grupo. Reusa whatsappClearSessions: mesma chamada `sessions.reset` do contato. */
+export async function whatsappGroupClear(host: string, jid: string): Promise<void> {
+  const key = await grupoSessionKey(host, jid);
+  if (key === null) throw new Error("o agente ainda não tem histórico neste grupo");
+  await whatsappClearSessions(host, [key]);
 }
 
 /** O que "Limpar histórico" vai zerar: sessões só do contato e, se houver, a principal (de todos); e se ele está pausado. */

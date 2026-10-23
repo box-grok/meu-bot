@@ -153,3 +153,28 @@ test("DRE prevista: plano Claude Code nasce como custo a definir; linhas de ganh
   await call("POST", `/linhas/${chip.key}/remover`, {});
   assert.equal((await call("GET", `/lancamentos/${l.id}`)).j.lancamento.linha, undefined, "lançamento sai da linha removida");
 });
+
+test("moeda: exibição em dólar; conta em guaraní; valores e saldo convertidos; troca de moeda barrada com lançamentos", async () => {
+  const cfg = await call("PUT", "/config", { moedaExibicao: "USD", taxas: { BRL: 5, PYG: 7300 } });
+  assert.equal(cfg.status, 200); assert.equal(cfg.j.config.moedaExibicao, "USD");
+  const c = await call("POST", "/contas", { nome: "Caixa Guarani", moeda: "PYG" });
+  assert.equal(c.status, 200); assert.equal(c.j.conta.moeda, "PYG");
+  const gkey = c.j.conta.key;
+  const g = await call("POST", "/lancamentos", { valor: "₲ 7.300.000", favorecido: "Mídia paga", conta: gkey });
+  assert.equal(g.status, 200);
+  assert.equal(g.j.lancamento.moeda, "PYG");
+  assert.equal(g.j.lancamento.valor, "-₲ 7.300.000");
+  assert.equal(g.j.lancamento.valorExib, "-US$ 1.000,00");
+  const contas = await call("GET", "/contas");
+  const cg = contas.j.contas.find((x) => x.key === gkey);
+  assert.equal(cg.saldo, "-₲ 7.300.000"); assert.equal(cg.saldoExib, "-US$ 1.000,00");
+  // falar em real numa conta guaraní: converte para guaraní e guarda o original
+  const r = await call("POST", "/lancamentos", { valor: "R$ 50", favorecido: "y", conta: gkey });
+  assert.equal(r.j.lancamento.moeda, "PYG");
+  assert.equal(r.j.lancamento.moedaOriginal, "BRL");
+  assert.equal(r.j.lancamento.valorOriginal, "R$ 50,00");
+  assert.equal(r.j.lancamento.valorCent, -73000); // R$ 50 = US$ 10 = ₲ 73.000
+  // trocar a moeda de uma conta que já tem lançamentos é barrado
+  const troca = await call("PUT", `/contas/${gkey}`, { moeda: "BRL" });
+  assert.equal(troca.status, 400);
+});

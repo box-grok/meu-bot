@@ -151,4 +151,8 @@ test("adicionar por host do ~/.ssh/config: alvo, ssh -G, script e chave do servi
   assert.equal(ak[0], outro);
   assert.match(ak[1], / meu-bot-admin:Lucas$/);
   assert.equal(statSync(join(home, ".ssh", "authorized_keys")).mode & 0o777, 0o600);
+  // Termux (Android): o sshd mora no prefixo, não em /etc/ssh.
+  assert.match(sh, /\$\{PREFIX:-\/usr\}\/etc\/ssh\/ssh_host_ed25519_key\.pub/);
+  const hk = execFileSync("bash", ["-c", sh], { env: { ...process.env, HOME: home }, encoding: "utf8" });
+  assert.match(hk, /^HOSTKEY ssh-ed25519 AAAA/m);
 });

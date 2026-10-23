@@ -13,18 +13,25 @@ export interface ReleaseAsset { name: string; url: string; size: number }
 export interface UpdateCandidate { version: string; asset: ReleaseAsset; sig: ReleaseAsset }
 
 /**
- * Chave pública Ed25519 das releases (SPKI DER em base64; a privada fica só no Mac de quem publica, criada por
- * `npm run chave-release`). Como o SUPublicEDKey do Sparkle: o app só instala o zip que ela confere.
+ * Chaves públicas Ed25519 das releases (SPKI DER em base64), como o SUPublicEDKey do Sparkle: o app só instala o zip
+ * que uma delas confere. A principal assina toda release (privada no Chaveiro de quem publica); a reserva só existe
+ * para trocar de chave sem reinstalar ninguém se a principal se perder ou vazar (privada só no gerenciador de senhas).
+ * Troca: a reserva vira principal, entra uma reserva nova e a antiga sai (scripts/chave-release.mjs, skill publicar).
  */
-export const UPDATE_PUBLIC_KEY = "MCowBQYDK2VwAyEABo4DH23ayzUorwJWeJ8yfYnLmI89dGZSGgv/Z1hoDg0=";
+export const UPDATE_PUBLIC_KEYS: readonly { id: string; chave: string }[] = [
+  { id: "principal-2026-10", chave: "MCowBQYDK2VwAyEABo4DH23ayzUorwJWeJ8yfYnLmI89dGZSGgv/Z1hoDg0=" },
+  { id: "reserva-2026-10", chave: "MCowBQYDK2VwAyEAv6Om08l77vi7GPD3A5rxD68OOnCZq+H/vLiV1qXzAlU=" },
+];
 
-/** O zip baixado é o que a chave da release assinou? `sig` é o conteúdo do .sig (base64); qualquer erro = não. */
-export function verificaAssinatura(zip: Buffer, sig: string, chavePublica: string = UPDATE_PUBLIC_KEY): boolean {
-  try {
-    const s = Buffer.from(sig.trim(), "base64");
-    if (s.length !== 64) return false;
-    return verify(null, zip, createPublicKey({ key: Buffer.from(chavePublica, "base64"), format: "der", type: "spki" }), s);
-  } catch { return false; }
+/** O zip baixado é o que uma das chaves da release assinou? `sig` é o conteúdo do .sig (base64); qualquer erro = não. */
+export function verificaAssinatura(zip: Buffer, sig: string, chaves: string | readonly string[] = UPDATE_PUBLIC_KEYS.map((k) => k.chave)): boolean {
+  let s: Buffer;
+  try { s = Buffer.from(sig.trim(), "base64"); } catch { return false; }
+  if (s.length !== 64) return false;
+  for (const chave of typeof chaves === "string" ? [chaves] : chaves) {
+    try { if (verify(null, zip, createPublicKey({ key: Buffer.from(chave, "base64"), format: "der", type: "spki" }), s)) return true; } catch { /* chave inválida: tenta a próxima */ }
+  }
+  return false;
 }
 
 /** Nome do asset de um app numa release: `meu-bot-0.2.0-arm64.zip` (o .app zipado com ditto). */

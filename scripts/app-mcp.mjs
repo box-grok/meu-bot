@@ -91,7 +91,7 @@ async function call(name, args) {
   if (name === 'app_abrir') {
     if (!/^meu-bot[\w-]*$/.test(app) || !/^[\w.-]+$/.test(maquina)) throw new Error('app ou máquina inválidos');
     const bin = path.join(APPS_DIR, `${app}.app`); if (!fs.existsSync(bin)) throw new Error(`${bin} não existe`);
-    await new Promise((res, rej) => execFile('open', ['-a', bin, '--args', `--host=${maquina}`], (e) => (e ? rej(e) : res())));
+    await new Promise((res, rej) => execFile('open', ['-n', '-a', bin, '--args', `--host=${maquina}`], (e) => (e ? rej(e) : res())));
     const t0 = Date.now(); while (Date.now() - t0 < 25_000) { if (apps().some((x) => x.app === app)) break; await new Promise((r) => setTimeout(r, 500)); }
     return { ok: apps().some((x) => x.app === app), app, maquina };
   }

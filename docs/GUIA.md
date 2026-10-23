@@ -343,7 +343,18 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
 - `npm test` roda `node --test scripts/tests/` sobre o `dist/` (renderer como ESM via
   `dist/renderer/package.json {"type":"module"}`; main como CJS com stub do `electron`).
 
-### Qual agente a máquina tem (Hermes ou OpenClaw)
+### Qual agente a máquina tem (Hermes, OpenClaw ou PicoClaw)
+- PicoClaw (sipeed; FlowBox-F1 no Termux, 23 out): detectado por `picoclaw` no PATH **com** `~/.picoclaw/config.json`
+  (só o binário é uma cópia solta), depois de OpenClaw e Hermes. O estado vem do config (`channel_list.whatsapp`:
+  `enabled`, `type: "whatsapp_native"`, `settings.use_native`/`self_chat_only`, `allow_from`), da sessão
+  (`store.db` na `session_store_path` ou `<workspace>/whatsapp`; o número é o `jid` de `whatsmeow_device`) e do
+  `/health` do gateway na `gateway.port` (18790 por padrão). "Conectado" = sessão pareada + gateway no ar; não há
+  `channels status`. `dmPolicy` é `allowlist` com `self_chat_only` ou `allow_from`, senão `open`. O QR de
+  pareamento sai no registro do gateway (runit: `$PREFIX/var/log/sv/picoclaw/current`), não há pareamento pelo app.
+  "Reiniciar o gateway" usa `sv -w 30 force-restart picoclaw` no Termux (fechar o WhatsApp pode travar o TERM)
+  ou `systemctl --user restart picoclaw-gateway` fora dele; os registros sem journal saem desse log (sem as linhas
+  do QR) e do `backend.log` do nohup. Transcrição, guarda e grupos continuam só do OpenClaw. Parse puro em
+  `picoclawStatus` (`scripts/tests/whatsapp-picoclaw.test.mjs`).
 - `whatsappStatus` (`src/main/whatsapp.ts`) devolve `agent` ("OpenClaw 2026.9.9 em /usr/local/bin (global,
   todos os usuários; /opt/node/lib/node_modules/openclaw)"), `ready` e `missing`. Hermes = `~/.hermes/whatsapp`
   existe; OpenClaw = `openclaw` no PATH. Escopo: binário sob `/home`, `/Users` ou `/root` é "só deste

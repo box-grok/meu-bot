@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao } from "../../src/main/google/google-core.ts";
+import { chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -50,4 +50,42 @@ test("Drive: só drive.file; pasta por máquina e por contato; nomes seguros; bu
   const corpo = g.corpoUpload({ name: "a.md" }, "oi", "B");
   assert.match(corpo, /^--B\r\nContent-Type: application\/json/);
   assert.match(corpo, /\r\n--B--$/);
+});
+
+
+test("parseIdToken: payload do JWT (sem verificar assinatura); invalido vira null", () => {
+  const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const jwt = `x.${b64({ sub: "123", email: "a@b.com", email_verified: true, name: "Ana", picture: "http://p" })}.y`;
+  assert.deepEqual(parseIdToken(jwt), { sub: "123", email: "a@b.com", emailVerificado: true, nome: "Ana", foto: "http://p", fotoLocal: null });
+  assert.equal(parseIdToken(`x.${b64({ email: "a@b.com" })}.y`), null, "sem sub nao vale");
+  assert.equal(parseIdToken("abc"), null); assert.equal(parseIdToken(42), null);
+  // fotoLocal so e preenchida depois, pelo download no main: o id_token nunca traz a imagem.
+  assert.deepEqual(parseIdToken(`x.${b64({ sub: "9" })}.y`), { sub: "9", email: null, emailVerificado: false, nome: null, foto: null, fotoLocal: null });
+});
+
+test("escopos: temEscopo por token, temTodosEscopos para precisa reconectar, url com escopos da conta", () => {
+  const g = ESCOPOS_CONTA.join(" ");
+  assert.ok(temEscopo(g, "https://www.googleapis.com/auth/spreadsheets"));
+  assert.ok(!temEscopo("openid email", "https://www.googleapis.com/auth/spreadsheets"));
+  assert.ok(temTodosEscopos(g, ESCOPOS_CONTA));
+  assert.ok(!temTodosEscopos("openid email profile", ESCOPOS_CONTA));
+  // o Google devolve email/profile como as URLs de userinfo: não deve pedir "reconectar" por isso
+  const comoOGoogleVolta = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/userinfo.profile openid https://www.googleapis.com/auth/userinfo.email";
+  assert.ok(temEscopo(comoOGoogleVolta, "email"));
+  assert.ok(temEscopo(comoOGoogleVolta, "profile"));
+  assert.ok(temTodosEscopos(comoOGoogleVolta, ESCOPOS_CONTA));
+  const url = new URL(urlDeAutorizacao({ clientId: "c", redirect: "http://127.0.0.1:9/oauth", challenge: "ch", state: "st", scope: g }));
+  assert.equal(url.searchParams.get("scope"), g);
+  assert.equal(url.searchParams.get("code_challenge_method"), "S256");
+  assert.equal(url.searchParams.get("access_type"), "offline");
+});
+
+test("parse das respostas das APIs: Gmail, Agenda (dateTime/date), Sheets", () => {
+  const m = gmailMensagemDeRaw("m1", { snippet: "oi", labelIds: ["INBOX", "UNREAD"], payload: { headers: [{ name: "From", value: "Ana <a@b.com>" }, { name: "Subject", value: "Ola" }, { name: "Date", value: "qua" }] } });
+  assert.deepEqual(m, { id: "m1", de: "Ana <a@b.com>", assunto: "Ola", data: "qua", resumo: "oi", naoLida: true });
+  assert.equal(gmailMensagemDeRaw("m2", { payload: { headers: [] } }).assunto, "(sem assunto)");
+  assert.equal(agendaEventoDeRaw({ id: "e1", summary: "Reuniao", start: { dateTime: "2026-10-23T14:00:00Z" }, end: { dateTime: "2026-10-23T15:00:00Z" } }).inicio, "2026-10-23T14:00:00Z");
+  assert.equal(agendaEventoDeRaw({ id: "e2", start: { date: "2026-10-24" }, end: { date: "2026-10-25" } }).titulo, "(sem título)");
+  assert.deepEqual(planilhaValoresDeRaw({ values: [["a", "b"], ["c"]] }), [["a", "b"], ["c"]]);
+  assert.deepEqual(planilhaValoresDeRaw({}), []);
 });

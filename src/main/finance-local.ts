@@ -3,7 +3,7 @@
  * A página Finanças e o tutorial 14 leem e mexem por aqui; a validação final é da máquina (finance-modelo.js), e a
  * licença é conferida nas três camadas (renderer, acesso.ts › assertFinance, backend › financeOk).
  */
-import type { FinanceCategoria, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
+import type { FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
 import { ensureTunnel } from "./tunnel";
 import { getBackendPort } from "./settings";
 import { runSsh } from "./whatsapp";
@@ -66,6 +66,8 @@ export async function financeLinhaSalvar(host: string, l: { key?: string; nome: 
 }
 export const financeLinhaRemover = async (host: string, key: string): Promise<void> => { await api(host, "POST", `/linhas/${encodeURIComponent(key)}/remover`, {}); };
 export const financeConfirmarTodas = (host: string): Promise<{ confirmados: number; restantes: number }> => api(host, "POST", "/pendencias/confirmar-todas", {});
-export const financeContaCriar = async (host: string, input: { nome: string; tipo?: string; saldoInicial?: string }): Promise<FinanceConta> => (await api<{ conta: FinanceConta }>(host, "POST", "/contas", input)).conta;
+export const financeContaCriar = async (host: string, input: { nome: string; tipo?: string; moeda?: string; saldoInicial?: string }): Promise<FinanceConta> => (await api<{ conta: FinanceConta }>(host, "POST", "/contas", input)).conta;
+export const financeConfigLer = async (host: string): Promise<FinanceConfig> => (await api<{ config: FinanceConfig }>(host, "GET", "/config")).config;
+export const financeConfig = async (host: string, patch: { taxas?: Record<string, number>; moedaExibicao?: string }): Promise<FinanceConfig> => (await api<{ config: FinanceConfig }>(host, "PUT", "/config", patch)).config;
 export const financeMes = async (host: string, mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };
 export const financeFecharMes = async (host: string, mes: string): Promise<void> => { await api(host, "POST", "/fechamento", { mes }); };

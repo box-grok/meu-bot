@@ -2,6 +2,7 @@
 import { BrowserWindow } from "electron";
 import { getConversation } from "../conversation";
 import { hostOfWindow } from "../windows";
+import { JID_RE } from "../whatsapp-grupos-core";
 
 export const windowFromEvent = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null =>
   BrowserWindow.fromWebContents(event.sender);
@@ -22,6 +23,13 @@ export const ownedConversation = (event: Electron.IpcMainInvokeEvent, payload: u
   if (ctx === null || typeof id !== "string") return null;
   const conv = getConversation(id);
   return conv !== undefined && conv.host === ctx.host ? { win: ctx.win, host: ctx.host, conv } : null;
+};
+
+/** Jid de grupo do payload ("<dígitos>@g.us"), validado pela mesma regra do resto do app. */
+export const waJid = (payload: unknown): string => {
+  const j = (payload as { jid?: unknown } | null)?.jid;
+  if (typeof j !== "string" || !JID_RE.test(j)) throw new Error("grupo inválido");
+  return j;
 };
 
 /** Número do WhatsApp do payload, só dígitos. */

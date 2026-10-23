@@ -26,6 +26,7 @@
  *   org-delete <org> · box-org-add <box> <org> · box-org-remove <box> <org>
  *   responsaveis <box> ["a@x.com|b@y.com"]  (sem lista: mostra; com lista: substitui; "" tira todos)
  *   arquivos <box> · arquivo-get <box> <arquivo> [--saida caminho] · arquivo-add <box> <caminho> · arquivo-delete <box> <arquivo>
+ *   autenticador · autenticador-adicionar --uri otpauth://… | --segredo X [--emissor e] [--conta c] [--agente sim] · autenticador-codigo [emissor|conta|key]
  *   whatsapp-set +N --resumo "…" [--mensagens N] [--ultima <ms>] [--box <box>]  (cartão "Conversa no WhatsApp"; usado pelo crm-job)
  *   (organização: contatos com e-mail do domínio entram sozinhos; gmail/hotmail/uol… não contam)
  */
@@ -212,6 +213,20 @@ async function main() {
       return out(Object.keys(body).length === 0 ? await api("GET", "/config") : await api("PUT", "/config", body));
     }
     case "chave-set": throw new Error("o meu-bot-crm não usa chave do Streak: o CRM é desta máquina. Para trazer um pipeline do Streak, rode importar-streak.mjs");
+    // Autenticador (códigos de 2 etapas; vem com todo meu-bot, não precisa do CRM): o segredo entra e nunca sai.
+    case "autenticador": return out(await api("GET", "/autenticador"));
+    case "autenticador-adicionar": {
+      const corpo = typeof opt.uri === "string" ? { uri: opt.uri } : { segredo: opt.segredo, ...(typeof opt.emissor === "string" ? { emissor: opt.emissor } : {}), ...(typeof opt.conta === "string" ? { conta: opt.conta } : {}) };
+      if (corpo.uri === undefined && typeof corpo.segredo !== "string") throw new Error("use --uri otpauth://… ou --segredo <chave> [--emissor Google] [--conta e-mail]");
+      return out(await api("POST", "/autenticador", { ...corpo, agente: opt.agente === true || opt.agente === "sim" }));
+    }
+    case "autenticador-codigo": {
+      const q = String(pos[0] ?? "").toLowerCase();
+      const r = await api("GET", "/autenticador/codigos");
+      const lista = r.codigos ?? r.contas ?? [];
+      const achados = q === "" ? lista : lista.filter((c) => c.key === pos[0] || `${c.emissor ?? ""} ${c.conta ?? ""}`.toLowerCase().includes(q));
+      return out({ codigos: achados });
+    }
     default: throw new Error(`comando desconhecido: ${cmd || "(vazio)"}; veja o cabeçalho do crm.mjs`);
   }
 }

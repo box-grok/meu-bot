@@ -156,7 +156,9 @@ export function adoptScript(admin: SupportAdmin): string {
     'AK="$HOME/.ssh/authorized_keys"; touch "$AK"',
     `grep -qF '${body}' "$AK" || printf '%s\\n' '${ADMIN_KEY_OPTIONS} ${body} ${adminKeyComment(admin.nome)}' >> "$AK"`,
     'chmod 600 "$AK"',
-    "printf 'HOSTKEY %s\\n' \"$(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)\"",
+    // A chave do sshd: /etc/ssh no Linux; no Termux (Android) o sshd mora no prefixo ($PREFIX/etc/ssh).
+    'K=/etc/ssh/ssh_host_ed25519_key.pub; [ -f "$K" ] || K="${PREFIX:-/usr}/etc/ssh/ssh_host_ed25519_key.pub"',
+    "printf 'HOSTKEY %s\\n' \"$(cut -d' ' -f1,2 \"$K\")\"",
   ].join("\n");
 }
 

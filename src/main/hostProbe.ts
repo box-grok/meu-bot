@@ -108,8 +108,9 @@ function probeScript(port: number): string {
     // Financeiro (produto meu-bot-finance: CLI finance.mjs + plugin meu-bot-finance): instalado? e a versão.
     `[ -f "$HOME/.local/share/meu-bot/finance/finance.mjs" ] && echo finance=1 || echo finance=0`,
     `echo "financever=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$HOME/.local/share/meu-bot/finance/package.json" 2>/dev/null)"`,
-    // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin).
-    `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; echo "gateway=$G"`,
+    // Agente de chat: openclaw (CLI em ~/.openclaw/bin) tem preferência; senão hermes (~/.local/bin); senão
+    // picoclaw (binário no PATH com ~/.picoclaw/config.json — o config é o que distingue de uma cópia solta).
+    `G=; { command -v openclaw >/dev/null 2>&1 || [ -x "$HOME/.openclaw/bin/openclaw" ]; } && G=openclaw; [ -z "$G" ] && { command -v hermes >/dev/null 2>&1 || [ -x "$HOME/.local/bin/hermes" ] || [ -d "$HOME/.hermes/whatsapp" ]; } && G=hermes; [ -z "$G" ] && { command -v picoclaw >/dev/null 2>&1 || [ -x "$HOME/.local/bin/picoclaw" ]; } && [ -f "$HOME/.picoclaw/config.json" ] && G=picoclaw; echo "gateway=$G"`,
     // OpenClaw: o agente do WhatsApp entende áudio? (transcritor em tools.media.models; o openclaw.json é JSON puro)
     `[ "$G" = openclaw ] && echo "audioin=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));m=(c.get("tools") or {}).get("media") or {};print(int(any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x,dict))))' 2>/dev/null)"`,
     `echo "node=$(command -v node >/dev/null 2>&1 && node -v 2>/dev/null)"`,
@@ -196,7 +197,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     finance: kv.get("finance") === "1",
     financeVersion: kv.get("financever") || null,
     audioIn: kv.get("gateway") === "openclaw" ? kv.get("audioin") === "1" : null,
-    gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : null,
+    gateway: kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "hermes" ? "hermes" : kv.get("gateway") === "picoclaw" ? "picoclaw" : null,
     models: (kv.get("models") ?? "").split(",").map((m) => m.trim()).filter((m) => /^[a-z0-9-]+$/.test(m)),
   };
 }
@@ -350,7 +351,7 @@ export function bundledGuardaVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
 }
 /** Navegador do agente (módulo Pro): o servidor MCP (um arquivo) e o instalador. */
-const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md", "skill-cloudflare-token.md", "skill-subir-site-cloudflare.md"];
+const NAVEGADOR_FILES = ["navegador-mcp.mjs", "install-navegador-mcp.sh", "skill-streak-crm-navegador.md", "skill-cloudflare-token.md", "skill-subir-site-cloudflare.md", "skill-google-2fa-autenticador.md"];
 
 /** O lado da máquina do Navegador está instalado? (null para este Mac) */
 export async function navegadorInstalled(host: string): Promise<boolean | null> {

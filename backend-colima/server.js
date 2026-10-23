@@ -32,6 +32,7 @@ const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const licenca = require('./licenca');
 const { createCrmApi } = require('./crm-api');
 const { createFinanceApi } = require('./finance-api');
+const { sincronizarInvestimentos } = require('./finance-crm-sync');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -172,6 +173,19 @@ let financeApiInst = null;
 function financeApi() {
   if (financeApiInst === null) financeApiInst = createFinanceApi({ dir: FINANCE_DB, licenseOk: () => licenca.financeOk(ensureLicense()), json, readBody, log });
   return financeApiInst;
+}
+// Sincronização financeiro → CRM, com debounce: depois de uma rajada de escritas do financeiro, um upsert no pipeline
+// "Investimentos & ROI". Só quando o financeiro e o CRM estão liberados. Falha de sync nunca atrapalha o financeiro.
+let syncCrmTimer = null;
+function agendarSyncInvestimentos() {
+  if (syncCrmTimer !== null) return;
+  syncCrmTimer = setTimeout(() => {
+    syncCrmTimer = null;
+    let lic; try { lic = ensureLicense(); } catch { return; }
+    if (!licenca.financeOk(lic) || !licenca.crmOk(lic)) return;
+    Promise.resolve().then(() => sincronizarInvestimentos(financeApi(), crmApi())).catch((e) => log(`sync financeiro→crm falhou: ${e.message}`));
+  }, 1500);
+  if (typeof syncCrmTimer.unref === 'function') syncCrmTimer.unref();
 }
 async function announceMachine(m) {
   const machines = readJson(MACHINES_FILE, null);
@@ -656,7 +670,7 @@ const server = http.createServer(async (req, res) => {
   // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.
   if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());
   // CRM próprio (meu-bot-crm): extensão do Gmail (pelo app), agente (crm.mjs), job do WhatsApp e importador.
-  if (url.pathname.startsWith('/v1/finance/') || url.pathname === '/v1/finance') { financeApi().handle(req, res, url).catch((e) => { log(`finance falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
+  if (url.pathname.startsWith('/v1/finance/') || url.pathname === '/v1/finance') { const mut = req.method === 'POST' || req.method === 'PUT'; financeApi().handle(req, res, url).then(() => { if (mut) agendarSyncInvestimentos(); }, (e) => { log(`finance falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname.startsWith('/v1/crm/') || url.pathname === '/v1/crm') { crmApi().handle(req, res, url).catch((e) => { log(`crm falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromSessions, threadFor, peerOfSessionKey } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+const { chatsFromSessions, threadFor, peerOfSessionKey, grupoToMarkdown } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
 
 // Formato real do OpenClaw 2026.9.9 (sessions.list / chat.history), números trocados.
 const SELF = "+5521900000001";
@@ -224,4 +224,28 @@ test("sessão de grupo não entra na conversa de quem fala nela (Limpar históri
   const chats = chatsFromSessions(l, SELF);
   assert.deepEqual(chats.map((c) => c.number), [ANA.slice(1)]);
   assert.deepEqual(chats[0].sessionKeys, [`agent:main:whatsapp:direct:${ANA}`]);
+});
+
+test("grupoToMarkdown: identifica quem falou, lista os autores e separa por dia", () => {
+  const msgs = [
+    { role: "contact", text: "bom dia", at: "2026-10-21T12:00:00.000Z", autor: "Junior" },
+    { role: "agent", text: "bom dia!", at: "2026-10-21T12:00:30.000Z" },
+    { role: "contact", text: "e ai", at: "2026-10-22T15:00:00.000Z", autor: "+595994402904" },
+  ];
+  const md = grupoToMarkdown("(LV) - agente", "120363430052001678@g.us", "agente-box-lv", msgs, "2026-10-23T23:00:00.000Z");
+  assert.match(md, /^# WhatsApp \(grupo\): \(LV\) - agente/);
+  assert.match(md, /- Grupo: \(LV\) - agente \(120363430052001678@g\.us\)/);
+  assert.match(md, /- Mensagens: 3/);
+  // Autores: so quem nao e o agente, sem repetir.
+  assert.match(md, /- Quem falou: Junior, \+595994402904/);
+  assert.ok(md.includes("**Junior**") && md.includes("**Agente**") && md.includes("**+595994402904**"));
+  // Dois dias distintos viram dois cabecalhos.
+  assert.equal((md.match(/^## /gm) || []).length, 2);
+});
+
+test("grupoToMarkdown: sem mensagens nao inventa periodo nem autores", () => {
+  const md = grupoToMarkdown("Vazio", "120363430052001678@g.us", "h", [], "2026-10-23T23:00:00.000Z");
+  assert.match(md, /- Mensagens: 0/);
+  assert.ok(!md.includes("Periodo:") && !md.includes("Período:"));
+  assert.ok(!md.includes("Quem falou:"));
 });

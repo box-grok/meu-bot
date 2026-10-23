@@ -381,7 +381,9 @@ async function readProgress(host: string): Promise<SupportProgress | null> {
 /** Últimos registros do gateway e do backend (só leitura). */
 export async function adminLogs(host: string): Promise<string> {
   if (!(await readShare(host)).logs) throw new Error("a pessoa preferiu não compartilhar os registros");
-  const r = await runSsh(host, "journalctl --user -u openclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200\n", 30_000);
+  // Com journal de usuário (VM, OpenClaw): as unidades. Sem ele (Termux/PicoClaw sob runit, backend por nohup):
+  // o log do serviço picoclaw, sem as linhas do QR em blocos, e o backend.log do instalador.
+  const r = await runSsh(host, `if journalctl --user -n 1 >/dev/null 2>&1; then journalctl --user -u openclaw-gateway -u picoclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200; else { [ -n "$PREFIX" ] && tail -n 150 "$PREFIX/var/log/sv/picoclaw/current" 2>/dev/null | grep -vE '[▄▀█]'; tail -n 80 "$HOME/.hermes/agente-rene/backend-sdk-claude/backend.log" 2>/dev/null; } | tail -n 200; fi\n`, 30_000);
   return r.stdout.trim() || r.stderr.trim() || "sem registros";
 }
 
@@ -442,7 +444,9 @@ export async function adminBotDelete(host: string, sessionId: string): Promise<v
 
 const ACTIONS: Record<AdminAction, { acao: Acao; sh: string }> = {
   "install-backend": { acao: "backend.instalar", sh: "" },
-  "restart-gateway": { acao: "servico.reiniciar-gateway", sh: "systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1" },
+  // O gateway é o que a máquina tem: PicoClaw (runit no Termux, com força porque fechar o WhatsApp pode travar o
+  // TERM; systemd de usuário fora dele) ou OpenClaw.
+  "restart-gateway": { acao: "servico.reiniciar-gateway", sh: `if command -v picoclaw >/dev/null 2>&1 && [ -f "$HOME/.picoclaw/config.json" ]; then { [ -n "$PREFIX" ] && SVDIR=$PREFIX/var/service sv -w 30 force-restart picoclaw 2>&1; } || systemctl --user restart picoclaw-gateway 2>&1; else systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1; fi` },
   "restart-backend": { acao: "servico.reiniciar-backend", sh: "systemctl --user restart meu-bot-backend 2>&1" },
   transcription: { acao: "audio.ativar", sh: "" },
   "transcription-off": { acao: "audio.desativar", sh: "" },
