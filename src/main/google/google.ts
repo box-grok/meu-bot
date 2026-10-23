@@ -230,7 +230,15 @@ export async function sessaoDrive(): Promise<SessaoDrive | null> {
   if (c === null || t === null) return null;
   if (!temDrive(t.escopo)) throw new Error("o Google deste Mac está conectado sem a permissão do Drive: clique em \"Reconectar\" na aba Pessoas do CRM (Gmail)");
   const tok = await postForm(URL_TOKEN, { refresh_token: t.refresh, client_id: c.clientId, client_secret: c.clientSecret, grant_type: "refresh_token" });
-  const auth = { authorization: `Bearer ${String(tok["access_token"])}` };
+  return sessaoDriveCom(String(tok["access_token"]));
+}
+
+/**
+ * A mesma sessão do Drive a partir de um access token pronto. Existe para a Conta Google (conta-google.ts, que já
+ * renova o token sozinha) usar o mesmo código das conversas do WhatsApp, sem duplicar `api` nem a navegação de pastas.
+ */
+export function sessaoDriveCom(acesso: string): SessaoDrive {
+  const auth = { authorization: `Bearer ${acesso}` };
   const api = async (url: string, init: RequestInit = {}): Promise<Record<string, unknown>> => {
     const r = await fetch(url, { ...init, headers: { ...auth, ...(init.headers ?? {}) }, signal: AbortSignal.timeout(60_000) });
     const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;

@@ -2316,6 +2316,19 @@ O admin faz o backup de tudo o que é da pessoa numa VM e restaura numa outra.
   `backup.desativar-origem` e `backup.ativar-whatsapp`.
 - **Fora do pacote:** o hermes-agent instalado por npm em `~/.local/lib` e a voz das respostas (religar no tutorial).
 
+## Caixa fixa do grupo no CRM ao limpar o histórico (23 out)
+
+"Limpar histórico" de um grupo guarda a conversa no CRM antes, como a de um contato. Grupo não tem contato único,
+então a conversa vai para **uma caixa fixa por grupo**, e o dono não escolhe numa lista (ela só cresce).
+
+- **Dono da caixa é a máquina:** `POST /v1/crm/whatsapp/arquivar` com `grupo: { jid, nome }` acha a caixa pelo
+  `fields.whatsappGrupo`; sem ela, abre uma no pipeline padrão, com o nome do grupo, na primeira etapa, já ligada
+  (resposta `criada: true`, registro "📦 Caixa aberta para o grupo…"). Sem pipeline padrão responde 400 e nada é
+  limpo. O app (`whatsapp-crm.ts` › `whatsappGroupArchiveToCrm`) só manda e conta o resultado; a fase "escolher",
+  `boxKey`, `precisaCaixa` e a lista de caixas saíram.
+- **Backend 1.0.2:** o `crm-api.js` com grupos tinha ficado em 1.0.0 nos servidores (a versão não subiu com a
+  mudança), e o backend antigo respondia "telefone inválido" ao receber um grupo. A sondagem agora atualiza.
+
 ## Cópia do CRM e do financeiro no Drive do dono (23 out)
 
 Para ninguém ficar preso a uma VM: uma vez por dia o app manda os dados de cada máquina para o Google Drive **do
@@ -2341,6 +2354,13 @@ dono**. Nada de bucket do fornecedor; cada cliente guarda no Drive dele.
   a cópia no Drive resolve "a máquina morreu". Se um dia o backup local sair, esta decisão precisa ser revista.
 - **Desligar:** `dadosNoDrive: false` no `settings.json` do app. Sem o Google conectado com permissão de Drive,
   a tarefa simplesmente não roda.
+- **Cópia local também:** antes de subir, o pacote é gravado em `~/Documents/meu-bot/backup/<máquina>/`, com a
+  mesma retenção de um arquivo por conjunto. Se o Drive falhar, ainda sobra um pacote fora da VM. O botão
+  **Abrir a pasta no Mac**, na aba Conta Google, abre essa pasta no Finder.
+- **Na tela:** aba Conta Google, seção **Backup no Drive**: data da última cópia, caminho e tamanho de cada
+  pacote, e os botões Guardar agora, Abrir a pasta no Mac e ligar/desligar a cópia diária.
+- **Conta usada:** a da aba Conta Google (a mesma do Gmail e da Agenda), não o token de Contatos do CRM. Por isso
+  `drive.file` entrou em `ESCOPOS_CONTA`: quem conectou antes de 23/10 aparece como "precisa reconectar".
 - **Auditoria:** registra `backup.dados-drive` com os conjuntos que subiram.
 
 **Restaurar numa VM nova:** baixe o pacote, extraia com `tar -xzf` sobre `~/.local/share/meu-bot/crm` (o

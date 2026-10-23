@@ -388,8 +388,9 @@ function createCrmApi(deps) {
     // (tentou de novo depois de uma limpeza que falhou) não duplica. Sem IA, o arquivo fica e `resumo` volta false.
     if (a === 'whatsapp' && b === 'arquivar' && m === 'POST') {
       const input = await body(req, ARQUIVO_MAX * 2 + 4096);
-      // Grupo: nao tem contato unico, entao a conversa vai para uma caixa que o dono liga ao jid uma vez
-      // (fields.whatsappGrupo). Sem vinculo e sem boxKey, responde precisaCaixa: nada e gravado nem limpo.
+      // Grupo: nao tem contato unico, entao a conversa vai para a caixa fixa do grupo (fields.whatsappGrupo).
+      // Na primeira vez ela nasce sozinha no pipeline padrao, com o nome do grupo, na primeira etapa: o dono nao
+      // escolhe numa lista. Sem pipeline padrao nao da para abrir a caixa, e nada e gravado nem limpo.
       const grupo = input.grupo && typeof input.grupo === 'object' ? input.grupo : null;
       if (grupo !== null) {
         const jid = typeof grupo.jid === 'string' && /^\d{10,25}(-\d+)?@g\.us$/.test(grupo.jid) ? grupo.jid : null;
@@ -403,28 +404,33 @@ function createCrmApi(deps) {
         const de = Number.isFinite(input.primeiraEm) && input.primeiraEm > 0 ? input.primeiraEm : 0;
         const ate = Number.isFinite(input.ultimaEm) && input.ultimaEm > 0 ? input.ultimaEm : 0;
         const dia = (x) => new Date(x).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        const titulo = typeof grupo.nome === 'string' && grupo.nome.trim() !== '' ? grupo.nome.trim().slice(0, 120) : jid;
         const ligada = store.allBoxes().find((x) => (x.fields ?? {}).whatsappGrupo === jid) ?? null;
-        const pedida = typeof input.boxKey === 'string' && modelo.isKey(input.boxKey) ? store.getBox(input.boxKey) : null;
-        const alvo = ligada ?? pedida;
-        if (!alvo) return { ok: true, precisaCaixa: true };
+        const pk = ligada === null ? pipelinePadrao().key : null;
+        if (ligada === null && pk === null) throw new modelo.ErroCrm('invalido', 'o CRM nao tem pipeline padrao para abrir a caixa deste grupo: escolha um nas configuracoes do CRM');
         const g = await store.mutate(por, (tx) => {
-          const cur = tx.getBox ? tx.getBox(alvo.key) : boxOr404(alvo.key);
-          const bx = cur ?? boxOr404(alvo.key);
+          let bx = ligada === null ? null : tx.getBox(ligada.key);
+          let criada = false;
+          if (bx === null) {
+            const pl = pipelineOr404(pk ?? ligada.pipelineKey);
+            const novo = modelo.novoBox(pl, { name: titulo }, tx.now, tx.rnd);
+            bx = { ...novo, fields: { ...novo.fields, whatsappGrupo: jid } };
+            tx.setBox(bx); tx.mudar('box.create', { pipeline: pl.key, box: bx.key }); criada = true;
+          }
           const ja = (bx.arquivos ?? []).find((x) => x.sha256 === sha256);
-          if (ja) return { box: bx, arquivo: ja, repetido: true };
+          if (ja) return { box: bx, arquivo: ja, repetido: true, criada };
           const nome = `conversa-grupo-${new Date(ate || tx.now).toISOString().slice(0, 10)}.md`;
           const x = gravarArquivo(tx, bx.key, { nome, tipo: 'text/markdown' }, dados, por, { sha256, mensagens, de, ate });
           const periodo = de && ate ? `, de ${dia(de)} a ${dia(ate)}` : '';
-          const titulo = typeof grupo.nome === 'string' && grupo.nome.trim() !== '' ? grupo.nome.trim().slice(0, 120) : jid;
           const { box } = modelo.addComment(
             { ...bx, arquivos: [...(bx.arquivos ?? []), x], fields: { ...(bx.fields ?? {}), whatsappGrupo: jid }, updatedAt: tx.now },
-            `\u{1F4E6} Conversa do grupo "${titulo}" arquivada antes de limpar: ${mensagens} mensagens${periodo}. Transcricao no anexo "${nome}".`,
+            `${criada ? `\u{1F4E6} Caixa aberta para o grupo "${titulo}". ` : ''}\u{1F4E6} Conversa do grupo "${titulo}" arquivada antes de limpar: ${mensagens} mensagens${periodo}. Transcricao no anexo "${nome}".`,
             'whatsapp', tx.now, tx.rnd,
           );
           tx.setBox(box); tx.mudar('box.comment', { pipeline: box.pipelineKey, box: box.key });
-          return { box: bx, arquivo: x, repetido: false };
+          return { box: bx, arquivo: x, repetido: false, criada };
         });
-        const saida = { ok: true, precisaCaixa: false, box: { key: g.box.key, nome: g.box.name }, arquivo: arquivoView(g.arquivo), repetido: g.repetido };
+        const saida = { ok: true, criada: g.criada, box: { key: g.box.key, nome: g.box.name }, arquivo: arquivoView(g.arquivo), repetido: g.repetido };
         if (g.repetido || typeof deps.iaTexto !== 'function') return { ...saida, resumo: false, ...(g.repetido ? {} : { aviso: 'o motor de IA nao esta disponivel nesta maquina' }) };
         let resumo;
         const anterior = (g.box.fields ?? {}).whatsappGrupoResumo;

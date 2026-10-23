@@ -33,13 +33,19 @@ export const temEscopo = (escopoGuardado: unknown, alvo: string): boolean => {
 /** Todos os escopos de `alvos` estão no guardado? (para "precisa reconectar"). */
 export const temTodosEscopos = (escopoGuardado: unknown, alvos: readonly string[]): boolean => alvos.every((a) => temEscopo(escopoGuardado, a));
 
-/** Conta Google geral (login + Gmail + Agenda + Sheets + Drive): escopos da decisão do usuário. */
+/**
+ * Conta Google geral (login + Gmail + Agenda + Sheets + Drive): escopos da decisão do usuário.
+ * `drive.file` entrou em 23/10 para a cópia diária do CRM e do financeiro no Drive do dono: é o escopo mínimo que
+ * permite gravar, e o app só enxerga o que ele mesmo criou. Quem conectou antes disso aparece como
+ * "precisa reconectar" até autorizar uma vez; sem ele a cópia não sobe.
+ */
 export const ESCOPOS_CONTA = [
   "openid", "email", "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/spreadsheets",
   "https://www.googleapis.com/auth/drive.metadata.readonly",
+  ESCOPO_DRIVE,
 ] as const;
 
 /**
@@ -190,20 +196,30 @@ export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   { id: "crm", dir: "crm/db", pasta: "CRM", prefixo: "crm", excluir: ["db/backup", "db/autenticador.json", "db/autenticador-uso.jsonl"] },
   { id: "financeiro", dir: "finance/db", pasta: "Financeiro", prefixo: "financeiro", excluir: ["db/backup"] },
 ];
-/** Onde o pacote de um conjunto fica no Drive. Mesma pasta por máquina das conversas: várias VMs não se misturam. */
+/** A máquina dentro de um nome de arquivo: só letras, números, ponto, hífen e sublinhado. */
+export const slugMaquina = (s: string): string => s.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "maquina";
+/**
+ * Onde o pacote de um conjunto fica no Drive: uma pasta por máquina e por conjunto. A máquina entra **também no
+ * nome do arquivo**, para o pacote continuar se identificando depois de baixado, fora da pasta dele.
+ */
 export function caminhoDadosNoDrive(maquina: string, c: ConjuntoDados, quando: number): { pastas: string[]; arquivo: string } {
   const d = new Date(quando > 0 ? quando : Date.now());
   const p = (x: number): string => String(x).padStart(2, "0");
-  return { pastas: ["meu-bot", nomeDrive(maquina), c.pasta], arquivo: `${c.prefixo}-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.tar.gz` };
+  const data = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return { pastas: ["meu-bot", nomeDrive(maquina), c.pasta], arquivo: `${c.prefixo}-${slugMaquina(maquina)}-${data}.tar.gz` };
 }
-/** Só os pacotes que este recurso cria; qualquer outra coisa na pasta é de terceiro e não se apaga. */
-export const pacoteDadosRe = (prefixo: string): RegExp => new RegExp(`^${prefixo.replace(/[^a-z]/g, "")}-\\d{4}-\\d{2}-\\d{2}\\.tar\\.gz$`);
+/**
+ * Só os pacotes que este recurso cria para esta máquina; qualquer outra coisa na pasta é de terceiro e não se apaga.
+ * Casar a máquina importa: se um dia duas delas dividirem pasta, uma não apaga a cópia da outra.
+ */
+export const pacoteDadosRe = (prefixo: string, maquina: string): RegExp =>
+  new RegExp(`^${prefixo.replace(/[^a-z]/g, "")}-${slugMaquina(maquina).replace(/[.\-]/g, "\\$&")}-\\d{4}-\\d{2}-\\d{2}\\.tar\\.gz$`);
 /**
  * Retenção de uma cópia só: apaga os pacotes antigos daquele conjunto, menos o que acabou de subir. Decisão
  * separada da chamada à API para ser testável e para nunca apagar por engano o que não casa com o padrão.
  */
-export function pacotesDadosAApagar(arquivos: readonly { id?: unknown; name?: unknown }[], idNovo: string, prefixo: string): string[] {
-  const re = pacoteDadosRe(prefixo);
+export function pacotesDadosAApagar(arquivos: readonly { id?: unknown; name?: unknown }[], idNovo: string, prefixo: string, maquina: string): string[] {
+  const re = pacoteDadosRe(prefixo, maquina);
   const ids: string[] = [];
   for (const a of arquivos) {
     if (typeof a.id !== "string" || typeof a.name !== "string") continue;

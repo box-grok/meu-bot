@@ -29,6 +29,8 @@ import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
+import { enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
+import { getDadosNoDrive, setDadosNoDrive } from "../settings";
 import { agendaCriar, agendaProximos, gmailResumo, planilhaEscrever, planilhaLer } from "../google/apis";
 import { changeWindowZoom, currentZoom } from "../zoom";
 import { parseZoomAction } from "../zoom-core";
@@ -67,6 +69,29 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   });
   handleShared("google-conta:conectar", async (event) => { const ctx = hostFromEvent(event); const r = await contaConectar(ctx?.host ?? ""); broadcast("google-conta:changed", r); return r; });
   handleShared("google-conta:desconectar", async () => { const r = await contaDesconectar(); broadcast("google-conta:changed", r); return r; });
+  // Cópia do CRM e do financeiro desta máquina no Drive da Conta Google: estado, "guardar agora" e o interruptor.
+  handleShared("backup-dados:status", (event) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    return { ligado: getDadosNoDrive(), ...estadoDadosDrive(h.host) };
+  });
+  handleShared("backup-dados:agora", async (event) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    return { ligado: getDadosNoDrive(), ...(await enviarDadosAoDrive(h.host)) };
+  });
+  // Abre no Finder a pasta das cópias locais desta máquina. Cria se ainda não houver (primeira cópia não saiu).
+  handleShared("backup-dados:abrir-pasta", async (event) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const dir = pastaBackupDados(h.host);
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const erro = await shell.openPath(dir);
+    if (erro !== "") throw new Error(`não consegui abrir a pasta: ${erro}`);
+    return { pasta: dir };
+  });
+  handleShared("backup-dados:ligar", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    setDadosNoDrive((payload as { ligado?: unknown } | null)?.ligado === true);
+    return { ligado: getDadosNoDrive(), ...estadoDadosDrive(h.host) };
+  });
   handleShared("google-conta:gmail", () => gmailResumo());
   handleShared("google-conta:agenda", (_event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(typeof d === "number" ? d : 7); });
   handleShared("google-conta:agenda-criar", (_event, payload: unknown) => {
@@ -253,8 +278,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     void registrar(h.host, "whatsapp.limpar", `+${waNumber(payload)}`);
   });
 
-  // Grupos: mesmo trio do contato (plano › guardar no CRM › limpar). A caixa do CRM é escolhida pela tela,
-  // porque grupo não tem contato único; sem ela a máquina responde `precisaCaixa` e nada é guardado nem limpo.
+  // Grupos: mesmo trio do contato (plano › guardar no CRM › limpar). Grupo não tem contato único: a máquina abre
+  // a caixa fixa dele no pipeline padrão na primeira vez e reaproveita depois; sem pipeline padrão nada é limpo.
   handleShared("whatsapp:group-clear-plan", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
@@ -264,10 +289,9 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     await assertCrmProprio(h.host);
-    const bk = (payload as { boxKey?: unknown }).boxKey;
     const jid = waJid(payload);
-    const r = await whatsappGroupArchiveToCrm(h.host, jid, typeof bk === "string" && bk !== "" ? bk : undefined);
-    if (!r.vazio && !r.precisaCaixa) void registrar(h.host, "crm.guardar-conversa", jid, r.box !== null ? `caixa ${r.box.nome}` : "grupo");
+    const r = await whatsappGroupArchiveToCrm(h.host, jid);
+    if (!r.vazio) void registrar(h.host, "crm.guardar-conversa", jid, r.box !== null ? `caixa ${r.box.nome}${r.criada ? " (aberta agora)" : ""}` : "grupo");
     return r;
   });
   handleShared("whatsapp:group-clear", async (event, payload: unknown) => {

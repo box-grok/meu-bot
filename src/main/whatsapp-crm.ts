@@ -6,7 +6,6 @@
  */
 import type { WhatsappArchive, WhatsappGroupArchive } from "../shared/ipc";
 import { whatsappExportBody, whatsappGroupExportBody } from "./whatsapp";
-import { crmCaixas } from "./crm-local";
 import { ensureTunnel } from "./tunnel";
 import { getBackendPort } from "./settings";
 import { guardarNoDrive } from "./google/google";
@@ -16,27 +15,24 @@ import { log } from "./backend";
 const LIMITE = 1000;
 
 /**
- * Conversa de um grupo guardada no CRM antes de limpar. Grupo não tem contato único, então a caixa é escolhida
- * pelo dono uma vez: sem `boxKey` e sem vínculo gravado, a máquina responde `precisaCaixa` e nada é guardado nem
- * limpo; a tela pergunta e chama de novo com a caixa. Sem cópia no Drive (ela é por contato).
+ * Conversa de um grupo guardada no CRM antes de limpar. Grupo não tem contato único, então a máquina é dona da
+ * caixa fixa dele: abre uma no pipeline padrão com o nome do grupo na primeira vez e reaproveita depois. Sem
+ * pipeline padrão ela recusa, e nada é limpo. Sem cópia no Drive (ela é por contato).
  */
-export async function whatsappGroupArchiveToCrm(host: string, jid: string, boxKey?: string): Promise<WhatsappGroupArchive> {
+export async function whatsappGroupArchiveToCrm(host: string, jid: string): Promise<WhatsappGroupArchive> {
   const { nome, body, messages } = await whatsappGroupExportBody(host, jid, LIMITE);
-  const vazio: WhatsappGroupArchive = { vazio: true, precisaCaixa: false, caixas: [], box: null, arquivo: null, mensagens: 0, resumo: false, aviso: null };
-  if (messages.length === 0) return vazio;
+  if (messages.length === 0) return { vazio: true, criada: false, box: null, arquivo: null, mensagens: 0, resumo: false, aviso: null };
   const tunnel = await ensureTunnel(host, getBackendPort(host));
   const r = await fetch(`http://127.0.0.1:${tunnel.localPort}/v1/crm/whatsapp/arquivar`, {
     method: "POST",
     headers: { authorization: `Bearer ${tunnel.apiKey}`, "content-type": "application/json", "x-crm-por": "app" },
-    body: JSON.stringify({ grupo: { jid, nome }, ...(boxKey === undefined ? {} : { boxKey }), transcricao: body, mensagens: messages.length, primeiraEm: Date.parse(messages[0]!.at) || 0, ultimaEm: Date.parse(messages.at(-1)!.at) || 0 }),
+    body: JSON.stringify({ grupo: { jid, nome }, transcricao: body, mensagens: messages.length, primeiraEm: Date.parse(messages[0]!.at) || 0, ultimaEm: Date.parse(messages.at(-1)!.at) || 0 }),
     signal: AbortSignal.timeout(5 * 60_000),
   });
-  const j = (await r.json().catch(() => ({}))) as { box?: { key: string; nome: string } | null; arquivo?: { nome?: string }; resumo?: boolean; aviso?: string; precisaCaixa?: boolean; error?: { message?: string } };
-  // Falta escolher a caixa: não é erro, é a pergunta. As opções vêm do CRM para a tela montar a escolha.
-  if (j.precisaCaixa === true) return { ...vazio, vazio: false, precisaCaixa: true, caixas: await crmCaixas(host), mensagens: messages.length };
+  const j = (await r.json().catch(() => ({}))) as { box?: { key: string; nome: string } | null; arquivo?: { nome?: string }; resumo?: boolean; aviso?: string; criada?: boolean; error?: { message?: string } };
   if (!r.ok) throw new Error(j.error?.message ?? `o CRM respondeu ${r.status}`);
-  log(`whatsapp: conversa do grupo ${jid} guardada no CRM de ${host} (${messages.length} mensagens${j.box ? `, caixa ${j.box.nome}` : ""})`);
-  return { vazio: false, precisaCaixa: false, caixas: [], box: j.box ?? null, arquivo: j.arquivo?.nome ?? null, mensagens: messages.length, resumo: j.resumo === true, aviso: j.aviso ?? null };
+  log(`whatsapp: conversa do grupo ${jid} guardada no CRM de ${host} (${messages.length} mensagens${j.box ? `, caixa ${j.box.nome}${j.criada === true ? " aberta agora" : ""}` : ""})`);
+  return { vazio: false, criada: j.criada === true, box: j.box ?? null, arquivo: j.arquivo?.nome ?? null, mensagens: messages.length, resumo: j.resumo === true, aviso: j.aviso ?? null };
 }
 
 export async function whatsappArchiveToCrm(host: string, number: string): Promise<WhatsappArchive> {

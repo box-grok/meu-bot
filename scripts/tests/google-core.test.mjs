@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -73,7 +73,11 @@ test("escopos: temEscopo por token, temTodosEscopos para precisa reconectar, url
   const comoOGoogleVolta = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/userinfo.profile openid https://www.googleapis.com/auth/userinfo.email";
   assert.ok(temEscopo(comoOGoogleVolta, "email"));
   assert.ok(temEscopo(comoOGoogleVolta, "profile"));
-  assert.ok(temTodosEscopos(comoOGoogleVolta, ESCOPOS_CONTA));
+  // Desde 23/10 a conta tambem pede drive.file (copia do CRM e do financeiro no Drive): quem conectou antes
+  // tem tudo menos esse, e por isso aparece como "precisa reconectar" ate autorizar uma vez.
+  assert.ok(!temTodosEscopos(comoOGoogleVolta, ESCOPOS_CONTA), "sem drive.file: precisa reconectar");
+  assert.ok(temTodosEscopos(`${comoOGoogleVolta} https://www.googleapis.com/auth/drive.file`, ESCOPOS_CONTA), "com drive.file: completo");
+  assert.ok(ESCOPOS_CONTA.includes("https://www.googleapis.com/auth/drive.file"), "drive.file faz parte da conta");
   const url = new URL(urlDeAutorizacao({ clientId: "c", redirect: "http://127.0.0.1:9/oauth", challenge: "ch", state: "st", scope: g }));
   assert.equal(url.searchParams.get("scope"), g);
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");
@@ -95,8 +99,8 @@ test("caminhoDadosNoDrive: uma pasta por maquina e por conjunto; o nome leva a d
   const quando = Date.parse("2026-10-23T12:00:00-03:00");
   const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
   const fin = CONJUNTOS_DADOS.find((c) => c.id === "financeiro");
-  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", crm, quando), { pastas: ["meu-bot", "agente-box-lv", "CRM"], arquivo: "crm-2026-10-23.tar.gz" });
-  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", fin, quando), { pastas: ["meu-bot", "agente-box-lv", "Financeiro"], arquivo: "financeiro-2026-10-23.tar.gz" });
+  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", crm, quando), { pastas: ["meu-bot", "agente-box-lv", "CRM"], arquivo: "crm-agente-box-lv-2026-10-23.tar.gz" });
+  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", fin, quando), { pastas: ["meu-bot", "agente-box-lv", "Financeiro"], arquivo: "financeiro-agente-box-lv-2026-10-23.tar.gz" });
   // Pastas diferentes: zerar o financeiro no Drive nao encosta no CRM.
   assert.notDeepEqual(caminhoDadosNoDrive("m", crm, quando).pastas, caminhoDadosNoDrive("m", fin, quando).pastas);
   // Barra no nome da maquina nao vira pasta nova.
@@ -105,23 +109,27 @@ test("caminhoDadosNoDrive: uma pasta por maquina e por conjunto; o nome leva a d
 
 test("pacotesDadosAApagar: retencao de uma copia so, sem encostar no que nao e nosso", () => {
   const lista = [
-    { id: "novo", name: "crm-2026-10-23.tar.gz" },
-    { id: "velho", name: "crm-2026-10-22.tar.gz" },
-    { id: "outro-conjunto", name: "financeiro-2026-10-22.tar.gz" },
+    { id: "novo", name: "crm-agente-box-lv-2026-10-23.tar.gz" },
+    { id: "velho", name: "crm-agente-box-lv-2026-10-22.tar.gz" },
+    { id: "outra-maquina", name: "crm-grokbot-1-2026-10-22.tar.gz" },
+    { id: "outro-conjunto", name: "financeiro-agente-box-lv-2026-10-22.tar.gz" },
     { id: "de-terceiro", name: "planilha-da-pessoa.xlsx" },
     { id: "parecido", name: "crm-backup-manual.tar.gz" },
-    { semId: true, name: "crm-2026-10-20.tar.gz" },
+    { semId: true, name: "crm-agente-box-lv-2026-10-20.tar.gz" },
   ];
   // So o pacote antigo do mesmo conjunto sai; o novo, o do outro conjunto e os de terceiro ficam.
-  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "crm"), ["velho"]);
-  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "financeiro"), ["outro-conjunto"]);
-  assert.deepEqual(pacotesDadosAApagar([], "novo", "crm"), [], "pasta vazia: nada a apagar");
-  assert.deepEqual(pacotesDadosAApagar([{ id: "novo", name: "crm-2026-10-23.tar.gz" }], "novo", "crm"), [], "so o novo: nada a apagar");
+  const M = "agente-box-lv";
+  // So o pacote antigo do mesmo conjunto E da mesma maquina sai; o resto fica.
+  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "crm", M), ["velho"]);
+  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "financeiro", M), ["outro-conjunto"]);
+  assert.ok(!pacotesDadosAApagar(lista, "novo", "crm", M).includes("outra-maquina"), "nao apaga a copia de outra maquina");
+  assert.deepEqual(pacotesDadosAApagar([], "novo", "crm", M), [], "pasta vazia: nada a apagar");
+  assert.deepEqual(pacotesDadosAApagar([{ id: "novo", name: `crm-${M}-2026-10-23.tar.gz` }], "novo", "crm", M), [], "so o novo: nada a apagar");
 });
 
 test("corpoUploadBinario: bytes sobrevivem (o .tar.gz nao passa por string) e consultaFilhos escapa", () => {
   const dados = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x7f]);
-  const corpo = corpoUploadBinario({ name: "crm-2026-10-23.tar.gz" }, dados, "B", "application/gzip");
+  const corpo = corpoUploadBinario({ name: "crm-agente-box-lv-2026-10-23.tar.gz" }, dados, "B", "application/gzip");
   assert.ok(Buffer.isBuffer(corpo));
   assert.ok(corpo.includes(dados), "os bytes do pacote saem intactos");
   assert.match(corpo.toString("latin1"), /Content-Type: application\/gzip/);
@@ -143,4 +151,16 @@ test("CONJUNTOS_DADOS: o que excluir do pacote, no formato que o tar casa", () =
   assert.ok(crm.excluir.some((e) => e.includes("autenticador")), "segredos do autenticador ficam na maquina");
   assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.pasta)).size, CONJUNTOS_DADOS.length, "uma pasta por conjunto");
   assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.prefixo)).size, CONJUNTOS_DADOS.length, "um prefixo por conjunto");
+});
+
+test("slugMaquina: a maquina no nome do arquivo sobrevive a baixar fora da pasta", () => {
+  assert.equal(slugMaquina("agente-box-lv"), "agente-box-lv");
+  assert.equal(slugMaquina("Maquina Da Loja"), "maquina-da-loja");
+  assert.equal(slugMaquina("  a/b c  "), "a-b-c");
+  assert.equal(slugMaquina("!!!"), "maquina", "nome impossivel ainda da um slug usavel");
+  assert.ok(slugMaquina("x".repeat(99)).length <= 40);
+  // Dois pacotes do mesmo dia, maquinas diferentes, nao colidem ao caírem na mesma pasta de Downloads.
+  const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
+  const q = Date.parse("2026-10-23T12:00:00-03:00");
+  assert.notEqual(caminhoDadosNoDrive("agente-box-lv", crm, q).arquivo, caminhoDadosNoDrive("grokbot-1", crm, q).arquivo);
 });

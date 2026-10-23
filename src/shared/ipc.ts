@@ -8,6 +8,10 @@ export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
 /** `foto`: a URL do Google, como veio. `fotoLocal`: a mesma imagem em data URL, baixada no main (a tela tem CSP `img-src 'self' data:`). */
 export interface GooglePerfil { sub: string; email: string | null; emailVerificado: boolean; nome: string | null; foto: string | null; fotoLocal: string | null }
 export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[] }
+/** Um conjunto de dados da máquina que subiu para o Drive (CRM e financeiro vão separados, de propósito). */
+export interface BackupDadosEnvio { conjunto: string; caminho: string; bytes: number; apagados: number; /** Caminho da cópia local no Mac, gravada antes do envio. */ local: string }
+/** Cópia diária do CRM e do financeiro desta máquina no Drive da Conta Google do dono. */
+export interface BackupDadosView { ligado: boolean; ultimaEm: string | null; conta: string | null; enviados: BackupDadosEnvio[]; erro: string | null }
 export interface GmailMensagem { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }
 export interface GmailResumo { email: string | null; naoLidas: number; mensagens: GmailMensagem[] }
 export interface AgendaEvento { id: string; titulo: string; inicio: string; fim: string; local: string; link: string }
@@ -648,16 +652,14 @@ export interface WhatsappArchive {
   drive: string | null;
 }
 /** Caixa do CRM oferecida na escolha ao limpar um grupo pela primeira vez (as mais ativas primeiro). */
-export interface CrmCaixaEscolha { key: string; nome: string; pipeline: string | null }
 /**
- * Resultado de guardar a conversa de um grupo no CRM. `precisaCaixa` = o grupo ainda não está ligado a nenhuma
- * caixa e nenhuma foi escolhida: nada foi guardado nem limpo, a tela pergunta e chama de novo com a caixa.
+ * Resultado de guardar a conversa de um grupo no CRM. A caixa é fixa por grupo: a máquina abre uma no pipeline
+ * padrão, com o nome do grupo, na primeira vez (`criada`) e reaproveita nas seguintes; o dono não escolhe.
  */
 export interface WhatsappGroupArchive {
   vazio: boolean;
-  precisaCaixa: boolean;
-  /** Caixas para oferecer na escolha; só vem preenchido quando `precisaCaixa`. */
-  caixas: CrmCaixaEscolha[];
+  /** A caixa do grupo nasceu nesta chamada. */
+  criada: boolean;
   box: { key: string; nome: string } | null;
   arquivo: string | null;
   mensagens: number;
@@ -1082,8 +1084,8 @@ export interface MeuBotSharedApi {
   clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
   /** O que "Limpar histórico" de um grupo vai zerar (0 = o agente nunca falou nele). */
   whatsappGroupClearPlan(jid: string): Promise<{ sessoes: number }>;
-  /** Guarda a conversa do grupo no CRM antes de limpar. Sem `boxKey` e sem vínculo, devolve `precisaCaixa`. */
-  archiveWhatsappGroupToCrm(jid: string, boxKey?: string): Promise<WhatsappGroupArchive>;
+  /** Guarda a conversa do grupo na caixa fixa dele no CRM antes de limpar (a máquina abre a caixa na primeira vez). */
+  archiveWhatsappGroupToCrm(jid: string): Promise<WhatsappGroupArchive>;
   /** Limpa na máquina o histórico do agente neste grupo. */
   clearWhatsappGroup(jid: string): Promise<void>;
   /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
@@ -1103,6 +1105,14 @@ export interface MeuBotSharedApi {
   googleContaStatus(): Promise<GoogleContaStatus>;
   googleContaConectar(): Promise<GoogleContaStatus>;
   googleContaDesconectar(): Promise<GoogleContaStatus>;
+  /** Estado da cópia dos dados desta máquina no Drive. */
+  backupDadosStatus(): Promise<BackupDadosView>;
+  /** Faz a cópia agora, sem esperar o ciclo diário. */
+  backupDadosAgora(): Promise<BackupDadosView>;
+  /** Liga ou desliga a cópia diária (vale para todas as máquinas deste Mac). */
+  backupDadosLigar(ligado: boolean): Promise<BackupDadosView>;
+  /** Abre no Finder a pasta com as cópias locais desta máquina. */
+  backupDadosAbrirPasta(): Promise<{ pasta: string }>;
   gmailResumo(): Promise<GmailResumo>;
   agendaProximos(dias?: number): Promise<AgendaEvento[]>;
   agendaCriar(evento: { titulo: string; inicio: string; fim: string; descricao?: string }): Promise<AgendaEvento>;

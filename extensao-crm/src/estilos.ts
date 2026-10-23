@@ -106,12 +106,21 @@ export const CSS = `
 .mbcrm-seta-dir { right: 0; border-radius: 0 14px 14px 0; }
 .mbcrm-seta[hidden] { display: none; }
 .mbcrm-grade { overflow: auto; flex: 1 1 auto; min-height: 0; border-top: 1px solid var(--mb-borda); }
-.mbcrm-tabela { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 14px; }
-.mbcrm-tabela th { position: sticky; top: 0; z-index: 3; background: var(--mb-bg); color: var(--mb-fg2); font-weight: 400; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); white-space: nowrap; }
-.mbcrm-tabela td { padding: 7px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--mb-bg); }
-.mbcrm-tabela .mbcrm-col-nome { position: sticky; left: 0; z-index: 2; min-width: 220px; }
+/* table-layout: fixed = a largura vem do <colgroup>, que é o que o arrasto da divisória mexe. */
+.mbcrm-tabela { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 14px; table-layout: fixed; }
+.mbcrm-tabela th { position: sticky; top: 0; z-index: 3; background: var(--mb-bg); color: var(--mb-fg2); font-weight: 400; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Sem max-width fixo: quem corta agora é a largura da coluna, que a pessoa escolhe. */
+.mbcrm-tabela td { padding: 7px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--mb-bg); }
+.mbcrm-tabela .mbcrm-col-nome { position: sticky; left: 0; z-index: 2; }
 .mbcrm-tabela th.mbcrm-col-nome { z-index: 4; }
-.mbcrm-tabela .mbcrm-col-add { border-right: none; width: 48px; padding: 0 6px; }
+.mbcrm-tabela .mbcrm-col-add { border-right: none; padding: 0 6px; }
+/* Pegador da divisória: 7 px colados na borda direita do cabeçalho. O th é sticky (logo, posicionado)
+   e corta o que passa dele, então o pegador fica em right 0, e não num valor negativo que seria clipado. */
+.mbcrm-col-resize { position: absolute; top: 0; right: 0; width: 7px; height: 100%; z-index: 6; cursor: col-resize; touch-action: none; }
+.mbcrm-col-resize:hover, .mbcrm-col-resize.mbcrm-col-ativo { background: var(--mb-acento); opacity: .5; }
+.mbcrm-col-mover { cursor: grab; }
+.mbcrm-col-mover.mbcrm-col-arrastando { opacity: .4; }
+.mbcrm-tabela th.mbcrm-col-alvo { box-shadow: inset 3px 0 0 0 var(--mb-acento); }
 .mbcrm-col-nome a { color: var(--mb-fg); text-decoration: none; }
 .mbcrm-col-nome a:hover { color: var(--mb-acento); text-decoration: underline; }
 .mbcrm-grupo-linha td { background: var(--mb-chip); padding: 8px 12px; }

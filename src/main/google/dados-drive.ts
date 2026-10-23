@@ -10,9 +10,14 @@
  * zerar o financeiro não encostar no CRM. A ordem é sempre **subir e só então apagar o anterior**: com uma cópia
  * só, apagar primeiro deixaria o dono sem nada se o upload falhasse.
  */
+import { app } from "electron";
+import fs from "node:fs";
+import path from "node:path";
 import { spawn } from "node:child_process";
-import { CONJUNTOS_DADOS, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
-import { sessaoDrive } from "./google";
+import { CONJUNTOS_DADOS, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { sessaoDriveCom, type SessaoDrive } from "./google";
+import { acessoValido, contaStatus } from "./conta-google";
+import { gravar } from "./comum";
 import { registrar } from "../auditoria";
 import { log } from "../tunnel";
 
@@ -21,7 +26,23 @@ const INTERVALO = 24 * 60 * 60_000;
 /** Teto do pacote: os conjuntos têm centenas de KB; muito acima disso é sinal de que algo está errado. */
 const PACOTE_MAX = 256 * 1024 * 1024;
 
-export interface EnvioDados { conjunto: string; caminho: string; bytes: number; apagados: number }
+export interface EnvioDados { conjunto: string; caminho: string; bytes: number; apagados: number; local: string }
+
+/**
+ * Pasta da cópia local, uma por máquina, em Documentos (alcançável pela pessoa, ao contrário do userData).
+ * A cópia local é gravada **antes** do envio: se o Drive falhar, ainda sobra um pacote fora da VM.
+ */
+export const pastaBackupDados = (host: string): string => path.join(app.getPath("documents"), "meu-bot", "backup", host.replace(/[^\w.-]/g, "_"));
+/** Grava o pacote e apaga os anteriores do mesmo conjunto: a mesma retenção de uma cópia só do Drive. */
+function gravarLocal(host: string, c: ConjuntoDados, arquivo: string, pacote: Buffer): string {
+  const dir = pastaBackupDados(host);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const destino = path.join(dir, arquivo);
+  gravar(destino, pacote);
+  const re = pacoteDadosRe(c.prefixo, host);
+  for (const f of fs.readdirSync(dir)) { if (f !== arquivo && re.test(f)) { try { fs.rmSync(path.join(dir, f), { force: true }); } catch { /* fica para a próxima */ } } }
+  return destino;
+}
 
 /**
  * Empacota um conjunto na VM e traz pelo stdout do ssh. O que fica de fora está em `c.excluir`; os anexos do CRM e
@@ -52,12 +73,11 @@ async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
   return pacote;
 }
 
-/** Sobe um conjunto e apaga os pacotes anteriores daquela pasta. Devolve null quando não há o que fazer. */
-async function enviarConjunto(host: string, c: ConjuntoDados): Promise<EnvioDados | null> {
-  const s = await sessaoDrive();
-  if (s === null) return null; // Google não conectado neste Mac: nada a fazer, sem barulho.
+/** Sobe um conjunto e apaga os pacotes anteriores daquela pasta. */
+async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): Promise<EnvioDados> {
   const pacote = await empacotar(host, c);
   const { pastas, arquivo } = caminhoDadosNoDrive(host, c, Date.now());
+  const local = gravarLocal(host, c, arquivo, pacote);
   const pai = await s.pasta(pastas);
   const fronteira = `meu-bot-${Date.now().toString(36)}`;
   const up = await s.api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id", {
@@ -70,29 +90,48 @@ async function enviarConjunto(host: string, c: ConjuntoDados): Promise<EnvioDado
   let apagados = 0;
   if (idNovo !== "") {
     const lista = await s.api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaFilhos(pai), fields: "files(id,name)", spaces: "drive", pageSize: "100" })}`);
-    for (const id of pacotesDadosAApagar(Array.isArray(lista["files"]) ? (lista["files"] as { id?: unknown; name?: unknown }[]) : [], idNovo, c.prefixo)) {
+    for (const id of pacotesDadosAApagar(Array.isArray(lista["files"]) ? (lista["files"] as { id?: unknown; name?: unknown }[]) : [], idNovo, c.prefixo, host)) {
       try { await s.api(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}`, { method: "DELETE" }); apagados += 1; }
       catch (e) { log(`[dados-drive] não consegui apagar um pacote antigo de ${c.id}: ${e instanceof Error ? e.message : String(e)}`); }
     }
   }
   const caminho = [...pastas, arquivo].join(" / ");
-  log(`[dados-drive] ${c.id} de ${host} no Drive: ${caminho} (${pacote.length} bytes; ${apagados} antigo(s) apagado(s))`);
-  return { conjunto: c.id, caminho, bytes: pacote.length, apagados };
+  log(`[dados-drive] ${c.id} de ${host} no Drive: ${caminho} (${pacote.length} bytes; ${apagados} antigo(s) apagado(s); cópia local em ${local})`);
+  return { conjunto: c.id, caminho, bytes: pacote.length, apagados, local };
+}
+
+/** Última cópia de cada máquina, para a aba Conta Google mostrar sem precisar falar com o Drive. */
+export interface EstadoDadosDrive { ultimaEm: string | null; conta: string | null; enviados: EnvioDados[]; erro: string | null }
+const ARQ_ESTADO = (): string => path.join(app.getPath("userData"), "dados-drive.json");
+const VAZIO: EstadoDadosDrive = { ultimaEm: null, conta: null, enviados: [], erro: null };
+const lerEstadoTodos = (): Record<string, EstadoDadosDrive> => { try { return JSON.parse(fs.readFileSync(ARQ_ESTADO(), "utf8")) as Record<string, EstadoDadosDrive>; } catch { return {}; } };
+export const estadoDadosDrive = (host: string): EstadoDadosDrive => ({ ...VAZIO, ...lerEstadoTodos()[host] });
+function gravarEstado(host: string, e: EstadoDadosDrive): void {
+  try { gravar(ARQ_ESTADO(), JSON.stringify({ ...lerEstadoTodos(), [host]: e }, null, 1)); } catch { /* o estado é só para a tela */ }
 }
 
 /**
- * Envia todos os conjuntos de uma máquina. Um conjunto que falhe não impede o outro: são cópias independentes, e
- * meia cópia é melhor que nenhuma. Devolve o que subiu e os erros, para quem chama registrar.
+ * Envia todos os conjuntos de uma máquina para o Drive da Conta Google do dono. Um conjunto que falhe não impede o
+ * outro: são cópias independentes, e meia cópia é melhor que nenhuma. Guarda o resultado para a tela mostrar.
  */
-export async function enviarDadosAoDrive(host: string): Promise<{ enviados: EnvioDados[]; erros: string[] }> {
+export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive> {
+  const st = contaStatus();
+  if (!st.conectado) { const e = { ...VAZIO, erro: "a Conta Google não está conectada neste Mac" }; gravarEstado(host, e); return e; }
+  if (st.precisaReconectar) {
+    const e = { ...VAZIO, conta: st.perfil?.email ?? null, erro: "falta a permissão do Drive: clique em Reconectar na aba Conta Google" };
+    gravarEstado(host, e); return e;
+  }
+  const s = sessaoDriveCom(await acessoValido());
   const enviados: EnvioDados[] = []; const erros: string[] = [];
   for (const c of CONJUNTOS_DADOS) {
-    try { const r = await enviarConjunto(host, c); if (r !== null) enviados.push(r); }
+    try { enviados.push(await enviarConjunto(s, host, c)); }
     catch (e) { erros.push(`${c.id}: ${e instanceof Error ? e.message : String(e)}`); }
   }
+  const estado: EstadoDadosDrive = { ultimaEm: enviados.length > 0 ? new Date().toISOString() : null, conta: st.perfil?.email ?? null, enviados, erro: erros.length > 0 ? erros.join("; ") : null };
+  gravarEstado(host, estado);
   // A pessoa vê no registro da máquina dela que uma cópia saiu, e para onde.
   if (enviados.length > 0) void registrar(host, "backup.dados-drive", enviados.map((e) => e.conjunto).join(", "));
-  return { enviados, erros };
+  return estado;
 }
 
 const agendados = new Map<string, ReturnType<typeof setInterval>>();
@@ -102,8 +141,8 @@ export function agendarDadosAoDrive(host: string, ligado: () => boolean): void {
   const rodar = (): void => {
     if (!ligado()) return;
     void enviarDadosAoDrive(host).then(
-      ({ erros }) => { for (const e of erros) log(`[dados-drive] ${host}: ${e}`); },
-      // Máquina inacessível ou Google sem Drive: registra e espera o próximo ciclo, sem repetir em laço.
+      ({ erro }) => { if (erro !== null) log(`[dados-drive] ${host}: ${erro}`); },
+      // Máquina inacessível ou token recusado: registra e espera o próximo ciclo, sem repetir em laço.
       (e: unknown) => { log(`[dados-drive] ${host} falhou: ${e instanceof Error ? e.message : String(e)}`); },
     );
   };

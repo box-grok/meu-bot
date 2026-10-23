@@ -3,7 +3,7 @@
  * no Keychain, via main › conta-google.ts); aqui só se conecta, lê e escreve. A verificação de telefone/QR, quando o
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
-import type { AgendaEvento, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
+import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -13,7 +13,7 @@ export interface ContaGoogleDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "on">;
+  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void> } {
@@ -23,6 +23,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   let gmail: GmailResumo | null = null;
   let agenda: AgendaEvento[] | null = null;
   let planilha: PlanilhaLeitura | null = null;
+  let backup: BackupDadosView | null = null;
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   let plId = ""; let plRange = "Página1!A1:C10";
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
@@ -35,6 +36,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   async function carregarDados(): Promise<void> {
     try { gmail = await deps.api.gmailResumo(); } catch { gmail = null; }
     try { agenda = await deps.api.agendaProximos(7); } catch { agenda = null; }
+    try { backup = await deps.api.backupDadosStatus(); } catch { backup = null; }
     render();
   }
   async function agir(run: () => Promise<unknown>, ok: string): Promise<void> {
@@ -66,7 +68,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       if (status.perfil?.fotoLocal) { const img = el("img", "conta-foto"); img.src = status.perfil.fotoLocal; img.alt = ""; linha.append(img); }
       const info = el("div"); info.append(el("strong", "", status.perfil?.nome ?? "conta conectada"), el("div", "hint", status.perfil?.email ?? ""));
       linha.append(info); pc.append(linha);
-      if (status.precisaReconectar) { pc.append(el("p", "hint bad-hint", "Faltam permissões (Gmail, Agenda ou Sheets). Clique em Reconectar para autorizar.")); pc.append(btn("Reconectar", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "reautorização aberta no Navegador"); })); }
+      if (status.precisaReconectar) { pc.append(el("p", "hint bad-hint", "Faltam permissões (Gmail, Agenda, Sheets ou Drive). Quem conectou antes do backup no Drive precisa reconectar uma vez para a cópia diária funcionar."));pc.append(btn("Reconectar", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "reautorização aberta no Navegador"); })); }
       const d = btn("Desconectar", "btn-ghost", () => { deps.armConfirm(d, "Confirmar? tira a conta deste Mac", () => { void agir(() => deps.api.googleContaDesconectar(), "conta desconectada"); }); });
       pc.append(d);
     }
@@ -74,6 +76,24 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     if (msg) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (status.conectando) panel.append(el("p", "hint", "Esperando você concluir o login no Navegador…"));
     if (!status.conectado || status.precisaReconectar) return;
+
+    // Backup: a cópia do CRM e do financeiro desta máquina no Drive desta conta.
+    const bc = card("Backup no Drive");
+    if (backup === null) bc.append(el("p", "hint", "Carregando…"));
+    else {
+      bc.append(el("p", "hint", "Uma vez por dia o CRM e o financeiro desta máquina são guardados no Drive desta conta, em pastas separadas, e uma cópia fica aqui no Mac. Fica só a mais recente de cada um."));
+      if (backup.ultimaEm !== null) {
+        bc.append(el("p", "hint audio-ok", `Última cópia em ${fmtData(backup.ultimaEm)}.`));
+        for (const e of backup.enviados) { const r = el("div", "conta-evento"); r.append(el("strong", "", e.conjunto === "crm" ? "CRM" : "Financeiro"), el("span", "hint", `${e.caminho} · ${(e.bytes / 1024).toFixed(0)} KB`)); bc.append(r); }
+      } else if (backup.erro === null) bc.append(el("p", "hint", "Ainda não foi feita nenhuma cópia desta máquina."));
+      if (backup.erro !== null) bc.append(el("p", "hint bad-hint", backup.erro));
+      const acoes = el("div", "admin-actions");
+      acoes.append(btn("Guardar agora", "btn-ghost", () => { void agir(async () => { backup = await deps.api.backupDadosAgora(); }, "cópia guardada no Drive"); }));
+      acoes.append(btn("Abrir a pasta no Mac", "btn-ghost", () => { void agir(() => deps.api.backupDadosAbrirPasta(), "pasta aberta no Finder"); }));
+      acoes.append(btn(backup.ligado ? "Desligar a cópia diária" : "Ligar a cópia diária", "btn-ghost", () => { void agir(async () => { backup = await deps.api.backupDadosLigar(!(backup?.ligado ?? true)); }, backup?.ligado === true ? "cópia diária desligada" : "cópia diária ligada"); }));
+      bc.append(acoes);
+    }
+    panel.append(bc);
 
     // Gmail
     const gc = card("Gmail");

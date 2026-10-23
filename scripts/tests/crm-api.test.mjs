@@ -419,3 +419,29 @@ test("programa de indicação: nasce uma vez com semearIndicacao, nunca vira o p
   assert.equal(JSON.parse(readFileSync(cfg2, "utf8")).indicacaoSemeada, true);
   srv.close(); rmSync(d2, { recursive: true, force: true });
 });
+
+test("whatsapp/arquivar de grupo: sem pipeline padrão → 400; na 1ª vez abre a caixa fixa do grupo (nome do grupo, 1ª etapa, ligada pelo jid); depois reaproveita e não duplica", async () => {
+  const d3 = mkdtempSync(join(tmpdir(), "crm-grp-")); const cfg3 = join(d3, "crm.json");
+  const a3 = createCrmApi({ dir: join(d3, "db"), configFile: cfg3, licenseOk: () => true, readJson, writeJson: (f, v) => writeFileSync(f, JSON.stringify(v)), json, readBody, log: () => {}, iaTexto: async () => "", semearIndicacao: true });
+  const srv = http.createServer((req, res) => a3.handle(req, res, new URL(req.url, "http://x"))); await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+  const u = `http://127.0.0.1:${srv.address().port}/v1/crm`;
+  const post = async (path, body) => { const r = await fetch(`${u}${path}`, { method: "POST", headers: { "content-type": "application/json", "x-crm-por": "app" }, body: JSON.stringify(body) }); return { status: r.status, j: await r.json() }; };
+  const grupo = { jid: "120363000000000001@g.us", nome: "(LV) - agente" };
+  // Só o programa de indicação: não há pipeline padrão, então não dá para abrir a caixa e nada é gravado.
+  const sem = await post("/whatsapp/arquivar", { grupo, transcricao: "oi", mensagens: 1 });
+  assert.equal(sem.status, 400); assert.match(sem.j.error.message, /pipeline padrao/);
+  assert.equal(a3.store.allBoxes().length, 0);
+  const p = (await post("/pipelines", { name: "Operação", stages: ["Novo", "Em curso"] })).j.pipeline;
+  const r1 = await post("/whatsapp/arquivar", { grupo, transcricao: "oi\ntudo bem", mensagens: 2, primeiraEm: 1792433746876, ultimaEm: 1792433846876 });
+  assert.equal(r1.status, 200); assert.equal(r1.j.criada, true); assert.equal(r1.j.box.nome, "(LV) - agente"); assert.equal(r1.j.repetido, false);
+  const bx = a3.store.getBox(r1.j.box.key);
+  assert.equal(bx.pipelineKey, p.key); assert.equal(bx.stageKey, p.stages[0].key); assert.equal(bx.fields.whatsappGrupo, grupo.jid);
+  assert.equal(bx.arquivos.length, 1); assert.match(bx.comentarios[0].texto, /Caixa aberta para o grupo/);
+  // Segunda limpeza: mesma caixa, sem criar outra; o mesmo texto de novo não duplica o anexo.
+  const r2 = await post("/whatsapp/arquivar", { grupo: { jid: grupo.jid }, transcricao: "outra conversa", mensagens: 1 });
+  assert.equal(r2.status, 200); assert.equal(r2.j.criada, false); assert.equal(r2.j.box.key, r1.j.box.key);
+  assert.equal(a3.store.allBoxes().length, 1); assert.equal(a3.store.getBox(r1.j.box.key).arquivos.length, 2);
+  const r3 = await post("/whatsapp/arquivar", { grupo, transcricao: "outra conversa", mensagens: 1 });
+  assert.equal(r3.j.repetido, true); assert.equal(a3.store.getBox(r1.j.box.key).arquivos.length, 2);
+  srv.close(); rmSync(d3, { recursive: true, force: true });
+});

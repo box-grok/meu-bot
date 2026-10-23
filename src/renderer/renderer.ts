@@ -1,4 +1,4 @@
-import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, CrmCaixaEscolha, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
+import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -3385,15 +3385,15 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
  */
 type WaGroupClear = {
   jid: string; nome: string;
-  fase: "plano" | "confirmar" | "escolher" | "rodando";
+  fase: "plano" | "confirmar" | "rodando";
   vazio: boolean; err: string | null;
-  caixas: CrmCaixaEscolha[]; boxKey: string | null; passo: string;
+  passo: string;
 };
 let waGroupClear: WaGroupClear | null = null;
 let waGroupClearNote: { jid: string; text: string; bad: boolean } | null = null;
 
 async function startWaGroupClear(g: WhatsappGroup): Promise<void> {
-  const base = { jid: g.jid, nome: waGroupTitle(g), caixas: [] as CrmCaixaEscolha[], boxKey: null, passo: "" };
+  const base = { jid: g.jid, nome: waGroupTitle(g), passo: "" };
   waGroupClear = { ...base, fase: "plano", vazio: false, err: null };
   waGroupClearNote = null;
   renderSidebar();
@@ -3415,15 +3415,9 @@ async function runWaGroupClear(c: WaGroupClear): Promise<void> {
     let onde = "";
     if (crmProprio()) {
       andar("Guardando a conversa no CRM…");
-      const r = await window.meuBot.archiveWhatsappGroupToCrm(c.jid, c.boxKey ?? undefined);
+      const r = await window.meuBot.archiveWhatsappGroupToCrm(c.jid);
       if (waGroupClear?.jid !== c.jid) return;
-      // Falta escolher a caixa: volta a perguntar em vez de limpar. Nada foi guardado nem apagado.
-      if (r.precisaCaixa) {
-        waGroupClear = { ...c, fase: "escolher", caixas: r.caixas, boxKey: r.caixas[0]?.key ?? null, err: r.caixas.length === 0 ? "O CRM ainda não tem nenhuma caixa; crie uma antes." : null };
-        renderSidebar();
-        return;
-      }
-      if (!r.vazio) onde = r.box !== null ? ` Guardada na caixa "${r.box.nome}"${r.resumo ? " com resumo" : "; resumo não atualizado"}.` : "";
+      if (!r.vazio && r.box !== null) onde = ` ${r.criada ? `Caixa "${r.box.nome}" aberta no CRM para este grupo e conversa guardada nela` : `Guardada na caixa "${r.box.nome}"`}${r.resumo ? " com resumo" : "; resumo não atualizado"}.`;
     }
     andar("Limpando o histórico…");
     await window.meuBot.clearWhatsappGroup(c.jid);
@@ -3437,7 +3431,7 @@ async function runWaGroupClear(c: WaGroupClear): Promise<void> {
   renderSidebar();
 }
 
-/** A caixa embaixo do grupo: confirmação, escolha da caixa do CRM, andamento e erro. */
+/** A caixa embaixo do grupo: confirmação, andamento e erro. */
 function waGroupClearBox(c: WaGroupClear): HTMLElement {
   const box = el("div", "wa-clear");
   if (c.fase === "plano") { box.append(el("span", "wa-clear-text", "Consultando…")); return box; }
@@ -3446,24 +3440,9 @@ function waGroupClearBox(c: WaGroupClear): HTMLElement {
   const cancelar = el("button", "btn", "Cancelar"); cancelar.type = "button";
   cancelar.addEventListener("click", () => { waGroupClear = null; renderSidebar(); });
 
-  if (c.fase === "escolher") {
-    box.append(el("strong", "", `Em qual caixa guardar "${c.nome}"?`));
-    box.append(el("span", "wa-clear-text", "Este grupo ainda não está ligado a nenhuma caixa do CRM. Escolha uma: da próxima vez não pergunto mais."));
-    if (c.err !== null) box.append(el("span", "wa-clear-text wa-clear-err", c.err));
-    const sel = el("select", "wa-clear-select") as HTMLSelectElement;
-    for (const k of c.caixas) { const o = el("option", "", k.pipeline !== null ? `${k.nome} · ${k.pipeline}` : k.nome) as HTMLOptionElement; o.value = k.key; sel.append(o); }
-    sel.value = c.boxKey ?? "";
-    sel.addEventListener("change", () => { waGroupClear = { ...c, boxKey: sel.value }; });
-    if (c.caixas.length > 0) box.append(sel);
-    const go = el("button", "btn btn-bad", "Guardar e limpar"); go.type = "button"; go.disabled = c.caixas.length === 0;
-    go.addEventListener("click", () => { void runWaGroupClear({ ...c, boxKey: sel.value || c.boxKey }); });
-    acoes.append(cancelar, go); box.append(acoes);
-    return box;
-  }
-
   box.append(el("strong", "", `Limpar o histórico de "${c.nome}"?`));
   box.append(el("span", "wa-clear-text", "O agente esquece o que foi conversado neste grupo e recomeça do zero. As mensagens no WhatsApp das pessoas não mudam."));
-  if (crmProprio()) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para uma caixa do CRM (transcrição + resumo); se não for guardada, nada é limpo."));
+  if (crmProprio()) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para a caixa deste grupo no CRM (transcrição + resumo); na primeira vez a caixa é aberta sozinha no pipeline padrão. Se não for guardada, nada é limpo."));
   if (c.err !== null) box.append(el("span", "wa-clear-text wa-clear-err", c.err));
   acoes.append(cancelar);
   if (!c.vazio) { const go = el("button", "btn btn-bad", "Limpar"); go.type = "button"; go.addEventListener("click", () => { void runWaGroupClear(c); }); acoes.append(go); }
