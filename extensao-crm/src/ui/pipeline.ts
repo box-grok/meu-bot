@@ -37,6 +37,9 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
   // preenchido a cada desenho e deixa o arrasto mexer na coluna sem redesenhar a tabela inteira.
   let larguras: Record<string, number> = (() => { try { return parseLarguras(localStorage.getItem(chaveLarguras(key))); } catch { return {}; } })();
   let colEls: HTMLTableColElement[] = [];
+  // Ordem das colunas na tela, deste navegador. A ordem dos CAMPOS também vai para o host quando
+  // só campos trocam entre si, para quem abrir em outra máquina pegar um padrão que faz sentido.
+  let ordem: string[] = (() => { try { return parseOrdem(localStorage.getItem(chaveOrdem(key))); } catch { return []; } })();
 
   const salvando = () => sdk.ButterBar.showSaving({ text: T.salvando, confirmationText: T.salvo, showConfirmation: true, confirmationTime: 1200 });
   async function gravarPipeline(patch: Parameters<Estado["atualizarPipeline"]>[1]): Promise<string | null> {
@@ -63,6 +66,7 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
     ["Adicionar coluna", () => novaColuna()],
     ["Gerenciar colunas", () => gerenciarColunas()],
     ["Restaurar larguras", () => restaurarLarguras()],
+    ["Restaurar ordem das colunas", () => restaurarColunas()],
     ...(recolhidas.size > 0 ? [["Expandir todas as etapas", () => { recolhidas.clear(); desenhar(); }] as [string, () => void]] : [["Recolher etapas vazias", () => { if (pipeline) { const g = agruparPorEtapa(pipeline.stages, caixas); for (const [k, l] of g) if (l.length === 0) recolhidas.add(k); desenhar(); } }] as [string, () => void]]),
   ]); } }, "⋮");
   const btnNova = h("button", { class: "mbcrm-fab", title: T.novaCaixa, onClick: () => { if (pipeline) void formularioNovaCaixa(sdk, estado, pipeline, null, (b) => { void sdk.Router.goto(ROTA_CAIXA, { key: b.key }); }); } }, "＋");
@@ -168,25 +172,45 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
     return p;
   }
 
+  function gravarOrdem(): void {
+    try { localStorage.setItem(chaveOrdem(key), JSON.stringify(ordem)); } catch { /* sem storage: vale só nesta sessão */ }
+  }
+
   /**
-   * Grava a nova ordem dos campos. Releitura obrigatória antes: o host remove do pipeline todo
+   * Move uma coluna de lugar. A ordem da tela é deste navegador e vale para qualquer coluna; a
+   * ordem dos CAMPOS, quando muda, também vai para o host, para quem abrir em outra máquina pegar
+   * um padrão coerente. Mover uma coluna fixa não toca no host.
+   */
+  function mover(colunas: ColunaGrade[], de: number, para: number): void {
+    const p = pipeline; if (!p || de === para) return;
+    const antes = colunas.filter((c) => c.campo !== null).map((c) => c.id);
+    ordem = moverColuna(colunas.map((c) => c.id), de, para);
+    gravarOrdem();
+    desenhar();
+    const depois = ordem.filter((id) => antes.includes(id));
+    if (depois.join("|") !== antes.join("|")) void gravarOrdemDosCampos(p, depois);
+  }
+
+  /**
+   * Leva a ordem dos campos ao host. Releitura obrigatória antes: o host remove do pipeline todo
    * campo ausente da lista enviada, então salvar com um conjunto desatualizado apagaria a coluna
    * que outra pessoa acabou de criar, junto com os valores dela.
    */
-  async function reordenarCampo(de: number, para: number): Promise<void> {
-    const p = pipeline; if (!p || de === para) return;
-    const nova = moverColuna(p.fields, de, para);
+  async function gravarOrdemDosCampos(p: Pipeline, ids: string[]): Promise<void> {
+    const porId = new Map(p.fields.map((f) => [f.key, f]));
+    const nova = ids.flatMap((id) => { const f = porId.get(id); return f ? [f] : []; });
+    if (nova.length !== p.fields.length) return;
     const sv = salvando();
     try {
       const atual = await estado.pipeline(key);
       if (!mesmoConjunto(atual.fields, p.fields)) {
         sv.reject();
-        sdk.ButterBar.showError({ text: "As colunas mudaram enquanto você arrastava; a ordem não foi salva. Confira e tente de novo." });
+        sdk.ButterBar.showError({ text: "As colunas mudaram enquanto você arrastava; a ordem não foi salva no servidor. Confira e tente de novo." });
         void carregar();
         return;
       }
       pipeline = await estado.atualizarPipeline(key, { fields: camposDoPatch(nova) });
-      sv.resolve(); desenhar();
+      sv.resolve();
     } catch (e) { sv.reject(); mostrarErro(sdk, e); void carregar(); }
   }
 
@@ -244,35 +268,31 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
 
     if (editando) return; // não arranca o editor aberto numa célula
     limpar(grade);
-    const cols = p.fields;
+    const colunas = colunasDa(p);
     const tabela = h("table", { class: "mbcrm-tabela" });
     // Um <col> por coluna manda na largura de todas as células dela (a tabela é table-layout: fixed).
-    const ids = idsDasColunas(cols);
-    colEls = ids.map((id) => h("col", { style: { width: `${larguraDe(id)}px` } }));
+    // A coluna "＋" entra no fim e fora da ordem: não é dado, é o botão de criar coluna.
+    colEls = [...colunas.map((c) => h("col", { style: { width: `${larguraDe(c.id)}px` } })), h("col", { style: { width: `${larguraDe("add")}px` } })];
     tabela.append(h("colgroup", null, ...colEls));
 
-    const comPegador = (th: HTMLElement, id: string): HTMLElement => { th.append(pegador(id, ids.indexOf(id), tabela)); return th; };
     let arrastando: number | null = null;
-    /** Cabeçalho de um campo do pipeline: arrastável para mover a coluna de lugar. */
-    const thCampo = (f: Campo, fi: number): HTMLElement => {
-      const th = h("th", { class: "mbcrm-col-mover", draggable: "true", title: `${f.name} · ${TIPOS.find(([v]) => v === f.type)?.[1] ?? f.type} · arraste para mover a coluna` }, f.name);
-      th.addEventListener("dragstart", (ev: DragEvent) => { arrastando = fi; th.classList.add("mbcrm-col-arrastando"); ev.dataTransfer?.setData("text/plain", f.key); if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move"; });
-      th.addEventListener("dragend", () => { arrastando = null; th.classList.remove("mbcrm-col-arrastando"); for (const o of tabela.querySelectorAll(".mbcrm-col-alvo")) o.classList.remove("mbcrm-col-alvo"); });
-      th.addEventListener("dragover", (ev: DragEvent) => { if (arrastando === null || arrastando === fi) return; ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move"; th.classList.add("mbcrm-col-alvo"); });
-      th.addEventListener("dragleave", () => th.classList.remove("mbcrm-col-alvo"));
-      th.addEventListener("drop", (ev: DragEvent) => { ev.preventDefault(); th.classList.remove("mbcrm-col-alvo"); if (arrastando !== null && arrastando !== fi) void reordenarCampo(arrastando, fi); arrastando = null; });
-      return comPegador(th, f.key);
+    const th = (c: ColunaGrade, i: number): HTMLElement => {
+      const tipo = c.campo === null ? "" : ` · ${TIPOS.find(([v]) => v === c.campo?.type)?.[1] ?? c.campo.type}`;
+      // A primeira coluna é a presa à esquerda, seja ela qual for depois do arrasto.
+      const el = h("th", { class: `mbcrm-col-mover${i === 0 ? " mbcrm-col-presa" : ""}${c.id === "nome" ? " mbcrm-col-nome" : ""}`, draggable: "true", title: `${c.titulo}${tipo} · arraste para mover a coluna` }, c.titulo);
+      el.addEventListener("dragstart", (ev: DragEvent) => { arrastando = i; el.classList.add("mbcrm-col-arrastando"); ev.dataTransfer?.setData("text/plain", c.id); if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move"; });
+      el.addEventListener("dragend", () => { arrastando = null; el.classList.remove("mbcrm-col-arrastando"); for (const o of tabela.querySelectorAll(".mbcrm-col-alvo")) o.classList.remove("mbcrm-col-alvo"); });
+      el.addEventListener("dragover", (ev: DragEvent) => { if (arrastando === null || arrastando === i) return; ev.preventDefault(); if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move"; el.classList.add("mbcrm-col-alvo"); });
+      el.addEventListener("dragleave", () => el.classList.remove("mbcrm-col-alvo"));
+      el.addEventListener("drop", (ev: DragEvent) => { ev.preventDefault(); el.classList.remove("mbcrm-col-alvo"); const de = arrastando; arrastando = null; if (de !== null && de !== i) mover(colunas, de, i); });
+      el.append(pegador(c.id, i, tabela));
+      return el;
     };
 
     tabela.append(h("thead", null, h("tr", null,
-      comPegador(h("th", { class: "mbcrm-col-nome" }, "Nome"), "nome"),
-      comPegador(h("th", null, "Etapa"), "etapa"),
-      comPegador(h("th", null, "Responsáveis"), "responsaveis"),
-      comPegador(h("th", null, "@ Contatos"), "contatos"),
-      ...cols.map(thCampo),
-      comPegador(h("th", null, "Atualizado"), "atualizado"),
+      ...colunas.map(th),
       h("th", { class: "mbcrm-col-add" }, h("button", { class: "mbcrm-icone", title: "Adicionar coluna", onClick: () => novaColuna() }, "＋")))));
-    const ncol = cols.length + 6;
+    const ncol = colunas.length + 1; // +1 da coluna "＋"
     p.stages.forEach((s, i) => {
       if (filtroEtapa !== "" && filtroEtapa !== s.key) return;
       const lista = grupos.get(s.key) ?? []; const cor = corDaEtapa(i); const fechado = recolhidas.has(s.key);
@@ -281,7 +301,7 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
       const mais = h("button", { class: "mbcrm-icone", title: `Adicionar caixa em ${s.name}`, onClick: () => { recolhidas.delete(s.key); adicionandoEm = s.key; desenhar(); } }, "＋");
       tb.append(h("tr", { class: "mbcrm-grupo-linha" }, h("td", { colspan: String(ncol) }, chip, mais, h("span", { class: "mbcrm-n" }, lista.length > 0 ? String(lista.length) : ""))));
       if (!fechado) {
-        for (const b of lista) tb.append(linha(b, p, cols));
+        for (const b of lista) tb.append(linha(b, p, colunas));
         tb.append(linhaAdicionar(s, p, ncol));
       }
       tabela.append(tb);
@@ -290,10 +310,12 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
     if (caixas.length === 0 && busca !== "") grade.append(h("div", { class: "mbcrm-vazio" }, `Nada encontrado para "${busca}".`));
   }
 
-  function linha(b: CaixaResumo, p: Pipeline, cols: Campo[]): HTMLElement {
+  // ---- células: uma função por coluna, chamada pela lista de colunasDa() ----
+  const celulaNome = (b: CaixaResumo): HTMLElement =>
+    h("td", { class: "mbcrm-col-nome" }, h("a", { href: sdk.Router.createLink(ROTA_CAIXA, { key: b.key }), onClick: (ev: Event) => { ev.preventDefault(); void sdk.Router.goto(ROTA_CAIXA, { key: b.key }); } }, b.name));
+
+  function celulaEtapa(b: CaixaResumo, p: Pipeline): HTMLElement {
     const idx = p.stages.findIndex((s) => s.key === b.stageKey);
-    const tr = h("tr", { class: "mbcrm-caixa-linha" });
-    const nome = h("td", { class: "mbcrm-col-nome" }, h("a", { href: sdk.Router.createLink(ROTA_CAIXA, { key: b.key }), onClick: (ev: Event) => { ev.preventDefault(); void sdk.Router.goto(ROTA_CAIXA, { key: b.key }); } }, b.name));
     const etapa = h("td", { class: "mbcrm-editavel", title: "Clique para mudar de etapa" }, h("span", { class: "mbcrm-mini-chev", style: { background: corDaEtapa(idx) } }), p.stages[idx]?.name ?? "");
     etapa.addEventListener("click", () => {
       if (etapa.querySelector("select")) return;
@@ -301,22 +323,40 @@ export function montarPipeline(sdk: InboxSDK, estado: Estado, view: CustomRouteV
       editarCelula(etapa, sel, async () => { if (sel.value !== b.stageKey) await estado.atualizarCaixa(b.key, { stageKey: sel.value }); });
       sel.addEventListener("change", () => sel.blur());
     });
+    return etapa;
+  }
+
+  const celulaResponsaveis = (b: CaixaResumo): HTMLElement =>
+    h("td", { title: (b.responsaveis ?? []).map((r) => r.email).join(", ") }, h("span", { class: "mbcrm-resps-mini" }, ...(b.responsaveis ?? []).slice(0, 4).map((r) => avatarEmail(r))));
+
+  function celulaContatos(b: CaixaResumo): HTMLElement {
     const pessoas = b.pessoas ?? [];
-    const contatos = h("td", { class: "mbcrm-dica" }, pessoas.length > 0 ? pessoas.join(", ") + (b.contatos > pessoas.length ? ` +${b.contatos - pessoas.length}` : "") : b.contatos > 0 ? `${b.contatos} contato${b.contatos === 1 ? "" : "s"}` : "");
-    const resps = h("td", { title: (b.responsaveis ?? []).map((r) => r.email).join(", ") }, h("span", { class: "mbcrm-resps-mini" }, ...(b.responsaveis ?? []).slice(0, 4).map((r) => avatarEmail(r))));
-    tr.append(nome, etapa, resps, contatos);
-    for (const f of cols) {
-      const txt = valorTexto(f, b.fields[f.key]);
-      const td = h("td", { class: "mbcrm-editavel", title: txt }, txt);
-      td.addEventListener("click", () => {
-        if (td.querySelector("input, select")) return;
-        let novo: unknown; let mudou = false;
-        const ed = editorCampo(f, txt, async (v) => { novo = v; mudou = true; });
-        editarCelula(td, ed, async () => { if (mudou) await estado.atualizarCaixa(b.key, { fields: { [f.key]: novo } }); });
-      });
+    return h("td", { class: "mbcrm-dica" }, pessoas.length > 0 ? pessoas.join(", ") + (b.contatos > pessoas.length ? ` +${b.contatos - pessoas.length}` : "") : b.contatos > 0 ? `${b.contatos} contato${b.contatos === 1 ? "" : "s"}` : "");
+  }
+
+  const celulaAtualizado = (b: CaixaResumo): HTMLElement =>
+    h("td", { class: "mbcrm-dica", title: new Date(b.updatedAt).toLocaleString("pt-BR") }, haQuanto(new Date(b.updatedAt).toISOString()));
+
+  function celulaCampo(b: CaixaResumo, f: Campo): HTMLElement {
+    const txt = valorTexto(f, b.fields[f.key]);
+    const td = h("td", { class: "mbcrm-editavel", title: txt }, txt);
+    td.addEventListener("click", () => {
+      if (td.querySelector("input, select")) return;
+      let novo: unknown; let mudou = false;
+      const ed = editorCampo(f, txt, async (v) => { novo = v; mudou = true; });
+      editarCelula(td, ed, async () => { if (mudou) await estado.atualizarCaixa(b.key, { fields: { [f.key]: novo } }); });
+    });
+    return td;
+  }
+
+  function linha(b: CaixaResumo, p: Pipeline, colunas: ColunaGrade[]): HTMLElement {
+    const tr = h("tr", { class: "mbcrm-caixa-linha" });
+    colunas.forEach((c, i) => {
+      const td = c.celula(b, p);
+      if (i === 0) td.classList.add("mbcrm-col-presa"); // a primeira é a que fica presa à esquerda
       tr.append(td);
-    }
-    tr.append(h("td", { class: "mbcrm-dica", title: new Date(b.updatedAt).toLocaleString("pt-BR") }, haQuanto(new Date(b.updatedAt).toISOString())), h("td", null));
+    });
+    tr.append(h("td", null)); // alinha com a coluna "＋" do cabeçalho
     return tr;
   }
 

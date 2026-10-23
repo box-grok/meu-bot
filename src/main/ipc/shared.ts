@@ -30,6 +30,7 @@ import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
 import { enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
+import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../settings";
 import { agendaCriar, agendaProximos, gmailResumo, planilhaEscrever, planilhaLer } from "../google/apis";
 import { changeWindowZoom, currentZoom } from "../zoom";
@@ -72,11 +73,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   // Cópia do CRM e do financeiro desta máquina no Drive da Conta Google: estado, "guardar agora" e o interruptor.
   handleShared("backup-dados:status", (event) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
-    return { ligado: getDadosNoDrive(), ...estadoDadosDrive(h.host) };
+    return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
   });
   handleShared("backup-dados:agora", async (event) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
-    return { ligado: getDadosNoDrive(), ...(await enviarDadosAoDrive(h.host)) };
+    return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...(await enviarDadosAoDrive(h.host)) };
   });
   // Abre no Finder a pasta das cópias locais desta máquina. Cria se ainda não houver (primeira cópia não saiu).
   handleShared("backup-dados:abrir-pasta", async (event) => {
@@ -87,10 +88,18 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (erro !== "") throw new Error(`não consegui abrir a pasta: ${erro}`);
     return { pasta: dir };
   });
+  // Senha do pacote cifrado. O valor entra e nunca mais sai: o status só diz se existe.
+  handleShared("backup-dados:senha", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const p = (payload ?? {}) as { senha?: unknown; limpar?: unknown };
+    if (p.limpar === true) limparSenhaBackup();
+    else definirSenhaBackup(typeof p.senha === "string" ? p.senha : "");
+    return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
+  });
   handleShared("backup-dados:ligar", (event, payload: unknown) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
     setDadosNoDrive((payload as { ligado?: unknown } | null)?.ligado === true);
-    return { ligado: getDadosNoDrive(), ...estadoDadosDrive(h.host) };
+    return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
   });
   handleShared("google-conta:gmail", () => gmailResumo());
   handleShared("google-conta:agenda", (_event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(typeof d === "number" ? d : 7); });

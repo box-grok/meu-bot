@@ -13,7 +13,7 @@ export interface ContaGoogleDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "on">;
+  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void> } {
@@ -84,9 +84,28 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       bc.append(el("p", "hint", "Uma vez por dia o CRM e o financeiro desta máquina são guardados no Drive desta conta, em pastas separadas, e uma cópia fica aqui no Mac. Fica só a mais recente de cada um."));
       if (backup.ultimaEm !== null) {
         bc.append(el("p", "hint audio-ok", `Última cópia em ${fmtData(backup.ultimaEm)}.`));
-        for (const e of backup.enviados) { const r = el("div", "conta-evento"); r.append(el("strong", "", e.conjunto === "crm" ? "CRM" : "Financeiro"), el("span", "hint", `${e.caminho} · ${(e.bytes / 1024).toFixed(0)} KB`)); bc.append(r); }
+        for (const e of backup.enviados) {
+          const r = el("div", "conta-evento");
+          const kb = e.bytes / 1024;
+          r.append(el("strong", "", `${e.conjunto === "credenciais" ? "🔒 " : ""}${e.conjunto}`), el("span", "hint", `${e.caminho} · ${kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(0)} KB`}`));
+          bc.append(r);
+        }
       } else if (backup.erro === null) bc.append(el("p", "hint", "Ainda não foi feita nenhuma cópia desta máquina."));
       if (backup.erro !== null) bc.append(el("p", "hint bad-hint", backup.erro));
+      // Senha do pacote de credenciais. Sem ela esse conjunto é pulado; os outros sobem normalmente.
+      const sc = el("div", "admin-actions");
+      if (backup.temSenha) {
+        sc.append(el("p", "hint audio-ok", "🔒 As credenciais da máquina sobem cifradas com a sua senha. Guarde-a fora do computador: sem ela esse pacote não abre."));
+        sc.append(btn("Trocar a senha", "btn-ghost", () => { const v = prompt("Nova senha do backup cifrado (mínimo 8 caracteres):") ?? ""; if (v.trim() !== "") void agir(async () => { backup = await deps.api.backupDadosSenha(v); }, "senha trocada; vale a partir da próxima cópia"); }));
+        const lb = btn("Apagar a senha", "btn-ghost", () => { deps.armConfirm(lb, "Confirmar? as credenciais param de ser copiadas", () => { void agir(async () => { backup = await deps.api.backupDadosLimparSenha(); }, "senha apagada; as credenciais não sobem mais"); }); });
+        sc.append(lb);
+      } else {
+        sc.append(el("p", "hint bad-hint", "🔒 As credenciais da máquina (tokens e sessão do WhatsApp) não estão sendo copiadas: defina uma senha. Elas nunca sobem sem cifra."));
+        const inp = input("senha do backup cifrado", "", 200); inp.type = "password";
+        sc.append(field("Senha", inp), btn("Definir a senha", "btn-primary", () => { if (inp.value.trim().length < 8) return; void agir(async () => { backup = await deps.api.backupDadosSenha(inp.value); }, "senha definida; as credenciais entram na próxima cópia"); }));
+      }
+      bc.append(sc);
+
       const acoes = el("div", "admin-actions");
       acoes.append(btn("Guardar agora", "btn-ghost", () => { void agir(async () => { backup = await deps.api.backupDadosAgora(); }, "cópia guardada no Drive"); }));
       acoes.append(btn("Abrir a pasta no Mac", "btn-ghost", () => { void agir(() => deps.api.backupDadosAbrirPasta(), "pasta aberta no Finder"); }));

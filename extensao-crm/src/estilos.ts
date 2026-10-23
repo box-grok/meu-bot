@@ -111,8 +111,9 @@ export const CSS = `
 .mbcrm-tabela th { position: sticky; top: 0; z-index: 3; background: var(--mb-bg); color: var(--mb-fg2); font-weight: 400; text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Sem max-width fixo: quem corta agora é a largura da coluna, que a pessoa escolhe. */
 .mbcrm-tabela td { padding: 7px 12px; border-bottom: 1px solid var(--mb-borda); border-right: 1px solid var(--mb-borda); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--mb-bg); }
-.mbcrm-tabela .mbcrm-col-nome { position: sticky; left: 0; z-index: 2; }
-.mbcrm-tabela th.mbcrm-col-nome { z-index: 4; }
+/* A coluna presa é a PRIMEIRA da grade, seja ela qual for depois de arrastar (antes era sempre Nome). */
+.mbcrm-tabela .mbcrm-col-presa { position: sticky; left: 0; z-index: 2; }
+.mbcrm-tabela th.mbcrm-col-presa { z-index: 4; }
 .mbcrm-tabela .mbcrm-col-add { border-right: none; padding: 0 6px; }
 /* Pegador da divisória: 7 px colados na borda direita do cabeçalho. O th é sticky (logo, posicionado)
    e corta o que passa dele, então o pegador fica em right 0, e não num valor negativo que seria clipado. */

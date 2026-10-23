@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -137,20 +137,57 @@ test("corpoUploadBinario: bytes sobrevivem (o .tar.gz nao passa por string) e co
   assert.equal(consultaFilhos("pa'i"), "'pa\\'i' in parents and trashed = false");
 });
 
-test("CONJUNTOS_DADOS: o que excluir do pacote, no formato que o tar casa", () => {
+test("CONJUNTOS_DADOS: caminhos e exclusoes no formato que o tar casa", () => {
+  const ids = CONJUNTOS_DADOS.map((c) => c.id);
+  assert.deepEqual(ids, ["crm", "financeiro", "agente", "trabalho", "credenciais"]);
+  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.pasta)).size, ids.length, "uma pasta por conjunto");
+  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.prefixo)).size, ids.length, "um prefixo por conjunto");
+
   for (const c of CONJUNTOS_DADOS) {
-    assert.ok(c.excluir.includes("db/backup"), `${c.id}: a copia diaria local nao pode entrar no pacote`);
-    for (const e of c.excluir) {
-      // Regressao: com "./" na frente o padrao nao casa com o membro que o tar gera e o backup entra em silencio.
-      assert.ok(!e.startsWith("./"), `${c.id}: padrao "${e}" com ./ nao casa com os membros db/...`);
-      assert.ok(e.startsWith("db/"), `${c.id}: padrao "${e}" fora do db/`);
+    assert.ok(c.dirs.length > 0, `${c.id}: sem caminho nenhum`);
+    for (const d of [...c.dirs, ...c.excluir]) {
+      // Regressao: com "./" na frente o padrao nao casa com o membro que o tar gera e o excluido entra em silencio.
+      assert.ok(!d.startsWith("./"), `${c.id}: "${d}" com ./ nao casa`);
+      assert.ok(!d.startsWith("/"), `${c.id}: "${d}" tem que ser relativo ao $HOME`);
     }
   }
+
+  const por = (id) => CONJUNTOS_DADOS.find((c) => c.id === id);
+  // A copia diaria local de cada store nao entra no pacote: copia dentro de copia.
+  assert.ok(por("crm").excluir.some((e) => e.endsWith("/crm/db/backup")));
+  assert.ok(por("financeiro").excluir.some((e) => e.endsWith("/finance/db/backup")));
+  // Segredos TOTP tem a chave fora do db/: fora da maquina nao abrem, entao nao viajam.
+  assert.ok(por("crm").excluir.some((e) => e.includes("autenticador")));
+  // O clone da Cloudflare volta com git clone; as skills escritas aqui, nao.
+  assert.ok(por("agente").excluir.includes(".claude/skills/skills-cloudflare"));
+  // 183 dos 208 MB do .openclaw sao cache, temporarios e extensoes.
+  for (const x of ["cache", "tmp", "extensions", "logs"]) {
+    assert.ok(por("credenciais").excluir.includes(`.openclaw/${x}`), `.openclaw/${x} tem que ficar de fora`);
+  }
+});
+
+test("so o conjunto de credenciais e cifrado, e o nome do arquivo denuncia isso", () => {
+  const cifrados = CONJUNTOS_DADOS.filter((c) => c.cifrar === true).map((c) => c.id);
+  assert.deepEqual(cifrados, ["credenciais"], "credencial e o unico que vai cifrado");
+
+  const q = Date.parse("2026-10-23T12:00:00-03:00");
+  const cred = CONJUNTOS_DADOS.find((c) => c.id === "credenciais");
   const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
-  // Os segredos TOTP sao cifrados por uma chave que fica fora do db/: fora da maquina nao abrem, entao nao viajam.
-  assert.ok(crm.excluir.some((e) => e.includes("autenticador")), "segredos do autenticador ficam na maquina");
-  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.pasta)).size, CONJUNTOS_DADOS.length, "uma pasta por conjunto");
-  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.prefixo)).size, CONJUNTOS_DADOS.length, "um prefixo por conjunto");
+  assert.equal(caminhoDadosNoDrive("agente-box-lv", cred, q).arquivo, "credenciais-agente-box-lv-2026-10-23.tar.gz.age");
+  assert.equal(caminhoDadosNoDrive("agente-box-lv", crm, q).arquivo, "crm-agente-box-lv-2026-10-23.tar.gz");
+
+  // A poda precisa reconhecer o cifrado, senao ele acumula no Drive para sempre.
+  const re = pacoteDadosRe("credenciais", "agente-box-lv");
+  assert.ok(re.test("credenciais-agente-box-lv-2026-10-22.tar.gz.age"));
+  assert.ok(re.test("credenciais-agente-box-lv-2026-10-22.tar.gz"), "aceita tambem o sem sufixo");
+  assert.ok(!re.test("credenciais-outra-maquina-2026-10-22.tar.gz.age"), "nao apaga o de outra maquina");
+
+  // O pacote sem cifra nunca pode carregar segredo do .hermes: eles moram no conjunto cifrado.
+  const trab = CONJUNTOS_DADOS.find((c) => c.id === "trabalho");
+  assert.ok(trab.cifrar !== true);
+  assert.ok(trab.excluir.includes(".hermes/auth.json"), "auth.json sai do pacote sem cifra");
+  assert.ok(trab.excluir.some((e) => e.endsWith(".env")), "os .env saem do pacote sem cifra");
+  assert.ok(cred.dirs.includes(".hermes/auth.json"), "e entram no cifrado");
 });
 
 test("slugMaquina: a maquina no nome do arquivo sobrevive a baixar fora da pasta", () => {

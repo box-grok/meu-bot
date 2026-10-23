@@ -17,14 +17,17 @@ import { spawn } from "node:child_process";
 import { CONJUNTOS_DADOS, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
+import { lerSenhaBackup } from "./senha-backup";
+import { cifrarPacote } from "./backup-cifra";
 import { gravar } from "./comum";
 import { registrar } from "../auditoria";
 import { log } from "../tunnel";
 
 const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "ControlMaster=no", "-o", "ControlPath=none"];
 const INTERVALO = 24 * 60 * 60_000;
-/** Teto do pacote: os conjuntos têm centenas de KB; muito acima disso é sinal de que algo está errado. */
-const PACOTE_MAX = 256 * 1024 * 1024;
+/** Teto do pacote. O maior conjunto medido (transcripts do agente) dá ~37 MB; muito acima disso é erro. */
+const PACOTE_MAX = 512 * 1024 * 1024;
+
 
 export interface EnvioDados { conjunto: string; caminho: string; bytes: number; apagados: number; local: string }
 
@@ -52,9 +55,11 @@ function gravarLocal(host: string, c: ConjuntoDados, arquivo: string, pacote: Bu
  * não casam e o backup local entra no pacote em silêncio.
  */
 async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
-  const base = `$HOME/.local/share/meu-bot/${c.dir}`;
-  const excl = c.excluir.map((e) => `--exclude=${e}`).join(" ");
-  const cmd = `set -e; [ -d ${base} ] || { echo "sem ${c.dir} nesta maquina" >&2; exit 3; }; tar -czf - -C "$(dirname ${base})" ${excl} "$(basename ${base})"`;
+  // Lista só o que existe: uma VM pode não ter `.hermes` ou `.config/gh`, e o tar falharia inteiro por um ausente.
+  const alvos = c.dirs.map((d) => `'${d.replace(/'/g, "'\\''")}'`).join(" ");
+  const excl = c.excluir.map((e) => `--exclude='${e.replace(/'/g, "'\\''")}'`).join(" ");
+  const cmd = `set -e; cd "$HOME"; A=""; for p in ${alvos}; do [ -e "$p" ] && A="$A $p"; done; ` +
+    `[ -n "$A" ] || { echo "nada de ${c.id} nesta maquina" >&2; exit 3; }; tar -czf - ${excl} $A`;
   const filho = spawn("ssh", [...SSH_OPTS, "--", host, cmd], { stdio: ["ignore", "pipe", "pipe"] });
   const partes: Buffer[] = [];
   let bytes = 0; let estourou = false;
@@ -73,9 +78,15 @@ async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
   return pacote;
 }
 
-/** Sobe um conjunto e apaga os pacotes anteriores daquela pasta. */
-async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): Promise<EnvioDados> {
-  const pacote = await empacotar(host, c);
+/**
+ * Sobe um conjunto e apaga os pacotes anteriores daquela pasta. `null` = pulado de propósito (conjunto cifrado sem
+ * senha definida): nunca cai no caminho de subir em texto claro, nem "só desta vez".
+ */
+async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): Promise<EnvioDados | null> {
+  const senha = c.cifrar === true ? lerSenhaBackup() : null;
+  if (c.cifrar === true && senha === null) return null;
+  const cru = await empacotar(host, c);
+  const pacote = senha === null ? cru : await cifrarPacote(cru, senha);
   const { pastas, arquivo } = caminhoDadosNoDrive(host, c, Date.now());
   const local = gravarLocal(host, c, arquivo, pacote);
   const pai = await s.pasta(pastas);
@@ -123,10 +134,12 @@ export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive
   }
   const s = sessaoDriveCom(await acessoValido());
   const enviados: EnvioDados[] = []; const erros: string[] = [];
+  const pulados: string[] = [];
   for (const c of CONJUNTOS_DADOS) {
-    try { enviados.push(await enviarConjunto(s, host, c)); }
+    try { const r = await enviarConjunto(s, host, c); if (r === null) pulados.push(c.nome); else enviados.push(r); }
     catch (e) { erros.push(`${c.id}: ${e instanceof Error ? e.message : String(e)}`); }
   }
+  if (pulados.length > 0) erros.push(`${pulados.join(" e ")}: sem senha de backup definida, não subiu (credencial nunca vai sem cifra)`);
   const estado: EstadoDadosDrive = { ultimaEm: enviados.length > 0 ? new Date().toISOString() : null, conta: st.perfil?.email ?? null, enviados, erro: erros.length > 0 ? erros.join("; ") : null };
   gravarEstado(host, estado);
   // A pessoa vê no registro da máquina dela que uma cópia saiu, e para onde.

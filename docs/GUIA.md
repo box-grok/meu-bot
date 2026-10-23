@@ -2329,47 +2329,53 @@ então a conversa vai para **uma caixa fixa por grupo**, e o dono não escolhe n
 - **Backend 1.0.2:** o `crm-api.js` com grupos tinha ficado em 1.0.0 nos servidores (a versão não subiu com a
   mudança), e o backend antigo respondia "telefone inválido" ao receber um grupo. A sondagem agora atualiza.
 
-## Cópia do CRM e do financeiro no Drive do dono (23 out)
+## Cópia dos dados da VM no Drive do dono (23 out)
 
 Para ninguém ficar preso a uma VM: uma vez por dia o app manda os dados de cada máquina para o Google Drive **do
 dono**. Nada de bucket do fornecedor; cada cliente guarda no Drive dele.
 
-- **Dois pacotes separados, de propósito:** `meu-bot / <máquina> / CRM / crm-AAAA-MM-DD.tar.gz` e
-  `meu-bot / <máquina> / Financeiro / financeiro-AAAA-MM-DD.tar.gz`. Pastas e prefixos próprios para que zerar o
-  histórico financeiro não encoste na cópia do CRM, e vice-versa.
-- **O que entra:** o `db/` inteiro de cada conjunto, com os anexos do CRM (inclusive as transcrições de WhatsApp
-  arquivadas) e os comprovantes do financeiro. Ficam de fora o `db/backup/`, que é cópia dentro de cópia, e os
-  `db/autenticador.*` do CRM: os segredos de duas etapas são cifrados por uma chave que mora **fora** do `db/`
-  justamente para o backup não levá-la, então fora da máquina eles não abrem e só somariam exposição.
-  Os padrões de exclusão são relativos ao membro que o `tar` gera (`db/...`, sem `./`); com `./` eles não casam e
-  o backup local entra no pacote em silêncio. Há teste travando isso.
-- **Quem envia:** o Mac, com o token de Contatos do CRM e escopo `drive.file` (o app só enxerga o que ele mesmo
-  criou). **A VM não ganha credencial nenhuma** — importa, porque é lá que o agente atende terceiros pelo WhatsApp.
-  Roda 2 min depois de a extensão do CRM subir e a cada 24 h, junto com a sincronização do Google.
-- **Uma cópia só:** ao subir a nova, as anteriores daquela pasta são apagadas. A ordem é sempre subir primeiro e
-  apagar depois: com uma cópia só, o inverso deixaria o dono sem nada se o upload falhasse. Só são apagados
-  arquivos com o padrão `<prefixo>-AAAA-MM-DD.tar.gz`; o resto da pasta não é tocado.
-- **Por que uma só basta:** a VM continua guardando 7 cópias diárias locais de cada conjunto
-  (`db/backup/<data>`, em `crm-store.js` e `finance-store.js`). O histórico de 7 dias resolve "o dado estragou";
-  a cópia no Drive resolve "a máquina morreu". Se um dia o backup local sair, esta decisão precisa ser revista.
-- **Desligar:** `dadosNoDrive: false` no `settings.json` do app. Sem o Google conectado com permissão de Drive,
-  a tarefa simplesmente não roda.
-- **Cópia local também:** antes de subir, o pacote é gravado em `~/Documents/meu-bot/backup/<máquina>/`, com a
-  mesma retenção de um arquivo por conjunto. Se o Drive falhar, ainda sobra um pacote fora da VM. O botão
-  **Abrir a pasta no Mac**, na aba Conta Google, abre essa pasta no Finder.
-- **Na tela:** aba Conta Google, seção **Backup no Drive**: data da última cópia, caminho e tamanho de cada
-  pacote, e os botões Guardar agora, Abrir a pasta no Mac e ligar/desligar a cópia diária.
-- **Conta usada:** a da aba Conta Google (a mesma do Gmail e da Agenda), não o token de Contatos do CRM. Por isso
-  `drive.file` entrou em `ESCOPOS_CONTA`: quem conectou antes de 23/10 aparece como "precisa reconectar".
+**Cinco conjuntos, cada um em pasta e nome próprios** (`meu-bot / <máquina> / <pasta> / <prefixo>-<máquina>-AAAA-MM-DD.tar.gz`),
+para serem restaurados de forma independente. Tamanhos medidos na `agente-box-lv`:
+
+| Conjunto | O que entra | Tamanho |
+|---|---|---|
+| CRM | `crm/db` com anexos | 36 KB |
+| Financeiro | `finance/db` com comprovantes | 3 KB |
+| Agente | `.claude/projects` e `.claude/skills` | 37 MB |
+| Trabalho | painel Kommo, catálogo de sites, workspaces, `.hermes`, estado do meu-bot | 195 KB |
+| Credenciais 🔒 | `.openclaw`, tokens de Kommo/Cloudflare/GitHub, `authorized_keys`, units systemd | 8 MB |
+
+Os pacotes são feitos com `tar -C $HOME` e caminhos relativos, então **restaurar é extrair sobre o `$HOME`**.
+
+- **O conjunto Credenciais sai cifrado**, com `age` e uma senha que o dono define na aba Conta Google (guardada no
+  Keychain). **Sem senha definida ele é pulado**, com aviso na tela: credencial nunca sobe em texto claro, nem
+  "só desta vez". O arquivo termina em `.tar.gz.age` e abre com `age -d` e a mesma senha, sem depender do app.
+  Perder a senha torna o pacote inabrível; como toda credencial ali é reemissível, a perda é recuperável.
+- **Os segredos do `.hermes`** (`auth.json` e os `.env`) são excluídos do conjunto Trabalho e entram no cifrado:
+  o pacote sem cifra nunca carrega credencial.
+- **Fica de fora porque se refaz sozinho:** modelos de voz e transcrição (1,6 GB), o clone `skills-cloudflare`
+  (um `git clone` traz de volta), `.openclaw/{cache,tmp,extensions,logs}` (183 dos 208 MB), `.npm`, `.cache` e os
+  plugins do Claude. E os `db/backup/` de cada store, que são cópia dentro de cópia.
+- **Os `autenticador.*` do CRM** também saem: os segredos TOTP são cifrados por uma chave que mora **fora** do
+  `db/` justamente para o backup não levá-la, então fora da máquina não abrem.
+- Os padrões de exclusão são relativos ao `$HOME` e **sem `./`** na frente; com `./` eles não casam e o que
+  deveria sair entra no pacote em silêncio. Há teste travando isso.
+- **Quem envia:** o Mac, com a Conta Google do dono e escopo `drive.file` (o app só enxerga o que ele mesmo criou).
+  **A VM não ganha credencial nenhuma.** Roda 2 min depois de a extensão do CRM subir e a cada 24 h.
+- **Uma cópia por conjunto:** ao subir a nova, as anteriores daquela pasta são apagadas. A ordem é sempre subir
+  primeiro e apagar depois. Só são apagados arquivos do padrão daquele conjunto **e daquela máquina**.
+- **Cópia local também:** antes de subir, o pacote é gravado em `~/Documents/meu-bot/backup/<máquina>/`. Se o Drive
+  falhar, ainda sobra um pacote fora da VM. O botão **Abrir a pasta no Mac** abre isso no Finder.
+- **Desligar:** `dadosNoDrive: false` no `settings.json`, ou o botão na tela.
 - **Auditoria:** registra `backup.dados-drive` com os conjuntos que subiram.
 
-**Restaurar numa VM nova:** baixe o pacote, extraia com `tar -xzf` sobre `~/.local/share/meu-bot/crm` (o
-financeiro sobre `~/.local/share/meu-bot/finance`) e chame `POST /v1/crm/reindex`. Como são dois pacotes
-independentes, dá para restaurar só um.
+**Restaurar numa VM nova:** `tar -xzf <pacote>.tar.gz -C ~` para os quatro sem cifra; para o cifrado,
+`age -d -o credenciais.tar.gz credenciais-….tar.gz.age` e depois o mesmo `tar`. Em seguida `POST /v1/crm/reindex`.
 
-Não confundir com o **backup completo e mudança de máquina** (acima): aquele é manual, cobre a máquina inteira
-incluindo a sessão do WhatsApp, e depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, só os dados, e
-o pacote é um `.tar.gz` comum que abre em qualquer lugar.
+Não confundir com o **backup completo e mudança de máquina** (acima): aquele é manual, cobre a máquina inteira e
+depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, por conjunto, e a cifra é por senha do dono.
+**Religar o WhatsApp numa VM nova continua sendo o fluxo `ativar-whatsapp`/`desativar-whatsapp`** do
+`meu-bot-backup.sh`, que nunca faz `channels logout`: restaurar o arquivo não substitui esse passo.
 
 ## Voz das respostas em áudio e o modelo do agente (20 out)
 

@@ -188,13 +188,39 @@ export function corpoUpload(meta: Record<string, unknown>, conteudo: string, fro
  * (meu-bot / <máquina> / <pasta> / <prefixo>-AAAA-MM-DD.tar.gz), para ficarem independentes: zerar o histórico
  * financeiro não pode encostar na cópia do CRM, e vice-versa. `dir` é relativo a ~/.local/share/meu-bot na VM.
  */
-export interface ConjuntoDados { id: string; dir: string; pasta: string; prefixo: string; excluir: readonly string[] }
+export interface ConjuntoDados {
+  id: string; nome: string; pasta: string; prefixo: string;
+  /** Caminhos relativos ao `$HOME` da VM. O pacote é feito com `tar -C $HOME`, então restaurar é extrair sobre o $HOME. */
+  dirs: readonly string[];
+  /** Padrões do `--exclude`, também relativos ao `$HOME` e **sem** `./` na frente (com `./` o tar não casa). */
+  excluir: readonly string[];
+  /** Carrega credencial: o pacote só sai cifrado com a senha do dono, e é pulado se não houver senha. */
+  cifrar?: boolean;
+}
+const MB = ".local/share/meu-bot";
 export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   // `db/backup` é a cópia diária local: não se empacota cópia dentro de cópia.
   // `autenticador.*` são segredos TOTP cifrados por uma chave que mora FORA do db/ (autenticador.js), de propósito,
   // para o backup não levá-la. Fora da máquina eles não abrem, então levá-los só somaria exposição sem utilidade.
-  { id: "crm", dir: "crm/db", pasta: "CRM", prefixo: "crm", excluir: ["db/backup", "db/autenticador.json", "db/autenticador-uso.jsonl"] },
-  { id: "financeiro", dir: "finance/db", pasta: "Financeiro", prefixo: "financeiro", excluir: ["db/backup"] },
+  { id: "crm", nome: "CRM", pasta: "CRM", prefixo: "crm", dirs: [`${MB}/crm/db`], excluir: [`${MB}/crm/db/backup`, `${MB}/crm/db/autenticador.json`, `${MB}/crm/db/autenticador-uso.jsonl`] },
+  { id: "financeiro", nome: "Financeiro", pasta: "Financeiro", prefixo: "financeiro", dirs: [`${MB}/finance/db`], excluir: [`${MB}/finance/db/backup`] },
+  // O clone `skills-cloudflare` volta com um `git clone`; as skills escritas aqui, não.
+  { id: "agente", nome: "Agente", pasta: "Agente", prefixo: "agente", dirs: [".claude/projects", ".claude/skills"], excluir: [".claude/skills/skills-cloudflare"] },
+  // Os segredos do .hermes saem daqui e vão para `credenciais`: o pacote sem cifra nunca leva credencial.
+  {
+    id: "trabalho", nome: "Trabalho", pasta: "Trabalho", prefixo: "trabalho",
+    dirs: [
+      ".local/share/lv-dashboard-kommo", ".local/share/lv-catalogo-sites", "agent-workspace", "chat-workspace", ".hermes", ".claude.json",
+      `${MB}/auditoria.jsonl`, `${MB}/objetivo.json`, `${MB}/progresso.json`, `${MB}/crm.json`, `${MB}/whatsapp-lista.json`, `${MB}/maquinas.json`,
+    ],
+    excluir: [".hermes/auth.json", ".hermes/*/*/.env", ".hermes/*/.env"],
+  },
+  // 183 dos 208 MB do .openclaw são cache, temporários e extensões que se reinstalam.
+  {
+    id: "credenciais", nome: "Credenciais", pasta: "Credenciais", prefixo: "credenciais", cifrar: true,
+    dirs: [".openclaw", ".config/kommo", ".config/cloudflare", ".config/gh", ".hermes/auth.json", ".ssh/authorized_keys", ".config/systemd/user"],
+    excluir: [".openclaw/cache", ".openclaw/tmp", ".openclaw/extensions", ".openclaw/logs"],
+  },
 ];
 /** A máquina dentro de um nome de arquivo: só letras, números, ponto, hífen e sublinhado. */
 export const slugMaquina = (s: string): string => s.trim().toLowerCase().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "maquina";
@@ -206,14 +232,15 @@ export function caminhoDadosNoDrive(maquina: string, c: ConjuntoDados, quando: n
   const d = new Date(quando > 0 ? quando : Date.now());
   const p = (x: number): string => String(x).padStart(2, "0");
   const data = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-  return { pastas: ["meu-bot", nomeDrive(maquina), c.pasta], arquivo: `${c.prefixo}-${slugMaquina(maquina)}-${data}.tar.gz` };
+  // `.age` no fim deixa claro no Drive, só pelo nome, que aquele pacote não abre sem a senha.
+  return { pastas: ["meu-bot", nomeDrive(maquina), c.pasta], arquivo: `${c.prefixo}-${slugMaquina(maquina)}-${data}.tar.gz${c.cifrar === true ? ".age" : ""}` };
 }
 /**
  * Só os pacotes que este recurso cria para esta máquina; qualquer outra coisa na pasta é de terceiro e não se apaga.
  * Casar a máquina importa: se um dia duas delas dividirem pasta, uma não apaga a cópia da outra.
  */
 export const pacoteDadosRe = (prefixo: string, maquina: string): RegExp =>
-  new RegExp(`^${prefixo.replace(/[^a-z]/g, "")}-${slugMaquina(maquina).replace(/[.\-]/g, "\\$&")}-\\d{4}-\\d{2}-\\d{2}\\.tar\\.gz$`);
+  new RegExp(`^${prefixo.replace(/[^a-z]/g, "")}-${slugMaquina(maquina).replace(/[.\-]/g, "\\$&")}-\\d{4}-\\d{2}-\\d{2}\\.tar\\.gz(\\.age)?$`);
 /**
  * Retenção de uma cópia só: apaga os pacotes antigos daquele conjunto, menos o que acabou de subir. Decisão
  * separada da chamada à API para ser testável e para nunca apagar por engano o que não casa com o padrão.

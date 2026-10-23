@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LARGURAS_PADRAO, LARGURA_MAX, LARGURA_MIN, chaveLarguras, limparLargura, mesmoConjunto, moverColuna, parseLarguras } from "../../extensao-crm/src/colunas.ts";
+import { LARGURAS_PADRAO, LARGURA_MAX, LARGURA_MIN, aplicarOrdem, chaveLarguras, chaveOrdem, limparLargura, mesmoConjunto, moverColuna, parseLarguras, parseOrdem } from "../../extensao-crm/src/colunas.ts";
 
 const campo = (key, name = key) => ({ key, name, type: "TEXT", options: [] });
 
@@ -62,4 +62,37 @@ test("mesmoConjunto: a ordem não importa, mas adicionar ou remover campo import
   assert.ok(!mesmoConjunto(a, [campo("f_1"), campo("f_2")]), "campo removido por fora");
   assert.ok(!mesmoConjunto(a, [...a, campo("f_4")]), "campo adicionado por fora");
   assert.ok(!mesmoConjunto(a, [campo("f_1"), campo("f_2"), campo("f_9")]), "campo trocado por outro");
+});
+
+test("parseOrdem: lista de ids, sem repetição, tolerante a lixo", () => {
+  assert.deepEqual(parseOrdem('["nome","f_1","atualizado"]'), ["nome", "f_1", "atualizado"]);
+  assert.deepEqual(parseOrdem('["nome","nome","f_1"]'), ["nome", "f_1"], "id repetido entra uma vez só");
+  assert.deepEqual(parseOrdem('["nome",1,null,"",{"a":1},"f_1"]'), ["nome", "f_1"]);
+  for (const raw of [null, "", "{", '{"nome":1}', '"texto"', "null"]) assert.deepEqual(parseOrdem(raw), [], JSON.stringify(raw));
+});
+
+test("aplicarOrdem: respeita o que foi arrastado e ignora coluna que não existe mais", () => {
+  const padrao = ["nome", "etapa", "f_1", "atualizado"];
+  // Arrastado: Atualizado foi para a frente de f_1.
+  assert.deepEqual(aplicarOrdem(padrao, ["nome", "etapa", "atualizado", "f_1"]), ["nome", "etapa", "atualizado", "f_1"]);
+  // Campo apagado por outra pessoa some da ordem guardada, sem quebrar o resto.
+  assert.deepEqual(aplicarOrdem(["nome", "etapa"], ["nome", "f_9", "etapa"]), ["nome", "etapa"]);
+  // Sem nada guardado, vale o padrão.
+  assert.deepEqual(aplicarOrdem(padrao, []), padrao);
+});
+
+test("aplicarOrdem: coluna nova entra na posição padrão, não no fim da tabela", () => {
+  // f_2 nasceu entre f_1 e Atualizado; a ordem guardada é de antes dela existir.
+  const padrao = ["nome", "etapa", "f_1", "f_2", "atualizado"];
+  const guardada = ["etapa", "nome", "f_1", "atualizado"];
+  const out = aplicarOrdem(padrao, guardada);
+  assert.ok(out.includes("f_2"), "a coluna nova tem que aparecer");
+  assert.ok(out.indexOf("f_2") < out.indexOf("atualizado"), "e não depois de Atualizado");
+  assert.deepEqual(out.slice(0, 2), ["etapa", "nome"], "o que foi arrastado continua valendo");
+  assert.equal(out.length, padrao.length);
+});
+
+test("chaveOrdem e chaveLarguras não colidem entre si nem entre pipelines", () => {
+  assert.notEqual(chaveOrdem("p_1"), chaveLarguras("p_1"));
+  assert.notEqual(chaveOrdem("p_1"), chaveOrdem("p_2"));
 });
