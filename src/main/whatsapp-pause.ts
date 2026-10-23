@@ -17,6 +17,7 @@
  *
  * Puro (sem Electron): whatsapp.ts e ipc/client.ts rodam os scripts por SSH.
  */
+import { SAFE_KEY } from "./whatsapp-chats";
 
 /** Regra de envio do openclaw.json (session.sendPolicy.rules[]). */
 export interface SendPolicyRule { action?: string; match?: { channel?: string; chatType?: string; keyPrefix?: string; rawKeyPrefix?: string } }
@@ -74,7 +75,7 @@ export const SEND_POLICY_READ_SH = `echo "policy=$(python3 -c 'import json,os;c=
 export type PauseBy = "dono" | "admin";
 
 /** Só chaves que o próprio OpenClaw gera entram no script remoto (as mesmas de whatsapp.ts). */
-const SAFE_KEY = /^[A-Za-z0-9:+._-]{1,200}$/;
+
 
 export const PAUSE_RULE_VERSION = 2;
 const RULE_START = `<!-- meu-bot:pausa v${PAUSE_RULE_VERSION} inicio -->`;

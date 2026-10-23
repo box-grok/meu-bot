@@ -151,14 +151,66 @@ export function caminhoNoDrive(maquina: string, nome: string, numero: string, ul
   const quando = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}`;
   return { pastas: ["meu-bot", nomeDrive(maquina), "WhatsApp", quem], arquivo: `conversa-whatsapp-${quando}.md` };
 }
-/** Busca do Drive por nome exato de pasta dentro de outra (aspas e barras escapadas como a API pede). */
+/** Escapa aspas e barras num literal de consulta do Drive, como a API pede. */
+const escDrive = (s: string): string => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+/** Busca do Drive por nome exato de pasta dentro de outra. */
 export function consultaPasta(nome: string, pai: string): string {
-  const esc = (s: string): string => s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-  return `name = '${esc(nome)}' and mimeType = 'application/vnd.google-apps.folder' and '${esc(pai)}' in parents and trashed = false`;
+  return `name = '${escDrive(nome)}' and mimeType = 'application/vnd.google-apps.folder' and '${escDrive(pai)}' in parents and trashed = false`;
 }
-/** Corpo multipart/related do upload (metadados JSON + conteúdo). */
+/** Tudo o que está dentro de uma pasta (para decidir o que apagar sem adivinhar nomes na consulta). */
+export function consultaFilhos(pai: string): string {
+  return `'${escDrive(pai)}' in parents and trashed = false`;
+}
+/**
+ * Corpo multipart/related do upload com conteúdo binário. O `.tar.gz` do CRM não sobrevive a uma volta por
+ * string, então o corpo é montado em bytes; o caminho de texto (abaixo) é o mesmo código com UTF-8.
+ */
+export function corpoUploadBinario(meta: Record<string, unknown>, dados: Buffer, fronteira: string, tipo: string): Buffer {
+  return Buffer.concat([
+    Buffer.from(`--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${fronteira}\r\nContent-Type: ${tipo}\r\n\r\n`, "utf8"),
+    dados,
+    Buffer.from(`\r\n--${fronteira}--`, "utf8"),
+  ]);
+}
+/** Corpo multipart/related do upload (metadados JSON + conteúdo de texto). */
 export function corpoUpload(meta: Record<string, unknown>, conteudo: string, fronteira: string): string {
-  return `--${fronteira}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${fronteira}\r\nContent-Type: text/markdown; charset=UTF-8\r\n\r\n${conteudo}\r\n--${fronteira}--`;
+  return corpoUploadBinario(meta, Buffer.from(conteudo, "utf8"), fronteira, "text/markdown; charset=UTF-8").toString("utf8");
+}
+
+/**
+ * Conjunto de dados da máquina que vai para o Drive do dono. Cada um tem **pasta e prefixo próprios** no Drive
+ * (meu-bot / <máquina> / <pasta> / <prefixo>-AAAA-MM-DD.tar.gz), para ficarem independentes: zerar o histórico
+ * financeiro não pode encostar na cópia do CRM, e vice-versa. `dir` é relativo a ~/.local/share/meu-bot na VM.
+ */
+export interface ConjuntoDados { id: string; dir: string; pasta: string; prefixo: string; excluir: readonly string[] }
+export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
+  // `db/backup` é a cópia diária local: não se empacota cópia dentro de cópia.
+  // `autenticador.*` são segredos TOTP cifrados por uma chave que mora FORA do db/ (autenticador.js), de propósito,
+  // para o backup não levá-la. Fora da máquina eles não abrem, então levá-los só somaria exposição sem utilidade.
+  { id: "crm", dir: "crm/db", pasta: "CRM", prefixo: "crm", excluir: ["db/backup", "db/autenticador.json", "db/autenticador-uso.jsonl"] },
+  { id: "financeiro", dir: "finance/db", pasta: "Financeiro", prefixo: "financeiro", excluir: ["db/backup"] },
+];
+/** Onde o pacote de um conjunto fica no Drive. Mesma pasta por máquina das conversas: várias VMs não se misturam. */
+export function caminhoDadosNoDrive(maquina: string, c: ConjuntoDados, quando: number): { pastas: string[]; arquivo: string } {
+  const d = new Date(quando > 0 ? quando : Date.now());
+  const p = (x: number): string => String(x).padStart(2, "0");
+  return { pastas: ["meu-bot", nomeDrive(maquina), c.pasta], arquivo: `${c.prefixo}-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.tar.gz` };
+}
+/** Só os pacotes que este recurso cria; qualquer outra coisa na pasta é de terceiro e não se apaga. */
+export const pacoteDadosRe = (prefixo: string): RegExp => new RegExp(`^${prefixo.replace(/[^a-z]/g, "")}-\\d{4}-\\d{2}-\\d{2}\\.tar\\.gz$`);
+/**
+ * Retenção de uma cópia só: apaga os pacotes antigos daquele conjunto, menos o que acabou de subir. Decisão
+ * separada da chamada à API para ser testável e para nunca apagar por engano o que não casa com o padrão.
+ */
+export function pacotesDadosAApagar(arquivos: readonly { id?: unknown; name?: unknown }[], idNovo: string, prefixo: string): string[] {
+  const re = pacoteDadosRe(prefixo);
+  const ids: string[] = [];
+  for (const a of arquivos) {
+    if (typeof a.id !== "string" || typeof a.name !== "string") continue;
+    if (a.id === idNovo || !re.test(a.name)) continue;
+    ids.push(a.id);
+  }
+  return ids;
 }
 
 // ---- Conta Google: parse puro das respostas das APIs (testável sem rede) ---------------------------------------

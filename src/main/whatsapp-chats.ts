@@ -218,6 +218,13 @@ export function gatewayFailures(out: string, keys: readonly string[]): string[] 
   return keys.filter((k) => !ok.has(k));
 }
 
+/**
+ * Chaves de sessão que podem entrar no script remoto (vão dentro de aspas simples, num JSON de --params). Só o
+ * alfabeto que o próprio OpenClaw gera: grupo termina em "@g.us" e conversa direta traz "+" do E.164, então o
+ * "@" faz parte do conjunto — sem ele toda sessão de grupo era descartada e parecia não existir.
+ */
+export const SAFE_KEY = /^[A-Za-z0-9:+._@-]{1,200}$/;
+
 /** Markdown legível da conversa inteira do WhatsApp (exportar). */
 export function threadToMarkdown(contact: string, number: string, host: string, messages: readonly WhatsappThreadMessage[], exportedAt: string): string {
   const day = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR"); };

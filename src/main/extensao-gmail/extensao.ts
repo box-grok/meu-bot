@@ -7,6 +7,8 @@
  * então o `extension-loaded` não recarrega.
  */
 import { agendarSincronizacaoGoogle, pararSincronizacaoGoogle } from "../google/google";
+import { agendarDadosAoDrive, pararDadosAoDrive } from "../google/dados-drive";
+import { getDadosNoDrive } from "../settings";
 import { app, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -89,11 +91,12 @@ export async function sincronizarExtensaoCrm(ses: Session, host: string, crmProp
   const carregada = ses.getAllExtensions().find((e) => { try { return path.resolve(e.path) === dir; } catch { return false; } });
   if (crmProprio && carregada === undefined) {
     const api = await startExtensaoApi(host, capturarAba);
-    try { await carregarUma(ses, host, "extensao-crm", api.porta, api.token, patch); agendarSincronizacaoGoogle(host); }
+    try { await carregarUma(ses, host, "extensao-crm", api.porta, api.token, patch); agendarSincronizacaoGoogle(host); agendarDadosAoDrive(host, getDadosNoDrive); }
     catch (e) { log(`[navegador ${host}] extensão do CRM não carregou: ${e instanceof Error ? e.message : String(e)}`); }
   } else if (!crmProprio && carregada !== undefined) {
     ses.removeExtension(carregada.id);
     pararSincronizacaoGoogle(host);
+    pararDadosAoDrive(host);
     log(`[navegador ${host}] extensão do CRM retirada: a licença desta máquina não libera o CRM próprio`);
   }
 }

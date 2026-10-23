@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw } from "../../src/main/google/google-core.ts";
+import { chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -88,4 +88,59 @@ test("parse das respostas das APIs: Gmail, Agenda (dateTime/date), Sheets", () =
   assert.equal(agendaEventoDeRaw({ id: "e2", start: { date: "2026-10-24" }, end: { date: "2026-10-25" } }).titulo, "(sem título)");
   assert.deepEqual(planilhaValoresDeRaw({ values: [["a", "b"], ["c"]] }), [["a", "b"], ["c"]]);
   assert.deepEqual(planilhaValoresDeRaw({}), []);
+});
+
+
+test("caminhoDadosNoDrive: uma pasta por maquina e por conjunto; o nome leva a data", () => {
+  const quando = Date.parse("2026-10-23T12:00:00-03:00");
+  const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
+  const fin = CONJUNTOS_DADOS.find((c) => c.id === "financeiro");
+  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", crm, quando), { pastas: ["meu-bot", "agente-box-lv", "CRM"], arquivo: "crm-2026-10-23.tar.gz" });
+  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", fin, quando), { pastas: ["meu-bot", "agente-box-lv", "Financeiro"], arquivo: "financeiro-2026-10-23.tar.gz" });
+  // Pastas diferentes: zerar o financeiro no Drive nao encosta no CRM.
+  assert.notDeepEqual(caminhoDadosNoDrive("m", crm, quando).pastas, caminhoDadosNoDrive("m", fin, quando).pastas);
+  // Barra no nome da maquina nao vira pasta nova.
+  assert.ok(!caminhoDadosNoDrive("a/b", crm, quando).pastas.some((p) => p.includes("/")));
+});
+
+test("pacotesDadosAApagar: retencao de uma copia so, sem encostar no que nao e nosso", () => {
+  const lista = [
+    { id: "novo", name: "crm-2026-10-23.tar.gz" },
+    { id: "velho", name: "crm-2026-10-22.tar.gz" },
+    { id: "outro-conjunto", name: "financeiro-2026-10-22.tar.gz" },
+    { id: "de-terceiro", name: "planilha-da-pessoa.xlsx" },
+    { id: "parecido", name: "crm-backup-manual.tar.gz" },
+    { semId: true, name: "crm-2026-10-20.tar.gz" },
+  ];
+  // So o pacote antigo do mesmo conjunto sai; o novo, o do outro conjunto e os de terceiro ficam.
+  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "crm"), ["velho"]);
+  assert.deepEqual(pacotesDadosAApagar(lista, "novo", "financeiro"), ["outro-conjunto"]);
+  assert.deepEqual(pacotesDadosAApagar([], "novo", "crm"), [], "pasta vazia: nada a apagar");
+  assert.deepEqual(pacotesDadosAApagar([{ id: "novo", name: "crm-2026-10-23.tar.gz" }], "novo", "crm"), [], "so o novo: nada a apagar");
+});
+
+test("corpoUploadBinario: bytes sobrevivem (o .tar.gz nao passa por string) e consultaFilhos escapa", () => {
+  const dados = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0xff, 0x00, 0x7f]);
+  const corpo = corpoUploadBinario({ name: "crm-2026-10-23.tar.gz" }, dados, "B", "application/gzip");
+  assert.ok(Buffer.isBuffer(corpo));
+  assert.ok(corpo.includes(dados), "os bytes do pacote saem intactos");
+  assert.match(corpo.toString("latin1"), /Content-Type: application\/gzip/);
+  assert.match(corpo.toString("latin1"), /\r\n--B--$/);
+  assert.equal(consultaFilhos("pa'i"), "'pa\\'i' in parents and trashed = false");
+});
+
+test("CONJUNTOS_DADOS: o que excluir do pacote, no formato que o tar casa", () => {
+  for (const c of CONJUNTOS_DADOS) {
+    assert.ok(c.excluir.includes("db/backup"), `${c.id}: a copia diaria local nao pode entrar no pacote`);
+    for (const e of c.excluir) {
+      // Regressao: com "./" na frente o padrao nao casa com o membro que o tar gera e o backup entra em silencio.
+      assert.ok(!e.startsWith("./"), `${c.id}: padrao "${e}" com ./ nao casa com os membros db/...`);
+      assert.ok(e.startsWith("db/"), `${c.id}: padrao "${e}" fora do db/`);
+    }
+  }
+  const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
+  // Os segredos TOTP sao cifrados por uma chave que fica fora do db/: fora da maquina nao abrem, entao nao viajam.
+  assert.ok(crm.excluir.some((e) => e.includes("autenticador")), "segredos do autenticador ficam na maquina");
+  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.pasta)).size, CONJUNTOS_DADOS.length, "uma pasta por conjunto");
+  assert.equal(new Set(CONJUNTOS_DADOS.map((c) => c.prefixo)).size, CONJUNTOS_DADOS.length, "um prefixo por conjunto");
 });

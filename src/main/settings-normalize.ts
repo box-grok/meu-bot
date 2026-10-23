@@ -36,6 +36,8 @@ export interface SettingsFile {
   contextBudgetTokens: number;
   memoryEveryTurns: number;
   quickEntryEnabled: boolean;
+  /** Cópia diária do CRM e do financeiro das máquinas no Drive do dono. Só acontece com o Google conectado com Drive. */
+  dadosNoDrive: boolean;
   quickEntryShortcut: string;
   /** Posição/tamanho da janela de cada máquina. */
   windowBounds: Record<string, WindowBounds>;
@@ -170,7 +172,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {},
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {},
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -206,6 +208,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     contextBudgetTokens: isBudget(p["contextBudgetTokens"]) ? p["contextBudgetTokens"] : DEFAULT_BUDGET,
     memoryEveryTurns: isEvery(p["memoryEveryTurns"]) ? p["memoryEveryTurns"] : DEFAULT_MEMORY_EVERY,
     quickEntryEnabled: typeof p["quickEntryEnabled"] === "boolean" ? p["quickEntryEnabled"] : true,
+    dadosNoDrive: typeof p["dadosNoDrive"] === "boolean" ? p["dadosNoDrive"] : true,
     quickEntryShortcut: typeof p["quickEntryShortcut"] === "string" && parseAccelerator(p["quickEntryShortcut"]) !== null ? p["quickEntryShortcut"] : DEFAULT_SHORTCUT,
     windowBounds: bounds,
     onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",

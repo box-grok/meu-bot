@@ -2316,6 +2316,41 @@ O admin faz o backup de tudo o que é da pessoa numa VM e restaura numa outra.
   `backup.desativar-origem` e `backup.ativar-whatsapp`.
 - **Fora do pacote:** o hermes-agent instalado por npm em `~/.local/lib` e a voz das respostas (religar no tutorial).
 
+## Cópia do CRM e do financeiro no Drive do dono (23 out)
+
+Para ninguém ficar preso a uma VM: uma vez por dia o app manda os dados de cada máquina para o Google Drive **do
+dono**. Nada de bucket do fornecedor; cada cliente guarda no Drive dele.
+
+- **Dois pacotes separados, de propósito:** `meu-bot / <máquina> / CRM / crm-AAAA-MM-DD.tar.gz` e
+  `meu-bot / <máquina> / Financeiro / financeiro-AAAA-MM-DD.tar.gz`. Pastas e prefixos próprios para que zerar o
+  histórico financeiro não encoste na cópia do CRM, e vice-versa.
+- **O que entra:** o `db/` inteiro de cada conjunto, com os anexos do CRM (inclusive as transcrições de WhatsApp
+  arquivadas) e os comprovantes do financeiro. Ficam de fora o `db/backup/`, que é cópia dentro de cópia, e os
+  `db/autenticador.*` do CRM: os segredos de duas etapas são cifrados por uma chave que mora **fora** do `db/`
+  justamente para o backup não levá-la, então fora da máquina eles não abrem e só somariam exposição.
+  Os padrões de exclusão são relativos ao membro que o `tar` gera (`db/...`, sem `./`); com `./` eles não casam e
+  o backup local entra no pacote em silêncio. Há teste travando isso.
+- **Quem envia:** o Mac, com o token de Contatos do CRM e escopo `drive.file` (o app só enxerga o que ele mesmo
+  criou). **A VM não ganha credencial nenhuma** — importa, porque é lá que o agente atende terceiros pelo WhatsApp.
+  Roda 2 min depois de a extensão do CRM subir e a cada 24 h, junto com a sincronização do Google.
+- **Uma cópia só:** ao subir a nova, as anteriores daquela pasta são apagadas. A ordem é sempre subir primeiro e
+  apagar depois: com uma cópia só, o inverso deixaria o dono sem nada se o upload falhasse. Só são apagados
+  arquivos com o padrão `<prefixo>-AAAA-MM-DD.tar.gz`; o resto da pasta não é tocado.
+- **Por que uma só basta:** a VM continua guardando 7 cópias diárias locais de cada conjunto
+  (`db/backup/<data>`, em `crm-store.js` e `finance-store.js`). O histórico de 7 dias resolve "o dado estragou";
+  a cópia no Drive resolve "a máquina morreu". Se um dia o backup local sair, esta decisão precisa ser revista.
+- **Desligar:** `dadosNoDrive: false` no `settings.json` do app. Sem o Google conectado com permissão de Drive,
+  a tarefa simplesmente não roda.
+- **Auditoria:** registra `backup.dados-drive` com os conjuntos que subiram.
+
+**Restaurar numa VM nova:** baixe o pacote, extraia com `tar -xzf` sobre `~/.local/share/meu-bot/crm` (o
+financeiro sobre `~/.local/share/meu-bot/finance`) e chame `POST /v1/crm/reindex`. Como são dois pacotes
+independentes, dá para restaurar só um.
+
+Não confundir com o **backup completo e mudança de máquina** (acima): aquele é manual, cobre a máquina inteira
+incluindo a sessão do WhatsApp, e depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, só os dados, e
+o pacote é um `.tar.gz` comum que abre em qualquer lugar.
+
 ## Voz das respostas em áudio e o modelo do agente (20 out)
 
 **Voz das respostas.** `install-voz.sh <modo> [voz]` oferece três vozes, todas locais e grátis:

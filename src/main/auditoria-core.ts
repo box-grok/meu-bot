@@ -72,6 +72,7 @@ export const ACOES = {
   "backup.restaurar": (a: string) => `restaurou nesta máquina o backup da máquina ${a}`,
   "backup.desativar-origem": (a: string) => `desligou o WhatsApp desta máquina: ele passou para a máquina ${a}`,
   "backup.ativar-whatsapp": () => "ligou o WhatsApp nesta máquina (mudança de máquina)",
+  "backup.dados-drive": (a: string) => `guardou uma cópia dos dados desta máquina no Google Drive do dono${a ? ` (${a})` : ""}`,
 } satisfies Record<string, (alvo: string) => string>;
 export type Acao = keyof typeof ACOES;
 export const isAcao = (v: string): v is Acao => Object.prototype.hasOwnProperty.call(ACOES, v);

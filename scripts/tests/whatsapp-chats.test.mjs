@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromSessions, threadFor, peerOfSessionKey, grupoToMarkdown } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+const { chatsFromSessions, threadFor, peerOfSessionKey, grupoToMarkdown, SAFE_KEY } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
 
 // Formato real do OpenClaw 2026.9.9 (sessions.list / chat.history), números trocados.
 const SELF = "+5521900000001";
@@ -248,4 +248,16 @@ test("grupoToMarkdown: sem mensagens nao inventa periodo nem autores", () => {
   assert.match(md, /- Mensagens: 0/);
   assert.ok(!md.includes("Periodo:") && !md.includes("Período:"));
   assert.ok(!md.includes("Quem falou:"));
+});
+
+test("SAFE_KEY aceita chave de grupo (@g.us) e de contato, e barra o que quebraria o script remoto", () => {
+  // Regressão: sem o "@" no conjunto, toda sessão de grupo era descartada e o app dizia
+  // "o agente ainda não tem histórico neste grupo" mesmo com conversa gravada na máquina.
+  assert.ok(SAFE_KEY.test("agent:main:whatsapp:group:120363431072131264@g.us"));
+  assert.ok(SAFE_KEY.test("agent:main:whatsapp:direct:+595994402904"));
+  assert.ok(SAFE_KEY.test("agent:main:main"));
+  // As chaves vão dentro de aspas simples num JSON de --params: nada disso pode passar.
+  const ruins = ["a'b", 'a"b', "a b", "a;rm -rf /", "a$(id)", "a`id`", "a|b", "a\nb", "a\\b", "a/b", ""];
+  for (const r of ruins) assert.ok(!SAFE_KEY.test(r), `devia barrar: ${JSON.stringify(r)}`);
+  assert.ok(!SAFE_KEY.test("a".repeat(201)));
 });

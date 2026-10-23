@@ -67,6 +67,8 @@ export function setZoomLevel(level: number): void {
   try { persist(); } catch { /* cortesia: o zoom vale até fechar */ }
 }
 export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ enabled: file.quickEntryEnabled, shortcut: file.quickEntryShortcut });
+/** Cópia diária do CRM e do financeiro no Drive do dono; desligada aqui, para quem não quer nada fora da máquina. */
+export const getDadosNoDrive = (): boolean => file.dadosNoDrive;
 
 export const getWindowBounds = (host: string): WindowBounds | undefined => file.windowBounds[host];
 export function setWindowBounds(host: string, bounds: WindowBounds): void {

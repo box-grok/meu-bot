@@ -201,6 +201,31 @@ export function pararSincronizacaoGoogle(host: string): void { const i = agendad
  * sem a permissão do Drive, ou falha da API, é erro: quem chama não limpa.
  */
 export async function guardarNoDrive(maquina: string, nome: string, numero: string, conteudo: string, ultimaEm: number): Promise<{ link: string; caminho: string } | null> {
+  const s = await sessaoDrive();
+  if (s === null) return null;
+  const { pastas, arquivo } = caminhoNoDrive(maquina, nome, numero, ultimaEm);
+  const pai = await s.pasta(pastas);
+  const fronteira = `meu-bot-${Date.now().toString(36)}`;
+  const up = await s.api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", { method: "POST", headers: { "content-type": `multipart/related; boundary=${fronteira}` }, body: corpoUpload({ name: arquivo, parents: [pai], mimeType: "text/markdown" }, conteudo, fronteira) });
+  const caminho = [...pastas, arquivo].join(" / ");
+  log(`[google] conversa guardada no Drive: ${caminho}`);
+  return { link: typeof up["webViewLink"] === "string" ? up["webViewLink"] : "", caminho };
+}
+
+export interface SessaoDrive {
+  /** Chamada autenticada à API do Drive; erro da API vira Error com a mensagem do Google. */
+  api: (url: string, init?: RequestInit) => Promise<Record<string, unknown>>;
+  /** Desce (criando o que faltar) a sequência de pastas a partir da raiz e devolve o id da última. */
+  pasta: (pastas: readonly string[]) => Promise<string>;
+}
+/**
+ * Sessão autenticada no Drive com o token de Contatos do CRM (escopo `drive.file`: o app só enxerga o que ele
+ * mesmo criou). Dono de tudo o que grava no Drive: as conversas do WhatsApp e a cópia do CRM usam esta função,
+ * para o token e o tratamento de erro ficarem num lugar só.
+ *
+ * `null` = o Google não está conectado neste Mac. Conectado sem a permissão do Drive é erro, não silêncio.
+ */
+export async function sessaoDrive(): Promise<SessaoDrive | null> {
   const c = cliente(); const t = lerToken();
   if (c === null || t === null) return null;
   if (!temDrive(t.escopo)) throw new Error("o Google deste Mac está conectado sem a permissão do Drive: clique em \"Reconectar\" na aba Pessoas do CRM (Gmail)");
@@ -212,16 +237,14 @@ export async function guardarNoDrive(maquina: string, nome: string, numero: stri
     if (!r.ok) throw new Error(`Google Drive respondeu ${r.status}${typeof (j["error"] as { message?: unknown } | undefined)?.message === "string" ? `: ${(j["error"] as { message: string }).message}` : ""}`);
     return j;
   };
-  const { pastas, arquivo } = caminhoNoDrive(maquina, nome, numero, ultimaEm);
-  let pai = "root";
-  for (const p of pastas) {
-    const achou = await api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaPasta(p, pai), fields: "files(id)", spaces: "drive", pageSize: "1" })}`);
-    const id = Array.isArray(achou["files"]) && typeof (achou["files"][0] as { id?: unknown } | undefined)?.id === "string" ? (achou["files"][0] as { id: string }).id : null;
-    pai = id ?? String((await api("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [pai] }) }))["id"]);
-  }
-  const fronteira = `meu-bot-${Date.now().toString(36)}`;
-  const up = await api("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", { method: "POST", headers: { "content-type": `multipart/related; boundary=${fronteira}` }, body: corpoUpload({ name: arquivo, parents: [pai], mimeType: "text/markdown" }, conteudo, fronteira) });
-  const caminho = [...pastas, arquivo].join(" / ");
-  log(`[google] conversa guardada no Drive: ${caminho}`);
-  return { link: typeof up["webViewLink"] === "string" ? up["webViewLink"] : "", caminho };
+  const pasta = async (pastas: readonly string[]): Promise<string> => {
+    let pai = "root";
+    for (const p of pastas) {
+      const achou = await api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaPasta(p, pai), fields: "files(id)", spaces: "drive", pageSize: "1" })}`);
+      const id = Array.isArray(achou["files"]) && typeof (achou["files"][0] as { id?: unknown } | undefined)?.id === "string" ? (achou["files"][0] as { id: string }).id : null;
+      pai = id ?? String((await api("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [pai] }) }))["id"]);
+    }
+    return pai;
+  };
+  return { api, pasta };
 }
