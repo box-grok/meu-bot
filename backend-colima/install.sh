@@ -53,9 +53,11 @@ cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.
-  ( umask 077; printf 'OPENAI_COMPAT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env" ); echo ".env criado"
+  ( umask 077; printf 'OPENAI_COMPAT_KEY=%s\nCRM_AGENT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env" ); echo ".env criado"
 else
   grep -q '^CLAUDE_BIN=' "$DEST/.env" || printf 'CLAUDE_BIN=%s\n' "$CLAUDE" >> "$DEST/.env"
+  # Chave própria do agente (CRM): aditiva e idempotente; sem ela o agente cai na chave do app e perde a separação.
+  grep -q '^CRM_AGENT_KEY=' "$DEST/.env" || { ( umask 077; printf 'CRM_AGENT_KEY=%s\n' "$(openssl rand -hex 32)" >> "$DEST/.env" ); echo "CRM_AGENT_KEY acrescentada ao .env"; }
 fi
 chmod 600 "$DEST/.env"
 

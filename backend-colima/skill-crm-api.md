@@ -10,6 +10,9 @@ O CRM mora nesta máquina (backend do meu-bot, `/v1/crm/*`); não há chave de A
 O pipeline padrão fica em `~/.local/share/meu-bot/crm.json`; `--pipeline <key>` escolhe outro.
 
 ## Subcomandos
+- **Apagar pede, não apaga.** `box-delete`, `pipeline-delete`, `arquivo-delete`, `contato-delete` e `org-delete` vindos de
+  você voltam 403 `exclusao_requer_dono` e deixam o pedido registrado (comentário no box, quando há box). Diga ao dono o
+  que você pediu para apagar e que ele confirma no app. Não tente contornar com outra rota, chave ou cabeçalho.
 - `diag` · `pipelines` · `pipeline [key]` (etapas e campos, com as opções das listas)
 - `box-find --phone +595…` | `--name "Junior"` | `--query "kommo"` | `--email fulano@x.com` | `--email @dominio` | `--thread <threadGmailId>`
   (procura em **todos os pipelines**; a caixa pode estar em "Aluguel de Carro" etc.; `--pipeline <key>` restringe)

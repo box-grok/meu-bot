@@ -96,7 +96,9 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       const sc = el("div", "admin-actions");
       if (backup.temSenha) {
         sc.append(el("p", "hint audio-ok", "As credenciais da máquina sobem cifradas com a sua senha. Guarde-a fora do computador: sem ela esse pacote não abre."));
-        sc.append(btn("Trocar a senha", "btn-ghost", () => { const v = prompt("Nova senha do backup cifrado (mínimo 8 caracteres):") ?? ""; if (v.trim() !== "") void agir(async () => { backup = await deps.api.backupDadosSenha(v); }, "senha trocada; vale a partir da próxima cópia"); }));
+        // Sem prompt(): o Electron não implementa window.prompt (devolvia undefined e o botão virava no-op). Campo inline.
+        const nova = input("nova senha (mínimo 8 caracteres)", "", 200); nova.type = "password";
+        sc.append(field("Trocar a senha", nova), btn("Trocar", "btn-ghost", () => { if (nova.value.trim().length < 8) return; void agir(async () => { backup = await deps.api.backupDadosSenha(nova.value); }, "senha trocada; vale a partir da próxima cópia"); }));
         const lb = btn("Apagar a senha", "btn-ghost", () => { deps.armConfirm(lb, "Confirmar? as credenciais param de ser copiadas", () => { void agir(async () => { backup = await deps.api.backupDadosLimparSenha(); }, "senha apagada; as credenciais não sobem mais"); }); });
         sc.append(lb);
       } else {

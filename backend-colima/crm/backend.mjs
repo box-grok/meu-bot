@@ -14,7 +14,11 @@ export const ENV_FILE = process.env.MEU_BOT_BACKEND_ENV || path.join(os.homedir(
 export function backendEnv() {
   const env = {};
   try { for (const l of fs.readFileSync(ENV_FILE, "utf8").split("\n")) { const m = /^([A-Z_]+)=(.*)$/.exec(l.trim()); if (m) env[m[1]] = m[2]; } } catch { /* sem .env */ }
-  return { key: env.OPENAI_COMPAT_KEY ?? "", port: Number(env.PORT ?? 8080), host: env.HOST ?? "127.0.0.1" };
+  // Chave própria do agente: o servidor carimba a identidade por ela e recusa exclusão. Sem ela (máquina ainda não
+  // atualizada), cai na chave do app e avisa uma vez que está no modo antigo, para a pessoa reinstalar o backend.
+  const propria = env.CRM_AGENT_KEY ?? "";
+  if (propria === "" && !backendEnv.avisou) { backendEnv.avisou = true; process.stderr.write("aviso: sem CRM_AGENT_KEY no .env; usando a chave do app (reinstale o backend)\n"); }
+  return { key: propria || (env.OPENAI_COMPAT_KEY ?? ""), port: Number(env.PORT ?? 8080), host: env.HOST ?? "127.0.0.1" };
 }
 
 /** Uma chamada a /v1/crm<caminho>. Devolve o JSON; lança Error com .code e .status em falha. */

@@ -528,7 +528,7 @@ function copyReference(text: string): void {
 async function runTabAction(id: string, action: TabMenuAction | null): Promise<void> {
   const tab = tabs.get(id);
   switch (action) {
-    case "rename": if (tab !== undefined) startRename(tab); else { const v = index.get(id); if (v !== undefined) { const name = window.prompt("Novo nome:", titleOf(v)); if (name !== null) { patchIndex(id, { title: name.trim() || undefined, updatedAt: v.updatedAt }); void window.meuBot.renameConversation(id, name); } } } break;
+    case "rename": if (tab !== undefined) startRename(tab); else { const v = index.get(id); if (v !== undefined) { void perguntar("Novo nome:", titleOf(v)).then((name) => { if (name !== null) { patchIndex(id, { title: name.trim() || undefined, updatedAt: v.updatedAt }); void window.meuBot.renameConversation(id, name); } }); } } break;
     case "duplicate": await duplicate(id); break;
     case "export-md": await exportConversation(id, "md"); break;
     case "export-json": await exportConversation(id, "json"); break;
@@ -564,6 +564,8 @@ function renderSidebar(): void {
 
 function paintSidebar(): void {
   const query = sidebarSearch.value;
+  // Antes dos desvios abaixo: arquivar ou desarquivar muda se o interruptor deve existir.
+  paintArquivadas();
   if (getListMode() === "whatsapp") { paintWaSidebar(query); return; }
   // meu-bot-admin: no modo "meu-bot" a lista são as conversas dela, lidas da máquina (não há conversas locais).
   if (adminBotMirror !== null) { adminBotMirror.paintList(sidebarList, query); return; }
@@ -662,6 +664,27 @@ function ligarAtalhos(): void {
   setAtalhosAbertos(abertos);
   // Os números são escritos em vários lugares; observar o grupo evita ter que lembrar de avisar em cada um.
   new MutationObserver(() => { paintAtalhosAviso(); }).observe(grupo, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+}
+
+/**
+ * Caixa de pergunta com um campo, no lugar de window.prompt: o Electron não implementa prompt (devolve undefined
+ * e o código seguia como se a pessoa tivesse cancelado). Resolve com o texto, ou null se cancelou.
+ */
+function perguntar(rotulo: string, valor = ""): Promise<string | null> {
+  return new Promise((resolve) => {
+    const dlg = document.createElement("dialog"); dlg.className = "perguntar";
+    const form = document.createElement("form"); form.method = "dialog";
+    const lab = document.createElement("label"); lab.textContent = rotulo;
+    const inp = document.createElement("input"); inp.type = "text"; inp.value = valor; inp.maxLength = 200;
+    const no = document.createElement("button"); no.type = "button"; no.className = "btn btn-ghost btn-small"; no.textContent = "Cancelar";
+    const ok = document.createElement("button"); ok.type = "submit"; ok.className = "btn btn-primary btn-small"; ok.textContent = "OK";
+    lab.append(inp); form.append(lab, no, ok); dlg.append(form); document.body.append(dlg);
+    const fim = (v: string | null): void => { dlg.close(); dlg.remove(); resolve(v); };
+    no.addEventListener("click", () => fim(null));
+    dlg.addEventListener("cancel", (ev) => { ev.preventDefault(); fim(null); });
+    form.addEventListener("submit", (ev) => { ev.preventDefault(); fim(inp.value); });
+    dlg.showModal(); inp.focus(); inp.select();
+  });
 }
 
 /** Barra recolhida por padrão; a escolha fica no localStorage da janela. */
@@ -2953,13 +2976,26 @@ function paintListMode(): void {
   listModeBtn.classList.toggle("on", mode === "whatsapp");
   listModeBtn.title = mode === "whatsapp" ? "Mostrando o WhatsApp; clique para ver as conversas do meu-bot" : "Mostrando o meu-bot; clique para ver o WhatsApp";
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
-  // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
-  // No meu-bot-admin ele também mostra as excluídas (exclusão lógica: a pessoa não vê, o admin vê e restaura).
-  if (sidebarFootEl !== null) sidebarFootEl.hidden = mode === "whatsapp" && !waChats.some((c) => (isWaArchived(c) && !isWaDeleted(c)) || (caps.supportAdmin && isWaDeleted(c)));
-  const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
-  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = mode === "whatsapp" && caps.supportAdmin ? "arquivadas e excluídas" : "arquivadas";
+  paintArquivadas();
   sidebarSearch.placeholder = mode === "whatsapp" ? "Buscar no WhatsApp…" : "Buscar conversas…";
   if (mode === "whatsapp" && waChatsInflight === null && waChatsTimer === null) void refreshWaChats();
+}
+/**
+ * O interruptor "arquivadas" só existe quando há algo arquivado para mostrar; nas duas listas, não
+ * só na do WhatsApp. Fica aqui, e não espalhado, porque quem repinta a lista também precisa chamar:
+ * arquivar a primeira conversa tem que fazer o interruptor aparecer na hora.
+ *
+ * No meu-bot-admin a lista é o espelho da máquina, que não tem conversa arquivada: lá nunca aparece.
+ * Já no WhatsApp do admin ele também cobre as excluídas (exclusão lógica: a pessoa não vê, o admin restaura).
+ */
+function paintArquivadas(): void {
+  const mode = getListMode();
+  const tem = mode === "whatsapp"
+    ? waChats.some((c) => (isWaArchived(c) && !isWaDeleted(c)) || (caps.supportAdmin && isWaDeleted(c)))
+    : adminBotMirror === null && [...index.values()].some((c) => c.messages.length > 0 && c.archived);
+  if (sidebarFootEl !== null) sidebarFootEl.hidden = !tem;
+  const archLabel = sidebarArchived.parentElement?.querySelector(".switch-label");
+  if (archLabel !== null && archLabel !== undefined) archLabel.textContent = mode === "whatsapp" && caps.supportAdmin ? "arquivadas e excluídas" : "arquivadas";
 }
 function setListMode(mode: ListMode): void {
   try { localStorage.setItem(listModeKey(), mode); } catch { /* opcional */ }
@@ -2971,8 +3007,13 @@ listModeEl.addEventListener("click", (ev) => {
   const mode = b?.dataset["mode"];
   if (mode === "bot" || mode === "whatsapp") setListMode(mode);
 });
-// O atalho da caixa de texto só inverte: é o mesmo estado do alternador do topo.
-listModeBtn.addEventListener("click", () => setListMode(getListMode() === "whatsapp" ? "bot" : "whatsapp"));
+// O atalho da caixa de texto inverte a lista e, com a lateral fechada, abre junto: trocar de lista
+// sem ver a lista não serve para nada. Já aberta, não mexe (senão repetiria a animação de entrada).
+// A barra de cima não volta: quem está no modo limpo (Cmd+B) continua nele, só com a lista à mostra.
+listModeBtn.addEventListener("click", () => {
+  setListMode(getListMode() === "whatsapp" ? "bot" : "whatsapp");
+  if (sidebarEl.hidden) toggleSidebar(true);
+});
 function refreshWaChats(): Promise<void> {
   if (waChatsInflight !== null) return waChatsInflight;
   if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
@@ -6798,9 +6839,10 @@ function disposeTerminal(pageId: string): void {
 }
 
 function termSearch(t: TermTab): void {
-  const q = window.prompt("Buscar no terminal:", "");
-  if (q === null || q === "" || t.search === null) return;
-  t.search.findNext(q, { caseSensitive: false, incremental: false });
+  void perguntar("Buscar no terminal:", "").then((q) => {
+    if (q === null || q === "" || t.search === null) return;
+    t.search.findNext(q, { caseSensitive: false, incremental: false });
+  });
 }
 
 /** Últimas `n` linhas não vazias do buffer do terminal, como texto. */
@@ -7096,7 +7138,6 @@ function maybeAskNotificationsOnce(): void {
 /* ---------- Segurança (REA do Rambox): aviso quando um Mac novo usar o meu-bot desta máquina ---------- */
 const alertsGroup = $<HTMLElement>("alerts-group");
 const alertWa = $<HTMLInputElement>("alert-wa");
-const alertEmail = $<HTMLInputElement>("alert-email");
 const alertsHint = $<HTMLElement>("alerts-hint");
 let alertPrefsLoaded: { whatsapp: boolean; email: string } | null = null;
 /**
@@ -7127,15 +7168,17 @@ async function loadAlertPrefs(): Promise<void> {
   alertsGroup.hidden = false;
   try {
     alertPrefsLoaded = await window.meuBot.alertPrefs();
-    if (alertPrefsLoaded === null) { alertsHint.textContent = "A máquina ainda não tem o backend novo: reinstale o backend para ligar os avisos."; alertWa.disabled = true; alertEmail.disabled = true; return; }
-    alertWa.disabled = false; alertEmail.disabled = false;
-    alertWa.checked = alertPrefsLoaded.whatsapp; alertEmail.value = alertPrefsLoaded.email;
-    alertsHint.textContent = "O e-mail precisa de RESEND_API_KEY no .env do backend da máquina; o WhatsApp usa o seu próprio número já pareado.";
+    if (alertPrefsLoaded === null) { alertsHint.textContent = "A máquina ainda não tem o backend novo: reinstale o backend para ligar os avisos."; alertWa.disabled = true; return; }
+    alertWa.disabled = false;
+    alertWa.checked = alertPrefsLoaded.whatsapp;
+    alertsHint.textContent = "O aviso vai pelo seu próprio número, já pareado nesta máquina.";
   } catch (err) { alertsHint.textContent = `Não consegui ler: ${ipcErrorText(err)}`; }
 }
 async function saveAlertPrefs(): Promise<void> {
   if (alertsGroup.hidden || alertPrefsLoaded === null || alertWa.disabled) return;
-  const next = { whatsapp: alertWa.checked, email: alertEmail.value.trim() };
+  // O e-mail saiu da tela (dependia de uma chave no .env da máquina que ninguém configurava).
+  // O que já estava gravado é preservado: a tela deixa de oferecer, sem apagar o que a máquina tem.
+  const next = { whatsapp: alertWa.checked, email: alertPrefsLoaded.email };
   if (next.whatsapp === alertPrefsLoaded.whatsapp && next.email === alertPrefsLoaded.email) return;
   try { await window.meuBot.setAlertPrefs(next); alertPrefsLoaded = next; }
   catch (err) { const tab = active(); if (tab !== null) addNotice(tab, `Avisos de segurança: ${ipcErrorText(err)}`, "warn"); }

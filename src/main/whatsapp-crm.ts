@@ -37,6 +37,9 @@ export async function whatsappGroupArchiveToCrm(host: string, jid: string): Prom
 
 export async function whatsappArchiveToCrm(host: string, number: string): Promise<WhatsappArchive> {
   const { name, body, messages } = await whatsappExportBody(host, number, "md", LIMITE);
+  // O chat.history devolve no máximo LIMITE mensagens: bater no teto quer dizer que pode haver mais, e limpar
+  // zeraria o que não foi guardado. Recusa em vez de truncar em silêncio.
+  if (messages.length >= LIMITE) throw new Error(`a conversa tem ${LIMITE} mensagens ou mais; o app ainda não guarda tudo isso de uma vez, então não vai limpar`);
   if (messages.length === 0) return { vazio: true, contato: null, box: null, arquivo: null, mensagens: 0, resumo: false, aviso: null, drive: null };
   const tunnel = await ensureTunnel(host, getBackendPort(host));
   const r = await fetch(`http://127.0.0.1:${tunnel.localPort}/v1/crm/whatsapp/arquivar`, {

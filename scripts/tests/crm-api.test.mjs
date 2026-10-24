@@ -368,7 +368,7 @@ test("whatsapp/arquivar: transcrição vira anexo + registro na caixa, ou fica n
   assert.equal(r.status, 200); assert.equal(r.j.resumo, true); assert.equal(r.j.box.key, bx.key); assert.equal(r.j.repetido, false);
   assert.match(prompt, /Pediu tabela de preços\./); assert.match(prompt, /tabela\?/);
   const full = (await call("GET", `/boxes/${bx.key}`)).j;
-  assert.equal(full.arquivos.length, 1); assert.match(full.arquivos[0].nome, /^conversa-whatsapp-\d{4}-\d{2}-\d{2}\.md$/); assert.equal(full.arquivos[0].mensagens, 2);
+  assert.equal(full.arquivos.length, 1); assert.match(full.arquivos[0].nome, /^conversa-whatsapp-\d{4}-\d{2}-\d{2}-\d{4}\.md$/, "nome com data e hora (SP): dois arquivamentos no mesmo dia nao se confundem"); assert.equal(full.arquivos[0].mensagens, 2);
   assert.match(full.comentarios[0].texto, /arquivada antes de limpar: 2 mensagens/);
   assert.equal(Buffer.from((await call("GET", `/boxes/${bx.key}/files/${full.arquivos[0].key}`)).j.base64, "base64").toString("utf8"), md);
   const w = full.contatos[0].whatsapp;
@@ -444,4 +444,27 @@ test("whatsapp/arquivar de grupo: sem pipeline padrão → 400; na 1ª vez abre 
   const r3 = await post("/whatsapp/arquivar", { grupo, transcricao: "outra conversa", mensagens: 1 });
   assert.equal(r3.j.repetido, true); assert.equal(a3.store.getBox(r1.j.box.key).arquivos.length, 2);
   srv.close(); rmSync(d3, { recursive: true, force: true });
+});
+
+test("exclusao pelo agente: 403, pedido registrado e comentario no box; pelo app continua apagando", async () => {
+  // Servidor que carimba papel=agente, como o server.js faz quando a chave usada e a CRM_AGENT_KEY.
+  const srvA = http.createServer((req, res) => api.handle(req, res, new URL(req.url, "http://x"), "agente"));
+  await new Promise((r) => srvA.listen(0, "127.0.0.1", r));
+  const baseA = `http://127.0.0.1:${srvA.address().port}`;
+  try {
+    const c = await call("POST", `/pipelines/${P.key}/boxes`, { name: "Caixa de teste do bloqueio", stage: S[0].name });
+    assert.equal(c.status, 200); const bx = c.j.box;
+    // O agente tenta apagar: 403 com codigo proprio, e o box continua la.
+    const r = await fetch(`${baseA}/v1/crm/boxes/${bx.key}`, { method: "DELETE", headers: { "x-crm-por": "app" } });
+    assert.equal(r.status, 403); const j = await r.json(); assert.equal(j.error.code, "exclusao_requer_dono");
+    const g = await call("GET", `/boxes/${bx.key}`); assert.equal(g.status, 200, "o box nao foi apagado");
+    assert.ok(g.j.comentarios.some((x) => /pediu para apagar/.test(x.texto) && x.autor === "agente"), "o pedido virou comentario no box");
+    // Forjar X-Crm-Por: app com a chave do agente nao eleva: o feed carimba 'agente', nao 'app'.
+    const feed = readFileSync(join(dir, "db", "mudancas.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    const ped = feed.filter((m) => m.tipo === "exclusao.pedida"); assert.ok(ped.length >= 1, "exclusao.pedida no feed");
+    assert.equal(ped.at(-1).por, "agente", "identidade vem da chave, nao do cabecalho");
+    // Pelo app (papel padrao), apagar segue funcionando.
+    assert.equal((await call("DELETE", `/boxes/${bx.key}`)).status, 200);
+    assert.equal((await call("GET", `/boxes/${bx.key}`)).status, 404);
+  } finally { srvA.close(); }
 });

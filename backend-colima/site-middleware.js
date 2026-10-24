@@ -5,9 +5,9 @@
 const TITULO = "meu-bot";
 const COOKIE = "site_ok";
 
-async function assinatura(segredo) {
+async function assinatura(segredo, sal) {
   const k = await crypto.subtle.importKey("raw", new TextEncoder().encode(segredo), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const s = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode("meu-bot-site"));
+  const s = await crypto.subtle.sign("HMAC", k, new TextEncoder().encode("meu-bot-site:" + sal));
   return [...new Uint8Array(s)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
@@ -42,7 +42,8 @@ export async function onRequest({ request, env, next }) {
   // PAINEL_SENHA: compatibilidade com o lv-painel, que é anterior a este padrão.
   const segredo = env.SITE_SENHA || env.PAINEL_SENHA;
   if (!segredo) return new Response("Site sem senha configurada.", { status: 503 });
-  const esperado = await assinatura(segredo);
+  // O sal é o commit do deploy (o Pages injeta CF_PAGES_COMMIT_SHA): o cookie troca a cada publicação.
+  const esperado = await assinatura(segredo, env.CF_PAGES_COMMIT_SHA || "");
   const m = (request.headers.get("Cookie") || "").match(new RegExp("(?:^|;\\s*)" + COOKIE + "=([a-f0-9]+)"));
 
   if (m && igual(m[1], esperado)) {
@@ -66,6 +67,8 @@ export async function onRequest({ request, env, next }) {
         },
       });
     }
+    // Senha errada custa 1,5 s: sem estado (cabe no Pages Functions) e derruba força bruta de milhares para dezenas/min.
+    await new Promise((r) => setTimeout(r, 1500));
     return pagina(true);
   }
   return pagina(false);

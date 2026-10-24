@@ -14,7 +14,8 @@ import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { CONJUNTOS_DADOS, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { gunzipSync } from "node:zlib";
+import { CONJUNTOS_DADOS, achaSegredo, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
 import { lerSenhaBackup } from "./senha-backup";
@@ -86,6 +87,11 @@ async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): P
   const senha = c.cifrar === true ? lerSenhaBackup() : null;
   if (c.cifrar === true && senha === null) return null;
   const cru = await empacotar(host, c);
+  // O que sobe sem cifra passa por varredura antes: achou cara de segredo, não sobe e a tela diz o porquê.
+  if (c.cifrar !== true) {
+    const tipo = achaSegredo(gunzipSync(cru).toString("latin1"));
+    if (tipo !== null) throw new Error(`encontrei o que parece um ${tipo} no pacote; não sobe sem cifra. Confira o conteúdo ou mova o conjunto para cifrado`);
+  }
   const pacote = senha === null ? cru : await cifrarPacote(cru, senha);
   const { pastas, arquivo } = caminhoDadosNoDrive(host, c, Date.now());
   const local = gravarLocal(host, c, arquivo, pacote);

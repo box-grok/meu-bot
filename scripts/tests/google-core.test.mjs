@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -99,7 +99,7 @@ test("caminhoDadosNoDrive: uma pasta por maquina e por conjunto; o nome leva a d
   const quando = Date.parse("2026-10-23T12:00:00-03:00");
   const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
   const fin = CONJUNTOS_DADOS.find((c) => c.id === "financeiro");
-  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", crm, quando), { pastas: ["meu-bot", "agente-box-lv", "CRM"], arquivo: "crm-agente-box-lv-2026-10-23.tar.gz" });
+  assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", crm, quando), { pastas: ["meu-bot", "agente-box-lv", "CRM"], arquivo: "crm-agente-box-lv-2026-10-23.tar.gz.age" });
   assert.deepEqual(caminhoDadosNoDrive("agente-box-lv", fin, quando), { pastas: ["meu-bot", "agente-box-lv", "Financeiro"], arquivo: "financeiro-agente-box-lv-2026-10-23.tar.gz" });
   // Pastas diferentes: zerar o financeiro no Drive nao encosta no CRM.
   assert.notDeepEqual(caminhoDadosNoDrive("m", crm, quando).pastas, caminhoDadosNoDrive("m", fin, quando).pastas);
@@ -166,15 +166,18 @@ test("CONJUNTOS_DADOS: caminhos e exclusoes no formato que o tar casa", () => {
   }
 });
 
-test("so o conjunto de credenciais e cifrado, e o nome do arquivo denuncia isso", () => {
+test("o que carrega segredo e cifrado, e o nome do arquivo denuncia isso", () => {
   const cifrados = CONJUNTOS_DADOS.filter((c) => c.cifrar === true).map((c) => c.id);
-  assert.deepEqual(cifrados, ["credenciais"], "credencial e o unico que vai cifrado");
+  // 24/10: transcripts e conversas arquivadas tambem carregavam token (9 e 1 JWT), entao passaram a cifrados.
+  assert.deepEqual(cifrados, ["crm", "agente", "credenciais"], "o que carrega segredo vai cifrado");
 
   const q = Date.parse("2026-10-23T12:00:00-03:00");
   const cred = CONJUNTOS_DADOS.find((c) => c.id === "credenciais");
   const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
   assert.equal(caminhoDadosNoDrive("agente-box-lv", cred, q).arquivo, "credenciais-agente-box-lv-2026-10-23.tar.gz.age");
-  assert.equal(caminhoDadosNoDrive("agente-box-lv", crm, q).arquivo, "crm-agente-box-lv-2026-10-23.tar.gz");
+  assert.equal(caminhoDadosNoDrive("agente-box-lv", crm, q).arquivo, "crm-agente-box-lv-2026-10-23.tar.gz.age", "CRM cifrado desde 24/10");
+  const fin = CONJUNTOS_DADOS.find((c) => c.id === "financeiro");
+  assert.equal(caminhoDadosNoDrive("agente-box-lv", fin, q).arquivo, "financeiro-agente-box-lv-2026-10-23.tar.gz", "financeiro segue sem cifra");
 
   // A poda precisa reconhecer o cifrado, senao ele acumula no Drive para sempre.
   const re = pacoteDadosRe("credenciais", "agente-box-lv");
@@ -200,4 +203,15 @@ test("slugMaquina: a maquina no nome do arquivo sobrevive a baixar fora da pasta
   const crm = CONJUNTOS_DADOS.find((c) => c.id === "crm");
   const q = Date.parse("2026-10-23T12:00:00-03:00");
   assert.notEqual(caminhoDadosNoDrive("agente-box-lv", crm, q).arquivo, caminhoDadosNoDrive("grokbot-1", crm, q).arquivo);
+});
+
+test("achaSegredo: o que nao pode subir sem cifra", () => {
+  assert.equal(achaSegredo("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abc"), "token JWT");
+  assert.equal(achaSegredo("ghp_abcdefghijklmnopqrstuvwxyz0123456789"), "token do GitHub");
+  assert.equal(achaSegredo("sk-abcdefghijklmnopqrstuvwxyz0123456789"), "chave de API (sk-…)");
+  assert.equal(achaSegredo("AKIAIOSFODNN7EXAMPLE"), "chave da AWS");
+  // Texto comum, data ISO e um "eyJ" solto nao sao segredo: a varredura nao pode bloquear o financeiro por nada.
+  assert.equal(achaSegredo("lancamento de 2026-10-24T12:00:00-03:00 no valor de 1.200,00"), null);
+  assert.equal(achaSegredo("eyJ curto"), null);
+  assert.equal(achaSegredo(""), null);
 });

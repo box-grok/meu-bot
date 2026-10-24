@@ -2339,18 +2339,24 @@ para serem restaurados de forma independente. Tamanhos medidos na `agente-box-lv
 
 | Conjunto | O que entra | Tamanho |
 |---|---|---|
-| CRM | `crm/db` com anexos | 36 KB |
+| CRM 🔒 | `crm/db` com anexos | 36 KB |
 | Financeiro | `finance/db` com comprovantes | 3 KB |
-| Agente | `.claude/projects` e `.claude/skills` | 37 MB |
+| Agente 🔒 | `.claude/projects` e `.claude/skills` | 37 MB |
 | Trabalho | painel Kommo, catálogo de sites, workspaces, `.hermes`, estado do meu-bot | 195 KB |
 | Credenciais 🔒 | `.openclaw`, tokens de Kommo/Cloudflare/GitHub, `authorized_keys`, units systemd | 8 MB |
 
 Os pacotes são feitos com `tar -C $HOME` e caminhos relativos, então **restaurar é extrair sobre o `$HOME`**.
 
-- **O conjunto Credenciais sai cifrado**, com `age` e uma senha que o dono define na aba Conta Google (guardada no
-  Keychain). **Sem senha definida ele é pulado**, com aviso na tela: credencial nunca sobe em texto claro, nem
-  "só desta vez". O arquivo termina em `.tar.gz.age` e abre com `age -d` e a mesma senha, sem depender do app.
-  Perder a senha torna o pacote inabrível; como toda credencial ali é reemissível, a perda é recuperável.
+- **Três conjuntos saem cifrados (🔒)**, com `age` e uma senha que o dono define na aba Conta Google (guardada no
+  Keychain): Credenciais, e desde 24/10 também **CRM e Agente**, porque o pente fino achou 9 JWTs nos transcripts e
+  1 nas conversas arquivadas (token colado no WhatsApp). **Sem senha definida eles são pulados**, com aviso na tela:
+  segredo nunca sobe em texto claro, nem "só desta vez". O arquivo termina em `.tar.gz.age` e abre com
+  `scripts/abrir-backup.mjs` ou `age -d` e a mesma senha. Perder a senha torna o pacote inabrível; o CRM e o
+  Agente continuam com as 7 cópias locais na VM, e as credenciais são reemissíveis.
+- **Os dois que sobem sem cifra (Financeiro e Trabalho) passam por varredura antes**, decisão do dono em 24/10:
+  `achaSegredo` em `google-core.ts` procura JWT, token do GitHub, chave `sk-` e chave da AWS no pacote
+  descomprimido. Achou, o conjunto não sobe e a tela diz o tipo. "Verificado limpo hoje" vira "verificado limpo a
+  cada envio".
 - **Os segredos do `.hermes`** (`auth.json` e os `.env`) são excluídos do conjunto Trabalho e entram no cifrado:
   o pacote sem cifra nunca carrega credencial.
 - **Fica de fora porque se refaz sozinho:** modelos de voz e transcrição (1,6 GB), o clone `skills-cloudflare`
@@ -2387,6 +2393,35 @@ Não confundir com o **backup completo e mudança de máquina** (acima): aquele 
 depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, por conjunto, e a cifra é por senha do dono.
 **Religar o WhatsApp numa VM nova continua sendo o fluxo `ativar-whatsapp`/`desativar-whatsapp`** do
 `meu-bot-backup.sh`, que nunca faz `channels logout`: restaurar o arquivo não substitui esse passo.
+
+## Chave própria do agente no CRM e exclusão que pede (24 out)
+
+O agente do WhatsApp usava a **mesma** `OPENAI_COMPAT_KEY` do app e declarava a própria identidade num cabeçalho
+(`X-Crm-Por`) que nenhuma rota conferia. Em 23/10 ele esvaziou e apagou um pipeline inteiro por conta própria,
+dirigido por mensagens de terceiro. Agora:
+
+- **`CRM_AGENT_KEY`** no `.env` do backend (`install.sh` cria; em `.env` antigo, acrescenta sem tocar no resto).
+  `crm/backend.mjs` usa essa chave; sem ela cai na do app e avisa uma vez no stderr para reinstalar.
+- **Identidade carimbada pelo servidor** (`papelDe` em `server.js`): `app` ou `agente`, pela chave usada. O
+  `X-Crm-Por` virou só sub-rótulo do app (ex.: `google`) e não eleva ninguém. O feed `mudancas.jsonl` passa a
+  ser auditoria confiável.
+- **Apagar é do dono.** Qualquer `DELETE` vindo da chave do agente volta 403 `exclusao_requer_dono`, registra
+  `exclusao.pedida` no feed e, quando há box, deixa um comentário "🗑 O agente pediu para apagar…" para o dono
+  confirmar no app ou no Gmail. A skill `crm-api` diz isso ao agente.
+
+**Limite honesto:** o agente roda como o mesmo usuário Unix do backend e consegue ler a chave do app no `.env`.
+A separação sobe o custo de "mudar um cabeçalho" para "ler de propósito um arquivo que a regra proíbe", e torna
+cada exclusão auditável pela chave usada. Não é fronteira dura; fronteira dura é outro usuário Unix ou um proxy.
+
+**Segredo recebido em mensagem** (regra v5 do CLAUDE.md do agente, `install-navegador-mcp.sh`): grava em
+`~/.config/<serviço>/` e responde "guardado"; nunca repete o valor em texto, resumo, comentário ou skill. Era a
+causa raiz dos tokens nos transcripts.
+
+**Portão de senha dos sites** (`site-middleware.js`): senha errada custa 1,5 s (sem estado, cabe no Pages
+Functions) e o cookie é salgado com o commit do deploy, então troca a cada publicação.
+
+**Limpar histórico do WhatsApp:** se a exportação bater no teto de 1000 mensagens, o app recusa limpar em vez
+de guardar 1000 e zerar o resto em silêncio.
 
 ## Voz das respostas em áudio e o modelo do agente (20 out)
 

@@ -37,6 +37,8 @@ const { sincronizarInvestimentos } = require('./finance-crm-sync');
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
 const KEY = ENV.OPENAI_COMPAT_KEY || process.env.OPENAI_COMPAT_KEY || '';
+/** Chave própria do agente do WhatsApp (CRM_AGENT_KEY): identifica quem chama; o CRM recusa exclusão vinda dela. */
+const AGENT_KEY = ENV.CRM_AGENT_KEY || process.env.CRM_AGENT_KEY || '';
 const HOST = ENV.HOST || '127.0.0.1';
 const PORT = Number(ENV.PORT || 8080);
 const CLAUDE_BIN = ENV.CLAUDE_BIN || path.join(os.homedir(), '.local', 'bin', 'claude');
@@ -272,12 +274,20 @@ function json(res, status, body, extraHeaders = {}) {
   res.end(data);
 }
 
-function authOk(req) {
-  if (!KEY) return true;
+/**
+ * Quem está chamando, pela chave que usou: 'app' (OPENAI_COMPAT_KEY) ou 'agente' (CRM_AGENT_KEY). null = inválida.
+ * É o servidor que carimba a identidade; nenhum cabeçalho do cliente eleva ninguém.
+ */
+function papelDe(req) {
+  if (!KEY) return 'app';
   const hdr = req.headers['authorization'] || '';
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
-  return token.length === KEY.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(KEY));
+  const bate = (k) => k !== '' && token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k));
+  if (bate(KEY)) return 'app';
+  if (bate(AGENT_KEY)) return 'agente';
+  return null;
 }
+function authOk(req) { return papelDe(req) !== null; }
 
 function readBody(req, limit = 4 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -671,7 +681,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());
   // CRM próprio (meu-bot-crm): extensão do Gmail (pelo app), agente (crm.mjs), job do WhatsApp e importador.
   if (url.pathname.startsWith('/v1/finance/') || url.pathname === '/v1/finance') { const mut = req.method === 'POST' || req.method === 'PUT'; financeApi().handle(req, res, url).then(() => { if (mut) agendarSyncInvestimentos(); }, (e) => { log(`finance falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
-  if (url.pathname.startsWith('/v1/crm/') || url.pathname === '/v1/crm') { crmApi().handle(req, res, url).catch((e) => { log(`crm falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
+  if (url.pathname.startsWith('/v1/crm/') || url.pathname === '/v1/crm') { crmApi().handle(req, res, url, papelDe(req)).catch((e) => { log(`crm falhou: ${e.stack || e.message}`); if (!res.headersSent) json(res, 500, { error: { message: e.message, type: 'server_error' } }); }); return; }
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'GET') return json(res, 200, alertPrefs());
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {
     let p;

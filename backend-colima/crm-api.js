@@ -468,7 +468,9 @@ function createCrmApi(deps) {
         const base = { contato: k.key, nome: k.nome, resumoAnterior: [k.whatsapp?.arquivo?.resumo, k.whatsapp?.resumo].filter(Boolean).join('\n'), arquivadoEm: k.whatsapp?.arquivo?.em ?? 0 };
         const ja = [...(k.arquivos ?? []).map((x) => ({ x, box: null })), ...caixas.flatMap((c) => (c.arquivos ?? []).map((x) => ({ x, box: c })))].find((y) => y.x.sha256 === sha256);
         if (ja) return { ...base, box: ja.box, arquivo: ja.x, repetido: true };
-        const nome = `conversa-whatsapp-${new Date(ate || tx.now).toISOString().slice(0, 10)}.md`;
+        // Hora no nome: dois arquivamentos no mesmo dia não se confundem; data em São Paulo, igual ao comentário.
+        const sp = new Date(ate || tx.now).toLocaleString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+        const nome = `conversa-whatsapp-${sp.slice(0, 10)}-${sp.slice(11, 13)}${sp.slice(14, 16)}.md`;
         const extra = { sha256, mensagens, de, ate };
         if (bx !== null) {
           const x = gravarArquivo(tx, bx.key, { nome, tipo: 'text/markdown' }, dados, por, extra);
@@ -725,13 +727,27 @@ function createCrmApi(deps) {
   }
 
   /** Trata uma requisição /v1/crm/*; sempre responde. */
-  async function handle(req, res, url) {
+  async function handle(req, res, url, papel = 'app') {
     // O Autenticador (códigos 2FA) vem com todo meu-bot e não é CRM: passa sem a licença do CRM (a API key já foi conferida).
     const livre = /^\/v1\/crm\/autenticador(\/|$)/.test(url.pathname);
     if (!livre && !deps.licenseOk()) return erroHttp(res, json, 403, 'o CRM próprio precisa do plano Pro (ou superior) ou do produto meu-bot-crm nesta máquina, ou a licença venceu', 'crm_license', 'forbidden');
     if (!livre) await semearIndicacao();
+    // Identidade carimbada pelo servidor (server.js, pela chave usada). X-Crm-Por não eleva mais ninguém: vira só
+    // sub-rótulo do app (ex.: "google"), para o feed continuar dizendo de onde a mudança veio.
     const porHdr = String(req.headers['x-crm-por'] || '').toLowerCase();
-    const por = POR_RE.test(porHdr) ? porHdr : 'app';
+    const por = papel === 'app' && POR_RE.test(porHdr) && porHdr !== 'agente' ? porHdr : papel;
+    // Apagar é do dono. Pedido do agente vira registro (e comentário no box, quando há box) para o dono confirmar no app.
+    if (papel === 'agente' && req.method === 'DELETE') {
+      const alvo = url.pathname.replace(/^\/v1\/crm\//, '');
+      const mb = /^\/v1\/crm\/boxes\/([^/]+)/.exec(url.pathname);
+      await store.mutate(papel, (tx) => {
+        const bx = mb ? tx.allBoxes().find((x) => x.key === mb[1]) : undefined;
+        if (bx) { const { box } = modelo.addComment(bx, `🗑 O agente pediu para apagar: ${alvo}. Confirme no app se for para valer.`, 'agente', tx.now, tx.rnd); tx.setBox(box); tx.mudar('box.comment', { pipeline: box.pipelineKey, box: box.key }); }
+        tx.mudar('exclusao.pedida', { alvo });
+      });
+      log(`crm DELETE ${url.pathname} → 403 (agente; pedido registrado)`);
+      return erroHttp(res, json, 403, 'apagar é do dono: o pedido ficou registrado, confirme no app', 'exclusao_requer_dono');
+    }
     const t0 = Date.now();
     try {
       const out = await rota(req, res, url, por);

@@ -199,13 +199,15 @@ export interface ConjuntoDados {
 }
 const MB = ".local/share/meu-bot";
 export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
+  // As conversas arquivadas do WhatsApp também carregam token colado (1 JWT achado em 24/10): só cifrado.
   // `db/backup` é a cópia diária local: não se empacota cópia dentro de cópia.
   // `autenticador.*` são segredos TOTP cifrados por uma chave que mora FORA do db/ (autenticador.js), de propósito,
   // para o backup não levá-la. Fora da máquina eles não abrem, então levá-los só somaria exposição sem utilidade.
-  { id: "crm", nome: "CRM", pasta: "CRM", prefixo: "crm", dirs: [`${MB}/crm/db`], excluir: [`${MB}/crm/db/backup`, `${MB}/crm/db/autenticador.json`, `${MB}/crm/db/autenticador-uso.jsonl`] },
+  { id: "crm", nome: "CRM", pasta: "CRM", prefixo: "crm", cifrar: true, dirs: [`${MB}/crm/db`], excluir: [`${MB}/crm/db/backup`, `${MB}/crm/db/autenticador.json`, `${MB}/crm/db/autenticador-uso.jsonl`] },
   { id: "financeiro", nome: "Financeiro", pasta: "Financeiro", prefixo: "financeiro", dirs: [`${MB}/finance/db`], excluir: [`${MB}/finance/db/backup`] },
+  // Transcripts carregam o que o agente viu, inclusive token colado no WhatsApp (9 JWTs achados em 24/10): só cifrado.
   // O clone `skills-cloudflare` volta com um `git clone`; as skills escritas aqui, não.
-  { id: "agente", nome: "Agente", pasta: "Agente", prefixo: "agente", dirs: [".claude/projects", ".claude/skills"], excluir: [".claude/skills/skills-cloudflare"] },
+  { id: "agente", nome: "Agente", pasta: "Agente", prefixo: "agente", cifrar: true, dirs: [".claude/projects", ".claude/skills"], excluir: [".claude/skills/skills-cloudflare"] },
   // Os segredos do .hermes saem daqui e vão para `credenciais`: o pacote sem cifra nunca leva credencial.
   {
     id: "trabalho", nome: "Trabalho", pasta: "Trabalho", prefixo: "trabalho",
@@ -254,6 +256,22 @@ export function pacotesDadosAApagar(arquivos: readonly { id?: unknown; name?: un
     ids.push(a.id);
   }
   return ids;
+}
+
+/** Padrões de segredo que não podem ir num pacote sem cifra; o tipo é legível para a mensagem de erro. */
+const SEGREDOS: readonly { tipo: string; re: RegExp }[] = [
+  { tipo: "token JWT", re: /eyJ[A-Za-z0-9_-]{30,}/ },
+  { tipo: "token do GitHub", re: /ghp_[A-Za-z0-9]{20,}/ },
+  { tipo: "chave de API (sk-…)", re: /\bsk-[A-Za-z0-9_-]{20,}/ },
+  { tipo: "chave da AWS", re: /\bAKIA[A-Z0-9]{16}\b/ },
+];
+/**
+ * Varredura do pacote que vai subir SEM cifra (financeiro e trabalho, decisão do dono em 24/10): se parecer ter
+ * segredo, devolve o tipo e o envio aborta. "Verificado limpo hoje" vira "verificado limpo a cada envio".
+ */
+export function achaSegredo(texto: string): string | null {
+  for (const s of SEGREDOS) if (s.re.test(texto)) return s.tipo;
+  return null;
 }
 
 // ---- Conta Google: parse puro das respostas das APIs (testável sem rede) ---------------------------------------

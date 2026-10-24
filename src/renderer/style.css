@@ -421,6 +421,12 @@ dialog .zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: ta
 /* Recolhido, pendencia la dentro vira um ponto; numero viraria ruido numa faixa de 16px. */
 .atalhos-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 .atalhos-dot[hidden] { display: none; }
+/* Caixa de pergunta (substitui window.prompt, que o Electron não tem). */
+dialog.perguntar { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); padding: 16px; min-width: 320px; }
+dialog.perguntar::backdrop { background: rgba(0, 0, 0, .35); }
+dialog.perguntar form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+dialog.perguntar label { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; font-size: 13px; }
+dialog.perguntar input { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .acervo-icon { color: var(--accent); font-size: 12px; }
 .acervo-count { font-size: 11px; color: var(--muted); }
 /* Aviso de tutoriais na lateral: número num selo, como notificação; some quando não falta nada ou quando a pessoa desliga. */
