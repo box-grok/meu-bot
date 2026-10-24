@@ -181,8 +181,11 @@
 
   <div id="ctx-line" class="ctx-line" hidden></div>
   <footer class="composer">
+    <!-- Os dois círculos empilhados: modo do agente em cima, atalho da lista embaixo. -->
+    <div class="composer-modos">
     <div class="mode-wrap">
-      <button type="button" id="mode-btn" class="mode-btn" title="Modo do agente nesta conversa"><span class="mode-k">modo</span><span id="mode-label">…</span><span class="chev">⌄</span></button>
+      <!-- Só o mascote na cor do modo: o nome vive no title, no menu e no toast ao trocar. -->
+      <button type="button" id="mode-btn" class="mode-btn" title="Modo do agente nesta conversa"><span id="mode-icon" class="mode-icon"></span></button>
       <div id="mode-menu" class="mode-menu" hidden>
         <div class="mode-title">Modos do agente</div>
         <ul id="mode-list" class="mode-list" role="listbox"></ul>
@@ -195,9 +198,15 @@
         <option value="grok-4">grok-4 · Grok da xAI, pelo login OAuth da máquina</option>
       </select>
     </div>
+      <!-- Atalho da lista lateral, para não precisar subir o mouse até o alternador do topo. -->
+      <button type="button" id="list-mode-btn" class="mode-btn list-mode-btn" hidden><span class="mode-icon">💬</span></button>
+    </div>
     <textarea id="input" rows="2" placeholder="Pergunte algo ou peça pra rodar um comando na VM… (Enter envia, Shift+Enter quebra linha)"></textarea>
-    <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
-    <button id="btn-new" class="btn btn-ghost btn-new" type="button" title="Nova conversa (Cmd+N)">Novo</button>
+    <!-- Enviar em cima, Novo embaixo: coluna estreita ao lado da caixa, em vez de dois botões lado a lado. -->
+    <div class="composer-acoes">
+      <button id="btn-send" class="btn btn-primary" type="button">Enviar</button>
+      <button id="btn-new" class="btn btn-ghost btn-new" type="button" title="Nova conversa (Cmd+N)">Novo</button>
+    </div>
   </footer>
 
   <dialog id="cl-dialog">

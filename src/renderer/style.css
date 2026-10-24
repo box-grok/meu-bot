@@ -202,6 +202,16 @@ body.dragging webview, body.dragging .term-box, body.dragging iframe { pointer-e
   flex: 1; min-width: 0; resize: none; font: inherit; font-size: var(--chat-font); padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--fg);
 }
+/* Modo do agente e atalho da lista, um sobre o outro, à esquerda da caixa. */
+.composer-modos { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; }
+/* Atalho da lista: o mesmo círculo, com o balão apagado no meu-bot e verde no WhatsApp. */
+.list-mode-btn { border-color: var(--line); }
+.list-mode-btn .mode-icon { font-size: 16px; line-height: 1; filter: grayscale(1); opacity: .55; }
+.list-mode-btn.on { border-color: #25d366; }
+.list-mode-btn.on .mode-icon { filter: none; opacity: 1; }
+/* Enviar e Novo empilhados numa coluna só, do tamanho da caixa de texto. */
+.composer-acoes { display: flex; flex-direction: column; gap: 8px; flex: none; }
+.composer-acoes .btn { width: 100%; }
 .composer .btn-primary { white-space: nowrap; min-width: 74px; position: relative; transition: color .12s ease, background-color .2s ease, border-color .2s ease, padding .2s ease; }
 /* Novo, ao lado de Enviar (shot "x-campaign grok-bot like button"): no clique o botão afunda e volta com mola, preenche de
    azul por um instante, e bolhas-mascote saltam dele em leque com física de brinquedo — sobem, abrem e caem sumindo —
@@ -528,12 +538,16 @@ body.topbar-hidden .topbar { display: none; }
 @media (prefers-reduced-motion: reduce) { .mode-toast, .mode-toast.in { transition: none; } .mode-toast.in .mt-icon svg, .mode-toast.in .mt-icon .m-eyes { animation: none; } }
 .mode-wrap { position: relative; display: flex; }
 .model-select[hidden] { display: none; }
-.mode-btn { font: inherit; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; max-width: 220px; }
-.mode-btn:hover { border-color: var(--accent); }
-.mode-btn:disabled { opacity: .5; cursor: default; }
-.mode-btn .mode-k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.mode-btn #mode-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mode-btn .chev { color: var(--muted); font-size: 12px; }
+/* Círculo com o mascote na cor do modo; o nome fica no title, no menu e no toast ao trocar. */
+.mode-btn { font: inherit; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; border: 2px solid hsl(var(--hue, 220) 70% 55%); background: var(--bg); color: var(--fg); cursor: pointer; transition: border-color .15s ease, transform .15s ease; }
+.mode-btn:hover { border-color: var(--accent); transform: scale(1.06); }
+.mode-btn:disabled { opacity: .5; cursor: default; transform: none; }
+.mode-icon { display: flex; }
+.mode-icon svg { width: 20px; height: 20px; display: block; }
+/* Mascote na cor do texto (branco no tema escuro, escuro no claro): contraste sem depender do modo.
+   A cor do modo passou para o anel do círculo, senão o modo deixaria de ter qualquer pista visual. */
+.mode-icon .m-bubble { fill: var(--fg); }
+.mode-icon .m-eye, .mode-icon .m-mouth { fill: var(--bg); }
 .mode-menu { position: absolute; left: 0; bottom: calc(100% + 8px); width: 320px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,.25); padding: 6px; z-index: 20; }
 .mode-menu[hidden] { display: none; }
 .mode-title { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 6px 10px 4px; }

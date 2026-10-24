@@ -105,7 +105,7 @@ const sidebarArchived = $<HTMLInputElement>("sidebar-archived");
 const sidebarList = $<HTMLElement>("sidebar-list");
 const paletteBtn = $<HTMLButtonElement>("btn-palette");
 const modeBtn = $<HTMLButtonElement>("mode-btn");
-const modeLabel = $<HTMLSpanElement>("mode-label");
+const modeIcon = $<HTMLSpanElement>("mode-icon");
 const modeMenu = $<HTMLDivElement>("mode-menu");
 const modeList = $<HTMLUListElement>("mode-list");
 const topbarMini = $<HTMLElement>("topbar-mini");
@@ -683,7 +683,13 @@ function paintMini(): void {
 function paintModeButton(): void {
   const cur = modelSelect.selectedOptions[0];
   const text = cur?.textContent?.replace(/ · não existe nesta máquina$/, "") ?? modelSelect.value;
-  modeLabel.textContent = text.split(" · ")[0] ?? text;
+  // O botão é só o mascote na cor do modo (o mesmo ícone e a mesma cor do toast de troca).
+  const tpl = $<HTMLTemplateElement>("intro-mascot-tpl");
+  const icon = (tpl.content.firstElementChild as SVGSVGElement).cloneNode(true) as SVGSVGElement;
+  icon.removeAttribute("class");
+  modeIcon.replaceChildren(icon);
+  // A cor do modo vive no anel do botão; o mascote fica na cor do texto, para contrastar no escuro.
+  modeBtn.style.setProperty("--hue", String(MODE_HUE[modelSelect.value] ?? 220));
   modeBtn.title = `Modo do agente nesta conversa: ${text}`;
   modeBtn.disabled = modelSelect.disabled;
 }
@@ -2899,6 +2905,7 @@ let waStatus: WhatsappStatus | null = null;
 // conversa do meu-bot: o compositor desliga sozinho). Lista a cada 20 s no modo WhatsApp; aberta a cada 8 s.
 type ListMode = "bot" | "whatsapp";
 const listModeEl = $<HTMLElement>("list-mode");
+const listModeBtn = $<HTMLButtonElement>("list-mode-btn");
 const sidebarFootEl = document.querySelector<HTMLElement>(".sidebar-foot");
 let waChats: WhatsappChat[] = [];
 let waChatsErr: string | null = null;
@@ -2940,6 +2947,11 @@ function getListMode(): ListMode {
 function paintListMode(): void {
   listModeEl.hidden = !waMirrorAvailable();
   const mode = getListMode();
+  // Atalho ao lado da caixa de texto: só existe quando o espelho do WhatsApp está disponível,
+  // igual ao alternador do topo, de quem ele é apenas um atalho.
+  listModeBtn.hidden = !waMirrorAvailable();
+  listModeBtn.classList.toggle("on", mode === "whatsapp");
+  listModeBtn.title = mode === "whatsapp" ? "Mostrando o WhatsApp; clique para ver as conversas do meu-bot" : "Mostrando o meu-bot; clique para ver o WhatsApp";
   for (const b of listModeEl.querySelectorAll<HTMLButtonElement>("button")) { const on = b.dataset["mode"] === mode; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); }
   // No WhatsApp o interruptor "arquivadas" só aparece quando há alguma conversa arquivada.
   // No meu-bot-admin ele também mostra as excluídas (exclusão lógica: a pessoa não vê, o admin vê e restaura).
@@ -2959,6 +2971,8 @@ listModeEl.addEventListener("click", (ev) => {
   const mode = b?.dataset["mode"];
   if (mode === "bot" || mode === "whatsapp") setListMode(mode);
 });
+// O atalho da caixa de texto só inverte: é o mesmo estado do alternador do topo.
+listModeBtn.addEventListener("click", () => setListMode(getListMode() === "whatsapp" ? "bot" : "whatsapp"));
 function refreshWaChats(): Promise<void> {
   if (waChatsInflight !== null) return waChatsInflight;
   if (waChatsTimer !== null) { clearTimeout(waChatsTimer); waChatsTimer = null; }
