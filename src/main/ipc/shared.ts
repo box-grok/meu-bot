@@ -371,10 +371,16 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
 
   // Atualização automática do próprio app.
   handleShared("update:state", () => updateState());
-  handleShared("update:check", () => checkNow());
+  handleShared("update:check", () => checkNow("explicito"));
   handleShared("net:check", (_event, payload: unknown) => netCheckNow((payload as { force?: unknown } | null)?.force === true));
   handleShared("host:local-addr", (event) => { const h = hostFromEvent(event)?.host; return h === undefined ? false : hostIsLocalAddr(h); });
-  handleShared("update:apply", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); applyUpdate(); });
+  // "Reiniciar e atualizar": só da janela de uma máquina, e só para a versão que o botão mostrou.
+  handleShared("update:apply", (event, payload: unknown) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    const v = (payload as { expectedVersion?: unknown } | null)?.expectedVersion;
+    if (typeof v !== "string" || v === "") throw new Error("versão esperada inválida");
+    return applyUpdate(v, "clique");
+  });
 
   // Configurações e memória: deste Mac, valem para os dois apps.
   // Abrir ao entrar no Mac: o sistema é a fonte da verdade (a pessoa pode mudar nos Ajustes); só o app empacotado se registra.
@@ -393,6 +399,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.theme === "string" ? { theme: u.theme } : {}),
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
       ...(typeof u.openAtLogin === "boolean" ? { openAtLogin: u.openAtLogin } : {}),
+      ...(typeof u.atualizarOcioso === "boolean" ? { atualizarOcioso: u.atualizarOcioso } : {}),
       ...(typeof u.contextBudgetTokens === "number" ? { contextBudgetTokens: u.contextBudgetTokens } : {}),
       ...(typeof u.memoryEveryTurns === "number" ? { memoryEveryTurns: u.memoryEveryTurns } : {}),
       ...(typeof u.quickEntryEnabled === "boolean" ? { quickEntryEnabled: u.quickEntryEnabled } : {}),

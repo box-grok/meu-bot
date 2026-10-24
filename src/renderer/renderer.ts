@@ -22,7 +22,7 @@ import { groupByDate, matches, normalize, shortDate, type SidebarConversation } 
 import { dropCache, readCache, writeCache, type CacheStore, type Cached } from "./lib/cache.js";
 import { conversationReferenceText, grupoReferenceText, waReferenceText } from "./lib/reference.js";
 import { providerLabel } from "./lib/provider-label.js";
-import { updateStateText } from "./lib/update-text.js";
+import { updateBlockerText, updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk } from "./lib/pro.js";
 import { mountFinancePage } from "./finance/finance-page.js";
@@ -1168,6 +1168,7 @@ function applySettings(view: SettingsView): void {
   quickShortcut.value = view.quickEntryShortcut;
   openAtLoginInput.checked = view.openAtLogin;
   openAtLoginInput.disabled = !view.openAtLoginAvailable;
+  atualizarOciosoInput.checked = view.atualizarOcioso;
   openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
   quickStatus.textContent = view.quickEntryStatus === "registered" ? "ativo" : view.quickEntryStatus === "taken" ? "em uso por outro app" : view.quickEntryStatus === "invalid" ? "inválido" : "desligado";
   document.documentElement.style.setProperty("--chat-font", `${view.fontSize}px`);
@@ -7083,18 +7084,11 @@ offlineCheck.addEventListener("click", () => {
   void window.meuBot.netCheck(true).then(setNet).catch(() => { offlineCheck.disabled = false; offlineCheck.textContent = "Verificar agora"; });
 });
 
-/* ---------- Atualização automática: a faixa só aparece com a versão nova já pronta ---------- */
+/* ---------- Atualização automática (molde do Grok Bot): faixa com a versão pronta, ponto de progresso na barra,
+   "Sobre e atualização" nas Configurações e o bloqueador quando o backend exige uma versão mais nova ---------- */
 const updateBar = $<HTMLElement>("update-bar");
 const updateText = $<HTMLElement>("update-text");
 const updateApply = $<HTMLButtonElement>("update-apply");
-function showUpdateReady(version: string): void {
-  // Staging (como as trilhas de teste do Cursor): sem faixa; a versão nova entra calada ao fechar o app.
-  // Em Configurações › Sobre e atualização ela continua visível, com o botão.
-  if (caps.canal === "staging") return;
-  updateText.textContent = `${caps.nome} ${version} pronto para instalar (você está na ${appVersion}).`;
-  updateBar.hidden = false;
-}
-/* ---------- Verificação visível (REA do Rambox): ponto na barra ao abrir + "Sobre e atualização" nas Configurações ---------- */
 const updateCheckDot = $<HTMLElement>("update-check-dot");
 const aboutVersion = $<HTMLElement>("about-version");
 const aboutSum = $<HTMLElement>("about-sum");
@@ -7102,20 +7096,56 @@ const updateLine = $<HTMLElement>("update-line");
 const updateCheckBtn = $<HTMLButtonElement>("update-check-btn");
 const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
+const atualizarOciosoInput = $<HTMLInputElement>("atualizar-ocioso");
+const updateBlocker = $<HTMLElement>("update-blocker");
+const updateBlockerTitle = $<HTMLElement>("update-blocker-title");
+const updateBlockerMsg = $<HTMLElement>("update-blocker-text");
+const updateBlockerApply = $<HTMLButtonElement>("update-blocker-apply");
+const updateBlockerManual = $<HTMLButtonElement>("update-blocker-manual");
+const RELEASES_URL = "https://github.com/diegofornalha/meu-bot/releases";
+/** Último estado recebido do main; os botões mandam a versão que a tela mostrou (`expectedVersion`). */
+let lastUpdate: UpdateState | null = null;
 function paintUpdateState(u: UpdateState): void {
+  lastUpdate = u;
+  // Antes de window:info (caps e versão) não há como pintar certo; a IIFE de arranque pede o estado de novo.
+  if (appVersion === "") return;
   const t = updateStateText(u, caps.nome);
-  updateCheckDot.hidden = u.phase !== "checking";
-  aboutVersion.textContent = `${name} ${u.current} · Apple Silicon`;
+  updateCheckDot.textContent = t.short ?? "";
+  updateCheckDot.hidden = t.short === null;
+  aboutVersion.textContent = `${caps.nome} ${u.current} · ${navigator.userAgent.includes("Intel") ? "Intel" : "Apple Silicon"}`;
   aboutSum.textContent = `versão ${u.current}`;
   updateLine.textContent = t.text;
   updateLine.className = `update-line ${t.kind === "muted" ? "" : t.kind}`.trim();
-  updateCheckBtn.disabled = u.phase === "checking" || u.phase === "idle";
+  updateCheckBtn.disabled = u.phase === "checking" || u.phase === "idle" || u.phase === "downloading" || u.phase === "verifying" || u.phase === "applying";
   updateApply2.hidden = !t.showApply;
-  if (u.phase === "ready" && u.ready !== null) showUpdateReady(u.ready);
+  updateApply2.disabled = false;
+  atualizarOciosoInput.checked = u.atualizarOcioso;
+  // Faixa de cima: só com a versão pronta. Staging (como as trilhas de teste do Cursor) não mostra a faixa; a versão
+  // nova entra calada ao fechar o app ou com o Mac ocioso (Configurações › Sobre e atualização continua com o botão).
+  const faixa = t.showApply && caps.canal !== "staging" && !u.abaixoDaMinima;
+  if (faixa) { updateText.textContent = `${caps.nome} ${u.ready ?? ""} pronta para instalar (você está na ${appVersion}).`; updateApply.disabled = false; updateApply.textContent = "Reiniciar e atualizar"; }
+  updateBar.hidden = !faixa;
+  // Bloqueador: o backend exige uma versão mais nova; até reiniciar nela, só esta tela.
+  const b = updateBlockerText(u, caps.nome);
+  updateBlockerTitle.textContent = b.title; updateBlockerMsg.textContent = b.text;
+  updateBlockerApply.hidden = !b.showApply; updateBlockerApply.disabled = false;
+  updateBlockerManual.hidden = !b.showManual;
+  updateBlocker.hidden = !u.abaixoDaMinima;
+}
+/** "Reiniciar e atualizar": a versão que a tela mostrou vai junto; se mudou no meio, o main recusa e a tela repinta. */
+function applyFromButton(btn: HTMLButtonElement, onError: (msg: string) => void): void {
+  const v = lastUpdate?.ready ?? null;
+  if (v === null) return;
+  btn.disabled = true; btn.textContent = "Reiniciando…";
+  void window.meuBot.applyUpdate(v).catch((err: unknown) => { btn.disabled = false; btn.textContent = "Reiniciar e atualizar"; onError(ipcErrorText(err)); });
 }
 updateCheckBtn.addEventListener("click", () => { updateCheckBtn.disabled = true; void window.meuBot.checkUpdate().then(paintUpdateState).catch(() => { updateCheckBtn.disabled = false; }); });
-updateNotesBtn.addEventListener("click", () => { void window.meuBot.openExternal("https://github.com/diegofornalha/meu-bot/releases"); });
-updateApply2.addEventListener("click", () => { updateApply2.disabled = true; void window.meuBot.applyUpdate().catch((err: unknown) => { updateApply2.disabled = false; updateLine.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; updateLine.className = "update-line bad"; }); });
+updateNotesBtn.addEventListener("click", () => { void window.meuBot.openExternal(RELEASES_URL); });
+updateBlockerManual.addEventListener("click", () => { void window.meuBot.openExternal(RELEASES_URL); });
+updateApply2.addEventListener("click", () => applyFromButton(updateApply2, (msg) => { updateLine.textContent = `Não consegui atualizar: ${msg}`; updateLine.className = "update-line bad"; }));
+updateApply.addEventListener("click", () => applyFromButton(updateApply, (msg) => { updateText.textContent = `Não consegui atualizar: ${msg}`; }));
+updateBlockerApply.addEventListener("click", () => applyFromButton(updateBlockerApply, (msg) => { updateBlockerMsg.textContent = `Não consegui atualizar: ${msg}`; }));
+atualizarOciosoInput.addEventListener("change", () => { void window.meuBot.setSettings({ atualizarOcioso: atualizarOciosoInput.checked }).then(applySettings).catch((err: unknown) => { atualizarOciosoInput.checked = !atualizarOciosoInput.checked; updateLine.textContent = `Não salvou: ${ipcErrorText(err)}`; }); });
 window.meuBot.on("update:state", paintUpdateState);
 
 /* ---------- Notificação de teste (REA do Rambox) e pedido no momento certo ---------- */
@@ -7183,12 +7213,6 @@ async function saveAlertPrefs(): Promise<void> {
   try { await window.meuBot.setAlertPrefs(next); alertPrefsLoaded = next; }
   catch (err) { const tab = active(); if (tab !== null) addNotice(tab, `Avisos de segurança: ${ipcErrorText(err)}`, "warn"); }
 }
-updateApply.addEventListener("click", () => {
-  updateApply.disabled = true; updateApply.textContent = "Reiniciando…";
-  void window.meuBot.applyUpdate().catch((err: unknown) => { updateApply.disabled = false; updateApply.textContent = "Reiniciar e atualizar"; updateText.textContent = `Não consegui atualizar: ${ipcErrorText(err)}`; });
-});
-window.meuBot.on("update:ready", ({ version }) => showUpdateReady(version));
-void window.meuBot.updateState().then(paintUpdateState).catch(() => undefined);
 window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = tabs.get(conversationId); if (tab !== undefined) { addNotice(tab, text, "warn"); offerClaudeLogin(tab, text); } });
 window.meuBot.on("chat:account", ({ host, status }) => {
   if (host !== windowHost) return;
@@ -7251,6 +7275,8 @@ void (async () => {
   caps = info.caps;
   if (caps.supportAdmin) sidebarArchived.parentElement?.setAttribute("title", "Mostrar também as conversas arquivadas e, no WhatsApp, as que a pessoa excluiu (nada foi apagado)");
   appVersion = info.version;
+  // Estado da atualização só agora, com caps e versão em mãos (um estado que chegou antes ficou guardado em lastUpdate).
+  void window.meuBot.updateState().then(paintUpdateState).catch(() => { if (lastUpdate !== null) paintUpdateState(lastUpdate); });
   // Faixa OFFLINE nos dois apps: estado atual da internet e se a máquina desta janela é este próprio Mac.
   void window.meuBot.netCheck().then(setNet).catch(() => { /* a próxima sondagem avisa */ });
   void window.meuBot.hostLocalAddr().then((v) => { hostLocalAddr = v; paintNet(); }).catch(() => { /* fica como remota */ });

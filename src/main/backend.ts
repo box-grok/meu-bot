@@ -355,6 +355,9 @@ export async function saveAlertPrefs(host: string, prefs: AlertPrefs): Promise<v
  * readyTunnel, antes desta função.
  */
 const announced = new Set<string>();
+/** Quem quer saber a versão mínima do app que o backend de uma máquina exige (vem na resposta do hello): o updater. */
+let versaoMinimaListener: ((host: string, minima: unknown) => void) | null = null;
+export const onVersaoMinima = (cb: (host: string, minima: unknown) => void): void => { versaoMinimaListener = cb; };
 export function announceMachine(host: string): void {
   if (announced.has(host)) return;
   if (host === LOCAL_HOST) { announced.add(host); return; }
@@ -363,8 +366,12 @@ export function announceMachine(host: string): void {
   const user = os.userInfo().username;
   const id = deviceId();
   // `produto` diz qual app se apresentou (meu-bot, meu-bot-crm…): um Mac pode ter os dois; backend antigo ignora o campo.
-  void backendJson<{ fresh?: boolean; status?: string }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion(), produto: appTitle() })
-    .then((r) => { if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend (status=${r.status ?? "?"}): a pessoa foi avisada`); });
+  void backendJson<{ fresh?: boolean; status?: string; appMinima?: unknown }>(host, "POST", "/v1/meu-bot/hello", { id, name, user, platform: `macOS ${os.release()}`, app: app.getVersion(), produto: appTitle() })
+    .then((r) => {
+      if (r?.fresh === true) log(`[${host}] este Mac (${name}) é novo para o backend (status=${r.status ?? "?"}): a pessoa foi avisada`);
+      // Backend novo diz a versão mínima do app que ele atende; backend antigo não traz o campo (undefined = sem exigência).
+      if (r !== null) versaoMinimaListener?.(host, r.appMinima);
+    });
 }
 
 /**

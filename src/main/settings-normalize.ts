@@ -57,6 +57,8 @@ export interface SettingsFile {
   navNotify: NavNotifyPref;
   /** Espaços de trabalho do Navegador, por máquina (tipo, ativo e a lista com os sites fixos). */
   navEspacos: Record<string, NavWorkspaces>;
+  /** Reiniciar sozinho na versão nova com o Mac ocioso (como o Grok Bot; ligado por padrão). */
+  atualizarOcioso: boolean;
 }
 export const MAX_ESPACOS = 20;
 export const MAX_SERVICOS = 30;
@@ -172,7 +174,7 @@ const isBounds = (v: unknown): v is WindowBounds => {
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {},
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true,
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -219,6 +221,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
     navNotify: normalizeNavNotify(p["navNotify"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),
+    atualizarOcioso: typeof p["atualizarOcioso"] === "boolean" ? p["atualizarOcioso"] : true,
   };
 }
 

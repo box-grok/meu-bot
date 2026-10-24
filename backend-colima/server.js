@@ -66,6 +66,19 @@ const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
 const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
 /** Licença da conta (plano, status, validade, limite de devices): o admin é dono e grava por SSH; o app só lê. */
 const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
+/**
+ * Versão mínima do meu-bot que este backend atende (vai na resposta do hello e no /health): abaixo dela o app
+ * mostra "Atualização necessária" e só volta ao normal depois de reiniciar na versão nova. A constante acompanha
+ * o backend (sobe quando uma rota muda de forma); o admin força uma mínima maior gravando por SSH
+ * ~/.local/share/meu-bot/app-minima.json com {"versao": "x.y.z"}.
+ */
+const APP_MINIMA = '0.3.0';
+const APP_MINIMA_FILE = path.join(MEU_BOT_DIR, 'app-minima.json');
+const VERSAO_RE = /^\d+(\.\d+){1,3}(-[0-9A-Za-z.-]+)?$/;
+function appMinima() {
+  const v = readJson(APP_MINIMA_FILE, {}).versao;
+  return typeof v === 'string' && VERSAO_RE.test(v) ? v : APP_MINIMA;
+}
 /** CRM próprio: rotas /v1/crm/* sobre ~/.local/share/meu-bot/crm/db (crm-api.js); exige o plano Pro (licenca.crmOk). */
 const CRM_CONFIG = path.join(MEU_BOT_DIR, 'crm.json');
 const CRM_DB = process.env.MEU_BOT_CRM_DB || path.join(MEU_BOT_DIR, 'crm', 'db');
@@ -653,7 +666,7 @@ async function chatCompletions(req, res) {
 let chatsAtivos = 0;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos });
+  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos, appMinima: appMinima() });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
   // Status line do app: conta e limites do Claude Code desta máquina. O cache de limites é renovado aqui
   // quando está velho (o claude -p não roda a status line); o motivo de não renovar vai ao log quando muda.
@@ -675,7 +688,7 @@ const server = http.createServer(async (req, res) => {
       && (m.produto === undefined || (typeof m.produto === 'string' && /^meu-bot(-[a-z0-9-]{1,30})?$/.test(m.produto)));
     if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
     const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app, produto: m.produto });
-    return json(res, 200, r);
+    return json(res, 200, { ...r, appMinima: appMinima() });
   }
   // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.
   if (url.pathname === '/v1/meu-bot/license' && req.method === 'GET') return json(res, 200, licenseView());

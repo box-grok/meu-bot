@@ -1,7 +1,8 @@
 /**
  * Atualização automática, a parte pura: qual release do GitHub é a mais nova, qual asset é deste app (nome e
- * arquitetura) e como comparar versões. O download, a troca do .app e o reinício ficam em updater.ts.
- * Puro: testável com node --test.
+ * arquitetura), como comparar versões, a assinatura das releases, os registros em disco (troca pendente, versão
+ * preparada), a cadência, o reinício ocioso e a versão mínima que o backend exige. O download (update-download.ts),
+ * a troca do .app e o reinício ficam em updater.ts. Puro: testável com node --test.
  */
 import { createPublicKey, verify } from "node:crypto";
 
@@ -122,33 +123,98 @@ export function deveAtualizar(instalada: string | null, doApp: string | null): b
 /**
  * Reinstalar o backend da máquina (o install.sh reinicia o serviço) na sondagem: só onde ele já está instalado, só
  * para subir de versão (backend sem VERSION conta como antigo) e só ocioso, com zero chats em andamento. "ocupado" =
- * precisa, mas espera a próxima sondagem; null `busy` (backend antigo, sem o contador) conta como ocioso.
+ * precisa, mas espera a próxima sondagem; null `busy` (backend antigo, sem o contador) conta como ocioso. Numa
+ * máquina com o gateway do Hermes o backend é o dele (não o backend-colima): fica de fora.
  */
-export function precisaAtualizarBackend(p: { backendInstalled: boolean; backendVersion: string | null; backendBusy: number | null }, doApp: string | null): "atualizar" | "ocupado" | "nao" {
+export function precisaAtualizarBackend(p: { backendInstalled: boolean; backendVersion: string | null; backendBusy: number | null; gateway?: string | null }, doApp: string | null): "atualizar" | "ocupado" | "nao" {
+  // A máquina do Hermes (grokbot-1) roda o backend original dele na mesma pasta, sem VERSION: nunca reinstalar por cima.
+  if (p.gateway === "hermes") return "nao";
   if (!p.backendInstalled || !deveAtualizar(p.backendVersion, doApp)) return "nao";
   return p.backendBusy !== null && p.backendBusy > 0 ? "ocupado" : "atualizar";
 }
 
 /**
- * Atualização recém-aplicada, ainda sem prova de que a versão nova abre: `userData/update-pendente.json`, gravado na
- * troca dos .app. `antigos` = os `<app>.antigo` guardados para voltar; `tentativas` = aberturas já feitas na nova.
+ * Troca recém-feita, ainda sem prova de que a versão nova abre: `userData/update-pendente.json`, gravado na troca dos
+ * .app. `antigos` = os `<app>.antigo` guardados para voltar; `tentativas` = aberturas já feitas na nova; `gatilho` =
+ * quem pediu a troca (clique, reinício ocioso ou a saída do app) e `pedidoEm` = quando, para o registro.
  */
-export interface UpdatePendente { de: string; para: string; antigos: string[]; tentativas: number }
+export type UpdateGatilho = "clique" | "ocioso" | "saida";
+/** `fase`: "pedida" = o registro foi gravado e a troca começou; "trocada" = os .app já foram trocados (v1 antigo conta como trocada). */
+export interface UpdatePendente { de: string; para: string; antigos: string[]; tentativas: number; gatilho: UpdateGatilho | null; pedidoEm: string | null; fase: "pedida" | "trocada" }
 export function parsePendente(raw: unknown): UpdatePendente | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
   if (typeof o.de !== "string" || typeof o.para !== "string" || !Array.isArray(o.antigos)) return null;
   const antigos = o.antigos.filter((x): x is string => typeof x === "string" && x.endsWith(".app.antigo"));
-  return { de: o.de, para: o.para, antigos, tentativas: Number.isInteger(o.tentativas) && (o.tentativas as number) >= 0 ? (o.tentativas as number) : 0 };
+  const gatilho = o.gatilho === "clique" || o.gatilho === "ocioso" || o.gatilho === "saida" ? o.gatilho : null;
+  const pedidoEm = typeof o.pedidoEm === "string" && !Number.isNaN(Date.parse(o.pedidoEm)) ? o.pedidoEm : null;
+  return { de: o.de, para: o.para, antigos, tentativas: Number.isInteger(o.tentativas) && (o.tentativas as number) >= 0 ? (o.tentativas as number) : 0, gatilho, pedidoEm, fase: o.fase === "pedida" ? "pedida" : "trocada" };
+}
+/**
+ * Troca interrompida no meio (queda entre tirar o .app e pôr o novo no lugar): para cada `<app>.app.antigo` cujo
+ * `<app>.app` não existe, devolve o rename que o repõe. `existe` = o `fs.existsSync` de quem chama. Puro.
+ */
+export function repararTroca(antigos: readonly string[], existe: (p: string) => boolean): { de: string; para: string }[] {
+  const out: { de: string; para: string }[] = [];
+  for (const old of antigos) { const alvo = old.replace(/\.antigo$/, ""); if (existe(old) && !existe(alvo)) out.push({ de: old, para: alvo }); }
+  return out;
 }
 /** Aberturas da versão nova sem chegar a 30 s de vida antes de voltar à anterior. */
 export const TENTATIVAS_ATE_VOLTAR = 3;
 /**
- * O que fazer ao abrir com uma atualização pendente: "aguardar" (conta a tentativa e confirma se o app ficar de pé),
- * "voltar" (a nova não passou das primeiras aberturas: restaura os .antigo) ou "descartar" (esta não é a versão
- * pendente: já voltou ou a pessoa instalou outra por fora; só limpa o registro).
+ * O que fazer ao abrir com uma troca pendente: "aguardar" (conta a tentativa e confirma se o app ficar de pé),
+ * "voltar" (a nova não passou das primeiras aberturas: restaura os .antigo), "nao-pegou" (reabriu na versão de
+ * antes da troca: o .app que relançou não era o trocado; só registra e deixa a próxima verificação preparar de
+ * novo) ou "descartar" (outra versão: a pessoa instalou por fora; só limpa o registro).
  */
-export function decideRollback(p: UpdatePendente, versaoAtual: string): "aguardar" | "voltar" | "descartar" {
+export type DecisaoPendente = "aguardar" | "voltar" | "nao-pegou" | "descartar";
+export function decideRollback(p: UpdatePendente, versaoAtual: string): DecisaoPendente {
+  if (versaoAtual === p.de && p.de !== p.para) return "nao-pegou";
   if (versaoAtual !== p.para) return "descartar";
   return p.tentativas + 1 >= TENTATIVAS_ATE_VOLTAR ? "voltar" : "aguardar";
 }
+
+/**
+ * Versão já baixada, verificada e extraída, guardada em disco (`userData/update/preparada.json`) para a próxima
+ * abertura não baixar de novo: `bundle` = caminho do .app extraído; `sha256` = do zip de onde ele veio.
+ */
+export interface UpdatePreparada { versao: 1; para: string; bundle: string; sha256: string; em: string }
+export function parsePreparada(raw: unknown): UpdatePreparada | null {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (o.versao !== 1 || typeof o.para !== "string" || !VERSAO_RE.test(o.para) || typeof o.bundle !== "string" || !o.bundle.endsWith(".app")) return null;
+  if (typeof o.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(o.sha256) || typeof o.em !== "string" || Number.isNaN(Date.parse(o.em))) return null;
+  return { versao: 1, para: o.para, bundle: o.bundle, sha256: o.sha256, em: o.em };
+}
+/** Forma de uma versão: x.y.z, com pre-release opcional (0.2.0-staging.3). */
+export const VERSAO_RE = /^\d+(\.\d+){1,3}(-[0-9A-Za-z.-]+)?$/;
+
+/** Ciclo de verificação (como no Grok Bot): a cada hora, com até 5 min de jitter para os Macs não baterem juntos no GitHub. */
+export const CHECK_EVERY_MS = 60 * 60_000;
+export const CHECK_JITTER_MS = 5 * 60_000;
+export const proximaVerificacaoMs = (random: () => number = Math.random): number => CHECK_EVERY_MS + Math.floor(Math.max(0, Math.min(1, random())) * CHECK_JITTER_MS);
+/** Uma verificação com mais que isto de idade não serve para confirmar a troca: reconsulta antes de reiniciar. */
+export const CONFIRMA_FEED_MS = 60_000;
+
+/**
+ * A release ainda oferece a versão preparada? `cand` = o que `pickUpdate` devolveu agora para a versão em
+ * execução: null (nada mais novo) ou uma versão anterior à preparada significa que ela foi retirada; a própria ou
+ * uma mais nova confirma (a mais nova entra na próxima verificação; a preparada continua válida).
+ */
+export const feedAindaOferece = (cand: { version: string } | null, preparada: string): boolean => cand !== null && compareVersions(cand.version, preparada) >= 0;
+
+/** Ociosidade que autoriza o reinício sozinho (como o Grok Bot: 10 min sem mexer, ou a tela bloqueada). */
+export const OCIOSO_SEG = 600;
+export type EstadoSistema = "active" | "idle" | "locked" | "unknown";
+/**
+ * Reiniciar sozinho na versão pronta? Só com a preferência ligada, a versão preparada, o Mac ocioso (ou bloqueado),
+ * nenhuma resposta em andamento e nenhum terminal aberto (um terminal é uma sessão da pessoa; nunca se fecha por ela).
+ */
+export function decideReinicioOcioso(s: { ligado: boolean; pronta: boolean; sistema: EstadoSistema; ocupado: boolean; terminais: number }): boolean {
+  return s.ligado && s.pronta && (s.sistema === "idle" || s.sistema === "locked") && !s.ocupado && s.terminais === 0;
+}
+
+/** Versão mínima do app que o backend exige (vem no hello); só uma string de versão válida vale. */
+export const parseVersaoMinima = (v: unknown): string | null => (typeof v === "string" && VERSAO_RE.test(v) ? v : null);
+/** O app em execução está abaixo da mínima que o backend exige? Sem mínima (backend antigo), nunca. */
+export const abaixoDaMinima = (atual: string, minima: string | null): boolean => minima !== null && compareVersions(atual, minima) < 0;

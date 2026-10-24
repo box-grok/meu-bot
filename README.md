@@ -109,10 +109,12 @@ npm run release                    # promoção para v<versão> (exige a tag sta
 ```
 
 Sequência completa (subir a versão dos componentes da máquina, staging, aprovação, estável, versão base) na skill
-`.claude/skills/publicar` e em `docs/GUIA.md` › "Revisão no molde do Brave/Sparkle". Cada zip sai com um `.sig`: o
-app só instala o que a chave da release assinou, não reassina, e volta sozinho para a versão anterior se a nova
-não abrir. O backend e os plugins da máquina se atualizam na abertura do app, só para cima (o release recusa um
-componente que mudou sem subir a versão).
+`.claude/skills/publicar` e em `docs/GUIA.md` › "Revisão no molde do Brave/Sparkle" e "Atualização no molde do Grok
+Bot". Cada zip sai com um `.sig`: o app só instala o que a chave da release assinou, não reassina, e volta sozinho
+para a versão anterior se a nova não abrir. O app baixa em segundo plano com retomada e progresso, guarda a versão
+preparada entre aberturas, só troca a versão que o botão mostrou, troca sozinho com o Mac ocioso (ou ao fechar) e
+bloqueia a janela quando o backend da máquina exige uma versão mais nova. O backend e os plugins da máquina se
+atualizam na abertura do app, só para cima (o release recusa um componente que mudou sem subir a versão).
 
 Limitações: o backend da máquina remota é um só para os dois canais (o que se instala testando no staging vale
 também para o estável; como só sobe de versão, o estável nunca rebaixa o que o staging instalou).

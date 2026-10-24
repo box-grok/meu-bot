@@ -180,7 +180,10 @@ export const settingsView = (host?: string): SettingsView => ({
   hostNames: { ...file.hostNames },
   navNotify: { ...file.navNotify, hosts: [...file.navNotify.hosts] },
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
+  atualizarOcioso: file.atualizarOcioso,
 });
+/** "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta). */
+export const getAtualizarOcioso = (): boolean => file.atualizarOcioso;
 export const getNavNotify = (): NavNotifyPref => settingsView().navNotify;
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */
@@ -231,6 +234,7 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     file.onboarding = update.onboarding;
   }
   if (update.navNotify !== undefined) file.navNotify = normalizeNavNotify(update.navNotify, file.navNotify);
+  if (update.atualizarOcioso !== undefined) file.atualizarOcioso = update.atualizarOcioso === true;
   persist();
   return settingsView(host);
 }

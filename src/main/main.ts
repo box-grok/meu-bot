@@ -4,6 +4,7 @@
  * compõe: registerIpc, initPicker e o que depende da variante (caps()).
  */
 import { app, BrowserWindow, dialog, nativeTheme, powerMonitor } from "electron";
+import { onVersaoMinima } from "./backend";
 import { LOCAL_HOST } from "./localBackend";
 import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./tunnel";
 import { loadConversations } from "./conversation";
@@ -16,7 +17,7 @@ import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
 import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./user-data";
 import { registerIpc } from "./ipc";
-import { applyStagedOnQuit, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork } from "./updater";
+import { applyStagedOnQuit, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima } from "./updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
 import { installBrowserHooks } from "./browser";
 import { startTermApi } from "./term-api";
@@ -82,6 +83,8 @@ app.whenReady().then(() => {
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   initRelief();
   initUpdater();
+  // O backend de cada máquina diz no hello a versão mínima do app que atende: abaixo dela, a janela bloqueia até atualizar.
+  onVersaoMinima(noteVersaoMinima);
   // Internet deste Mac (faixa OFFLINE). Quando volta: revalida os túneis, reabre o das janelas abertas que
   // caíram e refaz a checagem de atualização se ela falhou por rede.
   initNet();
@@ -91,7 +94,7 @@ app.whenReady().then(() => {
     markSuspect(); void revalidate();
     const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));
     for (const h of hosts) void ensureTunnel(h, getBackendPort(h)).catch(() => { /* a próxima mensagem tenta de novo */ });
-    if (lastUpdateErrorWasNetwork()) void checkUpdateNow();
+    if (lastUpdateErrorWasNetwork()) void checkUpdateNow("rede-voltou");
   });
   // A entrada rápida é do chat: o meu-bot-admin não a sobe nem registra o atalho global.
   if (caps().chat) {
@@ -122,8 +125,8 @@ app.whenReady().then(() => {
     resumeTimer = setTimeout(() => { resumeTimer = null; void revalidate(); }, 2000);
   };
   powerMonitor.on("suspend", () => markSuspect());
-  powerMonitor.on("resume", () => { scheduleRevalidate(); void checkNetNow(true); });
-  powerMonitor.on("unlock-screen", () => { scheduleRevalidate(); void checkNetNow(true); });
+  powerMonitor.on("resume", () => { scheduleRevalidate(); void checkNetNow(true); checkUpdateIfStale("acordou"); });
+  powerMonitor.on("unlock-screen", () => { scheduleRevalidate(); void checkNetNow(true); checkUpdateIfStale("acordou"); });
 });
 
 app.on("window-all-closed", () => {

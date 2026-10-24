@@ -103,3 +103,9 @@ test("zoomLevel: inteiro -8..8 fica; o resto vira 0", () => {
   for (const bad of [9, -9, 1.5, "2", null]) assert.equal(normalizeSettings({ zoomLevel: bad }).zoomLevel, 0, String(bad));
   assert.equal(defaultSettings().zoomLevel, 0);
 });
+
+test("atualizarOcioso: ligado por padrão (como o Grok Bot); só um boolean muda", () => {
+  assert.equal(normalizeSettings({}).atualizarOcioso, true);
+  assert.equal(normalizeSettings({ atualizarOcioso: false }).atualizarOcioso, false);
+  assert.equal(normalizeSettings({ atualizarOcioso: "nao" }).atualizarOcioso, true);
+});

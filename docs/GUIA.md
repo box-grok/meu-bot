@@ -1743,7 +1743,7 @@ mapa responde ao abrir um arquivo: isto é admin, cliente ou dos dois?
 | `src/main/client/support.ts` | cliente | suporte do lado da pessoa. |
 | `src/main/picker.ts` | comum | `initPicker(source: PickerSource)`; `clientPickerSource` mora aqui; os canais comuns do seletor também. |
 | `src/main/wa-menu.ts` | comum (puro) | itens do menu "…" do WhatsApp por capacidade. Testado. |
-| `src/main/updater-core.ts`, `src/main/updater.ts` | comum | atualização automática do próprio app pelo GitHub Releases (ver seção abaixo). Núcleo puro testado. |
+| `src/main/updater-core.ts`, `src/main/update-download.ts`, `src/main/proc.ts`, `src/main/updater.ts` | comum | atualização automática do próprio app pelo GitHub Releases (ver as seções abaixo; a de 24 out é a vigente). Núcleo puro, download com retomada e processo filho testados. |
 | `src/renderer/renderer.ts` | comum | `caps` (de `window:info`) no lugar de "é admin?": `caps.chat`, `caps.login`, `caps.install`, `caps.supportClient`; o arranque do admin chama `mountSuportePage`. |
 | `src/renderer/admin/` | admin | `suporte-page.ts` (fábrica com dependências explícitas, como `snake.ts`), `picker-chrome.ts` (seletor de pessoas). |
 | `src/renderer/lib/admin-view.ts` | admin (puro) | textos e linhas da página Suporte e do seletor. Testado. |
@@ -2743,3 +2743,55 @@ O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`ext
   produto traz `extensao-crm`. Somem `dist:crm`, `dist:crm-staging`, `dmg:crm`, `instalar.sh --crm`.
 - Fica como está: o projeto `extensao-crm/` gera as duas extensões (um build); separar o Autenticador num projeto
   próprio é só organização de pasta, sem efeito na licença.
+
+## Atualização no molde do Grok Bot (24 out)
+
+REA do updater do Grok Bot 0.71.2→0.75.5 (Cursor/Anysphere; `sand-update-service`: feed próprio, download com
+retomada, zip retido em `sand-update-kept/`, marcador `sand-update-apply-marker.json`, reinício ocioso e gate de
+versão mínima do Statsig que vira a tela "Atualização pronta · Reiniciar para atualizar"). O que mudou no meu-bot (o
+texto das seções de 16 e 22 out segue valendo onde não é contradito; a assinatura Ed25519, o mesmo designated
+requirement e o rollback pelos `.antigo` ficam, que o Grok Bot não tem):
+
+- **Módulos:** `updater-core.ts` (puro: feed, versões, assinatura, os registros em disco, cadência, reinício ocioso,
+  versão mínima), `update-download.ts` (download em fluxo com retomada; testado com servidor `node:http` falso),
+  `proc.ts` (`run`/`runText`: processo filho assíncrono com limite de tempo; o updater não usa mais `execFileSync`
+  durante a preparação, que congelava a janela no `ditto` e no `codesign`), `updater.ts` (o orquestrador).
+- **Verificação:** 10 s depois de abrir, depois a cada hora com até 5 min de jitter (`proximaVerificacaoMs`); também
+  ao voltar a internet, ao acordar/desbloquear o Mac se a última ficou velha (`checkIfStale`), em "Verificar agora" e
+  quando o backend exige versão mínima. Cada verificação loga o gatilho (`UpdateTrigger`).
+- **Download:** `baixarComRetomada` grava em `<zip>.partial` com `<zip>.resume` (URL + ETag/Last-Modified), retoma com
+  `Range`/`If-Range`, insiste até 15 vezes com espera dobrando (1 s → 60 s), vigia de 30 s sem bytes, progresso em
+  passos de 1 % (`UpdateState.progress`, fase `downloading`), confere o tamanho declarado na release e calcula o sha256.
+  Cancelado ao sair, o `.partial` fica e a próxima abertura retoma. O `.sig` é baixado antes do zip (falha barata).
+- **Preparada em disco:** `userData/update/app/<app>.app` + `preparada.json` (`parsePreparada`: versão, bundle,
+  sha256 do zip, quando). Na abertura seguinte `reaproveitarPreparada` reconfere (`codesign --verify`, mesmo
+  requisito) e já fica "pronta", sem baixar. A release deixou de oferecer a versão (ou oferece outra) → descarta.
+- **Troca só da versão mostrada:** `update:apply` leva `expectedVersion`; o main recusa se a pronta mudou. Se a última
+  verificação tem mais de 60 s (`CONFIRMA_FEED_MS`), reconsulta só a release (`feedAindaOferece`): retirada do ar, nada
+  muda; sem internet, a preparada já conferida vale. Com uma resposta em andamento (`anyConversationBusy`), espera até
+  20 s (fase `applying`, `aguardando`). Pré-voo de escrita no .app e na pasta: `EROFS`/`EACCES`/`EPERM` vira a fase
+  `needs-move` ("arraste para Aplicativos"). Reabre na mesma máquina (`--host=` no `app.relaunch`).
+- **Registro da troca** (`update-pendente.json`, `parsePendente` lê o formato antigo): ganha `gatilho` (clique, ocioso,
+  saída), `pedidoEm` e `fase` ("pedida" antes de mexer nos .app, "trocada" depois). Na abertura, `decideRollback`:
+  `aguardar` (30 s de pé confirma), `voltar` (3.ª abertura sem confirmar), **`nao-pegou`** (reabriu na versão de antes:
+  `repararTroca` repõe um .app que tenha ficado faltando entre os dois renames, registra e a próxima verificação
+  prepara de novo) ou `descartar` (outra versão).
+- **Reinício ocioso** (preferência `atualizarOcioso`, ligada por padrão; chave em Configurações › Sobre e
+  atualização): a cada minuto e ao bloquear a tela, com versão pronta, `powerMonitor.getSystemIdleState(600)` em
+  `idle`/`locked`, nenhuma resposta em andamento e nenhum terminal aberto (`decideReinicioOcioso`) → troca e reabre.
+- **Versão mínima:** o backend responde `appMinima` no hello (`APP_MINIMA` em `server.js`, acompanha o backend; o
+  admin força uma maior gravando `~/.local/share/meu-bot/app-minima.json` `{"versao":"x.y.z"}`; também vai no
+  `/health`). `backend.ts` entrega a `noteVersaoMinima` (vale a maior entre as máquinas abertas); abaixo dela
+  (`abaixoDaMinima`) o `UpdateState` marca e a janela mostra o bloqueador `#update-blocker` ("Atualização necessária",
+  progresso, "Reiniciar e atualizar" quando pronta, "Baixar a versão mais recente" se o download não vier), até
+  reiniciar na versão nova. Backend antigo não manda o campo = sem exigência. `backend-colima/VERSION` 1.0.3.
+- **Tela:** `UpdateState` ganhou `phase` novas (`downloading`, `verifying`, `applying`, `needs-move`), `progress`,
+  `errorKind`, `aguardando`, `minima`/`abaixoDaMinima`, `atualizarOcioso`; `update:ready` saiu (o `update:state`
+  cobre). O ponto da barra mostra `short` ("baixando 42%"). Corrigidos: a linha "Sobre" usava um `name` inexistente
+  (vinha vazio) e o primeiro estado era pintado antes de `window:info` (um staging podia mostrar a faixa).
+- Fica igual: faixa só no estável; staging troca calado ao fechar (e agora também ocioso); troca ao sair (`will-quit`)
+  é o único caminho ainda síncrono, de propósito (não dá para esperar Promise ali).
+- **Trava do Hermes (24 out, ao religar a `grokbot-1`):** `precisaAtualizarBackend` devolve "nao" quando a sondagem
+  diz `gateway: "hermes"`: lá o backend é o original do Hermes (`hermes-mythos-lucas`, sem `VERSION`, na mesma pasta
+  que o backend-colima usaria), e a atualização automática o reinstalaria por cima na primeira sondagem.
+
