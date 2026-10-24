@@ -596,6 +596,63 @@ function paintSidebar(): void {
   }
 }
 
+/**
+ * Atalhos da lateral (Acervo, Conta Google, Finanças, Terminal, Navegador, Produtos, Tutoriais) num grupo
+ * recolhível: eram sete linhas comendo a altura da lista de conversas. Recolhido por padrão; a escolha fica no
+ * localStorage da janela, como a barra de cima. As linhas de conta ficam fora do grupo, porque o ponto verde
+ * delas é sinal de estado e esconder isso por padrão esconderia problema.
+ */
+function setAtalhosAbertos(abertos: boolean): void {
+  const grupo = document.getElementById("atalhos");
+  const bt = document.getElementById("atalhos-toggle");
+  if (grupo === null || bt === null) return;
+  grupo.hidden = !abertos;
+  bt.setAttribute("aria-expanded", abertos ? "true" : "false");
+  try { localStorage.setItem("atalhosAbertos", abertos ? "1" : "0"); } catch { /* opcional */ }
+  paintAtalhosAviso();
+}
+/** Recolhido, o que estava pendente lá dentro (Finanças, Tutoriais…) vira um número no próprio botão. */
+function paintAtalhosAviso(): void {
+  const grupo = document.getElementById("atalhos");
+  const aviso = document.getElementById("atalhos-aviso");
+  if (grupo === null || aviso === null) return;
+  if (!grupo.hidden) { aviso.textContent = ""; return; }
+  let n = 0;
+  for (const b of grupo.querySelectorAll<HTMLElement>(".acervo-count")) {
+    const linha = b.closest<HTMLElement>(".acervo-line");
+    if (linha?.hidden === true) continue; // atalho escondido por licença não conta
+    const m = /^(\d+)/.exec((b.textContent ?? "").trim());
+    if (m) n += Number(m[1]);
+  }
+  aviso.textContent = n > 0 ? String(n) : "";
+}
+/**
+ * Um padrão só para toda a moldura: **Cmd+B** recolhe (ou mostra) de uma vez a barra de cima, os atalhos da
+ * lateral e a lista de conversas. É o "modo limpo": sobra a conversa. Cmd+Shift+B faz o mesmo, por hábito antigo.
+ *
+ * Cada peça continua tendo o controle dela no clique, para quem quer granularidade: o ☰ para a lista e o botão
+ * Atalhos para o grupo.
+ */
+const interfaceRecolhida = (): boolean => document.body.classList.contains("topbar-hidden");
+function setInterfaceRecolhida(recolhida: boolean): void {
+  setTopbarHidden(recolhida);
+  setAtalhosAbertos(!recolhida);
+  toggleSidebar(!recolhida);
+}
+
+function ligarAtalhos(): void {
+  const bt = document.getElementById("atalhos-toggle");
+  const grupo = document.getElementById("atalhos");
+  if (bt === null || grupo === null) return;
+  // `hidden` no DOM moderno é `boolean | string` (por causa de hidden="until-found"): normaliza antes de inverter.
+  bt.addEventListener("click", () => { setAtalhosAbertos(Boolean(grupo.hidden)); });
+  let abertos = false;
+  try { abertos = localStorage.getItem("atalhosAbertos") === "1"; } catch { /* padrão: recolhido */ }
+  setAtalhosAbertos(abertos);
+  // Os números são escritos em vários lugares; observar o grupo evita ter que lembrar de avisar em cada um.
+  new MutationObserver(() => { paintAtalhosAviso(); }).observe(grupo, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["hidden"] });
+}
+
 /** Barra recolhida por padrão; a escolha fica no localStorage da janela. */
 function setTopbarHidden(hidden: boolean): void {
   document.body.classList.toggle("topbar-hidden", hidden);
@@ -768,7 +825,7 @@ function buildPaletteItems(): PaletteItem[] {
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
-  add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar a barra superior", detail: "Cmd+Shift+B" }, () => setTopbarHidden(!document.body.classList.contains("topbar-hidden")));
+  add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar tudo (barra, atalhos e lista)", detail: "Cmd+B" }, () => setInterfaceRecolhida(!interfaceRecolhida()));
   add({ id: "a:zoom-in", kind: "action", label: "Aumentar zoom da janela", detail: "Cmd+= (fora da página do Navegador)", keywords: ["zoom", "ampliar", "maior", "aumentar", "fonte"] }, () => zoomWindow({ action: "step", delta: 1 }));
   add({ id: "a:zoom-out", kind: "action", label: "Diminuir zoom da janela", detail: "Cmd+-", keywords: ["zoom", "reduzir", "menor", "diminuir", "fonte"] }, () => zoomWindow({ action: "step", delta: -1 }));
   add({ id: "a:zoom-reset", kind: "action", label: "Restaurar zoom da janela (100%)", detail: "Cmd+0", keywords: ["zoom", "restaurar", "100", "tamanho real"] }, () => zoomWindow({ action: "reset" }));
@@ -3390,12 +3447,10 @@ type WaGroupClear = {
   passo: string;
 };
 let waGroupClear: WaGroupClear | null = null;
-let waGroupClearNote: { jid: string; text: string; bad: boolean } | null = null;
 
 async function startWaGroupClear(g: WhatsappGroup): Promise<void> {
   const base = { jid: g.jid, nome: waGroupTitle(g), passo: "" };
   waGroupClear = { ...base, fase: "plano", vazio: false, err: null };
-  waGroupClearNote = null;
   renderSidebar();
   try {
     const plano = await window.meuBot.whatsappGroupClearPlan(g.jid);
@@ -3412,17 +3467,16 @@ async function startWaGroupClear(g: WhatsappGroup): Promise<void> {
 async function runWaGroupClear(c: WaGroupClear): Promise<void> {
   const andar = (passo: string): void => { waGroupClear = { ...c, fase: "rodando", passo }; renderSidebar(); };
   try {
-    let onde = "";
     if (crmProprio()) {
       andar("Guardando a conversa no CRM…");
-      const r = await window.meuBot.archiveWhatsappGroupToCrm(c.jid);
+      await window.meuBot.archiveWhatsappGroupToCrm(c.jid);
       if (waGroupClear?.jid !== c.jid) return;
-      if (!r.vazio && r.box !== null) onde = ` ${r.criada ? `Caixa "${r.box.nome}" aberta no CRM para este grupo e conversa guardada nela` : `Guardada na caixa "${r.box.nome}"`}${r.resumo ? " com resumo" : "; resumo não atualizado"}.`;
     }
     andar("Limpando o histórico…");
     await window.meuBot.clearWhatsappGroup(c.jid);
+    // Sem aviso de sucesso: a conversa somindo da aba já diz que deu certo. O que foi guardado no
+    // CRM está na caixa do grupo, com o comentário do arquivamento, e na auditoria da máquina.
     waGroupClear = null;
-    waGroupClearNote = { jid: c.jid, text: `Histórico do grupo limpo.${onde}`, bad: false };
     void listarWaGroups();
   } catch (err) {
     if (waGroupClear?.jid !== c.jid) return;
@@ -3493,7 +3547,6 @@ function waGroupsSection(q: string): HTMLElement[] {
     item.addEventListener("click", (ev) => openWaGroup(g, false, ev.altKey));
     out.push(item);
     if (waGroupClear?.jid === g.jid) out.push(waGroupClearBox(waGroupClear));
-    else if (waGroupClearNote?.jid === g.jid) out.push(el("div", `wa-archive-note${waGroupClearNote.bad ? " bad" : ""}`, waGroupClearNote.text));
   }
   return out;
 }
@@ -4481,6 +4534,7 @@ for (const g of settingsGroups) {
 paletteBtn.addEventListener("click", () => openPalette());
 topbarHideBtn.addEventListener("click", () => setTopbarHidden(true));
 topbarShowBtn.addEventListener("click", () => setTopbarHidden(false));
+ligarAtalhos();
 paletteInput.addEventListener("input", () => { paletteSelected = 0; paintPalette(); });
 paletteInput.addEventListener("keydown", (ev) => {
   const count = paletteList.querySelectorAll("li[role=option]").length;
@@ -4608,8 +4662,9 @@ document.addEventListener("keydown", (ev) => {
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
   if (!paletteEl.hidden) return;
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
-  if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setTopbarHidden(!document.body.classList.contains("topbar-hidden")); return; }
-  if (mod && ev.key === "b") { ev.preventDefault(); toggleSidebar(); }
+  if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setInterfaceRecolhida(!interfaceRecolhida()); return; }
+  // Cmd+B é o padrão único: recolhe tudo. Cmd+Shift+B (acima) continua valendo como atalho antigo, para a mesma coisa.
+  if (mod && ev.key === "b") { ev.preventDefault(); setInterfaceRecolhida(!interfaceRecolhida()); }
   if (mod && ev.key === "\\") { ev.preventDefault(); toggleSplit(); return; }
   if (mod && ev.shiftKey && (ev.key === "f" || ev.key === "F") && navPage !== null && pageShown(navPage)) { ev.preventDefault(); toggleFavsBar(); return; }
   if (mod && ev.key === "w" && pageActive !== null) { ev.preventDefault(); closePage(pageActive); return; }

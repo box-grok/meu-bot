@@ -2369,8 +2369,19 @@ Os pacotes são feitos com `tar -C $HOME` e caminhos relativos, então **restaur
 - **Desligar:** `dadosNoDrive: false` no `settings.json`, ou o botão na tela.
 - **Auditoria:** registra `backup.dados-drive` com os conjuntos que subiram.
 
-**Restaurar numa VM nova:** `tar -xzf <pacote>.tar.gz -C ~` para os quatro sem cifra; para o cifrado,
-`age -d -o credenciais.tar.gz credenciais-….tar.gz.age` e depois o mesmo `tar`. Em seguida `POST /v1/crm/reindex`.
+**Restaurar numa VM nova:** `tar -xzf <pacote>.tar.gz -C ~` para os quatro sem cifra. Em seguida
+`POST /v1/crm/reindex`.
+
+**Abrir o pacote cifrado:** o `age` de linha de comando não vem instalado, e um backup que não se abre não é
+backup. Use o script do repositório, que usa a mesma biblioteca do app e só precisa do Node:
+
+```sh
+node scripts/abrir-backup.mjs ~/Downloads/credenciais-<máquina>-AAAA-MM-DD.tar.gz.age
+```
+
+Ele pede a senha no terminal **sem eco** (senha em argumento ficaria no histórico do shell e no `ps`), escreve o
+`.tar.gz` ao lado com permissão 600 e mostra os comandos para conferir e restaurar. Senha errada dá erro claro, não
+lixo. `--saida <pasta>` escolhe onde gravar. O arquivo decifrado tem credenciais em texto claro: apague depois.
 
 Não confundir com o **backup completo e mudança de máquina** (acima): aquele é manual, cobre a máquina inteira e
 depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, por conjunto, e a cifra é por senha do dono.

@@ -932,7 +932,14 @@ try:
             e = ev(js, zb)
         except Exception:
             continue
-        if isinstance(e, dict) and e.get("type") == "message" and isinstance(e.get("message"), dict):
+        if not isinstance(e, dict):
+            continue
+        # "Limpar histórico" grava um evento de reset NA MESMA sessão, em vez de abrir outra: o que
+        # veio antes dele o agente já esqueceu. Sem isto a aba seguia mostrando a conversa limpa.
+        if e.get("type") == "reset":
+            msgs = []
+            continue
+        if e.get("type") == "message" and isinstance(e.get("message"), dict):
             msgs.append(e["message"])
     try:
         subject = (json.loads(row[2] or "{}") or {}).get("subject")

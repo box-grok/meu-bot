@@ -400,6 +400,12 @@ dialog .zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: ta
 #wa-dialog .log { max-height: 120px; }
 /* Acervo (biblioteca de skills), acima da busca: mesma linha neutra, com ícone e contagem à direita. */
 .acervo-line .grow { flex: 1; }
+/* Atalhos recolhiveis da lateral: recolhido por padrao, estado no localStorage da janela. */
+.atalhos { display: flex; flex-direction: column; gap: 6px; }
+.atalhos-seta { display: inline-block; width: 10px; text-align: center; transition: transform .12s ease; color: var(--muted); }
+.atalhos-toggle[aria-expanded="true"] .atalhos-seta { transform: rotate(90deg); }
+/* Com o grupo recolhido, o que estava pendente la dentro vira um ponto aqui: recolher nao esconde aviso. */
+.atalhos-toggle .acervo-count:not(:empty) { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; }
 .acervo-icon { color: var(--accent); font-size: 12px; }
 .acervo-count { font-size: 11px; color: var(--muted); }
 /* Aviso de tutoriais na lateral: número num selo, como notificação; some quando não falta nada ou quando a pessoa desliga. */

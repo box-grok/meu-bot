@@ -87,7 +87,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
         for (const e of backup.enviados) {
           const r = el("div", "conta-evento");
           const kb = e.bytes / 1024;
-          r.append(el("strong", "", `${e.conjunto === "credenciais" ? "🔒 " : ""}${e.conjunto}`), el("span", "hint", `${e.caminho} · ${kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(0)} KB`}`));
+          r.append(el("strong", "", e.conjunto), el("span", "hint", `${e.caminho} · ${kb >= 1024 ? `${(kb / 1024).toFixed(1)} MB` : `${kb.toFixed(0)} KB`}`));
           bc.append(r);
         }
       } else if (backup.erro === null) bc.append(el("p", "hint", "Ainda não foi feita nenhuma cópia desta máquina."));
@@ -95,12 +95,12 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       // Senha do pacote de credenciais. Sem ela esse conjunto é pulado; os outros sobem normalmente.
       const sc = el("div", "admin-actions");
       if (backup.temSenha) {
-        sc.append(el("p", "hint audio-ok", "🔒 As credenciais da máquina sobem cifradas com a sua senha. Guarde-a fora do computador: sem ela esse pacote não abre."));
+        sc.append(el("p", "hint audio-ok", "As credenciais da máquina sobem cifradas com a sua senha. Guarde-a fora do computador: sem ela esse pacote não abre."));
         sc.append(btn("Trocar a senha", "btn-ghost", () => { const v = prompt("Nova senha do backup cifrado (mínimo 8 caracteres):") ?? ""; if (v.trim() !== "") void agir(async () => { backup = await deps.api.backupDadosSenha(v); }, "senha trocada; vale a partir da próxima cópia"); }));
         const lb = btn("Apagar a senha", "btn-ghost", () => { deps.armConfirm(lb, "Confirmar? as credenciais param de ser copiadas", () => { void agir(async () => { backup = await deps.api.backupDadosLimparSenha(); }, "senha apagada; as credenciais não sobem mais"); }); });
         sc.append(lb);
       } else {
-        sc.append(el("p", "hint bad-hint", "🔒 As credenciais da máquina (tokens e sessão do WhatsApp) não estão sendo copiadas: defina uma senha. Elas nunca sobem sem cifra."));
+        sc.append(el("p", "hint bad-hint", "As credenciais da máquina (tokens e sessão do WhatsApp) não estão sendo copiadas: defina uma senha. Elas nunca sobem sem cifra."));
         const inp = input("senha do backup cifrado", "", 200); inp.type = "password";
         sc.append(field("Senha", inp), btn("Definir a senha", "btn-primary", () => { if (inp.value.trim().length < 8) return; void agir(async () => { backup = await deps.api.backupDadosSenha(inp.value); }, "senha definida; as credenciais entram na próxima cópia"); }));
       }
