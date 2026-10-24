@@ -602,29 +602,35 @@ function paintSidebar(): void {
  * localStorage da janela, como a barra de cima. As linhas de conta ficam fora do grupo, porque o ponto verde
  * delas é sinal de estado e esconder isso por padrão esconderia problema.
  */
-function setAtalhosAbertos(abertos: boolean): void {
+function setAtalhosAbertos(abertos: boolean, opts: { lembrar: boolean } = { lembrar: true }): void {
   const grupo = document.getElementById("atalhos");
   const bt = document.getElementById("atalhos-toggle");
   if (grupo === null || bt === null) return;
   grupo.hidden = !abertos;
   bt.setAttribute("aria-expanded", abertos ? "true" : "false");
-  try { localStorage.setItem("atalhosAbertos", abertos ? "1" : "0"); } catch { /* opcional */ }
+  // `lembrar: false` quando quem fechou foi o Cmd+B: recolher tudo não deve apagar a escolha do grupo.
+  if (opts.lembrar) { try { localStorage.setItem("atalhosAbertos", abertos ? "1" : "0"); } catch { /* opcional */ } }
   paintAtalhosAviso();
 }
-/** Recolhido, o que estava pendente lá dentro (Finanças, Tutoriais…) vira um número no próprio botão. */
+/**
+ * Recolhido, pendencia la dentro vira um ponto no chevron, para a faixa fina nao virar ruido.
+ *
+ * So conta o que esta marcado com `data-pendencia` no HTML (Financas e Tutoriais, que sao "N para confirmar" e
+ * "N para fazer"). Os outros contadores sao estado, nao pendencia: "33 skills" do Acervo, "2 abertos" do
+ * Terminal, "1 aba" do Navegador. Somar todos dava 35 onde o certo era 2.
+ */
 function paintAtalhosAviso(): void {
   const grupo = document.getElementById("atalhos");
-  const aviso = document.getElementById("atalhos-aviso");
-  if (grupo === null || aviso === null) return;
-  if (!grupo.hidden) { aviso.textContent = ""; return; }
-  let n = 0;
-  for (const b of grupo.querySelectorAll<HTMLElement>(".acervo-count")) {
+  const ponto = document.querySelector<HTMLElement>(".atalhos-dot");
+  if (grupo === null || ponto === null) return;
+  if (grupo.hidden === false) { ponto.hidden = true; return; }
+  let pendente = false;
+  for (const b of grupo.querySelectorAll<HTMLElement>("[data-pendencia]")) {
     const linha = b.closest<HTMLElement>(".acervo-line");
-    if (linha?.hidden === true) continue; // atalho escondido por licença não conta
-    const m = /^(\d+)/.exec((b.textContent ?? "").trim());
-    if (m) n += Number(m[1]);
+    if (linha !== null && linha.hidden !== false) continue; // atalho escondido por licenca nao conta
+    if (/^\d+/.test((b.textContent ?? "").trim())) { pendente = true; break; }
   }
-  aviso.textContent = n > 0 ? String(n) : "";
+  ponto.hidden = !pendente;
 }
 /**
  * Um padrão só para toda a moldura: **Cmd+B** recolhe (ou mostra) de uma vez a barra de cima, os atalhos da
@@ -636,8 +642,13 @@ function paintAtalhosAviso(): void {
 const interfaceRecolhida = (): boolean => document.body.classList.contains("topbar-hidden");
 function setInterfaceRecolhida(recolhida: boolean): void {
   setTopbarHidden(recolhida);
-  setAtalhosAbertos(!recolhida);
+  // Ao mostrar de volta, o grupo volta ao que a pessoa escolheu, não forçado aberto: a preferência dela manda.
+  setAtalhosAbertos(recolhida ? false : atalhosLembrado(), { lembrar: recolhida ? false : true });
   toggleSidebar(!recolhida);
+}
+/** O que a pessoa escolheu para o grupo; padrão recolhido. */
+function atalhosLembrado(): boolean {
+  try { return localStorage.getItem("atalhosAbertos") === "1"; } catch { return false; }
 }
 
 function ligarAtalhos(): void {
@@ -3437,28 +3448,32 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
   void ligarWaGroup(g);
 }
 /**
- * "Limpar histórico" de um grupo, confirmado na própria lista (mesmo padrão da conversa). Grupo não tem contato
- * único, então a caixa do CRM é escolhida aqui na primeira vez; o vínculo fica gravado e não pergunta de novo.
+ * "Limpar histórico" de um grupo: o menu já limpa, sem perguntar (escolha do dono). A caixa embaixo
+ * do grupo só mostra o andamento e, quando é o caso, o motivo de não ter limpado. A conversa vai
+ * para o CRM antes; se isso falhar, nada é limpo, que é o que torna o clique direto seguro.
  */
 type WaGroupClear = {
   jid: string; nome: string;
-  fase: "plano" | "confirmar" | "rodando";
-  vazio: boolean; err: string | null;
+  fase: "plano" | "parado" | "rodando";
+  err: string | null;
   passo: string;
 };
 let waGroupClear: WaGroupClear | null = null;
 
 async function startWaGroupClear(g: WhatsappGroup): Promise<void> {
   const base = { jid: g.jid, nome: waGroupTitle(g), passo: "" };
-  waGroupClear = { ...base, fase: "plano", vazio: false, err: null };
+  waGroupClear = { ...base, fase: "plano", err: null };
   renderSidebar();
   try {
     const plano = await window.meuBot.whatsappGroupClearPlan(g.jid);
     if (waGroupClear?.jid !== g.jid) return;
-    waGroupClear = { ...base, fase: "confirmar", vazio: plano.sessoes === 0, err: plano.sessoes === 0 ? "O agente ainda não tem histórico neste grupo." : null };
+    // Sem histórico não há o que limpar: avisa em vez de rodar à toa.
+    if (plano.sessoes === 0) { waGroupClear = { ...base, fase: "parado", err: "O agente ainda não tem histórico neste grupo." }; renderSidebar(); return; }
+    void runWaGroupClear({ ...base, fase: "rodando", err: null });
+    return;
   } catch (err) {
     if (waGroupClear?.jid !== g.jid) return;
-    waGroupClear = { ...base, fase: "confirmar", vazio: true, err: ipcErrorText(err) };
+    waGroupClear = { ...base, fase: "parado", err: ipcErrorText(err) };
   }
   renderSidebar();
 }
@@ -3480,27 +3495,22 @@ async function runWaGroupClear(c: WaGroupClear): Promise<void> {
     void listarWaGroups();
   } catch (err) {
     if (waGroupClear?.jid !== c.jid) return;
-    waGroupClear = { ...c, fase: "confirmar", err: ipcErrorText(err) };
+    waGroupClear = { ...c, fase: "parado", err: ipcErrorText(err) };
   }
   renderSidebar();
 }
 
-/** A caixa embaixo do grupo: confirmação, andamento e erro. */
+/** Só andamento e motivo de parada: a confirmação saiu, o menu limpa direto. */
 function waGroupClearBox(c: WaGroupClear): HTMLElement {
   const box = el("div", "wa-clear");
   if (c.fase === "plano") { box.append(el("span", "wa-clear-text", "Consultando…")); return box; }
   if (c.fase === "rodando") { box.append(el("span", "wa-clear-text", c.passo)); return box; }
+  // Parado: nada foi limpo. Diz por quê e deixa a pessoa fechar o aviso.
+  box.append(el("span", "wa-clear-text wa-clear-err", c.err ?? "Não deu para limpar."));
   const acoes = el("div", "wa-clear-actions");
-  const cancelar = el("button", "btn", "Cancelar"); cancelar.type = "button";
-  cancelar.addEventListener("click", () => { waGroupClear = null; renderSidebar(); });
-
-  box.append(el("strong", "", `Limpar o histórico de "${c.nome}"?`));
-  box.append(el("span", "wa-clear-text", "O agente esquece o que foi conversado neste grupo e recomeça do zero. As mensagens no WhatsApp das pessoas não mudam."));
-  if (crmProprio()) box.append(el("span", "wa-clear-text", "Antes, a conversa vai para a caixa deste grupo no CRM (transcrição + resumo); na primeira vez a caixa é aberta sozinha no pipeline padrão. Se não for guardada, nada é limpo."));
-  if (c.err !== null) box.append(el("span", "wa-clear-text wa-clear-err", c.err));
-  acoes.append(cancelar);
-  if (!c.vazio) { const go = el("button", "btn btn-bad", "Limpar"); go.type = "button"; go.addEventListener("click", () => { void runWaGroupClear(c); }); acoes.append(go); }
-  box.append(acoes);
+  const ok = el("button", "btn", "Entendi"); ok.type = "button";
+  ok.addEventListener("click", () => { waGroupClear = null; renderSidebar(); });
+  acoes.append(ok); box.append(acoes);
   return box;
 }
 

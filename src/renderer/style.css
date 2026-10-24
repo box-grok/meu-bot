@@ -400,12 +400,17 @@ dialog .zoom-pct { min-width: 44px; text-align: center; font-variant-numeric: ta
 #wa-dialog .log { max-height: 120px; }
 /* Acervo (biblioteca de skills), acima da busca: mesma linha neutra, com ícone e contagem à direita. */
 .acervo-line .grow { flex: 1; }
-/* Atalhos recolhiveis da lateral: recolhido por padrao, estado no localStorage da janela. */
+/* Contas e atalhos da lateral num grupo recolhivel: faixa fina com um chevron, sem rotulo e sem contador. */
 .atalhos { display: flex; flex-direction: column; gap: 6px; }
-.atalhos-seta { display: inline-block; width: 10px; text-align: center; transition: transform .12s ease; color: var(--muted); }
-.atalhos-toggle[aria-expanded="true"] .atalhos-seta { transform: rotate(90deg); }
-/* Com o grupo recolhido, o que estava pendente la dentro vira um ponto aqui: recolher nao esconde aviso. */
-.atalhos-toggle .acervo-count:not(:empty) { background: var(--accent); color: #fff; border-radius: 999px; padding: 0 6px; font-size: 11px; }
+/* `display: flex` vence o `[hidden]` do navegador; sem esta linha o grupo nunca some (mesmo caso de .sidebar). */
+.atalhos[hidden] { display: none; }
+.atalhos-toggle { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 16px; padding: 0; border: 0; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px; }
+.atalhos-toggle:hover { background: var(--bg); color: var(--fg); }
+.atalhos-seta { display: inline-block; font-size: 10px; line-height: 1; transition: transform .12s ease; }
+.atalhos-toggle[aria-expanded="false"] .atalhos-seta { transform: rotate(-90deg); }
+/* Recolhido, pendencia la dentro vira um ponto; numero viraria ruido numa faixa de 16px. */
+.atalhos-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.atalhos-dot[hidden] { display: none; }
 .acervo-icon { color: var(--accent); font-size: 12px; }
 .acervo-count { font-size: 11px; color: var(--muted); }
 /* Aviso de tutoriais na lateral: número num selo, como notificação; some quando não falta nada ou quando a pessoa desliga. */

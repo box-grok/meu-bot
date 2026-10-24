@@ -39,3 +39,10 @@ test("menu do grupo: ligar (desligado) ou desligar, quem pode conversar, copiar 
   assert.equal(waGroupAgente({ state: { agente: "x" } }), "desligado");
   assert.equal(waGroupAgente(null), "desligado");
 });
+
+test("reticências dizem se confirma: conversa pergunta, grupo limpa direto", async () => {
+  const { waMenuTemplate, waGroupMenuTemplate } = await import("../../dist/main/wa-menu.js");
+  const rotulo = (es, acao) => es.find((e) => "action" in e && e.action === acao)?.label;
+  assert.equal(rotulo(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: false }), "clear"), "Limpar histórico…");
+  assert.equal(rotulo(waGroupMenuTemplate("mencao"), "group-clear"), "Limpar histórico");
+});

@@ -65,22 +65,22 @@
   <div class="body">
     <aside id="sidebar" class="sidebar" hidden>
       <div class="sidebar-head">
-        <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do agente desta máquina (Hermes ou OpenClaw): clique para ver o estado ou parear"></button>
-        <div id="cl-line" class="wa-line cl-line" hidden title="Conta do Claude Code nesta máquina"><span class="dot"></span><span id="cl-line-text" class="grow"></span><button type="button" id="cl-line-btn" class="btn btn-ghost btn-small">sair</button></div>
-        <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
-        <!-- Atalhos recolhiveis: 7 linhas que comiam a altura da lista. Recolhido por padrao; o estado fica
-             no localStorage da janela, como a barra de cima. As linhas de conta acima ficam sempre visiveis. -->
-        <button type="button" id="atalhos-toggle" class="wa-line atalhos-toggle" aria-expanded="false" aria-controls="atalhos" title="Mostrar ou esconder os atalhos (Acervo, Conta Google, Terminal, Navegador…)"><span class="atalhos-seta">▸</span><span class="grow">Atalhos</span><span id="atalhos-aviso" class="acervo-count"></span></button>
+        <!-- Tudo acima do seletor de lista (contas e atalhos) recolhe junto, por um chevron discreto: sao dez
+             linhas que comiam a altura da lista. O estado fica no localStorage da janela, como a barra de cima. -->
+        <button type="button" id="atalhos-toggle" class="atalhos-toggle" aria-expanded="false" aria-controls="atalhos" title="Recolher ou mostrar as contas e os atalhos"><span class="atalhos-seta">▾</span><span class="atalhos-dot" hidden></span></button>
         <div id="atalhos" class="atalhos" hidden>
-        <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
+          <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do agente desta máquina (Hermes ou OpenClaw): clique para ver o estado ou parear"></button>
+          <div id="cl-line" class="wa-line cl-line" hidden title="Conta do Claude Code nesta máquina"><span class="dot"></span><span id="cl-line-text" class="grow"></span><button type="button" id="cl-line-btn" class="btn btn-ghost btn-small">sair</button></div>
+          <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
+          <!-- Acervo: biblioteca de skills, acima da busca. Mesma dinâmica do WhatsApp: cada item vira um pedido pronto ao agente. -->
           <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
           <button type="button" id="conta-google-line" class="wa-line acervo-line" title="Conta Google: login, Gmail, Agenda e planilhas"><span class="acervo-icon">G</span><span class="grow">Conta Google</span></button>
-          <button type="button" id="financas-line" class="wa-line acervo-line" title="Finanças: o que o agente lançou e o que depende de você (produto meu-bot-finance)" hidden><span class="acervo-icon">R$</span><span class="grow">Finanças</span><span id="financas-count" class="acervo-count"></span></button>
+          <button type="button" id="financas-line" class="wa-line acervo-line" title="Finanças: o que o agente lançou e o que depende de você (produto meu-bot-finance)" hidden><span class="acervo-icon">R$</span><span class="grow">Finanças</span><span id="financas-count" class="acervo-count" data-pendencia></span></button>
           <button type="button" id="terminal-line" class="wa-line acervo-line" title="Terminal nesta máquina (Cmd+J; Option+clique ou Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
           <button type="button" id="navegador-line" class="wa-line acervo-line" title="Navegador dentro do meu-bot, com extensões do Chrome; o agente pode navegar por você (plano Pro)"><span class="acervo-icon">🌐</span><span class="grow">Navegador</span><span id="navegador-count" class="acervo-count">Pro</span></button>
           <!-- meu-bot-admin: Produtos (MVPs de bots verticais); escondido no meu-bot da pessoa (admin.css mostra). -->
           <button type="button" id="produtos-line" class="wa-line acervo-line" title="Produtos: os apps que saem deste código e os MVPs em gestação" hidden><span class="acervo-icon">◆</span><span class="grow">Produtos</span></button>
-          <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count"></span></button>
+          <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count" data-pendencia></span></button>
         </div>
         <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
         <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>
