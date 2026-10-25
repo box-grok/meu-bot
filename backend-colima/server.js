@@ -283,6 +283,20 @@ function log(...a) { console.log(new Date().toISOString(), '[backend]', ...a); }
 let lastLimitsWhy = null;
 /** Conta do Claude que respondeu por último (id); é a que o /status descreve. */
 let ultimaConta = 'padrao';
+/**
+ * Renova o cache de limites da conta pela API de uso (quando está velho) e passa o resultado ao registro de contas.
+ * Devolve o motivo de refreshRateLimits. O `claude -p` não roda a status line; é daqui (e dos rate_limit_event do
+ * stream) que o uso de cada conta vem.
+ */
+async function atualizarUsoPelaApi(c, maxAgeS) {
+  const configDir = contas.configDir(c);
+  const why = await refreshRateLimits(maxAgeS === undefined ? { configDir } : { configDir, maxAgeS });
+  const s = readClaudeStatus(os.homedir(), configDir);
+  if (s.sessionPct !== null || s.weeklyPct !== null) {
+    contas.registrarUso(c.id, { sessao: s.sessionPct !== null ? { pct: s.sessionPct, resets: s.sessionResets } : undefined, semanal: s.weeklyPct !== null ? { pct: s.weeklyPct, resets: s.weeklyResets } : undefined });
+  }
+  return why;
+}
 /** "HH:MM" no fuso da máquina para um epoch em segundos. */
 const horaLocal = (epochS) => new Date(epochS * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'America/Sao_Paulo' });
 
@@ -737,11 +751,40 @@ const server = http.createServer(async (req, res) => {
   // Status line do app: conta e limites do Claude Code desta máquina. O cache de limites é renovado aqui
   // quando está velho (o claude -p não roda a status line); o motivo de não renovar vai ao log quando muda.
   if (url.pathname === '/v1/meu-bot/status' && req.method === 'GET') {
-    refreshRateLimits().then((why) => {
-      if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta: ${why}`); }
-      json(res, 200, { claude: readClaudeStatus(), model: currentModelLabel(), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })) });
+    // A conta descrita é a que respondeu por último (ou a que responderia agora): e-mail e limites dela.
+    const c = contas.conta(ultimaConta) || contas.escolher({ permitirAviso: true }) || contas.conta('padrao');
+    atualizarUsoPelaApi(c).then((why) => {
+      if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta ${c.id}: ${why}`); }
+      json(res, 200, { claude: readClaudeStatus(os.homedir(), contas.configDir(c)), model: currentModelLabel(c), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })), contas: contas.resumo(c.id) });
     });
     return;
+  }
+  // Contas do Claude desta máquina (contas-claude.js): listar, criar (pasta isolada com o histórico compartilhado),
+  // ajustar, reordenar, remover, "usar agora", conferir o login e os limiares do rodízio. O app roda o
+  // `claude auth login` na pasta que o POST devolve.
+  if (url.pathname === '/v1/meu-bot/contas-claude' && req.method === 'GET') return json(res, 200, contas.listar());
+  if (url.pathname.startsWith('/v1/meu-bot/contas-claude') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
+    let p = {};
+    if (req.method !== 'DELETE') { try { p = JSON.parse(await readBody(req, 16 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); } }
+    const erro = (e) => json(res, 400, { error: { message: e.message, type: 'invalid_request_error' } });
+    try {
+      if (url.pathname === '/v1/meu-bot/contas-claude' && req.method === 'POST') {
+        const c = contas.criar(typeof p.rotulo === 'string' ? p.rotulo : '');
+        auditar('conta-claude.criada', c.rotulo);
+        return json(res, 200, { conta: contas.vista(c), ...contas.listar() });
+      }
+      if (url.pathname === '/v1/meu-bot/contas-claude/limiares' && req.method === 'PUT') { contas.definirLimiares(p); return json(res, 200, contas.listar()); }
+      if (url.pathname === '/v1/meu-bot/contas-claude/ordem' && req.method === 'PUT') { contas.reordenar(p.ids); return json(res, 200, contas.listar()); }
+      const m = /^\/v1\/meu-bot\/contas-claude\/(padrao|c-[a-f0-9]{8})(?:\/(usar-agora|conferir))?$/.exec(url.pathname);
+      if (m === null) return json(res, 404, { error: { message: 'conta inválida', type: 'invalid_request_error' } });
+      const c = contas.conta(m[1]);
+      if (c === null) return json(res, 404, { error: { message: 'conta não existe', type: 'invalid_request_error' } });
+      if (m[2] === 'usar-agora' && req.method === 'POST') { contas.usarAgora(c.id); auditar('conta-claude.usar-agora', c.rotulo); return json(res, 200, contas.listar()); }
+      if (m[2] === 'conferir' && req.method === 'POST') { contas.conferir(c.id); await atualizarUsoPelaApi(c, 0); return json(res, 200, contas.listar()); }
+      if (m[2] === undefined && req.method === 'PATCH') { contas.atualizar(c.id, p); return json(res, 200, contas.listar()); }
+      if (m[2] === undefined && req.method === 'DELETE') { contas.remover(c.id); auditar('conta-claude.removida', c.rotulo); return json(res, 200, contas.listar()); }
+      return json(res, 404, { error: { message: `rota desconhecida: ${req.method} ${url.pathname}`, type: 'invalid_request_error' } });
+    } catch (e) { return erro(e); }
   }
   if (url.pathname === '/v1/models' && req.method === 'GET') {
     return json(res, 200, { object: 'list', data: listedModels() });

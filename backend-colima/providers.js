@@ -96,11 +96,12 @@ function chain(providers, requested) {
 const openaiModels = (providers) => providers.filter((p) => p.type === 'openai' && p.available);
 
 /** Chunk SSE que avisa o cliente da troca de provedor (delta vazio; o aviso vai em x_meu_bot). */
-function fallbackChunk(id, created, model, from, to, reason) {
+/** Aviso de troca no stream. `tipo` opcional ('conta' = outra conta do Claude, mesma conversa; sem tipo = outro provedor/modelo). */
+function fallbackChunk(id, created, model, from, to, reason, tipo) {
   return {
     id, object: 'chat.completion.chunk', created, model,
     choices: [{ index: 0, delta: { content: '' }, finish_reason: null }],
-    x_meu_bot: { fallback: { from, to, reason: String(reason || '').slice(0, 300) } },
+    x_meu_bot: { fallback: { from, to, reason: String(reason || '').slice(0, 300), ...(typeof tipo === 'string' && tipo !== '' ? { tipo } : {}) } },
   };
 }
 
