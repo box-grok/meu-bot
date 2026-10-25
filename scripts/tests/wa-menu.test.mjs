@@ -37,8 +37,8 @@ test("menu do grupo: ligar (desligado) ou desligar, quem pode conversar, copiar 
   const { waGroupMenuTemplate, waGroupAgente } = await import("../../dist/main/wa-menu.js");
   const acts = (a) => waGroupMenuTemplate(a).filter((e) => !("separator" in e)).map((e) => e.action);
   // Limpar e Excluir sempre, ligado ou não (pedido do dono, 25 out): excluir só tira da lista, o agente não muda.
-  assert.deepEqual(acts("desligado"), ["group-on", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
-  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts("desligado"), ["group-on", "group-who", "group-copy-id", "group-rename", "group-clear", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "group-rename", "group-clear", "group-delete", "groups-refresh"]);
   assert.equal(waGroupAgente({ state: { agente: "sempre" } }), "sempre");
   assert.equal(waGroupAgente({ state: { agente: "x" } }), "desligado");
   assert.equal(waGroupAgente(null), "desligado");
@@ -76,9 +76,9 @@ test("sem a capacidade pausar (Hermes): sem Pausar, com Limpar histórico, conve
 test("menu de grupo sem a capacidade grupos (Hermes): Copiar ID, Limpar histórico, Excluir da lista e reler a lista", async () => {
   const { waGroupMenuTemplate } = await import("../../dist/main/wa-menu.js");
   const acts = (cap) => waGroupMenuTemplate("sempre", cap).filter((e) => !("separator" in e)).map((e) => e.action);
-  assert.deepEqual(acts(HERMES), ["group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
-  assert.deepEqual(acts(PICOCLAW), ["group-copy-id", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts(HERMES), ["group-copy-id", "group-rename", "group-clear", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts(PICOCLAW), ["group-copy-id", "group-rename", "group-delete", "groups-refresh"]);
   // Quando o Hermes ganhar `grupos`, o menu passa a oferecer ligar/desligar e quem conversa sem mudar aqui.
-  assert.deepEqual(acts({ ...HERMES, grupos: true }), ["group-off", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts({ ...HERMES, grupos: true }), ["group-off", "group-who", "group-copy-id", "group-rename", "group-clear", "group-delete", "groups-refresh"]);
   assert.ok(waGroupMenuTemplate("sempre", null).some((e) => "action" in e && e.action === "group-off"), "capacidade desconhecida vale o menu completo");
 });

@@ -5,7 +5,8 @@
  *
  * Arquivo: { "archived": { "<número>": "<ISO>" }, "deleted": { "<número>": "<ISO da exclusão>" },
  *           "names": { "<número>": { "name": "<pushname>", "alias": "<apelido>", "at": "<ISO>" } },
- *           "groupsDeleted": { "<jid>@g.us": "<ISO da exclusão>" } }.
+ *           "groupsDeleted": { "<jid>@g.us": "<ISO da exclusão>" },
+ *           "groupNames": { "<jid>@g.us": { "alias": "<apelido>", "at": "<ISO>" } } }.
  * Excluída fica oculta enquanto `updatedAt <= deletedAt`; mensagem nova do contato traz a conversa de volta nos dois
  * apps. O nome em cache poupa a leitura do histórico só para saber quem é; o apelido vence o nome na lista.
  * Grupo excluído segue a mesma regra pela sessão do agente nele (sem sessão = continua excluído até a primeira).
@@ -16,7 +17,7 @@ import { JID_RE } from "./whatsapp-grupos-core";
 export const WA_MARKS_FILE = "$HOME/.local/share/meu-bot/whatsapp-lista.json";
 
 export interface WaName { name: string | null; alias: string | null; at: string }
-export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string> }
+export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> }
 /** Um ajuste: `at` só a migração do localStorage manda (sem ele, a máquina usa a hora dela); `name`/`alias` vazios apagam. */
 export type { WaGroupMarkPatch, WaMarkPatch };
 const isGroupPatch = (p: WaMarkPatch | WaGroupMarkPatch): p is WaGroupMarkPatch => "jid" in p;
@@ -53,10 +54,21 @@ function parseNames(v: unknown): Record<string, WaName> {
   return out;
 }
 
+function parseGroupNames(v: unknown): Record<string, { alias: string; at: string }> {
+  const out: Record<string, { alias: string; at: string }> = {};
+  if (!isObj(v)) return out;
+  for (const [k, e] of Object.entries(v)) {
+    if (!JID_RE.test(k) || !isObj(e)) continue;
+    const alias = nameOrNull(e.alias);
+    if (alias !== null) out[k] = { alias, at: isoOrNull(e.at) ?? "" };
+  }
+  return out;
+}
+
 /** O que veio da máquina, saneado (lixo ou arquivo corrompido = sem marcas). */
 export function parseWaMarks(raw: unknown): WaMarks {
-  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {} };
-  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE) };
+  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} };
+  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames) };
 }
 
 /**
@@ -66,7 +78,7 @@ export function parseWaMarks(raw: unknown): WaMarks {
 export function applyWaGroupMarks(grupos: readonly WhatsappGroup[], marks: WaMarks): WhatsappGroup[] {
   return grupos.map((g) => {
     const del = marks.groupsDeleted[g.jid];
-    return { ...g, deleted: del !== undefined && (g.updatedAt === null || Date.parse(g.updatedAt) <= Date.parse(del)) };
+    return { ...g, apelido: marks.groupNames[g.jid]?.alias ?? null, deleted: del !== undefined && (g.updatedAt === null || Date.parse(g.updatedAt) <= Date.parse(del)) };
   });
 }
 
@@ -113,7 +125,11 @@ export function parseWaMarkPatches(payload: unknown): WaMarkPatch[] {
  */
 export function waMarkSh(patches: readonly (WaMarkPatch | WaGroupMarkPatch)[]): string {
   for (const p of patches) {
-    if (isGroupPatch(p)) { if (!JID_RE.test(p.jid)) throw new Error("grupo inválido"); continue; }
+    if (isGroupPatch(p)) {
+      if (!JID_RE.test(p.jid)) throw new Error("grupo inválido");
+      if (p.alias !== undefined && (p.alias.length > NAME_MAX || /[\r\n]/.test(p.alias))) throw new Error("apelido inválido");
+      continue;
+    }
     if (!NUMBER_RE.test(p.number)) throw new Error("número inválido");
     for (const v of [p.name, p.alias]) if (v !== undefined && (v.length > NAME_MAX || /[\r\n]/.test(v))) throw new Error("nome inválido");
   }
@@ -131,12 +147,17 @@ arch = cur.get("archived") if isinstance(cur.get("archived"), dict) else {}
 dele = cur.get("deleted") if isinstance(cur.get("deleted"), dict) else {}
 names = cur.get("names") if isinstance(cur.get("names"), dict) else {}
 gdel = cur.get("groupsDeleted") if isinstance(cur.get("groupsDeleted"), dict) else {}
+gnames = cur.get("groupNames") if isinstance(cur.get("groupNames"), dict) else {}
 now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 for p in json.load(sys.stdin):
     at = p.get("at") or now
     if "jid" in p:
-        if p.get("deleted"): gdel[p["jid"]] = at
-        else: gdel.pop(p["jid"], None)
+        if "alias" in p:
+            if p["alias"]: gnames[p["jid"]] = {"alias": p["alias"], "at": at}
+            else: gnames.pop(p["jid"], None)
+        if "deleted" in p:
+            if p["deleted"]: gdel[p["jid"]] = at
+            else: gdel.pop(p["jid"], None)
         continue
     n = p["number"]
     if "archived" in p:
@@ -153,7 +174,7 @@ for p in json.load(sys.stdin):
         if e.get("name") or e.get("alias"): names[n] = e
         else: names.pop(n, None)
 tmp = f + ".tmp"
-with open(tmp, "w") as o: json.dump({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel}, o, indent=1, ensure_ascii=False)
+with open(tmp, "w") as o: json.dump({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel, "groupNames": gnames}, o, indent=1, ensure_ascii=False)
 os.chmod(tmp, 0o600); os.replace(tmp, f)
 print("MARKS=1")
 '

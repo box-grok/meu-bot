@@ -7,20 +7,42 @@ const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, i
 
 test("parseWaMarks: só números de 8 a 15 dígitos com hora válida; lixo vira vazio", () => {
   const m = parseWaMarks({ archived: { "5511999990000": "2026-10-17T02:10:00Z", "abc": "2026-10-17T02:10:00Z", "5511999990001": "ontem" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, outro: 1 });
-  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {} });
-  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {} });
-  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {} });
-  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {} });
+  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {}, groupNames: {} });
+  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
+  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
+  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
   // grupos excluídos: só jid de grupo com hora válida
   assert.deepEqual(parseWaMarks({ groupsDeleted: { "120363427290582156@g.us": "2026-10-25T03:40:00Z", "5511999990000": "2026-10-25T03:40:00Z", "1203@g.us": "ontem" } }).groupsDeleted, { "120363427290582156@g.us": "2026-10-25T03:40:00Z" });
 });
 
 test("applyWaGroupMarks: excluído até o agente receber mensagem nova; sem sessão continua excluído; só a vista", () => {
   const grupo = (jid, updatedAt, agente = "desligado") => ({ jid, nome: null, membros: null, participantes: [], agente, sessionKey: updatedAt === null ? null : `agent:main:whatsapp:group:${jid}`, sessionId: null, transcript: null, updatedAt, agenteRespondeu: false, deleted: false });
-  const marks = { archived: {}, deleted: {}, names: {}, groupsDeleted: { "120363427290582156@g.us": "2026-10-25T03:40:00.000Z", "120363000000000001@g.us": "2026-10-25T03:40:00.000Z" } };
+  const marks = { archived: {}, deleted: {}, names: {}, groupsDeleted: { "120363427290582156@g.us": "2026-10-25T03:40:00.000Z", "120363000000000001@g.us": "2026-10-25T03:40:00.000Z" }, groupNames: { "120363000000000002@g.us": { alias: "MPT Diego", at: "2026-10-25T03:40:00.000Z" } } };
   const out = applyWaGroupMarks([grupo("120363427290582156@g.us", null), grupo("120363000000000001@g.us", "2026-10-25T03:41:00.000Z", "mencao"), grupo("120363000000000002@g.us", "2026-10-25T03:00:00.000Z")], marks);
   assert.deepEqual(out.map((g) => [g.deleted, g.agente]), [[true, "desligado"], [false, "mencao"], [false, "desligado"]]);
   assert.equal(applyWaGroupMarks([grupo("120363000000000001@g.us", "2026-10-25T03:40:00.000Z")], marks)[0].deleted, true, "na mesma hora ainda conta como excluído");
+  assert.deepEqual(out.map((g) => g.apelido), [null, null, "MPT Diego"], "o apelido vem da marca groupNames");
+});
+
+test("apelido de grupo: parse saneia, waMarkSh grava/apaga de verdade (python local) e recusa apelido inválido", async () => {
+  const { mkdtempSync, readFileSync, rmSync } = await import("node:fs");
+  const { execSync } = await import("node:child_process");
+  const path = await import("node:path"); const os = await import("node:os");
+  const J = "120363000000000002@g.us";
+  assert.deepEqual(parseWaMarks({ groupNames: { [J]: { alias: "  MPT   Diego ", at: "2026-10-25T03:40:00.000Z" }, "5511999990000": { alias: "x" }, [`${J}x`]: { alias: "y" }, "120363000000000003@g.us": { alias: "" } } }).groupNames, { [J]: { alias: "MPT Diego", at: "2026-10-25T03:40:00.000Z" } });
+  assert.throws(() => waMarkSh([{ jid: J, alias: "a".repeat(81) }]), /apelido inválido/);
+  assert.throws(() => waMarkSh([{ jid: J, alias: "linha\nquebrada" }]), /apelido inválido/);
+  const home = mkdtempSync(path.join(os.tmpdir(), "meu-bot-marks-"));
+  try {
+    const roda = (patches) => execSync("bash", { input: waMarkSh(patches), env: { ...process.env, HOME: home }, encoding: "utf8" });
+    assert.match(roda([{ jid: J, alias: "MPT Diego" }, { jid: "120363000000000001@g.us", deleted: true }]), /MARKS=1/);
+    const f = path.join(home, ".local", "share", "meu-bot", "whatsapp-lista.json");
+    let m = parseWaMarks(JSON.parse(readFileSync(f, "utf8")));
+    assert.equal(m.groupNames[J].alias, "MPT Diego"); assert.ok(m.groupsDeleted["120363000000000001@g.us"]);
+    roda([{ jid: J, alias: "" }]);
+    m = parseWaMarks(JSON.parse(readFileSync(f, "utf8")));
+    assert.deepEqual(m.groupNames, {}, "apelido vazio apaga"); assert.ok(m.groupsDeleted["120363000000000001@g.us"], "a exclusão do outro grupo fica");
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
 test("waMarkSh: marca de grupo vai no mesmo script (groupsDeleted) e recusa jid inválido", () => {

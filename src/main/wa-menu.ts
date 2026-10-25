@@ -78,6 +78,8 @@ export function waGroupMenuTemplate(agente: WhatsappGroupAgent, cap: WaMenuCaps 
       { label: "Quem pode conversar…", action: "group-who" } as WaGroupMenuEntry,
     ] : []),
     { label: "Copiar ID", action: "group-copy-id" },
+    // Apelido só na lista (marca na máquina): o nome vem do WhatsApp pelo cache da skill, e sem ele o grupo ficaria "sem nome".
+    { label: "Renomear", action: "group-rename" },
     // Zera a sessão do agente neste grupo (no Hermes, uma por remetente); antes, a conversa vai para uma caixa do CRM.
     // Sem reticências: no grupo o clique limpa direto, sem caixa de confirmação (na conversa ainda confirma).
     ...(pode.limparHistorico ? [{ label: "Limpar histórico", action: "group-clear" } as WaGroupMenuEntry] : []),

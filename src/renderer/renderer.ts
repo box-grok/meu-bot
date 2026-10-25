@@ -3529,7 +3529,7 @@ const waGrupoAlvoKey = (): string => `waGrupoAlvo:${windowHost}`;
 function waGroupsOpen(): boolean { try { return localStorage.getItem(waGroupsOpenKey()) !== "0"; } catch { return true; } }
 function loadGrupoAlvo(): string | null { try { return localStorage.getItem(waGrupoAlvoKey()); } catch { return null; } }
 function saveGrupoAlvo(jid: string): void { try { localStorage.setItem(waGrupoAlvoKey(), jid); } catch { /* opcional */ } }
-const waGroupTitle = (g: WhatsappGroup): string => g.nome ?? "Grupo sem nome";
+const waGroupTitle = (g: WhatsappGroup): string => g.apelido ?? g.nome ?? "Grupo sem nome";
 const WA_GROUP_AGENTE: Record<WhatsappGroup["agente"], string> = { mencao: "agente: só quando chamado", sempre: "agente: sempre", desligado: "agente desligado" };
 /** Nome de um número para a tela: apelido/pushname das conversas, senão o telefone formatado. */
 const waNumberLabel = (n: string): string => { const c = waChats.find((x) => x.number === n); const nome = c?.alias ?? c?.name ?? null; return nome !== null ? `${nome} (${fmtPhone(n)})` : fmtPhone(n); };
@@ -3609,7 +3609,19 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
   if (a === "group-clear") { void startWaGroupClear(g); return; }
   if (a === "group-delete") { void markWaGroup(g, true); return; }
   if (a === "group-restore") { void markWaGroup(g, false); return; }
+  if (a === "group-rename") { void renameWaGroup(g); return; }
   void ligarWaGroup(g);
+}
+/** Apelido do grupo (marca na máquina; os dois apps veem). Vazio apaga e volta ao nome do WhatsApp. */
+async function renameWaGroup(g: WhatsappGroup): Promise<void> {
+  const v = await perguntar(`Apelido do grupo${g.nome !== null ? ` (${g.nome})` : ""}:`, g.apelido ?? g.nome ?? "");
+  if (v === null) return;
+  const alias = v.replace(/\s+/g, " ").trim().slice(0, 80);
+  const apelido = alias === "" ? null : alias;
+  if (waGroups !== null) { waGroups = { ...waGroups, grupos: waGroups.grupos.map((x) => (x.jid === g.jid ? { ...x, apelido } : x)) }; cacheWrite("waGroups", waGroups); }
+  waGroupsMsg = null; afterWaGroups();
+  try { await window.meuBot.renameWhatsappGroup(g.jid, alias); }
+  catch (err) { waGroupsMsg = { text: `Não deu para renomear "${waGroupTitle(g)}": ${ipcErrorText(err)}`, bad: true }; void refreshWaGroups(); }
 }
 /** Excluir/restaurar na lista: marca na máquina e some/volta na hora (otimista); em erro, relê os grupos e avisa. */
 async function markWaGroup(g: WhatsappGroup, deleted: boolean): Promise<void> {

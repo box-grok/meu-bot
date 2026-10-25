@@ -86,6 +86,7 @@ const sharedApi: MeuBotSharedApi = {
   clearWhatsapp: (number: string, includeShared: boolean) => ipcRenderer.invoke("whatsapp:clear", { number, includeShared }),
   markWhatsapp: (marks: WaMarkPatch[]) => ipcRenderer.invoke("whatsapp:mark", { marks }),
   markWhatsappGroup: (jid: string, deleted: boolean) => ipcRenderer.invoke("whatsapp:group-mark", { jid, deleted }),
+  renameWhatsappGroup: (jid: string, alias: string) => ipcRenderer.invoke("whatsapp:group-mark", { jid, alias }),
   learnWhatsappNames: (numbers: string[]) => ipcRenderer.invoke("whatsapp:names", { numbers }),
   exportWhatsapp: (number: string, format: ExportFormat) => ipcRenderer.invoke("whatsapp:export", { number, format }),
   claudeAuth: () => ipcRenderer.invoke("claude-login:auth", {}),

@@ -7,7 +7,7 @@
  * tipos do contrato. É a fronteira dona desse formato: o renderer nunca vê o esquema do Hermes.
  */
 import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../shared/ipc";
-import { JID_RE } from "./whatsapp-grupos-core";
+import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
 
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -392,15 +392,18 @@ const msDe = (v: unknown): number => { const n = typeof v === "number" ? v : typ
  * Grupos da máquina com Hermes no contrato do app: a lista admitida (config) mais os grupos com sessão no state.db
  * (HERMES_GROUPS_PY; uma sessão por remetente, a mais recente dá hora, chave e id). `quemAciona` é a lista única
  * das conversas diretas (quem chama o agente nos grupos é quem ele responde no privado); nunca "herdado", porque
- * no Hermes não há lista própria para herdar de. Sem a skill whatsapp-grupos (é do OpenClaw) e sem cache.
+ * no Hermes não há lista própria para herdar de. O Hermes guarda a sessão de grupo com o id como nome, então o nome
+ * vem do cache da skill whatsapp-grupos quando ele existe na máquina (`cache`); sem ele, fica sem nome (apelido na tela).
  */
-export function gruposHermes(cfg: HermesGroupCfg | null, data: unknown, self: string | null, quemAciona: string[] | "todos"): WhatsappGroups {
+export function gruposHermes(cfg: HermesGroupCfg | null, data: unknown, self: string | null, quemAciona: string[] | "todos", cache: unknown = null): WhatsappGroups {
   const byJid = new Map<string, WhatsappGroup>();
   const get = (jid: string): WhatsappGroup => {
     let g = byJid.get(jid);
-    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false, deleted: false }; byJid.set(jid, g); }
+    if (g === undefined) { g = { jid, nome: null, apelido: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false, deleted: false }; byJid.set(jid, g); }
     return g;
   };
+  const lido = parseCacheGrupos(cache);
+  for (const c of lido.grupos) { const g = get(c.jid); if (c.nome !== "") g.nome = c.nome; g.membros = c.membros; g.participantes = c.participantes; }
   const rows = isObj(data) && Array.isArray(data.sessions) ? data.sessions : [];
   for (const s of rows) {
     if (!isObj(s) || typeof s.key !== "string") continue;
@@ -416,5 +419,5 @@ export function gruposHermes(cfg: HermesGroupCfg | null, data: unknown, self: st
   for (const g of byJid.values()) g.agente = hermesEstadoDoGrupo(cfg, g.jid);
   const peso = (g: WhatsappGroup): number => (g.agente === "desligado" ? 1 : 0);
   const grupos = [...byJid.values()].sort((a, b) => peso(a) - peso(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || (a.nome ?? a.jid).localeCompare(b.nome ?? b.jid));
-  return { grupos, quemAciona, quemAcionaHerdado: false, todosAdmitidos: hermesTodosAdmitidos(cfg), cacheEm: null, skill: false, self: self === null ? null : (self.split(/[:@]/)[0] ?? "").replace(/\D/g, "") || null };
+  return { grupos, quemAciona, quemAcionaHerdado: false, todosAdmitidos: hermesTodosAdmitidos(cfg), cacheEm: lido.em, skill: false, self: self === null ? null : (self.split(/[:@]/)[0] ?? "").replace(/\D/g, "") || null };
 }

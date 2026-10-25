@@ -204,4 +204,12 @@ test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recent
   ]);
   assert.deepEqual([g.quemAciona, g.quemAcionaHerdado, g.todosAdmitidos, g.skill, g.cacheEm, g.self], [["5521988880000"], false, false, false, null, "5521900000000"]);
   assert.deepEqual(gruposHermes(null, null, null, "todos").grupos, []);
+  // O Hermes guarda a sessão de grupo com o id como nome ("120363…"): o nome vem do cache da skill quando ele existe.
+  const semNome = { sessions: [{ id: "20260928_094822_2f280d1d", key: `agent:main:whatsapp:group:${C}:5521923670743`, name: C.split("@")[0], user: "Lucas", count: 283, started: 1759045702, last: 1761300000, hidden: 0, ended: null }] };
+  const cache = { atualizadoEm: "2026-10-25T04:26:25.376Z", grupos: [{ jid: C, nome: "(Diego) MPT - Produção de Conteúdo", membros: 2, participantes: [{ jid: "5521923670743@s.whatsapp.net", phone: "5521923670743" }] }] };
+  const h = gruposHermes(cfg, semNome, null, "todos", cache);
+  const hc = h.grupos.find((x) => x.jid === C);
+  assert.deepEqual([hc.nome, hc.membros, hc.participantes, hc.sessionId], ["(Diego) MPT - Produção de Conteúdo", 2, ["5521923670743"], "20260928_094822_2f280d1d"]);
+  assert.equal(h.cacheEm, "2026-10-25T04:26:25.376Z");
+  assert.equal(gruposHermes(cfg, semNome, null, "todos").grupos.find((x) => x.jid === C).nome, null, "sem cache, sem nome (o id não vira nome)");
 });

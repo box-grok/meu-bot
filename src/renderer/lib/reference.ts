@@ -39,8 +39,8 @@ export function waReferenceText(chat: Pick<WhatsappChat, "number" | "sessionKeys
  * Grupo do WhatsApp: nome, jid, chave e UUID da sessão do OpenClaw e, quando achada, a transcrição do Claude Code
  * (o .jsonl que o agente grava na máquina), numa segunda linha.
  */
-export function grupoReferenceText(g: Pick<WhatsappGroup, "jid" | "nome" | "sessionKey" | "sessionId" | "transcript">, machine: string): string {
-  const head = `whatsapp · ${machine} · grupo "${g.nome ?? "sem nome"}" · ${g.jid}`;
+export function grupoReferenceText(g: Pick<WhatsappGroup, "jid" | "nome" | "sessionKey" | "sessionId" | "transcript"> & { apelido?: string | null }, machine: string): string {
+  const head = `whatsapp · ${machine} · grupo "${g.apelido ?? g.nome ?? "sem nome"}" · ${g.jid}`;
   if (g.sessionKey === null) return `${head} · (sem sessão no OpenClaw ainda: o agente não recebeu nada deste grupo)`;
   const linha = `${head} · ${g.sessionKey}${g.sessionId === null ? "" : ` · sessão ${g.sessionId}`}`;
   return g.transcript === null ? linha : `${linha}\nwhatsapp · ${machine} · ${g.transcript}`;

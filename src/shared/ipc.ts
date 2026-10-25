@@ -574,7 +574,8 @@ export interface WhatsappChat {
 /** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
 export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string }
 /** Marca de um grupo (`<dígitos>@g.us`): só excluído/restaurado; `at` como na conversa. */
-export interface WaGroupMarkPatch { jid: string; deleted: boolean; at?: string }
+/** Marca de grupo: excluir/restaurar da lista e/ou o apelido ("" apaga). */
+export interface WaGroupMarkPatch { jid: string; deleted?: boolean; alias?: string; at?: string }
 
 /** Tutorial 7 · objetivo do WhatsApp: a escolha da pessoa (rótulo do cartão + frase livre; "outro" exige a frase). */
 export interface ObjectiveChoice { id: string; label: string; text: string }
@@ -647,6 +648,8 @@ export interface WhatsappGroup {
   /** "<dígitos>@g.us". */
   jid: string;
   nome: string | null;
+  /** Apelido dado na tela (marca na máquina, whatsapp-lista.json); vence o nome na lista e no título. */
+  apelido: string | null;
   /** Do cache da skill whatsapp-grupos; null sem cache. */
   membros: number | null;
   /** Números (só dígitos) dos membros, do cache; vazio sem cache. */
@@ -979,7 +982,7 @@ export interface StoredConversationView {
 }
 
 /** Menu "…" de um grupo na área "Grupos". */
-export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-clear" | "group-delete" | "group-restore" | "groups-refresh";
+export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-rename" | "group-clear" | "group-delete" | "group-restore" | "groups-refresh";
 export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
@@ -1158,6 +1161,8 @@ export interface MeuBotSharedApi {
   markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
   /** Excluir/restaurar um grupo na lista (marca na máquina, como na conversa; o openclaw.json não muda). */
   markWhatsappGroup(jid: string, deleted: boolean): Promise<void>;
+  /** Apelido do grupo na lista (marca na máquina, os dois apps veem); "" apaga. */
+  renameWhatsappGroup(jid: string, alias: string): Promise<void>;
   /** Descobre o nome (pushname) de contatos sem nome lendo o histórico deles de uma vez (até 20) e guarda na máquina. Devolve só os achados. */
   learnWhatsappNames(numbers: string[]): Promise<Record<string, string>>;
   /** Salva a conversa toda num arquivo; null = cancelado. */

@@ -737,7 +737,7 @@ export async function whatsappSetMarks(host: string, patches: readonly (WaMarkPa
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const r = await runSsh(host, waMarkSh(patches), 20_000);
   if (r.code !== 0 || !r.stdout.includes("MARKS=1")) throw new Error(`não deu para gravar na máquina: ${r.stderr.trim().split("\n").pop() || "ssh falhou"}`);
-  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("jid" in p ? `grupo ${p.jid} d=${p.deleted}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
+  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("jid" in p ? `grupo ${p.jid}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}${p.alias !== undefined ? ` apelido=${p.alias === "" ? "(apagado)" : "sim"}` : ""}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
 }
 
 export async function whatsappThread(host: string, number: string, limit = 200): Promise<WhatsappThreadMessage[]> {
@@ -1018,6 +1018,7 @@ if [ -d "$HOME/.hermes/whatsapp" ]; then
   echo "hgroups=$(${HERMES_GROUPS_PY} | tr -d '\n')"
   ${HERMES_GROUP_CFG_SH}
   ${HERMES_POLICY_PY}
+  echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
 else
   echo gateway=openclaw
   echo "self=$(${CREDS_ME})"
@@ -1038,7 +1039,7 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
     const self = phoneOf(kv.get("self") ?? "");
     const pol = politicaHermes(hermesEnvOf(kv), self);
     const quem: string[] | "todos" = pol.dmPolicy === "open" ? "todos" : pol.allowFrom.map((n) => n.replace(/\D/g, "")).filter((n) => n !== "");
-    const g = gruposHermes(parseHermesGroupCfg(jsonOr(kv.get("gcfg"))), jsonOr(kv.get("hgroups")), self, quem);
+    const g = gruposHermes(parseHermesGroupCfg(jsonOr(kv.get("gcfg"))), jsonOr(kv.get("hgroups")), self, quem, jsonOr(kv.get("cache")));
     return { ...g, grupos: applyWaGroupMarks(g.grupos, marks) };
   }
   const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null, jsonOr(kv.get("banco")));

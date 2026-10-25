@@ -332,7 +332,14 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const jid = waJid(payload);
-    const deleted = (payload as { deleted?: unknown }).deleted === true;
+    const p = payload as { deleted?: unknown; alias?: unknown };
+    // Apelido: só a vista (os dois apps), nunca o WhatsApp nem o agente; "" apaga.
+    if (typeof p.alias === "string") {
+      const alias = p.alias.replace(/\s+/g, " ").trim().slice(0, 80);
+      await whatsappSetMarks(h.host, [{ jid, alias }]);
+      return;
+    }
+    const deleted = p.deleted === true;
     await whatsappSetMarks(h.host, [{ jid, deleted }]);
     void registrar(h.host, deleted ? "whatsapp.grupo.excluir" : "whatsapp.grupo.restaurar", jid);
   });
