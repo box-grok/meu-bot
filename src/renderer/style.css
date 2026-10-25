@@ -1079,3 +1079,17 @@ body.topbar-hidden .topbar { display: none; }
 .conta-google-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 .conta-tabela { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
 .conta-tabela td { border: 1px solid var(--line); padding: 4px 8px; }
+/* Contas do Claude (tutorial 1): lista com estado, uso e ações; limiares do rodízio. */
+.contas-claude { display: flex; flex-direction: column; gap: 6px; }
+.conta-claude-row { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+.conta-claude-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 13px; }
+.conta-claude-nome { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conta-claude-estado { font-size: 12px; white-space: nowrap; }
+.conta-claude-estado.ok { color: var(--ok); }
+.conta-claude-estado.warn { color: var(--warn); }
+.conta-claude-estado.err { color: var(--bad); }
+.conta-claude-estado.muted { color: var(--muted); }
+.conta-claude-row .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.conta-claude-limiares { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.conta-claude-limiares input { width: 56px; font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.conta-claude-limiares select { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }

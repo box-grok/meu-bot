@@ -1,4 +1,4 @@
-import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
+import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ContasClaudeView, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -8,6 +8,7 @@ import { mountProdutosPage } from "./admin/produtos-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
+import { avisoSemConta, estadoTexto, nomeConta, usoTexto } from "./lib/contas-claude.js";
 import { planMascots } from "./lib/intro-mascots.js";
 import { mountSnake } from "./snake.js";
 import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
@@ -1219,12 +1220,13 @@ function paintLoginControls(c: LoginControls, variant: "modal" | "guide"): void 
 }
 function paintClaudeLogin(): void { paintLoginControls(clModal, "modal"); paintLoginControls(clGuide, "guide"); }
 
-async function runClaudeLogin(): Promise<void> {
+/** Login do Claude Code na máquina; com `contaId`, numa conta isolada (CLAUDE_CONFIG_DIR dela), mesmo fluxo de link + código. */
+async function runClaudeLogin(contaId: string | null = null): Promise<void> {
   if (clState.running) return;
   clState.running = true; clState.result = null; clState.url = null; clState.needCode = false; clState.log = []; clState.status = "Iniciando o login na máquina…";
   paintClaudeLogin();
-  try { await window.meuBot.claudeLogin(); } catch (err) { clState.status = `✗ ${ipcErrorText(err)}`; clState.result = "fail"; }
-  finally { clState.running = false; clState.needCode = false; paintClaudeLogin(); }
+  try { if (contaId === null) await window.meuBot.claudeLogin(); else await window.meuBot.contasClaudeEntrar(contaId); } catch (err) { clState.status = `✗ ${ipcErrorText(err)}`; clState.result = "fail"; }
+  finally { clState.running = false; clState.needCode = false; paintClaudeLogin(); if (contaId !== null) void refreshContasClaude(); }
 }
 function submitClaudeCode(c: LoginControls): void {
   const code = c.code.value.trim();
@@ -1284,6 +1286,7 @@ window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {
         void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintGuide(); });
         clAuth = { loggedIn: true, email: clAuth?.email ?? null }; paintClaudeLine(); paintGuide(); // otimista: o ✓ do passo 1 não espera o SSH
         void refreshClaudeLine();
+        void refreshContasClaude();
         // Deu certo: o modal se fecha sozinho; o aviso fica na conversa.
         setTimeout(() => { if (clDialog.open) clDialog.close(); }, 1200);
       }
@@ -1369,6 +1372,82 @@ async function refreshClaudeLine(): Promise<void> {
   try { clAuth = await window.meuBot.claudeAuth(); } catch { clAuth = null; }
   paintClaudeLine();
   if (tutorialsReady) paintGuide();
+}
+
+// ---- Contas do Claude na máquina (rodízio ao bater o limite de uso): lista e controles no guia do tutorial 1.
+// O backend (contas-claude.js) é o dono do registro; aqui só se mostra e se manda comandos.
+let contasClaude: ContasClaudeView | null = null;
+let contasMsg: string | null = null;
+let contasOcupado = false;
+async function refreshContasClaude(): Promise<void> {
+  try { contasClaude = await window.meuBot.contasClaude(); } catch { contasClaude = null; }
+  if (tutorialsReady) paintGuide();
+}
+/** Roda uma ação do backend e repinta; erro vira recado na seção. */
+async function acaoContaClaude(run: () => Promise<ContasClaudeView | null>): Promise<void> {
+  if (contasOcupado) return;
+  contasOcupado = true; contasMsg = null; paintGuide();
+  try { const v = await run(); if (v !== null) contasClaude = v; else contasMsg = "o backend desta máquina não respondeu (atualize o backend no seletor)"; }
+  catch (err) { contasMsg = ipcErrorText(err); }
+  finally { contasOcupado = false; paintGuide(); }
+}
+/** Cria a conta isolada e já abre o login nela (modal do tutorial 1, com link + código). */
+async function adicionarContaClaude(): Promise<void> {
+  if (contasOcupado || clState.running) return;
+  let nova: string | null = null;
+  await acaoContaClaude(async () => { const r = await window.meuBot.contasClaudeCriar(""); if (r !== null) nova = r.contas.find((c) => !c.logada && !c.padrao && r.atual !== c.id)?.id ?? null; return r; });
+  if (nova !== null) { openClaudeLogin(); void runClaudeLogin(nova); }
+}
+function renderContasClaude(box: HTMLElement): void {
+  const v = contasClaude;
+  box.append(el("p", "hint strong-hint", "Contas do Claude nesta máquina"));
+  if (v === null) { box.append(el("p", "hint", "Lista indisponível: a máquina está fora do ar ou o backend é antigo (atualize no seletor).")); return; }
+  box.append(el("p", "hint", "Com mais de uma conta, o agente troca sozinho quando uma bate o limite de uso e a conversa continua na próxima, do ponto em que parou. A ordem da lista é a preferência."));
+  const aviso = avisoSemConta(v);
+  if (aviso !== null) box.append(el("p", "hint guide-pair-note", aviso));
+  const lista = el("div", "contas-claude");
+  const isoladas = v.contas.filter((c) => !c.padrao);
+  for (const c of v.contas) {
+    const row = el("div", "conta-claude-row");
+    const st = estadoTexto(c, v.atual);
+    const head = el("div", "conta-claude-head");
+    head.append(el("span", "conta-claude-nome", nomeConta(c)), el("span", `conta-claude-estado ${st.tone}`, st.text));
+    row.append(head);
+    const uso = usoTexto(c);
+    if (uso !== "") row.append(el("div", "hint conta-claude-uso", uso));
+    const acts = el("div", "actions");
+    const btn = (label: string, title: string, run: () => void): HTMLButtonElement => { const b = el("button", "btn btn-ghost btn-small", label); b.type = "button"; b.title = title; b.disabled = contasOcupado; b.addEventListener("click", run); acts.append(b); return b; };
+    if (!c.logada || c.uso.estado === "bloqueada") btn("Entrar", "Login do Claude Code nesta conta (link + código)", () => { if (clState.running) return; openClaudeLogin(); void runClaudeLogin(c.padrao ? null : c.id); });
+    if (c.uso.estado === "esgotada") btn("Usar agora", "Volta a usar esta conta antes da hora (se o limite já passou)", () => { void acaoContaClaude(() => window.meuBot.contasClaudeUsarAgora(c.id)); });
+    btn("Conferir", "Relê login, e-mail e uso desta conta", () => { void acaoContaClaude(() => window.meuBot.contasClaudeConferir(c.id)); });
+    btn(c.ativa ? "Desligar" : "Ligar", c.ativa ? "Tira esta conta do rodízio (sem sair dela)" : "Devolve esta conta ao rodízio", () => { void acaoContaClaude(() => window.meuBot.contasClaudeAtualizar(c.id, { ativa: !c.ativa })); });
+    if (!c.padrao) {
+      const i = isoladas.findIndex((x) => x.id === c.id);
+      if (i > 0) btn("↑", "Preferir antes", () => { const ids = isoladas.map((x) => x.id); [ids[i - 1], ids[i]] = [ids[i]!, ids[i - 1]!]; void acaoContaClaude(() => window.meuBot.contasClaudeReordenar(ids)); });
+      if (i < isoladas.length - 1) btn("↓", "Preferir depois", () => { const ids = isoladas.map((x) => x.id); [ids[i], ids[i + 1]] = [ids[i + 1]!, ids[i]!]; void acaoContaClaude(() => window.meuBot.contasClaudeReordenar(ids)); });
+      const rem = btn("Remover", "Apaga a pasta desta conta nesta máquina (o histórico das conversas fica)", () => {});
+      rem.addEventListener("click", () => armConfirm(rem, "Confirmar? apaga o login desta conta", () => { void acaoContaClaude(() => window.meuBot.contasClaudeRemover(c.id)); }));
+    }
+    row.append(acts);
+    lista.append(row);
+  }
+  box.append(lista);
+  const add = el("button", "btn btn-ghost btn-small", "Adicionar conta"); add.type = "button"; add.disabled = contasOcupado || clState.running;
+  add.title = "Cria uma conta isolada nesta máquina e abre o login dela";
+  add.addEventListener("click", () => { void adicionarContaClaude(); });
+  const limiares = el("div", "conta-claude-limiares");
+  const num = (label: string, key: "sessao" | "semanal"): HTMLLabelElement => {
+    const l = el("label", "", `${label} `); const i = el("input"); i.type = "number"; i.min = "50"; i.max = "100"; i.step = "1"; i.value = String(v.limiares[key]); i.disabled = contasOcupado;
+    i.addEventListener("change", () => { const n = Number(i.value); if (Number.isFinite(n)) void acaoContaClaude(() => window.meuBot.contasClaudeLimiares({ [key]: n })); });
+    l.append(i, "%"); return l;
+  };
+  const sel = el("select"); sel.disabled = contasOcupado;
+  for (const [val, txt] of [["ordem", "pela ordem da lista"], ["folga", "quem tem mais cota sobrando"]] as const) { const o = el("option", "", txt); o.value = val; o.selected = v.limiares.estrategia === val; sel.append(o); }
+  sel.addEventListener("change", () => { const e = sel.value; if (e === "ordem" || e === "folga") void acaoContaClaude(() => window.meuBot.contasClaudeLimiares({ estrategia: e })); });
+  const selLabel = el("label", "", "Qual conta vai primeiro: "); selLabel.append(sel);
+  limiares.append(el("span", "hint", "Troca de conta ao passar de"), num("sessão (5 h)", "sessao"), num("semana", "semanal"), selLabel);
+  box.append(add, limiares);
+  if (contasMsg !== null) box.append(el("p", "hint guide-pair-note", contasMsg));
 }
 
 /** Sai da conta do Claude Code nesta máquina; com `relogin`, já leva ao login (tutorial 1 ou modal). */
@@ -2411,6 +2490,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       swap.addEventListener("click", () => armConfirm(swap, "Confirmar? o agente para até entrar de novo", () => { void logoutClaude(true); }));
       row.append(`Claude Code · ${clAuth?.email ?? "logado"}. `, swap);
       manage.append(row);
+      renderContasClaude(manage);
       panel.append(manage);
     } else if (t.id === "contas-cli") {
       // Concluído, os passos viram só "concluído": trocar de conta, reconectar e sair ficam aqui.
@@ -2469,7 +2549,7 @@ function openGuide(t: Tutorial): void {
   }
   openPage(g.page);
   void refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
-  if (t.id === "claude-login") void refreshClaudeLine();
+  if (t.id === "claude-login") { void refreshClaudeLine(); void refreshContasClaude(); }
   if (t.id === "guarda-whatsapp") void refreshGuarda();
   if (t.id === "navegador") { void refreshLicense().then(() => paintGuide()); void refreshNavInst(); }
   if (t.id === "crm-whatsapp" || t.id === "crm-gmail") { void refreshLicense().then(() => paintGuide()); void refreshCrm(); }

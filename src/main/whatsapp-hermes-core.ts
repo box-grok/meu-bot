@@ -27,8 +27,8 @@ p = os.path.expanduser("~/.hermes/state.db")
 if not os.path.exists(p):
     print("null"); raise SystemExit
 c = sqlite3.connect("file:" + p + "?mode=ro", uri=True)
-rows = c.execute("select id, session_key, display_name, message_count, started_at, last_activity_at, archived, hidden from sessions where source = ? and chat_type = ?", ("whatsapp", "dm")).fetchall()
-print(json.dumps({"sessions": [{"id": r[0], "key": r[1], "name": r[2], "count": r[3], "started": r[4], "last": r[5], "archived": r[6], "hidden": r[7]} for r in rows]}, ensure_ascii=True))
+rows = c.execute("select id, session_key, display_name, message_count, started_at, last_activity_at, archived, hidden, ended_at from sessions where source = ? and chat_type = ?", ("whatsapp", "dm")).fetchall()
+print(json.dumps({"sessions": [{"id": r[0], "key": r[1], "name": r[2], "count": r[3], "started": r[4], "last": r[5], "archived": r[6], "hidden": r[7], "ended": r[8]} for r in rows]}, ensure_ascii=True))
 '`;
 
 /** Mensagens das sessões pedidas (ids em argv; o último argumento é o limite por sessão), em JSON numa linha. */
@@ -44,6 +44,20 @@ for sid in ids:
 print(json.dumps({"messages": out}, ensure_ascii=True))
 '`;
 
+/**
+ * Encerra sessões (ids em argv) do jeito que o próprio `/reset` do gateway faz: `SessionDB.end_session(id,
+ * "session_reset")` carimba `ended_at`/`end_reason` e avança a geração da conversa; na próxima mensagem do contato o
+ * gateway vê a rota encerrada no state.db, descarta a entrada em memória e abre uma sessão nova (auto-cura #54878).
+ * Roda com o Python do próprio Hermes (venv do runtime), nunca escrevendo no banco à mão. Imprime "ok".
+ */
+export const HERMES_END_SH = `export PATH=$HOME/.local/bin:$PATH; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
+import sys, hermes_state
+db = hermes_state.SessionDB()
+for sid in sys.argv[1:]:
+    db.end_session(sid, "session_reset")
+print("ok")
+'`;
+
 /** Nome útil: o display_name do Hermes, exceto vazio, só dígitos ou um id interno do WhatsApp (`…@lid`). */
 const nameOf = (v: unknown): string | null => (typeof v === "string" && v.trim() !== "" && !/^\d+$/.test(v.trim()) && !/@lid$/.test(v) ? v.trim() : null);
 const isoOf = (seconds: unknown): string => (typeof seconds === "number" && Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString() : "");
@@ -57,15 +71,19 @@ export function chatsFromHermes(list: unknown, self: string | null, names: Reado
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
   // "5516992294486:36@s.whatsapp.net": o sufixo de aparelho (:36) e o domínio não fazem parte do número.
   const selfN = self === null ? null : digits(self.replace(/[:@].*$/, ""));
-  const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; updated: string; name: string | null }>();
+  const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; started: Record<string, number>; updated: string; name: string | null }>();
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string" || typeof s.id !== "string" || s.hidden === 1 || s.hidden === true) continue;
     const number = hermesPeerOfKey(s.key);
     if (number === null) continue;
     const updated = isoOf(s.last ?? s.started);
-    const cur = byNumber.get(number) ?? { keys: [], ids: {}, updated: "", name: null };
+    const cur = byNumber.get(number) ?? { keys: [], ids: {}, started: {}, updated: "", name: null };
     if (!cur.keys.includes(s.key)) cur.keys.push(s.key);
-    if (HERMES_ID_RE.test(s.id)) cur.ids[s.key] = s.id;
+    // A sessão viva mais recente da chave é a que vale para ler e limpar; uma encerrada ("Limpar histórico") só
+    // mantém o contato na lista, com a conversa vazia, até ele escrever de novo e o gateway abrir outra.
+    const ended = s.ended !== null && s.ended !== undefined;
+    const started = typeof s.started === "number" ? s.started : 0;
+    if (!ended && HERMES_ID_RE.test(s.id) && started >= (cur.started[s.key] ?? -1)) { cur.ids[s.key] = s.id; cur.started[s.key] = started; }
     if (updated > cur.updated) { cur.updated = updated; cur.name = nameOf(s.name) ?? cur.name; } else cur.name ??= nameOf(s.name);
     byNumber.set(number, cur);
   }

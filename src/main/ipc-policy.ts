@@ -43,6 +43,8 @@ export const CLIENT_CHANNELS = [
   "whatsapp:cancel",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
+  // várias contas do Claude na máquina (rodízio no limite de uso)
+  "contas-claude:listar", "contas-claude:criar", "contas-claude:entrar", "contas-claude:atualizar", "contas-claude:reordenar", "contas-claude:remover", "contas-claude:usar-agora", "contas-claude:conferir", "contas-claude:limiares",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   "contas:entrar", "contas:cancelar", "contas:sair",
   // instalar e configurar a máquina

@@ -22,7 +22,7 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, isHermesKey, threadFromHermes } from "./whatsapp-hermes-core";
+import { chatsFromHermes, HERMES_END_SH, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, isHermesKey, threadFromHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -775,6 +775,8 @@ export async function whatsappClearPlan(host: string, number: string): Promise<{
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const want = number.replace(/\D/g, "");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
+  // Hermes: a sessão é sempre só do contato; o que se limpa é o id da sessão viva (não há "principal" compartilhada).
+  if (chat !== undefined && chat.sessionKeys.some(isHermesKey)) return { own: Object.values(chat.sessionIds).filter((id) => HERMES_ID_RE.test(id)), shared: [], paused: false };
   const keys = (chat?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
   const own = ownSessionKeys(want, keys);
   return { own, shared: keys.filter((k) => !own.includes(k)), paused: chat?.paused === true };
@@ -788,6 +790,13 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const safe = keys.filter((k) => SAFE_KEY.test(k));
   if (safe.length === 0) throw new Error("não há histórico desta conversa na máquina");
+  // Hermes: ids de sessão (sem ":"), encerrados pelo próprio Python do Hermes; o gateway abre outra na próxima mensagem.
+  if (safe.every((k) => HERMES_ID_RE.test(k) && !k.includes(":"))) {
+    const r = await runSsh(host, `${HERMES_END_SH} ${safe.map((id) => `'${id}'`).join(" ")}\n`, 120_000);
+    if (r.code !== 0 || !/^ok$/m.test(r.stdout)) throw new Error(`o Hermes não encerrou a sessão: ${r.stderr.trim().split("\n").pop() ?? "sem resposta"}`);
+    log(`whatsapp: histórico limpo em ${host} (hermes): ${safe.join(", ")}`);
+    return;
+  }
   const lines = safe.map((k) => [
     `printf 'R\t%s\t' '${k}'; timeout 60 openclaw gateway call sessions.reset --json --params '{"key":"${k}","reason":"reset"}' 2>/dev/null | tr -d '\n'; echo`,
     `timeout 60 openclaw memory forget --agent '${k.split(":")[1]}' --session '${k}' >/dev/null 2>&1 || true`,

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
 
 test("chaves do Hermes: contato pela chave dm; grupo e OpenClaw ficam de fora", () => {
   assert.equal(hermesPeerOfKey("agent:main:whatsapp:dm:5522925501274"), "5522925501274");
@@ -54,4 +54,26 @@ test("os programas remotos leem o state.db só em leitura e saem em uma linha", 
   for (const py of [HERMES_LIST_PY, HERMES_THREAD_PY]) { assert.match(py, /mode=ro/); assert.match(py, /json\.dumps/); assert.match(py, /~\/\.hermes\/state\.db/); }
   assert.match(HERMES_THREAD_PY, /role in \(\?, \?\)/); assert.match(HERMES_LIST_PY, /source = \? and chat_type = \?/);
   assert.match(HERMES_SELF_SH, /\.hermes\/whatsapp\/session\/creds\.json/);
+});
+
+test("sessão encerrada (Limpar histórico): o contato fica na lista, mas só a sessão viva mais recente vale para ler e limpar", () => {
+  const list = { sessions: [
+    { id: "20261001_000000_aaaaaaaa", key: "agent:main:whatsapp:dm:5521923670743", name: "Diego", started: 1790000000, last: 1790000100, hidden: 0, ended: 1790000200 },
+    { id: "20261010_000000_bbbbbbbb", key: "agent:main:whatsapp:dm:5521923670743", name: "Diego", started: 1790500000, last: 1790500100, hidden: 0, ended: null },
+    { id: "20261005_000000_cccccccc", key: "agent:main:whatsapp:dm:5521923670743", name: "Diego", started: 1790200000, last: 1790200100, hidden: 0, ended: null },
+    { id: "20261020_000000_dddddddd", key: "agent:main:whatsapp:dm:5522925501274", name: "LV", started: 1792000000, last: 1792000100, hidden: 0, ended: 1792000200 },
+  ] };
+  const chats = chatsFromHermes(list, null);
+  const diego = chats.find((c) => c.number === "5521923670743");
+  assert.deepEqual(diego.sessionIds, { "agent:main:whatsapp:dm:5521923670743": "20261010_000000_bbbbbbbb" }, "a viva mais recente, não a encerrada nem a antiga");
+  const lv = chats.find((c) => c.number === "5522925501274");
+  assert.ok(lv !== undefined, "contato só com sessão encerrada continua na lista");
+  assert.deepEqual(lv.sessionIds, {}, "sem sessão viva: conversa vazia até ele escrever de novo");
+  assert.equal(lv.updatedAt, new Date(1792000100 * 1000).toISOString());
+});
+
+test("HERMES_END_SH encerra pelo Python do próprio Hermes com end_reason session_reset", () => {
+  assert.match(HERMES_END_SH, /hermes --version/); assert.match(HERMES_END_SH, /venv\/bin\/python3/);
+  assert.match(HERMES_END_SH, /end_session\(sid, "session_reset"\)/); assert.match(HERMES_END_SH, /print\("ok"\)/);
+  assert.match(HERMES_LIST_PY, /ended_at/);
 });

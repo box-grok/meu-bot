@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const { readClaudeStatus, refreshRateLimits } = require("../../backend-colima/account-status.js");
+const { readClaudeStatus, refreshRateLimits, readAccessToken, servicoKeychain } = require("../../backend-colima/account-status.js");
+import { createHash } from "node:crypto";
 
 /** HOME descartável com os arquivos dados em ~/.cache/claude-statusline/. */
 function home(files) {
@@ -76,6 +77,26 @@ test("refreshRateLimits: cache novo não vai à API; velho vai; falha HTTP mant�
     assert.equal(calls.length, 1);
     assert.deepEqual(JSON.parse(readFileSync(path.join(h, ".cache", "claude-statusline", "ratelimits.json"), "utf8")), fresh, "cache antigo fica");
     assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls), now: now + 120_000 }), "updated");
+  } finally { rmSync(h, { recursive: true, force: true }); }
+});
+
+test("conta isolada (configDir): credencial, cache de limites e e-mail vêm da pasta dela", async () => {
+  const now = Date.parse("2026-10-16T18:00:00Z");
+  const h = homeWithLogin(now, { session_pct: 99, weekly_pct: 99, updated: Math.floor(now / 1000) });
+  const dir = path.join(h, "contas", "c-1", "home"); mkdirSync(dir, { recursive: true });
+  const calls = [];
+  try {
+    assert.equal(servicoKeychain(dir), `Claude Code-credentials-${createHash("sha256").update(dir.normalize("NFC")).digest("hex").slice(0, 8)}`);
+    assert.equal(readAccessToken(h, now, false, dir), null, "sem .credentials.json na pasta: a da padrão não vale");
+    writeFileSync(path.join(dir, ".credentials.json"), JSON.stringify({ claudeAiOauth: { accessToken: "tok2", expiresAt: now + 3600_000 } }));
+    assert.equal(readAccessToken(h, now, false, dir), "tok2");
+    assert.equal(await refreshRateLimits({ home: h, fetchImpl: fakeFetch(calls), now, keychain: false, configDir: dir }), "updated");
+    assert.equal(calls[0].auth, "Bearer tok2");
+    assert.deepEqual(JSON.parse(readFileSync(path.join(dir, ".cache-meu-bot", "ratelimits.json"), "utf8")).session_pct, 74);
+    writeFileSync(path.join(dir, ".claude.json"), JSON.stringify({ oauthAccount: { emailAddress: "iso@x.y" } }));
+    const s = readClaudeStatus(h, dir);
+    assert.deepEqual([s.email, s.sessionPct, s.weeklyPct], ["iso@x.y", 74, 23]);
+    assert.equal(readClaudeStatus(h).sessionPct, 99, "a padrão continua lendo o cache do statusline.sh");
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 

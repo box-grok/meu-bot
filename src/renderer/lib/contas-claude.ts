@@ -1,0 +1,36 @@
+/** Textos da seção "Contas do Claude" (tutorial 1): estado, uso e aviso de "todas no limite". Puro: testável. */
+import type { ContaClaude, ContasClaudeView } from "../../shared/ipc";
+import { timeUntil } from "./status-line.js";
+
+/** "17:05" no fuso deste Mac para um epoch em segundos. */
+export const horaLocal = (epochS: number): string => new Date(epochS * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+/** Rótulo curto do estado da conta, como aparece na lista. */
+export function estadoTexto(c: ContaClaude, atual: string | null, nowMs = Date.now()): { text: string; tone: "ok" | "warn" | "err" | "muted" } {
+  if (!c.ativa) return { text: "desligada", tone: "muted" };
+  if (!c.logada) return { text: "não logada", tone: "err" };
+  const u = c.uso;
+  if (u.estado === "bloqueada") return { text: u.motivo !== null ? `bloqueada: ${u.motivo}` : "bloqueada", tone: "err" };
+  if (u.estado === "esgotada") return { text: u.ate !== null ? `no limite · volta ${timeUntil(u.ate, nowMs) === "now" ? "agora" : `em ${timeUntil(u.ate, nowMs)}`}` : "no limite", tone: "err" };
+  if (u.estado === "aviso") return { text: "acima do limiar", tone: "warn" };
+  if (c.id === atual) return { text: "em uso", tone: "ok" };
+  return { text: "pronta", tone: "ok" };
+}
+
+/** "Sessão 42% · 1h20m · Semanal 10% · 3d2h"; "" sem dado. */
+export function usoTexto(c: ContaClaude, nowMs = Date.now()): string {
+  const parts: string[] = [];
+  const j = (nome: string, w: { pct: number; resets: number | null } | null): void => { if (w !== null) parts.push(`${nome} ${Math.round(w.pct)}%${w.resets !== null && w.resets * 1000 > nowMs ? ` · ${timeUntil(w.resets, nowMs)}` : ""}`); };
+  j("Sessão", c.uso.sessao); j("Semanal", c.uso.semanal);
+  return parts.join(" · ");
+}
+
+/** Aviso quando nenhuma conta serve agora; null quando há conta disponível. */
+export function avisoSemConta(view: ContasClaudeView): string | null {
+  if (view.atual !== null) return null;
+  if (view.contas.every((c) => !c.logada || !c.ativa)) return "Nenhuma conta logada e ligada: entre em uma conta para o agente responder pelo Claude.";
+  return view.proximaEm !== null ? `Todas as contas estão no limite de uso. A próxima volta às ${horaLocal(view.proximaEm)}; até lá o grok-4 responde, se estiver configurado.` : "Todas as contas estão no limite ou bloqueadas.";
+}
+
+/** Nome exibido: o rótulo e, quando há, o e-mail. */
+export const nomeConta = (c: ContaClaude): string => (c.email !== null && !c.rotulo.includes(c.email) ? `${c.rotulo} · ${c.email}` : c.rotulo);

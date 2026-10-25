@@ -7,9 +7,9 @@ import { VOZES, isVozId } from "../vozes-core";
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
+import type { AudioSetup, ClaudeLoginEvent, ClaudeSessionRef, ExportFormat, LimiaresClaude, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, log, runBackendTurn, saveAlertPrefs } from "../backend";
+import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchContasClaude, limiaresContasClaude, log, removerContaClaude, reordenarContasClaude, runBackendTurn, saveAlertPrefs, usarAgoraContaClaude } from "../backend";
 import { lerLicenca, lerLicencaDaMaquina } from "../licenca-maquina";
 import { assertAcesso, assertFinance } from "../acesso";
 import { esquecerPermissoes, responderPermissao } from "../nav-permissoes";
@@ -352,6 +352,50 @@ export function registerClientIpc(): void {
   handleClient("claude-login:cancel", (event) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
     cancelClaudeLogin();
+  });
+
+  // Várias contas do Claude na máquina (backend: contas-claude.js). O login numa conta isolada é o mesmo fluxo do
+  // tutorial 1 (link + código, eventos em claude-login:event), só que com CLAUDE_CONFIG_DIR na pasta da conta.
+  const contaId = (payload: unknown): string => { const id = String((payload as { id?: unknown } | null)?.id ?? ""); if (!/^(padrao|c-[a-f0-9]{8})$/.test(id)) throw new Error("conta inválida"); return id; };
+  const entrarNaConta = async (h: { host: string; win: Electron.BrowserWindow }, id: string): Promise<void> => {
+    const view = await fetchContasClaude(h.host);
+    const conta = view?.contas.find((c) => c.id === id);
+    if (conta === undefined) throw new Error("conta não encontrada na máquina (backend antigo?)");
+    const send = (ev: ClaudeLoginEvent): void => { if (!h.win.isDestroyed()) h.win.webContents.send("claude-login:event", ev); };
+    await startClaudeLogin(h.host, send, conta.home ?? undefined);
+    await conferirContaClaude(h.host, id); // o backend relê login, e-mail e uso
+  };
+  handleClient("contas-claude:listar", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchContasClaude(h.host); });
+  handleClient("contas-claude:criar", async (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const rotulo = String((payload as { rotulo?: unknown } | null)?.rotulo ?? "").slice(0, 60);
+    const r = await criarContaClaude(h.host, rotulo);
+    if (r === null) throw new Error("o backend desta máquina não tem contas (atualize o backend no seletor)");
+    return r; // o renderer abre o login na conta nova (contas-claude:entrar); o backend registra na auditoria da máquina
+  });
+  handleClient("contas-claude:entrar", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return entrarNaConta(h, contaId(payload)); });
+  handleClient("contas-claude:atualizar", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const p = payload as { rotulo?: unknown; ativa?: unknown };
+    return atualizarContaClaude(h.host, contaId(payload), { ...(typeof p.rotulo === "string" ? { rotulo: p.rotulo.slice(0, 60) } : {}), ...(typeof p.ativa === "boolean" ? { ativa: p.ativa } : {}) });
+  });
+  handleClient("contas-claude:reordenar", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const ids = (payload as { ids?: unknown } | null)?.ids;
+    return reordenarContasClaude(h.host, Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string" && /^c-[a-f0-9]{8}$/.test(x)) : []);
+  });
+  handleClient("contas-claude:remover", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return removerContaClaude(h.host, contaId(payload)); });
+  handleClient("contas-claude:usar-agora", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return usarAgoraContaClaude(h.host, contaId(payload)); });
+  handleClient("contas-claude:conferir", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return conferirContaClaude(h.host, contaId(payload)); });
+  handleClient("contas-claude:limiares", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const p = (payload ?? {}) as { sessao?: unknown; semanal?: unknown; estrategia?: unknown };
+    const pct = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? Math.max(50, Math.min(100, Math.round(v))) : undefined);
+    const l: Partial<LimiaresClaude> = {};
+    const s = pct(p.sessao); if (s !== undefined) l.sessao = s;
+    const w = pct(p.semanal); if (w !== undefined) l.semanal = w;
+    if (p.estrategia === "ordem" || p.estrategia === "folga") l.estrategia = p.estrategia;
+    return limiaresContasClaude(h.host, l);
   });
   handleClient("xai-login:start", (event) => {
     const h = hostFromEvent(event);

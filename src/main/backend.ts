@@ -6,7 +6,7 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, LicenseView, ToolEvent } from "../shared/ipc";
+import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, ContaClaude, ContasClaudeView, LicenseView, LimiaresClaude, ToolEvent } from "../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "./conversation";
 import { alreadySeenPrefix, buildSummaryRequest, estimateTokens, planContext, toWire, validateSummary, type OutgoingMessage } from "./context";
@@ -91,7 +91,8 @@ interface PostOptions {
   signal?: AbortSignal | undefined;
   onDelta?: ((text: string) => void) | undefined;
   /** Aviso do backend no meio do stream (fallback de provedor). */
-  onNotice?: ((text: string) => void) | undefined;
+  /** `tipo` "conta" = outra conta do Claude assumiu a mesma conversa (não é degradação). */
+  onNotice?: ((text: string, tipo?: string) => void) | undefined;
   /** Atividade do agente (ferramenta usada / resultado), chunk x_meu_bot.tool. */
   onTool?: ((tool: ToolEvent) => void) | undefined;
   extraHeaders?: Record<string, string> | undefined;
@@ -127,10 +128,13 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
             if (!line.startsWith("data:")) continue;
             const data = line.slice(5).trim();
             if (data === "[DONE]") return;
-            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string }; tool?: ToolEvent }; usage?: { prompt_tokens?: number; completion_tokens?: number } };
+            let chunk: { choices?: { delta?: { content?: string }; finish_reason?: string | null }[]; error?: { message?: string }; x_meu_bot?: { fallback?: { from: string; to: string; reason: string; tipo?: string }; tool?: ToolEvent }; usage?: { prompt_tokens?: number; completion_tokens?: number } };
             try { chunk = JSON.parse(data) as typeof chunk; } catch { continue; }
             const fb = chunk.x_meu_bot?.fallback;
-            if (fb !== undefined) opts.onNotice?.(`${fb.from} falhou (${fb.reason}); respondendo com ${fb.to}`);
+            if (fb !== undefined) {
+              if (fb.tipo === "conta") opts.onNotice?.(`conta "${fb.from}" no limite de uso; a conversa continua na conta "${fb.to}"`, "conta");
+              else opts.onNotice?.(`${fb.from} falhou (${fb.reason}); respondendo com ${fb.to}`);
+            }
             const tool = chunk.x_meu_bot?.tool;
             if (tool !== undefined && (tool.kind === "use" || tool.kind === "result")) opts.onTool?.(tool);
             const choice = chunk.choices?.[0];
@@ -176,7 +180,7 @@ function httpPostStream(port: number, pathName: string, apiKey: string, body: st
 
 const IDLE_MS = 60_000;
 
-async function postWithReconnect(host: string, localPort: number, apiKey: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void, onTool?: (tool: ToolEvent) => void): Promise<HttpReply> {
+async function postWithReconnect(host: string, localPort: number, apiKey: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string, tipo?: string) => void, onTool?: (tool: ToolEvent) => void): Promise<HttpReply> {
   const body = JSON.stringify({ model, messages: toWire(messages), stream: true });
   const opts: PostOptions = { overallMs: timeoutFor(model), idleMs: IDLE_MS, signal, onDelta, onNotice, onTool, extraHeaders };
   const started = Date.now();
@@ -262,7 +266,7 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
 }
 
 /** Uma chamada completa ao backend (túnel pronto + POST + parse). Reutilizada pelo chat e pelas tarefas de fundo. */
-export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string) => void, onTool?: (tool: ToolEvent) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
+export async function chatCompletion(host: string, model: BackendModel, messages: OutgoingMessage[], out: Sender | null, signal?: AbortSignal, onDelta?: (text: string) => void, extraHeaders?: Record<string, string>, onNotice?: (text: string, tipo?: string) => void, onTool?: (tool: ToolEvent) => void): Promise<{ text: string; finishReason: string; streamed: boolean; resumed: boolean; provider: string; usage?: { prompt: number; completion: number } | undefined }> {
   const tunnel = await readyTunnel(host, out, signal);
   out?.send("backend:status", { host, state: "ready", detail: `túnel ativo · ${model}` });
   const t0 = Date.now();
@@ -309,7 +313,7 @@ export async function deleteBackendSession(host: string, conversationId: string)
 }
 
 /** Pedido JSON ao backend desta máquina pelo túnel; null se não há túnel, a rota não existe ou falhou. */
-async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT", pathname: string, body?: unknown): Promise<T | null> {
+async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", pathname: string, body?: unknown): Promise<T | null> {
   let tunnel: { localPort: number; apiKey: string };
   try { tunnel = await readyTunnel(host, null); } catch { return null; }
   const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -338,6 +342,18 @@ export function deviceId(): string {
 
 /** Licença e devices desta conta (plano, status, membro desde, máquinas); null = backend antigo/fora do ar. */
 export const fetchLicense = (host: string): Promise<LicenseView | null> => backendJson<LicenseView>(host, "GET", "/v1/meu-bot/license");
+
+// Contas do Claude na máquina (rotas /v1/meu-bot/contas-claude do backend). null = backend antigo ou fora do ar.
+const CONTA_ID_RE = /^(padrao|c-[a-f0-9]{8})$/;
+const contaPath = (id: string, acao = ""): string => { if (!CONTA_ID_RE.test(id)) throw new Error("conta inválida"); return `/v1/meu-bot/contas-claude/${id}${acao}`; };
+export const fetchContasClaude = (host: string): Promise<ContasClaudeView | null> => backendJson<ContasClaudeView>(host, "GET", "/v1/meu-bot/contas-claude");
+export const criarContaClaude = (host: string, rotulo: string): Promise<(ContasClaudeView & { conta: ContaClaude }) | null> => backendJson(host, "POST", "/v1/meu-bot/contas-claude", { rotulo });
+export const atualizarContaClaude = (host: string, id: string, patch: { rotulo?: string; ativa?: boolean }): Promise<ContasClaudeView | null> => backendJson(host, "PATCH", contaPath(id), patch);
+export const reordenarContasClaude = (host: string, ids: string[]): Promise<ContasClaudeView | null> => backendJson(host, "PUT", "/v1/meu-bot/contas-claude/ordem", { ids });
+export const removerContaClaude = (host: string, id: string): Promise<ContasClaudeView | null> => backendJson(host, "DELETE", contaPath(id));
+export const usarAgoraContaClaude = (host: string, id: string): Promise<ContasClaudeView | null> => backendJson(host, "POST", contaPath(id, "/usar-agora"), {});
+export const conferirContaClaude = (host: string, id: string): Promise<ContasClaudeView | null> => backendJson(host, "POST", contaPath(id, "/conferir"), {});
+export const limiaresContasClaude = (host: string, limiares: Partial<LimiaresClaude>): Promise<ContasClaudeView | null> => backendJson(host, "PUT", "/v1/meu-bot/contas-claude/limiares", limiares);
 
 /** Avisos de segurança gravados na máquina (alertas.json): null = backend antigo/fora do ar. */
 export const fetchAlertPrefs = (host: string): Promise<AlertPrefs | null> => backendJson<AlertPrefs>(host, "GET", "/v1/meu-bot/alerts");
@@ -411,13 +427,16 @@ export async function fetchAccountStatus(host: string): Promise<AccountStatus | 
       res.on("end", () => {
         if (res.statusCode !== 200) { resolve(null); return; }
         try {
-          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"]; model?: unknown };
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"]; model?: unknown; contas?: { atual?: unknown; rotulo?: unknown; total?: unknown; esgotadas?: unknown; proximaEm?: unknown } | null };
           const c = j.claude ?? {};
           const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+          const str = (v: unknown): string | null => (typeof v === "string" && v.length <= 80 ? v : null);
+          const ct = j.contas;
           resolve({
             email: typeof c.email === "string" ? c.email : null, assento: typeof c.assento === "string" ? c.assento : null,
             sessionPct: num(c.sessionPct), weeklyPct: num(c.weeklyPct), sessionResets: num(c.sessionResets), weeklyResets: num(c.weeklyResets), updated: num(c.updated),
             modelName: typeof j.model === "string" && j.model.length <= 40 ? j.model : null,
+            contas: ct && typeof ct === "object" ? { atual: str(ct.atual), rotulo: str(ct.rotulo), total: num(ct.total) ?? 1, esgotadas: num(ct.esgotadas) ?? 0, proximaEm: num(ct.proximaEm) } : null,
             providers: Array.isArray(j.providers) ? j.providers.filter((p) => p && typeof p.name === "string").map((p) => ({ name: p.name, type: p.type === "openai" ? "openai" : "claude", available: p.available === true })) : [],
           });
         } catch { resolve(null); }
@@ -526,13 +545,14 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {
       partial += delta;
       if (!cancelled()) out.send("chat:delta", { conversationId, text: delta });
-    }, headers, (notice) => {
+    }, headers, (notice, tipo) => {
       // Fallback de provedor no backend: aviso na conversa e no pill, sem interromper a resposta; fica gravado na mensagem.
+      // Troca de conta do Claude (tipo "conta"): só o aviso na conversa; o serviço não está degradado.
       log(`fallback ${conversationId}: ${notice}`);
       fallbackNote = notice;
       if (cancelled()) return;
       out.send("chat:notice", { conversationId, text: `⚠ ${notice}` });
-      out.send("backend:status", { host, state: "degraded", detail: notice });
+      if (tipo !== "conta") out.send("backend:status", { host, state: "degraded", detail: notice });
     }, (tool) => { if (!cancelled()) out.send("chat:tool", { conversationId, tool }); });
     if (cancelled()) return;
     // Quem respondeu fica na mensagem (a bolha mostra, o export leva, e sobrevive ao fechar/abrir).

@@ -21,20 +21,27 @@ const URL_RE = /https:\/\/claude\.com\/[^\s"']+/;
 let current: { host: string; child: ChildProcess } | null = null;
 
 const strip = (s: string): string => s.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "\n");
-
-function spawnFor(host: string, remoteCmd: string, localArgs: string[]): ChildProcess | null {
+/** Pasta de uma conta isolada (CLAUDE_CONFIG_DIR): absoluta e só com caracteres seguros para ir num comando por SSH. */
+const CONFIG_DIR_RE = /^\/[A-Za-z0-9._\/-]{1,300}$/;
+/**
+ * `configDir` = conta isolada (contas-claude.js): o `claude` roda com CLAUDE_CONFIG_DIR nessa pasta, local ou por SSH.
+ * Sem ele, a conta padrão (~/.claude), como sempre.
+ */
+function spawnFor(host: string, remoteCmd: string, localArgs: string[], configDir?: string): ChildProcess | null {
+  if (configDir !== undefined && !CONFIG_DIR_RE.test(configDir)) return null;
   if (host === LOCAL_HOST) {
     const claude = findClaude();
     if (claude === null) return null;
-    return spawn(claude, localArgs, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env } });
+    return spawn(claude, localArgs, { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...(configDir === undefined ? {} : { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "" }) } });
   }
-  return spawn("ssh", [...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${remoteCmd}`], { stdio: ["pipe", "pipe", "pipe"] });
+  const exporta = configDir === undefined ? "" : `export CLAUDE_CONFIG_DIR='${configDir}'; `;
+  return spawn("ssh", [...SSH_OPTS, "--", host, `${REMOTE_PATH}; ${exporta}${remoteCmd}`], { stdio: ["pipe", "pipe", "pipe"] });
 }
 
 /** `claude auth status` → logado? (null se não deu para consultar) */
-export function claudeAuthStatus(host: string): Promise<{ loggedIn: boolean; raw: string } | null> {
+export function claudeAuthStatus(host: string, configDir?: string): Promise<{ loggedIn: boolean; raw: string } | null> {
   return new Promise((resolve) => {
-    const child = spawnFor(host, "claude auth status 2>/dev/null", ["auth", "status"]);
+    const child = spawnFor(host, "claude auth status 2>/dev/null", ["auth", "status"], configDir);
     if (child === null) { resolve(null); return; }
     let out = "";
     const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
@@ -85,12 +92,16 @@ export async function claudeLogout(host: string): Promise<ClaudeAuthInfo | null>
 
 export const loginInProgress = (): string | null => current?.host ?? null;
 
-/** Inicia o login; eventos por `send`. Resolve quando o processo termina (ok = `auth status` logado). */
-export function startClaudeLogin(host: string, send: (ev: ClaudeLoginEvent) => void): Promise<void> {
+/**
+ * Inicia o login; eventos por `send`. Resolve quando o processo termina (ok = `auth status` logado).
+ * `configDir` = pasta de uma conta isolada; sem ele, a conta padrão da máquina.
+ */
+export function startClaudeLogin(host: string, send: (ev: ClaudeLoginEvent) => void, configDir?: string): Promise<void> {
   if (host !== LOCAL_HOST && !isValidHost(host)) { send({ kind: "done", ok: false, text: "máquina inválida" }); return Promise.resolve(); }
+  if (configDir !== undefined && !CONFIG_DIR_RE.test(configDir)) { send({ kind: "done", ok: false, text: "pasta da conta inválida" }); return Promise.resolve(); }
   if (current !== null) { send({ kind: "done", ok: false, text: `já há um login em andamento em ${current.host}` }); return Promise.resolve(); }
   return new Promise((resolve) => {
-    const child = spawnFor(host, "claude auth login 2>&1", ["auth", "login"]);
+    const child = spawnFor(host, "claude auth login 2>&1", ["auth", "login"], configDir);
     if (child === null) { send({ kind: "done", ok: false, text: "Claude Code não encontrado neste Mac" }); resolve(); return; }
     current = { host, child };
     let buf = ""; let urlSent = false;
@@ -117,10 +128,10 @@ export function startClaudeLogin(host: string, send: (ev: ClaudeLoginEvent) => v
     child.on("close", (code) => {
       clearTimeout(timer);
       current = null;
-      void claudeAuthStatus(host).then((st) => {
+      void claudeAuthStatus(host, configDir).then((st) => {
         const ok = st?.loggedIn === true;
-        log(`[claude-login] ${host}: processo saiu com ${code}; logado=${ok}`);
-        send({ kind: "done", ok, text: ok ? "Claude Code logado nesta máquina." : `o login não concluiu (código ${code ?? "?"}). Confira se o código foi colado inteiro e tente de novo.` });
+        log(`[claude-login] ${host}${configDir === undefined ? "" : ` (${configDir})`}: processo saiu com ${code}; logado=${ok}`);
+        send({ kind: "done", ok, text: ok ? (configDir === undefined ? "Claude Code logado nesta máquina." : "Conta logada. O rodízio já pode usá-la.") : `o login não concluiu (código ${code ?? "?"}). Confira se o código foi colado inteiro e tente de novo.` });
         resolve();
       });
     });

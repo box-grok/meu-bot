@@ -14,8 +14,8 @@ export type WaMenuEntry =
 const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenuEntry => ({ label, action, enabled });
 
 /**
- * `gateway`: no Hermes o espelho é só-leitura (pausar e limpar mexem em sessões do OpenClaw); ficam ler, exportar,
- * conversar, apelido, arquivar e excluir, que vivem no app ou nas marcas da máquina.
+ * `gateway`: no Hermes não há "Pausar" (o `hermes pause` é parada geral, não por contato); "Limpar histórico" existe
+ * (encerra a sessão do contato como o /reset do gateway, guardando antes no CRM, como no OpenClaw).
  */
 export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">, gateway: Gateway | null = "openclaw"): WaMenuEntry[] {
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
@@ -31,7 +31,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const pausa = state.paused ? item("Retomar", "resume") : item("Pausar", "pause");
   // Excluir = só tirar da lista (o agente continua de onde parou), sem confirmação; volta se o contato mandar outra mensagem. Zerar é o Limpar.
   const excluir = item("Excluir conversa", "delete");
-  const mexe: WaMenuEntry[] = gateway === "hermes" ? [] : [pausa, item("Limpar histórico…", "clear")];
+  const mexe: WaMenuEntry[] = gateway === "hermes" ? [item("Limpar histórico…", "clear")] : [pausa, item("Limpar histórico…", "clear")];
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
   if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, ...mexe, excluir];
   return [

@@ -220,6 +220,8 @@ export interface AccountStatus {
   providers: { name: string; type: "claude" | "openai"; available: boolean }[];
   /** Modelo que o Claude Code da máquina usa agora ("Fable 5.1", ou "Opus 5.5" durante o limite); null = backend antigo. */
   modelName?: string | null;
+  /** Contas do Claude na máquina: a que respondeu por último, quantas há e quantas estão fora (limite/bloqueio); null = backend antigo. */
+  contas?: { atual: string | null; rotulo: string | null; total: number; esgotadas: number; proximaEm: number | null } | null;
 }
 
 export interface MemoryView {
@@ -713,6 +715,28 @@ export type WhatsappEvent =
 
 /** Conta do Claude Code na máquina. */
 export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null }
+
+/** Janela de uso de uma conta do Claude: % usado e quando reseta (epoch s). */
+export interface ContaClaudeJanela { pct: number; resets: number | null }
+/** Estado efetivo de uma conta: `aviso` = acima do limiar (derivado), `esgotada` = limite batido até `ate`, `bloqueada` = login vencido ou conta com problema. */
+export type ContaClaudeEstado = "ok" | "aviso" | "esgotada" | "bloqueada" | "desconhecida";
+/** Uma conta do Claude Code na máquina (contas-claude.js no backend). `padrao` = o login normal de ~/.claude. */
+export interface ContaClaude {
+  id: string;
+  rotulo: string;
+  email: string | null;
+  padrao: boolean;
+  /** Pasta isolada (CLAUDE_CONFIG_DIR); null na padrão. */
+  home: string | null;
+  ordem: number;
+  ativa: boolean;
+  logada: boolean;
+  uso: { sessao: ContaClaudeJanela | null; semanal: ContaClaudeJanela | null; estado: ContaClaudeEstado; motivo: string | null; ate: number | null; vistoEm: number | null };
+}
+/** Limiares do rodízio: % da sessão (5 h) e da semana a partir dos quais a conta sai de preferência; estratégia de ordem. */
+export interface LimiaresClaude { sessao: number; semanal: number; estrategia: "ordem" | "folga" }
+/** GET /v1/meu-bot/contas-claude. `atual` = a conta que responderia agora; `proximaEm` = quando alguma volta (epoch s) se nenhuma serve. */
+export interface ContasClaudeView { contas: ContaClaude[]; limiares: LimiaresClaude; atual: string | null; proximaEm: number | null }
 
 /** Eventos do login do Claude Code numa máquina (claude auth login por SSH). */
 export type ClaudeLoginEvent =
@@ -1319,6 +1343,21 @@ export interface MeuBotClientApi {
   claudeLoginCancel(): Promise<void>;
   /** `claude auth logout` na máquina; devolve o estado depois. */
   claudeLogout(): Promise<ClaudeAuthInfo | null>;
+  /** Contas do Claude na máquina desta janela; null = backend antigo (sem a rota) ou fora do ar. */
+  contasClaude(): Promise<ContasClaudeView | null>;
+  /** Cria uma conta isolada (pasta própria, histórico compartilhado) e já inicia o login nela (eventos em claude-login:event). */
+  contasClaudeCriar(rotulo: string): Promise<ContasClaudeView | null>;
+  /** Login numa conta existente (eventos em claude-login:event). Resolve ao terminar; a conta é conferida no fim. */
+  contasClaudeEntrar(id: string): Promise<void>;
+  contasClaudeAtualizar(id: string, patch: { rotulo?: string; ativa?: boolean }): Promise<ContasClaudeView | null>;
+  /** Nova ordem das contas isoladas (ids); a padrão fica por último. */
+  contasClaudeReordenar(ids: string[]): Promise<ContasClaudeView | null>;
+  contasClaudeRemover(id: string): Promise<ContasClaudeView | null>;
+  /** "Usar agora": tira a conta de `esgotada` antes da hora. */
+  contasClaudeUsarAgora(id: string): Promise<ContasClaudeView | null>;
+  /** Relê login, e-mail e uso da conta pela API. */
+  contasClaudeConferir(id: string): Promise<ContasClaudeView | null>;
+  contasClaudeLimiares(limiares: Partial<LimiaresClaude>): Promise<ContasClaudeView | null>;
   /** `hermes auth add xai-oauth --type oauth --no-browser` (eventos em xai-login:event). */
   xaiLogin(): Promise<void>;
   xaiLoginCancel(): Promise<void>;

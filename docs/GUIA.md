@@ -2863,4 +2863,10 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
 - **grokbot-1:** backend do meu-bot instalado em `~/.local/share/meu-bot/backend` na porta 8081, sob PM2
   (`meu-bot-backend`, `pm2 save`); o do Hermes segue na 8080 com o WhatsApp. No app, o chat dessa máquina passa a usar
   `claudecode`/`agente` (os modelos `rene*` são do backend do Hermes); financeiro e licença pela API nossa.
+- **Limpar histórico no Hermes (25 out):** `whatsappClearPlan` devolve o id da sessão viva do contato (`sessionIds`; sem
+  "principal" compartilhada) e `whatsappClearSessions` encerra pelo `HERMES_END_SH`: `SessionDB.end_session(id,
+  "session_reset")` com o Python do runtime do Hermes, exatamente o que o `/reset` do gateway faz; na próxima mensagem o
+  gateway vê a rota encerrada e abre sessão nova (auto-cura dele). A lista mantém o contato (sessões encerradas contam
+  para presença, não para ler); o fluxo da tela é o mesmo do OpenClaw: guardar no CRM (agora pelo nosso backend na
+  8081) e depois limpar. "Pausar" segue fora: o `hermes pause` é parada geral, não por contato.
 
