@@ -30,7 +30,7 @@ import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
 import { broadcast } from "../windows";
 import { contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
-import { enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
+import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../settings";
 import { agendaCriar, agendaProximos, gmailResumo, planilhaEscrever, planilhaLer } from "../google/apis";
@@ -76,7 +76,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     void garantirFotoPerfil().then((r) => { if (r !== null) broadcast("google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
     return contaStatus();
   });
-  handleShared("google-conta:conectar", async (event) => { const ctx = hostFromEvent(event); const r = await contaConectar(ctx?.host ?? ""); broadcast("google-conta:changed", r); return r; });
+  handleShared("google-conta:conectar", async (event) => {
+    const ctx = hostFromEvent(event); const r = await contaConectar(ctx?.host ?? ""); broadcast("google-conta:changed", r);
+    if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); // a cópia que falhou "sem conta" sai agora
+    return r;
+  });
   handleShared("google-conta:desconectar", async () => { const r = await contaDesconectar(); broadcast("google-conta:changed", r); return r; });
   // Cópia do CRM e do financeiro desta máquina no Drive da Conta Google: estado, "guardar agora" e o interruptor.
   handleShared("backup-dados:status", (event) => {

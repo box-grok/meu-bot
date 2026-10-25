@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
-import { CONJUNTOS_DADOS, achaSegredo, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredo, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
 import { lerSenhaBackup } from "./senha-backup";
@@ -117,12 +117,19 @@ async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): P
   return { conjunto: c.id, caminho, bytes: pacote.length, apagados, local };
 }
 
-/** Última cópia de cada máquina, para a aba Conta Google mostrar sem precisar falar com o Drive. */
-export interface EstadoDadosDrive { ultimaEm: string | null; conta: string | null; enviados: EnvioDados[]; erro: string | null }
+/**
+ * Última cópia de cada máquina, para a aba Conta Google mostrar sem precisar falar com o Drive. `tentativaEm` é quando
+ * a última tentativa rodou (com ou sem sucesso), para o erro vir datado em vez de parecer o estado de agora.
+ */
+export interface EstadoDadosDrive { ultimaEm: string | null; tentativaEm: string | null; conta: string | null; enviados: EnvioDados[]; erro: string | null }
 const ARQ_ESTADO = (): string => path.join(app.getPath("userData"), "dados-drive.json");
-const VAZIO: EstadoDadosDrive = { ultimaEm: null, conta: null, enviados: [], erro: null };
-const lerEstadoTodos = (): Record<string, EstadoDadosDrive> => { try { return JSON.parse(fs.readFileSync(ARQ_ESTADO(), "utf8")) as Record<string, EstadoDadosDrive>; } catch { return {}; } };
-export const estadoDadosDrive = (host: string): EstadoDadosDrive => ({ ...VAZIO, ...lerEstadoTodos()[host] });
+const VAZIO: EstadoDadosDrive = { ultimaEm: null, tentativaEm: null, conta: null, enviados: [], erro: null };
+const lerEstadoTodos = (): Record<string, Partial<EstadoDadosDrive>> => { try { return JSON.parse(fs.readFileSync(ARQ_ESTADO(), "utf8")) as Record<string, Partial<EstadoDadosDrive>>; } catch { return {}; } };
+/** O estado gravado, já sem o erro de conta que a conta de agora desmente (reconectou depois da última tentativa). */
+export function estadoDadosDrive(host: string): EstadoDadosDrive {
+  const e: EstadoDadosDrive = { ...VAZIO, ...lerEstadoTodos()[host] };
+  return { ...e, erro: erroDriveAindaVale(e.erro, contaStatus()) };
+}
 function gravarEstado(host: string, e: EstadoDadosDrive): void {
   try { gravar(ARQ_ESTADO(), JSON.stringify({ ...lerEstadoTodos(), [host]: e }, null, 1)); } catch { /* o estado é só para a tela */ }
 }
@@ -133,9 +140,12 @@ function gravarEstado(host: string, e: EstadoDadosDrive): void {
  */
 export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive> {
   const st = contaStatus();
-  if (!st.conectado) { const e = { ...VAZIO, erro: "a Conta Google não está conectada neste Mac" }; gravarEstado(host, e); return e; }
+  const agora = new Date().toISOString();
+  // Sem conta, a última cópia boa continua valendo na tela: só o erro e a hora da tentativa mudam.
+  const anterior = { ...VAZIO, ...lerEstadoTodos()[host] };
+  if (!st.conectado) { const e = { ...anterior, tentativaEm: agora, erro: ERRO_DRIVE_DESCONECTADA }; gravarEstado(host, e); return e; }
   if (st.precisaReconectar) {
-    const e = { ...VAZIO, conta: st.perfil?.email ?? null, erro: "falta a permissão do Drive: clique em Reconectar na aba Conta Google" };
+    const e = { ...anterior, tentativaEm: agora, conta: st.perfil?.email ?? null, erro: ERRO_DRIVE_PERMISSAO };
     gravarEstado(host, e); return e;
   }
   const s = sessaoDriveCom(await acessoValido());
@@ -146,14 +156,14 @@ export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive
     catch (e) { erros.push(`${c.id}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   if (pulados.length > 0) erros.push(`${pulados.join(" e ")}: sem senha de backup definida, não subiu (credencial nunca vai sem cifra)`);
-  const estado: EstadoDadosDrive = { ultimaEm: enviados.length > 0 ? new Date().toISOString() : null, conta: st.perfil?.email ?? null, enviados, erro: erros.length > 0 ? erros.join("; ") : null };
+  const estado: EstadoDadosDrive = { ultimaEm: enviados.length > 0 ? agora : anterior.ultimaEm, tentativaEm: agora, conta: st.perfil?.email ?? null, enviados: enviados.length > 0 ? enviados : anterior.enviados, erro: erros.length > 0 ? erros.join("; ") : null };
   gravarEstado(host, estado);
   // A pessoa vê no registro da máquina dela que uma cópia saiu, e para onde.
   if (enviados.length > 0) void registrar(host, "backup.dados-drive", enviados.map((e) => e.conjunto).join(", "));
   return estado;
 }
 
-const agendados = new Map<string, ReturnType<typeof setInterval>>();
+const agendados = new Map<string, { timer: ReturnType<typeof setInterval>; rodar: () => void }>();
 /** Uma vez por máquina (quando a extensão do CRM sobe): 2 min depois e a cada 24 h. */
 export function agendarDadosAoDrive(host: string, ligado: () => boolean): void {
   if (agendados.has(host)) return;
@@ -166,6 +176,8 @@ export function agendarDadosAoDrive(host: string, ligado: () => boolean): void {
     );
   };
   setTimeout(rodar, 2 * 60_000).unref();
-  const i = setInterval(rodar, INTERVALO); i.unref(); agendados.set(host, i);
+  const timer = setInterval(rodar, INTERVALO); timer.unref(); agendados.set(host, { timer, rodar });
 }
-export function pararDadosAoDrive(host: string): void { const i = agendados.get(host); if (i) clearInterval(i); agendados.delete(host); }
+export function pararDadosAoDrive(host: string): void { const a = agendados.get(host); if (a) clearInterval(a.timer); agendados.delete(host); }
+/** A Conta Google acabou de (re)conectar: a cópia das máquinas agendadas sai agora, em vez de esperar o próximo ciclo com um erro velho na tela. */
+export function dispararDadosAoDrive(): void { for (const a of agendados.values()) a.rodar(); }

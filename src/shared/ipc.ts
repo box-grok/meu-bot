@@ -12,7 +12,7 @@ export interface GoogleContaStatus { configurado: boolean; conectado: boolean; c
 /** Um conjunto de dados da máquina que subiu para o Drive (CRM e financeiro vão separados, de propósito). */
 export interface BackupDadosEnvio { conjunto: string; caminho: string; bytes: number; apagados: number; /** Caminho da cópia local no Mac, gravada antes do envio. */ local: string }
 /** Cópia diária do CRM e do financeiro desta máquina no Drive da Conta Google do dono. */
-export interface BackupDadosView { ligado: boolean; /** Só se existe senha do pacote cifrado; o valor nunca atravessa o IPC. */ temSenha: boolean; ultimaEm: string | null; conta: string | null; enviados: BackupDadosEnvio[]; erro: string | null }
+export interface BackupDadosView { ligado: boolean; /** Só se existe senha do pacote cifrado; o valor nunca atravessa o IPC. */ temSenha: boolean; ultimaEm: string | null; /** Quando a última tentativa rodou (com ou sem sucesso); o erro é dessa hora. */ tentativaEm: string | null; conta: string | null; enviados: BackupDadosEnvio[]; erro: string | null }
 export interface GmailMensagem { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }
 export interface GmailResumo { email: string | null; naoLidas: number; mensagens: GmailMensagem[] }
 export interface AgendaEvento { id: string; titulo: string; inicio: string; fim: string; local: string; link: string }

@@ -36,7 +36,7 @@ test("WhatsApp → Google: só os que faltam (com ou sem +55), sem repetir; form
 });
 
 test("Drive: só drive.file; pasta por máquina e por contato; nomes seguros; busca com aspas escapadas", async () => {
-  const g = await import("../../dist/main/google/google-core.js");
+  const g = await import("../../src/main/google/google-core.ts");
   assert.ok(g.ESCOPOS.includes("https://www.googleapis.com/auth/drive.file"));
   assert.ok(!g.ESCOPOS.some((e) => /auth\/drive$/.test(e))); // nunca o Drive inteiro
   assert.equal(g.temDrive("https://www.googleapis.com/auth/contacts https://www.googleapis.com/auth/drive.file"), true);
@@ -217,11 +217,21 @@ test("achaSegredo: o que nao pode subir sem cifra", () => {
 });
 
 test("trabalho (sem cifra) nunca leva segredo nem lixo do Hermes; credenciais leva o .env e a sessão viva do WhatsApp do Hermes", async () => {
-  const { CONJUNTOS_DADOS } = await import("../../dist/main/google/google-core.js");
+  const { CONJUNTOS_DADOS } = await import("../../src/main/google/google-core.ts");
   const por = (id) => CONJUNTOS_DADOS.find((c) => c.id === id);
   for (const x of [".hermes/.env", ".hermes/.env.bak-*", ".hermes/whatsapp/session", ".hermes/whatsapp/session.loggedout-*", "node_modules", ".hermes/venv-whisper", ".hermes/cache"]) {
     assert.ok(por("trabalho").excluir.includes(x), `${x} tem que ficar fora do trabalho`);
   }
   for (const x of [".hermes/.env", ".hermes/whatsapp/session", ".hermes/auth.json"]) assert.ok(por("credenciais").dirs.includes(x), `${x} vai cifrado em credenciais`);
   assert.ok(!por("credenciais").dirs.some((d) => d.includes("loggedout")), "sessões antigas não vão nem cifradas");
+});
+
+test("backup no Drive: erro de conta desconectada ou sem permissão some quando a conta volta; os outros ficam", async () => {
+  const { erroDriveAindaVale, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO } = await import("../../src/main/google/google-core.ts");
+  assert.equal(erroDriveAindaVale(ERRO_DRIVE_DESCONECTADA, { conectado: true, precisaReconectar: false }), null);
+  assert.equal(erroDriveAindaVale(ERRO_DRIVE_DESCONECTADA, { conectado: false, precisaReconectar: false }), ERRO_DRIVE_DESCONECTADA);
+  assert.equal(erroDriveAindaVale(ERRO_DRIVE_PERMISSAO, { conectado: true, precisaReconectar: false }), null);
+  assert.equal(erroDriveAindaVale(ERRO_DRIVE_PERMISSAO, { conectado: true, precisaReconectar: true }), ERRO_DRIVE_PERMISSAO);
+  assert.equal(erroDriveAindaVale("trabalho: o pacote passou de 512 MB", { conectado: true, precisaReconectar: false }), "trabalho: o pacote passou de 512 MB");
+  assert.equal(erroDriveAindaVale(null, { conectado: false, precisaReconectar: false }), null);
 });

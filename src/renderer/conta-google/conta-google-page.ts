@@ -24,6 +24,9 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   let agenda: AgendaEvento[] | null = null;
   let planilha: PlanilhaLeitura | null = null;
   let backup: BackupDadosView | null = null;
+  // Cada cartão guarda o próprio erro: "Carregando…" para sempre escondia o motivo (Gmail e Backup, 25 out).
+  let gmailErro: string | null = null; let agendaErro: string | null = null; let backupErro: string | null = null;
+  const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo");
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   let plId = ""; let plRange = "Página1!A1:C10";
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
@@ -33,12 +36,20 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     render();
     if (status?.conectado && !status.precisaReconectar) await carregarDados();
   }
+  /** Os três cartões carregam em paralelo e cada um aparece quando chega (o Gmail faz até doze chamadas; antes ele segurava os outros). */
   async function carregarDados(): Promise<void> {
-    try { gmail = await deps.api.gmailResumo(); } catch { gmail = null; }
-    try { agenda = await deps.api.agendaProximos(7); } catch { agenda = null; }
-    try { backup = await deps.api.backupDadosStatus(); } catch { backup = null; }
-    render();
+    gmail = null; agenda = null; backup = null; gmailErro = null; agendaErro = null; backupErro = null; render();
+    await Promise.all([
+      deps.api.gmailResumo().then((g) => { gmail = g; }, (e: unknown) => { gmailErro = erroTexto(e); }).then(render),
+      deps.api.agendaProximos(7).then((a) => { agenda = a; }, (e: unknown) => { agendaErro = erroTexto(e); }).then(render),
+      deps.api.backupDadosStatus().then((b) => { backup = b; }, (e: unknown) => { backupErro = erroTexto(e); }).then(render),
+    ]);
   }
+  /** Cartão sem dado: o erro, com "Tentar de novo", ou "Carregando…" enquanto não chegou. */
+  const pendente = (c: HTMLElement, erro: string | null, oQue: string): void => {
+    if (erro === null) { c.append(el("p", "hint", "Carregando…")); return; }
+    c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarDados(); }));
+  };
   async function agir(run: () => Promise<unknown>, ok: string): Promise<void> {
     if (busy) return; busy = true; msg = null; render();
     try { await run(); msg = { text: ok, bad: false }; } catch (e) { msg = { text: ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo"), bad: true }; }
@@ -82,7 +93,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
 
     // Backup: a cópia do CRM e do financeiro desta máquina no Drive desta conta.
     const bc = card("Backup no Drive");
-    if (backup === null) bc.append(el("p", "hint", "Carregando…"));
+    if (backup === null) pendente(bc, backupErro, "o estado do backup");
     else {
       bc.append(el("p", "hint", "Uma vez por dia o CRM e o financeiro desta máquina são guardados no Drive desta conta, em pastas separadas, e uma cópia fica aqui no Mac. Fica só a mais recente de cada um."));
       if (backup.ultimaEm !== null) {
@@ -94,7 +105,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
           bc.append(r);
         }
       } else if (backup.erro === null) bc.append(el("p", "hint", "Ainda não foi feita nenhuma cópia desta máquina."));
-      if (backup.erro !== null) bc.append(el("p", "hint bad-hint", backup.erro));
+      if (backup.erro !== null) bc.append(el("p", "hint bad-hint", `${backup.tentativaEm !== null ? `Última tentativa em ${fmtData(backup.tentativaEm)}: ` : ""}${backup.erro}`));
       // Senha do pacote de credenciais. Sem ela esse conjunto é pulado; os outros sobem normalmente.
       const sc = el("div", "admin-actions");
       if (backup.temSenha) {
@@ -121,7 +132,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
 
     // Gmail
     const gc = card("Gmail");
-    if (gmail === null) gc.append(el("p", "hint", "Carregando…"));
+    if (gmail === null) pendente(gc, gmailErro, "o Gmail");
     else {
       gc.append(el("p", "hint", `${gmail.email ?? ""} · ${gmail.naoLidas} não ${gmail.naoLidas === 1 ? "lida" : "lidas"} na caixa de entrada`));
       for (const m of gmail.mensagens.slice(0, 8)) { const r = el("div", `conta-msg${m.naoLida ? " nova" : ""}`); r.append(el("strong", "conta-msg-assunto", m.assunto), el("span", "hint conta-msg-de", m.de.replace(/<.*>/, "").trim() || m.de), el("span", "hint conta-msg-resumo", m.resumo.slice(0, 120))); gc.append(r); }
@@ -131,7 +142,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
 
     // Agenda
     const ac = card("Agenda (próximos 7 dias)");
-    if (agenda === null) ac.append(el("p", "hint", "Carregando…"));
+    if (agenda === null) pendente(ac, agendaErro, "a Agenda");
     else if (agenda.length === 0) ac.append(el("p", "hint", "Nenhum evento nos próximos dias."));
     else for (const e of agenda) { const r = el("div", "conta-evento"); r.append(el("strong", "", e.titulo), el("span", "hint", `${fmtData(e.inicio)}${e.local ? " · " + e.local : ""}`)); ac.append(r); }
     const nova = el("div", "admin-actions");

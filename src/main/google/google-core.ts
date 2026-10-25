@@ -301,3 +301,15 @@ export function agendaEventoDeRaw(e: Record<string, unknown>): AgendaEventoView 
 export function planilhaValoresDeRaw(j: Record<string, unknown>): string[][] {
   return Array.isArray(j["values"]) ? (j["values"] as unknown[]).map((l) => (Array.isArray(l) ? l.map((c) => String(c ?? "")) : [])) : [];
 }
+
+// ---- Backup no Drive: erros que descrevem o estado da Conta Google, não da cópia. O cartão mostra o resultado da
+// última tentativa gravado em disco; se a conta voltou depois, esse erro já não descreve a máquina e some sozinho.
+export const ERRO_DRIVE_DESCONECTADA = "a Conta Google não está conectada neste Mac";
+export const ERRO_DRIVE_PERMISSAO = "falta a permissão do Drive: clique em Reconectar na aba Conta Google";
+/** O erro gravado ainda vale com a conta como está agora? null = não vale mais (a conta voltou / reautorizou). */
+export function erroDriveAindaVale(erro: string | null, conta: { conectado: boolean; precisaReconectar: boolean }): string | null {
+  if (erro === null) return null;
+  if (erro === ERRO_DRIVE_DESCONECTADA && conta.conectado) return null;
+  if (erro === ERRO_DRIVE_PERMISSAO && conta.conectado && !conta.precisaReconectar) return null;
+  return erro;
+}
