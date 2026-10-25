@@ -377,8 +377,10 @@ const limiteModeloAtivo = (contaId) => { const l = limiteModelo.get(contaId); re
  * o limite. A ordem de reação num turno é: próxima conta (mesmo modelo, mesma sessão) → Opus na mesma conta → Grok.
  */
 const contas = contasClaude.abrir({ log });
-/** Só para teste: MEU_BOT_FORCAR_LIMITE=<id da conta> faz o primeiro turno daquela conta parecer "limite atingido". */
-let forcarLimite = ENV.MEU_BOT_FORCAR_LIMITE || process.env.MEU_BOT_FORCAR_LIMITE || '';
+/** Só para teste: MEU_BOT_FORCAR_LIMITE=<id da conta>[:<n>] faz a n-ésima chamada daquela conta (padrão: a 1ª) parecer "limite atingido". */
+const forcar = /^(padrao|c-[a-f0-9]{8})(?::(\d+))?$/.exec(ENV.MEU_BOT_FORCAR_LIMITE || process.env.MEU_BOT_FORCAR_LIMITE || '');
+let forcarLimite = forcar ? forcar[1] : '';
+let forcarNa = forcar && forcar[2] ? Number(forcar[2]) : 1;
 /** Nome legível do modelo que o Claude Code usa agora: o reserva durante o limite; senão o da conta (settings.json). */
 const MODEL_LABELS = { fable: 'Fable 5.1', 'claude-fable-5-1': 'Fable 5.1', opus: 'Opus 5.5', 'claude-opus-5-5': 'Opus 5.5', sonnet: 'Sonnet 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', haiku: 'Haiku 5.5', 'claude-haiku-5-5': 'Haiku 5.5' };
 function currentModelLabel(conta) {
@@ -393,7 +395,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
   return new Promise((resolve, reject) => {
     const contaId = conta ? conta.id : 'padrao';
     // Limite forçado (teste): a conta parece esgotada antes de a CLI subir.
-    if (forcarLimite !== '' && forcarLimite === contaId) { forcarLimite = ''; const e = new Error('limite de uso forçado (MEU_BOT_FORCAR_LIMITE)'); e.code = 'conta_limite'; e.resets = Math.floor(Date.now() / 1000) + 5 * 60; reject(e); return; }
+    if (forcarLimite !== '' && forcarLimite === contaId && --forcarNa <= 0) { forcarLimite = ''; const e = new Error('limite de uso forçado (MEU_BOT_FORCAR_LIMITE)'); e.code = 'conta_limite'; e.resets = Math.floor(Date.now() / 1000) + 5 * 60; reject(e); return; }
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
     // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).

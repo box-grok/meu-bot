@@ -135,3 +135,10 @@ test("banco do OpenClaw: UUID e .jsonl para o ID da aba; vale mesmo sem sessions
   assert.equal(g2.nome, "VIP");
   assert.equal(g2.agenteRespondeu, false);
 });
+
+test("sem o channels.whatsapp (máquina sem OpenClaw, como a do Hermes, ou leitura falha): nunca \"todos admitidos\"", async () => {
+  const { gruposDaMaquina } = await import("../../dist/main/whatsapp-grupos-core.js");
+  assert.equal(gruposDaMaquina({ sessions: [] }, null, null).todosAdmitidos, false);
+  assert.equal(gruposDaMaquina({ sessions: [] }, undefined, null).todosAdmitidos, false);
+  assert.equal(gruposDaMaquina({ sessions: [] }, {}, null).todosAdmitidos, true, "configuração lida e vazia continua sendo o alerta real");
+});

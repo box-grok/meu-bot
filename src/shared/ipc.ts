@@ -561,6 +561,8 @@ export interface WhatsappChat {
 
 /** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
 export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string }
+/** Marca de um grupo (`<dígitos>@g.us`): só excluído/restaurado; `at` como na conversa. */
+export interface WaGroupMarkPatch { jid: string; deleted: boolean; at?: string }
 
 /** Tutorial 7 · objetivo do WhatsApp: a escolha da pessoa (rótulo do cartão + frase livre; "outro" exige a frase). */
 export interface ObjectiveChoice { id: string; label: string; text: string }
@@ -647,6 +649,8 @@ export interface WhatsappGroup {
   /** O agente já respondeu neste grupo (sessão atual, pelo banco do OpenClaw): tutorial 12, passo "Testar". */
   agenteRespondeu: boolean;
   updatedAt: string | null;
+  /** Excluído da lista (marca na máquina, whatsapp-lista.json; só a vista, o openclaw.json não muda). Volta sozinho quando o agente recebe mensagem nova do grupo. */
+  deleted: boolean;
 }
 /** Grupos da máquina e quem aciona o agente neles (groupAllowFrom vale para TODOS os grupos ligados). */
 export interface WhatsappGroups {
@@ -963,7 +967,7 @@ export interface StoredConversationView {
 }
 
 /** Menu "…" de um grupo na área "Grupos". */
-export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-clear" | "groups-refresh";
+export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-clear" | "group-delete" | "group-restore" | "groups-refresh";
 export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
@@ -1123,7 +1127,7 @@ export interface MeuBotSharedApi {
   /** Relê a lista de grupos pelo WhatsApp (para o gateway ~30 s). */
   refreshWhatsappGroups(): Promise<WhatsappGroups>;
   /** Menu "…" de um grupo. */
-  showWhatsappGroupMenu(jid: string, state: { agente: WhatsappGroupAgent }): Promise<WhatsappGroupMenuAction | null>;
+  showWhatsappGroupMenu(jid: string, state: { agente: WhatsappGroupAgent; deleted: boolean }): Promise<WhatsappGroupMenuAction | null>;
   /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
   pauseWhatsapp(number: string, paused: boolean): Promise<void>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
@@ -1140,6 +1144,8 @@ export interface MeuBotSharedApi {
   clearWhatsappGroup(jid: string): Promise<void>;
   /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
   markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
+  /** Excluir/restaurar um grupo na lista (marca na máquina, como na conversa; o openclaw.json não muda). */
+  markWhatsappGroup(jid: string, deleted: boolean): Promise<void>;
   /** Descobre o nome (pushname) de contatos sem nome lendo o histórico deles de uma vez (até 20) e guarda na máquina. Devolve só os achados. */
   learnWhatsappNames(numbers: string[]): Promise<Record<string, string>>;
   /** Salva a conversa toda num arquivo; null = cancelado. */

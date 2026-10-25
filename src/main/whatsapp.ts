@@ -21,7 +21,7 @@ import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappE
 import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
-import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
+import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
 import { chatsFromHermes, HERMES_END_SH, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, isHermesKey, threadFromHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
@@ -675,12 +675,12 @@ export async function whatsappLearnNames(host: string, numbers: readonly string[
   return found;
 }
 
-/** Grava na máquina os ajustes de arquivado/excluído (merge lá, para o admin e a pessoa não se sobrescreverem). */
-export async function whatsappSetMarks(host: string, patches: readonly WaMarkPatch[]): Promise<void> {
+/** Grava na máquina os ajustes de arquivado/excluído, de conversas e de grupos (merge lá, para o admin e a pessoa não se sobrescreverem). */
+export async function whatsappSetMarks(host: string, patches: readonly (WaMarkPatch | WaGroupMarkPatch)[]): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const r = await runSsh(host, waMarkSh(patches), 20_000);
   if (r.code !== 0 || !r.stdout.includes("MARKS=1")) throw new Error(`não deu para gravar na máquina: ${r.stderr.trim().split("\n").pop() || "ssh falhou"}`);
-  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`).join(", ")}`);
+  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("jid" in p ? `grupo ${p.jid} d=${p.deleted}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
 }
 
 export async function whatsappThread(host: string, number: string, limit = 200): Promise<WhatsappThreadMessage[]> {
@@ -935,13 +935,15 @@ echo "list=$(timeout 15 openclaw gateway call sessions.list --json --params '{"l
 ${WA_CONFIG_SH}
 echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
 echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
+echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
 ${GRUPOS_DO_BANCO_SH}
 `;
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ler os grupos do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const kv = kvOf(r.stdout);
   const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null, jsonOr(kv.get("banco")));
-  return { ...g, skill: kv.get("skill") === "1" };
+  // Excluído da lista mora na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
+  return { ...g, grupos: applyWaGroupMarks(g.grupos, parseWaMarks(jsonOr(kv.get("marks")))), skill: kv.get("skill") === "1" };
 }
 
 /**

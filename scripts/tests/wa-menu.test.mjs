@@ -55,3 +55,10 @@ test("no Hermes: sem Pausar (não há pausa por contato), com Limpar histórico,
   assert.deepEqual(labels(admin), ["Exportar", "Copiar ID  ⓘ", "Renomear", "Desarquivar", "Limpar histórico…", "Excluir conversa"]);
   assert.deepEqual(labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, null)), labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true })), "sem gateway conhecido vale o menu do OpenClaw");
 });
+
+test("menu de grupo no Hermes: só Copiar ID e reler a lista (ligar, quem aciona e limpar são do OpenClaw)", async () => {
+  const { waGroupMenuTemplate } = await import("../../dist/main/wa-menu.js");
+  const acts = waGroupMenuTemplate("sempre", "hermes").filter((e) => !("separator" in e)).map((e) => e.action);
+  assert.deepEqual(acts, ["group-copy-id", "groups-refresh"]);
+  assert.ok(waGroupMenuTemplate("sempre", null).some((e) => "action" in e && e.action === "group-off"), "sem gateway conhecido vale o menu do OpenClaw");
+});

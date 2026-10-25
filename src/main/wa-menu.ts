@@ -52,9 +52,14 @@ export const waMenuState = (payload: unknown): WaMenuState => {
   return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true };
 };
 
-/** Menu "…" de um grupo: ligar/desligar, quem pode conversar, copiar o id e reler a lista (para o gateway ~30 s). */
+/**
+ * Menu "…" de um grupo: ligar/desligar, quem pode conversar, copiar o id e reler a lista (para o gateway ~30 s).
+ * `gateway`: ligar/desligar, quem aciona e limpar são do `openclaw.json`/gateway do OpenClaw; no Hermes ficam só
+ * "Copiar ID" e reler a lista (a skill whatsapp-grupos existe lá também).
+ */
 export type WaGroupMenuEntry = { label: string; action: WhatsappGroupMenuAction } | { separator: true };
-export function waGroupMenuTemplate(agente: WhatsappGroupAgent): WaGroupMenuEntry[] {
+export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway | null = "openclaw"): WaGroupMenuEntry[] {
+  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, { separator: true }, { label: "Atualizar lista de grupos…", action: "groups-refresh" }];
   return [
     agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
     { label: "Quem pode conversar…", action: "group-who" },

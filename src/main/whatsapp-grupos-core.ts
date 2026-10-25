@@ -83,7 +83,7 @@ export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown
   const byJid = new Map<string, WhatsappGroup>();
   const get = (jid: string): WhatsappGroup => {
     let g = byJid.get(jid);
-    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false }; byJid.set(jid, g); }
+    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false, deleted: false }; byJid.set(jid, g); }
     return g;
   };
   for (const e of c.grupos) { const g = get(e.jid); g.nome = e.nome || null; g.membros = e.membros; g.participantes = e.participantes; }
@@ -119,7 +119,9 @@ export function gruposDaMaquina(list: unknown, waConfig: unknown, cache: unknown
   for (const jid of Object.keys(groups)) if (JID_RE.test(jid)) get(jid);
   for (const g of byJid.values()) g.agente = agenteDe(wa, g.jid);
   const policy = typeof wa.groupPolicy === "string" ? wa.groupPolicy : "allowlist";
-  const todosAdmitidos = policy !== "disabled" && (Object.keys(groups).length === 0 || "*" in groups);
+  // Sem o `channels.whatsapp` do openclaw.json (máquina sem OpenClaw, como a do Hermes, ou leitura que falhou) não há
+  // política para julgar: "todos admitidos" seria alarme falso. O aviso só vale com a configuração em mãos.
+  const todosAdmitidos = isObj(waConfig) && policy !== "disabled" && (Object.keys(groups).length === 0 || "*" in groups);
   const q = quemAcionaDe(wa);
   const peso = (g: WhatsappGroup): number => (g.agente === "desligado" ? 1 : 0);
   const grupos = [...byJid.values()].sort((a, b) => peso(a) - peso(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || (a.nome ?? a.jid).localeCompare(b.nome ?? b.jid));

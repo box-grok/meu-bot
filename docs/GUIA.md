@@ -2869,4 +2869,9 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   gateway vê a rota encerrada e abre sessão nova (auto-cura dele). A lista mantém o contato (sessões encerradas contam
   para presença, não para ler); o fluxo da tela é o mesmo do OpenClaw: guardar no CRM (agora pelo nosso backend na
   8081) e depois limpar. "Pausar" segue fora: o `hermes pause` é parada geral, não por contato.
+- **Grupos numa máquina sem OpenClaw (25 out):** a área "Grupos" aparecia na grokbot-1 (a skill whatsapp-grupos da
+  época do Hermes ainda lista os grupos) e, sem `openclaw.json`, `gruposDaMaquina` julgava a política com uma
+  configuração vazia e acusava "A configuração admite TODOS os grupos": alarme falso. Agora `todosAdmitidos` só é
+  calculado com o `channels.whatsapp` em mãos, e o menu "…" de grupo no Hermes tem só "Copiar ID" e "Atualizar lista"
+  (`waGroupMenuTemplate(agente, gateway)`).
 

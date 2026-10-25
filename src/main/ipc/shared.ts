@@ -234,7 +234,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return new Promise<WhatsappGroupMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappGroupMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
+      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload), whatsappGatewayOf(h.host)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });
