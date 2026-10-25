@@ -213,3 +213,19 @@ test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recent
   assert.equal(h.cacheEm, "2026-10-25T04:26:25.376Z");
   assert.equal(gruposHermes(cfg, semNome, null, "todos").grupos.find((x) => x.jid === C).nome, null, "sem cache, sem nome (o id não vira nome)");
 });
+
+test("pausa no Hermes: tira da lista (e devolve ao retomar), mantém o próprio número e os outros pausados fora; fixa allowlist; recusa só-você/todo-mundo/desligado", () => {
+  const { hermesPausaPlano } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const env = { mode: "bot", dm: "", allow: "5516992294486,5522925501274,5521923670743", all: "" }; // dm vazio = pairing de fábrica
+  const p = hermesPausaPlano(env, "5516992294486", "5522925501274", true, []);
+  assert.deepEqual(p.patch, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516992294486,5521923670743", WHATSAPP_ALLOW_ALL_USERS: "false" });
+  assert.equal(p.reinicia, true, "pairing → allowlist muda a política: reinicia uma vez");
+  // já em allowlist: sem reinício; retomar devolve; outro pausado continua fora
+  const env2 = { mode: "bot", dm: "allowlist", allow: "5516992294486,5521923670743", all: "false" };
+  const r = hermesPausaPlano(env2, "5516992294486", "5522925501274", false, ["5522925501274", "5521923670743"]);
+  assert.deepEqual(r.patch.WHATSAPP_ALLOWED_USERS, "5516992294486,5522925501274"); assert.equal(r.reinicia, false);
+  assert.throws(() => hermesPausaPlano({ mode: "self-chat", dm: "", allow: "", all: "" }, "1", "5522925501274", true, []), /só você/);
+  assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "open", allow: "", all: "true" }, "1", "5522925501274", true, []), /todo mundo/);
+  assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "allowlist", allow: "*", all: "" }, "1", "5522925501274", true, []), /todo mundo/);
+  assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "disabled", allow: "", all: "" }, "1", "5522925501274", true, []), /desligado/);
+});

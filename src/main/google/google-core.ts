@@ -297,6 +297,19 @@ export function achaSegredo(texto: string): string | null {
   for (const s of SEGREDOS) if (s.re.test(texto)) return s.tipo;
   return null;
 }
+/**
+ * A mesma varredura num pacote descomprimido grande: por janelas com sobra, porque virar o pacote inteiro numa string
+ * estoura o limite do V8 (~512 MB: "Cannot create a string longer than 0x1fffffe8 characters", trabalho da grokbot-1,
+ * 25 out). A sobra entre janelas é maior que qualquer segredo procurado, então um que caia na fronteira ainda aparece.
+ */
+export function achaSegredoEmBuffer(dados: Buffer, janela = 16 * 1024 * 1024, sobra = 4096): string | null {
+  if (dados.length <= janela) return achaSegredo(dados.toString("latin1"));
+  for (let ini = 0; ini < dados.length; ini += janela - sobra) {
+    const tipo = achaSegredo(dados.subarray(ini, Math.min(dados.length, ini + janela)).toString("latin1"));
+    if (tipo !== null) return tipo;
+  }
+  return null;
+}
 
 // ---- Conta Google: parse puro das respostas das APIs (testável sem rede) ---------------------------------------
 export interface GmailMensagemView { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }

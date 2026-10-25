@@ -6,7 +6,9 @@
  * Arquivo: { "archived": { "<número>": "<ISO>" }, "deleted": { "<número>": "<ISO da exclusão>" },
  *           "names": { "<número>": { "name": "<pushname>", "alias": "<apelido>", "at": "<ISO>" } },
  *           "groupsDeleted": { "<jid>@g.us": "<ISO da exclusão>" },
- *           "groupNames": { "<jid>@g.us": { "alias": "<apelido>", "at": "<ISO>" } } }.
+ *           "groupNames": { "<jid>@g.us": { "alias": "<apelido>", "at": "<ISO>" } },
+ *           "paused": { "<número>": "<ISO da pausa>" } }  ← só no Hermes: lá pausar é tirar da lista de quem o agente
+ *           responde enquanto a pausa durar, e esta marca é o que diz "está pausado" (no OpenClaw a pausa mora no openclaw.json).
  * Excluída fica oculta enquanto `updatedAt <= deletedAt`; mensagem nova do contato traz a conversa de volta nos dois
  * apps. O nome em cache poupa a leitura do histórico só para saber quem é; o apelido vence o nome na lista.
  * Grupo excluído segue a mesma regra pela sessão do agente nele (sem sessão = continua excluído até a primeira).
@@ -17,9 +19,11 @@ import { JID_RE } from "./whatsapp-grupos-core";
 export const WA_MARKS_FILE = "$HOME/.local/share/meu-bot/whatsapp-lista.json";
 
 export interface WaName { name: string | null; alias: string | null; at: string }
-export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> }
+export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> ; paused: Record<string, string> }
 /** Um ajuste: `at` só a migração do localStorage manda (sem ele, a máquina usa a hora dela); `name`/`alias` vazios apagam. */
 export type { WaGroupMarkPatch, WaMarkPatch };
+/** Números pausados (marca do Hermes), só dígitos. */
+export const pausadosDe = (m: WaMarks): string[] => Object.keys(m.paused);
 const isGroupPatch = (p: WaMarkPatch | WaGroupMarkPatch): p is WaGroupMarkPatch => "jid" in p;
 
 const NUMBER_RE = /^\d{8,15}$/;
@@ -67,8 +71,8 @@ function parseGroupNames(v: unknown): Record<string, { alias: string; at: string
 
 /** O que veio da máquina, saneado (lixo ou arquivo corrompido = sem marcas). */
 export function parseWaMarks(raw: unknown): WaMarks {
-  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} };
-  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames) };
+  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} };
+  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames), paused: parseMap(raw.paused) };
 }
 
 /**
@@ -148,6 +152,7 @@ dele = cur.get("deleted") if isinstance(cur.get("deleted"), dict) else {}
 names = cur.get("names") if isinstance(cur.get("names"), dict) else {}
 gdel = cur.get("groupsDeleted") if isinstance(cur.get("groupsDeleted"), dict) else {}
 gnames = cur.get("groupNames") if isinstance(cur.get("groupNames"), dict) else {}
+paus = cur.get("paused") if isinstance(cur.get("paused"), dict) else {}
 now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 for p in json.load(sys.stdin):
     at = p.get("at") or now
@@ -166,6 +171,9 @@ for p in json.load(sys.stdin):
     if "deleted" in p:
         if p["deleted"]: dele[n] = at
         else: dele.pop(n, None)
+    if "paused" in p:
+        if p["paused"]: paus[n] = at
+        else: paus.pop(n, None)
     if "name" in p or "alias" in p:
         e = names.get(n) if isinstance(names.get(n), dict) else {}
         if "name" in p: e["name"] = p["name"] or None
@@ -174,7 +182,7 @@ for p in json.load(sys.stdin):
         if e.get("name") or e.get("alias"): names[n] = e
         else: names.pop(n, None)
 tmp = f + ".tmp"
-with open(tmp, "w") as o: json.dump({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel, "groupNames": gnames}, o, indent=1, ensure_ascii=False)
+with open(tmp, "w") as o: json.dump({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel, "groupNames": gnames, "paused": paus}, o, indent=1, ensure_ascii=False)
 os.chmod(tmp, 0o600); os.replace(tmp, f)
 print("MARKS=1")
 '

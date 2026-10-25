@@ -36,8 +36,9 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
     // quem responde vive no ~/.hermes/.env (whatsapp-hermes-core.ts) e aplicar reinicia o gateway.
     // Grupos: ligar/desligar e "quando chamado" vão para o config.yaml (platforms.whatsapp) com reinício; quem aciona
     // é a lista única das conversas diretas. Pausar por contato e guarda não existem lá.
+    // Pausar = tirar da lista de quem o agente responde enquanto durar (o agente nem vê as mensagens nesse período).
     case "hermes":
-      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, grupos: connected, politicaDm: true, politicaReinicia: true };
+      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, pausar: connected, grupos: connected, politicaDm: true, politicaReinicia: true };
     // PicoClaw: pareia e tem política de quem o agente responde; o resto ainda não foi mapeado.
     case "picoclaw":
       return { ...NADA, parear: true, politicaDm: true };

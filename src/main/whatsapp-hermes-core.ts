@@ -204,6 +204,28 @@ export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null,
   return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
 }
 
+/**
+ * Pausar um contato no Hermes: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem o agente
+ * responde (WHATSAPP_ALLOWED_USERS, relida ao vivo) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado"
+ * mora em whatsapp-lista.json (whatsapp-marks.ts); os outros pausados ficam fora da lista gravada. A política fica
+ * fixa em "lista" (allowlist): em pairing, um número fora da lista receberia pedido de pareamento, o oposto de pausa.
+ * Diferença do OpenClaw, dita na tela: o agente nem vê as mensagens da pessoa durante a pausa.
+ */
+export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
+  const mode = env.mode.trim().toLowerCase() || "self-chat";
+  const dm = env.dm.trim().toLowerCase() || "pairing";
+  const lista = listaDe(env.allow);
+  if (mode === "self-chat") throw new Error("o Hermes está em modo \"só você\": o agente não responde a outros contatos, não há o que pausar");
+  if (dm === "disabled") throw new Error("o agente está desligado para conversas diretas nesta máquina: não há o que pausar");
+  if ((dm === "open" && truthy(env.all)) || lista.includes("*")) throw new Error("com \"todo mundo\" o Hermes não tem lista de onde tirar o contato: escolha uma lista em \"Quem o agente responde\" antes de pausar");
+  const efetiva = new Set(lista);
+  if (paused) efetiva.delete(number); else efetiva.add(number);
+  if (self !== null) efetiva.add(self);
+  for (const n of pausados) if (n !== number) efetiva.delete(n);
+  const patch: Record<string, string> = { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: [...efetiva].join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
+  return { patch, reinicia: hermesPrecisaReiniciar(env, patch) };
+}
+
 /** Modo, política e opt-in são lidos na subida do gateway; só a lista é ao vivo. */
 export function hermesPrecisaReiniciar(antes: HermesWaEnv, depois: Record<string, string>): boolean {
   const norm = (v: string | undefined, padrao: string): string => (v ?? "").trim().toLowerCase() || padrao;

@@ -22,8 +22,8 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { capacidadesDe } from "./whatsapp-capacidades";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
-import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, gruposHermes, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
+import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -112,6 +112,7 @@ if [ -d "$S" ]; then
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$S/session/creds.json" 2>/dev/null)"
   echo "loggedout=$(tail -8 "$S/bridge.log" 2>/dev/null | grep -c 'Logged out')"
   ${HERMES_POLICY_PY}
+  echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
   exit 0
 fi
 if command -v openclaw >/dev/null 2>&1; then
@@ -243,8 +244,11 @@ async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "ca
   // Quem o agente responde: o .env do Hermes, traduzido para o mesmo contrato do OpenClaw (whatsapp-hermes-core.ts).
   const env = hermesEnvOf(kv);
   const politica = politicaHermes(env, number);
-  const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all }, null, 2);
-  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom: politica.allowFrom };
+  // Pausado no Hermes = fora da lista gravada enquanto durar; para a tela ele continua "quem o agente responde".
+  const pausados = pausadosDe(parseWaMarks(jsonOr(kv.get("marks"))));
+  const allowFrom = politica.dmPolicy === "allowlist" ? [...new Set([...politica.allowFrom, ...pausados.map((n) => `+${n}`)])] : politica.allowFrom;
+  const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all, pausados }, null, 2);
+  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom };
 }
 
 /** Número pareado no Hermes (creds.json do bridge); null sem sessão. */
@@ -262,12 +266,14 @@ async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numb
   const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
   if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
   const self = await readHermesSelfNumber(host);
-  const antes = await runSsh(host, `${HERMES_POLICY_PY}\n`, 20_000);
+  const antes = await runSsh(host, `${HERMES_POLICY_PY}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
   if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const kvAntes = new Map<string, string>();
   for (const line of antes.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kvAntes.set(line.slice(0, i), line.slice(i + 1).trim()); }
   const envAntes = hermesEnvOf(kvAntes);
-  const patch = hermesEnvPara(policy, self, numbers);
+  // Quem está pausado fica fora da lista gravada (a pausa no Hermes é isso); a tela continua mostrando o número.
+  const pausados = pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks"))));
+  const patch = hermesEnvPara(policy, self, numbers.filter((n) => !pausados.includes(n)));
   for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
   const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
   const reinicia = hermesPrecisaReiniciar(envAntes, patch);
@@ -674,7 +680,8 @@ ${SEND_POLICY_READ_SH}
   // Pausados pela lista durável do openclaw.json contam mesmo quando a sessão perdeu a marca (conversa limpa).
   let policy: unknown = null;
   try { policy = JSON.parse(kv.get("policy") || "null"); } catch { /* sem lista legível: só a marca da sessão */ }
-  const chats = hermes ? chatsFromHermes(list, phoneOf(kv.get("self") ?? ""), names) : chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names, pausedNumbersOfPolicy(policy));
+  // No Hermes "pausado" é a marca da máquina (fora da lista enquanto durar); no OpenClaw vem da sessão e do openclaw.json.
+  const chats = hermes ? chatsFromHermes(list, phoneOf(kv.get("self") ?? ""), names).map((c) => ({ ...c, paused: parsed.paused[c.number] !== undefined })) : chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names, pausedNumbersOfPolicy(policy));
   return applyWaMarks(chats, parsed);
 }
 
@@ -897,6 +904,7 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
  */
 export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy): Promise<void> {
   const want = number.replace(/\D/g, "");
+  if (await hostIsHermes(host)) return pauseHermes(host, want, paused, by);
   const { own } = await whatsappClearPlan(host, want);
   // A lista durável (session.sendPolicy do openclaw.json) vale mesmo sem sessão própria e sobrevive a limpar.
   const policy = withPauseRule(await readSendPolicy(host), want, paused, pauseRulePrefixes(want, own));
@@ -910,6 +918,32 @@ export async function whatsappPause(host: string, number: string, paused: boolea
   const noteState = own.length === 0 ? "sem sessão" : /NOTA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
   const rule = /REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "?";
   log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (${by}); lista do openclaw.json: ok; nota: ${noteState}; regra do AGENTS.md: ${rule}`);
+}
+
+/**
+ * Pausa no Hermes (whatsapp-hermes-core.ts hermesPausaPlano): grava o .env sem o contato (ou com ele de volta), reinicia
+ * o gateway só se modo/política mudaram, confere a lista relida e então grava a marca "pausado" na máquina (a ordem
+ * importa: marca antes de a lista valer diria "pausado" com o agente ainda respondendo). Sem nota para o agente: ele não
+ * vê as mensagens do contato durante a pausa, e é isso que a tela avisa.
+ */
+async function pauseHermes(host: string, want: string, paused: boolean, by: PauseBy): Promise<void> {
+  if (!/^\d{8,15}$/.test(want)) throw new Error("número inválido");
+  const self = await readHermesSelfNumber(host);
+  const antes = await runSsh(host, `${HERMES_POLICY_PY}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
+  if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const kvAntes = kvOf(antes.stdout);
+  const pausados = pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks"))));
+  const { patch, reinicia } = hermesPausaPlano(hermesEnvOf(kvAntes), self, want, paused, pausados);
+  for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
+  const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
+  const r = await runSsh(host, `set -e\n${HERMES_ENV_SET_PY} ${args}\n${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`, 120_000);
+  if (r.code !== 0 || !r.stdout.includes("envset=ok")) throw new Error(`não consegui gravar o .env do Hermes: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const restart = /restart=(.*)/.exec(r.stdout)?.[1]?.trim() ?? "";
+  if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
+  const lista = (kvOf(r.stdout).get("waallow") ?? "").split(",").map((s) => s.trim());
+  if (lista.includes(want) === paused) throw new Error(`a lista relida do Hermes não bate (${paused ? "o contato continua" : "o contato não voltou"}); tente de novo`);
+  await whatsappSetMarks(host, [{ number: want, paused }]);
+  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes, ${by}): fora da lista enquanto durar; restart=${restart || "?"}`);
 }
 
 /** session.sendPolicy atual do openclaw.json (null se não há ou não deu para ler). */

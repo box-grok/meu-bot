@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -262,4 +262,19 @@ test("comandoPacoteSh: tar 1 (arquivo mudou durante a leitura) vira aviso e suce
     // aspas simples nos padroes nao quebram o shell
     assert.ok(comandoPacoteSh(c).includes("--exclude='it'\\''s'"));
   } finally { rmSync(home, { recursive: true, force: true }); }
+});
+
+test("achaSegredoEmBuffer: varre por janelas com sobra; segredo na fronteira da janela ainda aparece; limpo e grande = null", () => {
+  const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abc";
+  const janela = 1024, sobra = 128;
+  // segredo cortado pela fronteira da janela: comeca 20 bytes antes do fim da primeira
+  const buf = Buffer.alloc(janela * 3, 0x61);
+  buf.write(jwt, janela - 20, "latin1");
+  assert.equal(achaSegredoEmBuffer(buf, janela, sobra), "token JWT");
+  // sem sobra o mesmo segredo some: prova que a sobra e o que segura a fronteira
+  assert.equal(achaSegredoEmBuffer(buf, janela, 0), null);
+  // limpo, maior que a janela
+  assert.equal(achaSegredoEmBuffer(Buffer.alloc(janela * 5, 0x62), janela, sobra), null);
+  // pequeno (cabe numa janela) usa a varredura direta
+  assert.equal(achaSegredoEmBuffer(Buffer.from(`x ${jwt} y`, "latin1"), janela, sobra), "token JWT");
 });

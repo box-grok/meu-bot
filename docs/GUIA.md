@@ -2461,6 +2461,21 @@ então as máquinas que já a têm recebem a skill na próxima abertura do app. 
 Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
 manda sempre usar `--remetentes`.
 
+## Pausar contato no Hermes (25 out)
+
+O Hermes não tem pausa por contato (o OpenClaw tem `sendPolicy` por sessão). Pausar lá é **tirar o número da lista de
+quem o agente responde** (WHATSAPP_ALLOWED_USERS, relida ao vivo) enquanto a pausa durar, e retomar é devolvê-lo.
+Diferença dita na tela: o agente nem vê as mensagens da pessoa nesse período.
+
+- Marca `paused: { número: ISO }` em `whatsapp-lista.json` (dona: `whatsapp-marks.ts`); só o main grava. A lista do
+  app e o status leem a marca; o cartão "Quem o agente responde" continua mostrando o número (união com os pausados)
+  e, ao gravar, deixa os pausados fora (`setDmPolicyHermes`).
+- `hermesPausaPlano` (puro, testado): lista efetiva = lista de hoje ± o número, sempre com o próprio, sem os outros
+  pausados; fixa `WHATSAPP_MODE=bot` e `WHATSAPP_DM_POLICY=allowlist` (em pairing um número fora da lista receberia
+  pedido de pareamento); reinicia só se modo/política mudaram. Recusa "só você", desligado e "todo mundo".
+- `pauseHermes` (whatsapp.ts): grava o .env com backup, reinicia se preciso, relê e confere a lista e só então grava
+  a marca. Capacidade `pausar` do Hermes ligada.
+
 ## Backup: tar 1 ("file changed as we read it") não é erro (25 out)
 
 Na `grokbot-1` o conjunto "trabalho" passou a falhar com `tar: .hermes: file changed as we read it`: o Hermes grava

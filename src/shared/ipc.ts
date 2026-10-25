@@ -572,7 +572,7 @@ export interface WhatsappChat {
 }
 
 /** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
-export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string }
+export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string; /** Só o main grava (pausa no Hermes); a tela não manda. */ paused?: boolean }
 /** Marca de um grupo (`<dígitos>@g.us`): só excluído/restaurado; `at` como na conversa. */
 /** Marca de grupo: excluir/restaurar da lista e/ou o apelido ("" apaga). */
 export interface WaGroupMarkPatch { jid: string; deleted?: boolean; alias?: string; at?: string }

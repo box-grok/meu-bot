@@ -7,10 +7,10 @@ const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, i
 
 test("parseWaMarks: só números de 8 a 15 dígitos com hora válida; lixo vira vazio", () => {
   const m = parseWaMarks({ archived: { "5511999990000": "2026-10-17T02:10:00Z", "abc": "2026-10-17T02:10:00Z", "5511999990001": "ontem" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, outro: 1 });
-  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {}, groupNames: {} });
-  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
-  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
-  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {} });
+  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
+  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
+  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
+  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
   // grupos excluídos: só jid de grupo com hora válida
   assert.deepEqual(parseWaMarks({ groupsDeleted: { "120363427290582156@g.us": "2026-10-25T03:40:00Z", "5511999990000": "2026-10-25T03:40:00Z", "1203@g.us": "ontem" } }).groupsDeleted, { "120363427290582156@g.us": "2026-10-25T03:40:00Z" });
 });
@@ -110,3 +110,9 @@ test("waMarkSh: embute os ajustes em base64, grava com tmp+mv e recusa número i
   assert.throws(() => waMarkSh([{ number: "595994402904", alias: "linha\nnova" }]), /nome inválido/);
 });
 
+
+test("paused (Hermes): só números válidos; waMarkSh grava e apaga a marca", () => {
+  assert.deepEqual(parseWaMarks({ paused: { "5522925501274": "2026-10-25T06:00:00Z", "abc": "2026-10-25T06:00:00Z" } }).paused, { "5522925501274": "2026-10-25T06:00:00Z" });
+  const sh = waMarkSh([{ number: "5522925501274", paused: true }]);
+  assert.ok(sh.includes('"paused"') && sh.includes("paus[n] = at"));
+});
