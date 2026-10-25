@@ -2461,6 +2461,29 @@ então as máquinas que já a têm recebem a skill na próxima abertura do app. 
 Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
 manda sempre usar `--remetentes`.
 
+## Grupos no Hermes: ligar/desligar e "quando chamado" (25 out)
+
+Na máquina com Hermes a política de grupos mora em `~/.hermes/config.yaml` (`platforms.whatsapp`): `group_policy`
+(`allowlist` + `group_allow_from` com os jids; `open` = todos, exige WHATSAPP_ALLOW_ALL_USERS; `disabled`/`pairing` =
+nenhum), `require_mention` (global) e `free_response_chats` (jids que respondem sempre). Quem fala dentro de um grupo
+admitido passa pela MESMA lista das conversas diretas (WHATSAPP_ALLOWED_USERS): não há "quem aciona" por grupo. O yaml
+tem precedência sobre o .env e os dois são lidos na subida do gateway (`pm2 restart hermes-gateway --update-env`).
+
+- **Tradução** (`whatsapp-hermes-core.ts`, puro, testado): `desligado` = fora da lista; `sempre` = admitido e (sem
+  menção obrigatória ou nas exceções); `mencao` = admitido com menção obrigatória. `hermesGroupCfgPara` faz a config
+  nova: ligar entra na lista (`allowlist`), desligar sai (o último volta a `disabled`); o primeiro "quando chamado" numa
+  máquina que respondia a tudo liga `require_mention` e põe os outros ligados em `free_response_chats`, para ninguém
+  mudar sem querer. "Quem pode conversar" é recusado com a explicação (mude em "Quem o agente responde"); com `open`/"*"
+  não dá para desligar um grupo só (explica, em vez de chutar).
+- **Leitura** (`HERMES_GROUP_CFG_SH`, python da venv do Hermes com PyYAML): yaml, chaves soltas ou em `extra`, senão
+  o .env. `gruposHermes` junta a lista admitida com as sessões de grupo do state.db (uma por remetente; a mais
+  recente dá hora, chave e id) e `quemAciona` = lista das conversas diretas, nunca "herdado".
+- **Escrita** (`hermesGroupCfgSetSh`): ruamel round-trip (comentários e prompts por grupo ficam; indentação do
+  arquivo), backup `config.yaml.bak-meu-bot-<ts>`, tmp + rename, as mesmas chaves saem de `extra:`; depois
+  `HERMES_RESTART_SH` e releitura conferida (`setGroupHermes` em whatsapp.ts). Capacidade `grupos` do Hermes ligada.
+- Caso que motivou: "liberar para todo mundo" num grupo da `grokbot-1` dava "não consegui ler a configuração do
+  WhatsApp (~/.openclaw/openclaw.json)".
+
 ## Excluir grupo da lista (25 out)
 
 "Excluir da lista" no menu "…" de um grupo é só tirar da vista, como na conversa: a marca mora na máquina
