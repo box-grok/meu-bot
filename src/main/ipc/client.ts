@@ -49,12 +49,12 @@ import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browser
 import { registrar } from "../auditoria";
 
 /**
- * Padrão do app: máquina com OpenClaw pareada entende áudios. Depois de parear, se não há transcritor, instala
+ * Padrão do app: máquina cujo agente transcreve áudio (capacidade `audio`) entende áudios depois de parear. Depois de parear, se não há transcritor, instala
  * (uma vez; baixa ~500 MB) e conta pelo mesmo canal de eventos do pareamento. O admin pode desativar depois.
  */
 async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
   const st = await whatsappStatus(host).catch(() => null);
-  if (st === null || st.gateway !== "openclaw" || st.audioIn !== false) return;
+  if (st === null || !st.capacidades.audio || st.audioIn !== false) return;
   send({ kind: "step", text: "ligando a transcrição de áudio (padrão do meu-bot; baixa ~500 MB só na primeira vez)…" });
   const r = await installAudio(host, { kind: "in" }, (line) => send({ kind: "log", text: line }));
   send({ kind: r.ok ? "step" : "log", text: r.ok ? "transcrição de áudio pronta: o agente entende áudios" : `a transcrição não ligou: ${r.log.at(-1) ?? "erro"}` });
@@ -66,7 +66,7 @@ async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => vo
  */
 async function ensurePauseRule(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
   const st = await whatsappStatus(host).catch(() => null);
-  if (st === null || st.gateway !== "openclaw") return;
+  if (st === null || !st.capacidades.pausar) return;
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${pauseRuleSh()}\n`, 30_000).catch(() => null);
   const rule = r === null ? "erro" : (/REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "erro");
   send({ kind: rule === "erro" ? "log" : "step", text: rule === "erro" ? "não deu para gravar a regra de pausa no AGENTS.md do agente" : rule === "1" ? "regra de pausa do meu-bot gravada no agente (AGENTS.md)" : "regra de pausa do meu-bot já estava no agente" });

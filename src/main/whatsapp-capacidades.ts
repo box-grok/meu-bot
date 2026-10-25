@@ -13,7 +13,7 @@ import type { Gateway, WhatsappCapacidades } from "../shared/ipc";
 
 const NADA: WhatsappCapacidades = {
   parear: false, listarConversas: false, lerConversa: false, limparHistorico: false,
-  pausar: false, grupos: false, guarda: false, politicaDm: false, audio: false,
+  pausar: false, grupos: false, guarda: false, politicaDm: false, audio: false, politicaReinicia: false,
 };
 
 /**
@@ -28,14 +28,15 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
     case "openclaw":
       return {
         parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected,
-        pausar: connected, grupos: connected, guarda: true, politicaDm: true, audio: true,
+        pausar: connected, grupos: connected, guarda: true, politicaDm: true, audio: true, politicaReinicia: false,
       };
     // Hermes não tem banco de conversas; o histórico vem do hook `wa-mirror`, que grava em
     // ~/.hermes/wa-mirror/inbox.jsonl o que o agente atendeu (mensagem truncada em 500 caracteres,
-    // limite do próprio Hermes). Dá para listar e ler; quem responde vive no ~/.hermes/.env
-    // (whatsapp-hermes-core.ts); limpar, pausar, grupos e guarda não existem lá.
+    // limite do próprio Hermes). Dá para listar, ler e limpar (encerra as sessões do contato no state.db);
+    // quem responde vive no ~/.hermes/.env (whatsapp-hermes-core.ts) e aplicar reinicia o gateway.
+    // Pausar por contato, grupos pelo app e guarda não existem lá.
     case "hermes":
-      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, politicaDm: true };
+      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, politicaDm: true, politicaReinicia: true };
     // PicoClaw: pareia e tem política de quem o agente responde; o resto ainda não foi mapeado.
     case "picoclaw":
       return { ...NADA, parear: true, politicaDm: true };

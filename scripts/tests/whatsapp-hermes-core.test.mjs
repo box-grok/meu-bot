@@ -98,3 +98,47 @@ test("grupos do Hermes: uma sessão por remetente; só as do jid pedido; thread 
   assert.deepEqual(t.map((m) => [m.role, m.text, m.autor]), [["contact", "Oi", "Diego"], ["agent", "Oi, René.", undefined], ["contact", "Status?", "+554599710377"]]);
   assert.match(HERMES_GROUPS_PY, /chat_type = \?/); assert.match(HERMES_GROUPS_PY, /user_name/);
 });
+
+test("política do Hermes (.env → contrato do app): self-chat, open só com opt-in, '*' na lista, allowlist e pairing", () => {
+  const { politicaHermes, hermesEnvOf } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const env = (o) => ({ mode: "", dm: "", allow: "", all: "", ...o });
+  assert.deepEqual(politicaHermes(env({}), "5516900000001"), { dmPolicy: "allowlist", allowFrom: ["+5516900000001"] }, "sem nada = self-chat = só você");
+  assert.deepEqual(politicaHermes(env({ mode: "bot", allow: "5516900000001,5521900000002" }), "5516900000001"), { dmPolicy: "allowlist", allowFrom: ["+5516900000001", "+5521900000002"] }, "bot + lista (pairing implícito) = lista");
+  assert.deepEqual(politicaHermes(env({ mode: "bot", dm: "open", all: "true" }), null), { dmPolicy: "open", allowFrom: ["*"] });
+  assert.deepEqual(politicaHermes(env({ mode: "bot", dm: "open" }), null).dmPolicy, "disabled", "open sem opt-in: o gateway nem sobe");
+  assert.deepEqual(politicaHermes(env({ mode: "bot", dm: "allowlist", allow: "*" }), null).dmPolicy, "open");
+  assert.deepEqual(politicaHermes(env({ mode: "bot" }), null), { dmPolicy: "pairing", allowFrom: [] });
+  assert.deepEqual(politicaHermes(env({ mode: "bot", dm: "disabled", allow: "+5516900000001" }), null), { dmPolicy: "disabled", allowFrom: ["+5516900000001"] });
+  const kv = new Map([["wamode", "bot"], ["wadm", "allowlist"], ["waallow", "1,2"], ["waall", ""]]);
+  assert.deepEqual(hermesEnvOf(kv), { mode: "bot", dm: "allowlist", allow: "1,2", all: "" });
+});
+
+test("o que gravar por cartão e quando o gateway precisa reiniciar", () => {
+  const { hermesEnvPara, hermesPrecisaReiniciar, HERMES_ENV_VALUE_RE } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  assert.deepEqual(hermesEnvPara("open", "5516900000001"), { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" });
+  assert.deepEqual(hermesEnvPara("self", "5516900000001"), { WHATSAPP_MODE: "self-chat", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516900000001", WHATSAPP_ALLOW_ALL_USERS: "false" });
+  assert.deepEqual(hermesEnvPara("list", "5516900000001", ["5521900000002", "+55 21 90000-0002", "5516900000001"]).WHATSAPP_ALLOWED_USERS, "5516900000001,5521900000002", "sem repetidos, dono sempre, só dígitos");
+  for (const v of Object.values(hermesEnvPara("list", "1", ["2"]))) assert.match(v, HERMES_ENV_VALUE_RE);
+  const antes = { mode: "bot", dm: "", allow: "1,2", all: "" };
+  assert.equal(hermesPrecisaReiniciar(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "pairing", WHATSAPP_ALLOWED_USERS: "1,2,3", WHATSAPP_ALLOW_ALL_USERS: "false" }), false, "só a lista mudou: vale ao vivo");
+  assert.equal(hermesPrecisaReiniciar(antes, hermesEnvPara("open", "1")), true, "política mudou");
+  assert.equal(hermesPrecisaReiniciar(antes, hermesEnvPara("self", "1")), true, "modo mudou");
+});
+
+test("HERMES_ENV_SET_PY: troca a linha existente (com export/aspas), acrescenta a que falta e guarda backup", async () => {
+  const { HERMES_ENV_SET_PY, HERMES_POLICY_PY } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } = await import("node:fs");
+  const { execSync } = await import("node:child_process");
+  const path = await import("node:path");
+  const home = mkdtempSync(path.join((await import("node:os")).tmpdir(), "meu-bot-hermes-env-"));
+  try {
+    mkdirSync(path.join(home, ".hermes"));
+    writeFileSync(path.join(home, ".hermes", ".env"), 'export WHATSAPP_MODE="bot"\nWHATSAPP_ALLOWED_USERS=1,2\nOUTRA=x\n');
+    const out = execSync(`${HERMES_ENV_SET_PY} 'WHATSAPP_MODE=self-chat' 'WHATSAPP_DM_POLICY=allowlist'`, { env: { ...process.env, HOME: home }, encoding: "utf8" });
+    assert.match(out, /envset=ok/);
+    assert.equal(readFileSync(path.join(home, ".hermes", ".env"), "utf8"), "WHATSAPP_MODE=self-chat\nWHATSAPP_ALLOWED_USERS=1,2\nOUTRA=x\nWHATSAPP_DM_POLICY=allowlist\n");
+    assert.ok(readdirSync(path.join(home, ".hermes")).some((f) => f.startsWith(".env.bak-meu-bot-")), "backup ao lado");
+    const lido = execSync(HERMES_POLICY_PY, { env: { ...process.env, HOME: home }, encoding: "utf8" });
+    assert.equal(lido, "wamode=self-chat\nwadm=allowlist\nwaallow=1,2\nwaall=\n");
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});

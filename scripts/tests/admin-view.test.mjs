@@ -46,16 +46,18 @@ test("progressLines: tour e tutoriais, com onde parou", () => {
   ]);
 });
 
-test("visibleActions: transcrição só com OpenClaw, Ativar ou Desativar conforme o estado; nota explica quando não há", () => {
+test("visibleActions: transcrição só com a capacidade audio, Ativar ou Desativar conforme o estado; nota explica quando não há", () => {
   assert.deepEqual(visibleActions(null).map((o) => o.id), ["restart-gateway", "restart-backend", "support-off"]);
-  const wa = (x) => ({ present: true, gateway: "openclaw", connected: true, number: null, detail: "", dmPolicy: null, ...x });
+  const cap = (audio) => ({ parear: true, listarConversas: true, lerConversa: true, limparHistorico: true, pausar: true, grupos: true, guarda: true, politicaDm: true, audio, politicaReinicia: false });
+  const wa = (x) => ({ present: true, gateway: "openclaw", connected: true, number: null, detail: "", dmPolicy: null, capacidades: cap(true), ...x });
   const h = (whatsapp, sh = share) => ({ probe, whatsapp, progress: null, share: sh, xai: null });
   assert.deepEqual(visibleActions(h(wa({ audioIn: false }))).map((o) => o.id), ["restart-gateway", "restart-backend", "transcription", "support-off"]);
   const ids = visibleActions(h(wa({ audioIn: true }))).map((o) => o.id);
   assert.ok(!ids.includes("transcription") && ids.includes("transcription-off") && ids.includes("restart-gateway"));
-  assert.deepEqual(visibleActions(h({ present: false, gateway: null })).map((o) => o.id), ["restart-gateway", "restart-backend", "support-off"]);
-  assert.match(transcriptionNote(h({ present: false, gateway: null })), /não tem OpenClaw/);
-  assert.match(transcriptionNote(h(wa({ gateway: "hermes", audioIn: undefined }))), /só com OpenClaw/);
+  assert.deepEqual(visibleActions(h({ present: false, gateway: null, capacidades: cap(false) })).map((o) => o.id), ["restart-gateway", "restart-backend", "support-off"]);
+  assert.match(transcriptionNote(h({ present: false, gateway: null, capacidades: cap(false) })), /não tem agente com WhatsApp/);
+  assert.match(transcriptionNote(h(wa({ gateway: "hermes", audioIn: undefined, capacidades: cap(false) }))), /não transcreve áudio pelo app/);
+  assert.ok(!visibleActions(h(wa({ gateway: "hermes", audioIn: false, capacidades: cap(false) }))).some((o) => o.id === "transcription"), "sem a capacidade, nada de Ativar mesmo com audioIn=false");
   assert.match(transcriptionNote(h(null, { ...share, whatsapp: false })), /não compartilha/);
   assert.equal(transcriptionNote(h(wa({ audioIn: false }))), null);
   assert.equal(actionResultText("Reiniciar", { ok: true, detail: "" }), "Reiniciar: feito");

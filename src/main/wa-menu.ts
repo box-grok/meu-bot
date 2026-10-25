@@ -2,7 +2,11 @@
  * Itens do menu "…" de uma conversa do WhatsApp na lista lateral. Puro (ipc/shared.ts converte para o Menu do
  * Electron): sem manageWa (o meu-bot-admin) não há "Conversar com o meu-bot"; arquivar é só deste app.
  */
-import type { Capabilities, Gateway, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../shared/ipc";
+import type { Capabilities, WhatsappCapacidades, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../shared/ipc";
+
+/** O que a máquina sabe fazer, no que importa ao menu (whatsapp-capacidades.ts). `null` = desconhecido: vale o menu completo. */
+export type WaMenuCaps = Pick<WhatsappCapacidades, "pausar" | "limparHistorico" | "grupos">;
+const TUDO: WaMenuCaps = { pausar: true, limparHistorico: true, grupos: true };
 
 /** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). */
 export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean }
@@ -14,10 +18,11 @@ export type WaMenuEntry =
 const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenuEntry => ({ label, action, enabled });
 
 /**
- * `gateway`: no Hermes não há "Pausar" (o `hermes pause` é parada geral, não por contato); "Limpar histórico" existe
- * (encerra a sessão do contato como o /reset do gateway, guardando antes no CRM, como no OpenClaw).
+ * `cap`: o menu pergunta o que a máquina sabe fazer, não qual framework ela roda. Sem `pausar` (Hermes: o `hermes pause`
+ * é parada geral, não por contato) não há "Pausar"; sem `limparHistorico` não há "Limpar histórico…".
  */
-export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">, gateway: Gateway | null = "openclaw"): WaMenuEntry[] {
+export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">, cap: WaMenuCaps | null = null): WaMenuEntry[] {
+  const pode = cap ?? TUDO;
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   // Excluída: nada foi apagado (a conversa e o agente continuam na máquina); dá para ler, exportar e restaurar.
   if (state.deleted) return [exportar, item("Copiar ID  ⓘ", "copy-ref"), item("Restaurar", "restore")];
@@ -31,7 +36,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const pausa = state.paused ? item("Retomar", "resume") : item("Pausar", "pause");
   // Excluir = só tirar da lista (o agente continua de onde parou), sem confirmação; volta se o contato mandar outra mensagem. Zerar é o Limpar.
   const excluir = item("Excluir conversa", "delete");
-  const mexe: WaMenuEntry[] = gateway === "hermes" ? [item("Limpar histórico…", "clear")] : [pausa, item("Limpar histórico…", "clear")];
+  const mexe: WaMenuEntry[] = [...(pode.pausar ? [pausa] : []), ...(pode.limparHistorico ? [item("Limpar histórico…", "clear")] : [])];
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
   if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, ...mexe, excluir];
   return [
@@ -53,30 +58,29 @@ export const waMenuState = (payload: unknown): WaMenuState => {
 };
 
 /**
- * Menu "…" de um grupo: ligar/desligar, quem pode conversar, copiar o id e reler a lista (para o gateway ~30 s).
- * `gateway`: ligar/desligar, quem aciona e limpar são do `openclaw.json`/gateway do OpenClaw; no Hermes ficam só
- * "Copiar ID" e reler a lista (a skill whatsapp-grupos existe lá também).
+ * Menu "…" de um grupo: ligar/desligar e quem pode conversar (só com `grupos`), copiar o id, limpar (só com
+ * `limparHistorico`), excluir da lista e reler a lista (para o gateway ~30 s). Copiar, excluir e reler sempre.
  */
 export type WaGroupMenuEntry = { label: string; action: WhatsappGroupMenuAction } | { separator: true };
 /**
  * `deleted` = o grupo está excluído da lista (marca na máquina, só a vista): o menu vira Restaurar + Copiar ID. Excluir
- * entra com o agente desligado (grupo ligado sumir da lista enquanto o agente responde nele seria armadilha) e, no
- * Hermes, sempre (lá o app não liga nem desliga grupo). O openclaw.json nunca muda por excluir/restaurar.
+ * entra sempre (pedido do dono, 25 out): só tira da lista, sem mexer no agente. A configuração do agente nunca muda
+ * por excluir/restaurar.
  */
-export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway | null = "openclaw", deleted = false): WaGroupMenuEntry[] {
+export function waGroupMenuTemplate(agente: WhatsappGroupAgent, cap: WaMenuCaps | null = null, deleted = false): WaGroupMenuEntry[] {
+  const pode = cap ?? TUDO;
   const excluir: WaGroupMenuEntry = { label: "Excluir da lista", action: "group-delete" };
   const cauda: WaGroupMenuEntry[] = [{ separator: true }, { label: "Atualizar lista de grupos…", action: "groups-refresh" }];
   if (deleted) return [{ label: "Restaurar na lista", action: "group-restore" }, { label: "Copiar ID", action: "group-copy-id" }, ...cauda];
-  // Limpar e Excluir existem no grupo e na conversa, nos dois gateways (pedido do dono, 25 out): limpar encerra a
-  // sessão do agente no grupo (no Hermes, uma por remetente); excluir só tira da lista, sem mexer no agente.
-  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, { label: "Limpar histórico", action: "group-clear" }, excluir, ...cauda];
   return [
-    agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
-    { label: "Quem pode conversar…", action: "group-who" },
+    ...(pode.grupos ? [
+      agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } as WaGroupMenuEntry : { label: "Desligar o agente", action: "group-off" } as WaGroupMenuEntry,
+      { label: "Quem pode conversar…", action: "group-who" } as WaGroupMenuEntry,
+    ] : []),
     { label: "Copiar ID", action: "group-copy-id" },
-    // Zera a sessão do agente neste grupo; antes, a conversa vai para uma caixa do CRM (a tela escolhe qual).
+    // Zera a sessão do agente neste grupo (no Hermes, uma por remetente); antes, a conversa vai para uma caixa do CRM.
     // Sem reticências: no grupo o clique limpa direto, sem caixa de confirmação (na conversa ainda confirma).
-    { label: "Limpar histórico", action: "group-clear" },
+    ...(pode.limparHistorico ? [{ label: "Limpar histórico", action: "group-clear" } as WaGroupMenuEntry] : []),
     excluir,
     ...cauda,
   ];

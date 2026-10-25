@@ -412,6 +412,8 @@ export type Gateway = "hermes" | "openclaw" | "picoclaw";
 export interface WhatsappCapacidades {
   parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
   pausar: boolean; grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
+  /** Aplicar "quem o agente responde" reinicia o gateway do WhatsApp da máquina (alguns segundos fora do ar). */
+  politicaReinicia: boolean;
 }
 export interface WhatsappStatus {
   /** O que esta máquina sabe fazer; a tela decide por aqui, nunca pelo nome do gateway. */

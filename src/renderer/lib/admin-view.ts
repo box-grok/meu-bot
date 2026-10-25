@@ -170,8 +170,8 @@ export const progressUpdatedText = (at: string): string =>
   `Atualizado ${new Date(at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}, quando o meu-bot dela estava aberto.`;
 
 /**
- * Ações que fazem sentido: reiniciar sempre; transcrição só em máquina com OpenClaw (Ativar quando ela não entende
- * áudios, Desativar quando entende). Sem saúde ainda, só o que não depende dela.
+ * Ações que fazem sentido: reiniciar sempre; transcrição só em máquina cujo agente transcreve áudio (capacidade
+ * `audio`: Ativar quando ela não entende áudios, Desativar quando entende). Sem saúde ainda, só o que não depende dela.
  */
 export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_ACTIONS)[number][] =>
   ADMIN_ACTIONS.filter((o) => {
@@ -180,7 +180,7 @@ export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_AC
     if (o.id === "restart-backend") return h === null || h.probe.backendInstalled;
     if (o.id !== "transcription" && o.id !== "transcription-off") return true;
     const wa = h?.whatsapp ?? null;
-    if (wa === null || !wa.present || wa.gateway !== "openclaw") return false;
+    if (wa === null || !wa.present || !wa.capacidades.audio) return false;
     return o.id === "transcription" ? wa.audioIn === false : wa.audioIn === true;
   });
 
@@ -188,8 +188,8 @@ export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_AC
 export function transcriptionNote(h: AdminHealth | null): string | null {
   if (h === null) return null;
   if (h.whatsapp === null) return h.share.whatsapp ? "Transcrição de áudio: a máquina não tem agente com WhatsApp." : "Transcrição de áudio: ela não compartilha o WhatsApp.";
-  if (!h.whatsapp.present) return "Transcrição de áudio: a máquina não tem OpenClaw (a transcrição é do agente do WhatsApp dele).";
-  if (h.whatsapp.gateway !== "openclaw") return `Transcrição de áudio: só com OpenClaw (esta máquina usa ${h.whatsapp.gateway === "picoclaw" ? "PicoClaw" : "Hermes"}).`;
+  if (!h.whatsapp.present) return "Transcrição de áudio: a máquina não tem agente com WhatsApp (a transcrição é dele).";
+  if (!h.whatsapp.capacidades.audio) return `Transcrição de áudio: o agente desta máquina (${h.whatsapp.gateway ?? "desconhecido"}) não transcreve áudio pelo app.`;
   return null;
 }
 

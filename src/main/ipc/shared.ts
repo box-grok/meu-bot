@@ -8,6 +8,7 @@ import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp";
+import { hermesAudioStatus } from "../hermes-audio";
 import { JID_RE } from "../whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp-marks";
@@ -38,7 +39,14 @@ import { parseZoomAction } from "../zoom-core";
 import { caps } from "../variant";
 import { whatsappArchiveToCrm, whatsappGroupArchiveToCrm } from "../whatsapp-crm";
 import { assertCrmProprio } from "../acesso";
-import { waGroupAgente, waGroupDeleted, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
+import { waGroupAgente, waGroupDeleted, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuCaps, type WaMenuEntry } from "../wa-menu";
+import { capacidadesDe } from "../whatsapp-capacidades";
+
+/** O que o menu pode oferecer nesta máquina, pela tabela de capacidades (gateway visto na última consulta); desconhecido = menu completo. */
+function waMenuCapsOf(host: string): WaMenuCaps | null {
+  const gateway = whatsappGatewayOf(host);
+  return gateway === null ? null : capacidadesDe(gateway, true, true);
+}
 import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
 
@@ -130,10 +138,14 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   });
 
   // Leituras da máquina desta janela.
-  handleShared("whatsapp:status", (event) => {
+  handleShared("whatsapp:status", async (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return whatsappStatus(h.host);
+    const st = await whatsappStatus(h.host);
+    // Hermes: ouvir e responder em áudio são configuração do próprio Hermes (config.yaml); o app só lê e mostra.
+    if (st.gateway !== "hermes" || !st.present) return st;
+    const audio = await hermesAudioStatus(h.host);
+    return audio === null ? st : { ...st, audioIn: audio.audioIn, audioOut: audio.audioOut };
   });
   handleShared("whatsapp:chats", (event) => {
     const h = hostFromEvent(event);
@@ -164,7 +176,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("ui:wa-menu", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) return null;
-    const entries = waMenuTemplate(waMenuState(payload), caps(), whatsappGatewayOf(h.host));
+    const entries = waMenuTemplate(waMenuState(payload), caps(), waMenuCapsOf(h.host));
     return new Promise<WhatsappMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
@@ -234,7 +246,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return new Promise<WhatsappGroupMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappGroupMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload), whatsappGatewayOf(h.host), waGroupDeleted(payload)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
+      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload), waMenuCapsOf(h.host), waGroupDeleted(payload)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });

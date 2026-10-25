@@ -2898,4 +2898,10 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   `origin_json.user_name`), `hermesGroupSessions`/`hermesGroupOfKey` (puros), `whatsappGroupThread` monta a conversa
   com `autor` por sessão, `whatsappGroupClearPlan` conta as sessões vivas e `whatsappGroupClear` encerra todas pelo
   `HERMES_END_SH`. `hostIsHermes` decide pelo gateway da última consulta ou por `~/.hermes/whatsapp` por SSH.
+- **Ouvir áudios e voz no Hermes (25 out):** "Ativar transcrição" na grokbot-1 rodava o `install-transcricao.sh`, que é
+  do OpenClaw, e parava em "esta máquina não tem OpenClaw". No Hermes a transcrição já existe (config.yaml: `stt.enabled`,
+  provedor `mac-whisper` com faster-whisper local de reserva) e a voz é `voice.auto_tts`. `src/main/hermes-audio.ts`
+  lê isso com o Python do runtime do Hermes; o handler `whatsapp:status` completa `audioIn`/`audioOut` quando o
+  gateway é Hermes; `installAudio` recusa com a explicação; a tela mostra "✓ ativo: o Hermes transcreve" e a voz só
+  como leitura, sem botões de instalar.
 

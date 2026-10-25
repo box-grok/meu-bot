@@ -2805,7 +2805,7 @@ function renderReplyCards(container: HTMLElement, current: WhatsappReplyChoice |
     if (o.id === "list" && waListEditing) container.append(renderListEditor(disabled));
   }
   if (waPolicyError !== null) container.append(el("p", "hint bad-hint", waPolicyError));
-  else if (waStatus?.gateway === "hermes" && waPolicySaving) container.append(el("p", "hint", "No Hermes, trocar o modo reinicia o gateway do WhatsApp: leva alguns segundos."));
+  else if (waStatus?.capacidades.politicaReinicia === true && waPolicySaving) container.append(el("p", "hint", "Trocar o modo reinicia o gateway do WhatsApp desta máquina: leva alguns segundos."));
 }
 /** Campo da lista: um número por linha; "Salvar lista" grava a allowlist (você entra sempre). */
 function renderListEditor(disabled: boolean): HTMLElement {
@@ -2862,7 +2862,9 @@ function renderAudioControls(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const hear = el("div", "audio-row");
   hear.append(el("strong", "", "Ouvir áudios"));
-  if (st?.audioIn === true) hear.append(el("span", "audio-ok", "✓ ativo: a transcrição roda na própria máquina"));
+  const hermes = st?.gateway === "hermes";
+  if (st?.audioIn === true) hear.append(el("span", "audio-ok", hermes ? "✓ ativo: o Hermes transcreve os áudios (config.yaml › stt)" : "✓ ativo: a transcrição roda na própria máquina"));
+  else if (hermes) hear.append(el("span", "hint", "desligado no Hermes (config.yaml › stt.enabled); liga-se com `hermes setup`, não pelo meu-bot"));
   else {
     const b = el("button", "btn btn-primary btn-small", waAudioBusy === "in" ? "Ativando… (na primeira vez baixa ~500 MB)" : "Ativar transcrição");
     b.type = "button"; b.disabled = waAudioBusy !== null || st === null || !st.connected;
@@ -2871,6 +2873,13 @@ function renderAudioControls(container: HTMLElement): void {
   }
   box.append(hear);
   box.append(el("p", "hint strong-hint", "Responder em áudio"));
+  if (hermes) {
+    // No Hermes a voz é dele (voice.auto_tts): só mostra, sem os cartões (os instaladores são do OpenClaw).
+    box.append(el("p", "hint", st?.audioOut === "inbound" ? "✓ o Hermes responde em áudio quando a pessoa manda áudio (voice.auto_tts)" : "desligado no Hermes (voice.auto_tts); muda-se com `hermes setup`, não pelo meu-bot"));
+    if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
+    container.append(box);
+    return;
+  }
   const cards = el("div", "reply-cards voice-cards");
   const current = st?.audioOut ?? "off";
   const marked = waAudioBusy !== null && waAudioBusy !== "in" ? waAudioBusy : current;
@@ -3560,7 +3569,17 @@ function afterWaGroups(): void {
   if (getListMode() === "whatsapp") renderSidebar();
   paintGuide();
 }
+/** A máquina deixa ligar/desligar grupos e escolher quem conversa pelo app? (capacidade `grupos`; sem status ainda, não). */
+const gruposGerenciaveis = (): boolean => waStatus !== null && waStatus.capacidades.grupos;
+const GRUPOS_INDISPONIVEL = "O agente desta máquina ainda não permite ligar o grupo nem escolher quem conversa pelo app. Dá para ler e limpar o histórico; para mudar quem responde, ajuste na própria máquina.";
+/** Sem a capacidade, a seção explica em vez de oferecer botões que falhariam. Devolve true quando bloqueou. */
+function gruposIndisponivelNota(container: HTMLElement): boolean {
+  if (gruposGerenciaveis()) return false;
+  container.append(el("p", "hint guide-pair-note", GRUPOS_INDISPONIVEL));
+  return true;
+}
 async function setWaGroup(jid: string, patch: WhatsappGroupPatch): Promise<boolean> {
+  if (!gruposGerenciaveis()) { waGroupsMsg = { text: GRUPOS_INDISPONIVEL, bad: true }; afterWaGroups(); return false; }
   waGroupSaving = jid; waGroupsMsg = null; afterWaGroups();
   try { waGroups = await window.meuBot.setWhatsappGroup(jid, patch); cacheWrite("waGroups", waGroups); return true; }
   catch (err) { waGroupsMsg = { text: `Não deu para mudar: ${ipcErrorText(err)}`, bad: true }; return false; }
@@ -3768,6 +3787,11 @@ function checkGroupReplied(jid: string): void {
 function waGroupSummary(g: WaGroupPage): HTMLElement {
   const box = el("div", "wa-group-summary");
   const q = waGroups;
+  if (!gruposGerenciaveis()) {
+    box.append(el("p", "hint", "Este app ainda não lê, nesta máquina, se o agente está ligado neste grupo."), el("p", "hint", GRUPOS_INDISPONIVEL));
+    if (waGroupsMsg !== null && waGroupsMsg.bad) box.append(el("p", "hint guide-pair-note", waGroupsMsg.text));
+    return box;
+  }
   box.append(el("p", `wa-group-state ${g.grupo.agente}`, g.grupo.agente === "desligado" ? "O agente está desligado neste grupo: ele não lê nem responde nada aqui."
     : g.grupo.agente === "mencao" ? "O agente responde aqui só quando alguém da lista o menciona ou responde a uma mensagem dele."
       : "O agente lê tudo aqui e entra quando acha que ajuda."));
@@ -3827,6 +3851,7 @@ function renderWaGroup(g: WaGroupPage): void {
 let grupoQuemDraft: { nums: string[]; todosArmado: boolean; bad: string | null } | null = null;
 /** "Quem pode conversar com o agente no grupo": só você por padrão; gente de casa pelos membros ou digitando; "todos" escondido atrás de aviso. */
 function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): void {
+  if (gruposIndisponivelNota(container)) return;
   const q = waGroups;
   if (q === null) { container.append(el("p", "hint", "Lendo os grupos…")); return; }
   const self = q.self;
@@ -3886,6 +3911,7 @@ function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): void {
 }
 /** Tutorial 12, passo 1: os grupos como cartões; aviso fixo de "só grupos internos". */
 function renderGruposEscolher(container: HTMLElement): void {
+  if (gruposIndisponivelNota(container)) return;
   container.append(el("p", "guide-note bad", GRUPOS_AVISO));
   if (waGroups === null) { container.append(el("p", "hint", waGroupsErr !== null ? `Não consegui ler os grupos: ${waGroupsErr}` : "Lendo os grupos…")); if (waGroupsInflight === null) void refreshWaGroups(); return; }
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
@@ -3910,6 +3936,7 @@ function renderGruposEscolher(container: HTMLElement): void {
 }
 /** Tutorial 12, passo 3: ligar no grupo, "só quando chamado" (padrão) ou "sempre". */
 function renderGruposModo(container: HTMLElement): void {
+  if (gruposIndisponivelNota(container)) return;
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   if (alvo === null) return;
   container.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`));

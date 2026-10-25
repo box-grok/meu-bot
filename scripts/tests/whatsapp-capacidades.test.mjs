@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { capacidadesDe } = createRequire(import.meta.url)("../../dist/main/whatsapp-capacidades.js");
 
-const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "grupos", "guarda", "politicaDm", "audio"];
+const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "grupos", "guarda", "politicaDm", "audio", "politicaReinicia"];
 
 test("sem gateway ou sem bridge/plugin, a máquina não oferece nada", () => {
   for (const c of [capacidadesDe(null, true, true), capacidadesDe("openclaw", false, false), capacidadesDe("hermes", false, false)]) {
@@ -28,12 +28,13 @@ test("OpenClaw: o que depende de conversa só liga com o número conectado", () 
   assert.ok(com.listarConversas && com.lerConversa && com.limparHistorico && com.pausar && com.grupos);
 });
 
-test("Hermes: lista e lê pelo espelho e escolhe quem responde (.env), mas não limpa, não pausa e não tem grupos nem guarda", () => {
+test("Hermes: lista, lê e limpa pelo state.db e escolhe quem responde (.env, com reinício); não pausa, sem grupos pelo app nem guarda", () => {
   const c = capacidadesDe("hermes", true, true);
-  assert.ok(c.parear && c.listarConversas && c.lerConversa && c.politicaDm);
+  assert.ok(c.parear && c.listarConversas && c.lerConversa && c.limparHistorico && c.politicaDm && c.politicaReinicia);
   assert.ok(capacidadesDe("hermes", true, false).politicaDm, "a política não depende de número conectado");
+  assert.ok(!capacidadesDe("openclaw", true, true).politicaReinicia, "no OpenClaw a política vale sem reiniciar");
   // Nada disso existe no Hermes: oferecer na tela daria erro na primeira tentativa.
-  assert.ok(!c.limparHistorico && !c.pausar && !c.grupos && !c.guarda && !c.audio);
+  assert.ok(!c.pausar && !c.grupos && !c.guarda && !c.audio);
   // Sem número conectado não há conversa para listar.
   assert.ok(!capacidadesDe("hermes", true, false).listarConversas);
 });

@@ -302,6 +302,9 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
+  // Hermes: transcrição e voz são do próprio Hermes (config.yaml, `hermes setup`); os instaladores aqui são do OpenClaw.
+  const gw = await run("ssh", [...sshBase(host), "--", host, `[ -d "$HOME/.hermes/whatsapp" ] && echo hermes || echo outro`], 30_000);
+  if (/^hermes$/m.test(gw.stdout)) return { ok: false, log: ["esta máquina roda o Hermes: ouvir e responder em áudio são configurados no próprio Hermes (`hermes setup`, seções Speech-to-Text e TTS), não pelo meu-bot"] };
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
   const arg = setup.kind === "out" ? ` ${setup.mode}${setup.voz !== undefined && isVozId(setup.voz) ? ` ${setup.voz}` : ""}` : setup.off === true ? " off" : "";
   const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);

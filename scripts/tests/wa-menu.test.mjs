@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { waMenuTemplate, waMenuState } = createRequire(import.meta.url)("../../dist/main/wa-menu.js");
+// O menu pergunta o que a máquina sabe fazer (whatsapp-capacidades.ts), não qual framework ela roda.
+const HERMES = { pausar: false, limparHistorico: true, grupos: false };
+const PICOCLAW = { pausar: false, limparHistorico: false, grupos: false };
 
 const labels = (entries) => entries.map((e) => ("separator" in e ? "---" : e.label));
 const actions = (entries) => entries.flatMap((e) => ("submenu" in e ? e.submenu.map((s) => s.action) : "action" in e ? [e.action] : []));
@@ -41,11 +44,11 @@ test("menu do grupo: ligar (desligado) ou desligar, quem pode conversar, copiar 
   assert.equal(waGroupAgente(null), "desligado");
 });
 
-test("grupo excluído da lista: só Restaurar, Copiar ID e reler a lista, em qualquer gateway", async () => {
+test("grupo excluído da lista: só Restaurar, Copiar ID e reler a lista, com qualquer capacidade", async () => {
   const { waGroupMenuTemplate, waGroupDeleted } = await import("../../dist/main/wa-menu.js");
-  const acts = (a, gw) => waGroupMenuTemplate(a, gw, true).filter((e) => !("separator" in e)).map((e) => e.action);
-  assert.deepEqual(acts("desligado", "openclaw"), ["group-restore", "group-copy-id", "groups-refresh"]);
-  assert.deepEqual(acts("mencao", "hermes"), ["group-restore", "group-copy-id", "groups-refresh"]);
+  const acts = (a, cap) => waGroupMenuTemplate(a, cap, true).filter((e) => !("separator" in e)).map((e) => e.action);
+  assert.deepEqual(acts("desligado", null), ["group-restore", "group-copy-id", "groups-refresh"]);
+  assert.deepEqual(acts("mencao", HERMES), ["group-restore", "group-copy-id", "groups-refresh"]);
   assert.equal(waGroupDeleted({ state: { deleted: true } }), true);
   assert.equal(waGroupDeleted({ state: { deleted: "sim" } }), false);
   assert.equal(waGroupDeleted(null), false);
@@ -58,18 +61,24 @@ test("reticências dizem se confirma: conversa pergunta, grupo limpa direto", as
   assert.equal(rotulo(waGroupMenuTemplate("mencao"), "group-clear"), "Limpar histórico");
 });
 
-test("no Hermes: sem Pausar (não há pausa por contato), com Limpar histórico, conversar, exportar, apelido, arquivar e excluir", () => {
-  const h = waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, "hermes");
+test("sem a capacidade pausar (Hermes): sem Pausar, com Limpar histórico, conversar, exportar, apelido, arquivar e excluir", () => {
+  const h = waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, HERMES);
   assert.deepEqual(labels(h), ["Conversar", "Exportar", "Copiar ID  ⓘ", "---", "Renomear", "Arquivar", "Limpar histórico…", "Excluir conversa"]);
   assert.ok(!actions(h).includes("pause") && actions(h).includes("clear"));
-  const admin = waMenuTemplate({ archived: true, paused: false, deleted: false }, { manageWa: false }, "hermes");
+  const admin = waMenuTemplate({ archived: true, paused: false, deleted: false }, { manageWa: false }, HERMES);
   assert.deepEqual(labels(admin), ["Exportar", "Copiar ID  ⓘ", "Renomear", "Desarquivar", "Limpar histórico…", "Excluir conversa"]);
-  assert.deepEqual(labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, null)), labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true })), "sem gateway conhecido vale o menu do OpenClaw");
+  assert.deepEqual(labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, null)), labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true })), "capacidade desconhecida vale o menu completo");
+  // Sem pausar nem limpar (PicoClaw): nada que mexa no agente; antes ele caía no menu completo e falhava ao clicar.
+  const p = waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, PICOCLAW);
+  assert.ok(!actions(p).includes("pause") && !actions(p).includes("clear") && actions(p).includes("delete"));
 });
 
-test("menu de grupo no Hermes: Copiar ID, Limpar histórico, Excluir da lista e reler a lista (ligar e quem aciona são do OpenClaw)", async () => {
+test("menu de grupo sem a capacidade grupos (Hermes): Copiar ID, Limpar histórico, Excluir da lista e reler a lista", async () => {
   const { waGroupMenuTemplate } = await import("../../dist/main/wa-menu.js");
-  const acts = waGroupMenuTemplate("sempre", "hermes").filter((e) => !("separator" in e)).map((e) => e.action);
-  assert.deepEqual(acts, ["group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
-  assert.ok(waGroupMenuTemplate("sempre", null).some((e) => "action" in e && e.action === "group-off"), "sem gateway conhecido vale o menu do OpenClaw");
+  const acts = (cap) => waGroupMenuTemplate("sempre", cap).filter((e) => !("separator" in e)).map((e) => e.action);
+  assert.deepEqual(acts(HERMES), ["group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts(PICOCLAW), ["group-copy-id", "group-delete", "groups-refresh"]);
+  // Quando o Hermes ganhar `grupos`, o menu passa a oferecer ligar/desligar e quem conversa sem mudar aqui.
+  assert.deepEqual(acts({ ...HERMES, grupos: true }), ["group-off", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
+  assert.ok(waGroupMenuTemplate("sempre", null).some((e) => "action" in e && e.action === "group-off"), "capacidade desconhecida vale o menu completo");
 });

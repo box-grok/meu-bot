@@ -94,11 +94,12 @@ function probeCached(host: string): Promise<HostProbe> {
 /**
  * Anti-loop é padrão da conta: toda máquina com OpenClaw recebe a guarda do WhatsApp sozinha (notas técnicas
  * não vão ao contato; despedidas bot-com-bot em 3 ciclos pausam a conversa). Uma tentativa por máquina por
- * sessão do app, em segundo plano; o tutorial 8 só confere e explica. Uma máquina sem SSH ou sem OpenClaw fica fora.
+ * sessão do app, em segundo plano; o tutorial 8 só confere e explica. Uma máquina sem SSH ou cujo agente não aceita a guarda fica fora.
  */
 const guardaTried = new Set<string>();
 function ensureGuarda(host: string, probe: HostProbe): void {
-  if (!probe.reachable || probe.gateway !== "openclaw" || host === LOCAL_HOST || guardaTried.has(host)) return;
+  // `guarda === null` = a sondagem não encontrou agente que aceite a guarda (hostProbe.ts só a preenche onde ela cabe).
+  if (!probe.reachable || probe.guarda === null || host === LOCAL_HOST || guardaTried.has(host)) return;
   const want = bundledGuardaVersion();
   const missing = probe.guarda === false;
   // Só sobe de versão (o estável e o staging dividem a máquina: um não rebaixa a guarda do outro).
