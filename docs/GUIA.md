@@ -2461,6 +2461,26 @@ então as máquinas que já a têm recebem a skill na próxima abertura do app. 
 Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
 manda sempre usar `--remetentes`.
 
+## Backup: tar 1 ("file changed as we read it") não é erro (25 out)
+
+Na `grokbot-1` o conjunto "trabalho" passou a falhar com `tar: .hermes: file changed as we read it`: o Hermes grava
+sessões o tempo todo e o GNU tar sai com 1 quando um arquivo mudou durante a leitura, com o pacote inteiro mesmo assim.
+`comandoPacoteSh` (google-core.ts, puro, testado com um `tar` falso) é agora o dono do comando remoto: lista só o que
+existe, sai com 3 sem nada, trata 1 como aviso (stderr + linha no log) e sucesso, e mantém 2 (fatal) como erro.
+Medido depois: 218 MB para "trabalho" na grokbot-1, abaixo dos 512 MB.
+
+## CRM e financeiro numa máquina sem OpenClaw (25 out)
+
+- `install-crm.sh` deixou de recusar máquina sem OpenClaw (saía com 2: "instalador saiu com código 2" no tutorial 10 da
+  `grokbot-1`). Sem OpenClaw entram a CLI `crm.mjs`, as skills `crm-api`/`streak-crm-api` e a pasta `crm/` (marcador
+  `index.js` para a sondagem); o plugin do WhatsApp (hooks, notas automáticas, `crm-job.mjs`) é só do OpenClaw e a
+  saída diz isso. `install-finance.sh` já fazia o mesmo.
+- `crm/backend.mjs` e `finance/backend.mjs` achavam o `.env` do backend sempre na pasta herdada do Hermes: na
+  `grokbot-1` isso lia a chave e a porta do backend do Hermes (8080) e tudo dava 404. Agora `backendDir()` segue a regra
+  do app (backend-dir-core.ts): a própria `~/.local/share/meu-bot/backend` se tem `server.js`; a herdada só se o
+  `server.js` de lá tem `meu-bot/hello`; senão a própria. `MEU_BOT_BACKEND_ENV` continua forçando. Teste:
+  `scripts/tests/plugin-backend-dir.test.mjs` (HOME de mentira, um processo por caso).
+
 ## Grupos no Hermes: ligar/desligar e "quando chamado" (25 out)
 
 Na máquina com Hermes a política de grupos mora em `~/.hermes/config.yaml` (`platforms.whatsapp`): `group_policy`

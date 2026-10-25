@@ -4944,7 +4944,7 @@ const guideCtx = (): GuideContext => ({
     loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null,
   },
   fallback: { primary: backendModelSelect.value === "" ? null : backendModelSelect.value, chain: account?.providers ?? null },
-  guarda: { installed: guardaState },
+  guarda: { installed: guardaState, possible: waStatus === null ? null : waStatus.capacidades.guarda },
   navegador: { access: !navLicenseAsked ? null : browserAccess(license, windowHost, caps.planoExigido, caps.produto), installed: navInstState, tabs: navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: navExtensions.length, agentOn: navAgent.on && navAgent.state === "up", servicos: navServicosCount(), extensaoEmbutida: navExtensions.some((x) => x.embutida === true) },
   notify: { enabled: settings?.navNotify.enabled === true, conversas: [...index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: objectiveState,
@@ -5454,6 +5454,8 @@ function renderConta(container: HTMLElement, id: ContaId): void {
 window.meuBot.on("guarda:progress", ({ line }) => { guardaLog = [...guardaLog, line].slice(-6); if (guardaBusy) paintGuide(); });
 function renderGuardaInstall(container: HTMLElement): void {
   const box = el("div", "audio-controls");
+  // Agente que não aceita a guarda (capacidade): explica, sem botão que falharia na máquina.
+  if (waStatus !== null && !waStatus.capacidades.guarda) { box.append(el("p", "hint", "O agente desta máquina não aceita a guarda do meu-bot; este tutorial não se aplica aqui.")); container.append(box); return; }
   const row = el("div", "audio-row");
   if (guardaState === true && !guardaBusy) row.append(el("span", "audio-ok", "✓ ativa nesta máquina"));
   const b = el("button", `btn ${guardaState === true ? "btn-ghost" : "btn-primary"} btn-small`, guardaBusy ? "Ativando…" : guardaState === true ? "Reinstalar" : "Ativar");
@@ -5467,7 +5469,7 @@ function renderGuardaInstall(container: HTMLElement): void {
   });
   row.append(b);
   box.append(row);
-  if (guardaState === null) box.append(el("p", "hint", waStatus === null || waStatus.capacidades.guarda ? "Consultando a máquina…" : "O agente de WhatsApp desta máquina não tem guarda; ela é do agente dele."));
+  if (guardaState === null) box.append(el("p", "hint", "Consultando a máquina…"));
   if (guardaBusy && guardaLog.length > 0) box.append(el("pre", "admin-logs", guardaLog.join("\n")));
   if (guardaMsg !== null) box.append(el("p", `hint ${guardaMsg.bad ? "guide-pair-note" : "audio-ok"}`, guardaMsg.text));
   container.append(box);

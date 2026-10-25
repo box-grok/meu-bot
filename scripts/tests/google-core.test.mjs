@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -234,4 +234,32 @@ test("backup no Drive: erro de conta desconectada ou sem permissão some quando 
   assert.equal(erroDriveAindaVale(ERRO_DRIVE_PERMISSAO, { conectado: true, precisaReconectar: true }), ERRO_DRIVE_PERMISSAO);
   assert.equal(erroDriveAindaVale("trabalho: o pacote passou de 512 MB", { conectado: true, precisaReconectar: false }), "trabalho: o pacote passou de 512 MB");
   assert.equal(erroDriveAindaVale(null, { conectado: false, precisaReconectar: false }), null);
+});
+
+test("comandoPacoteSh: tar 1 (arquivo mudou durante a leitura) vira aviso e sucesso; tar 2 continua erro; nada = 3", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync, chmodSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "meu-bot-pacote-"));
+  try {
+    mkdirSync(join(home, "bin")); mkdirSync(join(home, ".hermes"), { recursive: true }); writeFileSync(join(home, ".hermes", "x"), "1");
+    const tarFalso = (rc) => { writeFileSync(join(home, "bin", "tar"), `#!/bin/sh\necho pacote; [ ${rc} -eq 1 ] && echo "tar: .hermes: file changed as we read it" >&2; exit ${rc}\n`); chmodSync(join(home, "bin", "tar"), 0o755); };
+    const roda = (c) => spawnSync("bash", ["-c", comandoPacoteSh(c)], { env: { HOME: home, PATH: `${join(home, "bin")}:${process.env.PATH}` }, encoding: "utf8" });
+    const c = { id: "trabalho", dirs: [".hermes", "nao-existe"], excluir: [".hermes/logs", "it's"] };
+    tarFalso(1);
+    let r = roda(c);
+    assert.equal(r.status, 0, r.stderr); assert.equal(r.stdout, "pacote\n"); assert.match(r.stderr, /aviso: trabalho: arquivos mudaram/);
+    tarFalso(2);
+    r = roda(c);
+    assert.equal(r.status, 2, "erro fatal do tar continua erro");
+    tarFalso(0);
+    r = roda(c);
+    assert.equal(r.status, 0); assert.doesNotMatch(r.stderr, /aviso/);
+    // sem nada do conjunto na maquina: 3, sem chamar o tar
+    r = roda({ id: "crm", dirs: ["nao-existe"], excluir: [] });
+    assert.equal(r.status, 3); assert.match(r.stderr, /nada de crm/);
+    // aspas simples nos padroes nao quebram o shell
+    assert.ok(comandoPacoteSh(c).includes("--exclude='it'\\''s'"));
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });

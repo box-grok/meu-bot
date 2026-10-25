@@ -341,3 +341,14 @@ test("parseTutPulados: só ids válidos, sem repetir; lixo vira vazio", () => {
   assert.equal(parseTutPulados(null).size, 0); assert.equal(parseTutPulados("").size, 0);
   assert.equal(parseTutPulados("lixo").size, 0); assert.equal(parseTutPulados('{"a":1}').size, 0);
 });
+
+test("tutorial 8 (guarda) só aparece onde o agente aceita a guarda; sem status ainda, aparece", () => {
+  const done = (x) => x.id === "claude-login" || x.id === "whatsapp-openclaw";
+  const ids = (possible) => visibleTutorials({ ...emptyContext(), guarda: { installed: null, possible } }, done).map((x) => x.id);
+  assert.ok(ids(true).includes("guarda-whatsapp"));
+  assert.ok(ids(null).includes("guarda-whatsapp"));
+  assert.ok(!ids(false).includes("guarda-whatsapp"), "máquina com agente sem guarda (Hermes) não vê o tutorial");
+  const t8 = TUTORIAIS.find((x) => x.id === "guarda-whatsapp");
+  for (const st of t8.steps) assert.ok(!/OpenClaw/.test(st.title) && !/toda máquina com OpenClaw/.test(st.text), `passo ${st.id} sem nome de produto`);
+  assert.ok(!/OpenClaw/.test(t8.summary) && !/OpenClaw/.test(t8.reset.what));
+});

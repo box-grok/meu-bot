@@ -8,7 +8,20 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-export const ENV_FILE = process.env.MEU_BOT_BACKEND_ENV || path.join(os.homedir(), ".hermes", "agente-rene", "backend-sdk-claude", ".env");
+/**
+ * Pasta do backend do meu-bot nesta máquina, a mesma regra do app (backend-dir-core.ts) e do install.sh: a própria
+ * (~/.local/share/meu-bot/backend) quando tem server.js; a herdada do Hermes só se o server.js de lá é o nosso (tem a
+ * rota meu-bot/hello); senão a própria. Na grokbot-1 a herdada é o backend do Hermes: ler o .env de lá era pegar
+ * chave e porta erradas (404 em tudo). MEU_BOT_BACKEND_ENV força um .env.
+ */
+export function backendDir() {
+  const propria = path.join(os.homedir(), ".local", "share", "meu-bot", "backend");
+  const herdada = path.join(os.homedir(), ".hermes", "agente-rene", "backend-sdk-claude");
+  if (fs.existsSync(path.join(propria, "server.js"))) return propria;
+  try { if (fs.readFileSync(path.join(herdada, "server.js"), "utf8").includes("meu-bot/hello")) return herdada; } catch { /* sem server.js lá */ }
+  return propria;
+}
+export const ENV_FILE = process.env.MEU_BOT_BACKEND_ENV || path.join(backendDir(), ".env");
 
 /** Chave e endereço do backend desta máquina (do .env dele). */
 export function backendEnv() {

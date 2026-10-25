@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
-import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredo, caminhoDadosNoDrive, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredo, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
 import { lerSenhaBackup } from "./senha-backup";
@@ -56,12 +56,8 @@ function gravarLocal(host: string, c: ConjuntoDados, arquivo: string, pacote: Bu
  * não casam e o backup local entra no pacote em silêncio.
  */
 async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
-  // Lista só o que existe: uma VM pode não ter `.hermes` ou `.config/gh`, e o tar falharia inteiro por um ausente.
-  const alvos = c.dirs.map((d) => `'${d.replace(/'/g, "'\\''")}'`).join(" ");
-  const excl = c.excluir.map((e) => `--exclude='${e.replace(/'/g, "'\\''")}'`).join(" ");
-  const cmd = `set -e; cd "$HOME"; A=""; for p in ${alvos}; do [ -e "$p" ] && A="$A $p"; done; ` +
-    `[ -n "$A" ] || { echo "nada de ${c.id} nesta maquina" >&2; exit 3; }; tar -czf - ${excl} $A`;
-  const filho = spawn("ssh", [...SSH_OPTS, "--", host, cmd], { stdio: ["ignore", "pipe", "pipe"] });
+  // O comando é puro e testado (google-core.ts): lista só o que existe e tolera o tar 1 ("file changed as we read it").
+  const filho = spawn("ssh", [...SSH_OPTS, "--", host, comandoPacoteSh(c)], { stdio: ["ignore", "pipe", "pipe"] });
   const partes: Buffer[] = [];
   let bytes = 0; let estourou = false;
   filho.stdout.on("data", (d: Buffer) => {
@@ -74,6 +70,7 @@ async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
   const code = await new Promise<number | null>((res) => filho.on("close", res));
   if (estourou) throw new Error(`o pacote de ${c.id} passou de ${Math.round(PACOTE_MAX / 1024 / 1024)} MB`);
   if (code !== 0) throw new Error(`a máquina não empacotou ${c.id}: ${erro.trim().split("\n").pop() ?? `código ${code}`}`);
+  if (/aviso: .*tar 1/.test(erro)) log(`[dados-drive] ${host}: ${c.id}: arquivos mudaram durante o empacotamento (a máquina estava gravando); o pacote saiu inteiro`);
   const pacote = Buffer.concat(partes);
   if (pacote.length === 0) throw new Error(`a máquina devolveu um pacote vazio de ${c.id}`);
   return pacote;

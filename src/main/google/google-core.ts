@@ -198,6 +198,22 @@ export interface ConjuntoDados {
   cifrar?: boolean;
 }
 const MB = ".local/share/meu-bot";
+/**
+ * Comando remoto que empacota um conjunto (tar.gz no stdout), relativo ao $HOME. Lista só o que existe (uma VM pode não
+ * ter `.hermes` ou `.config/gh`; um ausente derrubaria o tar inteiro) e sai com 3 sem nada. O GNU tar sai com 1 quando
+ * um arquivo mudou enquanto era lido ("file changed as we read it": o Hermes grava sessões o tempo todo); o pacote sai
+ * inteiro mesmo assim, então 1 vira aviso no stderr e sucesso. 2 (erro fatal) continua erro.
+ * Os padrões do `--exclude` são relativos ao membro que o tar gera (`db/...`, sem `./`).
+ */
+export function comandoPacoteSh(c: Pick<ConjuntoDados, "id" | "dirs" | "excluir">): string {
+  const q = (s: string): string => `'${s.replace(/'/g, "'\\''")}'`;
+  const alvos = c.dirs.map(q).join(" ");
+  const excl = c.excluir.map((e) => `--exclude=${q(e)}`).join(" ");
+  return `cd "$HOME" || exit 3; A=""; for p in ${alvos}; do [ -e "$p" ] && A="$A $p"; done; ` +
+    `[ -n "$A" ] || { echo "nada de ${c.id} nesta maquina" >&2; exit 3; }; rc=0; tar -czf - ${excl} $A || rc=$?; ` +
+    `if [ "$rc" -eq 1 ]; then echo "aviso: ${c.id}: arquivos mudaram durante o empacotamento (tar 1); o pacote saiu inteiro" >&2; rc=0; fi; exit $rc`;
+}
+
 export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   // As conversas arquivadas do WhatsApp também carregam token colado (1 JWT achado em 24/10): só cifrado.
   // `db/backup` é a cópia diária local: não se empacota cópia dentro de cópia.

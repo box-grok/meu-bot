@@ -20,8 +20,8 @@ export interface GuideContext {
    * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
   xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
-  /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw): instalada? null = não consultado ou máquina sem OpenClaw. */
-  guarda: { installed: boolean | null };
+  /** Guarda do WhatsApp: `possible` = o agente da máquina aceita a guarda (capacidade `guarda`; null = sem status ainda); `installed` = está lá? (null = não consultado). */
+  guarda: { installed: boolean | null; possible: boolean | null };
   /**
    * Navegador (módulo Pro): `access` = acesso pela licença (null = não consultado); `installed` = lado da máquina
    * (MCP + regra); `tabs` = abas abertas agora; `extensions` = extensões na sessão; `agentOn` = "agente pode usar".
@@ -71,7 +71,7 @@ export const emptyContext = (): GuideContext => ({
   statusLine: { installed: null, limits: false, segments: null },
   claude: { loggedIn: null, email: null, firstReply: false },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
-  guarda: { installed: null },
+  guarda: { installed: null, possible: null },
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
   notify: { enabled: false, conversas: 0 },
   fallback: { primary: null, chain: null },
@@ -197,6 +197,8 @@ export interface Tutorial {
   needsCrmProprio?: true;
   /** Só quando a licença da máquina libera o financeiro (add-on meu-bot-finance). */
   needsFinance?: true;
+  /** Só onde o agente da máquina aceita a guarda (capacidade `guarda`); some numa máquina com outro agente. */
+  needsGuarda?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
   after?: string;
   /** Fontes do contexto que os passos consultam; enquanto alguma não chegou, o tutorial está "verificando". */
@@ -449,22 +451,23 @@ export const TUTORIAIS: readonly Tutorial[] = [
     id: "guarda-whatsapp",
     number: 8,
     needs: ["guarda"],
+    needsGuarda: true,
     after: "whatsapp-openclaw",
     title: "Guarda do WhatsApp",
     short: "Guarda",
-    summary: "Um plugin no agente desta máquina: avisos técnicos do OpenClaw nunca vão ao contato, e uma conversa bot-com-bot que entra em loop é pausada sozinha.",
+    summary: "Um plugin no agente desta máquina: avisos técnicos do agente nunca vão ao contato, e uma conversa bot-com-bot que entra em loop é pausada sozinha.",
     minutes: 2,
     icon: "target",
-    reset: { what: "tira a guarda do OpenClaw desta máquina (o agente volta a entregar tudo e nada é pausado sozinho)" },
+    reset: { what: "tira a guarda do agente desta máquina (ele volta a entregar tudo e nada é pausado sozinho)" },
     steps: [
       {
         id: "ativar", title: "Ativar a guarda nesta máquina", target: "none", body: "guarda-install",
-        text: "Ela já vem ligada: toda máquina com OpenClaw recebe a guarda sozinha quando o app a encontra. É um plugin pequeno do meu-bot no OpenClaw, roda 24 horas mesmo com o app fechado; se por algum motivo não estiver aqui, o botão instala.",
+        text: "Ela já vem ligada: toda máquina cujo agente aceita a guarda a recebe sozinha quando o app a encontra. É um plugin pequeno do meu-bot dentro do agente, roda 24 horas mesmo com o app fechado; se por algum motivo não estiver aqui, o botão instala.",
         done: (_st, _f, c) => c.guarda.installed === true,
       },
       {
         id: "entender", title: "O que ela faz por você", target: "none",
-        text: "1) Linhas técnicas como \"↪️ Model Fallback: …\" (o OpenClaw trocou de modelo) não são entregues ao contato. 2) Se outro bot ficar trocando despedidas com o seu agente (\"Até mais!\" → \"Até.\" → …) por 3 ciclos em poucos minutos, a conversa é pausada sozinha: a resposta não sai, o contato aparece como \"pausado\" na lista do WhatsApp e o agente recebe uma nota explicando. Para voltar, é o menu \"…\" do contato › Retomar. Pessoas de verdade não são afetadas: a regra exige mensagens curtas, quase iguais ou de despedida, em menos de 3 minutos entre uma e outra.",
+        text: "1) Linhas técnicas como \"↪️ Model Fallback: …\" (o agente trocou de modelo) não são entregues ao contato. 2) Se outro bot ficar trocando despedidas com o seu agente (\"Até mais!\" → \"Até.\" → …) por 3 ciclos em poucos minutos, a conversa é pausada sozinha: a resposta não sai, o contato aparece como \"pausado\" na lista do WhatsApp e o agente recebe uma nota explicando. Para voltar, é o menu \"…\" do contato › Retomar. Pessoas de verdade não são afetadas: a regra exige mensagens curtas, quase iguais ou de despedida, em menos de 3 minutos entre uma e outra.",
         done: (_st, f) => f.guardaSeen,
         manual: { label: "Entendi", flag: "guardaSeen" },
       },
@@ -815,6 +818,7 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
     if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
     if (t.needsFinance === true && ctx.finance.access !== true) return false;
+    if (t.needsGuarda === true && ctx.guarda.possible === false) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
     return prev !== undefined && visible(prev) && finished(prev);
