@@ -12,3 +12,4 @@ config/google-oauth.json
 
 # client OAuth da Conta Google geral (login + Gmail/Agenda/Sheets; projeto ordinal-rig): local, nunca no git
 config/google-conta-oauth.json
+config/google-conta-oauth.json.*
