@@ -2795,3 +2795,72 @@ requirement e o rollback pelos `.antigo` ficam, que o Grok Bot não tem):
   diz `gateway: "hermes"`: lá o backend é o original do Hermes (`hermes-mythos-lucas`, sem `VERSION`, na mesma pasta
   que o backend-colima usaria), e a atualização automática o reinstalaria por cima na primeira sondagem.
 
+
+
+## Espelho do WhatsApp em máquina com Hermes (24 out)
+
+Até aqui a lista de conversas do WhatsApp (modo "WhatsApp" da lista lateral) só existia com o OpenClaw: `whatsappChats`
+chamava `openclaw gateway call sessions.list` e `whatsappThread` o `chat.history`. Na `grokbot-1` (Hermes Agent
+v0.21.1) a linha de cima mostrava "conectado", o pareamento por QR funcionava, mas nenhuma conversa aparecia.
+
+- **Onde o Hermes guarda:** `~/.hermes/state.db` (SQLite, WAL). `sessions`: uma por contato, `source = "whatsapp"`,
+  `chat_type = "dm"`, `session_key = "agent:<perfil>:whatsapp:dm:<número>"`, `display_name` = o nome do contato,
+  `started_at`/`last_activity_at` em segundos, `hidden`/`archived`; grupos são `…:whatsapp:group:<jid>:<quem falou>`
+  (uma sessão por grupo e por remetente). `messages`: `role` user/assistant/tool/session_meta, `content`, `timestamp`
+  em segundos, `display_kind` hidden/internal_notification para o que não foi ao WhatsApp; `assistant` vazio = turno
+  só de ferramenta. O próprio número vem de `~/.hermes/whatsapp/session/creds.json` (`me.id`).
+- **`whatsapp-hermes-core.ts` (puro, testado):** `HERMES_LIST_PY` e `HERMES_THREAD_PY` (Python com `sqlite3`, banco
+  aberto com `mode=ro`, JSON numa linha; o pod não tem o `sqlite3` de linha de comando), `chatsFromHermes` (uma conversa
+  por contato, nome do `display_name` quando não é só dígitos nem `…@lid`, escondidas fora, `ownSession` sempre,
+  `paused` nunca) e `threadFromHermes` (user = contato, assistant = agente; fora ferramentas, metadados, vazias,
+  `NO_REPLY` e hidden/internal_notification).
+- **`whatsapp.ts`:** o script de `whatsappChats` escolhe na máquina: com `~/.hermes/whatsapp` lê o state.db e devolve
+  `gateway=hermes`; senão o OpenClaw como antes. `whatsappThread` vai pelo `hermesThread` quando as chaves são do Hermes
+  (`isHermesKey`). `whatsappLearnNames` não faz nada no Hermes (o nome já vem na lista). `whatsappGatewayOf(host)`
+  guarda o gateway da última consulta para o menu.
+- **Menu "…" (`wa-menu.ts`):** `waMenuTemplate(state, caps, gateway)`; no Hermes saem "Pausar" e "Limpar histórico" (são
+  `sessions.patch`/`sessions.reset` do OpenClaw). Ficam Conversar, Exportar, Copiar ID, Renomear, Arquivar e Excluir
+  (as marcas moram em `~/.local/share/meu-bot/whatsapp-lista.json`, iguais nos dois gateways).
+- **Tela:** `waMirrorAvailable` aceita `hermes`; a política de DM, os grupos e a guarda continuam só do OpenClaw
+  (já eram condicionados a `gateway === "openclaw"`). Fica de fora por ora: grupos do Hermes (as sessões existem no
+  banco, por remetente) e o PicoClaw.
+
+## Licença lida por SSH quando o backend não tem a rota (24 out)
+
+Sintoma: o admin liberou o Pro da `grokbot-1` (gravou `licenca.json` lá, e o próprio admin passou a mostrar "pro"),
+mas o meu-bot da pessoa continuou free. Causa: o app lia a licença só por `GET /v1/meu-bot/license`, rota do
+backend-colima; a `grokbot-1` roda o backend original do Hermes, sem ela, e `fetchLicense` devolvia null ("backend
+antigo"). Correção: `src/main/licenca-maquina.ts` (`lerLicenca`): backend primeiro; sem resposta e fora de `local`,
+lê `licenca.json` + `maquinas.json` por SSH (`readLicenseViewSsh`, que era o `readLicenseView` do admin e saiu de
+`admin/support-admin.ts` para cá; o admin importa daqui). `license:get`, `browser:open` e os gates de
+`acesso.ts` (Pro, CRM próprio, financeiro) usam `lerLicenca`.
+
+## Backend do meu-bot agnóstico de agente (25 out)
+
+Princípio: o app não depende de qual agente roda o WhatsApp na máquina (Hermes, OpenClaw, PicoClaw). O backend do
+meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele vivia numa pasta herdada do Hermes
+(`~/.hermes/agente-rene/backend-sdk-claude`, porta 8080) e a sondagem chamava de "backend instalado" qualquer
+`server.js` que estivesse lá; na grokbot-1 esse `server.js` é o do Hermes, e daí vinham o "Reinstalar backend" perigoso
+(o `install.sh` já recusava, mas o seletor oferecia) e "o backend desta máquina é anterior ao financeiro".
+
+- **`src/main/backend-dir-core.ts`** (puro, testado com bash num HOME de mentira): `BACKEND_DIR_CANONICAL` =
+  `~/.local/share/meu-bot/backend` (ao lado da licença e do CRM), `BACKEND_DIR_LEGACY` = a herdada, e `BACKEND_DIR_SH`,
+  trecho de shell que deixa em `$BD` a pasta do nosso backend (a própria se existe; a herdada só quando o `server.js` de
+  lá tem a rota `meu-bot/hello`, que só o nosso tem) e `$FOREIGN=1` quando a herdada tem outro backend.
+- **Quem usa:** a sondagem (`hostProbe.ts`: `env`, `server`, `VERSION`, porta do `.env`, modelos; `backendInstalled`
+  agora só para o nosso; campo novo `backendForeign`), o túnel (`tunnel.ts` lê a chave de `$BD/.env`), a chave xAI
+  (`xaiKey.ts`), o log do backend no admin (`support-admin.ts`), o `install.sh` (mesma regra em bash; `MEU_BOT_BACKEND_DIR`
+  força), o `install-grok-oauth.sh` e o backup (os dois `.env` na lista de caminhos).
+- **Instalações existentes não mudam:** colima e as `agente-*` têm o nosso `server.js` na herdada e continuam lá.
+  Instalação nova (ou máquina com outro backend na herdada) vai para a pasta própria; com a 8080 ocupada, o seletor já
+  escolhe a primeira porta livre e grava só para a máquina (`portaParaInstalar`), e o texto diz de quem é a 8080.
+- **Auto-update do backend:** a trava deixou de ser "gateway é Hermes" e passou a ser estrutural: `backendInstalled`
+  falso para backend que não é nosso → `precisaAtualizarBackend` devolve "nao".
+- **Licença e CRM numa máquina só com Hermes:** a extensão do CRM, a importação do Google e "Guardar no CRM" exigem a
+  licença lida pelo NOSSO backend (`crmDaMaquinaOk`, `lerLicencaDaMaquina` → `{view, viaBackend}`): Pro lido por SSH
+  numa máquina sem o nosso backend não carrega nada, para não haver 404 (`assertCrmProprio` explica "instale o
+  backend"). O `install.sh` sobe por PM2 onde não há systemd (grokbot-1) e "reinstalar" vira `pm2 restart --update-env`.
+- **grokbot-1:** backend do meu-bot instalado em `~/.local/share/meu-bot/backend` na porta 8081, sob PM2
+  (`meu-bot-backend`, `pm2 save`); o do Hermes segue na 8080 com o WhatsApp. No app, o chat dessa máquina passa a usar
+  `claudecode`/`agente` (os modelos `rene*` são do backend do Hermes); financeiro e licença pela API nossa.
+

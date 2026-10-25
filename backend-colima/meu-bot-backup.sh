@@ -30,7 +30,7 @@ EXCLUIR=(
 )
 SERVICOS=(openclaw-gateway meu-bot-backend)
 # Arquivos de texto onde o $HOME aparece por extenso (relativos ao $HOME).
-COM_CAMINHO=(.openclaw/openclaw.json .hermes/agente-rene/backend-sdk-claude/.env .local/share/meu-bot/crm.json .claude/settings.json)
+COM_CAMINHO=(.openclaw/openclaw.json .hermes/agente-rene/backend-sdk-claude/.env .local/share/meu-bot/backend/.env .local/share/meu-bot/crm.json .claude/settings.json)
 
 ativo() { systemctl --user is-active "$1" >/dev/null 2>&1; }
 # timeout quando existe (Linux sim; o macOS dos testes não tem).

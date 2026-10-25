@@ -91,6 +91,11 @@ test("dois planos (free e pro): o CRM próprio vem do Pro; add-ons por cima, com
   // crmProprioOk (lado do app): por máquina; Pro em vigor; este Mac e sem licença = não.
   assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "active" }), "agente-box", t), true);
   assert.equal(fe.crmProprioOk(v({ produtos: ["meu-bot-crm"] }), "agente-box", t), false, "o antigo add-on meu-bot-crm não libera mais");
+  // crmDaMaquinaOk: a API do CRM mora no nosso backend; Pro lido por SSH (máquina do Hermes, sem o backend) não libera.
+  assert.equal(fe.crmDaMaquinaOk({ view: v({ plan: "pro", status: "active" }), viaBackend: true }, "grokbot-1", t), true);
+  assert.equal(fe.crmDaMaquinaOk({ view: v({ plan: "pro", status: "active" }), viaBackend: false }, "grokbot-1", t), false, "Pro por SSH sem o backend não tem a API do CRM");
+  assert.equal(fe.crmDaMaquinaOk({ view: v({ plan: "free", status: "active" }), viaBackend: true }, "grokbot-1", t), false);
+  assert.equal(fe.crmDaMaquinaOk(null, "grokbot-1", t), false);
   assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "expired" }), "agente-box", t), false);
   assert.equal(fe.crmProprioOk(v({}), "agente-box", t), false);
   assert.equal(fe.crmProprioOk(v({ plan: "pro", status: "active" }), "local", t), false, "este Mac não tem CRM próprio");

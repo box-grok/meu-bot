@@ -2963,7 +2963,8 @@ function learnMissingWaNames(): Promise<void> {
   return waNamesInflight;
 }
 const listModeKey = (): string => `listMode:${windowHost}`;
-const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && waStatus.gateway === "openclaw" && waStatus.ready;
+// Espelho das conversas: OpenClaw (pelo gateway) e Hermes (pelo state.db, só-leitura); o PicoClaw ainda não lista.
+const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && (waStatus.gateway === "openclaw" || waStatus.gateway === "hermes") && waStatus.ready;
 function getListMode(): ListMode {
   if (!waMirrorAvailable()) return "bot";
   try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }

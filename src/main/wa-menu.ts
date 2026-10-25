@@ -2,7 +2,7 @@
  * Itens do menu "…" de uma conversa do WhatsApp na lista lateral. Puro (ipc/shared.ts converte para o Menu do
  * Electron): sem manageWa (o meu-bot-admin) não há "Conversar com o meu-bot"; arquivar é só deste app.
  */
-import type { Capabilities, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../shared/ipc";
+import type { Capabilities, Gateway, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../shared/ipc";
 
 /** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). */
 export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean }
@@ -13,7 +13,11 @@ export type WaMenuEntry =
 
 const item = (label: string, action: WhatsappMenuAction, enabled = true): WaMenuEntry => ({ label, action, enabled });
 
-export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">): WaMenuEntry[] {
+/**
+ * `gateway`: no Hermes o espelho é só-leitura (pausar e limpar mexem em sessões do OpenClaw); ficam ler, exportar,
+ * conversar, apelido, arquivar e excluir, que vivem no app ou nas marcas da máquina.
+ */
+export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "manageWa">, gateway: Gateway | null = "openclaw"): WaMenuEntry[] {
   const exportar: WaMenuEntry = { label: "Exportar", submenu: [item("Markdown (.md)", "export-md"), item("JSON (.json)", "export-json")] };
   // Excluída: nada foi apagado (a conversa e o agente continuam na máquina); dá para ler, exportar e restaurar.
   if (state.deleted) return [exportar, item("Copiar ID  ⓘ", "copy-ref"), item("Restaurar", "restore")];
@@ -27,8 +31,9 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const pausa = state.paused ? item("Retomar", "resume") : item("Pausar", "pause");
   // Excluir = só tirar da lista (o agente continua de onde parou), sem confirmação; volta se o contato mandar outra mensagem. Zerar é o Limpar.
   const excluir = item("Excluir conversa", "delete");
+  const mexe: WaMenuEntry[] = gateway === "hermes" ? [] : [pausa, item("Limpar histórico…", "clear")];
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
-  if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, pausa, item("Limpar histórico…", "clear"), excluir];
+  if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, ...mexe, excluir];
   return [
     item("Conversar", "talk"),
     exportar,
@@ -36,8 +41,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
     { separator: true },
     renomear,
     arquivo,
-    pausa,
-    item("Limpar histórico…", "clear"),
+    ...mexe,
     excluir,
   ];
 }

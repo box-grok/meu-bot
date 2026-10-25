@@ -22,10 +22,29 @@ export function cliente(): ClienteOAuth | null {
  * num projeto do Google Cloud diferente do meu-bot-crm sem invalidar o token de Contatos do CRM.
  */
 export function clienteConta(): ClienteOAuth | null {
-  for (const f of [path.join(app.getPath("userData"), "google-conta-oauth.json"), path.join(process.resourcesPath ?? "", "google-conta-oauth.json")]) {
-    try { const c = parseClienteOAuth(JSON.parse(fs.readFileSync(f, "utf8"))); if (c) return c; } catch { /* próximo */ }
+  return clienteContaOrigem()?.cliente ?? null;
+}
+
+/**
+ * O mesmo client, com a procedência: de qual arquivo veio e de qual projeto do Google Cloud.
+ *
+ * Existe porque a procedência já custou caro: um `google-conta-oauth.json` velho, de um projeto em
+ * modo Teste, continuava empacotado no app e vencia o client bom em silêncio. O Google só respondia
+ * `access_denied` no navegador, longe daqui. Um arquivo largado em userData é pior ainda: ele
+ * sobrevive a toda atualização e venceria para sempre. Mostrar isso na tela transforma uma caçada
+ * em dois segundos de leitura.
+ */
+export function clienteContaOrigem(): { cliente: ClienteOAuth; origem: "pasta de dados" | "pacote do app" | "client do app"; projeto: string } | null {
+  const projetoDe = (c: ClienteOAuth): string => c.clientId.split("-")[0] ?? "?";
+  const tentativas: { f: string; origem: "pasta de dados" | "pacote do app" }[] = [
+    { f: path.join(app.getPath("userData"), "google-conta-oauth.json"), origem: "pasta de dados" },
+    { f: path.join(process.resourcesPath ?? "", "google-conta-oauth.json"), origem: "pacote do app" },
+  ];
+  for (const { f, origem } of tentativas) {
+    try { const c = parseClienteOAuth(JSON.parse(fs.readFileSync(f, "utf8"))); if (c) return { cliente: c, origem, projeto: projetoDe(c) }; } catch { /* próximo */ }
   }
-  return cliente();
+  const c = cliente();
+  return c === null ? null : { cliente: c, origem: "client do app", projeto: projetoDe(c) };
 }
 
 /** Gravação atômica 0600 (tmp + rename). */

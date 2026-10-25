@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../export";
-import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup } from "../whatsapp";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp";
 import { JID_RE } from "../whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp-marks";
@@ -164,7 +164,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("ui:wa-menu", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) return null;
-    const entries = waMenuTemplate(waMenuState(payload), caps());
+    const entries = waMenuTemplate(waMenuState(payload), caps(), whatsappGatewayOf(h.host));
     return new Promise<WhatsappMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };

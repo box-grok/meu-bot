@@ -61,6 +61,9 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     const pc = card("Sua conta");
     if (!status.conectado) {
       pc.append(el("p", "hint", "Ao entrar, o login abre no Navegador. Qualquer verificação de telefone é feita por você, no seu celular, na tela do Google."));
+      // Procedência do client: um arquivo velho vencendo em silêncio já custou uma caçada longa, e
+      // o Google só diz "access_denied" no navegador, longe daqui. Aqui a origem fica à vista.
+      if (status.cliente !== null) pc.append(el("p", "hint", `Entrando pelo projeto ${status.cliente.projeto} do Google Cloud (client vindo do ${status.cliente.origem}). Se o Google recusar dizendo que o app não foi verificado, é este projeto que precisa liberar o seu e-mail.`));
       pc.append(btn("Entrar com Google", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "login aberto no Navegador; conclua lá e volte"); }));
     } else {
       const linha = el("div", "conta-perfil");

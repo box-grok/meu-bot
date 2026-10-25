@@ -7,7 +7,8 @@
 set -euo pipefail
 HERMES_VERSION=0.22.2
 DEFAULT_PROXY_PORT=8645
-BACKEND=$HOME/.hermes/agente-rene/backend-sdk-claude
+CANON=$HOME/.local/share/meu-bot/backend; LEGACY=$HOME/.hermes/agente-rene/backend-sdk-claude
+if [ -f "$CANON/server.js" ]; then BACKEND=$CANON; elif [ -f "$LEGACY/server.js" ] && grep -q "meu-bot/hello" "$LEGACY/server.js" 2>/dev/null; then BACKEND=$LEGACY; else BACKEND=$CANON; fi
 [ -f "$BACKEND/server.js" ] || { echo "esta máquina não tem o backend do meu-bot; instale pelo seletor antes"; exit 2; }
 # O fallback e o grok-4 vivem no providers.js; um backend antigo não o tem (reinstalar pelo seletor atualiza).
 [ -f "$BACKEND/providers.js" ] || { echo "o backend desta máquina é antigo (sem providers.js): use \"Reinstalar backend\" no seletor e tente de novo"; exit 3; }

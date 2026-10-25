@@ -58,7 +58,8 @@ export function describeProbe(p: HostProbe): ProbeText {
   // falharia. "Instalar backend" usa a primeira livre e grava a porta só para esta máquina.
   if (p.portBusy) {
     if (p.freePort === null) return { kind: "bad", text: `✗ ${who} · sem backend, e a porta ${p.appPort} já está ocupada nesta máquina (outra conta ou outro programa); nenhuma livre entre ${p.appPort + 1} e ${p.appPort + 30}. Troque a porta em Configurações e tente de novo.`, install: null, canOpen: false };
-    return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot. A porta ${p.appPort} já está ocupada nesta máquina (outra conta ou outro programa): "Instalar backend" instala na ${p.freePort} e grava essa porta só para esta máquina.${nodeNote}`, install: "install", port: p.freePort, canOpen: false };
+    const quem = p.backendForeign ? "é do backend de outro agente desta máquina (o do WhatsApp), que fica como está" : "já está ocupada nesta máquina (outra conta ou outro programa)";
+    return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot. A porta ${p.appPort} ${quem}: "Instalar backend" instala na ${p.freePort} e grava essa porta só para esta máquina.${nodeNote}`, install: "install", port: p.freePort, canOpen: false };
   }
   return { kind: "warn", text: `⚠ ${who} · Claude Code logado, mas sem o backend do meu-bot.${nodeNote}`, install: "install", canOpen: false };
 }

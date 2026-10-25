@@ -7,7 +7,8 @@ export type OrigemDono = "meu-bot" | "whatsapp" | "claude-code";
 export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
 /** `foto`: a URL do Google, como veio. `fotoLocal`: a mesma imagem em data URL, baixada no main (a tela tem CSP `img-src 'self' data:`). */
 export interface GooglePerfil { sub: string; email: string | null; emailVerificado: boolean; nome: string | null; foto: string | null; fotoLocal: string | null }
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[] }
+/** : de onde veio o client OAuth e de qual projeto do Google Cloud; null = nenhum configurado. */
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
 /** Um conjunto de dados da máquina que subiu para o Drive (CRM e financeiro vão separados, de propósito). */
 export interface BackupDadosEnvio { conjunto: string; caminho: string; bytes: number; apagados: number; /** Caminho da cópia local no Mac, gravada antes do envio. */ local: string }
 /** Cópia diária do CRM e do financeiro desta máquina no Drive da Conta Google do dono. */
@@ -243,8 +244,10 @@ export interface HostProbe {
   user: string | null;
   os: string | null;
   arch: string | null;
-  /** Há server.js e .env em ~/.hermes/agente-rene/backend-sdk-claude. */
+  /** Há o backend do meu-bot (server.js nosso e .env) na pasta dele: ~/.local/share/meu-bot/backend, ou a herdada quando o server.js lá é o nosso. */
   backendInstalled: boolean;
+  /** A pasta herdada (~/.hermes/agente-rene/backend-sdk-claude) tem o server.js de OUTRO backend (o do Hermes): nunca é tocada; o nosso vai na pasta própria, em porta livre. */
+  backendForeign: boolean;
   /** Alguém escuta na porta do backend (a do .env dele quando existe; senão `appPort`). */
   backendListening: boolean;
   /** Versão do backend instalado (VERSION gravado pelo install.sh); null = sem arquivo (anterior ao versionamento) ou sem backend. */

@@ -7,7 +7,15 @@
 #   cai no nohup — por isso testamos /run/systemd/system, não a presença do binário.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-DEST=$HOME/.hermes/agente-rene/backend-sdk-claude
+# Pasta do backend do meu-bot (backend-dir-core.ts no app, mesma regra): a própria, ou a herdada só se o server.js de lá
+# é o nosso (tem a rota meu-bot/hello). Outro backend na herdada (o do Hermes na grokbot-1) fica intocado. MEU_BOT_BACKEND_DIR força.
+CANON=$HOME/.local/share/meu-bot/backend
+LEGACY=$HOME/.hermes/agente-rene/backend-sdk-claude
+if [ -n "${MEU_BOT_BACKEND_DIR:-}" ]; then DEST=$MEU_BOT_BACKEND_DIR
+elif [ -f "$CANON/server.js" ]; then DEST=$CANON
+elif [ -f "$LEGACY/server.js" ] && grep -q "meu-bot/hello" "$LEGACY/server.js" 2>/dev/null; then DEST=$LEGACY
+else DEST=$CANON; fi
+echo "pasta do backend: $DEST"
 NODE_DIR=$HOME/.local/node
 NODE_VER=${NODE_VER:-v20.20.2}
 PORT=${PORT:-8080}
@@ -106,6 +114,18 @@ elif supervisorctl status meu-bot-backend >/dev/null 2>&1; then
   # reiniciar por ele, nunca por nohup — senão nascem dois server.js disputando a porta.
   echo "supervisord gerencia meu-bot-backend: reiniciando por ele"
   supervisorctl restart meu-bot-backend >/dev/null 2>&1 || { echo "supervisorctl restart falhou"; exit 1; }
+  sleep 2
+elif PM2=$(command -v pm2 2>/dev/null || { [ -x "$HOME/.local/bin/pm2" ] && echo "$HOME/.local/bin/pm2"; }) && [ -n "$PM2" ]; then
+  # Máquina sem systemd mas com PM2 (a grokbot-1, que já roda o Hermes por ele): o nosso backend entra como
+  # `meu-bot-backend`, com `pm2 save` para voltar no reinício. Reinstalar reinicia o mesmo processo (--update-env).
+  if "$PM2" id meu-bot-backend 2>/dev/null | grep -q '[0-9]'; then
+    echo "PM2 gerencia meu-bot-backend: reiniciando por ele"
+    "$PM2" restart meu-bot-backend --update-env >/dev/null 2>&1 || { echo "pm2 restart falhou"; exit 1; }
+  else
+    echo "sem systemd: subindo pelo PM2 (meu-bot-backend)"
+    (cd "$DEST" && OPENAI_COMPAT_SESSIONS_PATH="$DEST/data/openai-compat-sessions.json" "$PM2" start server.js --name meu-bot-backend --interpreter "$NODE" --cwd "$DEST" --time >/dev/null 2>&1) || { echo "pm2 start falhou"; exit 1; }
+  fi
+  "$PM2" save >/dev/null 2>&1 || echo "aviso: pm2 save falhou; o backend pode não voltar no reinício"
   sleep 2
 else
   echo "sem systemd: subindo com nohup (não sobrevive a reinício)"

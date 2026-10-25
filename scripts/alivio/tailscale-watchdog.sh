@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# tailscale-watchdog.sh — vigia do tailscaled num computador do Grok Bot (grokbot-3).
+# tailscale-watchdog.sh — vigia do tailscaled num computador do Grok Bot (grokbot-1 e grokbot-3).
+#
+# Serve às duas máquinas porque elas diferem só em três pontos, todos detectados em tempo de
+# execução: o supervisor (supervisord na grokbot-3, PM2 na grokbot-1), a existência de sudo (a
+# grokbot-1 não tem) e quais são os outros nós do tailnet (ela nunca mede a si mesma).
 #
 # O host suspende a VM (dezenas de vezes por dia, medido na grokbot-1). Ao acordar, o tailscaled
 # costuma se reconectar sozinho, mas devagar (mediana 74 s, p90 ~18 min; 4 vezes em 10 dias nunca
@@ -32,18 +36,46 @@ if [ -z "$TS" ]; then for c in /usr/bin/tailscale /usr/local/bin/tailscale /home
 PEERS=${PEERS:-"100.118.233.106 100.65.117.27 100.69.163.93"}   # Mac (grokbot-2), agente-br (servidor fixo, exit node) e grokbot-1 (congela metade do dia; só desempate)
 log() { echo "$(date '+%F %T') $*"; }
 
+# sudo: a grokbot-3 tem; a grokbot-1 é contêiner sem sudo e roda o tailscale como o próprio usuário.
+SU=""; if [ "$(id -u)" != "0" ] && sudo -n true 2>/dev/null; then SU="sudo -n"; fi
+
+# Supervisor: supervisord (grokbot-3) ou PM2 (grokbot-1, onde o PM2 faz papel de init). Sem nenhum
+# dos dois o vigia não tem como reiniciar nada, e é melhor sair do que girar medindo à toa.
+SUPERVISOR=${SUPERVISOR:-}
+if [ -z "$SUPERVISOR" ]; then
+  if command -v supervisorctl >/dev/null 2>&1 && supervisorctl status tailscaled >/dev/null 2>&1; then SUPERVISOR=supervisord
+  elif command -v pm2 >/dev/null 2>&1 && pm2 describe tailscaled >/dev/null 2>&1; then SUPERVISOR=pm2; fi
+fi
+[ -n "$SUPERVISOR" ] || { echo "$(date '+%F %T') não achei o tailscaled nem no supervisord nem no PM2; saindo"; exit 1; }
+reiniciar_tailscaled() {
+  case "$SUPERVISOR" in
+    supervisord) supervisorctl restart tailscaled >/dev/null 2>&1 ;;
+    pm2) pm2 restart tailscaled >/dev/null 2>&1 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Nunca medir a si mesmo: o próprio IP sempre responde e mascararia a queda. Tira o self da lista.
+SELF_IP=$($SU "$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("TailscaleIPs",[""])[0])' 2>/dev/null)
+if [ -n "${SELF_IP:-}" ]; then
+  P=""; for p in $PEERS; do [ "$p" = "$SELF_IP" ] || P="$P $p"; done
+  PEERS=$(echo "$P" | sed 's/^ //')
+fi
+
 uptime_s() { cut -d. -f1 "${UPTIME_FILE:-/proc/uptime}"; }   # UPTIME_FILE só para ensaio fora do Linux
 saude() { # 0 = bem; 1 = mal; 2 = sem referência (nenhum peer para medir). Imprime o motivo.
-  local st; st=$(sudo -n "$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)
+  local st; st=$($SU "$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("BackendState",""))' 2>/dev/null)
   if [ "$st" != "Running" ]; then echo "BackendState=${st:-?}"; return 1; fi
   local p; for p in $PEERS; do
-    if sudo -n "$TS" ping -c 1 --timeout=5s "$p" 2>/dev/null | grep -q "^pong"; then echo "ok (pong de $p)"; return 0; fi
+    if $SU "$TS" ping -c 1 --timeout=5s "$p" 2>/dev/null | grep -q "^pong"; then echo "ok (pong de $p)"; return 0; fi
   done
   # Nenhum pong. Peer desligado ou nós sem rede? Se o Tailscale nem acha a si mesmo no netmap, é nós.
   echo "sem pong de ${PEERS}"; return 1
 }
 fifos() { ls -1 "$FLUSH_DIR"/response.* 2>/dev/null | wc -l | tr -d " "; }
-log "tailscale em $TS"
+# Nome do nó no tailnet, lido de quem ele já é. Vazio = o `up` não passa --hostname e preserva.
+NODE_NAME=${NODE_NAME:-$($SU "$TS" status --json 2>/dev/null | python3 -c 'import json,sys; print((json.load(sys.stdin).get("Self") or {}).get("HostName",""))' 2>/dev/null)}
+log "tailscale em $TS | supervisor: $SUPERVISOR | sudo: ${SU:-não} | nó: ${NODE_NAME:-?} | pares: $PEERS"
 log "vigia iniciado (check ${CHECK_S}s, age após ${BAD_READINGS} leituras ruins, tolerância ${TOLERANCIA_S}s, carência ${GRACA_S}s, máx ${MAX_RESTARTS} reinícios/${JANELA_S}s)"
 prev_wall=$(date +%s); prev_up=$(uptime_s); prev_fifos=$(fifos); ruins=0; restarts=(); graca_ate=0
 while :; do
@@ -66,15 +98,22 @@ while :; do
     n=0; for t in "${restarts[@]:-}"; do [ -n "$t" ] && n=$((n + 1)); done
     if [ "$n" -ge "$MAX_RESTARTS" ]; then log "limite de ${MAX_RESTARTS} reinícios em ${JANELA_S}s atingido; não reinicio (causa provavelmente é outra)"; continue; fi
     # /usr zera quando o container é recriado: sem o binário o supervisord só acumula BACKOFF.
-    for b in tailscaled tailscale; do
-      if [ ! -x "/usr/local/bin/$b" ] && [ -x "/home/box/.local/bin/$b" ]; then sudo -n ln -sf "/home/box/.local/bin/$b" "/usr/local/bin/$b" && log "symlink /usr/local/bin/$b refeito"; fi
-    done
-    sudo -n mkdir -p /run/tailscale 2>/dev/null
-    log "reiniciando o tailscaled pelo supervisord"
-    if supervisorctl restart tailscaled >/dev/null 2>&1; then
+    # Só com sudo: onde não há (grokbot-1), o tailscale vive no home e nada precisa de symlink.
+    if [ -n "$SU" ]; then
+      for b in tailscaled tailscale; do
+        if [ ! -x "/usr/local/bin/$b" ] && [ -x "/home/box/.local/bin/$b" ]; then $SU ln -sf "/home/box/.local/bin/$b" "/usr/local/bin/$b" && log "symlink /usr/local/bin/$b refeito"; fi
+      done
+      $SU mkdir -p /run/tailscale 2>/dev/null
+    fi
+    log "reiniciando o tailscaled pelo $SUPERVISOR"
+    if reiniciar_tailscaled; then
       restarts+=("$agora"); ruins=0; graca_ate=$((agora + GRACA_S)); log "tailscaled reiniciado; carência de ${GRACA_S}s"
       # Subir o daemon não religa o nó ao control plane; o `up --ssh` é o que devolve o shell.
-      sleep 4; sudo -n "$TS" up --ssh --hostname=grokbot --accept-dns=false >/dev/null 2>&1 && log "tailscale up --ssh ok" || log "tailscale up falhou (o daemon pode ainda estar subindo)"
+      # O nome vem do que o nó já usa: passar um fixo renomearia a máquina no tailnet (e a
+      # grokbot-1 viraria "grokbot", quebrando o alias do ~/.ssh/config de todo mundo).
+      sleep 4
+      if [ -n "${NODE_NAME:-}" ]; then $SU "$TS" up --ssh --hostname="$NODE_NAME" --accept-dns=false >/dev/null 2>&1 && log "tailscale up --ssh ok (hostname $NODE_NAME)" || log "tailscale up falhou (o daemon pode ainda estar subindo)"
+      else $SU "$TS" up --ssh --accept-dns=false >/dev/null 2>&1 && log "tailscale up --ssh ok (hostname preservado)" || log "tailscale up falhou (o daemon pode ainda estar subindo)"; fi
     else log "FALHA ao reiniciar o tailscaled"; fi
   fi
 done

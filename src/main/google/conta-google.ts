@@ -13,9 +13,9 @@ import { safeStorage } from "electron";
 import { log } from "../tunnel";
 import { browserAsk, browserWebContents, reservarRetornoLocal } from "../browser";
 import { ESCOPOS_CONTA, URL_TOKEN, parseIdToken, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
-import { acessoDeRefresh, clienteConta, gravar, postForm, temKeychain } from "./comum";
+import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[] }
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
 const ARQ = (): string => path.join(app.getPath("userData"), "google-conta.bin");
 interface Guardado { refresh: string; perfil: PerfilGoogle | null; escopo: string }
 function lerToken(): Guardado | null {
@@ -78,7 +78,8 @@ let cache: { acesso: string; expira: number } | null = null;
 
 export function contaStatus(): GoogleContaStatus {
   const t = lerToken();
-  return { configurado: clienteConta() !== null, conectado: t !== null, conectando: conectando.size > 0, precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [] };
+  const c = clienteContaOrigem();
+  return { configurado: c !== null, conectado: t !== null, conectando: conectando.size > 0, precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [], cliente: c === null ? null : { projeto: c.projeto, origem: c.origem } };
 }
 
 export async function contaConectar(host: string): Promise<GoogleContaStatus> {
@@ -102,7 +103,10 @@ async function fluxo(host: string, c: { clientId: string; clientSecret: string }
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
       res.end(`<!doctype html><meta charset="utf-8"><title>meu-bot</title><body style="font:16px system-ui;padding:40px">${ok ? "✅ Conta Google conectada. Pode fechar esta aba e voltar ao meu-bot." : "❌ Não foi possível conectar. Volte ao meu-bot e tente de novo."}</body>`);
       clearTimeout(timer); srv.close();
-      if (ok) resolve({ code: u.searchParams.get("code") as string, redirect }); else reject(new Error(u.searchParams.get("error") === "access_denied" ? "você não autorizou o acesso" : "retorno inválido do Google"));
+      // `access_denied` não é só "a pessoa recusou": o Google manda o mesmo quando o projeto está em
+      // modo Teste e o e-mail não é testador. Dizer só "você não autorizou" manda procurar no lugar errado.
+      if (ok) resolve({ code: u.searchParams.get("code") as string, redirect });
+      else reject(new Error(u.searchParams.get("error") === "access_denied" ? "o Google recusou: ou você não autorizou, ou este e-mail não tem acesso ao projeto do Google Cloud (app em modo Teste só aceita testadores aprovados)" : "retorno inválido do Google"));
     });
     let redirect = "";
     const timer = setTimeout(() => { srv.close(); reject(new Error("o login do Google não foi concluído em 5 minutos")); }, 5 * 60_000);

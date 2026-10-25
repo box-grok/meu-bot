@@ -24,7 +24,7 @@ export interface TunnelInfo {
 }
 
 /** Onde o backend guarda a chave do endpoint OpenAI-compatível, na VM. */
-const BACKEND_ENV_PATH = "~/.hermes/agente-rene/backend-sdk-claude/.env";
+import { BACKEND_DIR_CANONICAL, BACKEND_DIR_SH } from "./backend-dir-core";
 const BACKEND_KEY_NAME = "OPENAI_COMPAT_KEY";
 const CONTROL_PERSIST_S = 600;
 const FORWARD_RESTART_BUDGET = 5;
@@ -160,11 +160,11 @@ async function execViaMux(host: string, command: string, timeoutMs: number): Pro
 /** Lê a chave do backend direto da VM. Nunca é logada nem persistida. */
 async function fetchBackendKey(host: string): Promise<string> {
   const t0 = Date.now();
-  const r = await execViaMux(host, `grep '^${BACKEND_KEY_NAME}=' ${BACKEND_ENV_PATH} 2>/dev/null | head -1 | cut -d= -f2-`, 15_000);
+  const r = await execViaMux(host, `${BACKEND_DIR_SH}; grep '^${BACKEND_KEY_NAME}=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2-`, 15_000);
   if (r.code !== 0 && r.code !== 1) throw new Error(`Falha ao ler a chave do backend (${r.code ?? "timeout"}): ${lastLine(r.stderr)}`);
   const key = r.stdout.trim().replace(/^["']|["']$/g, "").trim();
   if (key === "") {
-    throw new TunnelFatalError(`O host "${host}" não tem o backend do meu-bot (sem ${BACKEND_ENV_PATH}). Em Configurações, selecione esse host e use "Instalar backend".`);
+    throw new TunnelFatalError(`O host "${host}" não tem o backend do meu-bot (sem .env em ${BACKEND_DIR_CANONICAL}). Em Configurações, selecione esse host e use "Instalar backend".`);
   }
   log(`[${host}] key fetched via mux em ${Date.now() - t0} ms`);
   return key;

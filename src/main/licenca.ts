@@ -83,6 +83,18 @@ export type AcessoProduto = "ok" | "ausente" | "expirada" | "unknown";
 export const crmProprioOk = (view: LicenseView | null, host: string, now: number = Date.now()): boolean =>
   host !== "local" && view !== null && proOk(view.license, now);
 /**
+ * Licença da máquina com a sua origem: `viaBackend` = veio de `GET /v1/meu-bot/license` do nosso backend-colima;
+ * false = lida dos arquivos por SSH (a máquina roda outro backend, o do Hermes, ou o nosso está fora do ar).
+ */
+export interface LicencaDaMaquina { view: LicenseView | null; viaBackend: boolean }
+/**
+ * O CRM próprio *disponível* nesta máquina: a licença libera (crmProprioOk) E o nosso backend responde, porque a API
+ * `/v1/crm/*` mora nele. Licença Pro lida por SSH numa máquina com outro backend não basta: carregar a extensão do CRM,
+ * importar o Google ou guardar conversa ali só renderia 404 (grokbot-1, 25 out).
+ */
+export const crmDaMaquinaOk = (l: LicencaDaMaquina | null, host: string, now: number = Date.now()): boolean =>
+  l !== null && l.viaBackend && crmProprioOk(l.view, host, now);
+/**
  * Financeiro nesta máquina: o add-on meu-bot-finance contratado, com ou sem o Pro (o Pro sozinho não libera). Mesma
  * regra do renderer (lib/pro.ts) e do backend (licenca.js financeOk).
  */

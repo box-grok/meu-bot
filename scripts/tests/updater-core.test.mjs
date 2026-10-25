@@ -77,8 +77,7 @@ test("precisaAtualizarBackend: só onde já está instalado, só para cima, só 
   assert.equal(precisaAtualizarBackend(p({}), null), "nao", "app sem VERSION não decide nada");
   assert.equal(precisaAtualizarBackend(p({ backendBusy: 2 }), "1.1.0"), "ocupado");
   assert.equal(precisaAtualizarBackend(p({ backendBusy: null }), "1.1.0"), "atualizar", "backend antigo sem o contador conta como ocioso");
-  assert.equal(precisaAtualizarBackend(p({ backendVersion: null, gateway: "hermes" }), "1.1.0"), "nao", "a máquina do Hermes tem o backend dela: nunca reinstalar por cima");
-  assert.equal(precisaAtualizarBackend(p({ gateway: "openclaw" }), "1.1.0"), "atualizar");
+  assert.equal(precisaAtualizarBackend(p({ backendInstalled: false, backendVersion: null }), "1.1.0"), "nao", "outro backend na pasta herdada (Hermes) não é instalado: nunca reinstalar por cima");
 });
 
 test("pickUpdate: zip sem o .sig ao lado não é candidata; com ele, a candidata traz os dois", () => {

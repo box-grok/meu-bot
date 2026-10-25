@@ -19,8 +19,7 @@ import { esquecerAba, pedirPermissao, permissaoJaDada } from "./nav-permissoes";
 import { origemDe, tiposDe } from "./nav-permissoes-core";
 import type { BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "../shared/ipc";
 import { carregarExtensoes, extensaoEmbutida, sincronizarExtensaoCrm } from "./extensao-gmail/extensao";
-import { crmProprioOk } from "./licenca";
-import type { LicenseView } from "../shared/ipc";
+import { crmDaMaquinaOk, crmProprioOk, type LicencaDaMaquina } from "./licenca";
 import { stopExtensaoApi } from "./extensao-gmail/extensao-api";
 import { pararSincronizacaoGoogle } from "./google/google";
 import { gravarPortaNavegador } from "./navegador-whatsapp";
@@ -293,7 +292,7 @@ function publishExtensions(host: string): void {
 const windowHosts = new Map<number, string>();
 
 /** Prepara a sessão e devolve o que o renderer precisa para criar os `<webview>`. */
-export async function browserOpen(win: BrowserWindow, host: string, lic: LicenseView | null = null): Promise<BrowserOpenInfo> {
+export async function browserOpen(win: BrowserWindow, host: string, lic: LicencaDaMaquina | null = null): Promise<BrowserOpenInfo> {
   const { ses, ready } = prepareSession(host);
   await ready;
   // A extensão do CRM segue a licença desta máquina (quem abre já a leu; sem licença = fechado), nunca a variante.
@@ -308,13 +307,16 @@ export async function browserOpen(win: BrowserWindow, host: string, lic: License
   return { partition: partitionOf(host), extensions: extensionsOf(ses, host), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
 }
 /**
- * Carrega ou tira a extensão do CRM conforme a licença da máquina (Pro ou superior, ou o produto meu-bot-crm). Chamado ao
- * abrir o Navegador e quando a licença é relida (`license:get`); sem o Navegador desta máquina aberto, não faz nada.
+ * Carrega ou tira a extensão do CRM conforme a licença da máquina (Pro) E o nosso backend nela (a API do CRM mora
+ * nele; crmDaMaquinaOk). Chamado ao abrir o Navegador e quando a licença é relida (`license:get`); sem o Navegador
+ * desta máquina aberto, não faz nada. Pro sem o backend: a extensão fica de fora e o log diz por quê.
  */
-export async function browserSincronizarCrm(host: string, lic: LicenseView | null): Promise<void> {
+export async function browserSincronizarCrm(host: string, lic: LicencaDaMaquina | null): Promise<void> {
   const part = partitionOf(host);
   if (!readySessions.has(part)) return;
-  try { await sincronizarExtensaoCrm(session.fromPartition(part), host, crmProprioOk(lic, host), patchExtensionFiles, () => capturarAbaAtiva(host)); }
+  const ok = crmDaMaquinaOk(lic, host);
+  if (!ok && lic !== null && crmProprioOk(lic.view, host)) log(`[navegador ${host}] extensão do CRM fica de fora: a licença libera o Pro, mas o backend do meu-bot não responde nesta máquina (instale-o pelo seletor)`);
+  try { await sincronizarExtensaoCrm(session.fromPartition(part), host, ok, patchExtensionFiles, () => capturarAbaAtiva(host)); }
   catch (e) { log(`[navegador ${host}] extensão do CRM: ${e instanceof Error ? e.message : String(e)}`); }
 }
 /** Barra de favoritos (por máquina): a pessoa e o agente mexem; toda janela da máquina recebe a lista nova. */

@@ -10,7 +10,9 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
-import { applyLicensePatch, buildLicenseView, parseLicense } from "../licenca";
+import { applyLicensePatch, parseLicense } from "../licenca";
+import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca-maquina";
+import { BACKEND_DIR_SH } from "../backend-dir-core";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
 import { entregar, registrar, registroSh } from "../auditoria";
@@ -294,19 +296,8 @@ export async function adminHealth(host: string): Promise<AdminHealth> {
 }
 
 /** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
-const LICENSE_PATH = "$HOME/.local/share/meu-bot/licenca.json";
-const MACHINES_PATH = "$HOME/.local/share/meu-bot/maquinas.json";
 
 /** Licença + devices da conta, como o admin vê. null = máquina fora do ar; arquivos ausentes viram defaults. */
-async function readLicenseView(host: string): Promise<LicenseView | null> {
-  const r = await runSsh(host, `cat "${LICENSE_PATH}" 2>/dev/null; echo "<<<REA-SEP>>>"; cat "${MACHINES_PATH}" 2>/dev/null; echo\n`, 20_000).catch(() => null);
-  if (r === null || r.code !== 0) return null;
-  const [licPart = "", maqPart = ""] = r.stdout.split("<<<REA-SEP>>>");
-  let licRaw: unknown = null; let maqRaw: unknown = null;
-  try { licRaw = JSON.parse(licPart.trim() || "null"); } catch { licRaw = null; }
-  try { maqRaw = JSON.parse(maqPart.trim() || "null"); } catch { maqRaw = null; }
-  return buildLicenseView(licRaw, maqRaw);
-}
 
 /** Lê um JSON cru (preservando todos os campos, ex.: ips) para alterar e regravar; lança se a máquina não responde. */
 async function fetchJson(host: string, remotePath: string): Promise<Record<string, unknown>> {
@@ -383,7 +374,7 @@ export async function adminLogs(host: string): Promise<string> {
   if (!(await readShare(host)).logs) throw new Error("a pessoa preferiu não compartilhar os registros");
   // Com journal de usuário (VM, OpenClaw): as unidades. Sem ele (Termux/PicoClaw sob runit, backend por nohup):
   // o log do serviço picoclaw, sem as linhas do QR em blocos, e o backend.log do instalador.
-  const r = await runSsh(host, `if journalctl --user -n 1 >/dev/null 2>&1; then journalctl --user -u openclaw-gateway -u picoclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200; else { [ -n "$PREFIX" ] && tail -n 150 "$PREFIX/var/log/sv/picoclaw/current" 2>/dev/null | grep -vE '[▄▀█]'; tail -n 80 "$HOME/.hermes/agente-rene/backend-sdk-claude/backend.log" 2>/dev/null; } | tail -n 200; fi\n`, 30_000);
+  const r = await runSsh(host, `if journalctl --user -n 1 >/dev/null 2>&1; then journalctl --user -u openclaw-gateway -u picoclaw-gateway -u meu-bot-backend -n 200 --no-pager -o short-iso 2>&1 | tail -n 200; else { [ -n "$PREFIX" ] && tail -n 150 "$PREFIX/var/log/sv/picoclaw/current" 2>/dev/null | grep -vE '[▄▀█]'; ${BACKEND_DIR_SH}; tail -n 80 "$BD/backend.log" 2>/dev/null; } | tail -n 200; fi\n`, 30_000);
   return r.stdout.trim() || r.stderr.trim() || "sem registros";
 }
 

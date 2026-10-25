@@ -123,12 +123,11 @@ export function deveAtualizar(instalada: string | null, doApp: string | null): b
 /**
  * Reinstalar o backend da máquina (o install.sh reinicia o serviço) na sondagem: só onde ele já está instalado, só
  * para subir de versão (backend sem VERSION conta como antigo) e só ocioso, com zero chats em andamento. "ocupado" =
- * precisa, mas espera a próxima sondagem; null `busy` (backend antigo, sem o contador) conta como ocioso. Numa
- * máquina com o gateway do Hermes o backend é o dele (não o backend-colima): fica de fora.
+ * precisa, mas espera a próxima sondagem; null `busy` (backend antigo, sem o contador) conta como ocioso. Um backend
+ * de outro agente na pasta herdada não é "instalado" (backend-dir-core.ts), então nunca é tocado.
  */
-export function precisaAtualizarBackend(p: { backendInstalled: boolean; backendVersion: string | null; backendBusy: number | null; gateway?: string | null }, doApp: string | null): "atualizar" | "ocupado" | "nao" {
-  // A máquina do Hermes (grokbot-1) roda o backend original dele na mesma pasta, sem VERSION: nunca reinstalar por cima.
-  if (p.gateway === "hermes") return "nao";
+export function precisaAtualizarBackend(p: { backendInstalled: boolean; backendVersion: string | null; backendBusy: number | null }, doApp: string | null): "atualizar" | "ocupado" | "nao" {
+  // `backendInstalled` só é verdadeiro para o backend do meu-bot (backend-dir-core.ts): o de outro agente na pasta herdada nunca conta.
   if (!p.backendInstalled || !deveAtualizar(p.backendVersion, doApp)) return "nao";
   return p.backendBusy !== null && p.backendBusy > 0 ? "ocupado" : "atualizar";
 }

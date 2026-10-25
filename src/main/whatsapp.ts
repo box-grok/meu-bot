@@ -8,6 +8,9 @@
  * - OpenClaw (CLI `openclaw`): `channels status --json` para o estado e `channels login --channel
  *   whatsapp` para parear. O QR sai como blocos no terminal; qr-blocks.ts o vira imagem. Depois de
  *   vinculado, reinicia o gateway (supervisord se ele o gerencia, senão `openclaw gateway restart`).
+ * - Espelho das conversas: no OpenClaw pelo gateway (`sessions.list`, `chat.history`, whatsapp-chats.ts);
+ *   no Hermes pelo `~/.hermes/state.db` em só-leitura (whatsapp-hermes-core.ts). Pausar, limpar e grupos
+ *   continuam só no OpenClaw; no Hermes o espelho é leitura, exportar, conversar e as marcas da máquina.
  */
 import { politicaGravada, politicaNaoBate } from "./whatsapp-chats";
 import { isVozId } from "./vozes-core";
@@ -19,6 +22,7 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaMarks, parseWaMarks, waMarkSh, type WaMarkPatch } from "./whatsapp-marks";
+import { chatsFromHermes, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, isHermesKey, threadFromHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -198,6 +202,10 @@ export function runSsh(host: string, script: string, timeoutMs: number): Promise
 const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.exec(jid); return m === null ? null : m[1]!; };
 
 /** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes, OpenClaw nem PicoClaw. */
+/** Gateway visto na última consulta de cada máquina (status ou lista): decide o menu "…" e o leitor da conversa. */
+const gatewayByHost = new Map<string, Gateway>();
+export const whatsappGatewayOf = (host: string): Gateway | null => gatewayByHost.get(host) ?? null;
+
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
@@ -208,6 +216,7 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1).trim()); }
   if (kv.get("present") !== "1") return none;
   const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "picoclaw" ? "picoclaw" : "hermes";
+  gatewayByHost.set(host, gateway);
   if (gateway === "openclaw") return openclawStatus(kv);
   if (gateway === "picoclaw") return picoclawStatus(kv);
   const agent = describeInstall("Hermes", kv);
@@ -575,9 +584,17 @@ export const CREDS_ME = `python3 -c 'import json,sys;print(json.load(open(sys.ar
 
 export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
   if (host === LOCAL_HOST || !isValidHost(host)) return [];
+  // Hermes (~/.hermes/whatsapp): a lista vem do state.db dele, só-leitura; senão, o gateway do OpenClaw.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
-echo "self=$(${CREDS_ME})"
-echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+if [ -d "$HOME/.hermes/whatsapp" ]; then
+  echo gateway=hermes
+  echo "self=$(${HERMES_SELF_SH})"
+  echo "list=$(${HERMES_LIST_PY} 2>/dev/null | tr -d '\n')"
+else
+  echo gateway=openclaw
+  echo "self=$(${CREDS_ME})"
+  echo "list=$(timeout 40 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+fi
 echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
 ${SEND_POLICY_READ_SH}
 `;
@@ -585,8 +602,11 @@ ${SEND_POLICY_READ_SH}
   if (r.code !== 0) throw new Error(`não consegui ler as conversas do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
+  const hermes = kv.get("gateway")?.trim() === "hermes";
+  if (hermes) gatewayByHost.set(host, "hermes");
   let list: unknown = null;
-  try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error("o gateway do OpenClaw não respondeu à lista de conversas"); }
+  try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error(hermes ? "não consegui ler o banco de sessões do Hermes (~/.hermes/state.db)" : "o gateway do OpenClaw não respondeu à lista de conversas"); }
+  if (hermes && list === null) throw new Error("o Hermes desta máquina ainda não tem o banco de sessões (~/.hermes/state.db)");
   // Arquivado/excluído/nomes moram na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
   let marks: unknown = null;
   try { marks = JSON.parse(kv.get("marks") || "null"); } catch { /* arquivo corrompido = sem marcas; a próxima gravação o refaz */ }
@@ -597,7 +617,20 @@ ${SEND_POLICY_READ_SH}
   // Pausados pela lista durável do openclaw.json contam mesmo quando a sessão perdeu a marca (conversa limpa).
   let policy: unknown = null;
   try { policy = JSON.parse(kv.get("policy") || "null"); } catch { /* sem lista legível: só a marca da sessão */ }
-  return applyWaMarks(chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names, pausedNumbersOfPolicy(policy)), parsed);
+  const chats = hermes ? chatsFromHermes(list, phoneOf(kv.get("self") ?? ""), names) : chatsFromSessions(list, phoneOf(kv.get("self") ?? ""), names, pausedNumbersOfPolicy(policy));
+  return applyWaMarks(chats, parsed);
+}
+
+/** Conversa de um contato numa máquina com Hermes: as mensagens das sessões dele, lidas do state.db. */
+async function hermesThread(host: string, chat: WhatsappChat, limit: number): Promise<WhatsappThreadMessage[]> {
+  const ids = Object.values(chat.sessionIds).filter((id) => HERMES_ID_RE.test(id));
+  if (ids.length === 0) return [];
+  const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
+  const r = await runSsh(host, `${HERMES_THREAD_PY} ${ids.map((id) => `'${id}'`).join(" ")} ${n}\n`, 90_000);
+  if (r.code !== 0) throw new Error(`não consegui ler a conversa: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  let data: unknown;
+  try { data = JSON.parse(r.stdout.trim() || "null"); } catch { throw new Error("o banco de sessões do Hermes não respondeu"); }
+  return threadFromHermes(data);
 }
 
 /**
@@ -610,6 +643,8 @@ export async function whatsappLearnNames(host: string, numbers: readonly string[
   const want = [...new Set(numbers.map((n) => n.replace(/\D/g, "")))].filter((n) => /^\d{8,15}$/.test(n)).slice(0, 20);
   if (want.length === 0) return {};
   const chats = await whatsappChats(host);
+  // Hermes: o nome é o display_name da sessão, já na lista; não há histórico do OpenClaw para ler.
+  if (chats.some((c) => c.sessionKeys.some(isHermesKey))) return {};
   const keys = new Set<string>();
   for (const n of want) {
     const chat = chats.find((c) => c.number === n);
@@ -654,6 +689,7 @@ export async function whatsappThread(host: string, number: string, limit = 200):
   if (want.length < 8) throw new Error("número inválido");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
   if (chat === undefined) return [];
+  if (chat.sessionKeys.some(isHermesKey)) return hermesThread(host, chat, limit);
   const keys = chat.sessionKeys.filter((k) => SAFE_KEY.test(k));
   // Uma linha por sessão: "H<TAB>chave<TAB>json".
   const lines = keys.map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":${Math.min(1000, Math.max(1, Math.trunc(limit)))}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");

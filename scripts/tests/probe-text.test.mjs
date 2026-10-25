@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { describeProbe, hostLabel } from "../../dist/renderer/lib/probe-text.js";
 
-const base = { host: "vm", reachable: true, user: "box", os: "Debian 13", arch: "x86_64", backendInstalled: false, backendListening: false, appPort: 8080, backendPort: null, portBusy: false, freePort: null, claudePath: "/usr/bin/claude", claudeLoggedIn: true, node: "v24", systemd: true, tailscaleCheck: false, statusLine: true, models: [], error: null };
+const base = { host: "vm", reachable: true, user: "box", os: "Debian 13", arch: "x86_64", backendInstalled: false, backendForeign: false, backendListening: false, appPort: 8080, backendPort: null, portBusy: false, freePort: null, claudePath: "/usr/bin/claude", claudeLoggedIn: true, node: "v24", systemd: true, tailscaleCheck: false, statusLine: true, models: [], error: null };
 
 test("estados da sondagem remota", () => {
   assert.deepEqual(pick(describeProbe({ ...base, reachable: false, error: "timeout" })), { kind: "bad", install: null, canOpen: false });
@@ -81,3 +81,8 @@ test("porta ocupada sem backend nesta conta: instala na primeira livre e avisa; 
 });
 
 function pick(t) { return { kind: t.kind, install: t.install, canOpen: t.canOpen }; }
+
+test("backend de outro agente na pasta herdada: não é instalado; instalar vai para a porta livre e explica de quem é a 8080", () => {
+  const t = describeProbe({ ...base, backendForeign: true, portBusy: true, freePort: 8081 });
+  assert.equal(t.install, "install"); assert.equal(t.port, 8081); assert.match(t.text, /outro agente desta máquina/);
+});

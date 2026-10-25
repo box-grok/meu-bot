@@ -17,7 +17,7 @@ import type { AudioSetup, HostProbe, InstallBackendResult } from "../shared/ipc"
 import { claudeLoggedIn, findClaude, findNode, LOCAL_HOST, localBackendAlive } from "./localBackend";
 import { isValidHost } from "./settings";
 
-const BACKEND_DIR = "~/.hermes/agente-rene/backend-sdk-claude";
+import { BACKEND_DIR_SH } from "./backend-dir-core";
 const REMOTE_STAGE = "~/.meu-bot-install";
 
 const sshBase = (host: string): string[] => [
@@ -82,12 +82,15 @@ function probeScript(port: number): string {
     `echo "user=$(id -un 2>/dev/null)"`,
     `echo "os=$(. /etc/os-release 2>/dev/null && printf '%s' "$PRETTY_NAME")"`,
     `echo "arch=$(uname -m 2>/dev/null)"`,
-    `[ -f ${BACKEND_DIR}/.env ] && echo env=1 || echo env=0`,
-    `[ -f ${BACKEND_DIR}/server.js ] && echo server=1 || echo server=0`,
+    // Pasta do backend do meu-bot (própria, ou a herdada quando o server.js lá é o nosso); outro backend na herdada = foreign.
+    BACKEND_DIR_SH,
+    `echo "backenddir=$BD"; echo "foreign=$FOREIGN"`,
+    `[ -f "$BD/.env" ] && echo env=1 || echo env=0`,
+    `[ -f "$BD/server.js" ] && echo server=1 || echo server=0`,
     // Versão do backend instalado (o install.sh grava VERSION só quando ele respondeu); sem arquivo = anterior ao versionamento.
-    `echo "backendver=$(cat ${BACKEND_DIR}/VERSION 2>/dev/null)"`,
+    `echo "backendver=$(cat "$BD/VERSION" 2>/dev/null)"`,
     // A porta do backend é a do .env dele (o app pode estar com outra); sem backend, é a que o app usa.
-    `EP=$(grep '^PORT=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9); echo "envport=$EP"`,
+    `EP=$(grep '^PORT=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9); echo "envport=$EP"`,
     `L=$( (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) ); BP=\${EP:-${port}}`,
     `echo "$L" | grep -q ":$BP " && echo port=1 || echo port=0`,
     // A porta do app está tomada nesta máquina? (sem backend nesta conta: outra conta ou outro programa)
@@ -122,7 +125,7 @@ function probeScript(port: number): string {
     `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
     // Chats em andamento no backend (/health, sem chave): o app só reinstala o backend, que reinicia o serviço, com zero.
     `echo "backendbusy=$(curl -s -m 4 http://127.0.0.1:$BP/health 2>/dev/null | grep -o '"ativos":[0-9]*' | cut -d: -f2)"`,
-    `K=$(grep '^OPENAI_COMPAT_KEY=' ${BACKEND_DIR}/.env 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:$BP/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
+    `K=$(grep '^OPENAI_COMPAT_KEY=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:$BP/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
 }
 
@@ -151,7 +154,7 @@ function parseKv(stdout: string): Map<string, string> {
 export async function probeHost(host: string, port: number): Promise<HostProbe> {
   if (host === LOCAL_HOST) return probeLocal(port);
   const base: HostProbe = {
-    host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendListening: false, backendVersion: null, backendBusy: null,
+    host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendVersion: null, backendBusy: null,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
     claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
@@ -177,6 +180,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     os: kv.get("os") || null,
     arch: kv.get("arch") || null,
     backendInstalled: kv.get("env") === "1" && kv.get("server") === "1",
+    backendForeign: kv.get("foreign") === "1",
     backendListening: kv.get("port") === "1",
     backendVersion: kv.get("backendver") || null,
     backendBusy: /^\d+$/.test(kv.get("backendbusy") ?? "") ? Number(kv.get("backendbusy")) : null,
@@ -227,7 +231,7 @@ function probeLocal(port: number): HostProbe {
   if (node !== null) { try { nodeVersion = spawnSync(node, ["-v"], { encoding: "utf8", timeout: 5000 }).stdout.trim() || null; } catch { /* sem versão */ } }
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
-    backendInstalled: true, backendListening: localBackendAlive(), backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
+    backendInstalled: true, backendForeign: false, backendListening: localBackendAlive(), backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
     node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }

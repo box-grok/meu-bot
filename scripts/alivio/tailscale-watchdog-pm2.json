@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Vigia do tailscaled na grokbot-1, onde o PM2 faz papel de init (não há systemd nem supervisord).",
+    "Equivale ao tailscale-watchdog.conf da grokbot-3; o script é o mesmo e se adapta sozinho.",
+    "O script fica em /home/box porque só o home sobrevive quando o contêiner é recriado.",
+    "",
+    "Instalar (na grokbot-1):",
+    "  scp scripts/alivio/tailscale-watchdog.sh grokbot-1:/home/box/tailscale-watchdog.sh",
+    "  scp scripts/alivio/tailscale-watchdog-pm2.json grokbot-1:/home/box/tailscale-watchdog-pm2.json",
+    "  ssh grokbot-1 'chmod +x ~/tailscale-watchdog.sh && pm2 start ~/tailscale-watchdog-pm2.json && pm2 save'",
+    "",
+    "O `pm2 save` é obrigatório aqui: sem ele o vigia não volta depois que o host recria o pod,",
+    "que é justamente quando ele mais faz falta. Ele regrava o dump com TODOS os serviços online,",
+    "então confira antes com `pm2 list` se não há nada parado que deveria estar de pé."
+  ],
+  "apps": [
+    {
+      "name": "tailscale-watchdog",
+      "script": "/home/box/tailscale-watchdog.sh",
+      "interpreter": "/bin/bash",
+      "cwd": "/home/box",
+      "autorestart": true,
+      "restart_delay": 5000,
+      "max_restarts": 100,
+      "kill_timeout": 5000,
+      "out_file": "/home/box/.pm2/logs/tailscale-watchdog-out.log",
+      "error_file": "/home/box/.pm2/logs/tailscale-watchdog-out.log",
+      "env": {
+        "HOME": "/home/box",
+        "USER": "box"
+      }
+    }
+  ]
+}

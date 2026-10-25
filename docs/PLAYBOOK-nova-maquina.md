@@ -120,8 +120,10 @@ grep -c '"oauthAccount"' ~/.claude.json   # 1 = logado
 
 ## 3. Backend do meu-bot
 
-O app espera, no host, `~/.hermes/agente-rene/backend-sdk-claude/.env` com `OPENAI_COMPAT_KEY` e um
-servidor OpenAI-compatível na porta 8080 (configurável) em `127.0.0.1`.
+O app espera, no host, o backend do meu-bot em `~/.local/share/meu-bot/backend` (`.env` com `OPENAI_COMPAT_KEY`; a pasta
+herdada `~/.hermes/agente-rene/backend-sdk-claude` ainda vale onde o nosso `server.js` já foi instalado nela) e um
+servidor OpenAI-compatível na porta 8080 (configurável) em `127.0.0.1`. Máquina com outro agente na 8080 (Hermes):
+o backend do meu-bot vai na pasta própria, em porta livre.
 
 ### 3a. Backend genérico (`backend-colima/`), para qualquer máquina com Claude logado
 

@@ -4,7 +4,7 @@
  * mais que o free precisaria do add-on `caps().produto` contratado e em vigor → "ASSINATURA_REQUIRED". Nunca decide
  * por variante: só por caps().planoExigido e caps().produto.
  */
-import { fetchLicense } from "./backend";
+import { lerLicenca, lerLicencaDaMaquina } from "./licenca-maquina";
 import { acessoProduto, crmProprioOk, financeOk, proOk } from "./licenca";
 import { LOCAL_HOST } from "./localBackend";
 import { isValidHost } from "./settings";
@@ -13,7 +13,7 @@ import { caps } from "./variant";
 export async function assertAcesso(host: string): Promise<void> {
   const exige = caps().planoExigido;
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error(exige === "free" ? "PRO_REQUIRED" : "ASSINATURA_REQUIRED");
-  const lic = await fetchLicense(host);
+  const lic = await lerLicenca(host);
   if (exige !== "free") {
     // Backend antigo/fora do ar ("unknown") não é bloqueio do admin: deixa passar; o backend da máquina recusa se for o caso.
     const a = acessoProduto(lic, host, exige, caps().produto);
@@ -26,13 +26,17 @@ export async function assertAcesso(host: string): Promise<void> {
 /** Financeiro nesta máquina: o add-on meu-bot-finance contratado e em vigor. "FINANCE_REQUIRED". */
 export async function assertFinance(host: string): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("FINANCE_REQUIRED");
-  const lic = await fetchLicense(host);
+  const lic = await lerLicenca(host);
   if (!financeOk(lic, host)) throw new Error("FINANCE_REQUIRED");
 }
 
-/** CRM próprio nesta máquina (guardar conversa no CRM…): plano Pro em vigor. "CRM_REQUIRED". */
+/**
+ * CRM próprio nesta máquina (guardar conversa no CRM…): plano Pro em vigor ("CRM_REQUIRED") E o nosso backend
+ * respondendo nela, porque a API do CRM mora nele; Pro sem backend explica o que instalar em vez de deixar o 404 chegar.
+ */
 export async function assertCrmProprio(host: string): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("CRM_REQUIRED");
-  const lic = await fetchLicense(host);
-  if (!crmProprioOk(lic, host)) throw new Error("CRM_REQUIRED");
+  const lic = await lerLicencaDaMaquina(host);
+  if (!crmProprioOk(lic.view, host)) throw new Error("CRM_REQUIRED");
+  if (!lic.viaBackend) throw new Error("o backend do meu-bot não responde nesta máquina, e o CRM mora nele: instale-o pelo seletor (botão Instalar) e tente de novo");
 }

@@ -9,7 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { AudioSetup, ClaudeSessionRef, ExportFormat, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchLicense, log, runBackendTurn, saveAlertPrefs } from "../backend";
+import { deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, log, runBackendTurn, saveAlertPrefs } from "../backend";
+import { lerLicenca, lerLicencaDaMaquina } from "../licenca-maquina";
 import { assertAcesso, assertFinance } from "../acesso";
 import { esquecerPermissoes, responderPermissao } from "../nav-permissoes";
 import { financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
@@ -161,7 +162,7 @@ export function registerClientIpc(): void {
   handleClient("browser:open", async (event) => {
     const h = ctxOf(event);
     await assertAcesso(h.host);
-    return browserOpen(h.win, h.host, await fetchLicense(h.host).catch(() => null)); // a extensão do CRM segue a licença
+    return browserOpen(h.win, h.host, await lerLicencaDaMaquina(h.host).catch(() => null)); // a extensão do CRM segue a licença e o backend
   });
   handleClient("browser:extensions", (event) => browserExtensions(ctxOf(event).host));
   // O agente do WhatsApp também usa o Navegador: só o número do agente e a lista dos grupos (trava do OpenClaw por remetente).
@@ -518,12 +519,12 @@ export function registerClientIpc(): void {
     n.on("click", () => { h.win.show(); h.win.focus(); });
     n.show();
   });
-  // Licença e devices desta conta (licenca.json + maquinas.json, via backend): plano, status e máquinas.
+  // Licença e devices desta conta (licenca.json + maquinas.json): pelo backend, ou por SSH onde ele não tem a rota (Hermes).
   handleClient("license:get", async (event) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
-    const lic = await fetchLicense(h.host);
+    const lic = await lerLicencaDaMaquina(h.host);
     void browserSincronizarCrm(h.host, lic); // a extensão do CRM acompanha a licença relida (admin liberou o Pro com o app aberto)
-    return lic;
+    return lic.view;
   });
   // Avisos de segurança desta máquina (alertas.json, via backend): um Mac novo usou o meu-bot dela.
   handleClient("alerts:get", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return fetchAlertPrefs(h.host); });

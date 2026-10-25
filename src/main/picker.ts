@@ -322,13 +322,14 @@ export function initPicker(src: PickerSource): void {
   source = src;
   handleShared("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
   // Plano de cada host (licenca.json por SSH, melhor esforço) para o selo "PRO"; local e máquinas fora do ar ficam de fora.
+  // Um pod do Grok Bot demora até 90 s para aceitar o ssh: com 10 s a grokbot-1 nunca ganhava o selo.
   handleShared("picker:plans", async (event) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const hosts = current().hosts().filter((h) => h !== LOCAL_HOST && isValidHost(h));
     const out: Record<string, PlanName> = {};
     await Promise.all(hosts.map(async (h) => {
       try {
-        const r = await runSsh(h, `cat "$HOME/.local/share/meu-bot/licenca.json" 2>/dev/null; echo\n`, 10_000);
+        const r = await runSsh(h, `cat "$HOME/.local/share/meu-bot/licenca.json" 2>/dev/null; echo\n`, 90_000);
         if (r.code !== 0) return;
         const v: unknown = JSON.parse(r.stdout.trim() || "null");
         if (v !== null && typeof v === "object" && !Array.isArray(v)) out[h] = parseLicense(v).plan;

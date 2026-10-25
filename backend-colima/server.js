@@ -29,6 +29,7 @@ const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mc
 const BROWSER_MAX_TURNS = 100;
 const providers = require('./providers');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
+const contasClaude = require('./contas-claude');
 const licenca = require('./licenca');
 const { createCrmApi } = require('./crm-api');
 const { createFinanceApi } = require('./finance-api');
@@ -280,6 +281,10 @@ function loadEnv(file) {
 
 function log(...a) { console.log(new Date().toISOString(), '[backend]', ...a); }
 let lastLimitsWhy = null;
+/** Conta do Claude que respondeu por último (id); é a que o /status descreve. */
+let ultimaConta = 'padrao';
+/** "HH:MM" no fuso da máquina para um epoch em segundos. */
+const horaLocal = (epochS) => new Date(epochS * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'America/Sao_Paulo' });
 
 function json(res, status, body, extraHeaders = {}) {
   const data = JSON.stringify(body);
@@ -350,18 +355,31 @@ const LIMIT_RE = /you(?:'|’)?ve (?:reached|hit) your [\w .-]{1,40}limit/i;
 const MODEL_FALLBACK = process.env.MODEL_FALLBACK || 'claude-opus-5-5';
 const MODEL_FALLBACK_LABEL = process.env.MODEL_FALLBACK_LABEL || 'Opus 5.5';
 const LIMIT_HOLD_MS = Number(process.env.LIMIT_HOLD_MS) > 0 ? Number(process.env.LIMIT_HOLD_MS) : 60 * 60 * 1000;
-let limitUntil = 0; let limitWhat = '';
+/** Limite do modelo por conta (id → {until, what}): o reserva de uma conta não vaza para as outras. */
+const limiteModelo = new Map();
+const limiteModeloAtivo = (contaId) => { const l = limiteModelo.get(contaId); return !!l && Date.now() < l.until; };
+/**
+ * Contas do Claude Code desta máquina (contas-claude.js): a padrão (~/.claude) e as isoladas, com rodízio ao bater
+ * o limite. A ordem de reação num turno é: próxima conta (mesmo modelo, mesma sessão) → Opus na mesma conta → Grok.
+ */
+const contas = contasClaude.abrir({ log });
+/** Só para teste: MEU_BOT_FORCAR_LIMITE=<id da conta> faz o primeiro turno daquela conta parecer "limite atingido". */
+let forcarLimite = ENV.MEU_BOT_FORCAR_LIMITE || process.env.MEU_BOT_FORCAR_LIMITE || '';
 /** Nome legível do modelo que o Claude Code usa agora: o reserva durante o limite; senão o da conta (settings.json). */
 const MODEL_LABELS = { fable: 'Fable 5.1', 'claude-fable-5-1': 'Fable 5.1', opus: 'Opus 5.5', 'claude-opus-5-5': 'Opus 5.5', sonnet: 'Sonnet 5.5', 'claude-sonnet-5-5': 'Sonnet 5.5', haiku: 'Haiku 5.5', 'claude-haiku-5-5': 'Haiku 5.5' };
-function currentModelLabel() {
-  if (Date.now() < limitUntil) return MODEL_FALLBACK_LABEL;
-  let m = ''; try { m = String(JSON.parse(fs.readFileSync(path.join(os.homedir(), '.claude', 'settings.json'), 'utf8')).model || ''); } catch (_) { /* sem settings */ }
+function currentModelLabel(conta) {
+  if (limiteModeloAtivo(conta ? conta.id : 'padrao')) return MODEL_FALLBACK_LABEL;
+  const dir = contas.configDir(conta) || path.join(os.homedir(), '.claude');
+  let m = ''; try { m = String(JSON.parse(fs.readFileSync(path.join(dir, 'settings.json'), 'utf8')).model || ''); } catch (_) { /* sem settings */ }
   const k = m.toLowerCase().replace(/\[.*\]$/, '');
   return MODEL_LABELS[k] || (m || null);
 }
 
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model }) {
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model, conta }) {
   return new Promise((resolve, reject) => {
+    const contaId = conta ? conta.id : 'padrao';
+    // Limite forçado (teste): a conta parece esgotada antes de a CLI subir.
+    if (forcarLimite !== '' && forcarLimite === contaId) { forcarLimite = ''; const e = new Error('limite de uso forçado (MEU_BOT_FORCAR_LIMITE)'); e.code = 'conta_limite'; e.resets = Math.floor(Date.now() / 1000) + 5 * 60; reject(e); return; }
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
     // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).
@@ -370,8 +388,9 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     if (resume) args.push('--resume', resume);
     if (model) args.push('--model', model);
     fs.mkdirSync(cwd, { recursive: true });
-    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir() }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir(), ...contas.ambiente(conta) }, stdio: ['pipe', 'pipe', 'pipe'] });
     let text = ''; let deltas = 0; let usage = null; let sessionId = resume || null; let stderr = '';
+    let limiteVisto = null; // último rate_limit_event (para o `ate` da conta)
     let resultText = null; let finished = false; let blockOpen = false; let sawTextBlock = false;
     const toolNames = new Map(); // tool_use_id → nome (o tool_result só traz o id)
     const timer = setTimeout(() => { fail('timeout', `CLI excedeu ${TURN_TIMEOUT_MS} ms`); }, TURN_TIMEOUT_MS);
@@ -382,7 +401,9 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
       if (finished) return; finished = true; clearTimeout(timer);
       try { child.kill('SIGTERM'); } catch (_) {}
       setTimeout(() => { try { child.kill('SIGKILL'); } catch (_) {} }, 3000).unref();
-      const e = new Error(msg); e.code = code; e.stderr = stderr.slice(-2000); reject(e);
+      const e = new Error(msg); e.code = code; e.stderr = stderr.slice(-2000);
+      if (code === 'conta_limite' && limiteVisto && limiteVisto.resets) e.resets = limiteVisto.resets;
+      reject(e);
     }
     // As primeiras letras ficam retidas: se forem o aviso de limite do modelo, o turno falha sem nada ter saído.
     let held = ''; let released = false;
@@ -412,6 +433,16 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
 
     function handle(ev) {
       if (ev.session_id && !sessionId) sessionId = ev.session_id;
+      // Uso da conta, direto do Claude Code (system/rate_limit_event): registra as janelas; `rejected` é o limite duro,
+      // e o turno falha como `conta_limite` antes de qualquer texto sair — quem chama tenta a próxima conta.
+      if (ev.type === 'rate_limit_event' || ev.rate_limit_info || ev.type === 'system' || ev.type === 'result') {
+        const rl = contasClaude.analisarRateLimit(ev);
+        if (rl !== null) {
+          limiteVisto = rl;
+          if (Object.keys(rl.janelas).length) contas.registrarUso(contaId, rl.janelas);
+          if (rl.rejeitado) { fail('conta_limite', `limite de uso da conta (${rl.tipo})`); return; }
+        }
+      }
       if (onTool && (ev.type === 'assistant' || ev.type === 'user')) { for (const t of toolEvents.toolEventsFrom(ev, toolNames)) onTool(t); }
       if (ev.type === 'system' && ev.session_id) sessionId = ev.session_id;
       if (ev.type === 'stream_event' && ev.event) {
@@ -446,8 +477,9 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         const code2 = looksLikeResumeFailure(null, stderr) ? 'resume_failed' : 'cli_failed';
         const e = new Error(`CLI saiu com código ${code} sem texto`); e.code = code2; e.stderr = stderr.slice(-2000); return reject(e);
       }
-      if (/^\s*not logged in/i.test(text) || /please run \/?login/i.test(text)) {
-        const e = new Error('Claude Code deslogado na VM: rode `claude /login` lá'); e.code = 'auth'; return reject(e);
+      if (/^\s*not logged in/i.test(text) || /please run \/?login/i.test(text) || /authentication_failed|invalid.*(oauth|token)|login expired/i.test(`${text.slice(0, 300)}\n${stderr.slice(-500)}`)) {
+        contas.marcar(contaId, 'bloqueada', 'login vencido: entre de novo nesta conta');
+        const e = new Error(conta && conta.home ? `Claude Code deslogado na conta "${conta.rotulo}": entre de novo` : 'Claude Code deslogado na VM: rode `claude /login` lá'); e.code = 'auth'; return reject(e);
       }
       resolve({ text, usage, sessionId, deltas, blockOpen });
     });
@@ -530,9 +562,9 @@ async function chatCompletions(req, res) {
     const abort = new AbortController();
     res.on('close', () => { if (!res.writableFinished) abort.abort(); });
 
-    let used = model; let resumed = false; let usedKey = null; let usedProfile = null;
+    let used = model; let resumed = false; let usedKey = null; let usedProfile = null; let contaUsada = null;
     let headersSent = false; let heartbeat = null; let firstDeltaAt = 0;
-    const pendingNotes = []; // fallbacks ocorridos antes de abrir o SSE
+    const pendingNotes = []; // fallbacks ocorridos antes de abrir o SSE ({from, to, reason, tipo?})
 
     const startSse = () => {
       if (headersSent) return;
@@ -543,14 +575,25 @@ async function chatCompletions(req, res) {
       });
       res.flushHeaders && res.flushHeaders();
       res.write(`data: ${JSON.stringify(chunk(id, created, used, { role: 'assistant', content: '' }))}\n\n`);
-      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason))}\n\n`);
+      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason, n.tipo))}\n\n`);
       heartbeat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, 15000);
     };
     const onDelta = live ? (t) => { if (!firstDeltaAt) firstDeltaAt = Date.now(); startSse(); res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: t }))}\n\n`); } : null;
     // Atividade do agente (ferramentas): só no modo live, como chunk próprio; não conta como texto para o fallback.
     const onTool = live ? (t) => { startSse(); res.write(`data: ${JSON.stringify(toolEvents.toolChunk(id, created, used, t))}\n\n`); } : null;
 
-    /** Um provedor claude: planeja resume pela chave dele e refaz sem resume se a sessão sumiu. */
+    /** Aviso de troca (provedor, modelo ou conta) no stream, ou guardado até abrir o SSE. */
+    const avisar = (from, to, reason, tipo) => {
+      const note = { from, to, reason, ...(tipo ? { tipo } : {}) };
+      if (headersSent) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, note.from, note.to, note.reason, note.tipo))}\n\n`);
+      else pendingNotes.push(note);
+    };
+
+    /**
+     * Um provedor claude: escolhe a conta, planeja resume pela chave dele e refaz sem resume se a sessão sumiu.
+     * No limite de uso, a ordem é: próxima conta com a mesma sessão (o histórico é compartilhado, o --resume continua
+     * a conversa) → Opus na mesma conta por LIMIT_HOLD_MS → quem chamou desce para o próximo provedor (Grok).
+     */
     const runClaudeProvider = async (name) => {
       const profile = MODELS[name];
       const key = convId ? `${name}:${convId}` : null;
@@ -559,13 +602,22 @@ async function chatCompletions(req, res) {
       const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
-      // Limite do modelo da conta recente: vai direto ao reserva até passar.
-      let model = Date.now() < limitUntil ? MODEL_FALLBACK : undefined;
+      // A melhor conta agora (uma em aviso só se não há outra). Sem nenhuma: erro com a hora em que a próxima volta;
+      // o chamador desce para o próximo provedor, como em qualquer falha antes de sair texto.
+      const tentadas = [];
+      let conta = contas.escolher({ permitirAviso: true });
+      if (conta === null) {
+        const volta = contas.proximaDisponivelEm();
+        const e = new Error(volta ? `todas as contas do Claude estão no limite; a próxima volta às ${horaLocal(volta)}` : 'nenhuma conta do Claude logada nesta máquina');
+        e.code = 'sem_conta'; throw e;
+      }
+      // Limite do modelo desta conta recente: vai direto ao reserva até passar.
+      let model = limiteModeloAtivo(conta.id) ? MODEL_FALLBACK : undefined;
       // No reserva, o modelo sabe que é ele (a identidade padrão não diz o modelo).
       const withModel = (p) => (model ? { ...p, system: `${p.system}\n\nNeste turno o modelo é o ${MODEL_FALLBACK_LABEL} (${MODEL_FALLBACK}): o modelo padrão da conta bateu o limite de uso.` } : p);
       // Com o Navegador, cada clique, leitura e print é um passo: 30 acabava no meio de um formulário (Cloudflare, 22 out).
       const maxTurns = browser ? Math.max(profile.maxTurns, BROWSER_MAX_TURNS) : profile.maxTurns;
-      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model });
+      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model, conta });
       let out;
       for (let tries = 0; ; tries++) {
         try { out = await call(); break; }
@@ -577,21 +629,34 @@ async function chatCompletions(req, res) {
             plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
             continue;
           }
-          if (e.code === 'model_limit' && model === undefined && !firstDeltaAt && tries < 3) {
-            limitUntil = Date.now() + LIMIT_HOLD_MS; limitWhat = e.message;
-            log(`limite do modelo (${e.message}); refazendo com ${MODEL_FALLBACK} e mantendo por ${Math.round(LIMIT_HOLD_MS / 60000)} min`);
-            model = MODEL_FALLBACK;
-            // Aviso curto em português: "Fable falhou (limite de uso da conta); respondendo com Opus 5.5".
-            const which = (/your ([\w .-]{1,30}?) limit/i.exec(e.message) || [])[1] || 'modelo da conta';
-            const note = { from: which, to: MODEL_FALLBACK_LABEL, reason: `limite de uso da conta; o ${MODEL_FALLBACK_LABEL} segue por ${Math.round(LIMIT_HOLD_MS / 60000)} min` };
-            if (headersSent) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, note.from, note.to, note.reason))}\n\n`);
-            else pendingNotes.push(note);
-            continue;
+          const limite = e.code === 'conta_limite' || (e.code === 'model_limit' && model === undefined);
+          if (limite && !firstDeltaAt && tries < 8) {
+            tentadas.push(conta.id);
+            const proxima = contas.escolher({ excluir: tentadas, permitirAviso: true });
+            // 1) Outra conta: esta sai de rotação (limite duro até o reset; limite de texto pelo tempo do reserva) e o
+            //    mesmo turno segue na próxima, com o mesmo --resume.
+            if (proxima !== null) {
+              contas.marcar(conta.id, 'esgotada', e.code === 'conta_limite' ? e.message : `limite do modelo: ${e.message}`, e.code === 'conta_limite' ? e.resets : Math.floor((Date.now() + LIMIT_HOLD_MS) / 1000));
+              log(`conta ${conta.id} (${conta.rotulo}) no limite (${e.message}); continuando na conta ${proxima.id} (${proxima.rotulo})`);
+              avisar(conta.rotulo, proxima.rotulo, 'limite de uso da conta; a conversa continua na próxima conta', 'conta');
+              conta = proxima; model = limiteModeloAtivo(conta.id) ? MODEL_FALLBACK : undefined;
+              continue;
+            }
+            // 2) Sem outra conta: o reserva (Opus) nesta mesma conta, como antes.
+            if (model === undefined) {
+              limiteModelo.set(conta.id, { until: Date.now() + LIMIT_HOLD_MS, what: e.message });
+              log(`limite (${e.message}) e nenhuma outra conta; refazendo com ${MODEL_FALLBACK} e mantendo por ${Math.round(LIMIT_HOLD_MS / 60000)} min`);
+              model = MODEL_FALLBACK;
+              // Aviso curto em português: "Fable falhou (limite de uso da conta); respondendo com Opus 5.5".
+              const which = (/your ([\w .-]{1,30}?) limit/i.exec(e.message) || [])[1] || 'modelo da conta';
+              avisar(which, MODEL_FALLBACK_LABEL, `limite de uso da conta; o ${MODEL_FALLBACK_LABEL} segue por ${Math.round(LIMIT_HOLD_MS / 60000)} min`);
+              continue;
+            }
           }
           throw e;
         }
       }
-      usedKey = key; usedProfile = profile;
+      usedKey = key; usedProfile = profile; contaUsada = conta;
       return out;
     };
 
@@ -626,8 +691,9 @@ async function chatCompletions(req, res) {
       return json(res, status, { error: { message: e.message, type: e.code === 'auth' ? 'authentication_error' : 'server_error', code: e.code || 'cli_failed' } }, { 'X-Session-Resumed': 'false' });
     }
 
-    if (usedKey && out.sessionId) sessions.put(usedKey, { sessionId: out.sessionId, cwd: usedProfile.cwd, sysHash: hash, seen: convoCount(messages) + 1 });
-    log(`${used}${used !== model ? ` (fallback de ${model})` : ''} ${live ? 'live' : stream ? 'stream' : 'json'} resumed=${resumed} first_delta_ms=${firstDeltaAt ? firstDeltaAt - t0 : '-'} total_ms=${Date.now() - t0} chars=${out.text.length} deltas=${out.deltas}`);
+    if (usedKey && out.sessionId) sessions.put(usedKey, { sessionId: out.sessionId, cwd: usedProfile.cwd, sysHash: hash, seen: convoCount(messages) + 1, contaId: contaUsada ? contaUsada.id : 'padrao' });
+    if (contaUsada !== null) ultimaConta = contaUsada.id;
+    log(`${used}${used !== model ? ` (fallback de ${model})` : ''}${contaUsada ? ` conta=${contaUsada.id}` : ''} ${live ? 'live' : stream ? 'stream' : 'json'} resumed=${resumed} first_delta_ms=${firstDeltaAt ? firstDeltaAt - t0 : '-'} total_ms=${Date.now() - t0} chars=${out.text.length} deltas=${out.deltas}`);
     // Fora do Claude Code não há .jsonl: o diário é a transcrição desta conversa na máquina.
     if (!MODELS[used] && convId) appendAppTranscript(convId, messages, model, used, out.text);
 
@@ -643,7 +709,7 @@ async function chatCompletions(req, res) {
     if (stream) {
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...extra });
       res.write(`data: ${JSON.stringify(chunk(id, created, used, { role: 'assistant', content: '' }))}\n\n`);
-      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason))}\n\n`);
+      for (const n of pendingNotes.splice(0)) res.write(`data: ${JSON.stringify(providers.fallbackChunk(id, created, used, n.from, n.to, n.reason, n.tipo))}\n\n`);
       res.write(`data: ${JSON.stringify(chunk(id, created, used, { content: out.text }))}\n\n`);
       res.write(`data: ${JSON.stringify(chunk(id, created, used, {}, 'stop'))}\n\n`);
       res.write('data: [DONE]\n\n'); res.end(); return;

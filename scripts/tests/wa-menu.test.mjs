@@ -46,3 +46,12 @@ test("reticências dizem se confirma: conversa pergunta, grupo limpa direto", as
   assert.equal(rotulo(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: false }), "clear"), "Limpar histórico…");
   assert.equal(rotulo(waGroupMenuTemplate("mencao"), "group-clear"), "Limpar histórico");
 });
+
+test("no Hermes o espelho é só-leitura: sem Pausar nem Limpar, com conversar, exportar, apelido, arquivar e excluir", () => {
+  const h = waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, "hermes");
+  assert.deepEqual(labels(h), ["Conversar", "Exportar", "Copiar ID  ⓘ", "---", "Renomear", "Arquivar", "Excluir conversa"]);
+  assert.ok(!actions(h).includes("pause") && !actions(h).includes("clear"));
+  const admin = waMenuTemplate({ archived: true, paused: false, deleted: false }, { manageWa: false }, "hermes");
+  assert.deepEqual(labels(admin), ["Exportar", "Copiar ID  ⓘ", "Renomear", "Desarquivar", "Excluir conversa"]);
+  assert.deepEqual(labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, null)), labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true })), "sem gateway conhecido vale o menu do OpenClaw");
+});
