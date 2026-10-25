@@ -142,3 +142,66 @@ test("HERMES_ENV_SET_PY: troca a linha existente (com export/aspas), acrescenta 
     assert.equal(lido, "wamode=self-chat\nwadm=allowlist\nwaallow=1,2\nwaall=\n");
   } finally { rmSync(home, { recursive: true, force: true }); }
 });
+
+test("grupos no Hermes: config.yaml/.env → contrato; política pairing/disabled não admite; open e '*' admitem tudo", () => {
+  const { parseHermesGroupCfg, hermesEstadoDoGrupo, hermesTodosAdmitidos, HERMES_GROUP_CFG_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const A = "120363410837573543@g.us", B = "120363428149657663@g.us", C = "120363427290582156@g.us";
+  const cfg = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A, B, "lixo", "5511999990000"], require_mention: "true", free_response_chats: `${B},x` });
+  assert.deepEqual(cfg, { policy: "allowlist", allow: [A, B], requireMention: true, free: [B] });
+  assert.equal(hermesEstadoDoGrupo(cfg, A), "mencao");
+  assert.equal(hermesEstadoDoGrupo(cfg, B), "sempre", "exceção responde sempre");
+  assert.equal(hermesEstadoDoGrupo(cfg, C), "desligado");
+  assert.equal(hermesEstadoDoGrupo(null, A), "desligado", "sem config legível nada está ligado");
+  assert.equal(parseHermesGroupCfg({ group_policy: "xyz" }).policy, "pairing");
+  assert.equal(hermesEstadoDoGrupo(parseHermesGroupCfg({ group_policy: "pairing", group_allow_from: [A] }), A), "desligado", "pairing não admite grupo");
+  assert.equal(hermesEstadoDoGrupo(parseHermesGroupCfg({ group_policy: "open" }), C), "sempre");
+  assert.ok(hermesTodosAdmitidos(parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: "*" })) && !hermesTodosAdmitidos(cfg));
+  assert.equal(parseHermesGroupCfg("x"), null);
+  assert.ok(HERMES_GROUP_CFG_SH.includes("config.yaml") && HERMES_GROUP_CFG_SH.includes("WHATSAPP_GROUP_POLICY") && HERMES_GROUP_CFG_SH.includes("gcfg="));
+});
+
+test("config nova por pedido: ligar/desligar entra e sai da lista; 'quando chamado' liga a menção preservando os outros; último desliga tudo", () => {
+  const { parseHermesGroupCfg, hermesGroupCfgPara, hermesEstadoDoGrupo, hermesGroupCfgSetSh } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const A = "120363410837573543@g.us", B = "120363428149657663@g.us", C = "120363427290582156@g.us";
+  const base = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A, B] }); // sem menção: A e B respondem sempre
+  // ligar C "sempre": só entra na lista
+  assert.deepEqual(hermesGroupCfgPara(base, C, { agente: "sempre" }), { policy: "allowlist", allow: [A, B, C], requireMention: false, free: [] });
+  // ligar C "quando chamado": menção passa a valer; A e B viram exceção para não mudarem
+  const m = hermesGroupCfgPara(base, C, { agente: "mencao" });
+  assert.deepEqual(m, { policy: "allowlist", allow: [A, B, C], requireMention: true, free: [A, B] });
+  assert.deepEqual([hermesEstadoDoGrupo(m, A), hermesEstadoDoGrupo(m, B), hermesEstadoDoGrupo(m, C)], ["sempre", "sempre", "mencao"]);
+  // com menção ligada, "sempre" num grupo é entrar nas exceções; "quando chamado" é sair delas
+  assert.deepEqual(hermesGroupCfgPara(m, C, { agente: "sempre" }).free, [A, B, C]);
+  assert.deepEqual(hermesGroupCfgPara(m, A, { agente: "mencao" }).free, [B]);
+  // sem mudança = null; desligar tira da lista e das exceções; desligar o último volta a disabled
+  assert.equal(hermesGroupCfgPara(base, A, { agente: "sempre" }), null);
+  assert.deepEqual(hermesGroupCfgPara(m, A, { agente: "desligado" }), { policy: "allowlist", allow: [B, C], requireMention: true, free: [B] });
+  assert.deepEqual(hermesGroupCfgPara(parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A] }), A, { agente: "desligado" }), { policy: "disabled", allow: [], requireMention: false, free: [] });
+  // sem config legível: ligar cria a lista
+  assert.deepEqual(hermesGroupCfgPara(null, C, { agente: "sempre" }), { policy: "allowlist", allow: [C], requireMention: false, free: [] });
+  // quem aciona é a lista única das conversas diretas: recusa com a explicação
+  assert.throws(() => hermesGroupCfgPara(base, A, { quemAciona: "todos" }), /Quem o agente responde/);
+  // todos admitidos: não dá para desligar um só
+  assert.throws(() => hermesGroupCfgPara(parseHermesGroupCfg({ group_policy: "open" }), A, { agente: "desligado" }), /TODOS os grupos/);
+  const sh = hermesGroupCfgSetSh(m);
+  assert.ok(sh.includes("cfgset=ok") && sh.includes("bak-meu-bot") && sh.includes("ruamel") && /'[A-Za-z0-9+/=]+'$/.test(sh.trim()), "grava com backup e leva a config em base64");
+});
+
+test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recente dá hora, chave e id; quem aciona é a lista das conversas diretas", () => {
+  const { gruposHermes, parseHermesGroupCfg } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const A = "120363410837573543@g.us", C = "120363427290582156@g.us";
+  const cfg = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A], require_mention: true });
+  const data = { sessions: [
+    { id: "20261020_100000_aaaaaaaa", key: `agent:main:whatsapp:group:${A}:5511999990000`, name: "Buffer", user: "Diego", count: 3, started: 1760954400, last: 1760958000, hidden: 0, ended: null },
+    { id: "20261024_100000_bbbbbbbb", key: `agent:main:whatsapp:group:${A}:5521988880000`, name: "Buffer", user: "Lucas", count: 1, started: 1761300000, last: 1761303600, hidden: 0, ended: null },
+    { id: "20261001_100000_cccccccc", key: `agent:main:whatsapp:group:${C}:5521988880000`, name: "zohomail", user: "Lucas", count: 0, started: 1759312800, last: 1759312800, hidden: 0, ended: null },
+    { id: "20261001_100000_dddddddd", key: "agent:main:whatsapp:dm:5521988880000", name: "Lucas", count: 2, started: 1, last: 1 },
+  ] };
+  const g = gruposHermes(cfg, data, "5521900000000:1@s.whatsapp.net", ["5521988880000"]);
+  assert.deepEqual(g.grupos.map((x) => [x.jid, x.nome, x.agente, x.sessionId, x.updatedAt, x.agenteRespondeu, x.deleted]), [
+    [A, "Buffer", "mencao", "20261024_100000_bbbbbbbb", new Date(1761303600 * 1000).toISOString(), true, false],
+    [C, "zohomail", "desligado", "20261001_100000_cccccccc", new Date(1759312800 * 1000).toISOString(), false, false],
+  ]);
+  assert.deepEqual([g.quemAciona, g.quemAcionaHerdado, g.todosAdmitidos, g.skill, g.cacheEm, g.self], [["5521988880000"], false, false, false, null, "5521900000000"]);
+  assert.deepEqual(gruposHermes(null, null, null, "todos").grupos, []);
+});

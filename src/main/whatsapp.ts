@@ -23,7 +23,7 @@ import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threa
 import { capacidadesDe } from "./whatsapp-capacidades";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, HERMES_END_SH, HERMES_GROUPS_PY, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { chatsFromHermes, gruposHermes, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -1010,21 +1010,61 @@ MEUBOT_PY
 /** Grupos da máquina: sessões de grupo, a config de grupos e o cache da skill, numa leitura só. */
 export async function whatsappGroups(host: string): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  // A máquina escolhe o caminho: Hermes (config.yaml + state.db + .env, whatsapp-hermes-core.ts) ou OpenClaw.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
-echo "self=$(${CREDS_ME})"
-echo "list=$(timeout 15 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
-${WA_CONFIG_SH}
-echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
-echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
+if [ -d "$HOME/.hermes/whatsapp" ]; then
+  echo gateway=hermes
+  echo "self=$(${HERMES_SELF_SH})"
+  echo "hgroups=$(${HERMES_GROUPS_PY} | tr -d '\n')"
+  ${HERMES_GROUP_CFG_SH}
+  ${HERMES_POLICY_PY}
+else
+  echo gateway=openclaw
+  echo "self=$(${CREDS_ME})"
+  echo "list=$(timeout 15 openclaw gateway call sessions.list --json --params '{"limit":200}' 2>/dev/null | tr -d '\n')"
+  ${WA_CONFIG_SH}
+  echo "cache=$(cat "${WA_GRUPOS_DIR}/data/grupos-live.json" 2>/dev/null | tr -d '\n')"
+  echo "skill=$([ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] && echo 1 || echo 0)"
+  ${GRUPOS_DO_BANCO_SH}
+fi
 echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
-${GRUPOS_DO_BANCO_SH}
 `;
   const r = await runSsh(host, script, 60_000);
   if (r.code !== 0) throw new Error(`não consegui ler os grupos do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const kv = kvOf(r.stdout);
+  const marks = parseWaMarks(jsonOr(kv.get("marks")));
+  if (kv.get("gateway")?.trim() === "hermes") {
+    gatewayByHost.set(host, "hermes");
+    const self = phoneOf(kv.get("self") ?? "");
+    const pol = politicaHermes(hermesEnvOf(kv), self);
+    const quem: string[] | "todos" = pol.dmPolicy === "open" ? "todos" : pol.allowFrom.map((n) => n.replace(/\D/g, "")).filter((n) => n !== "");
+    const g = gruposHermes(parseHermesGroupCfg(jsonOr(kv.get("gcfg"))), jsonOr(kv.get("hgroups")), self, quem);
+    return { ...g, grupos: applyWaGroupMarks(g.grupos, marks) };
+  }
   const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null, jsonOr(kv.get("banco")));
   // Excluído da lista mora na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
-  return { ...g, grupos: applyWaGroupMarks(g.grupos, parseWaMarks(jsonOr(kv.get("marks")))), skill: kv.get("skill") === "1" };
+  return { ...g, grupos: applyWaGroupMarks(g.grupos, marks), skill: kv.get("skill") === "1" };
+}
+
+/**
+ * Liga/desliga o agente num grupo numa máquina com Hermes: config.yaml relido, config nova pela regra pura, gravação com
+ * backup, reinício do gateway (a política é lida na subida) e conferência pelo config relido. "Quem aciona" é recusado
+ * com a explicação (é a lista única das conversas diretas).
+ */
+async function setGroupHermes(host: string, jid: string, pedido: WhatsappGroupPatch): Promise<WhatsappGroups> {
+  const antes = await runSsh(host, `${HERMES_GROUP_CFG_SH}\n`, 30_000);
+  const cfg = parseHermesGroupCfg(jsonOr(kvOf(antes.stdout).get("gcfg")));
+  if (antes.code !== 0 || cfg === null) throw new Error(`não consegui ler a política de grupos do Hermes (~/.hermes/config.yaml): ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const novo = hermesGroupCfgPara(cfg, jid, pedido);
+  if (novo === null) { log(`whatsapp: grupo ${jid} em ${host} (hermes): sem mudança`); return whatsappGroups(host); }
+  const r = await runSsh(host, `set -e\n${hermesGroupCfgSetSh(novo)}\n${HERMES_RESTART_SH}\n${HERMES_GROUP_CFG_SH}\n`, 120_000);
+  if (r.code !== 0 || !r.stdout.includes("cfgset=ok")) throw new Error(`não consegui gravar o config.yaml do Hermes: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const restart = /restart=(.*)/.exec(r.stdout)?.[1]?.trim() ?? "";
+  if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
+  const gravado = parseHermesGroupCfg(jsonOr(kvOf(r.stdout).get("gcfg")));
+  if (hermesEstadoDoGrupo(gravado, jid) !== hermesEstadoDoGrupo(novo, jid)) throw new Error("a mudança não ficou gravada na máquina (o config.yaml relido não bate); tente de novo");
+  log(`whatsapp: grupo ${jid} em ${host} (hermes): ${JSON.stringify(pedido)} → ${JSON.stringify(novo)} restart=${restart || "?"}`);
+  return whatsappGroups(host);
 }
 
 /**
@@ -1113,6 +1153,7 @@ export async function whatsappGroupThread(host: string, jid: string, limit = 200
 export async function whatsappSetGroup(host: string, jid: string, pedido: WhatsappGroupPatch): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  if (await hostIsHermes(host)) return setGroupHermes(host, jid, pedido);
   const read = await runSsh(host, `echo "self=$(${CREDS_ME})"\n${WA_CONFIG_SH}\n`, 30_000);
   const kv = kvOf(read.stdout);
   const wa = jsonOr(kv.get("wa"));

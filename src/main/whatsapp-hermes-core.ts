@@ -6,7 +6,8 @@
  * abaixo leem o banco em modo só-leitura na máquina e devolvem JSON numa linha; as funções puras viram isso nos
  * tipos do contrato. É a fronteira dona desse formato: o renderer nunca vê o esquema do Hermes.
  */
-import type { WhatsappChat, WhatsappDmPolicy, WhatsappReplyChoice, WhatsappThreadMessage } from "../shared/ipc";
+import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../shared/ipc";
+import { JID_RE } from "./whatsapp-grupos-core";
 
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -250,3 +251,170 @@ except Exception:
 if [ -n "$N" ]; then pm2 restart "$N" --update-env >/dev/null 2>&1 && echo "restart=pm2:$N" || echo "restart=falhou: pm2 restart $N"
 elif command -v hermes >/dev/null 2>&1; then hermes gateway restart >/dev/null 2>&1 && echo "restart=hermes" || echo "restart=falhou: hermes gateway restart"
 else echo "restart=sem-servico"; fi`;
+
+// ------------------------------------------------------------------ grupos (config.yaml do Hermes)
+/**
+ * Grupos no Hermes: dois portões por mensagem. (1) O grupo é admitido? `platforms.whatsapp.group_policy` do
+ * ~/.hermes/config.yaml: `allowlist` com `group_allow_from` (jids), `open` = todos, `disabled`/`pairing` = nenhum.
+ * (2) O agente responde a tudo ou só quando chamado? `require_mention` (global) com as exceções `free_response_chats`
+ * (jids que respondem sempre). Quem fala dentro de um grupo admitido passa pela MESMA lista global das conversas
+ * diretas (WHATSAPP_ALLOWED_USERS): não existe "quem aciona" por grupo no Hermes. O config.yaml tem precedência
+ * sobre o .env e os dois são lidos na subida do gateway, então gravar exige reiniciar (HERMES_RESTART_SH).
+ *
+ * Tradução para o contrato do app (o mesmo do OpenClaw): `desligado` = fora da lista; `sempre` = admitido e
+ * (sem menção obrigatória ou nas exceções); `mencao` = admitido com menção obrigatória. "Quando chamado" num
+ * grupo liga `require_mention` para todos e põe os outros ligados nas exceções, para ninguém mudar sem querer.
+ */
+export type HermesGroupPolicy = "open" | "allowlist" | "disabled" | "pairing";
+export interface HermesGroupCfg { policy: HermesGroupPolicy; allow: string[]; requireMention: boolean; free: string[] }
+
+/** Python do runtime do Hermes (tem PyYAML e ruamel); sem ele, o python3 da máquina. Deixa em $PY. */
+const HERMES_PY_SH = `export PATH=$HOME/.local/bin:$PATH; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
+
+/** Imprime `gcfg=<json>` com a política de grupos: config.yaml (platforms.whatsapp, chaves soltas ou em `extra`) e, faltando, o .env. */
+export const HERMES_GROUP_CFG_SH = `${HERMES_PY_SH}; "$PY" -c '
+import json, os, re
+e = {}
+try:
+    for l in open(os.path.expanduser("~/.hermes/.env")):
+        m = re.match(r"\\s*(?:export\\s+)?([A-Z0-9_]+)\\s*=\\s*(.*)$", l)
+        if m: e[m.group(1)] = m.group(2).strip().strip("\\"").strip("\\x27")
+except Exception:
+    pass
+try:
+    import yaml
+    c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+except Exception:
+    c = {}
+w = (c.get("platforms") or {}).get("whatsapp") or {}
+if not isinstance(w, dict): w = {}
+x = w.get("extra") if isinstance(w.get("extra"), dict) else {}
+def pick(k, envk):
+    if k in w: return w[k]
+    if k in x: return x[k]
+    return e.get(envk)
+print("gcfg=" + json.dumps({"group_policy": pick("group_policy", "WHATSAPP_GROUP_POLICY"), "group_allow_from": pick("group_allow_from", "WHATSAPP_GROUP_ALLOWED_USERS"), "require_mention": pick("require_mention", "WHATSAPP_REQUIRE_MENTION"), "free_response_chats": pick("free_response_chats", "WHATSAPP_FREE_RESPONSE_CHATS")}, ensure_ascii=True))
+'`;
+
+/**
+ * Grava a política de grupos em ~/.hermes/config.yaml (platforms.whatsapp), com backup ao lado e escrita atômica.
+ * ruamel (round-trip) preserva comentários e os prompts por grupo; sem ele, PyYAML sem reordenar. As mesmas chaves
+ * em `extra:` saem, para a precedência não enganar. Imprime `cfgset=ok`.
+ */
+export function hermesGroupCfgSetSh(cfg: HermesGroupCfg): string {
+  const b64 = Buffer.from(JSON.stringify({ group_policy: cfg.policy, group_allow_from: cfg.allow, require_mention: cfg.requireMention, free_response_chats: cfg.free }), "utf8").toString("base64");
+  return `${HERMES_PY_SH}; "$PY" -c '
+import base64, json, os, shutil, sys, time
+p = os.path.expanduser("~/.hermes/config.yaml")
+novo = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+try:
+    from ruamel.yaml import YAML
+    y = YAML(); y.preserve_quotes = True; y.width = 4096; y.indent(mapping=2, sequence=4, offset=2)
+    doc = (y.load(open(p)) if os.path.exists(p) else None)
+    if doc is None:
+        from ruamel.yaml.comments import CommentedMap
+        doc = CommentedMap()
+    def dump(d, f): y.dump(d, f)
+except Exception:
+    import yaml
+    doc = (yaml.safe_load(open(p)) if os.path.exists(p) else None) or {}
+    def dump(d, f): yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+pl = doc.get("platforms")
+if not isinstance(pl, dict): doc["platforms"] = pl = type(doc)()
+w = pl.get("whatsapp")
+if not isinstance(w, dict): pl["whatsapp"] = w = type(doc)()
+x = w.get("extra")
+for k in ("group_policy", "group_allow_from", "require_mention", "free_response_chats"):
+    w[k] = novo[k]
+    if isinstance(x, dict): x.pop(k, None)
+if os.path.exists(p): shutil.copy2(p, p + ".bak-meu-bot-" + time.strftime("%Y%m%d-%H%M%S"))
+tmp = p + ".tmp"
+with open(tmp, "w") as f: dump(doc, f)
+os.chmod(tmp, 0o600); os.replace(tmp, p)
+print("cfgset=ok")
+' '${b64}'`;
+}
+
+const jidsDe = (v: unknown): string[] => {
+  const parts = Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : [];
+  return [...new Set(parts.map((s) => String(s).trim()).filter((s) => s === "*" || JID_RE.test(s)))];
+};
+/** O JSON de HERMES_GROUP_CFG_SH no contrato; null quando não veio objeto (não deu para ler). */
+export function parseHermesGroupCfg(raw: unknown): HermesGroupCfg | null {
+  if (!isObj(raw)) return null;
+  const p = String(raw["group_policy"] ?? "").trim().toLowerCase();
+  const policy: HermesGroupPolicy = p === "open" || p === "allowlist" || p === "disabled" ? p : "pairing";
+  const rm = raw["require_mention"];
+  const requireMention = typeof rm === "boolean" ? rm : typeof rm === "string" ? truthy(rm) : false;
+  return { policy, allow: jidsDe(raw["group_allow_from"]), requireMention, free: jidsDe(raw["free_response_chats"]) };
+}
+/** Todos os grupos admitidos (`open`, ou `allowlist` com "*"): o mesmo "perigoso" da tela. */
+export const hermesTodosAdmitidos = (cfg: HermesGroupCfg | null): boolean => cfg !== null && (cfg.policy === "open" || (cfg.policy === "allowlist" && cfg.allow.includes("*")));
+const hermesAdmitido = (cfg: HermesGroupCfg, jid: string): boolean => cfg.policy === "open" || (cfg.policy === "allowlist" && (cfg.allow.includes(jid) || cfg.allow.includes("*")));
+/** Estado de um grupo no contrato do app, pela config (null = sem config legível: nada ligado). */
+export function hermesEstadoDoGrupo(cfg: HermesGroupCfg | null, jid: string): WhatsappGroupAgent {
+  if (cfg === null || !hermesAdmitido(cfg, jid)) return "desligado";
+  return !cfg.requireMention || cfg.free.includes(jid) ? "sempre" : "mencao";
+}
+/**
+ * Config nova para o pedido da tela; null = nada a mudar. "Quem aciona" não existe por grupo no Hermes: a tela é
+ * mandada para "Quem o agente responde", que é a lista única. Desligar o último grupo volta a `disabled` (lista
+ * vazia com `allowlist` já é nenhum grupo, mas `disabled` diz isso sem depender da leitura). Com todos os grupos
+ * admitidos (`open`/"*") não há lista para tirar um grupo nem para preservar os outros: explica em vez de chutar.
+ */
+export function hermesGroupCfgPara(cfg: HermesGroupCfg | null, jid: string, pedido: WhatsappGroupPatch): HermesGroupCfg | null {
+  if (pedido.quemAciona !== undefined) throw new Error("no Hermes quem pode chamar o agente é uma lista só, a mesma das conversas diretas: mude em \"Quem o agente responde\", na tela do WhatsApp desta máquina");
+  if (pedido.agente === undefined) return null;
+  const base: HermesGroupCfg = cfg ?? { policy: "pairing", allow: [], requireMention: false, free: [] };
+  if (hermesEstadoDoGrupo(base, jid) === pedido.agente) return null;
+  const todos = hermesTodosAdmitidos(base);
+  if (todos && pedido.agente === "desligado") throw new Error("a configuração do Hermes admite TODOS os grupos (group_policy open ou \"*\"): para desligar um grupo, troque group_allow_from por uma lista no ~/.hermes/config.yaml");
+  if (todos && pedido.agente === "mencao" && !base.requireMention) throw new Error("com TODOS os grupos admitidos não dá para deixar só este \"quando chamado\" sem mudar os outros: troque group_allow_from por uma lista no ~/.hermes/config.yaml");
+  let allow = [...base.allow]; let free = [...base.free]; let { policy, requireMention } = base;
+  if (pedido.agente === "desligado") {
+    allow = allow.filter((j) => j !== jid); free = free.filter((j) => j !== jid);
+    policy = allow.length === 0 ? "disabled" : "allowlist";
+  } else {
+    if (!todos) { policy = "allowlist"; if (!allow.includes(jid)) allow.push(jid); }
+    if (pedido.agente === "sempre") { if (requireMention && !free.includes(jid)) free.push(jid); }
+    else {
+      // Primeiro grupo "quando chamado" numa máquina que respondia a tudo: a menção passa a valer para todos e os
+      // outros ligados viram exceção, para continuarem respondendo sempre.
+      if (!requireMention) { requireMention = true; for (const j of base.allow) if (j !== jid && j !== "*" && !free.includes(j)) free.push(j); }
+      free = free.filter((j) => j !== jid);
+    }
+  }
+  return { policy, allow, requireMention, free };
+}
+
+const msDe = (v: unknown): number => { const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : 0; return !Number.isFinite(n) || n <= 0 ? 0 : n < 1e11 ? n * 1000 : n; };
+/**
+ * Grupos da máquina com Hermes no contrato do app: a lista admitida (config) mais os grupos com sessão no state.db
+ * (HERMES_GROUPS_PY; uma sessão por remetente, a mais recente dá hora, chave e id). `quemAciona` é a lista única
+ * das conversas diretas (quem chama o agente nos grupos é quem ele responde no privado); nunca "herdado", porque
+ * no Hermes não há lista própria para herdar de. Sem a skill whatsapp-grupos (é do OpenClaw) e sem cache.
+ */
+export function gruposHermes(cfg: HermesGroupCfg | null, data: unknown, self: string | null, quemAciona: string[] | "todos"): WhatsappGroups {
+  const byJid = new Map<string, WhatsappGroup>();
+  const get = (jid: string): WhatsappGroup => {
+    let g = byJid.get(jid);
+    if (g === undefined) { g = { jid, nome: null, membros: null, participantes: [], agente: "desligado", sessionKey: null, sessionId: null, transcript: null, updatedAt: null, agenteRespondeu: false, deleted: false }; byJid.set(jid, g); }
+    return g;
+  };
+  const rows = isObj(data) && Array.isArray(data.sessions) ? data.sessions : [];
+  for (const s of rows) {
+    if (!isObj(s) || typeof s.key !== "string") continue;
+    const k = hermesGroupOfKey(s.key);
+    if (k === null) continue;
+    const g = get(k.jid);
+    const last = msDe(s.last) || msDe(s.started);
+    if (last > 0 && (g.updatedAt === null || last > Date.parse(g.updatedAt))) { g.updatedAt = new Date(last).toISOString(); g.sessionKey = s.key; g.sessionId = typeof s.id === "string" && HERMES_ID_RE.test(s.id) ? s.id : null; }
+    if (g.nome === null) g.nome = nameOf(s.name);
+    if (typeof s.count === "number" && s.count > 0) g.agenteRespondeu = true;
+  }
+  if (cfg !== null) for (const jid of cfg.allow) if (JID_RE.test(jid)) get(jid);
+  for (const g of byJid.values()) g.agente = hermesEstadoDoGrupo(cfg, g.jid);
+  const peso = (g: WhatsappGroup): number => (g.agente === "desligado" ? 1 : 0);
+  const grupos = [...byJid.values()].sort((a, b) => peso(a) - peso(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || (a.nome ?? a.jid).localeCompare(b.nome ?? b.jid));
+  return { grupos, quemAciona, quemAcionaHerdado: false, todosAdmitidos: hermesTodosAdmitidos(cfg), cacheEm: null, skill: false, self: self === null ? null : (self.split(/[:@]/)[0] ?? "").replace(/\D/g, "") || null };
+}
