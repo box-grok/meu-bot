@@ -8,7 +8,7 @@
 /** Os dois apps: leituras da máquina e o que é só deste Mac (configurações, memória, arquivar). */
 export const SHARED_CHANNELS = [
   // janela principal
-  "window:info", "window:zoom", "whatsapp:group-clear-plan", "whatsapp:group-archive-crm", "whatsapp:group-clear", "google-conta:status", "google-conta:conectar", "google-conta:desconectar", "google-conta:gmail", "backup-dados:status", "backup-dados:agora", "backup-dados:ligar", "backup-dados:abrir-pasta", "backup-dados:senha", "google-conta:agenda", "google-conta:agenda-criar", "google-conta:planilha-ler", "google-conta:planilha-escrever", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
+  "window:info", "window:zoom", "whatsapp:group-clear-plan", "whatsapp:group-archive-crm", "whatsapp:group-clear", "whatsapp:group-mark", "google-conta:status", "google-conta:conectar", "google-conta:desconectar", "google-conta:gmail", "backup-dados:status", "backup-dados:agora", "backup-dados:ligar", "backup-dados:abrir-pasta", "backup-dados:senha", "google-conta:agenda", "google-conta:agenda-criar", "google-conta:planilha-ler", "google-conta:planilha-escrever", "ui:open-picker", "shell:open-external", "settings:get", "settings:set", "memory:get", "memory:set",
   "whatsapp:status", "whatsapp:chats", "whatsapp:thread", "whatsapp:export", "ui:wa-menu",
   // limpar o histórico, pausar o agente e arquivar/excluir por contato: a pessoa e o admin (no admin fica no registro da máquina dela)
   "whatsapp:clear-plan", "whatsapp:clear", "whatsapp:pause", "whatsapp:mark", "whatsapp:names",

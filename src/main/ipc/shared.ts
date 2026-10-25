@@ -38,7 +38,7 @@ import { parseZoomAction } from "../zoom-core";
 import { caps } from "../variant";
 import { whatsappArchiveToCrm, whatsappGroupArchiveToCrm } from "../whatsapp-crm";
 import { assertCrmProprio } from "../acesso";
-import { waGroupAgente, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
+import { waGroupAgente, waGroupDeleted, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuEntry } from "../wa-menu";
 import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
 
@@ -234,7 +234,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return new Promise<WhatsappGroupMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: WhatsappGroupMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload), whatsappGatewayOf(h.host)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
+      const menu = Menu.buildFromTemplate(waGroupMenuTemplate(waGroupAgente(payload), whatsappGatewayOf(h.host), waGroupDeleted(payload)).map((e) => ("separator" in e ? { type: "separator" as const } : { label: e.label, click: () => pick(e.action) })));
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });
@@ -309,6 +309,16 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const jid = waJid(payload);
     await whatsappGroupClear(h.host, jid);
     void registrar(h.host, "whatsapp.limpar", jid);
+  });
+  // Excluir/restaurar um grupo na lista: só a marca na máquina (whatsapp-lista.json), como na conversa; o openclaw.json
+  // não muda e o agente continua como está. Volta sozinho quando o agente recebe mensagem nova do grupo.
+  handleShared("whatsapp:group-mark", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const jid = waJid(payload);
+    const deleted = (payload as { deleted?: unknown }).deleted === true;
+    await whatsappSetMarks(h.host, [{ jid, deleted }]);
+    void registrar(h.host, deleted ? "whatsapp.grupo.excluir" : "whatsapp.grupo.restaurar", jid);
   });
 
   // Pausar/retomar o agente para um contato.

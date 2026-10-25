@@ -58,8 +58,16 @@ export const waMenuState = (payload: unknown): WaMenuState => {
  * "Copiar ID" e reler a lista (a skill whatsapp-grupos existe lá também).
  */
 export type WaGroupMenuEntry = { label: string; action: WhatsappGroupMenuAction } | { separator: true };
-export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway | null = "openclaw"): WaGroupMenuEntry[] {
-  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, { separator: true }, { label: "Atualizar lista de grupos…", action: "groups-refresh" }];
+/**
+ * `deleted` = o grupo está excluído da lista (marca na máquina, só a vista): o menu vira Restaurar + Copiar ID. Excluir
+ * entra com o agente desligado (grupo ligado sumir da lista enquanto o agente responde nele seria armadilha) e, no
+ * Hermes, sempre (lá o app não liga nem desliga grupo). O openclaw.json nunca muda por excluir/restaurar.
+ */
+export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway | null = "openclaw", deleted = false): WaGroupMenuEntry[] {
+  const excluir: WaGroupMenuEntry = { label: "Excluir da lista", action: "group-delete" };
+  const cauda: WaGroupMenuEntry[] = [{ separator: true }, { label: "Atualizar lista de grupos…", action: "groups-refresh" }];
+  if (deleted) return [{ label: "Restaurar na lista", action: "group-restore" }, { label: "Copiar ID", action: "group-copy-id" }, ...cauda];
+  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, excluir, ...cauda];
   return [
     agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
     { label: "Quem pode conversar…", action: "group-who" },
@@ -67,10 +75,11 @@ export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway
     // Zera a sessão do agente neste grupo; antes, a conversa vai para uma caixa do CRM (a tela escolhe qual).
     // Sem reticências: no grupo o clique limpa direto, sem caixa de confirmação (na conversa ainda confirma).
     { label: "Limpar histórico", action: "group-clear" },
-    { separator: true },
-    { label: "Atualizar lista de grupos…", action: "groups-refresh" },
+    ...(agente === "desligado" ? [excluir] : []),
+    ...cauda,
   ];
 }
+export const waGroupDeleted = (payload: unknown): boolean => (payload as { state?: { deleted?: unknown } } | null)?.state?.deleted === true;
 export const waGroupAgente = (payload: unknown): WhatsappGroupAgent => {
   const a = (payload as { state?: { agente?: unknown } } | null)?.state?.agente;
   return a === "mencao" || a === "sempre" ? a : "desligado";

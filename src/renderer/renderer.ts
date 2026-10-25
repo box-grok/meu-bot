@@ -3582,7 +3582,16 @@ function waGroupMenuAction(g: WhatsappGroup, a: WhatsappGroupMenuAction | null):
   if (a === "group-who") { openWaGroup(g, true); return; }
   if (a === "group-off") { void setWaGroup(g.jid, { agente: "desligado" }); return; }
   if (a === "group-clear") { void startWaGroupClear(g); return; }
+  if (a === "group-delete") { void markWaGroup(g, true); return; }
+  if (a === "group-restore") { void markWaGroup(g, false); return; }
   void ligarWaGroup(g);
+}
+/** Excluir/restaurar na lista: marca na máquina e some/volta na hora (otimista); em erro, relê os grupos e avisa. */
+async function markWaGroup(g: WhatsappGroup, deleted: boolean): Promise<void> {
+  if (waGroups !== null) { waGroups = { ...waGroups, grupos: waGroups.grupos.map((x) => (x.jid === g.jid ? { ...x, deleted } : x)) }; cacheWrite("waGroups", waGroups); }
+  waGroupsMsg = null; afterWaGroups();
+  try { await window.meuBot.markWhatsappGroup(g.jid, deleted); }
+  catch (err) { waGroupsMsg = { text: `${deleted ? "Não deu para excluir" : "Não deu para restaurar"} "${waGroupTitle(g)}": ${ipcErrorText(err)}`, bad: true }; void refreshWaGroups(); }
 }
 /**
  * "Limpar histórico" de um grupo: o menu já limpa, sem perguntar (escolha do dono). A caixa embaixo
@@ -3655,9 +3664,12 @@ function waGroupClearBox(c: WaGroupClear): HTMLElement {
 function waGroupsSection(q: string): HTMLElement[] {
   const out: HTMLElement[] = [];
   waGroupsSeed();
-  const grupos = (waGroups?.grupos ?? []).filter((g) => q === "" || normalize(`${g.nome ?? ""} ${g.jid}`).includes(q));
+  // Excluído é só tirar da vista (como na conversa): o admin, com o interruptor de arquivadas, vê também os excluídos para restaurar.
+  const showDeleted = sidebarArchived.checked && caps.supportAdmin;
+  const visiveis = (waGroups?.grupos ?? []).filter((g) => showDeleted || !g.deleted);
+  const grupos = visiveis.filter((g) => q === "" || normalize(`${g.nome ?? ""} ${g.jid}`).includes(q));
   const open = waGroupsOpen();
-  const head = el("button", "sidebar-group wa-groups-head", `${open ? "▾" : "▸"} Grupos${waGroups !== null ? ` (${waGroups.grupos.length})` : ""}`); head.type = "button";
+  const head = el("button", "sidebar-group wa-groups-head", `${open ? "▾" : "▸"} Grupos${waGroups !== null ? ` (${visiveis.length})` : ""}`); head.type = "button";
   head.title = open ? "Recolher os grupos" : "Mostrar os grupos";
   head.addEventListener("click", () => { try { localStorage.setItem(waGroupsOpenKey(), open ? "0" : "1"); } catch { /* opcional */ } renderSidebar(); });
   out.push(head);
@@ -3680,14 +3692,15 @@ function waGroupsSection(q: string): HTMLElement[] {
     return out;
   }
   for (const g of grupos) {
-    const item = el("div", `sidebar-item wa-item wa-group-item${pageActive?.id === `wag-${g.jid}` ? " active" : ""}`);
+    const item = el("div", `sidebar-item wa-item wa-group-item${pageActive?.id === `wag-${g.jid}` ? " active" : ""}${g.deleted ? " archived" : ""}`);
     item.dataset["jid"] = g.jid;
     item.append(el("span", `wa-group-dot ${g.agente}`), el("span", "si-title", waGroupTitle(g)));
     item.append(el("span", `si-tab wa-group-badge ${g.agente}`, g.agente === "desligado" ? "desligado" : g.agente === "mencao" ? "quando chamado" : "sempre"));
+    if (g.deleted) item.append(el("span", "si-tab", "excluído"));
     if (waGroupSaving === g.jid) item.append(el("span", "si-date", "gravando…"));
     else if (g.updatedAt !== null) item.append(el("span", "si-date", shortDate(g.updatedAt)));
     const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações do grupo";
-    menu.addEventListener("click", (ev) => { ev.stopPropagation(); void window.meuBot.showWhatsappGroupMenu(g.jid, { agente: g.agente }).then((a) => waGroupMenuAction(g, a)); });
+    menu.addEventListener("click", (ev) => { ev.stopPropagation(); void window.meuBot.showWhatsappGroupMenu(g.jid, { agente: g.agente, deleted: g.deleted }).then((a) => waGroupMenuAction(g, a)); });
     item.append(menu);
     item.title = `${waGroupTitle(g)}${g.membros !== null ? ` · ${g.membros} membros` : ""} · ${WA_GROUP_AGENTE[g.agente]}`;
     item.title = "Option+clique: abre ao lado (tela dividida)";

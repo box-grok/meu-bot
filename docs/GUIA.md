@@ -2461,6 +2461,16 @@ então as máquinas que já a têm recebem a skill na próxima abertura do app. 
 Com `allowFrom: ["*"]`, habilitar um grupo sem `--remetentes` deixaria qualquer membro acionar o agente: a skill
 manda sempre usar `--remetentes`.
 
+## Excluir grupo da lista (25 out)
+
+"Excluir da lista" no menu "…" de um grupo é só tirar da vista, como na conversa: a marca mora na máquina
+(`whatsapp-lista.json`, chave `groupsDeleted: { "<jid>@g.us": ISO }`, dona do formato `whatsapp-marks.ts`), os dois apps veem a
+mesma lista e o `openclaw.json` não muda. Volta sozinho quando o agente recebe mensagem nova do grupo (`updatedAt` da
+sessão > hora da exclusão; sem sessão, continua excluído até a primeira). Só com o agente desligado (grupo ligado sumir
+da lista enquanto o agente responde nele seria armadilha); no Hermes, sempre. Excluído vira "Restaurar na lista" no menu;
+o admin, com o interruptor de arquivadas, vê os excluídos para restaurar. Auditoria: `whatsapp.grupo.excluir`/`restaurar`.
+Caso que motivou: grupo "zohomail" na `grokbot-1`, sem sessão, que não tinha como sair da lista.
+
 ## Grupos no app, tutorial 12 e monitor (21 out)
 
 **Área "Grupos" na lista do WhatsApp.** Fica no fim da lista e pode ser recolhida. Junta três fontes:
