@@ -2773,6 +2773,8 @@ function renderChannelEditor(host: HTMLElement): void {
 /** Os dois cartões de rádio (só você / todo mundo), iguais no modal e no guia; o escolhido fica verde. */
 /** Cartão sendo gravado nesta hora (mostra o spinner e a seleção otimista); null = nenhum. */
 let waPolicyTarget: WhatsappReplyChoice | null = null;
+/** Último erro ao aplicar um cartão: aparece embaixo dos cartões (guia e modal), não só no texto do modal. */
+let waPolicyError: string | null = null;
 /** "Só alguns contatos": a lista está aberta para edição (o cartão foi clicado, ainda sem salvar), o rascunho e o último erro. */
 let waListEditing = false;
 let waListDraft: string | null = null;
@@ -2781,6 +2783,8 @@ let waListError: string | null = null;
 const replyChoiceNow = (st: WhatsappStatus): WhatsappReplyChoice | null => replyChoiceOf(st.dmPolicy, st.allowFrom, st.number);
 function renderReplyCards(container: HTMLElement, current: WhatsappReplyChoice | null, disabled: boolean, onChoose: (c: WhatsappReplyChoice) => void): void {
   container.replaceChildren();
+  // Máquina cujo agente não deixa escolher pelo app (capacidade, não produto): diz isso em vez de cartões que falhariam.
+  if (waStatus !== null && !waStatus.capacidades.politicaDm) { container.append(el("p", "hint", `O agente desta máquina (${waStatus.gateway ?? "desconhecido"}) não permite escolher quem responde pelo app.`)); return; }
   const marked = waPolicyTarget ?? (waListEditing ? "list" : current); // otimista: enquanto grava, o cartão clicado já aparece marcado
   for (const o of REPLY_OPTIONS) {
     const saving = waPolicyTarget === o.id;
@@ -2800,6 +2804,8 @@ function renderReplyCards(container: HTMLElement, current: WhatsappReplyChoice |
     // A lista editável fica fora do cartão (botão não pode conter campo de texto).
     if (o.id === "list" && waListEditing) container.append(renderListEditor(disabled));
   }
+  if (waPolicyError !== null) container.append(el("p", "hint bad-hint", waPolicyError));
+  else if (waStatus?.gateway === "hermes" && waPolicySaving) container.append(el("p", "hint", "No Hermes, trocar o modo reinicia o gateway do WhatsApp: leva alguns segundos."));
 }
 /** Campo da lista: um número por linha; "Salvar lista" grava a allowlist (você entra sempre). */
 function renderListEditor(disabled: boolean): HTMLElement {
@@ -2927,16 +2933,16 @@ function chooseReply(choice: WhatsappReplyChoice): void {
   if (choice === "list") { waListEditing = true; waListError = null; paintWhatsapp(); return; }
   waListEditing = false; waListDraft = null; waListError = null;
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) saveGuideFlag(t, "policyChosen");
-  if (waStatus !== null && replyChoiceNow(waStatus) === choice) { paintWhatsapp(); return; }
-  waPolicySaving = true; waPolicyTarget = choice; paintWhatsapp(); // seleção na hora + spinner no cartão
+  if (waStatus !== null && replyChoiceNow(waStatus) === choice) { waPolicyError = null; paintWhatsapp(); return; }
+  waPolicySaving = true; waPolicyTarget = choice; waPolicyError = null; paintWhatsapp(); // seleção na hora + spinner no cartão
   void window.meuBot.whatsappSetDmPolicy(choice)
-    .then((st) => { waStatus = st; })
-    .catch((err: unknown) => { waStatusEl.textContent = `✗ ${err instanceof Error ? err.message : String(err)}`; })
+    .then((st) => { waStatus = st; if (replyChoiceNow(st) !== choice) waPolicyError = `✗ a máquina ficou em "${st.dmPolicy ?? "?"}", não no que você escolheu. Tente de novo.`; })
+    .catch((err: unknown) => { waPolicyError = `✗ ${err instanceof Error ? err.message : String(err)}`; waStatusEl.textContent = waPolicyError; })
     .finally(() => { waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); });
 }
 function paintWaPolicy(): void {
   const st = waStatus;
-  const show = st !== null && st.gateway === "openclaw" && st.ready && st.connected && st.dmPolicy !== null && !waPairing;
+  const show = st !== null && st.capacidades.politicaDm && st.connected && st.dmPolicy !== null && !waPairing;
   waPolicyBox.hidden = !show;
   if (!show || st === null) return;
   renderReplyCards(waPolicyCards, replyChoiceNow(st), waPolicySaving, chooseReply);
@@ -3044,7 +3050,7 @@ function learnMissingWaNames(): Promise<void> {
 }
 const listModeKey = (): string => `listMode:${windowHost}`;
 // Espelho das conversas: OpenClaw (pelo gateway) e Hermes (pelo state.db, só-leitura); o PicoClaw ainda não lista.
-const waMirrorAvailable = (): boolean => waStatus !== null && waStatus.present && (waStatus.gateway === "openclaw" || waStatus.gateway === "hermes") && waStatus.ready;
+const waMirrorAvailable = (): boolean => waStatus?.capacidades.listarConversas === true;
 function getListMode(): ListMode {
   if (!waMirrorAvailable()) return "bot";
   try { return localStorage.getItem(listModeKey()) === "whatsapp" ? "whatsapp" : "bot"; } catch { return "bot"; }
@@ -4197,7 +4203,7 @@ function refreshWhatsapp(): Promise<void> {
     try { waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); if (waStatus.present) cacheWrite("waStatus", waStatus); else cacheDrop("waStatus"); } catch { waStatus = null; }
     finally { waRefreshing = false; waInflight = null; }
     paintWhatsapp();
-    if (waStatus?.connected === true && waStatus.gateway === "openclaw" && waGroups === null && waGroupsInflight === null && waGroupsAt === 0) void refreshWaGroups();
+    if (waStatus?.capacidades.grupos === true && waGroups === null && waGroupsInflight === null && waGroupsAt === 0) void refreshWaGroups();
     if (waPairing && waStatus?.connected === true) waShowSuccess(waStatus.number);
     const soon = waStatus !== null && waStatus.present && !waStatus.connected;
     waTimer = setTimeout(() => { void refreshWhatsapp(); }, waPairing && !waConnected ? 8_000 : soon ? 10_000 : 60_000);
@@ -4298,7 +4304,7 @@ window.meuBot.on("whatsapp:event", (ev: WhatsappEvent) => {
 // A linha sempre leva à aba do guia (tudo na aba, sem modal); só cai no modal se a máquina não é OpenClaw.
 waLine.addEventListener("click", () => {
   const guide = TUTORIAIS.find((t) => t.id === "whatsapp-openclaw");
-  if (guide !== undefined && waStatus !== null && waStatus.present && waStatus.gateway === "openclaw") { openGuide(guide); return; }
+  if (guide !== undefined && waStatus !== null && waStatus.capacidades.parear) { openGuide(guide); return; }
   openWhatsapp();
 });
 waPairBtn.addEventListener("click", () => { void pairWhatsapp(false); });
@@ -4932,10 +4938,10 @@ const guideCtx = (): GuideContext => ({
       fallback: account !== null,
       support: supportState !== null || !caps.supportClient || windowHost === "" || windowHost === "local",
       objective: objectiveState !== null || !remote,
-      guarda: guardaState !== null || !remote || (waStatus !== null && waStatus.gateway !== "openclaw"),
+      guarda: guardaState !== null || !remote || (waStatus !== null && !waStatus.capacidades.guarda),
       navegador: navLicenseAsked && (navInstState !== null || !remote),
       crm: navLicenseAsked && (crmState !== null || !remote) && (!crmProprio() || !remote || crmLocalState !== null),
-      grupos: waGroups !== null || !remote || (waStatus !== null && (waStatus.gateway !== "openclaw" || !waStatus.connected)),
+      grupos: waGroups !== null || !remote || (waStatus !== null && !waStatus.capacidades.grupos),
       contas: contasState !== null || !remote,
       finance: navLicenseAsked && (!remote || !financeOk(license, windowHost) || financeState !== null),
     };
@@ -5434,7 +5440,7 @@ function renderGuardaInstall(container: HTMLElement): void {
   });
   row.append(b);
   box.append(row);
-  if (guardaState === null) box.append(el("p", "hint", waStatus?.gateway === "openclaw" || waStatus === null ? "Consultando a máquina…" : "Esta máquina não roda o OpenClaw; a guarda é do agente do WhatsApp dele."));
+  if (guardaState === null) box.append(el("p", "hint", waStatus === null || waStatus.capacidades.guarda ? "Consultando a máquina…" : "O agente de WhatsApp desta máquina não tem guarda; ela é do agente dele."));
   if (guardaBusy && guardaLog.length > 0) box.append(el("pre", "admin-logs", guardaLog.join("\n")));
   if (guardaMsg !== null) box.append(el("p", `hint ${guardaMsg.bad ? "guide-pair-note" : "audio-ok"}`, guardaMsg.text));
   container.append(box);

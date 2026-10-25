@@ -2466,8 +2466,9 @@ manda sempre usar `--remetentes`.
 "Excluir da lista" no menu "…" de um grupo é só tirar da vista, como na conversa: a marca mora na máquina
 (`whatsapp-lista.json`, chave `groupsDeleted: { "<jid>@g.us": ISO }`, dona do formato `whatsapp-marks.ts`), os dois apps veem a
 mesma lista e o `openclaw.json` não muda. Volta sozinho quando o agente recebe mensagem nova do grupo (`updatedAt` da
-sessão > hora da exclusão; sem sessão, continua excluído até a primeira). Só com o agente desligado (grupo ligado sumir
-da lista enquanto o agente responde nele seria armadilha); no Hermes, sempre. Excluído vira "Restaurar na lista" no menu;
+sessão > hora da exclusão; sem sessão, continua excluído até a primeira). Aparece sempre, nos dois gateways e com o
+agente ligado ou não (decisão do dono em 25/10: "deve ter no grupo e na conversa normal"); um grupo ligado excluído some da
+lista, mas o agente continua respondendo nele, porque a marca não mexe na configuração. Excluído vira "Restaurar na lista" no menu;
 o admin, com o interruptor de arquivadas, vê os excluídos para restaurar. Auditoria: `whatsapp.grupo.excluir`/`restaurar`.
 Caso que motivou: grupo "zohomail" na `grokbot-1`, sem sessão, que não tinha como sair da lista.
 
@@ -2884,4 +2885,17 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   configuração vazia e acusava "A configuração admite TODOS os grupos": alarme falso. Agora `todosAdmitidos` só é
   calculado com o `channels.whatsapp` em mãos, e o menu "…" de grupo no Hermes tem só "Copiar ID" e "Atualizar lista"
   (`waGroupMenuTemplate(agente, gateway)`).
+- **Backup do Drive numa máquina com Hermes (25 out):** o pacote "trabalho" (sem cifra) levava o `.hermes` inteiro:
+  na grokbot-1 são 2,5 GB (node_modules do backend do Hermes 1,2 GB, venv do Whisper 433 MB, caches) e o envio parava
+  em "passou de 512 MB"; pior, `.hermes/.env` (tokens) e `.hermes/whatsapp/session` (sessão do WhatsApp) iam no pacote
+  sem cifra, porque os padrões `.hermes/*/.env` não casam na raiz. Agora `CONJUNTOS_DADOS.trabalho.excluir` tira
+  `node_modules`, `venv-whisper`, `cache`, `tmp`, `logs`, `sandboxes`, `audio_cache`, `bin`, `.env*`, `whatsapp/session*`
+  e `whatsapp/backups`; `credenciais` (cifrado) ganha `.hermes/.env` e `.hermes/whatsapp/session`. Sem senha de backup
+  definida em Conta Google, credenciais continuam não subindo: regra de sempre (credencial nunca vai sem cifra).
+- **Grupos no Hermes: Limpar histórico e Excluir (25 out):** pedido do dono: "Limpar" e "Excluir" nos dois menus, grupo e
+  conversa, nos dois gateways. No OpenClaw "Excluir da lista" passou a aparecer sempre (não só com o agente desligado).
+  No Hermes: `HERMES_GROUPS_PY` lista as sessões de grupo (uma por grupo e por remetente, nome de quem falou no
+  `origin_json.user_name`), `hermesGroupSessions`/`hermesGroupOfKey` (puros), `whatsappGroupThread` monta a conversa
+  com `autor` por sessão, `whatsappGroupClearPlan` conta as sessões vivas e `whatsappGroupClear` encerra todas pelo
+  `HERMES_END_SH`. `hostIsHermes` decide pelo gateway da última consulta ou por `~/.hermes/whatsapp` por SSH.
 

@@ -20,9 +20,10 @@ import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
 import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../shared/ipc";
 import { DESCONHECIDO_DENY, NAV_DENY } from "./navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
+import { capacidadesDe } from "./whatsapp-capacidades";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, HERMES_END_SH, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, isHermesKey, threadFromHermes } from "./whatsapp-hermes-core";
+import { chatsFromHermes, HERMES_END_SH, HERMES_GROUPS_PY, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "./conversation";
 import { log } from "./backend";
@@ -110,6 +111,7 @@ if [ -d "$S" ]; then
   echo "health=$(curl -s -m 3 http://127.0.0.1:3000/health 2>/dev/null | tr -d '\\n')"
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$S/session/creds.json" 2>/dev/null)"
   echo "loggedout=$(tail -8 "$S/bridge.log" 2>/dev/null | grep -c 'Logged out')"
+  ${HERMES_POLICY_PY}
   exit 0
 fi
 if command -v openclaw >/dev/null 2>&1; then
@@ -206,8 +208,17 @@ const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.ex
 const gatewayByHost = new Map<string, Gateway>();
 export const whatsappGatewayOf = (host: string): Gateway | null => gatewayByHost.get(host) ?? null;
 
+/**
+ * Estado do WhatsApp da máquina, já com as capacidades anexadas. O invólucro existe para que as
+ * capacidades sejam derivadas num ponto só: cada ramo de framework devolve o que sabe do seu
+ * mundo, e quem decide o que a tela pode oferecer é a tabela de capacidades, não o ramo.
+ */
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
-  const none: WhatsappStatus = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
+  const st = await lerWhatsappStatus(host);
+  return { ...st, capacidades: capacidadesDe(st.gateway, st.ready, st.connected) };
+}
+async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "capacidades">> {
+  const none: Omit<WhatsappStatus, "capacidades"> = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
   if (host === LOCAL_HOST || !isValidHost(host)) return none;
   // Normalmente segundos; com o conserto do gateway (gw_fix: install --force + espera) passa de um minuto.
   const r = await runSsh(host, STATUS_SCRIPT, 240_000);
@@ -229,7 +240,49 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   // O bridge do Hermes reporta "connected"/"disconnected" (não o "open" do Baileys).
   const connected = state === "connected" || state === "open";
   const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : `bridge ${state}`;
-  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: null, channelConfig: null };
+  // Quem o agente responde: o .env do Hermes, traduzido para o mesmo contrato do OpenClaw (whatsapp-hermes-core.ts).
+  const env = hermesEnvOf(kv);
+  const politica = politicaHermes(env, number);
+  const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all }, null, 2);
+  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom: politica.allowFrom };
+}
+
+/** Número pareado no Hermes (creds.json do bridge); null sem sessão. */
+async function readHermesSelfNumber(host: string): Promise<string | null> {
+  const r = await runSsh(host, `${HERMES_SELF_SH}\n`, 15_000);
+  return phoneOf(r.stdout.trim());
+}
+
+/**
+ * Quem o agente responde numa máquina com Hermes: grava modo, política e lista em ~/.hermes/.env (com backup) e
+ * reinicia o gateway só quando modo, política ou opt-in mudaram (a lista é relida ao vivo). Confere o que ficou
+ * gravado antes de devolver o estado.
+ */
+async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numbers: readonly string[]): Promise<WhatsappStatus> {
+  const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
+  if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
+  const self = await readHermesSelfNumber(host);
+  const antes = await runSsh(host, `${HERMES_POLICY_PY}\n`, 20_000);
+  if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const kvAntes = new Map<string, string>();
+  for (const line of antes.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kvAntes.set(line.slice(0, i), line.slice(i + 1).trim()); }
+  const envAntes = hermesEnvOf(kvAntes);
+  const patch = hermesEnvPara(policy, self, numbers);
+  for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
+  const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
+  const reinicia = hermesPrecisaReiniciar(envAntes, patch);
+  const script = `set -e\n${HERMES_ENV_SET_PY} ${args}\n${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`;
+  const r = await runSsh(host, script, 120_000);
+  if (r.code !== 0 || !r.stdout.includes("envset=ok")) throw new Error(`não consegui gravar o .env do Hermes: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
+  const restart = /restart=(.*)/.exec(r.stdout)?.[1]?.trim() ?? "";
+  if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
+  const kvDepois = new Map<string, string>();
+  for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kvDepois.set(line.slice(0, i), line.slice(i + 1).trim()); }
+  const ficou = politicaHermes(hermesEnvOf(kvDepois), self);
+  const erro = politicaNaoBate(policy, ficou);
+  if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
+  log(`[whatsapp] ${host} (hermes): dmPolicy=${policy} restart=${restart || "?"}`);
+  return whatsappStatus(host);
 }
 
 /** "OpenClaw 2026.9.9 em /usr/local/bin (global, todos os usuários)": versão, caminho e se é do sistema ou só deste usuário. */
@@ -245,7 +298,7 @@ function describeInstall(name: string, kv: Map<string, string>): string {
 }
 
 /** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
-function openclawStatus(kv: Map<string, string>): WhatsappStatus {
+function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   const agent = describeInstall("OpenClaw", kv);
   const plugin = Number(kv.get("plugin") ?? "0") > 0;
   const cfg = kv.get("cfg") === "1";
@@ -287,7 +340,7 @@ function openclawStatus(kv: Map<string, string>): WhatsappStatus {
  * sobre o `chave=valor` do STATUS_SCRIPT, para o teste. Sem `channels status` como o OpenClaw: "conectado" é
  * sessão pareada + gateway no ar (o canal reconecta sozinho ao subir).
  */
-export function picoclawStatus(kv: Map<string, string>): WhatsappStatus {
+export function picoclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   const agent = describeInstall("PicoClaw", kv);
   const enabled = kv.get("enabled") === "1";
   const native = kv.get("type") === "whatsapp_native" || kv.get("native") === "1";
@@ -332,6 +385,10 @@ async function ownerLockFor(host: string): Promise<string> {
 
 export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, numbers: readonly string[] = []): Promise<WhatsappStatus> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  // Cada framework grava do seu jeito: o Hermes no .env; o OpenClaw abaixo, pelo `openclaw config`.
+  const gateway = gatewayByHost.get(host) ?? (await whatsappStatus(host)).gateway;
+  if (gateway === "hermes") return setDmPolicyHermes(host, policy, numbers);
+  if (gateway !== "openclaw") throw new Error(`esta máquina (${gateway ?? "sem agente"}) não permite escolher quem responde pelo app`);
   let script: string;
   if (policy === "open") {
     // O "*" antes do "open": "open" com allowFrom sem "*" descarta TODAS as mensagens (e foi o que sobrou numa máquina).
@@ -757,14 +814,38 @@ export async function whatsappGroupExportBody(host: string, jid: string, limit =
   return { nome, body: grupoToMarkdown(nome, jid, host, messages, new Date().toISOString()), messages };
 }
 
-/** O que "Limpar histórico" de um grupo vai zerar: a sessão do agente nele (grupo não tem sessão principal). */
+/** A máquina roda o Hermes? Pelo gateway da última consulta; sem ela, olha `~/.hermes/whatsapp` por SSH. */
+async function hostIsHermes(host: string): Promise<boolean> {
+  const g = gatewayByHost.get(host);
+  if (g !== undefined) return g === "hermes";
+  const r = await runSsh(host, `[ -d "$HOME/.hermes/whatsapp" ] && echo hermes || echo outro\n`, 20_000);
+  const hermes = /^hermes$/m.test(r.stdout);
+  if (r.code === 0) gatewayByHost.set(host, hermes ? "hermes" : "openclaw");
+  return hermes;
+}
+/** Sessões de um grupo no Hermes (todas; `ended` marca as já encerradas). */
+async function hermesGroupSessionsOf(host: string, jid: string): Promise<HermesGroupSession[]> {
+  if (!JID_RE.test(jid)) throw new Error("grupo inválido");
+  const r = await runSsh(host, `${HERMES_GROUPS_PY} 2>/dev/null\n`, 60_000);
+  if (r.code !== 0) throw new Error(`não consegui ler as sessões do grupo: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  return hermesGroupSessions(jsonOr(r.stdout.trim()), jid);
+}
+
+/** O que "Limpar histórico" de um grupo vai zerar: a sessão do agente nele (grupo não tem sessão principal). No Hermes, uma por remetente. */
 export async function whatsappGroupClearPlan(host: string, jid: string): Promise<{ sessoes: number }> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
+  if (await hostIsHermes(host)) return { sessoes: (await hermesGroupSessionsOf(host, jid)).filter((s) => !s.ended).length };
   return { sessoes: (await grupoSessionKey(host, jid)) === null ? 0 : 1 };
 }
 
-/** Zera a sessão do agente no grupo. Reusa whatsappClearSessions: mesma chamada `sessions.reset` do contato. */
+/** Zera a sessão do agente no grupo. Reusa whatsappClearSessions: mesma chamada `sessions.reset` do contato (ou o encerrar do Hermes). */
 export async function whatsappGroupClear(host: string, jid: string): Promise<void> {
+  if (await hostIsHermes(host)) {
+    const vivas = (await hermesGroupSessionsOf(host, jid)).filter((s) => !s.ended).map((s) => s.id);
+    if (vivas.length === 0) throw new Error("o agente ainda não tem histórico neste grupo");
+    await whatsappClearSessions(host, vivas);
+    return;
+  }
   const key = await grupoSessionKey(host, jid);
   if (key === null) throw new Error("o agente ainda não tem histórico neste grupo");
   await whatsappClearSessions(host, [key]);
@@ -1003,6 +1084,15 @@ export async function whatsappGroupThread(host: string, jid: string, limit = 200
   if (!JID_RE.test(jid)) throw new Error("grupo inválido");
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
+  if (await hostIsHermes(host)) {
+    // Hermes: as sessões do grupo (uma por remetente), lidas do state.db; o nome de quem falou vem da própria sessão.
+    const sessoes = await hermesGroupSessionsOf(host, jid);
+    if (sessoes.length === 0) return [];
+    const r = await runSsh(host, `${HERMES_THREAD_PY} ${sessoes.map((s) => `'${s.id}'`).join(" ")} ${n}\n`, 90_000);
+    if (r.code !== 0) throw new Error(`não consegui ler a conversa do grupo: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+    const autores = new Map(sessoes.map((s) => [s.id, s.nome ?? `+${s.sender}`]));
+    return threadFromHermes(jsonOr(r.stdout.trim()), autores).slice(-n);
+  }
   const r = await runSsh(host, grupoThreadSh(jid, n), 60_000);
   const ok = /^OK (.*)$/m.exec(r.stdout);
   // O nome do grupo (para filtrar o senderName) vem na mesma leitura: nada espera o gateway.

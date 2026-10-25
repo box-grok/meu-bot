@@ -67,7 +67,9 @@ export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway
   const excluir: WaGroupMenuEntry = { label: "Excluir da lista", action: "group-delete" };
   const cauda: WaGroupMenuEntry[] = [{ separator: true }, { label: "Atualizar lista de grupos…", action: "groups-refresh" }];
   if (deleted) return [{ label: "Restaurar na lista", action: "group-restore" }, { label: "Copiar ID", action: "group-copy-id" }, ...cauda];
-  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, excluir, ...cauda];
+  // Limpar e Excluir existem no grupo e na conversa, nos dois gateways (pedido do dono, 25 out): limpar encerra a
+  // sessão do agente no grupo (no Hermes, uma por remetente); excluir só tira da lista, sem mexer no agente.
+  if (gateway === "hermes") return [{ label: "Copiar ID", action: "group-copy-id" }, { label: "Limpar histórico", action: "group-clear" }, excluir, ...cauda];
   return [
     agente === "desligado" ? { label: "Ligar o agente…", action: "group-on" } : { label: "Desligar o agente", action: "group-off" },
     { label: "Quem pode conversar…", action: "group-who" },
@@ -75,7 +77,7 @@ export function waGroupMenuTemplate(agente: WhatsappGroupAgent, gateway: Gateway
     // Zera a sessão do agente neste grupo; antes, a conversa vai para uma caixa do CRM (a tela escolhe qual).
     // Sem reticências: no grupo o clique limpa direto, sem caixa de confirmação (na conversa ainda confirma).
     { label: "Limpar histórico", action: "group-clear" },
-    ...(agente === "desligado" ? [excluir] : []),
+    excluir,
     ...cauda,
   ];
 }

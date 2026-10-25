@@ -208,19 +208,27 @@ export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   // Transcripts carregam o que o agente viu, inclusive token colado no WhatsApp (9 JWTs achados em 24/10): só cifrado.
   // O clone `skills-cloudflare` volta com um `git clone`; as skills escritas aqui, não.
   { id: "agente", nome: "Agente", pasta: "Agente", prefixo: "agente", cifrar: true, dirs: [".claude/projects", ".claude/skills"], excluir: [".claude/skills/skills-cloudflare"] },
-  // Os segredos do .hermes saem daqui e vão para `credenciais`: o pacote sem cifra nunca leva credencial.
+  // Os segredos do .hermes saem daqui e vão para `credenciais`: o pacote sem cifra nunca leva credencial. Também
+  // ficam de fora o que se reinstala e não é da pessoa: node_modules (1,2 GB na grokbot-1), o venv do Whisper
+  // (433 MB), caches, temporários, logs, binários e as sessões antigas do WhatsApp. Sem isso o .hermes passava de
+  // 2,5 GB e o pacote (limite de 512 MB) nunca subia. Os padrões do tar casam em qualquer profundidade.
   {
     id: "trabalho", nome: "Trabalho", pasta: "Trabalho", prefixo: "trabalho",
     dirs: [
       ".local/share/lv-dashboard-kommo", ".local/share/lv-catalogo-sites", "agent-workspace", "chat-workspace", ".hermes", ".claude.json",
       `${MB}/auditoria.jsonl`, `${MB}/objetivo.json`, `${MB}/progresso.json`, `${MB}/crm.json`, `${MB}/whatsapp-lista.json`, `${MB}/maquinas.json`,
     ],
-    excluir: [".hermes/auth.json", ".hermes/*/*/.env", ".hermes/*/.env"],
+    excluir: [
+      ".hermes/auth.json", ".hermes/.env", ".hermes/.env.bak-*", ".hermes/*/*/.env", ".hermes/*/.env",
+      ".hermes/whatsapp/session", ".hermes/whatsapp/session.loggedout-*", ".hermes/whatsapp/backups",
+      "node_modules", ".hermes/venv-whisper", ".hermes/cache", ".hermes/tmp", ".hermes/logs", ".hermes/sandboxes", ".hermes/audio_cache", ".hermes/bin", ".hermes/models_dev_cache.json",
+    ],
   },
-  // 183 dos 208 MB do .openclaw são cache, temporários e extensões que se reinstalam.
+  // 183 dos 208 MB do .openclaw são cache, temporários e extensões que se reinstalam. Do Hermes vão o auth.json, o
+  // .env (tokens) e a sessão viva do WhatsApp (as `session.loggedout-*` são lixo de pareamentos antigos).
   {
     id: "credenciais", nome: "Credenciais", pasta: "Credenciais", prefixo: "credenciais", cifrar: true,
-    dirs: [".openclaw", ".config/kommo", ".config/cloudflare", ".config/gh", ".hermes/auth.json", ".ssh/authorized_keys", ".config/systemd/user"],
+    dirs: [".openclaw", ".config/kommo", ".config/cloudflare", ".config/gh", ".hermes/auth.json", ".hermes/.env", ".hermes/whatsapp/session", ".ssh/authorized_keys", ".config/systemd/user"],
     excluir: [".openclaw/cache", ".openclaw/tmp", ".openclaw/extensions", ".openclaw/logs"],
   },
 ];

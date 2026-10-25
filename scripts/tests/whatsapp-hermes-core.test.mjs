@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH, HERMES_GROUPS_PY, hermesGroupSessions, hermesGroupOfKey } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
 
 test("chaves do Hermes: contato pela chave dm; grupo e OpenClaw ficam de fora", () => {
   assert.equal(hermesPeerOfKey("agent:main:whatsapp:dm:5522925501274"), "5522925501274");
@@ -76,4 +76,25 @@ test("HERMES_END_SH encerra pelo Python do próprio Hermes com end_reason sessio
   assert.match(HERMES_END_SH, /hermes --version/); assert.match(HERMES_END_SH, /venv\/bin\/python3/);
   assert.match(HERMES_END_SH, /end_session\(sid, "session_reset"\)/); assert.match(HERMES_END_SH, /print\("ok"\)/);
   assert.match(HERMES_LIST_PY, /ended_at/);
+});
+
+test("grupos do Hermes: uma sessão por remetente; só as do jid pedido; thread com o autor de cada fala", () => {
+  assert.deepEqual(hermesGroupOfKey("agent:main:whatsapp:group:120363411106490634@g.us:5521923670743"), { jid: "120363411106490634@g.us", sender: "5521923670743" });
+  assert.equal(hermesGroupOfKey("agent:main:whatsapp:dm:5521923670743"), null);
+  const data = { sessions: [
+    { id: "20261003_000000_aaaaaaaa", key: "agent:main:whatsapp:group:120363411106490634@g.us:5521923670743", name: "120363411106490634", user: "Diego", started: 1791030952, last: 1791031000, hidden: 0, ended: null },
+    { id: "20261004_000000_bbbbbbbb", key: "agent:main:whatsapp:group:120363411106490634@g.us:554599710377", name: "120363411106490634", user: "", started: 1791136751, last: null, hidden: 0, ended: 1791200000 },
+    { id: "20261005_000000_cccccccc", key: "agent:main:whatsapp:group:120363430573515865@g.us:5521923670743", name: "x", user: "Diego", started: 1791030390, last: null, hidden: 0, ended: null },
+  ] };
+  const s = hermesGroupSessions(data, "120363411106490634@g.us");
+  assert.deepEqual(s.map((x) => [x.id, x.sender, x.nome, x.ended]), [["20261003_000000_aaaaaaaa", "5521923670743", "Diego", false], ["20261004_000000_bbbbbbbb", "554599710377", null, true]]);
+  assert.deepEqual(hermesGroupSessions(null, "120363411106490634@g.us"), []);
+  const autores = new Map(s.map((x) => [x.id, x.nome ?? `+${x.sender}`]));
+  const t = threadFromHermes({ messages: [
+    { sid: "20261003_000000_aaaaaaaa", role: "user", content: "Oi", ts: 1791030960, kind: null },
+    { sid: "20261003_000000_aaaaaaaa", role: "assistant", content: "Oi, René.", ts: 1791030970, kind: null },
+    { sid: "20261004_000000_bbbbbbbb", role: "user", content: "Status?", ts: 1791136760, kind: null },
+  ] }, autores);
+  assert.deepEqual(t.map((m) => [m.role, m.text, m.autor]), [["contact", "Oi", "Diego"], ["agent", "Oi, René.", undefined], ["contact", "Status?", "+554599710377"]]);
+  assert.match(HERMES_GROUPS_PY, /chat_type = \?/); assert.match(HERMES_GROUPS_PY, /user_name/);
 });

@@ -33,9 +33,9 @@ test("waMenuState saneia o payload", () => {
 test("menu do grupo: ligar (desligado) ou desligar, quem pode conversar, copiar ID e atualizar a lista", async () => {
   const { waGroupMenuTemplate, waGroupAgente } = await import("../../dist/main/wa-menu.js");
   const acts = (a) => waGroupMenuTemplate(a).filter((e) => !("separator" in e)).map((e) => e.action);
-  // Excluir da lista só com o agente desligado: ligado some da lista enquanto o agente responde nele seria armadilha.
+  // Limpar e Excluir sempre, ligado ou não (pedido do dono, 25 out): excluir só tira da lista, o agente não muda.
   assert.deepEqual(acts("desligado"), ["group-on", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
-  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "group-clear", "groups-refresh"]);
+  assert.deepEqual(acts("mencao"), ["group-off", "group-who", "group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
   assert.equal(waGroupAgente({ state: { agente: "sempre" } }), "sempre");
   assert.equal(waGroupAgente({ state: { agente: "x" } }), "desligado");
   assert.equal(waGroupAgente(null), "desligado");
@@ -67,9 +67,9 @@ test("no Hermes: sem Pausar (não há pausa por contato), com Limpar histórico,
   assert.deepEqual(labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true }, null)), labels(waMenuTemplate({ archived: false, paused: false, deleted: false }, { manageWa: true })), "sem gateway conhecido vale o menu do OpenClaw");
 });
 
-test("menu de grupo no Hermes: Copiar ID, Excluir da lista e reler a lista (ligar, quem aciona e limpar são do OpenClaw)", async () => {
+test("menu de grupo no Hermes: Copiar ID, Limpar histórico, Excluir da lista e reler a lista (ligar e quem aciona são do OpenClaw)", async () => {
   const { waGroupMenuTemplate } = await import("../../dist/main/wa-menu.js");
   const acts = waGroupMenuTemplate("sempre", "hermes").filter((e) => !("separator" in e)).map((e) => e.action);
-  assert.deepEqual(acts, ["group-copy-id", "group-delete", "groups-refresh"]);
+  assert.deepEqual(acts, ["group-copy-id", "group-clear", "group-delete", "groups-refresh"]);
   assert.ok(waGroupMenuTemplate("sempre", null).some((e) => "action" in e && e.action === "group-off"), "sem gateway conhecido vale o menu do OpenClaw");
 });

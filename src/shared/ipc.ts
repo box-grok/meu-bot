@@ -405,7 +405,17 @@ export type Gateway = "hermes" | "openclaw" | "picoclaw";
  * WhatsApp do agente da máquina (Hermes: bridge em ~/.hermes/whatsapp; OpenClaw: `openclaw channels`;
  * PicoClaw: canal `whatsapp_native` do ~/.picoclaw/config.json, sessão em store.db e /health do gateway).
  */
+/**
+ * O que a máquina sabe fazer no WhatsApp, independente de qual framework ela roda. A tela lê daqui
+ * em vez de comparar o nome do gateway: uma VM com Hermes mostra o que o Hermes faz, e pronto.
+ */
+export interface WhatsappCapacidades {
+  parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
+  pausar: boolean; grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
+}
 export interface WhatsappStatus {
+  /** O que esta máquina sabe fazer; a tela decide por aqui, nunca pelo nome do gateway. */
+  capacidades: WhatsappCapacidades;
   /** A máquina tem um agente com WhatsApp (Hermes, OpenClaw ou PicoClaw). */
   present: boolean;
   gateway: Gateway | null;
