@@ -26,7 +26,7 @@ export const produtosDoCanal = (produtos, canal) => produtos.filter((p) => p.can
 
 /**
  * Componentes que mudaram desde a última release sem subir a versão (as máquinas só atualizam para cima: sem a
- * versão nova, a mudança nunca chega a elas). `componentes` vem de dist/main/backend-bundle-core.js (COMPONENTES);
+ * versão nova, a mudança nunca chega a elas). `componentes` vem de dist/main/maquina/backend-bundle-core.js (COMPONENTES);
  * `mudancas` = caminhos do `git diff --name-only <tag>..HEAD`; `versoes[nome]` = {antes, agora} lidas do arquivo de
  * versão nos dois pontos. Devolve uma linha por componente a corrigir (vazio = pode publicar).
  */

@@ -3,9 +3,9 @@ import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync }
 import { join } from "node:path";
 import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 
-// `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/variant-core.ts): mesmo código, outro
+// `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/app/variant-core.ts): mesmo código, outro
 // nome, bundle id e ícone. O app sabe qual é pelo Resources/variant.json e usa userData próprio
-// (src/main/user-data.ts; o Electron nomearia a pasta pelo productName do package.json, igual em todos), então os
+// (src/main/app/user-data.ts; o Electron nomearia a pasta pelo productName do package.json, igual em todos), então os
 // apps convivem abertos ao mesmo tempo. Produto com extensões embutidas leva build/<extensao> em Resources/.
 const produto = produtoFromArgv();
 // `--versao <x>`: a versão do build (o release staging passa "0.2.0-staging.N"). Vai no Info.plist (appVersion) e no

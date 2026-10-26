@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const a = createRequire(import.meta.url)("../../dist/main/auditoria-core.js");
+const a = createRequire(import.meta.url)("../../dist/main/auditoria/auditoria-core.js");
 const PY = join(import.meta.dirname, "..", "..", "backend-colima", "auditoria.py");
 const CENTRAL = join(import.meta.dirname, "..", "..", "backend-colima", "meu-bot-auditoria");
 

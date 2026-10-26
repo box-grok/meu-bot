@@ -5,7 +5,7 @@
  */
 import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
-import { isSupportAlias } from "../support-code";
+import { isSupportAlias } from "../suporte/support-code";
 import type { LicensePatch } from "../../shared/ipc";
 import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, removeDevice, setLicense } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";

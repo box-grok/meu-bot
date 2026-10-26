@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { reorderWithin, nextOrderAmong } = createRequire(import.meta.url)("../../dist/main/order.js");
+const { reorderWithin, nextOrderAmong } = createRequire(import.meta.url)("../../dist/main/conversa/order.js");
 
 const items = [
   { id: "a", host: "colima", order: 0 }, { id: "b", host: "colima", order: 1 }, { id: "c", host: "colima", order: 2 },

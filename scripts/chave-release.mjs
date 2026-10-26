@@ -1,6 +1,6 @@
 // Chaves Ed25519 das releases (o SUPublicEDKey do meu-bot, como o Sparkle no Brave): o `npm run release` assina cada
 // .zip com a privada PRINCIPAL e o app só instala o que confere com uma das públicas embutidas em
-// src/main/updater-core.ts (UPDATE_PUBLIC_KEYS: a principal e a RESERVA).
+// src/main/atualizacao/updater-core.ts (UPDATE_PUBLIC_KEYS: a principal e a RESERVA).
 //
 // Onde mora cada privada:
 // - principal: no Chaveiro de login (serviço meu-bot-release, conta principal), sem nenhum app confiável (-T ""):
@@ -51,9 +51,9 @@ const temNoChaveiro = () => { try { execFileSync("security", ["find-generic-pass
 
 /** As públicas que os apps aceitam, do build (npm run build:main antes). */
 function publicasDoApp() {
-  const f = new URL("../dist/main/updater-core.js", import.meta.url);
-  if (!existsSync(f)) { console.error("✗ falta dist/main/updater-core.js: rode `npm run build:main` antes"); process.exit(1); }
-  return createRequire(import.meta.url)("../dist/main/updater-core.js").UPDATE_PUBLIC_KEYS;
+  const f = new URL("../dist/main/atualizacao/updater-core.js", import.meta.url);
+  if (!existsSync(f)) { console.error("✗ falta dist/main/atualizacao/updater-core.js: rode `npm run build:main` antes"); process.exit(1); }
+  return createRequire(import.meta.url)("../dist/main/atualizacao/updater-core.js").UPDATE_PUBLIC_KEYS;
 }
 
 function reserva() {
@@ -62,7 +62,7 @@ function reserva() {
   console.log("✓ reserva gerada. A PRIVADA está na área de transferência (não aparece aqui):");
   console.log("  1. cole agora no gerenciador de senhas, numa nota segura \"meu-bot · chave reserva das releases\";");
   console.log("  2. depois rode `npm run chave-release -- --limpar`.");
-  console.log(`\nPública da reserva (para UPDATE_PUBLIC_KEYS em src/main/updater-core.ts):\n${publicaDe(privateKey)}`);
+  console.log(`\nPública da reserva (para UPDATE_PUBLIC_KEYS em src/main/atualizacao/updater-core.ts):\n${publicaDe(privateKey)}`);
 }
 
 function migrar(arquivo) {
@@ -91,7 +91,7 @@ function copiarPrincipal() {
 function testar() {
   const k = lerChavePrincipal();
   if (k === null) { console.error("✗ não li a principal do Chaveiro (não está lá, ou o acesso foi negado)"); process.exit(1); }
-  const { verificaAssinatura, UPDATE_PUBLIC_KEYS } = createRequire(import.meta.url)("../dist/main/updater-core.js");
+  const { verificaAssinatura, UPDATE_PUBLIC_KEYS } = createRequire(import.meta.url)("../dist/main/atualizacao/updater-core.js");
   const buf = Buffer.from(`teste ${Date.now()}`), sig = sign(null, buf, k).toString("base64");
   const id = UPDATE_PUBLIC_KEYS.find((p) => verificaAssinatura(buf, sig, p.chave))?.id;
   if (id === undefined || !verificaAssinatura(buf, sig)) { console.error("✗ a principal do Chaveiro NÃO confere com nenhuma pública embutida no app"); process.exit(1); }

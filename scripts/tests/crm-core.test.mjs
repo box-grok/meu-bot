@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
-const { parseCrmPatch, parseCrmInfo, parseStreakOut, setCrmSh, crmInfoSh, streakSh, motorEfetivo } = createRequire(import.meta.url)("../../dist/main/crm-core.js");
+const { parseCrmPatch, parseCrmInfo, parseStreakOut, setCrmSh, crmInfoSh, streakSh, motorEfetivo } = createRequire(import.meta.url)("../../dist/main/crm/crm-core.js");
 
 test("parseCrmPatch: chave válida, pipeline, silêncio 1–240, flag; recusa o resto", () => {
   assert.deepEqual(parseCrmPatch({ apiKey: "  abcdefghij1234567890  " }), { apiKey: "abcdefghij1234567890" });

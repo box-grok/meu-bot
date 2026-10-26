@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseDono, limpar, abasDe, escolherAba, decidirAbrir, tomar, donoTexto, podeFechar, POSSE_TTL_MS, MAX_ABAS } = createRequire(import.meta.url)("../../dist/main/nav-donos-core.js");
+const { parseDono, limpar, abasDe, escolherAba, decidirAbrir, tomar, donoTexto, podeFechar, POSSE_TTL_MS, MAX_ABAS } = createRequire(import.meta.url)("../../dist/main/navegador/nav-donos-core.js");
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64");
 const WA = { id: "agent:main:whatsapp:direct:+5516992294486", rotulo: "WhatsApp", origem: "whatsapp" };

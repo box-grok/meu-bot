@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseWaMarks, applyWaMarks, applyWaGroupMarks, parseWaMarkPatches, waMarkSh, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp-marks.js");
+const { parseWaMarks, applyWaMarks, applyWaGroupMarks, parseWaMarkPatches, waMarkSh, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-marks.js");
 
 const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, isSelf: false, sessionKeys: [], sessionIds: {}, ownSession: true, paused: false, updatedAt, archived: false, deleted: false });
 

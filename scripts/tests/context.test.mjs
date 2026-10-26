@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { planContext, validateSummary, buildSummaryRequest, estimateTokens, toWire } = require("../../dist/main/context.js");
+const { planContext, validateSummary, buildSummaryRequest, estimateTokens, toWire } = require("../../dist/main/conversa/context.js");
 
 const msg = (role, n) => ({ role, content: "x".repeat(n) });
 const convo = (turns, size) => Array.from({ length: turns * 2 }, (_, i) => msg(i % 2 === 0 ? "user" : "assistant", size));
@@ -53,7 +53,7 @@ test("pedido incremental inclui o resumo anterior", () => {
 });
 
 test("alreadySeenPrefix: prefixo conhecido só quando o resto é todo novo", () => {
-  const { alreadySeenPrefix, planContext: plan } = require("../../dist/main/context.js");
+  const { alreadySeenPrefix, planContext: plan } = require("../../dist/main/conversa/context.js");
   const msgs = convo(3, 10); // 6 msgs
   const full = plan(msgs, undefined, 10000);
   assert.equal(alreadySeenPrefix(full.outgoing, 4), 4);

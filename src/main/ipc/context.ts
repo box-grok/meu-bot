@@ -1,8 +1,8 @@
 /** Quem pediu: a janela principal registrada e a máquina dela. Comum a ipc/shared.ts, ipc/client.ts e admin/ipc.ts. */
 import { BrowserWindow } from "electron";
-import { getConversation } from "../conversation";
-import { hostOfWindow } from "../windows";
-import { JID_RE } from "../whatsapp-grupos-core";
+import { getConversation } from "../conversa/conversation";
+import { hostOfWindow } from "../app/windows";
+import { JID_RE } from "../whatsapp/whatsapp-grupos-core";
 
 export const windowFromEvent = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): BrowserWindow | null =>
   BrowserWindow.fromWebContents(event.sender);

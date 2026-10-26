@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const { BACKEND_DIR_SH, BACKEND_DIR_CANONICAL, BACKEND_DIR_LEGACY } = createRequire(import.meta.url)("../../dist/main/backend-dir-core.js");
+const { BACKEND_DIR_SH, BACKEND_DIR_CANONICAL, BACKEND_DIR_LEGACY } = createRequire(import.meta.url)("../../dist/main/maquina/backend-dir-core.js");
 
 /** Roda o trecho num HOME de mentira e devolve BD e FOREIGN como o shell os deixou. */
 function resolve(home) {

@@ -4,31 +4,31 @@
  * compõe: registerIpc, initPicker e o que depende da variante (caps()).
  */
 import { app, BrowserWindow, dialog, nativeTheme, powerMonitor } from "electron";
-import { onVersaoMinima } from "./backend";
-import { LOCAL_HOST } from "./localBackend";
-import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./tunnel";
-import { loadConversations } from "./conversation";
-import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./settings";
-import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./quickEntry";
-import { loadMemory } from "./memory";
-import { appVariant, caps, produto, userDataName } from "./variant";
+import { onVersaoMinima } from "./maquina/backend";
+import { LOCAL_HOST } from "./maquina/localBackend";
+import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./maquina/tunnel";
+import { loadConversations } from "./conversa/conversation";
+import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
+import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./app/quickEntry";
+import { loadMemory } from "./conversa/memory";
+import { appVariant, caps, produto, userDataName } from "./app/variant";
 import { personInfo } from "./admin/support-admin";
 import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
-import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./user-data";
-import { registerIpc } from "./ipc";
-import { applyStagedOnQuit, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima } from "./updater";
-import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./net";
-import { installBrowserHooks } from "./browser";
-import { startTermApi } from "./term-api";
-import { getBackendPort } from "./settings";
-import { installAppMenu } from "./menu";
-import { changeWindowZoom } from "./zoom";
-import { clientPickerSource, initPicker, showPicker } from "./picker";
-import { hostFromArgv, reliefHostFromArgv } from "./shortcuts";
-import { initRelief, showRelief } from "./relief";
-import { listSshHosts } from "./sshConfig";
-import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./windows";
+import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./app/user-data";
+import { registerIpc } from "./ipc/index";
+import { applyStagedOnQuit, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima } from "./atualizacao/updater";
+import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
+import { installBrowserHooks } from "./navegador/browser";
+import { startTermApi } from "./terminal/term-api";
+import { getBackendPort } from "./app/settings";
+import { installAppMenu } from "./app/menu";
+import { changeWindowZoom } from "./app/zoom";
+import { clientPickerSource, initPicker, showPicker } from "./maquina/picker";
+import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
+import { initRelief, showRelief } from "./app/relief";
+import { listSshHosts } from "./maquina/sshConfig";
+import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.

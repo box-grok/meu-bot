@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { resolveVariant, capsFor, titleFor, userDataNameFor, PRODUTOS, produtoDe } = createRequire(import.meta.url)("../../dist/main/variant-core.js");
+const { resolveVariant, capsFor, titleFor, userDataNameFor, PRODUTOS, produtoDe } = createRequire(import.meta.url)("../../dist/main/app/variant-core.js");
 
 test("resolveVariant: em dev manda a variável de ambiente; empacotado manda o variant.json", () => {
   assert.equal(resolveVariant({ packaged: false, env: "admin", variantJson: undefined }), "admin");

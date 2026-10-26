@@ -21,8 +21,8 @@ import { acessoValido, contaStatus } from "./conta-google";
 import { lerSenhaBackup } from "./senha-backup";
 import { cifrarPacote } from "./backup-cifra";
 import { gravar } from "./comum";
-import { registrar } from "../auditoria";
-import { log } from "../tunnel";
+import { registrar } from "../auditoria/auditoria";
+import { log } from "../maquina/tunnel";
 
 const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "ControlMaster=no", "-o", "ControlPath=none"];
 const INTERVALO = 24 * 60 * 60_000;

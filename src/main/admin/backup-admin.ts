@@ -7,7 +7,7 @@
  * direto para o stdin do ssh. Qualquer admin gera; só o super admin (com ~/.ssh/meu-bot-backup.age) restaura.
  * Só com a permissão `backup` que a pessoa liga no meu-bot dela.
  */
-import { isVozId } from "../vozes-core";
+import { isVozId } from "../whatsapp/vozes-core";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -18,11 +18,11 @@ import { app } from "electron";
 import type { BackupIndiceView, BackupRestauracao } from "../../shared/ipc";
 import { decisaoRestaurar, nomeBackup, parseConferir, parseIndice, parseManifesto, type BackupIndice } from "./backup-core";
 import { adminName, backupDestinatario, isSuperAdmin, pessoasPorMaquina, readShare } from "./support-admin";
-import { backendBundleDir, installBackend, installClaudeCode, installCrm, installGuarda, installAudio, installStatusLine } from "../hostProbe";
-import { entregar, registrar } from "../auditoria";
-import { getBackendPort } from "../settings";
-import { runSsh } from "../whatsapp";
-import { log } from "../backend";
+import { backendBundleDir, installBackend, installClaudeCode, installCrm, installGuarda, installAudio, installStatusLine } from "../maquina/hostProbe";
+import { entregar, registrar } from "../auditoria/auditoria";
+import { getBackendPort } from "../app/settings";
+import { runSsh } from "../whatsapp/whatsapp";
+import { log } from "../maquina/backend";
 
 const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "ControlMaster=no", "-o", "ControlPath=none"];
 const IDENTIDADE = path.join(os.homedir(), ".ssh", "meu-bot-backup.age");

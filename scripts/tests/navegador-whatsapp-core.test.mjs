@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { NAV_DENY, NAV_TOOLS, liberadosDoNavegador, travaNavegador, patchNavegadorWhatsapp, navegadorNoWhatsapp, NAV_RULE } = createRequire(import.meta.url)("../../dist/main/navegador-whatsapp-core.js");
+const { NAV_DENY, NAV_TOOLS, liberadosDoNavegador, travaNavegador, patchNavegadorWhatsapp, navegadorNoWhatsapp, NAV_RULE } = createRequire(import.meta.url)("../../dist/main/navegador/navegador-whatsapp-core.js");
 const { readFileSync } = await import("node:fs");
 
 const OTHERS = ["write", "edit", "apply_patch", "exec", "process", "cron", "gateway"];

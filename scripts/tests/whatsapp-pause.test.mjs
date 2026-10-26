@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { pauseNoteText, pauseNoteSh, pauseRuleSh, localWhenText, PAUSE_RULE_BLOCK, PAUSE_RULE_VERSION } = createRequire(import.meta.url)("../../dist/main/whatsapp-pause.js");
+const { pauseNoteText, pauseNoteSh, pauseRuleSh, localWhenText, PAUSE_RULE_BLOCK, PAUSE_RULE_VERSION } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-pause.js");
 
 test("localWhenText: data e hora em pt-BR com o fuso por extenso", () => {
   const t = localWhenText(new Date("2026-10-17T03:20:00Z"), "America/Sao_Paulo");
@@ -67,7 +67,7 @@ test("pauseRuleSh (python local): acrescenta, não duplica e troca versão antig
 });
 
 test("lista durável de pausados: pausar põe a regra no começo, retomar tira; outras regras ficam; vazia some", () => {
-  const { pausedNumbersOfPolicy, pauseRulePrefixes, withPauseRule, sendPolicySh } = createRequire(import.meta.url)("../../dist/main/whatsapp-pause.js");
+  const { pausedNumbersOfPolicy, pauseRulePrefixes, withPauseRule, sendPolicySh } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-pause.js");
   assert.deepEqual(pauseRulePrefixes("+55 43 8411-4172", ["agent:main:whatsapp:direct:+554384114172", "agent:main:main"]), ["whatsapp:direct:+554384114172"]);
   assert.deepEqual(pauseRulePrefixes("554384114172", []), ["whatsapp:direct:+554384114172"]);
   assert.deepEqual(pauseRulePrefixes("5516900000002", ["agent:main:whatsapp:default:direct:+5516900000002"]), ["whatsapp:default:direct:+5516900000002"]);

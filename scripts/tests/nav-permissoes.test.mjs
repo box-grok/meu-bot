@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const p = createRequire(import.meta.url)("../../dist/main/nav-permissoes-core.js");
+const p = createRequire(import.meta.url)("../../dist/main/navegador/nav-permissoes-core.js");
 
 test("origem e tipos: só http(s); vídeo = câmera, áudio = microfone, pedido genérico = os dois", () => {
   assert.equal(p.origemDe("https://accounts.google.com/v3/signin?x=1"), "https://accounts.google.com");

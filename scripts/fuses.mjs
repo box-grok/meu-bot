@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { archOf, produtoFromArgv } from "./produtos.mjs";
 
-// `--variant <id>` / `--admin`: qual produto (ver scripts/package.mjs e src/main/variant-core.ts).
+// `--variant <id>` / `--admin`: qual produto (ver scripts/package.mjs e src/main/app/variant-core.ts).
 const produto = produtoFromArgv();
 const name = produto.nome;
 const bundleId = produto.bundleId;

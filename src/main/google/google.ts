@@ -14,9 +14,9 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { ensureTunnel, log } from "../tunnel";
-import { getBackendPort } from "../settings";
-import { browserAsk, browserWebContents, reservarRetornoLocal } from "../browser";
+import { ensureTunnel, log } from "../maquina/tunnel";
+import { getBackendPort } from "../app/settings";
+import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
 import { CAMPOS_PESSOA, URL_TOKEN, caminhoNoDrive, consultaPasta, corpoUpload, temDrive, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, pessoaParaContato, pkce, temEscrita, urlDeAutorizacao, type ClienteOAuth, type ContatoGoogle, type ContatoWhatsapp } from "./google-core";
 
 export interface GoogleStatus { configurado: boolean; conectado: boolean; conectando: boolean; escrita: boolean; precisaReconectar: boolean; email: string | null; sincronizando: boolean; ultimaSync: string | null; total: number | null; criados: number | null; atualizados: number | null; whatsappSalvos: number | null; whatsappErro: string | null; erro: string | null }

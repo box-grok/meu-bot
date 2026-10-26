@@ -13,8 +13,8 @@ import http from "node:http";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { safeStorage } from "electron";
-import { log } from "../tunnel";
-import { browserAsk, browserWebContents, reservarRetornoLocal } from "../browser";
+import { log } from "../maquina/tunnel";
+import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
 import { ESCOPOS_CONTA, URL_TOKEN, parseIdToken, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
 import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 

@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire as _cr } from "node:module";
-const { DESCONHECIDO_DENY } = _cr(import.meta.url)("../../dist/main/navegador-whatsapp-core.js");
+const { DESCONHECIDO_DENY } = _cr(import.meta.url)("../../dist/main/navegador/navegador-whatsapp-core.js");
 import { createRequire } from "node:module";
-const { LEVELS, OBJECTIVE_SKILL, parseObjectiveChoice, parseObjectiveFile, parseMachineSkills, skillMarkdown, toolsBySenderFor, saveObjectiveSh, setObjectiveSh, resetObjectiveSh, objectiveInfoSh } = createRequire(import.meta.url)("../../dist/main/objetivo-core.js");
+const { LEVELS, OBJECTIVE_SKILL, parseObjectiveChoice, parseObjectiveFile, parseMachineSkills, skillMarkdown, toolsBySenderFor, saveObjectiveSh, setObjectiveSh, resetObjectiveSh, objectiveInfoSh } = createRequire(import.meta.url)("../../dist/main/agente/objetivo-core.js");
 
 test("níveis: três, ids fixos; só \"age\" sem trava; \"conversa\" trava como os outros contatos", () => {
   assert.deepEqual(LEVELS.map((l) => l.id), ["conversa", "consulta", "age"]);

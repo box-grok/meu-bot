@@ -7,8 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { app, dialog } from "electron";
 import type { AuditoriaLinhaView, AuditoriaMaquinaView, AuditoriaVisao } from "../../shared/ipc";
-import { centralMaquinas, centralRegistro, entregar, lerRegistroBruto } from "../auditoria";
-import { conferir, textoDaLinha, type AuditoriaCentral } from "../auditoria-core";
+import { centralMaquinas, centralRegistro, entregar, lerRegistroBruto } from "../auditoria/auditoria";
+import { conferir, textoDaLinha, type AuditoriaCentral } from "../auditoria/auditoria-core";
 import { isSuperAdmin, pessoasPorMaquina } from "./support-admin";
 
 export async function auditoriaMaquinas(): Promise<{ superAdmin: boolean; maquinas: AuditoriaMaquinaView[]; erro: string | null }> {

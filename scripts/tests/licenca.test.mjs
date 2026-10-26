@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 // Lado do backend (CJS, roda na máquina da pessoa) e lado do admin (TS compilado), mesmo esquema.
 const be = require("../../backend-colima/licenca.js");
-const fe = require("../../dist/main/licenca.js");
+const fe = require("../../dist/main/licenca/licenca.js");
 
 const DEV = (n) => n.toString(16).padStart(12, "0");
 

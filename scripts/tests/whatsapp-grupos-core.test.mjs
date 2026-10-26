@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { JID_RE, groupOfSessionKey, gruposDaMaquina, patchGrupo, aplicarPatch, estadoDoGrupo, threadDoGrupo, normalizarQuem, quemAcionaDe } = createRequire(import.meta.url)("../../dist/main/whatsapp-grupos-core.js");
+const { JID_RE, groupOfSessionKey, gruposDaMaquina, patchGrupo, aplicarPatch, estadoDoGrupo, threadDoGrupo, normalizarQuem, quemAcionaDe } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-grupos-core.js");
 
 // Formato real do OpenClaw 2026.9.9 (box-lv, 21/10), números e jids trocados.
 const G1 = "120363000000000001@g.us";
@@ -137,7 +137,7 @@ test("banco do OpenClaw: UUID e .jsonl para o ID da aba; vale mesmo sem sessions
 });
 
 test("sem o channels.whatsapp (máquina sem OpenClaw, como a do Hermes, ou leitura falha): nunca \"todos admitidos\"", async () => {
-  const { gruposDaMaquina } = await import("../../dist/main/whatsapp-grupos-core.js");
+  const { gruposDaMaquina } = await import("../../dist/main/whatsapp/whatsapp-grupos-core.js");
   assert.equal(gruposDaMaquina({ sessions: [] }, null, null).todosAdmitidos, false);
   assert.equal(gruposDaMaquina({ sessions: [] }, undefined, null).todosAdmitidos, false);
   assert.equal(gruposDaMaquina({ sessions: [] }, {}, null).todosAdmitidos, true, "configuração lida e vazia continua sendo o alerta real");

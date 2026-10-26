@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-const { encodeFrame, FrameDecoder, RingBuffer } = createRequire(import.meta.url)("../../dist/main/pty-frames.js");
+const { encodeFrame, FrameDecoder, RingBuffer } = createRequire(import.meta.url)("../../dist/main/terminal/pty-frames.js");
 
 test("frames: codifica, decodifica em pedaços e vários num chunk; recusa lixo", () => {
   const a = encodeFrame("i", "olá");
@@ -27,7 +27,7 @@ test("ring buffer guarda só os últimos bytes", () => {
 
 /** O broker de verdade, com um PTY local: resize chega como SIGWINCH, entrada ecoa, saída e código voltam. */
 test("pty-broker.py: resize, eco e código de saída", { timeout: 20_000 }, async () => {
-  const src = readFileSync(new URL("../../dist/main/pty-broker.py", import.meta.url), "utf8");
+  const src = readFileSync(new URL("../../dist/main/terminal/pty-broker.py", import.meta.url), "utf8");
   const py = spawn("/usr/bin/python3", ["-c", src, "/bin/sh", "-c", "stty size; cat; exit 7"], { stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, HOME: process.env.HOME } });
   const dec = new FrameDecoder();
   let out = ""; let exit = null;

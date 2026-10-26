@@ -8,12 +8,12 @@
  */
 import { agendarSincronizacaoGoogle, pararSincronizacaoGoogle } from "../google/google";
 import { agendarDadosAoDrive, pararDadosAoDrive } from "../google/dados-drive";
-import { getDadosNoDrive } from "../settings";
+import { getDadosNoDrive } from "../app/settings";
 import { app, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import { log } from "../tunnel";
-import { produto } from "../variant";
+import { log } from "../maquina/tunnel";
+import { produto } from "../app/variant";
 import { configJson } from "./extensao-api-core";
 import { setExtensaoId, startExtensaoApi, type CapturarAba } from "./extensao-api";
 

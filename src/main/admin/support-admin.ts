@@ -10,21 +10,21 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
-import { applyLicensePatch, parseLicense } from "../licenca";
-import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca-maquina";
-import { BACKEND_DIR_SH } from "../backend-dir-core";
-import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../bot-chats";
-import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../support-code";
-import { entregar, registrar, registroSh } from "../auditoria";
-import type { Acao } from "../auditoria-core";
-import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp";
-import { installAudio, installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../hostProbe";
-import { claudeAuthStatus } from "../claudeLogin";
-import { closeTunnel } from "../tunnel";
-import { broadcast } from "../windows";
-import { xaiAuthInfo } from "../xaiLogin";
-import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from "../settings";
-import { log } from "../backend";
+import { applyLicensePatch, parseLicense } from "../licenca/licenca";
+import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
+import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
+import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../conversa/bot-chats";
+import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../suporte/support-code";
+import { entregar, registrar, registroSh } from "../auditoria/auditoria";
+import type { Acao } from "../auditoria/auditoria-core";
+import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp/whatsapp";
+import { installAudio, installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { claudeAuthStatus } from "../agente/claudeLogin";
+import { closeTunnel } from "../maquina/tunnel";
+import { broadcast } from "../app/windows";
+import { xaiAuthInfo } from "../agente/xaiLogin";
+import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from "../app/settings";
+import { log } from "../maquina/backend";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string } }

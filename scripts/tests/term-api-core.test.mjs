@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { textoDoTerminal, entradaDigitar, TECLAS, MAX_ENTRADA } = createRequire(import.meta.url)("../../dist/main/term-api-core.js");
+const { textoDoTerminal, entradaDigitar, TECLAS, MAX_ENTRADA } = createRequire(import.meta.url)("../../dist/main/terminal/term-api-core.js");
 const b = (s) => new TextEncoder().encode(s);
 
 test("ler: tira cores, título e cursor; \\r recomeça a linha; últimas N linhas", () => {

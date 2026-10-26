@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isConnectionCode, isLocalAddr, looksLikeOffline, offlineMessage } from "../../dist/main/net-core.js";
+import { isConnectionCode, isLocalAddr, looksLikeOffline, offlineMessage } from "../../dist/main/app/net-core.js";
 
 test("looksLikeOffline: códigos sem rota/DNS e o texto do ssh; o forward local recusando não é offline por si", () => {
   for (const code of ["ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "ENETDOWN"]) assert.equal(looksLikeOffline({ code }), true, code);

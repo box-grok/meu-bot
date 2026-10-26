@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH, HERMES_GROUPS_PY, hermesGroupSessions, hermesGroupOfKey } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH, HERMES_GROUPS_PY, hermesGroupSessions, hermesGroupOfKey } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
 
 test("chaves do Hermes: contato pela chave dm; grupo e OpenClaw ficam de fora", () => {
   assert.equal(hermesPeerOfKey("agent:main:whatsapp:dm:5522925501274"), "5522925501274");
@@ -100,7 +100,7 @@ test("grupos do Hermes: uma sessão por remetente; só as do jid pedido; thread 
 });
 
 test("política do Hermes (.env → contrato do app): self-chat, open só com opt-in, '*' na lista, allowlist e pairing", () => {
-  const { politicaHermes, hermesEnvOf } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { politicaHermes, hermesEnvOf } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const env = (o) => ({ mode: "", dm: "", allow: "", all: "", ...o });
   assert.deepEqual(politicaHermes(env({}), "5516900000001"), { dmPolicy: "allowlist", allowFrom: ["+5516900000001"] }, "sem nada = self-chat = só você");
   assert.deepEqual(politicaHermes(env({ mode: "bot", allow: "5516900000001,5521900000002" }), "5516900000001"), { dmPolicy: "allowlist", allowFrom: ["+5516900000001", "+5521900000002"] }, "bot + lista (pairing implícito) = lista");
@@ -114,7 +114,7 @@ test("política do Hermes (.env → contrato do app): self-chat, open só com op
 });
 
 test("o que gravar por cartão e quando o gateway precisa reiniciar", () => {
-  const { hermesEnvPara, hermesPrecisaReiniciar, HERMES_ENV_VALUE_RE } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { hermesEnvPara, hermesPrecisaReiniciar, HERMES_ENV_VALUE_RE } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   assert.deepEqual(hermesEnvPara("open", "5516900000001"), { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" });
   assert.deepEqual(hermesEnvPara("self", "5516900000001"), { WHATSAPP_MODE: "self-chat", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516900000001", WHATSAPP_ALLOW_ALL_USERS: "false" });
   assert.deepEqual(hermesEnvPara("list", "5516900000001", ["5521900000002", "+55 21 90000-0002", "5516900000001"]).WHATSAPP_ALLOWED_USERS, "5516900000001,5521900000002", "sem repetidos, dono sempre, só dígitos");
@@ -126,7 +126,7 @@ test("o que gravar por cartão e quando o gateway precisa reiniciar", () => {
 });
 
 test("HERMES_ENV_SET_PY: troca a linha existente (com export/aspas), acrescenta a que falta e guarda backup", async () => {
-  const { HERMES_ENV_SET_PY, HERMES_POLICY_PY } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { HERMES_ENV_SET_PY, HERMES_POLICY_PY } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } = await import("node:fs");
   const { execSync } = await import("node:child_process");
   const path = await import("node:path");
@@ -144,7 +144,7 @@ test("HERMES_ENV_SET_PY: troca a linha existente (com export/aspas), acrescenta 
 });
 
 test("grupos no Hermes: config.yaml/.env → contrato; política pairing/disabled não admite; open e '*' admitem tudo", () => {
-  const { parseHermesGroupCfg, hermesEstadoDoGrupo, hermesTodosAdmitidos, HERMES_GROUP_CFG_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { parseHermesGroupCfg, hermesEstadoDoGrupo, hermesTodosAdmitidos, HERMES_GROUP_CFG_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const A = "120363410837573543@g.us", B = "120363428149657663@g.us", C = "120363427290582156@g.us";
   const cfg = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A, B, "lixo", "5511999990000"], require_mention: "true", free_response_chats: `${B},x` });
   assert.deepEqual(cfg, { policy: "allowlist", allow: [A, B], requireMention: true, free: [B] });
@@ -161,7 +161,7 @@ test("grupos no Hermes: config.yaml/.env → contrato; política pairing/disable
 });
 
 test("config nova por pedido: ligar/desligar entra e sai da lista; 'quando chamado' liga a menção preservando os outros; último desliga tudo", () => {
-  const { parseHermesGroupCfg, hermesGroupCfgPara, hermesEstadoDoGrupo, hermesGroupCfgSetSh } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { parseHermesGroupCfg, hermesGroupCfgPara, hermesEstadoDoGrupo, hermesGroupCfgSetSh } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const A = "120363410837573543@g.us", B = "120363428149657663@g.us", C = "120363427290582156@g.us";
   const base = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A, B] }); // sem menção: A e B respondem sempre
   // ligar C "sempre": só entra na lista
@@ -188,7 +188,7 @@ test("config nova por pedido: ligar/desligar entra e sai da lista; 'quando chama
 });
 
 test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recente dá hora, chave e id; quem aciona é a lista das conversas diretas", () => {
-  const { gruposHermes, parseHermesGroupCfg } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { gruposHermes, parseHermesGroupCfg } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const A = "120363410837573543@g.us", C = "120363427290582156@g.us";
   const cfg = parseHermesGroupCfg({ group_policy: "allowlist", group_allow_from: [A], require_mention: true });
   const data = { sessions: [
@@ -215,7 +215,7 @@ test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recent
 });
 
 test("pausa no Hermes: tira da lista (e devolve ao retomar), mantém o próprio número e os outros pausados fora; fixa allowlist; recusa só-você/todo-mundo/desligado", () => {
-  const { hermesPausaPlano } = createRequire(import.meta.url)("../../dist/main/whatsapp-hermes-core.js");
+  const { hermesPausaPlano } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const env = { mode: "bot", dm: "", allow: "5516992294486,5522925501274,5521923670743", all: "" }; // dm vazio = pairing de fábrica
   const p = hermesPausaPlano(env, "5516992294486", "5522925501274", true, []);
   assert.deepEqual(p.patch, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516992294486,5521923670743", WHATSAPP_ALLOW_ALL_USERS: "false" });

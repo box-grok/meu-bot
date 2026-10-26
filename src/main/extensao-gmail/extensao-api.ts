@@ -8,13 +8,13 @@
  */
 import http from "node:http";
 import { randomBytes } from "node:crypto";
-import { ensureTunnel, log, markDegraded } from "../tunnel";
-import { getBackendPort } from "../settings";
+import { ensureTunnel, log, markDegraded } from "../maquina/tunnel";
+import { getBackendPort } from "../app/settings";
 import { autorizado, corsHeaders, hostOk, origemOk, rotaCrm } from "./extensao-api-core";
 import { lerOtpauth } from "./ler-qr-core";
 import { googleConectar, googleDesconectar, googleSincronizar, googleStatus } from "../google/google";
-import { whatsappChats } from "../whatsapp";
-import { avisarJanela } from "../browser";
+import { whatsappChats } from "../whatsapp/whatsapp";
+import { avisarJanela } from "../navegador/browser";
 
 export interface ExtensaoApiInfo { porta: number; token: string }
 /** Captura da aba ativa do Navegador desta máquina (quem sabe qual é a aba é o browser.ts). */

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { normalizeSettings, defaultSettings } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
+const { normalizeSettings, defaultSettings } = createRequire(import.meta.url)("../../dist/main/app/settings-normalize.js");
 
 test("arquivo v2 migra sshHost para lastHost e descarta sshHost", () => {
   const s = normalizeSettings({ version: 1, sshHost: "colima", backendModel: "rene-dm", backendPort: 8080 });
@@ -45,7 +45,7 @@ test("openDirect: true por padrão, respeita false", () => {
 });
 
 test("hostNames: apelidos válidos por host; lixo fora", async () => {
-  const { normalizeHostNames } = await import("../../dist/main/settings-normalize.js");
+  const { normalizeHostNames } = await import("../../dist/main/app/settings-normalize.js");
   assert.deepEqual(normalizeHostNames({ colima: "  VM de  teste ", "a b": "x", agente: "", n: 3 }), { colima: "VM de teste" });
   assert.deepEqual(normalizeHostNames(["colima"]), {});
   assert.equal(normalizeHostNames({ vm: "x".repeat(80) }).vm.length, 40);
@@ -68,7 +68,7 @@ test("navFavoritos: por máquina válida; url http(s), título ≤ 60, url repet
 });
 
 test("navNotify: padrão desligado (o tutorial liga) com a instrução padrão; patch parcial mantém o resto; hosts limpos; modo validado", () => {
-  const { normalizeNavNotify, NAV_NOTIFY_DEFAULT_INSTRUCTION } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
+  const { normalizeNavNotify, NAV_NOTIFY_DEFAULT_INSTRUCTION } = createRequire(import.meta.url)("../../dist/main/app/settings-normalize.js");
   const d = normalizeSettings({}).navNotify;
   assert.deepEqual(d, { enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site", avisar: "tratado" });
   const s = normalizeSettings({ navNotify: { enabled: false, instruction: "  Resuma.  ", hosts: ["Mail.Google.com", "bad host!", "mail.google.com"], mode: "each" } }).navNotify;
@@ -80,7 +80,7 @@ test("navNotify: padrão desligado (o tutorial liga) com a instrução padrão; 
 });
 
 test("navEspacos: ids e nomes válidos, urls http(s), ícone http(s)/data, ativo existente; lixo cai fora", () => {
-  const { normalizeNavWorkspaces } = createRequire(import.meta.url)("../../dist/main/settings-normalize.js");
+  const { normalizeNavWorkspaces } = createRequire(import.meta.url)("../../dist/main/app/settings-normalize.js");
   const w = normalizeNavWorkspaces({ ativo: "nope", lista: [
     { id: "w1", nome: "  ACME  ", servicos: [{ id: "s1", nome: "", url: "https://mail.google.com/", icone: "javascript:x" }, { id: "s1", nome: "dup", url: "https://a.com" }, { id: "s2", nome: "ftp", url: "ftp://x" }] },
     { id: "bad id!", nome: "x", servicos: [] },

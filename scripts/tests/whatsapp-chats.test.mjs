@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromSessions, threadFor, peerOfSessionKey, grupoToMarkdown, SAFE_KEY } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+const { chatsFromSessions, threadFor, peerOfSessionKey, grupoToMarkdown, SAFE_KEY } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
 
 // Formato real do OpenClaw 2026.9.9 (sessions.list / chat.history), números trocados.
 const SELF = "+5521900000001";
@@ -85,7 +85,7 @@ test("principal + por contato: une em ordem de hora, sem repetir; mídia sem tex
 });
 
 test("whatsappContextNote: trecho rotulado, contato e agente, e corta as mais antigas", () => {
-  const { whatsappContextNote, CONTEXT_MAX_CHARS } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { whatsappContextNote, CONTEXT_MAX_CHARS } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   const msgs = [
     { role: "contact", text: "oi, traduz pra espanhol?", at: "2026-10-15T12:00:00.000Z" },
     { role: "agent", text: "¡Hola!", at: "2026-10-15T12:00:05.000Z" },
@@ -107,7 +107,7 @@ test("whatsappContextNote: trecho rotulado, contato e agente, e corta as mais an
 });
 
 test("limpar: separa as sessões do contato da principal; lê o resultado de cada reset", () => {
-  const { ownSessionKeys, gatewayFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { ownSessionKeys, gatewayFailures } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   const ana = chatsFromSessions(list, SELF).find((c) => c.number === ANA.slice(1));
   assert.deepEqual(ownSessionKeys(ANA, ana.sessionKeys), [`agent:main:whatsapp:default:direct:${ANA}`]);
   assert.deepEqual(ownSessionKeys(ANA, ["agent:main:main"]), []);
@@ -119,7 +119,7 @@ test("limpar: separa as sessões do contato da principal; lê o resultado de cad
 });
 
 test("exportar: Markdown com contato, máquina, período, dias e falas", () => {
-  const { threadToMarkdown } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { threadToMarkdown } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   const md = threadToMarkdown("Ana", "5516900000002", "agente-box", [
     { role: "contact", text: "oi", at: "2026-10-14T15:00:00.000Z" },
     { role: "agent", text: "olá!", at: "2026-10-15T15:00:00.000Z" },
@@ -133,7 +133,7 @@ test("exportar: Markdown com contato, máquina, período, dias e falas", () => {
 
 test("chave por contato sem a conta (formato do OpenClaw 2026.9.9) também vale", () => {
   assert.equal(peerOfSessionKey("agent:main:whatsapp:direct:+5521900000004"), "5521900000004");
-  const { ownSessionKeys } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { ownSessionKeys } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   assert.deepEqual(ownSessionKeys("+5521900000004", ["agent:main:main", "agent:main:whatsapp:direct:+5521900000004"]), ["agent:main:whatsapp:direct:+5521900000004"]);
 });
 
@@ -185,11 +185,11 @@ test("pausa: envio negado na sessão do contato marca paused; a principal não c
 });
 
 test("trava do dono: só o número pareado sem restrição; o resto sem gravar, editar nem rodar comandos", () => {
-  const { ownerLockSh, NON_OWNER_DENY } = createRequire(import.meta.url)("../../dist/main/whatsapp.js");
+  const { ownerLockSh, NON_OWNER_DENY } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp.js");
   const sh = ownerLockSh("5521900000001");
   const lock = JSON.parse(/'(\{.*\})'/.exec(sh)[1]);
   assert.equal(lock["*"].deny.includes("navegador__abrir"), true); // o Navegador do dono nunca vale para "*"
-  const { DESCONHECIDO_DENY } = createRequire(import.meta.url)("../../dist/main/navegador-whatsapp-core.js");
+  const { DESCONHECIDO_DENY } = createRequire(import.meta.url)("../../dist/main/navegador/navegador-whatsapp-core.js");
   assert.deepEqual(lock["*"].deny.filter((t) => !t.startsWith("navegador__")), [...NON_OWNER_DENY, ...DESCONHECIDO_DENY]); // desconhecido: nem ler, nem sessões, nem mensagem a terceiros
   assert.deepEqual(lock["e164:+5521900000001"], {});
   for (const t of ["write", "edit", "exec"]) assert.ok(NON_OWNER_DENY.includes(t));
@@ -197,7 +197,7 @@ test("trava do dono: só o número pareado sem restrição; o resto sem gravar, 
 });
 
 test("chatsFromSessions: pausado pela lista durável conta mesmo sem a marca na sessão (depois de limpar)", () => {
-  const { chatsFromSessions } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { chatsFromSessions } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   const list = { sessions: [{ key: "agent:main:whatsapp:direct:+554384114172", updatedAt: 1 }, { key: "agent:main:whatsapp:direct:+5516900000009", updatedAt: 2 }] };
   const chats = chatsFromSessions(list, null, new Map(), new Set(["554384114172"]));
   assert.equal(chats.find((c) => c.number === "554384114172").paused, true);
@@ -205,7 +205,7 @@ test("chatsFromSessions: pausado pela lista durável conta mesmo sem a marca na 
 });
 
 test("política gravada: open sem \"*\" é erro (descartaria tudo); a leitura vem da linha POLICY/ALLOW", () => {
-  const { politicaGravada, politicaNaoBate } = createRequire(import.meta.url)("../../dist/main/whatsapp-chats.js");
+  const { politicaGravada, politicaNaoBate } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-chats.js");
   const g = politicaGravada('Updated…\nPOLICY=open ALLOW=[]\n');
   assert.deepEqual(g, { dmPolicy: "open", allowFrom: [] });
   assert.match(politicaNaoBate("open", g), /descartadas/);

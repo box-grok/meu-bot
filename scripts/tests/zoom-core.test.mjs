@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomFactor, zoomPercent, zoomState, applyZoomAction, parseZoomAction, isZoomLevel } = createRequire(import.meta.url)("../../dist/main/zoom-core.js");
+const { ZOOM_MIN, ZOOM_MAX, clampZoom, zoomFactor, zoomPercent, zoomState, applyZoomAction, parseZoomAction, isZoomLevel } = createRequire(import.meta.url)("../../dist/main/app/zoom-core.js");
 
 test("faixa -8..8, fator 1.2^nível e percentual arredondado (como o Chromium)", () => {
   assert.equal(ZOOM_MIN, -8); assert.equal(ZOOM_MAX, 8);

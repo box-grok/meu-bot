@@ -4,8 +4,8 @@
  * meu-bot-crm: `caps.chat`) os de admin recusam. O mesmo canal registrado duas vezes acusa na subida, em vez do erro opaco do Electron.
  */
 import { ipcMain } from "electron";
-import { ADMIN_READONLY_MSG, NOT_ADMIN_MSG, type AdminChannel, type ClientChannel, type SharedChannel } from "../ipc-policy";
-import { caps } from "../variant";
+import { ADMIN_READONLY_MSG, NOT_ADMIN_MSG, type AdminChannel, type ClientChannel, type SharedChannel } from "./ipc-policy";
+import { caps } from "../app/variant";
 
 export type InvokeHandler = (event: Electron.IpcMainInvokeEvent, payload: unknown) => unknown;
 export type EventHandler = (event: Electron.IpcMainEvent, payload: unknown) => void;

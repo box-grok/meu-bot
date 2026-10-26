@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseBotChatList, parseClaudeTranscript, parseAppTranscript, botChatTitle, APP_CONV_ID_RE } = createRequire(import.meta.url)("../../dist/main/bot-chats.js");
+const { parseBotChatList, parseClaudeTranscript, parseAppTranscript, botChatTitle, APP_CONV_ID_RE } = createRequire(import.meta.url)("../../dist/main/conversa/bot-chats.js");
 
 const userLine = (text, ts = "2026-10-16T18:17:56.276Z") => JSON.stringify({ type: "user", message: { role: "user", content: text }, timestamp: ts });
 const asst = (content, ts = "2026-10-16T18:18:01.000Z") => JSON.stringify({ type: "assistant", message: { role: "assistant", content }, timestamp: ts });

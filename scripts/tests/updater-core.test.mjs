@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { pickUpdate, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima } = createRequire(import.meta.url)("../../dist/main/updater-core.js");
+const { pickUpdate, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
 import { generateKeyPairSync, sign } from "node:crypto";
 
 // Cada zip publicado vem com o .sig ao lado (o release assina); sem ele não há candidata (teste próprio abaixo).

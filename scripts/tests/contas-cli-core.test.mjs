@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE } = createRequire(import.meta.url)("../../dist/main/contas-cli-core.js");
+const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE } = createRequire(import.meta.url)("../../dist/main/agente/contas-cli-core.js");
 
 const WHOAMI_AMPLO = `👋 You are logged in with an OAuth Token, associated with the email lv@exemplo.com.
 Scope (Access)

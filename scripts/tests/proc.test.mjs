@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { run, runText, ProcError } = createRequire(import.meta.url)("../../dist/main/proc.js");
+const { run, runText, ProcError } = createRequire(import.meta.url)("../../dist/main/app/proc.js");
 
 test("run: saída do comando; código ≠ 0 vira ProcError com a última linha do stderr", async () => {
   assert.equal(await runText("/bin/echo", ["olá"]), "olá");

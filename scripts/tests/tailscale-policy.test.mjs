@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { applySshAction, stripHujson, tokenize } = createRequire(import.meta.url)("../../dist/main/tailscale-policy.js");
+const { applySshAction, stripHujson, tokenize } = createRequire(import.meta.url)("../../dist/main/maquina/tailscale-policy.js");
 
 // Política real do usuário (15 out 2026), com os comentários de exemplo do Tailscale.
 const REAL = `// Example/default ACLs for unrestricted connections.

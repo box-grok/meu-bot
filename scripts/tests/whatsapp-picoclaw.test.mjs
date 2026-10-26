@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { picoclawStatus } = createRequire(import.meta.url)("../../dist/main/whatsapp.js");
+const { picoclawStatus } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp.js");
 
 /** O `chave=valor` que o STATUS_SCRIPT imprime numa máquina com PicoClaw (FlowBox-F1, Termux, 23 out). */
 const kv = (over = {}) => new Map(Object.entries({

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { deveHerdar, entradaHerdavel, carimboDe } = createRequire(import.meta.url)("../../dist/main/user-data-core.js");
+const { deveHerdar, entradaHerdavel, carimboDe } = createRequire(import.meta.url)("../../dist/main/app/user-data-core.js");
 
 test("deveHerdar: só sem carimbo e sem conversas de verdade", () => {
   assert.equal(deveHerdar(false, null), true, "pasta nova");
@@ -23,7 +23,7 @@ test("herança: carimbo por origem; o que o chaveiro cifra com o nome do app nã
   assert.equal(entradaHerdavel("google-oauth.json"), true, "o client OAuth (não cifrado) vai junto");
 });
 
-const { fundirConversas, fundirSettings, fundirMemoria, fundirGoogleWhatsapp, carimboFusao, COPIAR_SE_FALTAR } = createRequire(import.meta.url)("../../dist/main/user-data-core.js");
+const { fundirConversas, fundirSettings, fundirMemoria, fundirGoogleWhatsapp, carimboFusao, COPIAR_SE_FALTAR } = createRequire(import.meta.url)("../../dist/main/app/user-data-core.js");
 const conv = (id, updatedAt, extra = {}) => ({ id, model: "agente", host: "h", messages: [{ role: "user", content: "oi" }], createdAt: updatedAt, updatedAt, order: 0, archived: false, openAsTab: true, ...extra });
 const j = (o) => JSON.stringify(o);
 

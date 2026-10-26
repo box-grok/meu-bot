@@ -4,10 +4,10 @@
  * "Adicionar pessoa" colando o código, arquivar, apelido e "Excluir máquina" (limpa o WhatsApp dela e desliga o
  * suporte). Nada de instalar nem de mexer no ~/.ssh/config: a máquina é dela.
  */
-import type { PickerSource } from "../picker";
+import type { PickerSource } from "../maquina/picker";
 import { handleAdmin } from "../ipc/registry";
-import { isSupportAlias } from "../support-code";
-import { windowForHost } from "../windows";
+import { isSupportAlias } from "../suporte/support-code";
+import { windowForHost } from "../app/windows";
 import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
 import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
 import { auditoriaExportar, auditoriaMaquinas, auditoriaRegistro } from "./auditoria-admin";

@@ -1,12 +1,12 @@
 // Tabela de produtos para os scripts de empacotamento (package, fuses, dmg, release, icons). A fonte é
-// src/main/variant-core.ts (PRODUTOS); aqui só se lê o compilado em dist/ — por isso rode `npm run build:main`
+// src/main/app/variant-core.ts (PRODUTOS); aqui só se lê o compilado em dist/ — por isso rode `npm run build:main`
 // antes. `--variant <id>` escolhe o produto; `--admin` continua valendo como alias de `--variant admin`.
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 
-const DIST = new URL("../dist/main/variant-core.js", import.meta.url);
-if (!existsSync(DIST)) { console.error("✗ falta dist/main/variant-core.js: rode `npm run build:main` antes"); process.exit(1); }
-const { PRODUTOS } = createRequire(import.meta.url)("../dist/main/variant-core.js");
+const DIST = new URL("../dist/main/app/variant-core.js", import.meta.url);
+if (!existsSync(DIST)) { console.error("✗ falta dist/main/app/variant-core.js: rode `npm run build:main` antes"); process.exit(1); }
+const { PRODUTOS } = createRequire(import.meta.url)("../dist/main/app/variant-core.js");
 export { PRODUTOS };
 
 /** Produto pedido na linha de comando; desconhecido sai com 64 listando os ids. */

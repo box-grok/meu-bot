@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirS
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
-const m = createRequire(import.meta.url)("../../dist/main/support-code.js");
+const m = createRequire(import.meta.url)("../../dist/main/suporte/support-code.js");
 
 const HOSTKEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOv9yqYd0Lr3Qk0eQ0g7cJm0kq4b8w3XHnS1fY0aZ1bC";
 const ADMIN = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAdminAdminAdminAdminAdminAdminAdminAdminAd lucas@mac";

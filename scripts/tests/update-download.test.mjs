@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const { baixarComRetomada, DownloadError } = createRequire(import.meta.url)("../../dist/main/update-download.js");
+const { baixarComRetomada, DownloadError } = createRequire(import.meta.url)("../../dist/main/atualizacao/update-download.js");
 
 const CORPO = Buffer.alloc(300 * 1024); for (let i = 0; i < CORPO.length; i++) CORPO[i] = (i * 7 + 13) & 0xff;
 const SHA = createHash("sha256").update(CORPO).digest("hex");

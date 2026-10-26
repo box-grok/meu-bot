@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseAccelerator } = createRequire(import.meta.url)("../../dist/main/accelerator.js");
+const { parseAccelerator } = createRequire(import.meta.url)("../../dist/main/app/accelerator.js");
 
 test("parseAccelerator normaliza e valida", () => {
   assert.equal(parseAccelerator("cmd+shift+space"), "CommandOrControl+Shift+Space");

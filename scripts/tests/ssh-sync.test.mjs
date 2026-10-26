@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseSshConfig, planSshSync, renderSshAppend, normalizeInclude, identityFiles } = createRequire(import.meta.url)("../../dist/main/ssh-sync.js");
+const { parseSshConfig, planSshSync, renderSshAppend, normalizeInclude, identityFiles } = createRequire(import.meta.url)("../../dist/main/maquina/ssh-sync.js");
 
 const HOME = "/Users/alguem";
 const template = `# comentário
@@ -62,7 +62,7 @@ test("identityFiles lista as chaves do modelo sem repetir, com ~ expandido", () 
 });
 
 test("remover do seletor: bloco inteiro, só o alias, ou nada (Include não é mexido)", () => {
-  const { removeSshHost } = createRequire(import.meta.url)("../../dist/main/ssh-sync.js");
+  const { removeSshHost } = createRequire(import.meta.url)("../../dist/main/maquina/ssh-sync.js");
   const cfg = ["Include ~/.colima/ssh_config", "", "# minhas máquinas", "Host vm-a", "    HostName 1.2.3.4", "    User eu", "", "Host vm-b vm-b2", "    HostName 5.6.7.8", "", "Host *", "    ServerAliveInterval 30", ""].join("\n");
   const a = removeSshHost(cfg, "vm-a");
   assert.equal(a.removed, "block");

@@ -6,7 +6,7 @@ const require = createRequire(import.meta.url);
 const Module = require("node:module");
 const origLoad = Module._load;
 Module._load = function (req, ...rest) { return req === "electron" ? { app: { getPath: () => "/tmp" } } : origLoad.call(this, req, ...rest); };
-const { applyOps, parseOps } = require("../../dist/main/memory.js");
+const { applyOps, parseOps } = require("../../dist/main/conversa/memory.js");
 
 test("applyOps adiciona, não duplica e respeita o limite", () => {
   const caps = { notas: 40, perfil: 40 };

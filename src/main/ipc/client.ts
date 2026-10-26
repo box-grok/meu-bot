@@ -3,31 +3,31 @@
  * logins, instalar coisas na máquina, suporte do lado da pessoa. No meu-bot-admin cada canal daqui vira um
  * stub que recusa (ipc/registry.ts): o admin só lê e usa as ações de suporte.
  */
-import { VOZES, isVozId } from "../vozes-core";
+import { VOZES, isVozId } from "../whatsapp/vozes-core";
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import type { AudioSetup, ClaudeLoginEvent, ClaudeSessionRef, ExportFormat, LimiaresClaude, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
-import { conversationToMarkdown, conversationTitle, slugify } from "../export";
-import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchContasClaude, limiaresContasClaude, log, removerContaClaude, reordenarContasClaude, runBackendTurn, saveAlertPrefs, usarAgoraContaClaude } from "../backend";
-import { lerLicenca, lerLicencaDaMaquina } from "../licenca-maquina";
-import { assertAcesso, assertFinance } from "../acesso";
-import { esquecerPermissoes, responderPermissao } from "../nav-permissoes";
-import { financeAbc, financeImportarPlanilha, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
-import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
-import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
-import { caps } from "../variant";
-import { disableSshCheck, restoreLastPolicy } from "../tailscale";
-import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp";
-import { pauseRuleSh } from "../whatsapp-pause";
-import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../claudeLogin";
-import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../xaiLogin";
-import { cancelarConta, entrarConta, sairConta } from "../contas-cli";
-import { isContaId } from "../contas-cli-core";
+import { conversationToMarkdown, conversationTitle, slugify } from "../conversa/export";
+import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchContasClaude, limiaresContasClaude, log, removerContaClaude, reordenarContasClaude, runBackendTurn, saveAlertPrefs, usarAgoraContaClaude } from "../maquina/backend";
+import { lerLicenca, lerLicencaDaMaquina } from "../licenca/licenca-maquina";
+import { assertAcesso, assertFinance } from "../licenca/acesso";
+import { esquecerPermissoes, responderPermissao } from "../navegador/nav-permissoes";
+import { financeAbc, financeImportarPlanilha, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../financeiro/finance-local";
+import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp";
+import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
+import { caps } from "../app/variant";
+import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
+import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp/whatsapp";
+import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
+import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
+import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
+import { cancelarConta, entrarConta, sairConta } from "../agente/contas-cli";
+import { isContaId } from "../agente/contas-cli-core";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
   getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
-} from "../conversation";
+} from "../conversa/conversation";
 
 /** Depois de um turno, guarda a sessão do Claude Code desta conversa (o .jsonl): a referência vale mesmo depois do TTL do backend. */
 async function rememberClaudeSession(conv: { id: string; host: string; claude?: ClaudeSessionRef }): Promise<ClaudeSessionRef | null> {
@@ -35,18 +35,18 @@ async function rememberClaudeSession(conv: { id: string; host: string; claude?: 
   if (ref !== null && (conv.claude === undefined || conv.claude.sessionId !== ref.sessionId)) { conv.claude = ref; persistConversations(); }
   return ref ?? conv.claude ?? null;
 }
-import { getHostNames, isBackendModel } from "../settings";
-import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../objetivo";
-import { crmInfo, crmTest, resetCrm, setCrm } from "../crm";
-import { toggleQuickEntry } from "../quickEntry";
-import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../hostProbe";
-import { readSegments, writeSegments } from "../statusLine";
+import { getHostNames, isBackendModel } from "../app/settings";
+import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../agente/objetivo";
+import { crmInfo, crmTest, resetCrm, setCrm } from "../crm/crm";
+import { toggleQuickEntry } from "../app/quickEntry";
+import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
+import { readSegments, writeSegments } from "../agente/statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
-import { openMainWindow, sendWhenLoaded } from "../windows";
+import { openMainWindow, sendWhenLoaded } from "../app/windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient, onClient } from "./registry";
-import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserSincronizarCrm, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../browser";
-import { registrar } from "../auditoria";
+import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserSincronizarCrm, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../navegador/browser";
+import { registrar } from "../auditoria/auditoria";
 
 /**
  * Padrão do app: máquina cujo agente transcreve áudio (capacidade `audio`) entende áudios depois de parear. Depois de parear, se não há transcritor, instala

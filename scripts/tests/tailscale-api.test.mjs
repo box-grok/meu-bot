@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
-const { oauthToken, getPolicy, validatePolicy, setPolicy, TailscaleApiError } = createRequire(import.meta.url)("../../dist/main/tailscale-api.js");
+const { oauthToken, getPolicy, validatePolicy, setPolicy, TailscaleApiError } = createRequire(import.meta.url)("../../dist/main/maquina/tailscale-api.js");
 
 /** Servidor falso: token, política com ETag, validate e POST com If-Match. */
 function fake() {

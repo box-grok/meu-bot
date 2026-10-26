@@ -6,7 +6,7 @@
   "description": "Bot de mesa pessoal: chat com Claude e execução aprovada na sua VM",
   "main": "dist/main/main.js",
   "scripts": {
-    "build:main": "tsc -p tsconfig.main.json && cp src/main/pty-broker.py dist/main/",
+    "build:main": "tsc -p tsconfig.main.json && cp src/main/terminal/pty-broker.py dist/main/terminal/",
     "build:renderer": "tsc -p tsconfig.renderer.json && node scripts/vendor.mjs && cp src/renderer/index.html src/renderer/style.css src/renderer/admin.css src/renderer/quick-entry.html src/renderer/quick-entry.css src/renderer/picker.html src/renderer/picker.css src/renderer/relief.html src/renderer/relief.css dist/renderer/",
     "build": "rm -rf dist && npm run build:main && npm run build:renderer",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",

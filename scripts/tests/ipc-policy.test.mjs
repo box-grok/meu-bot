@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
-const { SHARED_CHANNELS, CLIENT_CHANNELS, ADMIN_CHANNELS, ADMIN_READONLY_MSG } = createRequire(import.meta.url)("../../dist/main/ipc-policy.js");
+const { SHARED_CHANNELS, CLIENT_CHANNELS, ADMIN_CHANNELS, ADMIN_READONLY_MSG } = createRequire(import.meta.url)("../../dist/main/ipc/ipc-policy.js");
 
 const shared = new Set(SHARED_CHANNELS), client = new Set(CLIENT_CHANNELS), admin = new Set(ADMIN_CHANNELS);
 const all = [...SHARED_CHANNELS, ...CLIENT_CHANNELS, ...ADMIN_CHANNELS];

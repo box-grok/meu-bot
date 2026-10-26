@@ -5,20 +5,20 @@
  * com a chave só de entrega). Desligar tira a chave, entrega "desligado" e remove o timer. Tudo que o
  * suporte faz na máquina fica em ~/.local/share/meu-bot/suporte.log, que a pessoa vê nas Configurações.
  */
-import { checkNow as netCheckNow } from "../net";
-import { offlineMessage } from "../net-core";
+import { checkNow as netCheckNow } from "../app/net";
+import { offlineMessage } from "../app/net-core";
 import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
 import type { SupportInfo, SupportShare } from "../../shared/ipc";
-import { LOCAL_HOST } from "../localBackend";
-import { isValidHost } from "../settings";
-import { log } from "../backend";
-import { ADMIN_KEY_LINE_RE, DEFAULT_SHARE, SHARE_FILE, SUPPORT_BLOCK_FILE, SUPPORT_DIR, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, type SupportAdmin, type SupportCode } from "../support-code";
-import { entregar, lerRegistro, registroSh } from "../auditoria";
-import { textoDaLinha } from "../auditoria-core";
-import { runSsh } from "../whatsapp";
+import { LOCAL_HOST } from "../maquina/localBackend";
+import { isValidHost } from "../app/settings";
+import { log } from "../maquina/backend";
+import { ADMIN_KEY_LINE_RE, DEFAULT_SHARE, SHARE_FILE, SUPPORT_BLOCK_FILE, SUPPORT_DIR, authorizedKeysScript, removeDeliverySh, encodeSupportCode, machineId, parseSupportProgress, parseSupportShare, publicKeyBody, type SupportAdmin, type SupportCode } from "../suporte/support-code";
+import { entregar, lerRegistro, registroSh } from "../auditoria/auditoria";
+import { textoDaLinha } from "../auditoria/auditoria-core";
+import { runSsh } from "../whatsapp/whatsapp";
 
 /** O que o .dmg da pessoa leva (Resources/config): os admins (nome + pública de cada um) e onde fica a caixa. */
 interface SupportBundle {

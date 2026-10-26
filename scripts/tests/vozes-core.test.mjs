@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-const { VOZES, isVozId } = createRequire(import.meta.url)("../../dist/main/vozes-core.js");
+const { VOZES, isVozId } = createRequire(import.meta.url)("../../dist/main/whatsapp/vozes-core.js");
 const root = join(import.meta.dirname, "..", "..");
 
 test("vozes: catálogo do main, cópia do renderer e install-voz.sh conhecem os mesmos ids", () => {

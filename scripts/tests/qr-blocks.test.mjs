@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
-const { BlockQrCollector, blocksToGrid, gridToSvgDataUrl, isBlockLine, stripAnsi } = require("../../dist/main/qr-blocks.js");
+const { BlockQrCollector, blocksToGrid, gridToSvgDataUrl, isBlockLine, stripAnsi } = require("../../dist/main/whatsapp/qr-blocks.js");
 const QRCode = require("qrcode");
 
 /** Grade (true = aceso) → linhas de meios-blocos, como o terminal imprime. */

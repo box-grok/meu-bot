@@ -1,5 +1,5 @@
-// Publica uma release no GitHub com os produtos de um canal zipados (tabela em src/main/variant-core.ts): é daí que a
-// atualização automática (src/main/updater.ts) baixa. Dois modos (regras em release-core.mjs):
+// Publica uma release no GitHub com os produtos de um canal zipados (tabela em src/main/app/variant-core.ts): é daí que a
+// atualização automática (src/main/atualizacao/updater.ts) baixa. Dois modos (regras em release-core.mjs):
 //   npm run release:staging  → pre-release v<versão>-staging.N com os apps staging (meu-bot-staging, meu-bot-finance-staging);
 //                              N = próximo pelas tags que já existem. Os staging instalados atualizam sozinhos.
 //   npm run release          → promoção: release v<versão> com os estáveis (meu-bot, meu-bot-admin), SÓ
@@ -65,7 +65,7 @@ let ultima = null;
 try { ultima = execSync('git describe --tags --abbrev=0 --match "v*"', { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null; } catch { /* primeira release: nada a comparar */ }
 if (ultima === null) console.log("  primeira release: sem tag anterior para comparar");
 else {
-  const { COMPONENTES } = createRequire(import.meta.url)("../dist/main/backend-bundle-core.js");
+  const { COMPONENTES } = createRequire(import.meta.url)("../dist/main/maquina/backend-bundle-core.js");
   const mudancas = execSync(`git diff --name-only ${ultima}..HEAD`, { encoding: "utf8" }).split("\n");
   const naTag = (f) => { try { return execFileSync("git", ["show", `${ultima}:${f}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; } };
   const versoes = Object.fromEntries(COMPONENTES.map((c) => [c.nome, { antes: lerVersao(c.versao, naTag(c.versao)), agora: lerVersao(c.versao, existsSync(c.versao) ? readFileSync(c.versao, "utf8") : null) }]));
@@ -87,7 +87,7 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   execFileSync("ditto", ["-c", "-k", "--keepParent", app, zip]);
   const sig = sign(null, readFileSync(zip), chave).toString("base64");
   // Nunca publicar o que os apps recusariam: a assinatura precisa conferir com UPDATE_PUBLIC_KEYS deste build.
-  const { verificaAssinatura } = createRequire(import.meta.url)("../dist/main/updater-core.js");
+  const { verificaAssinatura } = createRequire(import.meta.url)("../dist/main/atualizacao/updater-core.js");
   if (!verificaAssinatura(readFileSync(zip), sig)) { console.error("✗ a assinatura não confere com nenhuma chave de UPDATE_PUBLIC_KEYS: nada foi publicado"); process.exit(1); }
   writeFileSync(`${zip}.sig`, `${sig}\n`);
   zips.push(zip, `${zip}.sig`);
