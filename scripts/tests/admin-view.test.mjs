@@ -5,19 +5,16 @@ import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, date
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
 const share = { progress: true, whatsapp: true, logs: true, chat: true };
-const V = "0.1.0";
-
 test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
   const sem = healthLines({ probe, whatsapp: null, progress: null, share, xai: null }, fmt);
-  assert.deepEqual(sem.map((l) => l.ok), [null, true, false, true, null, false]);
-  assert.equal(sem[4].text, "xAI (Grok): sem Hermes nesta máquina");
-  assert.match(sem[0].text, /sem dados ainda/);
-  sem.shift();
+  assert.deepEqual(sem.map((l) => l.ok), [true, false, true, null, false]);
+  assert.equal(sem[3].text, "xAI (Grok): sem Hermes nesta máquina");
+  assert.equal(sem.some((l) => /meu-bot .*Mac dela|sem dados ainda/.test(l.text)), false, "versão do app dela fica nos devices da licença");
   assert.equal(sem[0].text, "entra por SSH (box · Ubuntu)");
   assert.equal(sem[1].text, "backend instalado mas parado");
   const wa = { present: true, connected: true, number: "5511999990000", detail: "", dmPolicy: "allowlist", audioIn: false, audioOut: "inbound" };
   const com = healthLines({ probe, whatsapp: wa, progress: null, share: { ...share, progress: false }, xai: { loggedIn: true, email: "d@x.ai" } }, fmt);
-  assert.equal(com.length, 9, "sem compartilhar o progresso não há linha de versão");
+  assert.equal(com.length, 9);
   assert.equal(com[3].text, "xAI (Grok) logada (d@x.ai)"); assert.equal(com[3].ok, true);
   com.splice(3, 1);
   assert.equal(com[4].text, "WhatsApp conectado (+5511999990000)");

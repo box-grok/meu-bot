@@ -1280,7 +1280,10 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 - Versão e atividade dela no admin (16 out): o progresso que o meu-bot dela grava leva `app: { version,
   openedAt }` (versão do app e quando a sessão abriu; `WindowInfo.version`). A saúde mostra "meu-bot X no Mac
   dela · aberto há N" e acusa em vermelho quando está atrás da versão do admin (`compareVersions`): ela ainda
-  não abriu o app com internet, então não atualizou. Depende de ela compartilhar o progresso.
+  não abriu o app com internet, então não atualizou. Depende de ela compartilhar o progresso. Saiu em 26 out: o
+  progresso só é gravado com o suporte ligado do lado dela e envelhecia (agente-box-lv mostrava 0.1.0 de 21/10 com
+  0.3.0 aberto); versão e "visto há" de cada app ficam só nos devices da licença, que cada app atualiza ao abrir.
+  `parseSupportProgress` ignora o `app` de arquivo antigo.
 - Transcrição de áudio por padrão (16 out): o app não instala o OpenClaw (a pessoa instala; o app só pareia),
   então o gancho é o pareamento: concluído numa máquina com OpenClaw sem transcritor, `ensureTranscription`
   (`ipc/client.ts`) roda `install-transcricao.sh` em seguida, contando os passos no mesmo fluxo do QR
