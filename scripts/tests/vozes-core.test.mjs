@@ -10,7 +10,7 @@ test("vozes: catálogo do main, cópia do renderer e install-voz.sh conhecem os 
   assert.deepEqual(VOZES.map((v) => v.id), ["faber", "dora", "alex"]);
   assert.equal(VOZES.filter((v) => v.padrao).map((v) => v.id).join(), "faber");
   assert.ok(isVozId("dora") && !isVozId("francisca") && !isVozId(undefined));
-  const ui = readFileSync(join(root, "src/renderer/renderer.ts"), "utf8");
+  const ui = readFileSync(join(root, "src/renderer/whatsapp/agente-whatsapp.ts"), "utf8");
   const bloco = /const VOZES_UI[\s\S]*?\];/.exec(ui)[0];
   assert.deepEqual([...bloco.matchAll(/id: "(\w+)", rotulo: "([^"]+)"/g)].map((m) => [m[1], m[2]]), VOZES.map((v) => [v.id, v.rotulo]));
   const sh = readFileSync(join(root, "backend-colima/install-voz.sh"), "utf8");

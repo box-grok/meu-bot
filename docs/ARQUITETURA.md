@@ -34,15 +34,36 @@ Regras:
 
 ## Outras partes
 - `src/preload/` — pontes de IPC por janela. `src/shared/ipc.ts` — contrato entre main e telas.
-- `src/renderer/` — telas. Páginas já separadas: `finance/`, `conta-google/`, `admin/`, `lib/`. O `renderer.ts` ainda
-  concentra o resto (próxima fase).
+- `src/renderer/` — telas (ES modules sem bundler). `renderer.ts` é a raiz de composição: elementos e estado da
+  janela (abas de conversa, lateral, paleta, modo, zoom) e a ligação das páginas. Cada assunto tem sua pasta:
+
+| Pasta | Do que é dona |
+|---|---|
+| `app/` | `ctx.ts` (ponte para o renderer), `paginas.ts` (páginas em aba própria e modo dividido), `rede.ts` (barra offline) |
+| `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok), oferta de skill depois de navegar |
+| `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts`, `chat.ts` |
+| `tutoriais/` | `tutoriais.ts` (página e guia ao vivo), `guia-secoes.ts` (passos: suporte, status line, contas, Navegador…) |
+| `crm/` | Passo do CRM no guia (instalação, chave, pipeline, teste) |
+| `finance/`, `conta-google/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, páginas do meu-bot-admin |
+| `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom) e abas de terminal |
+| `conversa/` | Envio e streaming (`envio.ts`), voltar ao chat (`ponte-chat.ts`), ferramentas em uso (`atividade.ts`) |
+| `inicio/`, `acervo/`, `licenca/` | Abertura/onboarding/tour, Acervo de skills e objetivo, plano e licença |
+| `configuracoes/`, `atualizacao/` | Diálogo de configurações, alertas e fallback; atualização do app |
+| `lib/` | Regras puras com teste (`scripts/tests/`) |
+
+Regras do renderer:
+- **Página não importa `renderer.ts` em tempo de execução.** O que ela usa da raiz vem por `ctx.<nome>` (`app/ctx.ts`):
+  o `renderer.ts` registra getters no bloco `ctx:inicio…ctx:fim`. Tipos podem vir por `import type`.
+- **Nada de `ctx` no carregamento do módulo**: o `ctx` só vale depois que o `renderer.ts` começa a rodar. Eventos e
+  estado inicial de cada página ficam numa função `ligar…()` que o `renderer.ts` chama.
+- Uma variável que outro arquivo grava fica com quem grava (ou ganha uma função para mudar); import não se grava.
 - `backend-colima/` — o backend que roda em cada máquina (Node puro): `server.js` (rotas), `crm-*` e `finance-*`
   (modelo puro + API), pontes `finance-crm-sync.js` e `crm-finance-vendas.js`, plugins `crm/` e `finance/`.
 - `scripts/tests/` — um teste por módulo puro, importando de `dist/`.
 
 ## Próximas fases da organização
 1. ~~Processo principal por domínio~~ (26/10).
-2. `src/renderer/renderer.ts` (7,5 mil linhas) em páginas por domínio no molde de `finance/finance-page.ts`
-   (fábrica com dependências explícitas): whatsapp, grupos, tutoriais/guia, configurações, navegador, contas do agente.
+2. ~~Telas por domínio~~ (26/10): `renderer.ts` de 7,5 mil para 2 mil linhas. Falta: o núcleo da janela que ficou
+   nele (abas de conversa, lateral, paleta) e trazer para as páginas o estado que ainda mora no renderer (`ctx` com setter).
 3. `src/shared/ipc.ts` (1,5 mil linhas) em contratos por domínio, reexportados pelo `ipc.ts`.
 4. `docs/GUIA.md` (3 mil linhas) em um guia por domínio, com este arquivo como índice.
