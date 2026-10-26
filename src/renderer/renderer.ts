@@ -71,6 +71,8 @@ let windowPersonName: string | null = null;
 let adminBotMirror: BotMirror | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
+/** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
+let appBuild = "";
 const sessionOpenedAt = new Date().toISOString();
 let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free" };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
@@ -3138,8 +3140,8 @@ const isWaDeleted = (c: WhatsappChat): boolean => c.deleted;
  * real troca por baixo. Chave por máquina; sem localStorage, segue sem cache.
  */
 const cacheStore = (): CacheStore | null => { try { return window.localStorage; } catch { return null; } };
-function cacheRead<T>(name: string): Cached<T> | null { const st = cacheStore(); return st === null ? null : readCache<T>(st, windowHost, name); }
-function cacheWrite(name: string, value: unknown): void { const st = cacheStore(); if (st !== null) writeCache(st, windowHost, name, value); }
+function cacheRead<T>(name: string): Cached<T> | null { const st = cacheStore(); return st === null ? null : readCache<T>(st, windowHost, name, appBuild); }
+function cacheWrite(name: string, value: unknown): void { const st = cacheStore(); if (st !== null) writeCache(st, windowHost, name, appBuild, value); }
 function cacheDrop(name: string): void { const st = cacheStore(); if (st !== null) dropCache(st, windowHost, name); }
 /** Marca na máquina e aplica na lista local na hora (otimista); em erro, relê a lista e avisa. */
 async function markWa(patch: WaMarkPatch, what: string): Promise<boolean> {
@@ -7415,6 +7417,7 @@ void (async () => {
   caps = info.caps;
   if (caps.supportAdmin) sidebarArchived.parentElement?.setAttribute("title", "Mostrar também as conversas arquivadas e, no WhatsApp, as que a pessoa excluiu (nada foi apagado)");
   appVersion = info.version;
+  appBuild = info.build;
   // Estado da atualização só agora, com caps e versão em mãos (um estado que chegou antes ficou guardado em lastUpdate).
   void window.meuBot.updateState().then(paintUpdateState).catch(() => { if (lastUpdate !== null) paintUpdateState(lastUpdate); });
   // Faixa OFFLINE nos dois apps: estado atual da internet e se a máquina desta janela é este próprio Mac.

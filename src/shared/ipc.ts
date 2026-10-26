@@ -368,6 +368,8 @@ export interface WindowInfo {
   machine: string | null;
   /** Versão deste app (package.json). */
   version: string;
+  /** Identidade do build (versão + quando o renderer foi gerado): muda a cada rebuild; o cache do renderer é por build. */
+  build: string;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
   models: string[];
 }

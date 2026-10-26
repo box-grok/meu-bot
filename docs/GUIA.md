@@ -1330,7 +1330,9 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   leitura real), estado do WhatsApp (`waStatus`: o modo WhatsApp aparece antes do SSH responder), e no admin a lista
   e as conversas dela com o meu-bot (`botChats`, `botThread:<sessão>`) e a saúde (`health`, rótulo "como estava há X
   min" quando passou de 90 s ou está consultando). Limpar/excluir/apagar conversa tira o cache dela. Nada que dispara
-  ação é cacheado.
+  ação é cacheado. Desde 26 out o envelope é `{at, b, v}`: `b` é o `WindowInfo.build` (versão + data do renderer.js)
+  e só o mesmo build lê; o valor sai sem validação como o tipo do build que gravou, e a saúde gravada antes de
+  `capacidades` derrubava a janela do admin antes de abrir a aba Suporte (e deixava o botão Suporte sem ação).
 - Arquivado/excluído do WhatsApp sincronizados pela máquina (17 out): as marcações moram em
   `~/.local/share/meu-bot/whatsapp-lista.json` na VM (`{archived: {número: ISO}, deleted: {número: ISO da
   exclusão}}`), então o meu-bot da pessoa e o meu-bot-admin veem a mesma lista, como já acontece com a pausa (que

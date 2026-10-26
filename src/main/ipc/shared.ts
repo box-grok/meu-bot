@@ -55,13 +55,24 @@ export interface SharedIpcDeps {
   person: (host: string) => { name: string; machine: string | null } | null;
 }
 
+/** Versão + data do renderer.js empacotado: dois builds da mesma versão (dist local) não se confundem. */
+let buildId: string | null = null;
+function appBuildId(): string {
+  if (buildId === null) {
+    let stamp = "?";
+    try { stamp = String(Math.trunc(fs.statSync(path.join(__dirname, "..", "..", "renderer", "renderer.js")).mtimeMs)); } catch { /* sem stamp: vale a versão */ }
+    buildId = `${app.getVersion()}+${stamp}`;
+  }
+  return buildId;
+}
+
 export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("window:info", (event) => {
     const ctx = hostFromEvent(event);
     if (ctx === null) return null;
     const c = caps();
     const p = c.supportAdmin ? deps.person(ctx.host) : null;
-    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion() };
+    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion(), build: appBuildId() };
   });
   // Zoom da janela (interface inteira): só de uma janela de máquina; payload fora do contrato é ignorado.
   handleShared("window:zoom", (event, action: unknown) => {

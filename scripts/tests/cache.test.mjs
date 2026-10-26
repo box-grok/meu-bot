@@ -10,19 +10,19 @@ function fakeStore() {
 
 test("grava e lê com a hora; chave por máquina", () => {
   const s = fakeStore();
-  writeCache(s, "colima", "waChats", [{ number: "1" }], 1000);
+  writeCache(s, "colima", "waChats", "B1", [{ number: "1" }], 1000);
   assert.equal(cacheKey("colima", "waChats"), "cache:colima:waChats");
-  assert.deepEqual(readCache(s, "colima", "waChats"), { value: [{ number: "1" }], at: 1000 });
-  assert.equal(readCache(s, "outra", "waChats"), null);
-  assert.equal(readCache(s, "colima", "outro"), null);
+  assert.deepEqual(readCache(s, "colima", "waChats", "B1"), { value: [{ number: "1" }], at: 1000 });
+  assert.equal(readCache(s, "outra", "waChats", "B1"), null);
+  assert.equal(readCache(s, "colima", "outro", "B1"), null);
 });
 
 test("validade: passou de maxAgeMs vira null; sem limite sempre volta", () => {
   const s = fakeStore();
-  writeCache(s, "h", "x", 1, 1000);
-  assert.equal(readCache(s, "h", "x", 500, 2000), null);
-  assert.deepEqual(readCache(s, "h", "x", 5000, 2000), { value: 1, at: 1000 });
-  assert.deepEqual(readCache(s, "h", "x", undefined, 99_999_999), { value: 1, at: 1000 });
+  writeCache(s, "h", "x", "B1", 1, 1000);
+  assert.equal(readCache(s, "h", "x", "B1", 500, 2000), null);
+  assert.deepEqual(readCache(s, "h", "x", "B1", 5000, 2000), { value: 1, at: 1000 });
+  assert.deepEqual(readCache(s, "h", "x", "B1", undefined, 99_999_999), { value: 1, at: 1000 });
 });
 
 test("lixo no armazenamento e envelope errado viram 'sem cache'; host vazio nunca grava nem lê", () => {
@@ -30,29 +30,41 @@ test("lixo no armazenamento e envelope errado viram 'sem cache'; host vazio nunc
   s.setItem(cacheKey("h", "a"), "{nao é json");
   s.setItem(cacheKey("h", "b"), JSON.stringify({ v: 1 }));
   s.setItem(cacheKey("h", "c"), JSON.stringify({ at: "ontem", v: 1 }));
-  assert.equal(readCache(s, "h", "a"), null);
-  assert.equal(readCache(s, "h", "b"), null);
-  assert.equal(readCache(s, "h", "c"), null);
-  writeCache(s, "", "a", 1);
+  assert.equal(readCache(s, "h", "a", "B1"), null);
+  assert.equal(readCache(s, "h", "b", "B1"), null);
+  assert.equal(readCache(s, "h", "c", "B1"), null);
+  writeCache(s, "", "a", "B1", 1);
   assert.equal(s._m.has("cache::a"), false);
-  assert.equal(readCache(s, "", "a"), null);
+  assert.equal(readCache(s, "", "a", "B1"), null);
+  writeCache(s, "h", "d", "", 1);
+  assert.equal(s._m.has("cache:h:d"), false);
 });
 
 test("armazenamento que estoura não derruba", () => {
   const s = { getItem: () => { throw new Error("x"); }, setItem: () => { throw new Error("cota"); }, removeItem: () => { throw new Error("x"); }, key: () => { throw new Error("x"); }, length: 1 };
-  assert.doesNotThrow(() => writeCache(s, "h", "a", 1));
-  assert.equal(readCache(s, "h", "a"), null);
+  assert.doesNotThrow(() => writeCache(s, "h", "a", "B1", 1));
+  assert.equal(readCache(s, "h", "a", "B1"), null);
   assert.doesNotThrow(() => dropCache(s, "h", "a"));
   assert.equal(clearCache(s, "h"), 0);
 });
 
 test("dropCache tira um; clearCache tira só os da máquina", () => {
   const s = fakeStore();
-  writeCache(s, "h", "a", 1); writeCache(s, "h", "b", 2); writeCache(s, "h2", "a", 3); s.setItem("sidebarShown", "1");
+  writeCache(s, "h", "a", "B1", 1); writeCache(s, "h", "b", "B1", 2); writeCache(s, "h2", "a", "B1", 3); s.setItem("sidebarShown", "1");
   dropCache(s, "h", "a");
-  assert.equal(readCache(s, "h", "a"), null);
+  assert.equal(readCache(s, "h", "a", "B1"), null);
   assert.equal(clearCache(s, "h"), 1);
   assert.deepEqual([...s._m.keys()].sort(), ["cache:h2:a", "sidebarShown"]);
+});
+
+test("só o build que gravou lê: outro build e o envelope antigo (sem build) viram 'sem cache'", () => {
+  const s = fakeStore();
+  writeCache(s, "h", "health", "0.3.0+1", { whatsapp: { capacidades: { listarConversas: true } } }, 1000);
+  assert.deepEqual(readCache(s, "h", "health", "0.3.0+1"), { value: { whatsapp: { capacidades: { listarConversas: true } } }, at: 1000 });
+  assert.equal(readCache(s, "h", "health", "0.3.0+2"), null);
+  assert.equal(readCache(s, "h", "health", ""), null);
+  s.setItem(cacheKey("h", "velho"), JSON.stringify({ at: 1000, v: { whatsapp: { gateway: "openclaw" } } }));
+  assert.equal(readCache(s, "h", "velho", "0.3.0+1"), null);
 });
 
 test("cacheAgeText", () => {
