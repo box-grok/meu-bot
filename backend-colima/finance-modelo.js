@@ -14,7 +14,7 @@ const KEY_RE = /^[A-Za-z0-9_-]{2,80}$/;
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MES_RE = /^\d{4}-\d{2}$/;
 const TIPOS_CONTA = ['corrente', 'poupanca', 'cartao', 'dinheiro', 'outra'];
-const ORIGENS = ['whatsapp', 'foto', 'chat', 'app', 'agente'];
+const ORIGENS = ['whatsapp', 'foto', 'chat', 'app', 'agente', 'planilha'];
 const STATUS = ['pendente', 'confirmado'];
 const LIMITES = { nome: 80, notas: 500, valorMaxCent: 100_000_000_00 };
 /** Até quantos dias de diferença dois lançamentos iguais contam como possível duplicado. */
@@ -357,7 +357,7 @@ function novoLancamento(input, ctx) {
   const midia = input?.midia && typeof input.midia === 'object' && /^[0-9a-f]{64}$/.test(String(input.midia.sha256 ?? '')) ? { sha256: input.midia.sha256, nome: str(input.midia.nome, 120) || 'comprovante' } : undefined;
   return {
     id: novaChave('l', rnd), data, valorCent: cent, moeda, ...(original ?? {}), favorecido, categoria, conta: conta?.key ?? null, notas: str(input?.notas, LIMITES.notas),
-    ...(linha ? { linha } : {}), origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
+    ...(linha ? { linha } : {}), ...(typeof input?.ref === 'string' && input.ref.trim() !== '' ? { ref: str(input.ref, 300) } : {}), origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
     criadoEm: now, atualizadoEm: now,
   };
 }
@@ -410,6 +410,47 @@ function resumoMes(lancamentos, categorias, ym, conv = null) {
   const porCategoria = [...porCat.entries()].map(([key, cent]) => ({ key, nome: nomeCat(key), cent })).sort((a, b) => a.cent - b.cent);
   return { mes: ym, gastosCent: gastos, rendaCent: renda, saldoCent: renda - gastos, porCategoria, total: doMes.length, pendencias: doMes.filter((l) => l.status === 'pendente').length, ...retornoResumo(gastos, direto, indireto) };
 }
+// ---- importação de planilha (Google Sheets) -------------------------------------------------------------------------
+/**
+ * Linhas de uma planilha → entradas de lançamento. `valores` = matriz de células (a 1ª linha com "data", "valor" e um
+ * nome — fornecedor/favorecido/cliente/nome/descrição — é o cabeçalho; linhas acima dele são ignoradas). Colunas
+ * opcionais: categoria, tipo (compra/gasto/saída ou venda/renda/entrada), notas. Linha vazia é pulada; linha sem data,
+ * nome ou valor vira erro com o número da linha (1 = primeira linha da planilha). `ref` identifica a linha para não
+ * importar duas vezes: fonte + data + favorecido + valor + ocorrência (duas linhas idênticas são duas compras).
+ */
+const COLS_PLANILHA = {
+  data: ['data', 'dia', 'date', 'fecha'],
+  favorecido: ['fornecedor', 'favorecido', 'cliente', 'nome', 'descricao', 'descrição', 'proveedor', 'loja', 'empresa'],
+  valor: ['valor', 'total', 'preco', 'preço', 'valor total', 'monto', 'importe'],
+  categoria: ['categoria', 'category', 'grupo'],
+  tipo: ['tipo', 'operacao', 'operação', 'movimento'],
+  notas: ['notas', 'obs', 'observacao', 'observação', 'observacoes', 'observações', 'produto', 'produtos', 'descricao do item'],
+};
+function linhasDePlanilha(valores, { fonte = 'planilha', tipoPadrao = 'gasto' } = {}) {
+  const rows = Array.isArray(valores) ? valores.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '').trim()) : [])) : [];
+  const achar = (cab, nomes) => cab.findIndex((c) => nomes.includes(norm(c)));
+  let h = -1; let col = null;
+  for (let i = 0; i < Math.min(rows.length, 20) && h < 0; i++) {
+    const cab = rows[i]; const c = Object.fromEntries(Object.entries(COLS_PLANILHA).map(([k, ns]) => [k, achar(cab, ns.map(norm))]));
+    if (c.data >= 0 && c.valor >= 0 && c.favorecido >= 0) { h = i; col = c; }
+  }
+  if (h < 0) throw invalido('não achei o cabeçalho: a planilha precisa das colunas "data", "fornecedor" (ou "cliente"/"nome") e "valor"');
+  const linhas = []; const erros = []; const vistos = new Map();
+  for (let i = h + 1; i < rows.length; i++) {
+    const r = rows[i]; const cel = (k) => (col[k] >= 0 ? (r[col[k]] ?? '') : '');
+    if (r.every((c) => c === '')) continue;
+    const data = cel('data'); const favorecido = cel('favorecido'); const valor = cel('valor');
+    const falta = [!data && 'data', !favorecido && 'fornecedor', !valor && 'valor'].filter(Boolean);
+    if (falta.length > 0) { erros.push({ linha: i + 1, motivo: `falta ${falta.join(', ')}` }); continue; }
+    const t = norm(cel('tipo'));
+    const tipo = /^(venda|renda|entrada|receita|credito|crédito)/.test(t) ? 'renda' : /^(compra|gasto|saida|saída|despesa|debito|débito)/.test(t) ? 'gasto' : tipoPadrao;
+    const base = `${fonte}|${data}|${favorecidoKey(favorecido)}|${valor.replace(/\s/g, '')}|${tipo}`;
+    const n = (vistos.get(base) ?? 0) + 1; vistos.set(base, n);
+    linhas.push({ linha: i + 1, data, favorecido, valor, tipo, ...(cel('categoria') ? { categoria: cel('categoria') } : {}), ...(cel('notas') ? { notas: cel('notas') } : {}), ref: `${base}|${n}` });
+  }
+  return { cabecalho: h + 1, colunas: Object.fromEntries(Object.entries(col).filter(([, v]) => v >= 0).map(([k, v]) => [k, rows[h][v]])), linhas, erros };
+}
+
 // ---- curva ABC (submódulo de Finanças) ---------------------------------------------------------------------------
 /**
  * Curva ABC de compras ou vendas. `lado`: 'compra' = lançamentos de saída (valor < 0), 'venda' = entradas (valor > 0).
@@ -475,6 +516,6 @@ module.exports = {
   nomeFavorecido, favorecidoKey, categoriaAprendida, aprender, categoriaSemente,
   novoLancamento, patchLancamento, duplicadoDe,
   saldoConta, resumoMes, retornoResumo, linhaLancamento,
-  LADOS_ABC, AGRUPAR_ABC, curvaABC,
+  LADOS_ABC, AGRUPAR_ABC, curvaABC, linhasDePlanilha,
   TIPOS_LINHA, LINHAS_PADRAO, novaLinha, patchLinha, findLinha, valorLinha,
 };

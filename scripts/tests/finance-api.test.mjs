@@ -192,3 +192,19 @@ test("curva ABC: GET /abc por compra e venda, período em meses, classes e valor
   assert.equal(v.status, 200); assert.equal(v.j.meses, 3); assert.notEqual(v.j.de, v.j.ate); assert.ok(v.j.itens.length >= 1); assert.ok(v.j.itens.every((i) => i.cent > 0));
   assert.equal((await call("GET", "/abc?lado=troca")).status, 400);
 });
+
+test("importar planilha: prévia não grava, importa com categoria Fornecedores criada, reimportar não duplica", async () => {
+  const valores = [["Data", "Fornecedor", "Valor", "Obs"], ["05/10/2026", "Bella Lingerie", "1.200,00", "sutiãs"], ["06/10/2026", "Renda Fina", "300", ""], ["07/10/2026", "", "10", ""]];
+  const pre = await call("POST", "/importar", { valores, fonte: "sheet-junior", simular: true });
+  assert.equal(pre.status, 200); assert.equal(pre.j.simulado, true); assert.equal(pre.j.aImportar, 2); assert.equal(pre.j.importadas, 0); assert.equal(pre.j.totalErros, 1);
+  assert.equal(pre.j.amostra[0].categoriaNome, "Fornecedores");
+  assert.equal((await call("GET", "/lancamentos?busca=bella")).j.total, 0, "prévia não grava");
+  const imp = await call("POST", "/importar", { valores, fonte: "sheet-junior" });
+  assert.equal(imp.j.importadas, 2); assert.equal(imp.j.jaImportadas, 0);
+  const ls = (await call("GET", "/lancamentos?busca=bella")).j.lancamentos;
+  assert.equal(ls.length, 1); assert.equal(ls[0].status, "confirmado"); assert.equal(ls[0].origem, "planilha");
+  const de_novo = await call("POST", "/importar", { valores, fonte: "sheet-junior" });
+  assert.equal(de_novo.j.importadas, 0); assert.equal(de_novo.j.jaImportadas, 2);
+  const abc = await call("GET", "/abc?lado=compra&meses=3");
+  assert.ok(abc.j.itens.some((i) => i.nome === "Bella Lingerie"));
+});

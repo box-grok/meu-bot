@@ -615,6 +615,8 @@ export type FinanceAbcLado = "compra" | "venda";
 export type FinanceAbcPor = "favorecido" | "categoria";
 export interface FinanceAbcItem { pos: number; key: string; nome: string; cent: number; valor: string; qtd: number; ultima: string; pct: number; acumPct: number; classe: "A" | "B" | "C" }
 export interface FinanceAbc { lado: FinanceAbcLado; por: FinanceAbcPor; de: string; ate: string; meses: number; moeda: FinanceMoeda; lancamentos: number; totalCent: number; total: string; classes: Record<"A" | "B" | "C", { itens: number; cent: number; valor: string; pct: number }>; itens: FinanceAbcItem[] }
+/** Importação de planilha do Google Sheets para o financeiro (prévia com `simular`). */
+export interface FinanceImportacao { simulado: boolean; fonte: string; planilha: string; cabecalho: number; colunas: Record<string, string>; lidas: number; jaImportadas: number; importadas: number; aImportar: number; erros: { linha: number; motivo: string }[]; totalErros: number; amostra: FinanceLancamento[] }
 export interface FinanceEstado { instalado: boolean; hoje: string; mes: string; /** Desde o início: investido, ganhos e ROI (o retorno costuma vir depois do gasto). */ acumulado: { gastosCent: number; gastos: string; ganhosCent: number; ganhos: string; ganhoDiretoCent: number; ganhoIndiretoCent: number; roiDireto: number | null; roiTotal: number | null }; mesAnterior: string; contas: FinanceConta[]; resumo: FinanceResumo; pendencias: number; totalLancamentos: number; porOrigem: Record<string, number>; rendaInformada: boolean; orcamentoDefinido: boolean; dinheiroInformado: boolean; anteriorFechado: boolean; checklist: { id: string; titulo: string; feito: boolean }[]; seq: number }
 export type FinanceTipoLinha = "custo" | "ganho-direto" | "ganho-indireto";
 export interface FinanceLinhaDre { key: string; nome: string; tipo: FinanceTipoLinha; previstoCent: number | null; previsto: string; realizadoCent: number; realizado: string; notas: string | null }
@@ -1336,6 +1338,8 @@ export interface MeuBotClientApi {
   financeFecharMes(mes: string): Promise<void>;
   /** Curva ABC: últimos `meses` (1–24) até `ate` (AAAA-MM, padrão o mês atual). */
   financeAbc(filtro: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }): Promise<FinanceAbc>;
+  /** Lê uma planilha do Google Sheets (link) com a Conta Google do app e importa as linhas no financeiro da máquina. */
+  financeImportarPlanilha(p: { link: string; aba?: string; tipo: FinanceAbcLado; simular: boolean }): Promise<FinanceImportacao>;
   installFinance(): Promise<InstallBackendResult>;
   /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */
   financePedir(): Promise<void>;

@@ -3,10 +3,12 @@
  * A página Finanças e o tutorial 14 leem e mexem por aqui; a validação final é da máquina (finance-modelo.js), e a
  * licença é conferida nas três camadas (renderer, acesso.ts › assertFinance, backend › financeOk).
  */
-import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
+import type { FinanceImportacao, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
 import { ensureTunnel } from "./tunnel";
 import { getBackendPort } from "./settings";
 import { runSsh } from "./whatsapp";
+import { planilhaLer } from "./google/apis";
+import { contaStatus } from "./google/conta-google";
 
 type Metodo = "GET" | "POST" | "PUT";
 async function api<T>(host: string, method: Metodo, rota: string, body?: unknown): Promise<T> {
@@ -71,6 +73,35 @@ export const financeConfigLer = async (host: string): Promise<FinanceConfig> => 
 export const financeConfig = async (host: string, patch: { taxas?: Record<string, number>; moedaExibicao?: string }): Promise<FinanceConfig> => (await api<{ config: FinanceConfig }>(host, "PUT", "/config", patch)).config;
 export const financeMes = async (host: string, mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };
 export const financeFecharMes = async (host: string, mes: string): Promise<void> => { await api(host, "POST", "/fechamento", { mes }); };
+/** Id da planilha a partir do link do Google Sheets (ou o próprio id colado). null = não parece uma planilha. */
+export function idDaPlanilha(link: string): string | null {
+  const s = link.trim();
+  const m = /\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/.exec(s);
+  if (m !== null) return m[1]!;
+  return /^[A-Za-z0-9_-]{25,}$/.test(s) ? s : null;
+}
+/**
+ * Importa uma planilha do Google Sheets no financeiro da máquina: o Mac lê as células com a Conta Google do app
+ * (escopo de planilhas; a planilha precisa estar compartilhada com essa conta) e a máquina interpreta e grava
+ * (finance-modelo.js › linhasDePlanilha, rota /importar). Sem aba, lê a primeira.
+ */
+export async function financeImportarPlanilha(host: string, p: { link: string; aba?: string; tipo: FinanceAbcLado; simular: boolean }): Promise<FinanceImportacao> {
+  const id = idDaPlanilha(p.link);
+  if (id === null) throw new Error("cole o link da planilha do Google Sheets (docs.google.com/spreadsheets/d/…)");
+  const aba = (p.aba ?? "").trim().slice(0, 100);
+  const st = contaStatus();
+  if (!st.conectado) throw new Error("conecte a Conta Google na aba Conta Google: é por ela que o app lê a planilha");
+  let valores: string[][];
+  try { valores = (await planilhaLer(id, aba ? `'${aba.replace(/'/g, "''")}'!A1:Z5000` : "A1:Z5000")).valores; }
+  catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    if (/permission|not have|403|404|not found|Requested entity/i.test(m)) throw new Error(`não consegui abrir a planilha: compartilhe-a com ${st.perfil?.email ?? "a conta Google conectada no app"} (leitura basta)${aba ? ` e confira o nome da aba "${aba}"` : ""}`);
+    throw new Error(`não consegui ler a planilha: ${m}`);
+  }
+  if (valores.length === 0) throw new Error("a planilha está vazia");
+  const r = await api<Omit<FinanceImportacao, "planilha">>(host, "POST", "/importar", { valores, fonte: `sheets:${id}${aba ? `:${aba}` : ""}`, tipo: p.tipo === "venda" ? "renda" : "gasto", simular: p.simular });
+  return { ...r, planilha: id };
+}
 /** Curva ABC da máquina (a regra é do finance-modelo.js › curvaABC). */
 export const financeAbc = (host: string, f: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }): Promise<FinanceAbc> =>
   api<FinanceAbc>(host, "GET", `/abc?${new URLSearchParams({ lado: f.lado, por: f.por, meses: String(f.meses), ...(f.ate ? { ate: f.ate } : {}) }).toString()}`);

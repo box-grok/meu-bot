@@ -63,6 +63,41 @@ function createFinanceApi(deps) {
    * Curva ABC (submódulo de Finanças): compras ou vendas dos últimos `n` meses até `ate` (inclusive), por favorecido ou
    * categoria, em moeda de exibição. A regra é do modelo (curvaABC); aqui só o período, a conversão e a formatação.
    */
+  /**
+   * Importa lançamentos de uma planilha (o app lê o Google Sheets e manda as células). `simular` = só a prévia. A regra
+   * de colunas é do modelo (linhasDePlanilha); cada linha passa pelo mesmo novoLancamento do WhatsApp, com origem
+   * "planilha", status confirmado e `ref` para que reimportar a mesma planilha pule o que já entrou. Sem categoria na
+   * linha, compra cai em `categoriaPadrao` (criada se não existe; padrão "Fornecedores") e venda em "Vendas".
+   */
+  async function importar(input, por) {
+    const fonte = typeof input.fonte === 'string' && input.fonte.trim() !== '' ? input.fonte.trim().slice(0, 120) : 'planilha';
+    const tipoPadrao = input.tipo === 'renda' || input.tipo === 'venda' ? 'renda' : 'gasto';
+    const p = modelo.linhasDePlanilha(input.valores, { fonte, tipoPadrao });
+    if (p.linhas.length > 5000) throw erro('invalido', 'planilha grande demais (máximo 5000 linhas por vez)');
+    const nomesPadrao = { gasto: (typeof input.categoriaPadrao === 'string' && input.categoriaPadrao.trim()) || 'Fornecedores', renda: 'Vendas' };
+    const jaTem = new Set(store.listLanc().map((l) => l.ref).filter(Boolean));
+    const novas = p.linhas.filter((l) => !jaTem.has(l.ref));
+    const erros = [...p.erros];
+    const resultado = await store.mutate(por, (tx) => {
+      // Categorias vistas por esta importação (as novas também na prévia, que não grava nada).
+      const cats = [...tx.list('categorias')];
+      const criar = (nome, renda) => { const ex = modelo.findCategoria(cats, nome); if (ex) return ex.key; const c = modelo.novaCategoria({ nome, renda, grupo: renda ? 'Renda' : 'Compras' }, cats); cats.push(c); if (!input.simular) tx.set('categorias', c); return c.key; };
+      const criados = [];
+      for (const ln of novas) {
+        try {
+          const categoria = criar(ln.categoria || nomesPadrao[ln.tipo], ln.tipo === 'renda');
+          const l = modelo.novoLancamento({ tipo: ln.tipo, data: ln.data, favorecido: ln.favorecido, valor: ln.valor, categoria, notas: ln.notas, origem: 'planilha', status: 'confirmado', ref: ln.ref }, ctx({ now: tx.now, rnd: tx.rnd, categorias: cats }));
+          criados.push(l);
+          if (!input.simular) { tx.setLanc(l); const f = modelo.aprender(tx.list('favorecidos'), l.favorecido, l.categoria, tx.now); if (f !== null) tx.set('favorecidos', f); reabrirSeFechado(tx, l.data); }
+        } catch (e) { erros.push({ linha: ln.linha, motivo: e instanceof Error ? e.message : String(e) }); }
+      }
+      if (!input.simular && criados.length > 0) tx.mudar('lancamento.importar', { fonte, n: criados.length });
+      return { criados, cats };
+    });
+    erros.sort((x, y) => x.linha - y.linha);
+    return { simulado: input.simular === true, fonte, cabecalho: p.cabecalho, colunas: p.colunas, lidas: p.linhas.length, jaImportadas: p.linhas.length - novas.length,
+      importadas: input.simular === true ? 0 : resultado.criados.length, aImportar: resultado.criados.length, erros: erros.slice(0, 50), totalErros: erros.length, amostra: resultado.criados.slice(0, 8).map((l) => ({ ...lancView(l), categoriaNome: resultado.cats.find((c) => c.key === l.categoria)?.nome ?? l.categoria })) };
+  }
   function abc(lado, por, n, ate) {
     const { taxas, moedaExib } = cfgMoeda();
     const toExib = (l) => modelo.paraExib(l.valorCent, l.moeda ?? modelo.MOEDA_PADRAO, taxas, moedaExib);
@@ -206,6 +241,7 @@ function createFinanceApi(deps) {
     if (a === 'estado' && m === 'GET' && !b) return estado();
     if (a === 'contexto' && m === 'GET' && !b) return { texto: contexto() };
     if (a === 'resumo' && m === 'GET' && !b) return resumo(sp.has('mes') ? mesOk(sp.get('mes')) : hoje().slice(0, 7));
+    if (a === 'importar' && m === 'POST' && !b) return importar(await body(req, 2 * 1024 * 1024), por);
     if (a === 'abc' && m === 'GET' && !b) return abc(sp.get('lado') ?? 'compra', sp.get('por') ?? 'favorecido', int(sp.get('meses'), 3, 1, 24), sp.has('ate') ? mesOk(sp.get('ate')) : hoje().slice(0, 7));
     if (a === 'mudancas' && m === 'GET' && !b) return { mudancas: store.ultimas(int(sp.get('n'), 30, 1, 200)) };
 

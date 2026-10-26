@@ -13,7 +13,7 @@ import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBack
 import { lerLicenca, lerLicencaDaMaquina } from "../licenca-maquina";
 import { assertAcesso, assertFinance } from "../acesso";
 import { esquecerPermissoes, responderPermissao } from "../nav-permissoes";
-import { financeAbc, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
+import { financeAbc, financeImportarPlanilha, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
 import { caps } from "../variant";
@@ -191,6 +191,14 @@ export function registerClientIpc(): void {
   const mesOk = (v: unknown): string => { if (typeof v !== "string" || !/^\d{4}-\d{2}$/.test(v)) throw new Error("mês inválido"); return v; };
   const idOk = (v: unknown): string => { if (typeof v !== "string" || !/^[A-Za-z0-9_-]{2,80}$/.test(v)) throw new Error("lançamento inválido"); return v; };
   handleClient("finance:info", async (event) => financeInfo(await fin(event)));
+  handleClient("finance:importar-planilha", async (event, payload: unknown) => {
+    const p = (payload ?? {}) as { link?: unknown; aba?: unknown; tipo?: unknown; simular?: unknown };
+    if (typeof p.link !== "string" || p.link.length > 500) throw new Error("link inválido");
+    const host = await fin(event);
+    const r = await financeImportarPlanilha(host, { link: p.link, ...(typeof p.aba === "string" ? { aba: p.aba } : {}), tipo: p.tipo === "venda" ? "venda" : "compra", simular: p.simular !== false });
+    if (!r.simulado && r.importadas > 0) void registrar(host, "financeiro.importar", `planilha ${r.planilha}`, `${r.importadas} lançamento(s)`);
+    return r;
+  });
   handleClient("finance:abc", async (event, payload: unknown) => {
     const p = (payload ?? {}) as { lado?: unknown; por?: unknown; meses?: unknown; ate?: unknown };
     const lado = p.lado === "venda" ? "venda" : "compra"; const por = p.por === "categoria" ? "categoria" : "favorecido";

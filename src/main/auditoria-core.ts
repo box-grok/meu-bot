@@ -21,6 +21,7 @@ export interface AuditoriaEntrada { quem: { tipo: Exclude<QuemTipo, "legado">; n
 
 /** Catálogo fechado: a ação gravada é a chave; o texto da tela sai daqui (alvo = número, caixa, device…). */
 export const ACOES = {
+  "financeiro.importar": (a: string) => `importou no financeiro a ${a}`,
   "suporte.ligar": () => "ligou o acesso do admin",
   "suporte.desligar": () => "desligou o acesso do admin",
   "suporte.desligar-pelo-admin": () => "desligou o suporte",

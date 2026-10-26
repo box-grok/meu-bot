@@ -4,7 +4,7 @@
  * mês por categoria. Os números moram na máquina (/v1/finance pelo túnel, via main › finance-local.ts); aqui só se
  * mostra e se pede. Fábrica com dependências explícitas, como admin/produtos-page.ts.
  */
-import type { BackendModel, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
+import type { BackendModel, FinanceImportacao, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -15,7 +15,7 @@ export interface FinancePageDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "financeConfigLer" | "financeConfig" | "installFinance" | "financePedir" | "financeAbc" | "on">;
+  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "financeConfigLer" | "financeConfig" | "installFinance" | "financePedir" | "financeAbc" | "financeImportarPlanilha" | "on">;
   host(): string;
   license(): LicenseView | null;
   /** A licença desta janela já foi lida (antes disso, nada de bloqueio precipitado). */
@@ -25,7 +25,7 @@ export interface FinancePageDeps {
   onInfo(info: FinanceInfo | null): void;
 }
 
-const ORIGEM: Record<string, string> = { whatsapp: "WhatsApp", foto: "foto", chat: "chat", app: "app", agente: "agente" };
+const ORIGEM: Record<string, string> = { whatsapp: "WhatsApp", foto: "foto", chat: "chat", app: "app", agente: "agente", planilha: "planilha" };
 const TIPOS: [string, string][] = [["corrente", "Conta corrente"], ["cartao", "Cartão de crédito"], ["poupanca", "Poupança"], ["dinheiro", "Dinheiro vivo"], ["outra", "Outra"]];
 const dataCurta = (d: string): string => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
 
@@ -51,6 +51,36 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
   let aba: "geral" | "abc" = "geral";
   const abcF: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number } = { lado: "compra", por: "favorecido", meses: 3 };
   let abc: FinanceAbc | null = null; let abcErro: string | null = null; let abcCarregando = false;
+  // Importação do Google Sheets (dentro da Curva ABC): prévia primeiro, depois importa.
+  const imp: { link: string; aba: string; tipo: FinanceAbcLado } = { link: "", aba: "", tipo: "compra" };
+  let impRes: FinanceImportacao | null = null; let impErro: string | null = null; let impBusy = false;
+  async function importarPlanilha(simular: boolean): Promise<void> {
+    impBusy = true; impErro = null; if (simular) impRes = null; render();
+    try { impRes = await deps.api.financeImportarPlanilha({ link: imp.link, ...(imp.aba.trim() ? { aba: imp.aba.trim() } : {}), tipo: imp.tipo, simular }); if (!simular && impRes.importadas > 0) { abc = null; void carregarAbc(); } }
+    catch (err) { impErro = ipcErrorText(err); }
+    impBusy = false; render();
+  }
+  function cardImportar(): HTMLElement {
+    const c = card("Importar do Google Sheets");
+    c.append(el("p", "hint", "Compras dos fornecedores (ou vendas) numa planilha do Google: colunas Data, Fornecedor (ou Cliente) e Valor; Categoria, Tipo e Obs são opcionais. Compartilhe a planilha com a conta Google conectada no app. Importar de novo a mesma planilha só traz as linhas novas."));
+    const link = input("link da planilha (docs.google.com/spreadsheets/d/…)", imp.link, 500); link.addEventListener("input", () => { imp.link = link.value; });
+    const aba = input("aba (vazio = a primeira)", imp.aba, 100); aba.addEventListener("input", () => { imp.aba = aba.value; });
+    const tipo = el("select"); for (const [v, r] of [["compra", "Compras (saídas)"], ["venda", "Vendas (entradas)"]] as const) { const o = el("option", "", r); o.value = v; o.selected = imp.tipo === v; tipo.append(o); }
+    tipo.disabled = impBusy; tipo.addEventListener("change", () => { imp.tipo = tipo.value as FinanceAbcLado; impRes = null; });
+    const f = el("div", "admin-actions");
+    f.append(field("Planilha", link), field("Aba", aba), field("O quê", tipo), btn(impBusy ? "Lendo…" : "Pré-visualizar", "btn-ghost", () => { if (imp.link.trim() === "") return; void importarPlanilha(true); }));
+    c.append(f);
+    if (impErro !== null) c.append(el("p", "hint bad-hint", impErro));
+    if (impRes !== null) {
+      const r = impRes;
+      const partes = [`${r.lidas} linha(s) lida(s)`, r.jaImportadas > 0 ? `${r.jaImportadas} já importada(s)` : "", r.totalErros > 0 ? `${r.totalErros} com problema` : ""].filter(Boolean).join(" · ");
+      c.append(el("p", r.simulado ? "hint" : "hint audio-ok", r.simulado ? `Prévia: ${r.aImportar} lançamento(s) a importar (${partes}). Colunas: ${Object.values(r.colunas).join(", ")}.` : `Importado: ${r.importadas} lançamento(s) (${partes}).`));
+      for (const e of r.erros.slice(0, 5)) c.append(el("p", "hint bad-hint", `linha ${e.linha}: ${e.motivo}`));
+      if (r.amostra.length > 0) { const ul = el("ul", "admin-health"); for (const l of r.amostra) ul.append(el("li", "", `${dataCurta(l.data)} · ${l.favorecido} · ${l.valorExib} · ${l.categoriaNome}`)); c.append(ul); }
+      if (r.simulado && r.aImportar > 0) c.append(btn(impBusy ? "Importando…" : `Importar ${r.aImportar} lançamento(s)`, "btn-primary", () => { void importarPlanilha(false); }));
+    }
+    return c;
+  }
   async function carregarAbc(): Promise<void> {
     abcCarregando = true; abcErro = null; render();
     try { abc = await deps.api.financeAbc({ ...abcF }); } catch (err) { abc = null; abcErro = ipcErrorText(err); }
@@ -364,6 +394,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
 
   /** Submódulo Curva ABC: filtros (compras/vendas, por quem ou por categoria, período), resumo das classes e a tabela. */
   function renderAbc(): void {
+    const impCard = cardImportar();
     const filtros = el("div", "admin-actions");
     const sel = <T extends string>(opts: [T, string][], atual: T, set: (v: T) => void): HTMLSelectElement => {
       const s = el("select"); for (const [v, r] of opts) { const o = el("option", "", r); o.value = v; o.selected = v === atual; s.append(o); }
@@ -377,11 +408,11 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     );
     const c = card("Curva ABC"); c.append(filtros);
     c.append(el("p", "hint", "Classe A: os poucos itens que somam até 80% do valor. B: até 95%. C: o resto (muitos itens, pouco valor)."));
-    if (abcErro !== null) { c.append(el("p", "hint bad-hint", abcErro)); panel.append(c); return; }
-    if (abc === null) { c.append(el("p", "hint", abcCarregando ? "Calculando…" : "Escolha os filtros.")); panel.append(c); return; }
+    if (abcErro !== null) { c.append(el("p", "hint bad-hint", abcErro)); panel.append(c, impCard); return; }
+    if (abc === null) { c.append(el("p", "hint", abcCarregando ? "Calculando…" : "Escolha os filtros.")); panel.append(c, impCard); return; }
     const quem = abc.por === "categoria" ? "categorias" : abc.lado === "venda" ? "clientes" : "fornecedores";
     const periodo = abc.de === abc.ate ? `${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}` : `${abc.de.slice(5)}/${abc.de.slice(0, 4)} a ${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}`;
-    if (abc.itens.length === 0) { c.append(el("p", "hint", `Nenhuma ${abc.lado === "venda" ? "entrada" : "saída"} lançada em ${periodo}.`)); panel.append(c); return; }
+    if (abc.itens.length === 0) { c.append(el("p", "hint", `Nenhuma ${abc.lado === "venda" ? "entrada" : "saída"} lançada em ${periodo}.`)); panel.append(c, impCard); return; }
     const A = abc.classes.A;
     c.append(el("p", "", `${abc.lado === "venda" ? "Vendas" : "Compras"} de ${periodo}: ${abc.total} em ${abc.itens.length} ${quem}. ${A.itens} ${A.itens === 1 ? "concentra" : "concentram"} ${A.pct.toLocaleString("pt-BR")}% do valor (classe A).`));
     const resumo = el("div", "fin-abc-classes");
@@ -395,7 +426,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
       tr.append(el("td", "", String(i.pos)), el("td", "", i.nome), el("td", "num", i.valor), el("td", "num", `${i.pct.toLocaleString("pt-BR")}%`), el("td", "num", `${i.acumPct.toLocaleString("pt-BR")}%`), el("td", "num", String(i.qtd)), el("td", "fin-abc-tag", i.classe));
       t.append(tr);
     }
-    wrap.append(t); c.append(wrap); panel.append(c);
+    wrap.append(t); c.append(wrap); panel.append(c, impCard);
   }
 
   const page = deps.definePage("financas", "Finanças", panel, () => { render(); void refresh(); });

@@ -2975,3 +2975,15 @@ agrupadas por favorecido (fornecedor/cliente) ou por categoria, nos últimos 1, 
 - API: `GET /v1/finance/abc?lado=compra|venda&por=favorecido|categoria&meses=1..24[&ate=AAAA-MM]` → total, classes
   (itens, valor, %) e itens (pos, nome, valor, %, acumulado, lançamentos, classe). App: `financeAbc` (IPC `finance:abc`).
 - Backend 1.1.1: as máquinas recebem a rota pela atualização automática do seletor.
+
+### Importar do Google Sheets (26 out)
+
+Na aba Curva ABC, cartão "Importar do Google Sheets": cola o link, escolhe compras ou vendas, pré-visualiza e importa.
+- O Mac lê as células com a Conta Google do app (`planilhaLer`, escopo de planilhas): a planilha precisa estar
+  compartilhada com a conta conectada na aba Conta Google daquela variante do app. Sem aba, lê a primeira (A1:Z5000).
+- A máquina interpreta e grava (`finance-modelo.js › linhasDePlanilha` + `POST /v1/finance/importar`): cabeçalho com
+  Data, Fornecedor/Cliente/Nome e Valor (achado até a linha 20; título acima é ignorado); Categoria, Tipo e Obs opcionais.
+  Cada linha passa pelo mesmo `novoLancamento`, com origem "planilha", status confirmado e `ref` (fonte + data +
+  favorecido + valor + ocorrência): reimportar a mesma planilha só traz o que é novo. Compra sem categoria cai em
+  "Fornecedores" (criada se faltar); venda em "Vendas". `simular` = prévia sem gravar. Auditoria: `financeiro.importar`.
+- Backend 1.1.2.

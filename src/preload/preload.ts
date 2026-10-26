@@ -200,6 +200,7 @@ const clientApi: MeuBotClientApi = {
   financeConfig: (patch: { taxas?: Record<string, number>; moedaExibicao?: FinanceMoeda }) => ipcRenderer.invoke("finance:config-salvar", patch),
   financeFecharMes: (mes: string) => ipcRenderer.invoke("finance:fechar-mes", { mes }),
   financeAbc: (filtro: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }) => ipcRenderer.invoke("finance:abc", filtro),
+  financeImportarPlanilha: (p: { link: string; aba?: string; tipo: FinanceAbcLado; simular: boolean }) => ipcRenderer.invoke("finance:importar-planilha", p),
   installFinance: () => ipcRenderer.invoke("finance:install", {}),
   financePedir: () => ipcRenderer.invoke("finance:pedir", {}),
   installCrm: () => ipcRenderer.invoke("crm:install", {}),

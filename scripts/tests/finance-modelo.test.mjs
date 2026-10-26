@@ -161,3 +161,16 @@ test("curvaABC: compras e vendas separadas, agrupa por favorecido (sem caixa/ace
   assert.throws(() => m.curvaABC(lanc, { lado: "outro" }), /lado inválido/);
   assert.throws(() => m.curvaABC(lanc, { por: "conta" }), /agrupamento inválido/);
 });
+
+test("linhasDePlanilha: acha o cabeçalho (com título acima), pula vazias, erra sem campo, tipo por coluna e ref estável", () => {
+  const v = [["Compras do Junior"], ["Data", "Fornecedor", "Valor", "Categoria", "Tipo"],
+    ["01/10/2026", "Bella Lingerie", "R$ 1.200,00", "", ""], ["", "", "", "", ""], ["02/10/2026", "", "300", "", ""],
+    ["03/10/2026", "Cliente Ana", "450", "", "venda"], ["01/10/2026", "Bella Lingerie", "R$ 1.200,00", "", ""]];
+  const r = m.linhasDePlanilha(v, { fonte: "sheet1" });
+  assert.equal(r.cabecalho, 2);
+  assert.deepEqual(r.linhas.map((l) => [l.linha, l.favorecido, l.tipo]), [[3, "Bella Lingerie", "gasto"], [6, "Cliente Ana", "renda"], [7, "Bella Lingerie", "gasto"]]);
+  assert.deepEqual(r.erros, [{ linha: 5, motivo: "falta fornecedor" }]);
+  assert.notEqual(r.linhas[0].ref, r.linhas[2].ref, "duas linhas iguais são duas compras");
+  assert.equal(m.linhasDePlanilha(v, { fonte: "sheet1" }).linhas[2].ref, r.linhas[2].ref, "ref estável entre leituras");
+  assert.throws(() => m.linhasDePlanilha([["a", "b"], ["1", "2"]]), /cabeçalho/);
+});
