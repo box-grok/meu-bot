@@ -433,9 +433,19 @@ export function avisarJanela<K extends "whatsapp:abrir">(host: string, canal: K,
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send(canal, msg); if (win.isMinimized()) win.restore(); win.focus(); return true; }
   return false;
 }
+/**
+ * Janela que deve receber um pedido para o Navegador desta máquina: a que está em foco, senão a visível mais recente,
+ * senão a mais recente. Mandar para a primeira registrada abria a aba numa janela antiga e escondida (login do Google
+ * na agente-box-lv "não acontecia nada", 26/10).
+ */
+function janelaDoHost(host: string): BrowserWindow | null {
+  const ws = BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed() && windowHosts.get(w.id) === host).sort((a, b) => b.id - a.id);
+  return ws.find((w) => w.isFocused()) ?? ws.find((w) => w.isVisible()) ?? ws[0] ?? null;
+}
 export function browserAsk(host: string, msg: { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number }): boolean {
-  for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) { win.webContents.send("browser:ask", msg); return true; }
-  return false;
+  const win = janelaDoHost(host); if (win === null) return false;
+  if (msg.kind === "new-tab" && msg.fundo !== true) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
+  win.webContents.send("browser:ask", msg); return true;
 }
 /** Quem está usando cada aba (wcId → conversa), para o selo e o ID na faixa de abas da janela desta máquina. */
 export function browserDonos(host: string, donos: Record<number, DonoInfo>): void {
