@@ -34,6 +34,7 @@ const licenca = require('./licenca');
 const { createCrmApi } = require('./crm-api');
 const { createFinanceApi } = require('./finance-api');
 const { sincronizarInvestimentos } = require('./finance-crm-sync');
+const { sincronizarVendas } = require('./crm-finance-vendas');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -181,7 +182,10 @@ function iaTexto(prompt, convId) {
   });
 }
 function crmApi() {
-  if (crmApiInst === null) crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto, semearIndicacao: true });
+  if (crmApiInst === null) {
+    crmApiInst = createCrmApi({ dir: CRM_DB, configFile: CRM_CONFIG, licenseOk: () => licenca.crmOk(ensureLicense()), readJson, writeJson, json, readBody, log, iaTexto, semearIndicacao: true });
+    crmApiInst.store.onChange(() => agendarSyncVendas());
+  }
   return crmApiInst;
 }
 let financeApiInst = null;
@@ -192,6 +196,21 @@ function financeApi() {
 }
 // Sincronização financeiro → CRM, com debounce: depois de uma rajada de escritas do financeiro, um upsert no pipeline
 // "Investimentos & ROI". Só quando o financeiro e o CRM estão liberados. Falha de sync nunca atrapalha o financeiro.
+// Sincronização CRM → financeiro (vendas): box que chega a "Vendido" num pipeline de vendas vira entrada com produto e
+// peças (crm-finance-vendas.js). Disparada por qualquer mudança do CRM, com debounce; sem diferença, não grava nada.
+let syncVendasTimer = null;
+function agendarSyncVendas(espera = 2000) {
+  if (syncVendasTimer !== null) return;
+  syncVendasTimer = setTimeout(() => {
+    syncVendasTimer = null;
+    let lic; try { lic = ensureLicense(); } catch { return; }
+    if (!licenca.financeOk(lic) || !licenca.crmOk(lic)) return;
+    Promise.resolve().then(() => sincronizarVendas(crmApi(), financeApi())).then((r) => {
+      if (r.criados || r.atualizados || r.removidos || r.pipelineCriado || r.erros.length) log(`sync crm→financeiro (vendas): ${r.criados} novas, ${r.atualizados} atualizadas, ${r.removidos} removidas${r.pipelineCriado ? `; pipeline ${r.pipelineCriado} criado` : ''}${r.erros.length ? `; erros: ${r.erros.slice(0, 3).map((e) => `${e.ref} ${e.motivo}`).join('; ')}` : ''}`);
+    }).catch((e) => log(`sync crm→financeiro (vendas) falhou: ${e.message}`));
+  }, espera);
+  if (typeof syncVendasTimer.unref === 'function') syncVendasTimer.unref();
+}
 let syncCrmTimer = null;
 function agendarSyncInvestimentos() {
   if (syncCrmTimer !== null) return;
@@ -868,5 +887,7 @@ server.requestTimeout = 0;
 // Na subida: migra a licença de antes de 22 out (personalizado/meu-bot-crm) antes que o job do CRM a leia crua.
 try { ensureLicense(); } catch (e) { log(`licença: ${e.message}`); }
 server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=${listedModels().map((m) => m.id).join(',')} fallback=${PROVIDERS.map((p) => `${p.name}${p.available ? '' : '(indisponível)'}`).join('→')} claude=${CLAUDE_BIN} workspace=${WORKSPACE} auth=${KEY ? 'bearer' : 'DESLIGADA'}`));
+// Primeira rodada CRM → financeiro depois de subir: cria o pipeline Vendas onde falta e espelha o que já está vendido.
+agendarSyncVendas(15000);
 
 process.on('SIGTERM', () => { log('SIGTERM; encerrando'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); });

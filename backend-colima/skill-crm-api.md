@@ -77,3 +77,10 @@ Virou cliente › Não seguiu. Quando o dono indicar alguém ("indico a Maria, 1
 telefone, `Indicado por` = o dono e `Indicação nº` = a próxima livre (1 a 3; se já houver 3, avise que o limite foi
 atingido). Ao ativar o chip, preencha `Início do mês grátis` e `Fim do mês grátis` (30 dias depois).
 
+
+## Vendas (alimentam o financeiro)
+O pipeline **Vendas** tem os campos Cliente, Produto, Quantidade, Valor e Data da venda, e as etapas Negociando,
+Vendido e Perdido. Ao registrar uma venda, crie um box por produto vendido com esses campos preenchidos (Valor com o
+símbolo da moeda: "US$ 40", "₲ 300.000", "R$ 180,00"; Produto sempre com o mesmo nome) e mova para **Vendido** quando o
+pagamento estiver certo. O box em Vendido vira sozinho uma entrada no financeiro (categoria Vendas) e entra na Curva ABC
+por produto; se sair de Vendido, a entrada sai. Não lance a mesma venda também no financeiro: ela duplicaria.

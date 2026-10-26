@@ -98,6 +98,45 @@ function createFinanceApi(deps) {
     return { simulado: input.simular === true, fonte, cabecalho: p.cabecalho, colunas: p.colunas, lidas: p.linhas.length, jaImportadas: p.linhas.length - novas.length,
       importadas: input.simular === true ? 0 : resultado.criados.length, aImportar: resultado.criados.length, erros: erros.slice(0, 50), totalErros: erros.length, amostra: resultado.criados.slice(0, 8).map((l) => ({ ...lancView(l), categoriaNome: resultado.cats.find((c) => c.key === l.categoria)?.nome ?? l.categoria })) };
   }
+  /**
+   * Espelha no financeiro uma lista de lançamentos que nasce fora dele (hoje: vendas do CRM). Cada item tem `ref`
+   * começando por `prefixo`; o que é novo entra, o que mudou é regravado no mesmo id, e o que tinha o prefixo e não
+   * veio mais sai (o box saiu de "Vendido"). Idempotente: sem diferença, não grava nada (e não dispara outra rodada).
+   * Categoria do item inexistente é criada. Erro de um item não para os outros.
+   */
+  async function sincronizarExternos(prefixo, itens, por) {
+    const atuais = new Map(store.listLanc().filter((l) => typeof l.ref === 'string' && l.ref.startsWith(prefixo)).map((l) => [l.ref, l]));
+    const rel = { criados: 0, atualizados: 0, removidos: 0, iguais: 0, erros: [] };
+    const igual = (a, b) => ['data', 'valorCent', 'moeda', 'favorecido', 'produto', 'qtd', 'categoria', 'notas'].every((k) => (a[k] ?? null) === (b[k] ?? null));
+    const vistos = new Set();
+    const plano = [];
+    const cats = [...store.list('categorias')]; const novasCats = [];
+    for (const it of itens) {
+      if (typeof it?.ref !== 'string' || !it.ref.startsWith(prefixo) || vistos.has(it.ref)) continue;
+      vistos.add(it.ref);
+      try {
+        const nomeCat = it.input.categoria || 'Vendas';
+        let cat = modelo.findCategoria(cats, nomeCat);
+        if (!cat) { cat = modelo.novaCategoria({ nome: nomeCat, renda: it.input.tipo === 'renda', grupo: it.input.tipo === 'renda' ? 'Renda' : 'Compras' }, cats); cats.push(cat); novasCats.push(cat); }
+        const nl = modelo.novoLancamento({ ...it.input, categoria: cat.key, ref: it.ref, status: 'confirmado' }, ctx({ categorias: cats }));
+        const cur = atuais.get(it.ref);
+        if (!cur) { plano.push(['criar', nl]); rel.criados++; }
+        else if (!igual(cur, nl)) { plano.push(['atualizar', { ...nl, id: cur.id, criadoEm: cur.criadoEm, ...(cur.linha ? { linha: cur.linha } : {}) }]); rel.atualizados++; }
+        else rel.iguais++;
+      } catch (e) { rel.erros.push({ ref: it.ref, motivo: e instanceof Error ? e.message : String(e) }); }
+    }
+    for (const [ref, l] of atuais) if (!vistos.has(ref)) { plano.push(['remover', l]); rel.removidos++; }
+    if (plano.length === 0) return rel;
+    await store.mutate(por, (tx) => {
+      for (const c of novasCats) if (!modelo.findCategoria(tx.list('categorias'), c.nome)) tx.set('categorias', c);
+      for (const [op, l] of plano) {
+        if (op === 'remover') tx.trashLanc(l); else tx.setLanc(l);
+        reabrirSeFechado(tx, l.data);
+      }
+      tx.mudar('lancamento.sincronizar', { prefixo, criados: rel.criados, atualizados: rel.atualizados, removidos: rel.removidos });
+    });
+    return rel;
+  }
   function abc(lado, por, n, ate) {
     const { taxas, moedaExib } = cfgMoeda();
     const toExib = (l) => modelo.paraExib(l.valorCent, l.moeda ?? modelo.MOEDA_PADRAO, taxas, moedaExib);
@@ -377,7 +416,7 @@ function createFinanceApi(deps) {
     }
   }
 
-  return { handle, store, estado, contexto };
+  return { handle, store, estado, contexto, sincronizarExternos };
 }
 
 module.exports = { createFinanceApi };

@@ -2997,3 +2997,15 @@ Na aba Curva ABC, cartão "Importar do Google Sheets": cola o link, escolhe comp
 - Curva de vendas conta só dinheiro que entrou: ficam de fora as categorias de ganho indireto (estimado, "tempo
   poupado") e o saldo inicial. Antes elas apareciam como "clientes" (LV, 26/10).
 - Backend 1.1.3.
+
+## Vendas do CRM alimentam o financeiro (26 out)
+
+`backend-colima/crm-finance-vendas.js`: o sentido inverso do finance-crm-sync.js. Pipeline de vendas = qualquer um com
+campos Produto e Valor e uma etapa de venda concluída (Vendido/Ganho/Fechado/Pago/Concluído); sem nenhum, nasce o
+pipeline **Vendas** (`p_vendas`: Cliente, Produto, Quantidade, Valor, Data da venda; Negociando › Vendido › Perdido).
+Cada box na etapa de venda vira lançamento de renda com `ref = crm:<box>` (categoria Vendas criada se faltar, produto,
+qtd, cliente = campo Cliente, senão o 1º contato, senão o nome do box; data = Data da venda, senão quando entrou na
+etapa). `financeApi.sincronizarExternos` é idempotente: sem diferença não grava; box alterado regrava o mesmo id; box
+que sai da etapa tira o lançamento. O server.js dispara a cada mudança do CRM (debounce 2 s) e 15 s depois de subir,
+só com CRM e financeiro liberados. A skill crm-api diz ao agente para registrar a venda no CRM e não também no
+financeiro. Teste: `scripts/tests/crm-finance-vendas.test.mjs`. Backend 1.1.4.

@@ -8,7 +8,7 @@
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim; VERSION ele grava por último.
 export const BUNDLE_FILES = [
-  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh", "VERSION",
+  "server.js", "session-map.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh", "VERSION",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
 ];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */

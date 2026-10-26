@@ -14,7 +14,7 @@ const KEY_RE = /^[A-Za-z0-9_-]{2,80}$/;
 const DATA_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MES_RE = /^\d{4}-\d{2}$/;
 const TIPOS_CONTA = ['corrente', 'poupanca', 'cartao', 'dinheiro', 'outra'];
-const ORIGENS = ['whatsapp', 'foto', 'chat', 'app', 'agente', 'planilha'];
+const ORIGENS = ['whatsapp', 'foto', 'chat', 'app', 'agente', 'planilha', 'crm'];
 const STATUS = ['pendente', 'confirmado'];
 const LIMITES = { nome: 80, notas: 500, valorMaxCent: 100_000_000_00 };
 /** Até quantos dias de diferença dois lançamentos iguais contam como possível duplicado. */
