@@ -1,5 +1,6 @@
 import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { browserAccess, financeOk, proBlockText } from "../lib/pro.js";
 import { hostLabel } from "../lib/probe-text.js";
@@ -206,7 +207,7 @@ export function renderNavInstall(container: HTMLElement): void {
   });
   row.append(b);
   box.append(row);
-  if (navInstState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (navInstState === null) box.append(carregando("Consultando a máquina…", "guia-navegador"));
   if (navInstBusy && navInstLog.length > 0) box.append(el("pre", "admin-logs", navInstLog.join("\n")));
   if (navInstMsg !== null) box.append(el("p", `hint ${navInstMsg.bad ? "guide-pair-note" : "audio-ok"}`, navInstMsg.text));
   container.append(box);
@@ -275,7 +276,7 @@ export function renderConta(container: HTMLElement, id: ContaId): void {
   const st = contasState?.find((c) => c.id === id) ?? null;
   const login = contaLogin?.id === id ? contaLogin : null;
   const row = el("div", "audio-row");
-  if (contasState === null) row.append(el("span", "hint", "Consultando a máquina…"));
+  if (contasState === null) row.append(carregando("Consultando a máquina…", "guia-contas"));
   else if (st !== null && !st.presente) row.append(el("span", "hint", id === "github" ? "O GitHub CLI (gh) não está instalado nesta máquina." : "Esta máquina não tem o Node (npx) para o Cloudflare."));
   else {
     if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
@@ -342,7 +343,7 @@ export function renderGuardaInstall(container: HTMLElement): void {
   });
   row.append(b);
   box.append(row);
-  if (guardaState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (guardaState === null) box.append(carregando("Consultando a máquina…", "guia-guarda"));
   if (guardaBusy && guardaLog.length > 0) box.append(el("pre", "admin-logs", guardaLog.join("\n")));
   if (ctx.guardaMsg !== null) box.append(el("p", `hint ${ctx.guardaMsg.bad ? "guide-pair-note" : "audio-ok"}`, ctx.guardaMsg.text));
   container.append(box);
@@ -424,7 +425,7 @@ export function renderStatusLineInstall(container: HTMLElement): void {
   });
   row.append(b);
   box.append(row);
-  if (statusLineState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (statusLineState === null) box.append(carregando("Consultando a máquina…", "guia-statusline"));
   if (statusLineBusy && statusLineLog.length > 0) box.append(el("pre", "admin-logs", statusLineLog.join("\n")));
   if (statusLineMsg !== null) box.append(el("p", `hint ${statusLineMsg.bad ? "guide-pair-note" : "audio-ok"}`, statusLineMsg.text));
   container.append(box);

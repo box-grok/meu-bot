@@ -1,5 +1,6 @@
 import type { WhatsappGroups, WhatsappGroup, WhatsappGroupPatch, WhatsappGroupMenuAction, WhatsappThreadMessage } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { hostLabel } from "../lib/probe-text.js";
@@ -214,7 +215,7 @@ export function waGroupsSection(q: string): HTMLElement[] {
   if (waGroups?.todosAdmitidos === true) out.push(el("div", "wa-archive-note bad", "⚠ A configuração admite TODOS os grupos deste número. Ligue o agente só nos grupos certos (menu \"…\" de cada um) para fechar o resto."));
   if (waGroupsMsg !== null) out.push(el("div", `wa-archive-note${waGroupsMsg.bad ? " bad" : ""}`, waGroupsMsg.text));
   if (waGroupsListing) out.push(el("div", "wa-archive-note", "Atualizando a lista de grupos… o WhatsApp do agente volta em uns 30 segundos."));
-  if (waGroups === null) { out.push(el("div", "sidebar-empty", waGroupsErr !== null ? `Não consegui ler os grupos: ${waGroupsErr}` : "Lendo os grupos…")); return out; }
+  if (waGroups === null) { out.push(waGroupsErr !== null ? el("div", "sidebar-empty", `Não consegui ler os grupos: ${waGroupsErr}`) : carregando("Lendo os grupos…", "lateral-grupos")); return out; }
   if (grupos.length === 0) {
     const empty = el("div", "sidebar-empty wa-groups-empty");
     if (q !== "") empty.textContent = "Nenhum grupo com esse nome.";
@@ -365,7 +366,7 @@ let grupoQuemDraft: { nums: string[]; todosArmado: boolean; bad: string | null }
 export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): void {
   if (gruposIndisponivelNota(container)) return;
   const q = waGroups;
-  if (q === null) { container.append(el("p", "hint", "Lendo os grupos…")); return; }
+  if (q === null) { container.append(carregando("Lendo os grupos…")); return; }
   const self = q.self;
   if (grupoQuemDraft === null) grupoQuemDraft = { nums: q.quemAciona === "todos" ? [] : q.quemAciona.filter((n) => n !== self), todosArmado: false, bad: null };
   const d = grupoQuemDraft;
@@ -425,7 +426,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
 export function renderGruposEscolher(container: HTMLElement): void {
   if (gruposIndisponivelNota(container)) return;
   container.append(el("p", "guide-note bad", GRUPOS_AVISO));
-  if (waGroups === null) { container.append(el("p", "hint", waGroupsErr !== null ? `Não consegui ler os grupos: ${waGroupsErr}` : "Lendo os grupos…")); if (waGroupsInflight === null) void refreshWaGroups(); return; }
+  if (waGroups === null) { container.append(waGroupsErr !== null ? el("p", "hint", `Não consegui ler os grupos: ${waGroupsErr}`) : carregando("Lendo os grupos…")); if (waGroupsInflight === null) void refreshWaGroups(); return; }
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   const cards = el("div", "reply-cards guide-cards");
   for (const g of waGroups.grupos) {

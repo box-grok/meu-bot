@@ -5,6 +5,7 @@
  */
 import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
@@ -47,7 +48,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   }
   /** Cartão sem dado: o erro, com "Tentar de novo", ou "Carregando…" enquanto não chegou. */
   const pendente = (c: HTMLElement, erro: string | null, oQue: string): void => {
-    if (erro === null) { c.append(el("p", "hint", "Carregando…")); return; }
+    if (erro === null) { c.append(carregando(`Carregando ${oQue}…`)); return; }
     c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarDados(); }));
   };
   async function agir(run: () => Promise<unknown>, ok: string): Promise<void> {
@@ -65,7 +66,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     const head = el("div", "guide-head"); const hb = el("div", "tut-body");
     hb.append(el("span", "tut-badge", "conta google"), el("h2", "", "Conta Google"), el("p", "", status !== null ? `Conta Google da máquina ${status.maquina}: cada máquina entra com a sua, e desconectar aqui não mexe nas outras. É por ela que o meu-bot lê o Gmail, a Agenda e as planilhas e guarda o backup no Drive. O acesso fica guardado só neste Mac.` : "Entre com a conta do Google desta máquina."));
     head.append(hb); panel.append(head);
-    if (status === null) { panel.append(el("p", "hint", "Consultando…")); return; }
+    if (status === null) { panel.append(carregando("Consultando a Conta Google desta máquina…")); return; }
     if (!status.configurado) { const c = card("Google não configurado neste app"); c.append(el("p", "", "Falta o client OAuth do Google (google-oauth.json) neste build. Instale a versão com o CRM/Google habilitado.")); panel.append(c); return; }
 
     // Perfil

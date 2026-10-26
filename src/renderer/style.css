@@ -1109,3 +1109,7 @@ table.fin-abc td.fin-abc-tag { font-weight: 700; text-align: center; }
 table.fin-abc tr.fin-abc-A td.fin-abc-tag { color: #2e7d32; }
 table.fin-abc tr.fin-abc-B td.fin-abc-tag { color: #c17900; }
 table.fin-abc tr.fin-abc-C td.fin-abc-tag { color: #757575; }
+/* Indicador de espera (lib/carregando.ts): ponto pulsando, tempo e aviso de demora. */
+.carregando { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; color: var(--muted); }
+.carregando-linha { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.carregando-aviso { margin: 0 0 0 17px; }

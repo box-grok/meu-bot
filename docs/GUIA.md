@@ -3029,3 +3029,11 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
 - O login abre no Navegador da própria máquina (partição `persist:navegador-<host>`), então os cookies também são dela.
 - Fica de fora: o token de Contatos do CRM (`google-contatos.bin`, usado em "guardar conversa no Drive") ainda é um
   por app.
+
+## Espera que não parece erro (26 out)
+As telas mostravam "Consultando…" cinza e parado enquanto a máquina respondia por SSH/túnel; com 10–20 s de demora
+parecia travado e a pessoa clicava de novo. Agora toda espera de dado da máquina usa `lib/carregando.ts`: ponto
+pulsando, o tempo a partir de 3 s ("Lendo os grupos… 7 s") e, a partir de 10 s, "A máquina está respondendo devagar;
+continuo buscando. Não precisa clicar de novo." O relógio é por rótulo e não zera quando a tela se redesenha. Vale para
+Conta Google, Finanças e Curva ABC, grupos e conversas do WhatsApp, passos do guia, CRM, Navegador e as páginas do
+meu-bot-admin. Tela nova que espera a máquina: use `carregando("…")` no lugar de um `<p class="hint">`.

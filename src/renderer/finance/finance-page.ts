@@ -6,6 +6,7 @@
  */
 import type { BackendModel, FinanceImportacao, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { financeOk, proBlockText } from "../lib/pro.js";
@@ -144,7 +145,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     box.append(meta);
     if (l.midia) {
       const foto = fotos.get(l.midia.sha256);
-      if (foto === undefined) { box.append(el("p", "hint", "Carregando o comprovante…")); void deps.api.financeComprovante(l.midia.sha256).then((u) => { fotos.set(l.midia!.sha256, u); render(); }).catch(() => { fotos.set(l.midia!.sha256, null); render(); }); }
+      if (foto === undefined) { box.append(carregando("Carregando o comprovante…")); void deps.api.financeComprovante(l.midia.sha256).then((u) => { fotos.set(l.midia!.sha256, u); render(); }).catch(() => { fotos.set(l.midia!.sha256, null); render(); }); }
       else if (foto === null) box.append(el("p", "hint bad-hint", "A foto do comprovante não está mais na máquina."));
       else { const img = el("img", "finance-foto"); img.src = foto; img.alt = `Comprovante: ${l.midia.nome}`; img.addEventListener("click", () => img.classList.toggle("grande")); box.append(img); }
     }
@@ -214,7 +215,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     hb.append(el("span", "tut-badge", "financeiro"), el("h2", "", e !== null ? `Finanças · ${e.resumo.nome}` : "Finanças"), el("p", "", "O agente lança o que você conta no WhatsApp ou no chat (e o que você fotografa). Aqui você confere, corrige e faz só o que depende de você."));
     head.append(hb); panel.append(head);
     const host = deps.host();
-    if (!deps.licenseKnown()) { panel.append(el("p", "hint", "Consultando a licença desta máquina…")); return; }
+    if (!deps.licenseKnown()) { panel.append(carregando("Consultando a licença desta máquina…")); return; }
     if (!financeOk(deps.license(), host)) {
       const t = proBlockText(host === "local" ? "unknown" : "assinatura", deps.license(), "finance", "meu-bot-finance");
       const c = card(host === "local" ? "O financeiro mora numa máquina" : t.title);
@@ -226,7 +227,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     topo.append(btn(busy ? "Atualizando…" : "Atualizar", "btn-ghost", () => { void refresh(); }), btn("Lançar pelo chat", "btn-ghost", () => { void deps.goToChat("gastei 48 no mercado", "O agente usa o financeiro desta máquina: lança, categoriza e responde. Troque pelo seu gasto de verdade.", "agente"); }));
     panel.append(topo);
     if (msg) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
-    if (info === null) { panel.append(el("p", "hint", "Consultando o financeiro desta máquina…")); return; }
+    if (info === null) { panel.append(carregando("Consultando o financeiro desta máquina…")); return; }
     if (info.modulo === false || (info.modulo === null && e === null)) {
       const c = card("Ativar o financeiro nesta máquina");
       c.append(el("p", "", "Instala na máquina a ferramenta do agente e o financeiro do WhatsApp. Seus dados ficam só nela."));
@@ -409,7 +410,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     const c = card("Curva ABC"); c.append(filtros);
     c.append(el("p", "hint", "Classe A: os poucos itens que somam até 80% do valor. B: até 95%. C: o resto (muitos itens, pouco valor)."));
     if (abcErro !== null) { c.append(el("p", "hint bad-hint", abcErro)); panel.append(c, impCard); return; }
-    if (abc === null) { c.append(el("p", "hint", abcCarregando ? "Calculando…" : "Escolha os filtros.")); panel.append(c, impCard); return; }
+    if (abc === null) { c.append(abcCarregando ? carregando("Calculando a Curva ABC…") : el("p", "hint", "Escolha os filtros.")); panel.append(c, impCard); return; }
     const quem = abc.por === "produto" ? "produtos" : abc.por === "categoria" ? "categorias" : abc.lado === "venda" ? "clientes" : "fornecedores";
     const periodo = abc.de === abc.ate ? `${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}` : `${abc.de.slice(5)}/${abc.de.slice(0, 4)} a ${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}`;
     const sem = abc.semProduto && abc.semProduto.lancamentos > 0 ? el("p", "hint bad-hint", `${abc.semProduto.lancamentos} ${abc.lado === "venda" ? "venda(s)" : "compra(s)"} sem produto informado (${abc.semProduto.valor}) ficaram fora desta curva: na planilha, preencha a coluna Produto.`) : null;

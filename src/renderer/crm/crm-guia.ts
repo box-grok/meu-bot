@@ -1,6 +1,7 @@
 import type { CrmInfo, CrmDiag, CrmLocal } from "../../shared/ipc";
 import { MODELOS_PIPELINE, validarPipeline, etapasDoTexto } from "../lib/crm-modelos.js";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { browserAccess, proBlockText } from "../lib/pro.js";
 import { hostLabel } from "../lib/probe-text.js";
@@ -23,7 +24,7 @@ let crmPipeMsg: { text: string; bad: boolean } | null = null;
 export function renderCrmPipeline(container: HTMLElement): void {
   const st = crmLocalState;
   if (crmPipeMsg !== null) container.append(el("p", `hint${crmPipeMsg.bad ? " guide-pair-note" : ""}`, crmPipeMsg.text));
-  if (st === null) { container.append(el("p", "hint", "Lendo o CRM desta máquina…")); void refreshCrm(); return; }
+  if (st === null) { container.append(carregando("Lendo o CRM desta máquina…")); void refreshCrm(); return; }
   const gmail = el("button", "linkish", "Ver no Gmail"); gmail.type = "button";
   gmail.addEventListener("click", () => { void ctx.openNavTab("https://mail.google.com/"); });
   if (st.padrao !== null) {
@@ -120,7 +121,7 @@ export function renderCrmInstall(container: HTMLElement): void {
   const b = el("button", `btn ${inst ? "btn-ghost" : "btn-primary"} btn-small`, crmBusy ? "Instalando…" : inst ? "Reinstalar" : "Instalar"); b.type = "button"; b.disabled = crmBusy || crmState === null;
   b.addEventListener("click", () => { crmLog = []; void crmDo(async () => { const r = await window.meuBot.installCrm(); if (!r.ok) throw new Error(r.log.at(-1) ?? "a instalação falhou"); return window.meuBot.crmInfo(); }, "Máquina pronta: o plugin do CRM está no OpenClaw."); });
   row.append(b); box.append(row);
-  if (crmState === null) box.append(el("p", "hint", "Consultando a máquina…"));
+  if (crmState === null) box.append(carregando("Consultando a máquina…", "guia-crm"));
   if (crmBusy && crmLog.length > 0) box.append(el("pre", "admin-logs", crmLog.join("\n")));
   if (crmMsg !== null) box.append(el("p", `hint ${crmMsg.bad ? "guide-pair-note" : "audio-ok"}`, crmMsg.text));
   container.append(box);

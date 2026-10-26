@@ -7,6 +7,7 @@
 import { mountBackupCard } from "./backup-card.js";
 import type { AdminAction, AdminHealth, MeuBotApi, WhatsappStatus, PlanName } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
@@ -111,7 +112,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     h.append(hHead);
     const hp = state.health;
     if (state.healthErr !== null) h.append(el("p", "hint guide-pair-note", state.healthErr));
-    else if (hp === null) h.append(el("p", "hint", "Consultando…"));
+    else if (hp === null) h.append(carregando("Consultando a máquina dela…", "suporte-saude"));
     else {
       const lines = healthLines(hp, deps.fmtPhone);
       if (!hp.share.whatsapp) lines.push({ text: `WhatsApp: ${who} preferiu não compartilhar`, ok: null });
@@ -123,7 +124,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     const lc = el("div", "admin-card");
     lc.append(el("strong", "", "Conta e licença"));
     const view = hp?.license ?? null;
-    if (hp === null) lc.append(el("p", "hint", "Consultando…"));
+    if (hp === null) lc.append(carregando("Consultando a licença…", "suporte-licenca"));
     else if (view === null) lc.append(el("p", "hint", "Máquina fora do ar ou backend antigo (sem a rota de licença)."));
     else {
       lc.append(list(licenseSummary(view)));
@@ -218,7 +219,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     const pg = el("div", "admin-card");
     pg.append(el("strong", "", "Progresso nos tutoriais"));
     const prog = hp?.progress ?? null;
-    if (hp === null) pg.append(el("p", "hint", "Consultando…"));
+    if (hp === null) pg.append(carregando("Consultando o progresso…", "suporte-progresso"));
     else if (!hp.share.progress) pg.append(el("p", "hint", `${who} preferiu não compartilhar o progresso nos tutoriais.`));
     else if (prog === null) pg.append(el("p", "hint", progressEmptyText(who)));
     else pg.append(list(progressLines(prog)), el("p", "hint", progressUpdatedText(prog.at)));

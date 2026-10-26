@@ -1,5 +1,6 @@
 import type { BrowserExtensionInfo, NavFavorito, NavWorkspaces, NavNotifyPref, DonoInfo, NavWorkspace, NavService } from "../../shared/ipc";
 import { el, byId as $ } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import { favLabel, favOf, favTitleFor } from "../lib/favoritos.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { navNotifyAllowed, toggleNotifyHost, NavNotifyDedup, NavNotifyBudget, parseNotifyHosts, parsePageNotification, type PageNotification, navNotifyTitle, navNotifyMessage } from "../lib/nav-notify.js";
@@ -174,7 +175,7 @@ export function renderNavWsStep(container: HTMLElement): void {
 export function renderNavNotifyConfig(container: HTMLElement): void {
   const pref = ctx.settings?.navNotify;
   const box = el("div", "audio-controls");
-  if (pref === undefined) { box.append(el("p", "hint", "Carregando as configurações…")); container.append(box); return; }
+  if (pref === undefined) { box.append(carregando("Carregando as configurações…")); container.append(box); return; }
   if (pref.enabled) box.append(el("p", "audio-ok", "✓ Ligado. Ajuste quando quiser em Configurações › Notificações do Navegador."));
   const inst = document.createElement("textarea"); inst.rows = 3; inst.maxLength = 2000; inst.className = "wa-list-input"; inst.value = pref.instruction; inst.placeholder = "O que o agente faz com cada notificação";
   const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Sites com o sino ligado (vazio = os sites fixos do espaço): mail.google.com"; hosts.value = pref.hosts.join(", ");

@@ -1,6 +1,7 @@
 import type { WhatsappChat, WaMarkPatch, WhatsappMenuAction, WhatsappArchive } from "../../shared/ipc";
 import { type CacheStore, type Cached, readCache, writeCache, dropCache } from "../lib/cache.js";
 import { byId as $, el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { waReferenceText } from "../lib/reference.js";
@@ -439,7 +440,7 @@ export function paintWaSidebar(query: string): void {
     const msg = waChatsErr !== null && ctx.waChats.length === 0 ? `Não consegui ler as conversas: ${waChatsErr}`
       : waChatsInflight !== null && ctx.waChats.length === 0 ? "Carregando conversas do WhatsApp…"
       : q !== "" ? "Nada encontrado." : "Nenhuma conversa do WhatsApp ainda.";
-    ctx.sidebarList.appendChild(el("div", "sidebar-empty", msg));
+    ctx.sidebarList.appendChild(msg === "Carregando conversas do WhatsApp…" ? carregando(msg) : el("div", "sidebar-empty", msg));
     ctx.sidebarList.append(...ctx.waGroupsSection(q));
     return;
   }

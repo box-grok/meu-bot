@@ -5,6 +5,7 @@
  */
 import type { AuditoriaMaquinaView, AuditoriaVisao, PickerApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando as espera } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
 export interface AuditoriaViewDeps {
@@ -38,7 +39,7 @@ export function mountAuditoriaView(deps: AuditoriaViewDeps): { refresh: () => Pr
     box.replaceChildren();
     box.append(el("p", "hint", "Tudo o que o dono, cada admin, o agente e o sistema fizeram em cada máquina. A cópia central só aceita linhas novas: ninguém apaga nem edita por SSH."));
     if (erro !== null) { box.append(el("p", "hint guide-pair-note", `Central de auditoria: ${erro}`)); return; }
-    if (maquinas.length === 0) { box.append(el("p", "hint", carregando ? "Lendo a central…" : "Nenhuma máquina com registro ainda.")); return; }
+    if (maquinas.length === 0) { box.append(carregando ? espera("Lendo a central…") : el("p", "hint", "Nenhuma máquina com registro ainda.")); return; }
     const ul = el("ul", "auditoria-maquinas");
     for (const m of maquinas) {
       const li = el("li", `auditoria-maquina${aberta === m.maquina ? " aberta" : ""}`);
@@ -53,7 +54,7 @@ export function mountAuditoriaView(deps: AuditoriaViewDeps): { refresh: () => Pr
 
   const detalhe = (): HTMLElement => {
     const d = el("div", "auditoria-detalhe");
-    if (visao === null) { d.append(el("p", "hint", "Lendo o registro…")); return d; }
+    if (visao === null) { d.append(espera("Lendo o registro…")); return d; }
     const v = visao;
     d.append(selo(v));
     const barra = el("div", "auditoria-barra");

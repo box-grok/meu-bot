@@ -7,6 +7,7 @@
 import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "../lib/info-balloon.js";
 import type { BotChat, BotMessage, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
+import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { renderMarkdown } from "../lib/markdown.js";
@@ -90,7 +91,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     info.addEventListener("click", () => infoBalloon(ID_INFO_TITLE, ID_INFO_TEXT));
     head.append(ref, info, del);
     const list = el("div", "wa-chat-msgs");
-    if (!g.loaded) list.append(el("p", "hint", "Lendo a conversa na máquina…"));
+    if (!g.loaded) list.append(carregando("Lendo a conversa na máquina…"));
     else if (g.err !== null && g.msgs.length === 0) list.append(el("p", "hint wa-fade", `Não consegui ler a conversa: ${g.err}`));
     else if (g.msgs.length === 0) list.append(el("p", "hint wa-fade", "Sem mensagens."));
     else for (const m of g.msgs) list.append(bubble(m));
@@ -135,7 +136,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
       const rows = chats.filter((c) => q === "" || normalize(c.title).includes(q));
       if (rows.length === 0) {
         const msg = err !== null ? `Não consegui ler as conversas: ${err}` : !loaded ? "Lendo as conversas dela com o meu-bot…" : q !== "" ? "Nada encontrado." : "Ela ainda não conversou com o meu-bot nesta máquina.";
-        container.append(el("div", "sidebar-empty", msg));
+        container.append(err === null && !loaded ? carregando(msg) : el("div", "sidebar-empty", msg));
         return;
       }
       const active = deps.activePage();
