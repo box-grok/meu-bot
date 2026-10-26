@@ -242,10 +242,12 @@ export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   },
   // 183 dos 208 MB do .openclaw são cache, temporários e extensões que se reinstalam. Do Hermes vão o auth.json, o
   // .env (tokens) e a sessão viva do WhatsApp (as `session.loggedout-*` são lixo de pareamentos antigos).
+  // Também ficam de fora a mídia recebida no WhatsApp (482 MB na agente-box em 26/10, não é credencial) e o npm que se
+  // reinstala: com eles o .openclaw passava de 512 MB e o pacote de credenciais nunca subia.
   {
     id: "credenciais", nome: "Credenciais", pasta: "Credenciais", prefixo: "credenciais", cifrar: true,
     dirs: [".openclaw", ".config/kommo", ".config/cloudflare", ".config/gh", ".hermes/auth.json", ".hermes/.env", ".hermes/whatsapp/session", ".ssh/authorized_keys", ".config/systemd/user"],
-    excluir: [".openclaw/cache", ".openclaw/tmp", ".openclaw/extensions", ".openclaw/logs"],
+    excluir: [".openclaw/cache", ".openclaw/tmp", ".openclaw/extensions", ".openclaw/logs", ".openclaw/media", ".openclaw/npm"],
   },
 ];
 /** A máquina dentro de um nome de arquivo: só letras, números, ponto, hífen e sublinhado. */
