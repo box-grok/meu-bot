@@ -311,6 +311,8 @@ function categoriaSemente(nome) { const n = norm(nome); if (n === '') return nul
  * Status: o pedido explícito vale; senão foto ou categoria incerta nascem "pendente" (a pessoa confirma), o resto
  * "confirmado". Categoria: a pedida, senão a aprendida do favorecido, senão "outros" (pendente).
  */
+/** Quantidade de unidades (peças): número positivo, aceita "12", "12,5", 12; senão null. */
+function qtdDe(v) { const n = typeof v === 'number' ? v : Number(String(v ?? '').trim().replace(/\./g, '').replace(',', '.')); return Number.isFinite(n) && n > 0 && n < 1e7 ? Math.round(n * 100) / 100 : null; }
 function novoLancamento(input, ctx) {
   const { contas, categorias, favorecidos, now, rnd, hoje } = ctx;
   const tipo = input?.tipo === 'renda' ? 'renda' : input?.tipo === 'gasto' || input?.tipo === undefined ? 'gasto' : null;
@@ -357,6 +359,7 @@ function novoLancamento(input, ctx) {
   const midia = input?.midia && typeof input.midia === 'object' && /^[0-9a-f]{64}$/.test(String(input.midia.sha256 ?? '')) ? { sha256: input.midia.sha256, nome: str(input.midia.nome, 120) || 'comprovante' } : undefined;
   return {
     id: novaChave('l', rnd), data, valorCent: cent, moeda, ...(original ?? {}), favorecido, categoria, conta: conta?.key ?? null, notas: str(input?.notas, LIMITES.notas),
+    ...(str(input?.produto, LIMITES.nome) ? { produto: str(input.produto, LIMITES.nome) } : {}), ...(qtdDe(input?.qtd) !== null ? { qtd: qtdDe(input.qtd) } : {}),
     ...(linha ? { linha } : {}), ...(typeof input?.ref === 'string' && input.ref.trim() !== '' ? { ref: str(input.ref, 300) } : {}), origem, status, duvidas: status === 'pendente' ? duvidas : [], ...(typeof input?.confianca === 'number' ? { confianca: Math.max(0, Math.min(1, input.confianca)) } : {}), ...(midia ? { midia } : {}),
     criadoEm: now, atualizadoEm: now,
   };
@@ -424,7 +427,9 @@ const COLS_PLANILHA = {
   valor: ['valor', 'total', 'preco', 'preço', 'valor total', 'monto', 'importe'],
   categoria: ['categoria', 'category', 'grupo'],
   tipo: ['tipo', 'operacao', 'operação', 'movimento'],
-  notas: ['notas', 'obs', 'observacao', 'observação', 'observacoes', 'observações', 'produto', 'produtos', 'descricao do item'],
+  produto: ['produto', 'produtos', 'item', 'sku', 'modelo', 'peca', 'peça', 'referencia', 'referência', 'ref', 'descricao do item', 'artigo'],
+  qtd: ['quantidade', 'qtd', 'qtde', 'quant', 'unidades', 'pecas', 'peças', 'cantidad'],
+  notas: ['notas', 'obs', 'observacao', 'observação', 'observacoes', 'observações'],
 };
 function linhasDePlanilha(valores, { fonte = 'planilha', tipoPadrao = 'gasto' } = {}) {
   const rows = Array.isArray(valores) ? valores.map((r) => (Array.isArray(r) ? r.map((c) => String(c ?? '').trim()) : [])) : [];
@@ -444,9 +449,9 @@ function linhasDePlanilha(valores, { fonte = 'planilha', tipoPadrao = 'gasto' } 
     if (falta.length > 0) { erros.push({ linha: i + 1, motivo: `falta ${falta.join(', ')}` }); continue; }
     const t = norm(cel('tipo'));
     const tipo = /^(venda|renda|entrada|receita|credito|crédito)/.test(t) ? 'renda' : /^(compra|gasto|saida|saída|despesa|debito|débito)/.test(t) ? 'gasto' : tipoPadrao;
-    const base = `${fonte}|${data}|${favorecidoKey(favorecido)}|${valor.replace(/\s/g, '')}|${tipo}`;
+    const base = `${fonte}|${data}|${favorecidoKey(favorecido)}|${valor.replace(/\s/g, '')}|${tipo}|${slug(cel('produto'))}`;
     const n = (vistos.get(base) ?? 0) + 1; vistos.set(base, n);
-    linhas.push({ linha: i + 1, data, favorecido, valor, tipo, ...(cel('categoria') ? { categoria: cel('categoria') } : {}), ...(cel('notas') ? { notas: cel('notas') } : {}), ref: `${base}|${n}` });
+    linhas.push({ linha: i + 1, data, favorecido, valor, tipo, ...(cel('produto') ? { produto: cel('produto') } : {}), ...(cel('qtd') ? { qtd: cel('qtd') } : {}), ...(cel('categoria') ? { categoria: cel('categoria') } : {}), ...(cel('notas') ? { notas: cel('notas') } : {}), ref: `${base}|${n}` });
   }
   return { cabecalho: h + 1, colunas: Object.fromEntries(Object.entries(col).filter(([, v]) => v >= 0).map(([k, v]) => [k, rows[h][v]])), linhas, erros };
 }
@@ -460,20 +465,21 @@ function linhasDePlanilha(valores, { fonte = 'planilha', tipoPadrao = 'gasto' } 
  * dá o nome da categoria. Puro: devolve centavos e frações; a API formata.
  */
 const LADOS_ABC = ['compra', 'venda'];
-const AGRUPAR_ABC = ['favorecido', 'categoria'];
+const AGRUPAR_ABC = ['produto', 'favorecido', 'categoria'];
 function curvaABC(lancamentos, { lado = 'compra', por = 'favorecido', toExib = (l) => l.valorCent, nomeCat = (k) => k, limiteA = 0.8, limiteB = 0.95 } = {}) {
   if (!LADOS_ABC.includes(lado)) throw invalido(`lado inválido: use ${LADOS_ABC.join(' ou ')}`);
   if (!AGRUPAR_ABC.includes(por)) throw invalido(`agrupamento inválido: use ${AGRUPAR_ABC.join(' ou ')}`);
-  const grupos = new Map();
+  const grupos = new Map(); const semProduto = { cent: 0, lancamentos: 0 };
   for (const l of lancamentos) {
     const v = toExib(l);
     if (lado === 'compra' ? v >= 0 : v <= 0) continue;
     const cent = Math.abs(v);
-    const key = por === 'categoria' ? (l.categoria || CATEGORIA_SEM) : (favorecidoKey(l.favorecido || '') || '(sem nome)');
-    const nome = por === 'categoria' ? nomeCat(key) : (nomeFavorecido(l.favorecido || '') || '(sem nome)');
-    const g = grupos.get(key) ?? { key, nome, cent: 0, qtd: 0, ultima: '' };
-    g.cent += cent; g.qtd += 1;
-    if ((l.data || '') > g.ultima) { g.ultima = l.data || ''; if (por === 'favorecido') g.nome = nome; }
+    if (por === 'produto' && !l.produto) { semProduto.cent += cent; semProduto.lancamentos += 1; continue; }
+    const key = por === 'categoria' ? (l.categoria || CATEGORIA_SEM) : por === 'produto' ? slug(l.produto) : (favorecidoKey(l.favorecido || '') || '(sem nome)');
+    const nome = por === 'categoria' ? nomeCat(key) : por === 'produto' ? str(l.produto, LIMITES.nome) : (nomeFavorecido(l.favorecido || '') || '(sem nome)');
+    const g = grupos.get(key) ?? { key, nome, cent: 0, qtd: 0, unidades: 0, ultima: '' };
+    g.cent += cent; g.qtd += 1; g.unidades += typeof l.qtd === 'number' ? l.qtd : 0;
+    if ((l.data || '') > g.ultima) { g.ultima = l.data || ''; if (por !== 'categoria') g.nome = nome; }
     grupos.set(key, g);
   }
   const itens = [...grupos.values()].sort((a, b) => b.cent - a.cent || a.nome.localeCompare(b.nome));
@@ -485,10 +491,10 @@ function curvaABC(lancamentos, { lado = 'compra', por = 'favorecido', toExib = (
     const classe = antes < limiteA ? 'A' : antes < limiteB ? 'B' : 'C';
     acum += g.cent;
     classes[classe].itens += 1; classes[classe].cent += g.cent;
-    return { pos: i + 1, key: g.key, nome: g.nome, cent: g.cent, qtd: g.qtd, ultima: g.ultima, pct: total > 0 ? g.cent / total : 0, acumPct: total > 0 ? acum / total : 0, classe };
+    return { pos: i + 1, key: g.key, nome: g.nome, cent: g.cent, qtd: g.qtd, unidades: g.unidades, ultima: g.ultima, pct: total > 0 ? g.cent / total : 0, acumPct: total > 0 ? acum / total : 0, classe };
   });
   for (const c of Object.values(classes)) c.pct = total > 0 ? c.cent / total : 0;
-  return { lado, por, totalCent: total, itens: out, classes, limites: { A: limiteA, B: limiteB } };
+  return { lado, por, totalCent: total, itens: out, classes, limites: { A: limiteA, B: limiteB }, ...(por === 'produto' ? { semProduto } : {}) };
 }
 
 /** ROI em % (inteiro) do investimento: só com o ganho direto (realizado) e com direto + indireto (perspectiva). Sem gasto, null. */
@@ -516,6 +522,6 @@ module.exports = {
   nomeFavorecido, favorecidoKey, categoriaAprendida, aprender, categoriaSemente,
   novoLancamento, patchLancamento, duplicadoDe,
   saldoConta, resumoMes, retornoResumo, linhaLancamento,
-  LADOS_ABC, AGRUPAR_ABC, curvaABC, linhasDePlanilha,
+  LADOS_ABC, AGRUPAR_ABC, curvaABC, linhasDePlanilha, qtdDe,
   TIPOS_LINHA, LINHAS_PADRAO, novaLinha, patchLinha, findLinha, valorLinha,
 };

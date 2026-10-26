@@ -49,10 +49,10 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
   let instLog: string[] = []; let instalando = false;
   // Submódulo Curva ABC: aba própria dentro de Finanças. Filtro lembrado enquanto a janela vive.
   let aba: "geral" | "abc" = "geral";
-  const abcF: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number } = { lado: "compra", por: "favorecido", meses: 3 };
+  const abcF: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number } = { lado: "venda", por: "produto", meses: 3 };
   let abc: FinanceAbc | null = null; let abcErro: string | null = null; let abcCarregando = false;
   // Importação do Google Sheets (dentro da Curva ABC): prévia primeiro, depois importa.
-  const imp: { link: string; aba: string; tipo: FinanceAbcLado } = { link: "", aba: "", tipo: "compra" };
+  const imp: { link: string; aba: string; tipo: FinanceAbcLado } = { link: "", aba: "", tipo: "venda" };
   let impRes: FinanceImportacao | null = null; let impErro: string | null = null; let impBusy = false;
   async function importarPlanilha(simular: boolean): Promise<void> {
     impBusy = true; impErro = null; if (simular) impRes = null; render();
@@ -62,7 +62,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
   }
   function cardImportar(): HTMLElement {
     const c = card("Importar do Google Sheets");
-    c.append(el("p", "hint", "Compras dos fornecedores (ou vendas) numa planilha do Google: colunas Data, Fornecedor (ou Cliente) e Valor; Categoria, Tipo e Obs são opcionais. Compartilhe a planilha com a conta Google conectada no app. Importar de novo a mesma planilha só traz as linhas novas."));
+    c.append(el("p", "hint", "Vendas (ou compras) numa planilha do Google, uma linha por item: colunas Data, Cliente (ou Fornecedor), Produto, Quantidade e Valor; Categoria, Tipo e Obs são opcionais. Sem Produto a linha entra no financeiro, mas fica fora da curva por produto. Compartilhe a planilha com a conta Google conectada no app. Importar de novo a mesma planilha só traz as linhas novas."));
     const link = input("link da planilha (docs.google.com/spreadsheets/d/…)", imp.link, 500); link.addEventListener("input", () => { imp.link = link.value; });
     const aba = input("aba (vazio = a primeira)", imp.aba, 100); aba.addEventListener("input", () => { imp.aba = aba.value; });
     const tipo = el("select"); for (const [v, r] of [["compra", "Compras (saídas)"], ["venda", "Vendas (entradas)"]] as const) { const o = el("option", "", r); o.value = v; o.selected = imp.tipo === v; tipo.append(o); }
@@ -402,7 +402,7 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     };
     filtros.append(
       field("O quê", sel<FinanceAbcLado>([["compra", "Compras (saídas)"], ["venda", "Vendas (entradas)"]], abcF.lado, (v) => { abcF.lado = v; })),
-      field("Agrupar por", sel<FinanceAbcPor>([["favorecido", abcF.lado === "venda" ? "Cliente" : "Fornecedor"], ["categoria", "Categoria"]], abcF.por, (v) => { abcF.por = v; })),
+      field("Agrupar por", sel<FinanceAbcPor>([["produto", "Produto"], ["favorecido", abcF.lado === "venda" ? "Cliente" : "Fornecedor"], ["categoria", "Categoria"]], abcF.por, (v) => { abcF.por = v; })),
       field("Período", sel<string>([["1", "Este mês"], ["3", "Últimos 3 meses"], ["6", "Últimos 6 meses"], ["12", "Últimos 12 meses"]], String(abcF.meses), (v) => { abcF.meses = Number(v); })),
       btn(abcCarregando ? "Calculando…" : "Recalcular", "btn-ghost", () => { void carregarAbc(); }),
     );
@@ -410,20 +410,21 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     c.append(el("p", "hint", "Classe A: os poucos itens que somam até 80% do valor. B: até 95%. C: o resto (muitos itens, pouco valor)."));
     if (abcErro !== null) { c.append(el("p", "hint bad-hint", abcErro)); panel.append(c, impCard); return; }
     if (abc === null) { c.append(el("p", "hint", abcCarregando ? "Calculando…" : "Escolha os filtros.")); panel.append(c, impCard); return; }
-    const quem = abc.por === "categoria" ? "categorias" : abc.lado === "venda" ? "clientes" : "fornecedores";
+    const quem = abc.por === "produto" ? "produtos" : abc.por === "categoria" ? "categorias" : abc.lado === "venda" ? "clientes" : "fornecedores";
     const periodo = abc.de === abc.ate ? `${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}` : `${abc.de.slice(5)}/${abc.de.slice(0, 4)} a ${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}`;
-    if (abc.itens.length === 0) { c.append(el("p", "hint", `Nenhuma ${abc.lado === "venda" ? "entrada" : "saída"} lançada em ${periodo}.`)); panel.append(c, impCard); return; }
+    const sem = abc.semProduto && abc.semProduto.lancamentos > 0 ? el("p", "hint bad-hint", `${abc.semProduto.lancamentos} ${abc.lado === "venda" ? "venda(s)" : "compra(s)"} sem produto informado (${abc.semProduto.valor}) ficaram fora desta curva: na planilha, preencha a coluna Produto.`) : null;
+    if (abc.itens.length === 0) { c.append(el("p", "hint", abc.por === "produto" ? `Nenhuma ${abc.lado === "venda" ? "venda" : "compra"} com produto em ${periodo}. Importe a planilha do Junior com as colunas Produto e Quantidade.` : `Nenhuma ${abc.lado === "venda" ? "venda" : "compra"} lançada em ${periodo}.`)); if (sem) c.append(sem); panel.append(c, impCard); return; }
     const A = abc.classes.A;
     c.append(el("p", "", `${abc.lado === "venda" ? "Vendas" : "Compras"} de ${periodo}: ${abc.total} em ${abc.itens.length} ${quem}. ${A.itens} ${A.itens === 1 ? "concentra" : "concentram"} ${A.pct.toLocaleString("pt-BR")}% do valor (classe A).`));
     const resumo = el("div", "fin-abc-classes");
     for (const k of ["A", "B", "C"] as const) { const x = abc.classes[k]; const b = el("div", `fin-abc-classe fin-abc-${k}`); b.append(el("strong", "", `Classe ${k}`), el("span", "", `${x.itens} ${x.itens === 1 ? "item" : "itens"} · ${x.valor} · ${x.pct.toLocaleString("pt-BR")}%`)); resumo.append(b); }
-    c.append(resumo);
+    c.append(resumo); if (sem) c.append(sem);
     const wrap = el("div", "fin-abc-wrap"); const t = el("table", "fin-abc");
-    const th = el("tr"); for (const h of ["#", abc.por === "categoria" ? "Categoria" : abc.lado === "venda" ? "Cliente" : "Fornecedor", "Valor", "%", "Acumulado", "Lançam.", "Classe"]) th.append(el("th", "", h));
+    const th = el("tr"); const comUn = abc.por === "produto"; for (const h of ["#", abc.por === "produto" ? "Produto" : abc.por === "categoria" ? "Categoria" : abc.lado === "venda" ? "Cliente" : "Fornecedor", "Valor", "%", "Acumulado", ...(comUn ? ["Peças"] : []), "Lançam.", "Classe"]) th.append(el("th", "", h));
     t.append(th);
     for (const i of abc.itens) {
       const tr = el("tr", `fin-abc-${i.classe}`);
-      tr.append(el("td", "", String(i.pos)), el("td", "", i.nome), el("td", "num", i.valor), el("td", "num", `${i.pct.toLocaleString("pt-BR")}%`), el("td", "num", `${i.acumPct.toLocaleString("pt-BR")}%`), el("td", "num", String(i.qtd)), el("td", "fin-abc-tag", i.classe));
+      tr.append(el("td", "", String(i.pos)), el("td", "", i.nome), el("td", "num", i.valor), el("td", "num", `${i.pct.toLocaleString("pt-BR")}%`), el("td", "num", `${i.acumPct.toLocaleString("pt-BR")}%`), ...(comUn ? [el("td", "num", i.unidades > 0 ? i.unidades.toLocaleString("pt-BR") : "—")] : []), el("td", "num", String(i.qtd)), el("td", "fin-abc-tag", i.classe));
       t.append(tr);
     }
     wrap.append(t); c.append(wrap); panel.append(c, impCard);

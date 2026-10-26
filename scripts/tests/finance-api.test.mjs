@@ -182,7 +182,7 @@ test("moeda: exibição em dólar; conta em guaraní; valores e saldo convertido
 test("curva ABC: GET /abc por compra e venda, período em meses, classes e valores formatados", async () => {
   await call("POST", "/lancamentos", { valor: "900", favorecido: "Fornecedor ABC", categoria: "mercado" });
   await call("POST", "/lancamentos", { tipo: "renda", valor: "500", favorecido: "Cliente ABC" });
-  const c = await call("GET", "/abc?lado=compra&meses=1");
+  const c = await call("GET", "/abc?lado=compra&por=favorecido&meses=1");
   assert.equal(c.status, 200); assert.equal(c.j.lado, "compra"); assert.equal(c.j.de, c.j.ate); assert.equal(c.j.meses, 1);
   const f = c.j.itens.find((i) => i.nome === "Fornecedor ABC"); assert.ok(f && f.cent > 0); assert.ok(f.valor.length > 0, "valor formatado na moeda de exibição"); assert.equal(c.j.itens[0].classe, "A");
   assert.ok(c.j.itens.every((x, i) => i === 0 || c.j.itens[i - 1].cent >= x.cent), "ordem decrescente");
@@ -205,6 +205,21 @@ test("importar planilha: prévia não grava, importa com categoria Fornecedores 
   assert.equal(ls.length, 1); assert.equal(ls[0].status, "confirmado"); assert.equal(ls[0].origem, "planilha");
   const de_novo = await call("POST", "/importar", { valores, fonte: "sheet-junior" });
   assert.equal(de_novo.j.importadas, 0); assert.equal(de_novo.j.jaImportadas, 2);
-  const abc = await call("GET", "/abc?lado=compra&meses=3");
+  const abc = await call("GET", "/abc?lado=compra&por=favorecido&meses=3");
   assert.ok(abc.j.itens.some((i) => i.nome === "Bella Lingerie"));
+});
+
+test("vendas por produto: planilha com produto e peças; ganho indireto (estimado) não conta como venda", async () => {
+  await call("POST", "/lancamentos", { tipo: "renda", retorno: "indireto", valor: "999", favorecido: "Tempo poupado" });
+  const valores = [["Data", "Cliente", "Produto", "Quantidade", "Valor"], ["08/10/2026", "Ana", "Sutiã Renda Preto", "2", "400"], ["09/10/2026", "Bia", "Calcinha Fio", "5", "100"], ["09/10/2026", "Cia", "", "", "50"]];
+  const imp = await call("POST", "/importar", { valores, fonte: "vendas-junior", tipo: "renda" });
+  assert.equal(imp.j.importadas, 3);
+  const v = await call("GET", "/abc?lado=venda&por=produto&meses=3");
+  assert.equal(v.status, 200);
+  assert.deepEqual(v.j.itens.map((i) => [i.nome, i.unidades]), [["Sutiã Renda Preto", 2], ["Calcinha Fio", 5]]);
+  assert.equal(v.j.semProduto.lancamentos >= 1, true);
+  const porCliente = await call("GET", "/abc?lado=venda&por=favorecido&meses=3");
+  assert.ok(!porCliente.j.itens.some((i) => i.nome === "Tempo poupado"), "ganho indireto fora das vendas");
+  const l = (await call("GET", "/lancamentos?busca=ana")).j.lancamentos.find((x) => x.produto);
+  assert.equal(l.produto, "Sutiã Renda Preto"); assert.equal(l.qtd, 2);
 });

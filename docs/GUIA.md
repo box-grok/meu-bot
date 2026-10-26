@@ -2987,3 +2987,13 @@ Na aba Curva ABC, cartão "Importar do Google Sheets": cola o link, escolhe comp
   favorecido + valor + ocorrência): reimportar a mesma planilha só traz o que é novo. Compra sem categoria cai em
   "Fornecedores" (criada se faltar); venda em "Vendas". `simular` = prévia sem gravar. Auditoria: `financeiro.importar`.
 - Backend 1.1.2.
+
+### Curva ABC por produto e vendas só reais (26 out)
+
+- Lançamento ganhou `produto` e `qtd` (peças) opcionais; a planilha os lê das colunas Produto/Item/SKU/Modelo/Referência
+  e Quantidade/Qtd/Peças. A curva ganhou `por=produto` (padrão da API e da tela): agrupa por produto sem caixa/acento,
+  soma as peças e conta à parte (`semProduto`) o que entrou sem produto. Exemplo da planilha de vendas do Junior:
+  `Data | Cliente | Produto | Quantidade | Valor`, uma linha por item vendido.
+- Curva de vendas conta só dinheiro que entrou: ficam de fora as categorias de ganho indireto (estimado, "tempo
+  poupado") e o saldo inicial. Antes elas apareciam como "clientes" (LV, 26/10).
+- Backend 1.1.3.

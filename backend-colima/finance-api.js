@@ -36,7 +36,7 @@ function createFinanceApi(deps) {
     const { taxas, moedaExib } = cfgMoeda();
     const moeda = l.moeda ?? modelo.MOEDA_PADRAO;
     const exibCent = modelo.paraExib(l.valorCent, moeda, taxas, moedaExib);
-    return { ...(l.linha ? { linha: l.linha, linhaNome: store.get('linhas', l.linha)?.nome ?? l.linha } : {}), id: l.id, data: l.data, valorCent: l.valorCent, moeda, valor: modelo.formatMoeda(l.valorCent, moeda), valorExibCent: exibCent, valorExib: modelo.formatMoeda(exibCent, moedaExib), ...(l.moedaOriginal ? { moedaOriginal: l.moedaOriginal, valorOriginalCent: l.valorOriginalCent, valorOriginal: modelo.formatMoeda(l.valorOriginalCent, l.moedaOriginal) } : {}), favorecido: l.favorecido, categoria: l.categoria, categoriaNome: nomeCat(l.categoria), conta: l.conta, contaNome: nomeConta(l.conta), status: l.status, duvidas: l.duvidas ?? [], origem: l.origem, notas: l.notas || undefined, ...(l.duplicadoDe ? { duplicadoDe: l.duplicadoDe } : {}), ...(l.midia ? { midia: l.midia } : {}) };
+    return { ...(l.produto ? { produto: l.produto } : {}), ...(typeof l.qtd === 'number' ? { qtd: l.qtd } : {}), ...(l.linha ? { linha: l.linha, linhaNome: store.get('linhas', l.linha)?.nome ?? l.linha } : {}), id: l.id, data: l.data, valorCent: l.valorCent, moeda, valor: modelo.formatMoeda(l.valorCent, moeda), valorExibCent: exibCent, valorExib: modelo.formatMoeda(exibCent, moedaExib), ...(l.moedaOriginal ? { moedaOriginal: l.moedaOriginal, valorOriginalCent: l.valorOriginalCent, valorOriginal: modelo.formatMoeda(l.valorOriginalCent, l.moedaOriginal) } : {}), favorecido: l.favorecido, categoria: l.categoria, categoriaNome: nomeCat(l.categoria), conta: l.conta, contaNome: nomeConta(l.conta), status: l.status, duvidas: l.duvidas ?? [], origem: l.origem, notas: l.notas || undefined, ...(l.duplicadoDe ? { duplicadoDe: l.duplicadoDe } : {}), ...(l.midia ? { midia: l.midia } : {}) };
   };
   const contaView = (c) => {
     const { taxas, moedaExib } = cfgMoeda();
@@ -86,7 +86,7 @@ function createFinanceApi(deps) {
       for (const ln of novas) {
         try {
           const categoria = criar(ln.categoria || nomesPadrao[ln.tipo], ln.tipo === 'renda');
-          const l = modelo.novoLancamento({ tipo: ln.tipo, data: ln.data, favorecido: ln.favorecido, valor: ln.valor, categoria, notas: ln.notas, origem: 'planilha', status: 'confirmado', ref: ln.ref }, ctx({ now: tx.now, rnd: tx.rnd, categorias: cats }));
+          const l = modelo.novoLancamento({ tipo: ln.tipo, data: ln.data, favorecido: ln.favorecido, valor: ln.valor, categoria, notas: ln.notas, produto: ln.produto, qtd: ln.qtd, origem: 'planilha', status: 'confirmado', ref: ln.ref }, ctx({ now: tx.now, rnd: tx.rnd, categorias: cats }));
           criados.push(l);
           if (!input.simular) { tx.setLanc(l); const f = modelo.aprender(tx.list('favorecidos'), l.favorecido, l.categoria, tx.now); if (f !== null) tx.set('favorecidos', f); reabrirSeFechado(tx, l.data); }
         } catch (e) { erros.push({ linha: ln.linha, motivo: e instanceof Error ? e.message : String(e) }); }
@@ -104,11 +104,14 @@ function createFinanceApi(deps) {
     const cats = store.list('categorias');
     const nomeCat = (k) => cats.find((c) => c.key === k)?.nome ?? k;
     const meses = [ate]; while (meses.length < n) meses.unshift(modelo.mesAnterior(meses[0]));
-    const lanc = meses.flatMap((ym) => store.listLanc(ym));
+    // Venda é dinheiro que entrou de verdade: fica de fora o ganho indireto (estimado, "tempo poupado") e o saldo inicial.
+    const naoVenda = new Set(cats.filter((c) => c.retorno === 'indireto' || c.key === 'saldo-inicial').map((c) => c.key));
+    const lanc = meses.flatMap((ym) => store.listLanc(ym)).filter((l) => lado !== 'venda' || !naoVenda.has(l.categoria));
     const r = modelo.curvaABC(lanc, { lado, por, toExib, nomeCat });
     const pct = (x) => Math.round(x * 1000) / 10;
     const classes = Object.fromEntries(Object.entries(r.classes).map(([k, c]) => [k, { itens: c.itens, cent: c.cent, valor: fmtExib(c.cent), pct: pct(c.pct) }]));
-    return { lado: r.lado, por: r.por, de: meses[0], ate, meses: n, moeda: moedaExib, lancamentos: lanc.length, totalCent: r.totalCent, total: fmtExib(r.totalCent), classes,
+    const sem = r.semProduto ? { semProduto: { lancamentos: r.semProduto.lancamentos, cent: r.semProduto.cent, valor: fmtExib(r.semProduto.cent) } } : {};
+    return { lado: r.lado, por: r.por, de: meses[0], ate, meses: n, moeda: moedaExib, lancamentos: lanc.length, totalCent: r.totalCent, total: fmtExib(r.totalCent), classes, ...sem,
       itens: r.itens.map((i) => ({ ...i, valor: fmtExib(i.cent), pct: pct(i.pct), acumPct: pct(i.acumPct) })) };
   }
   function resumo(ym) {
@@ -242,7 +245,7 @@ function createFinanceApi(deps) {
     if (a === 'contexto' && m === 'GET' && !b) return { texto: contexto() };
     if (a === 'resumo' && m === 'GET' && !b) return resumo(sp.has('mes') ? mesOk(sp.get('mes')) : hoje().slice(0, 7));
     if (a === 'importar' && m === 'POST' && !b) return importar(await body(req, 2 * 1024 * 1024), por);
-    if (a === 'abc' && m === 'GET' && !b) return abc(sp.get('lado') ?? 'compra', sp.get('por') ?? 'favorecido', int(sp.get('meses'), 3, 1, 24), sp.has('ate') ? mesOk(sp.get('ate')) : hoje().slice(0, 7));
+    if (a === 'abc' && m === 'GET' && !b) return abc(sp.get('lado') ?? 'compra', sp.get('por') ?? 'produto', int(sp.get('meses'), 3, 1, 24), sp.has('ate') ? mesOk(sp.get('ate')) : hoje().slice(0, 7));
     if (a === 'mudancas' && m === 'GET' && !b) return { mudancas: store.ultimas(int(sp.get('n'), 30, 1, 200)) };
 
     // Config de moeda: taxas (unidades por 1 US$) e a moeda de exibição (padrão do sistema, US$; trocável).

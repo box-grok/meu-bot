@@ -174,3 +174,19 @@ test("linhasDePlanilha: acha o cabeçalho (com título acima), pula vazias, erra
   assert.equal(m.linhasDePlanilha(v, { fonte: "sheet1" }).linhas[2].ref, r.linhas[2].ref, "ref estável entre leituras");
   assert.throws(() => m.linhasDePlanilha([["a", "b"], ["1", "2"]]), /cabeçalho/);
 });
+
+test("curvaABC por produto: agrupa sem caixa/acento, soma peças, deixa de fora (e conta) o que não tem produto", () => {
+  const L = (valorCent, produto, qtd, data = "2026-10-01") => ({ valorCent, favorecido: "x", produto, qtd, data });
+  const r = m.curvaABC([L(5000, "Sutiã Renda Preto", 2), L(3000, "sutia renda preto", 1, "2026-10-05"), L(1500, "Calcinha Fio", 3), L(400, "Body Tule", 1), L(1000, undefined, undefined)], { lado: "venda", por: "produto" });
+  assert.deepEqual(r.itens.map((i) => [i.key, i.cent, i.unidades, i.qtd, i.classe]), [["sutia-renda-preto", 8000, 3, 2, "A"], ["calcinha-fio", 1500, 3, 1, "B"], ["body-tule", 400, 1, 1, "C"]]);
+  assert.equal(r.itens[0].nome, "sutia renda preto", "nome do lançamento mais recente");
+  assert.deepEqual(r.semProduto, { cent: 1000, lancamentos: 1 });
+  assert.equal(m.curvaABC([], { lado: "venda" }).por, "favorecido", "padrão do modelo continua favorecido");
+});
+
+test("planilha com Produto e Quantidade: viram produto e qtd; ref muda por produto", () => {
+  const r = m.linhasDePlanilha([["Data", "Cliente", "Produto", "Qtd", "Valor"], ["01/10/2026", "Ana", "Sutiã renda", "2", "R$ 180,00"], ["01/10/2026", "Ana", "Calcinha", "2", "R$ 180,00"]], { fonte: "s", tipoPadrao: "renda" });
+  assert.deepEqual(r.linhas.map((l) => [l.produto, l.qtd, l.tipo]), [["Sutiã renda", "2", "renda"], ["Calcinha", "2", "renda"]]);
+  assert.notEqual(r.linhas[0].ref, r.linhas[1].ref);
+  assert.equal(m.qtdDe("1.200"), 1200); assert.equal(m.qtdDe("2,5"), 2.5); assert.equal(m.qtdDe("0"), null); assert.equal(m.qtdDe("abc"), null);
+});

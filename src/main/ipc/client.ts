@@ -201,7 +201,7 @@ export function registerClientIpc(): void {
   });
   handleClient("finance:abc", async (event, payload: unknown) => {
     const p = (payload ?? {}) as { lado?: unknown; por?: unknown; meses?: unknown; ate?: unknown };
-    const lado = p.lado === "venda" ? "venda" : "compra"; const por = p.por === "categoria" ? "categoria" : "favorecido";
+    const lado = p.lado === "venda" ? "venda" : "compra"; const por = p.por === "categoria" ? "categoria" : p.por === "favorecido" ? "favorecido" : "produto";
     const meses = Number.isInteger(p.meses) ? Math.min(24, Math.max(1, p.meses as number)) : 3;
     return financeAbc(await fin(event), { lado, por, meses, ...(p.ate !== undefined ? { ate: mesOk(p.ate) } : {}) });
   });
