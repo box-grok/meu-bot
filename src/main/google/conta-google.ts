@@ -1,7 +1,10 @@
 /**
- * Conta Google geral do Mac (login + Gmail + Agenda + Sheets + Drive), separada do token de Contatos do CRM
+ * Conta Google de cada máquina (login + Gmail + Agenda + Sheets + Drive), separada do token de Contatos do CRM
  * (google-contatos.bin): mesmo fluxo oficial de app de desktop (loopback 127.0.0.1 + PKCE + authorization code), o
- * refresh token cifrado com safeStorage (Keychain) em userData/google-conta.bin e nunca sai do Mac. A verificação de
+ * refresh token cifrado com safeStorage (Keychain) em userData/google-conta/<máquina>.bin e nunca sai do Mac. Cada VM
+ * entra com a própria conta (26/10: a VM da LV mostrava a conta do dono). O token antigo, único do Mac
+ * (userData/google-conta.bin), não vale sozinho em máquina nenhuma: a tela oferece "usar a conta que já estava neste
+ * Mac" (adotarContaDoMac), que copia para a máquina da janela por escolha explícita. A verificação de
  * telefone/QR, quando o Google pede, é feita pela pessoa na tela oficial; o app só recebe o token.
  */
 import { app, shell } from "electron";
@@ -15,12 +18,17 @@ import { browserAsk, browserWebContents, reservarRetornoLocal } from "../browser
 import { ESCOPOS_CONTA, URL_TOKEN, parseIdToken, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
 import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
-const ARQ = (): string => path.join(app.getPath("userData"), "google-conta.bin");
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
+const sanitHost = (h: string): string => (h || "sem-maquina").replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 100);
+const DIR = (): string => path.join(app.getPath("userData"), "google-conta");
+const ARQ = (host: string): string => path.join(DIR(), `${sanitHost(host)}.bin`);
+/** O token único de antes (um por Mac): só lido para oferecer a adoção explícita. */
+const ARQ_DO_MAC = (): string => path.join(app.getPath("userData"), "google-conta.bin");
 interface Guardado { refresh: string; perfil: PerfilGoogle | null; escopo: string }
-function lerToken(): Guardado | null {
+function lerToken(host: string): Guardado | null { return lerArq(ARQ(host)); }
+function lerArq(arq: string): Guardado | null {
   try {
-    const j = JSON.parse(safeStorage.decryptString(fs.readFileSync(ARQ()))) as Partial<Guardado>;
+    const j = JSON.parse(safeStorage.decryptString(fs.readFileSync(arq))) as Partial<Guardado>;
     if (typeof j.refresh !== "string") return null;
     const p = (j.perfil ?? null) as PerfilGoogle | null;
     // Tokens gravados antes do cache da foto nao tem `fotoLocal`: aqui ela vira null explicito, nao undefined.
@@ -59,37 +67,38 @@ const fotoTentada = new Set<string>();
  * Completa a foto de quem ja estava conectado antes deste cache (ou quando o download falhou no login). Devolve o
  * status novo so quando realmente gravou, para o chamador avisar as telas; null quando nao havia o que fazer.
  */
-export async function garantirFotoPerfil(): Promise<GoogleContaStatus | null> {
-  const t = lerToken();
+export async function garantirFotoPerfil(host: string): Promise<GoogleContaStatus | null> {
+  const t = lerToken(host);
   if (t === null || t.perfil === null || t.perfil.foto === null || t.perfil.fotoLocal !== null) return null;
   const chave = `${t.perfil.sub} ${t.perfil.foto}`;
   if (fotoTentada.has(chave)) return null;
   fotoTentada.add(chave);
   const fotoLocal = await baixarFoto(t.perfil.foto);
   if (fotoLocal === null) return null;
-  const atual = lerToken();
+  const atual = lerToken(host);
   // Desconectou ou reconectou durante o download: o token de agora manda, nao reescreve por cima.
   if (atual === null || atual.perfil === null || atual.refresh !== t.refresh || atual.perfil.fotoLocal !== null) return null;
-  gravar(ARQ(), safeStorage.encryptString(JSON.stringify({ ...atual, perfil: { ...atual.perfil, fotoLocal } })));
-  return contaStatus();
+  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ ...atual, perfil: { ...atual.perfil, fotoLocal } })));
+  return contaStatus(host);
 }
 /** Access token em cache (expira antes da hora real, com folga), para não trocar o refresh a cada chamada. */
-let cache: { acesso: string; expira: number } | null = null;
+const cache = new Map<string, { acesso: string; expira: number }>();
 
-export function contaStatus(): GoogleContaStatus {
-  const t = lerToken();
+export function contaStatus(host: string): GoogleContaStatus {
+  const t = lerToken(host);
+  const doMac = t === null ? lerArq(ARQ_DO_MAC()) : null;
   const c = clienteContaOrigem();
-  return { configurado: c !== null, conectado: t !== null, conectando: conectando.size > 0, precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [], cliente: c === null ? null : { projeto: c.projeto, origem: c.origem } };
+  return { configurado: c !== null, conectado: t !== null, conectando: conectando.has(host), maquina: host, contaDoMac: doMac?.perfil?.email ?? (doMac !== null ? "(conta sem e-mail)" : null), precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [], cliente: c === null ? null : { projeto: c.projeto, origem: c.origem } };
 }
 
 export async function contaConectar(host: string): Promise<GoogleContaStatus> {
   const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-oauth.json)");
   if (!temKeychain()) throw new Error("este Mac não tem o Keychain disponível para guardar a autorização");
-  if (conectando.size === 0) {
+  if (!conectando.has(host)) {
     conectando.add(host);
     void fluxo(host, c).catch((e: unknown) => log(`[google conta] login não concluído: ${e instanceof Error ? e.message : String(e)}`)).finally(() => conectando.delete(host));
   }
-  return contaStatus();
+  return contaStatus(host);
 }
 async function fluxo(host: string, c: { clientId: string; clientSecret: string }): Promise<void> {
   const verifier = randomBytes(48).toString("base64url");
@@ -122,31 +131,51 @@ async function fluxo(host: string, c: { clientId: string; clientSecret: string }
   const tok = await postForm(URL_TOKEN, { code: codigo.code, client_id: c.clientId, client_secret: c.clientSecret, redirect_uri: codigo.redirect, grant_type: "authorization_code", code_verifier: verifier });
   if (typeof tok["refresh_token"] !== "string") throw new Error("o Google não devolveu a autorização permanente; tente conectar de novo");
   const perfil = await comFoto(parseIdToken(tok["id_token"]));
-  gravar(ARQ(), safeStorage.encryptString(JSON.stringify({ refresh: tok["refresh_token"], perfil, escopo: typeof tok["scope"] === "string" ? tok["scope"] : "" })));
-  cache = null;
-  log(`[google conta] conectada (${perfil?.email ?? "conta sem e-mail"})`);
+  fs.mkdirSync(DIR(), { recursive: true, mode: 0o700 });
+  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ refresh: tok["refresh_token"], perfil, escopo: typeof tok["scope"] === "string" ? tok["scope"] : "" })));
+  cache.delete(host);
+  log(`[google conta] ${host}: conectada (${perfil?.email ?? "conta sem e-mail"})`);
 }
 
-export async function contaDesconectar(): Promise<GoogleContaStatus> {
-  const t = lerToken();
-  if (t) { try { await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t.refresh)}`, { method: "POST" }); } catch { /* cortesia */ } }
-  try { fs.rmSync(ARQ(), { force: true }); } catch { /* ok */ }
-  cache = null; log("[google conta] desconectada");
-  return contaStatus();
+/**
+ * A mesma conta Google está em uso em outra máquina (ou no token antigo do Mac)? Revogar no Google derruba a autorização
+ * do app para a CONTA inteira (todas as máquinas que entraram com ela), então só se revoga quando esta é a última.
+ * Compara pela conta (sub do id_token) e, sem perfil, pelo próprio refresh.
+ */
+function contaEmUsoEmOutra(t: Guardado, exceto: string): boolean {
+  const outros: string[] = [ARQ_DO_MAC()];
+  try { for (const f of fs.readdirSync(DIR())) if (f.endsWith(".bin")) outros.push(path.join(DIR(), f)); } catch { /* sem pasta */ }
+  return outros.some((f) => { if (f === exceto) return false; const o = lerArq(f); return o !== null && (o.refresh === t.refresh || (t.perfil?.sub !== undefined && o.perfil?.sub === t.perfil.sub)); });
+}
+export async function contaDesconectar(host: string): Promise<GoogleContaStatus> {
+  const t = lerToken(host);
+  if (t && !contaEmUsoEmOutra(t, ARQ(host))) { try { await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t.refresh)}`, { method: "POST" }); } catch { /* cortesia */ } }
+  try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ }
+  cache.delete(host); log(`[google conta] ${host}: desconectada`);
+  return contaStatus(host);
+}
+/** Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina (escolha explícita na tela). */
+export function adotarContaDoMac(host: string): GoogleContaStatus {
+  const t = lerArq(ARQ_DO_MAC());
+  if (t === null) throw new Error("não há conta antiga neste Mac para usar");
+  fs.mkdirSync(DIR(), { recursive: true, mode: 0o700 });
+  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify(t)));
+  cache.delete(host); log(`[google conta] ${host}: usando a conta que já estava no Mac (${t.perfil?.email ?? "sem e-mail"})`);
+  return contaStatus(host);
 }
 
 /** access token válido para as APIs; renova pelo refresh quando o cache venceu. Em invalid_grant, apaga o token. */
-export async function acessoValido(): Promise<string> {
-  const t = lerToken(); const c = clienteConta();
+export async function acessoValido(host: string): Promise<string> {
+  const t = lerToken(host); const c = clienteConta();
   if (t === null || c === null) throw new Error("GOOGLE_CONTA_DESCONECTADA");
-  if (cache !== null && cache.expira > Date.now()) return cache.acesso;
+  const em = cache.get(host); if (em !== undefined && em.expira > Date.now()) return em.acesso;
   try {
     const acesso = await acessoDeRefresh(c, t.refresh);
-    cache = { acesso, expira: Date.now() + 50 * 60_000 };
+    cache.set(host, { acesso, expira: Date.now() + 50 * 60_000 });
     return acesso;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/invalid_grant|revoked|expired/i.test(msg)) { try { fs.rmSync(ARQ(), { force: true }); } catch { /* ok */ } cache = null; throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
+    if (/invalid_grant|revoked|expired/i.test(msg)) { try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ } cache.delete(host); throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
     throw e;
   }
 }

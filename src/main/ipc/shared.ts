@@ -28,8 +28,8 @@ import { getBackendPort, getQuickEntry, settingsView, updateSettings } from "../
 import { applyQuickEntryShortcut } from "../quickEntry";
 import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../memory";
 import { knownModels, showPicker } from "../picker";
-import { broadcast } from "../windows";
-import { contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
+import { broadcast, sendToHost } from "../windows";
+import { adotarContaDoMac, contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
 import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../settings";
@@ -71,17 +71,21 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   });
   handleShared("ui:open-picker", () => showPicker());
   // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
-  handleShared("google-conta:status", () => {
+  // Conta Google da máquina da janela (cada VM tem a sua; desconectar numa não mexe nas outras).
+  const hostConta = (event: Electron.IpcMainInvokeEvent): string => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return h.host; };
+  handleShared("google-conta:status", (event) => {
+    const host = hostConta(event);
     // A foto pode faltar num token gravado antes do cache; busca em segundo plano e avisa quando entrar.
-    void garantirFotoPerfil().then((r) => { if (r !== null) broadcast("google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
-    return contaStatus();
+    void garantirFotoPerfil(host).then((r) => { if (r !== null) sendToHost(host, "google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
+    return contaStatus(host);
   });
+  handleShared("google-conta:adotar-do-mac", (event) => { const host = hostConta(event); const r = adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });
   handleShared("google-conta:conectar", async (event) => {
-    const ctx = hostFromEvent(event); const r = await contaConectar(ctx?.host ?? ""); broadcast("google-conta:changed", r);
+    const host = hostConta(event); const r = await contaConectar(host); sendToHost(host, "google-conta:changed", r);
     if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); // a cópia que falhou "sem conta" sai agora
     return r;
   });
-  handleShared("google-conta:desconectar", async () => { const r = await contaDesconectar(); broadcast("google-conta:changed", r); return r; });
+  handleShared("google-conta:desconectar", async (event) => { const host = hostConta(event); const r = await contaDesconectar(host); sendToHost(host, "google-conta:changed", r); return r; });
   // Cópia do CRM e do financeiro desta máquina no Drive da Conta Google: estado, "guardar agora" e o interruptor.
   handleShared("backup-dados:status", (event) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
@@ -113,28 +117,28 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     setDadosNoDrive((payload as { ligado?: unknown } | null)?.ligado === true);
     return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
   });
-  handleShared("google-conta:gmail", () => gmailResumo());
-  handleShared("google-conta:agenda", (_event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(typeof d === "number" ? d : 7); });
-  handleShared("google-conta:agenda-criar", (_event, payload: unknown) => {
+  handleShared("google-conta:gmail", (event) => gmailResumo(hostConta(event)));
+  handleShared("google-conta:agenda", (event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(hostConta(event), typeof d === "number" ? d : 7); });
+  handleShared("google-conta:agenda-criar", (event, payload: unknown) => {
     const p = (payload ?? {}) as Record<string, unknown>;
     const s = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
     const titulo = s(p["titulo"], 200), inicio = s(p["inicio"], 40), fim = s(p["fim"], 40);
     if (titulo === "" || inicio === "" || fim === "") throw new Error("preencha título, início e fim");
-    return agendaCriar({ titulo, inicio, fim, ...(typeof p["descricao"] === "string" ? { descricao: p["descricao"].slice(0, 2000) } : {}) });
+    return agendaCriar(hostConta(event), { titulo, inicio, fim, ...(typeof p["descricao"] === "string" ? { descricao: p["descricao"].slice(0, 2000) } : {}) });
   });
-  handleShared("google-conta:planilha-ler", (_event, payload: unknown) => {
+  handleShared("google-conta:planilha-ler", (event, payload: unknown) => {
     const p = (payload ?? {}) as Record<string, unknown>;
     const id = typeof p["id"] === "string" ? p["id"].trim() : ""; const intervalo = typeof p["intervalo"] === "string" ? p["intervalo"].trim().slice(0, 100) : "";
     if (!/^[A-Za-z0-9_-]{10,80}$/.test(id) || intervalo === "") throw new Error("informe o id da planilha e o intervalo (ex.: Página1!A1:C10)");
-    return planilhaLer(id, intervalo);
+    return planilhaLer(hostConta(event), id, intervalo);
   });
-  handleShared("google-conta:planilha-escrever", (_event, payload: unknown) => {
+  handleShared("google-conta:planilha-escrever", (event, payload: unknown) => {
     const p = (payload ?? {}) as Record<string, unknown>;
     const id = typeof p["id"] === "string" ? p["id"].trim() : ""; const intervalo = typeof p["intervalo"] === "string" ? p["intervalo"].trim().slice(0, 100) : "";
     if (!/^[A-Za-z0-9_-]{10,80}$/.test(id) || intervalo === "") throw new Error("informe o id da planilha e o intervalo");
     const vs = Array.isArray(p["valores"]) ? (p["valores"] as unknown[]).slice(0, 1000).map((l) => (Array.isArray(l) ? l.slice(0, 50).map((c) => String(c ?? "")) : [])) : [];
     if (vs.length === 0) throw new Error("nada para gravar");
-    return planilhaEscrever(id, intervalo, vs);
+    return planilhaEscrever(hostConta(event), id, intervalo, vs);
   });
   handleShared("shell:open-external", (_event, payload: unknown) => {
     const url = (payload as { url?: unknown })?.url;

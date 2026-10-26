@@ -89,10 +89,10 @@ export async function financeImportarPlanilha(host: string, p: { link: string; a
   const id = idDaPlanilha(p.link);
   if (id === null) throw new Error("cole o link da planilha do Google Sheets (docs.google.com/spreadsheets/d/…)");
   const aba = (p.aba ?? "").trim().slice(0, 100);
-  const st = contaStatus();
-  if (!st.conectado) throw new Error("conecte a Conta Google na aba Conta Google: é por ela que o app lê a planilha");
+  const st = contaStatus(host);
+  if (!st.conectado) throw new Error("conecte a Conta Google desta máquina na aba Conta Google: é por ela que o app lê a planilha");
   let valores: string[][];
-  try { valores = (await planilhaLer(id, aba ? `'${aba.replace(/'/g, "''")}'!A1:Z5000` : "A1:Z5000")).valores; }
+  try { valores = (await planilhaLer(host, id, aba ? `'${aba.replace(/'/g, "''")}'!A1:Z5000` : "A1:Z5000")).valores; }
   catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     if (/permission|not have|403|404|not found|Requested entity/i.test(m)) throw new Error(`não consegui abrir a planilha: compartilhe-a com ${st.perfil?.email ?? "a conta Google conectada no app"} (leitura basta)${aba ? ` e confira o nome da aba "${aba}"` : ""}`);

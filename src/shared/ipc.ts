@@ -8,7 +8,7 @@ export interface DonoInfo { id: string; rotulo: string; origem: OrigemDono }
 /** `foto`: a URL do Google, como veio. `fotoLocal`: a mesma imagem em data URL, baixada no main (a tela tem CSP `img-src 'self' data:`). */
 export interface GooglePerfil { sub: string; email: string | null; emailVerificado: boolean; nome: string | null; foto: string | null; fotoLocal: string | null }
 /** : de onde veio o client OAuth e de qual projeto do Google Cloud; null = nenhum configurado. */
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; perfil: GooglePerfil | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
 /** Um conjunto de dados da máquina que subiu para o Drive (CRM e financeiro vão separados, de propósito). */
 export interface BackupDadosEnvio { conjunto: string; caminho: string; bytes: number; apagados: number; /** Caminho da cópia local no Mac, gravada antes do envio. */ local: string }
 /** Cópia diária do CRM e do financeiro desta máquina no Drive da Conta Google do dono. */
@@ -1183,6 +1183,8 @@ export interface MeuBotSharedApi {
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
   googleContaStatus(): Promise<GoogleContaStatus>;
+  /** Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina. */
+  googleContaAdotarDoMac(): Promise<GoogleContaStatus>;
   googleContaConectar(): Promise<GoogleContaStatus>;
   googleContaDesconectar(): Promise<GoogleContaStatus>;
   /** Estado da cópia dos dados desta máquina no Drive. */

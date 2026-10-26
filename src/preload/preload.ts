@@ -96,6 +96,7 @@ const sharedApi: MeuBotSharedApi = {
   googleContaStatus: () => ipcRenderer.invoke("google-conta:status", {}),
   googleContaConectar: () => ipcRenderer.invoke("google-conta:conectar", {}),
   googleContaDesconectar: () => ipcRenderer.invoke("google-conta:desconectar", {}),
+  googleContaAdotarDoMac: () => ipcRenderer.invoke("google-conta:adotar-do-mac", {}),
   backupDadosStatus: () => ipcRenderer.invoke("backup-dados:status", {}),
   backupDadosAgora: () => ipcRenderer.invoke("backup-dados:agora", {}),
   backupDadosLigar: (ligado: boolean) => ipcRenderer.invoke("backup-dados:ligar", { ligado }),

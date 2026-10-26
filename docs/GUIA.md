@@ -3009,3 +3009,17 @@ etapa). `financeApi.sincronizarExternos` é idempotente: sem diferença não gra
 que sai da etapa tira o lançamento. O server.js dispara a cada mudança do CRM (debounce 2 s) e 15 s depois de subir,
 só com CRM e financeiro liberados. A skill crm-api diz ao agente para registrar a venda no CRM e não também no
 financeiro. Teste: `scripts/tests/crm-finance-vendas.test.mjs`. Backend 1.1.4.
+
+## Conta Google por máquina (26 out)
+
+Como o WhatsApp, cada máquina (VM) tem a sua Conta Google: o refresh token fica cifrado no Keychain em
+`userData/google-conta/<máquina>.bin`, e Gmail, Agenda, Planilhas, a importação do financeiro e o backup no Drive usam
+a conta da máquina da janela (`acessoValido(host)`, `contaStatus(host)`). Motivo: com um token por app, a VM da LV
+mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-box caiu junto).
+- Desconectar apaga só o token daquela máquina; a revogação no Google (que derruba a autorização da CONTA inteira) só
+  acontece quando nenhuma outra máquina, nem o token antigo do Mac, usa a mesma conta (`contaEmUsoEmOutra`, por `sub`).
+- O token antigo, único do Mac (`userData/google-conta.bin`), não vale sozinho em nenhuma máquina: a tela mostra
+  "Usar <e-mail> nesta máquina" (`google-conta:adotar-do-mac`), cópia explícita para a máquina da janela.
+- O login abre no Navegador da própria máquina (partição `persist:navegador-<host>`), então os cookies também são dela.
+- Fica de fora: o token de Contatos do CRM (`google-contatos.bin`, usado em "guardar conversa no Drive") ainda é um
+  por app.

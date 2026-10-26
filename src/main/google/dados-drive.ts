@@ -125,7 +125,7 @@ const lerEstadoTodos = (): Record<string, Partial<EstadoDadosDrive>> => { try { 
 /** O estado gravado, já sem o erro de conta que a conta de agora desmente (reconectou depois da última tentativa). */
 export function estadoDadosDrive(host: string): EstadoDadosDrive {
   const e: EstadoDadosDrive = { ...VAZIO, ...lerEstadoTodos()[host] };
-  return { ...e, erro: erroDriveAindaVale(e.erro, contaStatus()) };
+  return { ...e, erro: erroDriveAindaVale(e.erro, contaStatus(host)) };
 }
 function gravarEstado(host: string, e: EstadoDadosDrive): void {
   try { gravar(ARQ_ESTADO(), JSON.stringify({ ...lerEstadoTodos(), [host]: e }, null, 1)); } catch { /* o estado é só para a tela */ }
@@ -136,7 +136,7 @@ function gravarEstado(host: string, e: EstadoDadosDrive): void {
  * outro: são cópias independentes, e meia cópia é melhor que nenhuma. Guarda o resultado para a tela mostrar.
  */
 export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive> {
-  const st = contaStatus();
+  const st = contaStatus(host);
   const agora = new Date().toISOString();
   // Sem conta, a última cópia boa continua valendo na tela: só o erro e a hora da tentativa mudam.
   const anterior = { ...VAZIO, ...lerEstadoTodos()[host] };
@@ -145,7 +145,7 @@ export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive
     const e = { ...anterior, tentativaEm: agora, conta: st.perfil?.email ?? null, erro: ERRO_DRIVE_PERMISSAO };
     gravarEstado(host, e); return e;
   }
-  const s = sessaoDriveCom(await acessoValido());
+  const s = sessaoDriveCom(await acessoValido(host));
   const enviados: EnvioDados[] = []; const erros: string[] = [];
   const pulados: string[] = [];
   for (const c of CONJUNTOS_DADOS) {

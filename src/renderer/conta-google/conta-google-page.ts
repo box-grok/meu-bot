@@ -13,7 +13,7 @@ export interface ContaGoogleDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
+  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void> } {
@@ -63,7 +63,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   function render(): void {
     panel.replaceChildren();
     const head = el("div", "guide-head"); const hb = el("div", "tut-body");
-    hb.append(el("span", "tut-badge", "conta google"), el("h2", "", "Conta Google"), el("p", "", "Entre com a sua conta do Google para o meu-bot ler seu Gmail e sua Agenda e ler/escrever em planilhas. A conta fica guardada só neste Mac."));
+    hb.append(el("span", "tut-badge", "conta google"), el("h2", "", "Conta Google"), el("p", "", status !== null ? `Conta Google da máquina ${status.maquina}: cada máquina entra com a sua, e desconectar aqui não mexe nas outras. É por ela que o meu-bot lê o Gmail, a Agenda e as planilhas e guarda o backup no Drive. O acesso fica guardado só neste Mac.` : "Entre com a conta do Google desta máquina."));
     head.append(hb); panel.append(head);
     if (status === null) { panel.append(el("p", "hint", "Consultando…")); return; }
     if (!status.configurado) { const c = card("Google não configurado neste app"); c.append(el("p", "", "Falta o client OAuth do Google (google-oauth.json) neste build. Instale a versão com o CRM/Google habilitado.")); panel.append(c); return; }
@@ -75,7 +75,12 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       // Procedência do client: um arquivo velho vencendo em silêncio já custou uma caçada longa, e
       // o Google só diz "access_denied" no navegador, longe daqui. Aqui a origem fica à vista.
       if (status.cliente !== null) pc.append(el("p", "hint", `Entrando pelo projeto ${status.cliente.projeto} do Google Cloud (client vindo do ${status.cliente.origem}). Se o Google recusar dizendo que o app não foi verificado, é este projeto que precisa liberar o seu e-mail.`));
-      pc.append(btn("Entrar com Google", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "login aberto no Navegador; conclua lá e volte"); }));
+      pc.append(btn("Entrar com Google", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "login aberto no Navegador desta máquina; conclua lá e volte"); }));
+      // A conta que estava conectada no Mac antes de a conta ser por máquina: só vale aqui por escolha explícita.
+      if (status.contaDoMac !== null) {
+        pc.append(el("p", "hint", `Antes, este Mac tinha uma conta só para todas as máquinas: ${status.contaDoMac}. Se ela é a certa para ${status.maquina}, use-a aqui sem entrar de novo.`));
+        pc.append(btn(`Usar ${status.contaDoMac} nesta máquina`, "btn-ghost", () => { void agir(() => deps.api.googleContaAdotarDoMac(), `conta ${status?.contaDoMac ?? ""} em uso nesta máquina`); }));
+      }
     } else {
       const linha = el("div", "conta-perfil");
       // Sempre a `fotoLocal` (data URL): a URL do Google cai no CSP `img-src 'self' data:` e nao carregaria.
@@ -83,7 +88,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       const info = el("div"); info.append(el("strong", "", status.perfil?.nome ?? "conta conectada"), el("div", "hint", status.perfil?.email ?? ""));
       linha.append(info); pc.append(linha);
       if (status.precisaReconectar) { pc.append(el("p", "hint bad-hint", "Faltam permissões (Gmail, Agenda, Sheets ou Drive). Quem conectou antes do backup no Drive precisa reconectar uma vez para a cópia diária funcionar."));pc.append(btn("Reconectar", "btn-primary", () => { void agir(() => deps.api.googleContaConectar(), "reautorização aberta no Navegador"); })); }
-      const d = btn("Desconectar", "btn-ghost", () => { deps.armConfirm(d, "Confirmar? tira a conta deste Mac", () => { void agir(() => deps.api.googleContaDesconectar(), "conta desconectada"); }); });
+      const d = btn("Desconectar", "btn-ghost", () => { deps.armConfirm(d, "Confirmar? tira a conta só desta máquina", () => { void agir(() => deps.api.googleContaDesconectar(), "conta desconectada"); }); });
       pc.append(d);
     }
     panel.append(pc);
