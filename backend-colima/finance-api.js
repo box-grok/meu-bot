@@ -59,6 +59,23 @@ function createFinanceApi(deps) {
     return ant ? { cent: ant[campo], herdadoDe: ant.key } : null;
   }
   const orcamentoDe = (ym) => herdado(ym, 'orcamentoCent');
+  /**
+   * Curva ABC (submódulo de Finanças): compras ou vendas dos últimos `n` meses até `ate` (inclusive), por favorecido ou
+   * categoria, em moeda de exibição. A regra é do modelo (curvaABC); aqui só o período, a conversão e a formatação.
+   */
+  function abc(lado, por, n, ate) {
+    const { taxas, moedaExib } = cfgMoeda();
+    const toExib = (l) => modelo.paraExib(l.valorCent, l.moeda ?? modelo.MOEDA_PADRAO, taxas, moedaExib);
+    const cats = store.list('categorias');
+    const nomeCat = (k) => cats.find((c) => c.key === k)?.nome ?? k;
+    const meses = [ate]; while (meses.length < n) meses.unshift(modelo.mesAnterior(meses[0]));
+    const lanc = meses.flatMap((ym) => store.listLanc(ym));
+    const r = modelo.curvaABC(lanc, { lado, por, toExib, nomeCat });
+    const pct = (x) => Math.round(x * 1000) / 10;
+    const classes = Object.fromEntries(Object.entries(r.classes).map(([k, c]) => [k, { itens: c.itens, cent: c.cent, valor: fmtExib(c.cent), pct: pct(c.pct) }]));
+    return { lado: r.lado, por: r.por, de: meses[0], ate, meses: n, moeda: moedaExib, lancamentos: lanc.length, totalCent: r.totalCent, total: fmtExib(r.totalCent), classes,
+      itens: r.itens.map((i) => ({ ...i, valor: fmtExib(i.cent), pct: pct(i.pct), acumPct: pct(i.acumPct) })) };
+  }
   function resumo(ym) {
     const { taxas, moedaExib } = cfgMoeda();
     const conv = { taxas, moedaExib };
@@ -189,6 +206,7 @@ function createFinanceApi(deps) {
     if (a === 'estado' && m === 'GET' && !b) return estado();
     if (a === 'contexto' && m === 'GET' && !b) return { texto: contexto() };
     if (a === 'resumo' && m === 'GET' && !b) return resumo(sp.has('mes') ? mesOk(sp.get('mes')) : hoje().slice(0, 7));
+    if (a === 'abc' && m === 'GET' && !b) return abc(sp.get('lado') ?? 'compra', sp.get('por') ?? 'favorecido', int(sp.get('meses'), 3, 1, 24), sp.has('ate') ? mesOk(sp.get('ate')) : hoje().slice(0, 7));
     if (a === 'mudancas' && m === 'GET' && !b) return { mudancas: store.ultimas(int(sp.get('n'), 30, 1, 200)) };
 
     // Config de moeda: taxas (unidades por 1 US$) e a moeda de exibição (padrão do sistema, US$; trocável).

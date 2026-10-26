@@ -137,3 +137,27 @@ test("moeda: conta em guaraní; falar em outra moeda converte e guarda o origina
   const s = m.resumoMes([g, r], c.categorias, "2026-10", conv);
   assert.equal(s.gastosCent, 101000); // US$ 1.000 + US$ 10 = US$ 1.010
 });
+
+test("curvaABC: compras e vendas separadas, agrupa por favorecido (sem caixa/acento) ou categoria, A até cruzar 80%, B até 95%", () => {
+  const L = (valorCent, favorecido, categoria, data = "2026-10-10") => ({ valorCent, favorecido, categoria, data });
+  const lanc = [
+    L(-50000, "Meta Ads", "midia-paga"), L(-20000, "meta ads", "midia-paga", "2026-10-20"),   // 700,00
+    L(-15000, "Fornecedor X", "estoque"), L(-8000, "Correios", "frete"), L(-4000, "Uber", "transporte"),
+    L(-2000, "Padaria", "mercado"), L(-1000, "Banca", "mercado"),
+    L(30000, "Cliente Ana", "vendas"), L(10000, "Cliente Bia", "vendas"), L(5000, "cliente ana", "vendas"),
+  ];
+  const c = m.curvaABC(lanc, { lado: "compra" });
+  assert.equal(c.totalCent, 100000);
+  assert.deepEqual(c.itens.map((i) => [i.nome, i.cent, i.qtd, i.classe]), [
+    ["Meta ads", 70000, 2, "A"], ["Fornecedor X", 15000, 1, "A"], ["Correios", 8000, 1, "B"], ["Uber", 4000, 1, "B"], ["Padaria", 2000, 1, "C"], ["Banca", 1000, 1, "C"],
+  ]);
+  assert.deepEqual(Object.fromEntries(Object.entries(c.classes).map(([k, v]) => [k, [v.itens, v.cent]])), { A: [2, 85000], B: [2, 12000], C: [2, 3000] });
+  assert.equal(c.itens.at(-1).acumPct, 1);
+  const v = m.curvaABC(lanc, { lado: "venda" });
+  assert.deepEqual(v.itens.map((i) => [i.nome, i.cent, i.classe]), [["Cliente Ana", 35000, "A"], ["Cliente Bia", 10000, "A"]]);
+  const cat = m.curvaABC(lanc, { lado: "compra", por: "categoria", nomeCat: (k) => k.toUpperCase() });
+  assert.deepEqual(cat.itens.map((i) => [i.key, i.nome, i.cent]).slice(0, 2), [["midia-paga", "MIDIA-PAGA", 70000], ["estoque", "ESTOQUE", 15000]]);
+  assert.deepEqual(m.curvaABC([], { lado: "venda" }).itens, []);
+  assert.throws(() => m.curvaABC(lanc, { lado: "outro" }), /lado inválido/);
+  assert.throws(() => m.curvaABC(lanc, { por: "conta" }), /agrupamento inválido/);
+});

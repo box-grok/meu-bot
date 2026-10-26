@@ -178,3 +178,17 @@ test("moeda: exibição em dólar; conta em guaraní; valores e saldo convertido
   const troca = await call("PUT", `/contas/${gkey}`, { moeda: "BRL" });
   assert.equal(troca.status, 400);
 });
+
+test("curva ABC: GET /abc por compra e venda, período em meses, classes e valores formatados", async () => {
+  await call("POST", "/lancamentos", { valor: "900", favorecido: "Fornecedor ABC", categoria: "mercado" });
+  await call("POST", "/lancamentos", { tipo: "renda", valor: "500", favorecido: "Cliente ABC" });
+  const c = await call("GET", "/abc?lado=compra&meses=1");
+  assert.equal(c.status, 200); assert.equal(c.j.lado, "compra"); assert.equal(c.j.de, c.j.ate); assert.equal(c.j.meses, 1);
+  const f = c.j.itens.find((i) => i.nome === "Fornecedor ABC"); assert.ok(f && f.cent > 0); assert.ok(f.valor.length > 0, "valor formatado na moeda de exibição"); assert.equal(c.j.itens[0].classe, "A");
+  assert.ok(c.j.itens.every((x, i) => i === 0 || c.j.itens[i - 1].cent >= x.cent), "ordem decrescente");
+  assert.equal(c.j.itens.reduce((s, i) => s + i.cent, 0), c.j.totalCent);
+  assert.ok(["A", "B", "C"].every((k) => typeof c.j.classes[k].pct === "number"));
+  const v = await call("GET", "/abc?lado=venda&por=categoria&meses=3");
+  assert.equal(v.status, 200); assert.equal(v.j.meses, 3); assert.notEqual(v.j.de, v.j.ate); assert.ok(v.j.itens.length >= 1); assert.ok(v.j.itens.every((i) => i.cent > 0));
+  assert.equal((await call("GET", "/abc?lado=troca")).status, 400);
+});

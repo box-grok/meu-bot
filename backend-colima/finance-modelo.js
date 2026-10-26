@@ -410,6 +410,46 @@ function resumoMes(lancamentos, categorias, ym, conv = null) {
   const porCategoria = [...porCat.entries()].map(([key, cent]) => ({ key, nome: nomeCat(key), cent })).sort((a, b) => a.cent - b.cent);
   return { mes: ym, gastosCent: gastos, rendaCent: renda, saldoCent: renda - gastos, porCategoria, total: doMes.length, pendencias: doMes.filter((l) => l.status === 'pendente').length, ...retornoResumo(gastos, direto, indireto) };
 }
+// ---- curva ABC (submódulo de Finanças) ---------------------------------------------------------------------------
+/**
+ * Curva ABC de compras ou vendas. `lado`: 'compra' = lançamentos de saída (valor < 0), 'venda' = entradas (valor > 0).
+ * `por`: 'favorecido' (fornecedor/cliente) ou 'categoria'. Agrupa, ordena do maior para o menor e classifica pelo
+ * acumulado ANTES do item: A enquanto o acumulado anterior < limiteA (80%), B < limiteB (95%), C o resto — assim o item
+ * que cruza os 80% ainda é A (convenção usual de Pareto). `toExib(l)` converte para a moeda de exibição; `nomeCat(key)`
+ * dá o nome da categoria. Puro: devolve centavos e frações; a API formata.
+ */
+const LADOS_ABC = ['compra', 'venda'];
+const AGRUPAR_ABC = ['favorecido', 'categoria'];
+function curvaABC(lancamentos, { lado = 'compra', por = 'favorecido', toExib = (l) => l.valorCent, nomeCat = (k) => k, limiteA = 0.8, limiteB = 0.95 } = {}) {
+  if (!LADOS_ABC.includes(lado)) throw invalido(`lado inválido: use ${LADOS_ABC.join(' ou ')}`);
+  if (!AGRUPAR_ABC.includes(por)) throw invalido(`agrupamento inválido: use ${AGRUPAR_ABC.join(' ou ')}`);
+  const grupos = new Map();
+  for (const l of lancamentos) {
+    const v = toExib(l);
+    if (lado === 'compra' ? v >= 0 : v <= 0) continue;
+    const cent = Math.abs(v);
+    const key = por === 'categoria' ? (l.categoria || CATEGORIA_SEM) : (favorecidoKey(l.favorecido || '') || '(sem nome)');
+    const nome = por === 'categoria' ? nomeCat(key) : (nomeFavorecido(l.favorecido || '') || '(sem nome)');
+    const g = grupos.get(key) ?? { key, nome, cent: 0, qtd: 0, ultima: '' };
+    g.cent += cent; g.qtd += 1;
+    if ((l.data || '') > g.ultima) { g.ultima = l.data || ''; if (por === 'favorecido') g.nome = nome; }
+    grupos.set(key, g);
+  }
+  const itens = [...grupos.values()].sort((a, b) => b.cent - a.cent || a.nome.localeCompare(b.nome));
+  const total = itens.reduce((s, g) => s + g.cent, 0);
+  const classes = { A: { itens: 0, cent: 0 }, B: { itens: 0, cent: 0 }, C: { itens: 0, cent: 0 } };
+  let acum = 0;
+  const out = itens.map((g, i) => {
+    const antes = total > 0 ? acum / total : 0;
+    const classe = antes < limiteA ? 'A' : antes < limiteB ? 'B' : 'C';
+    acum += g.cent;
+    classes[classe].itens += 1; classes[classe].cent += g.cent;
+    return { pos: i + 1, key: g.key, nome: g.nome, cent: g.cent, qtd: g.qtd, ultima: g.ultima, pct: total > 0 ? g.cent / total : 0, acumPct: total > 0 ? acum / total : 0, classe };
+  });
+  for (const c of Object.values(classes)) c.pct = total > 0 ? c.cent / total : 0;
+  return { lado, por, totalCent: total, itens: out, classes, limites: { A: limiteA, B: limiteB } };
+}
+
 /** ROI em % (inteiro) do investimento: só com o ganho direto (realizado) e com direto + indireto (perspectiva). Sem gasto, null. */
 function retornoResumo(gastosCent, diretoCent, indiretoCent) {
   const roi = (r) => (gastosCent > 0 ? Math.round(((r - gastosCent) / gastosCent) * 100) : null);
@@ -435,5 +475,6 @@ module.exports = {
   nomeFavorecido, favorecidoKey, categoriaAprendida, aprender, categoriaSemente,
   novoLancamento, patchLancamento, duplicadoDe,
   saldoConta, resumoMes, retornoResumo, linhaLancamento,
+  LADOS_ABC, AGRUPAR_ABC, curvaABC,
   TIPOS_LINHA, LINHAS_PADRAO, novaLinha, patchLinha, findLinha, valorLinha,
 };

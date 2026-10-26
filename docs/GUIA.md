@@ -2963,3 +2963,15 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   gateway é Hermes; `installAudio` recusa com a explicação; a tela mostra "✓ ativo: o Hermes transcreve" e a voz só
   como leitura, sem botões de instalar.
 
+
+## Curva ABC: submódulo de Finanças (26 out)
+
+Aba "Curva ABC" ao lado da "Visão geral" na página Finanças. Compras (saídas, valor < 0) ou vendas (entradas, valor > 0),
+agrupadas por favorecido (fornecedor/cliente) ou por categoria, nos últimos 1, 3, 6 ou 12 meses, na moeda de exibição.
+
+- Regra única no modelo (`finance-modelo.js › curvaABC`, pura, testada): ordena do maior para o menor e classifica pelo
+  acumulado ANTES do item: A enquanto < 80%, B enquanto < 95%, C o resto (o item que cruza os 80% ainda é A). Favorecido
+  agrupa pela chave sem caixa/acento (`favorecidoKey`) e mostra o nome do lançamento mais recente.
+- API: `GET /v1/finance/abc?lado=compra|venda&por=favorecido|categoria&meses=1..24[&ate=AAAA-MM]` → total, classes
+  (itens, valor, %) e itens (pos, nome, valor, %, acumulado, lançamentos, classe). App: `financeAbc` (IPC `finance:abc`).
+- Backend 1.1.1: as máquinas recebem a rota pela atualização automática do seletor.

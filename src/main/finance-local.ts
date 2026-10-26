@@ -3,7 +3,7 @@
  * A página Finanças e o tutorial 14 leem e mexem por aqui; a validação final é da máquina (finance-modelo.js), e a
  * licença é conferida nas três camadas (renderer, acesso.ts › assertFinance, backend › financeOk).
  */
-import type { FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
+import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../shared/ipc";
 import { ensureTunnel } from "./tunnel";
 import { getBackendPort } from "./settings";
 import { runSsh } from "./whatsapp";
@@ -71,3 +71,6 @@ export const financeConfigLer = async (host: string): Promise<FinanceConfig> => 
 export const financeConfig = async (host: string, patch: { taxas?: Record<string, number>; moedaExibicao?: string }): Promise<FinanceConfig> => (await api<{ config: FinanceConfig }>(host, "PUT", "/config", patch)).config;
 export const financeMes = async (host: string, mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void> => { await api(host, "PUT", `/meses/${encodeURIComponent(mes)}`, patch); };
 export const financeFecharMes = async (host: string, mes: string): Promise<void> => { await api(host, "POST", "/fechamento", { mes }); };
+/** Curva ABC da máquina (a regra é do finance-modelo.js › curvaABC). */
+export const financeAbc = (host: string, f: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }): Promise<FinanceAbc> =>
+  api<FinanceAbc>(host, "GET", `/abc?${new URLSearchParams({ lado: f.lado, por: f.por, meses: String(f.meses), ...(f.ate ? { ate: f.ate } : {}) }).toString()}`);

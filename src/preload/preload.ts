@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import type { AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
+import type { FinanceAbcLado, FinanceAbcPor, AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ProdutoMvpPatch, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -199,6 +199,7 @@ const clientApi: MeuBotClientApi = {
   financeConfigLer: () => ipcRenderer.invoke("finance:config-ler", {}),
   financeConfig: (patch: { taxas?: Record<string, number>; moedaExibicao?: FinanceMoeda }) => ipcRenderer.invoke("finance:config-salvar", patch),
   financeFecharMes: (mes: string) => ipcRenderer.invoke("finance:fechar-mes", { mes }),
+  financeAbc: (filtro: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }) => ipcRenderer.invoke("finance:abc", filtro),
   installFinance: () => ipcRenderer.invoke("finance:install", {}),
   financePedir: () => ipcRenderer.invoke("finance:pedir", {}),
   installCrm: () => ipcRenderer.invoke("crm:install", {}),

@@ -13,7 +13,7 @@ import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBack
 import { lerLicenca, lerLicencaDaMaquina } from "../licenca-maquina";
 import { assertAcesso, assertFinance } from "../acesso";
 import { esquecerPermissoes, responderPermissao } from "../nav-permissoes";
-import { financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
+import { financeAbc, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../finance-local";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador-whatsapp";
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm-local";
 import { caps } from "../variant";
@@ -191,6 +191,12 @@ export function registerClientIpc(): void {
   const mesOk = (v: unknown): string => { if (typeof v !== "string" || !/^\d{4}-\d{2}$/.test(v)) throw new Error("mês inválido"); return v; };
   const idOk = (v: unknown): string => { if (typeof v !== "string" || !/^[A-Za-z0-9_-]{2,80}$/.test(v)) throw new Error("lançamento inválido"); return v; };
   handleClient("finance:info", async (event) => financeInfo(await fin(event)));
+  handleClient("finance:abc", async (event, payload: unknown) => {
+    const p = (payload ?? {}) as { lado?: unknown; por?: unknown; meses?: unknown; ate?: unknown };
+    const lado = p.lado === "venda" ? "venda" : "compra"; const por = p.por === "categoria" ? "categoria" : "favorecido";
+    const meses = Number.isInteger(p.meses) ? Math.min(24, Math.max(1, p.meses as number)) : 3;
+    return financeAbc(await fin(event), { lado, por, meses, ...(p.ate !== undefined ? { ate: mesOk(p.ate) } : {}) });
+  });
   handleClient("finance:lancamentos", async (event, payload: unknown) => { const p = (payload ?? {}) as { mes?: unknown; status?: unknown; limite?: unknown }; return financeLancamentos(await fin(event), { ...(p.mes !== undefined ? { mes: mesOk(p.mes) } : {}), ...(p.status === "pendente" || p.status === "confirmado" ? { status: p.status } : {}), ...(typeof p.limite === "number" ? { limite: Math.min(500, Math.max(1, Math.trunc(p.limite))) } : {}) }); });
   handleClient("finance:categorias", async (event) => financeCategorias(await fin(event)));
   handleClient("finance:lancar", async (event, payload: unknown) => {

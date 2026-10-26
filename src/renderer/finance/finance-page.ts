@@ -4,7 +4,7 @@
  * mês por categoria. Os números moram na máquina (/v1/finance pelo túnel, via main › finance-local.ts); aqui só se
  * mostra e se pede. Fábrica com dependências explícitas, como admin/produtos-page.ts.
  */
-import type { BackendModel, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
+import type { BackendModel, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceConfig, FinanceLinhaDre, FinanceMoeda, FinanceTipoLinha, FinanceCategoria, FinanceInfo, FinanceLancamento, LicenseView, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -15,7 +15,7 @@ export interface FinancePageDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "financeConfigLer" | "financeConfig" | "installFinance" | "financePedir" | "on">;
+  api: Pick<MeuBotApi, "financeInfo" | "financeLancamentos" | "financeCategorias" | "financeLancar" | "financeConfirmar" | "financeDescartar" | "financeCorrigir" | "financeComprovante" | "financeLinhaSalvar" | "financeLinhaRemover" | "financeConfirmarTodas" | "financeContaCriar" | "financeMes" | "financeFecharMes" | "financeConfigLer" | "financeConfig" | "installFinance" | "financePedir" | "financeAbc" | "on">;
   host(): string;
   license(): LicenseView | null;
   /** A licença desta janela já foi lida (antes disso, nada de bloqueio precipitado). */
@@ -47,6 +47,15 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
   let categorias: FinanceCategoria[] = [];
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   let instLog: string[] = []; let instalando = false;
+  // Submódulo Curva ABC: aba própria dentro de Finanças. Filtro lembrado enquanto a janela vive.
+  let aba: "geral" | "abc" = "geral";
+  const abcF: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number } = { lado: "compra", por: "favorecido", meses: 3 };
+  let abc: FinanceAbc | null = null; let abcErro: string | null = null; let abcCarregando = false;
+  async function carregarAbc(): Promise<void> {
+    abcCarregando = true; abcErro = null; render();
+    try { abc = await deps.api.financeAbc({ ...abcF }); } catch (err) { abc = null; abcErro = ipcErrorText(err); }
+    abcCarregando = false; render();
+  }
   deps.api.on("finance:progress", ({ line }) => { instLog = [...instLog, line].slice(-6); if (!panel.hidden) render(); });
 
   async function refresh(): Promise<void> {
@@ -197,6 +206,16 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     }
     if (e === null) { if (info.erro) panel.append(el("p", "hint bad-hint", info.erro)); return; }
 
+    // Abas do módulo: visão geral do mês e o submódulo Curva ABC.
+    const abas = el("div", "fin-abas");
+    for (const [id, rot] of [["geral", "Visão geral"], ["abc", "Curva ABC"]] as const) {
+      const t = el("button", `btn btn-small ${aba === id ? "btn-primary" : "btn-ghost"}`, rot); t.type = "button";
+      t.addEventListener("click", () => { if (aba === id) return; aba = id; if (id === "abc" && abc === null && !abcCarregando) void carregarAbc(); else render(); });
+      abas.append(t);
+    }
+    panel.append(abas);
+    if (aba === "abc") { renderAbc(); return; }
+
     // Checklist do mês: só o que depende da pessoa.
     const ck = card(`O que depende de você em ${e.resumo.nome}`);
     const lista = el("ul", "admin-health finance-checklist");
@@ -341,6 +360,42 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
     for (const l of ultimos) uc.append(linhaLanc(l, false));
     // Ordem: o mês e o que o agente lançou primeiro; depois o que depende da pessoa; contas e lançar à mão no fim.
     panel.append(mc, dreCard, uc, ck, ...(pendCard ? [pendCard] : []), cc, moedaCard, lc);
+  }
+
+  /** Submódulo Curva ABC: filtros (compras/vendas, por quem ou por categoria, período), resumo das classes e a tabela. */
+  function renderAbc(): void {
+    const filtros = el("div", "admin-actions");
+    const sel = <T extends string>(opts: [T, string][], atual: T, set: (v: T) => void): HTMLSelectElement => {
+      const s = el("select"); for (const [v, r] of opts) { const o = el("option", "", r); o.value = v; o.selected = v === atual; s.append(o); }
+      s.disabled = abcCarregando; s.addEventListener("change", () => { set(s.value as T); void carregarAbc(); }); return s;
+    };
+    filtros.append(
+      field("O quê", sel<FinanceAbcLado>([["compra", "Compras (saídas)"], ["venda", "Vendas (entradas)"]], abcF.lado, (v) => { abcF.lado = v; })),
+      field("Agrupar por", sel<FinanceAbcPor>([["favorecido", abcF.lado === "venda" ? "Cliente" : "Fornecedor"], ["categoria", "Categoria"]], abcF.por, (v) => { abcF.por = v; })),
+      field("Período", sel<string>([["1", "Este mês"], ["3", "Últimos 3 meses"], ["6", "Últimos 6 meses"], ["12", "Últimos 12 meses"]], String(abcF.meses), (v) => { abcF.meses = Number(v); })),
+      btn(abcCarregando ? "Calculando…" : "Recalcular", "btn-ghost", () => { void carregarAbc(); }),
+    );
+    const c = card("Curva ABC"); c.append(filtros);
+    c.append(el("p", "hint", "Classe A: os poucos itens que somam até 80% do valor. B: até 95%. C: o resto (muitos itens, pouco valor)."));
+    if (abcErro !== null) { c.append(el("p", "hint bad-hint", abcErro)); panel.append(c); return; }
+    if (abc === null) { c.append(el("p", "hint", abcCarregando ? "Calculando…" : "Escolha os filtros.")); panel.append(c); return; }
+    const quem = abc.por === "categoria" ? "categorias" : abc.lado === "venda" ? "clientes" : "fornecedores";
+    const periodo = abc.de === abc.ate ? `${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}` : `${abc.de.slice(5)}/${abc.de.slice(0, 4)} a ${abc.ate.slice(5)}/${abc.ate.slice(0, 4)}`;
+    if (abc.itens.length === 0) { c.append(el("p", "hint", `Nenhuma ${abc.lado === "venda" ? "entrada" : "saída"} lançada em ${periodo}.`)); panel.append(c); return; }
+    const A = abc.classes.A;
+    c.append(el("p", "", `${abc.lado === "venda" ? "Vendas" : "Compras"} de ${periodo}: ${abc.total} em ${abc.itens.length} ${quem}. ${A.itens} ${A.itens === 1 ? "concentra" : "concentram"} ${A.pct.toLocaleString("pt-BR")}% do valor (classe A).`));
+    const resumo = el("div", "fin-abc-classes");
+    for (const k of ["A", "B", "C"] as const) { const x = abc.classes[k]; const b = el("div", `fin-abc-classe fin-abc-${k}`); b.append(el("strong", "", `Classe ${k}`), el("span", "", `${x.itens} ${x.itens === 1 ? "item" : "itens"} · ${x.valor} · ${x.pct.toLocaleString("pt-BR")}%`)); resumo.append(b); }
+    c.append(resumo);
+    const wrap = el("div", "fin-abc-wrap"); const t = el("table", "fin-abc");
+    const th = el("tr"); for (const h of ["#", abc.por === "categoria" ? "Categoria" : abc.lado === "venda" ? "Cliente" : "Fornecedor", "Valor", "%", "Acumulado", "Lançam.", "Classe"]) th.append(el("th", "", h));
+    t.append(th);
+    for (const i of abc.itens) {
+      const tr = el("tr", `fin-abc-${i.classe}`);
+      tr.append(el("td", "", String(i.pos)), el("td", "", i.nome), el("td", "num", i.valor), el("td", "num", `${i.pct.toLocaleString("pt-BR")}%`), el("td", "num", `${i.acumPct.toLocaleString("pt-BR")}%`), el("td", "num", String(i.qtd)), el("td", "fin-abc-tag", i.classe));
+      t.append(tr);
+    }
+    wrap.append(t); c.append(wrap); panel.append(c);
   }
 
   const page = deps.definePage("financas", "Finanças", panel, () => { render(); void refresh(); });
