@@ -198,7 +198,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       ctl.append(
         ...(view.license.plan !== "free" ? [licBtnConfirm("Mudar para Free", "Confirmar? ela perde o Pro agora", () => setLic("plano Free", { plan: "free", status: "free" }))] : []),
         ...(view.license.plan !== "pro" ? [licBtn("Mudar para Pro", () => setLic("plano Pro", { plan: "pro", status: "active" }))] : []),
-        licBtn("Marcar Trialing", () => setLic("status Trialing", { plan: pago, status: "trialing" })),
+        licBtn("Marcar Trial", () => setLic("status Trial", { plan: pago, status: "trialing" })),
         licBtn("Marcar Active", () => setLic("status Active", { plan: pago, status: "active" })),
         licBtnConfirm("Marcar Expired", "Confirmar? a licença expira agora", () => setLic("status Expired", { status: "expired" })),
       );

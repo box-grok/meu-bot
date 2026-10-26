@@ -82,7 +82,7 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
 
 /** Rótulos do plano/status, como as telas de billing do Rambox. */
 export const PLAN_LABEL: Record<LicenseView["license"]["plan"], string> = { free: "Free", pro: "Pro" };
-export const STATUS_LABEL: Record<LicenseView["license"]["status"], string> = { free: "Free", trialing: "Trialing", active: "Active", expired: "Expired" };
+export const STATUS_LABEL: Record<LicenseView["license"]["status"], string> = { free: "Free", trialing: "Trial", active: "Active", expired: "Expired" };
 /** Ciclo de cobrança legível; "-" quando não há (ex.: em trial), como a tela colada. */
 export const billingCycleText = (interval: LicenseView["license"]["interval"]): string => (interval === "month" ? "mensal" : interval === "year" ? "anual" : "-");
 
