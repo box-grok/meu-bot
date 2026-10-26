@@ -1431,11 +1431,8 @@ export interface BackupIndiceView { arquivo: string; pessoa: string; maquina: st
 /** Pré-voo da restauração num destino: o que impede, o que pede atenção. */
 export interface BackupRestauracao { bloqueios: string[]; avisos: string[]; podeRestaurar: boolean; destinoUsuario: string; whatsappNoDestino: boolean }
 export interface MeuBotAdminApi {
-  /** meu-bot-admin: MVPs de produtos (registro local do admin): listar, criar/editar, remover, exportar a definição. */
+  /** meu-bot-admin: nomes dos MVPs registrados (botões "＋ produto" da licença); criar e editar ficam no seletor. */
   adminProdutos(): Promise<ProdutoMvp[]>;
-  adminProdutoSave(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
-  adminProdutoRemove(nome: string): Promise<ProdutoMvp[]>;
-  adminProdutoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
   /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
   adminHealth(): Promise<AdminHealth>;
   /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */

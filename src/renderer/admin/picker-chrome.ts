@@ -84,7 +84,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       // são os mesmos da página "Produtos" da janela de uma pessoa.
       const prodBtn = el("button", "btn btn-ghost btn-small", "◆ Novo MVP / Produtos"); prodBtn.type = "button"; prodBtn.title = "Registrar um novo bot personalizado (MVP) ou ver os produtos que saem deste código";
       const prodBox = el("div", "add-form produtos-box"); prodBox.hidden = true;
-      const prodView = mountProdutosView({ container: prodBox, api: { listar: () => deps.api.produtos(), salvar: (p) => deps.api.produtoSave(p), remover: (n) => deps.api.produtoRemove(n), exportar: (n) => deps.api.produtoExport(n) }, cabecalho: false, fixos: true });
+      const prodView = mountProdutosView({ container: prodBox, api: { listar: () => deps.api.produtos(), salvar: (p) => deps.api.produtoSave(p), remover: (n) => deps.api.produtoRemove(n), exportar: (n) => deps.api.produtoExport(n) }, fixos: true });
       let prodLoaded = false;
       prodBtn.addEventListener("click", () => { prodBox.hidden = !prodBox.hidden; if (!prodBox.hidden) { form.hidden = true; if (!prodLoaded) { prodLoaded = true; void prodView.refresh().then(() => { if (prodBox.querySelectorAll(".admin-card").length <= 1) prodView.novo(); }); } } });
       // Auditoria: só no app do super admin (o botão aparece quando a central confirma).

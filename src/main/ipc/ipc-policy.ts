@@ -64,7 +64,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:produtos-save", "admin:produtos-remove", "admin:produtos-export", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-list", "picker:produtos-save", "picker:produtos-remove", "picker:produtos-export", "picker:auditoria-maquinas", "picker:auditoria-registro", "picker:auditoria-exportar", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-list", "picker:produtos-save", "picker:produtos-remove", "picker:produtos-export", "picker:auditoria-maquinas", "picker:auditoria-registro", "picker:auditoria-exportar", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

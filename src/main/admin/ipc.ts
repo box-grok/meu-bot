@@ -10,7 +10,7 @@ import type { LicensePatch } from "../../shared/ipc";
 import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, removeDevice, setLicense } from "./support-admin";
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
-import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
+import { listProdutos } from "./produtos";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -23,9 +23,6 @@ const adminHost = (event: Electron.IpcMainInvokeEvent): string => {
 export function registerAdminIpc(): void {
   // Produtos (MVPs de bots verticais): registro local do admin, em qualquer janela do meu-bot-admin.
   handleAdmin("admin:produtos-list", () => listProdutos());
-  handleAdmin("admin:produtos-save", (_event, payload: unknown) => saveProduto((payload as { patch?: unknown } | null)?.patch));
-  handleAdmin("admin:produtos-remove", (_event, payload: unknown) => removeProduto((payload as { nome?: unknown } | null)?.nome));
-  handleAdmin("admin:produtos-export", (_event, payload: unknown) => exportProduto((payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:health", (event) => adminHealth(adminHost(event)));
   // Backup e mudança de máquina (backup-admin.ts): o progresso vai para a janela que pediu.
   const arq = (payload: unknown): string => { const a = String((payload as { arquivo?: unknown } | null)?.arquivo ?? ""); if (!/^[a-z0-9-]+\.mbbak$/.test(a)) throw new Error("backup inválido"); return a; };

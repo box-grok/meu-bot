@@ -2,38 +2,27 @@
  * Variante: admin. Página "Produtos" do meu-bot-admin: os produtos que saem deste código (tabela fixa) e os MVPs
  * de bots verticais que o admin registra (meu-bot-fit, meu-bot-vendas…): formulário de pontapé inicial, status,
  * pipeline modelo, e a definição exportável (produto.json + checklist) que vira o insumo da implementação.
- * Fábrica com dependências explícitas, como suporte-page.ts.
+ * Vive no seletor do admin ("Novo MVP / Produtos"). Fábrica com dependências explícitas, como suporte-page.ts.
  */
-import type { MeuBotApi, ProdutoMvp, ProdutoMvpPatch, ProdutoStatus } from "../../shared/ipc";
+import type { ProdutoMvp, ProdutoMvpPatch, ProdutoStatus } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
-import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
-/** A API dos produtos, com os nomes da janela principal (`adminProdutos`…) ou do seletor (`produtos`…). */
+/** A API dos produtos (no seletor: `produtos`, `produtoSave`…). */
 export interface ProdutosApi {
   listar(): Promise<ProdutoMvp[]>;
   salvar(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
   remover(nome: string): Promise<ProdutoMvp[]>;
   exportar(nome: string): Promise<{ json: string; checklist: string[] }>;
 }
-export const produtosApiDaJanela = (api: Pick<MeuBotApi, "adminProdutos" | "adminProdutoSave" | "adminProdutoRemove" | "adminProdutoExport">): ProdutosApi => ({ listar: () => api.adminProdutos(), salvar: (p) => api.adminProdutoSave(p), remover: (n) => api.adminProdutoRemove(n), exportar: (n) => api.adminProdutoExport(n) });
 export interface ProdutosViewDeps {
   /** Onde desenhar. */
   container: HTMLElement;
   api: ProdutosApi;
   /** Botão de dois cliques (o segundo confirma); sem ele, a vista usa um "confirmar?" próprio. */
   armConfirm?: (btn: HTMLButtonElement, label: string, run: () => void) => void;
-  /** Cabeçalho "Produtos" com o botão de novo (a janela principal quer; o seletor já tem o botão fora). */
-  cabecalho?: boolean;
   /** Mostrar a lista dos produtos fixos (meu-bot, meu-bot-admin, meu-bot-crm). */
   fixos?: boolean;
-}
-export interface ProdutosPageDeps {
-  panelsEl: HTMLElement;
-  definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
-  openPage(page: PageTab): void;
-  armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "adminProdutos" | "adminProdutoSave" | "adminProdutoRemove" | "adminProdutoExport">;
 }
 const FIXOS = [
   { nome: "meu-bot", texto: "O app da pessoa: chat e WhatsApp no plano Free; Navegador e CRM próprio no Gmail no Pro. Add-ons por cima, com ou sem o Pro." },
@@ -43,7 +32,7 @@ const FIXOS = [
 ];
 const STATUS: { id: ProdutoStatus; label: string }[] = [{ id: "ideia", label: "Ideia" }, { id: "mvp", label: "MVP" }, { id: "beta", label: "Beta" }, { id: "lancado", label: "Lançado" }];
 
-/** A vista (lista + formulário + exportação), usada pela página da janela principal e pelo seletor do admin. */
+/** A vista (lista + formulário + exportação) do seletor do admin. */
 export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Promise<void>; novo: () => void } {
   const panel = deps.container;
   const armConfirm = deps.armConfirm ?? ((btn, label, run) => { const t = btn.textContent; btn.textContent = label; const once = (): void => { btn.removeEventListener("click", once); run(); }; setTimeout(() => btn.addEventListener("click", once), 0); setTimeout(() => { btn.removeEventListener("click", once); btn.textContent = t; }, 4000); });
@@ -119,10 +108,6 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
 
   function render(): void {
     panel.replaceChildren();
-    if (deps.cabecalho !== false) {
-      const h = el("div", "admin-card-head"); h.append(el("h2", "", "Produtos"), btn("＋ Novo MVP", "btn-primary", () => { novo = true; editando = null; render(); }));
-      panel.append(h, el("p", "hint", "Os apps que saem deste código e os MVPs de bots verticais em gestação. O pontapé inicial exporta a definição (produto.json) e o checklist para a implementação como variante; o admin não mexe no repositório."));
-    }
     if (msg !== "") panel.append(el("p", "hint", msg));
     if (deps.fixos !== false) {
       const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Produtos existentes"));
@@ -135,19 +120,3 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
   return { refresh, novo: () => { novo = true; editando = null; render(); } };
 }
 
-/** A página "Produtos" da janela principal do admin (aba própria). */
-export function mountProdutosPage(deps: ProdutosPageDeps): { open: () => void } {
-  let page: PageTab | null = null;
-  return {
-    open: () => {
-      if (page === null) {
-        const panel = el("section", "acervo-panel admin-panel"); panel.hidden = true;
-        deps.panelsEl.append(panel);
-        const view = mountProdutosView({ container: panel, api: produtosApiDaJanela(deps.api), armConfirm: deps.armConfirm });
-        page = deps.definePage("produtos", "Produtos", panel, () => { void view.refresh(); });
-        void view.refresh();
-      }
-      deps.openPage(page);
-    },
-  };
-}

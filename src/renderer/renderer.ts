@@ -4,7 +4,6 @@ import { el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
-import { mountProdutosPage } from "./admin/produtos-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -7431,7 +7430,7 @@ void (async () => {
     document.documentElement.style.setProperty("--host-accent", hostAccent(info.machine ?? windowHost));
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
-    mountSuportePage({
+    const suportePage = mountSuportePage({
       who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
       onPlan: (plan) => setPlanBadge(plan !== null && planoLiberaPro(plan)),
       onWhatsapp: (st) => {
@@ -7439,10 +7438,10 @@ void (async () => {
         else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }
         paintWhatsapp(); renderSidebar();
       },
-    }).open();
-    // Produtos (MVPs de bots verticais): registro local do admin, numa aba própria.
-    const produtosPage = mountProdutosPage({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot });
-    $<HTMLButtonElement>("produtos-line").addEventListener("click", () => produtosPage.open());
+    });
+    suportePage.open();
+    // A aba Suporte pode ser fechada no ×: a lateral a reabre. Produtos (MVPs) ficam no seletor.
+    $<HTMLButtonElement>("suporte-line").addEventListener("click", () => suportePage.open());
     adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();
     tabsReady = true;

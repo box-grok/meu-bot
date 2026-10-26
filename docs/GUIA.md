@@ -2126,14 +2126,15 @@ Regras novas:
 ### Produtos no meu-bot-admin (MVPs de bots verticais)
 
 Pedido de 19 out: o admin é o lugar de registrar e dar o pontapé inicial em novos bots personalizados
-(meu-bot-fit para academias e estúdios, por exemplo). Página "Produtos" (`src/renderer/admin/produtos-page.ts`,
-botão `#produtos-line` na lateral, só em `body.admin-mode`): lista os três produtos fixos e os MVPs do admin, com
+(meu-bot-fit para academias e estúdios, por exemplo). Vista "Produtos" (`src/renderer/admin/produtos-page.ts`,
+botão "Novo MVP / Produtos" do seletor; a lateral da janela da pessoa tinha `#produtos-line` até 26 out, quando o
+lugar passou a ser do `#suporte-line`, que reabre a aba Suporte): lista os três produtos fixos e os MVPs do admin, com
 formulário (nome `meu-bot-<slug>`, vertical, pitch, público, módulos, pipeline modelo, status ideia/mvp/beta/
 lançado, notas, próximos passos). "Pontapé inicial (exportar)" mostra a definição (`produto.json`) e o checklist do
 que falta para virar variante (linha em `PRODUTOS`, ícone, templates, licença das pessoas, `--variant`). Dados em
 `userData/produtos.json` do admin (0600, atômico); o admin não altera o repositório. Main: `src/main/admin/
-produtos-core.ts` (puro, testado) e `produtos.ts`; canais `admin:produtos-list|save|remove|export` em
-`ADMIN_CHANNELS`, `adminProdutos/adminProdutoSave/adminProdutoRemove/adminProdutoExport` no `adminApi`.
+produtos-core.ts` (puro, testado) e `produtos.ts`; canais `picker:produtos-list|save|remove|export` no seletor e
+só `admin:produtos-list` na janela (`adminProdutos`: os nomes para os botões "＋ produto" da licença).
 Pendente: anotar em `pessoas.json` qual produto cada pessoa contratou no plano personalizado.
 
 ## Assinatura dos apps e o chaveiro do macOS
