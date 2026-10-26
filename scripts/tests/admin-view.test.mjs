@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, compareVersions, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
+import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
 
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
@@ -8,7 +8,7 @@ const share = { progress: true, whatsapp: true, logs: true, chat: true };
 const V = "0.1.0";
 
 test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
-  const sem = healthLines({ probe, whatsapp: null, progress: null, share, xai: null }, fmt, V);
+  const sem = healthLines({ probe, whatsapp: null, progress: null, share, xai: null }, fmt);
   assert.deepEqual(sem.map((l) => l.ok), [null, true, false, true, null, false]);
   assert.equal(sem[4].text, "xAI (Grok): sem Hermes nesta máquina");
   assert.match(sem[0].text, /sem dados ainda/);
@@ -16,7 +16,7 @@ test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
   assert.equal(sem[0].text, "entra por SSH (box · Ubuntu)");
   assert.equal(sem[1].text, "backend instalado mas parado");
   const wa = { present: true, connected: true, number: "5511999990000", detail: "", dmPolicy: "allowlist", audioIn: false, audioOut: "inbound" };
-  const com = healthLines({ probe, whatsapp: wa, progress: null, share: { ...share, progress: false }, xai: { loggedIn: true, email: "d@x.ai" } }, fmt, V);
+  const com = healthLines({ probe, whatsapp: wa, progress: null, share: { ...share, progress: false }, xai: { loggedIn: true, email: "d@x.ai" } }, fmt);
   assert.equal(com.length, 9, "sem compartilhar o progresso não há linha de versão");
   assert.equal(com[3].text, "xAI (Grok) logada (d@x.ai)"); assert.equal(com[3].ok, true);
   com.splice(3, 1);
@@ -24,7 +24,7 @@ test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
   assert.equal(com[5].text, "responde: só a dona do número"); assert.equal(com[5].ok, null);
   assert.equal(com[6].text, "não entende áudios (sem transcrição)"); assert.equal(com[6].ok, false);
   assert.equal(com[7].text, "responde em áudio: quando recebe áudio");
-  const fora = healthLines({ probe: { ...probe, reachable: false, error: "timeout" }, whatsapp: null, progress: null, share: { ...share, progress: false }, xai: { loggedIn: false, email: null } }, fmt, V);
+  const fora = healthLines({ probe: { ...probe, reachable: false, error: "timeout" }, whatsapp: null, progress: null, share: { ...share, progress: false }, xai: { loggedIn: false, email: null } }, fmt);
   assert.equal(fora[3].text, "xAI (Grok) deslogada: o grok-4 não responde");
   assert.equal(fora[0].text, "não entra por SSH: timeout");
 });
@@ -77,34 +77,23 @@ test("timeAgo e personSuffix", () => {
   assert.equal(personSuffix({ ...p, machine: "colima", port: 22, seenAt: "" }, now), " · colima · 203.0.113.7");
 });
 
-test("versão do meu-bot dela na saúde: atrás da do admin acusa; igual ou à frente fica ok", () => {
+test("agoText: segundos viram 'agora'", () => {
   const now = Date.now();
-  const prog = (version) => ({ at: new Date(now).toISOString(), tour: "done", tutorials: [], app: { version, openedAt: new Date(now - 2 * 3600_000).toISOString() } });
-  const atras = healthLines({ probe, whatsapp: null, progress: prog("0.0.9"), share, xai: null }, fmt, "0.1.0")[0];
-  assert.equal(atras.ok, false); assert.match(atras.text, /0\.0\.9 .*atrás da sua \(0\.1\.0\).*aberto há 2 h/);
-  const igual = healthLines({ probe, whatsapp: null, progress: prog("0.1.0"), share, xai: null }, fmt, "0.1.0")[0];
-  assert.equal(igual.ok, true); assert.match(igual.text, /meu-bot 0\.1\.0 no Mac dela · aberto há 2 h/);
-  assert.equal(compareVersions("0.1.0", "0.1.0"), 0);
-  assert.equal(compareVersions("0.1.0", "0.2.0"), -1);
-  assert.equal(compareVersions("1.0.0", "0.9.9"), 1);
-  assert.equal(compareVersions("0.1", "0.1.0"), 0);
-  assert.equal(compareVersions("0.2.0-staging.3", "0.2.0-staging.10"), -1, "mesma regra semver do updater-core");
-  assert.equal(compareVersions("0.2.0-staging.10", "0.2.0"), -1);
   assert.equal(agoText(new Date(now - 20_000).toISOString(), now), "agora");
 });
 
 test("healthLines: disco e memória da máquina (REA do Rambox), com aviso de pouco espaço", () => {
   assert.equal(gb(40_960), "40 GB"); assert.equal(gb(1536), "1,5 GB"); assert.equal(gb(820), "820 MB");
   const base = { probe: { ...probe, diskTotalMb: 40_960, diskFreeMb: 12_288, memTotalMb: 4096, memFreeMb: 1536 }, whatsapp: null, progress: null, share: { ...share, progress: false }, xai: null };
-  const lines = healthLines(base, fmt, V);
+  const lines = healthLines(base, fmt);
   const disk = lines.find((l) => l.text.startsWith("disco:")), mem = lines.find((l) => l.text.startsWith("memória:"));
   assert.deepEqual([disk.text, disk.ok], ["disco: 12 GB livres de 40 GB", true]);
   assert.deepEqual([mem.text, mem.ok], ["memória: 1,5 GB livres de 4,0 GB", null]);
-  const low = healthLines({ ...base, probe: { ...base.probe, diskFreeMb: 900, memFreeMb: 300 } }, fmt, V);
+  const low = healthLines({ ...base, probe: { ...base.probe, diskFreeMb: 900, memFreeMb: 300 } }, fmt);
   assert.deepEqual([low.find((l) => l.text.startsWith("disco:")).ok, low.find((l) => l.text.startsWith("memória:")).ok], [false, false]);
   assert.match(low.find((l) => l.text.startsWith("disco:")).text, /pouco espaço/);
   // sem os números (máquina antiga/sondagem sem df): nenhuma linha
-  assert.equal(healthLines({ ...base, probe }, fmt, V).some((l) => /^disco:|^memória:/.test(l.text)), false);
+  assert.equal(healthLines({ ...base, probe }, fmt).some((l) => /^disco:|^memória:/.test(l.text)), false);
 });
 
 test("isoToDateInput / dateInputToIso: ida e volta, vazio e inválido", () => {

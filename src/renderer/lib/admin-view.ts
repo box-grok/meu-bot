@@ -14,46 +14,16 @@ export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: 
   { id: "support-off", label: "Desligar o suporte desta pessoa", confirm: "Confirmar? o seu acesso a esta máquina acaba agora" },
 ];
 
-/** Compara versões na ordem do semver (mesma regra de src/main/updater-core.ts); negativo = a é mais antiga. */
-export function compareVersions(a: string, b: string): number {
-  // Núcleo "x.y.z" numérico; depois a pre-release: sem ela vence ("0.2.0" > "0.2.0-staging.9"); com as duas,
-  // compara parte a parte (número com número, texto com texto, número < texto, mais partes > menos).
-  const parse = (v: string): { nucleo: number[]; pre: string[] } => {
-    const [semMeta = ""] = v.trim().replace(/^v/, "").split("+");
-    const i = semMeta.indexOf("-");
-    const nucleo = (i < 0 ? semMeta : semMeta.slice(0, i)).split(".").map((x) => Number.parseInt(x, 10) || 0);
-    return { nucleo, pre: i < 0 ? [] : semMeta.slice(i + 1).split(".") };
-  };
-  const x = parse(a), y = parse(b);
-  for (let k = 0; k < Math.max(x.nucleo.length, y.nucleo.length); k++) { const d = (x.nucleo[k] ?? 0) - (y.nucleo[k] ?? 0); if (d !== 0) return d < 0 ? -1 : 1; }
-  if (x.pre.length === 0 || y.pre.length === 0) return x.pre.length === y.pre.length ? 0 : x.pre.length === 0 ? 1 : -1;
-  for (let k = 0; k < Math.max(x.pre.length, y.pre.length); k++) {
-    const p = x.pre[k], q = y.pre[k];
-    if (p === undefined || q === undefined) return p === undefined ? -1 : 1;
-    const np = /^\d+$/.test(p), nq = /^\d+$/.test(q);
-    const d = np && nq ? Number(p) - Number(q) : np ? -1 : nq ? 1 : p < q ? -1 : p > q ? 1 : 0;
-    if (d !== 0) return d < 0 ? -1 : 1;
-  }
-  return 0;
-}
-
 /** Uma linha da lista de saúde/progresso: ✓ (ok), ✗ (bad) ou • (null). */
 export interface HealthLine { text: string; ok: boolean | null; step?: string }
 
 /** MB → "12 GB" / "820 MB" (uma casa só abaixo de 10 GB). */
 export const gb = (mb: number): string => (mb >= 10_240 ? `${Math.round(mb / 1024)} GB` : mb >= 1024 ? `${(mb / 1024).toFixed(1).replace(".", ",")} GB` : `${Math.round(mb)} MB`);
 
-export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string, adminVersion: string): HealthLine[] {
+export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) => string): HealthLine[] {
   const p = h.probe;
   const lines: HealthLine[] = [];
-  // O meu-bot dela: versão (atrás da do admin = ainda não abriu o app com internet / não atualizou) e última abertura.
-  const a = h.progress?.app;
-  if (a !== undefined) {
-    const behind = compareVersions(a.version, adminVersion) < 0;
-    lines.push(behind
-      ? { text: `meu-bot ${a.version} no Mac dela, atrás da sua (${adminVersion}): ela ainda não abriu o app com internet · aberto ${agoText(a.openedAt)}`, ok: false }
-      : { text: `meu-bot ${a.version} no Mac dela · aberto ${agoText(a.openedAt)}`, ok: true });
-  } else if (h.share.progress) lines.push({ text: "versão do meu-bot dela: sem dados ainda (grava quando ela abre o app com o suporte ligado)", ok: null });
+  // Versão e última abertura do app dela ficam nos devices da licença (cada app se apresenta ao abrir), não aqui.
   lines.push(
     { text: p.reachable ? `entra por SSH (${p.user ?? "?"} · ${p.os ?? "?"})` : `não entra por SSH: ${p.error ?? "sem detalhes"}`, ok: p.reachable },
     { text: p.backendListening ? "backend do meu-bot no ar" : p.backendInstalled ? "backend instalado mas parado" : "sem o backend do meu-bot", ok: p.backendListening },

@@ -73,7 +73,6 @@ let adminBotMirror: BotMirror | null = null;
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
 let appBuild = "";
-const sessionOpenedAt = new Date().toISOString();
 let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free" };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
@@ -2282,7 +2281,7 @@ function reportProgress(): void {
       return { id: t.id, title: t.title, done, total: t.steps.length, current: v.finished ? null : (t.steps[v.current]?.title ?? null), finished: v.finished && t.comingSoon !== true, comingSoon: t.comingSoon === true };
     });
     const tour = settings?.onboarding === "done" ? "done" : settings?.onboarding === "skipped" ? "skipped" : "pending";
-    void window.meuBot.reportProgress({ at: new Date().toISOString(), tour, tutorials, ...(appVersion === "" ? {} : { app: { version: appVersion, openedAt: sessionOpenedAt } }) }).catch(() => undefined);
+    void window.meuBot.reportProgress({ at: new Date().toISOString(), tour, tutorials }).catch(() => undefined);
   }, 3000);
 }
 
@@ -7434,7 +7433,7 @@ void (async () => {
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     const suportePage = mountSuportePage({
-      who: { host: windowHost, person: info.person, machine: info.machine }, adminVersion: info.version, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
+      who: { host: windowHost, person: info.person, machine: info.machine }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
       onPlan: (plan) => setPlanBadge(plan !== null && planoLiberaPro(plan)),
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }

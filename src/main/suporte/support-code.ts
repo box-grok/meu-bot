@@ -227,14 +227,8 @@ export function parseSupportProgress(raw: unknown): SupportProgress | null {
     if (id === null || title === null || done === null || total === null || done > total || (r.current !== null && current === null)) return null;
     tutorials.push({ id, title, done, total, current, finished: r.finished === true, comingSoon: r.comingSoon === true });
   }
-  // O app dela (opcional; códigos antigos não trazem): versão curta e quando a sessão abriu.
-  let appInfo: { version: string; openedAt: string } | undefined;
-  if (o.app !== null && typeof o.app === "object") {
-    const a = o.app as Record<string, unknown>;
-    const version = str(a.version, 20), openedAt = str(a.openedAt, 40);
-    if (version !== null && /^[0-9A-Za-z.+-]+$/.test(version) && openedAt !== null && !Number.isNaN(Date.parse(openedAt))) appInfo = { version, openedAt };
-  }
-  return { at, tour: o.tour, tutorials, ...(appInfo === undefined ? {} : { app: appInfo }) };
+  // `app` (versão e abertura) saiu em 26 out: a versão vem dos devices da licença; arquivo antigo que ainda o traz é ignorado.
+  return { at, tour: o.tour, tutorials };
 }
 
 /** Onde a escolha do que compartilhar fica na máquina dela (fora da pasta do suporte: sobrevive a desligar/ligar). */

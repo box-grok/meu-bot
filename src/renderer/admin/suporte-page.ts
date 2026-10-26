@@ -17,7 +17,6 @@ export interface SuportePageDeps {
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
   who: { host: string; person: string | null; machine: string | null };
   /** Versão deste app (a do admin), para comparar com a do meu-bot dela. */
-  adminVersion: string;
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
@@ -114,7 +113,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     if (state.healthErr !== null) h.append(el("p", "hint guide-pair-note", state.healthErr));
     else if (hp === null) h.append(el("p", "hint", "Consultando…"));
     else {
-      const lines = healthLines(hp, deps.fmtPhone, deps.adminVersion);
+      const lines = healthLines(hp, deps.fmtPhone);
       if (!hp.share.whatsapp) lines.push({ text: `WhatsApp: ${who} preferiu não compartilhar`, ok: null });
       h.append(list(lines));
     }

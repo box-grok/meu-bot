@@ -531,8 +531,6 @@ export interface SupportProgress {
   at: string;
   tour: "done" | "skipped" | "pending";
   tutorials: { id: string; title: string; done: number; total: number; current: string | null; finished: boolean; comingSoon: boolean }[];
-  /** O meu-bot dela: versão e quando esta sessão do app abriu (o admin vê se ela está atualizada e ativa). */
-  app?: { version: string; openedAt: string };
 }
 /** Ações do admin na máquina da pessoa. "support-off" tira o próprio acesso (ex.: deixou de pagar); só o admin desliga. */
 export type AdminAction = "install-backend" | "restart-gateway" | "restart-backend" | "transcription" | "transcription-off" | "support-off";

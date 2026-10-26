@@ -113,13 +113,11 @@ test("parseSupportShare: tudo compartilhado por padrão, só false desliga; o ba
   assert.deepEqual(m.DEFAULT_SHARE, { progress: true, whatsapp: true, logs: true, chat: true, backup: false });
 });
 
-test("parseSupportProgress: `app` opcional (versão e abertura); inválido some, o resto vale", () => {
+test("parseSupportProgress: `app` de arquivo antigo é ignorado; o resto vale", () => {
   const base = { at: "2026-10-16T12:00:00Z", tour: "done", tutorials: [] };
-  const ok = m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "2026-10-16T11:00:00Z" } });
-  assert.deepEqual(ok.app, { version: "0.1.0", openedAt: "2026-10-16T11:00:00Z" });
-  assert.equal("app" in m.parseSupportProgress(base), false);
-  assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0; rm -rf", openedAt: "2026-10-16T11:00:00Z" } }), false);
-  assert.equal("app" in m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "ontem" } }), false);
+  const velho = m.parseSupportProgress({ ...base, app: { version: "0.1.0", openedAt: "2026-10-16T11:00:00Z" } });
+  assert.equal("app" in velho, false);
+  assert.deepEqual(velho, base);
 });
 
 test("removeDeliverySh: entrega o off uma última vez, derruba timer e cron, apaga a pasta", () => {
