@@ -61,6 +61,33 @@ Regras do renderer:
   (modelo puro + API), pontes `finance-crm-sync.js` e `crm-finance-vendas.js`, plugins `crm/` e `finance/`.
 - `scripts/tests/` — um teste por módulo puro, importando de `dist/`.
 
+## Como criar um MVP (produto novo derivado do meu-bot)
+Exemplo de referência: o financeiro (add-on `meu-bot-finance`, app `meu-bot-finance-staging`). Nome do exemplo
+abaixo: `meu-bot-fit`.
+
+1. **Registrar a ideia no meu-bot-admin** (página Produtos): pitch, público, módulos. O checklist dessa página é este
+   mesmo roteiro (`src/main/admin/produtos-core.ts` › `checklist`).
+2. **Linha na tabela** `PRODUTOS` (`src/main/app/variant-core.ts`) e o id em `AppVariant` (`src/shared/ipc.ts`). Um app
+   de teste sai de `staging(CLIENT, "<id>", <porta livre>)`; declare `addon` (a razão do app) e `abreEm` (página na
+   frente, de `PAGINAS_INICIAIS`; página nova lá precisa de um `caps.abreEm === "<página>"` no `renderer.ts`).
+3. **Add-on no catálogo**: `ADDONS` em `variant-core.ts` (nome, rótulo, descrição) e a cópia `ADDONS` em
+   `backend-colima/licenca.js`, com a regra `<x>Ok` (molde `financeOk`). Rótulo, candidatos no admin e nomes
+   reservados saem do catálogo sozinhos.
+4. **Ícone**: `assets/icon-<id>.svg` e `npm run icons`. **Auditoria**: o nome do app em `APPS`
+   (`src/main/auditoria/auditoria-core.ts`).
+5. **Módulo, no molde do financeiro**:
+   - máquina: `backend-colima/<x>-modelo.js` (regra pura, com teste) e `<x>-api.js` (rotas `/v1/<x>/*`, montadas no
+     `server.js` atrás do portão da licença); skill para o agente usar as rotas;
+   - main: `src/main/<domínio>/<x>-local.ts` (pelo túnel, como `financeiro/finance-local.ts`) e os canais em
+     `ipc/client.ts`, `ipc/ipc-policy.ts`, `preload/preload.ts` e `shared/ipc.ts`;
+   - telas: `src/renderer/<domínio>/<x>-page.ts` com `mount<X>Page(deps)` (molde `finance/finance-page.ts`) e, se
+     fizer sentido, um tutorial em `lib/tutoriais.ts`.
+6. **Conferir**: `npm test`. O `produtos-alinhados.test.mjs` diz o que faltou (ícone, add-on fora do catálogo,
+   auditoria, backend desalinhado, tipo `AppVariant`, atalho de build).
+7. **Empacotar**: `npm run dist -- --variant <id>` (sem entrada nova no `package.json`; um atalho `dist:<id>` é
+   opcional e precisa chamar `scripts/dist.mjs`).
+8. **Liberar**: no meu-bot-admin, Suporte › Conta e licença › `＋ <rótulo>` na máquina da pessoa.
+
 ## Próximas fases da organização
 1. ~~Processo principal por domínio~~ (26/10).
 2. ~~Telas por domínio~~ (26/10): `renderer.ts` de 7,5 mil para 2 mil linhas. Falta: o núcleo da janela que ficou
