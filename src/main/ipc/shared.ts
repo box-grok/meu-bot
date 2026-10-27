@@ -38,7 +38,7 @@ import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
 import { caps } from "../app/variant";
 import { whatsappArchiveToCrm, whatsappGroupArchiveToCrm } from "../crm/whatsapp-crm";
-import { assertCrmProprio } from "../licenca/acesso";
+import { assertAcesso, assertCrmProprio } from "../licenca/acesso";
 import { waGroupAgente, waGroupDeleted, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuCaps, type WaMenuEntry } from "../whatsapp/wa-menu";
 import { capacidadesDe } from "../whatsapp/whatsapp-capacidades";
 
@@ -90,9 +90,10 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     void garantirFotoPerfil(host).then((r) => { if (r !== null) sendToHost(host, "google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
     return contaStatus(host);
   });
-  handleShared("google-conta:adotar-do-mac", async (event) => { const host = hostConta(event); const r = await adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });
+  // Conta Google é do plano Pro: conectar (ou adotar a conta antiga) passa pelo mesmo portão do Navegador.
+  handleShared("google-conta:adotar-do-mac", async (event) => { const host = hostConta(event); await assertAcesso(host); const r = await adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });
   handleShared("google-conta:conectar", async (event) => {
-    const host = hostConta(event); const r = await contaConectar(host); sendToHost(host, "google-conta:changed", r);
+    const host = hostConta(event); await assertAcesso(host); const r = await contaConectar(host); sendToHost(host, "google-conta:changed", r);
     if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); // a cópia que falhou "sem conta" sai agora
     return r;
   });

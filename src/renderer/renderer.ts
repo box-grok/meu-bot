@@ -34,7 +34,7 @@ import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
-import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, clGuide, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, paintLoginControls, paintXaiLogin, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, xaiAuth, xaiGuide, xaiKey, xaiPrep } from "./agente/contas-agente.js";
+import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, clGuide, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, paintLoginControls, paintXaiLogin, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiGuide, xaiKey, xaiPrep } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
 import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
@@ -233,6 +233,7 @@ const ctxImpl = {
   get renderChannelEditor() { return renderChannelEditor; },
   get renderConta() { return renderConta; },
   get renderContasClaude() { return renderContasClaude; },
+  get contasClaudeView() { return contasClaudeView; },
   get renderCrmConfig() { return renderCrmConfig; },
   get renderCrmInstall() { return renderCrmInstall; },
   get renderCrmPipeline() { return renderCrmPipeline; },
@@ -2009,8 +2010,10 @@ void (async () => {
   { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
-  const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot });
+  const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
+  // Etiqueta "Pro" na lateral, como no Navegador (só no produto free; nos apps com assinatura tudo é um pacote só).
+  $<HTMLElement>("conta-google-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   financePage = mountFinancePage({
     panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked,
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
@@ -2031,7 +2034,7 @@ void (async () => {
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
   void refreshGuarda();
   void refreshContas();
-  void refreshLicense().then(() => paintGuide());
+  void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); });
   void refreshNavInst();
   void refreshCrm();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha

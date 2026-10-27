@@ -4,6 +4,8 @@
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
 import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
+import type { LicenseView, PlanName } from "../../shared/ipc";
+import { browserAccess, proBlockText } from "../lib/pro.js";
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -14,10 +16,16 @@ export interface ContaGoogleDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
-  api: Pick<MeuBotApi, "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
+  /** Conta Google é do plano Pro (27 out): a mesma regra do Navegador; a licença chega depois da janela abrir. */
+  host: () => string;
+  license: () => LicenseView | null;
+  licenseKnown: () => boolean;
+  planoExigido: PlanName;
+  produto: string;
+  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
 }
 
-export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void> } {
+export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void>; repintar: () => void } {
   const panel = el("section", "acervo-panel conta-google-panel"); panel.hidden = true;
   deps.panelsEl.append(panel);
   let status: GoogleContaStatus | null = null;
@@ -27,8 +35,10 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   let backup: BackupDadosView | null = null;
   // Cada cartão guarda o próprio erro: "Carregando…" para sempre escondia o motivo (Gmail e Backup, 25 out).
   let gmailErro: string | null = null; let agendaErro: string | null = null; let backupErro: string | null = null;
-  const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo");
+  const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo").replace(/^PRO_REQUIRED$/, "esta máquina não tem o plano Pro");
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
+  /** "Pedir o Pro ao admin" já foi clicado nesta janela. */
+  let proPedido = false;
   let plId = ""; let plRange = "Página1!A1:C10";
   // Gmail, Agenda e Planilha são ferramentas de teste: ficam ocultas (e sem carregar) até a pessoa pedir.
   let mostrarFerramentas = false;
@@ -74,6 +84,18 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     const head = el("div", "guide-head"); const hb = el("div", "tut-body");
     hb.append(el("span", "tut-badge", "conta google"), el("h2", "", "Conta Google"), el("p", "", status !== null ? `Conta Google da máquina ${status.maquina}: cada máquina entra com a sua, e desconectar aqui não mexe nas outras. É por ela que o meu-bot lê o Gmail, a Agenda e as planilhas e guarda o backup no Drive. O acesso fica guardado só neste Mac.` : "Entre com a conta do Google desta máquina."));
     head.append(hb); panel.append(head);
+    // Módulo Pro: sem o plano, a página é o bloqueio (como a aba Navegador), com o pedido ao admin.
+    if (!deps.licenseKnown()) { panel.append(carregando("Consultando a licença desta máquina…")); return; }
+    const acesso = browserAccess(deps.license(), deps.host(), deps.planoExigido, deps.produto);
+    if (acesso !== "ok") {
+      const t = proBlockText(acesso, deps.license(), "google", deps.produto);
+      const c = card(t.title); c.append(el("p", "", t.text));
+      if (t.askAdmin) {
+        const b = btn(proPedido ? "Pedido enviado ao admin ✓" : acesso === "assinatura" ? "Avisar o admin" : acesso === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin", "btn-primary", () => { void agir(async () => { await deps.api.browserRequestPro(); proPedido = true; }, "pedido enviado ao admin; assim que ele liberar, esta página abre"); });
+        b.disabled = busy || proPedido; c.append(b);
+      }
+      panel.append(c); if (msg) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : ""}`, msg.text)); return;
+    }
     if (status === null) { panel.append(carregando("Consultando a Conta Google desta máquina…")); return; }
     if (!status.configurado) { const c = card("Google não configurado neste app"); c.append(el("p", "", "Falta o client OAuth do Google (google-oauth.json) neste build. Instale a versão com o CRM/Google habilitado.")); panel.append(c); return; }
 
@@ -191,5 +213,6 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   const fmtData = (iso: string): string => { if (iso === "") return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
   const page = deps.definePage("conta-google", "Conta Google", panel, () => { render(); void refresh(); });
-  return { open: () => deps.openPage(page), refresh };
+  // `repintar`: a licença chegou depois de a página abrir (ela mostrava "consultando a licença").
+  return { open: () => deps.openPage(page), refresh, repintar: () => { if (!panel.hidden) render(); } };
 }

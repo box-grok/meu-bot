@@ -81,6 +81,22 @@ oc_model_ensure() {
   openclaw config set agents.defaults.model '{"primary":"anthropic/claude-opus-5-5"}' --strict-json >/dev/null 2>&1 || return 1
   echo set
 }
+# Reserva de modelo do agente do WhatsApp: esgotadas as contas do Claude (porteiro), o OpenClaw cai no Grok, se a
+# máquina tem o provedor grok configurado e a pessoa não definiu a própria lista de fallbacks (lista cheia nunca é tocada).
+oc_fallback_ensure() {
+  F=$(openclaw config get agents.defaults.model.fallbacks 2>&1 || true)
+  case "$F" in *unset*|""|"[]") ;; *) return 0 ;; esac
+  G=$(openclaw config get models.providers.grok --json 2>/dev/null || true)
+  case "$G" in *unset*|"") return 0 ;; esac
+  M=$(printf '%s' "$G" | python3 -c 'import json,sys
+try:
+  p=json.load(sys.stdin); ms=p.get("models") or []
+  print(next((m.get("id") for m in ms if isinstance(m,dict) and m.get("id")), ""))
+except Exception: print("")' 2>/dev/null)
+  [ -n "$M" ] || return 0
+  openclaw config set agents.defaults.model.fallbacks "[\"grok/$M\"]" --strict-json >/dev/null 2>&1 || return 1
+  echo set
+}
 # Conta nova (outra conta de uma VM já usada, ou VM recém-criada) sem o serviço do gateway: sem ele o QR vincula,
 # mas o WhatsApp nunca fica "conectado". Instala como o onboarding do OpenClaw faria: modo local, primeira porta livre
 # a partir da configurada (18789; outra conta pode ter a dela) e as pastas do systemd sem escrita de grupo (contas com
@@ -152,6 +168,7 @@ print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))' 2>/dev/
   fi
   # Agente sem modelo e Claude logado: configura o Claude (uma vez; depois o modelo existe e isto não faz nada).
   echo "ocmodel=$(oc_model_ensure 2>/dev/null)"
+  echo "ocfallback=$(oc_fallback_ensure 2>/dev/null)"
   echo "oc=$(printf '%s' "$CS" | python3 -c 'import json,sys
 d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
@@ -554,6 +571,7 @@ if command -v openclaw >/dev/null 2>&1; then
   fi
   # Agente sem modelo: com o Claude Code logado, usa o Claude (senão o WhatsApp conecta e nada responde).
   [ "$(oc_model_ensure 2>/dev/null)" = set ] && echo '{"event":"meu-bot","step":"model-set"}'
+  [ "$(oc_fallback_ensure 2>/dev/null)" = set ] && echo '{"event":"meu-bot","step":"fallback-set"}'
   # Sem o serviço do gateway nesta conta: instala antes do QR (senão vincula e nunca conecta).
   if GWN=$(gw_ensure); then [ -n "$GWN" ] && echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-installed\\",\\"port\\":$GWN}"; else echo '{"event":"error","error":"esta conta não tem o gateway do OpenClaw como serviço e não consegui instalar. Na máquina: chmod go-w ~/.config ~/.config/systemd ~/.config/systemd/user; openclaw config set gateway.mode local; openclaw gateway install --port <porta livre>"}'; exit 2; fi
   # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
@@ -662,6 +680,7 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
           else if (ev.step === "model-set") send({ kind: "step", text: "o agente desta conta não tinha modelo; passou a usar o Claude (pelo Claude Code logado aqui)" });
+          else if (ev.step === "fallback-set") send({ kind: "step", text: "reserva do agente: esgotadas as contas do Claude, o Grok desta máquina responde" });
           else if (ev.step === "gateway-installed") send({ kind: "step", text: `esta conta não tinha o gateway do OpenClaw; instalado na porta ${String(ev.port ?? "?")}` });
           else if (ev.step === "plugin-installing") send({ kind: "step", text: "esta máquina não tinha o plugin do WhatsApp do OpenClaw; instalando (até 1–2 min)" });
           else if (ev.step === "plugin-installed") send({ kind: "step", text: "plugin do WhatsApp instalado" });

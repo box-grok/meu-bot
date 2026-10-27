@@ -423,7 +423,8 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     if (resume) args.push('--resume', resume);
     if (model) args.push('--model', model);
     fs.mkdirSync(cwd, { recursive: true });
-    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir(), ...contas.ambiente(conta) }, stdio: ['pipe', 'pipe', 'pipe'] });
+    // MEU_BOT_PORTEIRO=0: se CLAUDE_BIN for o porteiro (claude-porteiro.sh), ele passa direto; o rodízio aqui já escolheu a conta.
+    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir(), MEU_BOT_PORTEIRO: '0', ...contas.ambiente(conta) }, stdio: ['pipe', 'pipe', 'pipe'] });
     let text = ''; let deltas = 0; let usage = null; let sessionId = resume || null; let stderr = '';
     let limiteVisto = null; // último rate_limit_event (para o `ate` da conta)
     let resultText = null; let finished = false; let blockOpen = false; let sawTextBlock = false;
@@ -783,7 +784,8 @@ const server = http.createServer(async (req, res) => {
   // Contas do Claude desta máquina (contas-claude.js): listar, criar (pasta isolada com o histórico compartilhado),
   // ajustar, reordenar, remover, "usar agora", conferir o login e os limiares do rodízio. O app roda o
   // `claude auth login` na pasta que o POST devolve.
-  if (url.pathname === '/v1/meu-bot/contas-claude' && req.method === 'GET') return json(res, 200, contas.listar());
+  // `eventos`: trocas feitas fora do backend (porteiro do claude: WhatsApp pelo OpenClaw, Terminal), as 20 últimas.
+  if (url.pathname === '/v1/meu-bot/contas-claude' && req.method === 'GET') return json(res, 200, { ...contas.listar(), eventos: contas.eventos(20) });
   if (url.pathname.startsWith('/v1/meu-bot/contas-claude') && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
     let p = {};
     if (req.method !== 'DELETE') { try { p = JSON.parse(await readBody(req, 16 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); } }

@@ -272,7 +272,9 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     }
     if (cur || reaberto) {
       txt.append(el("p", "", step.text));
-      if (step.body === "agent-choice") {
+      if (step.body === "contas-claude") {
+        ctx.renderContasClaude(txt);
+      } else if (step.body === "agent-choice") {
         ctx.renderAgentChoice(txt);
       } else if (step.body === "reply-choice" && st !== null) {
         const cards = el("div", "reply-cards guide-cards");
@@ -426,6 +428,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       swap.addEventListener("click", () => ctx.armConfirm(swap, "Confirmar? o agente para até entrar de novo", () => { void ctx.logoutClaude(true); }));
       row.append(`Claude Code · ${ctx.clAuth?.email ?? "logado"}. `, swap);
       manage.append(row);
+      panel.append(manage);
+    } else if (t.id === "contas-claude") {
+      // Concluído: a lista (adicionar, ordem, conferir, desligar) e as últimas trocas ficam aqui.
+      const manage = el("div", "guide-manage");
       ctx.renderContasClaude(manage);
       panel.append(manage);
     } else if (t.id === "contas-cli") {
@@ -486,7 +492,7 @@ export function openGuide(t: Tutorial): void {
   }
   ctx.openPage(g.page);
   void ctx.refreshWhatsapp(); // o guia depende do estado real; consultar ao abrir, não só no ciclo automático
-  if (t.id === "claude-login") { void ctx.refreshClaudeLine(); void ctx.refreshContasClaude(); }
+  if (t.id === "claude-login" || t.id === "contas-claude") { void ctx.refreshClaudeLine(); void ctx.refreshContasClaude(); }
   if (t.id === "guarda-whatsapp") void ctx.refreshGuarda();
   if (t.id === "navegador") { void ctx.refreshLicense().then(() => paintGuide()); void ctx.refreshNavInst(); }
   if (t.id === "crm-whatsapp" || t.id === "crm-gmail") { void ctx.refreshLicense().then(() => paintGuide()); void ctx.refreshCrm(); }

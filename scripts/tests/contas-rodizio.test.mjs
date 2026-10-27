@@ -61,7 +61,7 @@ test("limite na conta isolada: o mesmo turno continua na padrão com --resume e 
     const f = path.join(c.home, ".claude.json");
     writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, "utf8")), oauthAccount: { emailAddress: "segunda@x.y" } }));
     const conferida = await s.api("POST", `/v1/meu-bot/contas-claude/${c.id}/conferir`);
-    assert.deepEqual(conferida.json.contas.map((x) => [x.id, x.logada, x.email]), [[c.id, true, "segunda@x.y"], ["padrao", true, null]]);
+    assert.deepEqual(conferida.json.contas.map((x) => [x.id, x.logada, x.email]), [[c.id, true, "segunda@x.y"], ["padrao", true, "padrao@x.y"]]);
     assert.equal(conferida.json.atual, c.id, "a isolada vem antes da padrão");
 
     // Turno 1: normal, na conta isolada; registra o uso (42%) e abre a sessão.

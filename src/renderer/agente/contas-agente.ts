@@ -1,5 +1,5 @@
 import type { ClaudeAuthInfo, ContasClaudeView, ClaudeLoginEvent, XaiKeyStatus } from "../../shared/ipc";
-import { avisoSemConta, estadoTexto, nomeConta, usoTexto } from "../lib/contas-claude.js";
+import { avisoSemConta, estadoTexto, eventoTexto, nomeConta, usoTexto } from "../lib/contas-claude.js";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { type LoginView, type LoginProvider, loginView } from "../lib/login-steps.js";
@@ -172,6 +172,8 @@ export async function refreshClaudeLine(): Promise<void> {
 // ---- Contas do Claude na máquina (rodízio ao bater o limite de uso): lista e controles no guia do tutorial 1.
 // O backend (contas-claude.js) é o dono do registro; aqui só se mostra e se manda comandos.
 let contasClaude: ContasClaudeView | null = null;
+/** A vista atual, para o guia (tutorial das contas) saber quantas extras estão logadas e se já houve troca. */
+export const contasClaudeView = (): ContasClaudeView | null => contasClaude;
 let contasMsg: string | null = null;
 let contasOcupado = false;
 export async function refreshContasClaude(): Promise<void> {
@@ -197,9 +199,16 @@ export function renderContasClaude(box: HTMLElement): void {
   const v = contasClaude;
   box.append(el("p", "hint strong-hint", "Contas do Claude nesta máquina"));
   if (v === null) { box.append(el("p", "hint", "Lista indisponível: a máquina está fora do ar ou o backend é antigo (atualize no seletor).")); return; }
-  box.append(el("p", "hint", "Com mais de uma conta, o agente troca sozinho quando uma bate o limite de uso e a conversa continua na próxima, do ponto em que parou. A ordem da lista é a preferência."));
+  box.append(el("p", "hint", "Com mais de uma conta, a troca é automática quando uma bate o limite: vale para as conversas do app, para o agente do WhatsApp e para o Terminal desta máquina. A conversa continua na próxima conta, do ponto em que parou. A ordem da lista é a preferência; o login da máquina é a base e fica por último."));
   const aviso = avisoSemConta(v);
   if (aviso !== null) box.append(el("p", "hint guide-pair-note", aviso));
+  // Trocas feitas fora do app (porteiro do claude): a pessoa vê que o WhatsApp/Terminal mudaram de conta e por quê.
+  const trocas = (v.eventos ?? []).slice(-5).reverse();
+  if (trocas.length > 0) {
+    const bloco = el("div", "guide-note"); bloco.append(el("strong", "", "Últimas trocas"));
+    for (const ev of trocas) bloco.append(el("div", "hint", eventoTexto(ev)));
+    box.append(bloco);
+  }
   const lista = el("div", "contas-claude");
   const isoladas = v.contas.filter((c) => !c.padrao);
   for (const c of v.contas) {

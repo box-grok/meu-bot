@@ -14,7 +14,8 @@ import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegm
 export interface GuideContext {
   support: SupportInfo | null;
   statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null };
-  claude: { loggedIn: boolean | null; email: string | null; firstReply: boolean };
+  /** `contasExtras` = contas isoladas logadas (além do login da máquina); `trocas` = trocas automáticas já vistas (eventos). */
+  claude: { loggedIn: boolean | null; email: string | null; firstReply: boolean; contasExtras: number; trocas: number };
   /**
    * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
    * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
@@ -69,7 +70,7 @@ export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
-  claude: { loggedIn: null, email: null, firstReply: false },
+  claude: { loggedIn: null, email: null, firstReply: false, contasExtras: 0, trocas: 0 },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null, possible: null },
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
@@ -139,13 +140,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista";
 
 export interface GuideStep {
   id: string;
@@ -154,7 +155,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "agent-choice" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
+  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -300,6 +301,38 @@ export const TUTORIAIS: readonly Tutorial[] = [
         // tutorial). "Não exibir" marca a mesma flag à mão, para quem não quer passar por aqui.
         done: (_st, f, c) => c.claude.loggedIn === true && (c.claude.firstReply || f.claudeReplied),
         manual: { label: "Não exibir", flag: "claudeReplied" },
+      },
+    ],
+  },
+  {
+    // Desmembrado do tutorial 1 (27 out): entrar é obrigatório; contas extras e o rodízio são opcionais e têm outro momento
+    // (a primeira vez que o limite bate). Vale para o app, o WhatsApp (porteiro do claude) e o Terminal.
+    id: "contas-claude",
+    number: 15,
+    needs: ["claude"],
+    after: "claude-login",
+    title: "Mais contas do Claude",
+    short: "Contas",
+    summary: "Quando a sua conta bate o limite, outra assume sozinha: no app, no WhatsApp e no Terminal desta máquina. Adicione uma conta extra e escolha a ordem.",
+    minutes: 3,
+    icon: "chat",
+    steps: [
+      {
+        id: "adicionar", title: "Adicionar outra conta do Claude", target: "none", body: "contas-claude",
+        text: "Clique em \"Adicionar conta\" e entre nela como no tutorial 1. Cada conta fica no próprio cantinho desta máquina; o histórico das conversas é um só, então a conversa continua de onde parou em qualquer uma.",
+        done: (_st, _f, c) => c.claude.contasExtras > 0,
+      },
+      {
+        id: "ordem", title: "Ordem de preferência", target: "none",
+        text: "A primeira da lista atende; quando ela bate o limite, a próxima assume. O login desta máquina é a base: fica por último e volta quando o limite dele renova. Arraste para mudar a ordem.",
+        done: (_st, f, c) => c.claude.contasExtras > 0 && f.contasOrdemVista,
+        manual: { label: "Entendi a ordem", flag: "contasOrdemVista" },
+      },
+      {
+        id: "troca", title: "Ver a troca acontecer", target: "none",
+        text: "Nada a fazer agora. Na primeira vez que uma conta bater o limite, a próxima assume sem você mexer, e aqui aparece \"Últimas trocas\" dizendo onde foi (app, WhatsApp ou Terminal). Este passo se marca sozinho na primeira troca.",
+        done: (_st, f, c) => c.claude.trocas > 0 || f.contasTrocaVista,
+        manual: { label: "Entendi como funciona", flag: "contasTrocaVista" },
       },
     ],
   },

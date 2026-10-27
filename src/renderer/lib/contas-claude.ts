@@ -1,5 +1,5 @@
 /** Textos da seção "Contas do Claude" (tutorial 1): estado, uso e aviso de "todas no limite". Puro: testável. */
-import type { ContaClaude, ContasClaudeView } from "../../shared/ipc";
+import type { ContaClaudeEvento, ContaClaude, ContasClaudeView } from "../../shared/ipc";
 import { timeUntil } from "./status-line.js";
 
 /** "17:05" no fuso deste Mac para um epoch em segundos. */
@@ -26,6 +26,14 @@ export function usoTexto(c: ContaClaude, nowMs = Date.now()): string {
 }
 
 /** Aviso quando nenhuma conta serve agora; null quando há conta disponível. */
+/** "27/10 14:02 · WhatsApp · Segunda → Login padrão (limite de uso)". */
+export function eventoTexto(ev: ContaClaudeEvento): string {
+  const d = new Date(ev.em * 1000);
+  const quando = Number.isNaN(d.getTime()) ? "" : `${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  const origem = ev.origem === "whatsapp" ? "WhatsApp" : ev.origem === "terminal" ? "Terminal" : ev.origem === "cli" ? "linha de comando" : ev.origem;
+  const para = ev.para ?? "nenhuma conta livre";
+  return `${quando} · ${origem} · ${ev.de ?? "?"} → ${para}${ev.motivo ? ` (${ev.motivo})` : ""}`;
+}
 export function avisoSemConta(view: ContasClaudeView): string | null {
   if (view.atual !== null) return null;
   if (view.contas.every((c) => !c.logada || !c.ativa)) return "Nenhuma conta logada e ligada: entre em uma conta para o agente responder pelo Claude.";

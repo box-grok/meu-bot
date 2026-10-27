@@ -78,7 +78,9 @@ export interface ContaClaude {
 /** Limiares do rodízio: % da sessão (5 h) e da semana a partir dos quais a conta sai de preferência; estratégia de ordem. */
 export interface LimiaresClaude { sessao: number; semanal: number; estrategia: "ordem" | "folga" }
 /** GET /v1/meu-bot/contas-claude. `atual` = a conta que responderia agora; `proximaEm` = quando alguma volta (epoch s) se nenhuma serve. */
-export interface ContasClaudeView { contas: ContaClaude[]; limiares: LimiaresClaude; atual: string | null; proximaEm: number | null }
+export interface ContasClaudeView { contas: ContaClaude[]; limiares: LimiaresClaude; atual: string | null; proximaEm: number | null; eventos?: ContaClaudeEvento[] }
+/** Troca de conta feita fora do backend (porteiro do claude: WhatsApp pelo OpenClaw, Terminal); `em` em epoch s. */
+export interface ContaClaudeEvento { em: number; origem: string; de: string | null; para: string | null; motivo: string; resets: number | null }
 
 /** Eventos do login do Claude Code numa máquina (claude auth login por SSH). */
 export type ClaudeLoginEvent =

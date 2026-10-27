@@ -33,7 +33,11 @@ else
 fi
 echo "node: $("$NODE" -v) em $NODE"
 
-CLAUDE=$(command -v claude 2>/dev/null || true); [ -z "$CLAUDE" ] && [ -x "$HOME/.local/bin/claude" ] && CLAUDE=$HOME/.local/bin/claude
+# O claude REAL: nunca o porteiro do meu-bot (claude-porteiro.sh, que pode estar na frente do PATH desde uma
+# instalação anterior); o backend chama o real direto e faz o rodízio por conta própria.
+e_porteiro() { head -c 4096 "$1" 2>/dev/null | grep -q 'meu-bot-porteiro'; }
+CLAUDE=""
+for c in $(which -a claude 2>/dev/null) "$HOME/.local/bin/claude"; do [ -x "$c" ] || continue; e_porteiro "$c" && continue; CLAUDE=$c; break; done
 [ -n "$CLAUDE" ] || { echo "claude não encontrado no PATH nem em ~/.local/bin"; exit 1; }
 grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null || echo "aviso: Claude Code parece deslogado (sem oauthAccount em ~/.claude.json); o backend vai responder 401 até fazer /login"
 
@@ -57,13 +61,15 @@ elif listening "$PORT"; then
   exit 4
 fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
-cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/auditoria.py" "$DEST/"
+cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/auditoria.py" "$DEST/"
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.
   ( umask 077; printf 'OPENAI_COMPAT_KEY=%s\nCRM_AGENT_KEY=%s\nPORT=%s\nHOST=127.0.0.1\nCLAUDE_BIN=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" "$PORT" "$CLAUDE" > "$DEST/.env" ); echo ".env criado"
 else
   grep -q '^CLAUDE_BIN=' "$DEST/.env" || printf 'CLAUDE_BIN=%s\n' "$CLAUDE" >> "$DEST/.env"
+  # CLAUDE_BIN apontando para o porteiro (instalação feita com ele no PATH): corrige para o real.
+  cur=$(grep '^CLAUDE_BIN=' "$DEST/.env" | head -1 | cut -d= -f2-); if [ -n "$cur" ] && { [ ! -x "$cur" ] || e_porteiro "$cur"; }; then sed -i "s#^CLAUDE_BIN=.*#CLAUDE_BIN=$CLAUDE#" "$DEST/.env"; echo "CLAUDE_BIN do .env corrigido para $CLAUDE"; fi
   # Chave própria do agente (CRM): aditiva e idempotente; sem ela o agente cai na chave do app e perde a separação.
   grep -q '^CRM_AGENT_KEY=' "$DEST/.env" || { ( umask 077; printf 'CRM_AGENT_KEY=%s\n' "$(openssl rand -hex 32)" >> "$DEST/.env" ); echo "CRM_AGENT_KEY acrescentada ao .env"; }
 fi
@@ -146,3 +152,5 @@ if [ -f "$HERE/VERSION" ]; then cp "$HERE/VERSION" "$DEST/VERSION"; echo "versã
 # Status line do Claude (Sessão/Semanal no app) vai junto quando o instalador está ao lado. Não derruba o
 # backend: numa máquina com statusLine gerenciada ele sai com 3 e explica.
 if [ -f "$HERE/install-statusline.sh" ]; then bash "$HERE/install-statusline.sh" || echo "aviso: status line não instalada (código $?)"; fi
+# Porteiro do claude: rodízio de contas para o OpenClaw (WhatsApp) e o Terminal. Nunca derruba o backend.
+if [ -f "$HERE/install-porteiro.sh" ]; then MEU_BOT_NODE="$NODE" MEU_BOT_BACKEND_DIR="$DEST" bash "$HERE/install-porteiro.sh" || echo "aviso: porteiro do claude não instalado (código $?)"; fi

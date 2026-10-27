@@ -23,12 +23,13 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
+  // O 15 (Mais contas do Claude) fica logo depois do 1 na trilha: desmembrado dele, pulável; o número é só o rótulo.
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
   }
-  assert.deepEqual(TUTORIAIS.slice(0, 6).map((x) => x.id), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
+  assert.deepEqual(TUTORIAIS.slice(0, 7).map((x) => x.id), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
   assert.equal(tutorialNumber("statusline"), 3); assert.equal(tutorialNumber("nada"), null);
@@ -37,7 +38,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli"]);
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM pelo Streak) está oculto, mesmo depois do 9 (Navegador)");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };

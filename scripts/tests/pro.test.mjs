@@ -65,3 +65,9 @@ test("crmProprioOk: plano Pro em vigor; nunca neste Mac nem sem licença", () =>
   assert.equal(crmProprioOk(lic({ plan: "pro", status: "active" }), "local"), false);
   assert.equal(crmProprioOk(null, "agente-box"), false);
 });
+
+test("proBlockText: Conta Google é módulo Pro, com o mesmo pedido ao admin", () => {
+  const t = proBlockText("free", lic({}), "google", "meu-bot");
+  assert.ok(t.title.includes("Conta Google") && t.askAdmin, t.title);
+  assert.ok(proBlockText("expired", lic({ plan: "pro", status: "expired" }), "google").title.includes("venceu"));
+});

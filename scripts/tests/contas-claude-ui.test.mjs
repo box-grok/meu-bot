@@ -29,3 +29,10 @@ test("avisoSemConta: só quando nenhuma serve; diz a hora da volta", () => {
   assert.match(avisoSemConta({ contas: [conta({ logada: false })], limiares: { sessao: 90, semanal: 95, estrategia: "ordem" }, atual: null, proximaEm: null }), /Nenhuma conta logada/);
   assert.match(avisoSemConta({ contas: [conta()], limiares: { sessao: 90, semanal: 95, estrategia: "ordem" }, atual: null, proximaEm: NOW / 1000 + 600 }), /no limite de uso\. A próxima volta às \d\d:\d\d/);
 });
+
+test("eventoTexto: quando · origem · de → para (motivo); sem conta livre e origens traduzidas", async () => {
+  const { eventoTexto } = await import("../../dist/renderer/lib/contas-claude.js");
+  const t = eventoTexto({ em: NOW / 1000, origem: "whatsapp", de: "Segunda", para: "Login padrão", motivo: "limite de uso", resets: null });
+  assert.match(t, /^\d\d\/\d\d \d\d:\d\d · WhatsApp · Segunda → Login padrão \(limite de uso\)$/);
+  assert.match(eventoTexto({ em: NOW / 1000, origem: "terminal", de: "A", para: null, motivo: "", resets: null }), /Terminal · A → nenhuma conta livre$/);
+});

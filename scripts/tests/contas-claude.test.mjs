@@ -79,7 +79,7 @@ test("criar: pasta isolada com histórico compartilhado por symlink, sessions fo
     assert.equal(a.reg.conferir(c.id).email, "dois@x.y");
     // O registro sobrevive a reabrir.
     const reaberto = contasClaude.abrir({ base: path.join(a.home, ".local", "share", "meu-bot"), claudeHome: a.claudeHome, claudeJson: path.join(a.home, ".claude.json"), temCredencial: () => false });
-    assert.deepEqual(reaberto.listar().contas.map((x) => [x.id, x.rotulo, x.email]), [[c.id, "Conta 2", "dois@x.y"], ["padrao", "Login padrão", null]]);
+    assert.deepEqual(reaberto.listar().contas.map((x) => [x.id, x.rotulo, x.email]), [[c.id, "Conta 2", "dois@x.y"], ["padrao", "Login padrão", "a@b.c"]], "o e-mail da padrão vem do login real (~/.claude.json)");
   } finally { rmSync(a.home, { recursive: true, force: true }); }
 });
 
@@ -150,4 +150,24 @@ test("backend-colima e backend-vm têm o mesmo contas-claude.js (copiar, não ed
   const a = readFileSync(new URL("../../backend-colima/contas-claude.js", import.meta.url), "utf8");
   const b = readFileSync(new URL("../../backend-vm/services/contas-claude.js", import.meta.url), "utf8");
   assert.equal(a, b);
+});
+
+test("dois processos no mesmo registro: um relê o que o outro gravou e gravar não apaga a marca alheia", () => {
+  const a = ambiente();
+  const base = path.join(a.home, ".local", "share", "meu-bot");
+  const c1 = a.reg.criar("Segunda"); logar({ home: path.join(c1.home) }, "s@y.z");
+  // Instância B = outro processo (o porteiro do claude) sobre os mesmos arquivos, com relógio próprio.
+  const b = contasClaude.abrir({ base, claudeHome: a.claudeHome, claudeJson: path.join(a.home, ".claude.json"), agora: a.agoraS, temCredencial: () => false });
+  assert.ok(b.conta(c1.id), "B enxerga a conta criada por A sem reiniciar");
+  // A marca a Segunda esgotada; B, que já tinha carregado, precisa ver isso ao escolher.
+  a.reg.marcar(c1.id, "esgotada", "limite", a.agoraS() + 3600);
+  assert.equal(b.usoEfetivo(c1.id).estado, "esgotada");
+  assert.equal(b.escolher({ permitirAviso: true }).id, "padrao");
+  // B grava uso da padrão: a marca da Segunda feita por A continua no disco (mescla, não sobrescreve).
+  b.registrarUso("padrao", { sessao: { pct: 10, resets: a.agoraS() + 100 } });
+  const disco = JSON.parse(readFileSync(path.join(base, "contas-claude-uso.json"), "utf8"));
+  assert.equal(disco[c1.id].estado, "esgotada");
+  assert.equal(disco.padrao.sessao.pct, 10);
+  assert.equal(a.reg.usoEfetivo("padrao").sessao.pct, 10, "A relê o que B gravou");
+  rmSync(a.home, { recursive: true, force: true });
 });

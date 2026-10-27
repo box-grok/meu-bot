@@ -98,12 +98,19 @@ function abrir(opts = {}) {
   const REGISTRO = path.join(base, 'contas-claude.json');
   const USO = path.join(base, 'contas-claude-uso.json');
   const PASTA = path.join(base, 'contas-claude');
+  /** Trocas de conta feitas fora do backend (porteiro do `claude`: WhatsApp pelo OpenClaw, Terminal), uma linha JSON por evento. */
+  const EVENTOS = path.join(base, 'contas-claude-eventos.jsonl');
 
   let reg = null; // { contas: [...], limiares }
   let uso = null; // { [id]: {sessao, semanal, estado, motivo, ate, vistoEm} }
+  // Carimbo (mtime+tamanho) dos arquivos na última leitura: o backend fica vivo por dias e o porteiro do `claude`
+  // (claude-porteiro.js, outro processo) grava nos mesmos arquivos; sem reler, um não enxergava o outro.
+  let carimbos = { reg: null, uso: null };
+  const carimbo = (f) => { try { const st = fs.statSync(f); return `${st.mtimeMs}:${st.size}`; } catch (_) { return null; } };
+  const carimbar = () => { carimbos = { reg: carimbo(REGISTRO), uso: carimbo(USO) }; };
 
   function carregar() {
-    if (reg !== null) return;
+    if (reg !== null && carimbos.reg === carimbo(REGISTRO) && carimbos.uso === carimbo(USO)) return;
     const raw = readJson(REGISTRO) || {};
     const contas = Array.isArray(raw.contas) ? raw.contas.map(sanearConta).filter(Boolean) : [];
     if (!contas.some((c) => c.id === 'padrao')) contas.push({ id: 'padrao', rotulo: 'Login padrão', home: null, ordem: 1000, ativa: true, criadaEm: agora(), email: null });
@@ -111,6 +118,7 @@ function abrir(opts = {}) {
     const u = readJson(USO) || {};
     uso = {};
     for (const [id, v] of Object.entries(u)) if (ID_RE.test(id) && contas.some((c) => c.id === id)) uso[id] = sanearUso(v);
+    carimbar();
   }
   function sanearConta(c) {
     if (!c || typeof c !== 'object' || !ID_RE.test(String(c.id))) return null;
@@ -133,8 +141,20 @@ function abrir(opts = {}) {
     const visto = num(u.vistoEm); if (visto !== null && visto > 0) out.vistoEm = Math.floor(visto);
     return out;
   }
-  const salvarReg = () => writeJson(REGISTRO, { versao: 1, limiares: reg.limiares, contas: reg.contas });
-  const salvarUso = () => writeJson(USO, uso);
+  const salvarReg = () => { writeJson(REGISTRO, { versao: 1, limiares: reg.limiares, contas: reg.contas }); carimbar(); };
+  /**
+   * Grava o uso por conta mesclando com o que está no disco (read-modify-write): outro processo pode ter marcado
+   * outra conta nesse meio tempo, e sobrescrever o arquivo inteiro apagaria isso. O que está na memória vence para
+   * as contas que ela conhece; contas que saíram do registro caem fora.
+   */
+  const salvarUso = () => {
+    const disco = readJson(USO) || {};
+    const fora = {};
+    for (const [id, v] of Object.entries(disco)) if (ID_RE.test(id) && reg.contas.some((c) => c.id === id) && !(id in uso)) fora[id] = sanearUso(v);
+    const junto = { ...fora, ...uso };
+    writeJson(USO, junto);
+    uso = junto; carimbar();
+  };
 
   const conta = (id) => { carregar(); return reg.contas.find((c) => c.id === id) || null; };
   const configDir = (c) => (c && c.home ? c.home : null);
@@ -349,7 +369,8 @@ function abrir(opts = {}) {
   /** Como o app vê uma conta. */
   function vista(c) {
     const u = usoEfetivo(c.id);
-    return { id: c.id, rotulo: c.rotulo, email: c.email, padrao: c.home === null, home: c.home, ordem: c.ordem, ativa: c.ativa, logada: logada(c), uso: { sessao: u.sessao || null, semanal: u.semanal || null, estado: u.estado, motivo: u.motivo || null, ate: u.ate || null, vistoEm: u.vistoEm || null } };
+    // O e-mail vem do login de verdade (o registro só guarda o visto na criação; a padrão nem isso): a tela mostra quem está logado.
+    return { id: c.id, rotulo: c.rotulo, email: emailDe(c) || c.email, padrao: c.home === null, home: c.home, ordem: c.ordem, ativa: c.ativa, logada: logada(c), uso: { sessao: u.sessao || null, semanal: u.semanal || null, estado: u.estado, motivo: u.motivo || null, ate: u.ate || null, vistoEm: u.vistoEm || null } };
   }
   function listar() {
     carregar();
@@ -364,7 +385,23 @@ function abrir(opts = {}) {
     return { atual: c ? c.id : null, rotulo: c ? c.rotulo : null, total: reg.contas.length, esgotadas, proximaEm: c ? null : proximaDisponivelEm() };
   }
 
-  return { conta, configDir, logada, emailDe, ambiente, usoEfetivo, registrarUso, marcar, usarAgora, desbloquear, escolher, proximaDisponivelEm, criar, atualizar, reordenar, remover, conferir, limiares, definirLimiares, listar, vista, resumo, provisionar, PASTA, REGISTRO, USO };
+  /** Anota uma troca de conta ({origem, de, para, motivo, resets}); `em` é agora. Só acrescenta; nunca falha quem chamou. */
+  function registrarEvento(ev) {
+    try {
+      fs.mkdirSync(base, { recursive: true, mode: 0o700 });
+      const linha = { em: agora(), origem: String(ev.origem || 'cli').slice(0, 20), de: ev.de ? String(ev.de).slice(0, 60) : null, para: ev.para ? String(ev.para).slice(0, 60) : null, motivo: String(ev.motivo || '').slice(0, 200), resets: num(ev.resets) };
+      fs.appendFileSync(EVENTOS, `${JSON.stringify(linha)}\n`, { mode: 0o600 });
+    } catch (_) { /* diário é cortesia */ }
+  }
+  /** Últimos `n` eventos (mais recente por último). */
+  function eventos(n = 20) {
+    try {
+      const linhas = fs.readFileSync(EVENTOS, 'utf8').split('\n').filter((l) => l.trim() !== '');
+      return linhas.slice(-n).map((l) => { try { return JSON.parse(l); } catch (_) { return null; } }).filter((e) => e && typeof e === 'object');
+    } catch (_) { return []; }
+  }
+
+  return { conta, configDir, logada, emailDe, ambiente, usoEfetivo, registrarUso, marcar, usarAgora, desbloquear, escolher, proximaDisponivelEm, criar, atualizar, reordenar, remover, conferir, limiares, definirLimiares, listar, vista, resumo, provisionar, registrarEvento, eventos, PASTA, REGISTRO, USO, EVENTOS };
 }
 
 module.exports = { abrir, analisarRateLimit, servicoKeychain, LIMIARES_PADRAO, ESTRATEGIAS, DIRS_COMPARTILHADOS, ESGOTADA_PADRAO_S };
