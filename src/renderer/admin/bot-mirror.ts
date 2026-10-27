@@ -87,12 +87,12 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     panel.replaceChildren();
     const head = el("div", "wa-chat-head");
     head.append(el("strong", "", g.chat.title), el("span", "wa-chat-num", `${g.chat.replies} resposta${g.chat.replies === 1 ? "" : "s"} · ${shortDate(g.chat.updatedAt)}`), el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : "conversa dela com o meu-bot · somente leitura · atualiza sozinho"));
-    // Apagar (travou, ficou lixo): dois cliques; some da máquina e do app dela e fica no registro que ela vê.
+    // Apagar (travou, ficou lixo): direto, sem confirmar; some da máquina e do app dela e fica no registro que ela vê.
     const del = el("button", "btn btn-ghost btn-small btn-danger", "Apagar esta conversa"); del.type = "button";
-    del.addEventListener("click", () => deps.armConfirm(del, "Confirmar? some da máquina e do app dela", () => {
+    del.addEventListener("click", () => {
       del.disabled = true;
       void apagar(g.chat.sessionId).catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
-    }));
+    });
     // "Copiar ID": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
     const ref = el("button", "btn btn-ghost btn-small", "Copiar ID"); ref.type = "button";
     ref.title = "Copia o caminho do .jsonl desta conversa na máquina dela";
@@ -156,7 +156,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         container.append(el("div", "sidebar-group", group.label));
         for (const c of group.items) {
           const item = el("div", `sidebar-item${active?.id === `bot-${c.sessionId}` ? " active" : ""}`);
-          // Menu "…" (como no WhatsApp): "Copiar ID" e "Excluir conversa…" (o main confirma num diálogo).
+          // Menu "…" (como no WhatsApp): "Copiar ID" e "Excluir conversa" (direto).
           const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações";
           menu.addEventListener("click", (ev) => {
             ev.stopPropagation();

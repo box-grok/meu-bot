@@ -1241,7 +1241,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   apaga o .jsonl da sessão na máquina e registra "apagou uma conversa dela com o meu-bot"; o backend abre
   outra sessão no próximo turno). Para a pessoa, o meu-bot já tinha "Limpar histórico" e "Excluir conversa".
 - Excluir pelo admin some também no app dela (26 out): no espelho das conversas com o meu-bot, o "…" ganhou
-  "Excluir conversa…" (confirma num diálogo do main), além do "Apagar esta conversa" do cabeçalho; os dois chamam
+  "Excluir conversa" (direto, sem confirmar, pedido do usuário; o "Apagar esta conversa" do cabeçalho também); os dois chamam
   `admin:bot-delete`, que apaga o .jsonl e anota o id em `~/.local/share/meu-bot/conversas-apagadas.json`
   (`{ids: {<id>: ISO}}`, 500 mais recentes, tmp+mv 0600; `src/main/conversa/apagadas-core.ts`, puro, testado). O
   meu-bot dela lê o arquivo ao abrir a janela e ao voltar o foco (no máximo 1×/min, canal `chat:apagadas`) e tira

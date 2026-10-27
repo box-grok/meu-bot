@@ -3,7 +3,7 @@
  * registros, ações). Só valem numa janela de pessoa do suporte (alias `suporte-…`); no meu-bot normal o
  * registro vira recusa (ipc/registry.ts).
  */
-import { dialog, Menu } from "electron";
+import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../suporte/support-code";
 import type { LicensePatch } from "../../shared/ipc";
@@ -42,7 +42,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:bot-chats", (event) => adminBotChats(adminHost(event)));
   handleAdmin("admin:bot-thread", (event, payload: unknown) => adminBotThread(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
   handleAdmin("admin:bot-delete", (event, payload: unknown) => adminBotDelete(adminHost(event), String((payload as { sessionId?: unknown } | null)?.sessionId ?? "")));
-  // Menu "…" de uma conversa dela com o meu-bot (espelho): "Copiar ID" e "Excluir conversa…" (confirma num diálogo;
+  // Menu "…" de uma conversa dela com o meu-bot (espelho): "Copiar ID" e "Excluir conversa" (direto, sem confirmar:
   // some da máquina e do app dela, como o "Apagar esta conversa" do cabeçalho).
   handleAdmin("ui:bot-menu", (event) => {
     const h = hostFromEvent(event);
@@ -50,15 +50,9 @@ export function registerAdminIpc(): void {
     return new Promise<BotMenuAction | null>((resolve) => {
       let settled = false;
       const pick = (action: BotMenuAction | null): void => { if (!settled) { settled = true; resolve(action); } };
-      let confirmando = false;
-      const excluir = (): void => {
-        confirmando = true;
-        void dialog.showMessageBox(h.win, { type: "warning", message: "Excluir esta conversa?", detail: "Some da máquina dela e da lista no app dela. Fica no registro de auditoria.", buttons: ["Cancelar", "Excluir"], defaultId: 0, cancelId: 0 })
-          .then((r) => pick(r.response === 1 ? "delete" : null), () => pick(null));
-      };
-      const menu = Menu.buildFromTemplate([{ label: "Copiar ID  ⓘ", click: () => pick("copy-ref") }, { type: "separator" }, { label: "Excluir conversa…", click: excluir }]);
+      const menu = Menu.buildFromTemplate([{ label: "Copiar ID  ⓘ", click: () => pick("copy-ref") }, { type: "separator" }, { label: "Excluir conversa", click: () => pick("delete") }]);
       // O callback de fechamento corre antes do click; o adiamento deixa o click vencer.
-      menu.popup({ window: h.win, callback: () => setTimeout(() => { if (!confirmando) pick(null); }, 0) });
+      menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });
   handleAdmin("admin:action", (event, payload: unknown) => {
