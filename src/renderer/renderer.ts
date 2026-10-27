@@ -760,10 +760,8 @@ async function closeTab(id: string): Promise<void> {
   afterTabGone(id);
 }
 
+/** "Excluir" exclui direto, sem confirmar (27 out), como as conversas do WhatsApp e o espelho do admin. */
 async function deleteConversation(id: string): Promise<void> {
-  const cur = index.get(id);
-  const name = cur !== undefined ? titleOf(cur) : "esta conversa";
-  if (!window.confirm(`Excluir "${name}"? Isso apaga o histórico de vez.`)) return;
   detachTab(id);
   index.delete(id);
   renderSidebar();
