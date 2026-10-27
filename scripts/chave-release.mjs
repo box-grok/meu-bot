@@ -6,7 +6,7 @@
 // - principal: no Chaveiro de login (serviço meu-bot-release, conta principal), sem nenhum app confiável (-T ""):
 //   todo uso pede a aprovação do macOS com a senha. Cópia no gerenciador de senhas do dono.
 // - reserva: SÓ no gerenciador de senhas (nunca neste Mac). Serve para trocar de chave sem reinstalar ninguém se a
-//   principal se perder ou vazar (procedimento na skill publicar e no docs/GUIA.md).
+//   principal se perder ou vazar (procedimento na skill publicar e em docs/guia/app.md).
 //
 // Regra de ouro: nenhuma privada vai para a saída do terminal (o que a sessão vê vai para o transcript). Estes
 // comandos só imprimem a pública; a privada vai para a área de transferência, e `--limpar` a esvazia.

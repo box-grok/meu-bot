@@ -6,7 +6,7 @@ description: Leva uma mudança do meu-bot (app, financeiro, CRM, backend) do des
 # Publicar o meu-bot (staging → estável)
 
 Como o Brave (Sparkle) e o Cursor: o app baixa a versão nova sozinho, só instala o que a chave da release assinou e o
-usuário só reinicia. Detalhes em `docs/GUIA.md`, seção "Revisão no molde do Brave/Sparkle".
+usuário só reinicia. Detalhes em `docs/guia/app.md`, seção "Revisão no molde do Brave/Sparkle".
 
 ## A sequência
 

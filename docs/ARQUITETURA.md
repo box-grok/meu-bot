@@ -62,6 +62,8 @@ Regras do renderer:
 - `backend-colima/` — o backend que roda em cada máquina (Node puro): `server.js` (rotas), `crm-*` e `finance-*`
   (modelo puro + API), pontes `finance-crm-sync.js` e `crm-finance-vendas.js`, plugins `crm/` e `finance/`.
 - `scripts/tests/` — um teste por módulo puro, importando de `dist/`.
+- `docs/guia/` — o diário técnico por assunto (índice em `docs/GUIA.md`). Mudança nova: uma seção datada no fim do guia
+  do assunto dela; `docs/guia/historia.md` é o começo (REA do Grok Bot, 13–14 out) e não recebe coisa nova.
 
 ## Como criar um MVP (produto novo derivado do meu-bot)
 Exemplo de referência: o financeiro (add-on `meu-bot-finance`, app `meu-bot-finance-staging`). Nome do exemplo
@@ -96,4 +98,4 @@ abaixo: `meu-bot-fit`.
    nele (abas de conversa, lateral, paleta) e trazer para as páginas o estado que ainda mora no renderer (`ctx` com setter).
 3. ~~Contrato por domínio~~ (27/10): `src/shared/ipc/`. Falta dividir por domínio os métodos de `api.ts`
    (`MeuBotClientApi` como `extends` das interfaces de cada domínio).
-4. `docs/GUIA.md` (3 mil linhas) em um guia por domínio, com este arquivo como índice.
+4. ~~Guia por assunto~~ (27/10): `docs/guia/<assunto>.md`, com `docs/GUIA.md` como índice.

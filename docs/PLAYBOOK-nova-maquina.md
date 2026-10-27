@@ -287,7 +287,7 @@ roda nela e turnos sem limite de tempo no backend do René.
 ## 7. Checklist resumido para uma máquina nova
 
 - [ ] Mac novo? Seção "Mac novo": clone, chave, Tailscale, botão ⇅ do seletor.
-- [ ] Reconhecer o tipo (seção 0) e anotar IPs/usuário no mapa de máquinas do `GUIA.md`.
+- [ ] Reconhecer o tipo (seção 0) e anotar IPs/usuário no mapa de máquinas de `guia/maquinas.md`.
 - [ ] Chave no `authorized_keys`; bloco no `~/.ssh/config` **e** em `config/ssh-hosts.conf`; `ssh host uptime` com 90 s.
 - [ ] Usuário comum (não root); Claude Code nativo em `~/.local/bin`; `/login` via `ssh -t`.
 - [ ] Backend: Instalar pelo seletor (ou `install.sh`); num pod do Grok Bot, subir por PM2 + `pm2 save`.

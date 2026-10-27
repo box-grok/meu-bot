@@ -8,7 +8,7 @@ Inspirado na arquitetura do Grok Bot (cliente fino + "computador do bot"), mas c
 próprio e a VM sob seu controle.
 
 > Para ligar outra máquina (outro computador do Grok Bot, VM ou o Colima): `docs/PLAYBOOK-nova-maquina.md`.
-> Detalhes de implementação e pegadinhas: `docs/GUIA.md`.
+> Detalhes de implementação e pegadinhas: `docs/GUIA.md` (índice) e `docs/guia/<assunto>.md`. Mapa do código: `docs/ARQUITETURA.md`.
 
 Três produtos saem deste código (tabela em `src/main/variant-core.ts`): **meu-bot** (a pessoa), **meu-bot-admin**
 (suporte). O CRM próprio dentro do Gmail vem no meu-bot e abre pela licença da máquina (Pro ou superior); a
@@ -109,7 +109,7 @@ npm run release                    # promoção para v<versão> (exige a tag sta
 ```
 
 Sequência completa (subir a versão dos componentes da máquina, staging, aprovação, estável, versão base) na skill
-`.claude/skills/publicar` e em `docs/GUIA.md` › "Revisão no molde do Brave/Sparkle" e "Atualização no molde do Grok
+`.claude/skills/publicar` e em `docs/guia/app.md` › "Revisão no molde do Brave/Sparkle" e "Atualização no molde do Grok
 Bot". Cada zip sai com um `.sig`: o app só instala o que a chave da release assinou, não reassina, e volta sozinho
 para a versão anterior se a nova não abrir. O app baixa em segundo plano com retomada e progresso, guarda a versão
 preparada entre aberturas, só troca a versão que o botão mostrou, troca sozinho com o Mac ocioso (ou ao fechar) e
