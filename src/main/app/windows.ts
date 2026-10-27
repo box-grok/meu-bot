@@ -24,6 +24,8 @@ const graceTimers = new Map<string, NodeJS.Timeout>();
 /** Carência antes de derrubar o túnel de uma máquina sem janela. */
 const GRACE_MS = 5 * 60_000;
 const DEFAULT_SIZE = { width: 960, height: 720 };
+/** Largura mínima da janela de uma máquina (lateral + conteúdo); o seletor abre nela, para as duas baterem. */
+export const MIN_WINDOW_WIDTH = 640;
 
 /** Cor de fundo igual ao --bg do CSS, para não piscar branco antes do primeiro paint. */
 export const backgroundColor = (): string => (nativeTheme.shouldUseDarkColors ? "#111317" : "#f5f6f8");
@@ -107,7 +109,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   cancelHostTeardown(host);
   const win = new BrowserWindow({
     ...initialBounds(host),
-    minWidth: 640,
+    minWidth: MIN_WINDOW_WIDTH,
     minHeight: 480,
     title: `${caps().titulo} · ${host}`,
     titleBarStyle: "hiddenInset",

@@ -29,7 +29,7 @@ import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
 import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
 } from "../app/shortcuts";
-import { backgroundColor, broadcast, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
+import { backgroundColor, broadcast, MIN_WINDOW_WIDTH, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
@@ -414,13 +414,13 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
     if (!pickerWin.webContents.isLoading()) pickerWin.webContents.send("picker:init", initPayload());
     return;
   }
-  // Colado à direita da área útil da tela onde está o cursor, de cima até o Dock, na largura mínima: a lista de
-  // máquinas fica toda à vista e ocupa pouco da tela.
+  // Colado à direita da área útil da tela onde está o cursor, de cima até o Dock, na largura mínima da janela de
+  // uma máquina: o seletor e a janela que ele abre têm a mesma largura.
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = 460;
+  const width = MIN_WINDOW_WIDTH;
   const win = new BrowserWindow({
     width, height: area.height, x: area.x + area.width - width, y: area.y,
-    minWidth: width, minHeight: 420, resizable: true,
+    minWidth: 460, minHeight: 420, resizable: true,
     title: current().title,
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
