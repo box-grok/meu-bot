@@ -8,7 +8,7 @@
 import { caps } from "../app/variant";
 import { parseLicense } from "../licenca/licenca";
 import { deveAtualizar, precisaAtualizarBackend } from "../atualizacao/updater-core";
-import { BrowserWindow, shell } from "electron";
+import { BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../../shared/ipc";
 import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
@@ -414,8 +414,13 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
     if (!pickerWin.webContents.isLoading()) pickerWin.webContents.send("picker:init", initPayload());
     return;
   }
+  // Colado à direita da área útil da tela onde está o cursor, de cima até o Dock, na largura mínima: a lista de
+  // máquinas fica toda à vista e ocupa pouco da tela.
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  const width = 460;
   const win = new BrowserWindow({
-    width: 540, height: 600, minWidth: 460, minHeight: 420, resizable: true,
+    width, height: area.height, x: area.x + area.width - width, y: area.y,
+    minWidth: width, minHeight: 420, resizable: true,
     title: current().title,
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
