@@ -6,7 +6,7 @@ import { parseAccelerator } from "./accelerator";
 import { clampZoom } from "./zoom-core";
 import {
   defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
-  type SettingsFile, type WindowBounds,
+  type SettingsFile,
  normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
 
 export { BACKEND_MODELS, isBackendModel, isValidHost } from "./settings-normalize";
@@ -71,12 +71,6 @@ export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ en
 export const getDadosNoDrive = (): boolean => file.dadosNoDrive;
 export function setDadosNoDrive(ligado: boolean): void { if (file.dadosNoDrive === ligado) return; file.dadosNoDrive = ligado; persist(); }
 
-export const getWindowBounds = (host: string): WindowBounds | undefined => file.windowBounds[host];
-export function setWindowBounds(host: string, bounds: WindowBounds): void {
-  if (!isValidHost(host)) return;
-  file.windowBounds[host] = bounds;
-  try { persist(); } catch { /* cortesia */ }
-}
 
 export const isOnboardingDone = (): boolean => file.onboarding !== "pending";
 /** Caixinha do seletor: marcada = feito (respeita), desmarcada = pendente (força na próxima janela). */

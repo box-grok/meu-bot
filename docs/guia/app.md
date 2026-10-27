@@ -381,3 +381,10 @@ uma só, altura toda, largura da janela de uma máquina, colada à esquerda do s
 - "Já sai deste código" vem do catálogo (`PRODUTOS` com `descricao` e `ADDONS` em `app/variant-core.ts`), não mais de
   uma lista escrita à mão; o teste `produtos-alinhados` cobra a descrição de cada app e que todo `.html` entre no build.
 
+
+## Janelas nascem no canto, igual ao seletor (27 out)
+Toda janela do app (a de cada máquina, o seletor e a Produtos do admin) nasce bem colada à direita da tela onde está o
+cursor, de cima até o Dock, na largura mínima confortável (`MIN_WINDOW_WIDTH`, 640). A regra é uma só, pura e testada:
+`posicaoNoCanto` em `src/main/app/janela-core.ts`. Com o canto já ocupado por outra janela de máquina, a nova cola à
+esquerda dela; a Produtos cola à esquerda do seletor. A memória de posição por máquina (`windowBounds` no
+`settings.json`) saiu: cada máquina guardava um tamanho diferente e as janelas abriam cada uma num lugar.

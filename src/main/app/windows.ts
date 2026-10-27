@@ -7,7 +7,8 @@ import { BrowserWindow, nativeTheme, screen, shell } from "electron";
 import path from "node:path";
 import type { MainEventChannel, MainEvents } from "../../shared/ipc";
 import { hostBusy } from "../conversa/conversation";
-import { getBackendPort, getWindowBounds, getZoomLevel, setWindowBounds } from "./settings";
+import { getBackendPort, getZoomLevel } from "./settings";
+import { posicaoNoCanto } from "./janela-core";
 import { zoomFactor, zoomState } from "./zoom-core";
 import { closeTunnel, ensureTunnel, log } from "../maquina/tunnel";
 import { caps } from "./variant";
@@ -23,7 +24,6 @@ const graceTimers = new Map<string, NodeJS.Timeout>();
 
 /** Carência antes de derrubar o túnel de uma máquina sem janela. */
 const GRACE_MS = 5 * 60_000;
-const DEFAULT_SIZE = { width: 960, height: 720 };
 /** Largura mínima da janela de uma máquina (lateral + conteúdo); o seletor abre nela, para as duas baterem. */
 export const MIN_WINDOW_WIDTH = 640;
 
@@ -79,22 +79,14 @@ function scheduleHostTeardown(host: string): void {
   }, GRACE_MS));
 }
 
-/** Bounds lembrados e ainda visíveis em algum monitor; senão cascata a partir da última janela. */
-function initialBounds(host: string): Electron.Rectangle | { width: number; height: number } {
-  const saved = getWindowBounds(host);
-  if (saved !== undefined) {
-    const onScreen = screen.getAllDisplays().some((d) => {
-      const a = d.workArea;
-      return saved.x + saved.width > a.x + 40 && saved.x < a.x + a.width - 40 && saved.y >= a.y - 10 && saved.y < a.y + a.height - 40;
-    });
-    if (onScreen) return saved;
-  }
-  const last = lastFocusedWindow();
-  if (last !== null) {
-    const b = last.getBounds();
-    return { x: b.x + 24, y: b.y + 24, width: b.width, height: b.height };
-  }
-  return DEFAULT_SIZE;
+/**
+ * Toda janela de máquina nasce igual ao seletor: bem colada à direita da tela onde está o cursor, de cima até o Dock,
+ * na largura mínima (27 out). Com o canto já ocupado por outra janela de máquina, cola à esquerda dela. Não lembra
+ * mais onde ficou: abrir é sempre no padrão; durante o uso dá para mover e redimensionar.
+ */
+function initialBounds(): Electron.Rectangle {
+  const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  return posicaoNoCanto(area, MIN_WINDOW_WIDTH, allMainWindows().map((x) => x.getBounds()));
 }
 
 /** Abre (ou foca) a janela principal da máquina. Pré-aquece o túnel em background. */
@@ -108,7 +100,7 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   }
   cancelHostTeardown(host);
   const win = new BrowserWindow({
-    ...initialBounds(host),
+    ...initialBounds(),
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: 480,
     title: `${caps().titulo} · ${host}`,
@@ -143,7 +135,6 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
   });
   win.webContents.on("will-navigate", (event) => event.preventDefault());
   win.on("focus", () => { lastFocusedId = win.id; lastFocusedHost = host; });
-  win.on("close", () => { if (!win.isDestroyed() && !win.isMinimized() && !win.isFullScreen()) setWindowBounds(host, win.getBounds()); });
   win.on("closed", () => {
     closeTerminalsOfWindow(win.id);
     browserForget(win.id);

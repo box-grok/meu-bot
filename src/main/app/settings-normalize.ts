@@ -14,7 +14,6 @@ export const isBackendModel = (v: unknown): v is BackendModel =>
 const THEMES: readonly Theme[] = ["system", "light", "dark"];
 export const isTheme = (v: unknown): v is Theme => typeof v === "string" && (THEMES as readonly string[]).includes(v);
 
-export interface WindowBounds { x: number; y: number; width: number; height: number }
 
 export interface SettingsFile {
   version: 1;
@@ -40,7 +39,6 @@ export interface SettingsFile {
   dadosNoDrive: boolean;
   quickEntryShortcut: string;
   /** Posição/tamanho da janela de cada máquina. */
-  windowBounds: Record<string, WindowBounds>;
   /** Máquinas que a sondagem reconheceu como computador do Grok Bot; vale mesmo quando inacessíveis. */
   podHosts: string[];
   /** Máquinas em que "🤖 agente pode usar" o Navegador ficou ligado (religa sozinho ao abrir a aba). */
@@ -165,16 +163,10 @@ const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export const isValidHost = (host: string): boolean => HOST_RE.test(host) && host.length <= 253;
 const validHost = (v: unknown): string | null => (typeof v === "string" && isValidHost(v) ? v : null);
 
-const isBounds = (v: unknown): v is WindowBounds => {
-  const b = v as Partial<WindowBounds> | null;
-  return b !== null && typeof b === "object" && [b.x, b.y, b.width, b.height].every((n) => typeof n === "number" && Number.isFinite(n))
-    && (b.width as number) >= 320 && (b.height as number) >= 240;
-};
-
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, windowBounds: {}, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true,
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true,
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -189,11 +181,6 @@ export function normalizeSettings(input: unknown): SettingsFile {
   const rawPortByHost = p["backendPortByHost"];
   if (rawPortByHost !== null && typeof rawPortByHost === "object") {
     for (const [h, n] of Object.entries(rawPortByHost as Record<string, unknown>)) if (isValidHost(h) && isPort(n)) portByHost[h] = n;
-  }
-  const bounds: Record<string, WindowBounds> = {};
-  const rawBounds = p["windowBounds"];
-  if (rawBounds !== null && typeof rawBounds === "object") {
-    for (const [h, b] of Object.entries(rawBounds as Record<string, unknown>)) if (isValidHost(h) && isBounds(b)) bounds[h] = { x: b.x, y: b.y, width: b.width, height: b.height };
   }
   return {
     version: 1,
@@ -212,7 +199,6 @@ export function normalizeSettings(input: unknown): SettingsFile {
     quickEntryEnabled: typeof p["quickEntryEnabled"] === "boolean" ? p["quickEntryEnabled"] : true,
     dadosNoDrive: typeof p["dadosNoDrive"] === "boolean" ? p["dadosNoDrive"] : true,
     quickEntryShortcut: typeof p["quickEntryShortcut"] === "string" && parseAccelerator(p["quickEntryShortcut"]) !== null ? p["quickEntryShortcut"] : DEFAULT_SHORTCUT,
-    windowBounds: bounds,
     onboarding: isOnboarding(p["onboarding"]) ? p["onboarding"] : "pending",
     openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],

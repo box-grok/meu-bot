@@ -30,6 +30,7 @@ import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
 } from "../app/shortcuts";
 import { backgroundColor, broadcast, MIN_WINDOW_WIDTH, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
+import { posicaoNoCanto } from "../app/janela-core";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
@@ -417,9 +418,8 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
   // Colado à direita da área útil da tela onde está o cursor, de cima até o Dock, na largura mínima da janela de
   // uma máquina: o seletor e a janela que ele abre têm a mesma largura.
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = MIN_WINDOW_WIDTH;
   const win = new BrowserWindow({
-    width, height: area.height, x: area.x + area.width - width, y: area.y,
+    ...posicaoNoCanto(area, MIN_WINDOW_WIDTH),
     minWidth: 460, minHeight: 420, resizable: true,
     title: current().title,
     titleBarStyle: "hiddenInset",

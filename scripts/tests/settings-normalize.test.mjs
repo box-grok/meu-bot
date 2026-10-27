@@ -16,10 +16,10 @@ test("lastHost explícito vence sshHost; inválido vira null", () => {
   assert.equal(normalizeSettings(null).lastHost, null);
 });
 
-test("defaults, modelo por máquina e bounds validados", () => {
-  const s = normalizeSettings({ defaultModelByHost: { colima: "agente", "x y": "agente", local: "nope" }, windowBounds: { colima: { x: 1, y: 2, width: 800, height: 600 }, local: { x: 0, y: 0, width: 10, height: 10 } } });
+test("defaults e modelo por máquina; a posição antiga das janelas (windowBounds) é descartada", () => {
+  const s = normalizeSettings({ defaultModelByHost: { colima: "agente", "x y": "agente", local: "nope" }, windowBounds: { colima: { x: 1, y: 2, width: 800, height: 600 } } });
   assert.deepEqual(s.defaultModelByHost, { colima: "agente" });
-  assert.deepEqual(Object.keys(s.windowBounds), ["colima"]);
+  assert.equal("windowBounds" in s, false, "as janelas nascem no canto (app/janela-core.ts), sem memória de posição");
   assert.deepEqual(normalizeSettings({}), defaultSettings());
 });
 

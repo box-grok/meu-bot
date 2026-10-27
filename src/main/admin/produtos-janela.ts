@@ -13,6 +13,7 @@ import { ADDONS, PRODUTOS } from "../app/variant-core";
 import { caps } from "../app/variant";
 import { backgroundColor, MIN_WINDOW_WIDTH } from "../app/windows";
 import { pickerBounds } from "../maquina/picker";
+import { posicaoNoCanto } from "../app/janela-core";
 import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
 
 let produtosWin: BrowserWindow | null = null;
@@ -38,13 +39,10 @@ export function registerProdutosIpc(): void {
 export function showProdutos(): void {
   if (produtosWin !== null && !produtosWin.isDestroyed()) { produtosWin.show(); produtosWin.focus(); return; }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const width = MIN_WINDOW_WIDTH;
-  // À esquerda do seletor (onde ele estiver); sem seletor, colada à direita como ele.
+  // Colada à direita como o seletor; com o seletor no canto, à esquerda dele.
   const seletor = pickerBounds();
-  const direita = seletor !== null ? seletor.x : area.x + area.width;
-  const x = Math.max(area.x, direita - width);
   const win = new BrowserWindow({
-    width, height: area.height, x, y: area.y, minWidth: 460, minHeight: 420, resizable: true,
+    ...posicaoNoCanto(area, MIN_WINDOW_WIDTH, seletor === null ? [] : [seletor]), minWidth: 460, minHeight: 420, resizable: true,
     title: `${caps().nome} · Produtos`,
     titleBarStyle: "hiddenInset",
     backgroundColor: backgroundColor(),
