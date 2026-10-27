@@ -45,6 +45,8 @@ const hhmm = (iso: string): string => { const d = new Date(iso); return Number.i
 export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
   let chats: BotChat[] = []; let err: string | null = null; let loaded = false; let inflight: Promise<void> | null = null; let listTimer: number | null = null;
   const pages = new Map<string, ChatPage>();
+  /** Falha da última exclusão pelo "…", no topo da lista até a próxima dar certo. */
+  let aviso: string | null = null;
   // A lista da última vez aparece na hora; a leitura real troca por baixo.
   { const c = deps.cache.read<BotChat[]>("botChats"); if (c !== null && c.value.length > 0) { chats = c.value; loaded = true; } }
 
@@ -57,6 +59,17 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
       listTimer = window.setTimeout(() => { listTimer = null; void refresh(); }, 30_000);
     })();
     return inflight;
+  }
+
+  /** Apaga na máquina (e no app dela, pelo conversas-apagadas.json); fecha a aba se estiver aberta e relê a lista. */
+  async function apagar(sessionId: string): Promise<void> {
+    await deps.api.adminBotDelete(sessionId);
+    aviso = null;
+    const g = pages.get(`bot-${sessionId}`);
+    if (g !== undefined) { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${sessionId}`); deps.closePage(g.page); }
+    deps.cache.drop(`botThread:${sessionId}`);
+    chats = chats.filter((c) => c.sessionId !== sessionId); deps.onListChanged();
+    void refresh();
   }
 
   function bubble(m: BotMessage): HTMLElement {
@@ -74,13 +87,11 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     panel.replaceChildren();
     const head = el("div", "wa-chat-head");
     head.append(el("strong", "", g.chat.title), el("span", "wa-chat-num", `${g.chat.replies} resposta${g.chat.replies === 1 ? "" : "s"} · ${shortDate(g.chat.updatedAt)}`), el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : "conversa dela com o meu-bot · somente leitura · atualiza sozinho"));
-    // Apagar (travou, ficou lixo): dois cliques; some da máquina dela e fica no registro que ela vê.
+    // Apagar (travou, ficou lixo): dois cliques; some da máquina e do app dela e fica no registro que ela vê.
     const del = el("button", "btn btn-ghost btn-small btn-danger", "Apagar esta conversa"); del.type = "button";
-    del.addEventListener("click", () => deps.armConfirm(del, "Confirmar? some da máquina dela", () => {
+    del.addEventListener("click", () => deps.armConfirm(del, "Confirmar? some da máquina e do app dela", () => {
       del.disabled = true;
-      void deps.api.adminBotDelete(g.chat.sessionId)
-        .then(() => { if (g.timer !== null) { clearTimeout(g.timer); g.timer = null; } pages.delete(`bot-${g.chat.sessionId}`); deps.cache.drop(`botThread:${g.chat.sessionId}`); deps.closePage(g.page); void refresh(); })
-        .catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
+      void apagar(g.chat.sessionId).catch((e: unknown) => { del.disabled = false; g.err = ipcErrorText(e); render(g); });
     }));
     // "Copiar ID": o .jsonl desta conversa na máquina dela, uma linha para colar numa IA.
     const ref = el("button", "btn btn-ghost btn-small", "Copiar ID"); ref.type = "button";
@@ -132,6 +143,7 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
     paintList: (container, query) => {
       if (!loaded && inflight === null) void refresh();
       container.replaceChildren();
+      if (aviso !== null) container.append(el("div", "sidebar-empty", aviso));
       const q = normalize(query.trim());
       const rows = chats.filter((c) => q === "" || normalize(c.title).includes(q));
       if (rows.length === 0) {
@@ -144,11 +156,14 @@ export function mountBotMirror(deps: BotMirrorDeps): BotMirror {
         container.append(el("div", "sidebar-group", group.label));
         for (const c of group.items) {
           const item = el("div", `sidebar-item${active?.id === `bot-${c.sessionId}` ? " active" : ""}`);
-          // Menu "…" (como no WhatsApp): hoje só "Copiar ID".
+          // Menu "…" (como no WhatsApp): "Copiar ID" e "Excluir conversa…" (o main confirma num diálogo).
           const menu = el("button", "si-menu", "…"); menu.type = "button"; menu.title = "Ações";
           menu.addEventListener("click", (ev) => {
             ev.stopPropagation();
-            void deps.api.showBotMenu(c.sessionId).then((a) => { if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine()));  });
+            void deps.api.showBotMenu(c.sessionId).then((a) => {
+              if (a === "copy-ref") deps.copyReference(botReferenceText(c, deps.machine()));
+              else if (a === "delete") void apagar(c.sessionId).catch((e: unknown) => { aviso = `Não consegui excluir: ${ipcErrorText(e)}`; deps.onListChanged(); });
+            });
           });
           item.append(el("span", "si-title", c.title));
           // Conversa fora do Claude Code (diário do backend): o provedor aparece como etiqueta, como "pausado" no WhatsApp.

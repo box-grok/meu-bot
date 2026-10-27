@@ -28,6 +28,8 @@ import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
   getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
 } from "../conversa/conversation";
+import { APAGADAS_FILE, conversasApagadas, parseApagadas } from "../conversa/apagadas-core";
+import { LOCAL_HOST } from "../maquina/localBackend";
 
 /** Depois de um turno, guarda a sessão do Claude Code desta conversa (o .jsonl): a referência vale mesmo depois do TTL do backend. */
 async function rememberClaudeSession(conv: { id: string; host: string; claude?: ClaudeSessionRef }): Promise<ClaudeSessionRef | null> {
@@ -477,6 +479,16 @@ export function registerClientIpc(): void {
   handleClient("chat:list", (event) => {
     const ctx = hostFromEvent(event);
     return ctx === null ? [] : listConversationsForHost(ctx.host);
+  });
+  // Conversas que o admin excluiu na máquina (conversas-apagadas.json): saem daqui também. Devolve os ids que saíram.
+  handleClient("chat:apagadas", async (event) => {
+    const ctx = hostFromEvent(event);
+    if (ctx === null || ctx.host === LOCAL_HOST) return [];
+    const r = await runSsh(ctx.host, `cat "${APAGADAS_FILE}" 2>/dev/null\n`, 20_000);
+    if (r.code !== 0) return [];
+    const ids = conversasApagadas(listConversationsForHost(ctx.host), parseApagadas(r.stdout));
+    for (const id of ids) { dropConversation(id); log(`[${ctx.host}] conversa ${id} excluída pelo admin: saiu daqui também`); }
+    return ids;
   });
   handleClient("chat:rename", (event, payload: unknown) => {
     const p = payload as { conversationId?: unknown; title?: unknown };

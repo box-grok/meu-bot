@@ -34,7 +34,7 @@ test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o Wha
   assert.ok(shared.has("whatsapp:clear") && shared.has("whatsapp:clear-plan") && shared.has("whatsapp:pause") && shared.has("whatsapp:mark") && shared.has("whatsapp:names") && shared.has("update:check"));
   assert.ok(client.has("ui:notify-test") && client.has("alerts:get") && client.has("alerts:set"), "notificação de teste e avisos de segurança são do cliente");
   const writes = [
-    "chat:send", "chat:new", "chat:delete", "chat:duplicate", "chat:branch",
+    "chat:send", "chat:new", "chat:delete", "chat:apagadas", "chat:duplicate", "chat:branch",
     "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch",
     "claude-login:start", "claude-login:code", "claude-login:logout", "xai-login:prepare", "xai-login:start", "xai-login:logout",
     "statusline:install", "statusline:set-segments", "statusline:uninstall", "tailscale:disable-check", "tailscale:restore", "support:set", "support:name", "support:deliver", "support:progress", "support:share", "support:reset",

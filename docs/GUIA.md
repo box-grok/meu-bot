@@ -1240,6 +1240,14 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   <número>"). No espelho das conversas com o meu-bot, "Apagar esta conversa" (dois cliques; `admin:bot-delete`
   apaga o .jsonl da sessão na máquina e registra "apagou uma conversa dela com o meu-bot"; o backend abre
   outra sessão no próximo turno). Para a pessoa, o meu-bot já tinha "Limpar histórico" e "Excluir conversa".
+- Excluir pelo admin some também no app dela (26 out): no espelho das conversas com o meu-bot, o "…" ganhou
+  "Excluir conversa…" (confirma num diálogo do main), além do "Apagar esta conversa" do cabeçalho; os dois chamam
+  `admin:bot-delete`, que apaga o .jsonl e anota o id em `~/.local/share/meu-bot/conversas-apagadas.json`
+  (`{ids: {<id>: ISO}}`, 500 mais recentes, tmp+mv 0600; `src/main/conversa/apagadas-core.ts`, puro, testado). O
+  meu-bot dela lê o arquivo ao abrir a janela e ao voltar o foco (no máximo 1×/min, canal `chat:apagadas`) e tira
+  as conversas daquela máquina cujo `claude.sessionId` (ou o próprio id, no diário de provedor externo) está lá,
+  sem confirmar; conversa mexida depois da exclusão fica. Limite: conversa que nunca guardou a sessão (sem turno
+  lido do backend) ou que trocou de sessão depois do TTL do mapa só some se a exclusão for da sessão guardada.
 - Excluir conversa apaga também na máquina (16 out): `chat:delete` chama `DELETE /v1/meu-bot/session?conv=<id>`
   no backend da máquina (`deleteBackendSession`, pelo túnel), que apaga o .jsonl da sessão do Claude Code nos
   dois perfis e esquece o mapa; o admin deixa de ver a conversa. Backend antigo (sem a rota) é ignorado:

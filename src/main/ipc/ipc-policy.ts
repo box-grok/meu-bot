@@ -34,7 +34,7 @@ export const SHARED_CHANNELS = [
 export const CLIENT_CHANNELS = [
   // conversas com o agente
   "chat:send", "chat:cancel", "chat:new", "chat:list", "chat:rename", "chat:set-model", "chat:reorder", "chat:close",
-  "chat:delete", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify", "ui:notify-test", "alerts:get", "alerts:set", "license:get",
+  "chat:delete", "chat:apagadas", "chat:open", "chat:archive", "chat:duplicate", "chat:branch", "chat:export", "chat:reference", "ui:tab-menu", "ui:notify", "ui:notify-test", "alerts:get", "alerts:set", "license:get",
   "backend:account",
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",

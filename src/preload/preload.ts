@@ -130,6 +130,7 @@ const clientApi: MeuBotClientApi = {
   setConversationModel: (conversationId: string, model: BackendModel) => ipcRenderer.invoke("chat:set-model", { conversationId, model }),
   openConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:open", { conversationId }),
   deleteConversation: (conversationId: string) => ipcRenderer.invoke("chat:delete", { conversationId }),
+  syncApagadas: () => ipcRenderer.invoke("chat:apagadas", {}),
   archiveConversation: (conversationId: string, archived: boolean) => ipcRenderer.invoke("chat:archive", { conversationId, archived }),
   duplicateConversation: (conversationId: string): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:duplicate", { conversationId }),
   branchConversation: (conversationId: string, index: number): Promise<StoredConversationView | null> => ipcRenderer.invoke("chat:branch", { conversationId, index }),

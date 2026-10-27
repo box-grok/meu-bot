@@ -14,6 +14,7 @@ import { applyLicensePatch, parseLicense } from "../licenca/licenca";
 import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../conversa/bot-chats";
+import { anotarApagadaSh } from "../conversa/apagadas-core";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../suporte/support-code";
 import { entregar, registrar, registroSh } from "../auditoria/auditoria";
 import type { Acao } from "../auditoria/auditoria-core";
@@ -427,7 +428,8 @@ export async function adminBotDelete(host: string, sessionId: string): Promise<v
   const chat = (await adminBotChats(host)).find((c) => c.sessionId === sessionId);
   if (chat === undefined || (chat.source === "claude" && (!PROJECT_DIR_RE.test(chat.project) || !SESSION_ID_RE.test(sessionId))) || (chat.source === "app" && !APP_CONV_ID_RE.test(sessionId))) throw new Error("conversa não encontrada");
   const file = chat.source === "app" ? `${APP_CONVERSAS_DIR}/${sessionId}.jsonl` : `$HOME/.claude/projects/${chat.project}/${sessionId}.jsonl`;
-  const r = await runSsh(host, `rm -f "${file}"\n${registroSh("meu-bot.apagar-conversa", "", sessionId)}\n`, 20_000);
+  // Anota a exclusão na máquina: o meu-bot dela tira a conversa da lista também (conversas-apagadas.json).
+  const r = await runSsh(host, `rm -f "${file}"\n${anotarApagadaSh(sessionId, new Date().toISOString())}\n${registroSh("meu-bot.apagar-conversa", "", sessionId)}\n`, 20_000);
   void entregar(host);
   if (r.code !== 0) throw new Error(r.stderr.trim() || "não consegui apagar na máquina");
   log(`[suporte] ${host}: conversa ${sessionId} apagada pelo admin`);

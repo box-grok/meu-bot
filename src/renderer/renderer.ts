@@ -771,6 +771,20 @@ async function deleteConversation(id: string): Promise<void> {
   afterTabGone(id);
 }
 
+/**
+ * Conversas que o admin excluiu na máquina: o main já as tirou do armazenamento; aqui saem da lista e das abas, sem
+ * confirmar (a exclusão já foi decidida). Na abertura e ao voltar o foco, no máximo uma vez por minuto.
+ */
+let apagadasEm = 0;
+function aplicarApagadas(): void {
+  if (windowHost === "" || windowHost === "local" || Date.now() - apagadasEm < 60_000) return;
+  apagadasEm = Date.now();
+  void window.meuBot.syncApagadas().then((ids) => {
+    for (const id of ids) { if (!index.has(id) && !tabs.has(id)) continue; detachTab(id); index.delete(id); afterTabGone(id); }
+    if (ids.length > 0) renderSidebar();
+  }).catch(() => { /* sem máquina agora: tenta no próximo foco */ });
+}
+
 async function archive(id: string, archived: boolean): Promise<void> {
   const cur = index.get(id);
   if (archived) detachTab(id);
@@ -2002,6 +2016,8 @@ void (async () => {
   void refreshCrm();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
   await restoreTabs();
+  aplicarApagadas();
+  window.addEventListener("focus", aplicarApagadas);
   renderSidebar();
   tabsReady = true;
   // meu-bot-finance-staging: depois de restaurar as abas, o financeiro fica na frente.

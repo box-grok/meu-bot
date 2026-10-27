@@ -986,7 +986,7 @@ export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "
 export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
 export type TabMenuAction = "rename" | "duplicate" | "export-md" | "export-json" | "copy-ref" | "archive" | "unarchive" | "close" | "delete";
 /** Menu "…" de uma conversa dela com o meu-bot no espelho do admin. */
-export type BotMenuAction = "copy-ref";
+export type BotMenuAction = "copy-ref" | "delete";
 /** Sessão do Claude Code por trás de uma conversa do app (vem do backend; é o .jsonl na máquina). */
 export interface ClaudeSessionRef { sessionId: string; file: string; profile: string }
 export type ExportFormat = "md" | "json";
@@ -1223,6 +1223,8 @@ export interface MeuBotClientApi {
   /** Marca como aberta em aba e devolve a conversa completa. */
   openConversation(conversationId: string): Promise<StoredConversationView | null>;
   deleteConversation(conversationId: string): Promise<void>;
+  /** Tira daqui as conversas que o admin excluiu na máquina (conversas-apagadas.json); devolve os ids que saíram. */
+  syncApagadas(): Promise<string[]>;
   archiveConversation(conversationId: string, archived: boolean): Promise<void>;
   duplicateConversation(conversationId: string): Promise<StoredConversationView | null>;
   /** Nova conversa com o histórico até a mensagem de índice `index` (inclusive). */
