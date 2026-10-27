@@ -3,7 +3,7 @@
  * migração `sshHost` (v2, host padrão global) → `lastHost` (v3, só pré-seleção do seletor).
  * Sem Electron: testável com node --test.
  */
-import type { BackendModel, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, Theme } from "../../shared/ipc";
+import type { AbaFixa, BackendModel, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, Theme } from "../../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 import { isZoomLevel } from "./zoom-core";
 
@@ -57,7 +57,11 @@ export interface SettingsFile {
   navEspacos: Record<string, NavWorkspaces>;
   /** Reiniciar sozinho na versão nova com o Mac ocioso (como o Grok Bot; ligado por padrão). */
   atualizarOcioso: boolean;
+  /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
+  abaFixa: AbaFixa;
 }
+export const ABAS_FIXAVEIS: readonly AbaFixa[] = ["padrao", "conversa", "tutoriais", "acervo", "conta-google", "financas", "navegador"];
+export const isAbaFixa = (v: unknown): v is AbaFixa => typeof v === "string" && (ABAS_FIXAVEIS as readonly string[]).includes(v);
 export const MAX_ESPACOS = 20;
 export const MAX_SERVICOS = 30;
 const ID_RE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -166,7 +170,7 @@ const validHost = (v: unknown): string | null => (typeof v === "string" && isVal
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true,
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -208,6 +212,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navNotify: normalizeNavNotify(p["navNotify"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),
     atualizarOcioso: typeof p["atualizarOcioso"] === "boolean" ? p["atualizarOcioso"] : true,
+    abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",
   };
 }
 

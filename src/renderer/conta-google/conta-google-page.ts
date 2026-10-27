@@ -30,6 +30,8 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo");
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   let plId = ""; let plRange = "Página1!A1:C10";
+  // Gmail, Agenda e Planilha são ferramentas de teste: ficam ocultas (e sem carregar) até a pessoa pedir.
+  let mostrarFerramentas = false;
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
 
   async function refresh(): Promise<void> {
@@ -39,17 +41,23 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   }
   /** Os três cartões carregam em paralelo e cada um aparece quando chega (o Gmail faz até doze chamadas; antes ele segurava os outros). */
   async function carregarDados(): Promise<void> {
-    gmail = null; agenda = null; backup = null; gmailErro = null; agendaErro = null; backupErro = null; render();
+    backup = null; backupErro = null; render();
+    await Promise.all([
+      deps.api.backupDadosStatus().then((b) => { backup = b; }, (e: unknown) => { backupErro = erroTexto(e); }).then(render),
+      mostrarFerramentas ? carregarFerramentas() : Promise.resolve(),
+    ]);
+  }
+  async function carregarFerramentas(): Promise<void> {
+    gmail = null; agenda = null; gmailErro = null; agendaErro = null; render();
     await Promise.all([
       deps.api.gmailResumo().then((g) => { gmail = g; }, (e: unknown) => { gmailErro = erroTexto(e); }).then(render),
       deps.api.agendaProximos(7).then((a) => { agenda = a; }, (e: unknown) => { agendaErro = erroTexto(e); }).then(render),
-      deps.api.backupDadosStatus().then((b) => { backup = b; }, (e: unknown) => { backupErro = erroTexto(e); }).then(render),
     ]);
   }
   /** Cartão sem dado: o erro, com "Tentar de novo", ou "Carregando…" enquanto não chegou. */
   const pendente = (c: HTMLElement, erro: string | null, oQue: string): void => {
     if (erro === null) { c.append(carregando(`Carregando ${oQue}…`)); return; }
-    c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarDados(); }));
+    c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void (oQue === "o estado do backup" ? carregarDados() : carregarFerramentas()); }));
   };
   async function agir(run: () => Promise<unknown>, ok: string): Promise<void> {
     if (busy) return; busy = true; msg = null; render();
@@ -135,6 +143,11 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       bc.append(acoes);
     }
     panel.append(bc);
+
+    const tg = el("div", "admin-actions");
+    tg.append(btn(mostrarFerramentas ? "Ocultar Gmail, Agenda e Planilha" : "Mostrar Gmail, Agenda e Planilha", "btn-ghost", () => { mostrarFerramentas = !mostrarFerramentas; if (mostrarFerramentas) void carregarFerramentas(); else render(); }));
+    panel.append(tg);
+    if (!mostrarFerramentas) return;
 
     // Gmail
     const gc = card("Gmail");

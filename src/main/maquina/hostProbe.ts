@@ -8,6 +8,8 @@
 import { BUNDLE_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES } from "./backend-bundle-core";
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
 import { isVozId } from "../whatsapp/vozes-core";
+import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
+import { HERMES_RESTART_SH, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -295,16 +297,24 @@ export async function installClaudeCode(host: string, onLine?: (line: string) =>
 }
 
 /**
- * Áudio do agente do WhatsApp (OpenClaw): "in" = transcrição local (install-transcricao.sh), "out" = voz local
- * com o modo (install-voz.sh off|inbound|always). Mesmo molde da status line: manda o script e roda no host.
+ * Áudio do agente do WhatsApp. OpenClaw: "in" = transcrição local (install-transcricao.sh), "out" = voz local
+ * com o modo (install-voz.sh off|inbound|always), mesmo molde da status line. Hermes: grava `stt` e
+ * `voice.auto_tts` no config.yaml dele (a transcrição e a voz são do próprio Hermes) e reinicia o gateway.
  */
 export async function installAudio(host: string, setup: AudioSetup, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
-  // Hermes: transcrição e voz são do próprio Hermes (config.yaml, `hermes setup`); os instaladores aqui são do OpenClaw.
-  const gw = await run("ssh", [...sshBase(host), "--", host, `[ -d "$HOME/.hermes/whatsapp" ] && echo hermes || echo outro`], 30_000);
-  if (/^hermes$/m.test(gw.stdout)) return { ok: false, log: ["esta máquina roda o Hermes: ouvir e responder em áudio são configurados no próprio Hermes (`hermes setup`, seções Speech-to-Text e TTS), não pelo meu-bot"] };
+  const gw = await run("ssh", [...sshBase(host), "--", host, `${WA_ESCOLHA_SH}; usa_hermes && echo hermes || echo outro`], 30_000);
+  if (/^hermes$/m.test(gw.stdout)) {
+    say(setup.kind === "in" ? (setup.off === true ? "desligando a transcrição no Hermes…" : "ligando a transcrição local do Hermes (português)…") : "ajustando quando o Hermes responde em áudio…");
+    // O script vai em base64 no próprio comando: tem aspas e quebras de linha que o argv do ssh não carrega intactas.
+    const b64 = Buffer.from(`set -e\n${hermesConfigSetSh(hermesAudioPatch(setup))}\n${HERMES_RESTART_SH}\n`, "utf8").toString("base64");
+    const r = await run("ssh", [...sshBase(host), "--", host, `echo ${b64} | base64 -d | bash`], 120_000);
+    if (r.code !== 0 || !r.stdout.includes("cfgset=ok")) return { ok: false, log: [...lines, `não consegui gravar o config.yaml do Hermes: ${lastLine(r.stderr) || lastLine(r.stdout) || "ssh falhou"}`] };
+    if (/restart=falhou/.test(r.stdout)) return { ok: false, log: [...lines, "gravei, mas não consegui reiniciar o gateway do Hermes; reinicie-o na máquina para valer"] };
+    return { ok: true, log: lines };
+  }
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
   const arg = setup.kind === "out" ? ` ${setup.mode}${setup.voz !== undefined && isVozId(setup.voz) ? ` ${setup.voz}` : ""}` : setup.off === true ? " off" : "";
   const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);

@@ -154,10 +154,23 @@ export async function contaDesconectar(host: string): Promise<GoogleContaStatus>
   cache.delete(host); log(`[google conta] ${host}: desconectada`);
   return contaStatus(host);
 }
-/** Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina (escolha explícita na tela). */
-export function adotarContaDoMac(host: string): GoogleContaStatus {
+/**
+ * Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina (escolha explícita na tela).
+ * Testa o refresh antes de copiar: um token antigo já revogado era copiado, a tela dizia "conectada" e o primeiro uso
+ * (backup no Drive) apagava em silêncio; ao reabrir o app o botão voltava. Revogado, o token antigo é apagado também,
+ * para a tela parar de oferecê-lo e pedir o login de novo.
+ */
+export async function adotarContaDoMac(host: string): Promise<GoogleContaStatus> {
   const t = lerArq(ARQ_DO_MAC());
   if (t === null) throw new Error("não há conta antiga neste Mac para usar");
+  const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-oauth.json)");
+  try { await acessoDeRefresh(c, t.refresh); } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!/invalid_grant|revoked|expired/i.test(msg)) throw e;
+    try { fs.rmSync(ARQ_DO_MAC(), { force: true }); } catch { /* ok */ }
+    log(`[google conta] ${host}: conta antiga do Mac (${t.perfil?.email ?? "sem e-mail"}) revogada no Google; apagada`);
+    throw new Error(`a autorização antiga de ${t.perfil?.email ?? "conta"} não vale mais (o Google revogou); use "Entrar com Google" para conectar de novo`);
+  }
   fs.mkdirSync(DIR(), { recursive: true, mode: 0o700 });
   gravar(ARQ(host), safeStorage.encryptString(JSON.stringify(t)));
   cache.delete(host); log(`[google conta] ${host}: usando a conta que já estava no Mac (${t.perfil?.email ?? "sem e-mail"})`);

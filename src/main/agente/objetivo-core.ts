@@ -9,6 +9,12 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-cor
 
 /** Nome fixo da skill: salvar de novo substitui a anterior (uma por máquina). */
 export const OBJECTIVE_SKILL = "objetivo-whatsapp";
+/**
+ * Skills que o próprio app semeia em ~/.claude/skills com o Navegador (backend-colima/skill-*.md). Não são
+ * "aprendidas": listadas no Acervo assim que a pessoa entrava, mostravam Cloudflare, Streak, CRM e 2FA a quem nunca foi
+ * apresentado a isso. As do Cloudflare seguem na Biblioteca do meu-bot (oculta até pedir).
+ */
+export const SKILLS_DO_APP: readonly string[] = ["cloudflare-token", "crm-api", "finance-api", "google-2fa-autenticador", "streak-crm-api", "streak-crm-navegador", "subir-site-cloudflare"];
 export const OBJECTIVE_FILE = "$HOME/.local/share/meu-bot/objetivo.json";
 
 /** O que um contato que não é o dono nunca pode usar (a mesma trava do pareamento, whatsapp.ts). */
@@ -67,6 +73,7 @@ export function parseMachineSkills(stdout: string): MachineSkill[] {
     const [tag, name, description] = line.split("\t");
     if ((tag !== "K" && tag !== "L") || name === undefined || !/^[A-Za-z0-9._-]{1,80}$/.test(name)) continue;
     const learned = tag === "L";
+    if (learned && SKILLS_DO_APP.includes(name)) continue;
     out.push({ name, description: (description ?? "").slice(0, 300), objective: !learned && name === OBJECTIVE_SKILL, ...(learned ? { learned: true } : {}) });
   }
   return out.sort((a, b) => Number(b.objective) - Number(a.objective) || Number(a.learned === true) - Number(b.learned === true) || a.name.localeCompare(b.name));

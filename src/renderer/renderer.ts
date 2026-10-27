@@ -36,9 +36,9 @@ import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, clGuide, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, paintLoginControls, paintXaiLogin, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, xaiAuth, xaiGuide, xaiKey, xaiPrep } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
-import { activatePage, closePage, deactivatePage, definePage, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
+import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
 import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
-import { TUT_ICONS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
+import { TUT_ICONS, TUT_VISIVEIS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
 import { chooseReply, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
 import { cacheDrop, cacheRead, cacheWrite, getListMode, ligarConversas, paintArquivadas, paintListMode, paintWaSidebar, setListMode, waChatTitle } from "./whatsapp/conversas.js";
 import { TUT_GRUPOS, loadGrupoAlvo, refreshWaGroups, renderGruposEscolher, renderGruposModo, renderGruposQuem, renderGruposTeste, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
@@ -1383,7 +1383,8 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
     pendingText: "", navSitesTurn: new Set(), notifyAfter: null, renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
   };
   tabs.set(conversationId, tab);
-  tabsEl.appendChild(tabEl);
+  // Voltando do disco, na ordem salva; aberta agora, entra na frente (depois da fixada) e a ordem nova fica salva.
+  if (restaurandoAbas) tabsEl.appendChild(tabEl); else { inserirAba(tabEl); persistOrder(); }
   refreshTabBadges();
   panelsEl.appendChild(messagesEl);
   tabEl.addEventListener("click", () => activate(conversationId));
@@ -1452,6 +1453,8 @@ async function newTab(): Promise<Tab> {
 }
 
 /** Reabre as abas salvas; sem nenhuma, cria a primeira. */
+/** true enquanto restoreTabs monta as abas salvas: aí elas vão em ordem, sem pular para a frente. */
+let restaurandoAbas = false;
 async function restoreTabs(): Promise<void> {
   const saved = await window.meuBot.listConversations();
   // Conversas vazias não voltam; são apagadas de vez.
@@ -1467,7 +1470,8 @@ async function restoreTabs(): Promise<void> {
     else syncRest();
     return;
   }
-  for (const c of asTabs) buildTab(c.id, c.model, c.host, c);
+  restaurandoAbas = true;
+  try { for (const c of asTabs) buildTab(c.id, c.model, c.host, c); } finally { restaurandoAbas = false; }
   const latest = [...asTabs].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
   activate(latest?.id ?? asTabs[asTabs.length - 1]!.id);
 }
@@ -1497,6 +1501,7 @@ function applySettings(view: SettingsView): void {
   document.documentElement.style.setProperty("--chat-font", `${view.fontSize}px`);
   applyZoomState({ level: view.zoomLevel, factor: Math.pow(1.2, view.zoomLevel), percent: Math.round(Math.pow(1.2, view.zoomLevel) * 100) }, false);
   document.documentElement.dataset["theme"] = view.theme;
+  pintarFixada();
   syncComposer();
 }
 ligarContasAgente();
@@ -1508,6 +1513,8 @@ let objectiveState: ObjectiveInfo | null = null;
 let objectiveMsg: { text: string; bad: boolean } | null = null;
 /** Rascunho do passo 1 antes de "Salvar objetivo" (cartão marcado e frase digitada). */
 let objectiveDraft: { id: string; text: string } | null = null;
+/** A Biblioteca do meu-bot (skills do Cloudflare) fica oculta até a pessoa pedir. */
+let acervoBibliotecaAberta = false;
 const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel"), () => {
   acervoList.replaceChildren();
   const machine = (objectiveState?.skills ?? []).filter((sk) => sk.learned !== true);
@@ -1538,12 +1545,17 @@ const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel")
       }
       acervoList.append(item);
     }
-    if (ACERVO_SKILLS.length > 0) acervoList.append(el("div", "tut-group", "Biblioteca do meu-bot"));
   }
   if (ACERVO_SKILLS.length === 0 && machine.length === 0 && objectiveState?.available !== true) {
     acervoList.append(el("div", "acervo-empty", "Nenhuma skill no acervo ainda. As mais usadas vão entrar aqui, cada uma com instalação pelo agente da máquina."));
   }
-  for (const skill of ACERVO_SKILLS) {
+  if (ACERVO_SKILLS.length > 0) {
+    const head = el("div", "tut-group", "Biblioteca do meu-bot ");
+    const tg = el("button", "btn btn-ghost btn-small", acervoBibliotecaAberta ? "Ocultar" : "Mostrar"); tg.type = "button";
+    tg.addEventListener("click", () => { acervoBibliotecaAberta = !acervoBibliotecaAberta; acervoPage.render(); });
+    head.append(tg); acervoList.append(head);
+  }
+  for (const skill of acervoBibliotecaAberta ? ACERVO_SKILLS : []) {
     const info = el("div", "grow");
     info.append(el("strong", "", skill.name), el("span", "", skill.summary));
     const btn = el("button", "btn btn-primary btn-small", skill.usar?.botao ?? "Pedir ao agente para instalar");
@@ -1648,7 +1660,9 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   ].join(" · ");
   paintTutCount();
   if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
-  tutList.append(...active);
+  // Só os dois primeiros à vista: concluir ou pular um traz o próximo, para a lista não pesar.
+  tutList.append(...active.slice(0, TUT_VISIVEIS));
+  if (active.length > TUT_VISIVEIS) tutList.append(el("div", "acervo-empty", `Mais ${active.length - TUT_VISIVEIS} aparecem conforme você conclui estes.`));
   if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived); }
 });
 ligarTutoriais();
@@ -2020,8 +2034,14 @@ void (async () => {
   window.addEventListener("focus", aplicarApagadas);
   renderSidebar();
   tabsReady = true;
-  // meu-bot-finance-staging: depois de restaurar as abas, o financeiro fica na frente.
-  if (caps.abreEm === "financas") financePage?.open();
+  // A aba fixada (📌) fica na frente depois de restaurar as conversas: Tutoriais por padrão (quem chega leigo começa
+  // pelo passo a passo), Finanças no finance-staging; desafixar volta a abrir na conversa.
+  const fixa = abaFixaAtual();
+  if (fixa === "tutoriais") openPage(tutoriaisPage);
+  else if (fixa === "acervo") openPage(acervoPage);
+  else if (fixa === "financas") financePage?.open();
+  else if (fixa === "conta-google") contaGoogle.open();
+  else if (fixa === "navegador") void openNavTab();
   void restoreSplit();
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);

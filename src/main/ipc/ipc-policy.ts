@@ -39,7 +39,7 @@ export const CLIENT_CHANNELS = [
   // entrada rápida (quickEntry.ts registra sozinho, e só sobe com caps.chat)
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
   // WhatsApp: o que mexe na máquina ou no agente dela
-  "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch",
+  "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:agente", "whatsapp:branch",
   "whatsapp:cancel",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",

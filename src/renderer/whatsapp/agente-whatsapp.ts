@@ -1,4 +1,4 @@
-import type { WhatsappStatus, WhatsappReplyChoice, VoiceReplyMode, VozId, AudioSetup, WhatsappEvent } from "../../shared/ipc";
+import type { WhatsappAgente, WhatsappStatus, WhatsappReplyChoice, VoiceReplyMode, VozId, AudioSetup, WhatsappEvent } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, TUTORIAIS } from "../lib/tutoriais.js";
@@ -45,10 +45,29 @@ const waRefreshBtn = $<HTMLButtonElement>("wa-refresh");
 export const waPolicyBox = $<HTMLElement>("wa-policy");
 const waPolicyHint = $<HTMLElement>("wa-policy-hint");
 export const waPolicyCards = $<HTMLElement>("wa-policy-cards");
+const waAgenteBox = $<HTMLElement>("wa-agente");
+const waAgenteCards = $<HTMLElement>("wa-agente-cards");
+/** Seletor de agente no modal: some durante o pareamento (trocar no meio do QR desfaria o que está sendo lido). */
+function paintWaAgente(): void {
+  waAgenteBox.hidden = waPairing;
+  if (waAgenteBox.hidden) return;
+  waAgenteCards.replaceChildren();
+  renderAgentChoice(waAgenteCards);
+}
 const waPolicyEditor = $<HTMLElement>("wa-policy-editor");
 export let waPolicySaving = false;
 /** Pedido ao agente da máquina para ajustar o canal do WhatsApp por conversa, em vez do editor técnico de JSON. */
 function waChannelPrompt(st: WhatsappStatus): string {
+  if (st.gateway === "hermes") {
+    return [
+      "Quero ajustar o WhatsApp (Hermes) desta máquina conversando, sem eu editar arquivo.",
+      st.number !== null ? `Número conectado: ${fmtPhone(st.number)}.` : "",
+      "Config atual (~/.hermes/.env):",
+      "```json\n" + (st.channelConfig ?? "{}") + "\n```",
+      "O WhatsApp do Hermes fica em ~/.hermes/.env (WHATSAPP_MODE, WHATSAPP_DM_POLICY, WHATSAPP_ALLOWED_USERS) e em ~/.hermes/config.yaml (platforms.whatsapp, para grupos). Faça backup antes de mudar; modo e política só valem depois de `hermes gateway restart`.",
+      "Me diga em uma frase o que dá para mudar (quem o agente responde, lista de números permitidos, grupos) e espere eu pedir. Não mude nada antes de eu confirmar.",
+    ].filter((l) => l !== "").join("\n");
+  }
   return [
     "Quero ajustar o WhatsApp (OpenClaw) desta máquina conversando, sem eu editar JSON.",
     st.number !== null ? `Número conectado: ${fmtPhone(st.number)}.` : "",
@@ -164,8 +183,7 @@ export function renderAudioControls(container: HTMLElement): void {
   const hear = el("div", "audio-row");
   hear.append(el("strong", "", "Ouvir áudios"));
   const hermes = st?.gateway === "hermes";
-  if (st?.audioIn === true) hear.append(el("span", "audio-ok", hermes ? "✓ ativo: o Hermes transcreve os áudios (config.yaml › stt)" : "✓ ativo: a transcrição roda na própria máquina"));
-  else if (hermes) hear.append(el("span", "hint", "desligado no Hermes (config.yaml › stt.enabled); liga-se com `hermes setup`, não pelo meu-bot"));
+  if (st?.audioIn === true) hear.append(el("span", "audio-ok", "✓ ativo: a transcrição roda na própria máquina"));
   else {
     const b = el("button", "btn btn-primary btn-small", waAudioBusy === "in" ? "Ativando… (na primeira vez baixa ~500 MB)" : "Ativar transcrição");
     b.type = "button"; b.disabled = waAudioBusy !== null || st === null || !st.connected;
@@ -174,30 +192,30 @@ export function renderAudioControls(container: HTMLElement): void {
   }
   box.append(hear);
   box.append(el("p", "hint strong-hint", "Responder em áudio"));
-  if (hermes) {
-    // No Hermes a voz é dele (voice.auto_tts): só mostra, sem os cartões (os instaladores são do OpenClaw).
-    box.append(el("p", "hint", st?.audioOut === "inbound" ? "✓ o Hermes responde em áudio quando a pessoa manda áudio (voice.auto_tts)" : "desligado no Hermes (voice.auto_tts); muda-se com `hermes setup`, não pelo meu-bot"));
-    if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
-    container.append(box);
-    return;
-  }
   const cards = el("div", "reply-cards voice-cards");
   const current = st?.audioOut ?? "off";
   const marked = waAudioBusy !== null && waAudioBusy !== "in" ? waAudioBusy : current;
-  for (const o of VOICE_OPTIONS) {
+  // O Hermes responde em áudio quando recebe áudio (voice.auto_tts), com a voz dele: sem "sempre" e sem escolher voz.
+  for (const o of hermes ? VOICE_OPTIONS.filter((v) => v.id !== "always") : VOICE_OPTIONS) {
     const saving = waAudioBusy === o.id;
     const card = el("button", `reply-card${marked === o.id ? " on" : ""}${saving ? " saving" : ""}`);
     card.type = "button"; card.disabled = waAudioBusy !== null || st === null || !st.connected;
     card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marked === o.id));
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
-    if (saving) title.append(el("span", "reply-saving", o.id === "off" ? "aplicando…" : "instalando a voz…"));
+    if (saving) title.append(el("span", "reply-saving", o.id === "off" || hermes ? "aplicando…" : "instalando a voz…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id, ...(o.id !== "off" ? { voz: waVozEscolhida ?? st?.audioVoice ?? "faber" } : {}) }); });
+    card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id, ...(o.id !== "off" && !hermes ? { voz: waVozEscolhida ?? st?.audioVoice ?? "faber" } : {}) }); });
     cards.append(card);
   }
   box.append(cards);
+  if (hermes) {
+    box.append(el("div", "guide-note", "A voz é a do próprio agente desta máquina; ligar ou desligar reinicia o WhatsApp dele por alguns segundos."));
+    if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
+    container.append(box);
+    return;
+  }
   // Voz: com o áudio ligado, troca na hora; desligado, fica guardada para quando ligar. Todas rodam na máquina.
   box.append(el("p", "hint strong-hint", "Voz"));
   const vozes = el("div", "reply-cards voice-cards");
@@ -258,21 +276,26 @@ function paintWaPolicy(): void {
   renderReplyCards(waPolicyCards, replyChoiceNow(st), waPolicySaving, chooseReply);
   waPolicyEditor.replaceChildren(); renderChannelEditor(waPolicyEditor);
   waPolicyHint.textContent = waPolicySaving ? "Aplicando na máquina…"
-    : st.dmPolicy === "pairing" ? "Hoje está no padrão do OpenClaw: quem manda mensagem recebe um código de pareamento e espera aprovação. Escolha uma das opções para mudar."
+    : st.dmPolicy === "pairing" ? "Hoje está no padrão do agente: quem manda mensagem recebe um código de pareamento e espera aprovação. Escolha uma das opções para mudar."
     : st.dmPolicy === "disabled" ? "Hoje está tudo desligado, inclusive suas próprias mensagens. Escolha uma das opções."
     : "Vale na hora, sem reiniciar nada. Grupos continuam desativados.";
 }
 
 /**
- * Pedido pronto ao agente da máquina (Claude Code em bypass): ele configura o OpenClaw e instala o plugin;
- * o pareamento (QR) fica com o app. Idempotente por instrução: pular o que já está feito.
+ * Pedido pronto ao agente da máquina (Claude Code em bypass): instala (se faltar) e configura o agente escolhido
+ * para o WhatsApp; o pareamento (QR) fica com o app. Idempotente por instrução: pular o que já está feito.
  */
 function waAgentPrompt(st: WhatsappStatus): string {
   if (st.gateway === "hermes") {
     return [
-      "Prepare o Hermes desta máquina para o WhatsApp, sem parear (o QR eu faço pelo meu-bot).",
+      "Prepare o Hermes desta máquina para o WhatsApp, sem interação e sem parear (o QR eu faço pelo meu-bot).",
       "Falta: " + (st.missing ?? "o bridge do WhatsApp") + ".",
-      "Verifique a instalação do hermes-agent em ~/.local/lib/node_modules/hermes-agent e garanta o bridge em runtime/hermes-agent/scripts/whatsapp-bridge/bridge.js (reinstale o pacote se preciso, sem mexer no backend do meu-bot nem reiniciar o gateway à mão).",
+      "",
+      "Passos (pule o que já estiver feito):",
+      "1. Se `hermes` não existir: `npm install -g --prefix ~/.local hermes-agent@0.22.2` (a mesma versão do Grok do meu-bot) e confira `~/.local/bin/hermes --version`.",
+      "2. Confira o bridge em ~/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge/bridge.js (reinstale o pacote se faltar). As dependências dele e o `.env` do WhatsApp o meu-bot ajusta sozinho ao gerar o QR.",
+      "3. Não mexa no backend do meu-bot, no `model:` do ~/.hermes/config.yaml (o meu-bot liga o Hermes ao Claude desta máquina) nem rode `hermes whatsapp` ou `hermes setup` (são interativos).",
+      "",
       "No fim, resuma o que fez e o que ainda falta. Não pareie o WhatsApp.",
     ].join("\n");
   }
@@ -282,12 +305,60 @@ function waAgentPrompt(st: WhatsappStatus): string {
     "Falta:\n" + (st.missing ?? "?").split("\n").map((l) => "- " + l).join("\n"),
     "",
     "Passos (pule o que já estiver feito):",
+    "0. Se `openclaw` não existir: instale com `npm install -g openclaw@latest` (sem root, use `--prefix ~/.local`) e confira `openclaw --version`.",
     "1. Se não houver ~/.openclaw/openclaw.json: `openclaw onboard --non-interactive --accept-risk --auth-choice anthropic-cli --skip-channels --skip-skills --skip-hooks --skip-search --skip-ui --install-daemon --gateway-bind loopback --gateway-auth token --gateway-token \"$(openssl rand -hex 24)\" --json`. Se o anthropic-cli não servir, me diga o que falta em vez de inventar chave.",
     "2. Plugin: `openclaw plugins install clawhub:@openclaw/whatsapp --accept-capabilities`.",
     "3. Confira com `openclaw gateway status` e `openclaw plugins list | grep -i whatsapp`. Se o serviço for systemd de usuário, veja `loginctl show-user $USER -p Linger`; se for `no`, avise (precisa de root para o gateway sobreviver ao logout).",
     "",
     "No fim, resuma o que fez e o que ainda falta. Não rode `openclaw channels login`; não pareie o WhatsApp.",
   ].join("\n");
+}
+
+/** Os dois agentes que atendem o WhatsApp, como a pessoa os vê (o app trabalha igual com os dois). */
+const AGENTE_OPTIONS: readonly { id: WhatsappAgente; title: string; text: string; recomendado: boolean }[] = [
+  { id: "openclaw", title: "OpenClaw", text: "Responde pelo Claude Code desta máquina. É o mais usado com o meu-bot.", recomendado: true },
+  { id: "hermes", title: "Hermes", text: "Responde pelo Claude do meu-bot desta máquina, com troca automática de contas e o Grok de reserva.", recomendado: false },
+];
+/** Agente que vale agora: o escolhido, senão o que a máquina já tem. */
+export const agenteAtual = (st: WhatsappStatus | null): WhatsappAgente | null =>
+  st?.escolha ?? (st?.present === true && (st.gateway === "openclaw" || st.gateway === "hermes") ? st.gateway : null);
+let waAgenteSaving: WhatsappAgente | null = null;
+let waAgenteMsg: { text: string; bad: boolean } | null = null;
+/**
+ * Cartões "qual agente atende o seu WhatsApp" (passo 1 do tutorial e o modal). Sem escolha, o recomendado vem
+ * marcado e um clique grava; trocar com número conectado desconecta o agente anterior (o QR é lido de novo).
+ */
+export function renderAgentChoice(container: HTMLElement): void {
+  const st = ctx.waStatus;
+  const atual = agenteAtual(st);
+  const marcado = waAgenteSaving ?? atual ?? "openclaw";
+  const cards = el("div", "reply-cards guide-cards");
+  for (const o of AGENTE_OPTIONS) {
+    const saving = waAgenteSaving === o.id;
+    const card = el("button", `reply-card${marcado === o.id ? " on" : ""}${saving ? " saving" : ""}`);
+    card.type = "button"; card.disabled = waAgenteSaving !== null || waPairing;
+    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marcado === o.id));
+    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
+    if (o.recomendado) title.append(el("span", "reply-default", "Recomendado"));
+    if (saving) title.append(el("span", "reply-saving", "aplicando…"));
+    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
+    card.addEventListener("click", () => { if (o.id !== atual || st?.escolha == null) void escolherAgente(o.id); });
+    cards.append(card);
+  }
+  container.append(cards);
+  const conectadoNoOutro = st?.number != null && atual !== null;
+  container.append(el("div", "guide-note", conectadoNoOutro ? "Trocar desconecta o número do agente atual; depois é só ler o QR de novo." : "Dá para trocar depois; trocar pede para ler o QR de novo."));
+  if (waAgenteMsg !== null) container.append(el("p", `hint ${waAgenteMsg.bad ? "bad-hint" : "audio-ok"}`, waAgenteMsg.text));
+}
+async function escolherAgente(agente: WhatsappAgente): Promise<void> {
+  if (waAgenteSaving !== null) return;
+  waAgenteSaving = agente; waAgenteMsg = null; paintWhatsapp(); ctx.paintGuide();
+  try {
+    ctx.waStatus = await window.meuBot.whatsappEscolherAgente(agente);
+    waAgenteMsg = { text: `✓ ${agente === "openclaw" ? "OpenClaw" : "Hermes"} vai atender o WhatsApp desta máquina.`, bad: false };
+  } catch (err) { waAgenteMsg = { text: `✗ ${ipcErrorText(err)}`, bad: true }; }
+  finally { waAgenteSaving = null; paintWhatsapp(); ctx.paintGuide(); }
 }
 
 export function requestAgentPrepare(): void {
@@ -319,6 +390,7 @@ export function paintWhatsapp(): void {
   waLine.className = `wa-line ${st.connected ? "on" : ""}`;
   const who = st.number !== null ? fmtPhone(st.number) : "sem número";
   const via = st.gateway === "openclaw" ? "WhatsApp (OpenClaw)" : st.gateway === "hermes" ? "WhatsApp (Hermes)" : st.gateway === "picoclaw" ? "WhatsApp (PicoClaw)" : "WhatsApp";
+  paintWaAgente();
   if (!st.ready) {
     waLine.replaceChildren(el("span", "dot"), el("span", "", `${via} · sem configurar`));
     waStatusEl.textContent = `${st.agent}.\nFalta:\n${(st.missing ?? "?").split("\n").map((l) => `• ${l}`).join("\n")}`;

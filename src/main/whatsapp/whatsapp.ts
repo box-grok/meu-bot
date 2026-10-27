@@ -17,16 +17,17 @@ import { isVozId } from "./vozes-core";
 import { spawn, type ChildProcess } from "node:child_process";
 import { toDataURL } from "qrcode";
 import { BlockQrCollector, blocksToSvgDataUrl, stripAnsi } from "./qr-blocks";
-import type { Gateway, VoiceReplyMode, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
+import type { Gateway, VoiceReplyMode, WhatsappAgente, WhatsappChat, WhatsappDmPolicy, WhatsappEvent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
-import { capacidadesDe } from "./whatsapp-capacidades";
+import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
+import { hermesAudioStatus } from "./hermes-audio";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 
@@ -101,8 +102,10 @@ gw_ensure() {
 const STATUS_SCRIPT = `
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
 ${GATEWAY_FIX_SH}
+${WA_ESCOLHA_SH}
+echo "escolha=$ESC"
 S=$HOME/.hermes/whatsapp
-if [ -d "$S" ]; then
+if usa_hermes; then
   echo gateway=hermes; echo present=1
   echo "bin=$(command -v hermes 2>/dev/null)"
   echo "ver=$(timeout 10 hermes --version 2>/dev/null | head -1)"
@@ -152,6 +155,8 @@ d=json.load(sys.stdin); c=d.get("channels",{}).get("whatsapp") or {}
 print(json.dumps({"linked":c.get("linked"),"connected":c.get("connected"),"state":c.get("statusState"),"lifecycle":c.get("lifecycle"),"loggedOut":(c.get("lastDisconnect") or {}).get("loggedOut"),"e164":(c.get("self") or {}).get("e164"),"starting":d.get("status")=="starting"}))' 2>/dev/null)"
   exit 0
 fi
+# Escolheu OpenClaw e ele ainda não está aqui: o passo "preparar" instala (status sem binário = falta instalar).
+if [ "$ESC" = openclaw ]; then echo gateway=openclaw; echo present=1; echo bin=; exit 0; fi
 # PicoClaw (sipeed): o canal "whatsapp" do config.json em modo nativo (whatsmeow dentro do gateway). A sessão
 # é o store.db na pasta do canal; "no ar" é o /health do gateway. Serviço: runit no Termux, systemd de usuário fora.
 if command -v picoclaw >/dev/null 2>&1 && [ -f "$HOME/.picoclaw/config.json" ]; then
@@ -216,7 +221,24 @@ export const whatsappGatewayOf = (host: string): Gateway | null => gatewayByHost
  */
 export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const st = await lerWhatsappStatus(host);
-  return { ...st, capacidades: capacidadesDe(st.gateway, st.ready, st.connected) };
+  // Hermes: ouvir e responder em áudio moram no config.yaml dele (hermes-audio.ts); uma leitura a mais, só com o WhatsApp pronto.
+  const audio = st.gateway === "hermes" && st.ready ? await hermesAudioStatus(host) : null;
+  return { ...st, ...(audio === null ? {} : { audioIn: audio.audioIn, audioOut: audio.audioOut }), capacidades: capacidadesDe(st.gateway, st.ready, st.connected) };
+}
+
+/**
+ * Grava qual agente atende o WhatsApp desta máquina. Trocar com um número conectado no outro desconecta esse número
+ * antes (os dois no mesmo número responderiam em dobro); o QR é lido de novo no agente novo.
+ */
+export async function whatsappEscolherAgente(host: string, agente: WhatsappAgente): Promise<WhatsappStatus> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const antes = await whatsappStatus(host);
+  if (antes.present && antes.gateway !== agente && (antes.gateway === "hermes" || antes.gateway === "openclaw") && antes.number !== null) await whatsappLogout(host, antes.gateway);
+  const r = await runSsh(host, `mkdir -p "$(dirname "${WA_AGENTE_FILE}")" && printf '%s\n' ${agente} > "${WA_AGENTE_FILE}" && echo OK=1\n`, 20_000);
+  if (!r.stdout.includes("OK=1")) throw new Error(`não consegui gravar a escolha na máquina: ${(r.stderr.trim() || "ssh falhou").split("\n").pop() ?? ""}`);
+  gatewayByHost.delete(host);
+  log(`[whatsapp] ${host}: agente escolhido ${agente}${antes.gateway !== null && antes.gateway !== agente ? ` (antes ${antes.gateway})` : ""}`);
+  return whatsappStatus(host);
 }
 async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "capacidades">> {
   const none: Omit<WhatsappStatus, "capacidades"> = { present: false, gateway: null, agent: "", ready: false, missing: null, connected: false, state: "ausente", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null };
@@ -226,12 +248,17 @@ async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "ca
   if (r.code !== 0) return { ...none, detail: `não consegui consultar: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}` };
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1).trim()); }
-  if (kv.get("present") !== "1") return none;
+  const escolha = agenteEscolhido(kv.get("escolha"));
+  if (kv.get("present") !== "1") return { ...none, escolha };
+  return { ...lerGateway(host, kv), escolha };
+}
+function lerGateway(host: string, kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "picoclaw" ? "picoclaw" : "hermes";
   gatewayByHost.set(host, gateway);
   if (gateway === "openclaw") return openclawStatus(kv);
   if (gateway === "picoclaw") return picoclawStatus(kv);
   const agent = describeInstall("Hermes", kv);
+  if ((kv.get("bin") ?? "") === "") return { present: true, gateway, agent: "Hermes (não instalado)", ready: false, missing: "o Hermes ainda não está instalado nesta máquina", connected: false, state: "sem instalar", number: null, loggedOut: false, detail: "Hermes escolhido, ainda não instalado", dmPolicy: null, channelConfig: null };
   const ready = kv.get("bridge") === "1";
   if (!ready) return { present: true, gateway, agent, ready, missing: "o bridge do WhatsApp não está nesta instalação do Hermes", connected: false, state: "sem bridge", number: null, loggedOut: false, detail: "Hermes sem o bridge do WhatsApp", dmPolicy: null, channelConfig: null };
   let state = "sem bridge";
@@ -305,6 +332,7 @@ function describeInstall(name: string, kv: Map<string, string>): string {
 
 /** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
 function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
+  if ((kv.get("bin") ?? "") === "") return { present: true, gateway: "openclaw", agent: "OpenClaw (não instalado)", ready: false, missing: "o OpenClaw ainda não está instalado nesta máquina", connected: false, state: "sem instalar", number: null, loggedOut: false, detail: "OpenClaw escolhido, ainda não instalado", dmPolicy: null, channelConfig: null };
   const agent = describeInstall("OpenClaw", kv);
   const plugin = Number(kv.get("plugin") ?? "0") > 0;
   const cfg = kv.get("cfg") === "1";
@@ -446,12 +474,30 @@ const PAIR_SCRIPT = `
 set -u
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
 ${GATEWAY_FIX_SH}
+${WA_ESCOLHA_SH}
 S=$HOME/.hermes/whatsapp
-if [ -d "$S" ]; then
+if usa_hermes; then
+  command -v hermes >/dev/null 2>&1 || { echo '{"event":"error","error":"o Hermes não está instalado nesta máquina; use \\"Preparar\\" antes de gerar o QR"}'; exit 2; }
   B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
   if [ ! -f "$B/bridge.js" ]; then echo '{"event":"error","error":"bridge do Hermes não encontrado nesta máquina"}'; exit 2; fi
-  pm2 stop hermes-gateway >/dev/null 2>&1; echo '{"event":"meu-bot","step":"gateway-stopped"}'
-  restart() { pm2 start hermes-gateway >/dev/null 2>&1; echo '{"event":"meu-bot","step":"gateway-started"}'; }
+  # Dependências do bridge (o "hermes whatsapp" faz o mesmo npm install na primeira vez).
+  if [ ! -d "$B/node_modules" ]; then
+    echo '{"event":"meu-bot","step":"bridge-deps"}'
+    ( cd "$B" && npm install --no-audit --no-fund >/dev/null 2>&1 ) || { echo '{"event":"error","error":"não consegui instalar as dependências do bridge do WhatsApp do Hermes (npm install)"}'; exit 2; }
+  fi
+  # O gateway do Hermes é um serviço dele (hermes gateway); instalações antigas rodavam pelo PM2.
+  if pm2 describe hermes-gateway >/dev/null 2>&1; then GW=pm2; else GW=svc; fi
+  if [ "$GW" = pm2 ]; then pm2 stop hermes-gateway >/dev/null 2>&1; else hermes gateway stop >/dev/null 2>&1; fi
+  echo '{"event":"meu-bot","step":"gateway-stopped"}'
+  hermes_wa_ensure() {
+${HERMES_WA_ENSURE_SH}
+  }
+  restart() {
+    # Pareou: liga o WhatsApp no .env e, sem modelo escolhido, responde pelo backend do meu-bot (HERMES_WA_ENSURE_SH).
+    if [ -s "$S/session/creds.json" ]; then HWA=$(hermes_wa_ensure); echo '{"event":"meu-bot","step":"ensure"}'; echo "$HWA" >&2; fi
+    if [ "$GW" = pm2 ]; then pm2 start hermes-gateway >/dev/null 2>&1; else hermes gateway start >/dev/null 2>&1 || hermes gateway install >/dev/null 2>&1; fi
+    echo '{"event":"meu-bot","step":"gateway-started"}'
+  }
   if [ "$RESET" = "1" ] && [ -d "$S/session" ]; then mv "$S/session" "$S/session.loggedout-$(date +%s)"; echo '{"event":"meu-bot","step":"session-moved"}'; fi
   mkdir -p "$S/session"
   cd "$B" || { restart; exit 2; }
@@ -587,6 +633,8 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
         case "meu-bot":
           if (ev.step === "openclaw") { openclaw = true; send({ kind: "step", text: "OpenClaw nesta máquina; usando `openclaw channels login`" }); }
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
+          else if (ev.step === "bridge-deps") send({ kind: "step", text: "instalando as dependências do WhatsApp do Hermes (só na primeira vez, 1–2 min)" });
+          else if (ev.step === "ensure") send({ kind: "step", text: "WhatsApp ligado no Hermes; sem modelo escolhido, ele responde pelo Claude do meu-bot desta máquina" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
           else if (ev.step === "logged-out") send({ kind: "step", text: "sessão anterior desfeita (channels logout)" });
           else if (ev.step === "model-set") send({ kind: "step", text: "o agente desta conta não tinha modelo; passou a usar o Claude (pelo Claude Code logado aqui)" });
@@ -647,9 +695,10 @@ export const CREDS_ME = `python3 -c 'import json,sys;print(json.load(open(sys.ar
 
 export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
   if (host === LOCAL_HOST || !isValidHost(host)) return [];
-  // Hermes (~/.hermes/whatsapp): a lista vem do state.db dele, só-leitura; senão, o gateway do OpenClaw.
+  // Hermes (escolhido ou já configurado): a lista vem do state.db dele, só-leitura; senão, o gateway do OpenClaw.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
-if [ -d "$HOME/.hermes/whatsapp" ]; then
+${WA_ESCOLHA_SH}
+if usa_hermes; then
   echo gateway=hermes
   echo "self=$(${HERMES_SELF_SH})"
   echo "list=$(${HERMES_LIST_PY} 2>/dev/null | tr -d '\n')"
@@ -821,11 +870,11 @@ export async function whatsappGroupExportBody(host: string, jid: string, limit =
   return { nome, body: grupoToMarkdown(nome, jid, host, messages, new Date().toISOString()), messages };
 }
 
-/** A máquina roda o Hermes? Pelo gateway da última consulta; sem ela, olha `~/.hermes/whatsapp` por SSH. */
+/** A máquina roda o Hermes? Pelo gateway da última consulta; sem ela, a mesma regra do status (escolha, senão o instalado). */
 async function hostIsHermes(host: string): Promise<boolean> {
   const g = gatewayByHost.get(host);
   if (g !== undefined) return g === "hermes";
-  const r = await runSsh(host, `[ -d "$HOME/.hermes/whatsapp" ] && echo hermes || echo outro\n`, 20_000);
+  const r = await runSsh(host, `${WA_ESCOLHA_SH}\nusa_hermes && echo hermes || echo outro\n`, 20_000);
   const hermes = /^hermes$/m.test(r.stdout);
   if (r.code === 0) gatewayByHost.set(host, hermes ? "hermes" : "openclaw");
   return hermes;
@@ -970,15 +1019,19 @@ export async function whatsappKeepPaused(host: string, number: string, own: read
  * Desconecta o número desta máquina sem parear de novo. OpenClaw: `channels logout` (apaga as credenciais;
  * o gateway para o canal). Hermes: guarda a sessão como session.loggedout-… com o gateway parado.
  */
-export async function whatsappLogout(host: string): Promise<void> {
+export async function whatsappLogout(host: string, qual?: WhatsappAgente): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   if (current !== null) throw new Error("há um pareamento em andamento; feche o QR antes de desconectar");
+  // `qual`: desconecta esse agente mesmo que a escolha gravada já seja outra (trocar de agente).
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH
+${WA_ESCOLHA_SH}
+${qual === undefined ? "" : `ESC=${qual}`}
 S=$HOME/.hermes/whatsapp
-if [ -d "$S" ]; then
-  pm2 stop hermes-gateway >/dev/null 2>&1
-  [ -d "$S/session" ] && mv "$S/session" "$S/session.loggedout-$(date +%s)"
-  pm2 start hermes-gateway >/dev/null 2>&1
+if usa_hermes; then
+  [ -d "$S/session" ] || { echo OUT=hermes; exit 0; }
+  if pm2 describe hermes-gateway >/dev/null 2>&1; then pm2 stop hermes-gateway >/dev/null 2>&1; else hermes gateway stop >/dev/null 2>&1; fi
+  mv "$S/session" "$S/session.loggedout-$(date +%s)"
+  if pm2 describe hermes-gateway >/dev/null 2>&1; then pm2 start hermes-gateway >/dev/null 2>&1; else hermes gateway start >/dev/null 2>&1; fi
   echo OUT=hermes; exit 0
 fi
 command -v openclaw >/dev/null 2>&1 || { echo OUT=none; exit 0; }

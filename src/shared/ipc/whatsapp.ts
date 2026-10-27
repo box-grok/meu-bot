@@ -41,15 +41,20 @@ export interface WhatsappStatus {
   channelConfig: string | null;
   /** OpenClaw: `channels.whatsapp.allowFrom` como está ("+55…" ou "*"); ausente = Hermes ou bloco sem a lista. */
   allowFrom?: string[];
-  /** OpenClaw: o agente entende áudio (há transcritor em `tools.media.models`). Ausente = não se sabe (Hermes). */
+  /** O agente entende áudio (OpenClaw: transcritor em `tools.media.models`; Hermes: `stt` do config.yaml). Ausente = não se sabe. */
   audioIn?: boolean;
-  /** OpenClaw: quando o agente responde em áudio (`tts.auto`); null = sem voz configurada. */
+  /** Quando o agente responde em áudio (OpenClaw: `tts.auto`; Hermes: `voice.auto_tts`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
   /** Voz das respostas em áudio instalada na máquina (null = nenhuma escolhida ainda; a faber de antes conta como faber). */
   audioVoice?: VozId | null;
   /** O que o app consertou sozinho nesta consulta (pt-BR), para a pessoa saber que a máquina mudou (ex.: gateway em porta própria). */
   repaired?: string;
+  /** Agente que a pessoa escolheu para o WhatsApp desta máquina; null = ainda não escolheu (vale o que estiver instalado). */
+  escolha?: WhatsappAgente | null;
 }
+
+/** Os agentes que a pessoa pode escolher para atender o WhatsApp (o app trabalha igual com os dois). */
+export type WhatsappAgente = "openclaw" | "hermes";
 
 export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 

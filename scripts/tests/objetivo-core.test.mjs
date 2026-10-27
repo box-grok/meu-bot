@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire as _cr } from "node:module";
 const { DESCONHECIDO_DENY } = _cr(import.meta.url)("../../dist/main/navegador/navegador-whatsapp-core.js");
 import { createRequire } from "node:module";
-const { LEVELS, OBJECTIVE_SKILL, parseObjectiveChoice, parseObjectiveFile, parseMachineSkills, skillMarkdown, toolsBySenderFor, saveObjectiveSh, setObjectiveSh, resetObjectiveSh, objectiveInfoSh } = createRequire(import.meta.url)("../../dist/main/agente/objetivo-core.js");
+const { LEVELS, OBJECTIVE_SKILL, SKILLS_DO_APP, parseObjectiveChoice, parseObjectiveFile, parseMachineSkills, skillMarkdown, toolsBySenderFor, saveObjectiveSh, setObjectiveSh, resetObjectiveSh, objectiveInfoSh } = createRequire(import.meta.url)("../../dist/main/agente/objetivo-core.js");
 
 test("níveis: três, ids fixos; só \"age\" sem trava; \"conversa\" trava como os outros contatos", () => {
   assert.deepEqual(LEVELS.map((l) => l.id), ["conversa", "consulta", "age"]);
@@ -61,4 +61,12 @@ test("scripts remotos: base64 para o que vem da tela, tmp+mv, workspace do openc
   assert.ok(save.includes("'conversa'"), "o nível vai para a trava");
   assert.ok(resetObjectiveSh().includes(`rm -rf "$W/skills/${OBJECTIVE_SKILL}"`) && resetObjectiveSh().includes("RESET=1"));
   assert.ok(objectiveInfoSh().includes("echo \"O=$(cat") && objectiveInfoSh().includes("printf 'K\\t%s\\t%s\\n'"));
+});
+
+test("skills que o app semeia não aparecem como aprendidas; a lista bate com backend-colima/skill-*.md", async () => {
+  const { readdirSync } = await import("node:fs");
+  const semeadas = readdirSync(new URL("../../backend-colima/", import.meta.url)).filter((f) => /^skill-.+\.md$/.test(f)).map((f) => f.slice(6, -3)).sort();
+  assert.deepEqual([...SKILLS_DO_APP].sort(), semeadas);
+  const out = parseMachineSkills(["L\tcloudflare-token\tcria token", "L\tstreak-crm-navegador\tstreak", "L\tmeu-site-navegador\taprendida", "K\tcloudflare-token\tworkspace"].join("\n"));
+  assert.deepEqual(out.map((s) => `${s.name}:${s.learned === true}`), ["cloudflare-token:false", "meu-site-navegador:true"]);
 });

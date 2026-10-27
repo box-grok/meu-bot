@@ -55,7 +55,14 @@ export interface SettingsView {
   hostNames: Record<string, string>;
   /** Reiniciar sozinho na versão nova quando o Mac está ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. */
   atualizarOcioso: boolean;
+  /** Aba fixada (📌) que fica na frente ao abrir a janela. */
+  abaFixa: AbaFixa;
 }
+/**
+ * Aba que fica na frente ao abrir: "padrao" = a do produto (Finanças no finance-staging, Tutoriais nos outros, para
+ * quem chega leigo); "conversa" = sem alfinete, a última conversa; o resto é o id de uma página.
+ */
+export type AbaFixa = "padrao" | "conversa" | "tutoriais" | "acervo" | "conta-google" | "financas" | "navegador";
 
 export interface SettingsUpdate {
   backendModel?: BackendModel;
@@ -77,6 +84,7 @@ export interface SettingsUpdate {
   onboarding?: "pending" | "done" | "skipped";
   openAtLogin?: boolean;
   atualizarOcioso?: boolean;
+  abaFixa?: AbaFixa;
 }
 /** Avisos de segurança gravados na máquina (o backend envia): um Mac novo usou o meu-bot desta máquina. */
 export interface AlertPrefs { whatsapp: boolean; email: string }

@@ -41,7 +41,7 @@ test("produtos: addon está no catálogo e abreEm é uma página que as telas sa
     if (p.addon !== null) assert.ok(nomes.includes(p.addon), `${p.nome}: add-on ${p.addon} fora de ADDONS`);
     if (p.abreEm !== null) assert.ok(PAGINAS_INICIAIS.includes(p.abreEm), `${p.nome}: abreEm ${p.abreEm} fora de PAGINAS_INICIAIS`);
   }
-  for (const pg of PAGINAS_INICIAIS) assert.ok(renderer.includes(`abreEm === "${pg}"`), `renderer.ts não abre a página inicial "${pg}"`);
+  for (const pg of PAGINAS_INICIAIS) assert.ok(renderer.includes(`fixa === "${pg}"`), `renderer.ts não abre a página inicial "${pg}"`);
   for (const n of ADDONS_DO_PERSONALIZADO) assert.ok(nomes.includes(n), `${n} (plano personalizado antigo) fora de ADDONS`);
 });
 

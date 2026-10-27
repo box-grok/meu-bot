@@ -18,7 +18,7 @@ import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
-import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappLogout, whatsappStatus } from "../whatsapp/whatsapp";
+import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
@@ -68,7 +68,8 @@ async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => vo
  */
 async function ensurePauseRule(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
   const st = await whatsappStatus(host).catch(() => null);
-  if (st === null || !st.capacidades.pausar) return;
+  // A regra vai no AGENTS.md do workspace do OpenClaw; no Hermes pausar é tirar da lista (o agente nem vê a mensagem).
+  if (st === null || !st.capacidades.pausar || st.gateway !== "openclaw") return;
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH\n${pauseRuleSh()}\n`, 30_000).catch(() => null);
   const rule = r === null ? "erro" : (/REGRA=(\S+)/.exec(r.stdout)?.[1] ?? "erro");
   send({ kind: rule === "erro" ? "log" : "step", text: rule === "erro" ? "não deu para gravar a regra de pausa no AGENTS.md do agente" : rule === "1" ? "regra de pausa do meu-bot gravada no agente (AGENTS.md)" : "regra de pausa do meu-bot já estava no agente" });
@@ -339,6 +340,13 @@ export function registerClientIpc(): void {
     const numbers = Array.isArray(p?.numbers) ? p.numbers.filter((n): n is string => typeof n === "string") : [];
     if (policy === "list" && numbers.length === 0) throw new Error("a lista precisa de pelo menos um número");
     return setDmPolicy(h.host, policy, numbers).then((r) => { void registrar(h.host, "whatsapp.quem-responde", policy === "open" ? "todo mundo" : policy === "self" ? "só você" : `você e ${numbers.length} números`); return r; });
+  });
+  handleClient("whatsapp:agente", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const agente = (payload as { agente?: unknown } | null)?.agente;
+    if (agente !== "openclaw" && agente !== "hermes") throw new Error("agente inválido");
+    return whatsappEscolherAgente(h.host, agente).then((r) => { void registrar(h.host, "whatsapp.agente", agente === "openclaw" ? "OpenClaw" : "Hermes"); return r; });
   });
   handleClient("whatsapp:branch", (event, payload: unknown) => {
     const h = hostFromEvent(event);

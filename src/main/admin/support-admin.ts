@@ -13,6 +13,8 @@ import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, Licen
 import { applyLicensePatch, parseLicense } from "../licenca/licenca";
 import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
+import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
+import { HERMES_RESTART_SH } from "../whatsapp/whatsapp-hermes-core";
 import { APP_CONVERSAS_DIR, APP_CONV_ID_RE, PROJECT_DIR_RE, SESSION_ID_RE, isBotChatId, parseAppTranscript, parseBotChatList, parseClaudeTranscript } from "../conversa/bot-chats";
 import { anotarApagadaSh } from "../conversa/apagadas-core";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../suporte/support-code";
@@ -437,9 +439,12 @@ export async function adminBotDelete(host: string, sessionId: string): Promise<v
 
 const ACTIONS: Record<AdminAction, { acao: Acao; sh: string }> = {
   "install-backend": { acao: "backend.instalar", sh: "" },
-  // O gateway é o que a máquina tem: PicoClaw (runit no Termux, com força porque fechar o WhatsApp pode travar o
-  // TERM; systemd de usuário fora dele) ou OpenClaw.
-  "restart-gateway": { acao: "servico.reiniciar-gateway", sh: `if command -v picoclaw >/dev/null 2>&1 && [ -f "$HOME/.picoclaw/config.json" ]; then { [ -n "$PREFIX" ] && SVDIR=$PREFIX/var/service sv -w 30 force-restart picoclaw 2>&1; } || systemctl --user restart picoclaw-gateway 2>&1; else systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1; fi` },
+  // O gateway é o que atende o WhatsApp: Hermes (escolhido ou já configurado), PicoClaw (runit no Termux, com força
+  // porque fechar o WhatsApp pode travar o TERM; systemd de usuário fora dele) ou OpenClaw.
+  "restart-gateway": { acao: "servico.reiniciar-gateway", sh: `${WA_ESCOLHA_SH}
+if usa_hermes; then
+${HERMES_RESTART_SH}
+elif command -v picoclaw >/dev/null 2>&1 && [ -f "$HOME/.picoclaw/config.json" ]; then { [ -n "$PREFIX" ] && SVDIR=$PREFIX/var/service sv -w 30 force-restart picoclaw 2>&1; } || systemctl --user restart picoclaw-gateway 2>&1; else systemctl --user restart openclaw-gateway 2>&1 || openclaw gateway restart 2>&1; fi` },
   "restart-backend": { acao: "servico.reiniciar-backend", sh: "systemctl --user restart meu-bot-backend 2>&1" },
   transcription: { acao: "audio.ativar", sh: "" },
   "transcription-off": { acao: "audio.desativar", sh: "" },

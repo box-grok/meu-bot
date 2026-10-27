@@ -74,7 +74,8 @@ export function tutCounts(): { todo: number; archived: number; pulados: number; 
 /** Aviso na lateral (número ao lado de "Tutoriais"): a pessoa desliga em Tutoriais › "avisar na lateral"; a novidade pulsa mesmo assim. */
 const tutBadgeEl = $<HTMLInputElement>("tut-badge");
 export function paintTutCount(): void {
-  const c = tutCounts();
+  // A página mostra só TUT_VISIVEIS pendentes por vez; o número da barra acompanha.
+  const c = { ...tutCounts() }; c.todo = Math.min(c.todo, TUT_VISIVEIS);
   const b = sidebarBadge({ todo: c.todo, novos: c.novos, avisar: tutBadgeEl.checked });
   const n = $<HTMLElement>("tutoriais-count");
   n.textContent = b?.text ?? "";
@@ -83,6 +84,8 @@ export function paintTutCount(): void {
   n.title = b === null ? "" : b.pulse ? `${c.novos === 1 ? "1 tutorial novo" : `${c.novos} tutoriais novos`} · ${c.todo} para fazer` : (c.todo === 1 ? "1 tutorial para fazer" : `${c.todo} tutoriais para fazer`);
   if (ctx.pageActive !== ctx.tutoriaisPage) tutNovoLabels = new Set();
 }
+/** Quantos tutoriais pendentes aparecem de cada vez. */
+export const TUT_VISIVEIS = 2;
 export const TUT_ICONS = {
   target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>',
@@ -142,7 +145,7 @@ let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "none") return;
   if (target === "chat") {
-    if (t.id === "navegador") { if (!ctx.navAgent.on) void window.meuBot.browserAgent(true).then((st) => { ctx.navAgent = st; ctx.paintNav(); }); void ctx.goToChatFromGuide("Abra o site https://example.com no meu navegador e me diga o título da página.", "O agente vai abrir a página na aba Navegador e cada ação aparece aqui com 🌐; quando ele responder, o tutorial se conclui sozinho."); return; }
+    if (t.id === "navegador") { if (!ctx.navAgent.on) void window.meuBot.browserAgent(true).then((st) => { ctx.navAgent = st; ctx.paintNav(); }); void ctx.goToChatFromGuide("Abra o site https://google.com no meu navegador e me diga o título da página.", "O agente vai abrir a página na aba Navegador e cada ação aparece aqui com 🌐; quando ele responder, o tutorial se conclui sozinho."); return; }
     if (t.id === "xai-login") void ctx.goToChatFromGuide("Oi! Qual modelo está respondendo agora? Uma linha.", "A conversa mudou para o grok-4: a resposta vem da xAI e a pill do túnel mostra \"respondeu grok-4\"; aí o tutorial se conclui sozinho.", "grok-4");
     else if (t.id === "claude-login") void ctx.goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");
     else void ctx.goToChatFromGuide("Oi! Me responde em uma linha, só para eu ver a status line aqui embaixo.", "Quando a resposta chegar, olhe o rodapé desta conversa: Sessão e Semanal aparecem ali, e o tutorial se conclui sozinho.");

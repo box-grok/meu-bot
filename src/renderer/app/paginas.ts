@@ -1,4 +1,5 @@
 import { el, byId as $ } from "../lib/dom.js";
+import type { AbaFixa } from "../../shared/ipc";
 import type { PageTab } from "../lib/pages-types.js";
 import { browserAccess } from "../lib/pro.js";
 import { splitPrefPageIds, maxColunas, clampSplitRatio, SPLIT_MIN_PX, minDireita, splitLayout, splitAdd, parseSplitPref } from "../lib/split.js";
@@ -13,6 +14,36 @@ export const pages = new Map<string, PageTab>();
 export let pageActive: PageTab | null = null;
 /** Conversa que estava ativa quando a página tomou a frente; volta a ela ao fechar. */
 export let pagePrev: string | null = null;
+
+/** Páginas que aceitam o 📌 (abrir na frente quando a janela abre); terminal, guias e WhatsApp não. */
+const FIXAVEIS = new Set(["tutoriais", "acervo", "conta-google", "financas", "navegador"]);
+/** A aba que abre na frente: a escolhida, ou a do produto enquanto a pessoa não escolheu (Tutoriais para quem chega). */
+export function abaFixaAtual(): string {
+  const v = ctx.settings?.abaFixa ?? "padrao";
+  return v === "padrao" ? (ctx.caps.abreEm ?? "tutoriais") : v;
+}
+/** Marca a aba fixada e a põe no começo da barra, como aba fixada de navegador. */
+export function pintarFixada(): void {
+  const fixa = abaFixaAtual();
+  for (const p of pages.values()) {
+    if (p.tabEl === null) continue;
+    const sim = p.id === fixa;
+    p.tabEl.classList.toggle("fixada", sim);
+    const pin = p.tabEl.querySelector<HTMLButtonElement>(".tab-pin");
+    if (pin !== null) pin.title = sim ? "Abre primeiro quando a janela abre. Clique para desafixar (volta a abrir na conversa)" : "Fixar: esta aba abre primeiro quando a janela abrir";
+    if (sim && ctx.tabsEl.firstElementChild !== p.tabEl) ctx.tabsEl.prepend(p.tabEl);
+  }
+}
+/** Aba nova entra no começo da barra, logo depois da fixada (📌), em vez de ir para o fim da fila. */
+export function inserirAba(tabEl: HTMLElement): void {
+  const fixa = pages.get(abaFixaAtual())?.tabEl ?? null;
+  const ref = fixa !== null && fixa !== tabEl && fixa.parentElement === ctx.tabsEl ? fixa.nextSibling : ctx.tabsEl.firstChild;
+  ctx.tabsEl.insertBefore(tabEl, ref);
+}
+function alternarFixada(page: PageTab): void {
+  const abaFixa = (abaFixaAtual() === page.id ? "conversa" : page.id) as AbaFixa;
+  void window.meuBot.setSettings({ abaFixa }).then(ctx.applySettings).catch(() => { /* não salvou: o alfinete fica como estava */ });
+}
 
 export function definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab {
   const page: PageTab = { id, title, panel, render, tabEl: null };
@@ -62,6 +93,11 @@ export function openPage(page: PageTab, activateIt = true): void {
     const titleEl = el("span", "tab-title", page.title);
     const closeBtn = el("button", "tab-close", "×");
     closeBtn.type = "button"; closeBtn.title = "Fechar aba";
+    if (FIXAVEIS.has(page.id)) {
+      const pin = el("button", "tab-pin", "📌"); pin.type = "button";
+      pin.addEventListener("click", (ev) => { ev.stopPropagation(); alternarFixada(page); });
+      tabEl.append(pin);
+    }
     tabEl.append(titleEl, closeBtn);
     tabEl.title = "Arraste para o lado para ver ao lado da conversa";
     tabEl.draggable = true;
@@ -73,8 +109,9 @@ export function openPage(page: PageTab, activateIt = true): void {
       // Fecha direto, terminal inclusive (o shell vivo é encerrado ao fechar a aba).
       closePage(page);
     });
-    ctx.tabsEl.appendChild(tabEl);
+    inserirAba(tabEl);
     page.tabEl = tabEl;
+    pintarFixada();
   }
   if (activateIt) activatePage(page);
 }

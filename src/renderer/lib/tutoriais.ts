@@ -187,6 +187,8 @@ export interface Tutorial {
   icon?: "target" | "chat";
   /** Ainda não existe: o cartão aparece com "Em breve" e não abre guia. */
   comingSoon?: boolean;
+  /** Fora da lista de Tutoriais (e do selo) por decisão de produto; o código do guia continua. */
+  oculto?: true;
   /** Só aparece quando o meu-bot veio com o pacote de suporte (e a janela é de máquina por SSH). */
   needsSupport?: true;
   /** Só aparece onde o Grok é possível (máquina por SSH com o backend do meu-bot); some neste Mac. */
@@ -502,7 +504,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
       {
         id: "agente", title: "Deixar o agente navegar", target: "chat",
-        text: "Na barra do Navegador, clique no 🤖 para ligar (ele acende quando o agente pode usar). Depois vá para a conversa e peça algo como \"abra o site example.com e me diga o título\": cada ação aparece na conversa com 🌐.",
+        text: "Na barra do Navegador, clique no 🤖 para ligar (ele acende quando o agente pode usar). Depois vá para a conversa e peça algo como \"abra o site google.com e me diga o título\": cada ação aparece na conversa com 🌐.",
         done: (_st, f, c) => c.navegador.access === "ok" && f.navAgentUsed,
       },
     ],
@@ -513,6 +515,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["crm", "navegador"],
     after: "navegador",
     needsCrmProprio: true,
+    // 27 out: fora da lista; o cartão ficava parado em "verificando a máquina…" para quem nem conhece o CRM.
+    oculto: true,
     title: "CRM no Gmail e no WhatsApp",
     short: "CRM",
     summary: "O CRM do meu-bot mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
@@ -813,6 +817,7 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
  */
 export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => boolean = () => false): Tutorial[] {
   const visible = (t: Tutorial): boolean => {
+    if (t.oculto === true) return false;
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
     if (t.needsXai === true && ctx.xai.possible === false) return false;
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;

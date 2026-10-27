@@ -7,7 +7,7 @@ import { tutorialNumber } from "./tutoriais.js";
 
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
   { id: "install-backend", label: "Instalar o backend do meu-bot", confirm: "Confirmar? instala na conta dela (porta livre escolhida sozinha)" },
-  { id: "restart-gateway", label: "Reiniciar o gateway do WhatsApp (OpenClaw ou PicoClaw)", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
+  { id: "restart-gateway", label: "Reiniciar o gateway do WhatsApp", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },
   { id: "restart-backend", label: "Reiniciar o backend do meu-bot", confirm: "Confirmar? conversas em andamento caem" },
   { id: "transcription", label: "Ativar a transcrição de áudio", confirm: "Confirmar? baixa ~500 MB na máquina dela" },
   { id: "transcription-off", label: "Desativar a transcrição de áudio", confirm: "Confirmar? o agente dela deixa de entender áudios" },

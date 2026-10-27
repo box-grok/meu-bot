@@ -42,7 +42,7 @@ test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };
   const idsCrm = visibleTutorials(crm, (x) => x.id === "claude-login" || x.id === "navegador").map((x) => x.id);
-  assert.ok(idsCrm.includes("crm-gmail") && !idsCrm.includes("crm-whatsapp"), "com o CRM próprio o 10 é o CRM no Gmail, sem o do Streak");
+  assert.ok(!idsCrm.includes("crm-gmail") && !idsCrm.includes("crm-whatsapp"), "o 10 (CRM no Gmail) está oculto e, com o CRM próprio, o do Streak também não entra");
   assert.ok(ids((x) => x.id === "claude-login" || x.id === "xai-login").includes("fallback-contas"));
   assert.deepEqual(ids(), ids(() => false), "sem `finished`, nada da trilha destravado");
 });

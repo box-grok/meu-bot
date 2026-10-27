@@ -79,6 +79,7 @@
              linhas que comiam a altura da lista. O estado fica no localStorage da janela, como a barra de cima. -->
         <button type="button" id="atalhos-toggle" class="atalhos-toggle" aria-expanded="false" aria-controls="atalhos" title="Recolher ou mostrar as contas e os atalhos"><span class="atalhos-seta">▾</span><span class="atalhos-dot" hidden></span></button>
         <div id="atalhos" class="atalhos" hidden>
+          <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count" data-pendencia></span></button>
           <button type="button" id="wa-line" class="wa-line" hidden title="WhatsApp do agente desta máquina (Hermes ou OpenClaw): clique para ver o estado ou parear"></button>
           <div id="cl-line" class="wa-line cl-line" hidden title="Conta do Claude Code nesta máquina"><span class="dot"></span><span id="cl-line-text" class="grow"></span><button type="button" id="cl-line-btn" class="btn btn-ghost btn-small">sair</button></div>
           <div id="xai-line" class="wa-line cl-line" hidden title="Conta da xAI (Grok) nesta máquina; é o que o modelo grok-4 usa"><span class="dot"></span><span id="xai-line-text" class="grow"></span><button type="button" id="xai-line-btn" class="btn btn-ghost btn-small">sair</button></div>
@@ -86,13 +87,13 @@
           <button type="button" id="acervo-line" class="wa-line acervo-line" title="Acervo: biblioteca de skills desta máquina; instalar é pedir ao agente"><span class="acervo-icon">▤</span><span class="grow">Acervo</span><span id="acervo-count" class="acervo-count">0 skills</span></button>
           <button type="button" id="conta-google-line" class="wa-line acervo-line" title="Conta Google: login, Gmail, Agenda e planilhas"><span class="acervo-icon">G</span><span class="grow">Conta Google</span></button>
           <button type="button" id="financas-line" class="wa-line acervo-line" title="Finanças: o que o agente lançou e o que depende de você (produto meu-bot-finance)" hidden><span class="acervo-icon">R$</span><span class="grow">Finanças</span><span id="financas-count" class="acervo-count" data-pendencia></span></button>
-          <button type="button" id="terminal-line" class="wa-line acervo-line" title="Terminal nesta máquina (Cmd+J; Option+clique ou Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
+          <!-- Terminal oculto para abstrair o app; continua no Cmd+J e na paleta. -->
+          <button type="button" id="terminal-line" class="wa-line acervo-line" hidden title="Terminal nesta máquina (Cmd+J; Option+clique ou Cmd+Shift+J abre mais um)"><span class="acervo-icon">&gt;_</span><span class="grow">Terminal</span><span id="terminal-count" class="acervo-count"></span></button>
           <button type="button" id="navegador-line" class="wa-line acervo-line" title="Navegador dentro do meu-bot, com extensões do Chrome; o agente pode navegar por você (plano Pro)"><span class="acervo-icon">🌐</span><span class="grow">Navegador</span><span id="navegador-count" class="acervo-count">Pro</span></button>
           <!-- meu-bot-admin: reabre a aba Suporte (saúde, plano, ações); escondido no meu-bot da pessoa (admin.css mostra). -->
           <button type="button" id="suporte-line" class="wa-line acervo-line" title="Suporte: saúde da máquina, plano e licença, ações e registros" hidden><span class="acervo-icon">⛨</span><span class="grow">Suporte</span></button>
           <!-- meu-bot-admin, só o super admin: aba Auditoria da máquina desta janela (o renderer mostra quando o main confirma). -->
           <button type="button" id="auditoria-line" class="wa-line acervo-line" title="Auditoria: o que o dono, cada admin, o agente e o sistema fizeram nesta máquina (cópia central, à prova de edição)" hidden><span class="acervo-icon">🛡</span><span class="grow">Auditoria</span></button>
-          <button type="button" id="tutoriais-line" class="wa-line acervo-line" title="Tutoriais: passo a passo do meu-bot, numa aba própria"><span class="acervo-icon">▤</span><span class="grow">Tutoriais</span><span id="tutoriais-count" class="acervo-count" data-pendencia></span></button>
         </div>
         <!-- Seletor de lista: conversas do meu-bot ou do WhatsApp (espelho só leitura). Só aparece com OpenClaw pronto. -->
         <div id="list-mode" class="list-mode" role="tablist" aria-label="Qual lista mostrar" hidden>
@@ -271,6 +272,11 @@
         <p id="wa-policy-hint" class="hint"></p>
         <div id="wa-policy-editor"></div>
       </div>
+      <!-- Qual agente atende o WhatsApp (OpenClaw ou Hermes): o mesmo seletor do passo 1 do tutorial 2. -->
+      <div id="wa-agente" class="wa-policy" hidden>
+        <p class="hint"><strong>Qual agente atende o seu WhatsApp</strong></p>
+        <div id="wa-agente-cards"></div>
+      </div>
       <p id="wa-how" class="hint" hidden>No celular: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. Ele renova sozinho até você ler.</p>
       <!-- Progresso do pareamento: ponto pulsando + passo atual + QR nº e contagem da renovação; o log cru fica em "detalhes". -->
       <div id="wa-progress" class="wa-progress" hidden>
@@ -279,7 +285,7 @@
         <span id="wa-progress-meta" class="wa-progress-meta"></span>
       </div>
       <div class="dialog-actions">
-        <button type="button" id="wa-agent" class="btn btn-primary" hidden title="Abre uma conversa nova e pede ao agente desta máquina (bypass) para configurar o OpenClaw e instalar o plugin do WhatsApp; o QR continua sendo pelo app">Pedir ao agente para preparar</button>
+        <button type="button" id="wa-agent" class="btn btn-primary" hidden title="Abre uma conversa nova e pede ao agente desta máquina (bypass) para instalar e configurar o agente escolhido para o WhatsApp; o QR continua sendo pelo app">Pedir ao agente para preparar</button>
         <button type="button" id="wa-refresh" class="btn btn-ghost" title="Consulta de novo o estado nesta máquina (sem fechar)">Atualizar</button>
         <button type="button" id="wa-pair" class="btn btn-primary">Gerar QR</button>
         <button type="button" id="wa-reset" class="btn btn-ghost" hidden title="Apaga a sessão do WhatsApp nesta máquina e abre um QR novo para parear outro número">Desconectar</button>

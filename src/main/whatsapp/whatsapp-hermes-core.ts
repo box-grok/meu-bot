@@ -8,6 +8,7 @@
  */
 import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../../shared/ipc";
 import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
+import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -353,6 +354,109 @@ if os.path.exists(p): shutil.copy2(p, p + ".bak-meu-bot-" + time.strftime("%Y%m%
 tmp = p + ".tmp"
 with open(tmp, "w") as f: dump(doc, f)
 os.chmod(tmp, 0o600); os.replace(tmp, p)
+print("cfgset=ok")
+' '${b64}'`;
+}
+
+/**
+ * Abre ~/.hermes/config.yaml para editar: `doc` (ruamel round-trip preserva comentários; sem ele, PyYAML), `sub(d, k)`
+ * devolve/cria um mapa filho e `salvar()` grava com backup e escrita atômica. Vai dentro de `"$PY" -c '…'` (sem aspas simples).
+ */
+const HERMES_YAML_PY = `
+import os, shutil, time
+p = os.path.expanduser("~/.hermes/config.yaml")
+try:
+    from ruamel.yaml import YAML
+    y = YAML(); y.preserve_quotes = True; y.width = 4096; y.indent(mapping=2, sequence=4, offset=2)
+    doc = (y.load(open(p)) if os.path.exists(p) else None)
+    if doc is None:
+        from ruamel.yaml.comments import CommentedMap
+        doc = CommentedMap()
+    def dump(d, f): y.dump(d, f)
+except Exception:
+    import yaml
+    doc = (yaml.safe_load(open(p)) if os.path.exists(p) else None) or {}
+    def dump(d, f): yaml.safe_dump(d, f, allow_unicode=True, sort_keys=False)
+def sub(d, k):
+    v = d.get(k)
+    if not isinstance(v, dict):
+        d[k] = v = type(doc)()
+    return v
+def salvar():
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    if os.path.exists(p): shutil.copy2(p, p + ".bak-meu-bot-" + time.strftime("%Y%m%d-%H%M%S"))
+    tmp = p + ".tmp"
+    with open(tmp, "w") as f: dump(doc, f)
+    os.chmod(tmp, 0o600); os.replace(tmp, p)
+`;
+
+/**
+ * Depois de parear o Hermes (o `hermes whatsapp` faz isto no assistente interativo): liga o WhatsApp no .env e, sem
+ * escolha anterior, começa em "só você" (o mesmo padrão do OpenClaw no app). E o modelo: com `model.provider` vazio
+ * ou "auto", o Hermes responde pelo backend do meu-bot desta máquina (OpenAI-compatível, modelo `agente`): é o
+ * Claude Code oficial, com o rodízio de contas e o Grok de reserva. Modelo já escolhido nunca é trocado. A chave
+ * do backend vai por variável de ambiente, nunca por argv nem pelo app. Imprime `hwa=<o que mudou>`.
+ */
+export const HERMES_WA_ENSURE_SH = `${HERMES_PY_SH}; ${BACKEND_DIR_SH}
+HK=$(grep '^OPENAI_COMPAT_KEY=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2-)
+HP=$(grep '^PORT=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9)
+HK="$HK" HP="$HP" "$PY" -c '
+import json, os, re
+${HERMES_YAML_PY}
+mud = []
+e = os.path.expanduser("~/.hermes/.env")
+linhas = open(e).read().splitlines() if os.path.exists(e) else []
+def tem(k): return any(re.match(r"\s*(?:export\s+)?" + k + r"\s*=", l) for l in linhas)
+def pega(k):
+    for l in linhas:
+        m = re.match(r"\s*(?:export\s+)?" + k + r"\s*=\s*(.*?)\s*$", l)
+        if m: return m.group(1).strip("\"").strip("\x27")
+    return ""
+eu = ""
+try:
+    eu = (json.load(open(os.path.expanduser("~/.hermes/whatsapp/session/creds.json"))).get("me") or {}).get("id", "")
+except Exception:
+    pass
+eu = (re.match(r"(\d{8,15})[:@]", eu) or [None, ""])[1]
+novos = {}
+if pega("WHATSAPP_ENABLED").lower() != "true": novos["WHATSAPP_ENABLED"] = "true"
+if not tem("WHATSAPP_MODE"): novos["WHATSAPP_MODE"] = "self-chat"
+if not tem("WHATSAPP_ALLOWED_USERS") and eu: novos["WHATSAPP_ALLOWED_USERS"] = eu
+if novos:
+    feitos = set()
+    for i, l in enumerate(linhas):
+        for k, v in novos.items():
+            if re.match(r"\s*(?:export\s+)?" + k + r"\s*=", l): linhas[i] = k + "=" + v; feitos.add(k)
+    linhas += [k + "=" + v for k, v in novos.items() if k not in feitos]
+    os.makedirs(os.path.dirname(e), exist_ok=True)
+    tmp = e + ".tmp"; open(tmp, "w").write("\n".join(linhas) + "\n"); os.chmod(tmp, 0o600); os.replace(tmp, e)
+    mud.append("env:" + ",".join(sorted(novos)))
+m = sub(doc, "model")
+prov = str(m.get("provider") or "auto").strip().lower()
+if prov == "auto" and os.environ.get("HK") and os.environ.get("HP"):
+    m["provider"] = "custom"; m["base_url"] = "http://127.0.0.1:%s/v1" % os.environ["HP"]
+    m["api_key"] = os.environ["HK"]; m["default"] = "agente"
+    salvar(); mud.append("modelo:agente")
+print("hwa=" + (";".join(mud) or "nada"))
+' 2>&1 | grep '^hwa=' || echo "hwa=falhou"`;
+
+/** Áudio do Hermes no config.yaml: ouvir = `stt` local em português; responder em áudio = `voice.auto_tts` (o Hermes não tem "sempre"). */
+export function hermesAudioPatch(setup: { kind: "in"; off?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
+  if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt" };
+  return { "voice.auto_tts": setup.mode !== "off" };
+}
+/** Grava chaves com ponto (`stt.enabled`) no config.yaml do Hermes, com backup. Imprime `cfgset=ok`. */
+export function hermesConfigSetSh(patch: Record<string, unknown>): string {
+  const b64 = Buffer.from(JSON.stringify(patch), "utf8").toString("base64");
+  return `${HERMES_PY_SH}; "$PY" -c '
+import base64, json, sys
+${HERMES_YAML_PY}
+for chave, valor in json.loads(base64.b64decode(sys.argv[1]).decode("utf-8")).items():
+    partes = chave.split(".")
+    d = doc
+    for k in partes[:-1]: d = sub(d, k)
+    d[partes[-1]] = valor
+salvar()
 print("cfgset=ok")
 ' '${b64}'`;
 }

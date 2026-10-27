@@ -1113,3 +1113,9 @@ table.fin-abc tr.fin-abc-C td.fin-abc-tag { color: #757575; }
 .carregando { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; color: var(--muted); }
 .carregando-linha { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .carregando-aviso { margin: 0 0 0 17px; }
+
+/* 📌 nas abas de página: aparece ao passar o mouse; na aba fixada (abre primeiro quando a janela abre) fica sempre. */
+.tab-pin { flex: none; border: none; background: transparent; padding: 0; font-size: 11px; line-height: 1; cursor: pointer; opacity: 0; filter: grayscale(1); }
+.tab:hover .tab-pin { opacity: .5; }
+.tab-pin:hover { opacity: 1 !important; }
+.tab.fixada .tab-pin { opacity: 1; filter: none; }

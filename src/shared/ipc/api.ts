@@ -10,7 +10,7 @@ import type { LicensePatch, LicenseView } from "./licenca";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
 import type { AdminAction, AdminHealth, AuditoriaVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
-import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
+import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
   "chat:assistant-start": ConversationRef;
@@ -363,6 +363,8 @@ export interface MeuBotClientApi {
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo; "list" = você + `numbers` (só dígitos, com DDI). Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
+  /** Grava qual agente atende o WhatsApp desta máquina; trocar desconecta o número do agente anterior. */
+  whatsappEscolherAgente(agente: WhatsappAgente): Promise<WhatsappStatus>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */

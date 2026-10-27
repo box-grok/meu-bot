@@ -44,6 +44,14 @@ test("openDirect: true por padrão, respeita false", () => {
   assert.equal(normalizeSettings({ openDirect: "x" }).openDirect, true);
 });
 
+test("abaFixa: padrão até escolher (Tutoriais ou a do produto); conversa desafixa; lixo volta ao padrão", () => {
+  assert.equal(normalizeSettings({}).abaFixa, "padrao");
+  assert.equal(defaultSettings().abaFixa, "padrao");
+  for (const v of ["conversa", "tutoriais", "acervo", "conta-google", "financas", "navegador"]) assert.equal(normalizeSettings({ abaFixa: v }).abaFixa, v);
+  assert.equal(normalizeSettings({ abaFixa: "terminal" }).abaFixa, "padrao");
+  assert.equal(normalizeSettings({ abaFixa: 3 }).abaFixa, "padrao");
+});
+
 test("hostNames: apelidos válidos por host; lixo fora", async () => {
   const { normalizeHostNames } = await import("../../dist/main/app/settings-normalize.js");
   assert.deepEqual(normalizeHostNames({ colima: "  VM de  teste ", "a b": "x", agente: "", n: 3 }), { colima: "VM de teste" });

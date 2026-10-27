@@ -5,7 +5,7 @@ import type { BackendModel, NavNotifyPref, NavWorkspaces, QuickEntryStatus, Sett
 import { parseAccelerator } from "./accelerator";
 import { clampZoom } from "./zoom-core";
 import {
-  defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
+  defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isAbaFixa, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
   type SettingsFile,
  normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
 
@@ -175,6 +175,7 @@ export const settingsView = (host?: string): SettingsView => ({
   navNotify: { ...file.navNotify, hosts: [...file.navNotify.hosts] },
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
   atualizarOcioso: file.atualizarOcioso,
+  abaFixa: file.abaFixa,
 });
 /** "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta). */
 export const getAtualizarOcioso = (): boolean => file.atualizarOcioso;
@@ -229,6 +230,10 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
   }
   if (update.navNotify !== undefined) file.navNotify = normalizeNavNotify(update.navNotify, file.navNotify);
   if (update.atualizarOcioso !== undefined) file.atualizarOcioso = update.atualizarOcioso === true;
+  if (update.abaFixa !== undefined) {
+    if (!isAbaFixa(update.abaFixa)) throw new Error("Aba fixada inválida.");
+    file.abaFixa = update.abaFixa;
+  }
   persist();
   return settingsView(host);
 }

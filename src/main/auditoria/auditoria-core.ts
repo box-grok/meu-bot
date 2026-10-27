@@ -63,6 +63,7 @@ export const ACOES = {
   "whatsapp.grupo-desligar": (a: string) => `desligou o agente no grupo do WhatsApp ${a}`,
   "whatsapp.grupo-quem": (a: string) => `mudou quem pode conversar com o agente nos grupos do WhatsApp${a ? ` (${a})` : ""}`,
   "whatsapp.quem-responde": (a: string) => `mudou quem o agente responde no WhatsApp${a ? ` (${a})` : ""}`,
+  "whatsapp.agente": (a: string) => `escolheu o agente do WhatsApp${a ? ` (${a})` : ""}`,
   "crm.guardar-conversa": (a: string) => `guardou no CRM a conversa do WhatsApp de ${a}`,
   "crm.instalar": () => "instalou o CRM pelo WhatsApp",
   "finance.instalar": () => "instalou o financeiro (WhatsApp e chat)",

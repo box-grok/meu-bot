@@ -8,7 +8,6 @@ import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp/whatsapp";
-import { hermesAudioStatus } from "../whatsapp/hermes-audio";
 import { JID_RE } from "../whatsapp/whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador/navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp/whatsapp-marks";
@@ -90,7 +89,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     void garantirFotoPerfil(host).then((r) => { if (r !== null) sendToHost(host, "google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
     return contaStatus(host);
   });
-  handleShared("google-conta:adotar-do-mac", (event) => { const host = hostConta(event); const r = adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });
+  handleShared("google-conta:adotar-do-mac", async (event) => { const host = hostConta(event); const r = await adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });
   handleShared("google-conta:conectar", async (event) => {
     const host = hostConta(event); const r = await contaConectar(host); sendToHost(host, "google-conta:changed", r);
     if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); // a cópia que falhou "sem conta" sai agora
@@ -157,14 +156,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   });
 
   // Leituras da máquina desta janela.
-  handleShared("whatsapp:status", async (event) => {
+  handleShared("whatsapp:status", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    const st = await whatsappStatus(h.host);
-    // Hermes: ouvir e responder em áudio são configuração do próprio Hermes (config.yaml); o app só lê e mostra.
-    if (st.gateway !== "hermes" || !st.present) return st;
-    const audio = await hermesAudioStatus(h.host);
-    return audio === null ? st : { ...st, audioIn: audio.audioIn, audioOut: audio.audioOut };
+    // O áudio do Hermes (config.yaml) já vem no próprio whatsappStatus.
+    return whatsappStatus(h.host);
   });
   handleShared("whatsapp:chats", (event) => {
     const h = hostFromEvent(event);
@@ -448,6 +444,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
       ...(typeof u.openAtLogin === "boolean" ? { openAtLogin: u.openAtLogin } : {}),
       ...(typeof u.atualizarOcioso === "boolean" ? { atualizarOcioso: u.atualizarOcioso } : {}),
+      ...(typeof u.abaFixa === "string" ? { abaFixa: u.abaFixa as NonNullable<SettingsUpdate["abaFixa"]> } : {}),
       ...(typeof u.contextBudgetTokens === "number" ? { contextBudgetTokens: u.contextBudgetTokens } : {}),
       ...(typeof u.memoryEveryTurns === "number" ? { memoryEveryTurns: u.memoryEveryTurns } : {}),
       ...(typeof u.quickEntryEnabled === "boolean" ? { quickEntryEnabled: u.quickEntryEnabled } : {}),
