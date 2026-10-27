@@ -439,7 +439,15 @@ export function ligarContasAgente(): void {
   });
   clClose.addEventListener("click", () => { if (clState.running) void window.meuBot.claudeLoginCancel(); clDialog.close(); });
   window.meuBot.on("ui:claude-login", () => enterClaude());
-  clLineBtn.addEventListener("click", () => {
+  // Clique na linha (fora do botão) abre o tutorial da conta, como a linha do WhatsApp: o das contas (15) quando já
+  // logado e ele está na trilha; senão o 1, "Entrar no Claude Code".
+  clLine.addEventListener("click", () => {
+    const quer = clAuth?.loggedIn === true && ctx.visibleNow().some((t) => t.id === "contas-claude") ? "contas-claude" : "claude-login";
+    const t = TUTORIAIS.find((x) => x.id === quer) ?? TUTORIAIS.find((x) => x.id === "claude-login");
+    if (t !== undefined) ctx.openGuide(t);
+  });
+  clLineBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation(); // o botão sair/entrar não abre o guia
     if (clAuth !== null && clAuth.loggedIn) {
       if (!window.confirm(`Sair da conta ${clAuth.email ?? "do Claude Code"} nesta máquina? O agente para de responder pelo Claude até entrar de novo (o grok-4 continua).`)) return;
       void logoutClaude(true);

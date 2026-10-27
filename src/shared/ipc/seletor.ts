@@ -8,7 +8,8 @@ import type { SupportPerson } from "./suporte";
 export interface PickerSharedApi {
   list(): Promise<PickerInit>;
   /** Plano de cada host (lido por SSH, melhor esforço) para o selo "PRO" no seletor; hosts fora do ar ficam de fora. */
-  plans(): Promise<Record<string, PlanName>>;
+  /** Plano por host; com `host`, só o dessa máquina (o seletor pergunta uma a uma e pinta o selo de quem responder). */
+  plans(host?: string): Promise<Record<string, PlanName>>;
   probe(host: string): Promise<HostProbe>;
   choose(host: string): Promise<void>;
   /** O backend desta máquina está em outra porta: o app passa a usar `port` só para ela (configuração deste Mac; nada escrito na máquina, por isso o admin também pode). */

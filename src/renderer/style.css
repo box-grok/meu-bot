@@ -496,7 +496,7 @@ dialog.perguntar input { font: inherit; padding: 8px 10px; border-radius: 8px; b
 .acervo-item strong { display: block; font-size: 13px; }
 .acervo-item span { font-size: 12px; color: var(--muted); }
 .acervo-item.on { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 7%, var(--bg)); }
-.cl-line { cursor: default; }
+.cl-line { cursor: pointer; }
 .cl-line .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cl-line .btn-small { padding: 2px 8px; font-size: 11px; }
 

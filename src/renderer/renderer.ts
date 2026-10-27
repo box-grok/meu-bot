@@ -177,6 +177,7 @@ const ctxImpl = {
   get openAtLoginInput() { return openAtLoginInput; },
   get openFromIndex() { return openFromIndex; },
   get openGuide() { return openGuide; },
+  get visibleNow() { return visibleNow; },
   get openNavTab() { return openNavTab; },
   get openPage() { return openPage; },
   get openPalette() { return openPalette; },

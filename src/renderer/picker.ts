@@ -408,14 +408,19 @@ removePersonBtn.addEventListener("click", () => {
   });
 });
 
-/** Lê o plano de cada host por SSH (melhor esforço) e repinta as linhas para o selo "PRO" aparecer. */
+/**
+ * Lê o plano de cada host por SSH (melhor esforço) e repinta as linhas para o selo "PRO" aparecer. Uma máquina por vez
+ * no IPC, em paralelo: antes era uma chamada só que esperava todas, e uma máquina fora do ar (até 90 s) segurava o
+ * selo de todas as outras, que respondem em 1 s.
+ */
 async function loadPlans(): Promise<void> {
-  try {
-    const map = await window.picker.plans();
-    let changed = false;
-    for (const [h, p] of Object.entries(map)) if (plans.get(h) !== p) { plans.set(h, p); changed = true; }
-    if (changed) { buildRows(); if (selected !== null) select(selected); }
-  } catch { /* sem planos: o seletor segue sem selo */ }
+  await Promise.all(hosts.filter((h) => h !== "local").map(async (h) => {
+    try {
+      const map = await window.picker.plans(h);
+      const p = map[h];
+      if (p !== undefined && plans.get(h) !== p) { plans.set(h, p); buildRows(); if (selected !== null) select(selected); }
+    } catch { /* fora do ar: sem selo */ }
+  }));
 }
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
