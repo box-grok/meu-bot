@@ -78,5 +78,7 @@ body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
 .auditoria-tabela tr.apagada td { color: var(--bad); text-decoration: line-through; }
 /* Janela Produtos (produtos.html): cabeçalho fixo e a lista rolando abaixo, sem o limite da antiga caixa do seletor. */
 body.produtos-janela { display: flex; flex-direction: column; height: 100%; }
-body.produtos-janela .produtos-box { flex: 1; max-height: none; overflow: auto; display: flex; flex-direction: column; padding: 4px 20px 20px; }
+/* -webkit-app-region: no-drag: o body do picker.css é área de arrastar a janela, e o Electron não entrega a rodinha do
+   mouse ali; sem isto a lista não rolava. O cabeçalho continua arrastando a janela. */
+body.produtos-janela .produtos-box { flex: 1; min-height: 0; max-height: none; overflow: auto; display: flex; flex-direction: column; padding: 4px 20px 20px; -webkit-app-region: no-drag; }
 body.produtos-janela .head .add-actions { margin-top: 8px; }
