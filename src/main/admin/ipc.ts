@@ -12,7 +12,7 @@ import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
-import { criarUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
+import { apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -33,7 +33,11 @@ export function registerAdminIpc(): void {
   // Usuários (máquina em que o admin entra como root): listar e criar usuários comuns com a chave deste Mac.
   handleAdmin("admin:usuarios-visivel", (event) => usuariosVisivel(adminHost(event)));
   handleAdmin("admin:usuarios", (event) => usuariosDaMaquina(adminHost(event)));
-  handleAdmin("admin:usuario-criar", (event, payload: unknown) => criarUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
+  handleAdmin("admin:usuario-criar", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return criarUsuario(adminHost(event), p.nome, p.pct); });
+  handleAdmin("admin:usuario-limite", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return definirLimite(adminHost(event), p.nome, p.pct); });
+  handleAdmin("admin:usuario-apagar", (event, payload: unknown) => apagarUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
+  handleAdmin("admin:usuario-maiores", (event, payload: unknown) => maioresDoUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
+  handleAdmin("admin:usuario-apagar-item", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; caminho?: unknown }; return apagarItemDoUsuario(adminHost(event), p.nome, p.caminho); });
   // Backup e mudança de máquina (backup-admin.ts): o progresso vai para a janela que pediu.
   const arq = (payload: unknown): string => { const a = String((payload as { arquivo?: unknown } | null)?.arquivo ?? ""); if (!/^[a-z0-9-]+\.mbbak$/.test(a)) throw new Error("backup inválido"); return a; };
   const subst = (payload: unknown): boolean => (payload as { substituir?: unknown } | null)?.substituir === true;

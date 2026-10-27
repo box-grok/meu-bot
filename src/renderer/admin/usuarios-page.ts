@@ -1,9 +1,11 @@
 /**
  * Variante: admin. Aba "Usuários" da janela de uma pessoa, abaixo de Auditoria: só numa máquina em que o admin entra
- * como root. Lista os usuários de login (com sudo, meu-bot e chave) e cria usuários comuns, sem sudo, com a chave SSH
- * deste Mac. O main acha a máquina pela janela e confere o nome; a tela só pede. Fábrica como auditoria-page.ts.
+ * como root. Lista os usuários de login (sudo, meu-bot, chave, disco usado/limite), cria usuários comuns (sem sudo) com
+ * a chave SSH deste Mac, regula o limite de disco em % do disco (uma fatia que se redistribui) e apaga. Baixar o limite
+ * de quem já ocupa mais não corta às cegas: a aba mostra o que ocupa espaço e o admin escolhe o que apagar.
+ * O main acha a máquina pela janela e confere tudo; a tela só pede. Fábrica como auditoria-page.ts.
  */
-import type { MeuBotApi, UsuariosVisao } from "../../shared/ipc";
+import type { MeuBotApi, UsuarioMaquina, UsuariosVisao } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando as espera } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -14,50 +16,134 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
+const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
+const tam = (kb: number): string => (kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(1).replace(".", ",")} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
+/** % do disco que o limite representa (arredondado). */
+const pctDe = (limiteKb: number | null, discoKb: number | null): number | null => (limiteKb === null || discoKb === null || discoKb === 0 ? null : Math.round((limiteKb * 100) / discoKb));
+type Maiores = { home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] };
 
 export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } {
   let page: PageTab | null = null;
   let visao: UsuariosVisao | null = null;
   let erro: string | null = null;
-  let ocupado = false;
-  let nome = "";
+  let ocupado: string | null = null; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
+  let nome = ""; let pctNovo = "";
   let msg: { text: string; bad: boolean } | null = null;
+  /** % digitado na linha de cada usuário (antes de salvar). */
+  const rascunho = new Map<string, string>();
+  /** Apagar usuário: o primeiro clique arma, o segundo apaga. */
+  let armado: string | null = null;
+  /** Liberar espaço: o usuário, o % pedido e o que ocupa espaço na pasta dele. */
+  let liberar: { nome: string; pct: number; maiores: Maiores | null; erro: string | null; itemArmado: string | null } | null = null;
 
   async function ler(): Promise<void> {
     erro = null; render();
     try { visao = await deps.api.adminUsuarios(); } catch (e) { erro = ipcErrorText(e); }
     render();
   }
+  async function rodar(chave: string, f: () => Promise<UsuariosVisao>, ok: string): Promise<boolean> {
+    ocupado = chave; msg = null; render();
+    try { visao = await f(); msg = { text: ok, bad: false }; return true; }
+    catch (e) { msg = { text: `✗ ${ipcErrorText(e).replace(/^ACIMA_DO_LIMITE: /, "")}`, bad: true }; return false; }
+    finally { ocupado = null; render(); }
+  }
   async function criar(): Promise<void> {
     const n = nome.trim();
     if (!NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
-    ocupado = true; msg = null; render();
-    try { visao = await deps.api.adminUsuarioCriar(n); msg = { text: `✓ Usuário ${n} criado (sem sudo), com a chave SSH deste Mac.`, bad: false }; nome = ""; }
+    const p = pctNovo.trim() === "" ? 0 : Number(pctNovo);
+    if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
+    if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) { nome = ""; pctNovo = ""; render(); }
+  }
+  async function salvarLimite(u: UsuarioMaquina): Promise<void> {
+    const txt = (rascunho.get(u.nome) ?? "").trim();
+    const p = txt === "" ? 0 : Number(txt);
+    if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
+    const novoKb = visao?.discoKb !== null && visao?.discoKb !== undefined && p > 0 ? Math.floor((visao.discoKb * p) / 100) : 0;
+    // Já ocupa mais que o limite novo: abre o "liberar espaço" para o admin escolher o que apagar.
+    if (novoKb > 0 && u.usadoKb !== null && u.usadoKb > novoKb) { await abrirLiberar(u.nome, p); return; }
+    if (await rodar(`limite:${u.nome}`, () => deps.api.adminUsuarioLimite(u.nome, p), `✓ Limite de ${u.nome}: ${p === 0 ? "sem limite" : `${p}% do disco`}.`)) rascunho.delete(u.nome);
+  }
+  async function abrirLiberar(n: string, pct: number): Promise<void> {
+    liberar = { nome: n, pct, maiores: null, erro: null, itemArmado: null }; render();
+    try { liberar.maiores = await deps.api.adminUsuarioMaiores(n); } catch (e) { if (liberar !== null) liberar.erro = ipcErrorText(e); }
+    render();
+  }
+  async function apagarItem(caminho: string): Promise<void> {
+    if (liberar === null) return;
+    const l = liberar;
+    if (l.itemArmado !== caminho) { l.itemArmado = caminho; render(); return; }
+    ocupado = `item:${caminho}`; l.itemArmado = null; render();
+    try { l.maiores = await deps.api.adminUsuarioApagarItem(l.nome, caminho); visao = await deps.api.adminUsuarios(); msg = { text: `✓ Apagado: ${caminho}`, bad: false }; }
     catch (e) { msg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; }
-    finally { ocupado = false; render(); }
+    finally { ocupado = null; render(); }
+  }
+  async function aplicarDepoisDeLiberar(): Promise<void> {
+    if (liberar === null) return;
+    const l = liberar;
+    if (await rodar(`limite:${l.nome}`, () => deps.api.adminUsuarioLimite(l.nome, l.pct), `✓ Limite de ${l.nome}: ${l.pct}% do disco.`)) { liberar = null; rascunho.delete(l.nome); render(); }
+  }
+
+  function cartaoLiberar(v: UsuariosVisao): HTMLElement | null {
+    if (liberar === null) return null;
+    const l = liberar;
+    const u = v.usuarios.find((x) => x.nome === l.nome);
+    const alvoKb = v.discoKb !== null ? Math.floor((v.discoKb * l.pct) / 100) : 0;
+    const falta = u?.usadoKb !== null && u?.usadoKb !== undefined ? Math.max(0, u.usadoKb - alvoKb) : 0;
+    const c = el("div", "admin-card");
+    c.append(el("strong", "", `Liberar espaço de ${l.nome} para ${l.pct}% (${tam(alvoKb)})`));
+    c.append(el("p", "hint", falta > 0 ? `${l.nome} ocupa ${tam(u?.usadoKb ?? 0)}: faltam ${tam(falta)}. Escolha o que apagar da pasta dele (dois cliques em cada item).` : `Pronto: ${l.nome} ocupa ${tam(u?.usadoKb ?? 0)}, cabe no limite novo.`));
+    if (l.erro !== null) c.append(el("p", "hint bad-hint", l.erro));
+    else if (l.maiores === null) c.append(espera(`Lendo o que ocupa espaço na pasta de ${l.nome}…`));
+    else if (l.maiores.itens.length === 0) c.append(el("p", "hint", "Nada grande na pasta."));
+    else {
+      const t = el("table", "auditoria-tabela");
+      const cab = el("tr"); for (const h of ["Tamanho", "Item", ""]) cab.append(el("th", "", h)); t.append(cab);
+      for (const it of l.maiores.itens) {
+        const tr = el("tr");
+        const rel = l.maiores.home !== null ? it.caminho.slice(l.maiores.home.length + 1) : it.caminho;
+        const b = el("button", "btn btn-ghost btn-small", ocupado === `item:${it.caminho}` ? "Apagando…" : l.itemArmado === it.caminho ? "Confirmar? apaga de vez" : "Apagar"); b.type = "button";
+        b.disabled = ocupado !== null;
+        b.addEventListener("click", () => { void apagarItem(it.caminho); });
+        const td = el("td"); td.append(b);
+        tr.append(el("td", "", tam(it.kb)), el("td", "", `${it.pasta ? "📁 " : ""}${rel}`), td);
+        t.append(tr);
+      }
+      c.append(t);
+    }
+    const acoes = el("div", "admin-actions");
+    const ap = el("button", "btn btn-primary btn-small", ocupado === `limite:${l.nome}` ? "Aplicando…" : `Aplicar ${l.pct}%`); ap.type = "button"; ap.disabled = falta > 0 || ocupado !== null;
+    ap.addEventListener("click", () => { void aplicarDepoisDeLiberar(); });
+    const cancelar = el("button", "btn btn-ghost btn-small", "Cancelar"); cancelar.type = "button"; cancelar.addEventListener("click", () => { liberar = null; render(); });
+    acoes.append(ap, cancelar); c.append(acoes);
+    return c;
   }
 
   function render(): void {
     if (page === null) return;
     const panel = page.panel; panel.replaceChildren();
     const head = el("div", "guide-head"); const hb = el("div", "tut-body");
-    hb.append(el("span", "tut-badge", "usuários"), el("h2", "", `Usuários · ${deps.who}`), el("p", "", "Os usuários de login desta máquina. Os novos são comuns (sem sudo): cada um mexe só na própria conta. O acesso é pela chave SSH deste Mac."));
+    hb.append(el("span", "tut-badge", "usuários"), el("h2", "", `Usuários · ${deps.who}`), el("p", "", "Os usuários de login desta máquina. Os novos são comuns (sem sudo) e entram pela chave SSH deste Mac. O limite de disco é uma fatia (%) do disco, que você redistribui quando quiser."));
     head.append(hb); panel.append(head);
 
     const form = el("div", "admin-card"); form.append(el("strong", "", "Criar usuário"));
     const linha = el("div", "admin-actions");
-    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = "nome (ex.: maria)"; input.value = nome; input.maxLength = 32; input.disabled = ocupado;
+    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = "nome (ex.: maria)"; input.value = nome; input.maxLength = 32; input.disabled = ocupado !== null;
     input.autocapitalize = "off"; input.spellcheck = false;
     input.addEventListener("input", () => { nome = input.value.toLowerCase(); if (input.value !== nome) input.value = nome; });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
-    const b = el("button", "btn btn-primary btn-small", ocupado ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado;
+    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = "% do disco"; pin.value = pctNovo; pin.disabled = ocupado !== null; pin.style.width = "110px";
+    pin.addEventListener("input", () => { pctNovo = pin.value; });
+    const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
-    linha.append(input, b); form.append(linha);
+    linha.append(input, pin, b); form.append(linha);
+    form.append(el("p", "hint", "% do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     panel.append(form);
+
+    if (visao !== null) { const c = cartaoLiberar(visao); if (c !== null) panel.append(c); }
 
     const lista = el("div", "admin-card");
     const topo = el("div", "admin-actions"); topo.append(el("strong", "grow", "Usuários de login"));
@@ -65,17 +151,42 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     lista.append(topo);
     if (erro !== null) lista.append(el("p", "hint bad-hint", erro));
     else if (visao === null) lista.append(espera("Lendo os usuários da máquina…"));
-    else if (visao.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
     else {
-      const t = el("table", "auditoria-tabela");
-      const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "Chave SSH", "Entrar"]) cab.append(el("th", "", h)); t.append(cab);
-      for (const u of visao.usuarios) {
-        const tr = el("tr");
-        const acesso = visao.hostname !== null ? `ssh ${u.nome}@${visao.hostname}${visao.port !== null && visao.port !== "22" ? ` -p ${visao.port}` : ""}` : "";
-        tr.append(el("td", "", u.nome), el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.chave ? "sim" : "não"), el("td", "", acesso));
-        t.append(tr);
+      const v = visao;
+      const distribuido = v.usuarios.reduce((s, u) => s + (pctDe(u.limiteKb, v.discoKb) ?? 0), 0);
+      if (v.discoKb !== null) lista.append(el("p", `hint ${distribuido > 100 ? "bad-hint" : ""}`, `Disco: ${tam(v.discoKb)} · distribuído: ${distribuido}% · livre: ${Math.max(0, 100 - distribuido)}%${distribuido > 100 ? " (passou de 100%: se todos encherem, o disco acaba antes dos limites)" : ""}${v.cota ? "" : " · cota de disco ainda desligada nesta máquina"}`));
+      if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
+      else {
+        const t = el("table", "auditoria-tabela");
+        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "Disco (usado / limite)", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
+        for (const u of v.usuarios) {
+          const tr = el("tr");
+          const acesso = v.hostname !== null ? `ssh${v.chave !== null ? ` -i ${v.chave}` : ""} ${u.nome}@${v.hostname}${v.port !== null && v.port !== "22" ? ` -p ${v.port}` : ""}` : "";
+          const pct = pctDe(u.limiteKb, v.discoKb);
+          const disco = u.usadoKb === null ? "—" : `${tam(u.usadoKb)} / ${u.limiteKb === null ? "sem limite" : `${tam(u.limiteKb)} (${pct}%)`}`;
+          const tdPct = el("td");
+          const ip = el("input") as HTMLInputElement; ip.type = "number"; ip.min = "0"; ip.max = "100"; ip.step = "1"; ip.style.width = "64px";
+          ip.value = rascunho.get(u.nome) ?? (pct === null ? "" : String(pct)); ip.placeholder = "—"; ip.disabled = ocupado !== null || u.sudo;
+          ip.title = u.sudo ? "quem tem sudo não leva limite por aqui" : "% do disco (vazio = sem limite)";
+          ip.addEventListener("input", () => { rascunho.set(u.nome, ip.value); });
+          ip.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void salvarLimite(u); });
+          const sv = el("button", "btn btn-ghost btn-small", ocupado === `limite:${u.nome}` ? "…" : "Salvar"); sv.type = "button"; sv.disabled = ocupado !== null || u.sudo;
+          sv.addEventListener("click", () => { void salvarLimite(u); });
+          tdPct.append(ip, " ", sv);
+          const tdAp = el("td");
+          if (!u.sudo && !PROTEGIDOS.has(u.nome)) {
+            const ap = el("button", "btn btn-ghost btn-small", ocupado === `apagar:${u.nome}` ? "Apagando…" : armado === u.nome ? "Confirmar? apaga a pasta" : "Apagar"); ap.type = "button"; ap.disabled = ocupado !== null;
+            ap.addEventListener("click", () => {
+              if (armado !== u.nome) { armado = u.nome; render(); return; }
+              armado = null; void rodar(`apagar:${u.nome}`, () => deps.api.adminUsuarioApagar(u.nome), `✓ Usuário ${u.nome} apagado, com a pasta dele.`);
+            });
+            tdAp.append(ap);
+          }
+          tr.append(el("td", "", u.nome), el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", disco), tdPct, el("td", "", acesso), tdAp);
+          t.append(tr);
+        }
+        lista.append(t);
       }
-      lista.append(t);
     }
     panel.append(lista);
   }

@@ -417,7 +417,13 @@ export interface MeuBotAdminApi {
   /** Aba Usuários: só numa máquina em que o admin entra como root. */
   adminUsuariosVisivel(): Promise<boolean>;
   adminUsuarios(): Promise<UsuariosVisao>;
-  adminUsuarioCriar(nome: string): Promise<UsuariosVisao>;
+  adminUsuarioCriar(nome: string, pct?: number): Promise<UsuariosVisao>;
+  /** Limite de disco em % do disco principal (0 = sem limite). */
+  adminUsuarioLimite(nome: string, pct: number): Promise<UsuariosVisao>;
+  adminUsuarioApagar(nome: string): Promise<UsuariosVisao>;
+  /** O que ocupa espaço na pasta do usuário, e apagar um item escolhido (para baixar o limite). */
+  adminUsuarioMaiores(nome: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
+  adminUsuarioApagarItem(nome: string, caminho: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
   /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */
   adminBackupListar(todos?: boolean): Promise<{ backups: BackupIndiceView[]; podeRestaurar: boolean; podeCriar: boolean }>;
   adminBackupCriar(): Promise<BackupIndiceView>;
