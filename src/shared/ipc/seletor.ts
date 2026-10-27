@@ -8,6 +8,8 @@ import type { SupportPerson } from "./suporte";
 export interface PickerSharedApi {
   list(): Promise<PickerInit>;
   /** Plano de cada host (lido por SSH, melhor esforço) para o selo "PRO" no seletor; hosts fora do ar ficam de fora. */
+  /** Máquinas cujo SSH aponta para este Mac (127.0.0.1/localhost, ex.: a VM da Colima): vão para a aba "Este Mac". */
+  locais(): Promise<string[]>;
   /** Plano por host; com `host`, só o dessa máquina (o seletor pergunta uma a uma e pinta o selo de quem responder). */
   plans(host?: string): Promise<Record<string, PlanName>>;
   probe(host: string): Promise<HostProbe>;

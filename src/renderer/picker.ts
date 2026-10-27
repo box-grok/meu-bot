@@ -201,8 +201,8 @@ async function relieve(host: string, btn: HTMLButtonElement): Promise<void> {
 let showArchivedPeople = false;
 
 /**
- * meu-bot-admin: abas por tipo de máquina (Pessoas · Root · Grok Bot · Este Mac). Este Mac = a própria máquina e
- * conexões locais (VM de teste); Grok Bot = pod reconhecido pela sondagem; Root = entra como root; o resto, Pessoas.
+ * Abas por tipo de máquina (Usuário · Root · Grok Bot · Este Mac), no admin e no app de cada um. Este Mac = a própria máquina e
+ * conexões locais (VM de teste); Grok Bot = pod reconhecido pela sondagem; Root = entra como root; o resto, Usuário.
  * O tipo visto fica guardado neste Mac: a máquina não pula de aba enquanto a sondagem responde.
  */
 type Tipo = "pessoa" | "root" | "grok" | "mac";
@@ -212,17 +212,21 @@ const tiposVistos = new Map<string, Tipo>((() => {
   try { const v = JSON.parse(localStorage.getItem(TIPOS_KEY) ?? "{}") as Record<string, unknown>; return Object.entries(v).filter((e): e is [string, Tipo] => e[1] === "pessoa" || e[1] === "root" || e[1] === "grok" || e[1] === "mac"); } catch { return []; }
 })());
 let tipoAtivo: Tipo = (() => { try { const t = localStorage.getItem("picker:tipo-aba"); return t === "root" || t === "grok" || t === "mac" ? t : "pessoa"; } catch { return "pessoa"; } })();
+/** Máquinas que o main reconheceu como este Mac por SSH (127.0.0.1: a VM da Colima). */
+const locais = new Set<string>();
+/** Computador do Grok Bot pelo nome (grokbot-1, grokbot-3…): vale antes de a sondagem responder, ou com ele fora do ar. */
+const nomeDeGrok = (h: string): boolean => /^grokbot\b|^grokbot-/i.test(h) || /^grokbot\b|^grokbot-/i.test(hostLabel(h));
 function tipoDe(h: string): Tipo {
-  if (h === "local" || personOf(h)?.local === true) return "mac";
-  if (pods.has(h)) return "grok";
+  if (h === "local" || personOf(h)?.local === true || locais.has(h)) return "mac";
+  if (pods.has(h) || nomeDeGrok(h)) return "grok";
   return tiposVistos.get(h) ?? "pessoa";
 }
 function anotarTipo(h: string, user: string | null): void {
-  const t: Tipo = h === "local" || personOf(h)?.local === true ? "mac" : pods.has(h) ? "grok" : user === "root" ? "root" : "pessoa";
+  const t: Tipo = h === "local" || personOf(h)?.local === true || locais.has(h) ? "mac" : pods.has(h) || nomeDeGrok(h) ? "grok" : user === "root" ? "root" : "pessoa";
   if (tiposVistos.get(h) === t) return;
   tiposVistos.set(h, t);
   try { localStorage.setItem(TIPOS_KEY, JSON.stringify(Object.fromEntries(tiposVistos))); } catch { /* opcional */ }
-  if (support !== null) { pintarTipos(); applyFilter(); }
+  pintarTipos(); applyFilter();
 }
 /**
  * Só as abas que têm máquina: sem root, sem pod ou sem este Mac, a aba some; com um tipo só, a barra inteira some e a
@@ -232,7 +236,7 @@ let tiposComMaquina: Tipo[] = [];
 function pintarTipos(): void {
   const base = hosts.filter((h) => showArchivedPeople || personOf(h)?.archived !== true);
   const conta = (t: Tipo): number => base.filter((h) => tipoDe(h) === t).length;
-  tiposComMaquina = support === null ? [] : (["pessoa", "root", "grok", "mac"] as Tipo[]).filter((t) => conta(t) > 0);
+  tiposComMaquina = (["pessoa", "root", "grok", "mac"] as Tipo[]).filter((t) => conta(t) > 0);
   tiposEl.hidden = tiposComMaquina.length < 2;
   if (tiposEl.hidden) return;
   if (!tiposComMaquina.includes(tipoAtivo)) tipoAtivo = tiposComMaquina[0] ?? "pessoa";
@@ -242,7 +246,8 @@ function pintarTipos(): void {
     b.hidden = n === 0;
     b.classList.toggle("on", t === tipoAtivo);
     b.setAttribute("aria-selected", String(t === tipoAtivo));
-    b.dataset["rotulo"] ??= b.textContent ?? "";
+    // A primeira aba: máquinas em que se entra com usuário comum (o par de "Root").
+    b.dataset["rotulo"] = t === "pessoa" ? "Usuário" : (b.dataset["rotulo"] ?? b.textContent ?? "");
     b.replaceChildren(b.dataset["rotulo"], ...(n > 0 ? [el("span", "n", String(n))] : []));
   }
 }
@@ -256,7 +261,7 @@ tiposEl.addEventListener("click", (ev) => {
 
 function visibleHosts(): string[] {
   const q = filterEl.value.trim().toLowerCase();
-  const porTipo = support !== null && q === "" && tiposComMaquina.length >= 2;
+  const porTipo = q === "" && tiposComMaquina.length >= 2;
   return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (!porTipo || tipoDe(h) === tipoAtivo) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q)));
 }
 
@@ -503,6 +508,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   errorEl.textContent = payload.error ?? "";
   pintarTipos();
   buildRows();
+  void window.picker.locais().then((ls) => { let mudou = false; for (const h of ls) if (!locais.has(h)) { locais.add(h); mudou = true; } if (mudou) { pintarTipos(); applyFilter(); } }).catch(() => { /* sem a lista: fica pela sondagem */ });
   if (support !== null && hosts.length === 0) listEl.replaceChildren(adminChrome.emptyRow());
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));

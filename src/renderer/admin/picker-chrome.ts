@@ -32,7 +32,7 @@ export interface AdminPickerChrome {
 export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPickerChrome {
   const addBox = document.createElement("div");
   let refreshing = false;
-  const refreshBtn = el("button", "btn btn-ghost btn-small", "Atualizar pessoas"); refreshBtn.type = "button";
+  const refreshBtn = el("button", "btn btn-ghost btn-small", "Atualizar"); refreshBtn.type = "button";
   refreshBtn.title = "Lê agora a caixa de entrada (as máquinas avisam sozinhas a cada 30 min; \"Avisar o admin agora\" no meu-bot delas avisa na hora)";
   refreshBtn.addEventListener("click", () => { void refreshPeople(); });
   const archivedSwitch = el("label", "switch switch-row");
@@ -49,7 +49,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       if (r.warning !== null) { deps.noteEl.hidden = false; deps.noteEl.textContent = `⚠ ${r.warning}`; }
       deps.reinit(await deps.api.list(), deps.selected());
     } catch (err) { deps.showError("caixa de entrada", err); }
-    finally { refreshing = false; refreshBtn.disabled = false; refreshBtn.textContent = "Atualizar pessoas"; }
+    finally { refreshing = false; refreshBtn.disabled = false; refreshBtn.textContent = "Atualizar"; }
   }
 
   return {
@@ -64,7 +64,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       archivedSwitch.hidden = !support.people.some((p) => p.archived);
       if (addBox.isConnected) return;
       addBox.className = "add-person";
-      const open = el("button", "btn btn-ghost btn-small", "Adicionar pessoa"); open.type = "button";
+      const open = el("button", "btn btn-ghost btn-small", "Adicionar"); open.type = "button";
       const form = el("div", "add-form"); form.hidden = true;
       const input = el("textarea"); input.rows = 2; input.placeholder = "Cole o código de suporte (MBS1.…) que a pessoa mandou, ou um host do seu ~/.ssh/config (ssh agente-box-lv)";
       const add = el("button", "btn btn-primary btn-small", "Adicionar"); add.type = "button";

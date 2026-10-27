@@ -31,6 +31,7 @@ import {
 } from "../app/shortcuts";
 import { backgroundColor, broadcast, MIN_WINDOW_WIDTH, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
 import { posicaoNoCanto } from "../app/janela-core";
+import { hostIsLocalAddr } from "../app/net";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
 const KNOWN_URLS: Record<string, string> = { "tailscale-keys": "https://login.tailscale.com/admin/settings/keys" };
@@ -325,6 +326,13 @@ export function initPicker(src: PickerSource): void {
   handleShared("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
   // Plano de cada host (licenca.json por SSH, melhor esforço) para o selo "PRO"; local e máquinas fora do ar ficam de fora.
   // Um pod do Grok Bot demora até 90 s para aceitar o ssh: com 10 s a grokbot-1 nunca ganhava o selo.
+  // Quais máquinas são este próprio Mac por SSH (Colima): `ssh -G` local, sem rede, cacheado por alias.
+  handleShared("picker:locais", async (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    const hosts = current().hosts().filter((h) => h !== LOCAL_HOST && isValidHost(h));
+    const sim = await Promise.all(hosts.map(async (h) => ((await hostIsLocalAddr(h)) ? h : null)));
+    return sim.filter((h): h is string => h !== null);
+  });
   handleShared("picker:plans", async (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
     const so = (payload as { host?: unknown } | null)?.host;

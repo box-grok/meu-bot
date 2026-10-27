@@ -5,7 +5,7 @@
  * "◆ Produtos" do seletor; uma janela só, no padrão do seletor: altura toda, largura da janela de uma máquina,
  * colada à esquerda dele.
  */
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 import path from "node:path";
 import type { ProdutosCatalogo } from "../../shared/ipc";
 import { handleAdmin } from "../ipc/registry";
@@ -15,15 +15,29 @@ import { backgroundColor, MIN_WINDOW_WIDTH } from "../app/windows";
 import { pickerBounds } from "../maquina/picker";
 import { posicaoNoCanto } from "../app/janela-core";
 import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
+import { STAGING_TAG, UPDATE_REPO } from "../atualizacao/updater-core";
 
 let produtosWin: BrowserWindow | null = null;
 const daJanela = (event: Electron.IpcMainInvokeEvent): boolean => produtosWin !== null && !produtosWin.isDestroyed() && event.sender === produtosWin.webContents;
 const soDaJanela = (event: Electron.IpcMainInvokeEvent): void => { if (!daJanela(event)) throw new Error("origem inválida"); };
 
-/** O que já sai deste código: os apps da tabela e os add-ons. */
-export const catalogoProdutos = (): ProdutosCatalogo => ({
+/** Última release publicada de cada canal (a lista do GitHub vem da mais nova para a mais antiga). Falhou: null. */
+async function versoesPublicadas(): Promise<{ estavel: string | null; staging: string | null }> {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases?per_page=30`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "meu-bot-admin" }, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return { estavel: null, staging: null };
+    const lista = (await r.json()) as { tag_name?: unknown; prerelease?: unknown; draft?: unknown }[];
+    const tags = lista.filter((x) => x.draft !== true && typeof x.tag_name === "string");
+    const estavel = tags.find((x) => x.prerelease !== true && /^v?\d+\.\d+\.\d+$/.test(x.tag_name as string))?.tag_name as string | undefined;
+    const staging = tags.find((x) => STAGING_TAG.test(x.tag_name as string))?.tag_name as string | undefined;
+    return { estavel: estavel ?? null, staging: staging ?? null };
+  } catch { return { estavel: null, staging: null }; }
+}
+/** Os apps da tabela e os add-ons, com as versões publicadas para situar. */
+export const catalogoProdutos = async (): Promise<ProdutosCatalogo> => ({
   apps: PRODUTOS.map((p) => ({ nome: p.nome, canal: p.canal, descricao: p.descricao })),
   addons: ADDONS.map((a) => ({ nome: a.nome, rotulo: a.rotulo, descricao: a.descricao })),
+  versoes: { ...(await versoesPublicadas()), local: app.getVersion() },
 });
 
 /** Canais da janela (só ela chama). Uma vez, junto dos canais do seletor do admin. */

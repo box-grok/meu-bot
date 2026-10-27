@@ -93,6 +93,10 @@ export interface AuditoriaLinhaView {
   /** false = a central tem e a máquina não tem mais (apagada lá); null = a máquina não foi lida. */
   naMaquina: boolean | null;
 }
+/** Aba "Usuários" do admin (máquina em que se entra como root): um usuário Linux de login. */
+export interface UsuarioMaquina { nome: string; uid: number; home: string; shell: string; sudo: boolean; meuBot: boolean; chave: boolean }
+/** A lista e como este Mac chega à máquina (para mostrar `ssh nome@endereço`). */
+export interface UsuariosVisao { usuarios: UsuarioMaquina[]; hostname: string | null; port: string | null }
 export interface AuditoriaVisao {
   maquina: string; nome: string | null; linhas: AuditoriaLinhaView[];
   /** Corrente da central: null = íntegra; senão o nº do primeiro registro adulterado. */
@@ -131,6 +135,11 @@ export interface BackupRestauracao { bloqueios: string[]; avisos: string[]; pode
 export interface ProdutosCatalogo {
   apps: { nome: string; canal: "estavel" | "staging"; descricao: string }[];
   addons: { nome: string; rotulo: string; descricao: string }[];
+  /**
+   * Versões para situar: a última publicada em cada canal (releases do GitHub; null = nenhuma, ou sem internet) e a
+   * deste admin (build local sai sem sufixo e conta como mais nova que qualquer publicada).
+   */
+  versoes: { estavel: string | null; staging: string | null; local: string };
 }
 /** A janela Produtos do meu-bot-admin (window.produtos): o registro de MVPs e o catálogo. */
 export interface ProdutosJanelaApi {

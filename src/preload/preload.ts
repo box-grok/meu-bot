@@ -260,6 +260,9 @@ const adminApi: MeuBotAdminApi = {
   adminAuditoriaVisivel: () => ipcRenderer.invoke("admin:auditoria-visivel", {}),
   adminAuditoria: () => ipcRenderer.invoke("admin:auditoria", {}),
   adminAuditoriaExportar: () => ipcRenderer.invoke("admin:auditoria-exportar", {}),
+  adminUsuariosVisivel: () => ipcRenderer.invoke("admin:usuarios-visivel", {}),
+  adminUsuarios: () => ipcRenderer.invoke("admin:usuarios", {}),
+  adminUsuarioCriar: (nome: string) => ipcRenderer.invoke("admin:usuario-criar", { nome }),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

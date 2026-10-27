@@ -86,3 +86,6 @@ body.produtos-janela .head .add-actions { margin-top: 8px; }
 .produtos-mais { display: flex; flex-direction: column; gap: 8px; }
 .produtos-mais > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
+
+/* Produtos: abas do catálogo (o desenho vem do .pk-tipos do picker.css). */
+.pr-abas { margin: 10px 0 6px; }

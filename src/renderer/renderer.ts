@@ -5,6 +5,7 @@ import { deviceLine, licenseSummary } from "./lib/admin-view.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
 import { mountAuditoriaPage } from "./admin/auditoria-page.js";
+import { mountUsuariosPage } from "./admin/usuarios-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -1999,6 +2000,13 @@ void (async () => {
     const auditoriaLine = $<HTMLButtonElement>("auditoria-line");
     const auditoriaPage = mountAuditoriaPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     auditoriaLine.addEventListener("click", () => auditoriaPage.open());
+    // Usuários: só quando o admin entra como root nesta máquina (o main confirma com `id -u`).
+    const usuariosLine = $<HTMLButtonElement>("usuarios-line");
+    const usuariosPage = mountUsuariosPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
+    usuariosLine.addEventListener("click", () => usuariosPage.open());
+    void window.meuBot.adminUsuariosVisivel().then((v) => { usuariosLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
+    // Terminal na máquina da pessoa: só no admin (no meu-bot da pessoa a linha fica oculta).
+    $<HTMLButtonElement>("terminal-line").hidden = false;
     void window.meuBot.adminAuditoriaVisivel().then((v) => { auditoriaLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
     adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();

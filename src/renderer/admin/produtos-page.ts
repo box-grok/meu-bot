@@ -33,6 +33,8 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
   const armConfirm = deps.armConfirm ?? ((btn, label, run) => { const t = btn.textContent; btn.textContent = label; const once = (): void => { btn.removeEventListener("click", once); run(); }; setTimeout(() => btn.addEventListener("click", once), 0); setTimeout(() => { btn.removeEventListener("click", once); btn.textContent = t; }, 4000); });
   let lista: ProdutoMvp[] = []; let editando: string | null = null; let novo = false; let msg = ""; let exportado: { nome: string; json: string; checklist: string[] } | null = null;
   let catalogo: ProdutosCatalogo | null = null;
+  /** Aba do catálogo: o que está com as pessoas, o que está em teste, os add-ons. */
+  let abaCat: "estavel" | "staging" | "addons" = "estavel";
   const input = (value: string, placeholder: string, max = 240): HTMLInputElement => { const i = el("input") as HTMLInputElement; i.type = "text"; i.value = value; i.placeholder = placeholder; i.maxLength = max; return i; };
   const area = (value: string, placeholder: string, rows = 3): HTMLTextAreaElement => { const t = el("textarea") as HTMLTextAreaElement; t.value = value; t.placeholder = placeholder; t.rows = rows; return t; };
   const field = (label: string, ctl: HTMLElement): HTMLElement => { const w = el("label", "admin-field"); w.append(el("span", "hint", label), ctl); return w; };
@@ -111,19 +113,27 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
     panel.replaceChildren();
     if (msg !== "") panel.append(el("p", "hint", msg));
     if (catalogo !== null) {
-      // Separado pelo canal: o que está com as pessoas (produção) e o que ainda está em teste (staging); os add-ons à parte,
-      // porque valem pela licença em qualquer canal.
+      // Abas no mesmo desenho do seletor de máquinas: Produção · Staging · Add-ons, com a versão publicada de cada canal.
       const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Apps e add-ons do meu-bot"));
-      const grupo = (titulo: string, itens: { nome: string; texto: string }[]): void => {
-        if (itens.length === 0) return;
-        fixos.append(el("p", "hint", titulo));
-        const ul = el("ul", "admin-health");
-        for (const it of itens) { const li = el("li", "ok"); li.append(el("strong", "", it.nome), document.createTextNode(` · ${it.texto}`)); ul.append(li); }
-        fixos.append(ul);
-      };
-      grupo("Em produção", catalogo.apps.filter((a) => a.canal === "estavel").map((a) => ({ nome: a.nome, texto: a.descricao })));
-      grupo("Em staging (em teste)", catalogo.apps.filter((a) => a.canal === "staging").map((a) => ({ nome: a.nome, texto: a.descricao })));
-      grupo("Add-ons (liberados pela licença, em qualquer canal)", catalogo.addons.map((a) => ({ nome: `${a.nome} (${a.rotulo})`, texto: a.descricao })));
+      const v = catalogo.versoes;
+      const abas: { id: typeof abaCat; rotulo: string; itens: { nome: string; texto: string }[]; versao: string }[] = [
+        { id: "estavel", rotulo: "Produção", itens: catalogo.apps.filter((a) => a.canal === "estavel").map((a) => ({ nome: a.nome, texto: a.descricao })), versao: v.estavel !== null ? `Publicada: ${v.estavel}` : "Nenhuma versão publicada encontrada (sem internet?)" },
+        { id: "staging", rotulo: "Staging", itens: catalogo.apps.filter((a) => a.canal === "staging").map((a) => ({ nome: a.nome, texto: a.descricao })), versao: v.staging !== null ? `Publicada: ${v.staging}` : "Nenhuma versão de staging publicada" },
+        { id: "addons", rotulo: "Add-ons", itens: catalogo.addons.map((a) => ({ nome: `${a.nome} (${a.rotulo})`, texto: a.descricao })), versao: "Liberados pela licença, em qualquer canal" },
+      ];
+      const bar = el("div", "pk-tipos pr-abas");
+      for (const a of abas) {
+        const b = el("button", a.id === abaCat ? "on" : ""); b.type = "button";
+        b.append(a.rotulo, el("span", "n", String(a.itens.length)));
+        b.addEventListener("click", () => { abaCat = a.id; render(); });
+        bar.append(b);
+      }
+      fixos.append(bar);
+      const atual = abas.find((a) => a.id === abaCat) ?? abas[0]!;
+      fixos.append(el("p", "hint", atual.id === "addons" ? atual.versao : `${atual.versao} · este admin: ${v.local}${v.estavel !== null && `v${v.local}` !== v.estavel ? " (build local, não publicado)" : ""}`));
+      const ul = el("ul", "admin-health");
+      for (const it of atual.itens) { const li = el("li", "ok"); li.append(el("strong", "", it.nome), document.createTextNode(` · ${it.texto}`)); ul.append(li); }
+      fixos.append(ul);
       panel.append(fixos);
     }
     if (novo) panel.append(form(null));

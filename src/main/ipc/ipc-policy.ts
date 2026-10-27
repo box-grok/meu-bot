@@ -24,7 +24,7 @@ export const SHARED_CHANNELS = [
   // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
   "net:check", "host:local-addr",
   // seletor
-  "picker:list", "picker:plans", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
+  "picker:list", "picker:plans", "picker:locais", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
   // alívio do Grok Bot (relief.ts registra sozinho)
   "relief:close", "relief:open-reset",
@@ -64,7 +64,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:auditoria-visivel", "admin:auditoria", "admin:auditoria-exportar", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-abrir", "produtos:listar", "produtos:salvar", "produtos:remover", "produtos:exportar", "produtos:catalogo", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:auditoria-visivel", "admin:auditoria", "admin:auditoria-exportar", "admin:usuarios-visivel", "admin:usuarios", "admin:usuario-criar", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-abrir", "produtos:listar", "produtos:salvar", "produtos:remover", "produtos:exportar", "produtos:catalogo", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

@@ -29,25 +29,25 @@ test("estados do local", () => {
   assert.equal(hostLabel("colima"), "colima");
 });
 
-test("status line do Claude: oferecida quando falta, sem bloquear a máquina", () => {
+test("status line do Claude: o seletor não oferece nem avisa (o tutorial 3 instala)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"] };
   assert.deepEqual(pick(describeProbe(up)), { kind: "ok", install: null, canOpen: true });
   const sem = describeProbe({ ...up, statusLine: false });
-  assert.deepEqual(pick(sem), { kind: "ok", install: "statusline", canOpen: true });
-  assert.match(sem.text, /sem status line do Claude/);
+  assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });
+  assert.doesNotMatch(sem.text, /status line/);
   // Sem backend, o que se oferece é o backend; a status line vem depois.
   assert.deepEqual(pick(describeProbe({ ...base, statusLine: false })), { kind: "warn", install: "install", canOpen: false });
   const local = { ...base, host: "local", backendInstalled: true };
-  assert.deepEqual(pick(describeProbe({ ...local, statusLine: false })), { kind: "ok", install: "statusline", canOpen: true });
+  assert.deepEqual(pick(describeProbe({ ...local, statusLine: false })), { kind: "ok", install: null, canOpen: true });
   assert.deepEqual(pick(describeProbe(local)), { kind: "ok", install: null, canOpen: true });
 });
 
-test("transcrição de áudio (OpenClaw): oferecida depois da status line; sem OpenClaw, nada", () => {
+test("transcrição de áudio: o seletor não oferece nem avisa (o tutorial 2 cuida do áudio)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"], gateway: "openclaw" };
   const sem = describeProbe({ ...up, audioIn: false });
-  assert.deepEqual(pick(sem), { kind: "ok", install: "transcricao", canOpen: true });
-  assert.match(sem.text, /sem transcrição de áudio/);
-  assert.deepEqual(pick(describeProbe({ ...up, audioIn: false, statusLine: false })).install, "statusline", "um opcional por vez");
+  assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });
+  assert.doesNotMatch(sem.text, /transcrição/);
+  assert.deepEqual(pick(describeProbe({ ...up, audioIn: false, statusLine: false })).install, null);
   assert.deepEqual(pick(describeProbe({ ...up, audioIn: true })).install, null);
   assert.doesNotMatch(describeProbe({ ...up, audioIn: null }).text, /transcrição/);
 });

@@ -23,8 +23,10 @@ export const hostLabel = (h: string): string => nicknames[h] ?? (h === "local" ?
  * O que falta de opcional numa máquina que abre: a status line do Claude (cache de limites) e, com OpenClaw, a
  * transcrição de áudio do agente do WhatsApp. A máquina abre igual; o seletor oferece instalar um por vez.
  */
-const slNote = (p: HostProbe): string => `${p.statusLine ? "" : " · sem status line do Claude"}${p.audioIn === false ? " · sem transcrição de áudio" : ""}${p.guarda === false ? " · sem guarda do WhatsApp" : ""}`;
-const slInstall = (p: HostProbe): "statusline" | "transcricao" | "guarda" | null => (!p.statusLine ? "statusline" : p.audioIn === false ? "transcricao" : p.guarda === false ? "guarda" : null);
+// Status line e transcrição de áudio não aparecem no seletor (nem aviso nem botão): os tutoriais 3 e 2 cuidam delas;
+// aqui só repetiam (27 out).
+const slNote = (p: HostProbe): string => `${p.guarda === false ? " · sem guarda do WhatsApp" : ""}`;
+const slInstall = (p: HostProbe): "guarda" | null => (p.guarda === false ? "guarda" : null);
 
 export function describeProbe(p: HostProbe): ProbeText {
   const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : p.gateway === "picoclaw" ? " · PicoClaw" : ""}`;

@@ -9,7 +9,7 @@ import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, Pla
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
-import type { AdminAction, AdminHealth, AuditoriaVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
+import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
 import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
@@ -414,6 +414,10 @@ export interface MeuBotAdminApi {
   adminAuditoria(): Promise<AuditoriaVisao>;
   /** Salva a prova (JSON com os hashes + CSV legível); null = cancelou. */
   adminAuditoriaExportar(): Promise<{ path: string } | null>;
+  /** Aba Usuários: só numa máquina em que o admin entra como root. */
+  adminUsuariosVisivel(): Promise<boolean>;
+  adminUsuarios(): Promise<UsuariosVisao>;
+  adminUsuarioCriar(nome: string): Promise<UsuariosVisao>;
   /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */
   adminBackupListar(todos?: boolean): Promise<{ backups: BackupIndiceView[]; podeRestaurar: boolean; podeCriar: boolean }>;
   adminBackupCriar(): Promise<BackupIndiceView>;
