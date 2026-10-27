@@ -27,8 +27,6 @@ export interface BotMirrorDeps {
   copyReference(text: string): void;
   /** Cache desta janela (lib/cache.ts, por máquina): a lista e as conversas da última vez aparecem na hora. */
   cache: { read<T>(name: string): Cached<T> | null; write(name: string, value: unknown): void; drop(name: string): void };
-  /** Botão de dois cliques (o segundo confirma). */
-  armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   closePage(page: PageTab): void;
   /** A lista mudou (chegou do servidor ou falhou): o renderer redesenha a lateral. */
   onListChanged(): void;

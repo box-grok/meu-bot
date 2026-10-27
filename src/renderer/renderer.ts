@@ -1980,7 +1980,7 @@ void (async () => {
     const auditoriaPage = mountAuditoriaPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     auditoriaLine.addEventListener("click", () => auditoriaPage.open());
     void window.meuBot.adminAuditoriaVisivel().then((v) => { auditoriaLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
-    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
+    adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();
     tabsReady = true;
     return;
