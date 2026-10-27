@@ -23,6 +23,8 @@ interface WebviewEl extends HTMLElement {
 }
 /** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
 interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; /** Quando o documento atual terminou de carregar (aquecimento das notificações). */ loadedAt?: number }
+/** canGoBack/canGoForward lançam antes do dom-ready do <webview> (aba recém-criada): até lá, nem voltar nem avançar; o dom-ready repinta. */
+const navPode = (f: () => boolean): boolean => { try { return f(); } catch { return false; } };
 export let navPage: PageTab | null = null;
 export let navTabs: NavTab[] = [];
 let navActive: string | null = null;
@@ -605,8 +607,8 @@ export function paintNav(): void {
   paintNavBell();
   paintNavPin();
   paintNavZoom();
-  e.back.disabled = cur === null || !cur.wv.canGoBack();
-  e.fwd.disabled = cur === null || !cur.wv.canGoForward();
+  e.back.disabled = cur === null || !navPode(() => cur.wv.canGoBack());
+  e.fwd.disabled = cur === null || !navPode(() => cur.wv.canGoForward());
   e.loading.hidden = cur === null || !cur.loading;
   e.reload.textContent = cur !== null && cur.loading ? "✕" : "↻";
   e.reload.title = cur !== null && cur.loading ? "Parar" : "Recarregar";
