@@ -52,7 +52,7 @@ async function loadLicensePanel(): Promise<void> {
   const l = view.license;
   licenseSum.textContent = `${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
   const ul = el("ul", "admin-health");
-  for (const line of licenseSummary(view)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
+  for (const line of licenseSummary(view, Date.now(), ctx.caps.addons)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
   const devs = el("ul", "admin-health");
   for (const d of view.devices) { const dl = deviceLine(d); devs.append(el("li", d.status === "pending" ? "bad" : "ok", d.status === "pending" ? `${dl.text} · pedido enviado ao admin` : dl.text)); }
   if (view.devices.length === 0) devs.append(el("li", "", "Nenhum device ainda."));

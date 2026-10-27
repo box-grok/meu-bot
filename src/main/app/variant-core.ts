@@ -34,8 +34,29 @@ export interface Produto {
   portaLocal: number;
   /** Pasta de dados de um app antecessor que a primeira abertura funde (união, sem apagar a origem); null = nenhum. */
   fundeDe: string | null;
-  caps: Omit<Capabilities, "variant" | "produto" | "canal" | "nome" | "titulo">;
+  /** Add-on (de ADDONS) que é a razão deste app: a entrada dele fica sempre à vista, mesmo antes da licença. null = nenhum. */
+  addon: string | null;
+  /** Página que fica na frente quando a janela abre (de PAGINAS_INICIAIS); null = as abas de conversa, como sempre. */
+  abreEm: PaginaInicial | null;
+  caps: Omit<Capabilities, "variant" | "produto" | "canal" | "nome" | "titulo" | "addon" | "abreEm" | "addons">;
 }
+
+/**
+ * Módulos pagos à parte (add-ons): acumulativos por cima do plano, com ou sem o Pro, liberados por máquina na licença
+ * (`licenca.produtos`). Única lista do app: licença, admin (rótulo, candidatos a incluir) e nomes reservados saem daqui.
+ * O backend da máquina tem a cópia dele em backend-colima/licenca.js; o teste produtos-alinhados confere as duas.
+ */
+export interface Addon { nome: string; rotulo: string; descricao: string }
+export const ADDONS: readonly Addon[] = [
+  { nome: "meu-bot-finance", rotulo: "Financeiro", descricao: "O agente vira o financeiro da pessoa no WhatsApp e no chat; página Finanças e Curva ABC." },
+];
+/** Nomes na licença que não são add-on: o admin, e o meu-bot-crm (o CRM entrou no Pro em 22 out). */
+export const NAO_ADDON: readonly string[] = ["meu-bot-admin", "meu-bot-crm"];
+/** O plano "personalizado" (removido em 22 out) liberava o Pro e estes add-ons; quem o tinha vira Pro com eles. */
+export const ADDONS_DO_PERSONALIZADO: readonly string[] = ["meu-bot-finance"];
+/** Páginas que um produto pode pôr na frente ao abrir (Produto.abreEm); o renderer sabe abrir cada uma. */
+export const PAGINAS_INICIAIS = ["financas"] as const;
+export type PaginaInicial = (typeof PAGINAS_INICIAIS)[number];
 
 const PESSOA: Produto["caps"] = {
   chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false,
@@ -48,7 +69,7 @@ const ADMIN: Produto["caps"] = {
 
 // meu-bot: o app da pessoa. Traz as duas extensões; o CRM próprio no Gmail abre pela licença da máquina (Pro ou superior,
 // ou o produto meu-bot-crm contratado), nunca por variante. Funde a pasta do antigo meu-bot-crm na primeira abertura.
-const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", caps: PESSOA };
+const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", addon: null, abreEm: null, caps: PESSOA };
 
 /** A cópia staging de um app estável: "<nome>-staging", ícone com a faixa, dados próprios herdados dele, porta própria. */
 function staging(base: Produto, variant: AppVariant, portaLocal: number): Produto {
@@ -58,13 +79,23 @@ function staging(base: Produto, variant: AppVariant, portaLocal: number): Produt
 
 export const PRODUTOS: readonly Produto[] = [
   CLIENT,
-  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, caps: ADMIN },
+  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, addon: null, abreEm: null, caps: ADMIN },
   staging(CLIENT, "client-staging", 8791),
   // meu-bot-finance-staging: o meu-bot em teste com o financeiro na frente (abre na página Finanças). O financeiro em si
   // é liberado pela licença da máquina (produto meu-bot-finance), como o CRM próprio; o app só tem nome, ícone, dados
   // e porta próprios para conviver com o meu-bot e o meu-bot-staging. Nasce como cópia dos dados do meu-bot-staging.
-  { ...staging(CLIENT, "finance-staging", 8792), nome: "meu-bot-finance-staging", bundleId: "local.meu-bot-finance.staging", icone: "assets/icon-finance-staging.icns", userData: "meu-bot-finance-staging", herdaDe: "meu-bot-staging", fundeDe: null },
+  { ...staging(CLIENT, "finance-staging", 8792), nome: "meu-bot-finance-staging", bundleId: "local.meu-bot-finance.staging", icone: "assets/icon-finance-staging.icns", userData: "meu-bot-finance-staging", herdaDe: "meu-bot-staging", fundeDe: null, addon: "meu-bot-finance", abreEm: "financas" },
 ];
+
+/**
+ * Nomes que um MVP novo não pode usar: os apps da tabela (e o que eles herdam ou fundem), os nomes de licença e os
+ * add-ons. Derivado, para um produto novo na tabela já entrar aqui sozinho.
+ */
+export function nomesReservados(): Set<string> {
+  const r = new Set<string>([...ADDONS.map((a) => a.nome), ...NAO_ADDON]);
+  for (const p of PRODUTOS) for (const n of [p.nome, p.licenca, p.herdaDe, p.fundeDe]) if (n !== null) r.add(n);
+  return r;
+}
 
 export function produtoDe(v: AppVariant): Produto {
   const p = PRODUTOS.find((x) => x.variant === v);
@@ -95,5 +126,5 @@ export const userDataNameFor = (v: AppVariant): string | null => produtoDe(v).us
 /** O admin só lê e faz as ações de suporte; os outros produtos fazem tudo o mais (ver a tabela). */
 export function capsFor(variant: AppVariant, versao?: string): Capabilities {
   const p = produtoDe(variant);
-  return { variant, produto: p.licenca, canal: p.canal, nome: p.nome, titulo: titleFor(variant, versao), ...p.caps };
+  return { variant, produto: p.licenca, canal: p.canal, nome: p.nome, titulo: titleFor(variant, versao), addon: p.addon, abreEm: p.abreEm, addons: ADDONS.map((a) => ({ nome: a.nome, rotulo: a.rotulo })), ...p.caps };
 }

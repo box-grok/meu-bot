@@ -136,6 +136,11 @@ function produtoOk(license, nome, now = Date.now()) {
 }
 /** O CRM próprio (no Gmail e no WhatsApp) faz parte do Pro. */
 const crmOk = proOk;
+/**
+ * Add-ons que este backend conhece (cópia de ADDONS em src/main/app/variant-core.ts; o teste produtos-alinhados confere).
+ * O backend roda na máquina, sem acesso ao código do app: por isso a cópia.
+ */
+const ADDONS = ['meu-bot-finance'];
 /** O financeiro: o add-on meu-bot-finance contratado (o Pro sozinho não libera). */
 const financeOk = (license, now = Date.now()) => produtoOk(license, 'meu-bot-finance', now);
 
@@ -160,6 +165,7 @@ function mergeApps(prev, produto, version, now = Date.now()) {
 }
 
 module.exports = {
+  ADDONS, ADDONS_DO_PERSONALIZADO, NAO_ADDON: [...NAO_ADDON],
   PLANS,
   isActive,
   proOk,

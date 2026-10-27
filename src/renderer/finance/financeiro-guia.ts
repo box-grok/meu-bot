@@ -5,8 +5,8 @@ import { ctx } from "../app/ctx.js";
 /** Botão "Finanças" da lateral: só com a licença do financeiro; o número são as pendências. */
 export function paintFinanceLine(): void {
   const b = document.getElementById("financas-line"); if (b === null) return;
-  // No meu-bot-finance-staging o financeiro é a razão do app: o botão fica sempre (sem licença, a página diz como liberar).
-  b.hidden = !ctx.caps.chat || (!financeOk(ctx.license, ctx.windowHost) && ctx.caps.variant !== "finance-staging");
+  // No app cujo add-on é o financeiro (meu-bot-finance-staging) o botão fica sempre (sem licença, a página diz como liberar).
+  b.hidden = !ctx.caps.chat || (!financeOk(ctx.license, ctx.windowHost) && ctx.caps.addon !== "meu-bot-finance");
   const n = ctx.financeState?.estado?.pendencias ?? 0;
   const c = document.getElementById("financas-count"); if (c !== null) c.textContent = n > 0 ? `${n} para confirmar` : "";
 }

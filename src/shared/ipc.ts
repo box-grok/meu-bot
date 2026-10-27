@@ -355,6 +355,12 @@ export interface Capabilities {
   nome: string;
   /** Título da janela: o nome, e no staging a versão junto ("meu-bot-staging 0.2.0-staging.3"). */
   titulo: string;
+  /** Add-on que é a razão deste app (a entrada dele fica sempre à vista); null = nenhum. Tabela em variant-core.ts. */
+  addon: string | null;
+  /** Página que fica na frente quando a janela abre ("financas"); null = as abas de conversa. */
+  abreEm: string | null;
+  /** Catálogo de add-ons (nome e rótulo para ler), para as telas não escreverem nomes à mão. */
+  addons: { nome: string; rotulo: string }[];
 }
 
 /** O que a janela principal recebe ao nascer: a máquina a que está presa. */

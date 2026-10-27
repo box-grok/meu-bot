@@ -4,6 +4,7 @@
  * Mesmo esquema do backend-colima/licenca.js (o backend é quem grava de fato); mudar os dois juntos.
  */
 import type { License, LicenseDevice, LicensePatch, LicenseView, PlanName } from "../../shared/ipc";
+import { ADDONS_DO_PERSONALIZADO, NAO_ADDON } from "../app/variant-core";
 
 const PLANS: License["plan"][] = ["free", "pro"];
 const STATUSES: License["status"][] = ["free", "trialing", "active", "expired"];
@@ -13,11 +14,9 @@ const isIso = (v: unknown): v is string => typeof v === "string" && v !== "" && 
 const nowIso = (now: number): string => new Date(now).toISOString();
 /** Add-ons contratados (meu-bot-finance, meu-bot-fit…): nomes válidos, únicos, ordenados. */
 const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-/** Nomes que não são add-on: o admin, e o meu-bot-crm (o CRM veio para o Pro em 22 out). */
-const NAO_ADDON = new Set(["meu-bot-admin", "meu-bot-crm"]);
-export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && !NAO_ADDON.has(x)))].sort() : []);
-/** O plano "personalizado" (removido em 22 out) liberava o Pro e todos os add-ons; quem o tinha vira Pro com estes. */
-const ADDONS_DO_PERSONALIZADO = ["meu-bot-finance"];
+/** Nomes que não são add-on (catálogo em app/variant-core.ts). */
+const NAO_ADDON_SET = new Set(NAO_ADDON);
+export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && !NAO_ADDON_SET.has(x)))].sort() : []);
 
 /** Licença de uma conta ainda não configurada: grátis, um device. */
 export function defaultLicense(now: number = Date.now()): License {

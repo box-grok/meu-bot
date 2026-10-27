@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, dateInputToIso, gb, healthLines, isoToDateInput, licenseSummary, personSuffix, progressLines, timeAgo, transcriptionNote, visibleActions } from "../../dist/renderer/lib/admin-view.js";
@@ -5,6 +6,10 @@ import { deviceParts, deviceLine, ADMIN_ACTIONS, actionResultText, agoText, date
 const probe = { reachable: true, user: "box", os: "Ubuntu", error: null, backendInstalled: true, backendListening: false, claudeLoggedIn: true, statusLine: false };
 const fmt = (d) => (d === null ? "" : `+${d}`);
 const share = { progress: true, whatsapp: true, logs: true, chat: true };
+// O catálogo como a janela recebe do main (caps.addons): a fonte é ADDONS em app/variant-core.ts.
+const { ADDONS } = createRequire(import.meta.url)("../../dist/main/app/variant-core.js");
+const ADDONS_ROTULOS = ADDONS.map((a) => ({ nome: a.nome, rotulo: a.rotulo }));
+
 test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
   const sem = healthLines({ probe, whatsapp: null, progress: null, share, xai: null }, fmt);
   assert.deepEqual(sem.map((l) => l.ok), [true, false, true, null, false]);
@@ -112,7 +117,7 @@ test("licenseSummary: mostra validade e marca expirada no passado", () => {
   assert.ok(exp, "tem linha de validade");
   assert.equal(exp.ok, false, "validade no passado marca vermelho");
   assert.match(lines[0].text, /^Plano: Pro$/, "backend antigo sem `produtos` não quebra");
-  const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-finance", "meu-bot-fit"] } });
+  const comProdutos = licenseSummary({ ...view, license: { ...lic, produtos: ["meu-bot-finance", "meu-bot-fit"] } }, Date.now(), ADDONS_ROTULOS);
   assert.equal(comProdutos[0].text, "Plano: Pro + Financeiro, meu-bot-fit");
 });
 
@@ -134,9 +139,10 @@ test("deviceParts separa nome, metadados, status e visto há; deviceLine é a ju
   assert.equal(q.name, "abc"); assert.equal(q.seen, "mão levantada"); assert.equal(q.ok, false);
 });
 
-test("add-ons com nome para o admin: o financeiro; MVP fica com o id", async () => {
+test("add-ons com nome para o admin: o rótulo vem do catálogo da janela (caps.addons); MVP fora dele fica com o id", async () => {
   const { produtoLabel } = await import("../../dist/renderer/lib/admin-view.js");
-  assert.equal(produtoLabel("meu-bot-finance"), "Financeiro"); assert.equal(produtoLabel("meu-bot-fit"), "meu-bot-fit");
+  assert.equal(produtoLabel("meu-bot-finance", ADDONS_ROTULOS), "Financeiro"); assert.equal(produtoLabel("meu-bot-fit", ADDONS_ROTULOS), "meu-bot-fit");
+  assert.equal(produtoLabel("meu-bot-finance"), "meu-bot-finance", "sem catálogo, o id");
   const view = { license: { plan: "pro", status: "active", produtos: ["meu-bot-finance"], memberSince: null, interval: null, trialEnd: null, expiresAt: null }, activeCount: 1, deviceLimit: 1, pendingCount: 0 };
-  assert.equal(licenseSummary(view)[0].text, "Plano: Pro + Financeiro");
+  assert.equal(licenseSummary(view, Date.now(), ADDONS_ROTULOS)[0].text, "Plano: Pro + Financeiro");
 });

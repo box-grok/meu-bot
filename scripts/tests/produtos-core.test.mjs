@@ -7,6 +7,8 @@ const T = Date.parse("2026-10-19T12:00:00.000Z");
 test("nomeValido: meu-bot-<slug> em minúsculas; os três produtos existentes são reservados", () => {
   assert.equal(nomeValido("meu-bot-fit"), true); assert.equal(nomeValido("meu-bot-imobiliaria-sp"), true);
   assert.equal(nomeValido("meu-bot"), false); assert.equal(nomeValido("meu-bot-crm"), false); assert.equal(nomeValido("meu-bot-Fit"), false); assert.equal(nomeValido("fit"), false); assert.equal(nomeValido("meu-bot--x"), false);
+  // Reservados saem da tabela de produtos (variant-core.ts): o finance-staging escapava da lista escrita à mão.
+  for (const n of ["meu-bot-finance", "meu-bot-finance-staging", "meu-bot-staging", "meu-bot-admin", "meu-bot-crm-staging"]) assert.equal(nomeValido(n), false, n);
 });
 test("parseProdutoPatch: nome obrigatório; só o que veio entra; campos e etapas saneados", () => {
   assert.throws(() => parseProdutoPatch({ nome: "fit" }), /meu-bot-<algo>/);
@@ -29,7 +31,7 @@ test("definicao e checklist: o insumo da implementação como variante", () => {
   const d = definicao({ ...p, modulos: { ...p.modulos, whatsapp: false } });
   assert.equal(d.variant, "fit"); assert.equal(d.bundleId, "local.meu-bot-fit"); assert.equal(d.icone, "assets/icon-fit.icns"); assert.equal(d.planoExigido, "free"); assert.equal(d.addon, "meu-bot-fit"); assert.equal(d.caps.pair, false); assert.equal(d.caps.crm, true);
   const c = checklist(p);
-  assert.ok(c[0].startsWith("Escrever o pitch")); assert.ok(c.some((x) => x.includes("variant-core.ts"))); assert.ok(c.some((x) => x.includes("icon-fit.svg"))); assert.ok(c.some((x) => x.includes("--variant fit")));
+  assert.ok(c[0].startsWith("Escrever o pitch")); assert.ok(c.some((x) => x.includes("variant-core.ts"))); assert.ok(c.some((x) => x.includes("icon-fit.svg"))); assert.ok(c.some((x) => x.includes("--variant fit"))); assert.ok(c.some((x) => x.includes("ADDONS") && x.includes("backend-colima/licenca.js")));
   const pronto = checklist({ ...p, pitch: "x", publico: "y", pipeline: { etapas: ["A"], campos: [] } });
   assert.ok(!pronto.some((x) => x.startsWith("Escrever") || x.startsWith("Dizer") || x.startsWith("Definir")));
 });

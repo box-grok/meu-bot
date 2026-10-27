@@ -11,10 +11,12 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, produtoLabel, type HealthLine } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
+  /** Catálogo de add-ons (caps.addons): rótulos e o que dá para incluir na licença. */
+  addons(): readonly AddonRotulo[];
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
   who: { host: string; person: string | null; machine: string | null };
   panelsEl: HTMLElement;
@@ -126,7 +128,7 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
     if (hp === null) lc.append(carregando("Consultando a licença…", "suporte-licenca"));
     else if (view === null) lc.append(el("p", "hint", "Máquina fora do ar ou backend antigo (sem a rota de licença)."));
     else {
-      lc.append(list(licenseSummary(view)));
+      lc.append(list(licenseSummary(view, Date.now(), deps.addons())));
       const licBtn = (label: string, run: () => void): HTMLButtonElement => {
         const b = el("button", "btn btn-ghost btn-small", label); b.type = "button"; b.disabled = state.licBusy;
         b.addEventListener("click", run);
@@ -204,11 +206,11 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       // Add-ons, acumulativos por cima do plano (com ou sem o Pro): o Financeiro e os MVPs registrados em Produtos.
       const prodCtl = el("div", "admin-actions");
       const contratados = view.license.produtos ?? [];
-      const candidatos = ["meu-bot-finance", ...state.mvps].filter((n) => !contratados.includes(n));
+      const candidatos = [...new Set([...deps.addons().map((a) => a.nome), ...state.mvps])].filter((n) => !contratados.includes(n));
       // Os chips dizem tudo: "× nome" é contratado (tira), "＋ nome" é disponível (inclui). Texto só quando não há nenhum.
       prodCtl.append(el("span", "hint", contratados.length === 0 && candidatos.length === 0 ? "Add-ons: nenhum (só o plano)" : "Add-ons (por cima do plano):"));
-      for (const nome of contratados) prodCtl.append(licBtnConfirm(`× ${produtoLabel(nome)}`, `Confirmar? tira o ${produtoLabel(nome)} dela`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
-      for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${produtoLabel(nome)}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
+      for (const nome of contratados) prodCtl.append(licBtnConfirm(`× ${produtoLabel(nome, deps.addons())}`, `Confirmar? tira o ${produtoLabel(nome, deps.addons())} dela`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
+      for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${produtoLabel(nome, deps.addons())}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
       lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl);
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }

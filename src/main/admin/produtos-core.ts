@@ -5,13 +5,15 @@
  * ícone, extensão/templates). Testado.
  */
 import type { ProdutoMvp, ProdutoMvpPatch, ProdutoStatus } from "../../shared/ipc";
+import { nomesReservados } from "../app/variant-core";
 
 export const STATUS: readonly ProdutoStatus[] = ["ideia", "mvp", "beta", "lancado"];
 export const STATUS_LABEL: Record<ProdutoStatus, string> = { ideia: "Ideia", mvp: "MVP", beta: "Beta", lancado: "Lançado" };
 export const TIPOS_CAMPO = ["TEXT", "NUMBER", "DATE", "DROPDOWN", "TAG", "CHECKBOX"] as const;
 /** meu-bot-<slug>: minúsculas, dígitos e hífen; nunca os nomes já tomados pela tabela de produtos. */
 const SLUG_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const RESERVADOS = new Set(["meu-bot", "meu-bot-admin", "meu-bot-crm", "meu-bot-finance", "meu-bot-staging", "meu-bot-crm-staging"]);
+/** Apps da tabela, nomes de licença e add-ons (app/variant-core.ts): um produto novo na tabela já entra aqui. */
+const RESERVADOS = nomesReservados();
 export const nomeValido = (n: unknown): n is string => typeof n === "string" && SLUG_RE.test(n) && n.length <= 40 && !RESERVADOS.has(n);
 const str = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const texto = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\r\n?/g, "\n").trim().slice(0, max) : "");
@@ -85,10 +87,12 @@ export function checklist(p: ProdutoMvp): string[] {
     p.pitch === "" ? "Escrever o pitch em uma frase (o que a pessoa ganha)" : "",
     p.publico === "" ? "Dizer para quem é (o público)" : "",
     p.modulos.crm && p.pipeline.etapas.length === 0 ? "Definir as etapas do pipeline modelo" : "",
-    `Adicionar "${variant}" em AppVariant (src/shared/ipc.ts) e a linha em PRODUTOS (src/main/variant-core.ts)`,
+    `Adicionar "${variant}" em AppVariant (src/shared/ipc.ts) e a linha em PRODUTOS (src/main/app/variant-core.ts), com addon e abreEm`,
+    `Registrar o add-on ${p.nome} em ADDONS (src/main/app/variant-core.ts) e em backend-colima/licenca.js`,
     `Desenhar assets/icon-${variant}.svg e rodar npm run icons`,
     p.modulos.crm ? "Templates do pipeline em produtos/" + p.nome + "/ (etapas e campos iniciais)" : "",
+    "Módulo no molde do financeiro: backend-colima/<x>-api.js + modelo puro com teste, ponte em src/main/<domínio>/, página em src/renderer/<domínio>/",
     `Liberar pela licença: o add-on ${p.nome} em Suporte › Conta e licença (com ou sem o Pro)`,
-    `Empacotar: node scripts/package.mjs --variant ${variant} (e dist:${variant} no package.json)`,
+    `Empacotar: npm run dist -- --variant ${variant}`,
   ].filter((x) => x !== "");
 }

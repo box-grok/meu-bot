@@ -383,7 +383,7 @@ let adminBotMirror: BotMirror | null = null;
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
 let appBuild = "";
-let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free" };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", addon: null, abreEm: null, addons: [] };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -1963,6 +1963,7 @@ void (async () => {
     applySettings(await window.meuBot.getSettings());
     // O WhatsApp só entra se a pessoa compartilha: a saúde diz, e aí começa o ciclo normal de consulta.
     const suportePage = mountSuportePage({
+      addons: () => caps.addons,
       who: { host: windowHost, person: info.person, machine: info.machine }, panelsEl, definePage, openPage, armConfirm, fmtPhone, api: window.meuBot, cache: { read: cacheRead, write: cacheWrite },
       onPlan: (plan) => setPlanBadge(plan !== null && planoLiberaPro(plan)),
       onWhatsapp: (st) => {
@@ -1997,7 +1998,8 @@ void (async () => {
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
   });
   $<HTMLButtonElement>("financas-line").addEventListener("click", () => financePage?.open());
-  if (caps.variant === "finance-staging") paintFinanceLine();
+  // O app cujo add-on é o financeiro mostra o botão sempre (sem licença, a página diz como liberar).
+  if (caps.addon === "meu-bot-finance") paintFinanceLine();
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
   void refreshStatusLine();
   void refreshWhatsapp();
@@ -2021,7 +2023,7 @@ void (async () => {
   renderSidebar();
   tabsReady = true;
   // meu-bot-finance-staging: depois de restaurar as abas, o financeiro fica na frente.
-  if (caps.variant === "finance-staging") financePage?.open();
+  if (caps.abreEm === "financas") financePage?.open();
   void restoreSplit();
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);

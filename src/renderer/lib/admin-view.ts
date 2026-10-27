@@ -64,14 +64,15 @@ export function fmtDate(iso: string | null): string {
 }
 
 /** O resumo da conta (plano, status, membro desde, ciclo, validade, devices), como o painel do Rambox. */
-/** Nome do add-on para o admin ler ("Financeiro"); MVP sem nome conhecido fica com o id. */
-const PRODUTO_LABEL: Record<string, string> = { "meu-bot-finance": "Financeiro" };
-export const produtoLabel = (id: string): string => PRODUTO_LABEL[id] ?? id;
-export function licenseSummary(view: LicenseView, now: number = Date.now()): HealthLine[] {
+/** Add-on como a janela recebe do main (caps.addons, catálogo em app/variant-core.ts). */
+export type AddonRotulo = { nome: string; rotulo: string };
+/** Nome do add-on para ler ("Financeiro"); MVP fora do catálogo fica com o id. */
+export const produtoLabel = (id: string, addons: readonly AddonRotulo[] = []): string => addons.find((a) => a.nome === id)?.rotulo ?? id;
+export function licenseSummary(view: LicenseView, now: number = Date.now(), addons: readonly AddonRotulo[] = []): HealthLine[] {
   const l = view.license;
   const lines: HealthLine[] = [
     // `produtos` pode faltar num backend antigo (licença sem o campo): trata como nenhum.
-    { text: `Plano: ${PLAN_LABEL[l.plan]}${(l.produtos ?? []).length > 0 ? ` + ${l.produtos.map(produtoLabel).join(", ")}` : ""}`, ok: l.plan !== "free" || (l.produtos ?? []).length > 0 ? true : null },
+    { text: `Plano: ${PLAN_LABEL[l.plan]}${(l.produtos ?? []).length > 0 ? ` + ${l.produtos.map((p) => produtoLabel(p, addons)).join(", ")}` : ""}`, ok: l.plan !== "free" || (l.produtos ?? []).length > 0 ? true : null },
     { text: `Status: ${STATUS_LABEL[l.status]}`, ok: l.status === "active" ? true : l.status === "expired" ? false : null },
     { text: `Membro desde: ${fmtDate(l.memberSince)}`, ok: null },
     { text: `Ciclo de cobrança: ${billingCycleText(l.interval)}`, ok: null },
