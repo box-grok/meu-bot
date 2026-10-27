@@ -33,7 +33,9 @@ Regras:
 - Caminho de arquivo compilado: `path.join(__dirname, "..", "..", <preload|renderer>, …)` a partir de um domínio.
 
 ## Outras partes
-- `src/preload/` — pontes de IPC por janela. `src/shared/ipc.ts` — contrato entre main e telas.
+- `src/preload/` — pontes de IPC por janela. `src/shared/ipc/` — contrato entre main e telas, só tipos, um arquivo por
+  domínio (app, agente, maquina, whatsapp, crm, financeiro, google, navegador, conversa, suporte, licenca, atualizacao,
+  seletor) e `api.ts` com a superfície `window.meuBot` e os eventos do main; `src/shared/ipc.ts` só reexporta.
 - `src/renderer/` — telas (ES modules sem bundler). `renderer.ts` é a raiz de composição: elementos e estado da
   janela (abas de conversa, lateral, paleta, modo, zoom) e a ligação das páginas. Cada assunto tem sua pasta:
 
@@ -67,7 +69,7 @@ abaixo: `meu-bot-fit`.
 
 1. **Registrar a ideia no meu-bot-admin** (página Produtos): pitch, público, módulos. O checklist dessa página é este
    mesmo roteiro (`src/main/admin/produtos-core.ts` › `checklist`).
-2. **Linha na tabela** `PRODUTOS` (`src/main/app/variant-core.ts`) e o id em `AppVariant` (`src/shared/ipc.ts`). Um app
+2. **Linha na tabela** `PRODUTOS` (`src/main/app/variant-core.ts`) e o id em `AppVariant` (`src/shared/ipc/app.ts`). Um app
    de teste sai de `staging(CLIENT, "<id>", <porta livre>)`; declare `addon` (a razão do app) e `abreEm` (página na
    frente, de `PAGINAS_INICIAIS`; página nova lá precisa de um `caps.abreEm === "<página>"` no `renderer.ts`).
 3. **Add-on no catálogo**: `ADDONS` em `variant-core.ts` (nome, rótulo, descrição) e a cópia `ADDONS` em
@@ -92,5 +94,6 @@ abaixo: `meu-bot-fit`.
 1. ~~Processo principal por domínio~~ (26/10).
 2. ~~Telas por domínio~~ (26/10): `renderer.ts` de 7,5 mil para 2 mil linhas. Falta: o núcleo da janela que ficou
    nele (abas de conversa, lateral, paleta) e trazer para as páginas o estado que ainda mora no renderer (`ctx` com setter).
-3. `src/shared/ipc.ts` (1,5 mil linhas) em contratos por domínio, reexportados pelo `ipc.ts`.
+3. ~~Contrato por domínio~~ (27/10): `src/shared/ipc/`. Falta dividir por domínio os métodos de `api.ts`
+   (`MeuBotClientApi` como `extends` das interfaces de cada domínio).
 4. `docs/GUIA.md` (3 mil linhas) em um guia por domínio, com este arquivo como índice.

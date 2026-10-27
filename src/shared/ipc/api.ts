@@ -1,0 +1,437 @@
+/** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
+import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
+import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
+import type { UpdateState } from "./atualizacao";
+import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
+import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
+import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
+import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, PlanilhaLeitura } from "./google";
+import type { LicensePatch, LicenseView } from "./licenca";
+import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
+import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
+import type { AdminAction, AdminHealth, AuditoriaVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
+import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
+
+export interface MainEvents {
+  "chat:assistant-start": ConversationRef;
+  "chat:delta": ConversationRef & { text: string };
+  "chat:done": DoneEvent;
+  "chat:error": ErrorEvent;
+  "backend:status": BackendStatusEvent;
+  /** Configurações mudaram em outra janela. */
+  "settings:changed": SettingsView;
+  /** Clique numa notificação: ativar esta conversa. */
+  "ui:focus-conversation": ConversationRef;
+  "chat:context": ContextEvent;
+  "memory:changed": MemoryView;
+  /** Texto vindo da janela de entrada rápida; responder com quickAck. */
+  "ui:quick-submit": { correlationId: string; text: string };
+  /** Menu meu-bot › Configurações… (Cmd+,): abre, ou fecha se já está aberto. */
+  "ui:toggle-settings": Record<string, never>;
+  /** Aviso do backend no meio de um turno (ex.: caiu para outro provedor). */
+  "chat:notice": { conversationId: string; text: string };
+  /** O agente usou uma ferramenta (modo agente): o que rodou/leu e o resultado resumido. */
+  "chat:tool": { conversationId: string; tool: ToolEvent };
+  /** Conta e limites do Claude na máquina, depois de cada turno. */
+  "chat:account": { host: string; status: AccountStatus | null };
+  /** Pareamento do WhatsApp do Hermes em andamento. */
+  "whatsapp:event": WhatsappEvent;
+  /** Linha de progresso do instalador da status line (tutorial). */
+  "statusline:progress": { line: string };
+  /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
+  "guarda:progress": { line: string };
+  /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
+  "navegador:progress": { line: string };
+  /** Instalação do CRM pelo WhatsApp (tutorial 10): uma linha de progresso. */
+  "crm:progress": { line: string };
+  /** Instalação do financeiro na máquina, linha a linha (tutorial 14). */
+  "finance:progress": { line: string };
+  /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
+  "admin:backup-progress": { bytes?: number; line?: string };
+  /** Login do Claude Code em andamento. */
+  "claude-login:event": ClaudeLoginEvent;
+  /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
+  "xai-login:event": ClaudeLoginEvent;
+  "contas:evento": ContaEvento;
+  /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
+  "term:data": { id: string; data: Uint8Array };
+  "term:exit": { id: string; code: number; detail: string | null };
+  /** Uma versão nova do app foi baixada e preparada: "Reiniciar e atualizar" troca na hora. */
+  /** Cada fase da verificação de atualização (verificando, mais recente, baixando, pronta, erro). */
+  "update:state": UpdateState;
+  /** Seletor pediu: abrir o modal de login do Claude Code nesta janela. */
+  "ui:claude-login": Record<string, never>;
+  /** Internet deste Mac mudou ou foi sondada (faixa OFFLINE em todas as janelas). */
+  "net:state": NetState;
+  /** Navegador: a lista de extensões da sessão mudou (instalou pela Web Store, removeu). */
+  "browser:extensions": BrowserExtensionInfo[];
+  /** Navegador: uma página pediu janela nova (target=_blank): abrir como aba interna. */
+  "browser:open-url": { url: string };
+  /** Navegador: um site pede câmera/microfone (balão como o do Brave); `fechar` = o pedido expirou; `aviso` = só um recado (macOS bloqueou). */
+  "browser:permissao": { id: string; origem: string; tipos: ("camera" | "microfone")[]; texto: string; fechar?: boolean; aviso?: boolean };
+  /** A extensão do CRM (Gmail) pediu para abrir a aba da conversa do WhatsApp deste número (só dígitos, com DDI). */
+  "whatsapp:abrir": { number: string };
+  /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
+  "browser:key": { key: string; shift: boolean };
+  /** Navegador: o agente (pelas ações) pede uma aba nova, ativar ou fechar uma aba (id do webContents). */
+  "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number };
+  /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
+  "term:ask": { kind: "new" };
+  /** Controle local (term-api.ts): mais uma coluna com a página à direita; juntar tira uma (id/pagina) ou todas. */
+  "ui:split": { alvo: "terminal"; id: string } | { alvo: "navegador" | "tutoriais" | "acervo" | "vazia" } | { alvo: "juntar"; id?: string; pagina?: "navegador" | "tutoriais" | "acervo" };
+  /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
+  "browser:donos": { donos: Record<number, DonoInfo> };
+  /** Terminal: quem o está usando pelo controle local (term-api.ts) e o que fez por último; null = ninguém (só a pessoa). */
+  "term:dono": { id: string; dono: (DonoInfo & { acao: "abriu" | "leu" | "digitou" | "dividiu"; em: number }) | null };
+  /** Navegador: estado do "agente pode usar" (socket + túnel reverso). */
+  "browser:agent": BrowserAgentState;
+  /** Navegador: a barra de favoritos da máquina mudou (pela pessoa ou pelo agente). */
+  "browser:favorites": NavFavorito[];
+  "browser:workspaces": NavWorkspaces;
+  /** Zoom da janela mudou (atalho, menu Visualizar, paleta, Configurações ou outra janela); vale para todas. */
+  "window:zoom-changed": ZoomState;
+  /** Conta Google deste Mac conectou/desconectou: a página Conta Google relê o estado. */
+  "google-conta:changed": GoogleContaStatus;
+}
+
+export type MainEventChannel = keyof MainEvents;
+
+/** API exposta ao renderer via contextBridge como window.meuBot. */
+/** Janela principal, os dois apps: leituras da máquina e o que é só deste Mac. */
+export interface MeuBotSharedApi {
+  getMemory(): Promise<MemoryView>;
+  setMemory(update: { notas?: string; perfil?: string }): Promise<MemoryView>;
+  getSettings(): Promise<SettingsView>;
+  /** Máquina desta janela; null se a janela não está registrada (não deveria acontecer). */
+  getWindowInfo(): Promise<WindowInfo | null>;
+  /** Abre o seletor de máquinas (nova janela em outra máquina). */
+  openPicker(): Promise<void>;
+  /** WhatsApp do Hermes na máquina desta janela. */
+  whatsappStatus(): Promise<WhatsappStatus>;
+  xaiKeyStatus(): Promise<XaiKeyStatus>;
+  /** Terminal na máquina desta janela (pty-broker por ssh; neste Mac, local). Os dois apps; no admin fica no registro da pessoa. */
+  termOpen(cols: number, rows: number): Promise<{ id: string }>;
+  termInput(id: string, data: string | Uint8Array): void;
+  termResize(id: string, cols: number, rows: number): void;
+  termClose(id: string): Promise<void>;
+  termReplay(id: string): Promise<Uint8Array>;
+  /** Atualização automática: estado (versão atual, disponível, pronta) e trocar + reiniciar. */
+  updateState(): Promise<UpdateState>;
+  /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
+  checkUpdate(): Promise<UpdateState>;
+  /** "Reiniciar e atualizar": só troca se a versão pronta ainda é a que o botão mostrou (`expectedVersion`). */
+  applyUpdate(expectedVersion: string): Promise<void>;
+  /** Internet deste Mac: sonda (com `force`, mesmo com resultado fresco) e devolve o estado. */
+  netCheck(force?: boolean): Promise<NetState>;
+  /** A máquina desta janela é este próprio Mac (colima)? O túnel para ela não precisa de internet. */
+  hostLocalAddr(): Promise<boolean>;
+  /** Conversas do WhatsApp (OpenClaw) desta máquina, mais recente primeiro. Só leitura. */
+  whatsappChats(): Promise<WhatsappChat[]>;
+  /** Histórico de um contato (número só com dígitos). Só leitura. */
+  whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
+  /** Menu "…" de uma conversa do WhatsApp na lista. */
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean }): Promise<WhatsappMenuAction | null>;
+  /** Grupos do WhatsApp desta máquina: agente ligado ou não, quem o aciona, membros (cache da skill). Só leitura. */
+  whatsappGroups(): Promise<WhatsappGroups>;
+  /** Conversa de um grupo (jid "…@g.us"), com o autor de cada mensagem. Só leitura. */
+  whatsappGroupThread(jid: string): Promise<WhatsappThreadMessage[]>;
+  /** Liga/desliga o agente num grupo e/ou muda quem o aciona; relê e confere. Os dois apps (registrado na auditoria). */
+  setWhatsappGroup(jid: string, patch: WhatsappGroupPatch): Promise<WhatsappGroups>;
+  /** Relê a lista de grupos pelo WhatsApp (para o gateway ~30 s). */
+  refreshWhatsappGroups(): Promise<WhatsappGroups>;
+  /** Menu "…" de um grupo. */
+  showWhatsappGroupMenu(jid: string, state: { agente: WhatsappGroupAgent; deleted: boolean }): Promise<WhatsappGroupMenuAction | null>;
+  /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
+  pauseWhatsapp(number: string, paused: boolean): Promise<void>;
+  /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
+  whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
+  /** meu-bot-crm: guarda a conversa no CRM (transcrição + resumo) antes de limpar/excluir. */
+  archiveWhatsappToCrm(number: string): Promise<WhatsappArchive>;
+  /** Limpa na máquina o histórico do agente com este contato; `includeShared` confirma zerar a principal. */
+  clearWhatsapp(number: string, includeShared: boolean): Promise<void>;
+  /** O que "Limpar histórico" de um grupo vai zerar (0 = o agente nunca falou nele). */
+  whatsappGroupClearPlan(jid: string): Promise<{ sessoes: number }>;
+  /** Guarda a conversa do grupo na caixa fixa dele no CRM antes de limpar (a máquina abre a caixa na primeira vez). */
+  archiveWhatsappGroupToCrm(jid: string): Promise<WhatsappGroupArchive>;
+  /** Limpa na máquina o histórico do agente neste grupo. */
+  clearWhatsappGroup(jid: string): Promise<void>;
+  /** Arquiva/desarquiva/exclui conversas na máquina (whatsapp-lista.json): os dois apps veem igual. No admin, registrado. */
+  markWhatsapp(marks: WaMarkPatch[]): Promise<void>;
+  /** Excluir/restaurar um grupo na lista (marca na máquina, como na conversa; o openclaw.json não muda). */
+  markWhatsappGroup(jid: string, deleted: boolean): Promise<void>;
+  /** Apelido do grupo na lista (marca na máquina, os dois apps veem); "" apaga. */
+  renameWhatsappGroup(jid: string, alias: string): Promise<void>;
+  /** Descobre o nome (pushname) de contatos sem nome lendo o histórico deles de uma vez (até 20) e guarda na máquina. Devolve só os achados. */
+  learnWhatsappNames(numbers: string[]): Promise<Record<string, string>>;
+  /** Salva a conversa toda num arquivo; null = cancelado. */
+  exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
+  /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
+  claudeAuth(): Promise<ClaudeAuthInfo | null>;
+  /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
+  xaiAuth(): Promise<ClaudeAuthInfo | null>;
+  /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
+  contasStatus(): Promise<ContaEstado[] | null>;
+  setSettings(update: SettingsUpdate): Promise<SettingsView>;
+  /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
+  googleContaStatus(): Promise<GoogleContaStatus>;
+  /** Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina. */
+  googleContaAdotarDoMac(): Promise<GoogleContaStatus>;
+  googleContaConectar(): Promise<GoogleContaStatus>;
+  googleContaDesconectar(): Promise<GoogleContaStatus>;
+  /** Estado da cópia dos dados desta máquina no Drive. */
+  backupDadosStatus(): Promise<BackupDadosView>;
+  /** Faz a cópia agora, sem esperar o ciclo diário. */
+  backupDadosAgora(): Promise<BackupDadosView>;
+  /** Liga ou desliga a cópia diária (vale para todas as máquinas deste Mac). */
+  backupDadosLigar(ligado: boolean): Promise<BackupDadosView>;
+  /** Abre no Finder a pasta com as cópias locais desta máquina. */
+  backupDadosAbrirPasta(): Promise<{ pasta: string }>;
+  /** Define a senha do pacote cifrado (credenciais). Mínimo de 8 caracteres. */
+  backupDadosSenha(senha: string): Promise<BackupDadosView>;
+  /** Apaga a senha: o pacote cifrado deixa de ser enviado (o que já está no Drive continua lá). */
+  backupDadosLimparSenha(): Promise<BackupDadosView>;
+  gmailResumo(): Promise<GmailResumo>;
+  agendaProximos(dias?: number): Promise<AgendaEvento[]>;
+  agendaCriar(evento: { titulo: string; inicio: string; fim: string; descricao?: string }): Promise<AgendaEvento>;
+  planilhaLer(id: string, intervalo: string): Promise<PlanilhaLeitura>;
+  planilhaEscrever(id: string, intervalo: string, valores: string[][]): Promise<{ celulasAtualizadas: number }>;
+  /** Zoom da janela (interface inteira, todas as janelas): Cmd+= / Cmd+- / Cmd+0 fora do Navegador, menu Visualizar, paleta. */
+  zoomWindow(action: ZoomAction): Promise<ZoomState>;
+  /** Fator de zoom desta janela agora (síncrono, do webFrame): para a barra de título compensar os semáforos já na primeira pintura. */
+  zoomFactorNow(): number;
+  /** Abre um link http(s) no navegador do sistema. */
+  openExternal(url: string): Promise<void>;
+  on<K extends MainEventChannel>(channel: K, callback: (payload: MainEvents[K]) => void): () => void;
+}
+
+/** Variante: cliente. Só o meu-bot normal: conversar com o agente, parear e mexer no WhatsApp, logins, instalar, suporte do lado da pessoa. */
+export interface MeuBotClientApi {
+  send(conversationId: string, text: string): Promise<void>;
+  /** Interrompe a resposta em andamento desta conversa. */
+  cancel(conversationId: string): Promise<void>;
+  newConversation(): Promise<ConversationRef>;
+  closeConversation(conversationId: string): Promise<void>;
+  /** Conversas salvas, em ordem de criação, para reabrir as abas. */
+  listConversations(): Promise<StoredConversationView[]>;
+  /** "" remove o nome e volta ao título automático. */
+  renameConversation(conversationId: string, title: string): Promise<void>;
+  /** Nova ordem das abas, da esquerda para a direita. */
+  reorderConversations(conversationIds: string[]): Promise<void>;
+  setConversationModel(conversationId: string, model: BackendModel): Promise<void>;
+  /** Marca como aberta em aba e devolve a conversa completa. */
+  openConversation(conversationId: string): Promise<StoredConversationView | null>;
+  deleteConversation(conversationId: string): Promise<void>;
+  /** Tira daqui as conversas que o admin excluiu na máquina (conversas-apagadas.json); devolve os ids que saíram. */
+  syncApagadas(): Promise<string[]>;
+  archiveConversation(conversationId: string, archived: boolean): Promise<void>;
+  duplicateConversation(conversationId: string): Promise<StoredConversationView | null>;
+  /** Nova conversa com o histórico até a mensagem de índice `index` (inclusive). */
+  branchConversation(conversationId: string, index: number): Promise<StoredConversationView | null>;
+  /** Abre o diálogo de salvar; null se cancelado. */
+  exportConversation(conversationId: string, format: ExportFormat): Promise<{ path: string } | null>;
+  /** Sessão do Claude Code desta conversa (o .jsonl na máquina), para "Copiar ID"; null = ainda não há. */
+  conversationReference(conversationId: string): Promise<{ claude: ClaudeSessionRef | null }>;
+  /** Menu de contexto nativo da aba; null se fechado sem escolher. */
+  showTabMenu(conversationId: string, state: { busy: boolean; archived: boolean }): Promise<TabMenuAction | null>;
+  notify(conversationId: string, title: string, body: string): Promise<void>;
+  /** Notificação de teste do sistema ("as notificações estão funcionando"); o macOS pede a permissão junto, na primeira. */
+  notifyTest(): Promise<void>;
+  /** Avisos de segurança desta máquina (backend); null = backend sem a rota ou fora do ar. */
+  alertPrefs(): Promise<AlertPrefs | null>;
+  setAlertPrefs(prefs: AlertPrefs): Promise<void>;
+  quickAck(correlationId: string, ok: boolean, message?: string): void;
+  /** Mostra/esconde a janela de entrada rápida (mesmo efeito do atalho global). */
+  toggleQuickEntry(): Promise<void>;
+  /** Conta e limites do Claude na máquina desta janela (null se o backend não tem o endpoint). */
+  getAccountStatus(): Promise<AccountStatus | null>;
+  /** Licença e devices desta conta (plano, status, membro desde, máquinas); null se o backend é antigo/fora do ar. */
+  getLicense(): Promise<LicenseView | null>;
+  /** Tailscale: ssh check → accept na política do tailnet (precisa da credencial salva no seletor). */
+  disableTailscaleCheck(): Promise<TailscaleSshResult>;
+  /** Tailscale: volta a política para o backup mais novo. */
+  restoreTailscalePolicy(): Promise<TailscaleSshResult>;
+  /** Pareia por QR (eventos em whatsapp:event). `reset` apaga a sessão atual antes. Resolve ao terminar. */
+  whatsappPair(reset: boolean): Promise<void>;
+  /** Desconecta o número da máquina (sem gerar QR novo). */
+  whatsappLogout(): Promise<void>;
+  /** Suporte (lado da pessoa): estado, ligar/desligar, código para copiar. */
+  supportInfo(): Promise<SupportInfo>;
+  setSupport(on: boolean, name: string): Promise<SupportInfo>;
+  supportCode(): Promise<string>;
+  /** Há backend do meu-bot nesta máquina? (decide se a linha "xAI (Grok)" aparece sem Hermes; o login é OAuth pelo Hermes). */
+  /** Prepara o Grok por OAuth na máquina (Hermes + proxy local); progresso em xai-login:event (log). */
+  xaiPrepare(): Promise<InstallBackendResult>;
+  /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
+  statusLineInstalled(): Promise<boolean>;
+  /** "Refazer do zero": desfaz a status line na máquina (script, settings.json, preferências). */
+  uninstallStatusLine(): Promise<InstallBackendResult>;
+  /** "Refazer do zero" do suporte: desliga e esquece o nome. */
+  resetSupport(): Promise<SupportInfo>;
+  /** Segmentos da status line nesta máquina (null = sem preferência gravada = todos). */
+  statusLineSegments(): Promise<StatusLineSegments | null>;
+  setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
+  installStatusLine(): Promise<InstallBackendResult>;
+  /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */
+  /**
+   * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que
+   * `browserOpen` devolve (exige plano Pro na máquina: erro "PRO_REQUIRED"); o main cuida da sessão e das extensões.
+   */
+  browserOpen(): Promise<BrowserOpenInfo>;
+  browserExtensions(): Promise<BrowserExtensionInfo[]>;
+  /** Liga/desliga "agente pode usar" (socket de ações + túnel reverso); estado em browser:agent. */
+  browserAgent(on: boolean): Promise<BrowserAgentState>;
+  /** O agente do WhatsApp também usa o Navegador (sem `on`: só lê). `liberados` = números (só dígitos) que podem. */
+  browserAgentWhatsapp(on?: boolean): Promise<{ on: boolean; liberados: string[] }>;
+  /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp. */
+  crmLocal(): Promise<CrmLocal>;
+  /** meu-bot-crm: cria um pipeline (o único vira o padrão do WhatsApp). */
+  crmCriarPipeline(name: string, stages: string[]): Promise<CrmLocal>;
+  /** meu-bot-crm: escolhe o pipeline onde as conversas do WhatsApp são anotadas. */
+  crmDefinirPadrao(key: string): Promise<CrmLocal>;
+  /** Qual aba interna está ativa (id do webContents): as ações do agente sem `aba` caem nela. */
+  browserActive(wcId: number): void;
+  browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
+  /** Free pediu o Pro: fica no registro do suporte da máquina. */
+  browserRequestPro(): Promise<void>;
+  /** Resposta ao balão de câmera/microfone de um site do Navegador. */
+  browserPermissao(id: string, decisao: "sempre" | "agora" | "nunca"): Promise<void>;
+  /** Esquece as permissões de câmera/microfone dadas aos sites (uma origem ou todas) nesta máquina. */
+  browserPermissoesEsquecer(origem?: string): Promise<void>;
+  /** Barra de favoritos do Navegador (por máquina): adicionar (url repetida só atualiza o título) e remover por id. */
+  browserFavoriteAdd(f: { titulo: string; url: string }): Promise<NavFavorito[]>;
+  browserFavoriteRemove(id: string): Promise<NavFavorito[]>;
+  /** Grava os espaços de trabalho desta máquina (o main valida e devolve o que ficou). */
+  browserWorkspacesSet(w: NavWorkspaces): Promise<NavWorkspaces>;
+  guardaInstalled(): Promise<boolean | null>;
+  /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
+  navegadorInstalled(): Promise<boolean | null>;
+  installNavegador(): Promise<InstallBackendResult>;
+  installGuarda(): Promise<InstallBackendResult>;
+  uninstallGuarda(): Promise<InstallBackendResult>;
+  /** Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
+  crmInfo(): Promise<CrmInfo>;
+  /** Financeiro (produto meu-bot-finance): estado do módulo e dos números; lançamentos e ações da página Finanças. */
+  financeInfo(): Promise<FinanceInfo>;
+  financeLancamentos(filtro?: { mes?: string; status?: "pendente" | "confirmado"; limite?: number }): Promise<{ total: number; lancamentos: FinanceLancamento[] }>;
+  financeCategorias(): Promise<FinanceCategoria[]>;
+  financeLancar(input: FinanceLancarInput): Promise<FinanceLancamento>;
+  financeConfirmar(id: string, categoria?: string): Promise<FinanceLancamento>;
+  financeDescartar(id: string): Promise<void>;
+  /** Corrige um lançamento (o que vier muda; categoria/conta pelo nome ou chave, data dd/mm ou AAAA-MM-DD). */
+  financeCorrigir(id: string, patch: { valor?: string; favorecido?: string; categoria?: string; conta?: string | null; data?: string; notas?: string; linha?: string | null }): Promise<FinanceLancamento>;
+  /** Cria (sem key) ou edita uma linha da DRE prevista; valor "" ou null = a definir. */
+  financeLinhaSalvar(linha: { key?: string; nome: string; tipo: FinanceTipoLinha; valor: string | null; notas?: string }): Promise<void>;
+  financeLinhaRemover(key: string): Promise<void>;
+  /** A foto do comprovante de um lançamento (data URL), ou null se não está na máquina. */
+  financeComprovante(sha256: string): Promise<string | null>;
+  financeConfirmarTodas(): Promise<{ confirmados: number; restantes: number }>;
+  financeContaCriar(input: { nome: string; tipo?: FinanceConta["tipo"]; moeda?: FinanceMoeda; saldoInicial?: string }): Promise<FinanceConta>;
+  financeMes(mes: string, patch: { metaDireto?: string | null; metaIndireto?: string | null; metaNotas?: string; orcamento?: string | null; rendaPrevista?: string | null; dinheiroInformado?: boolean }): Promise<void>;
+  /** Config de moeda do sistema: taxas (unidades por 1 US$) e a moeda de exibição. */
+  financeConfigLer(): Promise<FinanceConfig>;
+  financeConfig(patch: { taxas?: Record<string, number>; moedaExibicao?: FinanceMoeda }): Promise<FinanceConfig>;
+  financeFecharMes(mes: string): Promise<void>;
+  /** Curva ABC: últimos `meses` (1–24) até `ate` (AAAA-MM, padrão o mês atual). */
+  financeAbc(filtro: { lado: FinanceAbcLado; por: FinanceAbcPor; meses: number; ate?: string }): Promise<FinanceAbc>;
+  /** Lê uma planilha do Google Sheets (link) com a Conta Google do app e importa as linhas no financeiro da máquina. */
+  financeImportarPlanilha(p: { link: string; aba?: string; tipo: FinanceAbcLado; simular: boolean }): Promise<FinanceImportacao>;
+  installFinance(): Promise<InstallBackendResult>;
+  /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */
+  financePedir(): Promise<void>;
+  installCrm(): Promise<InstallBackendResult>;
+  setCrm(patch: { apiKey?: string; pipelineKey?: string | null; pipelineName?: string; silencioMin?: number; criarSemPerguntar?: boolean }): Promise<CrmInfo>;
+  crmTest(): Promise<CrmDiag>;
+  resetCrm(): Promise<CrmInfo>;
+  /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
+  setSupportName(name: string): Promise<SupportInfo>;
+  /** Tutorial 7: estado na máquina (objetivo, nível, skill salva, skills do workspace). */
+  objectiveInfo(): Promise<ObjectiveInfo>;
+  /** Tutorial 7, passos 1 e 2: grava o objetivo e/ou o nível em objetivo.json na máquina. */
+  setObjective(patch: { objective?: ObjectiveChoice; level?: FreedomLevel }): Promise<ObjectiveInfo>;
+  /** Tutorial 7, passo 3: escreve a skill no workspace do OpenClaw e aplica a trava do nível. */
+  saveObjectiveSkill(): Promise<ObjectiveInfo & { detail: string }>;
+  /** "Refazer do zero" do tutorial 7: apaga a skill e o objetivo; o dono volta à liberdade total. */
+  resetObjective(): Promise<ObjectiveInfo>;
+  /** "Tentar de novo": entrega o aviso na caixa do admin agora. */
+  supportDeliver(): Promise<SupportInfo>;
+  /** Progresso nos tutoriais desta pessoa (vai para a máquina só com o suporte ligado). */
+  reportProgress(p: SupportProgress): Promise<void>;
+  /** O que o app do admin pode ver desta máquina (vale na hora). */
+  setSupportShare(share: SupportShare): Promise<SupportInfo>;
+  /** Instala/ajusta o áudio do agente do WhatsApp nesta máquina (transcrição ou voz). */
+  whatsappAudio(setup: AudioSetup): Promise<InstallBackendResult>;
+  whatsappCancel(): Promise<void>;
+  /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo; "list" = você + `numbers` (só dígitos, com DDI). Vale sem reiniciar o gateway. */
+  whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
+  /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
+  whatsappBranch(number: string): Promise<StoredConversationView>;
+  /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
+  claudeLogin(): Promise<void>;
+  /** Código colado pela pessoa; false se não há login em andamento. */
+  claudeLoginCode(code: string): Promise<boolean>;
+  claudeLoginCancel(): Promise<void>;
+  /** `claude auth logout` na máquina; devolve o estado depois. */
+  claudeLogout(): Promise<ClaudeAuthInfo | null>;
+  /** Contas do Claude na máquina desta janela; null = backend antigo (sem a rota) ou fora do ar. */
+  contasClaude(): Promise<ContasClaudeView | null>;
+  /** Cria uma conta isolada (pasta própria, histórico compartilhado) e já inicia o login nela (eventos em claude-login:event). */
+  contasClaudeCriar(rotulo: string): Promise<ContasClaudeView | null>;
+  /** Login numa conta existente (eventos em claude-login:event). Resolve ao terminar; a conta é conferida no fim. */
+  contasClaudeEntrar(id: string): Promise<void>;
+  contasClaudeAtualizar(id: string, patch: { rotulo?: string; ativa?: boolean }): Promise<ContasClaudeView | null>;
+  /** Nova ordem das contas isoladas (ids); a padrão fica por último. */
+  contasClaudeReordenar(ids: string[]): Promise<ContasClaudeView | null>;
+  contasClaudeRemover(id: string): Promise<ContasClaudeView | null>;
+  /** "Usar agora": tira a conta de `esgotada` antes da hora. */
+  contasClaudeUsarAgora(id: string): Promise<ContasClaudeView | null>;
+  /** Relê login, e-mail e uso da conta pela API. */
+  contasClaudeConferir(id: string): Promise<ContasClaudeView | null>;
+  contasClaudeLimiares(limiares: Partial<LimiaresClaude>): Promise<ContasClaudeView | null>;
+  /** `hermes auth add xai-oauth --type oauth --no-browser` (eventos em xai-login:event). */
+  xaiLogin(): Promise<void>;
+  xaiLoginCancel(): Promise<void>;
+  xaiLogout(): Promise<ClaudeAuthInfo | null>;
+  /**
+   * Login por SSH; o link vem em contas:evento (abrir no Navegador). `navegador` false = Cloudflare por código;
+   * `trocar` = entrar com outra conta (a página não cai na conta que o Navegador já tem).
+   */
+  contasEntrar(id: ContaId, navegador: boolean, trocar: boolean): Promise<void>;
+  contasCancelar(): Promise<void>;
+  contasSair(id: ContaId): Promise<ContaEstado[] | null>;
+}
+export interface MeuBotAdminApi {
+  /** meu-bot-admin: nomes dos MVPs registrados (botões "＋ produto" da licença); criar e editar ficam no seletor. */
+  adminProdutos(): Promise<ProdutoMvp[]>;
+  /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
+  adminHealth(): Promise<AdminHealth>;
+  /** meu-bot-admin: a aba Auditoria aparece (só o super admin). */
+  adminAuditoriaVisivel(): Promise<boolean>;
+  /** Registro de auditoria da máquina desta janela (central conferida com a cópia da máquina). */
+  adminAuditoria(): Promise<AuditoriaVisao>;
+  /** Salva a prova (JSON com os hashes + CSV legível); null = cancelou. */
+  adminAuditoriaExportar(): Promise<{ path: string } | null>;
+  /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */
+  adminBackupListar(todos?: boolean): Promise<{ backups: BackupIndiceView[]; podeRestaurar: boolean; podeCriar: boolean }>;
+  adminBackupCriar(): Promise<BackupIndiceView>;
+  adminBackupConferir(arquivo: string, substituir: boolean): Promise<BackupRestauracao>;
+  adminBackupRestaurar(arquivo: string, substituir: boolean): Promise<{ log: string[] }>;
+  adminBackupWhatsapp(arquivo: string, antigaDesligada: boolean): Promise<{ log: string[] }>;
+  adminLogs(): Promise<string>;
+  adminAction(action: AdminAction): Promise<{ ok: boolean; detail: string }>;
+  /** Conversas dela com o meu-bot (transcrições do Claude Code na máquina), só leitura. */
+  adminBotChats(): Promise<BotChat[]>;
+  adminBotThread(sessionId: string): Promise<BotMessage[]>;
+  /** Apaga na máquina dela a transcrição de uma conversa com o meu-bot (travou, ficou lixo); fica no registro. */
+  adminBotDelete(sessionId: string): Promise<void>;
+  /** Menu "…" de uma conversa dela com o meu-bot no espelho. */
+  showBotMenu(sessionId: string): Promise<BotMenuAction | null>;
+  /** meu-bot-admin: muda a licença da pessoa (plano, status, validade, limite); grava licenca.json por SSH. */
+  setLicense(patch: LicensePatch): Promise<LicenseView>;
+  /** meu-bot-admin: libera um device pendente (sobe o limite se preciso e marca o device como ativo). */
+  approveDevice(deviceId: string): Promise<LicenseView>;
+  /** meu-bot-admin: revoga um device (tira do registro); ele volta no próximo hello se couber no limite. */
+  removeDevice(deviceId: string): Promise<LicenseView>;
+}
+
+/** O que o renderer vê em `window.meuBot`: os três grupos juntos (o main recusa o que não é da variante). */
+export type MeuBotApi = MeuBotSharedApi & MeuBotClientApi & MeuBotAdminApi;

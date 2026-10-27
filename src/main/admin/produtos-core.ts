@@ -87,7 +87,7 @@ export function checklist(p: ProdutoMvp): string[] {
     p.pitch === "" ? "Escrever o pitch em uma frase (o que a pessoa ganha)" : "",
     p.publico === "" ? "Dizer para quem é (o público)" : "",
     p.modulos.crm && p.pipeline.etapas.length === 0 ? "Definir as etapas do pipeline modelo" : "",
-    `Adicionar "${variant}" em AppVariant (src/shared/ipc.ts) e a linha em PRODUTOS (src/main/app/variant-core.ts), com addon e abreEm`,
+    `Adicionar "${variant}" em AppVariant (src/shared/ipc/app.ts) e a linha em PRODUTOS (src/main/app/variant-core.ts), com addon e abreEm`,
     `Registrar o add-on ${p.nome} em ADDONS (src/main/app/variant-core.ts) e em backend-colima/licenca.js`,
     `Desenhar assets/icon-${variant}.svg e rodar npm run icons`,
     p.modulos.crm ? "Templates do pipeline em produtos/" + p.nome + "/ (etapas e campos iniciais)" : "",

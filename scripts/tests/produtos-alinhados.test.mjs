@@ -53,8 +53,8 @@ test("a janela recebe o catálogo: caps leva addon, abreEm e os rótulos dos add
   }
 });
 
-test("tipo AppVariant (src/shared/ipc.ts) tem exatamente os produtos da tabela", () => {
-  const m = /export type AppVariant = ([^;]+);/.exec(fonte("src/shared/ipc.ts"));
+test("tipo AppVariant (src/shared/ipc/app.ts) tem exatamente os produtos da tabela", () => {
+  const m = /export type AppVariant = ([^;]+);/.exec(fonte("src/shared/ipc/app.ts"));
   assert.ok(m, "AppVariant não encontrado");
   const tipo = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).sort();
   assert.deepEqual(tipo, PRODUTOS.map((p) => p.variant).sort());

@@ -1,0 +1,56 @@
+/** Contrato IPC · Licença da máquina (plano, add-ons, devices). Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
+
+/**
+ * Licença da conta (a máquina da pessoa): plano, status, validade e limite de devices. Mora em licenca.json na
+ * máquina; o admin é o dono e grava por SSH. Mesmo esquema do backend-colima/licenca.js e do src/main/licenca.ts.
+ */
+/** Planos da licença: free (a base) e pro (Navegador e CRM). Módulos pagos à parte (meu-bot-finance…) são add-ons em `produtos`. */
+export type PlanName = "free" | "pro";
+export interface License {
+  plan: PlanName;
+  status: "free" | "trialing" | "active" | "expired";
+  /** Ciclo de cobrança; null (ex.: em trial) vira "-" na tela. */
+  interval: "month" | "year" | null;
+  /** "Membro desde" (ISO), carimbado na 1ª vez. */
+  memberSince: string;
+  trialEnd: string | null;
+  expiresAt: string | null;
+  deviceLimit: number;
+  /** Produtos contratados por cima do plano, acumulativos (meu-bot-crm, meu-bot-fit…); vazio = só o plano. */
+  produtos: string[];
+  updatedAt: string;
+  updatedBy: "admin" | "system";
+}
+/** Um device registrado na conta (uma entrada do maquinas.json). Pendente = a pessoa "levantou a mão". */
+export interface LicenseDevice {
+  id: string;
+  name: string;
+  user: string;
+  platform: string;
+  app: string;
+  firstSeen: string;
+  lastSeen: string;
+  status: "active" | "pending";
+  requestedAt: string | null;
+  /** Apps que já se apresentaram deste device (meu-bot, meu-bot-crm…), com versão e último visto; vazio em registro antigo. */
+  apps: Record<string, { version: string; lastSeen: string }>;
+}
+/** Licença + devices de uma conta, como o app da pessoa e o admin veem. */
+export interface LicenseView {
+  license: License;
+  devices: LicenseDevice[];
+  activeCount: number;
+  pendingCount: number;
+  deviceLimit: number;
+}
+/** O que o admin pode mudar na licença de uma pessoa (campos omitidos ficam como estão). */
+export interface LicensePatch {
+  plan?: PlanName;
+  status?: "free" | "trialing" | "active" | "expired";
+  interval?: "month" | "year" | null;
+  trialEnd?: string | null;
+  expiresAt?: string | null;
+  deviceLimit?: number;
+  /** A lista inteira de produtos contratados (substitui a atual). */
+  produtos?: string[];
+}
