@@ -43,7 +43,7 @@ test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o Wha
   ];
   for (const c of writes) assert.ok(client.has(c), `${c} devia ser só do cliente`);
   assert.ok(shared.has("picker:use-port"), "a porta por máquina é configuração deste Mac: o admin também ajusta");
-  assert.deepEqual([...admin].sort(), ["admin:action", "admin:backup-conferir", "admin:backup-criar", "admin:backup-listar", "admin:backup-restaurar", "admin:backup-whatsapp", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:license-approve", "admin:license-revoke", "admin:license-set", "admin:logs", "admin:produtos-list", "picker:auditoria-exportar", "picker:auditoria-maquinas", "picker:auditoria-registro", "picker:produtos-export", "picker:produtos-list", "picker:produtos-remove", "picker:produtos-save", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename", "ui:bot-menu"]);
+  assert.deepEqual([...admin].sort(), ["admin:action", "admin:auditoria", "admin:auditoria-exportar", "admin:auditoria-visivel", "admin:backup-conferir", "admin:backup-criar", "admin:backup-listar", "admin:backup-restaurar", "admin:backup-whatsapp", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:license-approve", "admin:license-revoke", "admin:license-set", "admin:logs", "admin:produtos-list", "picker:produtos-export", "picker:produtos-list", "picker:produtos-remove", "picker:produtos-save", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename", "ui:bot-menu"]);
   assert.match(ADMIN_READONLY_MSG, /só lê/);
 });
 

@@ -1,27 +1,31 @@
 /**
- * Variante: admin (só o super admin). Auditoria no seletor: as máquinas da central e, para cada uma, a história
- * (quem fez o quê, entregue por quem), o selo da corrente (central e máquina), as linhas que sumiram da máquina e
- * a exportação da prova. Fábrica com dependências explícitas, como produtos-page.ts.
+ * Variante: admin (só o super admin). Aba "Auditoria" da janela de uma pessoa, abaixo de Suporte na lateral: a
+ * história da máquina desta janela (quem fez o quê, entregue por quem), o selo da corrente (central e máquina), as
+ * linhas que sumiram da máquina e a exportação da prova. O main acha a máquina pela janela; a tela não escolhe.
+ * Fábrica com dependências explícitas, como suporte-page.ts.
  */
-import type { AuditoriaMaquinaView, AuditoriaVisao, PickerApi } from "../../shared/ipc";
+import type { AuditoriaVisao, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando as espera } from "../lib/carregando.js";
+import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
-export interface AuditoriaViewDeps {
-  container: HTMLElement;
-  api: Pick<PickerApi, "auditoriaMaquinas" | "auditoriaRegistro" | "auditoriaExportar">;
+export interface AuditoriaPageDeps {
+  /** Nome da pessoa (ou o alias da máquina) para o título da aba. */
+  who: string;
+  panelsEl: HTMLElement;
+  definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
+  openPage(page: PageTab): void;
+  api: Pick<MeuBotApi, "adminAuditoria" | "adminAuditoriaExportar">;
 }
 const TIPOS: Record<string, string> = { dono: "dono", admin: "admin", agente: "agente", sistema: "sistema", legado: "antigo" };
 const quando = (iso: string): string => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
-export function mountAuditoriaView(deps: AuditoriaViewDeps): { refresh: () => Promise<void> } {
-  const box = deps.container;
-  let maquinas: AuditoriaMaquinaView[] = [];
-  let erro: string | null = null;
-  let aberta: string | null = null;
+export function mountAuditoriaPage(deps: AuditoriaPageDeps): { open: () => void } {
+  let page: PageTab | null = null;
   let visao: AuditoriaVisao | null = null;
-  let carregando = false;
+  let erro: string | null = null;
+  let lendo = false;
   let filtroTipo = "";
   let filtroTexto = "";
   let msg = "";
@@ -35,39 +39,21 @@ export function mountAuditoriaView(deps: AuditoriaViewDeps): { refresh: () => Pr
     return s;
   };
 
-  const desenhar = (): void => {
-    box.replaceChildren();
-    box.append(el("p", "hint", "Tudo o que o dono, cada admin, o agente e o sistema fizeram em cada máquina. A cópia central só aceita linhas novas: ninguém apaga nem edita por SSH."));
-    if (erro !== null) { box.append(el("p", "hint guide-pair-note", `Central de auditoria: ${erro}`)); return; }
-    if (maquinas.length === 0) { box.append(carregando ? espera("Lendo a central…") : el("p", "hint", "Nenhuma máquina com registro ainda.")); return; }
-    const ul = el("ul", "auditoria-maquinas");
-    for (const m of maquinas) {
-      const li = el("li", `auditoria-maquina${aberta === m.maquina ? " aberta" : ""}`);
-      const b = el("button", "linkish", `${m.nome ?? `máquina ${m.maquina}`}`); b.type = "button";
-      b.addEventListener("click", () => { void abrir(m.maquina); });
-      li.append(b, el("span", "hint", ` · ${m.registros} registro(s)${m.ultimo !== "" ? ` · último ${quando(m.ultimo)}` : ""}${m.on ? "" : " · suporte desligado"}`));
-      ul.append(li);
-      if (aberta === m.maquina) li.append(detalhe());
-    }
-    box.append(ul);
-  };
-
-  const detalhe = (): HTMLElement => {
-    const d = el("div", "auditoria-detalhe");
-    if (visao === null) { d.append(espera("Lendo o registro…")); return d; }
-    const v = visao;
-    d.append(selo(v));
+  const registro = (v: AuditoriaVisao, box: HTMLElement): void => {
+    box.append(selo(v));
     const barra = el("div", "auditoria-barra");
     const tipo = el("select") as HTMLSelectElement;
     for (const [id, label] of [["", "todos"], ["dono", "dono"], ["admin", "admins"], ["agente", "agente"], ["sistema", "sistema"], ["legado", "antigos"]]) { const o = el("option", "", label) as HTMLOptionElement; o.value = id!; o.selected = filtroTipo === id; tipo.append(o); }
-    tipo.addEventListener("change", () => { filtroTipo = tipo.value; desenhar(); });
+    tipo.addEventListener("change", () => { filtroTipo = tipo.value; render(); });
     const busca = el("input") as HTMLInputElement; busca.type = "search"; busca.placeholder = "filtrar (nome, número, ação…)"; busca.value = filtroTexto;
-    busca.addEventListener("input", () => { filtroTexto = busca.value; const pos = busca.selectionStart; desenhar(); const nova = box.querySelector<HTMLInputElement>(".auditoria-barra input[type=search]"); nova?.focus(); if (pos !== null) nova?.setSelectionRange(pos, pos); });
+    busca.addEventListener("input", () => { filtroTexto = busca.value; const pos = busca.selectionStart; render(); const nova = page?.panel.querySelector<HTMLInputElement>(".auditoria-barra input[type=search]"); nova?.focus(); if (pos !== null) nova?.setSelectionRange(pos, pos); });
+    const atualizar = el("button", "btn btn-ghost btn-small", "Atualizar"); atualizar.type = "button";
+    atualizar.addEventListener("click", () => { void ler(); });
     const exp = el("button", "btn btn-ghost btn-small", "Exportar prova"); exp.type = "button";
-    exp.addEventListener("click", () => { exp.disabled = true; void deps.api.auditoriaExportar(v.maquina).then((r) => { msg = r === null ? "" : `✓ salvo em ${r.path} (e o .csv ao lado)`; desenhar(); }).catch((e: unknown) => { msg = `✗ ${ipcErrorText(e)}`; desenhar(); }); });
-    barra.append(tipo, busca, exp);
-    d.append(barra);
-    if (msg !== "") d.append(el("p", "hint", msg));
+    exp.addEventListener("click", () => { exp.disabled = true; void deps.api.adminAuditoriaExportar().then((r) => { msg = r === null ? "" : `✓ salvo em ${r.path} (e o .csv ao lado)`; render(); }).catch((e: unknown) => { msg = `✗ ${ipcErrorText(e)}`; render(); }); });
+    barra.append(tipo, busca, atualizar, exp);
+    box.append(barra);
+    if (msg !== "") box.append(el("p", "hint", msg));
     const q = filtroTexto.trim().toLowerCase();
     const linhas = v.linhas.filter((l) => (filtroTipo === "" || l.quemTipo === filtroTipo) && (q === "" || `${l.quemNome} ${l.texto} ${l.detalhe} ${l.acao} ${l.via}`.toLowerCase().includes(q)));
     const t = el("table", "auditoria-tabela");
@@ -79,23 +65,40 @@ export function mountAuditoriaView(deps: AuditoriaViewDeps): { refresh: () => Pr
       tr.append(el("td", "", quando(l.em)), el("td", "", `${l.quemNome || "—"} (${TIPOS[l.quemTipo] ?? l.quemTipo})`), o, el("td", "hint", `${l.via} · ${quando(l.recebidoEm)}`), el("td", "", l.naMaquina === null ? "—" : l.naMaquina ? "✓" : "apagada"));
       t.append(tr);
     }
-    d.append(linhas.length === 0 ? el("p", "hint", "Nada com esse filtro.") : t);
-    return d;
+    box.append(v.linhas.length === 0 ? el("p", "hint", "Nenhum registro desta máquina na central ainda.") : linhas.length === 0 ? el("p", "hint", "Nada com esse filtro.") : t);
   };
 
-  const abrir = async (maquina: string): Promise<void> => {
-    if (aberta === maquina) { aberta = null; visao = null; desenhar(); return; }
-    aberta = maquina; visao = null; msg = ""; desenhar();
-    try { const v = await deps.api.auditoriaRegistro(maquina); if (aberta === maquina) visao = v; }
-    catch (e) { if (aberta === maquina) { aberta = null; erro = ipcErrorText(e); } }
-    desenhar();
-  };
+  function render(): void {
+    if (page === null) return;
+    const panel = page.panel;
+    panel.replaceChildren();
+    const head = el("div", "guide-head");
+    const body = el("div", "tut-body");
+    body.append(el("span", "tut-badge", "auditoria · cópia central"), el("h2", "", deps.who), el("p", "", "Tudo o que o dono, cada admin, o agente e o sistema fizeram nesta máquina. A cópia central só aceita linhas novas: ninguém apaga nem edita por SSH."));
+    head.append(body);
+    panel.append(head);
+    const box = el("div", "auditoria-detalhe");
+    if (erro !== null) box.append(el("p", "hint guide-pair-note", `Central de auditoria: ${erro}`));
+    if (visao !== null) registro(visao, box);
+    else if (lendo) box.append(espera("Lendo o registro…"));
+    panel.append(box);
+  }
 
-  const refresh = async (): Promise<void> => {
-    carregando = true; desenhar();
-    try { const r = await deps.api.auditoriaMaquinas(); maquinas = r.maquinas; erro = r.erro; }
-    catch (e) { erro = ipcErrorText(e); }
-    carregando = false; desenhar();
+  async function ler(): Promise<void> {
+    lendo = true; erro = null; msg = ""; render();
+    try { visao = await deps.api.adminAuditoria(); } catch (e) { erro = ipcErrorText(e); }
+    lendo = false; render();
+  }
+
+  return {
+    open: () => {
+      if (page === null) {
+        const panel = el("section", "acervo-panel admin-panel"); panel.hidden = true;
+        deps.panelsEl.append(panel);
+        page = deps.definePage("auditoria", `Auditoria · ${deps.who}`, panel, render);
+        void ler();
+      }
+      deps.openPage(page);
+    },
   };
-  return { refresh };
 }

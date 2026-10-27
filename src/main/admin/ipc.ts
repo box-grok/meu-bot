@@ -11,6 +11,7 @@ import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth
 import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
+import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -24,6 +25,10 @@ export function registerAdminIpc(): void {
   // Produtos (MVPs de bots verticais): registro local do admin, em qualquer janela do meu-bot-admin.
   handleAdmin("admin:produtos-list", () => listProdutos());
   handleAdmin("admin:health", (event) => adminHealth(adminHost(event)));
+  // Auditoria (só o super admin): o registro da máquina desta janela, na aba própria abaixo de Suporte.
+  handleAdmin("admin:auditoria-visivel", () => auditoriaVisivel());
+  handleAdmin("admin:auditoria", (event) => auditoriaDaJanela(adminHost(event)));
+  handleAdmin("admin:auditoria-exportar", (event) => auditoriaExportarDaJanela(adminHost(event)));
   // Backup e mudança de máquina (backup-admin.ts): o progresso vai para a janela que pediu.
   const arq = (payload: unknown): string => { const a = String((payload as { arquivo?: unknown } | null)?.arquivo ?? ""); if (!/^[a-z0-9-]+\.mbbak$/.test(a)) throw new Error("backup inválido"); return a; };
   const subst = (payload: unknown): boolean => (payload as { substituir?: unknown } | null)?.substituir === true;

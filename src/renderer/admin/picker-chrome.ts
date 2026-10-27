@@ -8,13 +8,12 @@ import { el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { EMPTY_PEOPLE_TEXT, MISSING_ADMIN_KEY_TEXT } from "../lib/admin-view.js";
 import { mountProdutosView } from "./produtos-page.js";
-import { mountAuditoriaView } from "./auditoria-page.js";
 
 export interface AdminPickerChromeDeps {
   listEl: HTMLElement;
   filterEl: HTMLInputElement;
   noteEl: HTMLElement;
-  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtos" | "produtoSave" | "produtoRemove" | "produtoExport" | "auditoriaMaquinas" | "auditoriaRegistro" | "auditoriaExportar">;
+  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtos" | "produtoSave" | "produtoRemove" | "produtoExport">;
   /** Interruptor "arquivadas": mostrar ou não as pessoas arquivadas na lista. */
   setShowArchived(show: boolean): void;
   /** Redesenha o seletor com um payload novo, mantendo a seleção se der. */
@@ -87,15 +86,8 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       const prodView = mountProdutosView({ container: prodBox, api: { listar: () => deps.api.produtos(), salvar: (p) => deps.api.produtoSave(p), remover: (n) => deps.api.produtoRemove(n), exportar: (n) => deps.api.produtoExport(n) }, fixos: true });
       let prodLoaded = false;
       prodBtn.addEventListener("click", () => { prodBox.hidden = !prodBox.hidden; if (!prodBox.hidden) { form.hidden = true; if (!prodLoaded) { prodLoaded = true; void prodView.refresh().then(() => { if (prodBox.querySelectorAll(".admin-card").length <= 1) prodView.novo(); }); } } });
-      // Auditoria: só no app do super admin (o botão aparece quando a central confirma).
-      const audBtn = el("button", "btn btn-ghost btn-small", "🛡 Auditoria"); audBtn.type = "button"; audBtn.hidden = true;
-      audBtn.title = "O que o dono, cada admin, o agente e o sistema fizeram em cada máquina (cópia central, à prova de edição)";
-      const audBox = el("div", "add-form auditoria-box"); audBox.hidden = true;
-      const audView = mountAuditoriaView({ container: audBox, api: deps.api });
-      audBtn.addEventListener("click", () => { audBox.hidden = !audBox.hidden; if (!audBox.hidden) { form.hidden = true; prodBox.hidden = true; void audView.refresh(); } });
-      void deps.api.auditoriaMaquinas().then((r) => { audBtn.hidden = !r.superAdmin; }).catch(() => { /* sem central: sem botão */ });
-      const row = el("div", "add-actions"); row.append(open, refreshBtn, prodBtn, audBtn);
-      addBox.append(row, form, msg, prodBox, audBox, archivedSwitch);
+      const row = el("div", "add-actions"); row.append(open, refreshBtn, prodBtn);
+      addBox.append(row, form, msg, prodBox, archivedSwitch);
       deps.listEl.after(addBox);
     },
     refreshPeopleOnce: () => {

@@ -2241,12 +2241,15 @@ detalhe, prev, hash }`.
 
 **Telas**
 - **Pessoa:** Configurações › Suporte mostra "O que o suporte fez nesta máquina" e o botão "ver tudo" (50 últimas).
-- **Super admin:** "🛡 Auditoria" no seletor do meu-bot-admin. Mostra:
-  - as máquinas da central;
-  - a história de cada uma, com filtros por tipo e texto;
+- **Super admin:** "🛡 Auditoria" na lateral da janela de cada pessoa, logo abaixo de Suporte, abre a aba
+  "Auditoria · <pessoa>" (`src/renderer/admin/auditoria-page.ts`). Mostra:
+  - a história da máquina desta janela, com filtros por tipo e texto;
   - os selos "central íntegra" e "cópia da máquina íntegra", e as linhas "apagadas da máquina";
   - **Exportar prova**: JSON com os hashes e um CSV legível.
-- Os outros admins não veem o botão, e a central recusa a leitura deles.
+  O main acha a máquina pelo alias da janela (`pessoasPorMaquina`); canais `admin:auditoria-visivel|auditoria|
+  auditoria-exportar`. Até 26 out ficava no seletor, com a lista das máquinas da central; saiu para limpar a
+  primeira tela (o `maquinas` da central continua, sem uso no app).
+- Os outros admins não veem a linha, e a central recusa a leitura deles.
 
 ## Canal staging (20 out), como VS Code e VS Code Insiders
 

@@ -17,7 +17,6 @@ import type { LicensePatch, LicenseView } from "../../shared/ipc";
 export interface SuportePageDeps {
   /** A máquina da janela e, se conhecido, o nome da pessoa. */
   who: { host: string; person: string | null; machine: string | null };
-  /** Versão deste app (a do admin), para comparar com a do meu-bot dela. */
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;

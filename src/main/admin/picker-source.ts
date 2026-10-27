@@ -10,7 +10,6 @@ import { isSupportAlias } from "../suporte/support-code";
 import { windowForHost } from "../app/windows";
 import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
 import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
-import { auditoriaExportar, auditoriaMaquinas, auditoriaRegistro } from "./auditoria-admin";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin · escolher pessoa",
@@ -22,10 +21,6 @@ export const adminPickerSource: PickerSource = {
     handleAdmin("picker:produtos-save", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return saveProduto((payload as { patch?: unknown } | null)?.patch); });
     handleAdmin("picker:produtos-remove", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return removeProduto((payload as { nome?: unknown } | null)?.nome); });
     handleAdmin("picker:produtos-export", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return exportProduto((payload as { nome?: unknown } | null)?.nome); });
-    // Auditoria (super admin): central de auditoria, conferida com a cópia de cada máquina.
-    handleAdmin("picker:auditoria-maquinas", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return auditoriaMaquinas(); });
-    handleAdmin("picker:auditoria-registro", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return auditoriaRegistro(String((payload as { maquina?: unknown } | null)?.maquina ?? "")); });
-    handleAdmin("picker:auditoria-exportar", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return auditoriaExportar(String((payload as { maquina?: unknown } | null)?.maquina ?? "")); });
     handleAdmin("picker:support-refresh", async (event) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       return supportPeople();

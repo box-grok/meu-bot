@@ -6,29 +6,25 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app, dialog } from "electron";
-import type { AuditoriaLinhaView, AuditoriaMaquinaView, AuditoriaVisao } from "../../shared/ipc";
-import { centralMaquinas, centralRegistro, entregar, lerRegistroBruto } from "../auditoria/auditoria";
+import type { AuditoriaLinhaView, AuditoriaVisao } from "../../shared/ipc";
+import { centralRegistro, entregar, lerRegistroBruto } from "../auditoria/auditoria";
 import { conferir, textoDaLinha, type AuditoriaCentral } from "../auditoria/auditoria-core";
 import { isSuperAdmin, pessoasPorMaquina } from "./support-admin";
 
-export async function auditoriaMaquinas(): Promise<{ superAdmin: boolean; maquinas: AuditoriaMaquinaView[]; erro: string | null }> {
-  if (!isSuperAdmin()) return { superAdmin: false, maquinas: [], erro: null };
-  const pessoas = pessoasPorMaquina();
-  try {
-    const lista = await centralMaquinas();
-    const vistas = new Set(lista.map((m) => m.maquina));
-    const maquinas: AuditoriaMaquinaView[] = lista.map((m) => { const p = pessoas.get(m.maquina); return { ...m, nome: p?.nome ?? null, alias: p?.alias ?? null, on: p?.on === true }; });
-    // Pessoas com suporte que ainda não entregaram nada também aparecem (abrir uma entrega o registro delas).
-    for (const [id, p] of pessoas) if (!vistas.has(id) && p.on) maquinas.push({ maquina: id, nome: p.nome, alias: p.alias, on: true, registros: 0, ultimo: "" });
-    return { superAdmin: true, maquinas: maquinas.sort((a, b) => b.ultimo.localeCompare(a.ultimo)), erro: null };
-  } catch (e) {
-    return { superAdmin: true, maquinas: [], erro: e instanceof Error ? e.message : String(e) };
-  }
+/** Auditoria na janela de uma pessoa: só o super admin vê a linha e a aba. */
+export const auditoriaVisivel = (): boolean => isSuperAdmin();
+
+/** A máquina (id na central) da janela de suporte `alias`; o id vem das pessoas do admin, nunca da tela. */
+function maquinaDaJanela(alias: string): string {
+  for (const [id, p] of pessoasPorMaquina()) if (p.alias === alias) return id;
+  throw new Error("esta janela não é de uma pessoa conhecida do suporte");
 }
+export const auditoriaDaJanela = (alias: string): Promise<AuditoriaVisao> => auditoriaRegistro(maquinaDaJanela(alias));
+export const auditoriaExportarDaJanela = (alias: string): Promise<{ path: string } | null> => auditoriaExportar(maquinaDaJanela(alias));
 
 const viaTexto = (r: AuditoriaCentral): string => (r.via.papel === "maquina" ? "app da pessoa" : `${r.via.papel === "super" ? "super admin" : "admin"} ${r.via.nome}`);
 
-export async function auditoriaRegistro(maquina: string): Promise<AuditoriaVisao> {
+async function auditoriaRegistro(maquina: string): Promise<AuditoriaVisao> {
   if (!isSuperAdmin()) throw new Error("só o super admin vê a auditoria");
   const p = pessoasPorMaquina().get(maquina) ?? null;
   // Suporte ligado: o que a máquina gravou e ainda não chegou vai agora, e a cópia dela entra na conferência.
@@ -54,7 +50,7 @@ export async function auditoriaRegistro(maquina: string): Promise<AuditoriaVisao
 
 const csv = (v: string): string => `"${v.replace(/"/g, '""')}"`;
 /** Prova para guardar ou entregar: o JSON da central (com os hashes, para reconferir) e um CSV legível ao lado. */
-export async function auditoriaExportar(maquina: string): Promise<{ path: string } | null> {
+async function auditoriaExportar(maquina: string): Promise<{ path: string } | null> {
   if (!isSuperAdmin()) throw new Error("só o super admin exporta a auditoria");
   const v = await auditoriaRegistro(maquina);
   const central = await centralRegistro(maquina);

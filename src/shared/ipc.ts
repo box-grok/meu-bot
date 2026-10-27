@@ -898,16 +898,9 @@ export interface PickerAdminApi {
   produtoSave(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
   produtoRemove(nome: string): Promise<ProdutoMvp[]>;
   produtoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
-  /** Auditoria (só no app do super admin; `superAdmin: false` nos outros). */
-  auditoriaMaquinas(): Promise<{ superAdmin: boolean; maquinas: AuditoriaMaquinaView[]; erro: string | null }>;
-  auditoriaRegistro(maquina: string): Promise<AuditoriaVisao>;
-  /** Salva a prova (JSON com os hashes + CSV legível); null = cancelou. */
-  auditoriaExportar(maquina: string): Promise<{ path: string } | null>;
 }
 
 /** O que o renderer vê em `window.picker`: os três grupos juntos (o main recusa o que não é da variante). */
-/** Auditoria (super admin): uma máquina na central, com quem é (pelas pessoas conhecidas do admin). */
-export interface AuditoriaMaquinaView { maquina: string; nome: string | null; alias: string | null; on: boolean; registros: number; ultimo: string }
 /** Uma ação no registro central de uma máquina, já com o texto da tela. */
 export interface AuditoriaLinhaView {
   em: string; quemTipo: string; quemNome: string; app: string; acao: string; texto: string; detalhe: string;
@@ -1435,6 +1428,12 @@ export interface MeuBotAdminApi {
   adminProdutos(): Promise<ProdutoMvp[]>;
   /** meu-bot-admin: saúde, registros e ações na máquina da pessoa desta janela. */
   adminHealth(): Promise<AdminHealth>;
+  /** meu-bot-admin: a aba Auditoria aparece (só o super admin). */
+  adminAuditoriaVisivel(): Promise<boolean>;
+  /** Registro de auditoria da máquina desta janela (central conferida com a cópia da máquina). */
+  adminAuditoria(): Promise<AuditoriaVisao>;
+  /** Salva a prova (JSON com os hashes + CSV legível); null = cancelou. */
+  adminAuditoriaExportar(): Promise<{ path: string } | null>;
   /** Backup completo e mudança de máquina (a desta janela). Restaurar e trocar o WhatsApp: só o super admin. */
   adminBackupListar(todos?: boolean): Promise<{ backups: BackupIndiceView[]; podeRestaurar: boolean; podeCriar: boolean }>;
   adminBackupCriar(): Promise<BackupIndiceView>;

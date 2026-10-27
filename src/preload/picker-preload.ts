@@ -55,9 +55,6 @@ const adminApi: PickerAdminApi = {
   produtoSave: (patch: ProdutoMvpPatch) => ipcRenderer.invoke("picker:produtos-save", { patch }),
   produtoRemove: (nome: string) => ipcRenderer.invoke("picker:produtos-remove", { nome }),
   produtoExport: (nome: string) => ipcRenderer.invoke("picker:produtos-export", { nome }),
-  auditoriaMaquinas: () => ipcRenderer.invoke("picker:auditoria-maquinas", {}),
-  auditoriaRegistro: (maquina: string) => ipcRenderer.invoke("picker:auditoria-registro", { maquina }),
-  auditoriaExportar: (maquina: string) => ipcRenderer.invoke("picker:auditoria-exportar", { maquina }),
 };
 
 const api: PickerApi = { ...sharedApi, ...clientApi, ...adminApi };

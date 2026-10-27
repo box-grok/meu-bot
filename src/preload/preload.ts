@@ -254,6 +254,9 @@ const adminApi: MeuBotAdminApi = {
   approveDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-approve", { deviceId }),
   removeDevice: (deviceId: string) => ipcRenderer.invoke("admin:license-revoke", { deviceId }),
   adminProdutos: () => ipcRenderer.invoke("admin:produtos-list", {}),
+  adminAuditoriaVisivel: () => ipcRenderer.invoke("admin:auditoria-visivel", {}),
+  adminAuditoria: () => ipcRenderer.invoke("admin:auditoria", {}),
+  adminAuditoriaExportar: () => ipcRenderer.invoke("admin:auditoria-exportar", {}),
 };
 
 const api: MeuBotApi = { ...sharedApi, ...clientApi, ...adminApi };

@@ -66,10 +66,6 @@ body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
 .add-form textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 12px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; resize: vertical; }
 
 /* Auditoria (meu-bot-admin do super admin, no seletor) */
-.auditoria-box { max-height: 70vh; overflow: auto; }
-.auditoria-maquinas { list-style: none; margin: 6px 0; padding: 0; }
-.auditoria-maquina { padding: 4px 0; border-top: 1px solid rgba(127,127,127,.15); }
-.auditoria-maquina .linkish { background: none; border: 0; padding: 0; color: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
 .auditoria-detalhe { margin: 6px 0 10px; }
 .auditoria-selos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
 .auditoria-selo { font-size: 12px; padding: 2px 8px; border-radius: 10px; background: rgba(127,127,127,.12); }

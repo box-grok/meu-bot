@@ -106,13 +106,7 @@ export async function lerRegistroBruto(host: string): Promise<Record<string, unk
   return parseLinhas(r.stdout).map((x) => x.bruto);
 }
 
-/** Super admin: máquinas na central e o registro central de uma. */
-export async function centralMaquinas(): Promise<{ maquina: string; registros: number; ultimo: string }[]> {
-  const ssh = adminAuditoriaSsh();
-  if (ssh === null) throw new Error("este meu-bot-admin não tem acesso à central de auditoria");
-  const out = await sshComEntrada([...ssh, "maquinas"], "");
-  return out.split("\n").filter((l) => l.startsWith("{")).map((l) => JSON.parse(l) as { maquina: string; registros: number; ultimo: string });
-}
+/** Super admin: o registro central de uma máquina. */
 export async function centralRegistro(maquina: string): Promise<{ registro: AuditoriaCentral; bruto: Record<string, unknown> }[]> {
   if (!/^[0-9a-f]{12}$/.test(maquina)) throw new Error("máquina inválida");
   const ssh = adminAuditoriaSsh();

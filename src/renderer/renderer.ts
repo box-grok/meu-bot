@@ -4,6 +4,7 @@ import { byId as $, el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
 import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
+import { mountAuditoriaPage } from "./admin/auditoria-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -1959,6 +1960,11 @@ void (async () => {
     suportePage.open();
     // A aba Suporte pode ser fechada no ×: a lateral a reabre. Produtos (MVPs) ficam no seletor.
     $<HTMLButtonElement>("suporte-line").addEventListener("click", () => suportePage.open());
+    // Auditoria (só o super admin): aba própria logo abaixo de Suporte, com o registro desta máquina.
+    const auditoriaLine = $<HTMLButtonElement>("auditoria-line");
+    const auditoriaPage = mountAuditoriaPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
+    auditoriaLine.addEventListener("click", () => auditoriaPage.open());
+    void window.meuBot.adminAuditoriaVisivel().then((v) => { auditoriaLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
     adminBotMirror = mountBotMirror({ panelsEl, definePage, openPage, closePage, armConfirm, activePage: () => pageActive, api: window.meuBot, onListChanged: () => renderSidebar(), machine: () => hostLabel(windowHost), copyReference, cache: { read: cacheRead, write: cacheWrite, drop: cacheDrop } });
     renderSidebar();
     tabsReady = true;
