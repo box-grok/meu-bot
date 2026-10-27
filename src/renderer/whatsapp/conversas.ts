@@ -206,7 +206,8 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
   }
 }
 /**
- * "Limpar histórico" confirmado na própria lista, logo abaixo do contato (nada de caixa por cima).
+ * "Limpar histórico": limpa direto; a caixa abaixo do contato mostra o andamento e só pede escolha quando a conversa
+ * está na sessão principal do agente ou quando guardar no CRM falhou.
  * Sobrevive às atualizações da lista porque o estado fica aqui, não no DOM.
  */
 type WaClear = {
@@ -228,9 +229,12 @@ async function startWaClear(number: string): Promise<void> {
   try {
     const plan = await window.meuBot.whatsappClearPlan(number);
     if (waClear?.number !== number) return;
+    // "Limpar" limpa direto (27 out), como o dos grupos. A confirmação fica só quando a conversa está na sessão
+    // principal do agente: aí limpar zera os outros contatos juntos, e isso não é o que o clique pediu.
+    if (plan.own + plan.shared > 0 && plan.shared === 0) { void runWaClear({ number, phase: "confirm", shared: false, empty: false, err: null }); return; }
     waClear = plan.own + plan.shared === 0
       ? { number, phase: "confirm", shared: false, empty: true, err: "Não há histórico desta conversa na máquina." }
-      : { number, phase: "confirm", shared: plan.shared > 0, empty: false, err: null };
+      : { number, phase: "confirm", shared: true, empty: false, err: null };
   } catch (err) {
     if (waClear?.number !== number) return;
     waClear = { number, phase: "confirm", shared: false, empty: false, err: ipcErrorText(err) };
@@ -335,34 +339,24 @@ export const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este 
 /**
  * Seleção em massa na lista do WhatsApp ("Selecionar"): marca várias conversas e exclui ou limpa de uma vez.
  * Excluir é só tirar da lista (o agente continua de onde parou); uma gravação só na máquina. Limpar histórico zera o
- * agente de cada uma, com confirmação; no meu-bot-crm guarda cada conversa no CRM antes, e a que não guardou não é
+ * agente de cada uma, direto; no meu-bot-crm guarda cada conversa no CRM antes, e a que não guardou não é
  * limpa. Uma linha de auditoria por contato nos dois casos.
  */
 let waSelecao: Set<string> | null = null;
-type WaLimpezaMassa = { fase: "confirmar" | "rodando" | "fim"; numeros: string[]; feito: number; limpas: number; puladas: { numero: string; motivo: string }[] };
+type WaLimpezaMassa = { fase: "rodando" | "fim"; numeros: string[]; feito: number; limpas: number; puladas: { numero: string; motivo: string }[] };
 let waLimpeza: WaLimpezaMassa | null = null;
 function waLimpezaBox(l: WaLimpezaMassa): HTMLElement {
   const box = el("div", "wa-clear");
   box.addEventListener("click", (ev) => ev.stopPropagation());
   const n = l.numeros.length;
   if (l.fase === "rodando") { box.append(el("span", "wa-clear-text", `${ctx.crmProprio() ? "Guardando no CRM e limpando" : "Limpando"} ${Math.min(l.feito + 1, n)} de ${n}…`)); return box; }
+  // Fim: quantas limparam e quais ficaram de fora (sessão principal do agente, ou não guardou no CRM).
   const acoes = el("div", "wa-clear-actions");
-  if (l.fase === "fim") {
-    box.append(el("strong", "", `${l.limpas} ${l.limpas === 1 ? "conversa limpa" : "conversas limpas"}${l.puladas.length > 0 ? ` · ${l.puladas.length} ${l.puladas.length === 1 ? "ficou" : "ficaram"} de fora` : ""}`));
-    for (const p of l.puladas) { const c = ctx.waChats.find((x) => x.number === p.numero); box.append(el("span", "wa-clear-err", `${c !== undefined ? waChatTitle(c) : ctx.fmtPhone(p.numero)}: ${p.motivo}`)); }
-    const ok = el("button", "btn", "OK"); ok.type = "button";
-    ok.addEventListener("click", () => { waLimpeza = null; ctx.renderSidebar(); });
-    acoes.append(ok); box.append(acoes);
-    return box;
-  }
-  box.append(el("strong", "", `Limpar o histórico de ${n} ${n === 1 ? "conversa" : "conversas"}?`));
-  box.append(el("span", "wa-clear-text", "O agente esquece o que conversou com cada contato e recomeça do zero. Conversas que estão na sessão principal do agente (mistura os contatos) ficam de fora: limpe essas uma por uma."));
-  if (ctx.crmProprio()) box.append(el("span", "wa-clear-text", "Antes, cada conversa vai para o histórico do contato no CRM (resumo + transcrição); a que não for guardada não é limpa."));
-  const cancel = el("button", "btn", "Cancelar"); cancel.type = "button";
-  cancel.addEventListener("click", () => { waLimpeza = null; ctx.renderSidebar(); });
-  const go = el("button", "btn btn-bad", `Limpar ${n}`); go.type = "button";
-  go.addEventListener("click", () => { void limparSelecionadas(l.numeros); });
-  acoes.append(cancel, go); box.append(acoes);
+  box.append(el("strong", "", `${l.limpas} ${l.limpas === 1 ? "conversa limpa" : "conversas limpas"}${l.puladas.length > 0 ? ` · ${l.puladas.length} ${l.puladas.length === 1 ? "ficou" : "ficaram"} de fora` : ""}`));
+  for (const p of l.puladas) { const c = ctx.waChats.find((x) => x.number === p.numero); box.append(el("span", "wa-clear-err", `${c !== undefined ? waChatTitle(c) : ctx.fmtPhone(p.numero)}: ${p.motivo}`)); }
+  const ok = el("button", "btn", "OK"); ok.type = "button";
+  ok.addEventListener("click", () => { waLimpeza = null; ctx.renderSidebar(); });
+  acoes.append(ok); box.append(acoes);
   return box;
 }
 /** Uma por vez (cada uma é um SSH com o gateway): plano → guardar no CRM (meu-bot-crm) → limpar. */
@@ -412,7 +406,8 @@ function waSelecaoBar(rows: readonly WhatsappChat[]): HTMLElement {
   del.addEventListener("click", () => { void excluirSelecionadas([...s]); });
   const limpar = el("button", "btn btn-bad btn-small", s.size === 0 ? "Limpar histórico" : `Limpar histórico ${s.size}`); limpar.type = "button"; limpar.disabled = s.size === 0;
   limpar.title = "O agente esquece o que conversou com cada uma e recomeça do zero (pede confirmação)";
-  limpar.addEventListener("click", () => { waLimpeza = { fase: "confirmar", numeros: [...s], feito: 0, limpas: 0, puladas: [] }; ctx.renderSidebar(); });
+  // Limpa direto, sem a caixa de confirmar (27 out); a que não guardar no CRM continua sem limpar.
+  limpar.addEventListener("click", () => { void limparSelecionadas([...s]); });
   const cancel = el("button", "btn btn-small", "Cancelar"); cancel.type = "button";
   cancel.addEventListener("click", () => { waSelecao = null; waLimpeza = null; ctx.renderSidebar(); });
   bar.append(tudo, del, limpar, cancel);
