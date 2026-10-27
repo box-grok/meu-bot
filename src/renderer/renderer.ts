@@ -39,7 +39,7 @@ import { ctx } from "./app/ctx.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
 import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
 import { TUT_ICONS, TUT_VISIVEIS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
-import { chooseReply, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
+import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAgentChoice, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
 import { cacheDrop, cacheRead, cacheWrite, getListMode, ligarConversas, paintArquivadas, paintListMode, paintWaSidebar, setListMode, waChatTitle } from "./whatsapp/conversas.js";
 import { TUT_GRUPOS, loadGrupoAlvo, refreshWaGroups, renderGruposEscolher, renderGruposModo, renderGruposQuem, renderGruposTeste, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
 import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, renderWaQuote, waBubble, waChatPages, waCopy, waMsgKey, waSkeleton } from "./whatsapp/chat.js";
@@ -229,6 +229,7 @@ const ctxImpl = {
   get relayoutSplit() { return relayoutSplit; },
   get renderAssistant() { return renderAssistant; },
   get renderAudioControls() { return renderAudioControls; },
+  get renderAgentChoice() { return renderAgentChoice; },
   get renderChannelEditor() { return renderChannelEditor; },
   get renderConta() { return renderConta; },
   get renderContasClaude() { return renderContasClaude; },
@@ -406,6 +407,8 @@ const memoryNotas = $<HTMLTextAreaElement>("memory-notas");
 const perfilCount = $<HTMLSpanElement>("perfil-count");
 const notasCount = $<HTMLSpanElement>("notas-count");
 const ctxLine = $<HTMLElement>("ctx-line");
+/** A janela terminou de abrir (abas restauradas e a fixada na frente): a status line pode aparecer. */
+let aberturaPronta = false;
 const quickEnabled = $<HTMLInputElement>("quick-enabled");
 const quickShortcut = $<HTMLInputElement>("quick-shortcut");
 const quickStatus = $<HTMLSpanElement>("quick-status");
@@ -558,6 +561,9 @@ function paintContext(tab: Tab | null): void {
     span.addEventListener("click", () => zoomWindow({ action: "reset" }));
     return span;
   };
+  // Só com uma conversa na frente, e só depois da abertura: antes disso a conversa restaurada acendia a linha e a aba
+  // fixada (Tutoriais) a apagava logo em seguida.
+  if (!aberturaPronta) tab = null;
   if (tab === null) {
     if (zoomLevel === 0) { ctxLine.hidden = true; return; }
     ctxLine.hidden = false; ctxLine.replaceChildren(zoomSeg()); ctxLine.title = ""; return;
@@ -1980,7 +1986,7 @@ void (async () => {
       onPlan: (plan) => setPlanBadge(plan !== null && planoLiberaPro(plan)),
       onWhatsapp: (st) => {
         if (st === null) { if (waTimer !== null) { clearTimeout(waTimer); waTimer = null; } waStatus = null; }
-        else { waStatus = st; if (waTimer === null) void refreshWhatsapp(); }
+        else { waStatus = comPareamento(st); if (waTimer === null) void refreshWhatsapp(); }
         paintWhatsapp(); renderSidebar();
       },
     });
@@ -2042,6 +2048,8 @@ void (async () => {
   else if (fixa === "financas") financePage?.open();
   else if (fixa === "conta-google") contaGoogle.open();
   else if (fixa === "navegador") void openNavTab();
+  aberturaPronta = true;
+  paintContext(active());
   void restoreSplit();
   for (const q of pendingQuick.splice(0)) void handleQuickSubmit(q.correlationId, q.text);
   for (const id of pendingFocus.splice(0)) void openFromIndex(id);

@@ -28,14 +28,14 @@ test("OpenClaw: o que depende de conversa só liga com o número conectado", () 
   assert.ok(com.listarConversas && com.lerConversa && com.limparHistorico && com.pausar && com.grupos);
 });
 
-test("Hermes: lista, lê e limpa pelo state.db, liga/desliga grupos (config.yaml) e escolhe quem responde (.env, com reinício); não pausa nem guarda", () => {
+test("Hermes: lista, lê e limpa pelo state.db, liga/desliga grupos e áudio (config.yaml) e escolhe quem responde (.env, com reinício); sem guarda", () => {
   const c = capacidadesDe("hermes", true, true);
-  assert.ok(c.parear && c.listarConversas && c.lerConversa && c.limparHistorico && c.pausar && c.grupos && c.politicaDm && c.politicaReinicia);
+  assert.ok(c.parear && c.listarConversas && c.lerConversa && c.limparHistorico && c.pausar && c.grupos && c.politicaDm && c.audio && c.politicaReinicia);
   assert.ok(!capacidadesDe("hermes", true, false).grupos, "grupos dependem do número conectado");
   assert.ok(capacidadesDe("hermes", true, false).politicaDm, "a política não depende de número conectado");
   assert.ok(!capacidadesDe("openclaw", true, true).politicaReinicia, "no OpenClaw a política vale sem reiniciar");
-  // Nada disso existe no Hermes: oferecer na tela daria erro na primeira tentativa.
-  assert.ok(!c.guarda && !c.audio);
+  // A guarda é um plugin do OpenClaw: oferecer no Hermes daria erro na primeira tentativa.
+  assert.ok(!c.guarda);
   // Sem número conectado não há conversa para listar.
   assert.ok(!capacidadesDe("hermes", true, false).listarConversas);
 });

@@ -139,13 +139,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; financeFotoPulada: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, financeFotoPulada: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "financeFotoPulada";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada";
 
 export interface GuideStep {
   id: string;
@@ -154,7 +154,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
+  body?: "agent-choice" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -164,6 +164,11 @@ export interface GuideStep {
    * isso, o estado de agora (abas abertas, resposta recente) faz o tutorial ir e voltar enquanto a janela carrega.
    */
   lembrar?: true;
+  /**
+   * Concluído, ainda dá para refazer: um "Refazer" ao lado de "concluído" reabre o corpo do passo para remarcar a opção
+   * (clicou no grupo errado), sem recomeçar o tutorial; os passos seguintes continuam como estão.
+   */
+  refazer?: true;
 }
 /** O passo está concluído: pelo estado real ou, se for um fato `lembrar`, porque já foi visto concluído. */
 export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext): boolean =>
@@ -212,8 +217,14 @@ export interface Tutorial {
 
 const WHATSAPP_STEPS: GuideStep[] = [
   {
-    id: "preparar", title: "Preparar o OpenClaw nesta máquina", target: "wa-agent",
-    text: "O agente da máquina configura o OpenClaw e instala o plugin do WhatsApp. Abra o WhatsApp e clique em \"Pedir ao agente para preparar\".",
+    id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
+    text: "Os dois fazem tudo deste tutorial: responder, escolher quem, entender e mandar áudio. Se não souber, fique com o recomendado.",
+    // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
+    done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
+  },
+  {
+    id: "preparar", title: "Preparar o WhatsApp nesta máquina", target: "wa-agent",
+    text: "O agente da máquina instala o que faltar para o WhatsApp. Abra o WhatsApp e clique em \"Pedir ao agente para preparar\".",
     done: (st) => st !== null && st.present && st.ready,
   },
   {
@@ -222,14 +233,16 @@ const WHATSAPP_STEPS: GuideStep[] = [
     done: (st) => st !== null && st.connected,
   },
   {
+    id: "audio", title: "Áudio no WhatsApp: ouvir e responder", target: "none", body: "audio",
+    text: "Ouvir: sem a transcrição, quem manda áudio ouve do agente que ele não consegue escutar; ela roda na própria máquina, sem custo e sem mandar o áudio para fora. Responder: escolha se ele devolve áudio quando recebe áudio; o padrão é só texto.",
+    done: (st) => st !== null && st.audioIn === true,
+  },
+  {
     id: "quem", title: "Quem o agente responde no WhatsApp?", target: "wa-policy", body: "reply-choice",
     text: "Vale assim que o WhatsApp é pareado. Seus contatos não recebem nenhuma mensagem automática enquanto as respostas estiverem desativadas.",
     done: (st, f) => f.policyChosen || (st !== null && st.dmPolicy === "open"),
-  },
-  {
-    id: "audio", title: "Fazer o agente entender áudios", target: "none", body: "audio",
-    text: "Sem isso, quem manda áudio ouve do agente que ele não consegue escutar. A transcrição roda na própria máquina: sem custo e sem mandar o áudio para fora. Se quiser, escolha também quando ele responde em áudio.",
-    done: (st) => st !== null && st.audioIn === true,
+    // "Pular" mantém o padrão (só você fala com o agente) e segue; dá para mudar depois na mesma aba.
+    manual: { label: "Pular: deixar só eu por enquanto", flag: "policyChosen" },
   },
   {
     id: "teste", title: "Testar com uma mensagem e um áudio", target: "none",
@@ -296,8 +309,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["whatsapp"],
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
-    summary: "Conecte um número ao agente da máquina, decida quem ele responde, faça ele entender áudios e teste de verdade.",
-    minutes: 4,
+    summary: "Escolha o agente, conecte um número, faça ele entender áudios, decida quem ele responde e teste de verdade.",
+    minutes: 5,
     icon: "target",
     reset: { what: "desconecta o número desta máquina (o agente para de responder no WhatsApp) e esquece \"escolhi\" e \"testei\"" },
     steps: WHATSAPP_STEPS,
@@ -495,12 +508,14 @@ export const TUTORIAIS: readonly Tutorial[] = [
       {
         id: "instalar", title: "Preparar a máquina para o agente", target: "none", body: "navegador-install",
         text: "Um arquivo pequeno na máquina apresenta as ações do navegador ao agente (abrir, ler, clicar, digitar…) e grava a regra de conduta: ele avisa antes de agir e nunca compra, paga ou envia nada sem você confirmar.",
-        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.installed === true,
+        // O agente já usou o Navegador com sucesso: a máquina está preparada (sem esperar a consulta por SSH).
+        done: (_st, f, c) => c.navegador.access === "ok" && (c.navegador.installed === true || f.navAgentUsed),
       },
       {
         id: "abrir", title: "Abrir o Navegador e entrar num site", target: "none", body: "navegador-open", lembrar: true,
         text: "Abra a aba Navegador, digite um endereço e navegue. Cookies e logins ficam guardados só nesta máquina; \"abrir no Mac\" leva a página para o seu navegador de sempre. ☆ guarda a página na barra de favoritos (Cmd+Shift+F mostra ou esconde a barra); o agente também pode favoritar um link para você.",
-        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.tabs > 0,
+        // Idem: o agente abriu um site, então há aba (antes o tutorial esperava a contagem de abas e só concluía depois).
+        done: (_st, f, c) => c.navegador.access === "ok" && (c.navegador.tabs > 0 || f.navAgentUsed),
       },
       {
         id: "agente", title: "Deixar o agente navegar", target: "chat",
@@ -558,6 +573,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["crm"],
     after: "navegador",
     needsCrmStreak: true,
+    // 27 out: fora da lista, como o CRM no Gmail; aparecia (e sumia) assim que o 9 contava como concluído.
+    oculto: true,
     title: "CRM pelo WhatsApp (Pro)",
     short: "CRM",
     summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",
@@ -592,6 +609,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     number: 11,
     needs: ["navegador"],
     // Sem `after`: não depende de o tutorial 9 estar concluído (o agente navegar não é pré-requisito); o Pro é o passo 1.
+    // 27 out: fora da lista de Tutoriais por decisão de produto.
+    oculto: true,
     title: "Notificações do Navegador (Pro)",
     short: "Notificações",
     summary: "Um site fixo no Navegador (o Gmail, por exemplo) avisa quando chega algo; o agente recebe o aviso numa conversa e faz o que você mandar: traduzir, explicar para leigo, resumir.",
@@ -634,12 +653,12 @@ export const TUTORIAIS: readonly Tutorial[] = [
     icon: "chat",
     steps: [
       {
-        id: "grupo", title: "Escolher o grupo", target: "none", body: "grupos-escolher",
+        id: "grupo", title: "Escolher o grupo", target: "none", body: "grupos-escolher", refazer: true,
         text: "Os grupos em que o número do agente está. Escolha um grupo interno; se ele não aparece, atualize a lista (o WhatsApp do agente fica parado uns 30 segundos).",
         done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null,
       },
       {
-        id: "quem", title: "Quem pode conversar com o agente no grupo", target: "none", body: "grupos-quem",
+        id: "quem", title: "Quem pode conversar com o agente no grupo", target: "none", body: "grupos-quem", refazer: true,
         text: "Comece só por você: o número pessoal que você usa no grupo. Acrescente as pessoas de casa que também podem chamar o agente.",
         done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null && quemEscolhido(c.grupos.info),
       },
@@ -668,6 +687,13 @@ export const TUTORIAIS: readonly Tutorial[] = [
     minutes: 2,
     icon: "target",
     steps: [
+      {
+        // A autorização do wrangler só completa com a pessoa logada no Cloudflare (27 out): entrar vem antes.
+        id: "cloudflare-entrar", title: "Entrar no Cloudflare", target: "none", body: "cloudflare-entrar",
+        text: "Antes de conectar, entre na sua conta do Cloudflare aqui no Navegador (se não tem, crie uma: é grátis). Sem estar logado, a autorização do próximo passo não termina.",
+        done: (_st, f, c) => contaConectada(c, "cloudflare") || f.cloudflareLogado,
+        manual: { label: "Já entrei", flag: "cloudflareLogado" },
+      },
       {
         id: "cloudflare", title: "Conectar o Cloudflare (subir sites)", target: "none", body: "conta-cloudflare",
         text: "Clique em Conectar: a página do Cloudflare abre aqui no Navegador, você entra e autoriza. O acesso é só para sites (Pages) e ver os domínios; nada de e-mail, bancos ou o resto da conta.",
@@ -773,13 +799,15 @@ export interface GuideView { done: boolean[]; current: number; finished: boolean
 export const tutorialKnown = (t: Tutorial, ctx: GuideContext): boolean => t.needs.every((s) => ctx.known[s]);
 export type TutorialState = "done" | "todo" | "unknown";
 /**
- * Estado do tutorial para a lista e o selo: pelo estado real quando as fontes chegaram; antes disso, o que se lembra
- * da última vez nesta máquina (`remembered`: concluído ou não); sem lembrança, "unknown" (verificando). "Em breve"
- * nunca conta como feito.
+ * Estado do tutorial para a lista e o selo. Concluído uma vez, fica concluído (`remembered` true): o estado real da
+ * máquina oscila (SSH devagar, números de limite ainda não carregados) e fazia o cartão da status line aparecer e sumir
+ * depois de feito; só "Refazer do zero" apaga a lembrança. Sem lembrança: o estado real quando as fontes chegaram;
+ * antes disso, "unknown" (verificando). "Em breve" nunca conta como feito.
  */
 export function tutorialState(t: Tutorial, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext, remembered: boolean | null): TutorialState {
   if (t.comingSoon === true) return "todo";
-  if (!tutorialKnown(t, ctx)) return remembered === null ? "unknown" : remembered ? "done" : "todo";
+  if (remembered === true) return "done";
+  if (!tutorialKnown(t, ctx)) return remembered === null ? "unknown" : "todo";
   return guideView(t, status, flags, ctx).finished ? "done" : "todo";
 }
 /** Lembrança por máquina (`tutLembrado:<host>`): id → concluído na última vez em que as fontes chegaram. */
@@ -811,7 +839,7 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
 
 /**
  * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; o do Grok só onde ele é
- * possível (null = ainda não consultado = mostra); os da trilha (`after`) só depois que o anterior foi
+ * possível (null = ainda não consultado = mostra); o da guarda só onde ela é possível (null = esconde); os da trilha (`after`) só depois que o anterior foi
  * concluído (`finished` é do chamador: concluir depende de flags e da máquina). Um `after` escondido esconde
  * quem depende dele (o 5 some junto com o 4).
  */
@@ -823,7 +851,9 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
     if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
     if (t.needsFinance === true && ctx.finance.access !== true) return false;
-    if (t.needsGuarda === true && ctx.guarda.possible === false) return false;
+    // Só quando a máquina já confirmou que o agente aceita a guarda: com null (ainda consultando) o cartão aparecia e
+    // sumia assim que a resposta dizia "sem guarda" (Hermes).
+    if (t.needsGuarda === true && ctx.guarda.possible !== true) return false;
     if (t.after === undefined) return true;
     const prev = TUTORIAIS.find((x) => x.id === t.after);
     return prev !== undefined && visible(prev) && finished(prev);

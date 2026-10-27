@@ -16,7 +16,7 @@ test("tutoriais: ids únicos e cada passo com título, texto, alvo e regra de co
 });
 
 test("selo: número, passos e minutos; sem número, só os dois", () => {
-  assert.equal(tutorialBadge(t), "Tutorial 2 · 5 passos · 4 min");
+  assert.equal(tutorialBadge(t), "Tutorial 2 · 6 passos · 5 min");
   assert.equal(tutorialBadge({ ...t, minutes: 1, steps: [t.steps[0]] }, false), "1 passo · 1 min");
   assert.equal(tutorialBadge(byId("statusline")), "Tutorial 3 · 4 passos · 3 min");
 });
@@ -36,9 +36,9 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
-  assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo", "notificacoes-navegador"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "notificacoes-navegador", "contas-cli"]);
-  assert.ok(ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM) só depois do 9 (Navegador); o antigo 10 de extensões foi removido");
+  assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli"]);
+  assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM pelo Streak) está oculto, mesmo depois do 9 (Navegador)");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };
   const idsCrm = visibleTutorials(crm, (x) => x.id === "claude-login" || x.id === "navegador").map((x) => x.id);
@@ -113,8 +113,9 @@ test("tutorial 8 · Guarda do WhatsApp: depois do 2; ativa → entendi", () => {
   assert.equal(guideView(t8, null, emptyFlags(), c(true)).current, 1);
   assert.equal(guideView(t8, null, { ...emptyFlags(), guardaSeen: true }, c(true)).finished, true);
   assert.equal(guideView(t8, null, { ...emptyFlags(), guardaSeen: true }, c(false)).current, 0, "tirou a guarda: volta ao passo 1");
-  assert.ok(!visibleTutorials(emptyContext(), () => false).map((x) => x.id).includes("guarda-whatsapp"));
-  assert.ok(visibleTutorials(emptyContext(), (x) => x.id === "whatsapp-openclaw").map((x) => x.id).includes("guarda-whatsapp"));
+  const comGuarda = { ...emptyContext(), guarda: { installed: null, possible: true } };
+  assert.ok(!visibleTutorials(comGuarda, () => false).map((x) => x.id).includes("guarda-whatsapp"));
+  assert.ok(visibleTutorials(comGuarda, (x) => x.id === "whatsapp-openclaw").map((x) => x.id).includes("guarda-whatsapp"));
 });
 
 test("selo da lateral: número = pendências (interruptor desliga); pulso = novidade (não obedece ao interruptor)", () => {
@@ -126,20 +127,26 @@ test("selo da lateral: número = pendências (interruptor desliga); pulso = novi
 });
 
 test("guia do WhatsApp: o estado real marca os passos; QR já lido pula direto para a escolha", () => {
-  assert.deepEqual(guideView(t, null, emptyFlags()), { done: [false, false, false, false, false], current: 0, finished: false });
-  assert.equal(guideView(t, wa({ ready: true }), emptyFlags()).current, 1);
+  assert.deepEqual(guideView(t, null, emptyFlags()), { done: [false, false, false, false, false, false], current: 0, finished: false });
+  // Escolher o agente: feito com a escolha gravada ou com um dos dois já atendendo; sem nada na máquina, é o passo 1.
+  assert.equal(guideView(t, wa({ present: false, gateway: null }), emptyFlags()).current, 0);
+  assert.equal(guideView(t, wa({ present: false, gateway: null, escolha: "hermes" }), emptyFlags()).current, 1);
+  assert.equal(guideView(t, wa({ gateway: "hermes", escolha: null }), emptyFlags()).current, 1);
+  assert.equal(guideView(t, wa({ ready: true }), emptyFlags()).current, 2);
+  // Pareado: o áudio vem antes de quem o agente responde.
   const v = guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), emptyFlags());
-  assert.deepEqual(v.done, [true, true, false, false, false]);
-  assert.equal(v.current, 2, "o padrão gravado sozinho não conta como escolha");
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "open" }), emptyFlags()).current, 3, "open é escolha explícita");
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), { policyChosen: true, tested: false }).current, 3, "sem transcrição, o passo do áudio");
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist", audioIn: true }), { policyChosen: true, tested: false }).current, 4, "transcrição ligada: falta o teste");
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist", audioIn: true }), { policyChosen: true, tested: true }).finished, true);
+  assert.deepEqual(v.done, [true, true, true, false, false, false]);
+  assert.equal(v.current, 3, "sem transcrição, o passo do áudio");
+  const comAudio = { ready: true, connected: true, dmPolicy: "allowlist", audioIn: true };
+  assert.equal(guideView(t, wa(comAudio), emptyFlags()).current, 4, "o padrão gravado sozinho não conta como escolha");
+  assert.equal(guideView(t, wa({ ...comAudio, dmPolicy: "open" }), emptyFlags()).current, 5, "open é escolha explícita");
+  assert.equal(guideView(t, wa(comAudio), { policyChosen: true, tested: false }).current, 5, "escolheu quem responde: falta o teste");
+  assert.equal(guideView(t, wa(comAudio), { policyChosen: true, tested: true }).finished, true);
   assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), { policyChosen: true, tested: true }).finished, false, "testar não pula a transcrição");
 });
 
 test("título da aba do guia: progresso, e ✓ quando termina", () => {
-  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true }), emptyFlags())), "2 · WhatsApp 2/5");
+  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true }), emptyFlags())), "2 · WhatsApp 3/6");
   assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true, dmPolicy: "open", audioIn: true }), { policyChosen: true, tested: true })), "2 · WhatsApp ✓");
 });
 
@@ -167,9 +174,9 @@ test("parseWaNumbers: um por linha ou vírgula; sem + e com 10/11 dígitos ganha
 
 test("guia é sequencial: marcações antigas não acendem passos à frente de um pendente", () => {
   const v = guideView(t, wa({ ready: true, connected: false }), { policyChosen: true, tested: true });
-  assert.deepEqual(v.done, [true, false, false, false, false]);
-  assert.equal(v.current, 1);
-  assert.equal(guideTabTitle(t, v), "2 · WhatsApp 1/5");
+  assert.deepEqual(v.done, [true, true, false, false, false, false]);
+  assert.equal(v.current, 2);
+  assert.equal(guideTabTitle(t, v), "2 · WhatsApp 2/6");
 });
 
 test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui quando a entrega chega", async () => {
@@ -238,7 +245,8 @@ test("fontes: todo tutorial declara de onde vêm os fatos; antes de chegarem, o 
   assert.equal(tutorialState(nav, null, emptyFlags(), ctx, false), "todo");
   const known = { ...ctx, known: { ...ctx.known, navegador: true }, navegador: { access: "free", installed: null, tabs: 0, extensions: 0, agentOn: false } };
   assert.equal(tutorialKnown(nav, known), true);
-  assert.equal(tutorialState(nav, null, emptyFlags(), known, true), "todo", "fonte chegou: o estado real vence a lembrança");
+  assert.equal(tutorialState(nav, null, emptyFlags(), known, true), "done", "concluído fica concluído mesmo com a fonte dizendo outra coisa (só Refazer apaga)");
+  assert.equal(tutorialState(nav, null, emptyFlags(), known, false), "todo", "lembrança de 'a fazer' não segura nada: vale o estado real");
   const soon = { ...nav, comingSoon: true };
   assert.equal(tutorialState(soon, null, emptyFlags(), known, true), "todo");
 });
@@ -299,25 +307,29 @@ test("passos que são fatos (abriu um site, viu o Gmail, o agente respondeu no g
   const abrir = t9.steps.find((s) => s.id === "abrir");
   assert.equal(abrir.lembrar, true);
   const ctx = (tabs) => ({ ...emptyContext(), navegador: { ...emptyContext().navegador, access: "ok", installed: true, tabs } });
-  const f = { ...emptyFlags(), navAgentUsed: true };
+  const f = emptyFlags();
   // Ainda sem abas nesta janela (o Navegador está restaurando): sem a lembrança, o tutorial voltava a "falta fazer".
   assert.equal(guideView(t9, null, f, ctx(0)).current, 2);
-  assert.equal(guideView(t9, null, { ...f, feitos: ["abrir"] }, ctx(0)).finished, true);
-  assert.equal(guideView(t9, null, f, ctx(2)).finished, true);
+  assert.equal(guideView(t9, null, { ...f, feitos: ["abrir"] }, ctx(0)).current, 3);
+  assert.equal(guideView(t9, null, f, ctx(2)).current, 3);
+  // O agente navegou com sucesso: conclui na hora, sem esperar a consulta da instalação nem a contagem de abas.
+  const semConsulta = { ...emptyContext(), navegador: { ...emptyContext().navegador, access: "ok", installed: null, tabs: 0 } };
+  assert.equal(guideView(t9, null, { ...f, navAgentUsed: true }, semConsulta).finished, true);
   for (const [tut, passo] of [["crm-gmail", "gmail"], ["statusline", "limites"], ["whatsapp-grupos", "teste"]]) assert.equal(byId(tut).steps.find((s) => s.id === passo).lembrar, true, `${tut}/${passo}`);
 });
 
-test("tutorial 13 · contas: Cloudflare conectado conclui o 1; GitHub conectado ou \"Não uso GitHub\"; some neste Mac", () => {
+test("tutorial 13 · contas: entrar no Cloudflare, Cloudflare conectado; GitHub conectado ou \"Não uso GitHub\"; some neste Mac", () => {
   const t = byId("contas-cli");
   const c = (contas) => ({ ...emptyContext(), contas });
   const cf = (conectado) => ({ id: "cloudflare", presente: true, conectado, conta: conectado ? "a@b" : null, amplo: false });
   const gh = (conectado) => ({ id: "github", presente: true, conectado, conta: conectado ? "lv" : null, amplo: false });
   assert.equal(guideView(t, null, emptyFlags(), c(null)).current, 0, "não consultado ainda");
-  assert.equal(guideView(t, null, emptyFlags(), c([cf(false), gh(true)])).current, 0, "sequencial: o GitHub não pula o Cloudflare");
-  assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(false)])).current, 1);
+  assert.equal(guideView(t, null, emptyFlags(), c([cf(false), gh(true)])).current, 0, "sequencial: primeiro entrar no Cloudflare");
+  assert.equal(guideView(t, null, { ...emptyFlags(), cloudflareLogado: true }, c([cf(false), gh(true)])).current, 1, "logado: falta conectar; o GitHub não pula o Cloudflare");
+  assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(false)])).current, 2, "conectado já conta como logado");
   assert.equal(guideView(t, null, { ...emptyFlags(), githubPulado: true }, c([cf(true), gh(false)])).finished, true);
   assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(true)])).finished, true);
-  assert.deepEqual(t.steps.map((s) => s.body), ["conta-cloudflare", "conta-github"]);
+  assert.deepEqual(t.steps.map((s) => s.body), ["cloudflare-entrar", "conta-cloudflare", "conta-github"]);
   const mac = { ...emptyContext(), xai: { possible: false, hermes: null, loggedIn: null, label: null } };
   assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "contas-cli"), "só em máquina por SSH");
 });
@@ -342,11 +354,11 @@ test("parseTutPulados: só ids válidos, sem repetir; lixo vira vazio", () => {
   assert.equal(parseTutPulados("lixo").size, 0); assert.equal(parseTutPulados('{"a":1}').size, 0);
 });
 
-test("tutorial 8 (guarda) só aparece onde o agente aceita a guarda; sem status ainda, aparece", () => {
+test("tutorial 8 (guarda) só aparece onde o agente aceita a guarda; sem status ainda, não aparece (senão aparecia e sumia)", () => {
   const done = (x) => x.id === "claude-login" || x.id === "whatsapp-openclaw";
   const ids = (possible) => visibleTutorials({ ...emptyContext(), guarda: { installed: null, possible } }, done).map((x) => x.id);
   assert.ok(ids(true).includes("guarda-whatsapp"));
-  assert.ok(ids(null).includes("guarda-whatsapp"));
+  assert.ok(!ids(null).includes("guarda-whatsapp"), "ainda consultando a máquina: fica de fora até confirmar");
   assert.ok(!ids(false).includes("guarda-whatsapp"), "máquina com agente sem guarda (Hermes) não vê o tutorial");
   const t8 = TUTORIAIS.find((x) => x.id === "guarda-whatsapp");
   for (const st of t8.steps) assert.ok(!/OpenClaw/.test(st.title) && !/toda máquina com OpenClaw/.test(st.text), `passo ${st.id} sem nome de produto`);

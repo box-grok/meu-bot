@@ -9,7 +9,7 @@ import { BUNDLE_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGI
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
 import { isVozId } from "../whatsapp/vozes-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
-import { HERMES_RESTART_SH, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
+import { HERMES_PATH_SH, HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -307,12 +307,24 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   if (host === LOCAL_HOST) return { ok: false, log: ["este Mac não tem agente com WhatsApp"] };
   const gw = await run("ssh", [...sshBase(host), "--", host, `${WA_ESCOLHA_SH}; usa_hermes && echo hermes || echo outro`], 30_000);
   if (/^hermes$/m.test(gw.stdout)) {
-    say(setup.kind === "in" ? (setup.off === true ? "desligando a transcrição no Hermes…" : "ligando a transcrição local do Hermes (português)…") : "ajustando quando o Hermes responde em áudio…");
+    const ligarStt = setup.kind === "in" && setup.off !== true;
+    const ligarVoz = setup.kind === "out" && setup.mode !== "off";
+    say(setup.kind === "in" ? (ligarStt ? "instalando o faster-whisper no Hermes (só na primeira vez, 1–3 min)…" : "desligando a transcrição no Hermes…") : ligarVoz ? "instalando a voz local (Piper pt-BR) no Hermes (só na primeira vez, 1–3 min)…" : "ajustando quando o Hermes responde em áudio…");
+    // Transcrição = extra stt-whisper; voz = extra piper + a voz pt-BR já baixada (senão a 1ª resposta demora ~30 s) +
+    // ffmpeg (sem ele o áudio não vira Ogg/Opus e não chega como mensagem de voz; instala pelo apt quando dá).
+    // Os extras são do ambiente do gateway (hermes pm) e são idempotentes: já instalados, levam segundos.
+    const extra = ligarStt ? `${HERMES_PATH_SH}; timeout 1200 hermes pm install --extra stt-whisper >/dev/null 2>&1 || { echo "extra=falhou"; exit 3; }; echo "extra=ok"\n`
+      : ligarVoz ? `${HERMES_PATH_SH}; timeout 1200 hermes pm install --extra piper >/dev/null 2>&1 || { echo "extra=falhou"; exit 3; }; echo "extra=ok"\n${HERMES_VENV_PY_SH}\ncommand -v ffmpeg >/dev/null 2>&1 || { if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; fi; } >/dev/null 2>&1; command -v ffmpeg >/dev/null 2>&1 || echo "ffmpeg=falta"\nmkdir -p "$HOME/.hermes/cache/piper-voices"; [ -s "$HOME/.hermes/cache/piper-voices/${HERMES_PIPER_VOICE}.onnx" ] || { [ -n "$HPY" ] && timeout 600 "$HPY" -m piper.download_voices ${HERMES_PIPER_VOICE} --download-dir "$HOME/.hermes/cache/piper-voices" >/dev/null 2>&1 || echo "voz=nao-baixou"; }\n` : "";
     // O script vai em base64 no próprio comando: tem aspas e quebras de linha que o argv do ssh não carrega intactas.
-    const b64 = Buffer.from(`set -e\n${hermesConfigSetSh(hermesAudioPatch(setup))}\n${HERMES_RESTART_SH}\n`, "utf8").toString("base64");
-    const r = await run("ssh", [...sshBase(host), "--", host, `echo ${b64} | base64 -d | bash`], 120_000);
-    if (r.code !== 0 || !r.stdout.includes("cfgset=ok")) return { ok: false, log: [...lines, `não consegui gravar o config.yaml do Hermes: ${lastLine(r.stderr) || lastLine(r.stdout) || "ssh falhou"}`] };
+    // Ligar a voz: depois do config, o provedor voz-local (script + tts.provider); hermesConfigSetSh já deixou $PY definido.
+    const b64 = Buffer.from(`set -e\n${extra}${hermesConfigSetSh(hermesAudioPatch(setup))}\n${ligarVoz ? `${HERMES_VOZ_LOCAL_SH}\n` : ""}${HERMES_RESTART_SH}\n`, "utf8").toString("base64");
+    const r = await run("ssh", [...sshBase(host), "--", host, `echo ${b64} | base64 -d | bash`], 25 * 60_000);
+    if (/extra=falhou/.test(r.stdout)) return { ok: false, log: [...lines, ligarStt ? "não consegui instalar o faster-whisper no Hermes (hermes pm install --extra stt-whisper); veja a máquina" : "não consegui instalar a voz Piper no Hermes (hermes pm install --extra piper); veja a máquina"] };
+    if (r.code !== 0 || !r.stdout.includes("cfgset=ok") || (ligarVoz && !r.stdout.includes("voz=ok"))) return { ok: false, log: [...lines, `não consegui gravar o config.yaml do Hermes: ${lastLine(r.stderr) || lastLine(r.stdout) || "ssh falhou"}`] };
     if (/restart=falhou/.test(r.stdout)) return { ok: false, log: [...lines, "gravei, mas não consegui reiniciar o gateway do Hermes; reinicie-o na máquina para valer"] };
+    say(setup.kind === "in"
+      ? (ligarStt ? "✓ Transcrição ligada: o agente entende áudios em português (o modelo, ~150 MB, baixa no primeiro áudio)" : "✓ Transcrição desligada")
+      : setup.mode === "off" ? "✓ O agente responde só em texto" : `✓ O agente responde em áudio quando recebe áudio, com a voz local em português${/voz=nao-baixou/.test(r.stdout) ? " (a voz baixa na primeira resposta; ela demora um pouco mais)" : ""}${/ffmpeg=falta/.test(r.stdout) ? ". Falta o ffmpeg na máquina (apt-get install ffmpeg): sem ele o áudio chega como arquivo, não como mensagem de voz" : ""}`);
     return { ok: true, log: lines };
   }
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";

@@ -72,6 +72,14 @@ function afterWaGroups(): void {
 }
 /** A máquina deixa ligar/desligar grupos e escolher quem conversa pelo app? (capacidade `grupos`; sem status ainda, não). */
 const gruposGerenciaveis = (): boolean => ctx.waStatus !== null && ctx.waStatus.capacidades.grupos;
+/**
+ * `waGroups.skill` = a máquina consegue listar os grupos pelo WhatsApp: no OpenClaw, a skill whatsapp-grupos; no Hermes,
+ * o bridge pareado (hermes-grupos-listar.ts). Sem isso, o motivo muda conforme o agente: no Hermes (sem guarda possível)
+ * é o pareamento; no OpenClaw é a guarda, que traz a skill.
+ */
+const DICA_SEM_SKILL = (): string => ctx.waStatus !== null && !ctx.waStatus.capacidades.guarda
+  ? "O WhatsApp do Hermes não está pareado nesta máquina: faça o tutorial 2 e volte aqui."
+  : "A skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor.";
 const GRUPOS_INDISPONIVEL = "O agente desta máquina ainda não permite ligar o grupo nem escolher quem conversa pelo app. Dá para ler e limpar o histórico; para mudar quem responde, ajuste na própria máquina.";
 /** Sem a capacidade, a seção explica em vez de oferecer botões que falhariam. Devolve true quando bloqueou. */
 function gruposIndisponivelNota(container: HTMLElement): boolean {
@@ -222,7 +230,7 @@ export function waGroupsSection(q: string): HTMLElement[] {
     else {
       empty.append(el("span", "", waGroups.cacheEm === null ? "Nenhum grupo listado ainda · " : "Nenhum grupo · "));
       const b = el("button", "linkish", "Atualizar lista"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
-      b.title = waGroups.skill ? "Lê os grupos pelo WhatsApp (o agente fica parado ~30 s)" : "A skill whatsapp-grupos não está nesta máquina: atualize a guarda pelo seletor";
+      b.title = waGroups.skill ? "Lê os grupos pelo WhatsApp (o agente fica parado ~30 s)" : DICA_SEM_SKILL();
       b.addEventListener("click", () => { void listarWaGroups(); });
       empty.append(b);
     }
@@ -444,7 +452,7 @@ export function renderGruposEscolher(container: HTMLElement): void {
   const b = el("button", "btn btn-ghost btn-small", waGroupsListing ? "Atualizando… (uns 30 s)" : "Atualizar lista de grupos"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
   b.addEventListener("click", () => { void listarWaGroups(); });
   container.append(b);
-  if (!waGroups.skill) container.append(el("p", "hint", "A skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor."));
+  if (!waGroups.skill) container.append(el("p", "hint", DICA_SEM_SKILL()));
   if (waGroupsMsg !== null) container.append(el("p", `hint${waGroupsMsg.bad ? " guide-pair-note" : ""}`, waGroupsMsg.text));
 }
 /** Tutorial 12, passo 3: ligar no grupo, "só quando chamado" (padrão) ou "sempre". */

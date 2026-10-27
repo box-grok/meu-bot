@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
+import { log } from "../maquina/backend";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp/whatsapp";
 import { JID_RE } from "../whatsapp/whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador/navegador-whatsapp";
@@ -160,7 +161,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     // O áudio do Hermes (config.yaml) já vem no próprio whatsappStatus.
-    return whatsappStatus(h.host);
+    const t0 = Date.now();
+    return whatsappStatus(h.host).then((st) => { log(`[whatsapp] status de ${h.host}: ${st.gateway ?? "-"} ${st.state} connected=${st.connected} em ${Date.now() - t0} ms`); return st; });
   });
   handleShared("whatsapp:chats", (event) => {
     const h = hostFromEvent(event);

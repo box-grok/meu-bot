@@ -20,8 +20,10 @@ function rememberTutorials(states: Map<string, TutorialState>): void {
   const mem = loadTutMemory(); let changed = false;
   for (const t of TUTORIAIS) {
     if (t.comingSoon === true || !tutorialKnown(t, ctx.guideCtx())) continue;
+    // Só sobe para concluído (e grava "a fazer" na primeira vez, para a próxima abertura não ficar "verificando");
+    // nunca desfaz sozinho: isso é do "Refazer do zero".
     const done = states.get(t.id) === "done";
-    if (mem[t.id] !== done) { mem[t.id] = done; changed = true; }
+    if (mem[t.id] === undefined || (done && mem[t.id] !== true)) { mem[t.id] = done; changed = true; }
   }
   if (changed) { try { localStorage.setItem(tutMemoryKey(), JSON.stringify(mem)); } catch { /* opcional */ } }
 }
@@ -140,6 +142,12 @@ export function paintGuideTargets(): void {
 }
 /** Guia que está mostrando o pareamento dentro da própria aba (os nós do QR/progresso são movidos para lá). */
 let waInlineGuide: Tutorial | null = null;
+/**
+ * Passo concluído reaberto pelo "Refazer" (tutorial + passo): o corpo volta para a pessoa remarcar a opção. `marca` é a
+ * escolha no momento de reabrir (grupo alvo e quem aciona): mudou, o passo fecha sozinho e o foco volta ao passo atual.
+ */
+let passoReaberto: { tut: string; step: string; marca: string } | null = null;
+const marcaDoPasso = (): string => { const c = ctx.guideCtx(); return JSON.stringify([c.grupos.alvo, c.grupos.info?.quemAciona ?? null]); };
 /** Como o último "Gerar QR" do guia terminou sem conectar; fica no passo (os nós de progresso voltam ao modal). */
 let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
@@ -243,6 +251,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   }
   // Lista dos passos: concluídos com ✓, o atual aberto (texto, corpo e botões), os futuros recolhidos.
   const steps = el("ol", "tut-steps");
+  if (passoReaberto !== null && passoReaberto.tut === t.id && passoReaberto.marca !== marcaDoPasso()) passoReaberto = null;
   t.steps.forEach((step, i) => {
     const done = view.done[i] === true;
     const cur = i === view.current;
@@ -250,10 +259,22 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     const num = el("span", "tut-num", done ? "✓" : String(i + 1));
     const txt = el("div", "tut-step");
     txt.append(el("strong", "", step.title));
-    if (done) txt.append(el("p", "", "concluído"));
-    if (cur) {
+    const reaberto = done && step.refazer === true && passoReaberto?.tut === t.id && passoReaberto.step === step.id;
+    if (done) {
+      const linha = el("p", "", "concluído");
+      if (step.refazer === true) {
+        const b = el("button", "linkish", reaberto ? "Pronto" : "Refazer"); b.type = "button";
+        b.title = reaberto ? "Fecha o passo; o que você marcou já vale" : "Reabre este passo para trocar a escolha, sem recomeçar o tutorial";
+        b.addEventListener("click", () => { passoReaberto = reaberto ? null : { tut: t.id, step: step.id, marca: marcaDoPasso() }; paintGuide(); });
+        linha.append(" · ", b);
+      }
+      txt.append(linha);
+    }
+    if (cur || reaberto) {
       txt.append(el("p", "", step.text));
-      if (step.body === "reply-choice" && st !== null) {
+      if (step.body === "agent-choice") {
+        ctx.renderAgentChoice(txt);
+      } else if (step.body === "reply-choice" && st !== null) {
         const cards = el("div", "reply-cards guide-cards");
         ctx.renderReplyCards(cards, ctx.replyChoiceNow(st), ctx.waPolicySaving || !st.connected, ctx.chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
@@ -323,6 +344,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         if (alvo !== null) { txt.append(el("p", "hint", `Grupo: ${ctx.waGroupTitle(alvo)}`)); ctx.renderGruposQuem(txt, alvo); }
       } else if (step.body === "grupos-modo") {
         ctx.renderGruposModo(txt);
+      } else if (step.body === "cloudflare-entrar") {
+        const abrir = el("button", "btn btn-primary btn-small", "Abrir o Cloudflare"); abrir.type = "button";
+        abrir.addEventListener("click", () => { void ctx.openNavTab("https://dash.cloudflare.com/login"); });
+        txt.append(abrir);
       } else if (step.body === "conta-cloudflare" || step.body === "conta-github") {
         ctx.renderConta(txt, step.body === "conta-cloudflare" ? "cloudflare" : "github");
       } else if (step.body !== undefined && step.body.startsWith("finance-")) {
@@ -423,9 +448,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
     panel.append(foot);
   }
-  // Conectado: a aba do guia do WhatsApp vira o painel de gerência (quem responde, áudio, atualizar,
-  // desconectar) — sem modal. Só nos guias do WhatsApp: o do suporte não tem nada a ver com isso.
-  if (st !== null && st.connected && t.steps.some((x) => x.target.startsWith("wa-"))) {
+  // Tutorial concluído e conectado: a aba do guia do WhatsApp vira o painel de gerência (quem responde, áudio,
+  // atualizar, desconectar) — sem modal. Com passos pendentes, os próprios passos já oferecem esses controles:
+  // repetir tudo embaixo deixava a aba cheia de coisa aberta. Só nos guias do WhatsApp.
+  if (st !== null && st.connected && view.finished && t.steps.some((x) => x.target.startsWith("wa-"))) {
     const manage = el("div", "guide-manage");
     manage.append(el("span", "tut-finished-line", "✓ Conectado. Ajuste aqui quando quiser."));
     manage.append(el("p", "hint strong-hint", "Quem o agente responde no WhatsApp"));
@@ -507,6 +533,8 @@ export async function resetTutorial(t: Tutorial): Promise<void> {
       ctx.objectiveState = await window.meuBot.resetObjective(); ctx.objectiveDraft = null; ctx.objectiveMsg = null; ctx.paintAcervoCount();
     }
     try { localStorage.removeItem(guideFlagsKey(t)); } catch { /* opcional */ }
+    // A lembrança de "concluído" sai junto: é ela que segura o tutorial como feito.
+    try { const mem = loadTutMemory(); delete mem[t.id]; localStorage.setItem(tutMemoryKey(), JSON.stringify(mem)); } catch { /* opcional */ }
     const g = guidePages.get(`tut-${t.id}`); if (g !== undefined && g.page.tabEl !== null) ctx.closePage(g.page);
     tutResetMsg = { id: t.id, text: "Desfeito. O tutorial voltou ao passo 1.", bad: false };
   } catch (err) {

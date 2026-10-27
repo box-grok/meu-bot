@@ -86,7 +86,12 @@ print(json.dumps({"messages": out}, ensure_ascii=True))
  * gateway vê a rota encerrada no state.db, descarta a entrada em memória e abre uma sessão nova (auto-cura #54878).
  * Roda com o Python do próprio Hermes (venv do runtime), nunca escrevendo no banco à mão. Imprime "ok".
  */
-export const HERMES_END_SH = `export PATH=$HOME/.local/bin:$PATH; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
+/**
+ * PATH para falar com o Hermes por SSH não interativo: o `hermes` do npm é um script Node, e o Node fica fora do
+ * PATH (o do Hermes em ~/.hermes/tools, ou ~/.local/node). Sem isto, "env: node: No such file or directory".
+ */
+export const HERMES_PATH_SH = `export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
+export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
 import sys, hermes_state
 db = hermes_state.SessionDB()
 for sid in sys.argv[1:]:
@@ -259,8 +264,11 @@ open(tmp, "w").write("".join(lines)); os.chmod(tmp, 0o600); os.replace(tmp, p)
 print("envset=ok")
 '`;
 
-/** Reinicia o gateway do Hermes onde ele estiver: processo do PM2 que roda `hermes gateway`, senão o serviço do próprio Hermes. */
-export const HERMES_RESTART_SH = `export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH
+/**
+ * Reinicia o gateway do Hermes onde ele estiver: processo do PM2 que roda `hermes gateway`, senão o serviço de
+ * usuário do systemd (sem depender do Node), senão `hermes gateway restart`.
+ */
+export const HERMES_RESTART_SH = `${HERMES_PATH_SH}
 N=$(pm2 jlist 2>/dev/null | python3 -c '
 import sys, json
 try:
@@ -272,6 +280,7 @@ except Exception:
     pass
 ')
 if [ -n "$N" ]; then pm2 restart "$N" --update-env >/dev/null 2>&1 && echo "restart=pm2:$N" || echo "restart=falhou: pm2 restart $N"
+elif systemctl --user cat hermes-gateway >/dev/null 2>&1; then systemctl --user reset-failed hermes-gateway >/dev/null 2>&1; systemctl --user restart hermes-gateway >/dev/null 2>&1 && echo "restart=systemd" || echo "restart=falhou: systemctl --user restart hermes-gateway"
 elif command -v hermes >/dev/null 2>&1; then hermes gateway restart >/dev/null 2>&1 && echo "restart=hermes" || echo "restart=falhou: hermes gateway restart"
 else echo "restart=sem-servico"; fi`;
 
@@ -291,8 +300,13 @@ else echo "restart=sem-servico"; fi`;
 export type HermesGroupPolicy = "open" | "allowlist" | "disabled" | "pairing";
 export interface HermesGroupCfg { policy: HermesGroupPolicy; allow: string[]; requireMention: boolean; free: string[] }
 
-/** Python do runtime do Hermes (tem PyYAML e ruamel); sem ele, o python3 da máquina. Deixa em $PY. */
-const HERMES_PY_SH = `export PATH=$HOME/.local/bin:$PATH; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
+/**
+ * Python do ambiente que o gateway do Hermes usa (o `hermes pm` registra em ~/.hermes/installs/<id>/facts.json; o mais
+ * recente vale). É nele que os extras (faster-whisper) são instalados. Deixa em $HPY; vazio quando não há.
+ */
+export const HERMES_VENV_PY_SH = `HPY=$(for f in "$HOME"/.hermes/installs/*/facts.json; do [ -f "$f" ] && echo "$(stat -c %Y "$f" 2>/dev/null || echo 0) $f"; done | sort -rn | head -1 | awk '{print $2}' | xargs -r python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["packages"]["venv"]["environment"]+"/bin/python3")' 2>/dev/null); [ -x "$HPY" ] || HPY=""`;
+/** Python do runtime do Hermes (tem ruamel; PyYAML nem sempre); sem ele, o python3 da máquina. Deixa em $PY. */
+const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
 
 /** Imprime `gcfg=<json>` com a política de grupos: config.yaml (platforms.whatsapp, chaves soltas ou em `extra`) e, faltando, o .env. */
 export const HERMES_GROUP_CFG_SH = `${HERMES_PY_SH}; "$PY" -c '
@@ -304,9 +318,15 @@ try:
         if m: e[m.group(1)] = m.group(2).strip().strip("\\"").strip("\\x27")
 except Exception:
     pass
+# ruamel primeiro: é o que o venv do Hermes tem (PyYAML nem sempre; no meu-root o import de yaml falhava, tudo vinha
+# nulo e a tela recusava a mudança já gravada com "o config.yaml relido não bate").
 try:
-    import yaml
-    c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    try:
+        from ruamel.yaml import YAML
+        c = YAML(typ="safe").load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    except ImportError:
+        import yaml
+        c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
 except Exception:
     c = {}
 w = (c.get("platforms") or {}).get("whatsapp") or {}
@@ -406,18 +426,18 @@ ${HERMES_YAML_PY}
 mud = []
 e = os.path.expanduser("~/.hermes/.env")
 linhas = open(e).read().splitlines() if os.path.exists(e) else []
-def tem(k): return any(re.match(r"\s*(?:export\s+)?" + k + r"\s*=", l) for l in linhas)
+def tem(k): return any(re.match(r"\\s*(?:export\\s+)?" + k + r"\\s*=", l) for l in linhas)
 def pega(k):
     for l in linhas:
-        m = re.match(r"\s*(?:export\s+)?" + k + r"\s*=\s*(.*?)\s*$", l)
-        if m: return m.group(1).strip("\"").strip("\x27")
+        m = re.match(r"\\s*(?:export\\s+)?" + k + r"\\s*=\\s*(.*?)\\s*$", l)
+        if m: return m.group(1).strip("\\"").strip("\\x27")
     return ""
 eu = ""
 try:
     eu = (json.load(open(os.path.expanduser("~/.hermes/whatsapp/session/creds.json"))).get("me") or {}).get("id", "")
 except Exception:
     pass
-eu = (re.match(r"(\d{8,15})[:@]", eu) or [None, ""])[1]
+eu = (re.match(r"(\\d{8,15})[:@]", eu) or [None, ""])[1]
 novos = {}
 if pega("WHATSAPP_ENABLED").lower() != "true": novos["WHATSAPP_ENABLED"] = "true"
 if not tem("WHATSAPP_MODE"): novos["WHATSAPP_MODE"] = "self-chat"
@@ -426,25 +446,69 @@ if novos:
     feitos = set()
     for i, l in enumerate(linhas):
         for k, v in novos.items():
-            if re.match(r"\s*(?:export\s+)?" + k + r"\s*=", l): linhas[i] = k + "=" + v; feitos.add(k)
+            if re.match(r"\\s*(?:export\\s+)?" + k + r"\\s*=", l): linhas[i] = k + "=" + v; feitos.add(k)
     linhas += [k + "=" + v for k, v in novos.items() if k not in feitos]
     os.makedirs(os.path.dirname(e), exist_ok=True)
-    tmp = e + ".tmp"; open(tmp, "w").write("\n".join(linhas) + "\n"); os.chmod(tmp, 0o600); os.replace(tmp, e)
+    tmp = e + ".tmp"; open(tmp, "w").write("\\n".join(linhas) + "\\n"); os.chmod(tmp, 0o600); os.replace(tmp, e)
     mud.append("env:" + ",".join(sorted(novos)))
 m = sub(doc, "model")
 prov = str(m.get("provider") or "auto").strip().lower()
+grava = False
 if prov == "auto" and os.environ.get("HK") and os.environ.get("HP"):
     m["provider"] = "custom"; m["base_url"] = "http://127.0.0.1:%s/v1" % os.environ["HP"]
     m["api_key"] = os.environ["HK"]; m["default"] = "agente"
-    salvar(); mud.append("modelo:agente")
+    grava = True; mud.append("modelo:agente")
+# Textos do gateway em português e sem a bolha "Generating speech…" no chat (só o que ainda não foi definido).
+d = sub(doc, "display")
+if "language" not in d: d["language"] = "pt"; grava = True; mud.append("display:pt")
+w = sub(sub(d, "platforms"), "whatsapp")
+if "tool_progress" not in w: w["tool_progress"] = "off"; grava = True; mud.append("display:tool_progress")
+if grava: salvar()
 print("hwa=" + (";".join(mud) or "nada"))
 ' 2>&1 | grep '^hwa=' || echo "hwa=falhou"`;
 
-/** Áudio do Hermes no config.yaml: ouvir = `stt` local em português; responder em áudio = `voice.auto_tts` (o Hermes não tem "sempre"). */
+/** Voz padrão do Hermes: Piper pt-BR local (masculina; nada sai da máquina). Extra `piper` do `hermes pm`. */
+export const HERMES_PIPER_VOICE = "pt_BR-faber-medium";
+/**
+ * Áudio do Hermes no config.yaml. Ouvir = `stt` local em português, modelo small (bom em CPU). Responder em áudio =
+ * `voice.auto_tts` (na 0.22 só vale quando a pessoa manda áudio; não há "sempre") com `tts.provider: piper` e a voz
+ * pt-BR; sem a seção `tts:` o Hermes usa a Edge em inglês, e a resposta sai com sotaque americano. A Edge também fica
+ * em pt-BR: alguns modelos passam `provider: edge` por conta própria na ferramenta de voz.
+ */
 export function hermesAudioPatch(setup: { kind: "in"; off?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
-  if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt" };
-  return { "voice.auto_tts": setup.mode !== "off" };
+  if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small" };
+  if (setup.mode === "off") return { "voice.auto_tts": false };
+  // O provedor padrão (voz-local) entra por HERMES_VOZ_LOCAL_SH, que precisa do caminho da máquina.
+  return { "voice.auto_tts": true, "tts.piper.voice": HERMES_PIPER_VOICE, "tts.edge.voice": "pt-BR-FranciscaNeural" };
 }
+/** Script de voz do meu-bot na máquina: acha o Python do gateway na hora e roda o Piper (WAV). */
+export const HERMES_VOZ_SH_FILE = "$HOME/.local/share/meu-bot/hermes-voz.sh";
+/**
+ * Voz local como `tts.providers.voz-local` (type command, WAV, voice_compatible) e `tts.provider: voz-local`. O
+ * provedor "piper" embutido do Hermes 0.22 grava Ogg VORBIS quando o nome termina em .ogg e pula o ffmpeg: o
+ * WhatsApp não toca. Pelo command provider o Hermes recebe WAV e converte para Ogg/Opus de verdade. O comando é um
+ * script nosso (HERMES_VOZ_SH_FILE), porque o venv do gateway muda de pasta a cada `hermes pm install --extra`.
+ * Roda depois de HERMES_PY_SH; imprime `voz=ok`.
+ */
+export const HERMES_VOZ_LOCAL_SH = `mkdir -p "$(dirname "${HERMES_VOZ_SH_FILE}")"
+cat > "${HERMES_VOZ_SH_FILE}" <<'VOZ'
+#!/bin/bash
+# Voz local do meu-bot para o Hermes: texto em $1, WAV em $2 (o Hermes converte para Ogg/Opus).
+${HERMES_VENV_PY_SH}
+[ -n "$HPY" ] || { echo "sem ambiente do Hermes" >&2; exit 1; }
+exec "$HPY" -m piper -m "$HOME/.hermes/cache/piper-voices/${HERMES_PIPER_VOICE}.onnx" -i "$1" -f "$2"
+VOZ
+chmod 755 "${HERMES_VOZ_SH_FILE}"
+VOZCMD="/bin/bash ${HERMES_VOZ_SH_FILE} {input_path} {output_path}" "$PY" -c '
+import os
+${HERMES_YAML_PY}
+t = sub(doc, "tts")
+t["provider"] = "voz-local"
+pv = sub(sub(t, "providers"), "voz-local")
+pv["type"] = "command"; pv["command"] = os.environ["VOZCMD"]; pv["format"] = "wav"; pv["voice_compatible"] = True; pv["timeout"] = 60
+salvar()
+print("voz=ok")
+'`;
 /** Grava chaves com ponto (`stt.enabled`) no config.yaml do Hermes, com backup. Imprime `cfgset=ok`. */
 export function hermesConfigSetSh(patch: Record<string, unknown>): string {
   const b64 = Buffer.from(JSON.stringify(patch), "utf8").toString("base64");

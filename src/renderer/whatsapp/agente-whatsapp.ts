@@ -151,9 +151,10 @@ async function saveReplyList(text: string): Promise<void> {
   if (ok.length === 0) { waListError = "a lista está vazia; para só você falar com o agente, use o primeiro cartão"; paintWhatsapp(); return; }
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) ctx.saveGuideFlag(t, "policyChosen");
   waPolicySaving = true; waPolicyTarget = "list"; waListError = null; paintWhatsapp();
-  try { ctx.waStatus = await window.meuBot.whatsappSetDmPolicy("list", ok); waListEditing = false; waListDraft = null; }
+  segurarConexao();
+  try { ctx.waStatus = comPareamento(await window.meuBot.whatsappSetDmPolicy("list", ok)); waListEditing = false; waListDraft = null; }
   catch (err) { waListError = `✗ ${err instanceof Error ? err.message : String(err)}`; }
-  finally { waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); }
+  finally { acaoTerminou(); waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); }
 }
 /** Quando o agente responde em áudio (os três cartões). */
 const VOICE_OPTIONS: readonly { id: VoiceReplyMode; title: string; text: string; isDefault: boolean }[] = [
@@ -172,7 +173,9 @@ let waVozEscolhida: VozId | null = null;
 let waVozBusy: VozId | null = null;
 /** O que está sendo aplicado agora ("in" = transcrição; um modo = voz) e o último recado (erro ou aviso). */
 let waAudioBusy: "in" | VoiceReplyMode | null = null;
-let waAudioMsg: { text: string; bad: boolean } | null = null;
+let waAudioMsg: { text: string; bad: boolean; kind: "in" | "out" } | null = null;
+/** O recado do áudio fica onde a ação foi feita: embaixo de "Ativar transcrição" ou dos cartões de voz. */
+const audioMsgEl = (kind: "in" | "out"): HTMLElement | null => waAudioMsg !== null && waAudioMsg.kind === kind ? el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text) : null;
 /**
  * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
  * responder em áudio. Usado no passo do tutorial e no painel de gerência; os instaladores rodam na máquina.
@@ -191,9 +194,13 @@ export function renderAudioControls(container: HTMLElement): void {
     hear.append(b);
   }
   box.append(hear);
-  box.append(el("p", "hint strong-hint", "Responder em áudio"));
-  const cards = el("div", "reply-cards voice-cards");
+  { const m = audioMsgEl("in"); if (m !== null) box.append(m); }
+  // Mesma forma da linha "Ouvir áudios": rótulo e estado atual; os cartões abaixo, lado a lado.
   const current = st?.audioOut ?? "off";
+  const speak = el("div", "audio-row");
+  speak.append(el("strong", "", "Responder em áudio"), el("span", current === "off" ? "hint" : "audio-ok", current === "off" ? "só texto (padrão)" : current === "inbound" ? "✓ quando receber áudio" : "✓ sempre"));
+  box.append(speak);
+  const cards = el("div", "reply-cards voice-cards");
   const marked = waAudioBusy !== null && waAudioBusy !== "in" ? waAudioBusy : current;
   // O Hermes responde em áudio quando recebe áudio (voice.auto_tts), com a voz dele: sem "sempre" e sem escolher voz.
   for (const o of hermes ? VOICE_OPTIONS.filter((v) => v.id !== "always") : VOICE_OPTIONS) {
@@ -203,7 +210,8 @@ export function renderAudioControls(container: HTMLElement): void {
     card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marked === o.id));
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
-    if (saving) title.append(el("span", "reply-saving", o.id === "off" || hermes ? "aplicando…" : "instalando a voz…"));
+    // O spinner no lugar do rádio já diz "aplicando"; texto só quando há download (voz do OpenClaw).
+    if (saving && o.id !== "off" && !hermes) title.append(el("span", "reply-saving", "instalando a voz…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
     card.addEventListener("click", () => { if (o.id !== current) void runAudioSetup({ kind: "out", mode: o.id, ...(o.id !== "off" && !hermes ? { voz: waVozEscolhida ?? st?.audioVoice ?? "faber" } : {}) }); });
@@ -211,8 +219,8 @@ export function renderAudioControls(container: HTMLElement): void {
   }
   box.append(cards);
   if (hermes) {
-    box.append(el("div", "guide-note", "A voz é a do próprio agente desta máquina; ligar ou desligar reinicia o WhatsApp dele por alguns segundos."));
-    if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
+    box.append(el("p", "hint", "Usa a voz do próprio agente. Mudar reinicia o WhatsApp da máquina por alguns segundos."));
+    { const m = audioMsgEl("out"); if (m !== null) box.append(m); }
     container.append(box);
     return;
   }
@@ -233,27 +241,28 @@ export function renderAudioControls(container: HTMLElement): void {
     card.addEventListener("click", () => {
       if (v.id === vozAtual) return;
       waVozEscolhida = v.id;
-      if (current === "off") { waAudioMsg = { text: `Voz ${v.rotulo.toLowerCase()} escolhida: vale quando ligar a resposta em áudio.`, bad: false }; ctx.paintGuide(); return; }
+      if (current === "off") { waAudioMsg = { text: `Voz ${v.rotulo.toLowerCase()} escolhida: vale quando ligar a resposta em áudio.`, bad: false, kind: "out" }; ctx.paintGuide(); return; }
       waVozBusy = v.id; ctx.paintGuide();
       void runAudioSetup({ kind: "out", mode: current, voz: v.id }).finally(() => { waVozBusy = null; ctx.paintGuide(); });
     });
     vozes.append(card);
   }
   box.append(vozes, el("div", "guide-note", "Todas as vozes rodam na própria máquina, sem custo; o texto das respostas não sai dela."));
-  if (waAudioMsg !== null) box.append(el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text));
+  { const m = audioMsgEl("out"); if (m !== null) box.append(m); }
   container.append(box);
 }
 async function runAudioSetup(setup: AudioSetup): Promise<void> {
   if (waAudioBusy !== null) return;
   waAudioBusy = setup.kind === "in" ? "in" : waVozBusy !== null ? null : setup.mode; waAudioMsg = null;
   ctx.paintGuide();
+  segurarConexao();
   try {
     const r = await window.meuBot.whatsappAudio(setup);
-    waAudioMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok };
+    waAudioMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok, kind: setup.kind };
     await refreshWhatsapp();
   } catch (err) {
-    waAudioMsg = { text: ipcErrorText(err), bad: true };
-  } finally { waAudioBusy = null; ctx.paintGuide(); }
+    waAudioMsg = { text: ipcErrorText(err), bad: true, kind: setup.kind };
+  } finally { acaoTerminou(); waAudioBusy = null; ctx.paintGuide(); }
 }
 export function chooseReply(choice: WhatsappReplyChoice): void {
   if (waPolicySaving) return;
@@ -263,10 +272,11 @@ export function chooseReply(choice: WhatsappReplyChoice): void {
   for (const t of TUTORIAIS) if (t.steps.some((st) => st.target === "wa-policy")) ctx.saveGuideFlag(t, "policyChosen");
   if (ctx.waStatus !== null && replyChoiceNow(ctx.waStatus) === choice) { waPolicyError = null; paintWhatsapp(); return; }
   waPolicySaving = true; waPolicyTarget = choice; waPolicyError = null; paintWhatsapp(); // seleção na hora + spinner no cartão
+  segurarConexao();
   void window.meuBot.whatsappSetDmPolicy(choice)
-    .then((st) => { ctx.waStatus = st; if (replyChoiceNow(st) !== choice) waPolicyError = `✗ a máquina ficou em "${st.dmPolicy ?? "?"}", não no que você escolheu. Tente de novo.`; })
+    .then((st) => { ctx.waStatus = comPareamento(st); if (replyChoiceNow(st) !== choice) waPolicyError = `✗ a máquina ficou em "${st.dmPolicy ?? "?"}", não no que você escolheu. Tente de novo.`; })
     .catch((err: unknown) => { waPolicyError = `✗ ${err instanceof Error ? err.message : String(err)}`; waStatusEl.textContent = waPolicyError; })
-    .finally(() => { waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); });
+    .finally(() => { acaoTerminou(); waPolicySaving = false; waPolicyTarget = null; paintWhatsapp(); });
 }
 function paintWaPolicy(): void {
   const st = ctx.waStatus;
@@ -430,7 +440,7 @@ export function refreshWhatsapp(): Promise<void> {
   waRefreshing = true;
   if (ctx.waTimer !== null) { clearTimeout(ctx.waTimer); ctx.waTimer = null; }
   waInflight = (async () => {
-    try { ctx.waStatus = await window.meuBot.whatsappStatus(); waCheckedAt = new Date(); if (ctx.waStatus.present) ctx.cacheWrite("waStatus", ctx.waStatus); else ctx.cacheDrop("waStatus"); } catch { ctx.waStatus = null; }
+    try { const raw = await window.meuBot.whatsappStatus(); waRealConectado = raw.connected; ctx.waStatus = comPareamento(raw); waCheckedAt = new Date(); if (raw.present) ctx.cacheWrite("waStatus", raw); else ctx.cacheDrop("waStatus"); } catch { ctx.waStatus = null; }
     finally { waRefreshing = false; waInflight = null; }
     paintWhatsapp();
     if (ctx.waStatus?.capacidades.grupos === true && ctx.waGroups === null && ctx.waGroupsInflight === null && ctx.waGroupsAt === 0) void ctx.refreshWaGroups();
@@ -467,6 +477,39 @@ export async function disconnectWhatsapp(btn: HTMLButtonElement): Promise<void> 
   } finally { btn.disabled = false; }
   btn.textContent = label;
 }
+/**
+ * Depois de parear, até a máquina confirmar a conexão (o gateway volta em segundos; no Hermes, às vezes minutos):
+ * o estado vale como conectado com o número pareado, e o tutorial segue para o passo seguinte logo depois do ✓.
+ */
+export let waAguardando = false;
+let waPareadoNumero: string | null = null;
+/** O que a máquina respondeu de verdade na última consulta (antes de segurar "conectado"); decide quando parar de segurar. */
+let waRealConectado = false;
+export const comPareamento = (st: WhatsappStatus): WhatsappStatus =>
+  waAguardando && !st.connected && st.present ? { ...st, connected: true, number: st.number ?? waPareadoNumero } : st;
+/**
+ * Ação que reinicia o gateway na máquina (Hermes: áudio e quem responde): o número continua pareado, só o bridge
+ * cai por alguns segundos. Segura "conectado" até ele voltar, senão o tutorial voltava ao passo do QR.
+ */
+let waAcaoEmCurso = false;
+function segurarConexao(): void {
+  const st = ctx.waStatus;
+  if (st === null || st.number === null || !st.capacidades.politicaReinicia) return;
+  waPareadoNumero = st.number; waAcaoEmCurso = true;
+  if (!waAguardando) aguardarConexao(24);
+}
+/** A ação terminou na máquina: a partir daqui, "conectado" de verdade solta a segurada (antes, era o estado de antes do reinício). */
+const acaoTerminou = (): void => { waAcaoEmCurso = false; };
+function aguardarConexao(tentativas: number): void {
+  waAguardando = true; ctx.paintGuide();
+  setTimeout(() => {
+    void refreshWhatsapp().then(() => {
+      // Enquanto a ação roda, um "conectado" é o de antes do reinício: não solta ainda.
+      if ((waRealConectado && !waAcaoEmCurso) || tentativas <= 1) { waAguardando = false; ctx.paintGuide(); return; }
+      aguardarConexao(tentativas - 1);
+    });
+  }, 5000);
+}
 export async function pairWhatsapp(reset: boolean): Promise<void> {
   if (waPairing) return;
   waPairing = true; waConnected = false;
@@ -485,8 +528,9 @@ export async function pairWhatsapp(reset: boolean): Promise<void> {
     paintWaMeta();
     if (!waConnected && !waProgress.classList.contains("bad")) setWaProgress("O QR expirou sem leitura. Gere outro quando quiser.", "bad");
     waQr.hidden = true; waHow.hidden = true;
-    // O gateway acabou de voltar; dá alguns segundos para o bridge abrir a sessão antes de consultar.
-    setTimeout(() => { void refreshWhatsapp(); }, 6000);
+    // O gateway acabou de voltar; o bridge leva alguns segundos (no Hermes, às vezes minutos) para abrir a sessão.
+    // Pareou: consulta a cada 5 s até ver conectado (até ~3 min), em vez de deixar o passo voltar a "Gerar QR".
+    if (waConnected) aguardarConexao(36); else setTimeout(() => { void refreshWhatsapp(); }, 6000);
     paintWhatsapp();
   }
 }
@@ -496,6 +540,10 @@ export async function pairWhatsapp(reset: boolean): Promise<void> {
 function waShowSuccess(number: string | null): void {
   if (waConnected) return;
   const ev = { number };
+  // O tutorial segue já: o passo do QR fica feito e o próximo abre depois da animação (a máquina confirma em segundo plano).
+  waPareadoNumero = number; waAguardando = true;
+  if (ctx.waStatus !== null) ctx.waStatus = comPareamento(ctx.waStatus);
+  setTimeout(() => ctx.paintGuide(), 1800);
       // Vinculou: a janela fecha sozinha; o gateway volta em segundo plano e o refresh depois do `done` mostra o número.
       waConnected = true;
       setWaProgress(`Pareado${ev.number !== null ? ` como ${fmtPhone(ev.number)}` : ""}`, "ok");

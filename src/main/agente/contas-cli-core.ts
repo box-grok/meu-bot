@@ -49,6 +49,22 @@ export const STATUS_SH = [
   "echo '<<github'; command -v gh >/dev/null 2>&1 && gh auth status -h github.com </dev/null 2>&1 | head -40 || echo ausente; echo '>>'",
 ].join("; ");
 
+/**
+ * Instala o GitHub CLI (gh) sem sudo: o binário oficial da última versão em ~/.local/bin (já no PATH das contas).
+ * Linux amd64/arm64 (as máquinas) e macOS. Sai 0 com a versão instalada; senão, uma linha dizendo o que faltou.
+ */
+export const INSTALAR_GH_SH = [
+  "set -e",
+  "if command -v gh >/dev/null 2>&1; then gh --version | head -1; exit 0; fi",
+  `case "$(uname -m)" in x86_64|amd64) A=amd64;; aarch64|arm64) A=arm64;; *) echo "arquitetura não suportada: $(uname -m)"; exit 2;; esac`,
+  `V=$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | grep -o '"tag_name": *"v[^"]*"' | head -1 | sed 's/.*"v//; s/"$//')`,
+  `[ -n "$V" ] || { echo "não consegui descobrir a versão do gh (sem internet?)"; exit 3; }`,
+  `T=$(mktemp -d); trap 'rm -rf "$T"' EXIT; mkdir -p "$HOME/.local/bin"`,
+  `if [ "$(uname -s)" = Darwin ]; then curl -fsSL -o "$T/gh.zip" "https://github.com/cli/cli/releases/download/v$V/gh_\${V}_macOS_\${A}.zip"; (cd "$T" && unzip -q gh.zip); else curl -fsSL -o "$T/gh.tgz" "https://github.com/cli/cli/releases/download/v$V/gh_\${V}_linux_\${A}.tar.gz"; tar -xzf "$T/gh.tgz" -C "$T"; fi`,
+  `install -m 755 "$T"/gh_*/bin/gh "$HOME/.local/bin/gh"`,
+  `"$HOME/.local/bin/gh" --version | head -1`,
+].join("\n");
+
 function bloco(out: string, id: ContaId): string | null {
   const m = new RegExp(`<<${id}\\n([\\s\\S]*?)\\n>>`).exec(out.replace(/\r/g, ""));
   return m === null ? null : m[1]!;

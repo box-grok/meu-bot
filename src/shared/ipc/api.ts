@@ -400,6 +400,8 @@ export interface MeuBotClientApi {
   contasEntrar(id: ContaId, navegador: boolean, trocar: boolean): Promise<void>;
   contasCancelar(): Promise<void>;
   contasSair(id: ContaId): Promise<ContaEstado[] | null>;
+  /** Instala o GitHub CLI (gh) na máquina da janela, sem sudo; devolve o estado novo das contas. */
+  contasInstalarGh(): Promise<ContaEstado[] | null>;
 }
 export interface MeuBotAdminApi {
   /** meu-bot-admin: nomes dos MVPs registrados (botões "＋ produto" da licença); criar e editar ficam no seletor. */

@@ -21,9 +21,10 @@ import type { Gateway, VoiceReplyMode, WhatsappAgente, WhatsappChat, WhatsappDmP
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
+import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
@@ -106,6 +107,7 @@ ${WA_ESCOLHA_SH}
 echo "escolha=$ESC"
 S=$HOME/.hermes/whatsapp
 if usa_hermes; then
+  ${HERMES_PATH_SH}
   echo gateway=hermes; echo present=1
   echo "bin=$(command -v hermes 2>/dev/null)"
   echo "ver=$(timeout 10 hermes --version 2>/dev/null | head -1)"
@@ -478,6 +480,9 @@ ${WA_ESCOLHA_SH}
 S=$HOME/.hermes/whatsapp
 if usa_hermes; then
   command -v hermes >/dev/null 2>&1 || { echo '{"event":"error","error":"o Hermes não está instalado nesta máquina; use \\"Preparar\\" antes de gerar o QR"}'; exit 2; }
+  # O bridge é Node: o SSH não interativo nem sempre tem o Node no PATH (o Hermes traz o dele em ~/.hermes/tools).
+  ${HERMES_PATH_SH}
+  command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || { echo '{"event":"error","error":"não achei o Node.js (node e npm) nesta máquina; o bridge do WhatsApp do Hermes precisa dele"}'; exit 2; }
   B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
   if [ ! -f "$B/bridge.js" ]; then echo '{"event":"error","error":"bridge do Hermes não encontrado nesta máquina"}'; exit 2; fi
   # Dependências do bridge (o "hermes whatsapp" faz o mesmo npm install na primeira vez).
@@ -485,9 +490,11 @@ if usa_hermes; then
     echo '{"event":"meu-bot","step":"bridge-deps"}'
     ( cd "$B" && npm install --no-audit --no-fund >/dev/null 2>&1 ) || { echo '{"event":"error","error":"não consegui instalar as dependências do bridge do WhatsApp do Hermes (npm install)"}'; exit 2; }
   fi
-  # O gateway do Hermes é um serviço dele (hermes gateway); instalações antigas rodavam pelo PM2.
-  if pm2 describe hermes-gateway >/dev/null 2>&1; then GW=pm2; else GW=svc; fi
-  if [ "$GW" = pm2 ]; then pm2 stop hermes-gateway >/dev/null 2>&1; else hermes gateway stop >/dev/null 2>&1; fi
+  # O gateway do Hermes: serviço de usuário do systemd (o normal hoje), PM2 em instalações antigas, ou o próprio CLI.
+  if pm2 describe hermes-gateway >/dev/null 2>&1; then GW=pm2; elif systemctl --user cat hermes-gateway >/dev/null 2>&1; then GW=systemd; else GW=cli; fi
+  gw_stop() { case "$GW" in pm2) pm2 stop hermes-gateway ;; systemd) systemctl --user stop hermes-gateway ;; *) hermes gateway stop ;; esac >/dev/null 2>&1; }
+  gw_start() { case "$GW" in pm2) pm2 start hermes-gateway ;; systemd) systemctl --user reset-failed hermes-gateway; systemctl --user start hermes-gateway ;; *) hermes gateway start || hermes gateway install ;; esac >/dev/null 2>&1; }
+  gw_stop
   echo '{"event":"meu-bot","step":"gateway-stopped"}'
   hermes_wa_ensure() {
 ${HERMES_WA_ENSURE_SH}
@@ -495,19 +502,33 @@ ${HERMES_WA_ENSURE_SH}
   restart() {
     # Pareou: liga o WhatsApp no .env e, sem modelo escolhido, responde pelo backend do meu-bot (HERMES_WA_ENSURE_SH).
     if [ -s "$S/session/creds.json" ]; then HWA=$(hermes_wa_ensure); echo '{"event":"meu-bot","step":"ensure"}'; echo "$HWA" >&2; fi
-    if [ "$GW" = pm2 ]; then pm2 start hermes-gateway >/dev/null 2>&1; else hermes gateway start >/dev/null 2>&1 || hermes gateway install >/dev/null 2>&1; fi
+    gw_start
+    # Hermes vindo do npm sem o ambiente de dependências: o serviço cai em loop pedindo "hermes pm repair". Conserta e sobe de novo.
+    if [ "$GW" != pm2 ] && ! hermes_gw_ok && journalctl --user -u hermes-gateway -n 30 --no-pager 2>/dev/null | grep -q 'pm repair'; then
+      echo '{"event":"meu-bot","step":"gateway-repair"}'
+      timeout 600 hermes pm repair >/dev/null 2>&1
+      gw_stop; gw_start
+      hermes_gw_ok || echo '{"event":"meu-bot","step":"gateway-down"}'
+    fi
     echo '{"event":"meu-bot","step":"gateway-started"}'
   }
+  # O bridge do gateway responde /health em até ~30 s depois de subir.
+  hermes_gw_ok() { i=0; while [ $i -lt 15 ]; do curl -s -m 2 http://127.0.0.1:3000/health 2>/dev/null | grep -q '"status"' && return 0; sleep 2; i=$((i+1)); done; return 1; }
   if [ "$RESET" = "1" ] && [ -d "$S/session" ]; then mv "$S/session" "$S/session.loggedout-$(date +%s)"; echo '{"event":"meu-bot","step":"session-moved"}'; fi
   mkdir -p "$S/session"
   cd "$B" || { restart; exit 2; }
   node bridge.js --pair-only --pair-json --session "$S/session" --mode bot 2>&1 &
   NODE=$!
-  trap 'kill $NODE 2>/dev/null; restart; exit 130' HUP TERM INT
+  # O bridge só diz "connected" quando a conexão inteira fecha (5–20 s depois da leitura). Vinculou de verdade quando o
+  # creds.json ganhou o número depois de o pareamento começar: o mesmo vigia do OpenClaw, para o ✓ vir na hora.
+  CREDS=$S/session/creds.json; T0=$(date +%s)
+  linked_now() { [ -f "$CREDS" ] || return 1; [ "$(stat -c %Y "$CREDS" 2>/dev/null || echo 0)" -ge "$T0" ] || return 1; ME=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$CREDS" 2>/dev/null); [ -n "$ME" ]; }
+  ( while kill -0 $NODE 2>/dev/null; do if linked_now; then echo "{\"event\":\"connected\",\"user\":{\"id\":\"$ME\"}}"; break; fi; sleep 1; done ) & W=$!
+  trap 'kill $NODE $W 2>/dev/null; restart; exit 130' HUP TERM INT
   # O sleep do cronômetro não pode herdar a saída: um sleep órfão seguraria o ssh aberto até o fim dos 5 min.
   ( sleep 300 >/dev/null 2>&1; kill $NODE 2>/dev/null ) >/dev/null 2>&1 & T=$!
   wait $NODE; rc=$?
-  pkill -P $T 2>/dev/null; kill $T 2>/dev/null
+  pkill -P $T 2>/dev/null; pkill -P $W 2>/dev/null; kill $T $W 2>/dev/null
   trap - HUP TERM INT
   restart
   exit $rc
@@ -631,8 +652,11 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
       try { ev = JSON.parse(line) as typeof ev; } catch { if (openclaw) handleText(line); else send({ kind: "log", text: line }); return; }
       switch (ev.event) {
         case "meu-bot":
+          log(`[whatsapp] pareamento em ${host}: passo ${ev.step ?? "?"}`);
           if (ev.step === "openclaw") { openclaw = true; send({ kind: "step", text: "OpenClaw nesta máquina; usando `openclaw channels login`" }); }
           else if (ev.step === "gateway-stopped") send({ kind: "step", text: "gateway do Hermes pausado durante o pareamento" });
+          else if (ev.step === "gateway-repair") send({ kind: "step", text: "o Hermes desta máquina estava sem as dependências do gateway; consertando (hermes pm repair, alguns minutos)" });
+          else if (ev.step === "gateway-down") send({ kind: "log", text: "o gateway do Hermes não voltou depois do conserto; veja `journalctl --user -u hermes-gateway` na máquina" });
           else if (ev.step === "bridge-deps") send({ kind: "step", text: "instalando as dependências do WhatsApp do Hermes (só na primeira vez, 1–2 min)" });
           else if (ev.step === "ensure") send({ kind: "step", text: "WhatsApp ligado no Hermes; sem modelo escolhido, ele responde pelo Claude do meu-bot desta máquina" });
           else if (ev.step === "session-moved") send({ kind: "step", text: "sessão deslogada guardada como session.loggedout-…" });
@@ -647,12 +671,13 @@ export function startPairing(host: string, reset: boolean, send: (ev: WhatsappEv
           break;
         case "started": send({ kind: "step", text: openclaw ? "gerando o QR…" : "bridge do Hermes iniciado; gerando o QR…" }); break;
         case "qr":
+          log(`[whatsapp] pareamento em ${host}: QR`);
           if (typeof ev.qr === "string" && ev.qr !== "") {
             try { send({ kind: "qr", dataUrl: await toDataURL(ev.qr, { margin: 1, width: 360 }) }); } catch (e) { send({ kind: "error", text: `não consegui desenhar o QR: ${e instanceof Error ? e.message : String(e)}` }); }
           }
           break;
         case "disconnected": send({ kind: "log", text: `desconectado (${String(ev.reason ?? "?")}); tentando de novo…` }); break;
-        case "connected": connected = true; send({ kind: "connected", number: phoneOf(ev.user?.id ?? "") }); break;
+        case "connected": if (!connected) log(`[whatsapp] pareamento em ${host}: vinculado (${ev.user?.id ?? "?"})`); connected = true; send({ kind: "connected", number: phoneOf(ev.user?.id ?? "") }); break;
         case "error": send({ kind: "error", text: ev.error === "logged_out" ? "o WhatsApp recusou a sessão (logged out). Use \"Desconectar\" e depois conecte de novo para gerar um QR novo." : (ev.error ?? "erro no bridge") }); break;
         default: send({ kind: "log", text: line });
       }
@@ -1028,10 +1053,12 @@ ${WA_ESCOLHA_SH}
 ${qual === undefined ? "" : `ESC=${qual}`}
 S=$HOME/.hermes/whatsapp
 if usa_hermes; then
+  ${HERMES_PATH_SH}
   [ -d "$S/session" ] || { echo OUT=hermes; exit 0; }
-  if pm2 describe hermes-gateway >/dev/null 2>&1; then pm2 stop hermes-gateway >/dev/null 2>&1; else hermes gateway stop >/dev/null 2>&1; fi
+  if pm2 describe hermes-gateway >/dev/null 2>&1; then GW=pm2; elif systemctl --user cat hermes-gateway >/dev/null 2>&1; then GW=systemd; else GW=cli; fi
+  case "$GW" in pm2) pm2 stop hermes-gateway ;; systemd) systemctl --user stop hermes-gateway ;; *) hermes gateway stop ;; esac >/dev/null 2>&1
   mv "$S/session" "$S/session.loggedout-$(date +%s)"
-  if pm2 describe hermes-gateway >/dev/null 2>&1; then pm2 start hermes-gateway >/dev/null 2>&1; else hermes gateway start >/dev/null 2>&1; fi
+  case "$GW" in pm2) pm2 start hermes-gateway ;; systemd) systemctl --user start hermes-gateway ;; *) hermes gateway start ;; esac >/dev/null 2>&1
   echo OUT=hermes; exit 0
 fi
 command -v openclaw >/dev/null 2>&1 || { echo OUT=none; exit 0; }
@@ -1099,8 +1126,10 @@ export async function whatsappGroups(host: string): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   // A máquina escolhe o caminho: Hermes (config.yaml + state.db + .env, whatsapp-hermes-core.ts) ou OpenClaw.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
-if [ -d "$HOME/.hermes/whatsapp" ]; then
+${WA_ESCOLHA_SH}
+if usa_hermes; then
   echo gateway=hermes
+  echo "skill=$([ -f "$HOME/.hermes/whatsapp/session/creds.json" ] && echo 1 || echo 0)"
   echo "self=$(${HERMES_SELF_SH})"
   echo "hgroups=$(${HERMES_GROUPS_PY} | tr -d '\n')"
   ${HERMES_GROUP_CFG_SH}
@@ -1127,7 +1156,9 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
     const pol = politicaHermes(hermesEnvOf(kv), self);
     const quem: string[] | "todos" = pol.dmPolicy === "open" ? "todos" : pol.allowFrom.map((n) => n.replace(/\D/g, "")).filter((n) => n !== "");
     const g = gruposHermes(parseHermesGroupCfg(jsonOr(kv.get("gcfg"))), jsonOr(kv.get("hgroups")), self, quem, jsonOr(kv.get("cache")));
-    return { ...g, grupos: applyWaGroupMarks(g.grupos, marks) };
+    // `skill` aqui = o bridge pareado: "Atualizar lista" lista pelo WhatsApp (hermes-grupos-listar.ts). Sem isto ficava
+    // false e a tela desabilitava o botão com a dica "não está pareado" mesmo com a lista cheia.
+    return { ...g, grupos: applyWaGroupMarks(g.grupos, marks), skill: kv.get("skill") === "1" };
   }
   const g = gruposDaMaquina(jsonOr(kv.get("list")), jsonOr(kv.get("wa")), jsonOr(kv.get("cache")), kv.get("self") ?? null, jsonOr(kv.get("banco")));
   // Excluído da lista mora na máquina (whatsapp-lista.json), na mesma leitura: os dois apps veem a mesma lista.
@@ -1269,6 +1300,15 @@ export async function whatsappSetGroup(host: string, jid: string, pedido: Whatsa
  */
 export async function whatsappRefreshGroups(host: string): Promise<WhatsappGroups> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  // Hermes: pelo próprio bridge (hermes-grupos-listar.ts), também parando o gateway uns 30 s. A escolha gravada manda.
+  const esc = await runSsh(host, `${WA_ESCOLHA_SH}\nusa_hermes && echo hermes || echo outro\n`, 20_000);
+  if (/^hermes$/m.test(esc.stdout)) {
+    const h = await runSsh(host, HERMES_GRUPOS_LISTAR_SH, 240_000);
+    const l = lerListagemHermes(h.stdout);
+    if (!l.ok) throw new Error(`não consegui listar os grupos: ${l.erro}`);
+    log(`whatsapp: lista de grupos atualizada em ${host} (hermes: ${l.grupos})`);
+    return whatsappGroups(host);
+  }
   const r = await runSsh(host, `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 [ -f "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" ] || { echo "SKILL=0"; exit 0; }
 L=$(mktemp); timeout 420 bash "${WA_GRUPOS_DIR}/scripts/wa-admin.sh" listar --json >/dev/null 2>"$L"; echo "RC=$?"

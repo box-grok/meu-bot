@@ -1,23 +1,34 @@
 /**
  * Áudio do agente do WhatsApp numa máquina com Hermes: ouvir (stt) e responder em voz (voice/tts) são do próprio
- * Hermes, no `~/.hermes/config.yaml` (`stt.enabled`, padrão ligado, e o provedor; `voice.auto_tts` = responde em
- * áudio quando a pessoa manda áudio). O app só lê e mostra: os instaladores de transcrição e voz do meu-bot são do
- * OpenClaw e não se aplicam aqui. Lê com o Python do runtime do Hermes (tem PyYAML); sem ele, assume o padrão.
+ * Hermes, no `~/.hermes/config.yaml` (`stt.enabled` e o provedor; `voice.auto_tts` = responde em áudio quando a
+ * pessoa manda áudio). O app grava os dois (hostProbe.installAudio) e aqui lê. Transcrição local de verdade exige o
+ * faster-whisper no ambiente do gateway (`hermes pm install --extra stt-whisper`): sem ele, "ouvir" fica desligado
+ * na tela mesmo com o config gravado. Lê com o Python do runtime do Hermes (ruamel; PyYAML nem sempre existe).
  */
 import type { VoiceReplyMode } from "../../shared/ipc";
 import { runSsh } from "./whatsapp";
+import { HERMES_PATH_SH, HERMES_VENV_PY_SH } from "./whatsapp-hermes-core";
 
-const LER_SH = `export PATH=$HOME/.local/bin:$PATH; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY="$R/venv/bin/python3"; [ -x "$PY" ] || PY=python3; "$PY" -c '
+const LER_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY="$R/venv/bin/python3"; [ -x "$PY" ] || PY=python3
+${HERMES_VENV_PY_SH}
+echo "whisper=$( [ -n "$HPY" ] && "$HPY" -c "import faster_whisper" >/dev/null 2>&1 && echo 1 || echo 0)"
+"$PY" -c '
 import os
+p = os.path.expanduser("~/.hermes/config.yaml")
 try:
-    import yaml
-    c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    try:
+        from ruamel.yaml import YAML
+        c = YAML(typ="safe").load(open(p)) or {}
+    except ImportError:
+        import yaml
+        c = yaml.safe_load(open(p)) or {}
 except Exception:
     c = {}
 s = c.get("stt") or {}
 en = s.get("enabled", True)
 en = en if isinstance(en, bool) else str(en).strip().lower() in ("1", "true", "yes", "on")
-print("stt=" + ("1" if en and (s.get("provider") or os.path.isdir(os.path.expanduser("~/.hermes/venv-whisper"))) else "0"))
+print("stt=" + ("1" if en else "0"))
+print("prov=" + str(s.get("provider") or ""))
 v = c.get("voice") or {}
 print("tts=" + ("inbound" if v.get("auto_tts") else "off"))
 ' 2>/dev/null`;
@@ -30,5 +41,9 @@ export async function hermesAudioStatus(host: string): Promise<HermesAudio | nul
   if (r === null || r.code !== 0) return null;
   const stt = /^stt=([01])$/m.exec(r.stdout); const tts = /^tts=(off|inbound|always)$/m.exec(r.stdout);
   if (stt === null || tts === null) return null;
-  return { audioIn: stt[1] === "1", audioOut: tts[1] as VoiceReplyMode };
+  const prov = /^prov=(.*)$/m.exec(r.stdout)?.[1]?.trim() ?? "";
+  const whisper = /^whisper=1$/m.test(r.stdout);
+  // Provedor local (ou nenhum, que o Hermes resolve como local) só ouve com o faster-whisper instalado.
+  const ouve = stt[1] === "1" && (prov === "local" || prov === "" ? whisper : true);
+  return { audioIn: ouve, audioOut: tts[1] as VoiceReplyMode };
 }

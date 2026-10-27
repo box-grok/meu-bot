@@ -236,6 +236,7 @@ const clientApi: MeuBotClientApi = {
   contasEntrar: (id: ContaId, navegador: boolean, trocar: boolean) => ipcRenderer.invoke("contas:entrar", { id, navegador, trocar }),
   contasCancelar: () => ipcRenderer.invoke("contas:cancelar", {}),
   contasSair: (id: ContaId) => ipcRenderer.invoke("contas:sair", { id }),
+  contasInstalarGh: () => ipcRenderer.invoke("contas:instalar-gh", {}),
 };
 
 /** Só o meu-bot-admin. */

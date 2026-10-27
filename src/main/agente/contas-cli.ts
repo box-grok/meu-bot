@@ -7,7 +7,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { ContaEvento } from "../../shared/ipc";
 import { log } from "../maquina/backend";
 import { sairDoSite } from "../navegador/browser";
-import { comandoEntrar, comandoSair, comandoSairDoGithub, GITHUB_OUTRA_CONTA, lerLink, SAIR_DO_SITE, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
+import { comandoEntrar, comandoSair, comandoSairDoGithub, GITHUB_OUTRA_CONTA, INSTALAR_GH_SH, lerLink, SAIR_DO_SITE, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 
@@ -101,6 +101,16 @@ export async function entrarConta(host: string, id: ContaId, navegador: boolean,
 export function cancelarConta(): void {
   if (atual === null) return;
   try { atual.child.kill("SIGTERM"); } catch { /* ok */ }
+}
+
+/** Botão "Instalar o GitHub CLI" (tutorial 13): instala o gh na máquina e devolve o estado novo das contas. */
+export async function instalarGh(host: string): Promise<ContaEstado[] | null> {
+  if (!remota(host)) throw new Error("só numa máquina por SSH");
+  const r = await ssh(host, INSTALAR_GH_SH, 300_000);
+  const ultima = r.out.trim().split("\n").at(-1) ?? "";
+  if (r.code !== 0) throw new Error(ultima !== "" ? ultima : "a instalação do gh não terminou");
+  log(`[contas] ${host}: gh instalado (${ultima})`);
+  return contasStatus(host);
 }
 
 export async function sairConta(host: string, id: ContaId): Promise<ContaEstado[] | null> {

@@ -22,7 +22,7 @@ import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whats
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
-import { cancelarConta, entrarConta, sairConta } from "../agente/contas-cli";
+import { cancelarConta, entrarConta, instalarGh, sairConta } from "../agente/contas-cli";
 import { isContaId } from "../agente/contas-cli-core";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
@@ -435,6 +435,7 @@ export function registerClientIpc(): void {
     if (!isContaId(p.id)) throw new Error("conta desconhecida");
     return entrarConta(h.host, p.id, p.navegador === true, p.trocar === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
   });
+  handleClient("contas:instalar-gh", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return instalarGh(h.host); });
   handleClient("contas:cancelar", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelarConta(); });
   handleClient("contas:sair", (event, payload: unknown) => {
     const h = hostFromEvent(event);

@@ -271,13 +271,29 @@ async function entrarConta(id: ContaId, trocar = false): Promise<void> {
   catch (err) { contaLogin = { ...contaLogin, texto: `✗ ${ipcErrorText(err)}`, ok: false }; }
   finally { if (contaLogin !== null) contaLogin.rodando = false; ctx.paintGuide(); }
 }
+/** Botão "Instalar o GitHub CLI": em andamento, e o erro da última tentativa (some ao tentar de novo). */
+let ghInstalando = false;
+let ghErro: string | null = null;
 export function renderConta(container: HTMLElement, id: ContaId): void {
   const box = el("div", "audio-controls");
   const st = contasState?.find((c) => c.id === id) ?? null;
   const login = contaLogin?.id === id ? contaLogin : null;
   const row = el("div", "audio-row");
   if (contasState === null) row.append(carregando("Consultando a máquina…", "guia-contas"));
-  else if (st !== null && !st.presente) row.append(el("span", "hint", id === "github" ? "O GitHub CLI (gh) não está instalado nesta máquina." : "Esta máquina não tem o Node (npx) para o Cloudflare."));
+  else if (st !== null && !st.presente && id === "github") {
+    row.append(el("span", "hint", ghInstalando ? "Instalando o GitHub CLI na máquina…" : "O GitHub CLI (gh) não está instalado nesta máquina."));
+    const b = el("button", "btn btn-primary btn-small", ghInstalando ? "Instalando…" : "Instalar o GitHub CLI"); b.type = "button";
+    b.disabled = ghInstalando;
+    b.addEventListener("click", () => {
+      ghInstalando = true; ghErro = null; ctx.paintGuide();
+      void window.meuBot.contasInstalarGh()
+        .then((r) => { if (r !== null) contasState = r; })
+        .catch((e: unknown) => { ghErro = `Não instalou: ${ipcErrorText(e)}`; })
+        .finally(() => { ghInstalando = false; ctx.paintGuide(); });
+    });
+    row.append(b);
+  }
+  else if (st !== null && !st.presente) row.append(el("span", "hint", "Esta máquina não tem o Node (npx) para o Cloudflare."));
   else {
     if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
     // Conectada: "Trocar de conta" (outra conta); "Conectar de novo" só quando o acesso é amplo (mesma conta, só sites).
@@ -307,6 +323,7 @@ export function renderConta(container: HTMLElement, id: ContaId): void {
     }
   }
   box.append(row);
+  if (id === "github" && ghErro !== null) box.append(el("p", "hint bad-hint", ghErro));
   if (st?.amplo === true && login?.rodando !== true) box.append(el("p", "hint", "Esta conta foi logada com acesso amplo (Workers, D1, e-mail…). \"Conectar de novo\" troca por um acesso só para sites."));
   if (login !== null) {
     box.append(el("p", login.ok === false ? "hint bad-hint" : "hint", login.texto));
