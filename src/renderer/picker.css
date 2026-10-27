@@ -42,6 +42,13 @@ body.arrive .row { animation: arrive-row .26s ease-out both; animation-delay: ca
 @media (prefers-reduced-motion: reduce) { .glow { animation: none; } }
 .sub { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
 .error { margin: 8px 0 0; color: var(--bad); font-size: 12px; }
+/* meu-bot-admin: abas por tipo de máquina, no mesmo desenho do "meu-bot | WhatsApp" da janela. */
+.pk-tipos { display: flex; margin: 8px 20px 0; padding: 3px; gap: 3px; border-radius: 9px; background: var(--bg); border: 1px solid var(--line); }
+.pk-tipos[hidden], .pk-tipos button[hidden] { display: none; }
+.pk-tipos button { flex: 1; font: inherit; font-size: 12px; padding: 5px 8px; border: none; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.pk-tipos button:hover { color: var(--fg); }
+.pk-tipos button.on { background: var(--card); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.15); }
+.pk-tipos .n { margin-left: 4px; font-weight: 400; opacity: .7; }
 #pk-filter { margin: 8px 20px 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); font: inherit; }
 .list { list-style: none; margin: 8px 20px 0; padding: 0; flex: 1; overflow: auto; min-height: 120px; }
 .row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; cursor: default; border: 1px solid transparent; }

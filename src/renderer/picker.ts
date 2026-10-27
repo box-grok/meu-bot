@@ -77,8 +77,15 @@ let pods = new Set<string>();
 let hosts: string[] = [];
 /** meu-bot-admin: as pessoas do suporte (null = meu-bot normal). */
 let support: PickerInit["support"] = null;
-/** Plano por host (lido por SSH), para o selo "PRO"; vale nos dois apps. */
-const plans = new Map<string, PlanName>();
+/**
+ * Plano por host (lido por SSH), para o selo "PRO"; vale nos dois apps. Começa com o último plano conhecido (guardado
+ * neste Mac): o selo aparece na hora, como no admin, e a leitura por SSH só confirma ou corrige.
+ */
+const PLANS_KEY = "picker:plans";
+const plans = new Map<string, PlanName>((() => {
+  try { const v = JSON.parse(localStorage.getItem(PLANS_KEY) ?? "{}") as Record<string, unknown>; return Object.entries(v).filter((e): e is [string, PlanName] => e[1] === "pro" || e[1] === "free"); } catch { return []; }
+})());
+const guardarPlans = (): void => { try { localStorage.setItem(PLANS_KEY, JSON.stringify(Object.fromEntries(plans))); } catch { /* opcional */ } };
 const personOf = (host: string): SupportPerson | undefined => support?.people.find((p) => p.alias === host);
 /** Nome na lista: a pessoa (admin) ou a máquina. */
 const rowLabel = (host: string): string => personOf(host)?.name ?? hostLabel(host);
@@ -192,9 +199,65 @@ async function relieve(host: string, btn: HTMLButtonElement): Promise<void> {
 
 /** meu-bot-admin: pessoas arquivadas só aparecem com o interruptor "arquivadas" ligado. */
 let showArchivedPeople = false;
+
+/**
+ * meu-bot-admin: abas por tipo de máquina (Pessoas · Root · Grok Bot · Este Mac). Este Mac = a própria máquina e
+ * conexões locais (VM de teste); Grok Bot = pod reconhecido pela sondagem; Root = entra como root; o resto, Pessoas.
+ * O tipo visto fica guardado neste Mac: a máquina não pula de aba enquanto a sondagem responde.
+ */
+type Tipo = "pessoa" | "root" | "grok" | "mac";
+const TIPOS_KEY = "picker:tipos";
+const tiposEl = $<HTMLDivElement>("pk-tipos");
+const tiposVistos = new Map<string, Tipo>((() => {
+  try { const v = JSON.parse(localStorage.getItem(TIPOS_KEY) ?? "{}") as Record<string, unknown>; return Object.entries(v).filter((e): e is [string, Tipo] => e[1] === "pessoa" || e[1] === "root" || e[1] === "grok" || e[1] === "mac"); } catch { return []; }
+})());
+let tipoAtivo: Tipo = (() => { try { const t = localStorage.getItem("picker:tipo-aba"); return t === "root" || t === "grok" || t === "mac" ? t : "pessoa"; } catch { return "pessoa"; } })();
+function tipoDe(h: string): Tipo {
+  if (h === "local" || personOf(h)?.local === true) return "mac";
+  if (pods.has(h)) return "grok";
+  return tiposVistos.get(h) ?? "pessoa";
+}
+function anotarTipo(h: string, user: string | null): void {
+  const t: Tipo = h === "local" || personOf(h)?.local === true ? "mac" : pods.has(h) ? "grok" : user === "root" ? "root" : "pessoa";
+  if (tiposVistos.get(h) === t) return;
+  tiposVistos.set(h, t);
+  try { localStorage.setItem(TIPOS_KEY, JSON.stringify(Object.fromEntries(tiposVistos))); } catch { /* opcional */ }
+  if (support !== null) { pintarTipos(); applyFilter(); }
+}
+/**
+ * Só as abas que têm máquina: sem root, sem pod ou sem este Mac, a aba some; com um tipo só, a barra inteira some e a
+ * lista mostra tudo. A aba escolhida que ficou vazia cede para a primeira que tem máquina.
+ */
+let tiposComMaquina: Tipo[] = [];
+function pintarTipos(): void {
+  const base = hosts.filter((h) => showArchivedPeople || personOf(h)?.archived !== true);
+  const conta = (t: Tipo): number => base.filter((h) => tipoDe(h) === t).length;
+  tiposComMaquina = support === null ? [] : (["pessoa", "root", "grok", "mac"] as Tipo[]).filter((t) => conta(t) > 0);
+  tiposEl.hidden = tiposComMaquina.length < 2;
+  if (tiposEl.hidden) return;
+  if (!tiposComMaquina.includes(tipoAtivo)) tipoAtivo = tiposComMaquina[0] ?? "pessoa";
+  for (const b of tiposEl.querySelectorAll<HTMLButtonElement>("button")) {
+    const t = b.dataset["tipo"] as Tipo;
+    const n = conta(t);
+    b.hidden = n === 0;
+    b.classList.toggle("on", t === tipoAtivo);
+    b.setAttribute("aria-selected", String(t === tipoAtivo));
+    b.dataset["rotulo"] ??= b.textContent ?? "";
+    b.replaceChildren(b.dataset["rotulo"], ...(n > 0 ? [el("span", "n", String(n))] : []));
+  }
+}
+tiposEl.addEventListener("click", (ev) => {
+  const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-tipo]");
+  if (b === null) return;
+  tipoAtivo = b.dataset["tipo"] as Tipo;
+  try { localStorage.setItem("picker:tipo-aba", tipoAtivo); } catch { /* opcional */ }
+  pintarTipos(); applyFilter();
+});
+
 function visibleHosts(): string[] {
   const q = filterEl.value.trim().toLowerCase();
-  return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q)));
+  const porTipo = support !== null && q === "" && tiposComMaquina.length >= 2;
+  return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (!porTipo || tipoDe(h) === tipoAtivo) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q)));
 }
 
 function applyFilter(): void {
@@ -269,7 +332,7 @@ async function probe(host: string, force = false): Promise<void> {
     // Admin não instala nem faz login na máquina da pessoa: só a sondagem. "Usar porta N" fica: é configuração deste Mac.
     results.set(host, support !== null ? { ...t, install: t.install === "porta" ? "porta" : null, login: false } : t);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
-    if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); }
+    if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); anotarTipo(host, p.user); }
   } catch (err) {
     results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${ipcErrorText(err)}`, install: null, canOpen: false });
   }
@@ -372,7 +435,7 @@ async function syncSsh(): Promise<void> {
 }
 
 /** Variante: admin. O que o seletor de pessoas tem a mais (admin/picker-chrome.ts). */
-const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError, setShowArchived: (v) => { showArchivedPeople = v; applyFilter(); } });
+const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError, setShowArchived: (v) => { showArchivedPeople = v; pintarTipos(); applyFilter(); } });
 archiveBtn.addEventListener("click", () => {
   const alias = selected; const person = alias === null ? undefined : personOf(alias);
   if (alias === null || person === undefined) return;
@@ -418,7 +481,7 @@ async function loadPlans(): Promise<void> {
     try {
       const map = await window.picker.plans(h);
       const p = map[h];
-      if (p !== undefined && plans.get(h) !== p) { plans.set(h, p); buildRows(); if (selected !== null) select(selected); }
+      if (p !== undefined && plans.get(h) !== p) { plans.set(h, p); guardarPlans(); buildRows(); if (selected !== null) select(selected); }
     } catch { /* fora do ar: sem selo */ }
   }));
 }
@@ -438,6 +501,7 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   onboardedCheck.checked = !payload.onboardingDone;
   errorEl.hidden = payload.error === null;
   errorEl.textContent = payload.error ?? "";
+  pintarTipos();
   buildRows();
   if (support !== null && hosts.length === 0) listEl.replaceChildren(adminChrome.emptyRow());
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;

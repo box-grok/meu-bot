@@ -111,12 +111,20 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
     panel.replaceChildren();
     if (msg !== "") panel.append(el("p", "hint", msg));
     if (catalogo !== null) {
-      const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Já sai deste código"));
-      const ul = el("ul", "admin-health");
-      const item = (nome: string, texto: string): void => { const li = el("li", "ok"); li.append(el("strong", "", nome), document.createTextNode(` · ${texto}`)); ul.append(li); };
-      for (const a of catalogo.apps) item(a.nome, a.descricao);
-      for (const a of catalogo.addons) item(`${a.nome} (add-on ${a.rotulo})`, a.descricao);
-      fixos.append(ul); panel.append(fixos);
+      // Separado pelo canal: o que está com as pessoas (produção) e o que ainda está em teste (staging); os add-ons à parte,
+      // porque valem pela licença em qualquer canal.
+      const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Apps e add-ons do meu-bot"));
+      const grupo = (titulo: string, itens: { nome: string; texto: string }[]): void => {
+        if (itens.length === 0) return;
+        fixos.append(el("p", "hint", titulo));
+        const ul = el("ul", "admin-health");
+        for (const it of itens) { const li = el("li", "ok"); li.append(el("strong", "", it.nome), document.createTextNode(` · ${it.texto}`)); ul.append(li); }
+        fixos.append(ul);
+      };
+      grupo("Em produção", catalogo.apps.filter((a) => a.canal === "estavel").map((a) => ({ nome: a.nome, texto: a.descricao })));
+      grupo("Em staging (em teste)", catalogo.apps.filter((a) => a.canal === "staging").map((a) => ({ nome: a.nome, texto: a.descricao })));
+      grupo("Add-ons (liberados pela licença, em qualquer canal)", catalogo.addons.map((a) => ({ nome: `${a.nome} (${a.rotulo})`, texto: a.descricao })));
+      panel.append(fixos);
     }
     if (novo) panel.append(form(null));
     for (const p of lista) panel.append(editando === p.nome ? form(p) : cartao(p));
