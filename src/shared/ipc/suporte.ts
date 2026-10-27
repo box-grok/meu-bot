@@ -126,3 +126,17 @@ export type ProdutoMvpPatch = { nome: string } & Partial<Omit<ProdutoMvp, "nome"
 export interface BackupIndiceView { arquivo: string; pessoa: string; maquina: string; criadoEm: string; tamanho: number; por: string; usuario: string; whatsapp: boolean; arquivos: number }
 /** Pré-voo da restauração num destino: o que impede, o que pede atenção. */
 export interface BackupRestauracao { bloqueios: string[]; avisos: string[]; podeRestaurar: boolean; destinoUsuario: string; whatsappNoDestino: boolean }
+
+/** O que já sai deste código (tabela de produtos e add-ons em src/main/app/variant-core.ts), para a janela Produtos. */
+export interface ProdutosCatalogo {
+  apps: { nome: string; canal: "estavel" | "staging"; descricao: string }[];
+  addons: { nome: string; rotulo: string; descricao: string }[];
+}
+/** A janela Produtos do meu-bot-admin (window.produtos): o registro de MVPs e o catálogo. */
+export interface ProdutosJanelaApi {
+  listar(): Promise<ProdutoMvp[]>;
+  salvar(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
+  remover(nome: string): Promise<ProdutoMvp[]>;
+  exportar(nome: string): Promise<{ json: string; checklist: string[] }>;
+  catalogo(): Promise<ProdutosCatalogo>;
+}

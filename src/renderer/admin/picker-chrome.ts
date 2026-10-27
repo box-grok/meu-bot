@@ -7,13 +7,12 @@ import type { PickerApi, PickerInit } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { EMPTY_PEOPLE_TEXT, MISSING_ADMIN_KEY_TEXT } from "../lib/admin-view.js";
-import { mountProdutosView } from "./produtos-page.js";
 
 export interface AdminPickerChromeDeps {
   listEl: HTMLElement;
   filterEl: HTMLInputElement;
   noteEl: HTMLElement;
-  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtos" | "produtoSave" | "produtoRemove" | "produtoExport">;
+  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtosAbrir">;
   /** Interruptor "arquivadas": mostrar ou não as pessoas arquivadas na lista. */
   setShowArchived(show: boolean): void;
   /** Redesenha o seletor com um payload novo, mantendo a seleção se der. */
@@ -79,15 +78,11 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
         }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
       });
       form.append(input, add);
-      // Produtos: é aqui que um MVP de bot vertical (meu-bot-fit, meu-bot-vendas…) nasce; a lista e o formulário
-      // são os mesmos da página "Produtos" da janela de uma pessoa.
-      const prodBtn = el("button", "btn btn-ghost btn-small", "◆ Novo MVP / Produtos"); prodBtn.type = "button"; prodBtn.title = "Registrar um novo bot personalizado (MVP) ou ver os produtos que saem deste código";
-      const prodBox = el("div", "add-form produtos-box"); prodBox.hidden = true;
-      const prodView = mountProdutosView({ container: prodBox, api: { listar: () => deps.api.produtos(), salvar: (p) => deps.api.produtoSave(p), remover: (n) => deps.api.produtoRemove(n), exportar: (n) => deps.api.produtoExport(n) }, fixos: true });
-      let prodLoaded = false;
-      prodBtn.addEventListener("click", () => { prodBox.hidden = !prodBox.hidden; if (!prodBox.hidden) { form.hidden = true; if (!prodLoaded) { prodLoaded = true; void prodView.refresh().then(() => { if (prodBox.querySelectorAll(".admin-card").length <= 1) prodView.novo(); }); } } });
+      // Produtos (MVPs de bots verticais) moram numa janela própria (main/admin/produtos-janela.ts); daqui só se abre.
+      const prodBtn = el("button", "btn btn-ghost btn-small", "◆ Produtos ↗"); prodBtn.type = "button"; prodBtn.title = "Abre a janela Produtos: registrar um novo bot personalizado (MVP) e ver o que já sai deste código";
+      prodBtn.addEventListener("click", () => { void deps.api.produtosAbrir().catch((err: unknown) => deps.showError("produtos", err)); });
       const row = el("div", "add-actions"); row.append(open, refreshBtn, prodBtn);
-      addBox.append(row, form, msg, prodBox, archivedSwitch);
+      addBox.append(row, form, msg, archivedSwitch);
       deps.listEl.after(addBox);
     },
     refreshPeopleOnce: () => {

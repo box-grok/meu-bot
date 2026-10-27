@@ -76,3 +76,7 @@ body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
 .auditoria-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
 .auditoria-tabela th, .auditoria-tabela td { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(127,127,127,.12); vertical-align: top; }
 .auditoria-tabela tr.apagada td { color: var(--bad); text-decoration: line-through; }
+/* Janela Produtos (produtos.html): cabeçalho fixo e a lista rolando abaixo, sem o limite da antiga caixa do seletor. */
+body.produtos-janela { display: flex; flex-direction: column; height: 100%; }
+body.produtos-janela .produtos-box { flex: 1; max-height: none; overflow: auto; display: flex; flex-direction: column; padding: 4px 20px 20px; }
+body.produtos-janela .head .add-actions { margin-top: 8px; }

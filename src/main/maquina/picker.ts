@@ -442,3 +442,5 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
 }
 
 export const isPickerOpen = (): boolean => pickerWin !== null && !pickerWin.isDestroyed();
+/** Onde o seletor está agora (null = fechado): a janela Produtos do admin se cola à esquerda dele. */
+export const pickerBounds = (): Electron.Rectangle | null => (pickerWin !== null && !pickerWin.isDestroyed() ? pickerWin.getBounds() : null);

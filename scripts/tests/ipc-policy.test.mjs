@@ -43,8 +43,15 @@ test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o Wha
   ];
   for (const c of writes) assert.ok(client.has(c), `${c} devia ser só do cliente`);
   assert.ok(shared.has("picker:use-port"), "a porta por máquina é configuração deste Mac: o admin também ajusta");
-  assert.deepEqual([...admin].sort(), ["admin:action", "admin:auditoria", "admin:auditoria-exportar", "admin:auditoria-visivel", "admin:backup-conferir", "admin:backup-criar", "admin:backup-listar", "admin:backup-restaurar", "admin:backup-whatsapp", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:license-approve", "admin:license-revoke", "admin:license-set", "admin:logs", "admin:produtos-list", "picker:produtos-export", "picker:produtos-list", "picker:produtos-remove", "picker:produtos-save", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename", "ui:bot-menu"]);
+  assert.deepEqual([...admin].sort(), ["admin:action", "admin:auditoria", "admin:auditoria-exportar", "admin:auditoria-visivel", "admin:backup-conferir", "admin:backup-criar", "admin:backup-listar", "admin:backup-restaurar", "admin:backup-whatsapp", "admin:bot-chats", "admin:bot-delete", "admin:bot-thread", "admin:health", "admin:license-approve", "admin:license-revoke", "admin:license-set", "admin:logs", "admin:produtos-list", "picker:produtos-abrir", "picker:support-add", "picker:support-archive", "picker:support-refresh", "picker:support-remove", "picker:support-rename", "produtos:catalogo", "produtos:exportar", "produtos:listar", "produtos:remover", "produtos:salvar", "ui:bot-menu"]);
   assert.match(ADMIN_READONLY_MSG, /só lê/);
+});
+
+test("janela Produtos: todo canal do preload dela é só do admin", () => {
+  const src = readFileSync(join(here, "..", "..", "dist", "preload", "produtos-preload.js"), "utf8");
+  const chans = [...src.matchAll(/ipcRenderer\.(?:invoke|send)\("([a-z:-]+)"/g)].map((m) => m[1]);
+  assert.ok(chans.length >= 5, "listar, salvar, remover, exportar, catálogo");
+  for (const c of chans) assert.ok(admin.has(c), `${c} devia estar em ADMIN_CHANNELS`);
 });
 
 test("os grupos sharedApi/clientApi/adminApi dos preloads batem com as listas de canais", () => {

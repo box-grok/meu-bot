@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>meu-bot-admin · Produtos</title>
+  <link rel="stylesheet" href="picker.css" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body class="admin produtos-janela">
+  <!-- Janela Produtos do meu-bot-admin (main/admin/produtos-janela.ts): o registro de MVPs e o que já sai deste código. -->
+  <header class="head">
+    <div class="head-title"><h1>Produtos</h1></div>
+    <p class="sub">Onde um MVP nasce: registre a ideia, defina módulos e pipeline e exporte o pontapé inicial.</p>
+    <div class="add-actions"><button type="button" id="pr-novo" class="btn btn-primary btn-small">＋ Novo MVP</button></div>
+  </header>
+  <main id="pr-lista" class="produtos-box"></main>
+  <script type="module" src="produtos.js"></script>
+</body>
+</html>

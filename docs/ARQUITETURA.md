@@ -69,7 +69,7 @@ Regras do renderer:
 Exemplo de referência: o financeiro (add-on `meu-bot-finance`, app `meu-bot-finance-staging`). Nome do exemplo
 abaixo: `meu-bot-fit`.
 
-1. **Registrar a ideia no meu-bot-admin** (página Produtos): pitch, público, módulos. O checklist dessa página é este
+1. **Registrar a ideia no meu-bot-admin** (janela Produtos: "◆ Produtos ↗" no seletor): pitch, público, módulos. O checklist dessa página é este
    mesmo roteiro (`src/main/admin/produtos-core.ts` › `checklist`).
 2. **Linha na tabela** `PRODUTOS` (`src/main/app/variant-core.ts`) e o id em `AppVariant` (`src/shared/ipc/app.ts`). Um app
    de teste sai de `staging(CLIENT, "<id>", <porta livre>)`; declare `addon` (a razão do app) e `abreEm` (página na

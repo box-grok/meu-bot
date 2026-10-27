@@ -370,3 +370,14 @@ pulsando, o tempo a partir de 3 s ("Lendo os grupos… 7 s") e, a partir de 10 s
 continuo buscando. Não precisa clicar de novo." O relógio é por rótulo e não zera quando a tela se redesenha. Vale para
 Conta Google, Finanças e Curva ABC, grupos e conversas do WhatsApp, passos do guia, CRM, Navegador e as páginas do
 meu-bot-admin. Tela nova que espera a máquina: use `carregando("…")` no lugar de um `<p class="hint">`.
+
+## Produtos em janela própria (27 out)
+O registro de MVPs saiu do seletor do meu-bot-admin: o seletor virou uma faixa estreita à direita da tela e o formulário
+(pitch, módulos, pipeline, checklist) ficava apertado, misturando "escolher uma pessoa" com "planejar um MVP". Agora o
+botão "◆ Produtos ↗" do seletor abre a janela Produtos (`main/admin/produtos-janela.ts`, `renderer/produtos.html`):
+uma só, altura toda, largura da janela de uma máquina, colada à esquerda do seletor (ou à direita da tela, sem ele).
+- Canais só dela: `produtos:listar|salvar|remover|exportar|catalogo` (origem conferida); o seletor só tem
+  `picker:produtos-abrir`. Os antigos `picker:produtos-*` saíram.
+- "Já sai deste código" vem do catálogo (`PRODUTOS` com `descricao` e `ADDONS` em `app/variant-core.ts`), não mais de
+  uma lista escrita à mão; o teste `produtos-alinhados` cobra a descrição de cada app e que todo `.html` entre no build.
+

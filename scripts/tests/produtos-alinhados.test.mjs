@@ -109,3 +109,13 @@ test("atalhos de build do package.json só apontam para produtos da tabela", () 
     assert.ok(PRODUTOS.some((p) => p.variant === v), `${nome}: variant ${v} fora da tabela`);
   }
 });
+
+test("janela Produtos: todo app da tabela tem descrição; o catálogo dela é a tabela", () => {
+  for (const p of PRODUTOS) assert.ok(typeof p.descricao === "string" && p.descricao.length >= 20, `${p.nome}: descrição`);
+});
+
+test("toda tela .html do renderer é copiada no build (senão só quebra no app empacotado)", async () => {
+  const { readdirSync } = await import("node:fs");
+  const build = JSON.parse(fonte("package.json")).scripts["build:renderer"];
+  for (const f of readdirSync(join(root, "src/renderer")).filter((x) => x.endsWith(".html"))) assert.ok(build.includes(`src/renderer/${f}`), `build:renderer não copia ${f}`);
+});

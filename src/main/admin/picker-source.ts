@@ -9,18 +9,16 @@ import { handleAdmin } from "../ipc/registry";
 import { isSupportAlias } from "../suporte/support-code";
 import { windowForHost } from "../app/windows";
 import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
-import { exportProduto, listProdutos, removeProduto, saveProduto } from "./produtos";
+import { registerProdutosIpc, showProdutos } from "./produtos-janela";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin · escolher pessoa",
   hosts: () => knownPeople().filter((p) => p.on).map((p) => p.alias),
   support: () => ({ people: knownPeople(), adminKey: adminKeyExists() }),
   registerIpc: ({ fromPicker }) => {
-    // Produtos (MVPs de bots verticais): o seletor é onde um MVP nasce; mesmo registro da página Produtos.
-    handleAdmin("picker:produtos-list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return listProdutos(); });
-    handleAdmin("picker:produtos-save", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return saveProduto((payload as { patch?: unknown } | null)?.patch); });
-    handleAdmin("picker:produtos-remove", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return removeProduto((payload as { nome?: unknown } | null)?.nome); });
-    handleAdmin("picker:produtos-export", (event, payload: unknown) => { if (!fromPicker(event)) throw new Error("origem inválida"); return exportProduto((payload as { nome?: unknown } | null)?.nome); });
+    // Produtos (MVPs de bots verticais) moram numa janela própria; o seletor só a abre.
+    registerProdutosIpc();
+    handleAdmin("picker:produtos-abrir", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); showProdutos(); });
     handleAdmin("picker:support-refresh", async (event) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       return supportPeople();

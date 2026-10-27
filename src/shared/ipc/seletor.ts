@@ -1,7 +1,7 @@
 /** Contrato IPC · Janela do seletor de máquinas (picker). Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { PlanName } from "./licenca";
 import type { HostProbe, InstallBackendResult, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "./maquina";
-import type { ProdutoMvp, ProdutoMvpPatch, SupportPerson } from "./suporte";
+import type { SupportPerson } from "./suporte";
 
 /** API exposta ao seletor de máquinas como window.picker. */
 /** Seletor, os dois apps. */
@@ -75,10 +75,7 @@ export interface PickerAdminApi {
    * lista (e da caixa de entrada). Máquina fora do ar: erro e ela fica; `force` tira da lista mesmo assim.
    */
   supportRemove(alias: string, force: boolean): Promise<{ people: SupportPerson[]; cleared: number; detail: string }>;
-  /** meu-bot-admin: MVPs de produtos (registro local do admin), também no seletor: é lá que um MVP nasce. */
-  produtos(): Promise<ProdutoMvp[]>;
-  produtoSave(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
-  produtoRemove(nome: string): Promise<ProdutoMvp[]>;
-  produtoExport(nome: string): Promise<{ json: string; checklist: string[] }>;
+  /** meu-bot-admin: abre (ou traz para a frente) a janela Produtos, onde um MVP nasce. */
+  produtosAbrir(): Promise<void>;
 }
 export type PickerApi = PickerSharedApi & PickerClientApi & PickerAdminApi;

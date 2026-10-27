@@ -2,13 +2,14 @@
  * Variante: admin. Página "Produtos" do meu-bot-admin: os produtos que saem deste código (tabela fixa) e os MVPs
  * de bots verticais que o admin registra (meu-bot-fit, meu-bot-vendas…): formulário de pontapé inicial, status,
  * pipeline modelo, e a definição exportável (produto.json + checklist) que vira o insumo da implementação.
- * Vive no seletor do admin ("Novo MVP / Produtos"). Fábrica com dependências explícitas, como suporte-page.ts.
+ * Vive na janela Produtos do admin (produtos.ts; abre pelo "◆ Produtos" do seletor). Fábrica com dependências
+ * explícitas, como suporte-page.ts. O que já sai deste código vem do catálogo do main (app/variant-core.ts).
  */
-import type { ProdutoMvp, ProdutoMvpPatch, ProdutoStatus } from "../../shared/ipc";
+import type { ProdutoMvp, ProdutoMvpPatch, ProdutoStatus, ProdutosCatalogo } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
-/** A API dos produtos (no seletor: `produtos`, `produtoSave`…). */
+/** A API dos produtos (window.produtos da janela Produtos). */
 export interface ProdutosApi {
   listar(): Promise<ProdutoMvp[]>;
   salvar(patch: ProdutoMvpPatch): Promise<ProdutoMvp[]>;
@@ -21,28 +22,26 @@ export interface ProdutosViewDeps {
   api: ProdutosApi;
   /** Botão de dois cliques (o segundo confirma); sem ele, a vista usa um "confirmar?" próprio. */
   armConfirm?: (btn: HTMLButtonElement, label: string, run: () => void) => void;
-  /** Mostrar a lista dos produtos fixos (meu-bot, meu-bot-admin, meu-bot-crm). */
-  fixos?: boolean;
+  /** O que já sai deste código (apps e add-ons); sem ele, a vista mostra só os MVPs. */
+  catalogo?: () => Promise<ProdutosCatalogo>;
 }
-const FIXOS = [
-  { nome: "meu-bot", texto: "O app da pessoa: chat e WhatsApp no plano Free; Navegador e CRM próprio no Gmail no Pro. Add-ons por cima, com ou sem o Pro." },
-  { nome: "meu-bot-admin", texto: "Este app: suporte, licenças, espelho das máquinas e o registro de produtos." },
-  { nome: "meu-bot-finance", texto: "Add-on do meu-bot (com ou sem o Pro): o agente vira o financeiro da pessoa no WhatsApp e no chat; página Finanças e tutorial 14." },
-  { nome: "meu-bot-staging · meu-bot-finance-staging", texto: "Canal de teste, ao lado do estável (como o VS Code Insiders): recebe o que está em teste; a licença é a do estável." },
-];
 const STATUS: { id: ProdutoStatus; label: string }[] = [{ id: "ideia", label: "Ideia" }, { id: "mvp", label: "MVP" }, { id: "beta", label: "Beta" }, { id: "lancado", label: "Lançado" }];
 
-/** A vista (lista + formulário + exportação) do seletor do admin. */
+/** A vista (catálogo + MVPs + formulário + exportação) da janela Produtos. */
 export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Promise<void>; novo: () => void } {
   const panel = deps.container;
   const armConfirm = deps.armConfirm ?? ((btn, label, run) => { const t = btn.textContent; btn.textContent = label; const once = (): void => { btn.removeEventListener("click", once); run(); }; setTimeout(() => btn.addEventListener("click", once), 0); setTimeout(() => { btn.removeEventListener("click", once); btn.textContent = t; }, 4000); });
   let lista: ProdutoMvp[] = []; let editando: string | null = null; let novo = false; let msg = ""; let exportado: { nome: string; json: string; checklist: string[] } | null = null;
+  let catalogo: ProdutosCatalogo | null = null;
   const input = (value: string, placeholder: string, max = 240): HTMLInputElement => { const i = el("input") as HTMLInputElement; i.type = "text"; i.value = value; i.placeholder = placeholder; i.maxLength = max; return i; };
   const area = (value: string, placeholder: string, rows = 3): HTMLTextAreaElement => { const t = el("textarea") as HTMLTextAreaElement; t.value = value; t.placeholder = placeholder; t.rows = rows; return t; };
   const field = (label: string, ctl: HTMLElement): HTMLElement => { const w = el("label", "admin-field"); w.append(el("span", "hint", label), ctl); return w; };
   const btn = (label: string, cls: string, run: () => void): HTMLButtonElement => { const b = el("button", `btn ${cls} btn-small`, label); b.type = "button"; b.addEventListener("click", run); return b; };
 
-  async function refresh(): Promise<void> { try { lista = await deps.api.listar(); msg = ""; } catch (e) { msg = ipcErrorText(e); } render(); }
+  async function refresh(): Promise<void> {
+    try { const [l, c] = await Promise.all([deps.api.listar(), deps.catalogo?.() ?? Promise.resolve(null)]); lista = l; catalogo = c; msg = ""; } catch (e) { msg = ipcErrorText(e); }
+    render();
+  }
 
   function form(p: ProdutoMvp | null): HTMLElement {
     const card = el("div", "admin-card");
@@ -109,9 +108,13 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
   function render(): void {
     panel.replaceChildren();
     if (msg !== "") panel.append(el("p", "hint", msg));
-    if (deps.fixos !== false) {
-      const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Produtos existentes"));
-      const ul = el("ul", "admin-health"); for (const f of FIXOS) { const li = el("li", "ok"); li.append(el("strong", "", f.nome), document.createTextNode(` · ${f.texto}`)); ul.append(li); } fixos.append(ul); panel.append(fixos);
+    if (catalogo !== null) {
+      const fixos = el("div", "admin-card"); fixos.append(el("strong", "", "Já sai deste código"));
+      const ul = el("ul", "admin-health");
+      const item = (nome: string, texto: string): void => { const li = el("li", "ok"); li.append(el("strong", "", nome), document.createTextNode(` · ${texto}`)); ul.append(li); };
+      for (const a of catalogo.apps) item(a.nome, a.descricao);
+      for (const a of catalogo.addons) item(`${a.nome} (add-on ${a.rotulo})`, a.descricao);
+      fixos.append(ul); panel.append(fixos);
     }
     if (novo) panel.append(form(null));
     for (const p of lista) panel.append(editando === p.nome ? form(p) : cartao(p));
