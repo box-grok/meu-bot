@@ -82,3 +82,7 @@ body.produtos-janela { display: flex; flex-direction: column; height: 100%; }
    mouse ali; sem isto a lista não rolava. O cabeçalho continua arrastando a janela. */
 body.produtos-janela .produtos-box { flex: 1; min-height: 0; max-height: none; overflow: auto; display: flex; flex-direction: column; padding: 4px 20px 20px; -webkit-app-region: no-drag; }
 body.produtos-janela .head .add-actions { margin-top: 8px; }
+/* "Mais detalhes" do formulário de MVP (produtos-page.ts): fechado por padrão. */
+.produtos-mais { display: flex; flex-direction: column; gap: 8px; }
+.produtos-mais > summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+

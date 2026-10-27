@@ -31,7 +31,7 @@ test("definicao e checklist: o insumo da implementação como variante", () => {
   const d = definicao({ ...p, modulos: { ...p.modulos, whatsapp: false } });
   assert.equal(d.variant, "fit"); assert.equal(d.bundleId, "local.meu-bot-fit"); assert.equal(d.icone, "assets/icon-fit.icns"); assert.equal(d.planoExigido, "free"); assert.equal(d.addon, "meu-bot-fit"); assert.equal(d.caps.pair, false); assert.equal(d.caps.crm, true);
   const c = checklist(p);
-  assert.ok(c[0].startsWith("Escrever o pitch")); assert.ok(c.some((x) => x.includes("variant-core.ts"))); assert.ok(c.some((x) => x.includes("icon-fit.svg"))); assert.ok(c.some((x) => x.includes("--variant fit"))); assert.ok(c.some((x) => x.includes("ADDONS") && x.includes("backend-colima/licenca.js")));
+  assert.ok(c[0].startsWith("Escrever a ideia")); assert.ok(!c.some((x) => x.includes("público")), "público saiu do formulário e do checklist"); assert.ok(c.some((x) => x.includes("variant-core.ts"))); assert.ok(c.some((x) => x.includes("icon-fit.svg"))); assert.ok(c.some((x) => x.includes("--variant fit"))); assert.ok(c.some((x) => x.includes("ADDONS") && x.includes("backend-colima/licenca.js")));
   const pronto = checklist({ ...p, pitch: "x", publico: "y", pipeline: { etapas: ["A"], campos: [] } });
   assert.ok(!pronto.some((x) => x.startsWith("Escrever") || x.startsWith("Dizer") || x.startsWith("Definir")));
 });

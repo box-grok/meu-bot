@@ -84,8 +84,7 @@ export const definicaoJson = (p: ProdutoMvp): string => `${JSON.stringify(defini
 export function checklist(p: ProdutoMvp): string[] {
   const variant = p.nome.replace(/^meu-bot-/, "");
   return [
-    p.pitch === "" ? "Escrever o pitch em uma frase (o que a pessoa ganha)" : "",
-    p.publico === "" ? "Dizer para quem é (o público)" : "",
+    p.pitch === "" ? "Escrever a ideia em uma frase (para quem e o que a pessoa ganha)" : "",
     p.modulos.crm && p.pipeline.etapas.length === 0 ? "Definir as etapas do pipeline modelo" : "",
     `Adicionar "${variant}" em AppVariant (src/shared/ipc/app.ts) e a linha em PRODUTOS (src/main/app/variant-core.ts), com addon e abreEm`,
     `Registrar o add-on ${p.nome} em ADDONS (src/main/app/variant-core.ts) e em backend-colima/licenca.js`,

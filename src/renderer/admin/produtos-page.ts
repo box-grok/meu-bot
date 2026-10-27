@@ -43,33 +43,35 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
     render();
   }
 
+  // Formulário curto (27 out): nome, a ideia e os módulos à vista; pipeline, notas e status em "Mais detalhes". Vertical,
+  // público, extras, campos do pipeline e próximos passos saíram da tela: só iam para o texto exportado. O patch não os
+  // manda, e o main mantém o que um MVP antigo já tinha guardado neles (aplicarPatch parte do registro salvo).
   function form(p: ProdutoMvp | null): HTMLElement {
     const card = el("div", "admin-card");
     card.append(el("strong", "", p === null ? "Novo produto (MVP)" : `Editar ${p.nome}`));
     const nome = input(p?.nome ?? "meu-bot-", "meu-bot-fit", 40); nome.disabled = p !== null;
-    const vertical = input(p?.vertical ?? "", "academia, estúdio de dança, aulas coletivas", 80);
-    const pitch = input(p?.pitch ?? "", "Uma frase: o que a pessoa ganha");
-    const publico = input(p?.publico ?? "", "Para quem é");
+    const pitch = input(p?.pitch ?? "", "Ex.: academias atendem e matriculam pelo WhatsApp");
     const chk = (label: string, on: boolean): { wrap: HTMLElement; box: HTMLInputElement } => { const w = el("label", "switch"); const b = el("input") as HTMLInputElement; b.type = "checkbox"; b.checked = on; w.append(b, el("span", "track"), el("span", "switch-label", label)); return { wrap: w, box: b }; };
     const chat = chk("chat com o agente", p?.modulos.chat ?? true), wa = chk("WhatsApp", p?.modulos.whatsapp ?? true), nav = chk("Navegador", p?.modulos.navegador ?? true), crm = chk("CRM próprio (Gmail)", p?.modulos.crm ?? true);
-    const extras = area(p?.modulos.extras ?? "", "Módulos extras, um por linha (ex.: agenda de aulas, cobrança de mensalidade, check-in)", 3);
-    const etapas = input(p?.pipeline.etapas.join(" | ") ?? "", "Etapas do pipeline modelo, separadas por |  (ex.: Lead | Aula experimental | Matrícula | Ativo | Inativo)", 600);
-    const campos = area(p?.pipeline.campos.map((c) => `${c.nome}: ${c.tipo}`).join("\n") ?? "", "Campos, um por linha: Nome: TIPO  (TEXT, NUMBER, DATE, DROPDOWN, TAG, CHECKBOX)", 3);
+    const etapas = input(p?.pipeline.etapas.join(" | ") ?? "", "Lead | Aula experimental | Matrícula | Ativo", 600);
     const status = el("select") as HTMLSelectElement; for (const s of STATUS) { const o = el("option", "", s.label) as HTMLOptionElement; o.value = s.id; o.selected = (p?.status ?? "ideia") === s.id; status.append(o); }
-    const notas = area(p?.notas ?? "", "Notas da ideia, referências, o que já existe no meu-bot que serve", 4);
-    const proximos = area(p?.proximos ?? "", "Próximos passos", 3);
-    const err = el("p", "hint");
+    const notas = area(p?.notas ?? "", "Referências, módulos extras, próximos passos…", 3);
+    const err = el("p", "hint"); err.hidden = true;
     const mods = el("div", "admin-actions"); mods.append(chat.wrap, wa.wrap, nav.wrap, crm.wrap);
-    card.append(field("Nome (meu-bot-<slug>)", nome), field("Vertical", vertical), field("Pitch", pitch), field("Público", publico), el("span", "hint", "Módulos"), mods, field("Extras", extras), field("Pipeline modelo · etapas", etapas), field("Pipeline modelo · campos", campos), field("Status", status), field("Notas", notas), field("Próximos passos", proximos), err);
+    const etapasField = field("Etapas do pipeline (separadas por |)", etapas);
+    const syncEtapas = (): void => { etapasField.hidden = !crm.box.checked; }; crm.box.addEventListener("change", syncEtapas); syncEtapas();
+    const mais = el("details", "produtos-mais"); mais.append(el("summary", "", "Mais detalhes"), etapasField, field("Notas", notas), field("Status", status));
+    if (p !== null && (p.pipeline.etapas.length > 0 || p.notas !== "" || p.status !== "ideia")) mais.open = true;
+    card.append(field("Nome (meu-bot-<slug>)", nome), field("A ideia em uma frase", pitch), el("span", "hint", "Módulos"), mods, mais, err);
     const salvar = btn("Salvar", "btn-primary", () => {
       const patch: ProdutoMvpPatch = {
-        nome: nome.value.trim().toLowerCase(), vertical: vertical.value, pitch: pitch.value, publico: publico.value,
-        modulos: { chat: chat.box.checked, whatsapp: wa.box.checked, navegador: nav.box.checked, crm: crm.box.checked, extras: extras.value },
-        pipeline: { etapas: etapas.value.split("|").map((s) => s.trim()).filter(Boolean), campos: campos.value.split("\n").map((l) => { const m = /^(.+?)\s*:\s*([A-Za-z]+)\s*$/.exec(l.trim()); return m ? { nome: m[1] as string, tipo: (m[2] as string).toUpperCase() as ProdutoMvp["pipeline"]["campos"][number]["tipo"] } : l.trim() === "" ? null : { nome: l.trim(), tipo: "TEXT" as const }; }).filter((c): c is ProdutoMvp["pipeline"]["campos"][number] => c !== null) },
-        status: status.value as ProdutoStatus, notas: notas.value, proximos: proximos.value,
+        nome: nome.value.trim().toLowerCase(), pitch: pitch.value,
+        modulos: { chat: chat.box.checked, whatsapp: wa.box.checked, navegador: nav.box.checked, crm: crm.box.checked, extras: p?.modulos.extras ?? "" },
+        pipeline: { etapas: etapas.value.split("|").map((x) => x.trim()).filter(Boolean), campos: p?.pipeline.campos ?? [] },
+        status: status.value as ProdutoStatus, notas: notas.value,
       };
       salvar.disabled = true;
-      deps.api.salvar(patch).then((l) => { lista = l; editando = null; novo = false; msg = `${patch.nome} salvo.`; render(); }, (e) => { err.textContent = ipcErrorText(e); salvar.disabled = false; });
+      deps.api.salvar(patch).then((l) => { lista = l; editando = null; novo = false; msg = `${patch.nome} salvo.`; render(); }, (e) => { err.hidden = false; err.textContent = ipcErrorText(e); salvar.disabled = false; });
     });
     const acoes = el("div", "admin-actions"); acoes.append(salvar, btn("Cancelar", "btn-ghost", () => { editando = null; novo = false; render(); }));
     card.append(acoes);
@@ -78,7 +80,7 @@ export function mountProdutosView(deps: ProdutosViewDeps): { refresh: () => Prom
 
   function cartao(p: ProdutoMvp): HTMLElement {
     const c = el("div", "admin-card");
-    const head = el("div", "admin-card-head"); head.append(el("strong", "", p.nome), el("span", "hint", `${STATUS.find((s) => s.id === p.status)?.label ?? p.status} · ${p.vertical || "sem vertical"}`));
+    const head = el("div", "admin-card-head"); head.append(el("strong", "", p.nome), el("span", "hint", `${STATUS.find((s) => s.id === p.status)?.label ?? p.status}${p.vertical !== "" ? ` · ${p.vertical}` : ""}`));
     c.append(head);
     if (p.pitch !== "") c.append(el("p", "", p.pitch));
     const ul = el("ul", "admin-health");
