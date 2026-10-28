@@ -4,6 +4,20 @@
 > [ARQUITETURA.md](ARQUITETURA.md). Este arquivo diz **para quem** é cada coisa e **por quê**; quando o código e este
 > texto discordarem, atualize os dois.
 
+## O meu-bot é agnóstico
+
+O meu-bot é **um app e um instalador só**, que não se prende a um agente nem a um gateway de WhatsApp. Ele detecta o
+que cada máquina roda e se adapta pelo que ela sabe fazer (a tabela `capacidadesDe`, em
+`src/main/whatsapp/whatsapp-capacidades.ts`), nunca pelo nome do framework:
+- **Gateways de WhatsApp intercambiáveis:** OpenClaw, Hermes e PicoClaw hoje; a API oficial da Meta (`cloud-api`)
+  planejada como quarta opção. A pessoa escolhe em "Escolha o agente" e pode trocar depois.
+- **Modelos intercambiáveis:** Claude Code com rodízio de contas e reserva (Grok), configurados no backend do meu-bot.
+- **Máquinas intercambiáveis:** VPS, VM local (Colima), TV box Android (FlowBox/Termux com PicoClaw) ou este Mac.
+
+As camadas abaixo são **escolhas de produto** (que gateway e que máquina oferecer a que público), não limites do código:
+o mesmo meu-bot instala e opera as duas. Regra para o código: recurso novo entra pela tabela de capacidades, e a tela
+explica o que um gateway não tem, em vez de supor um framework.
+
 ## As duas camadas
 
 | | **Essencial** (máquina Hermes) | **Evolução** (máquinas OpenClaw) |
