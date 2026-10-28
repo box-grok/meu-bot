@@ -35,3 +35,50 @@ test("usuários: apagar só dentro da pasta; nunca a pasta, nem com ..; protegid
   assert.deepEqual(m.itens.map((i) => i.caminho), ["/home/ana/videos"]);
   assert.match(apagarSh("ana"), /tem sudo/); assert.ok(PROTEGIDOS.has("openclaw"));
 });
+
+test("usuários: RAM da máquina, do root e de cada um", () => {
+  const r = lerUsuarios("ROOT\nDISCO=100\nCOTA=0\nRAM=32000000 2300000\nRAMROOT=2500000\nU\tana\t1001\t/home/ana\t/bin/bash\t0\t1\t1\t\t\t900000\nU\tbia\t1002\t/home/bia\t/bin/bash\t0\t0\t1\t\t\t0\n");
+  assert.deepEqual(r.ram, { totalKb: 32000000, usoKb: 2300000, rootKb: 2500000, swapKb: 0, swapUsoKb: 0 });
+  assert.deepEqual(r.usuarios.map((u) => [u.nome, u.ramKb]), [["ana", 900000], ["bia", 0]]);
+  assert.equal(lerUsuarios("ROOT\n").ram, null);
+});
+
+test("usuários: tetos de RAM e CPU (systemd) lidos e gravados", async () => {
+  const { ramMaxDe, cpuMaxDe, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(ramMaxDe("1073741824"), 1024); assert.equal(ramMaxDe("infinity"), null); assert.equal(ramMaxDe(undefined), null);
+  assert.equal(cpuMaxDe("1s"), 100); assert.equal(cpuMaxDe("500ms"), 50); assert.equal(cpuMaxDe("1.500s"), 150); assert.equal(cpuMaxDe("infinity"), null);
+  assert.match(recursosSh("ana", 1024, 100), /MemoryHigh=921M MemoryMax=1024M CPUQuota=100%/);
+  assert.match(recursosSh("ana", 0, 0), /MemoryHigh=infinity MemoryMax=infinity CPUQuota= /);
+  for (const [r, c] of [[-1, 0], [0, -5], [1.5, 0], [0, Number.NaN]]) assert.throws(() => recursosSh("ana", r, c));
+  const l = lerUsuarios("ROOT\nU\tana\t1001\t/home/ana\t/bin/bash\t0\t0\t1\t\t\t0\t1073741824\t1s\n");
+  assert.deepEqual([l.usuarios[0].ramMaxMb, l.usuarios[0].cpuMaxPct], [1024, 100]);
+});
+
+test("máquina: swap lida e o script de ligar confere espaço, guarda o fstab e não liga duas vezes", async () => {
+  const { swapLigarSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const r = lerUsuarios("ROOT\nRAM=32000000 2000000\nRAMROOT=1\nSWAP=8388604 1024\n");
+  assert.equal(r.ram.swapKb, 8388604); assert.equal(r.ram.swapUsoKb, 1024);
+  const sh = swapLigarSh(8);
+  assert.match(sh, /swapon --noheadings/); assert.match(sh, /fstab\.bak-meu-bot/); assert.match(sh, /findmnt --verify/); assert.match(sh, /swappiness=10/);
+  for (const g of [0, 65, 2.5]) assert.throws(() => swapLigarSh(g));
+});
+
+test("usuários: apelido (descrição do usuário), sem mexer no login", async () => {
+  const { apelidoValido, apelidoSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(apelidoValido("  Maria   (financeiro) "), "Maria (financeiro)");
+  assert.equal(apelidoValido(""), "");
+  for (const a of ["a:b", "a,b", "x".repeat(41), 3]) assert.throws(() => apelidoValido(a));
+  assert.match(apelidoSh("ana", "Maria"), /usermod -c "\$A" 'ana'/);
+  const l = lerUsuarios("ROOT\nU\tana\t1001\t/home/ana\t/bin/bash\t0\t0\t1\t\t\t0\tinfinity\tinfinity\tMaria Souza\n");
+  assert.equal(l.usuarios[0].apelido, "Maria Souza");
+});
+
+test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica um Host que já existe", async () => {
+  const { aliasDoUsuario, blocoSshUsuario, configTemHost } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(aliasDoUsuario("meu-root", "box-1"), "meu-root-box-1");
+  assert.equal(aliasDoUsuario("Máquina da Lú", "ana"), "maquina-da-lu-ana");
+  const b = blocoSshUsuario({ alias: "meu-root-box-1", hostname: "2.24.31.253", port: "22", user: "box-1", chave: "~/.ssh/meu-bot-admin", maquina: "meu-root" });
+  assert.match(b, /^Host meu-root-box-1$/m); assert.match(b, /User box-1/); assert.match(b, /IdentitiesOnly yes/);
+  assert.ok(configTemHost("Host a b meu-root-box-1\n  User x\n", "meu-root-box-1"));
+  assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
+});

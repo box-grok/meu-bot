@@ -433,7 +433,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
 /** Tutorial 12, passo 1: os grupos como cartões; aviso fixo de "só grupos internos". */
 export function renderGruposEscolher(container: HTMLElement): void {
   if (gruposIndisponivelNota(container)) return;
-  container.append(el("p", "guide-note bad", GRUPOS_AVISO));
+  container.append(el("p", "hint bad-hint", GRUPOS_AVISO));
   if (waGroups === null) { container.append(waGroupsErr !== null ? el("p", "hint", `Não consegui ler os grupos: ${waGroupsErr}`) : carregando("Lendo os grupos…")); if (waGroupsInflight === null) void refreshWaGroups(); return; }
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   const cards = el("div", "reply-cards guide-cards");
@@ -441,7 +441,7 @@ export function renderGruposEscolher(container: HTMLElement): void {
     const card = el("button", `reply-card${alvo?.jid === g.jid ? " on" : ""}`); card.type = "button";
     const body = el("div", "reply-body");
     const title = el("div", "reply-title"); title.append(el("strong", "", waGroupTitle(g)));
-    body.append(title, el("p", "", `${g.membros !== null ? `${g.membros} membros · ` : ""}${WA_GROUP_AGENTE[g.agente]}`));
+    if (g.membros !== null) body.append(title, el("p", "", `${g.membros} membros`)); else body.append(title);
     card.append(el("span", "reply-radio"), body);
     card.addEventListener("click", () => { saveGrupoAlvo(g.jid); grupoQuemDraft = null; ctx.paintGuide(); });
     cards.append(card);
@@ -449,36 +449,43 @@ export function renderGruposEscolher(container: HTMLElement): void {
   if (waGroups.grupos.length === 0) container.append(el("p", "hint", "Nenhum grupo listado ainda. Atualize a lista; se o grupo é novo, ponha o número do agente nele antes."));
   else container.append(cards);
   if (waGroups.todosAdmitidos) container.append(el("p", "guide-note bad", "⚠ Hoje a configuração admite TODOS os grupos deste número. Ao ligar o agente num grupo pelo passo 3, os outros ficam de fora."));
-  const b = el("button", "btn btn-ghost btn-small", waGroupsListing ? "Atualizando… (uns 30 s)" : "Atualizar lista de grupos"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
+  // Atualizar é secundário: um link. O grupo novo só aparece depois que o número do agente entrou nele.
+  const p = el("p", "hint"); p.append("Não achou o grupo? ");
+  const b = el("button", "linkish", waGroupsListing ? "atualizando… (uns 30 s)" : "atualizar a lista"); b.type = "button"; b.disabled = waGroupsListing || !waGroups.skill;
   b.addEventListener("click", () => { void listarWaGroups(); });
-  container.append(b);
+  p.append(b); container.append(p);
   if (!waGroups.skill) container.append(el("p", "hint", DICA_SEM_SKILL()));
   if (waGroupsMsg !== null) container.append(el("p", `hint${waGroupsMsg.bad ? " guide-pair-note" : ""}`, waGroupsMsg.text));
 }
-/** Tutorial 12, passo 3: ligar no grupo, "só quando chamado" (padrão) ou "sempre". */
+/**
+ * Tutorial 12, passo 3: um botão grande "Ligar o agente neste grupo" (só quando chamado, o que evita bagunça) e, à
+ * parte, "ou responder sempre", que mostra o aviso do robô antes de ligar.
+ */
+let modoSempreAberto = false;
 export function renderGruposModo(container: HTMLElement): void {
   if (gruposIndisponivelNota(container)) return;
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   if (alvo === null) return;
-  container.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`));
-  const cards = el("div", "reply-cards guide-cards");
-  const opts: { id: "mencao" | "sempre"; title: string; text: string; padrao: boolean }[] = [
-    { id: "mencao", title: "Só quando alguém o chamar", text: "Responde quando alguém da lista menciona o número do agente ou responde a uma mensagem dele. O resto da conversa ele não responde.", padrao: true },
-    { id: "sempre", title: "Sempre que tiver algo útil", text: "Lê tudo e entra quando acha que ajuda. Nunca use num grupo com outro robô: os dois ficam respondendo um ao outro.", padrao: false },
-  ];
   const saving = waGroupSaving === alvo.jid;
-  for (const o of opts) {
-    const card = el("button", `reply-card${alvo.agente === o.id ? " on" : ""}`); card.type = "button"; card.disabled = saving;
-    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
-    if (o.padrao) title.append(el("span", "reply-default", "Padrão"));
-    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
-    card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { void setWaGroup(alvo.jid, { agente: o.id }); });
-    cards.append(card);
+  const ligar = el("button", "btn btn-primary", saving ? "Ligando…" : alvo.agente === "mencao" ? "✓ Ligado: responde quando chamado" : `Ligar o agente em ${waGroupTitle(alvo)}`); ligar.type = "button";
+  ligar.disabled = saving || alvo.agente === "mencao";
+  ligar.addEventListener("click", () => { void setWaGroup(alvo.jid, { agente: "mencao" }); });
+  container.append(ligar);
+  const p = el("p", "hint");
+  const ou = el("button", "linkish", alvo.agente === "sempre" ? "responde sempre (ligado)" : "ou responder sempre que tiver algo útil"); ou.type = "button"; ou.disabled = saving;
+  ou.addEventListener("click", () => { modoSempreAberto = !modoSempreAberto; ctx.paintGuide(); afterWaGroups(); });
+  p.append(ou); container.append(p);
+  if (modoSempreAberto && alvo.agente !== "sempre") {
+    const box = el("div", "guide-note bad");
+    box.append(el("p", "", "Ele lê tudo e entra quando acha que ajuda. Nunca use num grupo com outro robô: os dois ficam respondendo um ao outro."));
+    const s2 = el("button", "btn btn-ghost btn-small", "Ligar respondendo sempre"); s2.type = "button"; s2.disabled = saving;
+    s2.addEventListener("click", () => { modoSempreAberto = false; void setWaGroup(alvo.jid, { agente: "sempre" }); });
+    box.append(s2); container.append(box);
   }
-  container.append(cards);
   if (waGroupsMsg !== null && waGroupsMsg.bad) container.append(el("p", "hint guide-pair-note", waGroupsMsg.text));
 }
+/** Desde quando o passo 4 está aberto para este grupo (a dica de "não respondeu" espera 1 min). */
+let testeDesde: { jid: string; em: number } | null = null;
 /** Tutorial 12, passo 4: abrir o grupo e esperar a resposta do agente aparecer. */
 export function renderGruposTeste(container: HTMLElement): void {
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
@@ -486,5 +493,8 @@ export function renderGruposTeste(container: HTMLElement): void {
   checkGroupReplied(alvo.jid);
   const b = el("button", "btn btn-primary btn-small", `Abrir o grupo ${waGroupTitle(alvo)}`); b.type = "button";
   b.addEventListener("click", () => openWaGroup(alvo));
-  container.append(b, el("p", "hint", "Se ele não responder: confira se quem mandou está na lista do passo 2 e se mencionou o número do agente (não basta escrever o nome)."));
+  container.append(b);
+  // A dica de "não respondeu" só depois de 1 min no passo: antes disso ela só atrapalha.
+  if (testeDesde?.jid !== alvo.jid) { testeDesde = { jid: alvo.jid, em: Date.now() }; setTimeout(() => { ctx.paintGuide(); }, 61_000); }
+  if (Date.now() - testeDesde.em > 60_000) container.append(el("p", "hint", "Não respondeu? Quem mandou precisa estar na lista do passo 2 e mencionar o número do agente (escrever o nome não basta)."));
 }

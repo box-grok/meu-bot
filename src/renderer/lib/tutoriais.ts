@@ -170,6 +170,8 @@ export interface GuideStep {
    * (clicou no grupo errado), sem recomeçar o tutorial; os passos seguintes continuam como estão.
    */
   refazer?: true;
+  /** Concluído, a linha mostra o resultado ("Grupo: status") em vez de só "concluído"; null = sem resumo. */
+  resumo?: (ctx: GuideContext) => string | null;
 }
 /** O passo está concluído: pelo estado real ou, se for um fato `lembrar`, porque já foi visto concluído. */
 export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext): boolean =>
@@ -257,6 +259,15 @@ const WHATSAPP_STEPS: GuideStep[] = [
  * Grupo do tutorial 12: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
  * ligado (máquina que já tem grupo configurado entra com os passos concluídos pelo estado real).
  */
+/** Nome do grupo para a tela: o apelido dado no app, senão o nome do WhatsApp, senão o id. */
+export const nomeDoGrupo = (g: WhatsappGroup): string => g.apelido ?? g.nome ?? g.jid.replace(/@g\.us$/, "");
+/** "Quem chama: só você" / "você + 2" / "todo mundo do grupo" (o número do agente não conta). */
+export function quemResumo(info: WhatsappGroups | null): string | null {
+  if (info === null || !quemEscolhido(info)) return null;
+  if (info.quemAciona === "todos") return "Quem chama: todo mundo do grupo";
+  const outros = info.quemAciona.filter((n) => n !== info.self).length;
+  return outros <= 1 ? "Quem chama: só você" : `Quem chama: você + ${outros - 1}`;
+}
 export function grupoAlvo(info: WhatsappGroups | null, escolhido: string | null): WhatsappGroup | null {
   if (info === null) return null;
   return info.grupos.find((g) => g.jid === escolhido) ?? info.grupos.find((g) => g.agente !== "desligado") ?? null;
@@ -687,22 +698,25 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: [
       {
         id: "grupo", title: "Escolher o grupo", target: "none", body: "grupos-escolher", refazer: true,
-        text: "Os grupos em que o número do agente está. Escolha um grupo interno; se ele não aparece, atualize a lista (o WhatsApp do agente fica parado uns 30 segundos).",
+        resumo: (c) => { const g = grupoAlvo(c.grupos.info, c.grupos.alvo); return g === null ? null : `Grupo: ${nomeDoGrupo(g)}`; },
+        text: "Escolha um grupo interno (só gente de casa) em que o número do agente está.",
         done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null,
       },
       {
         id: "quem", title: "Quem pode conversar com o agente no grupo", target: "none", body: "grupos-quem", refazer: true,
-        text: "Comece só por você: o número pessoal que você usa no grupo. Acrescente as pessoas de casa que também podem chamar o agente.",
+        resumo: (c) => quemResumo(c.grupos.info),
+        text: "Comece só por você: o número pessoal que você usa no grupo. Acrescente quem mais de casa pode chamar o agente.",
         done: (_st, _f, c) => grupoAlvo(c.grupos.info, c.grupos.alvo) !== null && quemEscolhido(c.grupos.info),
       },
       {
-        id: "modo", title: "Como ele responde", target: "none", body: "grupos-modo",
-        text: "Ligue o agente neste grupo e diga quando ele fala. O padrão é o que evita bagunça: só quando alguém da lista o chama.",
+        id: "modo", title: "Como ele responde", target: "none", body: "grupos-modo", refazer: true,
+        resumo: (c) => { const g = grupoAlvo(c.grupos.info, c.grupos.alvo); return g === null || g.agente === "desligado" ? null : g.agente === "sempre" ? "Responde sempre que tiver algo útil" : "Responde só quando chamado"; },
+        text: "Ligue o agente neste grupo. Ele responde só quando alguém da lista o chama.",
         done: (_st, _f, c) => (grupoAlvo(c.grupos.info, c.grupos.alvo)?.agente ?? "desligado") !== "desligado",
       },
       {
         id: "teste", title: "Testar no grupo", target: "none", body: "grupos-teste", lembrar: true,
-        text: "De um número da lista, mande no grupo: \"@agente oi\" (mencione o número do agente ou responda a uma mensagem dele). O passo se marca sozinho quando a resposta aparecer.",
+        text: "No grupo, mencione o número do agente: \"@agente oi\". O passo se marca sozinho quando ele responder.",
         done: (_st, f, c) => c.grupos.respondeu || f.gruposTested,
         manual: { label: "Testei, funcionou", flag: "gruposTested" },
       },

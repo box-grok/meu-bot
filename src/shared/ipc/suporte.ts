@@ -94,9 +94,9 @@ export interface AuditoriaLinhaView {
   naMaquina: boolean | null;
 }
 /** Aba "Usuários" do admin (máquina em que se entra como root): um usuário Linux de login. */
-export interface UsuarioMaquina { nome: string; uid: number; home: string; shell: string; sudo: boolean; meuBot: boolean; chave: boolean; /** Disco usado e limite (KB), pela cota; null = cota desligada (usado) ou sem limite (limite). */ usadoKb: number | null; limiteKb: number | null }
+export interface UsuarioMaquina { nome: string; uid: number; home: string; shell: string; sudo: boolean; meuBot: boolean; chave: boolean; /** Disco usado e limite (KB), pela cota; null = cota desligada (usado) ou sem limite (limite). */ usadoKb: number | null; limiteKb: number | null; /** RAM dos processos dele agora (KB). */ ramKb: number; /** Tetos do systemd: RAM (MB) e CPU (% de um núcleo); null = sem teto. */ ramMaxMb: number | null; cpuMaxPct: number | null; /** Nome de exibição (descrição do usuário no Linux); "" = sem. */ apelido: string }
 /** A lista e como este Mac chega à máquina (para mostrar `ssh nome@endereço`). */
-export interface UsuariosVisao { usuarios: UsuarioMaquina[]; hostname: string | null; port: string | null; /** Chave privada deste Mac que entra nos usuários criados (~/.ssh/…). */ chave: string | null; /** Tamanho do disco principal (KB) e se a cota de usuário está ligada nele. */ discoKb: number | null; cota: boolean }
+export interface UsuariosVisao { usuarios: UsuarioMaquina[]; hostname: string | null; port: string | null; /** Chave privada deste Mac que entra nos usuários criados (~/.ssh/…). */ chave: string | null; /** Tamanho do disco principal (KB) e se a cota de usuário está ligada nele. */ discoKb: number | null; cota: boolean; /** RAM da máquina: total, em uso e quanto é do root (KB); null = não leu. */ ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null }
 export interface AuditoriaVisao {
   maquina: string; nome: string | null; linhas: AuditoriaLinhaView[];
   /** Corrente da central: null = íntegra; senão o nº do primeiro registro adulterado. */

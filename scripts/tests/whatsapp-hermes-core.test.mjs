@@ -229,3 +229,13 @@ test("pausa no Hermes: tira da lista (e devolve ao retomar), mantém o próprio 
   assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "allowlist", allow: "*", all: "" }, "1", "5522925501274", true, []), /todo mundo/);
   assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "disabled", allow: "", all: "" }, "1", "5522925501274", true, []), /desligado/);
 });
+
+test("Hermes: uma porta de bridge por usuário (root na 3000, os outros 3100 + uid − 1000) e o app lê a porta de cada um", async () => {
+  const c = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  assert.deepEqual([0, 1000, 1001, 1042].map(c.portaBridgeHermes), [3000, 3100, 3101, 3142]);
+  assert.match(c.HERMES_WA_ENSURE_SH, /bridge_port/);
+  assert.match(c.HERMES_BRIDGE_PORT_SH, /platforms\/whatsapp\/bridge_port/);
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../dist/main/whatsapp/whatsapp.js", import.meta.url), "utf8");
+  assert.doesNotMatch(src, /127\.0\.0\.1:3000\/health/, "nada de porta 3000 fixa na consulta do bridge");
+});

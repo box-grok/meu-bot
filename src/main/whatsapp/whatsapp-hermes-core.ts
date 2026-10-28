@@ -308,6 +308,30 @@ export const HERMES_VENV_PY_SH = `HPY=$(for f in "$HOME"/.hermes/installs/*/fact
 /** Python do runtime do Hermes (tem ruamel; PyYAML nem sempre); sem ele, o python3 da máquina. Deixa em $PY. */
 const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
 
+/**
+ * Porta do bridge do WhatsApp do Hermes deste usuário, em `$HBP`. O Hermes usa a 3000 quando ninguém diz outra; com
+ * vários usuários na mesma máquina (cada um com o seu número), o segundo gateway não subia. O root fica na 3000; os
+ * outros ganham 3100 + (uid − 1000), gravada no config.yaml por HERMES_WA_ENSURE_SH. Ordem: config (solta ou em
+ * `extra`), o registro do Hermes (~/.hermes/platforms/whatsapp/bridge_port), a regra pelo uid.
+ */
+export const portaBridgeHermes = (uid: number): number => (uid === 0 ? 3000 : 3100 + Math.max(0, uid - 1000));
+export const HERMES_BRIDGE_PORT_SH = `${HERMES_PY_SH}; HBP=$("$PY" -c '
+import os
+try:
+    try:
+        from ruamel.yaml import YAML
+        c = YAML(typ="safe").load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    except ImportError:
+        import yaml
+        c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    w = (c.get("platforms") or {}).get("whatsapp") or {}
+    x = w.get("extra") if isinstance(w.get("extra"), dict) else {}
+    p = w.get("bridge_port", x.get("bridge_port"))
+    print(int(p) if p is not None else "")
+except Exception:
+    print("")
+' 2>/dev/null | tr -dc 0-9); [ -n "$HBP" ] || HBP=$(cat "$HOME/.hermes/platforms/whatsapp/bridge_port" 2>/dev/null | tr -dc 0-9); [ -n "$HBP" ] || { U=$(id -u); if [ "$U" = 0 ]; then HBP=3000; else HBP=$((3100 + (U > 1000 ? U - 1000 : 0))); fi; }`;
+
 /** Imprime `gcfg=<json>` com a política de grupos: config.yaml (platforms.whatsapp, chaves soltas ou em `extra`) e, faltando, o .env. */
 export const HERMES_GROUP_CFG_SH = `${HERMES_PY_SH}; "$PY" -c '
 import json, os, re
@@ -463,6 +487,11 @@ d = sub(doc, "display")
 if "language" not in d: d["language"] = "pt"; grava = True; mud.append("display:pt")
 w = sub(sub(d, "platforms"), "whatsapp")
 if "tool_progress" not in w: w["tool_progress"] = "off"; grava = True; mud.append("display:tool_progress")
+# Uma porta de bridge por usuário (o root fica na 3000 do Hermes): sem isso, o 2º gateway da máquina não sobe.
+pw = sub(sub(doc, "platforms"), "whatsapp")
+ex = pw.get("extra") if isinstance(pw.get("extra"), dict) else {}
+if os.getuid() != 0 and "bridge_port" not in pw and "bridge_port" not in ex:
+    pw["bridge_port"] = 3100 + max(0, os.getuid() - 1000); grava = True; mud.append("bridge_port:%d" % pw["bridge_port"])
 if grava: salvar()
 print("hwa=" + (";".join(mud) or "nada"))
 ' 2>&1 | grep '^hwa=' || echo "hwa=falhou"`;
@@ -475,8 +504,13 @@ export const HERMES_PIPER_VOICE = "pt_BR-faber-medium";
  * pt-BR; sem a seção `tts:` o Hermes usa a Edge em inglês, e a resposta sai com sotaque americano. A Edge também fica
  * em pt-BR: alguns modelos passam `provider: edge` por conta própria na ferramenta de voz.
  */
+/**
+ * O Whisper local sai da memória depois de 5 min sem áudio e volta no próximo (o Hermes recarrega sob demanda). Sem
+ * isso ele fica carregado para sempre: era a maior parte dos ~530 MB de cada gateway na meu-root (27 out).
+ */
+export const STT_OCIOSO_S = 300;
 export function hermesAudioPatch(setup: { kind: "in"; off?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
-  if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small" };
+  if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small", "stt.local.unload_after_idle_seconds": STT_OCIOSO_S };
   if (setup.mode === "off") return { "voice.auto_tts": false };
   // O provedor padrão (voz-local) entra por HERMES_VOZ_LOCAL_SH, que precisa do caminho da máquina.
   return { "voice.auto_tts": true, "tts.piper.voice": HERMES_PIPER_VOICE, "tts.edge.voice": "pt-BR-FranciscaNeural" };

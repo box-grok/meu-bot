@@ -421,6 +421,14 @@ export interface MeuBotAdminApi {
   /** Limite de disco em % do disco principal (0 = sem limite). */
   adminUsuarioLimite(nome: string, pct: number): Promise<UsuariosVisao>;
   adminUsuarioApagar(nome: string): Promise<UsuariosVisao>;
+  /** Tetos de RAM (MB) e CPU (% de um núcleo) do usuário; 0 = sem teto. */
+  adminUsuarioRecursos(nome: string, ramMb: number, cpuPct: number): Promise<UsuariosVisao>;
+  /** Liga 8 GB de swap na máquina (só quando não tem nenhuma). */
+  adminSwapLigar(): Promise<UsuariosVisao>;
+  /** Apelido (nome de exibição) do usuário; vazio tira. */
+  adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
+  /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
+  adminUsuarioAbrirNoMeuBot(nome: string): Promise<{ alias: string; jaExistia: boolean; backup: string | null }>;
   /** O que ocupa espaço na pasta do usuário, e apagar um item escolhido (para baixar o limite). */
   adminUsuarioMaiores(nome: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
   adminUsuarioApagarItem(nome: string, caminho: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;

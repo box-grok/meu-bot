@@ -147,7 +147,7 @@ let waInlineGuide: Tutorial | null = null;
  * escolha no momento de reabrir (grupo alvo e quem aciona): mudou, o passo fecha sozinho e o foco volta ao passo atual.
  */
 let passoReaberto: { tut: string; step: string; marca: string } | null = null;
-const marcaDoPasso = (): string => { const c = ctx.guideCtx(); return JSON.stringify([c.grupos.alvo, c.grupos.info?.quemAciona ?? null]); };
+const marcaDoPasso = (): string => { const c = ctx.guideCtx(); return JSON.stringify([c.grupos.alvo, c.grupos.info?.quemAciona ?? null, grupoAlvo(c.grupos.info, c.grupos.alvo)?.agente ?? null]); };
 /** Como o último "Gerar QR" do guia terminou sem conectar; fica no passo (os nós de progresso voltam ao modal). */
 let waGuidePairNote: string | null = null;
 function runGuideAction(target: GuideTarget, t: Tutorial): void {
@@ -261,9 +261,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     txt.append(el("strong", "", step.title));
     const reaberto = done && step.refazer === true && passoReaberto?.tut === t.id && passoReaberto.step === step.id;
     if (done) {
-      const linha = el("p", "", "concluído");
+      // A linha da etapa feita diz o resultado ("Grupo: status · Trocar"); sem resumo, "concluído".
+      const linha = el("p", "", step.resumo?.(ctx.guideCtx()) ?? "concluído");
       if (step.refazer === true) {
-        const b = el("button", "linkish", reaberto ? "Pronto" : "Refazer"); b.type = "button";
+        const b = el("button", "linkish", reaberto ? "Pronto" : "Trocar"); b.type = "button";
         b.title = reaberto ? "Fecha o passo; o que você marcou já vale" : "Reabre este passo para trocar a escolha, sem recomeçar o tutorial";
         b.addEventListener("click", () => { passoReaberto = reaberto ? null : { tut: t.id, step: step.id, marca: marcaDoPasso() }; paintGuide(); });
         linha.append(" · ", b);

@@ -16,7 +16,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioAbrirNoMeuBot">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
@@ -34,6 +34,10 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let msg: { text: string; bad: boolean } | null = null;
   /** % digitado na linha de cada usuário (antes de salvar). */
   const rascunho = new Map<string, string>();
+  /** Tetos digitados na linha (RAM em MB, CPU em %), antes de salvar. */
+  const rascunhoRec = new Map<string, { ram: string; cpu: string }>();
+  /** Usuário com o apelido em edição (o campo aparece no lugar do nome). */
+  let editandoApelido: string | null = null; let apelidoTxt = "";
   /** Apagar usuário: o primeiro clique arma, o segundo apaga. */
   let armado: string | null = null;
   /** Liberar espaço: o usuário, o % pedido e o que ocupa espaço na pasta dele. */
@@ -56,6 +60,13 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const p = pctNovo.trim() === "" ? 0 : Number(pctNovo);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
     if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) { nome = ""; pctNovo = ""; render(); }
+  }
+  async function salvarRecursos(u: UsuarioMaquina): Promise<void> {
+    const r = rascunhoRec.get(u.nome) ?? { ram: u.ramMaxMb === null ? "" : String(u.ramMaxMb), cpu: u.cpuMaxPct === null ? "" : String(u.cpuMaxPct) };
+    const ram = r.ram.trim() === "" ? 0 : Number(r.ram); const cpu = r.cpu.trim() === "" ? 0 : Number(r.cpu);
+    if (!Number.isInteger(ram) || ram < 0 || !Number.isInteger(cpu) || cpu < 0) { msg = { text: "Tetos: RAM em MB e CPU em % de um núcleo, números inteiros (vazio = sem teto).", bad: true }; render(); return; }
+    if (ram > 0 && ram < 256) { msg = { text: "RAM máxima muito baixa: com menos de 256 MB o agente nem sobe.", bad: true }; render(); return; }
+    if (await rodar(`recursos:${u.nome}`, () => deps.api.adminUsuarioRecursos(u.nome, ram, cpu), `✓ Tetos de ${u.nome}: RAM ${ram === 0 ? "sem teto" : `${ram} MB`}, CPU ${cpu === 0 ? "sem teto" : `${cpu}%`}.`)) rascunhoRec.delete(u.nome);
   }
   async function salvarLimite(u: UsuarioMaquina): Promise<void> {
     const txt = (rascunho.get(u.nome) ?? "").trim();
@@ -155,15 +166,30 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       const v = visao;
       const distribuido = v.usuarios.reduce((s, u) => s + (pctDe(u.limiteKb, v.discoKb) ?? 0), 0);
       if (v.discoKb !== null) lista.append(el("p", `hint ${distribuido > 100 ? "bad-hint" : ""}`, `Disco: ${tam(v.discoKb)} · distribuído: ${distribuido}% · livre: ${Math.max(0, 100 - distribuido)}%${distribuido > 100 ? " (passou de 100%: se todos encherem, o disco acaba antes dos limites)" : ""}${v.cota ? "" : " · cota de disco ainda desligada nesta máquina"}`));
+      // RAM: os agentes (OpenClaw, Hermes, Claude) ficam ligados e cada um usa centenas de MB; aqui se vê quem usa quanto.
+      if (v.ram !== null) {
+        const outros = v.usuarios.reduce((s, u) => s + u.ramKb, 0);
+        lista.append(el("p", "hint", `RAM: ${tam(v.ram.usoKb)} em uso de ${tam(v.ram.totalKb)} (${Math.round((v.ram.usoKb * 100) / Math.max(1, v.ram.totalKb))}%) · root: ${tam(v.ram.rootKb)} · usuários: ${tam(outros)} · swap: ${v.ram.swapKb > 0 ? `${tam(v.ram.swapUsoKb)} de ${tam(v.ram.swapKb)}` : "nenhuma"}`));
+        // Sem swap, RAM cheia faz o Linux matar um processo (um agente some); com ela, a máquina só desacelera.
+        if (v.ram.swapKb === 0) {
+          const sw = el("div", "admin-actions");
+          const b = el("button", "btn btn-ghost btn-small", ocupado === "swap" ? "Ligando…" : "Ligar memória de reserva (8 GB)"); b.type = "button"; b.disabled = ocupado !== null;
+          b.title = "Cria um /swapfile de 8 GB (cópia do /etc/fstab antes), sem reiniciar: se a RAM encher, a máquina desacelera em vez de derrubar um agente";
+          b.addEventListener("click", () => { void rodar("swap", () => deps.api.adminSwapLigar(), "✓ Memória de reserva (swap) de 8 GB ligada."); });
+          sw.append(b, el("span", "hint", "Esta máquina não tem swap: se a RAM encher, o Linux derruba um processo."));
+          lista.append(sw);
+        }
+      }
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const t = el("table", "auditoria-tabela");
-        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "Disco (usado / limite)", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
+        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "RAM máx (MB) · CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
         for (const u of v.usuarios) {
           const tr = el("tr");
           const acesso = v.hostname !== null ? `ssh${v.chave !== null ? ` -i ${v.chave}` : ""} ${u.nome}@${v.hostname}${v.port !== null && v.port !== "22" ? ` -p ${v.port}` : ""}` : "";
           const pct = pctDe(u.limiteKb, v.discoKb);
-          const disco = u.usadoKb === null ? "—" : `${tam(u.usadoKb)} / ${u.limiteKb === null ? "sem limite" : `${tam(u.limiteKb)} (${pct}%)`}`;
+          const usado = u.usadoKb === null ? "—" : tam(u.usadoKb);
+          const limite = u.usadoKb === null ? "—" : u.limiteKb === null ? "sem limite" : tam(u.limiteKb);
           const tdPct = el("td");
           const ip = el("input") as HTMLInputElement; ip.type = "number"; ip.min = "0"; ip.max = "100"; ip.step = "1"; ip.style.width = "64px";
           ip.value = rascunho.get(u.nome) ?? (pct === null ? "" : String(pct)); ip.placeholder = "—"; ip.disabled = ocupado !== null || u.sudo;
@@ -174,6 +200,19 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           sv.addEventListener("click", () => { void salvarLimite(u); });
           tdPct.append(ip, " ", sv);
           const tdAp = el("td");
+          // "No meu-bot": o usuário entra no ~/.ssh/config deste Mac e aparece no seletor do meu-bot (aba Usuário).
+          if (!u.sudo) {
+            const ab = el("button", "btn btn-ghost btn-small", ocupado === `abrir:${u.nome}` ? "…" : "No meu-bot"); ab.type = "button"; ab.disabled = ocupado !== null;
+            ab.title = "Põe este usuário no seletor do meu-bot e do staging (uma linha nova no ~/.ssh/config deste Mac, com cópia antes)";
+            ab.addEventListener("click", () => {
+              ocupado = `abrir:${u.nome}`; msg = null; render();
+              void deps.api.adminUsuarioAbrirNoMeuBot(u.nome)
+                .then((r) => { msg = { text: r.jaExistia ? `${r.alias} já estava no seletor do meu-bot.` : `✓ ${r.alias} entrou no seletor do meu-bot e do staging (aba Usuário). Abra o meu-bot e escolha ${r.alias}.`, bad: false }; })
+                .catch((e: unknown) => { msg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
+                .finally(() => { ocupado = null; render(); });
+            });
+            tdAp.append(ab, " ");
+          }
           if (!u.sudo && !PROTEGIDOS.has(u.nome)) {
             const ap = el("button", "btn btn-ghost btn-small", ocupado === `apagar:${u.nome}` ? "Apagando…" : armado === u.nome ? "Confirmar? apaga a pasta" : "Apagar"); ap.type = "button"; ap.disabled = ocupado !== null;
             ap.addEventListener("click", () => {
@@ -182,7 +221,33 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             });
             tdAp.append(ap);
           }
-          tr.append(el("td", "", u.nome), el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", disco), tdPct, el("td", "", acesso), tdAp);
+          // Tetos (systemd, na fatia do usuário): RAM em MB e CPU em % de um núcleo; vazio = sem teto.
+          const tdRec = el("td");
+          const rr = rascunhoRec.get(u.nome) ?? { ram: u.ramMaxMb === null ? "" : String(u.ramMaxMb), cpu: u.cpuMaxPct === null ? "" : String(u.cpuMaxPct) };
+          const iram = el("input") as HTMLInputElement; iram.type = "number"; iram.min = "0"; iram.step = "128"; iram.placeholder = "—"; iram.style.width = "72px"; iram.value = rr.ram; iram.title = "RAM máxima em MB (vazio = sem teto); sugestão para um agente: 1024";
+          const icpu = el("input") as HTMLInputElement; icpu.type = "number"; icpu.min = "0"; icpu.step = "25"; icpu.placeholder = "—"; icpu.style.width = "56px"; icpu.value = rr.cpu; icpu.title = "CPU em % de um núcleo (100 = um núcleo; vazio = sem teto)";
+          for (const i of [iram, icpu]) { i.disabled = ocupado !== null || u.sudo; i.addEventListener("input", () => { rascunhoRec.set(u.nome, { ram: iram.value, cpu: icpu.value }); }); i.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void salvarRecursos(u); }); }
+          const sr = el("button", "btn btn-ghost btn-small", ocupado === `recursos:${u.nome}` ? "…" : "Salvar"); sr.type = "button"; sr.disabled = ocupado !== null || u.sudo;
+          sr.title = u.sudo ? "quem tem sudo não leva teto por aqui" : "grava os tetos de RAM e CPU";
+          sr.addEventListener("click", () => { void salvarRecursos(u); });
+          tdRec.append(iram, " ", icpu, " ", sr);
+          // Usuário: o apelido em destaque e o login embaixo; ✎ edita o apelido (o login e a pasta não mudam).
+          const tdNome = el("td");
+          if (editandoApelido === u.nome) {
+            const ia = el("input") as HTMLInputElement; ia.type = "text"; ia.maxLength = 40; ia.placeholder = "apelido (vazio tira)"; ia.value = apelidoTxt; ia.style.width = "140px";
+            ia.addEventListener("input", () => { apelidoTxt = ia.value; });
+            const salvarAp = (): void => { const a = apelidoTxt; editandoApelido = null; void rodar(`apelido:${u.nome}`, () => deps.api.adminUsuarioApelido(u.nome, a), a.trim() === "" ? `✓ ${u.nome} ficou sem apelido.` : `✓ Apelido de ${u.nome}: ${a.trim()}.`); };
+            ia.addEventListener("keydown", (ev) => { if (ev.key === "Enter") salvarAp(); if (ev.key === "Escape") { editandoApelido = null; render(); } });
+            const ok = el("button", "btn btn-ghost btn-small", "OK"); ok.type = "button"; ok.addEventListener("click", salvarAp);
+            tdNome.append(ia, " ", ok);
+            setTimeout(() => ia.focus(), 0);
+          } else {
+            if (u.apelido !== "") tdNome.append(el("strong", "", u.apelido), el("br"), el("span", "hint", u.nome)); else tdNome.append(u.nome);
+            const ed = el("button", "linkish", " ✎"); ed.type = "button"; ed.title = "Apelido (nome de exibição): o login e a pasta não mudam"; ed.disabled = ocupado !== null;
+            ed.addEventListener("click", () => { editandoApelido = u.nome; apelidoTxt = u.apelido; render(); });
+            tdNome.append(ed);
+          }
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRec, el("td", "", usado), el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
           t.append(tr);
         }
         lista.append(t);

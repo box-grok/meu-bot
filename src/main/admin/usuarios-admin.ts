@@ -9,10 +9,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { aliasDoUsuario, blocoSshUsuario, configTemHost, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
+import { pessoasPorMaquina } from "./support-admin";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -40,7 +41,7 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const l = lerUsuarios(r.stdout);
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, ram: l.ram };
 }
 
 const nomeValido = (nome: unknown): string => {
@@ -134,4 +135,64 @@ export async function apagarItemDoUsuario(host: string, nome: unknown, caminho: 
   log(`[usuarios] ${host}: apagou ${caminho} de ${n}`);
   void registrar(host, "usuarios.liberar", n, caminho);
   return maioresDoUsuario(host, n);
+}
+
+/** Tetos de RAM (MB) e CPU (% de um núcleo) do usuário; 0 = sem teto. Recusa quem tem sudo (como o limite de disco). */
+export async function definirRecursos(host: string, nome: unknown, ramMb: unknown, cpuPct: unknown): Promise<UsuariosVisao> {
+  const n = nomeValido(nome);
+  const v = await usuariosDaMaquina(host);
+  const u = v.usuarios.find((x) => x.nome === n);
+  if (u === undefined) throw new Error(`não existe o usuário ${n}`);
+  if (u.sudo) throw new Error(`${n} tem sudo: os tetos valem para usuários comuns`);
+  const sh = recursosSh(n, typeof ramMb === "number" ? ramMb : Number.NaN, typeof cpuPct === "number" ? cpuPct : Number.NaN);
+  const r = await runSsh(host, `${sh}\n`, 30_000);
+  saida(r.stdout, /^RECURSOS=ok$/m, "não consegui gravar os limites");
+  log(`[usuarios] ${host}: tetos de ${n}: RAM ${ramMb} MB, CPU ${cpuPct}%`);
+  void registrar(host, "usuarios.recursos", n, `RAM ${ramMb === 0 ? "sem teto" : `${ramMb} MB`}, CPU ${cpuPct === 0 ? "sem teto" : `${cpuPct}%`}`);
+  return usuariosDaMaquina(host);
+}
+
+/** Liga 8 GB de swap na máquina (só se ela não tem nenhuma). */
+export async function ligarSwap(host: string): Promise<UsuariosVisao> {
+  await usuariosDaMaquina(host); // confere root
+  const r = await runSsh(host, `${swapLigarSh(8)}\n`, 300_000);
+  saida(r.stdout, /^SWAP=ok$/m, `não consegui ligar a swap: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  log(`[usuarios] ${host}: swap de 8 GB ligada`);
+  void registrar(host, "maquina.swap", "8 GB");
+  return usuariosDaMaquina(host);
+}
+
+/** Apelido do usuário (nome de exibição); login e pasta não mudam. Vazio tira o apelido. */
+export async function definirApelido(host: string, nome: unknown, apelido: unknown): Promise<UsuariosVisao> {
+  const n = nomeValido(nome); const a = apelidoValido(apelido);
+  const r = await runSsh(host, `${apelidoSh(n, a)}\n`, 30_000);
+  saida(r.stdout, /^APELIDO=ok$/m, "não consegui gravar o apelido");
+  void registrar(host, "usuarios.apelido", n, a);
+  return usuariosDaMaquina(host);
+}
+
+/**
+ * "Abrir no meu-bot": põe o usuário no ~/.ssh/config deste Mac como uma máquina (`<máquina>-<usuário>`, com a chave do
+ * admin que já está no authorized_keys dele). O seletor do meu-bot e do staging leem o mesmo arquivo, então ele aparece
+ * lá, na aba Usuário. Backup antes; nunca altera um Host que já existe (se existir, só devolve o nome).
+ */
+export async function abrirNoMeuBot(host: string, nome: unknown): Promise<{ alias: string; jaExistia: boolean; backup: string | null }> {
+  const n = nomeValido(nome);
+  const v = await usuariosDaMaquina(host);
+  if (!v.usuarios.some((u) => u.nome === n)) throw new Error(`não existe o usuário ${n}`);
+  const a = await acessoDesteMac(host);
+  const maquina = [...pessoasPorMaquina().values()].find((p) => p.alias === host)?.nome ?? host;
+  const alias = aliasDoUsuario(maquina, n);
+  const configPath = path.join(os.homedir(), ".ssh", "config");
+  let atual = ""; let existe = false;
+  try { atual = fs.readFileSync(configPath, "utf8"); existe = true; } catch { /* ainda não há */ }
+  if (configTemHost(atual, alias)) return { alias, jaExistia: true, backup: null };
+  let backup: string | null = null;
+  if (existe) { backup = `${configPath}.bak-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`; fs.copyFileSync(configPath, backup); }
+  else fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
+  const sep = existe && atual !== "" && !atual.endsWith("\n") ? "\n" : "";
+  fs.appendFileSync(configPath, `${sep}\n${blocoSshUsuario({ alias, hostname: a.hostname, port: a.port, user: n, chave: a.arquivo, maquina })}`, { mode: 0o600 });
+  try { fs.chmodSync(configPath, 0o600); } catch { /* cortesia */ }
+  log(`[usuarios] ${host}: ${n} entrou no ~/.ssh/config como ${alias}`);
+  return { alias, jaExistia: false, backup };
 }

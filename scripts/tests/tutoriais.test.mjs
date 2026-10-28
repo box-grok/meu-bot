@@ -365,3 +365,20 @@ test("tutorial 8 (guarda) só aparece onde o agente aceita a guarda; sem status 
   for (const st of t8.steps) assert.ok(!/OpenClaw/.test(st.title) && !/toda máquina com OpenClaw/.test(st.text), `passo ${st.id} sem nome de produto`);
   assert.ok(!/OpenClaw/.test(t8.summary) && !/OpenClaw/.test(t8.reset.what));
 });
+
+test("tutorial 12 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar'); grupo, quem chama e modo", async () => {
+  const { nomeDoGrupo, quemResumo } = await import("../../dist/renderer/lib/tutoriais.js");
+  const t = byId("whatsapp-grupos");
+  const g = { jid: "123@g.us", nome: "status", apelido: null, agente: "mencao" };
+  const info = { grupos: [g], quemAciona: ["5521999990000"], quemAcionaHerdado: false, self: "5521888880000", todosAdmitidos: false, cacheEm: null, skill: true };
+  const c = { ...emptyContext(), grupos: { info, alvo: "123@g.us", respondeu: false } };
+  assert.equal(nomeDoGrupo(g), "status"); assert.equal(nomeDoGrupo({ ...g, apelido: "Casa" }), "Casa");
+  const [grupo, quem, modo] = t.steps;
+  assert.equal(grupo.resumo(c), "Grupo: status");
+  assert.equal(quem.resumo(c), "Quem chama: só você");
+  assert.equal(quemResumo({ ...info, quemAciona: ["5521999990000", "5511777770000", "5511666660000"] }), "Quem chama: você + 2");
+  assert.equal(quemResumo({ ...info, quemAciona: "todos" }), "Quem chama: todo mundo do grupo");
+  assert.equal(modo.resumo(c), "Responde só quando chamado");
+  assert.equal(modo.resumo({ ...c, grupos: { ...c.grupos, info: { ...info, grupos: [{ ...g, agente: "sempre" }] } } }), "Responde sempre que tiver algo útil");
+  for (const s of [grupo, quem, modo]) assert.equal(s.refazer, true, `${s.id} com "Trocar"`);
+});

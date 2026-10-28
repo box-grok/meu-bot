@@ -25,8 +25,9 @@ export const hostLabel = (h: string): string => nicknames[h] ?? (h === "local" ?
  */
 // Status line e transcrição de áudio não aparecem no seletor (nem aviso nem botão): os tutoriais 3 e 2 cuidam delas;
 // aqui só repetiam (27 out).
-const slNote = (p: HostProbe): string => `${p.guarda === false ? " · sem guarda do WhatsApp" : ""}`;
-const slInstall = (p: HostProbe): "guarda" | null => (p.guarda === false ? "guarda" : null);
+// A guarda também saiu (27 out): o tutorial 8 cuida dela. O seletor não oferece nem avisa nenhum opcional.
+const slNote = (_p: HostProbe): string => "";
+const slInstall = (_p: HostProbe): null => null;
 
 export function describeProbe(p: HostProbe): ProbeText {
   const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : p.gateway === "picoclaw" ? " · PicoClaw" : ""}`;

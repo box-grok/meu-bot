@@ -265,6 +265,10 @@ const adminApi: MeuBotAdminApi = {
   adminUsuarioCriar: (nome: string, pct?: number) => ipcRenderer.invoke("admin:usuario-criar", { nome, pct }),
   adminUsuarioLimite: (nome: string, pct: number) => ipcRenderer.invoke("admin:usuario-limite", { nome, pct }),
   adminUsuarioApagar: (nome: string) => ipcRenderer.invoke("admin:usuario-apagar", { nome }),
+  adminUsuarioRecursos: (nome: string, ramMb: number, cpuPct: number) => ipcRenderer.invoke("admin:usuario-recursos", { nome, ramMb, cpuPct }),
+  adminSwapLigar: () => ipcRenderer.invoke("admin:swap-ligar", {}),
+  adminUsuarioApelido: (nome: string, apelido: string) => ipcRenderer.invoke("admin:usuario-apelido", { nome, apelido }),
+  adminUsuarioAbrirNoMeuBot: (nome: string) => ipcRenderer.invoke("admin:usuario-abrir", { nome }),
   adminUsuarioMaiores: (nome: string) => ipcRenderer.invoke("admin:usuario-maiores", { nome }),
   adminUsuarioApagarItem: (nome: string, caminho: string) => ipcRenderer.invoke("admin:usuario-apagar-item", { nome, caminho }),
 };
