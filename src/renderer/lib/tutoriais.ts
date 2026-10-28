@@ -155,7 +155,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
+  body?: "contas-claude" | "agent-choice" | "cloud-conectar" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -172,7 +172,22 @@ export interface GuideStep {
   refazer?: true;
   /** Concluído, a linha mostra o resultado ("Grupo: status") em vez de só "concluído"; null = sem resumo. */
   resumo?: (ctx: GuideContext) => string | null;
+  /**
+   * O mesmo passo apresentado de outro jeito conforme a máquina (ex.: na API oficial do WhatsApp o "QR" vira "Conectar
+   * à Meta"). Só muda o que se vê; a contagem e a ordem dos passos ficam iguais para todos.
+   */
+  variante?: (status: WhatsappStatus | null) => { title?: string; text?: string; target?: GuideTarget; /** undefined tira o corpo especial. */ body?: GuideStep["body"] | undefined } | null;
 }
+/** O passo como deve aparecer agora (com a variante da máquina, se houver). */
+export function passoPara(s: GuideStep, status: WhatsappStatus | null): GuideStep {
+  const v = s.variante?.(status);
+  if (v == null) return s;
+  const { body, ...resto } = v;
+  const out: GuideStep = { ...s, ...resto };
+  if ("body" in v) { if (body === undefined) delete out.body; else out.body = body; }
+  return out;
+}
+const naApiOficial = (st: WhatsappStatus | null): boolean => st?.gateway === "cloud-api" || st?.escolha === "cloud-api";
 /** O passo está concluído: pelo estado real ou, se for um fato `lembrar`, porque já foi visto concluído. */
 export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext): boolean =>
   s.done(status, flags, ctx) || (s.lembrar === true && (flags.feitos ?? []).includes(s.id));
@@ -221,24 +236,27 @@ export interface Tutorial {
 const WHATSAPP_STEPS: GuideStep[] = [
   {
     id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
-    text: "Os dois fazem tudo deste tutorial: responder, escolher quem, entender e mandar áudio. Se não souber, fique com o recomendado.",
-    // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
-    done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
+    text: "OpenClaw e Hermes fazem tudo deste tutorial: responder, escolher quem, entender e mandar áudio. A API oficial (Pro) usa um número do seu Meta Business, sem risco de bloqueio por cliente não oficial. Se não souber, fique com o recomendado.",
+    // Escolhido, ou a máquina já tem um atendendo (dá para trocar depois, no WhatsApp).
+    done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes" || st.gateway === "cloud-api"))),
   },
   {
     id: "preparar", title: "Preparar o WhatsApp nesta máquina", target: "wa-agent",
     text: "O agente da máquina instala o que faltar para o WhatsApp. Abra o WhatsApp e clique em \"Pedir ao agente para preparar\".",
     done: (st) => st !== null && st.present && st.ready,
+    variante: (st) => naApiOficial(st) ? { title: "Backend pronto para a API oficial", target: "none", text: "A API oficial usa o receptor que vem com o backend do meu-bot (1.4.0 ou mais). Se este passo não concluir sozinho, atualize o backend pelo seletor de máquinas." } : null,
   },
   {
     id: "qr", title: "Conectar o número pelo QR", target: "wa-pair",
     text: "No celular do número: WhatsApp › Aparelhos conectados › Conectar aparelho › aponte para o QR. O app mostra o ✓ verde ao vincular.",
     done: (st) => st !== null && st.connected,
+    variante: (st) => naApiOficial(st) ? { title: "Conectar à Meta (API oficial)", target: "none", body: "cloud-conectar", text: "Sem QR: cole as credenciais do app da Meta. O app confere na Meta antes de gravar e mostra o token de verificação do webhook." } : null,
   },
   {
     id: "audio", title: "Áudio no WhatsApp: ouvir e responder", target: "none", body: "audio",
     text: "Ouvir: sem a transcrição, quem manda áudio ouve do agente que ele não consegue escutar; ela roda na própria máquina, sem custo e sem mandar o áudio para fora. Responder: escolha se ele devolve áudio quando recebe áudio; o padrão é só texto.",
-    done: (st) => st !== null && st.audioIn === true,
+    done: (st) => st !== null && (st.audioIn === true || naApiOficial(st)),
+    variante: (st) => naApiOficial(st) ? { body: undefined, text: "Na API oficial o áudio ainda não está disponível: quem mandar áudio recebe uma resposta dizendo isso. Chega numa próxima versão." } : null,
   },
   {
     id: "quem", title: "Quem o agente responde no WhatsApp?", target: "wa-policy", body: "reply-choice",

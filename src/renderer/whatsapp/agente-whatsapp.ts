@@ -324,14 +324,16 @@ function waAgentPrompt(st: WhatsappStatus): string {
   ].join("\n");
 }
 
-/** Os dois agentes que atendem o WhatsApp, como a pessoa os vê (o app trabalha igual com os dois). */
-const AGENTE_OPTIONS: readonly { id: WhatsappAgente; title: string; text: string; recomendado: boolean }[] = [
+/** Os agentes que atendem o WhatsApp, como a pessoa os vê (o app trabalha igual com todos, pelas capacidades). */
+const AGENTE_OPTIONS: readonly { id: WhatsappAgente; title: string; text: string; recomendado: boolean; pro?: true }[] = [
   { id: "openclaw", title: "OpenClaw", text: "Responde pelo Claude Code desta máquina. É o mais usado com o meu-bot.", recomendado: true },
   { id: "hermes", title: "Hermes", text: "Responde pelo Claude do meu-bot desta máquina, com troca automática de contas e o Grok de reserva.", recomendado: false },
+  { id: "cloud-api", title: "API oficial (Meta)", text: "Usa um número do seu Meta Business pela API oficial do WhatsApp: sem o risco de bloqueio de um cliente não oficial. Sem QR: você cola as credenciais do app da Meta. Ainda sem grupos e sem áudio.", recomendado: false, pro: true },
 ];
+const NOME_AGENTE: Record<WhatsappAgente, string> = { openclaw: "OpenClaw", hermes: "Hermes", "cloud-api": "A API oficial (Meta)" };
 /** Agente que vale agora: o escolhido, senão o que a máquina já tem. */
 export const agenteAtual = (st: WhatsappStatus | null): WhatsappAgente | null =>
-  st?.escolha ?? (st?.present === true && (st.gateway === "openclaw" || st.gateway === "hermes") ? st.gateway : null);
+  st?.escolha ?? (st?.present === true && (st.gateway === "openclaw" || st.gateway === "hermes" || st.gateway === "cloud-api") ? st.gateway : null);
 let waAgenteSaving: WhatsappAgente | null = null;
 let waAgenteMsg: { text: string; bad: boolean } | null = null;
 /**
@@ -350,6 +352,7 @@ export function renderAgentChoice(container: HTMLElement): void {
     card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(marcado === o.id));
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.recomendado) title.append(el("span", "reply-default", "Recomendado"));
+    if (o.pro === true) title.append(el("span", "reply-default", "Pro"));
     if (saving) title.append(el("span", "reply-saving", "aplicando…"));
     const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
@@ -358,7 +361,7 @@ export function renderAgentChoice(container: HTMLElement): void {
   }
   container.append(cards);
   const conectadoNoOutro = st?.number != null && atual !== null;
-  container.append(el("div", "guide-note", conectadoNoOutro ? "Trocar desconecta o número do agente atual; depois é só ler o QR de novo." : "Dá para trocar depois; trocar pede para ler o QR de novo."));
+  container.append(el("div", "guide-note", conectadoNoOutro ? "Trocar desconecta o número do agente atual; depois é só conectar de novo (QR, ou as credenciais da Meta na API oficial)." : "Dá para trocar depois; trocar pede para conectar o número de novo."));
   if (waAgenteMsg !== null) container.append(el("p", `hint ${waAgenteMsg.bad ? "bad-hint" : "audio-ok"}`, waAgenteMsg.text));
 }
 async function escolherAgente(agente: WhatsappAgente): Promise<void> {
@@ -366,8 +369,8 @@ async function escolherAgente(agente: WhatsappAgente): Promise<void> {
   waAgenteSaving = agente; waAgenteMsg = null; paintWhatsapp(); ctx.paintGuide();
   try {
     ctx.waStatus = await window.meuBot.whatsappEscolherAgente(agente);
-    waAgenteMsg = { text: `✓ ${agente === "openclaw" ? "OpenClaw" : "Hermes"} vai atender o WhatsApp desta máquina.`, bad: false };
-  } catch (err) { waAgenteMsg = { text: `✗ ${ipcErrorText(err)}`, bad: true }; }
+    waAgenteMsg = { text: `✓ ${NOME_AGENTE[agente]} vai atender o WhatsApp desta máquina.`, bad: false };
+  } catch (err) { waAgenteMsg = { text: `✗ ${/PRO_REQUIRED/.test(ipcErrorText(err)) ? "a API oficial faz parte do plano Pro, e esta máquina não tem o Pro" : ipcErrorText(err)}`, bad: true }; }
   finally { waAgenteSaving = null; paintWhatsapp(); ctx.paintGuide(); }
 }
 
@@ -602,4 +605,75 @@ export function ligarAgenteWhatsapp(): void {
   waCloseBtn.addEventListener("click", () => { waCancelIfPairing(); waDialog.close(); });
   // Esc fecha o <dialog> por conta própria; tem que cancelar o pareamento do mesmo jeito que o botão.
   waDialog.addEventListener("cancel", () => { waCancelIfPairing(); });
+}
+
+
+/** API oficial: o que a pessoa digitou (o token e o App Secret ficam só aqui até conectar; depois são apagados). */
+const cloudForm = { token: "", phoneNumberId: "", wabaId: "", appSecret: "", dono: "" };
+let cloudSaving = false;
+let cloudMsg: { text: string; bad: boolean } | null = null;
+let cloudVerify: string | null = null;
+let cloudTrocar = false;
+/**
+ * Passo "Conectar à Meta" (API oficial): o roteiro de onde achar cada dado no Meta Business, o formulário e, depois de
+ * conectar, o token de verificação para colar no webhook da Meta. O app confere as credenciais na Meta antes de gravar.
+ */
+export function renderCloudConectar(container: HTMLElement): void {
+  const st = ctx.waStatus;
+  if (st?.connected === true && !cloudTrocar) {
+    container.append(el("p", "audio-ok", `✓ Conectado: ${fmtPhone(st.number)} pela API oficial.`));
+    if (cloudVerify !== null) appendVerify(container, cloudVerify);
+    const b = el("button", "linkish", "Trocar as credenciais"); b.type = "button";
+    b.addEventListener("click", () => { cloudTrocar = true; ctx.paintGuide(); });
+    container.append(b);
+    if (cloudMsg !== null) container.append(el("p", `hint ${cloudMsg.bad ? "bad-hint" : "audio-ok"}`, cloudMsg.text));
+    return;
+  }
+  const passos = el("ol", "guide-note");
+  for (const t of [
+    "Em developers.facebook.com, crie um app do tipo Business e adicione o produto WhatsApp.",
+    "WhatsApp › Configuração da API: copie o ID do número de telefone e o ID da conta do WhatsApp Business.",
+    "Meta Business › Usuários do sistema: crie um usuário de sistema, dê acesso ao app e gere um token permanente com as permissões whatsapp_business_messaging e whatsapp_business_management.",
+    "Configurações do app › Básico: copie a Chave secreta do app (App Secret).",
+  ]) passos.append(el("li", "", t));
+  container.append(passos);
+  const campo = (rotulo: string, chave: keyof typeof cloudForm, tipo: "text" | "password", dica: string): HTMLElement => {
+    const box = el("label", "admin-field"); box.append(el("span", "", rotulo));
+    const i = el("input") as HTMLInputElement; i.type = tipo; i.value = cloudForm[chave]; i.placeholder = dica; i.disabled = cloudSaving;
+    i.autocomplete = "off"; i.spellcheck = false;
+    i.addEventListener("input", () => { cloudForm[chave] = i.value; });
+    box.append(i); return box;
+  };
+  container.append(
+    campo("Seu WhatsApp pessoal (o dono: o agente sempre te atende)", "dono", "text", "+55 11 99999-0000"),
+    campo("ID do número de telefone", "phoneNumberId", "text", "só dígitos"),
+    campo("ID da conta do WhatsApp Business (WABA)", "wabaId", "text", "só dígitos"),
+    campo("Token permanente do usuário de sistema", "token", "password", "EAAG…"),
+    campo("Chave secreta do app (App Secret)", "appSecret", "password", "32 caracteres"),
+  );
+  const ir = el("button", "btn btn-primary", cloudSaving ? "Conferindo na Meta…" : "Conectar"); ir.type = "button"; ir.disabled = cloudSaving;
+  ir.addEventListener("click", () => { void conectarCloud(); });
+  container.append(ir);
+  container.append(el("div", "guide-note", "O token e a chave secreta vão direto para a sua máquina (arquivo protegido) e não ficam no app. O app confere na Meta antes de gravar."));
+  if (cloudMsg !== null) container.append(el("p", `hint ${cloudMsg.bad ? "bad-hint" : "audio-ok"}`, cloudMsg.text));
+}
+function appendVerify(container: HTMLElement, token: string): void {
+  const p = el("p", "hint");
+  p.append("Na Meta, em WhatsApp › Configuração › Webhook: cole o endereço do webhook desta máquina (o suporte prepara), este token de verificação e assine o campo messages. Token: ");
+  p.append(el("code", "", token), " ");
+  const copy = el("button", "linkish", "Copiar"); copy.type = "button";
+  copy.addEventListener("click", () => { void navigator.clipboard.writeText(token).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+  p.append(copy); container.append(p);
+}
+async function conectarCloud(): Promise<void> {
+  if (cloudSaving) return;
+  cloudSaving = true; cloudMsg = null; ctx.paintGuide();
+  try {
+    const r = await window.meuBot.whatsappCloudConectar({ ...cloudForm });
+    ctx.waStatus = r.status; cloudVerify = r.verifyToken; cloudTrocar = false;
+    cloudForm.token = ""; cloudForm.appSecret = "";
+    cloudMsg = { text: `✓ A Meta confirmou ${r.nome !== "" ? `${r.nome} · ` : ""}${r.numero}. Falta o webhook na Meta (abaixo).`, bad: false };
+  } catch (err) {
+    cloudMsg = { text: `✗ ${/PRO_REQUIRED/.test(ipcErrorText(err)) ? "a API oficial faz parte do plano Pro, e esta máquina não tem o Pro" : ipcErrorText(err)}`, bad: true };
+  } finally { cloudSaving = false; paintWhatsapp(); ctx.paintGuide(); }
 }

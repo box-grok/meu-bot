@@ -1,7 +1,7 @@
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
-import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, REPLY_NOTE, grupoAlvo, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
+import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, REPLY_NOTE, grupoAlvo, GUIDE_ACTION_LABEL, passoPara } from "../lib/tutoriais.js";
 import { ctx } from "../app/ctx.js";
 
 // ---- Tutoriais (lib/tutoriais.ts): passo a passo em aba própria.
@@ -135,7 +135,8 @@ export function paintGuideTargets(): void {
   const t = activeGuide();
   if (t !== null) {
     const v = guideView(t, ctx.waStatus, loadGuideFlags(t), ctx.guideCtx());
-    const step = v.finished ? undefined : t.steps[v.current];
+    const passo = v.finished ? undefined : t.steps[v.current];
+    const step = passo === undefined ? undefined : passoPara(passo, ctx.waStatus);
     if (step !== undefined && step.target !== "none") for (const e of guideTargets()[step.target]) want.add(e);
   }
   for (const e of all) e.classList.toggle("attention", want.has(e));
@@ -252,7 +253,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   // Lista dos passos: concluídos com ✓, o atual aberto (texto, corpo e botões), os futuros recolhidos.
   const steps = el("ol", "tut-steps");
   if (passoReaberto !== null && passoReaberto.tut === t.id && passoReaberto.marca !== marcaDoPasso()) passoReaberto = null;
-  t.steps.forEach((step, i) => {
+  t.steps.forEach((step0, i) => {
+    const step = passoPara(step0, ctx.waStatus);
     const done = view.done[i] === true;
     const cur = i === view.current;
     const li = el("li", done ? "done" : cur ? "current" : "pending");
@@ -277,6 +279,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         ctx.renderContasClaude(txt);
       } else if (step.body === "agent-choice") {
         ctx.renderAgentChoice(txt);
+      } else if (step.body === "cloud-conectar") {
+        ctx.renderCloudConectar(txt);
       } else if (step.body === "reply-choice" && st !== null) {
         const cards = el("div", "reply-cards guide-cards");
         ctx.renderReplyCards(cards, ctx.replyChoiceNow(st), ctx.waPolicySaving || !st.connected, ctx.chooseReply);

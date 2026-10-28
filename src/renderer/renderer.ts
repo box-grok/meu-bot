@@ -40,7 +40,7 @@ import { ctx } from "./app/ctx.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
 import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
 import { TUT_ICONS, TUT_VISIVEIS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
-import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAgentChoice, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
+import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAgentChoice, renderCloudConectar, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
 import { cacheDrop, cacheRead, cacheWrite, getListMode, ligarConversas, paintArquivadas, paintListMode, paintWaSidebar, setListMode, waChatTitle } from "./whatsapp/conversas.js";
 import { TUT_GRUPOS, loadGrupoAlvo, refreshWaGroups, renderGruposEscolher, renderGruposModo, renderGruposQuem, renderGruposTeste, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
 import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, renderWaQuote, waBubble, waChatPages, waCopy, waMsgKey, waSkeleton } from "./whatsapp/chat.js";
@@ -232,6 +232,7 @@ const ctxImpl = {
   get renderAssistant() { return renderAssistant; },
   get renderAudioControls() { return renderAudioControls; },
   get renderAgentChoice() { return renderAgentChoice; },
+  get renderCloudConectar() { return renderCloudConectar; },
   get renderChannelEditor() { return renderChannelEditor; },
   get renderConta() { return renderConta; },
   get renderContasClaude() { return renderContasClaude; },

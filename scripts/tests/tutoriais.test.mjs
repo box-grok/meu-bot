@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials, passoPara } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -381,4 +381,17 @@ test("tutorial 12 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar
   assert.equal(modo.resumo(c), "Responde só quando chamado");
   assert.equal(modo.resumo({ ...c, grupos: { ...c.grupos, info: { ...info, grupos: [{ ...g, agente: "sempre" }] } } }), "Responde sempre que tiver algo útil");
   for (const s of [grupo, quem, modo]) assert.equal(s.refazer, true, `${s.id} com "Trocar"`);
+});
+
+test("WhatsApp pela API oficial: mesmos passos, o QR vira \"Conectar à Meta\" (formulário) e o áudio conclui sozinho", () => {
+  const cloud = wa({ gateway: "cloud-api", agent: "API oficial", ready: true, escolha: "cloud-api" });
+  const qr = t.steps.find((s) => s.id === "qr");
+  assert.deepEqual([passoPara(qr, cloud).title, passoPara(qr, cloud).body, passoPara(qr, cloud).target], ["Conectar à Meta (API oficial)", "cloud-conectar", "none"]);
+  assert.equal(passoPara(qr, wa()).title, qr.title, "OpenClaw continua com o QR");
+  const audio = t.steps.find((s) => s.id === "audio");
+  assert.equal(passoPara(audio, cloud).body, undefined, "sem os controles de áudio na API oficial");
+  assert.equal(passoPara(audio, wa()).body, "audio");
+  const v = guideView(t, { ...cloud, connected: true }, emptyFlags());
+  assert.equal(v.done.length, t.steps.length, "a contagem não muda");
+  assert.equal(t.steps[v.current].id, "quem", "conectado à Meta: o próximo é escolher quem responde (áudio não trava)");
 });
