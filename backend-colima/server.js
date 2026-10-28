@@ -42,6 +42,8 @@ const ENV = loadEnv(path.join(ROOT, '.env'));
 const KEY = ENV.OPENAI_COMPAT_KEY || process.env.OPENAI_COMPAT_KEY || '';
 /** Chave própria do agente do WhatsApp (CRM_AGENT_KEY): identifica quem chama; o CRM recusa exclusão vinda dela. */
 const AGENT_KEY = ENV.CRM_AGENT_KEY || process.env.CRM_AGENT_KEY || '';
+/** Chave do gateway da API oficial do WhatsApp (wa-cloud.js): mesmo papel do agente (o CRM recusa exclusão vinda dela). */
+const WA_CLOUD_KEY = ENV.WA_CLOUD_KEY || process.env.WA_CLOUD_KEY || '';
 const HOST = ENV.HOST || '127.0.0.1';
 const PORT = Number(ENV.PORT || 8080);
 const CLAUDE_BIN = ENV.CLAUDE_BIN || path.join(os.homedir(), '.local', 'bin', 'claude');
@@ -277,7 +279,9 @@ const MODELS = {
   claudecode: { maxTurns: 8, cwd: WORKSPACE, bypass: false, description: 'chat puro via Claude Code (assinatura)' },
   agente: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, description: 'agente com ferramentas, sem pedir permissão (--dangerously-skip-permissions), cwd ~/agent-workspace' },
   // O WhatsApp do Hermes chama este: o agente, com as ferramentas do nível do tutorial 7 (nivel-ferramentas.js).
-  whatsapp: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, nivel: true, description: 'agente do WhatsApp (Hermes): como o agente, com as ferramentas do nível de liberdade do tutorial 7' },
+  whatsapp: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, nivel: true, description: 'agente do WhatsApp (Hermes e API oficial, com o dono): como o agente, com as ferramentas do nível de liberdade do tutorial 7' },
+  // API oficial (wa-cloud.js), quem não é o dono: só conversa e pesquisa na web (nivel-ferramentas.js, BLOQUEIO_CLIENTE).
+  'whatsapp-cliente': { maxTurns: 12, cwd: AGENT_WORKSPACE, bypass: true, nivel: true, cliente: true, description: 'agente do WhatsApp (API oficial) com quem não é o dono: sem arquivos nem comandos desta máquina' },
 };
 
 const CONV_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -338,7 +342,7 @@ function papelDe(req) {
   const token = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
   const bate = (k) => k !== '' && token.length === k.length && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(k));
   if (bate(KEY)) return 'app';
-  if (bate(AGENT_KEY)) return 'agente';
+  if (bate(AGENT_KEY) || bate(WA_CLOUD_KEY)) return 'agente';
   return null;
 }
 function authOk(req) { return papelDe(req) !== null; }
@@ -598,7 +602,7 @@ async function chatCompletions(req, res) {
   const t0 = Date.now();
   // Corrente: o pedido primeiro, depois os outros por prioridade. Fora do providers.json → só ele.
   // "whatsapp" segue a mesma corrente do "agente" (o Grok de reserva), começando por ele.
-  const attempts = model === 'whatsapp' ? ['whatsapp', ...providers.chain(PROVIDERS, 'agente').slice(1)] : providers.chain(PROVIDERS, model);
+  const attempts = model === 'whatsapp' || model === 'whatsapp-cliente' ? [model, ...providers.chain(PROVIDERS, 'agente').slice(1)] : providers.chain(PROVIDERS, model);
   if (attempts.length === 0) attempts.push(model);
   const env = { ...process.env, ...ENV };
 
@@ -644,8 +648,8 @@ async function chatCompletions(req, res) {
       let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
       // WhatsApp do Hermes: o nível do tutorial 7, lido a cada turno (mudou no app, vale na próxima mensagem).
       const nivelTurno = profile.nivel ? nivel.nivelAtual() : 'age';
-      const bloqueadas = profile.nivel ? nivel.ferramentasBloqueadas(nivelTurno) : [];
-      const avisoNivel = profile.nivel ? nivel.avisoDoNivel(nivelTurno) : '';
+      const bloqueadas = profile.cliente ? nivel.ferramentasDoCliente(nivelTurno) : profile.nivel ? nivel.ferramentasBloqueadas(nivelTurno) : [];
+      const avisoNivel = [profile.cliente ? nivel.AVISO_CLIENTE : '', profile.nivel ? nivel.avisoDoNivel(nivelTurno) : ''].filter(Boolean).join('\n\n');
       // O modelo sabe quem é (a pergunta "qual modelo é você?" não depende do que ele acha de si).
       const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}${avisoNivel ? `\n\n${avisoNivel}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };

@@ -30,7 +30,7 @@ test("backend: o perfil whatsapp existe, passa --disallowedTools e segue a corre
   const src = fs.readFileSync(new URL("../../backend-colima/server.js", import.meta.url), "utf8");
   assert.match(src, /whatsapp: \{[^}]*nivel: true/);
   assert.match(src, /'--disallowedTools', bloqueadas\.join\(','\)/);
-  assert.match(src, /model === 'whatsapp' \? \['whatsapp', \.\.\.providers\.chain\(PROVIDERS, 'agente'\)\.slice\(1\)\]/);
+  assert.match(src, /model === 'whatsapp' \|\| model === 'whatsapp-cliente' \? \[model, \.\.\.providers\.chain\(PROVIDERS, 'agente'\)\.slice\(1\)\]/);
   const lista = fs.readFileSync(new URL("../../backend-colima/install.sh", import.meta.url), "utf8");
   assert.match(lista, /nivel-ferramentas\.js/, "o install.sh copia o módulo");
 });
@@ -46,4 +46,11 @@ test("Hermes: o WhatsApp usa o modelo 'whatsapp' só com backend 1.3.0+, e o tut
 test("backend como root: o Claude Code roda sem pedir permissão com IS_SANDBOX=1 (senão todo turno caía no Grok)", () => {
   const src = fs.readFileSync(new URL("../../backend-colima/server.js", import.meta.url), "utf8");
   assert.match(src, /bypass && typeof process\.getuid === 'function' && process\.getuid\(\) === 0 \? \{ IS_SANDBOX: '1' \}/);
+});
+
+test("API oficial, quem não é o dono: sem comandos, sem escrever e sem LER arquivos da máquina; soma o nível do dono", () => {
+  for (const t of ["Bash", "Write", "Edit", "Read", "Glob", "Grep", "WebFetch", "Task"]) assert.ok(nivel.ferramentasDoCliente("age").includes(t), `cliente sem ${t}`);
+  assert.ok(!nivel.ferramentasDoCliente("age").includes("WebSearch"), "pesquisar na web continua");
+  assert.equal(new Set(nivel.ferramentasDoCliente("conversa")).size, nivel.ferramentasDoCliente("conversa").length, "sem repetidas");
+  assert.match(nivel.AVISO_CLIENTE, /NÃO é o dono/);
 });
