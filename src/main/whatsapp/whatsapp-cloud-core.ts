@@ -7,7 +7,7 @@
  * número, App Secret); o número que atende é o do Meta Business da pessoa. O dono (quem o agente sempre atende) é o
  * WhatsApp pessoal dela, gravado no wa-cloud.json.
  */
-import type { WhatsappDmPolicy, WhatsappStatus } from "../../shared/ipc";
+import type { WhatsappChat, WhatsappDmPolicy, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 
 export const WA_CLOUD_ENV = "$HOME/.config/meu-bot/wa-cloud.env";
@@ -167,4 +167,87 @@ export function lerInstalacao(out: string): { ok: true; porta: number; verifyTok
   const verifyToken = /^VERIFY_TOKEN=([0-9a-f]{16,})$/m.exec(out)?.[1];
   if (!/^WA_CLOUD=ok$/m.test(out) || !Number.isInteger(porta) || verifyToken === undefined) return { ok: false, erro: `o receptor não confirmou a instalação: ${out.trim().split("\n").pop() ?? "sem resposta"}` };
   return { ok: true, porta, verifyToken };
+}
+
+
+/** Chave de "sessão" de uma conversa da API oficial (o histórico é do receptor, um jsonl por número). */
+export const CLOUD_KEY_PREFIX = "wa-cloud:";
+export const isCloudKey = (k: string): boolean => k.startsWith(CLOUD_KEY_PREFIX) && /^\d{8,15}$/.test(k.slice(CLOUD_KEY_PREFIX.length));
+
+/** Lista as conversas do receptor: por número, quantas mensagens, a última (hora e começo do texto) e o nome mais recente. */
+export const CLOUD_LIST_PY = `python3 - "${WA_CLOUD_HIST}" <<'PY'
+import glob, json, os, sys
+d = os.path.expandvars(sys.argv[1]); out = []
+for f in glob.glob(os.path.join(d, "*.jsonl")):
+    n = os.path.basename(f)[:-6]
+    if not n.isdigit(): continue
+    cont = 0; ultima = None; nome = ""
+    for l in open(f, errors="replace"):
+        try: x = json.loads(l)
+        except Exception: continue
+        cont += 1; ultima = x
+        if x.get("quem") == "pessoa" and x.get("nome"): nome = x["nome"]
+    if ultima is None: continue
+    out.append({"n": n, "c": cont, "em": ultima.get("em", ""), "nome": nome})
+print(json.dumps(out))
+PY`;
+
+/** As conversas no contrato das outras telas; o dono aparece como "você" (isSelf), pausados pelo wa-cloud.json. */
+export function chatsFromCloud(raw: unknown, estado: Record<string, unknown>): WhatsappChat[] {
+  const pol = politicaCloud(estado);
+  const pausados = new Set(pol.pausados);
+  return (Array.isArray(raw) ? raw : []).flatMap((x): WhatsappChat[] => {
+    const o = (x ?? {}) as Record<string, unknown>;
+    const n = digitos(o["n"]);
+    if (n === null) return [];
+    const key = `${CLOUD_KEY_PREFIX}${n}`;
+    return [{ number: n, name: typeof o["nome"] === "string" && o["nome"] !== "" ? o["nome"] : null, alias: null, isSelf: pol.dono === n, sessionKeys: [key], sessionIds: { [key]: `wa-${n}` }, ownSession: true, paused: pausados.has(n), updatedAt: typeof o["em"] === "string" ? o["em"] : "", archived: false, deleted: false }];
+  }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** As últimas `limite` mensagens do jsonl de um número (o número já validado: só dígitos). */
+export function cloudThreadSh(numero: string, limite: number): string {
+  if (!/^\d{8,15}$/.test(numero)) throw new Error("número inválido");
+  return `tail -n ${Math.min(2000, Math.max(1, Math.trunc(limite)))} "${WA_CLOUD_HIST}/${numero}.jsonl" 2>/dev/null; true`;
+}
+/** Linhas do jsonl → mensagens do espelho (a descrição de mídia que o receptor gera para o agente não aparece). */
+export function threadFromCloud(out: string): WhatsappThreadMessage[] {
+  const msgs: WhatsappThreadMessage[] = [];
+  for (const l of out.split("\n")) {
+    let x: Record<string, unknown>;
+    try { x = JSON.parse(l) as Record<string, unknown>; } catch { continue; }
+    if (typeof x["id"] === "string" && x["id"].endsWith("#desc")) continue;
+    const texto = typeof x["texto"] === "string" ? x["texto"] : "";
+    const tipo = typeof x["tipo"] === "string" ? x["tipo"] : "text";
+    const text = texto !== "" ? texto : tipo !== "text" ? `[${tipo}]` : "";
+    if (text === "") continue;
+    msgs.push({ role: x["quem"] === "agente" ? "agent" : "contact", text, at: typeof x["em"] === "string" ? x["em"] : "" });
+  }
+  return msgs;
+}
+
+/** Limpar: apaga o histórico dos números; a próxima mensagem começa uma sessão nova no backend (sem histórico, sem --resume). */
+export function cloudLimparSh(numeros: string[]): string {
+  const ok = numeros.filter((n) => /^\d{8,15}$/.test(n));
+  if (ok.length === 0) throw new Error("não há histórico desta conversa na máquina");
+  return `${ok.map((n) => `rm -f "${WA_CLOUD_HIST}/${n}.jsonl"`).join("\n")}\necho LIMPO=ok`;
+}
+
+/** Pausar/retomar um número no wa-cloud.json (relê a lista atual; o receptor vê na próxima mensagem). */
+export function cloudPausarSh(numero: string, pausado: boolean): string {
+  if (!/^\d{8,15}$/.test(numero)) throw new Error("número inválido");
+  return `python3 - "${WA_CLOUD_ESTADO}" '+${numero}' '${pausado ? "1" : "0"}' <<'PY'
+import json, os, sys
+p = os.path.expandvars(sys.argv[1]); n = sys.argv[2]; pausar = sys.argv[3] == "1"
+try: d = json.load(open(p))
+except Exception: d = {}
+if not isinstance(d, dict): d = {}
+ps = [x for x in (d.get("pausados") or []) if isinstance(x, str) and x != n]
+if pausar: ps.append(n)
+d["pausados"] = ps
+os.makedirs(os.path.dirname(p), mode=0o700, exist_ok=True)
+t = p + ".tmp"; fd = os.open(t, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f: json.dump(d, f)
+os.replace(t, p); print("PAUSA=ok")
+PY`;
 }

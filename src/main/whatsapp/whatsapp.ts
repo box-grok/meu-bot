@@ -21,7 +21,7 @@ import type { Gateway, VoiceReplyMode, WhatsappAgente, WhatsappChat, WhatsappDmP
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
-import { CLOUD_STATUS_SH, cloudApiStatus } from "./whatsapp-cloud-core";
+import { CLOUD_KEY_PREFIX, CLOUD_LIST_PY, CLOUD_STATUS_SH, WA_CLOUD_ESTADO, chatsFromCloud, cloudApiStatus, cloudLimparSh, cloudPausarSh, cloudThreadSh, isCloudKey, threadFromCloud } from "./whatsapp-cloud-core";
 import { cloudDesconectar, cloudParar, cloudPolitica } from "./whatsapp-cloud";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
@@ -755,7 +755,11 @@ export async function whatsappChats(host: string): Promise<WhatsappChat[]> {
   // Hermes (escolhido ou já configurado): a lista vem do state.db dele, só-leitura; senão, o gateway do OpenClaw.
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
 ${WA_ESCOLHA_SH}
-if usa_hermes; then
+if usa_cloud; then
+  echo gateway=cloud-api
+  echo "list=$(${CLOUD_LIST_PY} 2>/dev/null | tr -d '\n')"
+  echo "estado=$(tr -d '\n' < "${WA_CLOUD_ESTADO}" 2>/dev/null)"
+elif usa_hermes; then
   echo gateway=hermes
   echo "self=$(${HERMES_SELF_SH})"
   echo "list=$(${HERMES_LIST_PY} 2>/dev/null | tr -d '\n')"
@@ -771,6 +775,16 @@ ${SEND_POLICY_READ_SH}
   if (r.code !== 0) throw new Error(`não consegui ler as conversas do WhatsApp: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
+  // API oficial: a lista é o histórico do receptor (um jsonl por número), com pausados e dono do wa-cloud.json.
+  if (kv.get("gateway")?.trim() === "cloud-api") {
+    gatewayByHost.set(host, "cloud-api");
+    let lista: unknown = null; let estado: Record<string, unknown> = {};
+    try { lista = JSON.parse(kv.get("list") || "[]"); } catch { throw new Error("não consegui ler o histórico do receptor da API oficial"); }
+    try { const e: unknown = JSON.parse(kv.get("estado") || "{}"); if (e !== null && typeof e === "object") estado = e as Record<string, unknown>; } catch { /* sem estado: só o dono não é marcado */ }
+    let marcas: unknown = null;
+    try { marcas = JSON.parse(kv.get("marks") || "null"); } catch { /* sem marcas */ }
+    return applyWaMarks(chatsFromCloud(lista, estado), parseWaMarks(marcas));
+  }
   const hermes = kv.get("gateway")?.trim() === "hermes";
   if (hermes) gatewayByHost.set(host, "hermes");
   let list: unknown = null;
@@ -859,6 +873,11 @@ export async function whatsappThread(host: string, number: string, limit = 200):
   if (want.length < 8) throw new Error("número inválido");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
   if (chat === undefined) return [];
+  if (chat.sessionKeys.some(isCloudKey)) {
+    const r = await runSsh(host, `${cloudThreadSh(want, limit)}\n`, 30_000);
+    if (r.code !== 0) throw new Error(`não consegui ler a conversa: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+    return threadFromCloud(r.stdout);
+  }
   if (chat.sessionKeys.some(isHermesKey)) return hermesThread(host, chat, limit);
   const keys = chat.sessionKeys.filter((k) => SAFE_KEY.test(k));
   // Uma linha por sessão: "H<TAB>chave<TAB>json".
@@ -971,6 +990,8 @@ export async function whatsappClearPlan(host: string, number: string): Promise<{
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
   // Hermes: a sessão é sempre só do contato; o que se limpa é o id da sessão viva (não há "principal" compartilhada).
   if (chat !== undefined && chat.sessionKeys.some(isHermesKey)) return { own: Object.values(chat.sessionIds).filter((id) => HERMES_ID_RE.test(id)), shared: [], paused: false };
+  // API oficial: o histórico é só do contato (um jsonl), sem "principal" compartilhada.
+  if (chat !== undefined && chat.sessionKeys.some(isCloudKey)) return { own: chat.sessionKeys.filter(isCloudKey), shared: [], paused: chat.paused };
   const keys = (chat?.sessionKeys ?? []).filter((k) => SAFE_KEY.test(k));
   const own = ownSessionKeys(want, keys);
   return { own, shared: keys.filter((k) => !own.includes(k)), paused: chat?.paused === true };
@@ -984,6 +1005,12 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const safe = keys.filter((k) => SAFE_KEY.test(k));
   if (safe.length === 0) throw new Error("não há histórico desta conversa na máquina");
+  // API oficial: apaga o jsonl do contato no receptor; a próxima mensagem começa do zero no backend.
+  if (safe.every(isCloudKey)) {
+    const r = await runSsh(host, `${cloudLimparSh(safe.map((k) => k.slice(CLOUD_KEY_PREFIX.length)))}\n`, 30_000);
+    if (!/^LIMPO=ok$/m.test(r.stdout)) throw new Error(`não consegui limpar o histórico: ${r.stderr.trim().split("\n").pop() ?? "sem resposta"}`);
+    return;
+  }
   // Hermes: ids de sessão (sem ":"), encerrados pelo próprio Python do Hermes; o gateway abre outra na próxima mensagem.
   if (safe.every((k) => HERMES_ID_RE.test(k) && !k.includes(":"))) {
     const r = await runSsh(host, `${HERMES_END_SH} ${safe.map((id) => `'${id}'`).join(" ")}\n`, 120_000);
@@ -1010,6 +1037,13 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
  */
 export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy): Promise<void> {
   const want = number.replace(/\D/g, "");
+  // API oficial: a pausa é a lista do wa-cloud.json (o receptor nem chama o agente para quem está nela).
+  if ((gatewayByHost.get(host) ?? (await whatsappStatus(host)).gateway) === "cloud-api") {
+    const r = await runSsh(host, `${cloudPausarSh(want, paused)}\n`, 20_000);
+    if (!/^PAUSA=ok$/m.test(r.stdout)) throw new Error(`não consegui ${paused ? "pausar" : "retomar"}: ${r.stderr.trim().split("\n").pop() ?? "sem resposta"}`);
+    log(`[whatsapp] ${host}: API oficial ${paused ? "pausou" : "retomou"} +${want} (${by})`);
+    return;
+  }
   if (await hostIsHermes(host)) return pauseHermes(host, want, paused, by);
   const { own } = await whatsappClearPlan(host, want);
   // A lista durável (session.sendPolicy do openclaw.json) vale mesmo sem sessão própria e sobrevive a limpar.

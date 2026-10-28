@@ -5,7 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-const { CLOUD_STATUS_SH, cloudApiStatus, politicaCloud, validarCredenciais, envSetSh, envUnsetSh, estadoPatchSh, lerInstalacao } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-cloud-core.js");
+const { CLOUD_STATUS_SH, cloudApiStatus, politicaCloud, validarCredenciais, envSetSh, envUnsetSh, estadoPatchSh, lerInstalacao, CLOUD_LIST_PY, chatsFromCloud, cloudThreadSh, threadFromCloud, cloudLimparSh, cloudPausarSh, isCloudKey } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-cloud-core.js");
 
 const kvDe = (out) => new Map(out.split("\n").filter((l) => l.includes("=")).map((l) => [l.slice(0, l.indexOf("=")), l.slice(l.indexOf("=") + 1).trim()]));
 
@@ -82,4 +82,32 @@ test("lerInstalacao: porta e verify token, ou o erro do instalador", () => {
   assert.deepEqual(lerInstalacao("…\nPORTA=8090\nVERIFY_TOKEN=0123456789abcdef0123\nWA_CLOUD=ok\n"), { ok: true, porta: 8090, verifyToken: "0123456789abcdef0123" });
   assert.deepEqual(lerInstalacao("ERRO=backend antigo, sem o receptor da API oficial: atualize o backend antes\n"), { ok: false, erro: "backend antigo, sem o receptor da API oficial: atualize o backend antes" });
   assert.equal(lerInstalacao("PORTA=8090\n").ok, false);
+});
+
+test("espelho da API oficial (shell/python reais): lista, conversa, pausar e limpar pelo histórico do receptor", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "wa-cloud-esp-"));
+  const hist = path.join(home, ".local/share/meu-bot/wa-cloud");
+  fs.mkdirSync(hist, { recursive: true });
+  const linhas = (xs) => xs.map((x) => JSON.stringify(x)).join("\n") + "\n";
+  fs.writeFileSync(path.join(hist, "5511999990000.jsonl"), linhas([{ em: "2026-10-28T10:00:00Z", quem: "pessoa", id: "a", nome: "Eu", tipo: "text", texto: "oi" }, { em: "2026-10-28T10:00:05Z", quem: "agente", id: "b", texto: "olá!" }]));
+  fs.writeFileSync(path.join(hist, "5521988887777.jsonl"), linhas([{ em: "2026-10-28T11:00:00Z", quem: "pessoa", id: "c", nome: "Bia", tipo: "audio", texto: "", midiaId: "M" }, { em: "2026-10-28T11:00:00Z", quem: "pessoa", id: "c#desc", texto: "[a pessoa mandou um áudio…]" }]));
+  fs.writeFileSync(path.join(hist, "lixo.jsonl"), "x\n");
+  const run = (sh) => execFileSync("bash", ["-c", sh], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" });
+  const estado = { politica: "self", dono: "+5511999990000", pausados: ["+5521988887777"] };
+  const chats = chatsFromCloud(JSON.parse(run(CLOUD_LIST_PY)), estado);
+  assert.deepEqual(chats.map((c) => [c.number, c.name, c.isSelf, c.paused]), [["5521988887777", "Bia", false, true], ["5511999990000", "Eu", true, false]]);
+  assert.deepEqual(chats[0].sessionKeys, ["wa-cloud:5521988887777"]); assert.ok(isCloudKey(chats[0].sessionKeys[0]));
+  assert.equal(chats[0].sessionIds["wa-cloud:5521988887777"], "wa-5521988887777", "Copiar ID aponta para a conversa do backend");
+  assert.deepEqual(threadFromCloud(run(cloudThreadSh("5521988887777", 50))), [{ role: "contact", text: "[audio]", at: "2026-10-28T11:00:00Z" }], "a descrição gerada para o agente não aparece");
+  assert.deepEqual(threadFromCloud(run(cloudThreadSh("5511999990000", 1))).map((m) => m.text), ["olá!"], "limite = as últimas");
+  run(cloudPausarSh("5511999990000", true)); run(cloudPausarSh("5511999990000", true));
+  const e = JSON.parse(fs.readFileSync(path.join(home, ".local/share/meu-bot/wa-cloud.json"), "utf8"));
+  assert.deepEqual(e.pausados, ["+5511999990000"], "pausar duas vezes não duplica");
+  run(cloudPausarSh("5511999990000", false));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, ".local/share/meu-bot/wa-cloud.json"), "utf8")).pausados, []);
+  assert.match(run(cloudLimparSh(["5521988887777"])), /LIMPO=ok/);
+  assert.ok(!fs.existsSync(path.join(hist, "5521988887777.jsonl")) && fs.existsSync(path.join(hist, "5511999990000.jsonl")));
+  assert.throws(() => cloudThreadSh("../etc", 1), /número inválido/);
+  assert.throws(() => cloudLimparSh(["x"]), /não há histórico/);
+  fs.rmSync(home, { recursive: true, force: true });
 });
