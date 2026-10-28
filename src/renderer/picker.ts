@@ -327,6 +327,8 @@ function select(host: string | null): void {
   paintDetail();
 }
 
+/** Máquinas cuja porta a sondagem já ajustou sozinha nesta sessão (uma vez só: se não resolver, fica o botão). */
+const portaAdotada = new Set<string>();
 async function probe(host: string, force = false): Promise<void> {
   if (!force && results.has(host)) return;
   results.delete(host);
@@ -334,6 +336,13 @@ async function probe(host: string, force = false): Promise<void> {
   try {
     const p: HostProbe = await window.picker.probe(host);
     const t = describeProbe(p);
+    // O backend desta conta está em outra porta (outra conta da máquina tem a do app): a sondagem leu a porta no
+    // .env do próprio backend, então é a certa. Grava só para esta máquina e sonda de novo, sem pedir o clique.
+    if (t.install === "porta" && t.port !== undefined && !portaAdotada.has(host)) {
+      portaAdotada.add(host);
+      await window.picker.usePort(host, t.port);
+      return probe(host, true);
+    }
     // Admin não instala nem faz login na máquina da pessoa: só a sondagem. "Usar porta N" fica: é configuração deste Mac.
     results.set(host, support !== null ? { ...t, install: t.install === "porta" ? "porta" : null, login: false } : t);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
