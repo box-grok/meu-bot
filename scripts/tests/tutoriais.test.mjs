@@ -138,6 +138,7 @@ test("guia do WhatsApp: o estado real marca os passos; QR já lido pula direto p
   const v = guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), emptyFlags());
   assert.deepEqual(v.done, [true, true, true, false, false, false]);
   assert.equal(v.current, 3, "sem transcrição, o passo do áudio");
+  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), { ...emptyFlags(), audioPulado: true }).current, 4, "pulou o áudio: segue para quem responde");
   const comAudio = { ready: true, connected: true, dmPolicy: "allowlist", audioIn: true };
   assert.equal(guideView(t, wa(comAudio), emptyFlags()).current, 4, "o padrão gravado sozinho não conta como escolha");
   assert.equal(guideView(t, wa({ ...comAudio, dmPolicy: "open" }), emptyFlags()).current, 5, "open é escolha explícita");
