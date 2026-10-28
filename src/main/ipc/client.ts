@@ -18,6 +18,7 @@ import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
+import { cloudConectar } from "../whatsapp/whatsapp-cloud";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
@@ -345,8 +346,19 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const agente = (payload as { agente?: unknown } | null)?.agente;
-    if (agente !== "openclaw" && agente !== "hermes") throw new Error("agente inválido");
-    return whatsappEscolherAgente(h.host, agente).then((r) => { void registrar(h.host, "whatsapp.agente", agente === "openclaw" ? "OpenClaw" : "Hermes"); return r; });
+    if (agente !== "openclaw" && agente !== "hermes" && agente !== "cloud-api") throw new Error("agente inválido");
+    // A API oficial é do Pro: escolher já confere (conectar confere de novo).
+    const gate = agente === "cloud-api" ? assertAcesso(h.host) : Promise.resolve();
+    return gate.then(() => whatsappEscolherAgente(h.host, agente)).then((r) => { void registrar(h.host, "whatsapp.agente", agente === "openclaw" ? "OpenClaw" : agente === "hermes" ? "Hermes" : "API oficial (Meta)"); return r; });
+  });
+  // API oficial: confere as credenciais na Meta, liga o receptor e grava (token e App Secret nunca voltam à tela).
+  handleClient("whatsapp:cloud-conectar", async (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    await assertAcesso(h.host);
+    const r = await cloudConectar(h.host, payload);
+    void registrar(h.host, "whatsapp.oficial.conectar", r.numero || "número da Meta");
+    return { ...r, status: await whatsappStatus(h.host) };
   });
   handleClient("whatsapp:branch", (event, payload: unknown) => {
     const h = hostFromEvent(event);

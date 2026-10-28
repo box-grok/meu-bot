@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import type { FinanceAbcLado, FinanceAbcPor, AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
+import type { WhatsappAgente, FinanceAbcLado, FinanceAbcPor, AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, WindowInfo, StatusLineSegments, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -224,7 +224,8 @@ const clientApi: MeuBotClientApi = {
   setSupportShare: (share: SupportShare) => ipcRenderer.invoke("support:share", share),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   whatsappSetDmPolicy: (policy: "self" | "open" | "list", numbers?: readonly string[]) => ipcRenderer.invoke("whatsapp:dm-policy", { policy, numbers: numbers ?? [] }),
-  whatsappEscolherAgente: (agente: "openclaw" | "hermes") => ipcRenderer.invoke("whatsapp:agente", { agente }),
+  whatsappEscolherAgente: (agente: WhatsappAgente) => ipcRenderer.invoke("whatsapp:agente", { agente }),
+  whatsappCloudConectar: (c: { token: string; phoneNumberId: string; wabaId: string; appSecret: string; dono: string }) => ipcRenderer.invoke("whatsapp:cloud-conectar", c),
   whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
   claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
   claudeLoginCode: (code: string) => ipcRenderer.invoke("claude-login:code", { code }),

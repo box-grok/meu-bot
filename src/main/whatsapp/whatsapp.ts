@@ -22,6 +22,7 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-cor
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
 import { CLOUD_STATUS_SH, cloudApiStatus } from "./whatsapp-cloud-core";
+import { cloudDesconectar, cloudParar, cloudPolitica } from "./whatsapp-cloud";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
@@ -260,6 +261,8 @@ export async function whatsappEscolherAgente(host: string, agente: WhatsappAgent
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
   const antes = await whatsappStatus(host);
   if (antes.present && antes.gateway !== agente && (antes.gateway === "hermes" || antes.gateway === "openclaw") && antes.number !== null) await whatsappLogout(host, antes.gateway);
+  // Saindo da API oficial: o receptor para (senão responderia junto); as credenciais ficam para voltar sem colar de novo.
+  if (antes.gateway === "cloud-api" && agente !== "cloud-api") await cloudParar(host);
   const r = await runSsh(host, `mkdir -p "$(dirname "${WA_AGENTE_FILE}")" && printf '%s\n' ${agente} > "${WA_AGENTE_FILE}" && echo OK=1\n`, 20_000);
   if (!r.stdout.includes("OK=1")) throw new Error(`não consegui gravar a escolha na máquina: ${(r.stderr.trim() || "ssh falhou").split("\n").pop() ?? ""}`);
   gatewayByHost.delete(host);
@@ -450,6 +453,7 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
   // Cada framework grava do seu jeito: o Hermes no .env; o OpenClaw abaixo, pelo `openclaw config`.
   const gateway = gatewayByHost.get(host) ?? (await whatsappStatus(host)).gateway;
   if (gateway === "hermes") return setDmPolicyHermes(host, policy, numbers);
+  if (gateway === "cloud-api") { await cloudPolitica(host, policy, [...numbers]); return whatsappStatus(host); }
   if (gateway !== "openclaw") throw new Error(`esta máquina (${gateway ?? "sem agente"}) não permite escolher quem responde pelo app`);
   let script: string;
   if (policy === "open") {
@@ -1074,6 +1078,8 @@ export async function whatsappKeepPaused(host: string, number: string, own: read
  */
 export async function whatsappLogout(host: string, qual?: WhatsappAgente): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  // API oficial: desconectar = parar o receptor e tirar token/App Secret da máquina (não há sessão do WhatsApp Web).
+  if ((qual ?? gatewayByHost.get(host) ?? (await whatsappStatus(host)).gateway) === "cloud-api") { await cloudDesconectar(host); gatewayByHost.delete(host); return; }
   if (current !== null) throw new Error("há um pareamento em andamento; feche o QR antes de desconectar");
   // `qual`: desconecta esse agente mesmo que a escolha gravada já seja outra (trocar de agente).
   const script = `export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$HOME/bin:$PATH

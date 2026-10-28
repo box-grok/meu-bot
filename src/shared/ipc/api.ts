@@ -365,6 +365,8 @@ export interface MeuBotClientApi {
   whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
   /** Grava qual agente atende o WhatsApp desta máquina; trocar desconecta o número do agente anterior. */
   whatsappEscolherAgente(agente: WhatsappAgente): Promise<WhatsappStatus>;
+  /** API oficial: confere na Meta, liga o receptor e grava as credenciais; devolve o verify token para colar na Meta. */
+  whatsappCloudConectar(c: { token: string; phoneNumberId: string; wabaId: string; appSecret: string; dono: string }): Promise<{ numero: string; nome: string; verifyToken: string; porta: number; status: WhatsappStatus }>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */
   whatsappBranch(number: string): Promise<StoredConversationView>;
   /** Login do Claude Code na máquina desta janela (eventos em claude-login:event). Resolve ao terminar. */
