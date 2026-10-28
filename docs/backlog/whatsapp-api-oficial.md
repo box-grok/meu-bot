@@ -40,8 +40,8 @@ flowchart LR
 | 6 | Fase 3: IP pelo Mac (não oficiais) | `curl ifconfig.me` pelo gateway mostra o IP da casa; Mac fechado = "esperando o Mac" | suporte a proxy no Hermes e PicoClaw | a fazer |
 | 7 | Corrigir o PicoClaw ("quem responde" declarado, mas gravar falha) | cartões só aparecem se gravar funciona | — | a fazer |
 | 8 | Publicar (staging → produção) | staging aprovado; produção do mesmo commit | itens 1 a 3, 9 e 10 | a fazer |
-| 9 | Freio contra loop com outro bot em conversa direta | conversa em loop com outro bot pausa o contato sozinha e registra na auditoria | `LoopTracker` (branch `feat/rene-aproveitamentos`) | a fazer |
-| 10 | Memória do dono no wa-cloud | atalho do dono ("anota…", "esquece…") responde sem gastar turno; turnos do dono levam o contexto da memória | `memoria.mjs` (branch `feat/rene-aproveitamentos`) | a fazer |
+| 9 | Freio contra loop com outro bot em conversa direta | conversa em loop com outro bot pausa o contato sozinha e registra na auditoria | `LoopTracker` (branch `feat/rene-aproveitamentos`) | feito |
+| 10 | Memória do dono no wa-cloud | atalho do dono ("anota…", "esquece…") responde sem gastar turno; turnos do dono levam o contexto da memória | `memoria.mjs` (branch `feat/rene-aproveitamentos`) | feito |
 
 ## Pré-requisitos do dono
 
@@ -112,19 +112,27 @@ reconhece: os cartões de "quem responde" aparecem e falham ao clicar. Ou implem
 Juntar o branch na `main`/branch de release, `release:staging`, teste do usuário, `release` (backend 1.4.0 entra;
 o `release.mjs` exige versão subida nos componentes alterados).
 
-### 9. Freio contra loop (sugestão da sessão planejar-melhorias-meu-bot)
+### 9. Freio contra loop (feito, 28 out)
 O wa-cloud não tem freio contra outro bot respondendo em conversa direta. Reaproveitar o `LoopTracker` de
 `backend-colima/guarda/regras.mjs` (puro; `received`/`sending` por conversa), hoje no branch
 `feat/rene-aproveitamentos` (commit `44fcd0a`): chamar no `tratar()` ao receber e antes de enviar, e quando der loop
 pausar o contato (`cloudPausarSh`, mesma lista do wa-cloud.json) e registrar. Em OpenClaw esse é o papel da guarda.
 
-### 10. Memória do dono (mesma sugestão)
+### 10. Memória do dono (feito, 28 out)
 `backend-colima/guarda/memoria.mjs` (puro, ESM, mesmo branch) tem `atalho(texto)` e `aplicar(arquivo, atalho)`, que
 gravam `~/.local/share/meu-bot/memoria-dono.md`, e `contexto(arquivo)` para o prompt. No papel `dono`, o wa-cloud
 responde o atalho direto (sem turno do agente) e põe `contexto()` no prompt dos turnos do dono. É o mesmo arquivo que
 a guarda usa no OpenClaw. Atenção: `wa-cloud.js` é CommonJS e `memoria.mjs` é ESM (`import()` dinâmico ou converter).
 
-### Merge com `feat/rene-aproveitamentos`
+Como ficou: o pacote do backend leva `guarda/regras.mjs` e `guarda/memoria.mjs` (o `install.sh` põe em `./guarda/`
+ao lado do `wa-cloud.js`, que os carrega com `import()`; sem eles, segue sem freio e sem memória). Freio só com quem
+não é o dono: o loop pausa o contato no wa-cloud.json, não envia a resposta que fecha o loop e registra
+`whatsapp.pausa-automatica`. Memória: o atalho do dono é respondido direto pelo receptor (sem turno); os turnos do dono
+levam `contexto()` como mensagem de sistema (mudar a memória começa outra sessão no backend). Testes em
+`scripts/tests/wa-cloud.test.mjs`. Mudar `regras.mjs`/`memoria.mjs` agora pede subir a versão do backend e da guarda.
+
+### Merge com `feat/rene-aproveitamentos` (feito, 28 out)
+Juntado no branch: backend `VERSION` 1.6.0 (acima de 1.4.0 e 1.5.0), listas unidas.
 - `backend-colima/VERSION`: lá 1.3.0, aqui 1.4.0; quem juntar por último fica com a maior e sobe de novo se precisar.
 - `BUNDLE_FILES` (`src/main/maquina/backend-bundle-core.ts`) e a linha `cp` do `install.sh` mudam nos dois: conflito
   simples, juntar os nomes.

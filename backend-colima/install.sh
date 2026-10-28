@@ -147,6 +147,8 @@ fi
 K=$(grep '^OPENAI_COMPAT_KEY=' "$DEST/.env" | cut -d= -f2-)
 if curl -s -m 5 -H "Authorization: Bearer $K" "http://127.0.0.1:$PORT/v1/models" | grep -q claudecode; then echo "OK: backend respondendo em 127.0.0.1:$PORT"; else echo "AVISO: backend ainda não respondeu em 127.0.0.1:$PORT"; exit 1; fi
 # Versão só depois de responder: instalação que falhou no meio continua "desatualizada" e o app tenta de novo.
+# Módulos puros da guarda que o receptor da API oficial usa (freio de loop e memória do dono), em ./guarda/.
+mkdir -p "$DEST/guarda" && cp "$HERE/regras.mjs" "$HERE/memoria.mjs" "$DEST/guarda/"
 # API oficial do WhatsApp ligada nesta máquina: o receptor sobe com o código novo (desligada, nada a fazer).
 if systemctl --user is-enabled meu-bot-wa-cloud.service >/dev/null 2>&1; then systemctl --user restart meu-bot-wa-cloud.service || true
 elif systemctl is-enabled meu-bot-wa-cloud.service >/dev/null 2>&1; then ${SUDO:-} systemctl restart meu-bot-wa-cloud.service 2>/dev/null || true; fi

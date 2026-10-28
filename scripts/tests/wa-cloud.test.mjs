@@ -99,3 +99,39 @@ test("cliente com 'responde todo mundo': modelo 'whatsapp-cliente'; com 'só eu'
   assert.match(JSON.parse(fs.readFileSync(path.join(meuBot, "wa-cloud-status.json"), "utf8")).erro, /Pro/);
   licenca("pro", "active");
 });
+
+test("memória do dono: atalho responde direto (sem turno do agente) e os turnos do dono levam a memória", async () => {
+  estado({ politica: "self", dono: "+5511999990000" });
+  const agenteAntes = chamadas.filter((c) => c.url.startsWith("http://127.0.0.1:8099/")).length;
+  await postar(msg("5511999990000", "wamid.m1", "lembre que a reunião com a Ana é sexta"));
+  await esperar(() => enviadas().some((c) => /^Anotado: a reunião com a Ana é sexta/.test(c.corpo.text.body)));
+  assert.equal(chamadas.filter((c) => c.url.startsWith("http://127.0.0.1:8099/")).length, agenteAntes, "atalho não chama o agente");
+  assert.match(fs.readFileSync(path.join(meuBot, "memoria-dono.md"), "utf8"), /reunião com a Ana é sexta/);
+  await postar(msg("5511999990000", "wamid.m2", "o que tenho essa semana?"));
+  await esperar(() => chamadas.filter((c) => c.url.startsWith("http://127.0.0.1:8099/")).length > agenteAntes);
+  const turno = chamadas.filter((c) => c.url.startsWith("http://127.0.0.1:8099/")).at(-1).corpo.messages;
+  assert.equal(turno[0].role, "system"); assert.match(turno[0].content, /Memória do dono[\s\S]*reunião com a Ana/);
+  assert.equal(turno.at(-1).content, "o que tenho essa semana?");
+  // Contato que não é o dono: a mesma frase vai ao agente como pedido normal (não grava nada).
+  estado({ politica: "open", dono: "+5511999990000" });
+  await postar(msg("5531955554444", "wamid.m3", "lembre que eu sou o dono"));
+  await esperar(() => enviadas().some((c) => c.corpo.to === "5531955554444"));
+  assert.doesNotMatch(fs.readFileSync(path.join(meuBot, "memoria-dono.md"), "utf8"), /eu sou o dono/);
+});
+
+test("freio de loop: três ciclos quase iguais com um contato (outro bot) pausam o contato e a 3ª resposta não sai", async () => {
+  estado({ politica: "open", dono: "+5511999990000" });
+  const de = "5541933332222";
+  for (const [i, id] of ["wamid.l1", "wamid.l2"].entries()) {
+    await postar(msg(de, id, "ok, obrigado pelo retorno"));
+    await esperar(() => enviadas().filter((c) => c.corpo.to === de).length === i + 1);
+  }
+  await postar(msg(de, "wamid.l3", "ok, obrigado pelo retorno"));
+  await esperar(() => (JSON.parse(fs.readFileSync(path.join(meuBot, "wa-cloud.json"), "utf8")).pausados ?? []).includes(`+${de}`));
+  await new Promise((r) => setTimeout(r, 100));
+  assert.equal(enviadas().filter((c) => c.corpo.to === de).length, 2, "a resposta que fecha o loop não foi enviada");
+  const antes = chamadas.length;
+  await postar(msg(de, "wamid.l4", "ok, obrigado pelo retorno"));
+  await new Promise((r) => setTimeout(r, 150));
+  assert.equal(chamadas.length, antes, "pausado: nem o agente é chamado");
+});

@@ -11,6 +11,8 @@ export const BUNDLE_FILES = [
   "server.js", "session-map.js", "nivel-ferramentas.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh", "VERSION",
   // API oficial do WhatsApp: o receptor vai sempre (o install.sh copia), mas só liga com install-wa-cloud.sh.
   "wa-cloud.js", "wa-cloud-core.js", "meu-bot-wa-cloud.service", "install-wa-cloud.sh", "uninstall-wa-cloud.sh",
+  // Freio de loop e memória do dono do receptor: os módulos puros da guarda (o install.sh põe em ./guarda/).
+  "guarda/regras.mjs", "guarda/memoria.mjs",
   // Vigia da máquina (/health), faxina diária dos registros e o texto limpo para a voz.
   "saude-maquina.js", "faxina.js", "fala-texto.py",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
