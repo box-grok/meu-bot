@@ -41,8 +41,6 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   const rascunhoRec = new Map<string, { ram: string; cpu: string }>();
   /** Usuário com o apelido em edição (o campo aparece no lugar do nome). */
   let editandoApelido: string | null = null; let apelidoTxt = "";
-  /** Apagar usuário: o primeiro clique arma, o segundo apaga. */
-  let armado: string | null = null;
   /** Liberar espaço: o usuário, o % pedido e o que ocupa espaço na pasta dele. */
   let liberar: { nome: string; pct: number; maiores: Maiores | null; erro: string | null; itemArmado: string | null } | null = null;
   /** Resultado da sincronização com os seletores feita ao abrir a aba (uma linha discreta; null = nada a dizer). */
@@ -249,11 +247,10 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             tdAp.append(lg, " ");
           }
           if (!u.sudo && !PROTEGIDOS.has(u.nome)) {
-            const ap = el("button", "btn btn-ghost btn-small", ocupado === `apagar:${u.nome}` ? "Apagando…" : armado === u.nome ? "Confirmar? apaga a pasta" : "Apagar"); ap.type = "button"; ap.disabled = ocupado !== null;
-            ap.addEventListener("click", () => {
-              if (armado !== u.nome) { armado = u.nome; render(); return; }
-              armado = null; void rodar(`apagar:${u.nome}`, () => deps.api.adminUsuarioApagar(u.nome), `✓ Usuário ${u.nome} apagado, com a pasta dele.`);
-            });
+            // Um clique apaga, sem confirmação: o usuário e a pasta dele somem na hora.
+            const ap = el("button", "btn btn-ghost btn-small", ocupado === `apagar:${u.nome}` ? "Apagando…" : "Apagar"); ap.type = "button"; ap.disabled = ocupado !== null;
+            ap.title = "Apaga o usuário e a pasta dele na hora, sem pedir confirmação";
+            ap.addEventListener("click", () => { void rodar(`apagar:${u.nome}`, () => deps.api.adminUsuarioApagar(u.nome), `✓ Usuário ${u.nome} apagado, com a pasta dele.`); });
             tdAp.append(ap);
           }
           // Tetos (systemd, na fatia do usuário): RAM em MB e CPU em % de um núcleo; vazio = sem teto.
