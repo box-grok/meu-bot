@@ -37,8 +37,15 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
   if (typeof p.diskTotalMb === "number" && p.diskTotalMb > 0 && typeof p.diskFreeMb === "number") {
     lines.push({ text: `disco: ${gb(p.diskFreeMb)} livres de ${gb(p.diskTotalMb)}${p.diskFreeMb < 2048 ? " · pouco espaço" : ""}`, ok: p.diskFreeMb >= 2048 });
   }
+  // Memória "apertada" com a mesma régua do vigia do backend (saude-maquina.js: menos de 10% livre) ou abaixo de 512 MB.
   if (typeof p.memTotalMb === "number" && p.memTotalMb > 0 && typeof p.memFreeMb === "number") {
-    lines.push({ text: `memória: ${gb(p.memFreeMb)} livres de ${gb(p.memTotalMb)}${p.memFreeMb < 512 ? " · apertada" : ""}`, ok: p.memFreeMb >= 512 ? null : false });
+    const apertada = p.memFreeMb < 512 || p.memFreeMb / p.memTotalMb < 0.1;
+    const swap = p.swapTotalMb === 0 ? " · sem swap" : typeof p.swapTotalMb === "number" && typeof p.swapFreeMb === "number" ? ` · swap ${gb(p.swapFreeMb)} livres` : "";
+    lines.push({ text: `memória: ${gb(p.memFreeMb)} livres de ${gb(p.memTotalMb)}${swap}${apertada ? " · apertada" : ""}`, ok: apertada ? false : null });
+  }
+  // Alerta do vigia (o backend já avisou o dono pelo WhatsApp/e-mail): memória acabando por 90 s, disco cheio ou travando.
+  if (p.backendAlerta !== null && p.backendAlerta !== undefined) {
+    lines.push({ text: p.backendAlerta === "memoria" ? "vigia: memória quase no fim (a pessoa foi avisada)" : p.backendAlerta === "disco" ? "vigia: disco quase cheio (a pessoa foi avisada)" : "vigia: o backend está travando (a pessoa foi avisada)", ok: false });
   }
   const wa = h.whatsapp;
   if (wa !== null && wa.present) {

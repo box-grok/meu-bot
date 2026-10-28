@@ -533,6 +533,12 @@ export function hermesAudioPatch(setup: { kind: "in"; off?: boolean } | { kind: 
 /** Script de voz do meu-bot na máquina: acha o Python do gateway na hora e roda o Piper (WAV). */
 export const HERMES_VOZ_SH_FILE = "$HOME/.local/share/meu-bot/hermes-voz.sh";
 /**
+ * Linha do hermes-voz.sh que passa o texto pelo fala-texto.py (números por extenso, sem markdown nem links; o
+ * install.sh do backend o copia). O Piper lê um arquivo limpo aberto no fd 3 (já apagado do disco); sem o filtro ou
+ * com falha, lê o original. O install.sh insere esta mesma linha nos hermes-voz.sh de antes dela.
+ */
+export const HERMES_VOZ_FILTRO = `L=$(mktemp) && python3 "$HOME/.local/share/meu-bot/fala-texto.py" <"$1" >"$L" 2>/dev/null && [ -s "$L" ] && exec 3<"$L" && set -- /dev/fd/3 "$2"; rm -f "$L"`;
+/**
  * Voz local como `tts.providers.voz-local` (type command, WAV, voice_compatible) e `tts.provider: voz-local`. O
  * provedor "piper" embutido do Hermes 0.22 grava Ogg VORBIS quando o nome termina em .ogg e pula o ffmpeg: o
  * WhatsApp não toca. Pelo command provider o Hermes recebe WAV e converte para Ogg/Opus de verdade. O comando é um
@@ -545,6 +551,7 @@ cat > "${HERMES_VOZ_SH_FILE}" <<'VOZ'
 # Voz local do meu-bot para o Hermes: texto em $1, WAV em $2 (o Hermes converte para Ogg/Opus).
 ${HERMES_VENV_PY_SH}
 [ -n "$HPY" ] || { echo "sem ambiente do Hermes" >&2; exit 1; }
+${HERMES_VOZ_FILTRO}
 exec "$HPY" -m piper -m "$HOME/.hermes/cache/piper-voices/${HERMES_PIPER_VOICE}.onnx" -i "$1" -f "$2"
 VOZ
 chmod 755 "${HERMES_VOZ_SH_FILE}"

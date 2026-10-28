@@ -237,7 +237,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const sv = el("button", "btn btn-ghost btn-small", ocupado === `limite:${u.nome}` ? "…" : "Salvar"); sv.type = "button"; sv.disabled = ocupado !== null || u.sudo;
           sv.addEventListener("click", () => { void salvarLimite(u); });
           tdPct.append(ip, " ", sv);
-          const tdAp = el("td");
+          const tdAp = el("td", "usuarios-acoes");
           // "Nos seletores": refaz, para este usuário, o que criar e a sincronização ao abrir a aba já fazem (meu-bot e admin).
           if (!u.sudo && !u.meuBot && u.chave) {
             const ab = el("button", "btn btn-ghost btn-small", ocupado === `abrir:${u.nome}` ? "…" : "Nos seletores"); ab.type = "button"; ab.disabled = ocupado !== null;
@@ -292,10 +292,14 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             ed.addEventListener("click", () => { editandoApelido = u.nome; apelidoTxt = u.apelido; render(); });
             tdNome.append(ed);
           }
-          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, tdUsado, el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
+          // Entrar: o comando inteiro numa linha (quebrado no meio ele não serve para copiar).
+          const tdAcesso = el("td"); if (acesso !== "") tdAcesso.append(el("code", "usuarios-ssh", acesso));
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, tdUsado, el("td", "", limite), tdPct, tdAcesso, tdAp);
           t.append(tr);
         }
-        lista.append(t);
+        // Onze colunas não cabem numa janela estreita: a tabela rola de lado dentro do cartão em vez de vazar dele.
+        const rolo = el("div", "usuarios-rolo"); rolo.append(t);
+        lista.append(rolo);
       }
     }
     panel.append(lista);

@@ -7,7 +7,7 @@
   "main": "dist/main/main.js",
   "scripts": {
     "build:main": "tsc -p tsconfig.main.json && cp src/main/terminal/pty-broker.py dist/main/terminal/",
-    "build:renderer": "tsc -p tsconfig.renderer.json && node scripts/vendor.mjs && cp src/renderer/index.html src/renderer/style.css src/renderer/admin.css src/renderer/quick-entry.html src/renderer/quick-entry.css src/renderer/picker.html src/renderer/picker.css src/renderer/relief.html src/renderer/relief.css src/renderer/produtos.html dist/renderer/",
+    "build:renderer": "tsc -p tsconfig.renderer.json && node scripts/vendor.mjs && cp src/renderer/index.html src/renderer/style.css src/renderer/admin.css src/renderer/quick-entry.html src/renderer/quick-entry.css src/renderer/picker.html src/renderer/picker.css src/renderer/relief.html src/renderer/relief.css src/renderer/produtos.html src/renderer/usuarios-mac.html dist/renderer/",
     "build": "rm -rf dist && npm run build:main && npm run build:renderer",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "start": "electron .",
@@ -18,6 +18,7 @@
     "test": "npm run build && node --test scripts/tests/",
     "dmg": "npm run dist && node scripts/dmg.mjs",
     "dist:admin": "node scripts/dist.mjs --variant admin",
+    "dist:admin-mac": "node scripts/dist.mjs --variant admin-mac",
     "build:extensao": "npm --prefix extensao-crm run build",
     "dev:extensao": "npm --prefix extensao-crm run dev",
     "dist:staging": "node scripts/dist.mjs --variant client-staging",
@@ -27,7 +28,9 @@
     "icons": "npm run build:main && node scripts/icons.mjs",
     "assinatura": "node scripts/assinatura.mjs --criar",
     "chave-release": "node scripts/chave-release.mjs",
-    "dist:finance-staging": "node scripts/dist.mjs --variant finance-staging"
+    "dist:finance-staging": "node scripts/dist.mjs --variant finance-staging",
+    "dist:diego": "node scripts/dist.mjs --variant diego",
+    "dist:diego-staging": "node scripts/dist.mjs --variant diego-staging"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",

@@ -19,8 +19,8 @@ test("produtos: nome, bundle id e pasta de dados únicos; portas únicas entre o
   assert.ok(unicos(PRODUTOS.map((p) => p.nome)), "nome repetido");
   assert.ok(unicos(PRODUTOS.map((p) => p.bundleId)), "bundle id repetido");
   assert.ok(unicos(PRODUTOS.map((p) => p.userData ?? "(padrão)")), "pasta de dados repetida");
-  // O admin não sobe backend local; os apps da pessoa abertos juntos não podem dividir a porta.
-  const daPessoa = PRODUTOS.filter((p) => !p.caps.supportAdmin);
+  // Só os apps com chat sobem backend local (o admin e o admin-mac não); abertos juntos, não podem dividir a porta.
+  const daPessoa = PRODUTOS.filter((p) => p.caps.chat);
   assert.ok(unicos(daPessoa.map((p) => p.portaLocal)), "porta local repetida entre apps da pessoa");
 });
 
