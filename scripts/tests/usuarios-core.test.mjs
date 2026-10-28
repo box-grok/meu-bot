@@ -137,6 +137,7 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.match(sh, /meu-bot-hermes-global/);
   assert.match(sh, /GIT_CONFIG_VALUE_0=\/opt\/hermes\/lib\/node_modules\/hermes-agent\/runtime\/hermes-agent/);
   assert.match(sh, /runuser -u nobody/);
+  assert.match(sh, /runtime\/hermes-agent\/\.hermes\/bin/, "o atalho que o serviço do gateway de cada usuário chama");
   assert.match(listar, /HERMES=global/);
   assert.equal(ler("ROOT\nHERMES=global\n").hermes, "global");
   assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
