@@ -83,10 +83,10 @@ test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica u
   assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
 });
 
-test("usuários: todo usuário novo nasce com 1 GB de RAM e 100% de CPU", async () => {
+test("usuários: todo usuário novo nasce com 2 GB de RAM e 200% de CPU (cobre o OpenClaw, ~1,6 GB, e o Hermes com áudio)", async () => {
   const { RECURSOS_PADRAO, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
-  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 1024, cpuPct: 100 });
-  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=1024M CPUQuota=100%/);
+  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 2048, cpuPct: 200 });
+  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=2048M CPUQuota=200%/);
 });
 
 test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {

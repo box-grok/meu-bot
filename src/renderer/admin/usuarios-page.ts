@@ -169,7 +169,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
     linha.append(input, pin, b); form.append(linha);
-    form.append(el("p", "hint", "Nasce comum (sem sudo), com RAM de 1 GB e CPU de 100% (um núcleo); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
+    form.append(el("p", "hint", "Nasce comum (sem sudo), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (sincronia !== null) form.append(el("p", "hint", sincronia));
     panel.append(form);

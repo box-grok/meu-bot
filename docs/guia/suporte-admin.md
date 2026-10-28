@@ -650,7 +650,7 @@ Linha "Usuários" na lateral, abaixo de Auditoria, só quando o admin entra na m
 (`src/renderer/admin/usuarios-page.ts`, `src/main/admin/usuarios-admin.ts`, puro em `usuarios-core.ts`). Lista os
 usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
 - **Cria** usuários comuns (sem sudo, `useradd -m`, a chave deste Mac no authorized_keys). Nasce com os tetos padrão
-  `RECURSOS_PADRAO` (1 GB de RAM, 100% de um núcleo): um agente travado não derruba a máquina.
+  `RECURSOS_PADRAO` (2 GB de RAM, 200% = dois núcleos): cobre o OpenClaw (~1,6 GB parado) e o Hermes com áudio; um agente travado não derruba a máquina.
 - **Disco em %:** limite por cota de usuário no disco principal, em % do tamanho dele (uma fatia que se redistribui).
   A primeira vez liga a cota (com backup do fstab). Baixar abaixo do que o usuário já ocupa é recusado; a aba mostra
   as maiores pastas dele para o admin escolher o que apagar.

@@ -211,7 +211,7 @@ export const configTemHost = (texto: string, alias: string): boolean =>
   texto.split("\n").some((l) => { const m = /^\s*Host\s+(.+)$/i.exec(l); return m !== null && m[1]!.trim().split(/\s+/).includes(alias); });
 
 /** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
-export const RECURSOS_PADRAO = { ramMb: 1024, cpuPct: 100 } as const;
+export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
 
 /** Usuários que entram sozinhos nos seletores: comuns (sem sudo, fora do meu-bot e do sistema) e com a chave deste Mac. */
 export const candidatosAoSeletor = (usuarios: UsuarioMaquina[]): UsuarioMaquina[] =>
