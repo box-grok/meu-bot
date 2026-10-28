@@ -91,6 +91,11 @@ print(json.dumps({"messages": out}, ensure_ascii=True))
  * PATH (o do Hermes em ~/.hermes/tools, ou ~/.local/node). Sem isto, "env: node: No such file or directory".
  */
 export const HERMES_PATH_SH = `export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
+/**
+ * R = pasta do código do Hermes, pelo próprio `hermes` (o de ~/.local ou o de todos, em /opt/hermes); sem resposta,
+ * o lugar de sempre em ~/.local. Exige HERMES_PATH_SH antes.
+ */
+export const HERMES_DIR_SH = `R=$(timeout 20 hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent`;
 export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
 import sys, hermes_state
 db = hermes_state.SessionDB()
