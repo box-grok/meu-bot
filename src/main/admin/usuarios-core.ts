@@ -221,6 +221,13 @@ export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/op
 exec /opt/hermes/bin/hermes "$@"
 EOF
 chmod 755 "$W"
+# O serviço do gateway que o Hermes grava para cada usuário chama <código>/.hermes/bin/hermes, e só o root cria arquivos
+# em /opt: sem este atalho, o gateway de quem não é root não sobe ("Unable to locate executable"). Ele leva ao mesmo
+# Hermes de todos. Uma reinstalação do pacote apaga a pasta; rodar de novo a recria.
+G="$P/runtime/hermes-agent/.hermes/bin"; mkdir -p "$G"
+[ -e "$G/hermes" ] && ! grep -q meu-bot-hermes-global "$G/hermes" && mv "$G/hermes" "$G/hermes.antes-do-meu-bot"
+printf '#!/bin/sh\n# meu-bot-hermes-global: o atalho que o serviço do gateway de cada usuário chama.\nexec %s "$@"\n' "$W" > "$G/hermes"
+chmod 755 "$P/runtime/hermes-agent/.hermes" "$G" "$G/hermes"
 # Confere como um usuário sem privilégio, que é quem vai usar.
 H=$(mktemp -d); chmod 777 "$H"
 O=$(runuser -u nobody -- env HOME="$H" "$W" --version 2>&1 | head -1); rm -rf "$H"
