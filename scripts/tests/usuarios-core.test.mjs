@@ -125,3 +125,20 @@ test("removerBlocoUsuario: tira só o bloco do admin (marca + Host + indentadas)
   assert.deepEqual(removerBlocoUsuario(meu, "meu-root-ana"), { texto: meu, removido: false });
   assert.equal(removerBlocoUsuario(antes, "meu-root-ana").removido, false);
 });
+
+test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, com atalho legível e git liberado", async () => {
+  const { hermesGlobalSh, HERMES_VERSAO, lerUsuarios: ler, LISTAR_SH: listar } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const { readFileSync } = await import("node:fs");
+  const grok = readFileSync(new URL("../../backend-colima/install-grok-oauth.sh", import.meta.url), "utf8");
+  assert.equal(/^HERMES_VERSION=(\S+)$/m.exec(grok)?.[1], HERMES_VERSAO);
+  const sh = hermesGlobalSh();
+  assert.match(sh, /npm install -g --prefix "\$D" "hermes-agent@\$V"/);
+  assert.match(sh, /chmod -R a\+rX "\$D"/);
+  assert.match(sh, /meu-bot-hermes-global/);
+  assert.match(sh, /GIT_CONFIG_VALUE_0=\/opt\/hermes\/lib\/node_modules\/hermes-agent\/runtime\/hermes-agent/);
+  assert.match(sh, /runuser -u nobody/);
+  assert.match(listar, /HERMES=global/);
+  assert.equal(ler("ROOT\nHERMES=global\n").hermes, "global");
+  assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
+  assert.equal(ler("ROOT\n").hermes, null);
+});

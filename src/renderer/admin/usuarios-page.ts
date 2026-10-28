@@ -16,7 +16,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
@@ -204,6 +204,16 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           sw.append(b, el("span", "hint", "Esta máquina não tem swap: se a RAM encher, o Linux derruba um processo."));
           lista.append(sw);
         }
+      }
+      // Hermes só na pasta do root (700): os outros usuários não o alcançam e cada um acabaria baixando uma cópia.
+      if (v.hermes === "global") lista.append(el("p", "hint", "Hermes: um só para todos os usuários (/opt/hermes); os dados de cada um ficam na pasta dele."));
+      else if (v.hermes !== null) {
+        const hg = el("div", "admin-actions");
+        const b = el("button", "btn btn-ghost btn-small", ocupado === "hermes" ? "Instalando…" : "Instalar Hermes para todos"); b.type = "button"; b.disabled = ocupado !== null;
+        b.title = "Instala o Hermes em /opt/hermes (só leitura para os outros) e aponta o comando hermes de todos para lá; o do root continua como está. Baixa ~1 GB na primeira vez";
+        b.addEventListener("click", () => { void rodar("hermes", () => deps.api.adminHermesGlobal(), "✓ Hermes instalado para todos: os usuários usam o mesmo programa, sem baixar uma cópia cada um."); });
+        hg.append(b, el("span", "hint", v.hermes === "root" ? "O Hermes desta máquina está só na pasta do root: os outros usuários não conseguem usá-lo e cada um baixaria uma cópia." : "Esta máquina não tem Hermes."));
+        lista.append(hg);
       }
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {

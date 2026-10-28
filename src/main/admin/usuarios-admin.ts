@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -42,7 +42,7 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const l = lerUsuarios(r.stdout);
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, ram: l.ram };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram };
 }
 
 const nomeValido = (nome: unknown): string => {
@@ -161,6 +161,17 @@ export async function definirRecursos(host: string, nome: unknown, ramMb: unknow
   saida(r.stdout, /^RECURSOS=ok$/m, "não consegui gravar os limites");
   log(`[usuarios] ${host}: tetos de ${n}: RAM ${ramMb} MB, CPU ${cpuPct}%`);
   void registrar(host, "usuarios.recursos", n, `RAM ${ramMb === 0 ? "sem teto" : `${ramMb} MB`}, CPU ${cpuPct === 0 ? "sem teto" : `${cpuPct}%`}`);
+  return usuariosDaMaquina(host);
+}
+
+/** Instala o Hermes para todos os usuários da máquina (/opt/hermes + /usr/local/bin/hermes). Baixa ~1 GB na primeira vez. */
+export async function instalarHermesGlobal(host: string): Promise<UsuariosVisao> {
+  await usuariosDaMaquina(host); // confere root
+  const r = await runSsh(host, `${hermesGlobalSh()}\n`, 15 * 60_000);
+  saida(r.stdout, /^HERMES=ok /m, `não consegui instalar o Hermes para todos: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  const v = /^HERMES=ok (\S+)$/m.exec(r.stdout)?.[1] ?? "";
+  log(`[usuarios] ${host}: Hermes ${v} para todos em /opt/hermes`);
+  void registrar(host, "maquina.hermes-global", v);
   return usuariosDaMaquina(host);
 }
 
