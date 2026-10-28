@@ -76,6 +76,11 @@ body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
 .auditoria-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
 .auditoria-tabela th, .auditoria-tabela td { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(127,127,127,.12); vertical-align: top; }
 .auditoria-tabela tr.apagada td { color: var(--bad); text-decoration: line-through; }
+/* Aba Usuários: a tabela rola de lado dentro do cartão; o comando ssh e os botões não quebram no meio. */
+.usuarios-rolo { overflow-x: auto; max-width: 100%; }
+.usuarios-rolo td, .usuarios-rolo th { white-space: nowrap; }
+.usuarios-ssh { user-select: all; font-size: 11px; }
+.usuarios-acoes .btn { display: block; width: 100%; margin-bottom: 4px; }
 /* Janela Produtos (produtos.html): cabeçalho fixo e a lista rolando abaixo, sem o limite da antiga caixa do seletor. */
 body.produtos-janela { display: flex; flex-direction: column; height: 100%; }
 /* -webkit-app-region: no-drag: o body do picker.css é área de arrastar a janela, e o Electron não entrega a rodinha do
