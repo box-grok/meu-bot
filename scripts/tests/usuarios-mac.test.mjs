@@ -79,3 +79,24 @@ test("apagar: o comando do Terminal (sudo sysadminctl) só com nome válido, e d
   assert.match(c, /✓ conta meu-box apagada/);
   for (const n of ["root", "svc", "x;rm -rf ~", "Meu"]) assert.throws(() => m.apagarNoTerminalCmd(n), /nome inválido/, n);
 });
+
+test("criar: o Claude Code global vai junto (copia a versão de quem administra só quando falta ou é outra)", () => {
+  const sh = m.criarMacSh({ nome: "meu-box", senha: "Abcdefghjk23456789mnpqrs", claude: "/Users/box/.local/share/claude/versions/2.1.312" });
+  assert.match(sh, /cmp -s '\/Users\/box\/\.local\/share\/claude\/versions\/2\.1\.312' \/usr\/local\/bin\/claude/);
+  assert.match(sh, /install -m 755 -o root -g wheel/);
+  assert.doesNotMatch(m.criarMacSh({ nome: "meu-box", senha: "Abcdefghjk23456789mnpqrs", claude: null }), /CLAUDE=/);
+  assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "Abcdefghjk23456789mnpqrs", claude: "/tmp/x'; rm -rf /" }), /Claude Code/);
+});
+
+test("usuário na VM (meu-bot-admin e admin-mac): todas as chaves entram, inclusive a última; nome e chave validados", () => {
+  const c = require("../../dist/main/admin/usuarios-core.js");
+  const k1 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExemploUmExemploUmExemplo meu-box@meu-bot-admin-mac";
+  const k2 = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExemploDoisExemploDois meu-bot-admin";
+  const sh = c.usuarioComChavesSh("meu-box", [k1, k2], "chaves");
+  const b64 = /printf '%s' '([^']+)'/.exec(sh)[1];
+  assert.equal(Buffer.from(b64, "base64").toString("utf8"), `${k1}\n${k2}\n`, "termina com quebra: o read não pula a última");
+  assert.match(sh, /ACAO=JAEXISTIA/);
+  assert.match(c.usuarioComChavesSh("meu-box", [k1], "erro"), /ERRO=já existe um usuário/);
+  assert.throws(() => c.usuarioComChavesSh("root", [k1], "erro"), /nome inválido/);
+  assert.throws(() => c.usuarioComChavesSh("meu-box", ["ssh-ed25519 x'; rm -rf /"], "erro"), /chave/);
+});

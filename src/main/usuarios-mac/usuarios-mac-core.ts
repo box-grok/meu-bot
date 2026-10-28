@@ -78,6 +78,17 @@ export function lerUsuariosMac(stdout: string): UsuariosMacVisao {
   return { usuarios, atual, naTela };
 }
 
+/** Onde o Claude Code fica para todas as contas deste Mac (/usr/local/bin está no PATH de todo mundo: /etc/paths). */
+export const CLAUDE_GLOBAL = "/usr/local/bin/claude";
+/**
+ * Toda conta nova enxerga o Claude Code sem instalar nada: o binário da conta de quem administra (o instalador nativo
+ * guarda em ~/.local/share/claude/versions/<versão>) é copiado para CLAUDE_GLOBAL quando falta ou é outro. Roda como
+ * root, junto da criação. Imprime `CLAUDE=ok|atualizado|sem-origem`.
+ */
+export const CLAUDE_GLOBAL_SH = (origem: string): string => `if [ -x '${origem}' ]; then
+  if [ -x ${CLAUDE_GLOBAL} ] && cmp -s '${origem}' ${CLAUDE_GLOBAL}; then echo "CLAUDE=ok"; else install -d -m 755 /usr/local/bin && install -m 755 -o root -g wheel '${origem}' ${CLAUDE_GLOBAL} && echo "CLAUDE=atualizado"; fi
+else echo "CLAUDE=sem-origem"; fi`;
+
 /** De onde a conta nova clona o meu-bot para a mesa (o repositório público; o submódulo privado do Diego não vem). */
 export const REPO_MEU_BOT = `https://github.com/${UPDATE_REPO}.git`;
 
@@ -87,11 +98,12 @@ export const REPO_MEU_BOT = `https://github.com/${UPDATE_REPO}.git`;
  * 0700 apagado em seguida) e por um instante no argumento do sysadminctl, que não lê senha de entrada sem terminal.
  * Imprime `CRIADO=<nome>` (ou `ERRO=<motivo>`) e `REPO=ok|falhou|sem-git`: o clone que não deu certo não desfaz a conta.
  */
-export function criarMacSh(o: { nome: string; senha: string; repo?: string }): string {
+export function criarMacSh(o: { nome: string; senha: string; repo?: string; claude?: string | null }): string {
   const repo = o.repo ?? REPO_MEU_BOT;
   if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\.git$/.test(repo)) throw new Error("repositório inválido");
   if (!NOME_USUARIO_RE.test(o.nome) || RESERVADOS_MAC.has(o.nome)) throw new Error("nome inválido");
   if (senhaEscolhidaInvalida(o.senha) !== null) throw new Error("senha inválida");
+  if (o.claude != null && !/^\/Users\/[\w.-]+\/\.local\/share\/claude\/versions\/[\w.-]+$/.test(o.claude)) throw new Error("caminho do Claude Code inválido");
   return `set -u
 if dscl . -read "/Users/${o.nome}" >/dev/null 2>&1; then echo "ERRO=já existe uma conta ${o.nome} neste Mac"; exit 1; fi
 sysadminctl -addUser "${o.nome}" -fullName "${o.nome}" -shell /bin/zsh -home "/Users/${o.nome}" -admin -password '${o.senha}' >/dev/null 2>&1
@@ -104,7 +116,8 @@ install -d -m 700 -o "${o.nome}" -g staff "/Users/${o.nome}/Desktop"
 cd /  # o git como a conta nova precisa de uma pasta que ela consiga ler
 if xcode-select -p >/dev/null 2>&1 && [ ! -e "/Users/${o.nome}/Desktop/meu-bot" ]; then
   if sudo -u "${o.nome}" -H git clone -q '${repo}' "/Users/${o.nome}/Desktop/meu-bot" >/dev/null 2>&1; then echo "REPO=ok"; else echo "REPO=falhou"; fi
-else echo "REPO=sem-git"; fi`;
+else echo "REPO=sem-git"; fi${o.claude != null ? `
+${CLAUDE_GLOBAL_SH(o.claude)}` : ""}`;
 }
 
 /**

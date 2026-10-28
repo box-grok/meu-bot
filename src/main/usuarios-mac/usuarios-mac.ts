@@ -43,6 +43,11 @@ async function comoAdministrador(script: string, motivo: string): Promise<string
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
+/** O binário do Claude Code de quem administra (o link ~/.local/bin/claude do instalador nativo); null = não instalado assim. */
+function claudeDesteUsuario(): string | null {
+  try { const real = fs.realpathSync(path.join(os.homedir(), ".local", "bin", "claude")); return /\/\.local\/share\/claude\/versions\/[\w.-]+$/.test(real) && real.startsWith("/Users/") ? real : null; } catch { return null; }
+}
+
 function registrar(acao: string, alvo: string): void {
   try { fs.appendFileSync(path.join(app.getPath("userData"), "auditoria-mac.jsonl"), `${JSON.stringify({ em: new Date().toISOString(), quem: os.userInfo().username, acao, alvo })}\n`, { mode: 0o600 }); } catch { /* registro é cortesia */ }
 }
@@ -67,7 +72,7 @@ export async function criarUsuarioMac(nome: unknown, senhaPedida: unknown): Prom
   const escolhida = typeof senhaPedida === "string" && senhaPedida !== "" ? senhaPedida : null;
   if (escolhida !== null) { const e = senhaEscolhidaInvalida(escolhida); if (e !== null) throw new Error(e); }
   const senha = escolhida ?? senhaDe(crypto.randomBytes(32));
-  const out = await comoAdministrador(criarMacSh({ nome: n, senha }), `criar a conta ${n} (com o meu-bot na mesa)`);
+  const out = await comoAdministrador(criarMacSh({ nome: n, senha, claude: claudeDesteUsuario() }), `criar a conta ${n} (com o meu-bot na mesa)`);
   saidaMac(out, new RegExp(`^CRIADO=${n}$`, "m"), "o macOS não confirmou a conta nova");
   const repo = (/^REPO=(ok|falhou|sem-git)$/m.exec(out)?.[1] ?? "falhou") as UsuarioMacCriado["repo"];
   registrar("conta.criar", `${n} (meu-bot na mesa: ${repo})`);
