@@ -21,6 +21,7 @@ import type { Gateway, VoiceReplyMode, WhatsappAgente, WhatsappChat, WhatsappDmP
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
+import { CLOUD_STATUS_SH, cloudApiStatus } from "./whatsapp-cloud-core";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
@@ -122,6 +123,10 @@ ${GATEWAY_FIX_SH}
 ${WA_ESCOLHA_SH}
 echo "escolha=$ESC"
 S=$HOME/.hermes/whatsapp
+# API oficial escolhida: o receptor wa-cloud.js manda, mesmo que OpenClaw/Hermes estejam instalados.
+if usa_cloud; then
+${CLOUD_STATUS_SH}
+fi
 if usa_hermes; then
   ${HERMES_PATH_SH}
   echo gateway=hermes; echo present=1
@@ -274,8 +279,10 @@ async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "ca
   return { ...lerGateway(host, kv), escolha };
 }
 function lerGateway(host: string, kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
-  const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "picoclaw" ? "picoclaw" : "hermes";
+  const g = kv.get("gateway");
+  const gateway: Gateway = g === "openclaw" || g === "picoclaw" || g === "cloud-api" ? g : "hermes";
   gatewayByHost.set(host, gateway);
+  if (gateway === "cloud-api") return cloudApiStatus(kv);
   if (gateway === "openclaw") return openclawStatus(kv);
   if (gateway === "picoclaw") return picoclawStatus(kv);
   const agent = describeInstall("Hermes", kv);

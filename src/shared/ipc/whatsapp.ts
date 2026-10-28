@@ -11,7 +11,11 @@ import type { Gateway } from "./maquina";
  * em vez de comparar o nome do gateway: uma VM com Hermes mostra o que o Hermes faz, e pronto.
  */
 export interface WhatsappCapacidades {
-  parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
+  /** Conecta lendo um QR no celular (WhatsApp Web: OpenClaw, Hermes, PicoClaw). */
+  parear: boolean;
+  /** Conecta colando as credenciais do app da Meta (API oficial): sem QR. */
+  credencial: boolean;
+  listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
   pausar: boolean; grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
   /** Aplicar "quem o agente responde" reinicia o gateway do WhatsApp da máquina (alguns segundos fora do ar). */
   politicaReinicia: boolean;
@@ -54,7 +58,7 @@ export interface WhatsappStatus {
 }
 
 /** Os agentes que a pessoa pode escolher para atender o WhatsApp (o app trabalha igual com os dois). */
-export type WhatsappAgente = "openclaw" | "hermes";
+export type WhatsappAgente = "openclaw" | "hermes" | "cloud-api";
 
 export type WhatsappDmPolicy = "pairing" | "allowlist" | "open" | "disabled";
 

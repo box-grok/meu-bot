@@ -11,21 +11,21 @@
  */
 import type { Gateway, WhatsappAgente, WhatsappCapacidades } from "../../shared/ipc";
 
-/** Arquivo da máquina com o agente escolhido para o WhatsApp (uma palavra: openclaw ou hermes). */
+/** Arquivo da máquina com o agente escolhido para o WhatsApp (uma palavra: openclaw, hermes ou cloud-api). */
 export const WA_AGENTE_FILE = "$HOME/.local/share/meu-bot/whatsapp-agente";
 /** O conteúdo do arquivo de escolha → o agente; qualquer outra coisa é "não escolheu". */
 export const agenteEscolhido = (raw: string | undefined): WhatsappAgente | null => {
   const v = (raw ?? "").trim().toLowerCase();
-  return v === "openclaw" || v === "hermes" ? v : null;
+  return v === "openclaw" || v === "hermes" || v === "cloud-api" ? v : null;
 };
 /**
  * Trecho de shell que deixa em $ESC a escolha gravada e diz se o Hermes atende: escolhido, ou sem escolha e com o
  * WhatsApp dele já configurado (como era antes da escolha existir). Status e pareamento usam o mesmo critério.
  */
-export const WA_ESCOLHA_SH = `ESC=$(tr -d ' \n' < "${WA_AGENTE_FILE}" 2>/dev/null); usa_hermes() { [ "$ESC" = hermes ] || { [ "$ESC" != openclaw ] && [ -d "$HOME/.hermes/whatsapp" ]; }; }`;
+export const WA_ESCOLHA_SH = `ESC=$(tr -d ' \n' < "${WA_AGENTE_FILE}" 2>/dev/null); usa_cloud() { [ "$ESC" = cloud-api ]; }; usa_hermes() { [ "$ESC" = hermes ] || { [ "$ESC" != openclaw ] && [ "$ESC" != cloud-api ] && [ -d "$HOME/.hermes/whatsapp" ]; }; }`;
 
 const NADA: WhatsappCapacidades = {
-  parear: false, listarConversas: false, lerConversa: false, limparHistorico: false,
+  parear: false, credencial: false, listarConversas: false, lerConversa: false, limparHistorico: false,
   pausar: false, grupos: false, guarda: false, politicaDm: false, audio: false, politicaReinicia: false,
 };
 
@@ -40,7 +40,7 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
     // OpenClaw guarda a conversa num banco próprio e expõe sessões pelo gateway: dá para tudo.
     case "openclaw":
       return {
-        parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected,
+        parear: true, credencial: false, listarConversas: connected, lerConversa: connected, limparHistorico: connected,
         pausar: connected, grupos: connected, guarda: true, politicaDm: true, audio: true, politicaReinicia: false,
       };
     // Hermes não tem banco de conversas; o histórico vem do hook `wa-mirror`, que grava em
@@ -56,6 +56,11 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
     // PicoClaw: pareia e tem política de quem o agente responde; o resto ainda não foi mapeado.
     case "picoclaw":
       return { ...NADA, parear: true, politicaDm: true };
+    // API oficial (wa-cloud.js na máquina): sem QR, conecta por credencial; o receptor guarda cada conversa num jsonl
+    // e a política/pausa num json próprio, então lista, lê, limpa, pausa e escolhe quem responde (sem reiniciar nada).
+    // A Cloud API não atende grupos comuns; guarda é plugin do OpenClaw; áudio vem na fase 2.
+    case "cloud-api":
+      return { ...NADA, credencial: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, pausar: connected, politicaDm: true };
     default:
       return NADA;
   }

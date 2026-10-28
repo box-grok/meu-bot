@@ -9,9 +9,10 @@ const req = createRequire(import.meta.url);
 const { agenteEscolhido, WA_ESCOLHA_SH } = req("../../dist/main/whatsapp/whatsapp-capacidades.js");
 const { hermesAudioPatch, hermesConfigSetSh, HERMES_WA_ENSURE_SH, HERMES_VOZ_LOCAL_SH } = req("../../dist/main/whatsapp/whatsapp-hermes-core.js");
 
-test("escolha do agente: só openclaw ou hermes; o resto é \"não escolheu\"", () => {
+test("escolha do agente: openclaw, hermes ou a API oficial (cloud-api); o resto é \"não escolheu\"", () => {
   assert.equal(agenteEscolhido("hermes\n"), "hermes");
   assert.equal(agenteEscolhido(" OpenClaw "), "openclaw");
+  assert.equal(agenteEscolhido("cloud-api"), "cloud-api");
   for (const v of [undefined, "", "picoclaw", "hermes2"]) assert.equal(agenteEscolhido(v), null);
 });
 
@@ -29,6 +30,7 @@ test("quem atende: a escolha gravada manda; sem escolha, o Hermes só com o What
   assert.match(usaHermes({ escolha: "openclaw", hermesWa: true }), /^nao\nesc=openclaw$/m, "escolher OpenClaw passa por cima do Hermes já configurado");
   assert.match(usaHermes({ hermesWa: true }), /^sim\nesc=$/m);
   assert.match(usaHermes({ hermesWa: false }), /^nao\nesc=$/m);
+  assert.match(usaHermes({ escolha: "cloud-api", hermesWa: true }), /^nao\nesc=cloud-api$/m, "API oficial escolhida: o Hermes instalado não atende");
 });
 
 test("áudio do Hermes: ouvir = stt local em português; responder em áudio = voice.auto_tts (sem \"sempre\")", () => {

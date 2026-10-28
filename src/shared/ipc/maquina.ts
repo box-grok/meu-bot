@@ -109,7 +109,7 @@ export interface PickerInit {
 }
 
 /** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */
-export type Gateway = "hermes" | "openclaw" | "picoclaw";
+export type Gateway = "hermes" | "openclaw" | "picoclaw" | "cloud-api";
 
 /** Credencial do OAuth client do Tailscale: só o estado, nunca o valor. */
 export interface TailscaleCredentialState { configured: boolean; encryptionAvailable: boolean }
