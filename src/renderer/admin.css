@@ -89,3 +89,5 @@ body.produtos-janela .head .add-actions { margin-top: 8px; }
 
 /* Produtos: abas do catálogo (o desenho vem do .pk-tipos do picker.css). */
 .pr-abas { margin: 10px 0 6px; }
+/* meu-bot-admin-mac: a senha da conta nova, mostrada uma vez (fonte fixa para não confundir l/1, O/0). */
+.mac-senha { flex: 1; min-width: 240px; font: 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); letter-spacing: .5px; }

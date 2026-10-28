@@ -10,6 +10,7 @@ export type * from "./ipc/whatsapp";
 export type * from "./ipc/crm";
 export type * from "./ipc/financeiro";
 export type * from "./ipc/suporte";
+export type * from "./ipc/usuarios-mac";
 export type * from "./ipc/conversa";
 export type * from "./ipc/navegador";
 export type * from "./ipc/seletor";
