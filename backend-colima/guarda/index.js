@@ -6,14 +6,29 @@
  *    (regras.mjs) cancela a resposta, aplica sendPolicy "deny" na sessão (a mesma pausa manual do meu-bot,
  *    que a lista do app mostra como "pausado") e injeta a nota ao agente, como a pausa manual faz.
  * Retomar é manual (menu "…" › Retomar no meu-bot). JS puro: plugin local não recebe npm install.
+ * 3. Grupos: o freio de grupo (GroupBrake) segura as respostas por 5 min quando o agente responde demais ou repete
+ *    a mesma coisa num grupo (vaivém com outro agente); solta sozinho. Config: grupoMaxRespostas, grupoJanelaMin.
+ * 4. Memória do dono (memoria.mjs): no chat do dono consigo mesmo, "lembre que …", "esquece que …" e "o que você
+ *    lembra?" gravam/leem ~/.local/share/meu-bot/memoria-dono.md; a memória entra no prompt dos turnos do dono.
  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { LoopTracker, autoPauseNoteText, closureVerdict, isOperationalNotice, loopVerdict } from "./regras.mjs";
+import { GroupBrake, GRUPO_PADRAO, LoopTracker, autoPauseNoteText, closureVerdict, isOperationalNotice, loopVerdict } from "./regras.mjs";
+import * as memoria from "./memoria.mjs";
 
 const PLUGIN_ID = "meu-bot-guarda";
+const MEMORIA_DONO = path.join(os.homedir(), ".local", "share", "meu-bot", "memoria-dono.md");
+/** Número do próprio WhatsApp ("+5521…", do me.id do creds.json do OpenClaw); null sem pareamento. */
+function donoDoNumero() {
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(os.homedir(), ".openclaw", "credentials", "whatsapp", "default", "creds.json"), "utf8"));
+    const d = String(c?.me?.id ?? "").replace(/@.*$/, "").replace(/:.*$/, "").replace(/\D/g, "");
+    return d === "" ? null : `+${d}`;
+  } catch { return null; }
+}
+const telefone = (v) => { const d = String(v ?? "").replace(/@.*$/, "").replace(/:.*$/, "").replace(/\D/g, ""); return d === "" ? null : `+${d}`; };
 const tracker = new LoopTracker();
 /** Sessões que a guarda pausou e ainda não viu retomadas (evita pausar duas vezes e deixa o tracker quieto). */
 const pausedByUs = new Set();
@@ -40,10 +55,10 @@ function injectNote(key, text, logger) {
 }
 
 /** Registro de auditoria da máquina (quem: "agente"), pelo auditoria.py que o backend do meu-bot deixa na pasta dele. */
-function auditar(peer, reason, logger) {
+function auditar(peer, reason, logger, acao = "whatsapp.pausa-automatica") {
   const py = path.join(os.homedir(), ".local", "share", "meu-bot", "auditoria.py");
   if (!fs.existsSync(py)) return;
-  const b64 = Buffer.from(JSON.stringify({ quem: { tipo: "agente", nome: "guarda do WhatsApp" }, app: "plugin", acao: "whatsapp.pausa-automatica", alvo: String(peer ?? ""), detalhe: String(reason ?? "").slice(0, 300) }), "utf8").toString("base64url");
+  const b64 = Buffer.from(JSON.stringify({ quem: { tipo: "agente", nome: "guarda do WhatsApp" }, app: "plugin", acao, alvo: String(peer ?? ""), detalhe: String(reason ?? "").slice(0, 300) }), "utf8").toString("base64url");
   const p = spawn("python3", [py, "gravar", b64], { stdio: "ignore" });
   p.on("error", (e) => logger.warn(`${PLUGIN_ID}: auditoria: ${e.message}`));
 }
@@ -54,6 +69,13 @@ export default {
   register(api) {
     const logger = api.logger;
     const agentIdOf = (key) => key.split(":")[1] || "main";
+    const conf = api.pluginConfig && typeof api.pluginConfig === "object" ? api.pluginConfig : {};
+    const freioGrupo = new GroupBrake({
+      maxRespostas: Number.isInteger(conf.grupoMaxRespostas) && conf.grupoMaxRespostas >= 2 ? conf.grupoMaxRespostas : GRUPO_PADRAO.maxRespostas,
+      janelaMs: typeof conf.grupoJanelaMin === "number" && conf.grupoJanelaMin >= 1 ? conf.grupoJanelaMin * 60_000 : GRUPO_PADRAO.janelaMs,
+    });
+    /** Grupo do envio: a chave de sessão de grupo do contexto, ou o JID @g.us do destino; null = não é grupo. */
+    const grupoDe = (event, ctx) => (typeof ctx.sessionKey === "string" && ctx.sessionKey.includes(":group:") ? ctx.sessionKey : /@g\.us$/.test(String(event.to ?? "")) ? `grupo:${event.to}` : null);
 
     async function pause(key, reason) {
       pausedByUs.add(key);
@@ -82,6 +104,16 @@ export default {
         logger.info(`${PLUGIN_ID}: nota operacional não entregue a ${event.to}: ${text.slice(0, 80)}`);
         return { cancel: true, cancelReason: `${PLUGIN_ID}: nota operacional do OpenClaw` };
       }
+      const grupo = grupoDe(event, ctx);
+      if (grupo !== null) {
+        const f = freioGrupo.sending(grupo, text, Date.now());
+        if (!f.segurar) return;
+        if (f.novo) {
+          logger.warn(`${PLUGIN_ID}: freio no grupo ${grupo} (${f.motivo}); respostas seguradas por ${Math.round(freioGrupo.o.janelaMs / 60_000)} min`);
+          auditar(grupo.split(":").pop(), f.motivo, logger, "whatsapp.grupo.freio");
+        }
+        return { cancel: true, cancelReason: `${PLUGIN_ID}: freio de grupo (${f.motivo})` };
+      }
       const key = sessionKeyOf(ctx, event.to);
       if (key === null || !key.includes(":direct:")) return;
       if (pausedByUs.has(key)) return; // o gateway já descarta pelo sendPolicy; nada a fazer
@@ -108,8 +140,33 @@ export default {
       try { await pause(key, loop.loop ? loop.reason : closed.reason); }
       catch (e) { logger.error(`${PLUGIN_ID}: não consegui pausar ${key} (agent_end): ${e instanceof Error ? e.message : String(e)}`); }
     });
+    // Memória do dono: a mensagem dele para si mesmo com um atalho grava na hora; a nota daquele turno (e a memória
+    // em todos os turnos do dono) entra pelo before_prompt_build. O dono é relido a cada mensagem (pareamento novo).
+    const notaDono = { texto: null, em: 0 };
+    api.on("message_received", (event, ctx) => {
+      if (ctx.channelId !== "whatsapp") return;
+      const dono = donoDoNumero(); const de = telefone(event.from);
+      if (dono === null || de !== dono) return;
+      const a = memoria.atalho(event.content ?? "");
+      if (a === null) return;
+      try { notaDono.texto = memoria.aplicar(MEMORIA_DONO, a); notaDono.em = Date.now(); logger.info(`${PLUGIN_ID}: memória do dono: ${a.tipo}`); }
+      catch (e) { logger.warn(`${PLUGIN_ID}: memória do dono: ${e instanceof Error ? e.message : String(e)}`); }
+    });
+    api.on("before_prompt_build", (_event, ctx) => {
+      const canal = ctx?.channel ?? ctx?.messageProvider;
+      if (typeof canal === "string" && canal !== "" && canal !== "whatsapp") return undefined;
+      const m = /:direct:(\+?\d{6,20})$/.exec(String(ctx?.sessionKey ?? ""));
+      const dono = donoDoNumero();
+      if (m === null || dono === null || telefone(m[1]) !== dono) return undefined;
+      const partes = [memoria.contexto(MEMORIA_DONO)];
+      if (notaDono.texto !== null && Date.now() - notaDono.em < 120_000) partes.push(notaDono.texto);
+      notaDono.texto = null;
+      const texto = partes.filter((x) => x !== null).join("\n\n");
+      return texto === "" ? undefined : { prependContext: texto };
+    }, { timeoutMs: 2000 });
+
     // Retomada manual (sendPolicy volta a null pelo meu-bot): esquecer a sessão para a guarda voltar a observar.
     api.on("session_start", (_event, ctx) => { if (typeof ctx?.sessionKey === "string") pausedByUs.delete(ctx.sessionKey); });
-    logger.info(`${PLUGIN_ID}: ativo (nota de fallback bloqueada; pausa automática em loop de 3 ciclos)`);
+    logger.info(`${PLUGIN_ID}: ativo (nota de fallback bloqueada; pausa automática em loop de 3 ciclos; freio de grupo: ${freioGrupo.o.maxRespostas} respostas em ${Math.round(freioGrupo.o.janelaMs / 60_000)} min)`);
   },
 };

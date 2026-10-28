@@ -221,3 +221,66 @@ v0.21.1) a linha de cima mostrava "conectado", o pareamento por QR funcionava, m
   `~/.hermes/skills/`; OpenClaw: o workspace) e uma cópia antiga no lugar errado é movida na leitura.
 - **Nível de liberdade no Hermes:** quem executa é o Claude Code do backend, então a trava fica lá (ver agente.md,
   "Nível de liberdade no backend").
+
+## Ideias trazidas do agente-rene: voz limpa, freio em grupo, memória do dono e vigia da máquina (28 out)
+
+Comparação com o agente-rene (`~/.hermes/agente-rene`). O meu-bot já pausava loops em conversas diretas melhor que
+ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto entrou assim:
+
+**Voz sem markdown nem números crus (backend 1.5.0).**
+- `backend-colima/fala-texto.py` (Python puro) prepara o texto antes do Piper/Kokoro:
+  - números por extenso do jeito falado ("mil duzentos e trinta e quatro");
+  - R$, %, hora, data e ordinal;
+  - concordância antes de horas/pessoas/vezes ("vinte e uma horas");
+  - telefone, CPF e CEP dígito a dígito;
+  - link e bloco de código viram "o link que mandei por escrito";
+  - tira markdown e emoji.
+- O `install.sh` copia o script para `~/.local/share/meu-bot/fala-texto.py`.
+- **OpenClaw:** o `meu-bot-falar` virou a porta de entrada. Ele limpa o texto e chama o `meu-bot-falar-motor`, que é o
+  Piper ou o Kokoro gravado pelo `install-voz.sh`.
+- **Hermes:** o `hermes-voz.sh` ganha a linha `HERMES_VOZ_FILTRO`. O Piper lê o texto limpo pelo fd 3 (o arquivo
+  temporário já foi apagado).
+- Máquinas com voz de antes são ajustadas pelo `install.sh`, sem reinstalar a voz.
+- Sem python3, ou com falha, a voz fala o texto original.
+
+**Freio de loop em grupos (guarda 1.6.0, só OpenClaw).**
+- O `GroupBrake` (`guarda/regras.mjs`) segura as respostas de um grupo por 5 min em dois casos:
+  - o agente passa de 8 respostas em 5 min;
+  - ele repete despedidas ou textos quase iguais (o `LoopTracker` no modo "só saída").
+- Solta sozinho, sem `sendPolicy deny`. Registra uma vez no log e na auditoria (`whatsapp.grupo.freio`).
+- O teto é ajustável pelo `pluginConfig` (`grupoMaxRespostas`, `grupoJanelaMin`).
+- **Hermes fica sem esse freio:**
+  - o grupo só aparece no texto do prompt dele ("**Source:** WhatsApp (group …)", `gateway/session.py`), sem
+    cabeçalho nem id. Ler essa linha quebraria a cada versão do Hermes;
+  - lá o freio é o `require_mention`.
+- **API oficial (`wa-cloud`):** não tem grupos. O freio de conversa direta (`LoopTracker`) está no backlog dela.
+
+**Memória do dono pelo WhatsApp (guarda 1.6.0, só OpenClaw).**
+- No chat do dono consigo mesmo, três atalhos (`guarda/memoria.mjs`):
+  - "lembre que …", "lembra que …", "anota que …" ou "anota: …" grava;
+  - "esquece que …" apaga as linhas com o trecho;
+  - "o que você lembra (sobre …)?" lista.
+- "apaga/remova X" e "me lembre que …" seguem para o agente como pedido normal.
+- O arquivo é `~/.local/share/meu-bot/memoria-dono.md` (0600, até 4.000 caracteres).
+- No `before_prompt_build`, a guarda põe a memória nos turnos do dono e, no turno do atalho, uma nota para o agente só
+  confirmar. O turno ainda acontece, porque o plugin não responde no lugar do agente.
+- **Contatos não chegam aqui:** o remetente é conferido com o `me.id` do `creds.json`.
+- **Hermes fica de fora:** o backend não sabe quem mandou.
+
+**Vigia da máquina e faxina (backend 1.5.0).**
+- **Vigia:** o `saude-maquina.js` lê, a cada 30 s, a memória, o swap (`/proc/meminfo`), o disco do HOME e o atraso do
+  event loop. O resultado vai no `/health` (`maquina`).
+  - Avisa o dono pelo `alertas.json` (WhatsApp e e-mail) quando a memória fica abaixo de 10% por 3 leituras, o disco
+    abaixo de 5% ou o backend trava por 3 leituras.
+  - No máximo 1 aviso por tipo a cada 6 h; `saude-avisos.json` guarda os horários.
+  - Também grava na auditoria (`maquina.memoria`, `.disco`, `.lag`).
+  - Teste: `MEU_BOT_VIGIA_MEM_PCT=100` no `.env`.
+- **No admin:** a linha de memória mostra o swap ("sem swap") e usa a mesma régua de 10%. O alerta do vigia aparece
+  como "vigia: …" (a sondagem lê `maquina.alerta` do `/health`).
+- **Faxina** (`faxina.js`, uma vez por dia):
+  - `contas-claude-eventos.jsonl` fica com as últimas 2.000 linhas;
+  - `backend.log` (modo nohup) e `vigia-gateway.log` passam para `.1` acima de 5 MB.
+- **Ficam de fora de propósito:**
+  - `auditoria.jsonl` (é a corrente com selo);
+  - as conversas;
+  - o journald.
