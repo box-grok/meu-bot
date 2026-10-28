@@ -101,6 +101,7 @@ createhomedir -c -u "${o.nome}" >/dev/null 2>&1
 echo "CRIADO=${o.nome}"
 # O meu-bot na mesa, como a conta nova (git das ferramentas de linha de comando; sem elas o /usr/bin/git abriria o instalador).
 install -d -m 700 -o "${o.nome}" -g staff "/Users/${o.nome}/Desktop"
+cd /  # o git como a conta nova precisa de uma pasta que ela consiga ler
 if xcode-select -p >/dev/null 2>&1 && [ ! -e "/Users/${o.nome}/Desktop/meu-bot" ]; then
   if sudo -u "${o.nome}" -H git clone -q '${repo}' "/Users/${o.nome}/Desktop/meu-bot" >/dev/null 2>&1; then echo "REPO=ok"; else echo "REPO=falhou"; fi
 else echo "REPO=sem-git"; fi`;
@@ -117,9 +118,16 @@ export function apagarMacSh(nome: string): string {
 dscl . -read "/Users/${nome}" >/dev/null 2>&1 || { echo "ERRO=a conta ${nome} não existe"; exit 1; }
 UID_C=$(dscl . -read "/Users/${nome}" UniqueID 2>/dev/null | awk '{print $2}')
 SYS=$(sysadminctl -deleteUser "${nome}" 2>&1 | tail -1)
-if dscl . -read "/Users/${nome}" >/dev/null 2>&1; then
+# O Open Directory responde com a cópia em cache por alguns segundos: espera ela sair antes de concluir que falhou.
+existe() { dscacheutil -flushcache 2>/dev/null; dscl . -read "/Users/${nome}" >/dev/null 2>&1; }
+i=0; while existe && [ $i -lt 6 ]; do sleep 1; i=$((i+1)); done
+if existe; then
   DS=$(dscl . -delete "/Users/${nome}" 2>&1 | tail -1)
-  if dscl . -read "/Users/${nome}" >/dev/null 2>&1; then echo "ERRO=o macOS não apagou a conta (sysadminctl: \${SYS:-sem resposta}; dscl: \${DS:-sem resposta})" | tr -d '\\r'; exit 1; fi
+  i=0; while existe && [ $i -lt 4 ]; do sleep 1; i=$((i+1)); done
+  if existe; then
+    case "$SYS $DS" in *14120*) echo "ERRO=o macOS não deixou apagar a conta ${nome} (permissão negada pelo sistema)";; *) echo "ERRO=o macOS não apagou a conta ${nome}";; esac
+    exit 1
+  fi
 fi
 H="/Users/${nome}"
 if [ -d "$H" ] && [ -n "$UID_C" ] && [ "$(stat -f %u "$H")" = "$UID_C" ]; then rm -rf "$H"; fi

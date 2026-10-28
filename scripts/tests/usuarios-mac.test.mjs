@@ -46,6 +46,7 @@ test("criar: conta administrador com a senha só dentro do script, home e o meu-
   assert.match(sh, /sudo -u "meu-box" -H git clone -q 'https:\/\/github\.com\/diegofornalha\/meu-bot\.git' "\/Users\/meu-box\/Desktop\/meu-bot"/);
   assert.match(sh, /xcode-select -p/, "sem as ferramentas do Xcode, não dispara o instalador do git");
   assert.ok(sh.indexOf("CRIADO=") < sh.indexOf("git clone"), "o clone que falhar não desfaz a conta");
+  assert.ok(sh.indexOf("cd /") < sh.indexOf("git clone"), "o git como a conta nova parte de uma pasta que ela lê");
   assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "curta" }), /senha/);
   assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "x'; rm -rf /; '" }), /senha/);
   assert.throws(() => m.criarMacSh({ nome: "x';rm -rf /;'", senha: "Abcdefghjk23456789mnpqrs" }), /nome/);
@@ -77,6 +78,7 @@ test("variante meu-bot-admin-mac: só a janela das contas; canais próprios, só
 test("apagar: se o sysadminctl não apagar (conta sem home), cai para o dscl e diz o motivo se nem assim", () => {
   const sh = m.apagarMacSh("bianca-box");
   assert.ok(sh.indexOf("sysadminctl -deleteUser") < sh.indexOf('dscl . -delete "/Users/bianca-box"'));
-  assert.match(sh, /ERRO=o macOS não apagou a conta \(sysadminctl: \$\{SYS:-sem resposta\}; dscl: \$\{DS:-sem resposta\}\)/);
+  assert.match(sh, /dscacheutil -flushcache/, "espera o cache do Open Directory antes de dizer que falhou");
+  assert.match(sh, /\*14120\*\) echo "ERRO=o macOS não deixou apagar a conta bianca-box \(permissão negada pelo sistema\)"/);
   assert.match(sh, /stat -f %u "\$H"\)" = "\$UID_C" \]; then rm -rf "\$H"/, "só apaga o home que é da conta");
 });

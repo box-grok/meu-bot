@@ -7,6 +7,7 @@ import path from "node:path";
 import { handleMac } from "../ipc/registry";
 import { caps } from "../app/variant";
 import { backgroundColor, MIN_WINDOW_WIDTH } from "../app/windows";
+import { posicaoNoCanto } from "../app/janela-core";
 import { apagarUsuarioMac, apelidoUsuarioMac, criarUsuarioMac, listarUsuariosMac } from "./usuarios-mac";
 
 let win: BrowserWindow | null = null;
@@ -24,10 +25,9 @@ export function registerUsuariosMacIpc(): void {
 export function showUsuariosMac(): void {
   if (win !== null && !win.isDestroyed()) { win.show(); win.focus(); return; }
   const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const largura = Math.min(MIN_WINDOW_WIDTH, area.width); const altura = Math.min(720, area.height);
+  // No padrão dos outros apps: colada à direita, altura toda, largura de uma janela de máquina.
   const w = new BrowserWindow({
-    x: area.x + Math.round((area.width - largura) / 2), y: area.y + Math.round((area.height - altura) / 2), width: largura, height: altura,
-    minWidth: 460, minHeight: 420, resizable: true, title: caps().nome, titleBarStyle: "hiddenInset", backgroundColor: backgroundColor(),
+    ...posicaoNoCanto(area, MIN_WINDOW_WIDTH, []), minWidth: 460, minHeight: 420, resizable: true, title: caps().nome, titleBarStyle: "hiddenInset", backgroundColor: backgroundColor(),
     webPreferences: { preload: path.join(__dirname, "..", "..", "preload", "usuarios-mac-preload.js"), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
   });
   w.webContents.setZoomMode("isolated"); w.webContents.setZoomLevel(0);

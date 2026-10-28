@@ -34,7 +34,11 @@ async function comoAdministrador(script: string, motivo: string): Promise<string
     if (!/^[A-Za-z0-9/._-]+$/.test(arq)) throw new Error("caminho temporário inesperado");
     const r = await rodar("osascript", ["-e", `do shell script "/bin/bash ${arq}" with prompt "O meu-bot-admin-mac quer ${motivo}." with administrator privileges`], 5 * 60_000);
     if (r.code !== 0 && /-128|cancel/i.test(r.stderr)) throw new Error("cancelado: a senha de administrador não foi informada");
-    if (r.code !== 0 && !/^ERRO=/m.test(r.stdout)) throw new Error(r.stderr.trim().split("\n").pop() || "o macOS recusou a ação");
+    // Script que sai com erro: o osascript devolve a saída dele no stderr ("0:225: execution error: ERRO=… (1)").
+    // Só a frase do ERRO= vai para a tela.
+    const erro = /ERRO=(.*?)(?:\s*\(\d+\))?\s*$/m.exec(r.code === 0 ? r.stdout : `${r.stdout}\n${r.stderr}`)?.[1];
+    if (erro !== undefined) throw new Error(erro.trim());
+    if (r.code !== 0) throw new Error("o macOS recusou a ação");
     return r.stdout;
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

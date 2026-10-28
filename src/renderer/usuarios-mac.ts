@@ -28,7 +28,7 @@ async function rodar(chave: string, f: () => Promise<void>): Promise<void> {
   // O aviso fica no topo: rola até ele (a ação pode ter sido lá embaixo, numa conta do fim da lista).
   if (msg !== null) box.scrollTo({ top: 0, behavior: "smooth" });
 }
-async function ler(): Promise<void> { try { visao = await api.listar(); erro = null; } catch (e) { erro = ipcErrorText(e); } render(); }
+async function ler(): Promise<void> { try { visao = await api.listar(); erro = null; } catch (e) { erro = ipcErrorText(e); } if (ocupado === null) render(); }
 
 const botao = (texto: string, cls: string, run: () => void, desligado = false): HTMLButtonElement => {
   const b = el("button", `btn ${cls} btn-small`, texto); b.type = "button"; b.disabled = desligado || ocupado !== null; b.addEventListener("click", run); return b;
@@ -94,6 +94,9 @@ function linhaConta(u: UsuarioMac): HTMLElement {
 
 function render(): void {
   box.replaceChildren();
+  const topo = el("div", "admin-actions");
+  topo.append(botao(ocupado === "ler" ? "Atualizando…" : "Atualizar", "btn-ghost", () => { void rodar("ler", ler); }));
+  box.append(topo);
   if (msg !== null) box.append(el("p", msg.bad ? "hint bad-hint" : "hint audio-ok", msg.text));
   box.append(cartaoCriar());
   if (erro !== null) box.append(el("p", "hint bad-hint", erro));
