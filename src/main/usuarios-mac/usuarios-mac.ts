@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { UsuarioMacCriado, UsuariosMacVisao } from "../../shared/ipc";
-import { LISTAR_MAC_SH, apagarMacSh, apelidoMacSh, criarMacSh, lerUsuariosMac, nomeNovoInvalido, saidaMac, senhaDe, senhaEscolhidaInvalida } from "./usuarios-mac-core";
+import { LISTAR_MAC_SH, apagarNoTerminalCmd, apelidoMacSh, criarMacSh, lerUsuariosMac, nomeNovoInvalido, saidaMac, senhaDe, senhaEscolhidaInvalida } from "./usuarios-mac-core";
 
 function rodar(cmd: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
@@ -79,10 +79,17 @@ export async function apagarUsuarioMac(nome: unknown): Promise<UsuariosMacVisao>
   const u = v.usuarios.find((x) => x.nome === nome);
   if (u === undefined) throw new Error("conta não encontrada");
   if (u.protegida !== null) throw new Error(`a conta ${u.nome} não pode ser apagada daqui: ${u.protegida}`);
-  const out = await comoAdministrador(apagarMacSh(u.nome), `apagar a conta ${u.nome} e tudo o que está nela`);
-  saidaMac(out, new RegExp(`^APAGADO=${u.nome}$`, "m"), "o macOS não confirmou a remoção");
-  registrar("conta.apagar", u.nome);
-  return listarUsuariosMac();
+  // No Terminal (ver apagarNoTerminalCmd): a pessoa digita a senha lá; aqui só se espera a conta sumir (até 5 min).
+  const cmd = apagarNoTerminalCmd(u.nome);
+  const ab = await rodar("osascript", ["-e", `tell application "Terminal"\nactivate\ndo script "${cmd.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"\nend tell`], 30_000);
+  if (ab.code !== 0) throw new Error(`não consegui abrir o Terminal: ${ab.stderr.trim().split("\n").pop() ?? "?"}`);
+  const fim = Date.now() + 5 * 60_000;
+  while (Date.now() < fim) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const r = await rodar("dscl", [".", "-read", `/Users/${u.nome}`, "UniqueID"], 10_000);
+    if (r.code !== 0) { registrar("conta.apagar", u.nome); return listarUsuariosMac(); }
+  }
+  throw new Error(`a conta ${u.nome} continua: a senha não foi digitada no Terminal (ou o comando falhou lá). Tente de novo.`);
 }
 
 export async function apelidoUsuarioMac(nome: unknown, apelido: unknown): Promise<UsuariosMacVisao> {

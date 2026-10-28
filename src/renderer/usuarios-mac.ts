@@ -83,10 +83,11 @@ function linhaConta(u: UsuarioMac): HTMLElement {
   if (editando !== u.nome) {
     const a = el("div", "admin-actions");
     a.append(botao("Apelido", "btn-ghost", () => { editando = u.nome; apelidoTxt = u.apelido; render(); }));
-    // Sem confirmação no app: a janela de senha de administrador do macOS já é a confirmação (cancelar não apaga nada).
+    // Sem confirmação no app: a senha no Terminal já é a confirmação (fechar a janela sem digitar não apaga nada).
     if (u.protegida === null) a.append(botao("Apagar", "btn-danger", () => { void rodar(`apagar:${u.nome}`, async () => { visao = await api.apagar(u.nome); msg = { text: `Conta ${u.nome} apagada (com tudo o que estava nela).`, bad: false }; }); }));
     else a.append(el("span", "hint", `Não se apaga daqui: ${u.protegida}.`));
-    if (ocupado === `apagar:${u.nome}` || ocupado === `apelido:${u.nome}`) a.append(carregando("Esperando a senha de administrador do macOS…"));
+    if (ocupado === `apagar:${u.nome}`) a.append(carregando("Digite a senha do Mac no Terminal que abriu; a lista atualiza sozinha quando a conta sumir…"));
+    if (ocupado === `apelido:${u.nome}`) a.append(carregando("Esperando a senha de administrador do macOS…"));
     c.append(a);
   }
   return c;

@@ -54,8 +54,6 @@ test("criar: conta administrador com a senha só dentro do script, home e o meu-
 });
 
 test("apagar e apelido: nomes e textos que não quebram o script", () => {
-  assert.match(m.apagarMacSh("teste-mac"), /sysadminctl -deleteUser "teste-mac"/);
-  assert.throws(() => m.apagarMacSh("root"), /nome inválido/);
   assert.match(m.apelidoMacSh("meu-box", "Meu Box"), /RealName 'Meu Box'/);
   assert.throws(() => m.apelidoMacSh("meu-box", "x'; rm -rf ~"), /apelido/);
   assert.throws(() => m.apelidoMacSh("meu-box", ""), /apelido/);
@@ -75,10 +73,9 @@ test("variante meu-bot-admin-mac: só a janela das contas; canais próprios, só
   assert.deepEqual(chans.sort(), [...MAC_CHANNELS].sort());
 });
 
-test("apagar: se o sysadminctl não apagar (conta sem home), cai para o dscl e diz o motivo se nem assim", () => {
-  const sh = m.apagarMacSh("bianca-box");
-  assert.ok(sh.indexOf("sysadminctl -deleteUser") < sh.indexOf('dscl . -delete "/Users/bianca-box"'));
-  assert.match(sh, /dscacheutil -flushcache/, "espera o cache do Open Directory antes de dizer que falhou");
-  assert.match(sh, /\*14120\*\) echo "ERRO=o macOS não deixou apagar a conta bianca-box \(permissão negada pelo sistema\)"/);
-  assert.match(sh, /stat -f %u "\$H"\)" = "\$UID_C" \]; then rm -rf "\$H"/, "só apaga o home que é da conta");
+test("apagar: o comando do Terminal (sudo sysadminctl) só com nome válido, e diz no fim se a conta saiu", () => {
+  const c = m.apagarNoTerminalCmd("meu-box");
+  assert.match(c, /sudo sysadminctl -deleteUser meu-box;/);
+  assert.match(c, /✓ conta meu-box apagada/);
+  for (const n of ["root", "svc", "x;rm -rf ~", "Meu"]) assert.throws(() => m.apagarNoTerminalCmd(n), /nome inválido/, n);
 });

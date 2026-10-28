@@ -108,30 +108,14 @@ else echo "REPO=sem-git"; fi`;
 }
 
 /**
- * Apaga a conta e o home. Primeiro o sysadminctl -deleteUser; se a conta continuar (ele falha, por exemplo, numa conta
- * cujo home nunca foi criado), o registro sai com dscl . -delete e o home, se existir e for da conta, com rm.
- * Quem chama já conferiu protegidaPorque. Imprime `APAGADO=<nome>` ou `ERRO=<o que o macOS disse>`.
+ * Apagar a conta: o comando que o app abre no Terminal. Pela janela de senha do osascript o macOS 26 recusa apagar o
+ * registro da conta (eDSPermissionError -14120: o sysadminctl apaga o home, tira dos grupos e para no registro); com
+ * `sudo` no Terminal, que herda o Acesso Total ao Disco dele, apaga. A pessoa digita a senha lá; o app espera a conta
+ * sumir. Quem chama já conferiu protegidaPorque.
  */
-export function apagarMacSh(nome: string): string {
+export function apagarNoTerminalCmd(nome: string): string {
   if (!NOME_USUARIO_RE.test(nome) || RESERVADOS_MAC.has(nome)) throw new Error("nome inválido");
-  return `set -u
-dscl . -read "/Users/${nome}" >/dev/null 2>&1 || { echo "ERRO=a conta ${nome} não existe"; exit 1; }
-UID_C=$(dscl . -read "/Users/${nome}" UniqueID 2>/dev/null | awk '{print $2}')
-SYS=$(sysadminctl -deleteUser "${nome}" 2>&1 | tail -1)
-# O Open Directory responde com a cópia em cache por alguns segundos: espera ela sair antes de concluir que falhou.
-existe() { dscacheutil -flushcache 2>/dev/null; dscl . -read "/Users/${nome}" >/dev/null 2>&1; }
-i=0; while existe && [ $i -lt 6 ]; do sleep 1; i=$((i+1)); done
-if existe; then
-  DS=$(dscl . -delete "/Users/${nome}" 2>&1 | tail -1)
-  i=0; while existe && [ $i -lt 4 ]; do sleep 1; i=$((i+1)); done
-  if existe; then
-    case "$SYS $DS" in *14120*) echo "ERRO=o macOS não deixou apagar a conta ${nome} (permissão negada pelo sistema)";; *) echo "ERRO=o macOS não apagou a conta ${nome}";; esac
-    exit 1
-  fi
-fi
-H="/Users/${nome}"
-if [ -d "$H" ] && [ -n "$UID_C" ] && [ "$(stat -f %u "$H")" = "$UID_C" ]; then rm -rf "$H"; fi
-echo "APAGADO=${nome}"`;
+  return `clear; echo "meu-bot-admin-mac: apagar a conta ${nome} e tudo o que está nela. Digite a senha do Mac:"; sudo sysadminctl -deleteUser ${nome}; if dscl . -read /Users/${nome} >/dev/null 2>&1; then echo "✗ a conta ${nome} continua"; else echo "✓ conta ${nome} apagada; pode fechar esta janela"; fi`;
 }
 
 /** Nome completo (RealName). Imprime `APELIDO=ok`. */
