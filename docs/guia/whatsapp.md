@@ -212,7 +212,7 @@ v0.21.1) a linha de cima mostrava "conectado", o pareamento por QR funcionava, m
 Comparação com o agente-rene (`~/.hermes/agente-rene`). O meu-bot já pausava loops em conversas diretas melhor que
 ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto entrou assim:
 
-**Voz sem markdown nem números crus (backend 1.3.0).**
+**Voz sem markdown nem números crus (backend 1.5.0).**
 - `backend-colima/fala-texto.py` (Python puro) prepara o texto antes do Piper/Kokoro:
   - números por extenso do jeito falado ("mil duzentos e trinta e quatro");
   - R$, %, hora, data e ordinal;
@@ -252,7 +252,7 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
 - **Contatos não chegam aqui:** o remetente é conferido com o `me.id` do `creds.json`.
 - **Hermes fica de fora:** o backend não sabe quem mandou.
 
-**Vigia da máquina e faxina (backend 1.3.0).**
+**Vigia da máquina e faxina (backend 1.5.0).**
 - **Vigia:** o `saude-maquina.js` lê, a cada 30 s, a memória, o swap (`/proc/meminfo`), o disco do HOME e o atraso do
   event loop. O resultado vai no `/health` (`maquina`).
   - Avisa o dono pelo `alertas.json` (WhatsApp e e-mail) quando a memória fica abaixo de 10% por 3 leituras, o disco
