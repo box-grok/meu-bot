@@ -61,7 +61,7 @@ elif listening "$PORT"; then
   exit 4
 fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
-cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/auditoria.py" "$DEST/"
+cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/saude-maquina.js" "$HERE/faxina.js" "$HERE/auditoria.py" "$DEST/"
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.
@@ -154,3 +154,34 @@ if [ -f "$HERE/VERSION" ]; then cp "$HERE/VERSION" "$DEST/VERSION"; echo "versã
 if [ -f "$HERE/install-statusline.sh" ]; then bash "$HERE/install-statusline.sh" || echo "aviso: status line não instalada (código $?)"; fi
 # Porteiro do claude: rodízio de contas para o OpenClaw (WhatsApp) e o Terminal. Nunca derruba o backend.
 if [ -f "$HERE/install-porteiro.sh" ]; then MEU_BOT_NODE="$NODE" MEU_BOT_BACKEND_DIR="$DEST" bash "$HERE/install-porteiro.sh" || echo "aviso: porteiro do claude não instalado (código $?)"; fi
+
+# Voz das respostas: o texto passa pelo fala-texto.py (números por extenso, sem markdown nem links) antes do motor.
+# Máquinas que já tinham voz ligada são ajustadas aqui, sem reinstalar a voz: o meu-bot-falar antigo (motor direto)
+# vira o meu-bot-falar-motor com o filtro na frente (mesmo texto do install-voz.sh); o hermes-voz.sh ganha a linha
+# do filtro (mesma de HERMES_VOZ_FILTRO, whatsapp-hermes-core.ts). Sem python3 ou com falha, fala o texto original.
+if [ -f "$HERE/fala-texto.py" ]; then
+  mkdir -p "$HOME/.local/share/meu-bot"; cp "$HERE/fala-texto.py" "$HOME/.local/share/meu-bot/fala-texto.py"
+  FALAR=$HOME/.local/bin/meu-bot-falar
+  if [ -f "$FALAR" ] && ! grep -q fala-texto "$FALAR"; then
+    mv "$FALAR" "$HOME/.local/bin/meu-bot-falar-motor"
+    cat > "$FALAR" <<'SH'
+#!/bin/sh
+# Texto na entrada, WAV em $1 (o OpenClaw passa {{OutputPath}}): limpa o texto para a fala e chama o motor da voz.
+T=$(cat)
+L=$(printf '%s' "$T" | python3 "$HOME/.local/share/meu-bot/fala-texto.py" 2>/dev/null) && [ -n "$L" ] || L=$T
+printf '%s\n' "$L" | "$HOME/.local/bin/meu-bot-falar-motor" "$@"
+SH
+    chmod +x "$FALAR"; echo "voz: filtro de texto ligado no meu-bot-falar"
+  fi
+  HV=$HOME/.local/share/meu-bot/hermes-voz.sh
+  if [ -f "$HV" ] && ! grep -q fala-texto "$HV"; then
+    python3 - "$HV" <<'PY' && echo "voz: filtro de texto ligado no hermes-voz.sh"
+import sys
+p = sys.argv[1]; linhas = open(p).read().split("\n")
+filtro = 'L=$(mktemp) && python3 "$HOME/.local/share/meu-bot/fala-texto.py" <"$1" >"$L" 2>/dev/null && [ -s "$L" ] && exec 3<"$L" && set -- /dev/fd/3 "$2"; rm -f "$L"'
+i = next((n for n, l in enumerate(linhas) if l.startswith('exec "$HPY" -m piper')), None)
+if i is None: sys.exit(1)
+linhas.insert(i, filtro); open(p, "w").write("\n".join(linhas))
+PY
+  fi
+fi

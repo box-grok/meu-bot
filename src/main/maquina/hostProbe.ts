@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { app, shell } from "electron";
 import os from "node:os";
-import type { AudioSetup, HostProbe, InstallBackendResult } from "../../shared/ipc";
+import type { AudioSetup, HostProbe, InstallBackendResult, MaquinaAlerta } from "../../shared/ipc";
 import { claudeLoggedIn, findClaude, findNode, LOCAL_HOST, localBackendAlive } from "./localBackend";
 import { isValidHost } from "../app/settings";
 
@@ -122,21 +122,24 @@ function probeScript(port: number): string {
     // Disco da home e memória (kB): o whisper da transcrição baixa ~500 MB e o OpenClaw enche de transcripts.
     `echo "disk=$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print $2" "$4}')"`,
     `echo "mem=$(free -k 2>/dev/null | awk '/^Mem:/{print $2" "$7}')"`,
+    `echo "swap=$(free -k 2>/dev/null | awk '/^Swap:/{print $2" "$4}')"`,
     `echo "systemd=$(command -v systemctl >/dev/null 2>&1 && echo 1 || echo 0)"`,
     // Computador do Grok Bot: PID 1 é o pod-daemon (sob tini) ou o cgroup do init é pod-…
     `( tr '\\0' ' ' </proc/1/cmdline 2>/dev/null | grep -q pod-daemon || grep -q 'pod-' /proc/1/cgroup 2>/dev/null ) && echo grokpod=1 || echo grokpod=0`,
     // Chats em andamento no backend (/health, sem chave): o app só reinstala o backend, que reinicia o serviço, com zero.
-    `echo "backendbusy=$(curl -s -m 4 http://127.0.0.1:$BP/health 2>/dev/null | grep -o '"ativos":[0-9]*' | cut -d: -f2)"`,
+    // O mesmo /health traz o alerta do vigia da máquina (memória/disco/travamento, saude-maquina.js); backend antigo: vazio.
+    `BH=$(curl -s -m 4 http://127.0.0.1:$BP/health 2>/dev/null); echo "backendbusy=$(printf '%s' "$BH" | grep -o '"ativos":[0-9]*' | cut -d: -f2)"; echo "backendalerta=$(printf '%s' "$BH" | grep -o '"alerta":"[a-z]*"' | cut -d'"' -f4)"`,
     `K=$(grep '^OPENAI_COMPAT_KEY=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2-); echo "models=$(curl -s -m 6 -H "Authorization: Bearer $K" http://127.0.0.1:$BP/v1/models 2>/dev/null | grep -o '"id":"[^"]*"' | cut -d'"' -f4 | tr '\n' ,)"`,
   ].join("; ");
 }
 
 /** "total livre" em kB → MB (null quando a máquina não respondeu); mantém o mesmo nome de campo para disco e memória. */
-function sizePair(v: string | undefined, kind: "disk" | "mem"): { diskTotalMb: number | null; diskFreeMb: number | null } | { memTotalMb: number | null; memFreeMb: number | null } {
+function sizePair(v: string | undefined, kind: "disk" | "mem" | "swap"): { diskTotalMb: number | null; diskFreeMb: number | null } | { memTotalMb: number | null; memFreeMb: number | null } | { swapTotalMb: number | null; swapFreeMb: number | null } {
   const m = /^(\d+)\s+(\d+)$/.exec((v ?? "").trim());
   const total = m === null ? null : Math.round(Number(m[1]) / 1024), free = m === null ? null : Math.round(Number(m[2]) / 1024);
-  return kind === "disk" ? { diskTotalMb: total, diskFreeMb: free } : { memTotalMb: total, memFreeMb: free };
+  return kind === "disk" ? { diskTotalMb: total, diskFreeMb: free } : kind === "mem" ? { memTotalMb: total, memFreeMb: free } : { swapTotalMb: total, swapFreeMb: free };
 }
+const ALERTAS_MAQUINA: readonly MaquinaAlerta[] = ["memoria", "disco", "lag"];
 
 /** Porta vinda da sondagem (só dígitos, 1 a 65535); vazio ou lixo = null. */
 function parsePort(v: string | undefined): number | null {
@@ -158,7 +161,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   const base: HostProbe = {
     host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendVersion: null, backendBusy: null,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
-    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
+    claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
   const t0 = Date.now();
   // Falha rápida (o host respondeu "ainda não": sshd subindo, rota do Tailscale recém-negociada)
@@ -192,7 +195,8 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     claudePath: kv.get("claude") || null,
     claudeLoggedIn: kv.get("login") === "1",
     node: kv.get("node") || null,
-    ...sizePair(kv.get("disk"), "disk"), ...sizePair(kv.get("mem"), "mem"),
+    ...sizePair(kv.get("disk"), "disk"), ...sizePair(kv.get("mem"), "mem"), ...sizePair(kv.get("swap"), "swap"),
+    backendAlerta: ALERTAS_MAQUINA.find((a) => a === kv.get("backendalerta")) ?? null,
     systemd: kv.get("systemd") === "1",
     grokPod: kv.get("grokpod") === "1",
     statusLine: kv.get("statusline") === "1",
@@ -234,7 +238,7 @@ function probeLocal(port: number): HostProbe {
   return {
     host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendForeign: false, backendListening: localBackendAlive(), backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
-    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
+    node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
 }
 

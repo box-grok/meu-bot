@@ -95,7 +95,21 @@ test("healthLines: disco e memória da máquina (REA do Rambox), com aviso de po
   assert.deepEqual([low.find((l) => l.text.startsWith("disco:")).ok, low.find((l) => l.text.startsWith("memória:")).ok], [false, false]);
   assert.match(low.find((l) => l.text.startsWith("disco:")).text, /pouco espaço/);
   // sem os números (máquina antiga/sondagem sem df): nenhuma linha
-  assert.equal(healthLines({ ...base, probe }, fmt).some((l) => /^disco:|^memória:/.test(l.text)), false);
+  assert.equal(healthLines({ ...base, probe }, fmt).some((l) => /^disco:|^memória:|^vigia:/.test(l.text)), false);
+});
+
+test("healthLines: swap, a régua de 10% do vigia e o alerta que o backend já mandou", () => {
+  const base = { probe: { ...probe, memTotalMb: 8000, memFreeMb: 2400, swapTotalMb: 0, swapFreeMb: 0, backendAlerta: null }, whatsapp: null, progress: null, share: { ...share, progress: false }, xai: null };
+  const mem = (h) => healthLines(h, fmt).find((l) => l.text.startsWith("memória:"));
+  assert.deepEqual([mem(base).text, mem(base).ok], ["memória: 2,3 GB livres de 7,8 GB · sem swap", null]);
+  const comSwap = { ...base, probe: { ...base.probe, swapTotalMb: 8192, swapFreeMb: 8000 } };
+  assert.equal(mem(comSwap).text, "memória: 2,3 GB livres de 7,8 GB · swap 7,8 GB livres");
+  // 700 MB de 8 GB passa dos 512 MB, mas está abaixo de 10%: apertada
+  const baixa = { ...base, probe: { ...base.probe, memFreeMb: 700 } };
+  assert.deepEqual([mem(baixa).text, mem(baixa).ok], ["memória: 700 MB livres de 7,8 GB · sem swap · apertada", false]);
+  const alerta = healthLines({ ...base, probe: { ...base.probe, backendAlerta: "memoria" } }, fmt).find((l) => l.text.startsWith("vigia:"));
+  assert.deepEqual([alerta.text, alerta.ok], ["vigia: memória quase no fim (a pessoa foi avisada)", false]);
+  assert.equal(healthLines(base, fmt).some((l) => l.text.startsWith("vigia:")), false);
 });
 
 test("isoToDateInput / dateInputToIso: ida e volta, vazio e inválido", () => {

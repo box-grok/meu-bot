@@ -1,1 +1,1 @@
-{ "id": "meu-bot-guarda", "name": "meu-bot · guarda do WhatsApp", "activation": { "onStartup": true }, "configSchema": { "type": "object", "additionalProperties": false } }
+{ "id": "meu-bot-guarda", "name": "meu-bot · guarda do WhatsApp", "activation": { "onStartup": true }, "configSchema": { "type": "object", "additionalProperties": false, "properties": { "grupoMaxRespostas": { "type": "integer", "minimum": 2 }, "grupoJanelaMin": { "type": "number", "minimum": 1 } } } }

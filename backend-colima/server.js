@@ -35,6 +35,8 @@ const { createCrmApi } = require('./crm-api');
 const { createFinanceApi } = require('./finance-api');
 const { sincronizarInvestimentos } = require('./finance-crm-sync');
 const { sincronizarVendas } = require('./crm-finance-vendas');
+const saudeMaquina = require('./saude-maquina');
+const { faxinar } = require('./faxina');
 
 const ROOT = __dirname;
 const ENV = loadEnv(path.join(ROOT, '.env'));
@@ -768,7 +770,7 @@ async function chatCompletions(req, res) {
 let chatsAtivos = 0;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos, appMinima: appMinima() });
+  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos, appMinima: appMinima(), ...(vigia.ultima ? { maquina: vigia.ultima } : {}) });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
   // Status line do app: conta e limites do Claude Code desta máquina. O cache de limites é renovado aqui
   // quando está velho (o claude -p não roda a status line); o motivo de não renovar vai ao log quando muda.
@@ -891,5 +893,43 @@ try { ensureLicense(); } catch (e) { log(`licença: ${e.message}`); }
 server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=${listedModels().map((m) => m.id).join(',')} fallback=${PROVIDERS.map((p) => `${p.name}${p.available ? '' : '(indisponível)'}`).join('→')} claude=${CLAUDE_BIN} workspace=${WORKSPACE} auth=${KEY ? 'bearer' : 'DESLIGADA'}`));
 // Primeira rodada CRM → financeiro depois de subir: cria o pipeline Vendas onde falta e espelha o que já está vendido.
 agendarSyncVendas(15000);
+
+/**
+ * Vigia da máquina (saude-maquina.js): memória, swap, disco do HOME e atraso do event loop a cada 30 s; o resultado
+ * vai no /health (`maquina`) e os avisos pelo mesmo caminho do "Mac novo" (alertas.json). Os horários dos últimos
+ * avisos ficam em saude-avisos.json (o intervalo de 6 h vale depois de reiniciar). Teste: MEU_BOT_VIGIA_MEM_PCT=100
+ * faz a memória parecer sempre abaixo do limite. Uma vez por dia, a faxina (faxina.js) dos arquivos que crescem.
+ */
+const SAUDE_AVISOS = path.join(MEU_BOT_DIR, 'saude-avisos.json');
+const memMinTeste = Number(ENV.MEU_BOT_VIGIA_MEM_PCT || process.env.MEU_BOT_VIGIA_MEM_PCT || '');
+const vigia = new saudeMaquina.Vigia(memMinTeste > 0 ? { memMinPct: memMinTeste } : {}, readJson(SAUDE_AVISOS, {}));
+const atraso = require('node:perf_hooks').monitorEventLoopDelay({ resolution: 50 });
+atraso.enable();
+function lerSaude() {
+  let mem = null;
+  try { mem = saudeMaquina.lerMeminfo(fs.readFileSync('/proc/meminfo', 'utf8')); } catch (_) { /* fora do Linux */ }
+  if (mem === null) return;
+  let disco = null;
+  try { disco = saudeMaquina.discoLivrePct(fs.statfsSync(os.homedir())); } catch (_) { /* Node sem statfs */ }
+  const lagMs = Math.round(atraso.max / 1e6); atraso.reset();
+  const { avisar } = vigia.registrar({ ...mem, discoLivrePct: disco, lagMs, em: new Date().toISOString() });
+  if (avisar.length === 0) return;
+  try { writeJson(SAUDE_AVISOS, vigia.avisadoEm); } catch (_) { /* sem disco: avisa mesmo assim */ }
+  const prefs = alertPrefs();
+  for (const a of avisar) {
+    const text = `meu-bot: ${a.texto}`;
+    log(`vigia: ${a.tipo}: ${a.texto}`);
+    auditar(`maquina.${a.tipo}`, a.tipo === 'disco' ? `${disco}% livre` : a.tipo === 'lag' ? `${lagMs} ms` : `${mem.memLivreMB}/${mem.memTotalMB} MB`);
+    Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, 'meu-bot: sua máquina precisa de atenção', text) : Promise.resolve(null)])
+      .then((r) => log(`vigia: aviso ${a.tipo} whatsapp=${r[0]} email=${r[1]}`));
+  }
+}
+setTimeout(lerSaude, 5000).unref();
+setInterval(lerSaude, 30_000).unref();
+const faxinaDiaria = () => {
+  for (const f of faxinar({ eventos: [contas.EVENTOS], logs: [path.join(__dirname, 'backend.log'), path.join(os.homedir(), '.cache', 'meu-bot', 'vigia-gateway.log')] })) log(`faxina: ${f}`);
+};
+setTimeout(faxinaDiaria, 60_000).unref();
+setInterval(faxinaDiaria, 24 * 3600_000).unref();
 
 process.on('SIGTERM', () => { log('SIGTERM; encerrando'); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); });
