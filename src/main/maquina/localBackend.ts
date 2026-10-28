@@ -108,7 +108,7 @@ export function ensureLocalBackend(onStatus?: (detail: string) => void): Promise
       fs.mkdirSync(path.join(d, "data"), { recursive: true });
       const bundle = backendBundleDir();
       // Tudo que o server.js exige ao lado (mesma lista do install.sh): sem um deles o require falha na subida.
-      for (const f of ["server.js", "session-map.js", "providers.js", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js"]) fs.copyFileSync(path.join(bundle, f), path.join(d, f));
+      for (const f of ["server.js", "session-map.js", "nivel-ferramentas.js", "providers.js", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js"]) fs.copyFileSync(path.join(bundle, f), path.join(d, f));
       if (!fs.existsSync(path.join(d, "providers.json"))) fs.copyFileSync(path.join(bundle, "providers.json"), path.join(d, "providers.json"));
       const apiKey = readOrCreateEnv(d, claude);
       if (state !== undefined) { try { state.child.kill("SIGTERM"); } catch { /* já morto */ } state = undefined; }

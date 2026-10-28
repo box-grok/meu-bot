@@ -444,7 +444,8 @@ def salvar():
 export const HERMES_WA_ENSURE_SH = `${HERMES_PY_SH}; ${BACKEND_DIR_SH}
 HK=$(grep '^OPENAI_COMPAT_KEY=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2-)
 HP=$(grep '^PORT=' "$BD/.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -dc 0-9)
-HK="$HK" HP="$HP" "$PY" -c '
+HV=$(cat "$BD/VERSION" 2>/dev/null | tr -dc '0-9.')
+HK="$HK" HP="$HP" HV="$HV" "$PY" -c '
 import json, os, re
 ${HERMES_YAML_PY}
 mud = []
@@ -478,10 +479,18 @@ if novos:
 m = sub(doc, "model")
 prov = str(m.get("provider") or "auto").strip().lower()
 grava = False
+# Modelo do WhatsApp: "whatsapp" (o agente com o nível de liberdade do tutorial 7, nivel-ferramentas.js) quando o
+# backend da máquina já o conhece (1.3.0+); num backend mais antigo, "agente" (o "whatsapp" daria erro lá).
+def vtupla(v):
+    try: return tuple(int(x) for x in (v or "0").split(".")[:3])
+    except Exception: return (0,)
+mod_wa = "whatsapp" if vtupla(os.environ.get("HV")) >= (1, 3, 0) else "agente"
 if prov == "auto" and os.environ.get("HK") and os.environ.get("HP"):
     m["provider"] = "custom"; m["base_url"] = "http://127.0.0.1:%s/v1" % os.environ["HP"]
-    m["api_key"] = os.environ["HK"]; m["default"] = "agente"
-    grava = True; mud.append("modelo:agente")
+    m["api_key"] = os.environ["HK"]; m["default"] = mod_wa
+    grava = True; mud.append("modelo:" + mod_wa)
+elif prov == "custom" and str(m.get("base_url") or "").startswith("http://127.0.0.1:") and m.get("default") == "agente" and mod_wa == "whatsapp":
+    m["default"] = "whatsapp"; grava = True; mud.append("modelo:whatsapp")
 # Textos do gateway em português e sem a bolha "Generating speech…" no chat (só o que ainda não foi definido).
 d = sub(doc, "display")
 if "language" not in d: d["language"] = "pt"; grava = True; mud.append("display:pt")

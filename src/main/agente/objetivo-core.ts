@@ -7,6 +7,7 @@
 import type { FreedomLevel, MachineSkill, ObjectiveChoice, ObjectiveInfo } from "../../shared/ipc";
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
+import { HERMES_RESTART_SH, HERMES_WA_ENSURE_SH } from "../whatsapp/whatsapp-hermes-core";
 
 /** Nome fixo da skill: salvar de novo substitui a anterior (uma por máquina). */
 export const OBJECTIVE_SKILL = "objetivo-whatsapp";
@@ -190,7 +191,14 @@ mkdir -p "$W/skills/${OBJECTIVE_SKILL}"
 printf '%s' '${b64(md)}' | base64 -d > "$W/skills/${OBJECTIVE_SKILL}/SKILL.md.tmp" && mv "$W/skills/${OBJECTIVE_SKILL}/SKILL.md.tmp" "$W/skills/${OBJECTIVE_SKILL}/SKILL.md"
 echo "SKILL=$W/skills/${OBJECTIVE_SKILL}/SKILL.md"
 N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
-if [ -n "$N" ] && command -v openclaw >/dev/null 2>&1; then
+if usa_hermes; then
+  # Hermes: quem executa é o Claude Code do backend (modelo "whatsapp"), que lê o nível do objetivo.json a cada
+  # mensagem. Aqui só garante o modelo; se ele mudou, o gateway relê a config.
+  HWA=$(${HERMES_WA_ENSURE_SH}) || true
+  echo "$HWA"
+  case "$HWA" in *modelo:whatsapp*) { ${HERMES_RESTART_SH}; } >/dev/null 2>&1 || true ;; esac
+  case "$HWA" in *modelo:agente*) echo LOCK=antigo ;; *) echo LOCK=backend ;; esac
+elif [ -n "$N" ] && command -v openclaw >/dev/null 2>&1; then
   LOCK=$(python3 -c 'import json,sys;lv=sys.argv[1];n=sys.argv[2];others=${JSON.stringify(OTHERS_DENY)};star=${JSON.stringify(STAR_DENY)};deny={"conversa":others,"consulta":["exec","process","cron","gateway"],"age":[]}[lv];print(json.dumps({"e164:+"+n:({"deny":deny} if deny else {}),"*":{"deny":star}}))' '${level}' "$N")
   openclaw config set tools.toolsBySender "$LOCK" --strict-json >/dev/null 2>&1 && echo LOCK=1 || echo LOCK=0
 else

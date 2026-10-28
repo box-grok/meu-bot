@@ -28,6 +28,7 @@ const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mc
 /** Passos por mensagem quando o Navegador está ligado (o perfil "agente" tem 30 sem ele). */
 const BROWSER_MAX_TURNS = 100;
 const providers = require('./providers');
+const nivel = require('./nivel-ferramentas');
 const { readClaudeStatus, refreshRateLimits } = require('./account-status');
 const contasClaude = require('./contas-claude');
 const licenca = require('./licenca');
@@ -275,6 +276,8 @@ function appendAppTranscript(convId, messages, model, provider, text) {
 const MODELS = {
   claudecode: { maxTurns: 8, cwd: WORKSPACE, bypass: false, description: 'chat puro via Claude Code (assinatura)' },
   agente: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, description: 'agente com ferramentas, sem pedir permissão (--dangerously-skip-permissions), cwd ~/agent-workspace' },
+  // O WhatsApp do Hermes chama este: o agente, com as ferramentas do nível do tutorial 7 (nivel-ferramentas.js).
+  whatsapp: { maxTurns: 30, cwd: AGENT_WORKSPACE, bypass: true, nivel: true, description: 'agente do WhatsApp (Hermes): como o agente, com as ferramentas do nível de liberdade do tutorial 7' },
 };
 
 const CONV_ID_RE = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -410,7 +413,7 @@ function currentModelLabel(conta) {
   return MODEL_LABELS[k] || (m || null);
 }
 
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model, conta }) {
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model, conta, bloqueadas }) {
   return new Promise((resolve, reject) => {
     const contaId = conta ? conta.id : 'padrao';
     // Limite forçado (teste): a conta parece esgotada antes de a CLI subir.
@@ -419,12 +422,16 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
     // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).
     if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, dono: browser.dono, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
+    if (Array.isArray(bloqueadas) && bloqueadas.length > 0) args.push('--disallowedTools', bloqueadas.join(','));
     if (system) args.push('--append-system-prompt', system);
     if (resume) args.push('--resume', resume);
     if (model) args.push('--model', model);
     fs.mkdirSync(cwd, { recursive: true });
     // MEU_BOT_PORTEIRO=0: se CLAUDE_BIN for o porteiro (claude-porteiro.sh), ele passa direto; o rodízio aqui já escolheu a conta.
-    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir(), MEU_BOT_PORTEIRO: '0', ...contas.ambiente(conta) }, stdio: ['pipe', 'pipe', 'pipe'] });
+    // Backend como root (VPS dedicada, ex.: meu-root): o Claude Code recusa --dangerously-skip-permissions como root, e
+    // todo turno do agente caía no Grok. IS_SANDBOX=1 é o jeito dele de aceitar numa máquina dedicada (28 out).
+    const sandbox = bypass && typeof process.getuid === 'function' && process.getuid() === 0 ? { IS_SANDBOX: '1' } : {};
+    const child = spawn(CLAUDE_BIN, args, { cwd, env: { ...process.env, HOME: os.homedir(), MEU_BOT_PORTEIRO: '0', ...sandbox, ...contas.ambiente(conta) }, stdio: ['pipe', 'pipe', 'pipe'] });
     let text = ''; let deltas = 0; let usage = null; let sessionId = resume || null; let stderr = '';
     let limiteVisto = null; // último rate_limit_event (para o `ate` da conta)
     let resultText = null; let finished = false; let blockOpen = false; let sawTextBlock = false;
@@ -590,7 +597,8 @@ async function chatCompletions(req, res) {
   const created = Math.floor(Date.now() / 1000);
   const t0 = Date.now();
   // Corrente: o pedido primeiro, depois os outros por prioridade. Fora do providers.json → só ele.
-  const attempts = providers.chain(PROVIDERS, model);
+  // "whatsapp" segue a mesma corrente do "agente" (o Grok de reserva), começando por ele.
+  const attempts = model === 'whatsapp' ? ['whatsapp', ...providers.chain(PROVIDERS, 'agente').slice(1)] : providers.chain(PROVIDERS, model);
   if (attempts.length === 0) attempts.push(model);
   const env = { ...process.env, ...ENV };
 
@@ -634,8 +642,12 @@ async function chatCompletions(req, res) {
       const profile = MODELS[name];
       const key = convId ? `${name}:${convId}` : null;
       let plan = planPrompt({ messages, convId, seenHdr: req.headers['x-conversation-seen'], key, cwd: profile.cwd, hash });
+      // WhatsApp do Hermes: o nível do tutorial 7, lido a cada turno (mudou no app, vale na próxima mensagem).
+      const nivelTurno = profile.nivel ? nivel.nivelAtual() : 'age';
+      const bloqueadas = profile.nivel ? nivel.ferramentasBloqueadas(nivelTurno) : [];
+      const avisoNivel = profile.nivel ? nivel.avisoDoNivel(nivelTurno) : '';
       // O modelo sabe quem é (a pergunta "qual modelo é você?" não depende do que ele acha de si).
-      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}`;
+      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}${avisoNivel ? `\n\n${avisoNivel}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
       // A melhor conta agora (uma em aviso só se não há outra). Sem nenhuma: erro com a hora em que a próxima volta;
@@ -653,7 +665,7 @@ async function chatCompletions(req, res) {
       const withModel = (p) => (model ? { ...p, system: `${p.system}\n\nNeste turno o modelo é o ${MODEL_FALLBACK_LABEL} (${MODEL_FALLBACK}): o modelo padrão da conta bateu o limite de uso.` } : p);
       // Com o Navegador, cada clique, leitura e print é um passo: 30 acabava no meio de um formulário (Cloudflare, 22 out).
       const maxTurns = browser ? Math.max(profile.maxTurns, BROWSER_MAX_TURNS) : profile.maxTurns;
-      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model, conta });
+      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model, conta, bloqueadas });
       let out;
       for (let tries = 0; ; tries++) {
         try { out = await call(); break; }

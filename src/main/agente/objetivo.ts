@@ -54,7 +54,9 @@ export async function saveObjectiveSkill(host: string, machine: string): Promise
   const r = await runSsh(host, saveObjectiveSh(cur.objective, cur.level, machine, new Date().toISOString()), 60_000);
   if (r.code !== 0 || !r.stdout.includes("OBJ=1")) throw new Error(`não deu para salvar a skill: ${lastLine(r)}`);
   const lock = /LOCK=(\w+)/.exec(r.stdout)?.[1] ?? "skip";
-  const detail = lock === "1" ? "skill salva e ferramentas do agente ajustadas ao nível" : lock === "0" ? "skill salva; a trava de ferramentas não aplicou (o OpenClaw recusou a config)" : "skill salva; a trava de ferramentas fica para quando o WhatsApp estiver pareado";
+  const detail = lock === "1" ? "skill salva e ferramentas do agente ajustadas ao nível"
+    : lock === "backend" ? "skill salva; o nível vale a partir da próxima mensagem do WhatsApp (o backend do meu-bot aplica)"
+    : lock === "antigo" ? "skill salva; o nível passa a valer quando o backend desta máquina for atualizado (1.3.0 ou mais nova)" : lock === "0" ? "skill salva; a trava de ferramentas não aplicou (o OpenClaw recusou a config)" : "skill salva; a trava de ferramentas fica para quando o WhatsApp estiver pareado";
   log(`[objetivo] ${host}: skill salva (${lock})`);
   return { ...(await objectiveInfo(host)), detail };
 }

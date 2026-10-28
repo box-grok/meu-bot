@@ -48,7 +48,10 @@ test("scripts do Hermes: o patch vai em base64 (sem aspas soltas no shell) e a c
   const b64 = Buffer.from(JSON.stringify({ "stt.enabled": true })).toString("base64");
   assert.ok(sh.endsWith(`' '${b64}'`));
   assert.match(sh, /cfgset=ok/);
-  assert.match(HERMES_WA_ENSURE_SH, /HK="\$HK" HP="\$HP" "\$PY" -c/);
+  // A chave e a versão do backend vão por variável de ambiente, nunca por argv.
+  assert.match(HERMES_WA_ENSURE_SH, /HK="\$HK" HP="\$HP" HV="\$HV" "\$PY" -c/);
+  // A única troca de modelo: o nosso "agente" no backend local vira "whatsapp" (backend 1.3.0+); o da pessoa, nunca.
+  assert.match(HERMES_WA_ENSURE_SH, /prov == "custom" and str\(m\.get\("base_url"\) or ""\)\.startswith\("http:\/\/127\.0\.0\.1:"\) and m\.get\("default"\) == "agente"/);
   assert.match(HERMES_WA_ENSURE_SH, /prov == "auto"/, "modelo já escolhido nunca é trocado");
   // Os dois scripts são bash válido (o Python vai entre aspas simples, sem aspas simples dentro).
   for (const s of [sh, HERMES_WA_ENSURE_SH, HERMES_VOZ_LOCAL_SH]) execFileSync("bash", ["-n", "-c", s]);
