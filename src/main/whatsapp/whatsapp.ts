@@ -535,6 +535,9 @@ ${HERMES_WA_ENSURE_SH}
   }
   # O bridge do gateway responde /health em até ~30 s depois de subir.
   hermes_gw_ok() { ${HERMES_BRIDGE_PORT_SH}; i=0; while [ $i -lt 15 ]; do curl -s -m 2 http://127.0.0.1:$HBP/health 2>/dev/null | grep -q '"status"' && return 0; sleep 2; i=$((i+1)); done; return 1; }
+  # Sessão que o celular desconectou ("Logged out" no bridge.log): o bridge a reusaria, levaria 401 e sairia sem QR.
+  # Vale o mesmo que pedir sessão nova: ela vai para o lado (não apaga) e o QR sai do zero.
+  if [ "$RESET" != "1" ] && [ -d "$S/session" ] && tail -8 "$S/bridge.log" 2>/dev/null | grep -q 'Logged out'; then RESET=1; fi
   if [ "$RESET" = "1" ] && [ -d "$S/session" ]; then mv "$S/session" "$S/session.loggedout-$(date +%s)"; echo '{"event":"meu-bot","step":"session-moved"}'; fi
   mkdir -p "$S/session"
   cd "$B" || { restart; exit 2; }
