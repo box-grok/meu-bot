@@ -1,3 +1,4 @@
+> Para quem é cada máquina (camadas Essencial/Hermes e Evolução/OpenClaw, risco de ban): [PRODUTO.md](PRODUTO.md).
 > Roteiro passo a passo para uma máquina nova: [PLAYBOOK-nova-maquina.md](PLAYBOOK-nova-maquina.md). Mapa do código: [ARQUITETURA.md](ARQUITETURA.md).
 
 # Guia do meu-bot (índice)
