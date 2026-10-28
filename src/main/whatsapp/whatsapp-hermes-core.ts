@@ -90,7 +90,8 @@ print(json.dumps({"messages": out}, ensure_ascii=True))
  * PATH para falar com o Hermes por SSH não interativo: o `hermes` do npm é um script Node, e o Node fica fora do
  * PATH (o do Hermes em ~/.hermes/tools, ou ~/.local/node). Sem isto, "env: node: No such file or directory".
  */
-export const HERMES_PATH_SH = `export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
+/** PATH do Hermes e do Node dele: o do usuário (~/.local, ~/.hermes/tools) na frente do de todos (/opt/hermes), que vem por último. */
+export const HERMES_PATH_SH = `[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
 /**
  * R = pasta do código do Hermes, pelo próprio `hermes` (o de ~/.local ou o de todos, em /opt/hermes); sem resposta,
  * o lugar de sempre em ~/.local. Exige HERMES_PATH_SH antes.
