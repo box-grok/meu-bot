@@ -62,7 +62,7 @@ export interface SettingsView {
  * Aba que fica na frente ao abrir: "padrao" = a do produto (Finanças no finance-staging, Tutoriais nos outros, para
  * quem chega leigo); "conversa" = sem alfinete, a última conversa; o resto é o id de uma página.
  */
-export type AbaFixa = "padrao" | "conversa" | "tutoriais" | "acervo" | "conta-google" | "financas" | "navegador";
+export type AbaFixa = "padrao" | "conversa" | "tutoriais" | "acervo" | "conta-google" | "financas" | "navegador" | "modulos";
 
 export interface SettingsUpdate {
   backendModel?: BackendModel;
@@ -93,7 +93,7 @@ export interface AlertPrefs { whatsapp: boolean; email: string }
  * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)
  * e os staging. Tabela em src/main/variant-core.ts.
  */
-export type AppVariant = "client" | "admin" | "client-staging" | "finance-staging" | "admin-mac";
+export type AppVariant = "client" | "admin" | "client-staging" | "finance-staging" | "admin-mac" | "diego" | "diego-staging";
 /** Canal do app: estável (só o aprovado) ou staging (o que está em teste), como VS Code e VS Code Insiders. */
 export type Canal = "estavel" | "staging";
 /**
@@ -122,6 +122,11 @@ export interface Capabilities {
   navegador: boolean;
   /** meu-bot-admin-mac: o app é só a janela das contas deste Mac (sem seletor de máquinas). */
   usuariosMac: boolean;
+  /**
+   * Pasta do repositório de módulos que veio com este app (submódulo produtos/<nome>, em Resources/ empacotado):
+   * página "Módulos" e src/main/modulos/. null = app sem módulos (o meu-bot de todo mundo).
+   */
+  modulos: string | null;
   /**
    * Plano que a licença da máquina precisa ter para o app funcionar. "free" = app grátis com módulos Pro à parte
    * (etiqueta Pro, "pedir ao admin"); acima disso o app inteiro dependeria do add-on `produto` (hoje nenhum app usa).

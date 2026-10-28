@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { LoopTracker, autoPauseNoteText, closureVerdict, isFarewell, isOperationalNotice, loopVerdict, normalize, similarity, transcriptPairs } from "../../backend-colima/guarda/regras.mjs";
+import { GroupBrake, LoopTracker, autoPauseNoteText, closureVerdict, isFarewell, isOperationalNotice, loopVerdict, normalize, similarity, transcriptPairs } from "../../backend-colima/guarda/regras.mjs";
 
 test("nota operacional: só as linhas do OpenClaw, não fala parecida do agente", () => {
   assert.equal(isOperationalNotice("↪️ Model Fallback: grok/grok-4.7 (selected anthropic/claude-opus-5-5; empty response)"), true);
@@ -108,4 +108,28 @@ test("agent_end: pares do transcript, loop com os dois lados e conversa encerrad
   // loop clássico com entrada e saída: 3 ciclos
   const loop = [u("Gracias.", 1000), a("Dale.", 2000), u("Chau.", 20000), a("Chau.", 21000), u("Nos vemos.", 40000), a("Nos vemos.", 41000)];
   assert.equal(loopVerdict(loop).loop, true);
+});
+
+test("GroupBrake: mais de 8 respostas em 5 min segura o grupo; solta sozinho depois da janela", () => {
+  const b = new GroupBrake();
+  const t0 = 1_000_000;
+  for (let i = 0; i < 8; i += 1) assert.deepEqual(b.sending("g1", `assunto ${i} com conteúdo próprio ${"x".repeat(i)}`, t0 + i * 10_000), { segurar: false });
+  assert.deepEqual(b.sending("g1", "mais uma resposta nova", t0 + 90_000), { segurar: true, motivo: "mais de 8 respostas em 5 min", novo: true });
+  assert.deepEqual(b.sending("g1", "e outra", t0 + 100_000), { segurar: true, motivo: "mais de 8 respostas em 5 min", novo: false }, "registra uma vez só");
+  assert.deepEqual(b.sending("g2", "outro grupo não é afetado", t0 + 100_000), { segurar: false });
+  assert.deepEqual(b.sending("g1", "voltou", t0 + 90_000 + 5 * 60_000), { segurar: false }, "a janela esfriou");
+});
+
+test("GroupBrake: respostas espaçadas não freiam; repetição (despedidas) freia antes do teto", () => {
+  const b = new GroupBrake();
+  for (let i = 0; i < 20; i += 1) assert.equal(b.sending("g", `resposta com conteúdo ${i} ${"y".repeat(i)}`, i * 60_000).segurar, false, `envio ${i}`);
+  const r = new GroupBrake();
+  const t = 5_000_000;
+  const seq = ["obrigado!", "de nada, até mais", "valeu, tchau", "até logo"].map((txt, i) => r.sending("g", txt, t + i * 20_000));
+  assert.deepEqual(seq.map((x) => x.segurar), [false, false, false, true]);
+  assert.match(seq[3].motivo, /despedida/);
+  // Teto configurável (pluginConfig grupoMaxRespostas/grupoJanelaMin).
+  const c = new GroupBrake({ maxRespostas: 2, janelaMs: 60_000 });
+  c.sending("g", "um assunto", 0); c.sending("g", "outro assunto bem diferente", 1);
+  assert.equal(c.sending("g", "terceiro tema qualquer", 2).motivo, "mais de 2 respostas em 1 min");
 });

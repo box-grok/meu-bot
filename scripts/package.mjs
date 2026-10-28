@@ -1,6 +1,7 @@
 import { packager } from "@electron/packager";
 import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createRequire } from "node:module";
 import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 
 // `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/app/variant-core.ts): mesmo código, outro
@@ -17,6 +18,19 @@ const arch = archOf();
 for (const e of produto.extensoes) if (!existsSync(join("build", e, "manifest.json"))) {
   console.error(`✗ falta build/${e}/manifest.json: rode \`npm run build:extensao\` antes de empacotar o ${name}`);
   process.exit(1);
+}
+// Produto com módulos (meu-bot-diego): o repositório dele é um submódulo em produtos/<nome>; o manifesto precisa estar
+// lá e válido antes de empacotar (só este app o leva em Resources/<nome>/; os outros não levam nada dele).
+const modulos = produto.caps.modulos;
+if (modulos !== null) {
+  const manifesto = join("produtos", modulos, "modulos.json");
+  if (!existsSync(manifesto)) {
+    console.error(`✗ falta ${manifesto}: o ${name} leva o repositório ${modulos} (submódulo). Rode \`git submodule update --init produtos/${modulos}\` e tente de novo.`);
+    process.exit(1);
+  }
+  const { parseManifesto } = createRequire(import.meta.url)("../dist/main/modulos/modulos-core.js");
+  try { const m = parseManifesto(JSON.parse(readFileSync(manifesto, "utf8"))); console.log(`módulos de ${m.produto}: ${m.modulos.map((x) => `${x.id} ${x.versao}`).join(", ")}`); }
+  catch (e) { console.error(`✗ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); }
 }
 // Só a pasta desta variante: empacotar uma não apaga a outra (nem os .dmg em out/).
 rmSync(join("out", `${name}-darwin-${arch}`), { recursive: true, force: true });
@@ -40,13 +54,15 @@ const paths = await packager({
   prune: true,
   // config/ (modelo de hosts ssh) e scripts/alivio/ (script enviado ao pod) vão em Resources/.
   extraResource: ["backend-colima", "config", "scripts/alivio"],
-  ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/config($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/out($|\/)/, /^\/extensao-crm($|\/)/, /^\/produtos($|\/)/],
+  ignore: [/^\/hermes-agent($|\/)/, /^\/backend-colima($|\/)/, /^\/backend-vm($|\/)/, /^\/docs($|\/)/, /^\/assets($|\/)/, /^\/build($|\/)/, /^\/src($|\/)/, /^\/scripts($|\/)/, /^\/config($|\/)/, /^\/tsconfig/, /^\/\.gitignore$/, /^\/\.gitmodules$/, /^\/out($|\/)/, /^\/extensao-crm($|\/)/, /^\/produtos($|\/)/],
 });
 for (const p of paths) {
   const res = join(p, `${name}.app`, "Contents", "Resources");
   writeFileSync(join(res, "variant.json"), `${JSON.stringify({ variant: produto.variant })}\n`);
   // Extensões embutidas (meu-bot-crm): Resources/<pasta da extensão>/ (manifest.json, content.js, popup.js, …).
   for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
+  // Módulos do produto: a pasta do submódulo sem o .git (src/main/modulos/modulos.ts lê Resources/<nome>/).
+  if (modulos !== null) cpSync(join("produtos", modulos), join(res, modulos), { recursive: true, filter: (f) => !/(^|\/)\.git(\/|$)/.test(f) && !/(^|\/)node_modules(\/|$)/.test(f) });
   // Client OAuth do Google (Google Contatos → CRM): config/google-oauth.json local, fora do git; sem ele o app só
   // mostra "configure o Google". Vai junto só nos produtos com extensão do Gmail.
   if (produto.extensoes.includes("extensao-crm") && existsSync(join("config", "google-oauth.json"))) copyFileSync(join("config", "google-oauth.json"), join(res, "google-oauth.json"));

@@ -28,7 +28,9 @@
     "icons": "npm run build:main && node scripts/icons.mjs",
     "assinatura": "node scripts/assinatura.mjs --criar",
     "chave-release": "node scripts/chave-release.mjs",
-    "dist:finance-staging": "node scripts/dist.mjs --variant finance-staging"
+    "dist:finance-staging": "node scripts/dist.mjs --variant finance-staging",
+    "dist:diego": "node scripts/dist.mjs --variant diego",
+    "dist:diego-staging": "node scripts/dist.mjs --variant diego-staging"
   },
   "devDependencies": {
     "@electron/fuses": "2.1.3",
