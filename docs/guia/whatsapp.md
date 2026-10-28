@@ -206,3 +206,18 @@ v0.21.1) a linha de cima mostrava "conectado", o pareamento por QR funcionava, m
 - **Tela:** `waMirrorAvailable` aceita `hermes`; a política de DM, os grupos e a guarda continuam só do OpenClaw
   (já eram condicionados a `gateway === "openclaw"`). Fica de fora por ora: grupos do Hermes (as sessões existem no
   banco, por remetente) e o PicoClaw.
+
+## Hermes com vários usuários na mesma máquina e RAM (28 out)
+
+- **Porta do bridge por usuário:** o Hermes usa a 3000 quando ninguém diz outra; com dois usuários com WhatsApp na mesma
+  máquina, o segundo gateway não subia. O root fica na 3000 e os outros ganham **3100 + (uid − 1000)**, gravada como
+  `platforms.whatsapp.bridge_port` no config.yaml por `HERMES_WA_ENSURE_SH`. O app lê a porta de cada um por
+  `HERMES_BRIDGE_PORT_SH` (config, depois o registro do Hermes, depois a regra) em vez de olhar a 3000 fixa.
+- **Whisper ocioso:** o ajuste de transcrição grava `stt.local.unload_after_idle_seconds: 300`. O modelo carrega no
+  primeiro áudio e sai da memória 5 min depois do último: na meu-root o gateway caiu de 526 MB para 208 MB parado.
+- **Lista de grupos pelo WhatsApp:** `hermes-grupos-listar.ts` para o gateway, lista com o Baileys do bridge do Hermes
+  (`groupFetchAllParticipating`) e grava o cache que `gruposHermes` lê; "Atualizar lista" no tutorial 12.
+- **Objetivo (tutorial 7):** a skill `objetivo-whatsapp` vai para a pasta do agente escolhido (Hermes:
+  `~/.hermes/skills/`; OpenClaw: o workspace) e uma cópia antiga no lugar errado é movida na leitura.
+- **Nível de liberdade no Hermes:** quem executa é o Claude Code do backend, então a trava fica lá (ver agente.md,
+  "Nível de liberdade no backend").

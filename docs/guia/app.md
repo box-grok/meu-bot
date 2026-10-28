@@ -388,3 +388,11 @@ cursor, de cima até o Dock, na largura mínima confortável (`MIN_WINDOW_WIDTH`
 `posicaoNoCanto` em `src/main/app/janela-core.ts`. Com o canto já ocupado por outra janela de máquina, a nova cola à
 esquerda dela; a Produtos cola à esquerda do seletor. A memória de posição por máquina (`windowBounds` no
 `settings.json`) saiu: cada máquina guardava um tamanho diferente e as janelas abriam cada uma num lugar.
+
+## Pasta de instalação por componente (28 out)
+O app manda os instaladores para a máquina por scp antes de rodar. Antes ia tudo solto em `~/.meu-bot-install/` (36
+arquivos misturados); agora cada um vai para a própria subpasta, com os arquivos que ele lê da pasta dele:
+`backend/` (o install.sh encadeia status line e porteiro), `audio/`, `grok/`, `navegador/`, `crm/` (+ `crm/` do
+plugin), `financeiro/` (+ `finance/`), `guarda/` (+ `guarda/` e `skills/whatsapp-grupos/`) e `statusline/`. A cada
+envio a subpasta do componente recomeça do zero e o jeito antigo é varrido (`stageDe`/`limparStage` em
+src/main/maquina/hostProbe.ts). As desinstalações criam a subpasta se faltar; a do CRM ainda tenta o caminho antigo.
