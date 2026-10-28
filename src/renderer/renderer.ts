@@ -388,7 +388,7 @@ let adminBotMirror: BotMirror | null = null;
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
 let appBuild = "";
-let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", modulos: null, addon: null, abreEm: null, addons: [] };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", modulos: null, usuariosMac: false, addon: null, abreEm: null, addons: [] };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");

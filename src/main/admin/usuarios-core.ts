@@ -230,6 +230,31 @@ export const configTemHost = (texto: string, alias: string): boolean =>
 /** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
 export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
 
+const CHAVE_PUB_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]{20,}( [\w@.:-]{0,80})?$/;
+/**
+ * Usuário comum (sem sudo, bash, home própria) com estas chaves no authorized_keys, como root na máquina. `seExistir`:
+ * "erro" (aba Usuários do meu-bot-admin: nome novo) ou "chaves" (meu-bot-admin-mac ligando uma conta do Mac à VM: o
+ * usuário que já existe só ganha as chaves que faltam). Imprime `CRIADO=<n>` ou `JAEXISTIA=<n>`, ou `ERRO=<motivo>`.
+ */
+export function usuarioComChavesSh(nome: string, chaves: readonly string[], seExistir: "erro" | "chaves"): string {
+  if (!NOME_USUARIO_RE.test(nome) || RESERVADOS.has(nome)) throw new Error("nome inválido");
+  if (chaves.length === 0 || !chaves.every((c) => CHAVE_PUB_RE.test(c.trim()))) throw new Error("chave pública inválida");
+  // Uma por linha, com a quebra no fim: o `read` do shell pula a última linha sem quebra.
+  const b64 = Buffer.from(`${chaves.map((c) => c.trim()).join("\n")}\n`, "utf8").toString("base64");
+  return `set -e
+[ "$(id -u)" = 0 ] || { echo "ERRO=o admin não entra como root nesta máquina"; exit 0; }
+N='${nome}'
+if id "$N" >/dev/null 2>&1; then
+  ${seExistir === "erro" ? `echo "ERRO=já existe um usuário $N nesta máquina"; exit 0` : `if [ "$(id -u "$N")" -lt 1000 ] || id -nG "$N" | tr ' ' '\\n' | grep -qxE 'sudo|wheel|admin'; then echo "ERRO=o usuário $N desta máquina é do sistema ou tem sudo"; exit 0; fi; ACAO=JAEXISTIA`}
+else useradd -m -s /bin/bash "$N"; ACAO=CRIADO; fi
+H=$(getent passwd "$N" | cut -d: -f6)
+install -d -m 700 -o "$N" -g "$N" "$H/.ssh"
+touch "$H/.ssh/authorized_keys"
+printf '%s' '${b64}' | base64 -d | while IFS= read -r k; do [ -n "$k" ] && ! grep -qF "$(echo "$k" | cut -d' ' -f2)" "$H/.ssh/authorized_keys" && echo "$k" >> "$H/.ssh/authorized_keys"; done; true
+chown "$N:$N" "$H/.ssh/authorized_keys"; chmod 600 "$H/.ssh/authorized_keys"
+echo "$ACAO=$N"`;
+}
+
 /** Usuários que entram sozinhos nos seletores: comuns (sem sudo, fora do meu-bot e do sistema) e com a chave deste Mac. */
 export const candidatosAoSeletor = (usuarios: UsuarioMaquina[]): UsuarioMaquina[] =>
   usuarios.filter((u) => !u.sudo && !u.meuBot && u.chave && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome));

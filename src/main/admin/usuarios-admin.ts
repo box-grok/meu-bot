@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -97,18 +97,7 @@ export async function criarUsuario(host: string, nome: unknown, pct: unknown = 0
   if (typeof nome !== "string" || !NOME_USUARIO_RE.test(nome)) throw new Error("nome inválido: use minúsculas, números, - ou _, começando por letra (2 a 32)");
   if (RESERVADOS.has(nome)) throw new Error(`"${nome}" é um nome reservado do sistema; escolha outro`);
   const { chave } = await acessoDesteMac(host);
-  const b64 = Buffer.from(chave, "utf8").toString("base64");
-  const r = await runSsh(host, `set -e
-[ "$(id -u)" = 0 ] || { echo "ERRO=o admin não entra como root nesta máquina"; exit 0; }
-N='${nome}'
-if id "$N" >/dev/null 2>&1; then echo "ERRO=já existe um usuário $N nesta máquina"; exit 0; fi
-useradd -m -s /bin/bash "$N"
-H=$(getent passwd "$N" | cut -d: -f6)
-install -d -m 700 -o "$N" -g "$N" "$H/.ssh"
-printf '%s' '${b64}' | base64 -d > "$H/.ssh/authorized_keys"; echo >> "$H/.ssh/authorized_keys"
-chown "$N:$N" "$H/.ssh/authorized_keys"; chmod 600 "$H/.ssh/authorized_keys"
-echo "CRIADO=$N"
-`, 60_000);
+  const r = await runSsh(host, `${usuarioComChavesSh(nome, [chave], "erro")}\n`, 60_000);
   const erro = /^ERRO=(.*)$/m.exec(r.stdout)?.[1];
   if (erro !== undefined) throw new Error(erro);
   if (!/^CRIADO=/m.test(r.stdout)) throw new Error(`não consegui criar o usuário: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);

@@ -4,7 +4,7 @@
  * meu-bot-crm: `caps.chat`) os de admin recusam. O mesmo canal registrado duas vezes acusa na subida, em vez do erro opaco do Electron.
  */
 import { ipcMain } from "electron";
-import { ADMIN_READONLY_MSG, NOT_ADMIN_MSG, type AdminChannel, type ClientChannel, type SharedChannel } from "./ipc-policy";
+import { ADMIN_READONLY_MSG, NOT_ADMIN_MSG, type AdminChannel, type ClientChannel, type MacChannel, type SharedChannel } from "./ipc-policy";
 import { caps } from "../app/variant";
 
 export type InvokeHandler = (event: Electron.IpcMainInvokeEvent, payload: unknown) => unknown;
@@ -23,6 +23,9 @@ export const handleClient = (channel: ClientChannel, fn: InvokeHandler): void =>
   register(channel, caps().chat ? fn : refusing(ADMIN_READONLY_MSG));
 export const handleAdmin = (channel: AdminChannel, fn: InvokeHandler): void =>
   register(channel, caps().supportAdmin ? fn : refusing(NOT_ADMIN_MSG));
+/** Contas deste Mac: só no meu-bot-admin-mac. */
+export const handleMac = (channel: MacChannel, fn: InvokeHandler): void =>
+  register(channel, caps().usuariosMac ? fn : refusing(NOT_ADMIN_MSG));
 /** `ipcMain.on` (sem resposta), só para canais comuns. */
 export const onShared = (channel: SharedChannel, fn: EventHandler): void => { ipcMain.on(channel, fn); };
 /** `ipcMain.on` (sem resposta) só no app da pessoa; no admin o evento é ignorado. */
