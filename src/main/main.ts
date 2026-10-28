@@ -25,6 +25,7 @@ import { getBackendPort } from "./app/settings";
 import { installAppMenu } from "./app/menu";
 import { changeWindowZoom } from "./app/zoom";
 import { clientPickerSource, initPicker, showPicker } from "./maquina/picker";
+import { registerUsuariosMacIpc, showUsuariosMac } from "./usuarios-mac/usuarios-mac-janela";
 import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
 import { initRelief, showRelief } from "./app/relief";
 import { listSshHosts } from "./maquina/sshConfig";
@@ -51,6 +52,8 @@ if (!app.requestSingleInstanceLock()) {
 
 /** `--host=<x>` abre a janela da máquina direto (atalho da mesa); qualquer outra coisa abre o seletor. */
 function openFromArgs(argv: readonly string[]): void {
+  // meu-bot-admin-mac: o app é só a janela das contas deste Mac.
+  if (caps().usuariosMac) { showUsuariosMac(); return; }
   const relief = reliefHostFromArgv(argv);
   if (relief !== null) { showRelief(relief); return; }
   const host = hostFromArgv(argv);
@@ -72,7 +75,7 @@ app.whenReady().then(() => {
     void dialog.showMessageBox({ type: "info", title: "meu-bot", message: `Trouxe o que você tinha no ${r.origem}.`, detail: `${r.conversas} ${r.conversas === 1 ? "conversa veio" : "conversas vieram"} junto, com favoritos, memória e preferências. O CRM no Gmail abre com o seu plano. Só o login do Google (tutorial 10) e os logins do Navegador precisam ser refeitos uma vez. A pasta do ${r.origem} ficou intacta, como cópia de segurança.`, buttons: ["Entendi"] });
   }
   installAppMenu({
-    openPicker: () => showPicker(),
+    openPicker: () => { if (caps().usuariosMac) showUsuariosMac(); else showPicker(); },
     toggleSettings: () => {
       // Só as janelas de máquina têm Configurações; seletor e alívio ignoram.
       const win = BrowserWindow.getFocusedWindow() ?? lastFocusedWindow();
@@ -81,6 +84,7 @@ app.whenReady().then(() => {
     zoom: (action) => { changeWindowZoom(action); },
   });
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
+  if (caps().usuariosMac) registerUsuariosMacIpc();
   initRelief();
   initUpdater();
   // O backend de cada máquina diz no hello a versão mínima do app que atende: abaixo dela, a janela bloqueia até atualizar.
@@ -110,7 +114,7 @@ app.whenReady().then(() => {
   // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho.
   openFromArgs(process.argv);
   // Clicar no app (Dock, Finder) abre sempre o seletor; para ir direto a uma máquina existe o atalho dela.
-  app.on("activate", () => showPicker());
+  app.on("activate", () => { if (caps().usuariosMac) showUsuariosMac(); else showPicker(); });
 
   // Estado do túnel de cada máquina vai para a janela dela.
   onTunnelState((host, state, detail) => {

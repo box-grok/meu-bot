@@ -69,6 +69,9 @@ export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "ad
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];
 export type AdminChannel = (typeof ADMIN_CHANNELS)[number];
+/** meu-bot-admin-mac: as contas deste Mac (a janela única do app). Só respondem nessa variante (caps.usuariosMac). */
+export const MAC_CHANNELS = ["mac:usuarios", "mac:usuario-criar", "mac:usuario-apagar", "mac:usuario-apelido"] as const;
+export type MacChannel = (typeof MAC_CHANNELS)[number];
 export type IpcChannel = SharedChannel | ClientChannel | AdminChannel;
 
 /** O que um canal de cliente responde no meu-bot-admin. */

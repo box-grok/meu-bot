@@ -62,11 +62,11 @@ export type PaginaInicial = (typeof PAGINAS_INICIAIS)[number];
 
 const PESSOA: Produto["caps"] = {
   chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false,
-  navegador: true, planoExigido: "free",
+  navegador: true, planoExigido: "free", usuariosMac: false,
 };
 const ADMIN: Produto["caps"] = {
   chat: false, pair: false, login: false, manageWa: false, tunnel: false, install: false, supportClient: false, supportAdmin: true,
-  navegador: false, planoExigido: "free",
+  navegador: false, planoExigido: "free", usuariosMac: false,
 };
 
 // meu-bot: o app da pessoa. Traz as duas extensões; o CRM próprio no Gmail abre pela licença da máquina (Pro ou superior,
@@ -85,6 +85,10 @@ export const PRODUTOS: readonly Produto[] = [
   { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, addon: null, abreEm: null, caps: ADMIN,
     descricao: "Este app: suporte, licenças, espelho das máquinas, auditoria e o registro de produtos (MVPs)." },
   staging(CLIENT, "client-staging", 8791),
+  // meu-bot-admin-mac: só as contas deste Mac (quem abre o meu-bot aqui; o bot de cada um roda numa VM, assunto do
+  // meu-bot-admin). Sem seletor, sem chat; cria contas administrador com o meu-bot na mesa, muda o apelido e apaga.
+  { variant: "admin-mac", nome: "meu-bot-admin-mac", bundleId: "local.meu-bot-admin-mac", icone: "assets/icon-admin-mac.icns", userData: "meu-bot-admin-mac", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, addon: null, abreEm: null, caps: { ...ADMIN, supportAdmin: false, usuariosMac: true },
+    descricao: "As contas deste Mac: cria (administrador, senha mostrada uma vez, meu-bot na mesa), muda o apelido e apaga. O bot de cada pessoa roda numa VM." },
   // meu-bot-finance-staging: o meu-bot em teste com o financeiro na frente (abre na página Finanças). O financeiro em si
   // é liberado pela licença da máquina (produto meu-bot-finance), como o CRM próprio; o app só tem nome, ícone, dados
   // e porta próprios para conviver com o meu-bot e o meu-bot-staging. Nasce como cópia dos dados do meu-bot-staging.

@@ -93,7 +93,7 @@ export interface AlertPrefs { whatsapp: boolean; email: string }
  * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)
  * e os staging. Tabela em src/main/variant-core.ts.
  */
-export type AppVariant = "client" | "admin" | "client-staging" | "finance-staging";
+export type AppVariant = "client" | "admin" | "client-staging" | "finance-staging" | "admin-mac";
 /** Canal do app: estável (só o aprovado) ou staging (o que está em teste), como VS Code e VS Code Insiders. */
 export type Canal = "estavel" | "staging";
 /**
@@ -120,6 +120,8 @@ export interface Capabilities {
   supportAdmin: boolean;
   /** Aba Navegador (e o agente navegando por você). */
   navegador: boolean;
+  /** meu-bot-admin-mac: o app é só a janela das contas deste Mac (sem seletor de máquinas). */
+  usuariosMac: boolean;
   /**
    * Plano que a licença da máquina precisa ter para o app funcionar. "free" = app grátis com módulos Pro à parte
    * (etiqueta Pro, "pedir ao admin"); acima disso o app inteiro dependeria do add-on `produto` (hoje nenhum app usa).

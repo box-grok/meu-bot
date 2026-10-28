@@ -79,7 +79,7 @@ test("canal staging: as linhas saem da estável (nome, bundle, ícone, dados, po
 test("meu-bot-finance-staging: cópia do staging com nome, ícone, dados e porta próprios; a licença continua a do meu-bot", () => {
   const f = produtoDe("finance-staging");
   assert.deepEqual([f.nome, f.bundleId, f.icone, f.userData, f.herdaDe, f.canal, f.licenca, f.fundeDe], ["meu-bot-finance-staging", "local.meu-bot-finance.staging", "assets/icon-finance-staging.icns", "meu-bot-finance-staging", "meu-bot-staging", "staging", "meu-bot", null]);
-  const portas = PRODUTOS.filter((p) => p.variant !== "admin").map((p) => p.portaLocal);
+  const portas = PRODUTOS.filter((p) => p.caps.chat).map((p) => p.portaLocal);
   assert.equal(new Set(portas).size, portas.length, "meu-bot, staging e finance-staging abrem juntos");
   assert.deepEqual(f.caps, produtoDe("client").caps);
 });
