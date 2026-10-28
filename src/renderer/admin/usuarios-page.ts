@@ -16,7 +16,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioAbrirNoMeuBot">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
@@ -42,7 +42,21 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let armado: string | null = null;
   /** Liberar espaço: o usuário, o % pedido e o que ocupa espaço na pasta dele. */
   let liberar: { nome: string; pct: number; maiores: Maiores | null; erro: string | null; itemArmado: string | null } | null = null;
+  /** Resultado da sincronização com os seletores feita ao abrir a aba (uma linha discreta; null = nada a dizer). */
+  let sincronia: string | null = null;
 
+  /** Uma vez ao abrir a aba: os usuários comuns com a chave deste Mac que faltam em algum seletor entram (em segundo plano). */
+  async function sincronizar(): Promise<void> {
+    try {
+      const r = await deps.api.adminUsuariosSincronizar();
+      const partes: string[] = [];
+      if (r.entraram.length > 0) partes.push(`${r.entraram.length === 1 ? "1 usuário entrou" : `${r.entraram.length} usuários entraram`} nos seletores (meu-bot e admin): ${r.entraram.join(", ")}.`);
+      if (r.semChave.length > 0) partes.push(`Sem a chave deste Mac, fora dos seletores: ${r.semChave.join(", ")}.`);
+      for (const f of r.falhas) partes.push(`${f.nome}: ${f.motivo}.`);
+      sincronia = partes.length > 0 ? partes.join(" ") : null;
+      if (r.entraram.length > 0) await ler(); else render();
+    } catch (e) { sincronia = `Não consegui conferir os seletores: ${ipcErrorText(e)}`; render(); }
+  }
   async function ler(): Promise<void> {
     erro = null; render();
     try { visao = await deps.api.adminUsuarios(); } catch (e) { erro = ipcErrorText(e); }
@@ -59,7 +73,12 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     if (!NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
     const p = pctNovo.trim() === "" ? 0 : Number(pctNovo);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
-    if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) { nome = ""; pctNovo = ""; render(); }
+    if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
+      // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
+      const sel = visao?.seletores;
+      if (sel !== undefined) msg = sel.aviso === null ? { text: `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}. Já está no seletor do meu-bot (aba Usuário, como ${sel.alias}) e no do admin.`, bad: false } : { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true };
+      nome = ""; pctNovo = ""; render();
+    }
   }
   async function salvarRecursos(u: UsuarioMaquina): Promise<void> {
     const r = rascunhoRec.get(u.nome) ?? { ram: u.ramMaxMb === null ? "" : String(u.ramMaxMb), cpu: u.cpuMaxPct === null ? "" : String(u.cpuMaxPct) };
@@ -152,6 +171,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     linha.append(input, pin, b); form.append(linha);
     form.append(el("p", "hint", "Nasce comum (sem sudo), com RAM de 1 GB e CPU de 100% (um núcleo); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
+    if (sincronia !== null) form.append(el("p", "hint", sincronia));
     panel.append(form);
 
     if (visao !== null) { const c = cartaoLiberar(visao); if (c !== null) panel.append(c); }
@@ -200,14 +220,14 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           sv.addEventListener("click", () => { void salvarLimite(u); });
           tdPct.append(ip, " ", sv);
           const tdAp = el("td");
-          // "No meu-bot": o usuário entra no ~/.ssh/config deste Mac e aparece no seletor do meu-bot (aba Usuário).
-          if (!u.sudo) {
-            const ab = el("button", "btn btn-ghost btn-small", ocupado === `abrir:${u.nome}` ? "…" : "No meu-bot"); ab.type = "button"; ab.disabled = ocupado !== null;
-            ab.title = "Põe este usuário no seletor do meu-bot e do staging (uma linha nova no ~/.ssh/config deste Mac, com cópia antes)";
+          // "Nos seletores": refaz, para este usuário, o que criar e a sincronização ao abrir a aba já fazem (meu-bot e admin).
+          if (!u.sudo && !u.meuBot && u.chave) {
+            const ab = el("button", "btn btn-ghost btn-small", ocupado === `abrir:${u.nome}` ? "…" : "Nos seletores"); ab.type = "button"; ab.disabled = ocupado !== null;
+            ab.title = "Põe este usuário no seletor do meu-bot e do staging (~/.ssh/config deste Mac, com cópia antes) e no do admin, sem instalar nada na conta";
             ab.addEventListener("click", () => {
               ocupado = `abrir:${u.nome}`; msg = null; render();
-              void deps.api.adminUsuarioAbrirNoMeuBot(u.nome)
-                .then((r) => { msg = { text: r.jaExistia ? `${r.alias} já estava no seletor do meu-bot.` : `✓ ${r.alias} entrou no seletor do meu-bot e do staging (aba Usuário). Abra o meu-bot e escolha ${r.alias}.`, bad: false }; })
+              void deps.api.adminUsuarioNosSeletores(u.nome)
+                .then((r) => { msg = r.aviso !== null ? { text: `${r.alias} está no seletor do meu-bot, mas ${r.aviso}.`, bad: true } : { text: r.novo ? `✓ ${u.nome} entrou nos seletores: no meu-bot como ${r.alias} (aba Usuário) e no admin.` : `${u.nome} já estava nos dois seletores (${r.alias}).`, bad: false }; })
                 .catch((e: unknown) => { msg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
                 .finally(() => { ocupado = null; render(); });
             });
@@ -261,6 +281,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       if (page === null) {
         const panel = el("section", "acervo-panel usuarios-panel"); panel.hidden = true; deps.panelsEl.append(panel);
         page = deps.definePage("usuarios", `Usuários · ${deps.who}`, panel, () => { render(); void ler(); });
+        void sincronizar();
       }
       deps.openPage(page);
     },

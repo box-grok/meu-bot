@@ -168,9 +168,12 @@ const current = (): PickerSource => { if (source === null) throw new Error("sele
 /** A chegada animada do seletor toca uma vez por sessão do app; depois a lista aparece seca. */
 let arrivalShown = false;
 
+/** A lista de máquinas do último init enviado: o foco só reenvia (e o seletor só sonda de novo) se ela mudou. */
+let lastHostsKey = "";
 function initPayload(): PickerInit {
   const arrival = !arrivalShown; arrivalShown = true;
   const hosts = current().hosts();
+  lastHostsKey = JSON.stringify(hosts);
   const wanted = preselectOverride ?? getLastHost() ?? LOCAL_HOST;
   return {
     hosts,
@@ -447,10 +450,17 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
   // O título é o do main (nome do app, staging com a versão), não o <title> fixo do picker.html.
   win.on("page-title-updated", (e) => e.preventDefault());
   win.webContents.once("did-finish-load", () => { if (!win.isDestroyed()) win.webContents.send("picker:init", initPayload()); });
+  // Ao voltar o foco, se a lista mudou (~/.ssh/config, pessoas: outro app gravou enquanto isso), reenvia; igual, nada.
+  win.on("focus", () => { if (JSON.stringify(current().hosts()) !== lastHostsKey) refreshPickerIfOpen(); });
   win.on("closed", () => { if (pickerWin === win) pickerWin = null; });
   void win.loadFile(path.join(__dirname, "..", "..", "renderer", "picker.html"));
 }
 
 export const isPickerOpen = (): boolean => pickerWin !== null && !pickerWin.isDestroyed();
+
+/** Reenvia a lista ao seletor aberto (sem focar nem trazer para a frente); fechado, não faz nada. */
+export function refreshPickerIfOpen(): void {
+  if (pickerWin !== null && !pickerWin.isDestroyed() && !pickerWin.webContents.isLoading()) pickerWin.webContents.send("picker:init", { ...initPayload(), manterSelecao: true });
+}
 /** Onde o seletor está agora (null = fechado): a janela Produtos do admin se cola à esquerda dele. */
 export const pickerBounds = (): Electron.Rectangle | null => (pickerWin !== null && !pickerWin.isDestroyed() ? pickerWin.getBounds() : null);

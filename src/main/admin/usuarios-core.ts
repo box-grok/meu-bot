@@ -212,3 +212,25 @@ export const configTemHost = (texto: string, alias: string): boolean =>
 
 /** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
 export const RECURSOS_PADRAO = { ramMb: 1024, cpuPct: 100 } as const;
+
+/** Usuários que entram sozinhos nos seletores: comuns (sem sudo, fora do meu-bot e do sistema) e com a chave deste Mac. */
+export const candidatosAoSeletor = (usuarios: UsuarioMaquina[]): UsuarioMaquina[] =>
+  usuarios.filter((u) => !u.sudo && !u.meuBot && u.chave && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome));
+/** Comuns que ficam de fora por não terem a chave deste Mac (o admin não entra neles para pô-los no seletor). */
+export const semChaveDesteMac = (usuarios: UsuarioMaquina[]): string[] =>
+  usuarios.filter((u) => !u.sudo && !u.meuBot && !u.chave && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome)).map((u) => u.nome);
+
+/**
+ * Tira do ~/.ssh/config só o bloco que o admin escreveu para `alias` (`blocoSshUsuario`): o comentário-marca, a linha
+ * `Host` e as linhas indentadas dela, e a linha em branco antes. Sem a marca logo acima, o bloco não é do admin e fica.
+ * (O `removeSshHost` corta até o próximo Host e levaria junto o comentário do bloco seguinte.)
+ */
+export function removerBlocoUsuario(texto: string, alias: string): { texto: string; removido: boolean } {
+  const linhas = texto.split("\n");
+  const i = linhas.findIndex((l) => { const m = /^Host\s+(\S+)\s*$/.exec(l); return m !== null && m[1] === alias; });
+  if (i < 1 || !/^# meu-bot-admin: usuário \S+ da máquina /.test(linhas[i - 1]!)) return { texto, removido: false };
+  let fim = i + 1;
+  while (fim < linhas.length && /^\s+\S/.test(linhas[fim]!)) fim++;
+  const ini = i - 1 > 0 && linhas[i - 2]!.trim() === "" ? i - 2 : i - 1;
+  return { texto: [...linhas.slice(0, ini), ...linhas.slice(fim)].join("\n"), removido: true };
+}

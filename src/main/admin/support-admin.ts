@@ -31,7 +31,7 @@ import { log } from "../maquina/backend";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string } }
-interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName; /** Entrou por "ssh <host>" (conta do admin, sem o meu-bot dela): o admin prepara Claude Code, login e backend. */ adotada?: true }
+interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName; /** Entrou por "ssh <host>" (conta do admin, sem o meu-bot dela): o admin prepara Claude Code, login e backend. */ adotada?: true; /** Usuário de login criado/visto na aba "Usuários" da máquina com este id (a raiz): só aparece, ninguém o prepara. */ usuarioDe?: string }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
@@ -64,7 +64,7 @@ export function pessoasPorMaquina(): Map<string, { nome: string; alias: string; 
 }
 function load(): Map<string, Stored> {
   try {
-    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown; adotada?: unknown }>;
+    const raw = JSON.parse(fs.readFileSync(storePath(), "utf8")) as Record<string, { code?: unknown; seenAt?: unknown; source?: unknown; archived?: unknown; nickname?: unknown; plan?: unknown; adotada?: unknown; usuarioDe?: unknown }>;
     const m = new Map<string, Stored>();
     for (const [id, v] of Object.entries(raw)) {
       const d = typeof v.code === "string" ? decodeSupportCode(v.code) : null;
@@ -73,7 +73,7 @@ function load(): Map<string, Stored> {
       const key = machineId(d.code);
       const prev = m.get(key);
       if (prev !== undefined && prev.seenAt >= (typeof v.seenAt === "string" ? v.seenAt : "")) continue;
-      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "", ...(v.plan === "pro" || v.plan === "free" ? { plan: v.plan } : {}), ...(v.adotada === true ? { adotada: true as const } : {}) });
+      m.set(key, { code: d.code, seenAt: typeof v.seenAt === "string" ? v.seenAt : "", source: v.source === "colado" ? "colado" : "caixa", archived: v.archived === true, nickname: typeof v.nickname === "string" ? v.nickname.slice(0, 40) : "", ...(v.plan === "pro" || v.plan === "free" ? { plan: v.plan } : {}), ...(v.adotada === true ? { adotada: true as const } : {}), ...(typeof v.usuarioDe === "string" && /^[0-9a-f]{12}$/.test(v.usuarioDe) ? { usuarioDe: v.usuarioDe } : {}) });
     }
     return m;
   } catch {
@@ -81,8 +81,8 @@ function load(): Map<string, Stored> {
   }
 }
 function save(m: Map<string, Stored>): void {
-  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: PlanName; adotada?: true }> = {};
-  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }), ...(s.adotada === true ? { adotada: true as const } : {}) };
+  const out: Record<string, { code: string; seenAt: string; source: string; archived: boolean; nickname: string; plan?: PlanName; adotada?: true; usuarioDe?: string }> = {};
+  for (const [id, s] of m) out[id] = { code: encode(s.code), seenAt: s.seenAt, source: s.source, archived: s.archived, nickname: s.nickname, ...(s.plan === undefined ? {} : { plan: s.plan }), ...(s.adotada === true ? { adotada: true as const } : {}), ...(s.usuarioDe === undefined ? {} : { usuarioDe: s.usuarioDe }) };
   fs.writeFileSync(storePath(), JSON.stringify(out, null, 2), { mode: 0o600 });
 }
 const encode = (c: SupportCode): string => `MBS1.${Buffer.from(JSON.stringify(c), "utf8").toString("base64url")}`;
@@ -131,7 +131,7 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
     const key = machineId(d.code);
     const seenAt = new Date(Number(mtime) * 1000).toISOString();
     const prev = m.get(key);
-    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true, nickname: prev?.nickname ?? "" });
+    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true, nickname: prev?.nickname ?? "", ...(prev?.usuarioDe === undefined ? {} : { usuarioDe: prev.usuarioDe }) });
   }
   return null;
 }
@@ -509,12 +509,63 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
   } else {
     detail = "o suporte já estava desligado; a máquina só saiu da lista";
   }
-  // O arquivo dela na caixa de entrada sai também (o "off" recém-entregue inclusive), senão a próxima leitura a traz de volta.
+  await esquecer(m, id);
+  log(`[suporte] ${alias}: excluída pelo admin (${detail})`);
+  return { people: knownPeople(), cleared, detail };
+}
+
+/** Tira a pessoa da lista sem falar com a máquina dela: sai da caixa de entrada (senão a próxima leitura a traz de volta) e dos arquivos SSH. */
+async function esquecer(m: Map<string, Stored>, id: string): Promise<void> {
+  const entry = m.get(id);
+  if (entry === undefined) return;
   const inbox = adminConfig().inbox.alias;
   if (inbox !== "") await runSsh(inbox, `rm -f "$HOME/suporte-inbox/${id}.code" "$HOME/suporte-inbox/${legacyMachineId(entry.code.hostKey)}.code"\n`, 20_000).catch(() => null);
   m.delete(id); save(m); writeSshFiles(m);
-  log(`[suporte] ${alias}: excluída pelo admin (${detail})`);
-  return { people: knownPeople(), cleared, detail };
+}
+
+/** O código da máquina-raiz (a da janela de "Usuários") pelo alias de suporte dela. */
+function raizDe(rootAlias: string): { id: string; code: SupportCode } {
+  for (const [id, s] of load()) if (supportAlias(s.code) === rootAlias) return { id, code: s.code };
+  throw new Error("esta janela não é de uma pessoa conhecida do suporte");
+}
+/** Id que o usuário `nome` da máquina-raiz tem (ou terá) no suporte: a mesma chave do servidor e porta, outro usuário. */
+const idDoUsuario = (raiz: SupportCode, nome: string): string => machineId({ ...raiz, user: nome });
+
+/**
+ * Usuário de login da aba "Usuários" entra no seletor do admin: o admin entra pelo `meuBotAlias` (o acesso deste Mac
+ * que já está na conta), põe a chave dele no authorized_keys e guarda a pessoa marcada com `usuarioDe`, SEM preparar
+ * nada na conta (nem Claude Code, nem login, nem backend). Já conhecido: não faz nada. Devolve o alias de suporte.
+ */
+export async function adicionarUsuario(rootAlias: string, meuBotAlias: string, nome: string): Promise<{ alias: string; novo: boolean }> {
+  const raiz = raizDe(rootAlias);
+  const m = load();
+  const conhecido = m.get(idDoUsuario(raiz.code, nome));
+  if (conhecido !== undefined) return { alias: supportAlias(conhecido.code), novo: false };
+  const code = await adoptSshHost(meuBotAlias);
+  if (code.user !== nome || code.hostKey !== raiz.code.hostKey) throw new Error(`${meuBotAlias} não leva ao usuário ${nome} desta máquina`);
+  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", usuarioDe: raiz.id };
+  m.set(machineId(code), s); save(m); writeSshFiles(m);
+  const r = await runSsh(supportAlias(code), "true\n", 20_000);
+  if (r.code !== 0) throw new Error(`entrou na lista, mas a chave do admin não entrou: ${lastLine(r)}`);
+  log(`[usuarios] ${rootAlias}: ${nome} entrou no seletor do admin como ${supportAlias(code)}`);
+  return { alias: supportAlias(code), novo: true };
+}
+
+/** O usuário apagado sai do seletor do admin (pela identidade: chave do servidor + usuário + porta), sem SSH na conta que não existe mais. */
+export async function esquecerUsuario(rootAlias: string, nome: string): Promise<boolean> {
+  const raiz = raizDe(rootAlias);
+  const m = load();
+  const id = idDoUsuario(raiz.code, nome);
+  if (!m.has(id)) return false;
+  await esquecer(m, id);
+  log(`[usuarios] ${rootAlias}: ${nome} saiu do seletor do admin`);
+  return true;
+}
+
+/** Os usuários da máquina-raiz que já estão no seletor do admin (pelo nome de login). */
+export function usuariosNoSeletor(rootAlias: string): Set<string> {
+  const raiz = raizDe(rootAlias);
+  return new Set([...load().values()].filter((s) => s.code.hostKey === raiz.code.hostKey && s.code.port === raiz.code.port && s.code.hostname === raiz.code.hostname).map((s) => s.code.user));
 }
 
 /**

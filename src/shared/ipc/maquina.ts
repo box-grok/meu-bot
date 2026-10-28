@@ -104,6 +104,8 @@ export interface PickerInit {
   error: string | null;
   /** Versão deste app (package.json): aparece ao lado do título, como nas janelas. */
   version: string;
+  /** Reenvio porque a lista mudou com o seletor aberto: mantém a máquina selecionada (senão vale `preselect`). */
+  manterSelecao?: true;
 }
 
 /** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */

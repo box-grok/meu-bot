@@ -428,7 +428,10 @@ export interface MeuBotAdminApi {
   /** Apelido (nome de exibição) do usuário; vazio tira. */
   adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
   /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
-  adminUsuarioAbrirNoMeuBot(nome: string): Promise<{ alias: string; jaExistia: boolean; backup: string | null }>;
+  /** Põe o usuário nos dois seletores (meu-bot e admin), sem preparar a conta; `aviso` = o do admin falhou. */
+  adminUsuarioNosSeletores(nome: string): Promise<{ alias: string; novo: boolean; aviso: string | null }>;
+  /** Os usuários comuns com a chave deste Mac que faltam em algum seletor entram (ao abrir a aba). */
+  adminUsuariosSincronizar(): Promise<{ entraram: string[]; semChave: string[]; falhas: { nome: string; motivo: string }[] }>;
   /** O que ocupa espaço na pasta do usuário, e apagar um item escolhido (para baixar o limite). */
   adminUsuarioMaiores(nome: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
   adminUsuarioApagarItem(nome: string, caminho: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;

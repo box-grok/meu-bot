@@ -9,11 +9,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, aliasDoUsuario, blocoSshUsuario, configTemHost, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
-import { pessoasPorMaquina } from "./support-admin";
+import { adicionarUsuario, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
+import { refreshPickerIfOpen } from "../maquina/picker";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -85,6 +86,9 @@ export async function apagarUsuario(host: string, nome: unknown): Promise<Usuari
   saida(r.stdout, /^APAGADO=/m, `não consegui apagar ${n}`);
   log(`[usuarios] ${host}: apagou o usuário ${n}`);
   void registrar(host, "usuarios.apagar", n);
+  // Sai dos dois seletores também (sem SSH na conta que não existe mais).
+  try { tirarDoSshConfig(host, n); } catch (e) { log(`[usuarios] ${host}: ${n} ficou no ~/.ssh/config: ${e instanceof Error ? e.message : String(e)}`); }
+  if (await esquecerUsuario(host, n).catch(() => false)) refreshPickerIfOpen();
   return usuariosDaMaquina(host);
 }
 
@@ -113,9 +117,11 @@ echo "CRIADO=$N"
   // Nasce com os tetos padrão de RAM e CPU (falhar aqui não desfaz o usuário: avisa no log e segue).
   const rec = await runSsh(host, `${recursosSh(nome, RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct)}\n`, 30_000).catch(() => null);
   if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
+  // Já entra nos dois seletores (meu-bot e admin); falhar aqui não desfaz o usuário: a resposta avisa.
+  const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
-  if (typeof pct === "number" && pct > 0) return definirLimite(host, nome, pct);
-  return usuariosDaMaquina(host);
+  const v = typeof pct === "number" && pct > 0 ? await definirLimite(host, nome, pct) : await usuariosDaMaquina(host);
+  return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso } };
 }
 
 /** As maiores pastas e arquivos do usuário, para o admin escolher o que apagar antes de baixar o limite. */
@@ -174,28 +180,80 @@ export async function definirApelido(host: string, nome: unknown, apelido: unkno
   return usuariosDaMaquina(host);
 }
 
-/**
- * "Abrir no meu-bot": põe o usuário no ~/.ssh/config deste Mac como uma máquina (`<máquina>-<usuário>`, com a chave do
- * admin que já está no authorized_keys dele). O seletor do meu-bot e do staging leem o mesmo arquivo, então ele aparece
- * lá, na aba Usuário. Backup antes; nunca altera um Host que já existe (se existir, só devolve o nome).
- */
-export async function abrirNoMeuBot(host: string, nome: unknown): Promise<{ alias: string; jaExistia: boolean; backup: string | null }> {
-  const n = nomeValido(nome);
-  const v = await usuariosDaMaquina(host);
-  if (!v.usuarios.some((u) => u.nome === n)) throw new Error(`não existe o usuário ${n}`);
-  const a = await acessoDesteMac(host);
+/** O nome do usuário no seletor do meu-bot: `<máquina>-<usuário>`, pela máquina como o admin a chama. */
+const aliasNoMeuBot = (host: string, nome: string): { alias: string; maquina: string } => {
   const maquina = [...pessoasPorMaquina().values()].find((p) => p.alias === host)?.nome ?? host;
-  const alias = aliasDoUsuario(maquina, n);
-  const configPath = path.join(os.homedir(), ".ssh", "config");
-  let atual = ""; let existe = false;
-  try { atual = fs.readFileSync(configPath, "utf8"); existe = true; } catch { /* ainda não há */ }
-  if (configTemHost(atual, alias)) return { alias, jaExistia: true, backup: null };
-  let backup: string | null = null;
-  if (existe) { backup = `${configPath}.bak-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`; fs.copyFileSync(configPath, backup); }
+  return { alias: aliasDoUsuario(maquina, nome), maquina };
+};
+const sshConfigPath = (): string => path.join(os.homedir(), ".ssh", "config");
+const lerSshConfig = (): { texto: string; existe: boolean } => { try { return { texto: fs.readFileSync(sshConfigPath(), "utf8"), existe: true }; } catch { return { texto: "", existe: false }; } };
+
+/**
+ * Põe o usuário no ~/.ssh/config deste Mac como uma máquina (`<máquina>-<usuário>`, com a chave deste Mac, que já está
+ * no authorized_keys dele): o seletor do meu-bot e do staging leem o mesmo arquivo (aba Usuário). Backup antes; nunca
+ * altera um Host que já existe (se existir, só devolve o nome).
+ */
+async function garantirNoSshConfig(host: string, n: string): Promise<{ alias: string; novo: boolean }> {
+  const { alias, maquina } = aliasNoMeuBot(host, n);
+  const { texto, existe } = lerSshConfig();
+  if (configTemHost(texto, alias)) return { alias, novo: false };
+  const a = await acessoDesteMac(host);
+  const configPath = sshConfigPath();
+  if (existe) fs.copyFileSync(configPath, `${configPath}.bak-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`);
   else fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
-  const sep = existe && atual !== "" && !atual.endsWith("\n") ? "\n" : "";
+  const sep = existe && texto !== "" && !texto.endsWith("\n") ? "\n" : "";
   fs.appendFileSync(configPath, `${sep}\n${blocoSshUsuario({ alias, hostname: a.hostname, port: a.port, user: n, chave: a.arquivo, maquina })}`, { mode: 0o600 });
   try { fs.chmodSync(configPath, 0o600); } catch { /* cortesia */ }
   log(`[usuarios] ${host}: ${n} entrou no ~/.ssh/config como ${alias}`);
-  return { alias, jaExistia: false, backup };
+  return { alias, novo: true };
+}
+
+/** Tira do ~/.ssh/config o bloco que o admin escreveu para o usuário (backup antes); bloco de outra origem fica. */
+function tirarDoSshConfig(host: string, n: string): boolean {
+  const { alias } = aliasNoMeuBot(host, n);
+  const { texto, existe } = lerSshConfig();
+  if (!existe) return false;
+  const r = removerBlocoUsuario(texto, alias);
+  if (!r.removido) return false;
+  const configPath = sshConfigPath();
+  fs.copyFileSync(configPath, `${configPath}.antes-de-remover-${alias}`);
+  fs.writeFileSync(configPath, r.texto, { mode: 0o600 });
+  log(`[usuarios] ${host}: ${n} saiu do ~/.ssh/config (${alias})`);
+  return true;
+}
+
+/** O usuário nos dois seletores: o do meu-bot (~/.ssh/config) e o do admin (pessoa marcada, sem preparar a conta). */
+async function porNosSeletores(host: string, n: string): Promise<{ alias: string; novo: boolean; aviso: string | null }> {
+  const meuBot = await garantirNoSshConfig(host, n);
+  let aviso: string | null = null; let noAdmin = false;
+  try { noAdmin = (await adicionarUsuario(host, meuBot.alias, n)).novo; } catch (e) { aviso = `não entrou no seletor do admin: ${e instanceof Error ? e.message : String(e)}`; }
+  if (meuBot.novo || noAdmin) { void registrar(host, "usuarios.seletor", n); refreshPickerIfOpen(); }
+  return { alias: meuBot.alias, novo: meuBot.novo || noAdmin, aviso };
+}
+
+/** Botão "Nos seletores" da linha (refaz o que a sincronização faz, para um usuário). */
+export async function nosSeletores(host: string, nome: unknown): Promise<{ alias: string; novo: boolean; aviso: string | null }> {
+  const n = nomeValido(nome);
+  const v = await usuariosDaMaquina(host);
+  const u = v.usuarios.find((x) => x.nome === n);
+  if (u === undefined) throw new Error(`não existe o usuário ${n}`);
+  if (candidatosAoSeletor([u]).length === 0) throw new Error(u.chave ? `${n} tem sudo ou é do meu-bot: não entra no seletor por aqui` : `${n} não tem a chave deste Mac: o admin não entra nele`);
+  return porNosSeletores(host, n);
+}
+
+/**
+ * Ao abrir a aba: os usuários comuns com a chave deste Mac que ainda faltam em algum seletor entram (um por vez; quem já
+ * está nos dois não custa SSH). Sem preparar nada nas contas.
+ */
+export async function sincronizarSeletores(host: string): Promise<{ entraram: string[]; semChave: string[]; falhas: { nome: string; motivo: string }[] }> {
+  const v = await usuariosDaMaquina(host);
+  const noAdmin = usuariosNoSeletor(host);
+  const { texto } = lerSshConfig();
+  const entraram: string[] = []; const falhas: { nome: string; motivo: string }[] = [];
+  for (const u of candidatosAoSeletor(v.usuarios)) {
+    if (configTemHost(texto, aliasNoMeuBot(host, u.nome).alias) && noAdmin.has(u.nome)) continue;
+    try { const r = await porNosSeletores(host, u.nome); if (r.novo) entraram.push(u.nome); if (r.aviso !== null) falhas.push({ nome: u.nome, motivo: r.aviso }); }
+    catch (e) { falhas.push({ nome: u.nome, motivo: e instanceof Error ? e.message : String(e) }); }
+  }
+  return { entraram, semChave: semChaveDesteMac(v.usuarios), falhas };
 }

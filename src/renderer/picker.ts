@@ -519,7 +519,8 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   filterEl.focus();
 }
 
-window.picker.on("picker:init", (p) => init(p as PickerInit));
+// Reenvio porque a lista mudou com o seletor aberto: mantém a máquina selecionada.
+window.picker.on("picker:init", (p) => { const init0 = p as PickerInit; init(init0, init0.manterSelecao === true ? selected : null); });
 window.picker.on("picker:install-progress", (p) => {
   const ev = p as { host: string; line: string };
   if (ev.host !== selected) return;

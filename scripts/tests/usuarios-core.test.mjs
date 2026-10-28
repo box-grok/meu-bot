@@ -88,3 +88,26 @@ test("usuários: todo usuário novo nasce com 1 GB de RAM e 100% de CPU", async 
   assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 1024, cpuPct: 100 });
   assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=1024M CPUQuota=100%/);
 });
+
+test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {
+  const { candidatosAoSeletor, semChaveDesteMac } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const u = (nome, o = {}) => ({ nome, uid: 1001, home: `/home/${nome}`, shell: "/bin/bash", sudo: false, meuBot: false, chave: true, usadoKb: null, limiteKb: null, ramKb: 0, ramMaxMb: null, cpuMaxPct: null, apelido: "", ...o });
+  const lista = [u("ana"), u("box", { sudo: true }), u("openclaw", { meuBot: true }), u("hermes"), u("bia", { chave: false }), u("admin")];
+  assert.deepEqual(candidatosAoSeletor(lista).map((x) => x.nome), ["ana"]);
+  assert.deepEqual(semChaveDesteMac(lista), ["bia"]);
+});
+
+test("removerBlocoUsuario: tira só o bloco do admin (marca + Host + indentadas) e não leva o comentário do bloco seguinte", () => {
+  const { removerBlocoUsuario, blocoSshUsuario } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const bloco = blocoSshUsuario({ alias: "meu-root-ana", hostname: "203.0.113.7", port: "22", user: "ana", chave: "~/.ssh/id_ed25519", maquina: "meu-root" });
+  const antes = "Include ~/.ssh/meu-bot-suporte.conf\n\nHost vps\n    HostName 203.0.113.7\n    User root\n";
+  const depois = "\n# minha VPS de teste\nHost teste\n    HostName 198.51.100.2\n";
+  const r = removerBlocoUsuario(`${antes}\n${bloco}${depois}`, "meu-root-ana");
+  assert.equal(r.removido, true);
+  assert.equal(r.texto, `${antes}${depois}`);
+  assert.match(r.texto, /# minha VPS de teste\nHost teste/);
+  // Sem a marca logo acima: o bloco não é do admin e fica.
+  const meu = `${antes}\nHost meu-root-ana\n    User ana\n`;
+  assert.deepEqual(removerBlocoUsuario(meu, "meu-root-ana"), { texto: meu, removido: false });
+  assert.equal(removerBlocoUsuario(antes, "meu-root-ana").removido, false);
+});

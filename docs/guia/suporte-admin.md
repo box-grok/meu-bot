@@ -643,3 +643,24 @@ antigo"). Correção: `src/main/licenca-maquina.ts` (`lerLicenca`): backend prim
 lê `licenca.json` + `maquinas.json` por SSH (`readLicenseViewSsh`, que era o `readLicenseView` do admin e saiu de
 `admin/support-admin.ts` para cá; o admin importa daqui). `license:get`, `browser:open` e os gates de
 `acesso.ts` (Pro, CRM próprio, financeiro) usam `lerLicenca`.
+
+## Usuários de login entram sozinhos nos seletores (28 out)
+
+Na aba "Usuários" (máquina em que o admin entra como root), criar um usuário já o põe nos dois seletores, e apagar o
+tira dos dois; ninguém instala nada na conta (Claude Code, login e backend ficam para quando ele for aberto no meu-bot).
+- **Seletor do meu-bot e do staging:** um `Host <máquina>-<usuário>` no `~/.ssh/config` deste Mac (`blocoSshUsuario`,
+  com o comentário-marca `# meu-bot-admin: usuário …`, backup `config.bak-…`). Apagar tira só o bloco com a marca
+  (`removerBlocoUsuario`, `usuarios-core.ts`), com backup `config.antes-de-remover-<alias>`; o `removeSshHost` não serve
+  porque corta até o próximo Host e leva o comentário do bloco seguinte.
+- **Seletor do admin:** `adicionarUsuario` (support-admin.ts) reaproveita `adoptSshHost` pelo alias do meu-bot (põe a
+  chave `meu-bot-admin` no authorized_keys) e guarda a pessoa com `usuarioDe: <id da raiz>`, sem `adotada`, então o
+  "Atualizar pessoas" não a prepara. `esquecerUsuario` acha a pessoa pela identidade (`machineId` da raiz com
+  `user = nome`) e a tira sem SSH na conta apagada; o fim do `removePerson` virou `esquecer(id)`, comum aos dois.
+- **Os que já existem:** ao abrir a aba, `admin:usuarios-sincronizar` põe os comuns com a chave deste Mac
+  (`candidatosAoSeletor`: sem sudo, fora do meu-bot e do sistema) que faltam em algum seletor; quem já está nos dois
+  não custa SSH. Sem a chave deste Mac ficam fora, e a aba diz quais. O botão "Nos seletores" da linha
+  (`admin:usuario-seletores`, antes `admin:usuario-abrir`/"No meu-bot", que só gravava o ~/.ssh/config) refaz isso
+  para um usuário. Auditoria: `usuarios.seletor`.
+- **O seletor vê na hora:** o do admin é atualizado depois de cada entrada/saída (`refreshPickerIfOpen`); o do meu-bot
+  (outro processo) relê a lista ao ganhar foco, e só reenvia (e sonda de novo) se ela mudou (`lastHostsKey`), mantendo
+  a máquina selecionada (`PickerInit.manterSelecao`).
