@@ -12,12 +12,13 @@ export interface UsuarioMac {
 
 export interface UsuariosMacVisao { usuarios: UsuarioMac[]; atual: string; naTela: string | null }
 
-/** Conta criada: a senha aparece só aqui, uma vez. `repo`: o meu-bot clonado na mesa da conta nova. */
-export interface UsuarioMacCriado { nome: string; senha: string; repo: "ok" | "falhou" | "sem-git"; visao: UsuariosMacVisao }
+/** Conta criada. `senha`: a gerada pelo app, mostrada só aqui, uma vez (null = a pessoa escolheu a dela). `repo`: o meu-bot clonado na mesa. */
+export interface UsuarioMacCriado { nome: string; senha: string | null; repo: "ok" | "falhou" | "sem-git"; visao: UsuariosMacVisao }
 
 export interface UsuariosMacApi {
   listar(): Promise<UsuariosMacVisao>;
-  criar(nome: string): Promise<UsuarioMacCriado>;
+  /** `senha` vazia = o app gera uma forte. */
+  criar(nome: string, senha: string): Promise<UsuarioMacCriado>;
   apagar(nome: string): Promise<UsuariosMacVisao>;
   apelido(nome: string, apelido: string): Promise<UsuariosMacVisao>;
 }

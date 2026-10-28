@@ -4,7 +4,7 @@ import type { UsuariosMacApi } from "../shared/ipc";
 
 const api: UsuariosMacApi = {
   listar: () => ipcRenderer.invoke("mac:usuarios", {}),
-  criar: (nome: string) => ipcRenderer.invoke("mac:usuario-criar", { nome }),
+  criar: (nome: string, senha: string) => ipcRenderer.invoke("mac:usuario-criar", { nome, senha }),
   apagar: (nome: string) => ipcRenderer.invoke("mac:usuario-apagar", { nome }),
   apelido: (nome: string, apelido: string) => ipcRenderer.invoke("mac:usuario-apelido", { nome, apelido }),
 };

@@ -21,8 +21,15 @@ export function nomeNovoInvalido(nome: unknown, existentes: readonly string[]): 
   return null;
 }
 
-/** O menor UID acima do maior em uso (contas de pessoas começam em 501). */
-export const uidLivre = (uids: readonly number[]): number => Math.max(500, ...uids.filter((u) => u >= 501 && u < 60000)) + 1;
+/**
+ * Senha que a pessoa escolheu: 8 a 64 caracteres visíveis, sem aspas simples (o script a põe entre aspas simples) nem
+ * barra invertida. Erro com a frase para a tela; null = boa.
+ */
+export function senhaEscolhidaInvalida(senha: string): string | null {
+  if (senha.length < 8 || senha.length > 64) return "a senha precisa ter de 8 a 64 caracteres";
+  if (!/^[\x21-\x7e ]+$/.test(senha) || senha.includes("'") || senha.includes("\\")) return "a senha não pode ter aspas simples, barra invertida, acentos nem quebra de linha";
+  return null;
+}
 
 /** Senha forte só com letras e números sem ambiguidade (sem aspas em lugar nenhum). `bytes`: aleatórios, ao menos `tamanho`. */
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
@@ -80,16 +87,14 @@ export const REPO_MEU_BOT = `https://github.com/${UPDATE_REPO}.git`;
  * 0700 apagado em seguida) e por um instante no argumento do sysadminctl, que não lê senha de entrada sem terminal.
  * Imprime `CRIADO=<nome>` (ou `ERRO=<motivo>`) e `REPO=ok|falhou|sem-git`: o clone que não deu certo não desfaz a conta.
  */
-export function criarMacSh(o: { nome: string; uid: number; senha: string; repo?: string }): string {
+export function criarMacSh(o: { nome: string; senha: string; repo?: string }): string {
   const repo = o.repo ?? REPO_MEU_BOT;
   if (!/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\.git$/.test(repo)) throw new Error("repositório inválido");
   if (!NOME_USUARIO_RE.test(o.nome) || RESERVADOS_MAC.has(o.nome)) throw new Error("nome inválido");
-  if (!Number.isInteger(o.uid) || o.uid < 501 || o.uid >= 60000) throw new Error("uid inválido");
-  if (!/^[A-Za-z0-9]{16,64}$/.test(o.senha)) throw new Error("senha inválida");
+  if (senhaEscolhidaInvalida(o.senha) !== null) throw new Error("senha inválida");
   return `set -u
 if dscl . -read "/Users/${o.nome}" >/dev/null 2>&1; then echo "ERRO=já existe uma conta ${o.nome} neste Mac"; exit 1; fi
-if dscl . -list /Users UniqueID | awk '{print $2}' | grep -qx '${o.uid}'; then echo "ERRO=o UID ${o.uid} acabou de ser usado; tente de novo"; exit 1; fi
-sysadminctl -addUser "${o.nome}" -fullName "${o.nome}" -UID ${o.uid} -shell /bin/zsh -home "/Users/${o.nome}" -admin -password '${o.senha}' >/dev/null 2>&1
+sysadminctl -addUser "${o.nome}" -fullName "${o.nome}" -shell /bin/zsh -home "/Users/${o.nome}" -admin -password '${o.senha}' >/dev/null 2>&1
 dscl . -read "/Users/${o.nome}" >/dev/null 2>&1 || { echo "ERRO=o macOS não criou a conta (sysadminctl)"; exit 1; }
 createhomedir -c -u "${o.nome}" >/dev/null 2>&1
 [ -d "/Users/${o.nome}" ] || { echo "ERRO=a conta foi criada, mas o home não"; exit 1; }
@@ -101,13 +106,23 @@ if xcode-select -p >/dev/null 2>&1 && [ ! -e "/Users/${o.nome}/Desktop/meu-bot" 
 else echo "REPO=sem-git"; fi`;
 }
 
-/** Apaga a conta e o home (sysadminctl -deleteUser). Quem chama já conferiu protegidaPorque. Imprime `APAGADO=<nome>`. */
+/**
+ * Apaga a conta e o home. Primeiro o sysadminctl -deleteUser; se a conta continuar (ele falha, por exemplo, numa conta
+ * cujo home nunca foi criado), o registro sai com dscl . -delete e o home, se existir e for da conta, com rm.
+ * Quem chama já conferiu protegidaPorque. Imprime `APAGADO=<nome>` ou `ERRO=<o que o macOS disse>`.
+ */
 export function apagarMacSh(nome: string): string {
   if (!NOME_USUARIO_RE.test(nome) || RESERVADOS_MAC.has(nome)) throw new Error("nome inválido");
   return `set -u
 dscl . -read "/Users/${nome}" >/dev/null 2>&1 || { echo "ERRO=a conta ${nome} não existe"; exit 1; }
-sysadminctl -deleteUser "${nome}" >/dev/null 2>&1
-dscl . -read "/Users/${nome}" >/dev/null 2>&1 && { echo "ERRO=o macOS não apagou a conta"; exit 1; }
+UID_C=$(dscl . -read "/Users/${nome}" UniqueID 2>/dev/null | awk '{print $2}')
+SYS=$(sysadminctl -deleteUser "${nome}" 2>&1 | tail -1)
+if dscl . -read "/Users/${nome}" >/dev/null 2>&1; then
+  DS=$(dscl . -delete "/Users/${nome}" 2>&1 | tail -1)
+  if dscl . -read "/Users/${nome}" >/dev/null 2>&1; then echo "ERRO=o macOS não apagou a conta (sysadminctl: \${SYS:-sem resposta}; dscl: \${DS:-sem resposta})" | tr -d '\\r'; exit 1; fi
+fi
+H="/Users/${nome}"
+if [ -d "$H" ] && [ -n "$UID_C" ] && [ "$(stat -f %u "$H")" = "$UID_C" ]; then rm -rf "$H"; fi
 echo "APAGADO=${nome}"`;
 }
 

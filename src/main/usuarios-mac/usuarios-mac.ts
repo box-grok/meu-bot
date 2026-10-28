@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { UsuarioMacCriado, UsuariosMacVisao } from "../../shared/ipc";
-import { LISTAR_MAC_SH, apagarMacSh, apelidoMacSh, criarMacSh, lerUsuariosMac, nomeNovoInvalido, saidaMac, senhaDe, uidLivre } from "./usuarios-mac-core";
+import { LISTAR_MAC_SH, apagarMacSh, apelidoMacSh, criarMacSh, lerUsuariosMac, nomeNovoInvalido, saidaMac, senhaDe, senhaEscolhidaInvalida } from "./usuarios-mac-core";
 
 function rodar(cmd: string, args: string[], timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
@@ -49,24 +49,25 @@ export async function listarUsuariosMac(): Promise<UsuariosMacVisao> {
   return lerUsuariosMac(r.stdout);
 }
 
-/** Todas as contas (inclusive as de sistema), para o nome e o UID novos não colidirem. */
-async function contasEUids(): Promise<{ nomes: string[]; uids: number[] }> {
-  const r = await rodar("dscl", [".", "-list", "/Users", "UniqueID"], 20_000);
-  const linhas = r.stdout.split("\n").map((l) => l.trim().split(/\s+/)).filter((p) => p.length === 2);
-  return { nomes: linhas.map((p) => p[0]!), uids: linhas.map((p) => Number(p[1])).filter(Number.isInteger) };
+/** Todas as contas (inclusive as de sistema), para o nome novo não colidir. O UID fica com o macOS. */
+async function nomesDasContas(): Promise<string[]> {
+  const r = await rodar("dscl", [".", "-list", "/Users"], 20_000);
+  return r.stdout.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
-export async function criarUsuarioMac(nome: unknown): Promise<UsuarioMacCriado> {
-  const { nomes, uids } = await contasEUids();
-  const erro = nomeNovoInvalido(nome, nomes);
+/** Cria a conta. `senha` vazia/ausente = o app gera uma forte; preenchida = a que a pessoa escolheu (validada). */
+export async function criarUsuarioMac(nome: unknown, senhaPedida: unknown): Promise<UsuarioMacCriado> {
+  const erro = nomeNovoInvalido(nome, await nomesDasContas());
   if (erro !== null) throw new Error(erro);
   const n = nome as string;
-  const senha = senhaDe(crypto.randomBytes(32));
-  const out = await comoAdministrador(criarMacSh({ nome: n, uid: uidLivre(uids), senha }), `criar a conta ${n} (com o meu-bot na mesa)`);
+  const escolhida = typeof senhaPedida === "string" && senhaPedida !== "" ? senhaPedida : null;
+  if (escolhida !== null) { const e = senhaEscolhidaInvalida(escolhida); if (e !== null) throw new Error(e); }
+  const senha = escolhida ?? senhaDe(crypto.randomBytes(32));
+  const out = await comoAdministrador(criarMacSh({ nome: n, senha }), `criar a conta ${n} (com o meu-bot na mesa)`);
   saidaMac(out, new RegExp(`^CRIADO=${n}$`, "m"), "o macOS não confirmou a conta nova");
   const repo = (/^REPO=(ok|falhou|sem-git)$/m.exec(out)?.[1] ?? "falhou") as UsuarioMacCriado["repo"];
   registrar("conta.criar", `${n} (meu-bot na mesa: ${repo})`);
-  return { nome: n, senha, repo, visao: await listarUsuariosMac() };
+  return { nome: n, senha: escolhida === null ? senha : null, repo, visao: await listarUsuariosMac() };
 }
 
 export async function apagarUsuarioMac(nome: unknown): Promise<UsuariosMacVisao> {

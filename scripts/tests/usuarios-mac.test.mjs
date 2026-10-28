@@ -17,13 +17,14 @@ test("nome novo: regra do Linux, reservados do macOS e conta que já existe", ()
   for (const n of ["Maria", "1abc", "a", "x y", "_spotlight", "a;rm"]) assert.match(m.nomeNovoInvalido(n, []), /nome inválido/, n);
 });
 
-test("UID livre: o maior das pessoas + 1, ignorando sistema; senha forte só com letras e números", () => {
-  assert.equal(m.uidLivre([501, 502, 504, 505, 507, 248, 4294967294]), 508);
-  assert.equal(m.uidLivre([0, 1, 248]), 501);
+test("senha: a gerada é forte e sem ambiguidade; a escolhida tem regra que não quebra o script", () => {
   const s = m.senhaDe(new Uint8Array(32).map((_, i) => i * 37));
   assert.match(s, /^[A-Za-z0-9]{24}$/);
   assert.doesNotMatch(s, /[0O1lI]/, "sem caracteres que se confundem");
   assert.throws(() => m.senhaDe(new Uint8Array(4)), /insuficientes/);
+  assert.equal(m.senhaEscolhidaInvalida("minha senha 2026!"), null);
+  assert.match(m.senhaEscolhidaInvalida("curta"), /8 a 64/);
+  for (const x of ["tem'aspas", "barra\\invertida", "acentuação1", "linha\nnova"]) assert.match(m.senhaEscolhidaInvalida(x), /não pode/, x);
 });
 
 test("lista: lê a saída do dscl, protege você, quem está na tela, sistema e serviço", () => {
@@ -38,16 +39,17 @@ test("lista: lê a saída do dscl, protege você, quem está na tela, sistema e 
 });
 
 test("criar: conta administrador com a senha só dentro do script, home e o meu-bot clonado na mesa como a conta nova", () => {
-  const sh = m.criarMacSh({ nome: "meu-box", uid: 508, senha: "Abcdefghjk23456789mnpqrs" });
-  assert.match(sh, /sysadminctl -addUser "meu-box" -fullName "meu-box" -UID 508 -shell \/bin\/zsh -home "\/Users\/meu-box" -admin -password 'Abcdefghjk23456789mnpqrs'/);
+  const sh = m.criarMacSh({ nome: "meu-box", senha: "Abcdefghjk23456789mnpqrs" });
+  assert.match(sh, /sysadminctl -addUser "meu-box" -fullName "meu-box" -shell \/bin\/zsh -home "\/Users\/meu-box" -admin -password 'Abcdefghjk23456789mnpqrs'/);
+  assert.match(m.criarMacSh({ nome: "meu-box", senha: "minha senha 2026!" }), /-password 'minha senha 2026!'/, "a escolhida também vai");
   assert.match(sh, /createhomedir -c -u "meu-box"/);
   assert.match(sh, /sudo -u "meu-box" -H git clone -q 'https:\/\/github\.com\/diegofornalha\/meu-bot\.git' "\/Users\/meu-box\/Desktop\/meu-bot"/);
   assert.match(sh, /xcode-select -p/, "sem as ferramentas do Xcode, não dispara o instalador do git");
   assert.ok(sh.indexOf("CRIADO=") < sh.indexOf("git clone"), "o clone que falhar não desfaz a conta");
-  assert.throws(() => m.criarMacSh({ nome: "meu-box", uid: 508, senha: "curta" }), /senha/);
-  assert.throws(() => m.criarMacSh({ nome: "meu-box", uid: 100, senha: "Abcdefghjk23456789mnpqrs" }), /uid/);
-  assert.throws(() => m.criarMacSh({ nome: "x';rm -rf /;'", uid: 508, senha: "Abcdefghjk23456789mnpqrs" }), /nome/);
-  assert.throws(() => m.criarMacSh({ nome: "meu-box", uid: 508, senha: "Abcdefghjk23456789mnpqrs", repo: "https://evil.example/x.git" }), /repositório/);
+  assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "curta" }), /senha/);
+  assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "x'; rm -rf /; '" }), /senha/);
+  assert.throws(() => m.criarMacSh({ nome: "x';rm -rf /;'", senha: "Abcdefghjk23456789mnpqrs" }), /nome/);
+  assert.throws(() => m.criarMacSh({ nome: "meu-box", senha: "Abcdefghjk23456789mnpqrs", repo: "https://evil.example/x.git" }), /repositório/);
 });
 
 test("apagar e apelido: nomes e textos que não quebram o script", () => {
@@ -70,4 +72,11 @@ test("variante meu-bot-admin-mac: só a janela das contas; canais próprios, só
   const src = readFileSync(join(here, "..", "..", "dist", "preload", "usuarios-mac-preload.js"), "utf8");
   const chans = [...src.matchAll(/ipcRenderer\.(?:invoke|send)\("([a-z:-]+)"/g)].map((x) => x[1]);
   assert.deepEqual(chans.sort(), [...MAC_CHANNELS].sort());
+});
+
+test("apagar: se o sysadminctl não apagar (conta sem home), cai para o dscl e diz o motivo se nem assim", () => {
+  const sh = m.apagarMacSh("bianca-box");
+  assert.ok(sh.indexOf("sysadminctl -deleteUser") < sh.indexOf('dscl . -delete "/Users/bianca-box"'));
+  assert.match(sh, /ERRO=o macOS não apagou a conta \(sysadminctl: \$\{SYS:-sem resposta\}; dscl: \$\{DS:-sem resposta\}\)/);
+  assert.match(sh, /stat -f %u "\$H"\)" = "\$UID_C" \]; then rm -rf "\$H"/, "só apaga o home que é da conta");
 });

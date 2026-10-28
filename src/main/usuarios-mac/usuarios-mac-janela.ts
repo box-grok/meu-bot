@@ -15,7 +15,7 @@ const campo = (p: unknown, k: string): unknown => (p !== null && typeof p === "o
 
 export function registerUsuariosMacIpc(): void {
   handleMac("mac:usuarios", (event) => { soDaJanela(event); return listarUsuariosMac(); });
-  handleMac("mac:usuario-criar", (event, p) => { soDaJanela(event); return criarUsuarioMac(campo(p, "nome")); });
+  handleMac("mac:usuario-criar", (event, p) => { soDaJanela(event); return criarUsuarioMac(campo(p, "nome"), campo(p, "senha")); });
   handleMac("mac:usuario-apagar", (event, p) => { soDaJanela(event); return apagarUsuarioMac(campo(p, "nome")); });
   handleMac("mac:usuario-apelido", (event, p) => { soDaJanela(event); return apelidoUsuarioMac(campo(p, "nome"), campo(p, "apelido")); });
 }
