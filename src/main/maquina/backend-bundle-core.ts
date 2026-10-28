@@ -11,13 +11,15 @@ export const BUNDLE_FILES = [
   "server.js", "session-map.js", "nivel-ferramentas.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js", "auditoria.py", "meu-bot-backend.service", "install.sh", "VERSION",
   // API oficial do WhatsApp: o receptor vai sempre (o install.sh copia), mas só liga com install-wa-cloud.sh.
   "wa-cloud.js", "wa-cloud-core.js", "meu-bot-wa-cloud.service", "install-wa-cloud.sh", "uninstall-wa-cloud.sh",
+  // Vigia da máquina (/health), faxina diária dos registros e o texto limpo para a voz.
+  "saude-maquina.js", "faxina.js", "fala-texto.py",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
   // Porteiro do claude (rodízio de contas para o OpenClaw/WhatsApp e o Terminal).
   "claude-porteiro.js", "claude-porteiro.sh", "install-porteiro.sh", "uninstall-porteiro.sh",
 ];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 export const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
-export const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
+export const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "memoria.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
 export const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md", "skill-crm-api.md"];
 export const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "licenca-crm.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
 export const FINANCE_FILES = ["install-finance.sh", "skill-finance-api.md"];

@@ -158,3 +158,29 @@ export function closureVerdict(messages, silences = 2) {
   if (silent >= silences && lastReply !== null && isFarewell(lastReply)) return { closed: true, reason: `conversa encerrada: o agente se despediu ("${lastReply.slice(0, 40)}") e ficou em silêncio ${silent}×` };
   return { closed: false };
 }
+
+/**
+ * Freio de grupo: a pausa por sessão (sendPolicy deny) é das conversas diretas; num grupo, outro agente pode puxar
+ * o nosso para um vaivém sem fim. Por grupo, conta as respostas entregues numa janela (padrão: 8 em 5 min) e, além
+ * disso, olha só as respostas (o LoopTracker no modo "só saída": 4 despedidas ou textos quase iguais seguidos).
+ * Passou: segura as respostas até a janela esfriar e solta sozinho, sem pausa permanente. Com `requireMention`, um
+ * grupo de humanos não chega a 8 respostas em 5 min. `sending` devolve `{ segurar: false }` ou
+ * `{ segurar: true, motivo, novo }` (`novo` = acabou de frear: registrar uma vez só).
+ */
+export const GRUPO_PADRAO = Object.freeze({ maxRespostas: 8, janelaMs: 5 * 60_000 });
+export class GroupBrake {
+  constructor(opts = {}) { this.o = { ...GRUPO_PADRAO, ...opts }; this.grupos = new Map(); this.repeticao = new LoopTracker(); }
+  sending(grupo, text, at = Date.now()) {
+    const g = this.grupos.get(grupo) ?? { envios: [], ate: 0, motivo: "" };
+    this.grupos.set(grupo, g);
+    if (at < g.ate) return { segurar: true, motivo: g.motivo, novo: false };
+    if (g.ate !== 0) { g.ate = 0; g.envios = []; this.repeticao.forget(grupo); }
+    g.envios = g.envios.filter((t) => at - t < this.o.janelaMs);
+    const minutos = Math.round(this.o.janelaMs / 60_000);
+    const rep = this.repeticao.sending(grupo, text, at);
+    const motivo = g.envios.length >= this.o.maxRespostas ? `mais de ${this.o.maxRespostas} respostas em ${minutos} min` : rep.loop ? rep.reason : null;
+    if (motivo === null) { g.envios.push(at); return { segurar: false }; }
+    g.ate = at + this.o.janelaMs; g.motivo = motivo;
+    return { segurar: true, motivo, novo: true };
+  }
+}
