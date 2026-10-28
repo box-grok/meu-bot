@@ -215,6 +215,9 @@ fi
 export PATH="$D/bin:$D/node/bin:$PATH"
 P="$D/lib/node_modules/hermes-agent"
 grep -q "\"version\": \"$V\"" "$P/package.json" 2>/dev/null || npm install -g --prefix "$D" "hermes-agent@$V" >/tmp/meu-bot-hermes-global.log 2>&1 || { echo "ERRO=a instalação do Hermes $V falhou (log em /tmp/meu-bot-hermes-global.log)"; exit 0; }
+# As dependências do bridge do WhatsApp: cada usuário roda o bridge daqui e não pode gravar em /opt.
+B="$P/runtime/hermes-agent/scripts/whatsapp-bridge"
+if [ -f "$B/bridge.js" ] && [ ! -d "$B/node_modules" ]; then ( cd "$B" && npm install --no-audit --no-fund >>/tmp/meu-bot-hermes-global.log 2>&1 ) || { echo "ERRO=não consegui instalar as dependências do bridge do WhatsApp (log em /tmp/meu-bot-hermes-global.log)"; exit 0; }; fi
 chmod -R a+rX "$D"
 [ -e "$W" ] && ! grep -q meu-bot-hermes-global "$W" && cp -P "$W" "$W.antes-do-meu-bot"
 cat > "$W" <<'EOF'
