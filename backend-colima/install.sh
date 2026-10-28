@@ -61,7 +61,7 @@ elif listening "$PORT"; then
   exit 4
 fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
-cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/nivel-ferramentas.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/auditoria.py" "$DEST/"
+cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/nivel-ferramentas.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/auditoria.py" "$HERE/wa-cloud.js" "$HERE/wa-cloud-core.js" "$HERE/meu-bot-wa-cloud.service" "$DEST/"
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.
@@ -147,6 +147,9 @@ fi
 K=$(grep '^OPENAI_COMPAT_KEY=' "$DEST/.env" | cut -d= -f2-)
 if curl -s -m 5 -H "Authorization: Bearer $K" "http://127.0.0.1:$PORT/v1/models" | grep -q claudecode; then echo "OK: backend respondendo em 127.0.0.1:$PORT"; else echo "AVISO: backend ainda não respondeu em 127.0.0.1:$PORT"; exit 1; fi
 # Versão só depois de responder: instalação que falhou no meio continua "desatualizada" e o app tenta de novo.
+# API oficial do WhatsApp ligada nesta máquina: o receptor sobe com o código novo (desligada, nada a fazer).
+if systemctl --user is-enabled meu-bot-wa-cloud.service >/dev/null 2>&1; then systemctl --user restart meu-bot-wa-cloud.service || true
+elif systemctl is-enabled meu-bot-wa-cloud.service >/dev/null 2>&1; then ${SUDO:-} systemctl restart meu-bot-wa-cloud.service 2>/dev/null || true; fi
 if [ -f "$HERE/VERSION" ]; then cp "$HERE/VERSION" "$DEST/VERSION"; echo "versão do backend: $(cat "$DEST/VERSION")"; fi
 
 # Status line do Claude (Sessão/Semanal no app) vai junto quando o instalador está ao lado. Não derruba o

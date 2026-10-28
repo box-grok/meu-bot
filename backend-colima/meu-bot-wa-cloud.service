@@ -1,0 +1,18 @@
+[Unit]
+Description=meu-bot WhatsApp pela API oficial (receptor do webhook da Meta)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=__DEST__
+Environment=HOME=__HOME__
+Environment=PATH=__NODEDIR__:__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=__NODE__ __DEST__/wa-cloud.js
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=10
+__USERLINE__
+
+[Install]
+WantedBy=__TARGET__
