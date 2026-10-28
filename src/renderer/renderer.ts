@@ -1967,6 +1967,7 @@ void (async () => {
   caps = info.caps;
   if (caps.supportAdmin) sidebarArchived.parentElement?.setAttribute("title", "Mostrar também as conversas arquivadas e, no WhatsApp, as que a pessoa excluiu (nada foi apagado)");
   appVersion = info.version;
+  for (const id of ["app-version", "mini-version"]) { const v = $<HTMLElement>(id); v.textContent = `v${info.version}`; v.title = `${caps.nome} ${info.version}`; }
   appBuild = info.build;
   // Estado da atualização só agora, com caps e versão em mãos (um estado que chegou antes ficou guardado em lastUpdate).
   void window.meuBot.updateState().then(paintUpdateState).catch(() => { if (lastUpdate !== null) paintUpdateState(lastUpdate); });

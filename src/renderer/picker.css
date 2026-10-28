@@ -19,6 +19,8 @@ button, input, ul, section, pre, label.switch { -webkit-app-region: no-drag; }
 .head-title { display: flex; align-items: center; gap: 10px; }
 .logo { width: 26px; height: 18px; flex: none; transform-origin: center; }
 h1 { margin: 0; font-size: 18px; }
+/* Versão deste app ao lado do título (como à esquerda do PRO nas janelas). */
+.app-version { font-size: 11px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; margin-left: auto; }
 /* Brilho de cor atrás do cabeçalho (shot "particle-news-splash"): a cor da máquina selecionada e a de uma vizinha, borradas,
    derivando devagar. Baixa opacidade: ambiente, não protagonista. z-index -1 num body com stacking context = atrás do conteúdo. */
 .glow { position: fixed; left: -20%; right: -20%; top: -25%; height: 62%; z-index: -1; pointer-events: none; opacity: 0; filter: blur(48px);

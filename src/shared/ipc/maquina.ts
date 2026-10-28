@@ -102,6 +102,8 @@ export interface PickerInit {
   /** Caixinha "onboarding feito": marcada = respeita; desmarcada = força o onboarding na próxima janela. */
   onboardingDone: boolean;
   error: string | null;
+  /** Versão deste app (package.json): aparece ao lado do título, como nas janelas. */
+  version: string;
 }
 
 /** Agente/gateway de chat que a máquina roda; o app detecta e se adapta, nunca pressupõe. */

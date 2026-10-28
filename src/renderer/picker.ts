@@ -493,6 +493,7 @@ async function loadPlans(): Promise<void> {
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
   support = payload.support;
+  { const v = document.getElementById("pk-version"); if (v !== null) v.textContent = `v${payload.version}`; }
   setHostNicknames(payload.names);
   if (support !== null) { adminChrome.paint(support); adminChrome.refreshPeopleOnce(); }
   if (firstInit) { firstInit = false; arrive(payload.arrival); }

@@ -8,7 +8,7 @@
 import { caps } from "../app/variant";
 import { parseLicense } from "../licenca/licenca";
 import { deveAtualizar, precisaAtualizarBackend } from "../atualizacao/updater-core";
-import { BrowserWindow, screen, shell } from "electron";
+import { app, BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, PickerInit, PlanName } from "../../shared/ipc";
 import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
@@ -185,6 +185,7 @@ function initPayload(): PickerInit {
     onboardingDone: isOnboardingDone(),
     error: lastError,
     arrival,
+    version: app.getVersion(),
   };
 }
 
