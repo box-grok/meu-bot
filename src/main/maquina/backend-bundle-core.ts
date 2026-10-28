@@ -8,7 +8,7 @@
 // Tudo que o install.sh copia: server.js exige providers.js e account-status.js ao lado (sem eles o cp aborta
 // e a VM nova fica sem backend). A status line vai junto e o install.sh a encadeia no fim; VERSION ele grava por último.
 export const BUNDLE_FILES = [
-  "server.js", "session-map.js", "nivel-ferramentas.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js", "saude-maquina.js", "faxina.js", "auditoria.py", "fala-texto.py", "meu-bot-backend.service", "install.sh", "VERSION",
+  "server.js", "session-map.js", "nivel-ferramentas.js", "modulos.js", "providers.js", "providers.json", "account-status.js", "contas-claude.js", "tool-events.js", "navegador.js", "licenca.js", "crm-modelo.js", "crm-store.js", "crm-api.js", "finance-modelo.js", "finance-store.js", "finance-api.js", "finance-crm-sync.js", "crm-finance-vendas.js", "autenticador.js", "saude-maquina.js", "faxina.js", "auditoria.py", "fala-texto.py", "meu-bot-backend.service", "install.sh", "VERSION",
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
   // Porteiro do claude (rodízio de contas para o OpenClaw/WhatsApp e o Terminal).
   "claude-porteiro.js", "claude-porteiro.sh", "install-porteiro.sh", "uninstall-porteiro.sh",

@@ -51,28 +51,36 @@ export interface Produto {
 export interface Addon { nome: string; rotulo: string; descricao: string }
 export const ADDONS: readonly Addon[] = [
   { nome: "meu-bot-finance", rotulo: "Financeiro", descricao: "O agente vira o financeiro da pessoa no WhatsApp e no chat; página Finanças e Curva ABC." },
+  { nome: "meu-bot-diego", rotulo: "Módulos do Diego", descricao: "Os módulos do app meu-bot-diego (agente do WhatsApp do rene, Grok, Buffer, automações de vendas, vídeos, roleplay, Instagram), ligados um a um na página Módulos." },
 ];
 /** Nomes na licença que não são add-on: o admin, e o meu-bot-crm (o CRM entrou no Pro em 22 out). */
 export const NAO_ADDON: readonly string[] = ["meu-bot-admin", "meu-bot-crm"];
 /** O plano "personalizado" (removido em 22 out) liberava o Pro e estes add-ons; quem o tinha vira Pro com eles. */
 export const ADDONS_DO_PERSONALIZADO: readonly string[] = ["meu-bot-finance"];
 /** Páginas que um produto pode pôr na frente ao abrir (Produto.abreEm); o renderer sabe abrir cada uma. */
-export const PAGINAS_INICIAIS = ["financas"] as const;
+export const PAGINAS_INICIAIS = ["financas", "modulos"] as const;
 export type PaginaInicial = (typeof PAGINAS_INICIAIS)[number];
 
 const PESSOA: Produto["caps"] = {
   chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false,
-  navegador: true, planoExigido: "free",
+  navegador: true, planoExigido: "free", modulos: null,
 };
 const ADMIN: Produto["caps"] = {
   chat: false, pair: false, login: false, manageWa: false, tunnel: false, install: false, supportClient: false, supportAdmin: true,
-  navegador: false, planoExigido: "free",
+  navegador: false, planoExigido: "free", modulos: null,
 };
 
 // meu-bot: o app da pessoa. Traz as duas extensões; o CRM próprio no Gmail abre pela licença da máquina (Pro ou superior,
 // ou o produto meu-bot-crm contratado), nunca por variante. Funde a pasta do antigo meu-bot-crm na primeira abertura.
 const CLIENT: Produto = { variant: "client", nome: "meu-bot", bundleId: "local.meu-bot", icone: "assets/icon.icns", userData: null, extensoes: ["extensao-crm", "extensao-autenticador"], canal: "estavel", licenca: "meu-bot", herdaDe: null, portaLocal: 8790, fundeDe: "meu-bot-crm", addon: null, abreEm: null, caps: PESSOA,
   descricao: "O app da pessoa: chat e WhatsApp no plano Free; Navegador e CRM próprio no Pro; add-ons por cima, com ou sem o Pro." };
+
+// meu-bot-diego: o meu-bot da pessoa com os módulos do Diego (repositório meu-bot-diego, submódulo em
+// produtos/meu-bot-diego, que só este app leva em Resources/). Cada módulo é ligado na página Módulos e liberado pelo
+// add-on meu-bot-diego na licença. Nasce como cópia dos dados do meu-bot (o Diego já usava o meu-bot neste Mac).
+const DIEGO: Produto = { ...CLIENT, variant: "diego", nome: "meu-bot-diego", bundleId: "local.meu-bot-diego", icone: "assets/icon-diego.icns", userData: "meu-bot-diego", herdaDe: "meu-bot", portaLocal: 8793, fundeDe: null, addon: "meu-bot-diego", abreEm: "modulos",
+  caps: { ...PESSOA, modulos: "meu-bot-diego" },
+  descricao: "O meu-bot com os módulos do Diego (agente do WhatsApp do rene, Grok, Buffer, automações de vendas, vídeos, roleplay, Instagram), um a um na página Módulos." };
 
 /** A cópia staging de um app estável: "<nome>-staging", ícone com a faixa, dados próprios herdados dele, porta própria. */
 function staging(base: Produto, variant: AppVariant, portaLocal: number): Produto {
@@ -90,6 +98,8 @@ export const PRODUTOS: readonly Produto[] = [
   // e porta próprios para conviver com o meu-bot e o meu-bot-staging. Nasce como cópia dos dados do meu-bot-staging.
   { ...staging(CLIENT, "finance-staging", 8792), nome: "meu-bot-finance-staging", bundleId: "local.meu-bot-finance.staging", icone: "assets/icon-finance-staging.icns", userData: "meu-bot-finance-staging", herdaDe: "meu-bot-staging", fundeDe: null, addon: "meu-bot-finance", abreEm: "financas",
     descricao: "O meu-bot em teste com o Financeiro na frente (abre na página Finanças); o financeiro é liberado pelo add-on meu-bot-finance." },
+  DIEGO,
+  staging(DIEGO, "diego-staging", 8794),
 ];
 
 /**

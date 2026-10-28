@@ -1003,6 +1003,11 @@ body.topbar-hidden .topbar { display: none; }
 /* Com a tela dividida, as zonas de soltar seguem a divisória (esquerda = conversa). */
 .content.split:not(.split-collapsed) .split-drop { grid-template-columns: var(--split, 55%) 1fr; }
 
+/* Módulos (apps com módulos de produto, como o meu-bot-diego): um cartão por módulo, campos no padrão de Finanças. */
+.modulos-panel .admin-card { gap: 10px; margin-bottom: 12px; }
+.modulos-panel .admin-field input:not([type="checkbox"]) { font: inherit; font-size: 13px; height: 34px; box-sizing: border-box; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); min-width: 220px; }
+.modulo-log { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--bg); font-size: 12px; white-space: pre-wrap; max-height: 160px; overflow: auto; }
+
 /* Finanças (produto meu-bot-finance): linhas de lançamento e de conta, números do mês e barras por categoria. */
 .finance-panel .admin-card { gap: 10px; }
 .finance-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
