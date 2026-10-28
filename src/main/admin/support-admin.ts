@@ -115,12 +115,13 @@ function writeSshFiles(m: Map<string, Stored>): void {
   }
 }
 
-/** Lê a caixa de entrada (na máquina do admin) e junta ao que já se conhecia. Caixa fora do ar: segue o salvo. */
-async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
+/** Lê a caixa de entrada (na máquina do admin): os códigos válidos, por id. Quem junta ao salvo é `juntarCaixa`. */
+async function pullInbox(): Promise<{ lidos: { key: string; code: SupportCode; seenAt: string }[]; warning: string | null }> {
+  const lidos: { key: string; code: SupportCode; seenAt: string }[] = [];
   const alias = adminConfig().inbox.alias;
-  if (alias === "") return "sem caixa de entrada configurada (rode scripts/suporte-setup.mjs e reempacote o admin)";
+  if (alias === "") return { lidos, warning: "sem caixa de entrada configurada (rode scripts/suporte-setup.mjs e reempacote o admin)" };
   const r = await runSsh(alias, `for f in "$HOME"/suporte-inbox/*.code; do [ -f "$f" ] || continue; printf 'F\\t%s\\t%s\\t' "$(basename "$f" .code)" "$(stat -c %Y "$f")"; head -c 4096 "$f" | tr -d '\\n'; echo; done\n`, 20_000);
-  if (r.code !== 0) return `não consegui ler a caixa de entrada em ${alias}`;
+  if (r.code !== 0) return { lidos, warning: `não consegui ler a caixa de entrada em ${alias}` };
   for (const line of r.stdout.split("\n")) {
     const [tag, id, mtime, text] = line.split("\t");
     if (tag !== "F" || id === undefined || text === undefined || !/^[0-9a-f]{12}$/.test(id)) continue;
@@ -128,12 +129,16 @@ async function pullInbox(m: Map<string, Stored>): Promise<string | null> {
     // O id do arquivo tem de bater com o código: o novo (chave + usuário + porta) ou o antigo (só a chave, de meu-bots
     // que ainda não regravaram); guarda sempre sob o novo.
     if (!d.ok || (machineId(d.code) !== id && legacyMachineId(d.code.hostKey) !== id)) continue;
-    const key = machineId(d.code);
-    const seenAt = new Date(Number(mtime) * 1000).toISOString();
-    const prev = m.get(key);
-    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code: d.code, seenAt, source: "caixa", archived: prev?.archived === true, nickname: prev?.nickname ?? "", ...(prev?.usuarioDe === undefined ? {} : { usuarioDe: prev.usuarioDe }) });
+    lidos.push({ key: machineId(d.code), code: d.code, seenAt: new Date(Number(mtime) * 1000).toISOString() });
   }
-  return null;
+  return { lidos, warning: null };
+}
+/** Junta o que a caixa trouxe ao salvo: aviso mais novo vence; o arquivamento, o apelido e a marca de usuário ficam. */
+function juntarCaixa(m: Map<string, Stored>, lidos: { key: string; code: SupportCode; seenAt: string }[]): void {
+  for (const { key, code, seenAt } of lidos) {
+    const prev = m.get(key);
+    if (prev === undefined || seenAt >= prev.seenAt) m.set(key, { code, seenAt, source: "caixa", archived: prev?.archived === true, nickname: prev?.nickname ?? "", ...(prev?.usuarioDe === undefined ? {} : { usuarioDe: prev.usuarioDe }) });
+  }
 }
 
 const isLocalAddr = (h: string): boolean => /^(localhost|127\.|::1$)/.test(h);
@@ -149,13 +154,18 @@ function rememberPlan(alias: string, plan: PlanName): void {
 
 /** Pessoas do suporte (atualiza pela caixa de entrada); `warning` explica se a caixa não respondeu. */
 export async function supportPeople(): Promise<{ people: SupportPerson[]; warning: string | null }> {
-  const m = load();
-  const warning = await pullInbox(m).catch((e: unknown) => (e instanceof Error ? e.message : String(e)));
+  // As leituras (caixa e planos, por SSH) levam segundos: o salvo é relido depois delas e só recebe o que mudou, senão
+  // uma pessoa gravada nesse meio tempo (ex.: usuário da aba Usuários) seria apagada pela cópia velha.
+  const pull = await pullInbox().catch((e: unknown) => ({ lidos: [], warning: e instanceof Error ? e.message : String(e) }));
+  const warning = pull.warning;
+  const ligados = new Map<string, string>();
+  { const antes = load(); juntarCaixa(antes, pull.lidos); for (const [id, s] of antes) if (s.code.state === "on") ligados.set(id, supportAlias(s.code)); }
   // Atualiza o plano em cache de cada pessoa ligada (melhor esforço, para o selo "PRO" do seletor refletir a conta).
-  await Promise.all([...m.values()].filter((s) => s.code.state === "on").map(async (s) => {
-    const plan = await readPlan(supportAlias(s.code));
-    if (plan !== null && s.plan !== plan) s.plan = plan;
-  }));
+  const planos = new Map<string, PlanName>();
+  await Promise.all([...ligados].map(async ([id, alias]) => { const plan = await readPlan(alias); if (plan !== null) planos.set(id, plan); }));
+  const m = load();
+  juntarCaixa(m, pull.lidos);
+  for (const [id, plan] of planos) { const s = m.get(id); if (s !== undefined) s.plan = plan; }
   save(m);
   writeSshFiles(m);
   // Contas adotadas que ainda não ficaram prontas retomam sozinhas, uma vez por sessão (sem adicionar de novo).
@@ -469,13 +479,15 @@ async function supportOff(host: string, off: SupportCode, acao: Acao, alvo = "")
 const lastLine = (r: { stdout: string; stderr: string }): string => (r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou";
 
 async function turnSupportOff(host: string): Promise<{ ok: boolean; detail: string }> {
-  const m = load();
-  const entry = [...m.values()].find((s) => supportAlias(s.code) === host);
+  const entry = [...load().values()].find((s) => supportAlias(s.code) === host);
   if (entry === undefined) return { ok: false, detail: "pessoa desconhecida" };
   const off: SupportCode = { ...entry.code, state: "off", at: new Date().toISOString() };
   const r = await supportOff(host, off, "suporte.desligar-pelo-admin");
   if (r.code !== 0) return { ok: false, detail: lastLine(r) };
-  entry.code = off; save(m); writeSshFiles(m);
+  // Relido depois do SSH: muda só esta pessoa, sem desfazer o que outro fluxo gravou enquanto isso.
+  const m = load();
+  const atual = m.get(machineId(entry.code));
+  if (atual !== undefined) { atual.code = off; save(m); writeSshFiles(m); }
   log(`[suporte] ${host}: suporte desligado pelo admin`);
   return { ok: true, detail: "o acesso a esta máquina acabou; a janela pode ser fechada" };
 }
@@ -509,18 +521,19 @@ export async function removePerson(alias: string, force: boolean): Promise<{ peo
   } else {
     detail = "o suporte já estava desligado; a máquina só saiu da lista";
   }
-  await esquecer(m, id);
+  await esquecer(id);
   log(`[suporte] ${alias}: excluída pelo admin (${detail})`);
   return { people: knownPeople(), cleared, detail };
 }
 
 /** Tira a pessoa da lista sem falar com a máquina dela: sai da caixa de entrada (senão a próxima leitura a traz de volta) e dos arquivos SSH. */
-async function esquecer(m: Map<string, Stored>, id: string): Promise<void> {
-  const entry = m.get(id);
+async function esquecer(id: string): Promise<void> {
+  const entry = load().get(id);
   if (entry === undefined) return;
   const inbox = adminConfig().inbox.alias;
   if (inbox !== "") await runSsh(inbox, `rm -f "$HOME/suporte-inbox/${id}.code" "$HOME/suporte-inbox/${legacyMachineId(entry.code.hostKey)}.code"\n`, 20_000).catch(() => null);
-  m.delete(id); save(m); writeSshFiles(m);
+  // Relido depois do SSH: grava só a saída desta pessoa, sem desfazer o que outro fluxo gravou enquanto isso.
+  const m = load(); m.delete(id); save(m); writeSshFiles(m);
 }
 
 /** O código da máquina-raiz (a da janela de "Usuários") pelo alias de suporte dela. */
@@ -538,13 +551,14 @@ const idDoUsuario = (raiz: SupportCode, nome: string): string => machineId({ ...
  */
 export async function adicionarUsuario(rootAlias: string, meuBotAlias: string, nome: string): Promise<{ alias: string; novo: boolean }> {
   const raiz = raizDe(rootAlias);
-  const m = load();
-  const conhecido = m.get(idDoUsuario(raiz.code, nome));
+  const conhecido = load().get(idDoUsuario(raiz.code, nome));
   if (conhecido !== undefined) return { alias: supportAlias(conhecido.code), novo: false };
   const code = await adoptSshHost(meuBotAlias);
   if (code.user !== nome || code.hostKey !== raiz.code.hostKey) throw new Error(`${meuBotAlias} não leva ao usuário ${nome} desta máquina`);
-  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", usuarioDe: raiz.id };
-  m.set(machineId(code), s); save(m); writeSshFiles(m);
+  // Relido depois do SSH (segundos): grava só esta pessoa, sem desfazer o que outro fluxo gravou enquanto isso.
+  const m = load();
+  m.set(machineId(code), { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", usuarioDe: raiz.id });
+  save(m); writeSshFiles(m);
   const r = await runSsh(supportAlias(code), "true\n", 20_000);
   if (r.code !== 0) throw new Error(`entrou na lista, mas a chave do admin não entrou: ${lastLine(r)}`);
   log(`[usuarios] ${rootAlias}: ${nome} entrou no seletor do admin como ${supportAlias(code)}`);
@@ -554,10 +568,9 @@ export async function adicionarUsuario(rootAlias: string, meuBotAlias: string, n
 /** O usuário apagado sai do seletor do admin (pela identidade: chave do servidor + usuário + porta), sem SSH na conta que não existe mais. */
 export async function esquecerUsuario(rootAlias: string, nome: string): Promise<boolean> {
   const raiz = raizDe(rootAlias);
-  const m = load();
   const id = idDoUsuario(raiz.code, nome);
-  if (!m.has(id)) return false;
-  await esquecer(m, id);
+  if (!load().has(id)) return false;
+  await esquecer(id);
   log(`[usuarios] ${rootAlias}: ${nome} saiu do seletor do admin`);
   return true;
 }

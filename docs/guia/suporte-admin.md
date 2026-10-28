@@ -644,6 +644,22 @@ lê `licenca.json` + `maquinas.json` por SSH (`readLicenseViewSsh`, que era o `r
 `admin/support-admin.ts` para cá; o admin importa daqui). `license:get`, `browser:open` e os gates de
 `acesso.ts` (Pro, CRM próprio, financeiro) usam `lerLicenca`.
 
+## Aba "Usuários" da máquina (27-28 out)
+
+Linha "Usuários" na lateral, abaixo de Auditoria, só quando o admin entra na máquina como root
+(`src/renderer/admin/usuarios-page.ts`, `src/main/admin/usuarios-admin.ts`, puro em `usuarios-core.ts`). Lista os
+usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
+- **Cria** usuários comuns (sem sudo, `useradd -m`, a chave deste Mac no authorized_keys). Nasce com os tetos padrão
+  `RECURSOS_PADRAO` (1 GB de RAM, 100% de um núcleo): um agente travado não derruba a máquina.
+- **Disco em %:** limite por cota de usuário no disco principal, em % do tamanho dele (uma fatia que se redistribui).
+  A primeira vez liga a cota (com backup do fstab). Baixar abaixo do que o usuário já ocupa é recusado; a aba mostra
+  as maiores pastas dele para o admin escolher o que apagar.
+- **Tetos de RAM e CPU:** systemd, na fatia `user-<uid>.slice` (drop-in em `user-<uid>.slice.d`); apagar o usuário
+  limpa o drop-in.
+- **Swap:** liga 8 GB quando a máquina não tem nenhuma.
+- **Apelido:** nome de exibição (GECOS); login e pasta não mudam.
+- **Apagar:** usuário e pasta; nunca quem tem sudo, os do meu-bot (`PROTEGIDOS`) nem os do sistema (`RESERVADOS`).
+
 ## Usuários de login entram sozinhos nos seletores (28 out)
 
 Na aba "Usuários" (máquina em que o admin entra como root), criar um usuário já o põe nos dois seletores, e apagar o
@@ -664,3 +680,7 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
 - **O seletor vê na hora:** o do admin é atualizado depois de cada entrada/saída (`refreshPickerIfOpen`); o do meu-bot
   (outro processo) relê a lista ao ganhar foco, e só reenvia (e sonda de novo) se ela mudou (`lastHostsKey`), mantendo
   a máquina selecionada (`PickerInit.manterSelecao`).
+- **Gravações no `pessoas.json` releem depois do SSH (28 out):** o `supportPeople` (ao abrir o seletor) lia o arquivo,
+  passava segundos lendo a caixa e os planos por SSH e gravava a cópia velha: o `box-1`, que a sincronização gravou
+  nesse meio tempo, sumiu. Agora a caixa é lida para uma lista (`pullInbox`) e juntada (`juntarCaixa`) ao arquivo
+  relido no fim; `adicionarUsuario`, `esquecer` e `turnSupportOff` também releem depois do SSH e mudam só a pessoa deles.
