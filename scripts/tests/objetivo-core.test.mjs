@@ -70,3 +70,11 @@ test("skills que o app semeia não aparecem como aprendidas; a lista bate com ba
   const out = parseMachineSkills(["L\tcloudflare-token\tcria token", "L\tstreak-crm-navegador\tstreak", "L\tmeu-site-navegador\taprendida", "K\tcloudflare-token\tworkspace"].join("\n"));
   assert.deepEqual(out.map((s) => `${s.name}:${s.learned === true}`), ["cloudflare-token:false", "meu-site-navegador:true"]);
 });
+
+test("objetivo: a skill vai para a pasta do agente escolhido (Hermes: ~/.hermes/skills; OpenClaw: workspace) e migra a cópia antiga", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/agente/objetivo-core.js");
+  assert.match(c.WORKSPACE_SH, /usa_hermes\(\)/);
+  assert.match(c.WORKSPACE_SH, /if usa_hermes; then W="\$HOME\/\.hermes"; else W=/);
+  assert.match(c.objectiveInfoSh(), /mv "\$HOME\/\.openclaw\/workspace\/skills\/objetivo-whatsapp"/);
+  assert.match(c.skillMarkdown({ id: "outro", label: "Outro", text: "x" }, "age", "m"), /"hermes": \{ "tags"/);
+});

@@ -150,7 +150,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
     linha.append(input, pin, b); form.append(linha);
-    form.append(el("p", "hint", "% do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
+    form.append(el("p", "hint", "Nasce comum (sem sudo), com RAM de 1 GB e CPU de 100% (um núcleo); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     panel.append(form);
 
@@ -183,7 +183,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const t = el("table", "auditoria-tabela");
-        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "RAM máx (MB) · CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
+        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "RAM máx (MB)", "CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
         for (const u of v.usuarios) {
           const tr = el("tr");
           const acesso = v.hostname !== null ? `ssh${v.chave !== null ? ` -i ${v.chave}` : ""} ${u.nome}@${v.hostname}${v.port !== null && v.port !== "22" ? ` -p ${v.port}` : ""}` : "";
@@ -222,7 +222,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             tdAp.append(ap);
           }
           // Tetos (systemd, na fatia do usuário): RAM em MB e CPU em % de um núcleo; vazio = sem teto.
-          const tdRec = el("td");
+          const tdRam = el("td"); const tdCpu = el("td");
           const rr = rascunhoRec.get(u.nome) ?? { ram: u.ramMaxMb === null ? "" : String(u.ramMaxMb), cpu: u.cpuMaxPct === null ? "" : String(u.cpuMaxPct) };
           const iram = el("input") as HTMLInputElement; iram.type = "number"; iram.min = "0"; iram.step = "128"; iram.placeholder = "—"; iram.style.width = "72px"; iram.value = rr.ram; iram.title = "RAM máxima em MB (vazio = sem teto); sugestão para um agente: 1024";
           const icpu = el("input") as HTMLInputElement; icpu.type = "number"; icpu.min = "0"; icpu.step = "25"; icpu.placeholder = "—"; icpu.style.width = "56px"; icpu.value = rr.cpu; icpu.title = "CPU em % de um núcleo (100 = um núcleo; vazio = sem teto)";
@@ -230,7 +230,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const sr = el("button", "btn btn-ghost btn-small", ocupado === `recursos:${u.nome}` ? "…" : "Salvar"); sr.type = "button"; sr.disabled = ocupado !== null || u.sudo;
           sr.title = u.sudo ? "quem tem sudo não leva teto por aqui" : "grava os tetos de RAM e CPU";
           sr.addEventListener("click", () => { void salvarRecursos(u); });
-          tdRec.append(iram, " ", icpu, " ", sr);
+          tdRam.append(iram); tdCpu.append(icpu, " ", sr);
           // Usuário: o apelido em destaque e o login embaixo; ✎ edita o apelido (o login e a pasta não mudam).
           const tdNome = el("td");
           if (editandoApelido === u.nome) {
@@ -247,7 +247,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             ed.addEventListener("click", () => { editandoApelido = u.nome; apelidoTxt = u.apelido; render(); });
             tdNome.append(ed);
           }
-          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRec, el("td", "", usado), el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, el("td", "", usado), el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
           t.append(tr);
         }
         lista.append(t);

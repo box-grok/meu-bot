@@ -95,7 +95,11 @@ id "$N" >/dev/null 2>&1 || { echo "ERRO=não existe o usuário $N"; exit 0; }
 case " $(id -nG "$N") " in *" sudo "*|*" wheel "*|*" admin "*) echo "ERRO=$N tem sudo: tire o sudo antes de apagar"; exit 0 ;; esac
 pkill -KILL -u "$N" >/dev/null 2>&1 || true
 setquota -u "$N" 0 0 0 0 / >/dev/null 2>&1 || true
-userdel -r "$N" >/dev/null 2>&1; id "$N" >/dev/null 2>&1 && echo "ERRO=não consegui apagar $N" || echo "APAGADO=$N"`;
+U=$(id -u "$N")
+userdel -r "$N" >/dev/null 2>&1; id "$N" >/dev/null 2>&1 && { echo "ERRO=não consegui apagar $N"; exit 0; }
+# Os tetos de RAM/CPU ficam no systemd por número de usuário: sem limpar, quem reaproveitar o número herdaria.
+rm -rf "/etc/systemd/system.control/user-$U.slice.d" "/etc/systemd/system/user-$U.slice.d" 2>/dev/null; systemctl daemon-reload >/dev/null 2>&1 || true
+echo "APAGADO=$N"`;
 
 /**
  * O que ocupa espaço na pasta do usuário (para o admin escolher o que apagar antes de baixar o limite): as maiores
@@ -205,3 +209,6 @@ Host ${o.alias}
 /** O ~/.ssh/config já tem um Host com esse nome (em qualquer posição da linha Host)? */
 export const configTemHost = (texto: string, alias: string): boolean =>
   texto.split("\n").some((l) => { const m = /^\s*Host\s+(.+)$/i.exec(l); return m !== null && m[1]!.trim().split(/\s+/).includes(alias); });
+
+/** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
+export const RECURSOS_PADRAO = { ramMb: 1024, cpuPct: 100 } as const;

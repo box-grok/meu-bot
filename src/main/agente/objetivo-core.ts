@@ -6,6 +6,7 @@
  */
 import type { FreedomLevel, MachineSkill, ObjectiveChoice, ObjectiveInfo } from "../../shared/ipc";
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
+import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
 
 /** Nome fixo da skill: salvar de novo substitui a anterior (uma por máquina). */
 export const OBJECTIVE_SKILL = "objetivo-whatsapp";
@@ -87,7 +88,8 @@ export function skillMarkdown(objective: ObjectiveChoice, level: FreedomLevel, m
     "---",
     `name: ${OBJECTIVE_SKILL}`,
     `description: "${desc}"`,
-    'metadata: { "openclaw": { "emoji": "🎯" } }',
+    // Um cabeçalho só para os dois agentes: o OpenClaw lê "openclaw" (o emoji), o Hermes lê "hermes" (as etiquetas).
+    'metadata: { "openclaw": { "emoji": "🎯" }, "hermes": { "tags": ["meu-bot", "WhatsApp", "objetivo"] } }',
     "---",
     "",
     "# O que você resolve pelo WhatsApp",
@@ -118,18 +120,28 @@ export function toolsBySenderFor(level: FreedomLevel, ownerNumber: string): stri
 }
 
 const b64 = (s: string): string => Buffer.from(s, "utf8").toString("base64");
-/** Workspace do agente: o de agents.defaults.workspace no openclaw.json, senão ~/.openclaw/workspace. */
-export const WORKSPACE_SH = `W=$(python3 -c 'import json,os,sys
+/**
+ * Pasta-base das skills do agente da máquina, em `$W` (as skills ficam em `$W/skills/<nome>/SKILL.md`). Hermes: a
+ * pasta dele (`~/.hermes`), que é onde ele lê as skills; antes ia sempre para o workspace do OpenClaw, que o Hermes
+ * nem olha (27 out). OpenClaw: o agents.defaults.workspace do openclaw.json, senão ~/.openclaw/workspace.
+ */
+export const WORKSPACE_SH = `${WA_ESCOLHA_SH}
+if usa_hermes; then W="$HOME/.hermes"; else W=$(python3 -c 'import json,os,sys
 try:
     d=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
     w=(d.get("agents") or {}).get("defaults",{}).get("workspace") or ""
 except Exception:
     w=""
-print(os.path.expanduser(w) if w else os.path.expanduser("~/.openclaw/workspace"))' 2>/dev/null); [ -n "$W" ] || W="$HOME/.openclaw/workspace"`;
+print(os.path.expanduser(w) if w else os.path.expanduser("~/.openclaw/workspace"))' 2>/dev/null); [ -n "$W" ] || W="$HOME/.openclaw/workspace"; fi`;
 
 /** Lê objetivo.json e as skills do workspace (uma linha K por SKILL.md, com nome e descrição do frontmatter). */
 export function objectiveInfoSh(): string {
   return `${WORKSPACE_SH}
+# Hermes com a skill ainda no lugar antigo (workspace do OpenClaw, que ele não lê): muda para a pasta dele.
+if usa_hermes && [ -f "$HOME/.openclaw/workspace/skills/${OBJECTIVE_SKILL}/SKILL.md" ] && [ ! -f "$W/skills/${OBJECTIVE_SKILL}/SKILL.md" ]; then
+  mkdir -p "$W/skills" && mv "$HOME/.openclaw/workspace/skills/${OBJECTIVE_SKILL}" "$W/skills/${OBJECTIVE_SKILL}"
+  rmdir "$HOME/.openclaw/workspace/skills" "$HOME/.openclaw/workspace" 2>/dev/null || true
+fi
 echo "O=$(cat "${OBJECTIVE_FILE}" 2>/dev/null | tr -d '\\n')"
 for f in "$W"/skills/*/SKILL.md; do
   [ -f "$f" ] || continue

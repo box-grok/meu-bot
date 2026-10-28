@@ -21,6 +21,14 @@ import { isValidHost } from "../app/settings";
 
 import { BACKEND_DIR_SH } from "./backend-dir-core";
 const REMOTE_STAGE = "~/.meu-bot-install";
+/**
+ * Cada instalador vai para a própria subpasta (`~/.meu-bot-install/<componente>/`), junto com os arquivos que ele lê
+ * da pasta dele: backend, audio, grok, navegador, crm, financeiro, guarda, statusline. Antes, tudo ia solto no mesmo
+ * nível (36 arquivos misturados).
+ */
+const stageDe = (componente: string): string => `${REMOTE_STAGE}/${componente}`;
+/** Recomeça a subpasta do componente e varre o jeito antigo (arquivos soltos e as pastas finance/ e skills/ do nível de cima). */
+const limparStage = (componente: string): string => `find ${REMOTE_STAGE} -maxdepth 1 -type f -delete 2>/dev/null; rm -rf ${REMOTE_STAGE}/finance ${REMOTE_STAGE}/skills ${stageDe(componente)}`;
 
 const sshBase = (host: string): string[] => [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=12", "-o", "ControlMaster=no", "-o", "ControlPath=none",
@@ -260,13 +268,13 @@ export async function installBackend(host: string, port: number, onLine?: (line:
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
-  say(`enviando ${BUNDLE_FILES.length} arquivos para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  say(`enviando ${BUNDLE_FILES.length} arquivos para ${host}:${stageDe("backend")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("backend")}; mkdir -p ${stageDe("backend")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...BUNDLE_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...BUNDLE_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("backend")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `PORT=${port} bash ${REMOTE_STAGE}/install.sh 2>&1`], 10 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `PORT=${port} bash ${stageDe("backend")}/install.sh 2>&1`], 10 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -329,12 +337,12 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   }
   const file = setup.kind === "in" ? "install-transcricao.sh" : "install-voz.sh";
   const arg = setup.kind === "out" ? ` ${setup.mode}${setup.voz !== undefined && isVozId(setup.voz) ? ` ${setup.voz}` : ""}` : setup.off === true ? " off" : "";
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("audio")}; mkdir -p ${stageDe("audio")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), file), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), file), `${host}:${stageDe("audio")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   // A transcrição baixa ~500 MB na primeira vez (faster-whisper + modelo): tempo de sobra.
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/${file}${arg} 2>&1`], 20 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("audio")}/${file}${arg} 2>&1`], 20 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, lines.at(-1) ?? `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -352,11 +360,11 @@ export async function prepareGrokOauth(host: string, onLine?: (line: string) => 
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   if (host === LOCAL_HOST) return { ok: false, log: ["o Grok por OAuth vale para máquinas por SSH"] };
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("grok")}; mkdir -p ${stageDe("grok")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), "install-grok-oauth.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(backendBundleDir(), "install-grok-oauth.sh"), `${host}:${stageDe("grok")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-grok-oauth.sh 2>&1`], 10 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("grok")}/install-grok-oauth.sh 2>&1`], 10 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, lines.at(-1) ?? `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -396,13 +404,13 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
-  say(`enviando o Navegador do agente para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  say(`enviando o Navegador do agente para ${host}:${stageDe("navegador")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("navegador")}; mkdir -p ${stageDe("navegador")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...NAVEGADOR_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...NAVEGADOR_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("navegador")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-navegador-mcp.sh 2>&1`], 2 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("navegador")}/install-navegador-mcp.sh 2>&1`], 2 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -412,15 +420,15 @@ export async function installCrm(host: string, onLine?: (line: string) => void):
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
-  say(`enviando o CRM para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/crm`], 20_000);
+  say(`enviando o CRM para ${host}:${stageDe("crm")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("crm")}; mkdir -p ${stageDe("crm")}/crm`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("crm")}/`], 60_000);
   if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
-  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_PLUGIN_FILES.map((f) => path.join(dir, "crm", f)), `${host}:${REMOTE_STAGE}/crm/`], 60_000);
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...CRM_PLUGIN_FILES.map((f) => path.join(dir, "crm", f)), `${host}:${stageDe("crm")}/crm/`], 60_000);
   if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-crm.sh 2>&1`], 4 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("crm")}/install-crm.sh 2>&1`], 4 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -433,21 +441,21 @@ export async function installFinance(host: string, onLine?: (line: string) => vo
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
-  say(`enviando o financeiro para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/finance`], 20_000);
+  say(`enviando o financeiro para ${host}:${stageDe("financeiro")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("financeiro")}; mkdir -p ${stageDe("financeiro")}/finance`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("financeiro")}/`], 60_000);
   if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
-  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_PLUGIN_FILES.map((f) => path.join(dir, "finance", f)), `${host}:${REMOTE_STAGE}/finance/`], 60_000);
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...FINANCE_PLUGIN_FILES.map((f) => path.join(dir, "finance", f)), `${host}:${stageDe("financeiro")}/finance/`], 60_000);
   if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-finance.sh 2>&1`], 4 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("financeiro")}/install-finance.sh 2>&1`], 4 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
 export async function uninstallCrm(host: string): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: true, log: ["nada a desfazer neste Mac"] };
-  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-crm.sh 2>&1 || bash "$HOME/.local/share/meu-bot/crm/../uninstall-crm.sh" 2>&1 || { export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; openclaw plugins uninstall meu-bot-crm >/dev/null 2>&1; rm -rf "$HOME/.local/share/meu-bot/crm"; echo removido; }`], 2 * 60_000);
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("crm")}/uninstall-crm.sh 2>&1 || bash ${REMOTE_STAGE}/uninstall-crm.sh 2>&1 || bash "$HOME/.local/share/meu-bot/crm/../uninstall-crm.sh" 2>&1 || { export PATH="$HOME/.openclaw/bin:$HOME/.local/bin:/opt/node/bin:$PATH"; openclaw plugins uninstall meu-bot-crm >/dev/null 2>&1; rm -rf "$HOME/.local/share/meu-bot/crm"; echo removido; }`], 2 * 60_000);
   return { ok: r.code === 0, log: r.stdout.trim().split("\n").filter(Boolean) };
 }
 
@@ -468,21 +476,21 @@ export async function installGuarda(host: string, onLine?: (line: string) => voi
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
-  say(`enviando a guarda para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/guarda`], 20_000);
+  say(`enviando a guarda para ${host}:${stageDe("guarda")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("guarda")}; mkdir -p ${stageDe("guarda")}/guarda`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("guarda")}/`], 60_000);
   if (scp1.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp1.stderr)}`] };
-  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_PLUGIN_FILES.map((f) => path.join(dir, "guarda", f)), `${host}:${REMOTE_STAGE}/guarda/`], 60_000);
+  const scp2 = await run("scp", ["-q", ...sshBase(host), "--", ...GUARDA_PLUGIN_FILES.map((f) => path.join(dir, "guarda", f)), `${host}:${stageDe("guarda")}/guarda/`], 60_000);
   if (scp2.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
   // Skill whatsapp-grupos vai junto (o install-guarda.sh a põe em ~/.claude/skills).
   const sk = path.join(dir, "skills", "whatsapp-grupos");
-  const mk2 = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}/skills/whatsapp-grupos/scripts`], 20_000);
-  const scp3 = mk2.code !== 0 ? mk2 : await run("scp", ["-q", ...sshBase(host), "--", path.join(sk, "SKILL.md"), `${host}:${REMOTE_STAGE}/skills/whatsapp-grupos/`], 60_000);
-  const scp4 = scp3.code !== 0 ? scp3 : await run("scp", ["-q", ...sshBase(host), "--", ...WA_GRUPOS_SCRIPTS.map((f) => path.join(sk, "scripts", f)), `${host}:${REMOTE_STAGE}/skills/whatsapp-grupos/scripts/`], 60_000);
+  const mk2 = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${stageDe("guarda")}/skills/whatsapp-grupos/scripts`], 20_000);
+  const scp3 = mk2.code !== 0 ? mk2 : await run("scp", ["-q", ...sshBase(host), "--", path.join(sk, "SKILL.md"), `${host}:${stageDe("guarda")}/skills/whatsapp-grupos/`], 60_000);
+  const scp4 = scp3.code !== 0 ? scp3 : await run("scp", ["-q", ...sshBase(host), "--", ...WA_GRUPOS_SCRIPTS.map((f) => path.join(sk, "scripts", f)), `${host}:${stageDe("guarda")}/skills/whatsapp-grupos/scripts/`], 60_000);
   if (scp4.code !== 0) say(`aviso: a skill whatsapp-grupos não foi enviada (${lastLine(scp4.stderr)}); a guarda segue`);
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-guarda.sh 2>&1`], 4 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("guarda")}/install-guarda.sh 2>&1`], 4 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }
@@ -490,9 +498,12 @@ export async function installGuarda(host: string, onLine?: (line: string) => voi
 export async function uninstallGuarda(host: string): Promise<InstallBackendResult> {
   if (host === LOCAL_HOST) return { ok: true, log: ["nada a desfazer neste Mac"] };
   const dir = backendBundleDir();
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-guarda.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  // A subpasta pode não existir numa máquina que ainda tem o jeito antigo (tudo solto).
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${stageDe("guarda")}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [`falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-guarda.sh"), `${host}:${stageDe("guarda")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [`scp falhou: ${lastLine(scp.stderr)}`] };
-  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-guarda.sh 2>&1`], 2 * 60_000);
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("guarda")}/uninstall-guarda.sh 2>&1`], 2 * 60_000);
   if (r.code !== 0) return { ok: false, log: [lastLine(r.stdout) || lastLine(r.stderr) || `código ${r.code ?? "timeout"}`] };
   return { ok: true, log: r.stdout.trim().split("\n") };
 }
@@ -504,9 +515,12 @@ export async function uninstallStatusLine(host: string): Promise<InstallBackendR
     const r = await run("bash", [path.join(dir, "uninstall-statusline.sh")], 60_000);
     return r.code === 0 ? { ok: true, log: r.stdout.trim().split("\n") } : { ok: false, log: [lastLine(r.stderr) || `saiu com código ${r.code ?? "timeout"}`] };
   }
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-statusline.sh"), `${host}:${REMOTE_STAGE}/`], 60_000);
+  // A subpasta pode não existir numa máquina que ainda tem o jeito antigo (tudo solto).
+  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${stageDe("statusline")}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [`falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", path.join(dir, "uninstall-statusline.sh"), `${host}:${stageDe("statusline")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [`scp falhou: ${lastLine(scp.stderr)}`] };
-  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/uninstall-statusline.sh 2>&1`], 60_000);
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("statusline")}/uninstall-statusline.sh 2>&1`], 60_000);
   return r.code === 0 ? { ok: true, log: r.stdout.trim().split("\n") } : { ok: false, log: [lastLine(r.stdout) || `saiu com código ${r.code ?? "timeout"}`] };
 }
 
@@ -521,13 +535,13 @@ export async function installStatusLine(host: string, onLine?: (line: string) =>
     if (r.code !== 0) return { ok: false, log: [...lines, lastLine(r.stderr) || `instalador saiu com código ${r.code ?? "timeout"}`] };
     return { ok: true, log: lines };
   }
-  say(`enviando ${STATUSLINE_FILES.length} arquivos para ${host}:${REMOTE_STAGE}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `mkdir -p ${REMOTE_STAGE}`], 20_000);
+  say(`enviando ${STATUSLINE_FILES.length} arquivos para ${host}:${stageDe("statusline")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("statusline")}; mkdir -p ${stageDe("statusline")}`], 20_000);
   if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
-  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...STATUSLINE_FILES.map((f) => path.join(dir, f)), `${host}:${REMOTE_STAGE}/`], 60_000);
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...STATUSLINE_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("statusline")}/`], 60_000);
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   say("rodando o instalador…");
-  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${REMOTE_STAGE}/install-statusline.sh 2>&1`], 2 * 60_000, say);
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("statusline")}/install-statusline.sh 2>&1`], 2 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }

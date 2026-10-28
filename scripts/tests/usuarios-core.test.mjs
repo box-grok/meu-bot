@@ -33,7 +33,7 @@ test("usuários: apagar só dentro da pasta; nunca a pasta, nem com ..; protegid
   assert.ok(!caminhoDentro("/root", "/root/x"), "só pastas em /home");
   const m = lerMaiores("HOME=/home/ana\nI\t900\td\t/home/ana/videos\nI\t5\tf\t/etc/passwd\nI\tx\tf\t/home/ana/y\n");
   assert.deepEqual(m.itens.map((i) => i.caminho), ["/home/ana/videos"]);
-  assert.match(apagarSh("ana"), /tem sudo/); assert.ok(PROTEGIDOS.has("openclaw"));
+  assert.match(apagarSh("ana"), /tem sudo/); assert.match(apagarSh("ana"), /user-\$U\.slice\.d/); assert.ok(PROTEGIDOS.has("openclaw"));
 });
 
 test("usuários: RAM da máquina, do root e de cada um", () => {
@@ -81,4 +81,10 @@ test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica u
   assert.match(b, /^Host meu-root-box-1$/m); assert.match(b, /User box-1/); assert.match(b, /IdentitiesOnly yes/);
   assert.ok(configTemHost("Host a b meu-root-box-1\n  User x\n", "meu-root-box-1"));
   assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
+});
+
+test("usuários: todo usuário novo nasce com 1 GB de RAM e 100% de CPU", async () => {
+  const { RECURSOS_PADRAO, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 1024, cpuPct: 100 });
+  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=1024M CPUQuota=100%/);
 });

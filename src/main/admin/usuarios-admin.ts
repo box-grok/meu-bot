@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { aliasDoUsuario, blocoSshUsuario, configTemHost, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, aliasDoUsuario, blocoSshUsuario, configTemHost, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -110,6 +110,9 @@ echo "CRIADO=$N"
   if (!/^CRIADO=/m.test(r.stdout)) throw new Error(`não consegui criar o usuário: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
   log(`[usuarios] ${host}: criou o usuário ${nome}`);
   void registrar(host, "usuarios.criar", nome);
+  // Nasce com os tetos padrão de RAM e CPU (falhar aqui não desfaz o usuário: avisa no log e segue).
+  const rec = await runSsh(host, `${recursosSh(nome, RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct)}\n`, 30_000).catch(() => null);
+  if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
   if (typeof pct === "number" && pct > 0) return definirLimite(host, nome, pct);
   return usuariosDaMaquina(host);
