@@ -427,6 +427,8 @@ export interface MeuBotAdminApi {
   adminSwapLigar(): Promise<UsuariosVisao>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */
   adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
+  /** Liga o linger do usuário: o agente dele segue rodando sem ele conectado e volta ao reiniciar. */
+  adminUsuarioManterLigado(nome: string): Promise<UsuariosVisao>;
   /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
   /** Põe o usuário nos dois seletores (meu-bot e admin), sem preparar a conta; `aviso` = o do admin falhou. */
   adminUsuarioNosSeletores(nome: string): Promise<{ alias: string; novo: boolean; aviso: string | null }>;

@@ -656,6 +656,11 @@ usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
   as maiores pastas dele para o admin escolher o que apagar.
 - **Tetos de RAM e CPU:** systemd, na fatia `user-<uid>.slice` (drop-in em `user-<uid>.slice.d`); apagar o usuário
   limpa o drop-in.
+- **Sempre ligado (linger):** o Hermes de cada usuário roda com `systemctl --user`; sem linger ele morre quando a
+  última sessão SSH do usuário fecha e não volta ao reiniciar. Criar já liga (`lingerSh`), apagar desliga antes do
+  `userdel`; quem estiver sem mostra o botão "Manter ligado" (`admin:usuario-ligado`, auditado `usuarios.ligado`).
+- **Aviso de disco:** "Usado" fica amarelo a partir de 90% do limite e vermelho em 100% (`nivelUso`), com uma linha
+  contando quantos estão apertados: no limite o agente para de gravar conversas e mídia.
 - **Swap:** liga 8 GB quando a máquina não tem nenhuma.
 - **Apelido:** nome de exibição (GECOS); login e pasta não mudam.
 - **Apagar:** usuário e pasta; nunca quem tem sudo, os do meu-bot (`PROTEGIDOS`) nem os do sistema (`RESERVADOS`).

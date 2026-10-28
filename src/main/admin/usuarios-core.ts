@@ -15,7 +15,8 @@ export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
  * Lista: `DISCO=<kb>` (tamanho de /), `COTA=0|1`, `RAM=<total kb> <em uso kb>`, `RAMROOT=<kb>` (o que é do root) e uma linha
  * `U<TAB>nome<TAB>uid<TAB>home<TAB>shell<TAB>sudo<TAB>meubot<TAB>chave<TAB>usadoKb<TAB>limiteKb` por usuário de login
  * (usado e limite vazios sem cota; limite 0 = sem limite), a RAM dos processos dele (KB) e os tetos do systemd na
- * fatia dele (`user-<uid>.slice`): RAM máxima (bytes ou "infinity") e CPU por segundo ("1s" = 100%, "infinity").
+ * fatia dele (`user-<uid>.slice`): RAM máxima (bytes ou "infinity") e CPU por segundo ("1s" = 100%, "infinity"),
+ * o apelido e se tem linger (1 = os serviços dele seguem rodando sem ele conectado e voltam ao reiniciar).
  */
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 echo ROOT
@@ -28,11 +29,12 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); pr
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
   [ -s "$h/.ssh/authorized_keys" ] && ch=1 || ch=0
+  [ -e "/var/lib/systemd/linger/$n" ] && lg=1 || lg=0
   us=""; li=""
   if [ "$cota" = 1 ]; then q=$(quota -wu "$n" 2>/dev/null | awk 'NR>2 && $1 ~ /^\\// {gsub(/\\*/,"",$2); print $2" "$4; exit}'); us=\${q%% *}; li=\${q##* }; [ -n "$q" ] || { us=0; li=0; }; fi
   ram=$(ps -u "$n" -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')
   mm=$(systemctl show "user-$u.slice" -p MemoryMax --value 2>/dev/null); cq=$(systemctl show "user-$u.slice" -p CPUQuotaPerSecUSec --value 2>/dev/null)
-  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap"
+  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg"
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
@@ -48,7 +50,7 @@ export function lerUsuarios(out: string): { root: boolean; discoKb: number | nul
     const c = l.split("\t");
     if (c[0] !== "U" || c.length < 8 || !NOME_USUARIO_RE.test(c[1] ?? "")) continue;
     const limite = kb(c[9]);
-    usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim() });
+    usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0" });
   }
   return { root, discoKb, cota, ram, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
 }
@@ -93,6 +95,7 @@ export const apagarSh = (nome: string): string => `N='${nome}'
 id "$N" >/dev/null 2>&1 || { echo "ERRO=não existe o usuário $N"; exit 0; }
 [ "$(id -u "$N")" -ge 1000 ] || { echo "ERRO=$N é um usuário do sistema"; exit 0; }
 case " $(id -nG "$N") " in *" sudo "*|*" wheel "*|*" admin "*) echo "ERRO=$N tem sudo: tire o sudo antes de apagar"; exit 0 ;; esac
+loginctl disable-linger "$N" >/dev/null 2>&1 || true
 pkill -KILL -u "$N" >/dev/null 2>&1 || true
 setquota -u "$N" 0 0 0 0 / >/dev/null 2>&1 || true
 U=$(id -u "$N")
@@ -176,6 +179,20 @@ findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1 || { cp "$B" /etc/fstab; 
 printf 'vm.swappiness=10\\n' > /etc/sysctl.d/90-meu-bot-swap.conf; sysctl -q -w vm.swappiness=10 >/dev/null 2>&1 || true
 systemctl daemon-reload >/dev/null 2>&1 || true
 echo SWAP=ok`;
+}
+
+/**
+ * Linger: os serviços de usuário dele (o Hermes do WhatsApp roda com `systemctl --user`) seguem rodando quando ele
+ * sai da máquina e voltam sozinhos ao reiniciar. Sem isso o agente morre junto com a última sessão SSH dele.
+ * Saída `LINGER=ok` ou `ERRO=`.
+ */
+export const lingerSh = (nome: string): string => `id '${nome}' >/dev/null 2>&1 || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
+loginctl enable-linger '${nome}' >/dev/null 2>&1; [ -e '/var/lib/systemd/linger/${nome}' ] && echo LINGER=ok || echo "ERRO=o systemd não deixou ${nome} sempre ligado"`;
+
+/** Quanto do limite de disco o usuário já usou: `perto` a partir de 90%, `cheio` em 100% (aí o agente falha ao gravar). */
+export function nivelUso(usadoKb: number | null, limiteKb: number | null): "ok" | "perto" | "cheio" {
+  if (usadoKb === null || limiteKb === null || limiteKb <= 0) return "ok";
+  return usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.9 ? "perto" : "ok";
 }
 
 /** Apelido aceito: até 40 caracteres, sem ":", "," nem quebra (são separadores do /etc/passwd). Vazio = sem apelido. */

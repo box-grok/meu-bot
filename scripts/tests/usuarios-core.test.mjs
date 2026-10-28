@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { lerUsuarios, NOME_USUARIO_RE, RESERVADOS, LISTAR_SH, limiteKbDe, caminhoDentro, lerMaiores, apagarSh, PROTEGIDOS } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+const { lerUsuarios, NOME_USUARIO_RE, RESERVADOS, LISTAR_SH, limiteKbDe, caminhoDentro, lerMaiores, apagarSh, PROTEGIDOS, lingerSh, nivelUso } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
 
 test("usuários: lê a saída do script (só root vê), ordena por uid e ignora lixo", () => {
   const out = "ROOT\nDISCO=1000000\nCOTA=1\nU\tbox\t1002\t/home/box\t/bin/bash\t1\t1\t1\t500\t0\nU\tdebian\t1000\t/home/debian\t/bin/bash\t0\t0\t0\t20\t100000\nlixo\nU\tNome Ruim\t1005\t/x\t/bin/bash\t0\t0\t0\t\t\n";
@@ -9,6 +9,20 @@ test("usuários: lê a saída do script (só root vê), ordena por uid e ignora 
   assert.equal(r.root, true);
   assert.deepEqual(r.usuarios.map((u) => [u.nome, u.sudo, u.meuBot, u.chave]), [["debian", false, false, false], ["box", true, true, true]]);
   assert.equal(lerUsuarios("NAOROOT\n").root, false);
+});
+
+test("usuários: linger lido da última coluna (linha antiga sem ela = ligado), ligado ao criar e desligado ao apagar", () => {
+  const base = "ana\t1001\t/home/ana\t/bin/bash\t0\t0\t1\t\t\t0\tinfinity\tinfinity\t";
+  const r = lerUsuarios(`ROOT\nU\t${base}\t0\nU\tbia${base.slice(3)}\t1\nU\tcid${base.slice(3)}\n`);
+  assert.deepEqual(r.usuarios.map((u) => [u.nome, u.ligado]), [["ana", false], ["bia", true], ["cid", true]]);
+  assert.match(LISTAR_SH, /\/var\/lib\/systemd\/linger\/\$n/);
+  assert.match(lingerSh("ana"), /loginctl enable-linger 'ana'/); assert.match(lingerSh("ana"), /LINGER=ok/);
+  assert.match(apagarSh("ana"), /loginctl disable-linger "\$N"[\s\S]*userdel/);
+});
+
+test("usuários: nível de uso do disco (90% perto, 100% cheio; sem limite = ok)", () => {
+  assert.equal(nivelUso(50, 100), "ok"); assert.equal(nivelUso(90, 100), "perto"); assert.equal(nivelUso(100, 100), "cheio"); assert.equal(nivelUso(120, 100), "cheio");
+  assert.equal(nivelUso(500, null), "ok"); assert.equal(nivelUso(null, 100), "ok"); assert.equal(nivelUso(5, 0), "ok");
 });
 
 test("usuários: nome aceito e reservados; o script não lista contas sem login", () => {
@@ -91,7 +105,7 @@ test("usuários: todo usuário novo nasce com 2 GB de RAM e 200% de CPU (cobre o
 
 test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {
   const { candidatosAoSeletor, semChaveDesteMac } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
-  const u = (nome, o = {}) => ({ nome, uid: 1001, home: `/home/${nome}`, shell: "/bin/bash", sudo: false, meuBot: false, chave: true, usadoKb: null, limiteKb: null, ramKb: 0, ramMaxMb: null, cpuMaxPct: null, apelido: "", ...o });
+  const u = (nome, o = {}) => ({ nome, uid: 1001, home: `/home/${nome}`, shell: "/bin/bash", sudo: false, meuBot: false, chave: true, usadoKb: null, limiteKb: null, ramKb: 0, ramMaxMb: null, cpuMaxPct: null, apelido: "", ligado: true, ...o });
   const lista = [u("ana"), u("box", { sudo: true }), u("openclaw", { meuBot: true }), u("hermes"), u("bia", { chave: false }), u("admin")];
   assert.deepEqual(candidatosAoSeletor(lista).map((x) => x.nome), ["ana"]);
   assert.deepEqual(semChaveDesteMac(lista), ["bia"]);

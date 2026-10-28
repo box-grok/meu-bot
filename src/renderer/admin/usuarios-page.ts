@@ -16,13 +16,16 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 const tam = (kb: number): string => (kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(1).replace(".", ",")} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
 /** % do disco que o limite representa (arredondado). */
 const pctDe = (limiteKb: number | null, discoKb: number | null): number | null => (limiteKb === null || discoKb === null || discoKb === 0 ? null : Math.round((limiteKb * 100) / discoKb));
+/** Quanto do limite de disco já foi usado: perto a partir de 90%, cheio em 100% (espelha nivelUso de usuarios-core.ts). */
+const nivelUso = (usadoKb: number | null, limiteKb: number | null): "ok" | "perto" | "cheio" =>
+  usadoKb === null || limiteKb === null || limiteKb <= 0 ? "ok" : usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.9 ? "perto" : "ok";
 type Maiores = { home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] };
 
 export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } {
@@ -169,7 +172,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
     linha.append(input, pin, b); form.append(linha);
-    form.append(el("p", "hint", "Nasce comum (sem sudo), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
+    form.append(el("p", "hint", "Nasce comum (sem sudo), sempre ligado (o agente dele roda mesmo sem ele conectado), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (sincronia !== null) form.append(el("p", "hint", sincronia));
     panel.append(form);
@@ -185,7 +188,9 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     else {
       const v = visao;
       const distribuido = v.usuarios.reduce((s, u) => s + (pctDe(u.limiteKb, v.discoKb) ?? 0), 0);
+      const apertados = v.usuarios.filter((u) => nivelUso(u.usadoKb, u.limiteKb) !== "ok").length;
       if (v.discoKb !== null) lista.append(el("p", `hint ${distribuido > 100 ? "bad-hint" : ""}`, `Disco: ${tam(v.discoKb)} · distribuído: ${distribuido}% · livre: ${Math.max(0, 100 - distribuido)}%${distribuido > 100 ? " (passou de 100%: se todos encherem, o disco acaba antes dos limites)" : ""}${v.cota ? "" : " · cota de disco ainda desligada nesta máquina"}`));
+      if (apertados > 0) lista.append(el("p", "hint notice-warn", `${apertados === 1 ? "1 usuário está" : `${apertados} usuários estão`} perto do limite de disco: no limite, o agente dele para de gravar conversas e mídia. Use "Liberar espaço" ou aumente o %.`));
       // RAM: os agentes (OpenClaw, Hermes, Claude) ficam ligados e cada um usa centenas de MB; aqui se vê quem usa quanto.
       if (v.ram !== null) {
         const outros = v.usuarios.reduce((s, u) => s + u.ramKb, 0);
@@ -210,6 +215,9 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const pct = pctDe(u.limiteKb, v.discoKb);
           const usado = u.usadoKb === null ? "—" : tam(u.usadoKb);
           const limite = u.usadoKb === null ? "—" : u.limiteKb === null ? "sem limite" : tam(u.limiteKb);
+          const nu = nivelUso(u.usadoKb, u.limiteKb);
+          const tdUsado = el("td", nu === "cheio" ? "notice-error" : nu === "perto" ? "notice-warn" : "", usado);
+          if (nu !== "ok") tdUsado.title = nu === "cheio" ? "no limite: o agente dele não consegue mais gravar; use Liberar espaço ou aumente o %" : "perto do limite (90%+): use Liberar espaço ou aumente o %";
           const tdPct = el("td");
           const ip = el("input") as HTMLInputElement; ip.type = "number"; ip.min = "0"; ip.max = "100"; ip.step = "1"; ip.style.width = "64px";
           ip.value = rascunho.get(u.nome) ?? (pct === null ? "" : String(pct)); ip.placeholder = "—"; ip.disabled = ocupado !== null || u.sudo;
@@ -232,6 +240,13 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
                 .finally(() => { ocupado = null; render(); });
             });
             tdAp.append(ab, " ");
+          }
+          // Sem linger o agente dele (systemctl --user) morre quando ele sai da máquina e não volta ao reiniciar.
+          if (!u.ligado) {
+            const lg = el("button", "btn btn-ghost btn-small", ocupado === `ligado:${u.nome}` ? "…" : "Manter ligado"); lg.type = "button"; lg.disabled = ocupado !== null;
+            lg.title = "Hoje o agente dele para quando ele sai da máquina e não volta ao reiniciar. Liga o linger do systemd: os serviços dele seguem rodando sozinhos";
+            lg.addEventListener("click", () => { void rodar(`ligado:${u.nome}`, () => deps.api.adminUsuarioManterLigado(u.nome), `✓ ${u.nome} fica sempre ligado: o agente dele segue rodando sem ele conectado e volta ao reiniciar.`); });
+            tdAp.append(lg, " ");
           }
           if (!u.sudo && !PROTEGIDOS.has(u.nome)) {
             const ap = el("button", "btn btn-ghost btn-small", ocupado === `apagar:${u.nome}` ? "Apagando…" : armado === u.nome ? "Confirmar? apaga a pasta" : "Apagar"); ap.type = "button"; ap.disabled = ocupado !== null;
@@ -267,7 +282,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
             ed.addEventListener("click", () => { editandoApelido = u.nome; apelidoTxt = u.apelido; render(); });
             tdNome.append(ed);
           }
-          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, el("td", "", usado), el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, tdUsado, el("td", "", limite), tdPct, el("td", "", acesso), tdAp);
           t.append(tr);
         }
         lista.append(t);

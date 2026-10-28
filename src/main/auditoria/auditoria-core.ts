@@ -84,6 +84,7 @@ export const ACOES = {
   "usuarios.apagar": (a: string) => `apagou o usuário ${a} desta máquina`,
   "usuarios.seletor": (a: string) => `pôs o usuário ${a} nos seletores do meu-bot e do admin`,
   "usuarios.apelido": (a: string) => `mudou o apelido do usuário ${a}`,
+  "usuarios.ligado": (a: string) => `deixou o usuário ${a} sempre ligado (o agente dele roda sem ele conectado)`,
   "maquina.swap": (a: string) => `ligou a memória de reserva (swap) desta máquina${a ? ` (${a})` : ""}`,
   "usuarios.recursos": (a: string) => `mudou os tetos de RAM e CPU do usuário ${a}`,
   "usuarios.liberar": (a: string) => `apagou arquivos do usuário ${a} para liberar espaço`,

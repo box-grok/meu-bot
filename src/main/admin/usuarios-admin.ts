@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -114,6 +114,9 @@ echo "CRIADO=$N"
   if (!/^CRIADO=/m.test(r.stdout)) throw new Error(`não consegui criar o usuário: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
   log(`[usuarios] ${host}: criou o usuário ${nome}`);
   void registrar(host, "usuarios.criar", nome);
+  // Nasce sempre ligado (o agente dele não morre quando ele sai da máquina); falhar aqui também só avisa no log.
+  const lg = await runSsh(host, `${lingerSh(nome)}\n`, 30_000).catch(() => null);
+  if (lg === null || !/^LINGER=ok$/m.test(lg.stdout)) log(`[usuarios] ${host}: ${nome} criado sem linger`);
   // Nasce com os tetos padrão de RAM e CPU (falhar aqui não desfaz o usuário: avisa no log e segue).
   const rec = await runSsh(host, `${recursosSh(nome, RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct)}\n`, 30_000).catch(() => null);
   if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
@@ -177,6 +180,15 @@ export async function definirApelido(host: string, nome: unknown, apelido: unkno
   const r = await runSsh(host, `${apelidoSh(n, a)}\n`, 30_000);
   saida(r.stdout, /^APELIDO=ok$/m, "não consegui gravar o apelido");
   void registrar(host, "usuarios.apelido", n, a);
+  return usuariosDaMaquina(host);
+}
+
+/** Liga o linger: o agente do usuário segue rodando quando ele sai da máquina e volta sozinho ao reiniciar. */
+export async function manterLigado(host: string, nome: unknown): Promise<UsuariosVisao> {
+  const n = nomeValido(nome);
+  const r = await runSsh(host, `${lingerSh(n)}\n`, 30_000);
+  saida(r.stdout, /^LINGER=ok$/m, `não consegui deixar ${n} sempre ligado`);
+  void registrar(host, "usuarios.ligado", n);
   return usuariosDaMaquina(host);
 }
 

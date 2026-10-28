@@ -12,7 +12,7 @@ import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
-import { nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
+import { manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -40,6 +40,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:usuario-seletores", (event, payload: unknown) => nosSeletores(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:usuarios-sincronizar", (event) => sincronizarSeletores(adminHost(event)));
   handleAdmin("admin:usuario-apelido", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; apelido?: unknown }; return definirApelido(adminHost(event), p.nome, p.apelido); });
+  handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));
   handleAdmin("admin:usuario-recursos", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; ramMb?: unknown; cpuPct?: unknown }; return definirRecursos(adminHost(event), p.nome, p.ramMb, p.cpuPct); });
   handleAdmin("admin:usuario-maiores", (event, payload: unknown) => maioresDoUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
