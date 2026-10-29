@@ -143,3 +143,14 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
   assert.equal(ler("ROOT\n").hermes, null);
 });
+
+test("usuários: o box- é fixo na frente do nome digitado, sem repetir", async () => {
+  const { comPrefixo, PREFIXO_USUARIO, NOME_USUARIO_RE: re } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(comPrefixo("maria"), "box-maria");
+  assert.equal(comPrefixo("box-1"), "box-1", "quem já digitou o box- não ganha outro");
+  assert.equal(comPrefixo("1"), "box-1");
+  assert.ok(re.test(comPrefixo("maria")) && re.test(comPrefixo("1")), "o nome com prefixo é um usuário Linux válido");
+  const { readFileSync } = await import("node:fs");
+  const tela = readFileSync(new URL("../../src/renderer/admin/usuarios-page.ts", import.meta.url), "utf8");
+  assert.equal(/const PREFIXO = "([^"]+)";/.exec(tela)?.[1], PREFIXO_USUARIO, "a cópia da tela bate com a do main");
+});
