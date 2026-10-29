@@ -22,6 +22,9 @@ body {
   /* Linhas fixas por elemento: uma faixa escondida vira linha de altura zero, em vez de empurrar o 1fr para a
      faixa errada (com a barra recolhida e a update-bar visível, a update-bar ficava com o 1fr). */
   display: grid; grid-template-rows: auto auto auto auto 1fr auto auto; height: 100vh;
+  /* Uma coluna da largura da janela: sem isto ela crescia até o texto mais largo que não quebra (o título da barra
+     com um aviso comprido), e a página toda passava da janela, cortando o texto na direita. */
+  grid-template-columns: minmax(0, 1fr);
 }
 .topbar-mini { grid-row: 1; } .offline-bar { grid-row: 2; } .update-bar:not(.offline-bar) { grid-row: 3; } .topbar { grid-row: 4; }
 .body { grid-row: 5; } .ctx-line { grid-row: 6; } .composer { grid-row: 7; }
