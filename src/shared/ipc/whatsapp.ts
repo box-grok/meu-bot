@@ -104,7 +104,13 @@ export interface WaMarkPatch {
 export interface WaGroupMarkPatch { jid: string; deleted?: boolean; alias?: string; at?: string }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
-export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string; /** Grupos: quem mandou (nome ou +número). */ autor?: string }
+export interface WhatsappThreadMessage {
+  role: "contact" | "agent"; text: string; at: string;
+  /** Grupos: quem mandou (nome ou +número). */
+  autor?: string;
+  /** Chegou enquanto o contato estava pausado: o agente não a viu (whatsapp-pausados.jsonl do plugin meu-bot-pausa). */
+  durantePausa?: true;
+}
 /** Como o agente fica num grupo: desligado, "só quando mencionado" (requireMention) ou "sempre". */
 export type WhatsappGroupAgent = "desligado" | "mencao" | "sempre";
 export interface WhatsappGroup {

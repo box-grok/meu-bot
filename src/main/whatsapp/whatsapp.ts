@@ -24,6 +24,7 @@ import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from ".
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
+import { chatsComPausados, mensagensDaPausa, parsePausados, waPausadosSh } from "./whatsapp-pausados";
 import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo, type HermesWaEnv } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
@@ -765,6 +766,7 @@ if usa_hermes; then
   echo "list=$(${HERMES_LIST_PY} 2>/dev/null | tr -d '\n')"
   ${HERMES_POLICY_PY}
   ${HERMES_PAUSA_SH}
+  ${waPausadosSh()}
 else
   echo gateway=openclaw
   echo "self=$(${CREDS_ME})"
@@ -800,19 +802,26 @@ ${SEND_POLICY_READ_SH}
   const chats = hermes
     ? chatsFromHermes(list, self, names).map((c) => { const p = pausaVigente(parsed, c.number); return { ...c, paused: p !== null || hermesNaoResponde(env, self, c.number), pausaAte: p?.ate ?? null }; })
     : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
-  return applyWaMarks(chats, parsed);
+  // O que chegou durante a pausa (plugin meu-bot-pausa) entra antes das marcas: mensagem nova traz excluída de volta.
+  return applyWaMarks(hermes ? chatsComPausados(chats, parsePausados(jsonOr(kv.get("pausados"))), parsed) : chats, parsed);
 }
 
-/** Conversa de um contato numa máquina com Hermes: as mensagens das sessões dele, lidas do state.db. */
+/**
+ * Conversa de um contato numa máquina com Hermes: as mensagens das sessões dele (state.db) mais o que chegou enquanto
+ * ele estava pausado (whatsapp-pausados.jsonl, que o agente não viu), em ordem de hora.
+ */
 async function hermesThread(host: string, chat: WhatsappChat, limit: number): Promise<WhatsappThreadMessage[]> {
   const ids = Object.values(chat.sessionIds).filter((id) => HERMES_ID_RE.test(id));
-  if (ids.length === 0) return [];
   const n = Math.min(1000, Math.max(1, Math.trunc(limit)));
-  const r = await runSsh(host, `${HERMES_THREAD_PY} ${ids.map((id) => `'${id}'`).join(" ")} ${n}\n`, 90_000);
+  const thread = ids.length === 0 ? 'echo "thread=[]"' : `echo "thread=$(${HERMES_THREAD_PY} ${ids.map((id) => `'${id}'`).join(" ")} ${n} | tr -d '\\n')"`;
+  const r = await runSsh(host, `${thread}\n${waPausadosSh(chat.number)}\n`, 90_000);
   if (r.code !== 0) throw new Error(`não consegui ler a conversa: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const kv = kvOf(r.stdout);
   let data: unknown;
-  try { data = JSON.parse(r.stdout.trim() || "null"); } catch { throw new Error("o banco de sessões do Hermes não respondeu"); }
-  return threadFromHermes(data);
+  try { data = JSON.parse(kv.get("thread") || "null"); } catch { throw new Error("o banco de sessões do Hermes não respondeu"); }
+  if (ids.length > 0 && data === null) throw new Error("o banco de sessões do Hermes não respondeu");
+  const daPausa = mensagensDaPausa(parsePausados(jsonOr(kv.get("pausados"))), chat.number);
+  return [...threadFromHermes(data), ...daPausa].sort((a, b) => a.at.localeCompare(b.at));
 }
 
 /**
@@ -871,7 +880,8 @@ export async function whatsappThread(host: string, number: string, limit = 200):
   if (want.length < 8) throw new Error("número inválido");
   const chat = (await whatsappChats(host)).find((c) => c.number === want);
   if (chat === undefined) return [];
-  if (chat.sessionKeys.some(isHermesKey)) return hermesThread(host, chat, limit);
+  // Hermes pelo gateway da máquina, não pelas chaves: quem só escreveu durante a pausa ainda não tem sessão.
+  if (chat.sessionKeys.some(isHermesKey) || await hostIsHermes(host)) return hermesThread(host, chat, limit);
   const keys = chat.sessionKeys.filter((k) => SAFE_KEY.test(k));
   // Uma linha por sessão: "H<TAB>chave<TAB>json".
   const lines = keys.map((k) => `printf 'H\t%s\t' '${k}'; timeout 40 openclaw gateway call chat.history --json --params '{"sessionKey":"${k}","limit":${Math.min(1000, Math.max(1, Math.trunc(limit)))}}' 2>/dev/null | tr -d '\n'; echo`).join("\n");

@@ -59,7 +59,9 @@ export function waBubble(m: WhatsappThreadMessage): HTMLElement {
   bubble.dataset["waAt"] = m.at;
   // Grupos: o autor de cada mensagem em cima da bolha.
   if (m.autor !== undefined && m.role === "contact") bubble.append(el("span", "wa-author", m.autor));
-  bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`));
+  // Recebida na pausa: o agente não a viu (o plugin a guardou); ao retomar, ele recebe um resumo numa nota só.
+  if (m.durantePausa === true) { bubble.classList.add("wa-pausa"); bubble.title = "Recebida durante a pausa: o agente não viu esta mensagem. Ao retomar, ele recebe um resumo do que chegou."; }
+  bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : m.durantePausa === true ? "na pausa · " : ""}${hhmm(m.at)}`));
   return bubble;
 }
 /** Conversa do WhatsApp trazida, no topo da aba do meu-bot: o mesmo visual do espelho, só para ler. */
