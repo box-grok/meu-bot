@@ -461,6 +461,8 @@ export interface MeuBotAdminApi {
   adminClaudeGlobalContaNova(): Promise<CgEstado>;
   adminClaudeGlobalContaRemover(id: string): Promise<CgEstado>;
   adminClaudeGlobalContaUsar(id: string): Promise<CgEstado>;
+  /** Ordem (ids das contas isoladas), ligar/desligar ou conferir uma conta do rodízio do root. */
+  adminClaudeGlobalContaEditar(p: { ordem: string[] } | { id: string; ativa: boolean } | { id: string; conferir: true }): Promise<CgEstado>;
   /** Liga ou desliga o global para um usuário da máquina. */
   adminClaudeGlobalUsuario(nome: string, ligado: boolean): Promise<CgEstado>;
   /** Limiares do rodízio do root: troca ao passar de sessão %/semana %, e qual conta vai primeiro. */

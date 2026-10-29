@@ -16,7 +16,7 @@ export interface ClaudeGlobalPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario" | "adminClaudeGlobalLimiares">;
+  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario" | "adminClaudeGlobalLimiares" | "adminClaudeGlobalContaEditar">;
 }
 
 const quando = (s: number | null): string => (s === null ? "nunca" : new Date(s * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
@@ -98,10 +98,30 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
       rod.append(el("p", "hint", "Quando uma conta chega ao limite, a próxima assume para todos. O login do root é a base e fica por último."));
       const t = el("table", "usuarios-tabela");
       const th = el("tr"); for (const h of ["Conta", "Sessão", "Semana", "Estado", ""]) th.append(el("th", "", h)); t.append(th);
+      // As contas que a pessoa ordena (o login do root fica sempre por último, como a padrão no tutorial 15).
+      const isoladas = e.contas.filter((x) => x.id !== "padrao");
       for (const c of e.contas) {
         const tr = el("tr");
-        tr.append(el("td", "", c.email ?? c.rotulo), el("td", "", pct(c.sessaoPct)), el("td", "", pct(c.semanalPct)), el("td", "", estadoConta(c)));
+        tr.append(el("td", "", c.email ?? c.rotulo), el("td", "", pct(c.sessaoPct)), el("td", "", pct(c.semanalPct)), el("td", "", c.ativa ? estadoConta(c) : "desligada do rodízio"));
         const acoes = el("td", "");
+        const i = isoladas.findIndex((x) => x.id === c.id);
+        if (i > 0) {
+          const up = botao("↑", `ordem:${c.id}`); up.title = "Preferir antes";
+          up.addEventListener("click", () => { const ids = isoladas.map((x) => x.id); [ids[i - 1], ids[i]] = [ids[i]!, ids[i - 1]!]; void rodar(`ordem:${c.id}`, () => deps.api.adminClaudeGlobalContaEditar({ ordem: ids }), "✓ Ordem do rodízio gravada."); });
+          acoes.append(up, " ");
+        }
+        if (i >= 0 && i < isoladas.length - 1) {
+          const down = botao("↓", `ordem:${c.id}`); down.title = "Preferir depois";
+          down.addEventListener("click", () => { const ids = isoladas.map((x) => x.id); [ids[i], ids[i + 1]] = [ids[i + 1]!, ids[i]!]; void rodar(`ordem:${c.id}`, () => deps.api.adminClaudeGlobalContaEditar({ ordem: ids }), "✓ Ordem do rodízio gravada."); });
+          acoes.append(down, " ");
+        }
+        const lg = botao(c.ativa ? "Desligar" : "Ligar", `ativa:${c.id}`);
+        lg.title = c.ativa ? "Tira esta conta do rodízio (sem sair dela)" : "Devolve esta conta ao rodízio";
+        lg.addEventListener("click", () => { void rodar(`ativa:${c.id}`, () => deps.api.adminClaudeGlobalContaEditar({ id: c.id, ativa: !c.ativa }), c.ativa ? "✓ Conta fora do rodízio." : "✓ Conta de volta ao rodízio."); });
+        acoes.append(lg, " ");
+        const cf = botao("Conferir", `conferir:${c.id}`); cf.title = "Relê login, e-mail e uso desta conta";
+        cf.addEventListener("click", () => { void rodar(`conferir:${c.id}`, () => deps.api.adminClaudeGlobalContaEditar({ id: c.id, conferir: true }), "✓ Conta conferida."); });
+        acoes.append(cf, " ");
         if (c.estado === "esgotada") {
           const u = botao("Usar agora", `usar:${c.id}`);
           u.title = "O limite voltou antes do previsto: devolve a conta ao rodízio";

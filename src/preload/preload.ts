@@ -287,6 +287,7 @@ const adminApi: MeuBotAdminApi = {
   adminClaudeGlobalContaNova: () => ipcRenderer.invoke("admin:claude-global-conta-nova", {}),
   adminClaudeGlobalContaRemover: (id: string) => ipcRenderer.invoke("admin:claude-global-conta-remover", { id }),
   adminClaudeGlobalContaUsar: (id: string) => ipcRenderer.invoke("admin:claude-global-conta-usar", { id }),
+  adminClaudeGlobalContaEditar: (p: { ordem: string[] } | { id: string; ativa: boolean } | { id: string; conferir: true }) => ipcRenderer.invoke("admin:claude-global-conta-editar", p),
   adminClaudeGlobalUsuario: (nome: string, ligado: boolean) => ipcRenderer.invoke("admin:claude-global-usuario", { nome, ligado }),
   adminClaudeGlobalLimiares: (t: { sessao?: number; semanal?: number; estrategia?: "ordem" | "folga" }) => ipcRenderer.invoke("admin:claude-global-limiares", t),
   adminUsuarioNosSeletores: (nome: string) => ipcRenderer.invoke("admin:usuario-seletores", { nome }),

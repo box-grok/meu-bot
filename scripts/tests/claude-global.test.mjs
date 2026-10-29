@@ -79,3 +79,12 @@ test("limiares do rodízio do root: só números de 50 a 100 e as duas estratég
   assert.throws(() => core.cgLimiaresSh({ sessao: 20 }), /50 a 100/);
   assert.throws(() => core.cgLimiaresSh({ estrategia: "x" }), /inválida/);
 });
+
+test("rodízio do root: ordem, ligar/desligar e conferir, como o tutorial 15 (o login do root não entra na ordem)", () => {
+  assert.match(core.cgContaEditarSh({ ordem: ["c-aaaaaaaa", "c-bbbbbbbb"] }), /r\.reordenar\(\["c-aaaaaaaa","c-bbbbbbbb"\]\)/);
+  assert.throws(() => core.cgContaEditarSh({ ordem: ["padrao", "c-aaaaaaaa"] }), /ordem inválida/);
+  assert.match(core.cgContaEditarSh({ id: "c-aaaaaaaa", ativa: false }), /r\.atualizar\("c-aaaaaaaa", \{ ativa: false \}\)/);
+  assert.match(core.cgContaEditarSh({ id: "padrao", conferir: true }), /r\.conferir\("padrao"\)/);
+  assert.throws(() => core.cgContaEditarSh({ id: "c-aaaaaaaa'); process.exit(); ('", ativa: true }), /inválido/);
+  assert.throws(() => core.cgContaEditarSh({}), /inválido/);
+});

@@ -117,6 +117,26 @@ ${NODE_SH}
 cd /tmp && HOME=/root "$NODE" -e 'require("${CG_DIR}/contas-claude.js").abrir().definirLimiares(${JSON.stringify(p)}); console.log("LIMIARES=ok")'`;
 }
 
+/**
+ * Mexe numa conta do rodízio do root, como o tutorial 15 faz numa conta da pessoa: `ordem` (ids das contas isoladas
+ * na ordem nova; o login do root fica sempre por último), `ativa` (ligar/desligar no rodízio, sem sair) ou `conferir`
+ * (relê login, e-mail e uso). Saída `CONTA=ok`.
+ */
+export function cgContaEditarSh(p: { ordem?: unknown; id?: unknown; ativa?: unknown; conferir?: unknown }): string {
+  const ID = /^(padrao|c-[a-f0-9]{8})$/;
+  let js: string;
+  if (Array.isArray(p.ordem)) {
+    const ids = p.ordem.map(String);
+    if (ids.length > 12 || !ids.every((i) => /^c-[a-f0-9]{8}$/.test(i))) throw new Error("ordem inválida");
+    js = `r.reordenar(${JSON.stringify(ids)})`;
+  } else if (typeof p.id === "string" && ID.test(p.id) && typeof p.ativa === "boolean") js = `r.atualizar(${JSON.stringify(p.id)}, { ativa: ${p.ativa} })`;
+  else if (typeof p.id === "string" && ID.test(p.id) && p.conferir === true) js = `r.conferir(${JSON.stringify(p.id)})`;
+  else throw new Error("pedido inválido");
+  return `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
+${NODE_SH}
+cd /tmp && HOME=/root "$NODE" -e 'const r = require("${CG_DIR}/contas-claude.js").abrir(); ${js}; console.log("CONTA=ok")'`;
+}
+
 /** Remove uma conta do rodízio do root (a padrão, o login do root, não sai). Saída `REMOVIDA=ok`. */
 export function cgContaRemoverSh(id: string): string {
   if (!/^c-[a-f0-9]{8}$/.test(id)) throw new Error("conta inválida");
