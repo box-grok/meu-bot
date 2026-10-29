@@ -34,7 +34,8 @@ function repintar(): void {
 export async function conferirBackend(): Promise<void> {
   // Este Mac não usa backend por SSH; o admin não instala na máquina da pessoa (sem o canal, sem o cartão).
   if (ctx.windowHost === "" || ctx.windowHost === "local" || !ctx.caps.install) { falta = false; return; }
-  try { falta = !(await window.meuBot.backendPresente()); } catch { /* sem resposta: fica o que se sabia */ }
+  // Máquina sem resposta (null) ou IPC falhou: fica o que se sabia — desligada não é "sem backend".
+  try { const r = await window.meuBot.backendPresente(); if (r !== null) falta = !r; } catch { /* idem */ }
   repintar();
 }
 
