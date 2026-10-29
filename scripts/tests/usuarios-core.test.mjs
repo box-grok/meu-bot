@@ -82,7 +82,12 @@ test("usuários: apelido (descrição do usuário), sem mexer no login", async (
   assert.equal(apelidoValido("  Maria   (financeiro) "), "Maria (financeiro)");
   assert.equal(apelidoValido(""), "");
   for (const a of ["a:b", "a,b", "x".repeat(41), 3]) assert.throws(() => apelidoValido(a));
-  assert.match(apelidoSh("ana", "Maria"), /usermod -c "\$A" 'ana'/);
+  // Marcado no GECOS: a sonda e a lista só leem o que o meu-bot gravou (o "root" do root e o "Ubuntu" da imagem ficam de fora).
+  assert.match(apelidoSh("ana", "Maria"), /usermod -c "\$\(\[ -n "\$A" \] && printf '%s%s' 'meu-bot=' "\$A"\)" 'ana'/);
+  const { apelidoLimpo, LISTAR_SH: listarSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(apelidoLimpo("Maria, a chefe: (RH)\\x"), "Maria a chefe (RH) x", "o que o GECOS não aceita vira espaço, em vez de recusar");
+  assert.equal(apelidoLimpo("x".repeat(50)).length, 40);
+  assert.match(listarSh, /substr\(g\[1\], 1, 8\) == "meu-bot="/, "a lista descarta GECOS sem a marca");
   const l = lerUsuarios("ROOT\nU\tana\t1001\t/home/ana\t/bin/bash\t0\t0\t1\t\t\t0\tinfinity\tinfinity\tMaria Souza\n");
   assert.equal(l.usuarios[0].apelido, "Maria Souza");
 });
