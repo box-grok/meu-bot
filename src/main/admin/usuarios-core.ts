@@ -95,11 +95,19 @@ export const apagarSh = (nome: string): string => `N='${nome}'
 id "$N" >/dev/null 2>&1 || { echo "ERRO=não existe o usuário $N"; exit 0; }
 [ "$(id -u "$N")" -ge 1000 ] || { echo "ERRO=$N é um usuário do sistema"; exit 0; }
 case " $(id -nG "$N") " in *" sudo "*|*" wheel "*|*" admin "*) echo "ERRO=$N tem sudo: tire o sudo antes de apagar"; exit 0 ;; esac
-loginctl disable-linger "$N" >/dev/null 2>&1 || true
-pkill -KILL -u "$N" >/dev/null 2>&1 || true
-setquota -u "$N" 0 0 0 0 / >/dev/null 2>&1 || true
 U=$(id -u "$N")
-userdel -r "$N" >/dev/null 2>&1; id "$N" >/dev/null 2>&1 && { echo "ERRO=não consegui apagar $N"; exit 0; }
+loginctl disable-linger "$N" >/dev/null 2>&1 || true
+setquota -u "$N" 0 0 0 0 / >/dev/null 2>&1 || true
+# Com linger, matar os processos não basta: o systemd sobe outro "systemd --user" na hora e o userdel recusa
+# ("currently used by process"). Para o serviço do usuário, encerra as sessões e tenta de novo por alguns segundos.
+for i in 1 2 3 4 5; do
+  systemctl stop "user@$U.service" >/dev/null 2>&1 || true
+  loginctl terminate-user "$N" >/dev/null 2>&1 || true
+  pkill -KILL -u "$N" >/dev/null 2>&1 || true
+  E=$(userdel -r "$N" 2>&1); id "$N" >/dev/null 2>&1 || break
+  sleep 1
+done
+id "$N" >/dev/null 2>&1 && { echo "ERRO=não consegui apagar $N: $(printf '%s' "$E" | grep -v 'mail spool' | tail -1)"; exit 0; }
 # Os tetos de RAM/CPU ficam no systemd por número de usuário: sem limpar, quem reaproveitar o número herdaria.
 rm -rf "/etc/systemd/system.control/user-$U.slice.d" "/etc/systemd/system/user-$U.slice.d" 2>/dev/null; systemctl daemon-reload >/dev/null 2>&1 || true
 echo "APAGADO=$N"`;
