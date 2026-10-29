@@ -16,7 +16,7 @@ export interface ClaudeGlobalPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario" | "adminClaudeGlobalLimiares" | "adminClaudeGlobalContaEditar">;
+  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario" | "adminClaudeGlobalLimiares" | "adminClaudeGlobalContaEditar" | "on">;
 }
 
 const quando = (s: number | null): string => (s === null ? "nunca" : new Date(s * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
@@ -58,6 +58,14 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
       void deps.api.adminClaudeGlobal().then((e) => { estado = e; if (pronto(e) && vigia !== null) { clearInterval(vigia); vigia = null; msg = { text: "✓ Login confirmado.", bad: false }; } render(); }).catch(() => { /* tenta de novo */ });
     }, 10_000);
   }
+  // O onboarding (aba Usuários) liga o global para a conta nova no fim do job. Quando esse passo chega, a lista daqui
+  // relê sozinha: antes, uma aba aberta no meio do job mostrava a conta nova como "desligada" até ser reaberta.
+  let releitura: ReturnType<typeof setTimeout> | null = null;
+  deps.api.on("admin:usuarios-progresso", (p) => {
+    if (page === null || !/Claude Code Global|^pronto|^✗ parou|^usuário .* criado/.test(p.line)) return;
+    if (releitura !== null) clearTimeout(releitura);
+    releitura = setTimeout(() => { releitura = null; if (ocupado === null) void ler(); }, 1500);
+  });
   const botao = (rotulo: string, chave: string, primario = false): HTMLButtonElement => {
     const b = el("button", `btn ${primario ? "btn-primary" : "btn-ghost"} btn-small`, ocupado === chave ? "…" : rotulo) as HTMLButtonElement;
     b.type = "button"; b.disabled = ocupado !== null; return b;
@@ -160,7 +168,11 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
       panel.append(rod);
 
       // 3. Usuários no global.
-      const us = el("div", "admin-card"); us.append(el("strong", "", "Usuários no global"));
+      const us = el("div", "admin-card");
+      const cab = el("div", "admin-actions"); cab.append(el("strong", "", "Usuários no global"));
+      const atualizar = botao("Atualizar", "ler"); atualizar.title = "Relê a lista agora (ela também relê sozinha quando um usuário é criado ou preparado)";
+      atualizar.addEventListener("click", () => { void ler(); });
+      cab.append(atualizar); us.append(cab);
       if (e.usuarios.length === 0) us.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const tu = el("table", "usuarios-tabela");
