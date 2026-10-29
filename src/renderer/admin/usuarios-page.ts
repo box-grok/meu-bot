@@ -81,7 +81,8 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const digitado = nomeAgora().trim();
     const n = comPrefixo(digitado);
     if (digitado === "" || !NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
-    const p = pctNovo.trim() === "" ? 0 : Number(pctNovo);
+    // Sem o tamanho do disco (df falhou na máquina), não há como calcular a fatia: cria sem limite.
+    const p = visao?.discoKb === null ? 0 : pctNovo.trim() === "" ? 0 : Number(pctNovo);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
     if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
       // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
@@ -172,12 +173,13 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const linha = el("div", "admin-actions");
     // O "box-" fica fixo na frente: digita "maria", nasce "box-maria".
     const prefixo = el("span", "usuarios-prefixo", PREFIXO);
-    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = "3"; input.value = nomeAgora(); input.maxLength = 32 - PREFIXO.length; input.disabled = ocupado !== null;
+    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = proximoBox(visao?.usuarios.map((u) => u.nome) ?? []); input.value = nomeAgora(); input.maxLength = 32 - PREFIXO.length; input.disabled = ocupado !== null;
     input.title = `O usuário nasce como ${PREFIXO}<o que você digitar>`;
     input.autocapitalize = "off"; input.spellcheck = false;
-    input.addEventListener("input", () => { nome = input.value.toLowerCase(); if (input.value !== nome) input.value = nome; });
+    // Quem digita "box-3" vê "box-3" (o prefixo fixo já está na frente), não "box-box-3".
+    input.addEventListener("input", () => { let v = input.value.toLowerCase(); if (v.startsWith(PREFIXO)) v = v.slice(PREFIXO.length); nome = v; if (input.value !== v) input.value = v; });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
-    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = "% do disco"; pin.value = pctNovo; pin.disabled = ocupado !== null; pin.style.width = "110px";
+    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : pctNovo; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
     pin.addEventListener("input", () => { pctNovo = pin.value; });
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });

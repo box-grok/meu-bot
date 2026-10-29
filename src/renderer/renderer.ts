@@ -2011,10 +2011,13 @@ void (async () => {
     const usuariosPage = mountUsuariosPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     usuariosLine.addEventListener("click", () => usuariosPage.open());
     // Como root, a aba Usuários já abre junto com a Suporte; fixada (📌), fica na frente.
+    const paginaAntes = pageActive;
     void window.meuBot.adminUsuariosVisivel().then((v) => {
       usuariosLine.hidden = !v;
       if (!v) return;
       usuariosAdmin = usuariosPage;
+      // A resposta leva de 2 a 20 s: quem já clicou em outra aba nesse meio tempo não é puxado de volta.
+      if (pageActive !== paginaAntes) return;
       usuariosPage.open();
       if (abaFixaAtual() !== "usuarios") suportePage.open();
     }).catch(() => { /* sem resposta: sem a linha */ });
