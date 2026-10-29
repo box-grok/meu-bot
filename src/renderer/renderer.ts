@@ -2018,11 +2018,14 @@ void (async () => {
     const claudeGlobalLine = $<HTMLButtonElement>("claude-global-line");
     const claudeGlobalPage = mountClaudeGlobalPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     claudeGlobalLine.addEventListener("click", () => claudeGlobalPage.open());
+    const paginaAntes = pageActive;
     void window.meuBot.adminUsuariosVisivel().then((v) => {
       usuariosLine.hidden = !v;
       claudeGlobalLine.hidden = !v;
       if (!v) return;
       usuariosAdmin = usuariosPage;
+      // A resposta leva de 2 a 20 s: quem já clicou em outra aba nesse meio tempo não é puxado de volta.
+      if (pageActive !== paginaAntes) return;
       usuariosPage.open();
       if (abaFixaAtual() !== "usuarios") suportePage.open();
     }).catch(() => { /* sem resposta: sem a linha */ });

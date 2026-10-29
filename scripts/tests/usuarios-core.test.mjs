@@ -188,3 +188,11 @@ test("usuários: \"pronto\" = backend do meu-bot na conta e o Hermes como agente
   assert.equal(lerUsuarios(linha("0")).usuarios[0].pronto, false);
   assert.equal(lerUsuarios(linha()).usuarios[0].pronto, false, "máquina com script antigo: sem a coluna, não está pronto");
 });
+
+test("nome para criar: vazio ou só o prefixo não vira usuário \"box-\"; com ou sem prefixo dá o mesmo", async () => {
+  const { nomeParaCriar } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(nomeParaCriar(""), null); assert.equal(nomeParaCriar("   "), null); assert.equal(nomeParaCriar("box-"), null);
+  assert.equal(nomeParaCriar(3), null); assert.equal(nomeParaCriar("Maria"), null, "maiúscula não entra");
+  assert.equal(nomeParaCriar("3"), "box-3"); assert.equal(nomeParaCriar("box-3"), "box-3"); assert.equal(nomeParaCriar(" maria "), "box-maria");
+  assert.equal(nomeParaCriar("root"), "box-root", "o prefixo tira do caminho dos nomes reservados");
+});
