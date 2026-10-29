@@ -38,15 +38,18 @@ test("intermediário: a chave abre só para o dono dela; chave errada ou fora do
   assert.equal(relay.usuarioDaChave({ headers: {} }), null);
 });
 
-test("scripts do root: a chave fica em /etc (600) e na pasta do usuário (dono ele, 600), nunca na saída", () => {
+test("scripts do root: a chave fica em /etc (600) e na pasta do usuário (gravada por ele, 600), nunca na saída", () => {
   const sh = core.cgLigarSh("box-3");
   assert.match(sh, /chmod 600 \/etc\/meu-bot\/claude-global\/chaves\/box-3/);
-  assert.match(sh, /chown box-3:box-3 "\$A\.tmp"/);
-  assert.match(sh, /os\.chmod\(t, 0o600\)/);
+  // Dentro do home só o usuário escreve (symlink plantado não leva o root a lugar nenhum); umask 077 dá o 0600.
+  assert.match(sh, /runuser -u box-3 -- sh -c 'umask 077; .*cat > "\$1\.tmp" && mv -f "\$1\.tmp" "\$1"'/, "quem grava no home é o usuário");
+  assert.doesNotMatch(sh, /chown/, "o root não dá chown dentro do home");
+  assert.doesNotMatch(sh, /open\(/, "o root não abre arquivo dentro do home");
   assert.doesNotMatch(sh, /echo [^\n]*\$K/, "a chave nunca vai para a saída");
   assert.match(sh, /^echo "GLOBAL=ok"$/m);
   assert.throws(() => core.cgLigarSh("box-3; rm -rf /"), /inválido/);
   assert.match(core.cgDesligarSh("box-3"), /rm -f \/etc\/meu-bot\/claude-global\/chaves\/box-3/);
+  assert.match(core.cgDesligarSh("box-3"), /runuser -u box-3 -- rm -f "\$H\/\.local\/share\/meu-bot\/claude-global\.json"/, "no home, o rm também é do usuário");
   assert.throws(() => core.cgContaRemoverSh("padrao"), /inválida/, "o login do root não sai do rodízio");
 });
 

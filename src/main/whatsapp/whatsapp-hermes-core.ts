@@ -546,7 +546,7 @@ export const TRANSCRITOR_BIN = "/opt/transcriber/bin/transcrever";
 /** O Hermes só lê o comando do `local_command` do ambiente (HERMES_LOCAL_STT_COMMAND no ~/.hermes/.env), não do config. */
 export const HERMES_STT_COMANDO = `${TRANSCRITOR_BIN} {input_path} {output_dir} {language}`;
 /** Grava (ou troca) a linha do comando no ~/.hermes/.env deste usuário; o resto do arquivo fica como está. */
-export const HERMES_STT_COMPARTILHADO_SH = `mkdir -p "$HOME/.hermes"; touch "$HOME/.hermes/.env"; sed -i '/^HERMES_LOCAL_STT_COMMAND=/d' "$HOME/.hermes/.env"; printf '%s\\n' 'HERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"' >> "$HOME/.hermes/.env"`;
+export const HERMES_STT_COMPARTILHADO_SH = `install -d -m 700 "$HOME/.hermes"; [ -e "$HOME/.hermes/.env" ] || (umask 077; touch "$HOME/.hermes/.env"); sed -i '/^HERMES_LOCAL_STT_COMMAND=/d' "$HOME/.hermes/.env"; printf '%s\\n' 'HERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"' >> "$HOME/.hermes/.env"`;
 /**
  * Ligar a transcrição no Hermes deste usuário. Com o transcritor compartilhado da máquina (`bin` executável), só aponta
  * o Hermes para ele (.env + local_command) e imprime `stt=compartilhado`; sem ele (máquina de antes do padrão), instala

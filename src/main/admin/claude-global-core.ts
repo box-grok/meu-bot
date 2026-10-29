@@ -77,16 +77,15 @@ H=$(getent passwd ${n} | cut -d: -f6); [ -n "$H" ] && [ -d "$H" ] || { echo "ERR
 K=$(head -c 96 /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c 48)
 [ \${#K} -ge 32 ] || { echo "ERRO=não consegui gerar a chave"; exit 0; }
 mkdir -p ${CG_ETC}/chaves; printf '%s' "$K" > ${CG_ETC}/chaves/${n}.tmp; mv ${CG_ETC}/chaves/${n}.tmp ${CG_ETC}/chaves/${n}; chmod 600 ${CG_ETC}/chaves/${n}
-runuser -u ${n} -- mkdir -p "$H/.local/share/meu-bot"
 A="$H/.local/share/meu-bot/claude-global.json"
-K="$K" P="$P" A="$A" python3 -c '
+J=$(K="$K" P="$P" python3 -c '
 import json, os
 e = (json.load(open("/root/.claude.json")).get("oauthAccount") or {}).get("emailAddress") if os.path.exists("/root/.claude.json") else None
-t = os.environ["A"] + ".tmp"
-with open(t, "w") as f: json.dump({"url": "http://127.0.0.1:%s" % os.environ["P"], "chave": os.environ["K"], "email": e}, f)
-os.chmod(t, 0o600)
-'
-chown ${n}:${n} "$A.tmp"; mv "$A.tmp" "$A"
+print(json.dumps({"url": "http://127.0.0.1:%s" % os.environ["P"], "chave": os.environ["K"], "email": e}))
+')
+# Dentro do home quem grava é o usuário, nunca o root: um symlink plantado ali (claude-global.json.tmp → /etc/shadow)
+# faria o root truncar e dar chown no alvo. Como o usuário, o link só leva aonde ele já escrevia; umask 077 dá o 0600.
+printf '%s' "$J" | runuser -u ${n} -- sh -c 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1.tmp" && mv -f "$1.tmp" "$1"' sh "$A"
 echo "GLOBAL=ok"`;
 }
 
@@ -95,7 +94,7 @@ export function cgDesligarSh(nome: string): string {
   const n = nomeOk(nome);
   return `[ "$(id -u)" = 0 ] || { echo "ERRO=só o root desliga o Claude Code Global"; exit 0; }
 rm -f ${CG_ETC}/chaves/${n}
-H=$(getent passwd ${n} | cut -d: -f6); [ -n "$H" ] && rm -f "$H/.local/share/meu-bot/claude-global.json"
+H=$(getent passwd ${n} | cut -d: -f6); [ -n "$H" ] && runuser -u ${n} -- rm -f "$H/.local/share/meu-bot/claude-global.json"
 echo "GLOBAL=desligado"`;
 }
 
