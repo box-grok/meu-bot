@@ -23,7 +23,7 @@ import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threa
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
-import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
+import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
 import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
@@ -786,7 +786,7 @@ ${SEND_POLICY_READ_SH}
   // No OpenClaw vem da sessão e do openclaw.json.
   const self = phoneOf(kv.get("self") ?? "");
   const env = hermesEnvOf(kv);
-  const chats = hermes ? chatsFromHermes(list, self, names).map((c) => ({ ...c, paused: parsed.paused[c.number] !== undefined || hermesNaoResponde(env, self, c.number) })) : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
+  const chats = hermes ? chatsFromHermes(list, self, names).map((c) => ({ ...c, paused: pausaVigente(parsed, c.number) !== null || hermesNaoResponde(env, self, c.number) })) : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
   return applyWaMarks(chats, parsed);
 }
 

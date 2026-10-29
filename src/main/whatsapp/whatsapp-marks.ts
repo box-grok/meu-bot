@@ -7,8 +7,10 @@
  *           "names": { "<número>": { "name": "<pushname>", "alias": "<apelido>", "at": "<ISO>" } },
  *           "groupsDeleted": { "<jid>@g.us": "<ISO da exclusão>" },
  *           "groupNames": { "<jid>@g.us": { "alias": "<apelido>", "at": "<ISO>" } },
- *           "paused": { "<número>": "<ISO da pausa>" } }  ← só no Hermes: lá pausar é tirar da lista de quem o agente
- *           responde enquanto a pausa durar, e esta marca é o que diz "está pausado" (no OpenClaw a pausa mora no openclaw.json).
+ *           "paused": { "<número>": { "desde": "<ISO>", "ate": "<ISO>" | null, "por": "app"|"dono"|"contato" } } }
+ *           ← só no Hermes (no OpenClaw a pausa mora no openclaw.json). `ate` nulo = até retomar. Formato antigo
+ *           ("<número>": "<ISO>") ainda é lido. O plugin meu-bot-pausa da máquina lê e grava a mesma marca (é ele
+ *           que apaga as vencidas; o app só as ignora); sem o plugin, a marca acompanha a saída da WHATSAPP_ALLOWED_USERS.
  * Excluída fica oculta enquanto `updatedAt <= deletedAt`; mensagem nova do contato traz a conversa de volta nos dois
  * apps. O nome em cache poupa a leitura do histórico só para saber quem é; o apelido vence o nome na lista.
  * Grupo excluído segue a mesma regra pela sessão do agente nele (sem sessão = continua excluído até a primeira).
@@ -19,17 +21,40 @@ import { JID_RE } from "./whatsapp-grupos-core";
 export const WA_MARKS_FILE = "$HOME/.local/share/meu-bot/whatsapp-lista.json";
 
 export interface WaName { name: string | null; alias: string | null; at: string }
-export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> ; paused: Record<string, string> }
+/** Pausa de um contato: `ate` nulo = até retomar. */
+export interface WaPausa { desde: string; ate: string | null }
+export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> ; paused: Record<string, WaPausa> }
 /** Um ajuste: `at` só a migração do localStorage manda (sem ele, a máquina usa a hora dela); `name`/`alias` vazios apagam. */
 export type { WaGroupMarkPatch, WaMarkPatch };
-/** Números pausados (marca do Hermes), só dígitos. */
-export const pausadosDe = (m: WaMarks): string[] => Object.keys(m.paused);
+/** Prazos que a tela oferece (o plugin aceita os mesmos do contato). */
+export const PAUSA_HORAS = [2, 24] as const;
+/** A pausa do número se está em vigor (sem prazo, ou com `ate` no futuro); vencida ou inexistente = null. */
+export const pausaVigente = (m: WaMarks, n: string, agora: number = Date.now()): WaPausa | null => {
+  const p = m.paused[n];
+  return p === undefined || (p.ate !== null && Date.parse(p.ate) <= agora) ? null : p;
+};
+/** Números pausados em vigor (marca do Hermes), só dígitos. */
+export const pausadosDe = (m: WaMarks, agora: number = Date.now()): string[] => Object.keys(m.paused).filter((n) => pausaVigente(m, n, agora) !== null);
 const isGroupPatch = (p: WaMarkPatch | WaGroupMarkPatch): p is WaGroupMarkPatch => "jid" in p;
 
 const NUMBER_RE = /^\d{8,15}$/;
 const NAME_MAX = 80;
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const isoOrNull = (v: unknown): string | null => (typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v)) ? v : null);
+/** `paused` nos dois formatos: string ISO (antigo: sem prazo) ou { desde, ate }. */
+function parsePausas(v: unknown): Record<string, WaPausa> {
+  const out: Record<string, WaPausa> = {};
+  if (!isObj(v)) return out;
+  for (const [k, e] of Object.entries(v)) {
+    if (!NUMBER_RE.test(k)) continue;
+    const desdeStr = isoOrNull(e);
+    if (desdeStr !== null) { out[k] = { desde: desdeStr, ate: null }; continue; }
+    if (!isObj(e)) continue;
+    const desde = isoOrNull(e.desde);
+    if (desde !== null) out[k] = { desde, ate: isoOrNull(e.ate) };
+  }
+  return out;
+}
 /** Nome/apelido vindo de fora: uma linha, 1–80 caracteres; senão null. */
 const nameOrNull = (v: unknown): string | null => {
   if (typeof v !== "string") return null;
@@ -72,7 +97,7 @@ function parseGroupNames(v: unknown): Record<string, { alias: string; at: string
 /** O que veio da máquina, saneado (lixo ou arquivo corrompido = sem marcas). */
 export function parseWaMarks(raw: unknown): WaMarks {
   if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} };
-  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames), paused: parseMap(raw.paused) };
+  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames), paused: parsePausas(raw.paused) };
 }
 
 /**
@@ -136,6 +161,7 @@ export function waMarkSh(patches: readonly (WaMarkPatch | WaGroupMarkPatch)[]): 
     }
     if (!NUMBER_RE.test(p.number)) throw new Error("número inválido");
     for (const v of [p.name, p.alias]) if (v !== undefined && (v.length > NAME_MAX || /[\r\n]/.test(v))) throw new Error("nome inválido");
+    if (p.pausaHoras !== undefined && !(PAUSA_HORAS as readonly number[]).includes(p.pausaHoras)) throw new Error("prazo de pausa inválido");
   }
   const b64 = Buffer.from(JSON.stringify(patches), "utf8").toString("base64");
   return `command -v python3 >/dev/null 2>&1 || { echo "a máquina não tem python3" >&2; exit 2; }
@@ -153,7 +179,11 @@ names = cur.get("names") if isinstance(cur.get("names"), dict) else {}
 gdel = cur.get("groupsDeleted") if isinstance(cur.get("groupsDeleted"), dict) else {}
 gnames = cur.get("groupNames") if isinstance(cur.get("groupNames"), dict) else {}
 paus = cur.get("paused") if isinstance(cur.get("paused"), dict) else {}
-now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+# Formato antigo da pausa ("<número>": "<ISO>") vira o novo ({desde, ate}) ao regravar: um formato só para o plugin e o app.
+for k, v in list(paus.items()):
+    if isinstance(v, str): paus[k] = {"desde": v, "ate": None, "por": "app"}
+iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+now = iso(time.time())
 for p in json.load(sys.stdin):
     at = p.get("at") or now
     if "jid" in p:
@@ -172,7 +202,9 @@ for p in json.load(sys.stdin):
         if p["deleted"]: dele[n] = at
         else: dele.pop(n, None)
     if "paused" in p:
-        if p["paused"]: paus[n] = at
+        # O prazo é calculado aqui, com o relógio da máquina: é o mesmo que o plugin usa para vencer a pausa.
+        h = p.get("pausaHoras")
+        if p["paused"]: paus[n] = {"desde": at, "ate": iso(time.time() + h * 3600) if isinstance(h, (int, float)) and h > 0 else None, "por": "app"}
         else: paus.pop(n, None)
     if "name" in p or "alias" in p:
         e = names.get(n) if isinstance(names.get(n), dict) else {}
