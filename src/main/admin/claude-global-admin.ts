@@ -6,7 +6,7 @@
  */
 import { spawn } from "node:child_process";
 import type { CgEstado } from "../../shared/ipc";
-import { CG_CONTA_NOVA_SH, CG_ESTADO_SH, cgContaRemoverSh, cgContaUsarAgoraSh, cgDesligarSh, cgLigarSh, lerEstado } from "./claude-global-core";
+import { CG_CONTA_NOVA_SH, CG_ESTADO_SH, cgContaRemoverSh, cgLimiaresSh, cgContaUsarAgoraSh, cgDesligarSh, cgLigarSh, lerEstado } from "./claude-global-core";
 import { NOME_USUARIO_RE } from "./usuarios-core";
 import { installClaudeGlobal } from "../maquina/hostProbe";
 import { runSsh } from "../whatsapp/whatsapp";
@@ -64,6 +64,13 @@ export async function contaRemoverClaudeGlobal(host: string, id: unknown): Promi
 export async function contaUsarAgoraClaudeGlobal(host: string, id: unknown): Promise<CgEstado> {
   const r = await runSsh(host, `${cgContaUsarAgoraSh(String(id))}\n`, 30_000);
   if (!/^USAR=ok$/m.test(r.stdout)) throw new Error(`não consegui liberar a conta: ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout)}`);
+  return estadoClaudeGlobal(host);
+}
+
+/** Limiares do rodízio do root: sessão %, semana % e qual conta vai primeiro. */
+export async function limiaresClaudeGlobal(host: string, t: unknown): Promise<CgEstado> {
+  const r = await runSsh(host, `${cgLimiaresSh((t ?? {}) as { sessao?: unknown; semanal?: unknown; estrategia?: unknown })}\n`, 30_000);
+  if (!/^LIMIARES=ok$/m.test(r.stdout)) throw new Error(`não consegui gravar os limiares: ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout)}`);
   return estadoClaudeGlobal(host);
 }
 

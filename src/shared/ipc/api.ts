@@ -463,6 +463,8 @@ export interface MeuBotAdminApi {
   adminClaudeGlobalContaUsar(id: string): Promise<CgEstado>;
   /** Liga ou desliga o global para um usuário da máquina. */
   adminClaudeGlobalUsuario(nome: string, ligado: boolean): Promise<CgEstado>;
+  /** Limiares do rodízio do root: troca ao passar de sessão %/semana %, e qual conta vai primeiro. */
+  adminClaudeGlobalLimiares(t: { sessao?: number; semanal?: number; estrategia?: "ordem" | "folga" }): Promise<CgEstado>;
   /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
   /** Põe o usuário nos dois seletores (meu-bot e admin), sem preparar a conta; `aviso` = o do admin falhou. */
   adminUsuarioNosSeletores(nome: string): Promise<{ alias: string; novo: boolean; aviso: string | null }>;

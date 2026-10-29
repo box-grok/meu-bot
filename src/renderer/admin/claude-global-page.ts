@@ -16,7 +16,7 @@ export interface ClaudeGlobalPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario">;
+  api: Pick<MeuBotApi, "adminClaudeGlobal" | "adminClaudeGlobalInstalar" | "adminClaudeGlobalEntrar" | "adminClaudeGlobalContaNova" | "adminClaudeGlobalContaRemover" | "adminClaudeGlobalContaUsar" | "adminClaudeGlobalUsuario" | "adminClaudeGlobalLimiares">;
 }
 
 const quando = (s: number | null): string => (s === null ? "nunca" : new Date(s * 1000).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }));
@@ -122,6 +122,21 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
         void rodar("nova", () => deps.api.adminClaudeGlobalContaNova(), "Login da conta nova aberto no Terminal. Esta aba confirma sozinha.").then(() => vigiar((x) => x.contas.filter((c) => c.logada).length > antes));
       });
       rod.append(nova);
+      // Os limiares do tutorial 15, para o rodízio do root: o intermediário anota o uso a cada resposta.
+      if (e.limiares !== null) {
+        const lim = el("div", "conta-claude-limiares");
+        const num = (rotulo: string, k: "sessao" | "semanal"): HTMLLabelElement => {
+          const l = el("label", "", `${rotulo} `); const i = el("input") as HTMLInputElement; i.type = "number"; i.min = "50"; i.max = "100"; i.step = "1"; i.value = String(e.limiares![k]); i.disabled = ocupado !== null;
+          i.addEventListener("change", () => { const n = Number(i.value); if (Number.isInteger(n)) void rodar("limiares", () => deps.api.adminClaudeGlobalLimiares({ [k]: n }), "✓ Limiar do rodízio gravado."); });
+          l.append(i, "%"); return l;
+        };
+        const sel = el("select") as HTMLSelectElement; sel.disabled = ocupado !== null;
+        for (const [v, txt] of [["ordem", "pela ordem da lista"], ["folga", "quem tem mais cota sobrando"]] as const) { const o = el("option", "", txt) as HTMLOptionElement; o.value = v; o.selected = e.limiares.estrategia === v; sel.append(o); }
+        sel.addEventListener("change", () => { const v = sel.value; if (v === "ordem" || v === "folga") void rodar("limiares", () => deps.api.adminClaudeGlobalLimiares({ estrategia: v }), "✓ Ordem do rodízio gravada."); });
+        const selL = el("label", "", "Qual conta vai primeiro: "); selL.append(sel);
+        lim.append(el("span", "hint", "Troca de conta ao passar de"), num("sessão (5 h)", "sessao"), num("semana", "semanal"), selL);
+        rod.append(lim);
+      }
       panel.append(rod);
 
       // 3. Usuários no global.

@@ -12,7 +12,7 @@ import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
-import { contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
+import { contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, limiaresClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
 import { prepararUsuarioDeNovo, manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
@@ -49,6 +49,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:claude-global-conta-nova", (event) => contaNovaClaudeGlobal(adminHost(event)));
   handleAdmin("admin:claude-global-conta-remover", (event, payload: unknown) => contaRemoverClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
   handleAdmin("admin:claude-global-conta-usar", (event, payload: unknown) => contaUsarAgoraClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
+  handleAdmin("admin:claude-global-limiares", (event, payload: unknown) => limiaresClaudeGlobal(adminHost(event), payload));
   handleAdmin("admin:claude-global-usuario", (event, payload: unknown) => usuarioClaudeGlobal(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
   handleAdmin("admin:usuario-preparar", (event, payload: unknown) => prepararUsuarioDeNovo(adminHost(event), (payload as { nome?: unknown } | null)?.nome, progresso(event)));
   handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));

@@ -147,6 +147,21 @@ function enviar(req, corpo, token) {
     up.end(corpo);
   });
 }
+/**
+ * Uso da conta do root pelos cabeçalhos da resposta (anthropic-ratelimit-unified-5h/7d-utilization 0..1 e -reset em
+ * epoch s): anotado no registro, ele faz valer os limiares do rodízio (sessão/semana %), e a conta que passou do
+ * limiar sai da frente antes de bater o limite.
+ */
+function anotarUsoDaConta(c, r) {
+  const janela = (k) => {
+    const u = Number(r.headers[`anthropic-ratelimit-unified-${k}-utilization`]);
+    if (!Number.isFinite(u)) return undefined;
+    const t = Number(r.headers[`anthropic-ratelimit-unified-${k}-reset`]);
+    return { pct: u <= 1 ? Math.round(u * 100) : Math.round(u), resets: Number.isFinite(t) && t > 0 ? Math.floor(t > 1e12 ? t / 1000 : t) : null };
+  };
+  const sessao = janela('5h'); const semanal = janela('7d');
+  if (sessao || semanal) { try { contas.registrarUso(c.id, { sessao, semanal }); } catch (_) { /* uso é cortesia */ } }
+}
 const resetDe = (r) => { const v = Number(r.headers['anthropic-ratelimit-unified-reset']); return Number.isFinite(v) && v > 0 ? Math.floor(v > 1e12 ? v / 1000 : v) : null; };
 function erro(res, status, tipo, msg) {
   res.writeHead(status, { 'content-type': 'application/json' });
@@ -181,6 +196,7 @@ async function atender(req, res, corpo, usuario) {
       continue;
     }
     if (ultimo429) ultimo429.resume();
+    anotarUsoDaConta(c, r);
     anotarUso(usuario, c.id, r.statusCode);
     res.writeHead(r.statusCode, r.headers);
     return r.pipe(res);
@@ -212,4 +228,4 @@ if (require.main === module) {
   servir(porta);
 }
 
-module.exports = { servir, usuarioDaChave, cabecalhos, PERMITIDO, CHAVE_RE, USUARIO_RE, carregarChaves };
+module.exports = { servir, usuarioDaChave, cabecalhos, anotarUsoDaConta, PERMITIDO, CHAVE_RE, USUARIO_RE, carregarChaves };

@@ -22,7 +22,7 @@ export const CG_ESTADO_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 ${NODE_SH}
 INST=0; [ -f /etc/systemd/system/${CG_SERVICO}.service ] && [ -f ${CG_DIR}/claude-global.js ] && INST=1
 ATIVO=0; systemctl is-active --quiet ${CG_SERVICO} 2>/dev/null && ATIVO=1
-CONTAS="[]"
+CONTAS="{}"
 if [ "$INST" = 1 ] && [ -n "$NODE" ]; then
   CONTAS=$(cd /tmp && HOME=/root timeout 40 "$NODE" -e '
 const st = require("${CG_DIR}/account-status.js"); const cc = require("${CG_DIR}/contas-claude.js");
@@ -30,9 +30,9 @@ const reg = cc.abrir();
 (async () => {
   const l = reg.listar();
   for (const c of l.contas) { try { await st.refreshRateLimits({ configDir: c.home }); const s = st.readClaudeStatus("/root", c.home); c.sessaoPct = s.sessionPct; c.semanalPct = s.weeklyPct; } catch (_) { /* sem uso */ } }
-  process.stdout.write(JSON.stringify(l.contas.map((c) => ({ id: c.id, rotulo: c.rotulo, email: c.email, logada: c.logada, ativa: c.ativa, estado: c.uso.estado, motivo: c.uso.motivo, ate: c.uso.ate, sessaoPct: c.sessaoPct ?? null, semanalPct: c.semanalPct ?? null }))));
-})().catch(() => process.stdout.write("[]"));' 2>/dev/null) || CONTAS="[]"
-  [ -n "$CONTAS" ] || CONTAS="[]"
+  process.stdout.write(JSON.stringify({ limiares: l.limiares, contas: l.contas.map((c) => ({ id: c.id, rotulo: c.rotulo, email: c.email, logada: c.logada, ativa: c.ativa, estado: c.uso.estado, motivo: c.uso.motivo, ate: c.uso.ate, sessaoPct: c.sessaoPct ?? (c.uso.sessao ? c.uso.sessao.pct : null), semanalPct: c.semanalPct ?? (c.uso.semanal ? c.uso.semanal.pct : null) })) }));
+})().catch(() => process.stdout.write("{}"));' 2>/dev/null) || CONTAS="{}"
+  [ -n "$CONTAS" ] || CONTAS="{}"
 fi
 INST=$INST ATIVO=$ATIVO CONTAS="$CONTAS" python3 -c '
 import json, os, pwd
@@ -50,13 +50,15 @@ for p in pwd.getpwall():
     u = uso.get(p.pw_name, {})
     usuarios.append({"nome": p.pw_name, "ligado": os.path.isfile(os.path.join(etc, "chaves", p.pw_name)), "chamadas": u.get("chamadas", 0), "ultima": u.get("ultima"), "limites": u.get("limites", 0)})
 usuarios.sort(key=lambda x: x["nome"])
-try: contas = json.loads(os.environ.get("CONTAS") or "[]")
-except Exception: contas = []
+try: rod = json.loads(os.environ.get("CONTAS") or "{}")
+except Exception: rod = {}
+contas = rod.get("contas", []) if isinstance(rod, dict) else []
+limiares = rod.get("limiares") if isinstance(rod, dict) else None
 print("ESTADO=" + json.dumps({
     "instalado": os.environ.get("INST") == "1", "ativo": os.environ.get("ATIVO") == "1", "porta": cfg.get("porta"),
     "login": bool(cj) and bool(cred.get("refreshToken")), "email": cj.get("emailAddress"),
     "plano": " · ".join(x for x in [cred.get("subscriptionType"), cred.get("rateLimitTier")] if x) or None,
-    "contas": contas, "usuarios": usuarios}))
+    "contas": contas, "limiares": limiares, "usuarios": usuarios}))
 '`;
 
 const nomeOk = (nome: string): string => { if (!NOME_USUARIO_RE.test(nome)) throw new Error("nome de usuário inválido"); return nome; };
@@ -105,6 +107,16 @@ export const CG_CONTA_NOVA_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0;
 ${NODE_SH}
 cd /tmp && HOME=/root "$NODE" -e 'const c = require("${CG_DIR}/contas-claude.js").abrir().criar(""); console.log("CONTA=" + c.id + " " + c.home)'`;
 
+/** Limiares do rodízio do root (os mesmos do tutorial 15): troca ao passar de sessão %/semana %, e qual vai primeiro. Saída `LIMIARES=ok`. */
+export function cgLimiaresSh(t: { sessao?: unknown; semanal?: unknown; estrategia?: unknown }): string {
+  const p: Record<string, unknown> = {};
+  for (const k of ["sessao", "semanal"] as const) { const n = Number(t[k]); if (t[k] !== undefined) { if (!Number.isInteger(n) || n < 50 || n > 100) throw new Error("limiar: um número inteiro de 50 a 100"); p[k] = n; } }
+  if (t.estrategia !== undefined) { if (t.estrategia !== "ordem" && t.estrategia !== "folga") throw new Error("estratégia inválida"); p.estrategia = t.estrategia; }
+  return `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
+${NODE_SH}
+cd /tmp && HOME=/root "$NODE" -e 'require("${CG_DIR}/contas-claude.js").abrir().definirLimiares(${JSON.stringify(p)}); console.log("LIMIARES=ok")'`;
+}
+
 /** Remove uma conta do rodízio do root (a padrão, o login do root, não sai). Saída `REMOVIDA=ok`. */
 export function cgContaRemoverSh(id: string): string {
   if (!/^c-[a-f0-9]{8}$/.test(id)) throw new Error("conta inválida");
@@ -131,6 +143,7 @@ export function lerEstado(out: string): CgEstado | null {
     return {
       instalado: v.instalado === true, ativo: v.ativo === true, porta: typeof v.porta === "number" ? v.porta : null,
       login: v.login === true, email: typeof v.email === "string" ? v.email : null, plano: typeof v.plano === "string" ? v.plano : null,
+      limiares: v.limiares !== null && typeof v.limiares === "object" ? v.limiares : null,
       contas: Array.isArray(v.contas) ? v.contas : [], usuarios: Array.isArray(v.usuarios) ? v.usuarios.filter((u) => NOME_USUARIO_RE.test(String(u?.nome))) : [],
     };
   } catch { return null; }

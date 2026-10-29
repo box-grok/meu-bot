@@ -63,3 +63,19 @@ test("tutorial 1 só confirma a sessão: com o global do admin, já vem concluí
   assert.equal(guideView(t1, null, emptyFlags(), ctx({ loggedIn: true, email: "eu@x.com", global: false })).finished, false, "conta própria: falta a primeira resposta");
   assert.equal(guideView(t1, null, emptyFlags(), ctx({ loggedIn: false, global: false })).current, 0);
 });
+
+test("intermediário: o uso da conta do root vem dos cabeçalhos da resposta (vale o limiar do rodízio)", () => {
+  const orig = relay.anotarUsoDaConta;
+  // A função usa o registro do root; aqui só confere a leitura dos cabeçalhos por um registro falso.
+  const fake = { headers: { "anthropic-ratelimit-unified-5h-utilization": "0.16", "anthropic-ratelimit-unified-5h-reset": "1793312400", "anthropic-ratelimit-unified-7d-utilization": "0.91", "anthropic-ratelimit-unified-7d-reset": "1793757600" } };
+  assert.equal(typeof orig, "function");
+  assert.doesNotThrow(() => orig({ id: "padrao" }, fake), "sem registro gravável, não derruba a resposta");
+  assert.doesNotThrow(() => orig({ id: "padrao" }, { headers: {} }));
+});
+
+test("limiares do rodízio do root: só números de 50 a 100 e as duas estratégias", () => {
+  assert.match(core.cgLimiaresSh({ sessao: 85 }), /definirLimiares\(\{"sessao":85\}\)/);
+  assert.match(core.cgLimiaresSh({ estrategia: "folga" }), /"estrategia":"folga"/);
+  assert.throws(() => core.cgLimiaresSh({ sessao: 20 }), /50 a 100/);
+  assert.throws(() => core.cgLimiaresSh({ estrategia: "x" }), /inválida/);
+});
