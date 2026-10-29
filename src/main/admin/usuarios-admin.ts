@@ -13,7 +13,7 @@ import { RECURSOS_PADRAO, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSsh
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
-import { adicionarUsuario, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
+import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
 import { refreshPickerIfOpen } from "../maquina/picker";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
@@ -42,6 +42,8 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
   const l = lerUsuarios(r.stdout);
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
+  // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
+  for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram };
 }
 
@@ -179,6 +181,7 @@ export async function definirApelido(host: string, nome: unknown, apelido: unkno
   const n = nomeValido(nome); const a = apelidoValido(apelido);
   const r = await runSsh(host, `${apelidoSh(n, a)}\n`, 30_000);
   saida(r.stdout, /^APELIDO=ok$/m, "não consegui gravar o apelido");
+  apelidoDoUsuarioNoSeletor(host, n, a);
   void registrar(host, "usuarios.apelido", n, a);
   return usuariosDaMaquina(host);
 }

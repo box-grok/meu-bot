@@ -5,7 +5,7 @@ import { el } from "./lib/dom.js";
 import { personSuffix } from "./lib/admin-view.js";
 import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
-import { describeProbe, hostLabel, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
+import { describeProbe, hostLabel, setApelidoMaquina, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
 
 declare global { interface Window { picker: PickerApi } }
 
@@ -105,6 +105,13 @@ function showError(prefix: string, err: unknown): void {
 /** Cor da máquina: no admin, pela máquina como a pessoa a chama no ~/.ssh dela (a mesma cor que ela vê); sem isso, pelo host. */
 const accentOf = (host: string): string => hostAccent(personOf(host)?.machine ?? host);
 
+/** Com apelido (deste Mac ou da máquina), o nome SSH continua visível, menor, logo depois: é por ele que se entra. */
+function pintarNomeSsh(host: string, nameEl: HTMLElement): void {
+  nameEl.querySelector(".ssh-nome")?.remove();
+  if (personOf(host) !== undefined || host === "local" || rowLabel(host) === host) return;
+  nameEl.firstChild?.after(el("span", "seen ssh-nome", ` · ${host}`));
+}
+
 function buildRows(): void {
   listEl.replaceChildren();
   rows.clear();
@@ -114,6 +121,7 @@ function buildRows(): void {
     const dot = el("span", "dot");
     dot.style.background = accentOf(host);
     const name = el("span", "name", rowLabel(host));
+    pintarNomeSsh(host, name);
     const person = personOf(host);
     { const plan = person?.plan ?? plans.get(host) ?? null; if (plan === "pro") name.append(el("span", "badge pro", "PRO")); }
     if (person !== undefined) name.append(el("span", "seen", personSuffix(person)));
@@ -347,6 +355,11 @@ async function probe(host: string, force = false): Promise<void> {
     results.set(host, support !== null ? { ...t, install: t.install === "porta" ? "porta" : null, login: false } : t);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); anotarTipo(host, p.user); }
+    // Apelido gravado na máquina (o admin dá na aba Usuários): aparece no lugar do nome SSH, se este Mac não deu um seu.
+    if (p.reachable && setApelidoMaquina(host, p.apelido)) {
+      const nameEl = rows.get(host)?.li.querySelector<HTMLElement>(".name") ?? null;
+      if (nameEl !== null && nameEl.firstChild?.nodeType === Node.TEXT_NODE) { nameEl.firstChild.textContent = rowLabel(host); pintarNomeSsh(host, nameEl); }
+    }
   } catch (err) {
     results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${ipcErrorText(err)}`, install: null, canOpen: false });
   }

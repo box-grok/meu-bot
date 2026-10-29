@@ -34,7 +34,7 @@ export const adminPickerSource: PickerSource = {
       if (!isSupportAlias(alias)) throw new Error("pessoa inválida");
       return archivePerson(alias, p?.archived === true);
     });
-    handleAdmin("picker:support-rename", (event, payload: unknown) => {
+    handleAdmin("picker:support-rename", async (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       const p = payload as { alias?: unknown; name?: unknown } | null;
       const alias = String(p?.alias ?? "");

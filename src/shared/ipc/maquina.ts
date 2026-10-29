@@ -14,6 +14,8 @@ export interface HostProbe {
   host: string;
   reachable: boolean;
   user: string | null;
+  /** Apelido da conta gravado na máquina (o admin dá na aba Usuários); null = nenhum. Vale para qualquer Mac. */
+  apelido: string | null;
   os: string | null;
   arch: string | null;
   /** Há o backend do meu-bot (server.js nosso e .env) na pasta dele: ~/.local/share/meu-bot/backend, ou a herdada quando o server.js lá é o nosso. */
