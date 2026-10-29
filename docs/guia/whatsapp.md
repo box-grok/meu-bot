@@ -75,6 +75,9 @@ manda sempre usar `--remetentes`.
 
 ## Pausar contato no Hermes (25 out)
 
+> Superada em 30 out pelo plugin `meu-bot-pausa` (seção no fim deste guia); este jeito continua valendo só em máquina
+> sem o plugin. Está na tabela de contornos como #1 (`docs/guia/contornos.md`).
+
 O Hermes não tem pausa por contato (o OpenClaw tem `sendPolicy` por sessão). Pausar lá é **tirar o número da lista de
 quem o agente responde** (WHATSAPP_ALLOWED_USERS, relida ao vivo) enquanto a pausa durar, e retomar é devolvê-lo.
 Diferença dita na tela: o agente nem vê as mensagens da pessoa nesse período.
@@ -307,3 +310,49 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
   "Ativar transcrição" do tutorial 16 só confere `[ -x /opt/transcriber/bin/transcrever ]`, aponta e reinicia, em
   segundos. Sem o binário (máquina de antes do padrão), instala o extra por usuário como antes. A leitura da máquina
   no admin mostra `HERMES=sem-transcritor` e oferece "Instalar o transcritor para todos".
+
+## Pausa com prazo e o plugin meu-bot-pausa do Hermes (30 out)
+
+O que aconteceu no box-2: o Daniel pausou o Diego pela interface e o Hermes respondeu ao Diego 20 s depois. Pausar no
+Hermes era tirar o número da `WHATSAPP_ALLOWED_USERS`, e o Hermes 0.22.x **não relê** a lista (o adapter guarda
+`_allow_from` no `__init__`, `adapter.py:450`; o bridge lê `process.env` ao subir, `bridge.js:126`): só mudança de
+modo/política reiniciava o gateway, e a pausa ficava só no arquivo. O mesmo mecanismo tinha trancado o Daniel fora
+do próprio bot depois de um Retomar. Em "todo mundo" não havia lista de onde tirar; em "só você" ninguém aparecia
+pausado e Retomar dava erro. Issue aberta: NousResearch/hermes-agent#146672. A PR #16 fechou o imediato (qualquer
+mudança na lista reinicia; retomar em "só você" vira "você + ele"; fora da lista aparece pausado). Esta leva fez a
+pausa de verdade.
+
+- **Plugin `meu-bot-pausa`** (`backend-colima/hermes-plugins/meu-bot-pausa/`, Python só com a biblioteca padrão):
+  hook `pre_gateway_dispatch` do Hermes, que roda em cada mensagem **antes** da autorização e pode descartá-la
+  (`{"action": "skip"}`) ou reescrevê-la (`rewrite`). Lê a marca do app (`whatsapp-lista.json › paused`, agora
+  `{ desde, ate, por }`; o formato antigo, string ISO, ainda é lido), descarta a mensagem de quem está pausado e a
+  guarda em `whatsapp-pausados.jsonl`; pausas com prazo vencem sozinhas (é o plugin que apaga a marca; o app só a
+  ignora). Na primeira mensagem de texto do contato depois da retomada, reescreve o texto com **uma nota** listando o
+  que chegou na pausa ("responda numa resposta só, sem mencionar a pausa") e limpa o jsonl daquele número. Comandos no
+  próprio hook (é o único lugar que sabe quem mandou): contato só `/pausar 2h|24h` (pausado ele não consegue pedir
+  para voltar, por isso o prazo é obrigatório); dono `/pausar <número> [prazo]`, `/retomar <número>`, `/pausados`.
+  A resposta sai pelo `adapters[whatsapp].send`; sem adapter, vai por `rewrite` para o agente entregar. O dono
+  (`me.id`/`me.lid` do `creds.json`) nunca é descartado nem pausado; grupos passam reto; qualquer erro deixa a
+  mensagem seguir. Uma ferramenta `pausar_conversa(horas)` para o agente só pausa a conversa da sessão atual (número
+  tirado de `…:whatsapp:dm:<n>` no contexto; sem contexto, orienta o `/pausar`). Teste roda o plugin de verdade com
+  `python3 -I` num HOME falso (`hermes-pausa-plugin.test.mjs`).
+- **Instalação** (`whatsapp-hermes-pausa-core.ts › hermesPausaPluginSh`): os dois arquivos vão inline por SSH
+  (base64, como o `auditoria.py`), gravados só se mudaram; `plugins.enabled` do `config.yaml` ganha o plugin por
+  união com o editor ruamel do Hermes (`HERMES_YAML_PY`); `.ok` com a versão por último; reinicia o gateway só se
+  algo mudou e ele está de pé (usuário novo sem gateway: sobe junto). Roda no preparo do usuário (admin,
+  `hermesSemearSh`), ao abrir a janela da máquina (`picker.ts › ensureHermesPausa`, só sobe de versão, como a guarda),
+  depois de parear (`client.ts`) e pelo botão "Ativar pausa com prazo" no painel do WhatsApp. O plugin é um componente
+  versionado (`COMPONENTES › hermes-pausa`, versão no `plugin.yaml`; `release.mjs` lê `version:` de yaml).
+- **Detecção por capacidade:** `HERMES_PAUSA_SH` imprime `pausaplugin` (versão no `.ok`), `pausavivo` (versão que o
+  `register()` gravou em `whatsapp-pausa.carregado`) e `pausanativa`; `hermesPausaModo` dá `nativa > plugin >
+  allowlist`, e plugin só conta instalado **e** carregado na mesma versão. `capacidadesDe(…, { pausaModo })` liga
+  `pausaPrazo` e `pausaNativa`.
+- **App:** com `pausaPrazo`, o menu "…" vira "Pausar o agente › Por 2 horas / Por 24 horas / Até eu retomar" e
+  "Retomar (pausado até 14:30)"; `whatsapp:pause` leva `horas` e a máquina calcula o fim com o relógio dela
+  (`waMarkSh`, o mesmo relógio do plugin). `pauseHermes` grava só a marca nesse modo (sem mexer na allowlist, sem
+  reinício; retomar quem a política não responde também o põe na lista); sem o plugin, o caminho antigo ficou em
+  `aplicarPlanoAllowlist`. A conversa mostra o que chegou na pausa (bolha tracejada, "na pausa · 14:32",
+  `whatsapp-pausados.ts`) e quem só escreveu na pausa aparece na lista mesmo sem sessão no `state.db`.
+- **Por que plugin e não PR no Hermes:** o hook existe para isso ("plugins can handle unauthorized senders"), vale hoje
+  em qualquer versão 0.22, e não depende de revisão nem de atualizar o Hermes nas máquinas. A issue #146672 pede o
+  mínimo (relê a lista); se o Hermes trouxer pausa por contato, a tabela de contornos diz como tirar o plugin.

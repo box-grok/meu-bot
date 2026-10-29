@@ -236,8 +236,13 @@ export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number:
 }
 
 /**
- * Pausar um contato no Hermes: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem o agente
- * responde (WHATSAPP_ALLOWED_USERS) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado" mora em
+ * CONTORNO #1 (Hermes): não há pausa por contato (NousResearch/hermes-agent#146672).
+ * O que fazemos: pausar é tirar o número da WHATSAPP_ALLOWED_USERS e reiniciar o gateway; retomar é devolvê-lo.
+ * Sai quando: toda máquina Hermes do mapa estiver com o plugin meu-bot-pausa (pausaplugin) ou com pausanativa=1 — o
+ * ramo "allowlist" de hermesPausaModo some e esta função com ele. Tabela: docs/guia/contornos.md.
+ *
+ * Pausar um contato no Hermes sem o plugin: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem
+ * o agente responde (WHATSAPP_ALLOWED_USERS) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado" mora em
  * whatsapp-lista.json (whatsapp-marks.ts); os outros pausados ficam fora da lista gravada. A política fica fixa em
  * "lista" (allowlist): em pairing, um número fora da lista receberia pedido de pareamento, o oposto de pausa.
  * Retomar vale em qualquer política: em "só você" ou desligado, a conversa clicada vira "você e ele" (a pessoa não
@@ -324,6 +329,12 @@ print("envset=ok")
 '`;
 
 /**
+ * CONTORNO #3 (Hermes): `hermes pm install --extra stt-whisper` recusa num usuário novo de Hermes global porque as
+ * ferramentas (ffmpeg, ripgrep) são por HERMES_HOME (issue upstream a abrir; ver a tabela).
+ * O que fazemos: instalamos só as ferramentas que ele listou e tentamos de novo.
+ * Sai quando: `hermes pm install --extra stt-whisper` sair 0 num usuário recém-criado de Hermes global, sem o passo extra.
+ * Tabela: docs/guia/contornos.md.
+ *
  * Instala um extra do Hermes (`stt-whisper`, `piper`) no ambiente do gateway; imprime `extra=ok` ou `extra=falhou` e
  * sai 3. O `hermes pm` recusa o extra quando faltam as ferramentas dele no PATH ("tools not on PATH before venv sync:
  * ffmpeg: …; ripgrep: …"), o que acontece num usuário novo de um Hermes global (/opt/hermes): as ferramentas são por
@@ -601,6 +612,11 @@ export const HERMES_STT_COMANDO = `${TRANSCRITOR_BIN} {input_path} {output_dir} 
 /** Grava (ou troca) a linha do comando no ~/.hermes/.env deste usuário; o resto do arquivo fica como está. */
 export const HERMES_STT_COMPARTILHADO_SH = `install -d -m 700 "$HOME/.hermes"; [ -e "$HOME/.hermes/.env" ] || (umask 077; touch "$HOME/.hermes/.env"); sed -i '/^HERMES_LOCAL_STT_COMMAND=/d' "$HOME/.hermes/.env"; printf '%s\\n' 'HERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"' >> "$HOME/.hermes/.env"`;
 /**
+ * CONTORNO #4 (Hermes): cada usuário baixava o próprio transcritor e modelo (~1,5 GB) e rodava um Whisper por gateway
+ * (sem issue: desenho de produto).
+ * O que fazemos: um transcritor compartilhado em /opt/transcriber e cada Hermes aponta por HERMES_LOCAL_STT_COMMAND.
+ * Sai quando: o Hermes oferecer STT compartilhado entre HERMES_HOMEs. Tabela: docs/guia/contornos.md.
+ *
  * Ligar a transcrição no Hermes deste usuário. Com o transcritor compartilhado da máquina (`bin` executável), só aponta
  * o Hermes para ele (.env + local_command) e imprime `stt=compartilhado`; sem ele (máquina de antes do padrão), instala
  * o extra no ambiente deste usuário e grava o provedor local, imprimindo `stt=proprio`. Os dois imprimem `cfgset=ok`.

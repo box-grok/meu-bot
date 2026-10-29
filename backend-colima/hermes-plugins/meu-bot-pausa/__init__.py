@@ -9,6 +9,7 @@ whatsapp-pausados.jsonl e, na primeira mensagem de texto depois da retomada, ent
 `/pausar 2h|24h`, `/retomar` e `/pausados` são tratados aqui mesmo (é o único lugar que sabe quem mandou).
 Sai quando: o status do app imprimir `pausanativa=1` (sonda HERMES_PAUSA_SH trocada pelo sinal da release que fechar
 a issue); aí `capacidadesDe` prefere o nativo e `hermesPausaPluginRemoverSh` tira este plugin.
+Tabela: docs/guia/contornos.md.
 
 Regras: o dono (me.id/me.lid do creds.json) nunca é descartado nem pausado; um contato só pausa a si mesmo e só com
 prazo (pausado ele não consegue pedir para voltar); o dono pausa qualquer um, com ou sem prazo. Grupos passam reto.
