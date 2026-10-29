@@ -56,7 +56,8 @@ export interface ObjectiveInfo {
 }
 
 /** Conta do Claude Code na máquina. */
-export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null }
+/** `global`: a máquina responde pelo Claude Code Global do admin (a assinatura do root); a pessoa vê, sem mexer. */
+export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null; global?: boolean }
 
 /** Janela de uso de uma conta do Claude: % usado e quando reseta (epoch s). */
 export interface ContaClaudeJanela { pct: number; resets: number | null }
@@ -68,6 +69,8 @@ export interface ContaClaude {
   rotulo: string;
   email: string | null;
   padrao: boolean;
+  /** O Claude Code Global do admin: primeiro da fila, travado (a gestão é do admin). */
+  global?: boolean;
   /** Pasta isolada (CLAUDE_CONFIG_DIR); null na padrão. */
   home: string | null;
   ordem: number;

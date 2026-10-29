@@ -171,3 +171,34 @@ test("dois processos no mesmo registro: um relê o que o outro gravou e gravar n
   assert.equal(a.reg.usoEfetivo("padrao").sessao.pct, 10, "A relê o que B gravou");
   rmSync(a.home, { recursive: true, force: true });
 });
+
+test("conta global (Claude Code Global do admin): primeira da fila, travada, sem pasta própria e sem token do root", () => {
+  const { home, reg } = ambiente();
+  const arq = path.join(home, ".local", "share", "meu-bot", "claude-global.json");
+  assert.equal(reg.conta("global"), null, "sem o arquivo do admin, não existe");
+  const extra = reg.criar("Minha"); logar(extra);
+  mkdirSync(path.dirname(arq), { recursive: true });
+  const chave = "A".repeat(40);
+  writeFileSync(arq, JSON.stringify({ url: "http://127.0.0.1:18765", chave, email: "admin@x.com" }));
+  const g = reg.conta("global");
+  assert.ok(g && g.global, "o arquivo do admin cria a conta");
+  assert.equal(reg.logada(g), true);
+  assert.equal(reg.emailDe(g), "admin@x.com");
+  assert.deepEqual(reg.ambiente(g), { CLAUDE_CODE_OAUTH_TOKEN: chave, ANTHROPIC_BASE_URL: "http://127.0.0.1:18765", ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "" }, "sem CLAUDE_CONFIG_DIR: o ~/.claude do usuário (histórico e --resume)");
+  assert.equal(reg.escolher().id, "global", "o global vem primeiro");
+  reg.definirLimiares({ estrategia: "folga" }); reg.registrarUso("global", { sessao: { pct: 80, resets: null } }); reg.registrarUso(extra.id, { sessao: { pct: 5, resets: null } });
+  assert.equal(reg.escolher().id, "global", "nem com folga a própria passa na frente");
+  reg.marcar("global", "esgotada", "limite", null);
+  assert.equal(reg.escolher().id, extra.id, "esgotado o global, a conta própria é a reserva");
+  assert.throws(() => reg.remover("global"), /gerida pelo admin/);
+  assert.throws(() => reg.atualizar("global", { ativa: false }), /gerida pelo admin/);
+  reg.reordenar(["global", extra.id]);
+  const l = reg.listar();
+  assert.equal(l.contas[0].id, "global"); assert.equal(l.contas[0].global, true); assert.equal(l.contas[0].padrao, false);
+  assert.ok(!JSON.parse(readFileSync(reg.REGISTRO, "utf8")).contas.some((c) => c.id === "global"), "a global não é gravada no registro do usuário");
+  writeFileSync(arq, JSON.stringify({ url: "http://exemplo.com:80", chave }));
+  assert.equal(reg.conta("global"), null, "URL fora desta máquina: não vale");
+  rmSync(arq);
+  assert.equal(reg.conta("global"), null, "o admin desligou: some");
+  assert.equal(reg.escolher().id, extra.id);
+});

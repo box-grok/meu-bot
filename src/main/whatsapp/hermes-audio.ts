@@ -2,16 +2,17 @@
  * Áudio do agente do WhatsApp numa máquina com Hermes: ouvir (stt) e responder em voz (voice/tts) são do próprio
  * Hermes, no `~/.hermes/config.yaml` (`stt.enabled` e o provedor; `voice.auto_tts` = responde em áudio quando a
  * pessoa manda áudio). O app grava os dois (hostProbe.installAudio) e aqui lê. Transcrição local de verdade exige o
- * faster-whisper no ambiente do gateway (`hermes pm install --extra stt-whisper`): sem ele, "ouvir" fica desligado
- * na tela mesmo com o config gravado. Lê com o Python do runtime do Hermes (ruamel; PyYAML nem sempre existe).
+ * faster-whisper no ambiente do gateway (`hermes pm install --extra stt-whisper`) ou o transcritor compartilhado da
+ * máquina (`local_command` → /opt/transcriber): sem um dos dois, "ouvir" fica desligado na tela mesmo com o config gravado. Lê com o Python do runtime do Hermes (ruamel; PyYAML nem sempre existe).
  */
 import type { VoiceReplyMode } from "../../shared/ipc";
 import { runSsh } from "./whatsapp";
-import { HERMES_PATH_SH, HERMES_VENV_PY_SH } from "./whatsapp-hermes-core";
+import { HERMES_PATH_SH, HERMES_VENV_PY_SH, hermesSttCmdSh, lerHermesAudio } from "./whatsapp-hermes-core";
 
 const LER_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY="$R/venv/bin/python3"; [ -x "$PY" ] || PY=python3
 ${HERMES_VENV_PY_SH}
 echo "whisper=$( [ -n "$HPY" ] && "$HPY" -c "import faster_whisper" >/dev/null 2>&1 && echo 1 || echo 0)"
+${hermesSttCmdSh()}
 "$PY" -c '
 import os
 p = os.path.expanduser("~/.hermes/config.yaml")
@@ -39,11 +40,5 @@ export interface HermesAudio { audioIn: boolean; audioOut: VoiceReplyMode }
 export async function hermesAudioStatus(host: string): Promise<HermesAudio | null> {
   const r = await runSsh(host, `${LER_SH}\n`, 30_000).catch(() => null);
   if (r === null || r.code !== 0) return null;
-  const stt = /^stt=([01])$/m.exec(r.stdout); const tts = /^tts=(off|inbound|always)$/m.exec(r.stdout);
-  if (stt === null || tts === null) return null;
-  const prov = /^prov=(.*)$/m.exec(r.stdout)?.[1]?.trim() ?? "";
-  const whisper = /^whisper=1$/m.test(r.stdout);
-  // Provedor local (ou nenhum, que o Hermes resolve como local) só ouve com o faster-whisper instalado.
-  const ouve = stt[1] === "1" && (prov === "local" || prov === "" ? whisper : true);
-  return { audioIn: ouve, audioOut: tts[1] as VoiceReplyMode };
+  return lerHermesAudio(r.stdout);
 }

@@ -15,7 +15,7 @@ export interface GuideContext {
   support: SupportInfo | null;
   statusLine: { installed: boolean | null; limits: boolean; segments: StatusLineSegments | null };
   /** `contasExtras` = contas isoladas logadas (além do login da máquina); `trocas` = trocas automáticas já vistas (eventos). */
-  claude: { loggedIn: boolean | null; email: string | null; firstReply: boolean; contasExtras: number; trocas: number };
+  claude: { loggedIn: boolean | null; email: string | null; /** Responde pelo Claude Code Global do admin (a sessão já existe). */ global: boolean; firstReply: boolean; contasExtras: number; trocas: number };
   /**
    * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
    * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
@@ -70,7 +70,7 @@ export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
-  claude: { loggedIn: null, email: null, firstReply: false, contasExtras: 0, trocas: 0 },
+  claude: { loggedIn: null, email: null, global: false, firstReply: false, contasExtras: 0, trocas: 0 },
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null, possible: null },
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
@@ -140,13 +140,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioPulado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, audioPulado: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioTestado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, audioTestado: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "audioPulado";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "audioTestado";
 
 export interface GuideStep {
   id: string;
@@ -155,7 +155,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
+  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -221,7 +221,7 @@ export interface Tutorial {
 const WHATSAPP_STEPS: GuideStep[] = [
   {
     id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
-    text: "Os dois fazem tudo deste tutorial: responder, escolher quem, entender e mandar áudio. Se não souber, fique com o recomendado.",
+    text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio (tutorial 16). Se não souber, fique com o recomendado.",
     // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
     done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
   },
@@ -236,13 +236,6 @@ const WHATSAPP_STEPS: GuideStep[] = [
     done: (st) => st !== null && st.connected,
   },
   {
-    id: "audio", title: "Áudio no WhatsApp: ouvir e responder", target: "none", body: "audio",
-    text: "Ouvir: sem a transcrição, quem manda áudio ouve do agente que ele não consegue escutar; ela roda na própria máquina, sem custo e sem mandar o áudio para fora. Responder: escolha se ele devolve áudio quando recebe áudio; o padrão é só texto.",
-    done: (st, f) => f.audioPulado || (st !== null && st.audioIn === true),
-    // "Pular" segue sem áudio (o agente responde só em texto); dá para ligar depois no painel do WhatsApp.
-    manual: { label: "Pular: sem áudio por enquanto", flag: "audioPulado" },
-  },
-  {
     id: "quem", title: "Quem o agente responde no WhatsApp?", target: "wa-policy", body: "reply-choice",
     text: "Vale assim que o WhatsApp é pareado. Seus contatos não recebem nenhuma mensagem automática enquanto as respostas estiverem desativadas.",
     done: (st, f) => f.policyChosen || (st !== null && st.dmPolicy === "open"),
@@ -250,8 +243,8 @@ const WHATSAPP_STEPS: GuideStep[] = [
     manual: { label: "Pular: deixar só eu por enquanto", flag: "policyChosen" },
   },
   {
-    id: "teste", title: "Testar com uma mensagem e um áudio", target: "none",
-    text: "Com \"só eu\", mande para o seu próprio número; com \"todo mundo\", mande de outro celular. Mande um texto e depois um áudio curto: o agente deve responder sobre o que você falou.",
+    id: "teste", title: "Testar com uma mensagem", target: "none",
+    text: "Com \"só eu\", mande para o seu próprio número; com \"todo mundo\", mande de outro celular. Mande um texto: o agente deve responder sobre o que você escreveu.",
     done: (_st, f) => f.tested,
     manual: { label: "Testei, funcionou", flag: "tested" },
   },
@@ -291,7 +284,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["claude"],
     title: "Entrar no Claude Code",
     short: "Claude",
-    summary: "O agente desta máquina responde pela sua conta do Claude. Entre nela, confira quem está logado e receba a primeira resposta.",
+    summary: "Confirma que esta máquina tem uma sessão do Claude: a sua conta ou o Claude Code Global do admin. Com o global, já vem concluído.",
     minutes: 2,
     icon: "chat",
     reset: { what: "sai da conta do Claude Code nesta máquina (o agente para de responder até entrar de novo)" },
@@ -312,7 +305,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
         text: "Vá para a conversa e mande uma mensagem: a resposta vem da sua conta do Claude, nesta máquina.",
         // A primeira resposta é um fato que não se desfaz: fica lembrada na flag (apagar as conversas não reabre o
         // tutorial). "Não exibir" marca a mesma flag à mão, para quem não quer passar por aqui.
-        done: (_st, f, c) => c.claude.loggedIn === true && (c.claude.firstReply || f.claudeReplied),
+        // Com o global do admin a sessão já existe e responde: o tutorial 1 só confirma, sem pedir a primeira resposta.
+        done: (_st, f, c) => c.claude.loggedIn === true && (c.claude.global || c.claude.firstReply || f.claudeReplied),
         manual: { label: "Não exibir", flag: "claudeReplied" },
       },
     ],
@@ -326,7 +320,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     after: "claude-login",
     title: "Mais contas do Claude",
     short: "Contas",
-    summary: "Quando a sua conta bate o limite, outra assume sozinha: no app, no WhatsApp e no Terminal desta máquina. Adicione uma conta extra e escolha a ordem.",
+    summary: "Gerencie as suas contas e a ordem de preferência. Quando uma bate o limite, a próxima assume sozinha (no app, no WhatsApp e no Terminal); com o Claude Code Global do admin, as suas contas são a reserva dele.",
     minutes: 3,
     icon: "chat",
     steps: [
@@ -355,11 +349,37 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["whatsapp"],
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
-    summary: "Escolha o agente, conecte um número, faça ele entender áudios, decida quem ele responde e teste de verdade.",
-    minutes: 5,
+    summary: "Escolha o agente, conecte um número, decida quem ele responde e teste de verdade.",
+    minutes: 4,
     icon: "target",
     reset: { what: "desconecta o número desta máquina (o agente para de responder no WhatsApp) e esquece \"escolhi\" e \"testei\"" },
     steps: WHATSAPP_STEPS,
+  },
+  {
+    // Desmembrado do tutorial 2 (29 out): a transcrição era um passo pulável lá dentro, e quem pulava ficava com o
+    // tutorial 2 concluído e o agente respondendo "não consigo ouvir seu áudio" sem nada pendente apontando o porquê.
+    id: "audio-whatsapp",
+    number: 16,
+    needs: ["whatsapp"],
+    after: "whatsapp-openclaw",
+    title: "Ouvir áudios do WhatsApp",
+    short: "Áudio",
+    summary: "O agente transcreve os áudios que chegam no WhatsApp e responde sobre o que foi falado. Roda na própria máquina, sem custo e sem mandar o áudio para fora.",
+    minutes: 3,
+    icon: "chat",
+    steps: [
+      {
+        id: "transcricao", title: "Ativar a transcrição nesta máquina", target: "none", body: "audio-ouvir",
+        text: "Sem a transcrição, quem manda áudio ouve do agente que ele não consegue escutar. Clique em \"Ativar transcrição\": na primeira vez a máquina baixa o transcritor, leva de 1 a 3 minutos.",
+        done: (st) => st !== null && st.connected && st.audioIn === true,
+      },
+      {
+        id: "teste", title: "Testar com um áudio", target: "none",
+        text: "Com \"só eu\", mande um áudio curto para o seu próprio número; com \"todo mundo\", mande de outro celular. O agente deve responder sobre o que você falou.",
+        done: (_st, f) => f.audioTestado,
+        manual: { label: "Ele entendeu meu áudio", flag: "audioTestado" },
+      },
+    ],
   },
   {
     id: "statusline",

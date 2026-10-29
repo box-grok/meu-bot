@@ -239,3 +239,118 @@ test("Hermes: uma porta de bridge por usuário (root na 3000, os outros 3100 + u
   const src = readFileSync(new URL("../../dist/main/whatsapp/whatsapp.js", import.meta.url), "utf8");
   assert.doesNotMatch(src, /127\.0\.0\.1:3000\/health/, "nada de porta 3000 fixa na consulta do bridge");
 });
+
+test("hermesPmExtraSh: sem as ferramentas do pm, instala só as que ele listou e tenta o extra de novo", async () => {
+  const { hermesPmExtraSh } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const { mkdtempSync, writeFileSync, readFileSync, chmodSync } = await import("node:fs");
+  const { join } = await import("node:path"); const { tmpdir } = await import("node:os"); const { spawnSync } = await import("node:child_process");
+  const roda = (faltam) => {
+    const d = mkdtempSync(join(tmpdir(), "pm-extra-"));
+    // hermes falso: o extra falha como o pm de verdade enquanto a marca das ferramentas não existe; grava cada chamada.
+    writeFileSync(join(d, "hermes"), `#!/bin/sh\necho "$*" >> "${d}/chamadas"\nif [ "$1 $2 $3" = "pm install --extra" ]; then [ -f "${d}/ferramentas" ] && exit 0; ${faltam ? `echo "✗ tools not on PATH before venv sync: ffmpeg: not installed or outdated; ripgrep: not installed or outdated"` : `echo "erro de rede"`}; exit 1; fi\ntouch "${d}/ferramentas"\n`);
+    // O macOS não tem timeout (a máquina é Linux): um que só repassa o comando.
+    writeFileSync(join(d, "timeout"), `#!/bin/sh\nshift\nexec "$@"\n`);
+    chmodSync(join(d, "hermes"), 0o755); chmodSync(join(d, "timeout"), 0o755);
+    const r = spawnSync("bash", ["-c", `set -e\n${hermesPmExtraSh("stt-whisper")}`], { env: { ...process.env, HOME: d, PATH: `${d}:${process.env.PATH}` }, encoding: "utf8" });
+    return { r, chamadas: readFileSync(join(d, "chamadas"), "utf8").trim().split("\n") };
+  };
+  const ok = roda(true);
+  assert.equal(ok.r.status, 0); assert.match(ok.r.stdout, /extra=ok/);
+  assert.deepEqual(ok.chamadas, ["pm install --extra stt-whisper", "pm install ffmpeg ripgrep", "pm install --extra stt-whisper"]);
+  const ruim = roda(false);
+  assert.equal(ruim.r.status, 3, "outro erro: não inventa ferramenta, falha"); assert.match(ruim.r.stdout, /extra=falhou/);
+  assert.deepEqual(ruim.chamadas, ["pm install --extra stt-whisper"]);
+});
+
+test("transcritor compartilhado: o .env do usuário ganha (ou troca) só a linha do comando; o resto fica", async () => {
+  const { HERMES_STT_COMPARTILHADO_SH, HERMES_STT_COMANDO } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const { mkdtempSync, writeFileSync, readFileSync, mkdirSync } = await import("node:fs");
+  const { join } = await import("node:path"); const { tmpdir } = await import("node:os"); const { spawnSync } = await import("node:child_process");
+  assert.equal(HERMES_STT_COMANDO, "/opt/transcriber/bin/transcrever {input_path} {output_dir} {language}");
+  const d = mkdtempSync(join(tmpdir(), "stt-env-")); mkdirSync(join(d, ".hermes"));
+  writeFileSync(join(d, ".hermes/.env"), "WHATSAPP_MODE=bot\nHERMES_LOCAL_STT_COMMAND=velho\nX=1\n");
+  // sed -i do Linux; no macOS (onde os testes rodam) o sed -i pede sufixo: o teste usa o gsed se houver, senão um shim.
+  const r = spawnSync("bash", ["-c", `sed() { if [ "$1" = -i ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }\n${HERMES_STT_COMPARTILHADO_SH}\n${HERMES_STT_COMPARTILHADO_SH}`], { env: { ...process.env, HOME: d }, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(readFileSync(join(d, ".hermes/.env"), "utf8"), `WHATSAPP_MODE=bot\nX=1\nHERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"\n`, "duas vezes = uma linha só");
+});
+
+// Máquina falsa para os scripts do Hermes: HOME próprio, um `hermes` que grava cada chamada e aponta o "Python do
+// Hermes" para um falso, que grava o patch do config (o último argumento, em base64) e responde cfgset=ok como o de
+// verdade; e o sed -i do Linux (no macOS ele pede sufixo).
+async function maquinaFalsa() {
+  const { mkdtempSync, writeFileSync, mkdirSync, chmodSync } = await import("node:fs");
+  const { join } = await import("node:path"); const { tmpdir } = await import("node:os");
+  const d = mkdtempSync(join(tmpdir(), "hermes-falso-"));
+  mkdirSync(join(d, ".hermes")); mkdirSync(join(d, "bin")); mkdirSync(join(d, "rt/venv/bin"), { recursive: true });
+  writeFileSync(join(d, "bin/hermes"), `#!/bin/sh\necho "$*" >> "${d}/chamadas"\n[ "$1" = --version ] && echo "Install directory: ${d}/rt"\nexit 0\n`);
+  writeFileSync(join(d, "rt/venv/bin/python"), `#!/bin/sh\nfor a; do ultimo=$a; done\necho "$ultimo" >> "${d}/patches"\necho cfgset=ok\n`);
+  writeFileSync(join(d, "bin/timeout"), `#!/bin/sh\nshift\nexec "$@"\n`);
+  for (const f of ["bin/hermes", "rt/venv/bin/python", "bin/timeout"]) chmodSync(join(d, f), 0o755);
+  return d;
+}
+async function rodar(d, script) {
+  const { spawnSync } = await import("node:child_process"); const { join } = await import("node:path");
+  const sedLinux = `sed() { if [ "$1" = -i ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }`;
+  return spawnSync("bash", ["-c", `set -e\n${sedLinux}\n${script}`], { env: { ...process.env, HOME: d, PATH: `${join(d, "bin")}:${process.env.PATH}` }, encoding: "utf8" });
+}
+async function ler(d, f) {
+  const { readFileSync, existsSync } = await import("node:fs"); const { join } = await import("node:path");
+  return existsSync(join(d, f)) ? readFileSync(join(d, f), "utf8") : "";
+}
+const patchesDe = (txt) => txt.trim().split("\n").filter(Boolean).map((b) => JSON.parse(Buffer.from(b, "base64").toString("utf8")));
+
+test("ativar transcrição: com o transcritor compartilhado da máquina, só aponta o Hermes; sem ele, instala o próprio", async () => {
+  const { hermesSttLigarSh, HERMES_STT_COMANDO } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const { writeFileSync, chmodSync } = await import("node:fs"); const { join } = await import("node:path");
+
+  // Máquina no padrão: o binário compartilhado existe.
+  const a = await maquinaFalsa();
+  const bin = join(a, "transcrever"); writeFileSync(bin, "#!/bin/sh\n"); chmodSync(bin, 0o755);
+  writeFileSync(join(a, ".hermes/.env"), "WHATSAPP_MODE=bot\n");
+  const ra = await rodar(a, hermesSttLigarSh(bin));
+  assert.equal(ra.status, 0, ra.stderr);
+  assert.match(ra.stdout, /^cfgset=ok$/m); assert.match(ra.stdout, /^stt=compartilhado$/m);
+  assert.deepEqual(patchesDe(await ler(a, "patches")), [{ "stt.enabled": true, "stt.provider": "local_command", "stt.language": "pt" }]);
+  assert.equal(await ler(a, ".hermes/.env"), `WHATSAPP_MODE=bot\nHERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"\n`);
+  assert.doesNotMatch(await ler(a, "chamadas"), /pm install/, "nada de instalar por usuário: é só apontar");
+
+  // Máquina de antes do padrão: sem o binário, instala o extra no ambiente deste usuário, como antes.
+  const b = await maquinaFalsa();
+  writeFileSync(join(b, ".hermes/.env"), "WHATSAPP_MODE=bot\n");
+  const rb = await rodar(b, hermesSttLigarSh(join(b, "nao-existe")));
+  assert.equal(rb.status, 0, rb.stderr);
+  assert.match(rb.stdout, /^extra=ok$/m); assert.match(rb.stdout, /^cfgset=ok$/m); assert.match(rb.stdout, /^stt=proprio$/m);
+  assert.match(await ler(b, "chamadas"), /^pm install --extra stt-whisper$/m);
+  assert.deepEqual(patchesDe(await ler(b, "patches")), [{ "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small", "stt.local.unload_after_idle_seconds": 300 }]);
+  assert.equal(await ler(b, ".hermes/.env"), "WHATSAPP_MODE=bot\n", "o .env não ganha o comando compartilhado");
+});
+
+test("leitura do áudio do Hermes: local_command só conta como ouvindo com o comando no .env e o binário na máquina", async () => {
+  const { hermesSttCmdSh, lerHermesAudio, HERMES_STT_COMPARTILHADO_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const { writeFileSync, chmodSync, rmSync } = await import("node:fs"); const { join } = await import("node:path");
+
+  // A linha cmd= de verdade: sem .env, com o comando e o binário, e com o binário tirado pelo root.
+  const d = await maquinaFalsa();
+  const bin = join(d, "transcrever");
+  const cmd = async () => /^cmd=([01])$/m.exec((await rodar(d, hermesSttCmdSh(bin))).stdout)?.[1];
+  assert.equal(await cmd(), "0", "sem .env");
+  writeFileSync(join(d, ".hermes/.env"), `HERMES_LOCAL_STT_COMMAND="${bin} {input_path} {output_dir} {language}"\n`);
+  writeFileSync(bin, "#!/bin/sh\n"); chmodSync(bin, 0o755);
+  assert.equal(await cmd(), "1", "comando no .env e binário executável");
+  rmSync(bin);
+  assert.equal(await cmd(), "0", "o root tirou o /opt/transcriber: não finge que ouve");
+  writeFileSync(join(d, ".hermes/.env"), "HERMES_LOCAL_STT_COMMAND=\"whisper {input_path}\"\n");
+  assert.equal(await cmd(), "1", "comando de outro transcritor: confia no que a pessoa pôs");
+  assert.match(HERMES_STT_COMPARTILHADO_SH, /\/opt\/transcriber\/bin\/transcrever/);
+
+  // O que a tela mostra, linha a linha.
+  const base = "stt=1\ntts=inbound\n";
+  assert.deepEqual(lerHermesAudio(`${base}prov=local_command\ncmd=1\nwhisper=0\n`), { audioIn: true, audioOut: "inbound" }, "box-2 hoje");
+  assert.equal(lerHermesAudio(`${base}prov=local_command\ncmd=0\nwhisper=1\n`).audioIn, false, "o whisper próprio não vale para local_command");
+  assert.equal(lerHermesAudio(`${base}prov=local\ncmd=1\nwhisper=0\n`).audioIn, false, "local sem faster-whisper não ouve");
+  assert.equal(lerHermesAudio(`${base}prov=\nwhisper=1\n`).audioIn, true, "sem provedor o Hermes usa o local");
+  assert.equal(lerHermesAudio(`${base}prov=groq\n`).audioIn, true, "provedor na nuvem: confia no config");
+  assert.equal(lerHermesAudio("stt=0\ntts=off\nprov=local_command\ncmd=1\n").audioIn, false, "desligado");
+  assert.equal(lerHermesAudio("prov=local_command\ncmd=1\n"), null, "sem stt= e tts= não inventa");
+});

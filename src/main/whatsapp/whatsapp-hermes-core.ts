@@ -271,6 +271,19 @@ print("envset=ok")
 '`;
 
 /**
+ * Instala um extra do Hermes (`stt-whisper`, `piper`) no ambiente do gateway; imprime `extra=ok` ou `extra=falhou` e
+ * sai 3. O `hermes pm` recusa o extra quando faltam as ferramentas dele no PATH ("tools not on PATH before venv sync:
+ * ffmpeg: …; ripgrep: …"), o que acontece num usuário novo de um Hermes global (/opt/hermes): as ferramentas são por
+ * HERMES_HOME. Aí instala só as que ele listou e tenta de novo (`--tools-only` traria também o Chromium, ~300 MB).
+ */
+export const hermesPmExtraSh = (extra: string): string => `${HERMES_PATH_SH}
+O=$(timeout 1200 hermes pm install --extra ${extra} 2>&1) || {
+  F=$(printf '%s\\n' "$O" | sed -n 's/.*tools not on PATH before venv sync: //p' | tr ';' '\\n' | sed 's/:.*//; s/^ *//' | tr '\\n' ' ')
+  [ -n "$F" ] && timeout 1200 hermes pm install $F >/dev/null 2>&1 && timeout 1200 hermes pm install --extra ${extra} >/dev/null 2>&1
+} || { echo "extra=falhou"; exit 3; }
+echo "extra=ok"`;
+
+/**
  * Reinicia o gateway do Hermes onde ele estiver: processo do PM2 que roda `hermes gateway`, senão o serviço de
  * usuário do systemd (sem depender do Node), senão `hermes gateway restart`.
  */
@@ -524,7 +537,49 @@ export const HERMES_PIPER_VOICE = "pt_BR-faber-medium";
  * isso ele fica carregado para sempre: era a maior parte dos ~530 MB de cada gateway na meu-root (27 out).
  */
 export const STT_OCIOSO_S = 300;
-export function hermesAudioPatch(setup: { kind: "in"; off?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
+/**
+ * Transcritor compartilhado da máquina: o root o instala uma vez em /opt/transcriber (dono root, 755, como o
+ * /opt/hermes; ver transcritorSh no admin) e cada Hermes o chama como o próprio usuário, pelo provedor
+ * `local_command`. Ninguém além do root grava lá; nenhum Hermes mexe no de outro.
+ */
+export const TRANSCRITOR_BIN = "/opt/transcriber/bin/transcrever";
+/** O Hermes só lê o comando do `local_command` do ambiente (HERMES_LOCAL_STT_COMMAND no ~/.hermes/.env), não do config. */
+export const HERMES_STT_COMANDO = `${TRANSCRITOR_BIN} {input_path} {output_dir} {language}`;
+/** Grava (ou troca) a linha do comando no ~/.hermes/.env deste usuário; o resto do arquivo fica como está. */
+export const HERMES_STT_COMPARTILHADO_SH = `install -d -m 700 "$HOME/.hermes"; [ -e "$HOME/.hermes/.env" ] || (umask 077; touch "$HOME/.hermes/.env"); sed -i '/^HERMES_LOCAL_STT_COMMAND=/d' "$HOME/.hermes/.env"; printf '%s\\n' 'HERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"' >> "$HOME/.hermes/.env"`;
+/**
+ * Ligar a transcrição no Hermes deste usuário. Com o transcritor compartilhado da máquina (`bin` executável), só aponta
+ * o Hermes para ele (.env + local_command) e imprime `stt=compartilhado`; sem ele (máquina de antes do padrão), instala
+ * o extra no ambiente deste usuário e grava o provedor local, imprimindo `stt=proprio`. Os dois imprimem `cfgset=ok`.
+ * `bin` só muda nos testes.
+ */
+export const hermesSttLigarSh = (bin: string = TRANSCRITOR_BIN): string => `if [ -x ${bin} ]; then
+${HERMES_STT_COMPARTILHADO_SH}
+${hermesConfigSetSh(hermesAudioPatch({ kind: "in", compartilhado: true }))}
+echo "stt=compartilhado"
+else
+${hermesPmExtraSh("stt-whisper")}
+${hermesConfigSetSh(hermesAudioPatch({ kind: "in" }))}
+echo "stt=proprio"
+fi`;
+/**
+ * `cmd=1` quando o .env deste usuário tem o comando do local_command e, se o comando é o nosso, o binário existe (o root
+ * pode ter tirado o /opt/transcriber). `bin` só muda nos testes.
+ */
+export const hermesSttCmdSh = (bin: string = TRANSCRITOR_BIN): string => `echo "cmd=$(grep -q '^HERMES_LOCAL_STT_COMMAND=' "$HOME/.hermes/.env" 2>/dev/null && { ! grep -qF '${bin}' "$HOME/.hermes/.env" || [ -x ${bin} ]; } && echo 1 || echo 0)"`;
+/** O que a tela mostra do áudio do Hermes, a partir das linhas `stt= prov= whisper= cmd= tts=`; null = não deu para ler. */
+export function lerHermesAudio(out: string): { audioIn: boolean; audioOut: "off" | "inbound" | "always" } | null {
+  const stt = /^stt=([01])$/m.exec(out); const tts = /^tts=(off|inbound|always)$/m.exec(out);
+  if (stt === null || tts === null) return null;
+  const prov = /^prov=(.*)$/m.exec(out)?.[1]?.trim() ?? "";
+  // Provedor local (ou nenhum, que o Hermes resolve como local) só ouve com o faster-whisper instalado; local_command
+  // (o transcritor compartilhado da máquina) só com o comando no .env e, se for o nosso, o binário lá.
+  const whisper = /^whisper=1$/m.test(out); const cmd = /^cmd=1$/m.test(out);
+  const ouve = stt[1] === "1" && (prov === "local" || prov === "" ? whisper : prov === "local_command" ? cmd : true);
+  return { audioIn: ouve, audioOut: tts[1] as "off" | "inbound" | "always" };
+}
+export function hermesAudioPatch(setup: { kind: "in"; off?: boolean; compartilhado?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
+  if (setup.kind === "in" && setup.off !== true && setup.compartilhado === true) return { "stt.enabled": true, "stt.provider": "local_command", "stt.language": "pt" };
   if (setup.kind === "in") return setup.off === true ? { "stt.enabled": false } : { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small", "stt.local.unload_after_idle_seconds": STT_OCIOSO_S };
   if (setup.mode === "off") return { "voice.auto_tts": false };
   // O provedor padrão (voz-local) entra por HERMES_VOZ_LOCAL_SH, que precisa do caminho da máquina.

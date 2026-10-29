@@ -17,7 +17,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 /** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
@@ -53,6 +53,15 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let liberar: { nome: string; pct: number; maiores: Maiores | null; erro: string | null; itemArmado: string | null } | null = null;
   /** Resultado da sincronização com os seletores feita ao abrir a aba (uma linha discreta; null = nada a dizer). */
   let sincronia: string | null = null;
+  /** Log do último job de criar/preparar (ao vivo enquanto roda; fica na tela depois para se ver o que aconteceu). */
+  let jobLog: string[] = [];
+  deps.api.on("admin:usuarios-progresso", (p) => {
+    if (ocupado === null || !(ocupado === "criar" || ocupado.startsWith("preparar:"))) return;
+    // A instalação do backend despeja o `systemctl status` inteiro: só as linhas que dizem algo.
+    const l = p.line.replace(/\s+$/, "");
+    if (l.trim() === "" || /^\s*(Invocation|Main PID|Tasks|Memory|CPU|CGroup|└─|Loaded|Docs):?/.test(l) || /^\s*[a-zA-Z]{3} \d{2} \d{2}:\d{2}:\d{2} /.test(l)) return;
+    jobLog.push(l); render();
+  });
 
   /** Uma vez ao abrir a aba: os usuários comuns com a chave deste Mac que faltam em algum seletor entram (em segundo plano). */
   async function sincronizar(): Promise<void> {
@@ -72,7 +81,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     render();
   }
   async function rodar(chave: string, f: () => Promise<UsuariosVisao>, ok: string): Promise<boolean> {
-    ocupado = chave; msg = null; render();
+    ocupado = chave; msg = null; if (chave === "criar" || chave.startsWith("preparar:")) jobLog = []; render();
     try { visao = await f(); msg = { text: ok, bad: false }; return true; }
     catch (e) { msg = { text: `✗ ${ipcErrorText(e).replace(/^ACIMA_DO_LIMITE: /, "")}`, bad: true }; return false; }
     finally { ocupado = null; render(); }
@@ -87,7 +96,10 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
       // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
       const sel = visao?.seletores;
-      if (sel !== undefined) msg = sel.aviso === null ? { text: `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}. Já está no seletor do meu-bot (aba Usuário, como ${sel.alias}) e no do admin.`, bad: false } : { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true };
+      if (sel !== undefined) msg = sel.aviso !== null ? { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true }
+        : visao?.preparo != null ? { text: `Usuário ${n} criado, mas a preparação parou: ${visao.preparo}. Use "Preparar" na linha dele para continuar de onde parou.`, bad: true }
+        : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
+        : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
       nome = null; pctNovo = PCT_PADRAO; render();
     }
   }
@@ -181,11 +193,12 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
     const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : pctNovo; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
     pin.addEventListener("input", () => { pctNovo = pin.value; });
-    const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
+    const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando e preparando… (alguns minutos)" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
     const campo = el("span", "usuarios-nome"); campo.append(prefixo, input);
     linha.append(campo, pin, b); form.append(linha);
-    form.append(el("p", "hint", "Nasce comum (sem sudo), sempre ligado (o agente dele roda mesmo sem ele conectado), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
+    // No lugar do texto descritivo: o que o job está fazendo agora (e o que fez, depois).
+    if (jobLog.length > 0) { const ul = el("ul", "support-log"); for (const l of jobLog.slice(-40)) ul.append(el("li", "", l)); form.append(ul); ul.scrollTop = ul.scrollHeight; }
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (sincronia !== null) form.append(el("p", "hint", sincronia));
     panel.append(form);
@@ -219,13 +232,14 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
         }
       }
       // Hermes só na pasta do root (700): os outros usuários não o alcançam e cada um acabaria baixando uma cópia.
-      if (v.hermes === "global") lista.append(el("p", "hint", "Hermes: um só para todos os usuários (/opt/hermes); os dados de cada um ficam na pasta dele."));
+      if (v.hermes === "global") lista.append(el("p", "hint", "Hermes e transcritor: um só para todos os usuários (/opt/hermes e /opt/transcriber); os dados de cada um ficam na pasta dele."));
       else if (v.hermes !== null) {
         const hg = el("div", "admin-actions");
-        const b = el("button", "btn btn-ghost btn-small", ocupado === "hermes" ? "Instalando…" : "Instalar Hermes para todos"); b.type = "button"; b.disabled = ocupado !== null;
+        const completar = v.hermes === "sem-transcritor";
+        const b = el("button", "btn btn-ghost btn-small", ocupado === "hermes" ? "Instalando…" : completar ? "Instalar o transcritor para todos" : "Instalar Hermes para todos"); b.type = "button"; b.disabled = ocupado !== null;
         b.title = "Instala o Hermes em /opt/hermes (só leitura para os outros) e aponta o comando hermes de todos para lá; o do root continua como está. Baixa ~1 GB na primeira vez";
-        b.addEventListener("click", () => { void rodar("hermes", () => deps.api.adminHermesGlobal(), "✓ Hermes instalado para todos: os usuários usam o mesmo programa, sem baixar uma cópia cada um."); });
-        hg.append(b, el("span", "hint", v.hermes === "root" ? "O Hermes desta máquina está só na pasta do root: os outros usuários não conseguem usá-lo e cada um baixaria uma cópia." : "Esta máquina não tem Hermes."));
+        b.addEventListener("click", () => { void rodar("hermes", () => deps.api.adminHermesGlobal(), "✓ Hermes e transcritor instalados para todos: os usuários usam os mesmos programas, sem baixar uma cópia cada um."); });
+        hg.append(b, el("span", "hint", completar ? "O Hermes já é de todos, mas falta o transcritor compartilhado (/opt/transcriber): sem ele, cada usuário instala o próprio para ouvir áudios." : v.hermes === "root" ? "O Hermes desta máquina está só na pasta do root: os outros usuários não conseguem usá-lo e cada um baixaria uma cópia." : "Esta máquina não tem Hermes."));
         lista.append(hg);
       }
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
@@ -263,6 +277,13 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
                 .finally(() => { ocupado = null; render(); });
             });
             tdAp.append(ab, " ");
+          }
+          // Conta sem o onboarding completo (criada antes dele, ou um passo falhou): retoma de onde parou.
+          if (!u.pronto && !u.sudo && !PROTEGIDOS.has(u.nome)) {
+            const pp = el("button", "btn btn-ghost btn-small", ocupado === `preparar:${u.nome}` ? "Preparando… (alguns minutos)" : "Preparar"); pp.type = "button"; pp.disabled = ocupado !== null;
+            pp.title = "Instala o Claude Code e o backend do meu-bot na conta dele e deixa o Hermes com a transcrição da máquina; o que já está feito passa direto";
+            pp.addEventListener("click", () => { void rodar(`preparar:${u.nome}`, () => deps.api.adminUsuarioPreparar(u.nome), `✓ ${u.nome} está pronto: falta só entrar no Claude e ler o QR do WhatsApp.`); });
+            tdAp.append(pp, " ");
           }
           // Sem linger o agente dele (systemctl --user) morre quando ele sai da máquina e não volta ao reiniciar.
           if (!u.ligado) {

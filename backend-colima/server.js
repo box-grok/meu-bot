@@ -332,6 +332,8 @@ let ultimaConta = 'padrao';
  * stream) que o uso de cada conta vem.
  */
 async function atualizarUsoPelaApi(c, maxAgeS) {
+  // Global: o token é do root e nunca chega aqui; o uso vem dos rate_limit_event que passam pelo intermediário.
+  if (c && c.global) return 'global';
   const configDir = contas.configDir(c);
   const why = await refreshRateLimits(maxAgeS === undefined ? { configDir } : { configDir, maxAgeS });
   const s = readClaudeStatus(os.homedir(), configDir);
@@ -339,6 +341,11 @@ async function atualizarUsoPelaApi(c, maxAgeS) {
     contas.registrarUso(c.id, { sessao: s.sessionPct !== null ? { pct: s.sessionPct, resets: s.sessionResets } : undefined, semanal: s.weeklyPct !== null ? { pct: s.weeklyPct, resets: s.weeklyResets } : undefined });
   }
   return why;
+}
+/** O /status da conta global: e-mail do admin e as janelas vistas nos rate_limit_event (sem ler o ~/.claude do usuário). */
+function statusGlobal(c) {
+  const u = contas.usoEfetivo(c.id);
+  return { email: contas.emailDe(c), assento: 'global', sessionPct: u.sessao ? u.sessao.pct : null, weeklyPct: u.semanal ? u.semanal.pct : null, sessionResets: u.sessao ? u.sessao.resets : null, weeklyResets: u.semanal ? u.semanal.resets : null, updated: u.vistoEm || null, segments: readClaudeStatus(os.homedir()).segments };
 }
 /** "HH:MM" no fuso da máquina para um epoch em segundos. */
 const horaLocal = (epochS) => new Date(epochS * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: process.env.TZ || 'America/Sao_Paulo' });
@@ -546,7 +553,7 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         const e = new Error(`CLI saiu com código ${code} sem texto`); e.code = code2; e.stderr = stderr.slice(-2000); return reject(e);
       }
       if (/^\s*not logged in/i.test(text) || /please run \/?login/i.test(text) || /authentication_failed|invalid.*(oauth|token)|login expired/i.test(`${text.slice(0, 300)}\n${stderr.slice(-500)}`)) {
-        contas.marcar(contaId, 'bloqueada', 'login vencido: entre de novo nesta conta');
+        contas.marcar(contaId, 'bloqueada', contaId === 'global' ? 'o Claude Code Global recusou: o admin precisa conferir' : 'login vencido: entre de novo nesta conta');
         const e = new Error(conta && conta.home ? `Claude Code deslogado na conta "${conta.rotulo}": entre de novo` : 'Claude Code deslogado na VM: rode `claude /login` lá'); e.code = 'auth'; return reject(e);
       }
       resolve({ text, usage, sessionId, deltas, blockOpen });
@@ -841,7 +848,7 @@ const server = http.createServer(async (req, res) => {
     const c = contas.conta(ultimaConta) || contas.escolher({ permitirAviso: true }) || contas.conta('padrao');
     atualizarUsoPelaApi(c).then((why) => {
       if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta ${c.id}: ${why}`); }
-      json(res, 200, { claude: readClaudeStatus(os.homedir(), contas.configDir(c)), model: currentModelLabel(c), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })), contas: contas.resumo(c.id) });
+      json(res, 200, { claude: c.global ? statusGlobal(c) : readClaudeStatus(os.homedir(), contas.configDir(c)), model: currentModelLabel(c), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })), contas: contas.resumo(c.id) });
     });
     return;
   }

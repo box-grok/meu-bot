@@ -12,7 +12,8 @@ import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
-import { manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
+import { contaEditarClaudeGlobal, contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, limiaresClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
+import { prepararUsuarioDeNovo, manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -33,13 +34,25 @@ export function registerAdminIpc(): void {
   // Usuários (máquina em que o admin entra como root): listar e criar usuários comuns com a chave deste Mac.
   handleAdmin("admin:usuarios-visivel", (event) => usuariosVisivel(adminHost(event)));
   handleAdmin("admin:usuarios", (event) => usuariosDaMaquina(adminHost(event)));
-  handleAdmin("admin:usuario-criar", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return criarUsuario(adminHost(event), p.nome, p.pct); });
+  // O job de criar/preparar manda cada passo à janela que pediu (log ao vivo na aba Usuários).
+  const progresso = (event: Electron.IpcMainInvokeEvent) => (line: string): void => { if (!event.sender.isDestroyed()) event.sender.send("admin:usuarios-progresso", { line }); };
+  handleAdmin("admin:usuario-criar", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return criarUsuario(adminHost(event), p.nome, p.pct, progresso(event)); });
   handleAdmin("admin:usuario-limite", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return definirLimite(adminHost(event), p.nome, p.pct); });
   handleAdmin("admin:usuario-apagar", (event, payload: unknown) => apagarUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   // Usuário de login nos dois seletores (meu-bot pelo ~/.ssh/config e admin), sem preparar a conta: um ou todos os que faltam.
   handleAdmin("admin:usuario-seletores", (event, payload: unknown) => nosSeletores(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:usuarios-sincronizar", (event) => sincronizarSeletores(adminHost(event)));
   handleAdmin("admin:usuario-apelido", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; apelido?: unknown }; return definirApelido(adminHost(event), p.nome, p.apelido); });
+  handleAdmin("admin:claude-global", (event) => estadoClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-instalar", (event) => instalarClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-entrar", (event) => entrarClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-conta-nova", (event) => contaNovaClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-conta-remover", (event, payload: unknown) => contaRemoverClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
+  handleAdmin("admin:claude-global-conta-usar", (event, payload: unknown) => contaUsarAgoraClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
+  handleAdmin("admin:claude-global-conta-editar", (event, payload: unknown) => contaEditarClaudeGlobal(adminHost(event), payload));
+  handleAdmin("admin:claude-global-limiares", (event, payload: unknown) => limiaresClaudeGlobal(adminHost(event), payload));
+  handleAdmin("admin:claude-global-usuario", (event, payload: unknown) => usuarioClaudeGlobal(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
+  handleAdmin("admin:usuario-preparar", (event, payload: unknown) => prepararUsuarioDeNovo(adminHost(event), (payload as { nome?: unknown } | null)?.nome, progresso(event)));
   handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));
   handleAdmin("admin:hermes-global", (event) => instalarHermesGlobal(adminHost(event)));

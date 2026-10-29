@@ -147,6 +147,24 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.equal(ler("ROOT\nHERMES=global\n").hermes, "global");
   assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
   assert.equal(ler("ROOT\n").hermes, null);
+  // Hermes global sem o transcritor compartilhado: incompleto, o admin oferece completar.
+  assert.match(listar, /meu-bot-transcritor \/opt\/transcriber\/bin\/transcrever/);
+  assert.equal(ler("ROOT\nHERMES=sem-transcritor\n").hermes, "sem-transcritor");
+});
+
+test("transcritor para todos: /opt/transcriber do root (755, como o /opt/hermes), modelo reaproveitado, conferido como nobody", () => {
+  const { transcritorSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const sh = transcritorSh();
+  assert.match(sh, /^T=\/opt\/transcriber;/);
+  assert.match(sh, /chown -R root:root "\$T"; chmod -R u=rwX,go=rX "\$T"; chmod 755 "\$T\/bin\/transcrever"/, "só o root grava; todos leem e executam");
+  assert.doesNotMatch(sh, /groupadd|usermod|chgrp/, "sem grupo: o acesso é pelo \"outros\", como o /opt/hermes");
+  assert.match(sh, /faster-whisper==1\.2\.1 av==18\.1\.0/, "o av 19 quebra o decode_audio do faster-whisper 1.2.1");
+  assert.match(sh, /cp -a \/opt\/hermes\/modelos\/whisper-small "\$M"/, "o modelo que já está na máquina não baixa de novo");
+  assert.match(sh, /Systran\/faster-whisper-small/);
+  assert.match(sh, /#!\/opt\/transcriber\/venv\/bin\/python\n"""meu-bot-transcritor/, "a marca que a leitura da máquina procura");
+  assert.match(sh, /runuser -u nobody -- "\$T\/bin\/transcrever"/);
+  assert.match(sh, /echo "TRANSCRITOR=ok"/);
+  assert.ok(!sh.includes("${"), "nada de interpolação perdida no script");
 });
 
 test("usuários: o box- é fixo na frente do nome digitado, sem repetir", async () => {
@@ -165,6 +183,15 @@ test("usuários: o nome sugerido é o próximo box da sequência", async () => {
   assert.equal(proximoBox([]), "1");
   assert.equal(proximoBox(["box-1", "box-2"]), "3");
   assert.equal(proximoBox(["box-1", "box-4", "maria", "box-maria", "meu-box"]), "5", "só box-<número> conta; segue o maior");
+});
+
+test("usuários: \"pronto\" = backend do meu-bot na conta e o Hermes como agente (o que o onboarding da criação deixa)", () => {
+  assert.match(LISTAR_SH, /\.local\/share\/meu-bot\/backend\/\.env/);
+  assert.match(LISTAR_SH, /whatsapp-agente[^\n]*= hermes \] && pr=1 \|\| pr=0/);
+  const linha = (pr) => `ROOT\nU\tbox-9\t1009\t/home/box-9\t/bin/bash\t0\t1\t1\t\t\t0\tinfinity\tinfinity\t\t1${pr === undefined ? "" : `\t${pr}`}\n`;
+  assert.equal(lerUsuarios(linha("1")).usuarios[0].pronto, true);
+  assert.equal(lerUsuarios(linha("0")).usuarios[0].pronto, false);
+  assert.equal(lerUsuarios(linha()).usuarios[0].pronto, false, "máquina com script antigo: sem a coluna, não está pronto");
 });
 
 test("nome para criar: vazio ou só o prefixo não vira usuário \"box-\"; com ou sem prefixo dá o mesmo", async () => {

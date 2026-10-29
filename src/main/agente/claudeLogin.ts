@@ -54,23 +54,37 @@ export function claudeAuthStatus(host: string, configDir?: string): Promise<{ lo
   });
 }
 
+/**
+ * Claude Code Global do admin para este usuário: `GLOBAL=1 <e-mail da conta do root>` quando o arquivo que o admin
+ * deixa está válido (o mesmo que contas-claude.js lê); nada sem ele. A chave nunca é impressa.
+ */
+const GLOBAL_CMD = `python3 -c 'import json,os,re
+try:
+    g=json.load(open(os.path.expanduser("~/.local/share/meu-bot/claude-global.json")))
+    ok=re.match(r"^http://127\\.0\\.0\\.1:\\d{2,5}$",str(g.get("url"))) and re.match(r"^[A-Za-z0-9]{32,128}$",str(g.get("chave")))
+    print("GLOBAL=1 "+(g.get("email") or "") if ok else "")
+except Exception: pass' 2>/dev/null`;
 /** Conta logada (e-mail do oauthAccount em ~/.claude.json) e estado do `claude auth status`. null se não deu para consultar. */
 export function claudeAuthInfo(host: string): Promise<ClaudeAuthInfo | null> {
   const emailCmd = "python3 -c 'import json,os;print(json.load(open(os.path.expanduser(\"~/.claude.json\"))).get(\"oauthAccount\",{}).get(\"emailAddress\",\"\"))' 2>/dev/null";
   return new Promise((resolve) => {
     const child = host === LOCAL_HOST
       ? spawn("bash", ["-c", `${findClaude() === null ? "echo '{}'" : `'${findClaude()}' auth status 2>/dev/null`}; echo __EMAIL__; ${emailCmd}`], { stdio: ["ignore", "pipe", "pipe"] })
-      : spawn("ssh", [...SSH_OPTS, "--", host, `${REMOTE_PATH}; claude auth status 2>/dev/null; echo __EMAIL__; ${emailCmd}`], { stdio: ["ignore", "pipe", "pipe"] });
+      : spawn("ssh", [...SSH_OPTS, "--", host, `${REMOTE_PATH}; claude auth status 2>/dev/null; echo __EMAIL__; ${emailCmd}; echo __GLOBAL__; ${GLOBAL_CMD}`], { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
     const timer = setTimeout(() => child.kill("SIGKILL"), 30_000);
     child.stdout.on("data", (d: Buffer) => { out += d.toString("utf8"); });
     child.on("error", () => { clearTimeout(timer); resolve(null); });
     child.on("close", () => {
       clearTimeout(timer);
-      const [statusPart, emailPart] = out.split("__EMAIL__");
+      const [statusPart, resto] = out.split("__EMAIL__");
+      const [emailPart, globalPart] = (resto ?? "").split("__GLOBAL__");
       let loggedIn = false;
       try { loggedIn = (JSON.parse(statusPart ?? "") as { loggedIn?: unknown }).loggedIn === true; } catch { if (statusPart === undefined) { resolve(null); return; } }
       const email = (emailPart ?? "").trim();
+      // Global do admin: a máquina responde pela conta do root mesmo sem login próprio; a linha mostra o e-mail dela.
+      const g = /^GLOBAL=1 ?(\S*)$/m.exec(globalPart ?? "");
+      if (g !== null) { resolve({ loggedIn: true, email: /^[^@\s]+@[^@\s]+$/.test(g[1] ?? "") ? g[1]! : null, global: true }); return; }
       resolve({ loggedIn, email: /^[^@\s]+@[^@\s]+$/.test(email) ? email : null });
     });
   });

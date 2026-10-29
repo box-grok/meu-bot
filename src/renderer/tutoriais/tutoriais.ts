@@ -292,8 +292,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
           const b = el("button", "linkish", `tutorial ${tg.number}, ${tg.title}`); b.type = "button"; b.addEventListener("click", () => openGuide(tg));
           p.append(b, "."); txt.append(p);
         }
-      } else if (step.body === "audio") {
-        ctx.renderAudioControls(txt);
+      } else if (step.body === "audio-ouvir") {
+        ctx.renderAudioControls(txt, "ouvir");
       } else if (step.body === "statusline-install") {
         ctx.renderStatusLineInstall(txt);
       } else if (step.body === "guarda-install") {
@@ -470,7 +470,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     manage.append(cards);
     ctx.renderChannelEditor(manage);
     manage.append(el("p", "hint strong-hint", "Áudio no WhatsApp"));
-    ctx.renderAudioControls(manage);
+    ctx.renderAudioControls(manage, "responder");
     const acts = el("div", "dialog-actions");
     const refresh = el("button", "btn btn-ghost btn-small", "Atualizar"); refresh.type = "button";
     refresh.addEventListener("click", () => { refresh.disabled = true; void ctx.refreshWhatsapp().finally(() => { refresh.disabled = false; }); });

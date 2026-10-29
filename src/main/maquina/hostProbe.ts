@@ -5,11 +5,11 @@
  *
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
-import { BUNDLE_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES } from "./backend-bundle-core";
+import { BUNDLE_FILES, CLAUDE_GLOBAL_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES } from "./backend-bundle-core";
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
 import { isVozId } from "../whatsapp/vozes-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
-import { HERMES_PATH_SH, HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
+import { HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh, hermesPmExtraSh, hermesSttLigarSh } from "../whatsapp/whatsapp-hermes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -110,7 +110,7 @@ function probeScript(port: number): string {
     // Primeira porta livre acima da do app, para o seletor instalar sem conflito.
     `F=; q=$((${port}+1)); while [ $q -le $((${port}+30)) ]; do echo "$L" | grep -q ":$q " || { F=$q; break; }; q=$((q+1)); done; echo "freeport=$F"`,
     `C=$(command -v claude 2>/dev/null); [ -z "$C" ] && [ -x "$HOME/.local/bin/claude" ] && C="$HOME/.local/bin/claude"; echo "claude=$C"`,
-    `grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null && echo login=1 || echo login=0`,
+    `{ grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null || grep -q '"chave"' "$HOME/.local/share/meu-bot/claude-global.json" 2>/dev/null; } && echo login=1 || echo login=0`,
     // Status line nossa: o statusline.sh que grava o cache de limites lido em /v1/meu-bot/status.
     `grep -q ratelimits.json "$HOME/.claude/statusline.sh" 2>/dev/null && echo statusline=1 || echo statusline=0`,
     // Guarda do WhatsApp (plugin meu-bot-guarda do OpenClaw): a cópia que o install-guarda.sh registra por --link.
@@ -336,6 +336,26 @@ export async function installClaudeCode(host: string, onLine?: (line: string) =>
  * com o modo (install-voz.sh off|inbound|always), mesmo molde da status line. Hermes: grava `stt` e
  * `voice.auto_tts` no config.yaml dele (a transcrição e a voz são do próprio Hermes) e reinicia o gateway.
  */
+/**
+ * Claude Code Global (root): envia o intermediário (claude-global.js e o que ele lê) e roda o instalador como root.
+ * `host` é o alias do root. Devolve a porta e se o root já entrou no Claude Code.
+ */
+export async function installClaudeGlobal(host: string): Promise<{ ok: boolean; porta: number | null; login: boolean; email: string | null; erro: string | null }> {
+  const falha = (erro: string): { ok: false; porta: null; login: false; email: null; erro: string } => ({ ok: false, porta: null, login: false, email: null, erro });
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("claude-global")}; mkdir -p ${stageDe("claude-global")}`], 20_000);
+  if (mk.code !== 0) return falha(`falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`);
+  const arquivos = CLAUDE_GLOBAL_FILES.map((f) => path.join(backendBundleDir(), f));
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...arquivos, `${host}:${stageDe("claude-global")}/`], 60_000);
+  if (scp.code !== 0) return falha(`scp falhou: ${lastLine(scp.stderr)}`);
+  const r = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("claude-global")}/install-claude-global.sh 2>&1`], 5 * 60_000);
+  const erro = /^ERRO=(.*)$/m.exec(r.stdout)?.[1];
+  if (erro !== undefined) return falha(erro);
+  const ok = /^CLAUDE_GLOBAL=ok (\d+)$/m.exec(r.stdout);
+  if (ok === null) return falha(lastLine(r.stdout) || lastLine(r.stderr) || "o instalador não respondeu");
+  const email = /^EMAIL=(\S+@\S+)$/m.exec(r.stdout)?.[1] ?? null;
+  return { ok: true, porta: Number(ok[1]), login: /^LOGIN=1$/m.test(r.stdout), email, erro: null };
+}
+
 export async function installAudio(host: string, setup: AudioSetup, onLine?: (line: string) => void): Promise<InstallBackendResult> {
   const lines: string[] = [];
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
@@ -344,21 +364,24 @@ export async function installAudio(host: string, setup: AudioSetup, onLine?: (li
   if (/^hermes$/m.test(gw.stdout)) {
     const ligarStt = setup.kind === "in" && setup.off !== true;
     const ligarVoz = setup.kind === "out" && setup.mode !== "off";
-    say(setup.kind === "in" ? (ligarStt ? "instalando o faster-whisper no Hermes (só na primeira vez, 1–3 min)…" : "desligando a transcrição no Hermes…") : ligarVoz ? "instalando a voz local (Piper pt-BR) no Hermes (só na primeira vez, 1–3 min)…" : "ajustando quando o Hermes responde em áudio…");
-    // Transcrição = extra stt-whisper; voz = extra piper + a voz pt-BR já baixada (senão a 1ª resposta demora ~30 s) +
-    // ffmpeg (sem ele o áudio não vira Ogg/Opus e não chega como mensagem de voz; instala pelo apt quando dá).
-    // Os extras são do ambiente do gateway (hermes pm) e são idempotentes: já instalados, levam segundos.
-    const extra = ligarStt ? `${HERMES_PATH_SH}; timeout 1200 hermes pm install --extra stt-whisper >/dev/null 2>&1 || { echo "extra=falhou"; exit 3; }; echo "extra=ok"\n`
-      : ligarVoz ? `${HERMES_PATH_SH}; timeout 1200 hermes pm install --extra piper >/dev/null 2>&1 || { echo "extra=falhou"; exit 3; }; echo "extra=ok"\n${HERMES_VENV_PY_SH}\ncommand -v ffmpeg >/dev/null 2>&1 || { if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; fi; } >/dev/null 2>&1; command -v ffmpeg >/dev/null 2>&1 || echo "ffmpeg=falta"\nmkdir -p "$HOME/.hermes/cache/piper-voices"; [ -s "$HOME/.hermes/cache/piper-voices/${HERMES_PIPER_VOICE}.onnx" ] || { [ -n "$HPY" ] && timeout 600 "$HPY" -m piper.download_voices ${HERMES_PIPER_VOICE} --download-dir "$HOME/.hermes/cache/piper-voices" >/dev/null 2>&1 || echo "voz=nao-baixou"; }\n` : "";
+    say(setup.kind === "in" ? (ligarStt ? "ligando a transcrição no Hermes…" : "desligando a transcrição no Hermes…") : ligarVoz ? "instalando a voz local (Piper pt-BR) no Hermes (só na primeira vez, 1–3 min)…" : "ajustando quando o Hermes responde em áudio…");
+    // Voz = extra piper + a voz pt-BR já baixada (senão a 1ª resposta demora ~30 s) + ffmpeg (sem ele o áudio não vira
+    // Ogg/Opus e não chega como mensagem de voz; instala pelo apt quando dá). Os extras são do ambiente do gateway
+    // (hermes pm) e são idempotentes: já instalados, levam segundos.
+    // Transcrição: com o transcritor compartilhado da máquina (/opt/transcriber, do root), só aponta o Hermes para ele;
+    // sem ele (máquina de antes do padrão), instala o extra no ambiente deste usuário, como antes.
+    const stt = `${hermesSttLigarSh()}\n`;
+    const extra = ligarStt ? ""
+      : ligarVoz ? `${hermesPmExtraSh("piper")}\n${HERMES_VENV_PY_SH}\ncommand -v ffmpeg >/dev/null 2>&1 || { if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg; fi; } >/dev/null 2>&1; command -v ffmpeg >/dev/null 2>&1 || echo "ffmpeg=falta"\nmkdir -p "$HOME/.hermes/cache/piper-voices"; [ -s "$HOME/.hermes/cache/piper-voices/${HERMES_PIPER_VOICE}.onnx" ] || { [ -n "$HPY" ] && timeout 600 "$HPY" -m piper.download_voices ${HERMES_PIPER_VOICE} --download-dir "$HOME/.hermes/cache/piper-voices" >/dev/null 2>&1 || echo "voz=nao-baixou"; }\n` : "";
     // O script vai em base64 no próprio comando: tem aspas e quebras de linha que o argv do ssh não carrega intactas.
     // Ligar a voz: depois do config, o provedor voz-local (script + tts.provider); hermesConfigSetSh já deixou $PY definido.
-    const b64 = Buffer.from(`set -e\n${extra}${hermesConfigSetSh(hermesAudioPatch(setup))}\n${ligarVoz ? `${HERMES_VOZ_LOCAL_SH}\n` : ""}${HERMES_RESTART_SH}\n`, "utf8").toString("base64");
+    const b64 = Buffer.from(`set -e\n${extra}${ligarStt ? stt : `${hermesConfigSetSh(hermesAudioPatch(setup))}\n`}${ligarVoz ? `${HERMES_VOZ_LOCAL_SH}\n` : ""}${HERMES_RESTART_SH}\n`, "utf8").toString("base64");
     const r = await run("ssh", [...sshBase(host), "--", host, `echo ${b64} | base64 -d | bash`], 25 * 60_000);
     if (/extra=falhou/.test(r.stdout)) return { ok: false, log: [...lines, ligarStt ? "não consegui instalar o faster-whisper no Hermes (hermes pm install --extra stt-whisper); veja a máquina" : "não consegui instalar a voz Piper no Hermes (hermes pm install --extra piper); veja a máquina"] };
     if (r.code !== 0 || !r.stdout.includes("cfgset=ok") || (ligarVoz && !r.stdout.includes("voz=ok"))) return { ok: false, log: [...lines, `não consegui gravar o config.yaml do Hermes: ${lastLine(r.stderr) || lastLine(r.stdout) || "ssh falhou"}`] };
     if (/restart=falhou/.test(r.stdout)) return { ok: false, log: [...lines, "gravei, mas não consegui reiniciar o gateway do Hermes; reinicie-o na máquina para valer"] };
     say(setup.kind === "in"
-      ? (ligarStt ? "✓ Transcrição ligada: o agente entende áudios em português (o modelo, ~150 MB, baixa no primeiro áudio)" : "✓ Transcrição desligada")
+      ? (ligarStt ? (/stt=compartilhado/.test(r.stdout) ? "✓ Transcrição ligada: o agente entende áudios em português, com o transcritor compartilhado da máquina" : "✓ Transcrição ligada: o agente entende áudios em português (o modelo, ~150 MB, baixa no primeiro áudio)") : "✓ Transcrição desligada")
       : setup.mode === "off" ? "✓ O agente responde só em texto" : `✓ O agente responde em áudio quando recebe áudio, com a voz local em português${/voz=nao-baixou/.test(r.stdout) ? " (a voz baixa na primeira resposta; ela demora um pouco mais)" : ""}${/ffmpeg=falta/.test(r.stdout) ? ". Falta o ffmpeg na máquina (apt-get install ffmpeg): sem ele o áudio chega como arquivo, não como mensagem de voz" : ""}`);
     return { ok: true, log: lines };
   }

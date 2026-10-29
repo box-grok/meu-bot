@@ -13,6 +13,8 @@ export const BUNDLE_FILES = [
   // Porteiro do claude (rodízio de contas para o OpenClaw/WhatsApp e o Terminal).
   "claude-porteiro.js", "claude-porteiro.sh", "install-porteiro.sh", "uninstall-porteiro.sh",
 ];
+/** Claude Code Global: o intermediário do root, o que ele lê e o instalador (rodado como root pelo admin). */
+export const CLAUDE_GLOBAL_FILES = ["claude-global.js", "contas-claude.js", "account-status.js", "install-claude-global.sh"];
 /** Guarda do WhatsApp: o plugin (pasta guarda/) e os dois scripts. */
 export const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
 export const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "memoria.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
