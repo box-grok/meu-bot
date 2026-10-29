@@ -84,7 +84,7 @@ e = (json.load(open("/root/.claude.json")).get("oauthAccount") or {}).get("email
 print(json.dumps({"url": "http://127.0.0.1:%s" % os.environ["P"], "chave": os.environ["K"], "email": e}))
 ')
 # Dentro do home quem grava é o usuário, nunca o root: um symlink plantado ali (claude-global.json.tmp → /etc/shadow)
-# faria o root truncar e dar chown no alvo. Como o usuário, o link só leva aonde ele já escrevia; umask 077 dá o 0600.
+# faria o root truncar o alvo e entregá-lo ao usuário. Como o usuário, o link só leva aonde ele já escrevia; umask 077 dá o 0600.
 printf '%s' "$J" | runuser -u ${n} -- sh -c 'umask 077; mkdir -p "$(dirname "$1")" && cat > "$1.tmp" && mv -f "$1.tmp" "$1"' sh "$A"
 echo "GLOBAL=ok"`;
 }

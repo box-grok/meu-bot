@@ -44,7 +44,7 @@ test("scripts do root: a chave fica em /etc (600) e na pasta do usuário (gravad
   // Dentro do home só o usuário escreve (symlink plantado não leva o root a lugar nenhum); umask 077 dá o 0600.
   assert.match(sh, /runuser -u box-3 -- sh -c 'umask 077; .*cat > "\$1\.tmp" && mv -f "\$1\.tmp" "\$1"'/, "quem grava no home é o usuário");
   assert.doesNotMatch(sh, /chown/, "o root não dá chown dentro do home");
-  assert.doesNotMatch(sh, /open\(/, "o root não abre arquivo dentro do home");
+  assert.doesNotMatch(sh, /os\.environ\["A"\]/, "o python do root nunca recebe o caminho do home");
   assert.doesNotMatch(sh, /echo [^\n]*\$K/, "a chave nunca vai para a saída");
   assert.match(sh, /^echo "GLOBAL=ok"$/m);
   assert.throws(() => core.cgLigarSh("box-3; rm -rf /"), /inválido/);
