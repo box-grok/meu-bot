@@ -436,6 +436,8 @@ export interface MeuBotAdminApi {
   adminUsuarioRecursos(nome: string, ramMb: number, cpuPct: number): Promise<UsuariosVisao>;
   /** Liga 8 GB de swap na máquina (só quando não tem nenhuma). */
   adminSwapLigar(): Promise<UsuariosVisao>;
+  /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
+  adminHermesGlobal(): Promise<UsuariosVisao>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */
   adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
   /** Liga o linger do usuário: o agente dele segue rodando sem ele conectado e volta ao reiniciar. */

@@ -90,6 +90,7 @@ export const ACOES = {
   "usuarios.apelido": (a: string) => `mudou o apelido do usuário ${a}`,
   "usuarios.ligado": (a: string) => `deixou o usuário ${a} sempre ligado (o agente dele roda sem ele conectado)`,
   "maquina.swap": (a: string) => `ligou a memória de reserva (swap) desta máquina${a ? ` (${a})` : ""}`,
+  "maquina.hermes-global": (a: string) => `instalou o Hermes${a ? ` ${a}` : ""} para todos os usuários desta máquina`,
   "usuarios.recursos": (a: string) => `mudou os tetos de RAM e CPU do usuário ${a}`,
   "usuarios.liberar": (a: string) => `apagou arquivos do usuário ${a} para liberar espaço`,
   "backup.dados-drive": (a: string) => `guardou uma cópia dos dados desta máquina no Google Drive do dono${a ? ` (${a})` : ""}`,

@@ -2,7 +2,7 @@
  * Puro (testado): o nome aceito, os scripts da aba Usuários (listar, ligar a cota, limite, apagar) e a leitura da
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
-import type { UsuarioMaquina } from "../../shared/ipc";
+import type { HermesNaMaquina, UsuarioMaquina } from "../../shared/ipc";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
 export const NOME_USUARIO_RE = /^[a-z][a-z0-9_-]{1,31}$/;
@@ -25,6 +25,7 @@ if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; e
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
+if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then echo HERMES=global; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); print $1"\\t"$3"\\t"$6"\\t"$7"\\t"g[1]}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
@@ -38,7 +39,7 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); pr
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
-export function lerUsuarios(out: string): { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; usuarios: UsuarioMaquina[] } {
+export function lerUsuarios(out: string): { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; hermes: HermesNaMaquina | null; usuarios: UsuarioMaquina[] } {
   const root = /^ROOT$/m.test(out);
   const discoKb = kb(/^DISCO=(\d+)$/m.exec(out)?.[1]);
   const cota = /^COTA=1$/m.test(out);
@@ -52,7 +53,9 @@ export function lerUsuarios(out: string): { root: boolean; discoKb: number | nul
     const limite = kb(c[9]);
     usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0" });
   }
-  return { root, discoKb, cota, ram, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+  const hm = /^HERMES=(global|root|nenhum)$/m.exec(out)?.[1];
+  const hermes = hm === "global" || hm === "root" || hm === "nenhum" ? hm : null;
+  return { root, discoKb, cota, ram, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
 }
 
 /** Limite em KB para `pct`% do disco (inteiro de 1 a 100); 0 = sem limite. */
@@ -187,6 +190,56 @@ findmnt --verify --tab-file /etc/fstab >/dev/null 2>&1 || { cp "$B" /etc/fstab; 
 printf 'vm.swappiness=10\\n' > /etc/sysctl.d/90-meu-bot-swap.conf; sysctl -q -w vm.swappiness=10 >/dev/null 2>&1 || true
 systemctl daemon-reload >/dev/null 2>&1 || true
 echo SWAP=ok`;
+}
+
+/** A mesma versão que o install-grok-oauth.sh pede: com ela no PATH de todos, o instalador não baixa cópia por usuário. */
+export const HERMES_VERSAO = "0.22.2";
+/** Node do Hermes compartilhado: o mesmo do backend (install.sh). */
+const HERMES_NODE = "v20.20.2";
+
+/**
+ * Hermes para todos os usuários da máquina: o programa em /opt/hermes (Node próprio + pacote npm, dono root, só
+ * leitura para os outros) e o /usr/local/bin/hermes apontando para lá. Os dados continuam por usuário (~/.hermes).
+ * Antes, o Hermes do root morava em /root/.local (pasta 700): o atalho global dava "Permission denied" para os
+ * outros e o instalador do Grok baixava uma cópia de ~900 MB em cada conta. Idempotente; o atalho que não for nosso
+ * fica guardado ao lado. Saída `HERMES=ok <versão>` ou `ERRO=`.
+ */
+export function hermesGlobalSh(): string {
+  return `D=/opt/hermes; V='${HERMES_VERSAO}'; NV='${HERMES_NODE}'; W=/usr/local/bin/hermes
+mkdir -p "$D" || { echo "ERRO=não consegui criar $D"; exit 0; }
+if ! "$D/node/bin/node" -v >/dev/null 2>&1; then
+  case "$(uname -m)" in aarch64|arm64) a=arm64;; x86_64) a=x64;; *) echo "ERRO=arquitetura $(uname -m) não suportada"; exit 0;; esac
+  t=$(mktemp -d); curl -fsSL "https://nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz" -o "$t/node.tar.gz" || { rm -rf "$t"; echo "ERRO=não consegui baixar o Node $NV"; exit 0; }
+  rm -rf "$D/node"; mkdir -p "$D/node"; tar -xzf "$t/node.tar.gz" -C "$D/node" --strip-components=1; rm -rf "$t"
+fi
+export PATH="$D/bin:$D/node/bin:$PATH"
+P="$D/lib/node_modules/hermes-agent"
+grep -q "\"version\": \"$V\"" "$P/package.json" 2>/dev/null || npm install -g --prefix "$D" "hermes-agent@$V" >/tmp/meu-bot-hermes-global.log 2>&1 || { echo "ERRO=a instalação do Hermes $V falhou (log em /tmp/meu-bot-hermes-global.log)"; exit 0; }
+# As dependências do bridge do WhatsApp: cada usuário roda o bridge daqui e não pode gravar em /opt.
+B="$P/runtime/hermes-agent/scripts/whatsapp-bridge"
+if [ -f "$B/bridge.js" ] && [ ! -d "$B/node_modules" ]; then ( cd "$B" && npm install --no-audit --no-fund >>/tmp/meu-bot-hermes-global.log 2>&1 ) || { echo "ERRO=não consegui instalar as dependências do bridge do WhatsApp (log em /tmp/meu-bot-hermes-global.log)"; exit 0; }; fi
+chmod -R a+rX "$D"
+[ -e "$W" ] && ! grep -q meu-bot-hermes-global "$W" && cp -P "$W" "$W.antes-do-meu-bot"
+cat > "$W" <<'EOF'
+#!/bin/sh
+# meu-bot-hermes-global: o Hermes de todos os usuários (programa em /opt/hermes; os dados de cada um em ~/.hermes).
+export PATH="/opt/hermes/bin:/opt/hermes/node/bin:$PATH"
+# O código do Hermes é um repositório git do root: sem isto o git dos outros recusa ("dubious ownership") e a versão sai "vunknown".
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=/opt/hermes/lib/node_modules/hermes-agent/runtime/hermes-agent
+exec /opt/hermes/bin/hermes "$@"
+EOF
+chmod 755 "$W"
+# O serviço do gateway que o Hermes grava para cada usuário chama <código>/.hermes/bin/hermes, e só o root cria arquivos
+# em /opt: sem este atalho, o gateway de quem não é root não sobe ("Unable to locate executable"). Ele leva ao mesmo
+# Hermes de todos. Uma reinstalação do pacote apaga a pasta; rodar de novo a recria.
+G="$P/runtime/hermes-agent/.hermes/bin"; mkdir -p "$G"
+[ -e "$G/hermes" ] && ! grep -q meu-bot-hermes-global "$G/hermes" && mv "$G/hermes" "$G/hermes.antes-do-meu-bot"
+printf '#!/bin/sh\n# meu-bot-hermes-global: o atalho que o serviço do gateway de cada usuário chama.\nexec %s "$@"\n' "$W" > "$G/hermes"
+chmod 755 "$P/runtime/hermes-agent/.hermes" "$G" "$G/hermes"
+# Confere como um usuário sem privilégio, que é quem vai usar.
+H=$(mktemp -d); chmod 777 "$H"
+O=$(runuser -u nobody -- env HOME="$H" "$W" --version 2>&1 | head -1); rm -rf "$H"
+case "$O" in *"v$V"*) echo "HERMES=ok $V" ;; *) echo "ERRO=o Hermes instalou, mas um usuário comum não conseguiu rodar: $O" ;; esac`;
 }
 
 /**

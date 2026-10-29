@@ -24,7 +24,7 @@ import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from ".
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
@@ -127,7 +127,7 @@ if usa_hermes; then
   echo gateway=hermes; echo present=1
   echo "bin=$(command -v hermes 2>/dev/null)"
   echo "ver=$(timeout 10 hermes --version 2>/dev/null | head -1)"
-  B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
+  ${HERMES_DIR_SH}; B=$R/scripts/whatsapp-bridge
   [ -f "$B/bridge.js" ] && echo bridge=1 || echo bridge=0
   ${HERMES_BRIDGE_PORT_SH}
   echo "bridgeport=$HBP"
@@ -502,8 +502,10 @@ if usa_hermes; then
   # O bridge é Node: o SSH não interativo nem sempre tem o Node no PATH (o Hermes traz o dele em ~/.hermes/tools).
   ${HERMES_PATH_SH}
   command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1 || { echo '{"event":"error","error":"não achei o Node.js (node e npm) nesta máquina; o bridge do WhatsApp do Hermes precisa dele"}'; exit 2; }
-  B=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent/scripts/whatsapp-bridge
+  ${HERMES_DIR_SH}; B=$R/scripts/whatsapp-bridge
   if [ ! -f "$B/bridge.js" ]; then echo '{"event":"error","error":"bridge do Hermes não encontrado nesta máquina"}'; exit 2; fi
+  # Hermes de todos (/opt/hermes): o root deixa as dependências prontas; este usuário não grava lá.
+  if [ ! -d "$B/node_modules" ] && [ ! -w "$B" ]; then echo '{"event":"error","error":"o Hermes desta máquina é compartilhado e o bridge do WhatsApp está sem as dependências: no meu-bot-admin, aba Usuários, use \\"Instalar Hermes para todos\\" de novo"}'; exit 2; fi
   # Dependências do bridge (o "hermes whatsapp" faz o mesmo npm install na primeira vez).
   if [ ! -d "$B/node_modules" ]; then
     echo '{"event":"meu-bot","step":"bridge-deps"}'

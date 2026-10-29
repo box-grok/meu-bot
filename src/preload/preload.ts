@@ -273,6 +273,7 @@ const adminApi: MeuBotAdminApi = {
   adminUsuarioApagar: (nome: string) => ipcRenderer.invoke("admin:usuario-apagar", { nome }),
   adminUsuarioRecursos: (nome: string, ramMb: number, cpuPct: number) => ipcRenderer.invoke("admin:usuario-recursos", { nome, ramMb, cpuPct }),
   adminSwapLigar: () => ipcRenderer.invoke("admin:swap-ligar", {}),
+  adminHermesGlobal: () => ipcRenderer.invoke("admin:hermes-global", {}),
   adminUsuarioApelido: (nome: string, apelido: string) => ipcRenderer.invoke("admin:usuario-apelido", { nome, apelido }),
   adminUsuarioManterLigado: (nome: string) => ipcRenderer.invoke("admin:usuario-ligado", { nome }),
   adminUsuarioNosSeletores: (nome: string) => ipcRenderer.invoke("admin:usuario-seletores", { nome }),
