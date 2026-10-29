@@ -30,6 +30,7 @@ import {
 } from "../conversa/conversation";
 import { APAGADAS_FILE, conversasApagadas, parseApagadas } from "../conversa/apagadas-core";
 import { LOCAL_HOST } from "../maquina/localBackend";
+import { backendPresente, instalarBackendDaMaquina } from "../maquina/picker";
 
 /** Depois de um turno, guarda a sessão do Claude Code desta conversa (o .jsonl): a referência vale mesmo depois do TTL do backend. */
 async function rememberClaudeSession(conv: { id: string; host: string; claude?: ClaudeSessionRef }): Promise<ClaudeSessionRef | null> {
@@ -154,6 +155,18 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     return statusLineInstalled(h.host);
+  });
+  // Máquina sem o backend do meu-bot: a própria janela instala (o mesmo do seletor) e manda o progresso para ela.
+  handleClient("backend:presente", async (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    return h.host === LOCAL_HOST ? true : backendPresente(h.host);
+  });
+  handleClient("backend:install", (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    if (h.host === LOCAL_HOST) throw new Error("este Mac não usa backend por SSH");
+    return instalarBackendDaMaquina(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("backend:install-progress", { line }); });
   });
   handleClient("statusline:install", (event) => {
     const h = hostFromEvent(event);

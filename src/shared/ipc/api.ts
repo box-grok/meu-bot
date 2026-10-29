@@ -39,6 +39,7 @@ export interface MainEvents {
   "whatsapp:event": WhatsappEvent;
   /** Linha de progresso do instalador da status line (tutorial). */
   "statusline:progress": { line: string };
+  "backend:install-progress": { line: string };
   /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
@@ -274,6 +275,10 @@ export interface MeuBotClientApi {
   statusLineSegments(): Promise<StatusLineSegments | null>;
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
+  /** O backend do meu-bot está instalado na máquina desta janela? (este Mac: sempre; `null` = a máquina não respondeu) */
+  backendPresente(): Promise<boolean | null>;
+  /** Instala o backend do meu-bot na máquina desta janela (o mesmo do seletor); progresso em backend:install-progress. */
+  installBackend(): Promise<InstallBackendResult>;
   /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */
   /**
    * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que

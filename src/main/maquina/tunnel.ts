@@ -33,6 +33,9 @@ const BACKOFF_MS = 3000;
 
 /** Erro que não adianta repetir (host sem backend, por exemplo). */
 export class TunnelFatalError extends Error {}
+/** Começo do erro de máquina sem o backend: a janela reconhece por ele e oferece instalar ali mesmo. */
+export const SEM_BACKEND_MSG = "Esta máquina ainda não tem o backend do meu-bot";
+export const ehSemBackend = (detail: string): boolean => detail.startsWith(SEM_BACKEND_MSG);
 
 /** Túnel reverso (-R): a máquina alcança um socket Unix deste Mac em 127.0.0.1:<remotePort> (ações do agente no Navegador). */
 interface Reverse { child: ChildProcess; remotePort: number; localSocket: string; restarts: number; since: number }
@@ -164,7 +167,7 @@ async function fetchBackendKey(host: string): Promise<string> {
   if (r.code !== 0 && r.code !== 1) throw new Error(`Falha ao ler a chave do backend (${r.code ?? "timeout"}): ${lastLine(r.stderr)}`);
   const key = r.stdout.trim().replace(/^["']|["']$/g, "").trim();
   if (key === "") {
-    throw new TunnelFatalError(`O host "${host}" não tem o backend do meu-bot (sem .env em ${BACKEND_DIR_CANONICAL}). Em Configurações, selecione esse host e use "Instalar backend".`);
+    throw new TunnelFatalError(`${SEM_BACKEND_MSG} (sem .env em ${BACKEND_DIR_CANONICAL}). Use "Instalar backend" aqui na janela ou no seletor de máquinas.`);
   }
   log(`[${host}] key fetched via mux em ${Date.now() - t0} ms`);
   return key;

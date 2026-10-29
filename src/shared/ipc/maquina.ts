@@ -7,6 +7,8 @@ export interface BackendStatusEvent {
   host: string;
   state: "idle" | "connecting" | "ready" | "degraded" | "error";
   detail: string;
+  /** A máquina não tem o backend do meu-bot: a janela oferece "Instalar backend" ali mesmo. */
+  semBackend?: true;
 }
 
 /** Resultado da sondagem de um host SSH, para o seletor de máquinas. */

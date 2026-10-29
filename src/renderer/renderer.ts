@@ -48,6 +48,7 @@ import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, rend
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { PRIMARY_OF, ligarFallback, paintFallbackOrder, syncPrimaryFromModel } from "./configuracoes/fallback.js";
+import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
 import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
 import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm, renderCrmConfig, renderCrmInstall, renderCrmPipeline, renderCrmPro, renderCrmTest } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
@@ -1927,6 +1928,7 @@ ligarCrmGuia();
 /** O agente rodou o `chave-set`? Quando o resultado chegar, consulta o CRM e segue (teste da chave, pipeline único). */
 let crmKeyFromAgent = false;
 ligarGuiaSecoes();
+ligarBackendFalta();
 let navAskedPro = false;
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 
@@ -2061,6 +2063,7 @@ void (async () => {
   void refreshSupportState();
   void refreshObjective();
   void refreshClaudeLine();
+  void conferirBackend();
   void refreshXaiLine();
   // O que a lista de Tutoriais e o selo precisam saber vem todo na abertura, em paralelo: guarda, licença (Pro),
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
