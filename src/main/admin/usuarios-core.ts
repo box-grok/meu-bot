@@ -6,6 +6,9 @@ import type { HermesNaMaquina, UsuarioMaquina } from "../../shared/ipc";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
 export const NOME_USUARIO_RE = /^[a-z][a-z0-9_-]{1,31}$/;
+/** Todo usuário criado pelo admin começa com isto: digitar "maria" cria "box-maria" (e "box-1" não vira "box-box-1"). */
+export const PREFIXO_USUARIO = "box-";
+export const comPrefixo = (nome: string): string => (nome.startsWith(PREFIXO_USUARIO) ? nome : `${PREFIXO_USUARIO}${nome}`);
 /** Nomes que já existem em qualquer Debian/Ubuntu ou que confundem (root, admin…): recusados mesmo se livres. */
 export const RESERVADOS = new Set(["root", "admin", "sudo", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail", "news", "uucp", "proxy", "www-data", "backup", "list", "irc", "nobody", "systemd", "ubuntu", "debian"]);
 /** Usuários que o meu-bot usa na máquina: nunca apagados pela aba (o agente para). */

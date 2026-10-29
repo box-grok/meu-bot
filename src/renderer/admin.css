@@ -96,3 +96,7 @@ body.produtos-janela .head .add-actions { margin-top: 8px; }
 .pr-abas { margin: 10px 0 6px; }
 /* meu-bot-admin-mac: a senha da conta nova, mostrada uma vez (fonte fixa para não confundir l/1, O/0). */
 .mac-senha { flex: 1; min-width: 240px; font: 15px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); letter-spacing: .5px; }
+/* Criar usuário: o "box-" fixo grudado no campo do nome. */
+.usuarios-nome { display: inline-flex; align-items: center; }
+.usuarios-prefixo { padding: 4px 2px 4px 8px; font: 12px var(--mono, monospace); color: var(--muted); border: 1px solid var(--line); border-right: none; border-radius: 6px 0 0 6px; background: var(--bg); }
+.usuarios-nome input { border-top-left-radius: 0; border-bottom-left-radius: 0; }
