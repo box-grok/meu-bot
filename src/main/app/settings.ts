@@ -88,7 +88,16 @@ export function setOpenDirect(value: boolean): void {
   persist();
 }
 
-export const getHostNames = (): Record<string, string> => ({ ...file.hostNames });
+/**
+ * Apelidos gravados nas próprias máquinas (o admin os dá na aba Usuários), vistos na última sondagem. Só em memória:
+ * a máquina é a fonte; cada sondagem atualiza. O "Renomear" deste Mac (hostNames) vence quando existe.
+ */
+const apelidosMaquina: Record<string, string> = {};
+export function setApelidoMaquina(host: string, apelido: string | null): void {
+  const clean = (apelido ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (clean === "") delete apelidosMaquina[host]; else apelidosMaquina[host] = clean;
+}
+export const getHostNames = (): Record<string, string> => ({ ...apelidosMaquina, ...file.hostNames });
 /** "Renomear" no seletor: apelido da máquina no app (vazio tira). A chave SSH continua a mesma. */
 export function setHostName(host: string, name: string): void {
   if (!isValidHost(host)) return;
@@ -171,7 +180,7 @@ export const settingsView = (host?: string): SettingsView => ({
   openDirect: file.openDirect,
   // Preenchidos pelo handler settings:get/set (dependem do app empacotado e do sistema).
   openAtLogin: false, openAtLoginAvailable: false,
-  hostNames: { ...file.hostNames },
+  hostNames: getHostNames(),
   navNotify: { ...file.navNotify, hosts: [...file.navNotify.hosts] },
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
   atualizarOcioso: file.atualizarOcioso,
