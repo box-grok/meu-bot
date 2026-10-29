@@ -5,11 +5,12 @@
 import type { Capabilities, WhatsappCapacidades, WhatsappGroupAgent, WhatsappGroupMenuAction, WhatsappMenuAction } from "../../shared/ipc";
 
 /** O que a máquina sabe fazer, no que importa ao menu (whatsapp-capacidades.ts). `null` = desconhecido: vale o menu completo. */
-export type WaMenuCaps = Pick<WhatsappCapacidades, "pausar" | "limparHistorico" | "grupos">;
-const TUDO: WaMenuCaps = { pausar: true, limparHistorico: true, grupos: true };
+export type WaMenuCaps = Pick<WhatsappCapacidades, "pausar" | "pausaPrazo" | "limparHistorico" | "grupos">;
+/** Desconhecido = menu completo, menos o prazo da pausa: sem saber se a máquina o sustenta, "Pausar" simples não falha. */
+const TUDO: WaMenuCaps = { pausar: true, pausaPrazo: false, limparHistorico: true, grupos: true };
 
-/** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). */
-export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean }
+/** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). `pausaRotulo`: "até 14:30", pronto da tela, ou null. */
+export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null }
 export type WaMenuEntry =
   | { label: string; action: WhatsappMenuAction | null; enabled: boolean }
   | { label: string; submenu: WaMenuEntry[] }
@@ -33,7 +34,13 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   const renomear = item("Renomear", "rename");
   const arquivo = state.archived ? item("Desarquivar", "unarchive") : item("Arquivar", "archive");
   // Pausar vale também sem sessão própria: a pausa fica na lista durável do openclaw.json (whatsapp-pause.ts).
-  const pausa = state.paused ? item("Retomar", "resume") : item("Pausar", "pause");
+  // Com `pausaPrazo` (Hermes com o plugin meu-bot-pausa) a pausa tem prazo e vale em qualquer política; sem ela,
+  // ninguém na máquina devolveria o contato quando o prazo vencesse, então só "até eu retomar".
+  const pausa: WaMenuEntry = state.paused
+    ? item(state.pausaRotulo === null ? "Retomar" : `Retomar (pausado ${state.pausaRotulo})`, "resume")
+    : pode.pausaPrazo
+      ? { label: "Pausar o agente", submenu: [item("Por 2 horas", "pause-2h"), item("Por 24 horas", "pause-24h"), item("Até eu retomar", "pause")] }
+      : item("Pausar", "pause");
   // Excluir = só tirar da lista (o agente continua de onde parou), sem confirmação; volta se o contato mandar outra mensagem. Zerar é o Limpar.
   const excluir = item("Excluir conversa", "delete");
   const mexe: WaMenuEntry[] = [...(pode.pausar ? [pausa] : []), ...(pode.limparHistorico ? [item("Limpar histórico…", "clear")] : [])];
@@ -53,8 +60,10 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
 
 /** O estado que a lista manda no payload, saneado. */
 export const waMenuState = (payload: unknown): WaMenuState => {
-  const s = (payload as { state?: { archived?: unknown; paused?: unknown; deleted?: unknown } } | null)?.state ?? {};
-  return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true };
+  const s = (payload as { state?: { archived?: unknown; paused?: unknown; deleted?: unknown; pausaRotulo?: unknown } } | null)?.state ?? {};
+  const r = s.pausaRotulo;
+  const pausaRotulo = typeof r === "string" && r.length >= 1 && r.length <= 40 && !/[\r\n]/.test(r) ? r : null;
+  return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true, pausaRotulo };
 };
 
 /**

@@ -136,7 +136,7 @@ export interface MeuBotSharedApi {
   /** Histórico de um contato (número só com dígitos). Só leitura. */
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null }): Promise<WhatsappMenuAction | null>;
   /** Grupos do WhatsApp desta máquina: agente ligado ou não, quem o aciona, membros (cache da skill). Só leitura. */
   whatsappGroups(): Promise<WhatsappGroups>;
   /** Conversa de um grupo (jid "…@g.us"), com o autor de cada mensagem. Só leitura. */
@@ -147,8 +147,8 @@ export interface MeuBotSharedApi {
   refreshWhatsappGroups(): Promise<WhatsappGroups>;
   /** Menu "…" de um grupo. */
   showWhatsappGroupMenu(jid: string, state: { agente: WhatsappGroupAgent; deleted: boolean }): Promise<WhatsappGroupMenuAction | null>;
-  /** Pausa (true) ou retoma (false) as respostas do agente a este contato. Os dois apps (no admin, registrado). */
-  pauseWhatsapp(number: string, paused: boolean): Promise<void>;
+  /** Pausa (true) ou retoma (false) as respostas do agente a este contato; `horas` (2|24) só com a capacidade `pausaPrazo`. Os dois apps (no admin, registrado). */
+  pauseWhatsapp(number: string, paused: boolean, horas?: 2 | 24): Promise<void>;
   /** O que limpar o histórico deste contato vai zerar: só sessões dele, ou também a principal (de todos). Os dois apps. */
   whatsappClearPlan(number: string): Promise<{ own: number; shared: number }>;
   /** meu-bot-crm: guarda a conversa no CRM (transcrição + resumo) antes de limpar/excluir. */

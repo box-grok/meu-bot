@@ -2,6 +2,7 @@ import type { WhatsappChat, WhatsappThreadMessage, WhatsappOrigin } from "../../
 import { el } from "../lib/dom.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import type { PageTab } from "../lib/pages-types.js";
+import { pausaAteTexto } from "../lib/pausa-texto.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { waReferenceText } from "../lib/reference.js";
 import type { Tab } from "../renderer.js";
@@ -133,7 +134,7 @@ export function renderWaChat(g: WaChatPage): void {
   idBtn.title = `${ref}\n\nClique para copiar`;
   idBtn.addEventListener("click", () => ctx.copyReference(ref));
   head.replaceChildren(el("strong", "", ctx.waChatTitle(g.chat)), el("span", "wa-chat-num", sub), idBtn,
-    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
+    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? `pausado${pausaAteTexto(g.chat.pausaAte) ? ` ${pausaAteTexto(g.chat.pausaAte)}` : ""}: o agente não responde a esta pessoa · somente leitura` : "somente leitura · atualiza sozinho"));
   panel.dataset["rendered"] = "1";
   const keys = g.msgs.map(waMsgKey);
   const shown = g.shown ?? [];

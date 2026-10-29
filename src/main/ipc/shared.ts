@@ -363,8 +363,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const paused = (payload as { paused?: unknown }).paused === true;
-    await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono");
-    void registrar(h.host, paused ? "whatsapp.pausar" : "whatsapp.retomar", `+${waNumber(payload)}`);
+    // Prazo só com pausar (2 ou 24 h); fora disso, até retomar. A máquina calcula o fim com o relógio dela.
+    const h0 = (payload as { horas?: unknown }).horas;
+    const horas = paused && (h0 === 2 || h0 === 24) ? h0 : undefined;
+    await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono", horas);
+    void registrar(h.host, paused ? "whatsapp.pausar" : "whatsapp.retomar", `+${waNumber(payload)}`, paused ? (horas === undefined ? "até retomar" : `por ${horas} h`) : "");
   });
 
   // Arquivar/desarquivar/excluir conversas: a marcação mora na máquina (whatsapp-lista.json), então o meu-bot da

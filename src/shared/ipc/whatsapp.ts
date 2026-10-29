@@ -81,6 +81,8 @@ export interface WhatsappChat {
   ownSession: boolean;
   /** O agente está pausado para este contato (não responde). */
   paused: boolean;
+  /** Fim da pausa (ISO) quando ela tem prazo; null/ausente = sem prazo ou não pausado. */
+  pausaAte?: string | null;
   /** ISO da atividade mais recente. */
   updatedAt: string;
   /** Arquivada na máquina (whatsapp-lista.json): os dois apps veem igual. */
@@ -195,4 +197,5 @@ export type WhatsappEvent =
 
 /** Menu "…" de um grupo na área "Grupos". */
 export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-rename" | "group-clear" | "group-delete" | "group-restore" | "groups-refresh";
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
+/** `pause` = até eu retomar; `pause-2h`/`pause-24h` = com prazo (só com a capacidade `pausaPrazo`). */
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "pause-2h" | "pause-24h" | "resume";

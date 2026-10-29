@@ -24,7 +24,7 @@ import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from ".
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo } from "./whatsapp-hermes-core";
+import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo, type HermesWaEnv } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
@@ -321,13 +321,16 @@ async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numb
   const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
   if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
   const self = await readHermesSelfNumber(host);
-  const antes = await runSsh(host, `${HERMES_POLICY_PY}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
+  const antes = await runSsh(host, `${HERMES_PATH_SH}\n${HERMES_POLICY_PY}\n${HERMES_PAUSA_SH}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 30_000);
   if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const kvAntes = new Map<string, string>();
   for (const line of antes.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kvAntes.set(line.slice(0, i), line.slice(i + 1).trim()); }
   const envAntes = hermesEnvOf(kvAntes);
-  // Quem está pausado fica fora da lista gravada (a pausa no Hermes é isso); a tela continua mostrando o número.
-  const pausados = pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks"))));
+  // Sem o plugin, quem está pausado fica fora da lista gravada (a pausa no Hermes é isso); a tela continua mostrando o
+  // número. Com o plugin a pausa é só a marca: a lista leva todo mundo (tirar daqui deixaria o contato fora depois do prazo).
+  const modo = hermesPausaModo(kvAntes);
+  pausaModoByHost.set(host, modo);
+  const pausados = modo === "allowlist" ? pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks")))) : [];
   const patch = hermesEnvPara(policy, self, numbers.filter((n) => !pausados.includes(n)));
   for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
   const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
@@ -794,7 +797,9 @@ ${SEND_POLICY_READ_SH}
   // No OpenClaw vem da sessão e do openclaw.json.
   const self = phoneOf(kv.get("self") ?? "");
   const env = hermesEnvOf(kv);
-  const chats = hermes ? chatsFromHermes(list, self, names).map((c) => ({ ...c, paused: pausaVigente(parsed, c.number) !== null || hermesNaoResponde(env, self, c.number) })) : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
+  const chats = hermes
+    ? chatsFromHermes(list, self, names).map((c) => { const p = pausaVigente(parsed, c.number); return { ...c, paused: p !== null || hermesNaoResponde(env, self, c.number), pausaAte: p?.ate ?? null }; })
+    : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
   return applyWaMarks(chats, parsed);
 }
 
@@ -1015,9 +1020,10 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
  * segundo plano, whatsapp-pause.ts), e o AGENTS.md da máquina ganha a regra do que fazer com essas notas. A nota e
  * a regra não desfazem a pausa se falharem.
  */
-export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy): Promise<void> {
+export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy, horas?: 2 | 24): Promise<void> {
   const want = number.replace(/\D/g, "");
-  if (await hostIsHermes(host)) return pauseHermes(host, want, paused, by);
+  if (await hostIsHermes(host)) return pauseHermes(host, want, paused, by, horas);
+  if (horas !== undefined) throw new Error("no OpenClaw a pausa não tem prazo: use \"Pausar\" e retome quando quiser");
   const { own } = await whatsappClearPlan(host, want);
   // A lista durável (session.sendPolicy do openclaw.json) vale mesmo sem sessão própria e sobrevive a limpar.
   const policy = withPauseRule(await readSendPolicy(host), want, paused, pauseRulePrefixes(want, own));
@@ -1034,19 +1040,45 @@ export async function whatsappPause(host: string, number: string, paused: boolea
 }
 
 /**
- * Pausa no Hermes (whatsapp-hermes-core.ts hermesPausaPlano): grava o .env sem o contato (ou com ele de volta), reinicia
- * o gateway só se modo/política mudaram, confere a lista relida e então grava a marca "pausado" na máquina (a ordem
- * importa: marca antes de a lista valer diria "pausado" com o agente ainda respondendo). Sem nota para o agente: ele não
- * vê as mensagens do contato durante a pausa, e é isso que a tela avisa.
+ * Pausa no Hermes, por dois caminhos conforme a máquina (whatsapp-hermes-core.ts hermesPausaModo):
+ * - com o plugin meu-bot-pausa carregado (ou pausa nativa): só a marca em whatsapp-lista.json, com prazo se pedido;
+ *   vale em qualquer política e sem reiniciar. Retomar quem a política de hoje não responde ("só você"/fora da lista)
+ *   também o põe na lista, como a PR #16 fez para o menu.
+ * - sem o plugin: tirar/devolver o contato na WHATSAPP_ALLOWED_USERS com reinício (aplicarPlanoAllowlist). Sem prazo:
+ *   ninguém na máquina devolveria o contato ao vencer.
  */
-async function pauseHermes(host: string, want: string, paused: boolean, by: PauseBy): Promise<void> {
+async function pauseHermes(host: string, want: string, paused: boolean, by: PauseBy, horas?: 2 | 24): Promise<void> {
   if (!/^\d{8,15}$/.test(want)) throw new Error("número inválido");
   const self = await readHermesSelfNumber(host);
-  const antes = await runSsh(host, `${HERMES_POLICY_PY}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
+  const antes = await runSsh(host, `${HERMES_PATH_SH}\n${HERMES_POLICY_PY}\n${HERMES_PAUSA_SH}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 30_000);
   if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const kvAntes = kvOf(antes.stdout);
+  const env = hermesEnvOf(kvAntes);
+  const modo = hermesPausaModo(kvAntes);
+  pausaModoByHost.set(host, modo);
+  if (modo !== "allowlist") {
+    if (modo === "nativa") log(`whatsapp: ${host} tem pausa nativa no Hermes; o app ainda usa a marca (docs/guia/contornos.md #2)`);
+    await whatsappSetMarks(host, [{ number: want, paused, ...(paused && horas !== undefined ? { pausaHoras: horas } : {}) }]);
+    if (!paused && self !== null && hermesNaoResponde(env, self, want)) await aplicarPlanoAllowlist(host, env, self, want, false, []);
+    log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes/${modo}, ${by})${paused && horas !== undefined ? ` por ${horas} h` : ""}`);
+    return;
+  }
+  if (horas !== undefined) throw new Error("pausa com prazo precisa do plugin de pausa do meu-bot nesta máquina (o app o instala ao abrir o WhatsApp); por ora use \"Até eu retomar\"");
   const pausados = pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks"))));
-  const { patch, reinicia } = hermesPausaPlano(hermesEnvOf(kvAntes), self, want, paused, pausados);
+  const restart = await aplicarPlanoAllowlist(host, env, self, want, paused, pausados);
+  await whatsappSetMarks(host, [{ number: want, paused }]);
+  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes/allowlist, ${by}): fora da lista enquanto durar; restart=${restart || "?"}`);
+}
+
+/**
+ * CONTORNO #1 (Hermes): sem pausa por contato (NousResearch/hermes-agent#146672), pausar é tirar o número da
+ * WHATSAPP_ALLOWED_USERS e reiniciar o gateway (whatsapp-hermes-core.ts hermesPausaPlano); o agente nem vê as
+ * mensagens nesse período. Confere a lista relida antes de devolver (a marca só vale depois de a lista valer).
+ * Sai quando: toda máquina Hermes do mapa estiver com o plugin (pausaplugin) ou com pausanativa=1 — aí o ramo
+ * "allowlist" de hermesPausaModo some e esta função com ele. Tabela: docs/guia/contornos.md.
+ */
+async function aplicarPlanoAllowlist(host: string, env: HermesWaEnv, self: string | null, want: string, paused: boolean, pausados: readonly string[]): Promise<string> {
+  const { patch, reinicia } = hermesPausaPlano(env, self, want, paused, pausados);
   for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
   const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
   const r = await runSsh(host, `set -e\n${HERMES_ENV_SET_PY} ${args}\n${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`, 120_000);
@@ -1055,8 +1087,7 @@ async function pauseHermes(host: string, want: string, paused: boolean, by: Paus
   if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
   const lista = (kvOf(r.stdout).get("waallow") ?? "").split(",").map((s) => s.trim());
   if (lista.includes(want) === paused) throw new Error(`a lista relida do Hermes não bate (${paused ? "o contato continua" : "o contato não voltou"}); tente de novo`);
-  await whatsappSetMarks(host, [{ number: want, paused }]);
-  log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes, ${by}): fora da lista enquanto durar; restart=${restart || "?"}`);
+  return restart;
 }
 
 /** session.sendPolicy atual do openclaw.json (null se não há ou não deu para ler). */
