@@ -24,7 +24,7 @@ import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from ".
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
-import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPrecisaReiniciar, politicaHermes } from "./whatsapp-hermes-core";
+import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
@@ -135,6 +135,7 @@ if usa_hermes; then
   echo "me=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$S/session/creds.json" 2>/dev/null)"
   echo "loggedout=$(tail -8 "$S/bridge.log" 2>/dev/null | grep -c 'Logged out')"
   ${HERMES_POLICY_PY}
+  ${HERMES_PAUSA_SH}
   echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
   exit 0
 fi
@@ -234,6 +235,9 @@ const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.ex
 /** Gateway visto na última consulta de cada máquina (status ou lista): decide o menu "…" e o leitor da conversa. */
 const gatewayByHost = new Map<string, Gateway>();
 export const whatsappGatewayOf = (host: string): Gateway | null => gatewayByHost.get(host) ?? null;
+/** Como a pausa por contato é feita em cada máquina Hermes, visto na última consulta (status ou lista); desconhecido = allowlist. */
+const pausaModoByHost = new Map<string, HermesPausaModo>();
+export const whatsappPausaModoOf = (host: string): HermesPausaModo => pausaModoByHost.get(host) ?? "allowlist";
 
 /**
  * Estado do WhatsApp da máquina, já com as capacidades anexadas. O invólucro existe para que as
@@ -244,7 +248,7 @@ export async function whatsappStatus(host: string): Promise<WhatsappStatus> {
   const st = await lerWhatsappStatus(host);
   // Hermes: ouvir e responder em áudio moram no config.yaml dele (hermes-audio.ts); uma leitura a mais, só com o WhatsApp pronto.
   const audio = st.gateway === "hermes" && st.ready ? await hermesAudioStatus(host) : null;
-  return { ...st, ...(audio === null ? {} : { audioIn: audio.audioIn, audioOut: audio.audioOut }), capacidades: capacidadesDe(st.gateway, st.ready, st.connected) };
+  return { ...st, ...(audio === null ? {} : { audioIn: audio.audioIn, audioOut: audio.audioOut }), capacidades: capacidadesDe(st.gateway, st.ready, st.connected, { pausaModo: whatsappPausaModoOf(host) }) };
 }
 
 /**
@@ -292,10 +296,13 @@ function lerGateway(host: string, kv: Map<string, string>): Omit<WhatsappStatus,
   // Quem o agente responde: o .env do Hermes, traduzido para o mesmo contrato do OpenClaw (whatsapp-hermes-core.ts).
   const env = hermesEnvOf(kv);
   const politica = politicaHermes(env, number);
-  // Pausado no Hermes = fora da lista gravada enquanto durar; para a tela ele continua "quem o agente responde".
+  const pausaModo = hermesPausaModo(kv);
+  pausaModoByHost.set(host, pausaModo);
+  // Sem o plugin, pausado = fora da lista gravada enquanto durar; para a tela ele continua "quem o agente responde".
+  // Com o plugin a lista não muda ao pausar, então não há o que repor.
   const pausados = pausadosDe(parseWaMarks(jsonOr(kv.get("marks"))));
-  const allowFrom = politica.dmPolicy === "allowlist" ? [...new Set([...politica.allowFrom, ...pausados.map((n) => `+${n}`)])] : politica.allowFrom;
-  const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all, pausados }, null, 2);
+  const allowFrom = politica.dmPolicy === "allowlist" && pausaModo === "allowlist" ? [...new Set([...politica.allowFrom, ...pausados.map((n) => `+${n}`)])] : politica.allowFrom;
+  const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all, pausados, pausaModo }, null, 2);
   return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom };
 }
 
@@ -754,6 +761,7 @@ if usa_hermes; then
   echo "self=$(${HERMES_SELF_SH})"
   echo "list=$(${HERMES_LIST_PY} 2>/dev/null | tr -d '\n')"
   ${HERMES_POLICY_PY}
+  ${HERMES_PAUSA_SH}
 else
   echo gateway=openclaw
   echo "self=$(${CREDS_ME})"
@@ -767,7 +775,7 @@ ${SEND_POLICY_READ_SH}
   const kv = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kv.set(line.slice(0, i), line.slice(i + 1)); }
   const hermes = kv.get("gateway")?.trim() === "hermes";
-  if (hermes) gatewayByHost.set(host, "hermes");
+  if (hermes) { gatewayByHost.set(host, "hermes"); pausaModoByHost.set(host, hermesPausaModo(kv)); }
   let list: unknown = null;
   try { list = JSON.parse(kv.get("list") || "null"); } catch { throw new Error(hermes ? "não consegui ler o banco de sessões do Hermes (~/.hermes/state.db)" : "o gateway do OpenClaw não respondeu à lista de conversas"); }
   if (hermes && list === null) throw new Error("o Hermes desta máquina ainda não tem o banco de sessões (~/.hermes/state.db)");

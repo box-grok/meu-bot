@@ -8,7 +8,7 @@ import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
 import { log } from "../maquina/backend";
-import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp/whatsapp";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf, whatsappPausaModoOf } from "../whatsapp/whatsapp";
 import { JID_RE } from "../whatsapp/whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador/navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp/whatsapp-marks";
@@ -45,7 +45,7 @@ import { capacidadesDe } from "../whatsapp/whatsapp-capacidades";
 /** O que o menu pode oferecer nesta máquina, pela tabela de capacidades (gateway visto na última consulta); desconhecido = menu completo. */
 function waMenuCapsOf(host: string): WaMenuCaps | null {
   const gateway = whatsappGatewayOf(host);
-  return gateway === null ? null : capacidadesDe(gateway, true, true);
+  return gateway === null ? null : capacidadesDe(gateway, true, true, { pausaModo: whatsappPausaModoOf(host) });
 }
 import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";

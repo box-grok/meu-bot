@@ -264,6 +264,18 @@ test("hermesPrecisaReiniciar: a lista também pede reinício (o Hermes 0.22.2 n�
   assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" }), true, "sem a chave da lista no patch = lista mantida; muda a política");
 });
 
+test("hermesPausaModo: nativa > plugin (instalado E carregado na mesma versão) > allowlist; HERMES_PAUSA_SH olha o .ok e o marcador do register()", () => {
+  const { hermesPausaModo, HERMES_PAUSA_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const kv = (o) => new Map(Object.entries(o));
+  assert.equal(hermesPausaModo(kv({})), "allowlist");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.0.0", pausavivo: "1.0.0", pausanativa: "0" })), "plugin");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.0.0", pausavivo: "", pausanativa: "0" })), "allowlist", "instalado mas o gateway de agora não o carregou: ainda é pela lista");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.1.0", pausavivo: "1.0.0" })), "allowlist", "versões diferentes = reinício pendente");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "lixo", pausavivo: "lixo" })), "allowlist");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "", pausavivo: "", pausanativa: "1" })), "nativa");
+  assert.ok(HERMES_PAUSA_SH.includes("meu-bot-pausa/.ok") && HERMES_PAUSA_SH.includes("whatsapp-pausa.carregado") && HERMES_PAUSA_SH.includes("pausanativa="));
+});
+
 test("Hermes: uma porta de bridge por usuário (root na 3000, os outros 3100 + uid − 1000) e o app lê a porta de cada um", async () => {
   const c = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   assert.deepEqual([0, 1000, 1001, 1042].map(c.portaBridgeHermes), [3000, 3100, 3101, 3142]);

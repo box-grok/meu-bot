@@ -274,6 +274,31 @@ export function hermesPrecisaReiniciar(antes: HermesWaEnv, depois: Record<string
     || !listaIgual(antes.allow, depois["WHATSAPP_ALLOWED_USERS"]);
 }
 
+// ---- Como a pausa por contato é feita nesta máquina.
+/**
+ * `nativa` = o Hermes tem pausa por contato (ainda não existe; critério abaixo); `plugin` = o meu-bot-pausa está
+ * instalado E carregado pelo gateway de agora (a marca basta, vale em qualquer política, sem reinício);
+ * `allowlist` = sem os dois: pausar é tirar da WHATSAPP_ALLOWED_USERS com reinício (contorno #1).
+ */
+export type HermesPausaModo = "nativa" | "plugin" | "allowlist";
+/**
+ * CONTORNO #2 (Hermes): não há pausa por contato (NousResearch/hermes-agent#146672).
+ * O que fazemos: a sonda diz se o plugin meu-bot-pausa está instalado (`pausaplugin` = versão do .ok) e carregado
+ * (`pausavivo` = versão que o register() gravou); iguais = o gateway de agora já pausa pela marca.
+ * Sai quando: `pausanativa=1`. Hoje é um palpite declarado (`hermes whatsapp --help` cita "pause"); trocar pelo
+ * sinal real da release que fechar a issue. Tabela: docs/guia/contornos.md.
+ */
+export const HERMES_PAUSA_SH = `echo "pausaplugin=$( [ -f "$HOME/.hermes/plugins/meu-bot-pausa/plugin.yaml" ] && cat "$HOME/.hermes/plugins/meu-bot-pausa/.ok" 2>/dev/null | tr -dc '0-9.')"
+echo "pausavivo=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["versao"])' "$HOME/.local/share/meu-bot/whatsapp-pausa.carregado" 2>/dev/null | tr -dc '0-9.')"
+echo "pausanativa=$(timeout 10 hermes whatsapp --help 2>/dev/null | grep -qiE '(^|[^a-z])pause([^a-z]|$)' && echo 1 || echo 0)"`;
+const VERSAO_RE = /^\d+(\.\d+)*$/;
+/** O que a sonda (HERMES_PAUSA_SH) disse → o modo. Plugin instalado mas ainda não carregado (gateway antigo) = allowlist. */
+export function hermesPausaModo(kv: Map<string, string>): HermesPausaModo {
+  if ((kv.get("pausanativa") ?? "").trim() === "1") return "nativa";
+  const instalado = (kv.get("pausaplugin") ?? "").trim(), vivo = (kv.get("pausavivo") ?? "").trim();
+  return VERSAO_RE.test(instalado) && instalado === vivo ? "plugin" : "allowlist";
+}
+
 /** Valores que podem ir num argumento de shell entre aspas simples (os nossos: palavras, números, vírgulas). */
 export const HERMES_ENV_VALUE_RE = /^[A-Za-z0-9_,.*+-]*$/;
 /** `KEY=valor …` em argv: grava em ~/.hermes/.env (linha existente trocada, senão acrescentada), com backup ao lado. */

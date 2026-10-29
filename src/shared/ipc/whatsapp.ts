@@ -12,7 +12,12 @@ import type { Gateway } from "./maquina";
  */
 export interface WhatsappCapacidades {
   parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
-  pausar: boolean; grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
+  pausar: boolean;
+  /** Pausar aceita prazo (2 h / 24 h / até retomar), vale em qualquer política e guarda o que chegou na pausa (Hermes com o plugin meu-bot-pausa, ou nativo). */
+  pausaPrazo: boolean;
+  /** O próprio Hermes faz a pausa por contato (ainda não existe; quando existir, o app prefere o nativo ao plugin). */
+  pausaNativa: boolean;
+  grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
   /** Aplicar "quem o agente responde" reinicia o gateway do WhatsApp da máquina (alguns segundos fora do ar). */
   politicaReinicia: boolean;
 }
