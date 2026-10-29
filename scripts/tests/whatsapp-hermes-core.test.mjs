@@ -120,7 +120,8 @@ test("o que gravar por cartão e quando o gateway precisa reiniciar", () => {
   assert.deepEqual(hermesEnvPara("list", "5516900000001", ["5521900000002", "+55 21 90000-0002", "5516900000001"]).WHATSAPP_ALLOWED_USERS, "5516900000001,5521900000002", "sem repetidos, dono sempre, só dígitos");
   for (const v of Object.values(hermesEnvPara("list", "1", ["2"]))) assert.match(v, HERMES_ENV_VALUE_RE);
   const antes = { mode: "bot", dm: "", allow: "1,2", all: "" };
-  assert.equal(hermesPrecisaReiniciar(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "pairing", WHATSAPP_ALLOWED_USERS: "1,2,3", WHATSAPP_ALLOW_ALL_USERS: "false" }), false, "só a lista mudou: vale ao vivo");
+  assert.equal(hermesPrecisaReiniciar(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "pairing", WHATSAPP_ALLOWED_USERS: "1,2,3", WHATSAPP_ALLOW_ALL_USERS: "false" }), true, "só a lista mudou: o Hermes não a relê, reinicia");
+  assert.equal(hermesPrecisaReiniciar(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "pairing", WHATSAPP_ALLOWED_USERS: "2,1", WHATSAPP_ALLOW_ALL_USERS: "false" }), false, "mesma lista em outra ordem: nada mudou");
   assert.equal(hermesPrecisaReiniciar(antes, hermesEnvPara("open", "1")), true, "política mudou");
   assert.equal(hermesPrecisaReiniciar(antes, hermesEnvPara("self", "1")), true, "modo mudou");
 });
@@ -214,20 +215,53 @@ test("gruposHermes: lista admitida + sessões do state.db; a sessão mais recent
   assert.equal(gruposHermes(cfg, semNome, null, "todos").grupos.find((x) => x.jid === C).nome, null, "sem cache, sem nome (o id não vira nome)");
 });
 
-test("pausa no Hermes: tira da lista (e devolve ao retomar), mantém o próprio número e os outros pausados fora; fixa allowlist; recusa só-você/todo-mundo/desligado", () => {
+test("pausa no Hermes: tira da lista (e devolve ao retomar), mantém o próprio número e os outros pausados fora; fixa allowlist; recusa pausar em só-você/todo-mundo/desligado", () => {
   const { hermesPausaPlano } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   const env = { mode: "bot", dm: "", allow: "5516992294486,5522925501274,5521923670743", all: "" }; // dm vazio = pairing de fábrica
   const p = hermesPausaPlano(env, "5516992294486", "5522925501274", true, []);
   assert.deepEqual(p.patch, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516992294486,5521923670743", WHATSAPP_ALLOW_ALL_USERS: "false" });
-  assert.equal(p.reinicia, true, "pairing → allowlist muda a política: reinicia uma vez");
-  // já em allowlist: sem reinício; retomar devolve; outro pausado continua fora
+  assert.equal(p.reinicia, true, "pairing → allowlist muda a política: reinicia");
+  // já em allowlist: retomar devolve; outro pausado continua fora; a lista mudou → reinicia (o gateway não a relê)
   const env2 = { mode: "bot", dm: "allowlist", allow: "5516992294486,5521923670743", all: "false" };
   const r = hermesPausaPlano(env2, "5516992294486", "5522925501274", false, ["5522925501274", "5521923670743"]);
-  assert.deepEqual(r.patch.WHATSAPP_ALLOWED_USERS, "5516992294486,5522925501274"); assert.equal(r.reinicia, false);
+  assert.deepEqual(r.patch.WHATSAPP_ALLOWED_USERS, "5516992294486,5522925501274"); assert.equal(r.reinicia, true, "lista mudou: reinicia (box-2: sem isso o pausado seguiu respondido)");
   assert.throws(() => hermesPausaPlano({ mode: "self-chat", dm: "", allow: "", all: "" }, "1", "5522925501274", true, []), /só você/);
   assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "open", allow: "", all: "true" }, "1", "5522925501274", true, []), /todo mundo/);
   assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "allowlist", allow: "*", all: "" }, "1", "5522925501274", true, []), /todo mundo/);
   assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "disabled", allow: "", all: "" }, "1", "5522925501274", true, []), /desligado/);
+  assert.throws(() => hermesPausaPlano({ mode: "bot", dm: "open", allow: "", all: "true" }, "1", "5522925501274", false, []), /não há o que retomar/);
+});
+
+test("retomar no Hermes em \"só você\" ou desligado: a conversa clicada vira \"você e ele\" (lista), sem passar por Quem o agente responde", () => {
+  const { hermesPausaPlano } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  // "só você" com lista velha de antes: a retomada parte do zero (só o próprio + o clicado), não ressuscita os outros
+  const r = hermesPausaPlano({ mode: "self-chat", dm: "allowlist", allow: "595986120831,5521999999999", all: "false" }, "595986120831", "5521923670743", false, []);
+  assert.deepEqual(r.patch, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5521923670743,595986120831", WHATSAPP_ALLOW_ALL_USERS: "false" });
+  assert.equal(r.reinicia, true, "self-chat → bot muda o modo: reinicia");
+  const d = hermesPausaPlano({ mode: "bot", dm: "disabled", allow: "", all: "" }, "595986120831", "5521923670743", false, []);
+  assert.equal(d.patch.WHATSAPP_DM_POLICY, "allowlist"); assert.equal(d.patch.WHATSAPP_ALLOWED_USERS, "5521923670743,595986120831"); assert.equal(d.reinicia, true);
+});
+
+test("hermesNaoResponde: quem a política de hoje deixa sem resposta aparece como pausado (o próprio nunca)", () => {
+  const { hermesNaoResponde: n } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const self = "595986120831", outro = "5521923670743";
+  assert.equal(n({ mode: "self-chat", dm: "allowlist", allow: "595986120831", all: "false" }, self, outro), true, "só você: todo mundo pausado");
+  assert.equal(n({ mode: "self-chat", dm: "allowlist", allow: "595986120831", all: "false" }, self, self), false, "…menos o próprio");
+  assert.equal(n({ mode: "bot", dm: "allowlist", allow: "595986120831", all: "false" }, self, outro), true, "fora da lista");
+  assert.equal(n({ mode: "bot", dm: "allowlist", allow: "595986120831,5521923670743", all: "false" }, self, outro), false, "na lista");
+  assert.equal(n({ mode: "bot", dm: "open", allow: "595986120831", all: "true" }, self, outro), false, "todo mundo");
+  assert.equal(n({ mode: "bot", dm: "allowlist", allow: "*", all: "" }, self, outro), false, "* = todo mundo");
+  assert.equal(n({ mode: "bot", dm: "open", allow: "", all: "" }, self, outro), true, "open sem opt-in = desligado");
+  assert.equal(n({ mode: "bot", dm: "disabled", allow: "5521923670743", all: "" }, self, outro), true, "desligado: ninguém");
+  assert.equal(n({ mode: "bot", dm: "pairing", allow: "", all: "" }, self, outro), false, "pairing manda código, não é pausa");
+});
+
+test("hermesPrecisaReiniciar: a lista também pede reinício (o Hermes 0.22.2 não a relê); igual em outra ordem, não", () => {
+  const { hermesPrecisaReiniciar: p } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const antes = { mode: "bot", dm: "allowlist", allow: "1,2", all: "false" };
+  assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "2,1", WHATSAPP_ALLOW_ALL_USERS: "false" }), false);
+  assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "1", WHATSAPP_ALLOW_ALL_USERS: "false" }), true);
+  assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" }), true, "sem a chave da lista no patch = lista mantida; muda a política");
 });
 
 test("Hermes: uma porta de bridge por usuário (root na 3000, os outros 3100 + uid − 1000) e o app lê a porta de cada um", async () => {

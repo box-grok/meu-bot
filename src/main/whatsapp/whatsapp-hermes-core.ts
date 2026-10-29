@@ -166,8 +166,9 @@ export function threadFromHermes(data: unknown, autores: ReadonlyMap<string, str
 // ---- Quem o agente responde (política de DM) no Hermes: vive em ~/.hermes/.env.
 // WHATSAPP_MODE (self-chat | bot), WHATSAPP_DM_POLICY (pairing | allowlist | open | disabled), WHATSAPP_ALLOWED_USERS
 // (lista separada por vírgula; "*" = todos) e WHATSAPP_ALLOW_ALL_USERS (opt-in obrigatório do "open": sem ele o
-// gateway se recusa a subir). A lista é relida a cada mensagem; modo, política e opt-in só valem depois de
-// reiniciar o gateway. Esta é a fronteira dona desse formato.
+// gateway se recusa a subir). Tudo isso, a lista inclusive, só vale depois de reiniciar o gateway: o adapter lê
+// WHATSAPP_ALLOWED_USERS na subida e o bridge recebe a lista no spawn (Hermes 0.22.2; visto no box-2: pausa gravada
+// no .env e o contato respondido 20 s depois). Esta é a fronteira dona desse formato.
 /** Imprime `wamode=`, `wadm=`, `waallow=` e `waall=` a partir de ~/.hermes/.env (aspas e `export` tolerados). */
 export const HERMES_POLICY_PY = `python3 -c '
 import os, re
@@ -217,20 +218,41 @@ export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null,
 }
 
 /**
+ * O agente não responde a este contato pela política de hoje? É o que a lista mostra como "pausado" além da marca:
+ * em "só você" todo mundo menos o próprio; desligado, todos; numa lista, quem está fora dela. "Todo mundo" e pairing
+ * (o número fora da lista recebe pedido de pareamento, não silêncio) não pausam ninguém.
+ */
+export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number: string): boolean {
+  if (self !== null && number === self) return false;
+  const mode = env.mode.trim().toLowerCase() || "self-chat";
+  const dm = env.dm.trim().toLowerCase() || "pairing";
+  const lista = listaDe(env.allow);
+  if (mode === "self-chat") return true;
+  if (dm === "disabled") return true;
+  if (lista.includes("*")) return false;
+  if (dm === "open") return !truthy(env.all);
+  if (lista.length > 0) return !lista.includes(number);
+  return false;
+}
+
+/**
  * Pausar um contato no Hermes: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem o agente
- * responde (WHATSAPP_ALLOWED_USERS, relida ao vivo) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado"
- * mora em whatsapp-lista.json (whatsapp-marks.ts); os outros pausados ficam fora da lista gravada. A política fica
- * fixa em "lista" (allowlist): em pairing, um número fora da lista receberia pedido de pareamento, o oposto de pausa.
- * Diferença do OpenClaw, dita na tela: o agente nem vê as mensagens da pessoa durante a pausa.
+ * responde (WHATSAPP_ALLOWED_USERS) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado" mora em
+ * whatsapp-lista.json (whatsapp-marks.ts); os outros pausados ficam fora da lista gravada. A política fica fixa em
+ * "lista" (allowlist): em pairing, um número fora da lista receberia pedido de pareamento, o oposto de pausa.
+ * Retomar vale em qualquer política: em "só você" ou desligado, a conversa clicada vira "você e ele" (a pessoa não
+ * precisa passar por "Quem o agente responde"). Pausar em "só você"/desligado não tem o que tirar; em "todo mundo"
+ * não há lista de onde tirar. Diferença do OpenClaw, dita na tela: o agente nem vê as mensagens durante a pausa.
  */
 export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
   const mode = env.mode.trim().toLowerCase() || "self-chat";
   const dm = env.dm.trim().toLowerCase() || "pairing";
   const lista = listaDe(env.allow);
-  if (mode === "self-chat") throw new Error("o Hermes está em modo \"só você\": o agente não responde a outros contatos, não há o que pausar");
-  if (dm === "disabled") throw new Error("o agente está desligado para conversas diretas nesta máquina: não há o que pausar");
-  if ((dm === "open" && truthy(env.all)) || lista.includes("*")) throw new Error("com \"todo mundo\" o Hermes não tem lista de onde tirar o contato: escolha uma lista em \"Quem o agente responde\" antes de pausar");
-  const efetiva = new Set(lista);
+  if (paused && mode === "self-chat") throw new Error("o Hermes está em modo \"só você\": o agente não responde a outros contatos, não há o que pausar");
+  if (paused && dm === "disabled") throw new Error("o agente está desligado para conversas diretas nesta máquina: não há o que pausar");
+  if ((dm === "open" && truthy(env.all)) || lista.includes("*")) throw new Error(paused ? "com \"todo mundo\" o Hermes não tem lista de onde tirar o contato: escolha uma lista em \"Quem o agente responde\" antes de pausar" : "o agente já responde a todo mundo nesta máquina: não há o que retomar");
+  // Em "só você" a lista gravada pode trazer números de antes; a pausa/retomada parte do que vale hoje (só o próprio).
+  const efetiva = new Set(mode === "self-chat" ? [] : lista);
   if (paused) efetiva.delete(number); else efetiva.add(number);
   if (self !== null) efetiva.add(self);
   for (const n of pausados) if (n !== number) efetiva.delete(n);
@@ -238,12 +260,18 @@ export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: 
   return { patch, reinicia: hermesPrecisaReiniciar(env, patch) };
 }
 
-/** Modo, política e opt-in são lidos na subida do gateway; só a lista é ao vivo. */
+/**
+ * Qualquer mudança no .env pede reinício do gateway: modo, política e opt-in são lidos na subida, e a lista também
+ * (o adapter guarda `_allow_from` ao iniciar e o bridge recebe a lista no spawn). Sem reiniciar, pausar/retomar
+ * grava o .env e nada muda: foi o que trancou um usuário fora do próprio bot e deixou um pausado sendo respondido.
+ */
 export function hermesPrecisaReiniciar(antes: HermesWaEnv, depois: Record<string, string>): boolean {
   const norm = (v: string | undefined, padrao: string): string => (v ?? "").trim().toLowerCase() || padrao;
+  const listaIgual = (a: string, b: string | undefined): boolean => { const x = listaDe(a).sort(), y = listaDe(b ?? a).sort(); return x.length === y.length && x.every((v, i) => v === y[i]); };
   return norm(antes.mode, "self-chat") !== norm(depois["WHATSAPP_MODE"], "self-chat")
     || norm(antes.dm, "pairing") !== norm(depois["WHATSAPP_DM_POLICY"], "pairing")
-    || truthy(antes.all) !== truthy(depois["WHATSAPP_ALLOW_ALL_USERS"] ?? "");
+    || truthy(antes.all) !== truthy(depois["WHATSAPP_ALLOW_ALL_USERS"] ?? "")
+    || !listaIgual(antes.allow, depois["WHATSAPP_ALLOWED_USERS"]);
 }
 
 /** Valores que podem ir num argumento de shell entre aspas simples (os nossos: palavras, números, vírgulas). */
