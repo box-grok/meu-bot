@@ -10,6 +10,7 @@ import { el } from "../lib/dom.js";
 import { carregando as espera } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
+import { proximoBox } from "../lib/usuarios-nome.js";
 
 export interface UsuariosPageDeps {
   who: string;
@@ -19,6 +20,9 @@ export interface UsuariosPageDeps {
   api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
+/** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
+const PREFIXO = "box-";
+const comPrefixo = (n: string): string => (n.startsWith(PREFIXO) ? n : `${PREFIXO}${n}`);
 const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 const tam = (kb: number): string => (kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(1).replace(".", ",")} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
 /** % do disco que o limite representa (arredondado). */
@@ -33,7 +37,11 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let visao: UsuariosVisao | null = null;
   let erro: string | null = null;
   let ocupado: string | null = null; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
-  let nome = ""; let pctNovo = "";
+  /** Limite de disco já preenchido ao criar: 2% (dá para apagar e deixar sem limite). */
+  const PCT_PADRAO = "2";
+  /** O que a pessoa digitou depois do box-; null = ainda não mexeu (o campo mostra o próximo número da sequência). */
+  let nome: string | null = null; let pctNovo = PCT_PADRAO;
+  const nomeAgora = (): string => nome ?? proximoBox(visao?.usuarios.map((u) => u.nome) ?? []);
   let msg: { text: string; bad: boolean } | null = null;
   /** % digitado na linha de cada usuário (antes de salvar). */
   const rascunho = new Map<string, string>();
@@ -70,15 +78,17 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     finally { ocupado = null; render(); }
   }
   async function criar(): Promise<void> {
-    const n = nome.trim();
-    if (!NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
-    const p = pctNovo.trim() === "" ? 0 : Number(pctNovo);
+    const digitado = nomeAgora().trim();
+    const n = comPrefixo(digitado);
+    if (digitado === "" || !NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
+    // Sem o tamanho do disco (df falhou na máquina), não há como calcular a fatia: cria sem limite.
+    const p = visao?.discoKb === null ? 0 : pctNovo.trim() === "" ? 0 : Number(pctNovo);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
     if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
       // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
       const sel = visao?.seletores;
       if (sel !== undefined) msg = sel.aviso === null ? { text: `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}. Já está no seletor do meu-bot (aba Usuário, como ${sel.alias}) e no do admin.`, bad: false } : { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true };
-      nome = ""; pctNovo = ""; render();
+      nome = null; pctNovo = PCT_PADRAO; render();
     }
   }
   async function salvarRecursos(u: UsuarioMaquina): Promise<void> {
@@ -161,15 +171,20 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
 
     const form = el("div", "admin-card"); form.append(el("strong", "", "Criar usuário"));
     const linha = el("div", "admin-actions");
-    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = "nome (ex.: maria)"; input.value = nome; input.maxLength = 32; input.disabled = ocupado !== null;
+    // O "box-" fica fixo na frente: digita "maria", nasce "box-maria".
+    const prefixo = el("span", "usuarios-prefixo", PREFIXO);
+    const input = el("input") as HTMLInputElement; input.type = "text"; input.placeholder = proximoBox(visao?.usuarios.map((u) => u.nome) ?? []); input.value = nomeAgora(); input.maxLength = 32 - PREFIXO.length; input.disabled = ocupado !== null;
+    input.title = `O usuário nasce como ${PREFIXO}<o que você digitar>`;
     input.autocapitalize = "off"; input.spellcheck = false;
-    input.addEventListener("input", () => { nome = input.value.toLowerCase(); if (input.value !== nome) input.value = nome; });
+    // Quem digita "box-3" vê "box-3" (o prefixo fixo já está na frente), não "box-box-3".
+    input.addEventListener("input", () => { let v = input.value.toLowerCase(); if (v.startsWith(PREFIXO)) v = v.slice(PREFIXO.length); nome = v; if (input.value !== v) input.value = v; });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
-    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = "% do disco"; pin.value = pctNovo; pin.disabled = ocupado !== null; pin.style.width = "110px";
+    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : pctNovo; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
     pin.addEventListener("input", () => { pctNovo = pin.value; });
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando…" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
-    linha.append(input, pin, b); form.append(linha);
+    const campo = el("span", "usuarios-nome"); campo.append(prefixo, input);
+    linha.append(campo, pin, b); form.append(linha);
     form.append(el("p", "hint", "Nasce comum (sem sudo), sempre ligado (o agente dele roda mesmo sem ele conectado), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (sincronia !== null) form.append(el("p", "hint", sincronia));
