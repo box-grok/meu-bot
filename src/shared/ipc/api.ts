@@ -275,8 +275,8 @@ export interface MeuBotClientApi {
   statusLineSegments(): Promise<StatusLineSegments | null>;
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
-  /** O backend do meu-bot está instalado na máquina desta janela? (este Mac: sempre) */
-  backendPresente(): Promise<boolean>;
+  /** O backend do meu-bot está instalado na máquina desta janela? (este Mac: sempre; `null` = a máquina não respondeu) */
+  backendPresente(): Promise<boolean | null>;
   /** Instala o backend do meu-bot na máquina desta janela (o mesmo do seletor); progresso em backend:install-progress. */
   installBackend(): Promise<InstallBackendResult>;
   /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */

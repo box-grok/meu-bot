@@ -220,9 +220,14 @@ export async function instalarBackendDaMaquina(host: string, onLine: (line: stri
   return r;
 }
 
-/** O backend do meu-bot está instalado na máquina? (sondagem do seletor, com cache curto) */
-export async function backendPresente(host: string): Promise<boolean> {
-  return (await probeCached(host)).backendInstalled;
+/**
+ * O backend do meu-bot está instalado na máquina? (sondagem do seletor, com cache curto). `null` quando a máquina
+ * não respondeu (desligada, Tailscale fora): a sonda devolve `backendInstalled=false` nesse caso, e isso não é
+ * "sem backend" — a janela fica com o que sabia em vez de oferecer o instalar.
+ */
+export async function backendPresente(host: string): Promise<boolean | null> {
+  const p = await probeCached(host);
+  return p.reachable ? p.backendInstalled : null;
 }
 
 const ctx: PickerIpcContext = {
