@@ -60,7 +60,7 @@ export interface SettingsFile {
   /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
   abaFixa: AbaFixa;
 }
-export const ABAS_FIXAVEIS: readonly AbaFixa[] = ["padrao", "conversa", "tutoriais", "acervo", "conta-google", "financas", "navegador", "modulos"];
+export const ABAS_FIXAVEIS: readonly AbaFixa[] = ["padrao", "conversa", "tutoriais", "acervo", "conta-google", "financas", "navegador", "modulos", "usuarios"];
 export const isAbaFixa = (v: unknown): v is AbaFixa => typeof v === "string" && (ABAS_FIXAVEIS as readonly string[]).includes(v);
 export const MAX_ESPACOS = 20;
 export const MAX_SERVICOS = 30;

@@ -385,6 +385,8 @@ let windowPersonName: string | null = null;
 /** O que esta variante pode fazer (vem do main em window:info); até lá, o padrão do meu-bot normal. */
 /** meu-bot-admin: espelho das conversas dela com o meu-bot (admin/bot-mirror.ts); null no meu-bot normal. */
 let adminBotMirror: BotMirror | null = null;
+/** Aba Usuários do admin, quando ele entra como root nesta máquina (null = não é admin ou não é root). */
+let usuariosAdmin: { open: () => void } | null = null;
 /** Versão deste app (de window:info) e quando esta sessão abriu: vão no progresso para o admin ver se ela está atualizada e ativa. */
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
@@ -1194,6 +1196,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:split-vazia", kind: "action", label: "Nova coluna vazia", detail: "a próxima página que você abrir entra nela", keywords: ["coluna", "dividir", "vazia", "split", "tela"] }, () => splitColunaVazia());
   add({ id: "a:split", kind: "action", label: splitLabel(splitPages.at(-1)?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
   if (navPage !== null && navAccess === "ok") add({ id: "a:favs", kind: "action", label: navFavsShown ? "Navegador: esconder a barra de favoritos" : "Navegador: mostrar a barra de favoritos", detail: "Cmd+Shift+F", keywords: ["favoritos", "barra", "bookmarks", "navegador"] }, () => toggleFavsBar());
+  if (usuariosAdmin !== null) { const u = usuariosAdmin; add({ id: "a:usuarios", kind: "action", label: `Usuários de ${hostLabel(windowHost)}`, detail: "criar, limitar e apagar os usuários de login desta máquina", keywords: ["usuarios", "usuários", "contas", "box", "criar", "linux"] }, () => u.open()); }
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: `quick view com extensões do Chrome; o agente pode navegar por você${caps.planoExigido === "free" ? " (Pro)" : ""}`, keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
@@ -2009,7 +2012,14 @@ void (async () => {
     const usuariosLine = $<HTMLButtonElement>("usuarios-line");
     const usuariosPage = mountUsuariosPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     usuariosLine.addEventListener("click", () => usuariosPage.open());
-    void window.meuBot.adminUsuariosVisivel().then((v) => { usuariosLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
+    // Como root, a aba Usuários já abre junto com a Suporte; fixada (📌), fica na frente.
+    void window.meuBot.adminUsuariosVisivel().then((v) => {
+      usuariosLine.hidden = !v;
+      if (!v) return;
+      usuariosAdmin = usuariosPage;
+      usuariosPage.open();
+      if (abaFixaAtual() !== "usuarios") suportePage.open();
+    }).catch(() => { /* sem resposta: sem a linha */ });
     // Terminal na máquina da pessoa: só no admin (no meu-bot da pessoa a linha fica oculta).
     $<HTMLButtonElement>("terminal-line").hidden = false;
     void window.meuBot.adminAuditoriaVisivel().then((v) => { auditoriaLine.hidden = !v; }).catch(() => { /* sem resposta: sem a linha */ });
