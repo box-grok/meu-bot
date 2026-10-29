@@ -38,7 +38,7 @@ export const firstReplyOnHost = (): boolean => [...ctx.index.values()].some((c) 
 export const guideCtx = (): GuideContext => ({
   support: ctx.supportState,
   statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: ctx.statusLineSegs },
-  claude: { loggedIn: ctx.clAuth?.loggedIn ?? null, email: ctx.clAuth?.email ?? null, firstReply: firstReplyOnHost(), contasExtras: (ctx.contasClaudeView()?.contas ?? []).filter((c) => !c.padrao && c.logada).length, trocas: (ctx.contasClaudeView()?.eventos ?? []).length },
+  claude: { loggedIn: ctx.clAuth?.loggedIn ?? null, email: ctx.clAuth?.email ?? null, global: ctx.clAuth?.global === true, firstReply: firstReplyOnHost(), contasExtras: (ctx.contasClaudeView()?.contas ?? []).filter((c) => !c.padrao && c.global !== true && c.logada).length, trocas: (ctx.contasClaudeView()?.eventos ?? []).length },
   xai: {
     possible: !ctx.caps.install || ctx.windowHost === "local" ? false : ctx.xaiAuth !== null ? true : ctx.xaiKey === null ? null : ctx.xaiKey.backend,
     hermes: ctx.xaiAuth !== null ? true : ctx.xaiKey === null ? null : false,

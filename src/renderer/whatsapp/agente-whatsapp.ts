@@ -176,16 +176,10 @@ let waAudioBusy: "in" | VoiceReplyMode | null = null;
 let waAudioMsg: { text: string; bad: boolean; kind: "in" | "out" } | null = null;
 /** O recado do áudio fica onde a ação foi feita: embaixo de "Ativar transcrição" ou dos cartões de voz. */
 const audioMsgEl = (kind: "in" | "out"): HTMLElement | null => waAudioMsg !== null && waAudioMsg.kind === kind ? el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text) : null;
-/**
- * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
- * responder em áudio. Usado no passo do tutorial e no painel de gerência; os instaladores rodam na máquina.
- */
-export function renderAudioControls(container: HTMLElement): void {
-  const st = ctx.waStatus;
-  const box = el("div", "audio-controls");
+/** Linha "Ouvir áudios": ativar a transcrição (ou o ✓) e o recado da última tentativa, embaixo. */
+function renderOuvir(box: HTMLElement, st: typeof ctx.waStatus): void {
   const hear = el("div", "audio-row");
   hear.append(el("strong", "", "Ouvir áudios"));
-  const hermes = st?.gateway === "hermes";
   if (st?.audioIn === true) hear.append(el("span", "audio-ok", "✓ ativo: a transcrição roda na própria máquina"));
   else {
     const b = el("button", "btn btn-primary btn-small", waAudioBusy === "in" ? "Ativando… (na primeira vez baixa ~500 MB)" : "Ativar transcrição");
@@ -195,6 +189,19 @@ export function renderAudioControls(container: HTMLElement): void {
   }
   box.append(hear);
   { const m = audioMsgEl("in"); if (m !== null) box.append(m); }
+}
+/**
+ * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
+ * responder em áudio. `parte`: "ouvir" no tutorial 16 (só a transcrição), "responder" no painel de gerência do
+ * tutorial 2 (só a resposta em áudio e a voz); os instaladores rodam na máquina.
+ */
+export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "responder"): void {
+  const st = ctx.waStatus;
+  const box = el("div", "audio-controls");
+  const hermes = st?.gateway === "hermes";
+  if (parte === "ouvir") { renderOuvir(box, st); container.append(box); return; }
+  // Responder em áudio só acontece quando o agente entende o áudio que recebeu.
+  if (st?.audioIn !== true) box.append(el("p", "hint", "Responder em áudio depende da transcrição ligada: tutorial 16, Ouvir áudios do WhatsApp."));
   // Mesma forma da linha "Ouvir áudios": rótulo e estado atual; os cartões abaixo, lado a lado.
   const current = st?.audioOut ?? "off";
   const speak = el("div", "audio-row");

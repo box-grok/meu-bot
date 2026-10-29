@@ -12,7 +12,8 @@ import { hostFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
-import { manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
+import { contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
+import { prepararUsuarioDeNovo, manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
 /** A máquina da pessoa do suporte que pediu; recusa qualquer outra janela. */
@@ -40,6 +41,14 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:usuario-seletores", (event, payload: unknown) => nosSeletores(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:usuarios-sincronizar", (event) => sincronizarSeletores(adminHost(event)));
   handleAdmin("admin:usuario-apelido", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; apelido?: unknown }; return definirApelido(adminHost(event), p.nome, p.apelido); });
+  handleAdmin("admin:claude-global", (event) => estadoClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-instalar", (event) => instalarClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-entrar", (event) => entrarClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-conta-nova", (event) => contaNovaClaudeGlobal(adminHost(event)));
+  handleAdmin("admin:claude-global-conta-remover", (event, payload: unknown) => contaRemoverClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
+  handleAdmin("admin:claude-global-conta-usar", (event, payload: unknown) => contaUsarAgoraClaudeGlobal(adminHost(event), (payload as { id?: unknown } | null)?.id));
+  handleAdmin("admin:claude-global-usuario", (event, payload: unknown) => usuarioClaudeGlobal(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
+  handleAdmin("admin:usuario-preparar", (event, payload: unknown) => prepararUsuarioDeNovo(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));
   handleAdmin("admin:hermes-global", (event) => instalarHermesGlobal(adminHost(event)));

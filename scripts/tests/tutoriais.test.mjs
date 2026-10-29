@@ -16,7 +16,7 @@ test("tutoriais: ids únicos e cada passo com título, texto, alvo e regra de co
 });
 
 test("selo: número, passos e minutos; sem número, só os dois", () => {
-  assert.equal(tutorialBadge(t), "Tutorial 2 · 6 passos · 5 min");
+  assert.equal(tutorialBadge(t), "Tutorial 2 · 5 passos · 4 min");
   assert.equal(tutorialBadge({ ...t, minutes: 1, steps: [t.steps[0]] }, false), "1 passo · 1 min");
   assert.equal(tutorialBadge(byId("statusline")), "Tutorial 3 · 4 passos · 3 min");
 });
@@ -24,12 +24,13 @@ test("selo: número, passos e minutos; sem número, só os dois", () => {
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
   // O 15 (Mais contas do Claude) fica logo depois do 1 na trilha: desmembrado dele, pulável; o número é só o rótulo.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
+  // O 16 (Ouvir áudios) fica logo depois do 2, pelo mesmo motivo: era o passo de áudio dele.
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
   }
-  assert.deepEqual(TUTORIAIS.slice(0, 7).map((x) => x.id), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "fallback-contas", "suporte"]);
+  assert.deepEqual(TUTORIAIS.slice(0, 8).map((x) => x.id), ["claude-login", "contas-claude", "whatsapp-openclaw", "audio-whatsapp", "statusline", "xai-login", "fallback-contas", "suporte"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
   assert.equal(tutorialNumber("statusline"), 3); assert.equal(tutorialNumber("nada"), null);
@@ -128,28 +129,41 @@ test("selo da lateral: número = pendências (interruptor desliga); pulso = novi
 });
 
 test("guia do WhatsApp: o estado real marca os passos; QR já lido pula direto para a escolha", () => {
-  assert.deepEqual(guideView(t, null, emptyFlags()), { done: [false, false, false, false, false, false], current: 0, finished: false });
+  assert.deepEqual(guideView(t, null, emptyFlags()), { done: [false, false, false, false, false], current: 0, finished: false });
   // Escolher o agente: feito com a escolha gravada ou com um dos dois já atendendo; sem nada na máquina, é o passo 1.
   assert.equal(guideView(t, wa({ present: false, gateway: null }), emptyFlags()).current, 0);
   assert.equal(guideView(t, wa({ present: false, gateway: null, escolha: "hermes" }), emptyFlags()).current, 1);
   assert.equal(guideView(t, wa({ gateway: "hermes", escolha: null }), emptyFlags()).current, 1);
   assert.equal(guideView(t, wa({ ready: true }), emptyFlags()).current, 2);
-  // Pareado: o áudio vem antes de quem o agente responde.
+  // Pareado: direto para quem o agente responde (o áudio virou o tutorial 16).
   const v = guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), emptyFlags());
-  assert.deepEqual(v.done, [true, true, true, false, false, false]);
-  assert.equal(v.current, 3, "sem transcrição, o passo do áudio");
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), { ...emptyFlags(), audioPulado: true }).current, 4, "pulou o áudio: segue para quem responde");
-  const comAudio = { ready: true, connected: true, dmPolicy: "allowlist", audioIn: true };
-  assert.equal(guideView(t, wa(comAudio), emptyFlags()).current, 4, "o padrão gravado sozinho não conta como escolha");
-  assert.equal(guideView(t, wa({ ...comAudio, dmPolicy: "open" }), emptyFlags()).current, 5, "open é escolha explícita");
-  assert.equal(guideView(t, wa(comAudio), { policyChosen: true, tested: false }).current, 5, "escolheu quem responde: falta o teste");
-  assert.equal(guideView(t, wa(comAudio), { policyChosen: true, tested: true }).finished, true);
-  assert.equal(guideView(t, wa({ ready: true, connected: true, dmPolicy: "allowlist" }), { policyChosen: true, tested: true }).finished, false, "testar não pula a transcrição");
+  assert.deepEqual(v.done, [true, true, true, false, false]);
+  assert.equal(v.current, 3, "o padrão gravado sozinho não conta como escolha");
+  assert.ok(!t.steps.some((s) => s.id === "audio"), "a transcrição não é mais passo do tutorial 2");
+  const pareado = { ready: true, connected: true, dmPolicy: "allowlist" };
+  assert.equal(guideView(t, wa({ ...pareado, dmPolicy: "open" }), emptyFlags()).current, 4, "open é escolha explícita");
+  assert.equal(guideView(t, wa(pareado), { policyChosen: true, tested: false }).current, 4, "escolheu quem responde: falta o teste");
+  assert.equal(guideView(t, wa(pareado), { policyChosen: true, tested: true }).finished, true, "sem transcrição, o tutorial 2 conclui");
+});
+
+test("tutorial 16 (ouvir áudios): depois do 2; a transcrição ligada na máquina conclui o passo 1, o teste é à mão", () => {
+  const a = TUTORIAIS.find((x) => x.id === "audio-whatsapp");
+  assert.equal(a.number, 16); assert.equal(a.after, "whatsapp-openclaw"); assert.deepEqual(a.needs, ["whatsapp"]);
+  assert.deepEqual(a.steps.map((s) => s.body), ["audio-ouvir", undefined]);
+  assert.equal(guideView(a, null, emptyFlags()).current, 0);
+  assert.equal(guideView(a, wa({ ready: true, connected: true }), emptyFlags()).current, 0, "sem transcrição, o passo de ativar");
+  assert.equal(guideView(a, wa({ ready: true, connected: false, audioIn: true }), emptyFlags()).current, 0, "desconectado não conta");
+  assert.equal(guideView(a, wa({ ready: true, connected: true, audioIn: true }), emptyFlags()).current, 1, "ligada: falta testar");
+  assert.equal(guideView(a, wa({ ready: true, connected: true, audioIn: true }), { ...emptyFlags(), audioTestado: true }).finished, true);
+  assert.equal(guideView(a, wa({ ready: true, connected: true }), { ...emptyFlags(), audioTestado: true }).finished, false, "testar não pula a transcrição");
+  const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
+  assert.ok(!ids(() => false).includes("audio-whatsapp"), "só aparece com o 2 concluído");
+  assert.ok(ids((x) => x.id === "whatsapp-openclaw").includes("audio-whatsapp"));
 });
 
 test("título da aba do guia: progresso, e ✓ quando termina", () => {
-  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true }), emptyFlags())), "2 · WhatsApp 3/6");
-  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true, dmPolicy: "open", audioIn: true }), { policyChosen: true, tested: true })), "2 · WhatsApp ✓");
+  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true }), emptyFlags())), "2 · WhatsApp 3/5");
+  assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true, dmPolicy: "open" }), { policyChosen: true, tested: true })), "2 · WhatsApp ✓");
 });
 
 test("cartões de quem responder: só você é o padrão; a política gravada marca o cartão certo", () => {
@@ -176,9 +190,9 @@ test("parseWaNumbers: um por linha ou vírgula; sem + e com 10/11 dígitos ganha
 
 test("guia é sequencial: marcações antigas não acendem passos à frente de um pendente", () => {
   const v = guideView(t, wa({ ready: true, connected: false }), { policyChosen: true, tested: true });
-  assert.deepEqual(v.done, [true, true, false, false, false, false]);
+  assert.deepEqual(v.done, [true, true, false, false, false]);
   assert.equal(v.current, 2);
-  assert.equal(guideTabTitle(t, v), "2 · WhatsApp 2/6");
+  assert.equal(guideTabTitle(t, v), "2 · WhatsApp 2/5");
 });
 
 test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui quando a entrega chega", async () => {

@@ -6,6 +6,7 @@ import type { PageTab } from "./lib/pages-types.js";
 import { mountSuportePage } from "./admin/suporte-page.js";
 import { mountAuditoriaPage } from "./admin/auditoria-page.js";
 import { mountUsuariosPage } from "./admin/usuarios-page.js";
+import { mountClaudeGlobalPage } from "./admin/claude-global-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -2013,8 +2014,13 @@ void (async () => {
     const usuariosPage = mountUsuariosPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     usuariosLine.addEventListener("click", () => usuariosPage.open());
     // Como root, a aba Usuários já abre junto com a Suporte; fixada (📌), fica na frente.
+    // Claude Code Global: abaixo de Usuários, também só como root (a mesma conferência).
+    const claudeGlobalLine = $<HTMLButtonElement>("claude-global-line");
+    const claudeGlobalPage = mountClaudeGlobalPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
+    claudeGlobalLine.addEventListener("click", () => claudeGlobalPage.open());
     void window.meuBot.adminUsuariosVisivel().then((v) => {
       usuariosLine.hidden = !v;
+      claudeGlobalLine.hidden = !v;
       if (!v) return;
       usuariosAdmin = usuariosPage;
       usuariosPage.open();

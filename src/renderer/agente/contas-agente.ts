@@ -157,6 +157,15 @@ function paintClaudeLine(): void {
   if (clAuth === null) { clLine.hidden = true; return; }
   clLine.hidden = false;
   clLine.className = `wa-line cl-line ${clAuth.loggedIn ? "on" : "off"}`;
+  // Global do admin: mostra que está nele e de quem é a conta, sem "sair" (a gestão é do admin).
+  if (clAuth.global === true) {
+    clLineText.textContent = `Claude Code · global${clAuth.email !== null ? ` (${clAuth.email})` : ""}`;
+    clLine.title = "Esta máquina responde pelo Claude Code Global do admin. Só o admin mexe nele; uma conta própria fica como reserva (tutorial 15).";
+    clLineBtn.hidden = true;
+    return;
+  }
+  clLineBtn.hidden = false;
+  clLine.title = "Conta do Claude Code nesta máquina";
   clLineText.textContent = clAuth.loggedIn ? `Claude Code · ${clAuth.email ?? "logado"}` : "Claude Code · deslogado";
   clLineBtn.textContent = clAuth.loggedIn ? "sair" : "entrar";
   clLineBtn.title = clAuth.loggedIn ? "Sai da conta do Claude Code nesta máquina e abre o login para entrar com outra" : "Abre o login do Claude Code nesta máquina";
@@ -210,9 +219,18 @@ export function renderContasClaude(box: HTMLElement): void {
     box.append(bloco);
   }
   const lista = el("div", "contas-claude");
-  const isoladas = v.contas.filter((c) => !c.padrao);
+  const isoladas = v.contas.filter((c) => !c.padrao && c.global !== true);
   for (const c of v.contas) {
     const row = el("div", "conta-claude-row");
+    if (c.global === true) {
+      // Global do admin: primeiro da fila, sem controles aqui (a gestão é só do admin).
+      const st = estadoTexto(c, v.atual);
+      const head = el("div", "conta-claude-head");
+      head.append(el("span", "conta-claude-nome", `Claude Code Global${c.email !== null ? ` · ${c.email}` : ""}`), el("span", `conta-claude-estado ${st.tone}`, st.text));
+      row.append(head, el("div", "hint", "Do admin: responde primeiro por todos nesta máquina. As suas contas abaixo são a reserva quando ele chega ao limite."));
+      lista.append(row);
+      continue;
+    }
     const st = estadoTexto(c, v.atual);
     const head = el("div", "conta-claude-head");
     head.append(el("span", "conta-claude-nome", nomeConta(c)), el("span", `conta-claude-estado ${st.tone}`, st.text));

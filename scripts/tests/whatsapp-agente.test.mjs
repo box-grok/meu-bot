@@ -35,6 +35,9 @@ test("áudio do Hermes: ouvir = stt local em português; responder em áudio = v
   // O Whisper sai da memória depois de 5 min sem áudio (era a maior parte dos ~530 MB de cada gateway).
   assert.deepEqual(hermesAudioPatch({ kind: "in" }), { "stt.enabled": true, "stt.provider": "local", "stt.language": "pt", "stt.local.model": "small", "stt.local.unload_after_idle_seconds": 300 });
   assert.deepEqual(hermesAudioPatch({ kind: "in", off: true }), { "stt.enabled": false });
+  // Com o transcritor compartilhado da máquina (/opt/transcriber), o Hermes só aponta para ele: nada de modelo próprio.
+  assert.deepEqual(hermesAudioPatch({ kind: "in", compartilhado: true }), { "stt.enabled": true, "stt.provider": "local_command", "stt.language": "pt" });
+  assert.deepEqual(hermesAudioPatch({ kind: "in", off: true, compartilhado: true }), { "stt.enabled": false });
   // Sem `tts:` o Hermes fala inglês pela Edge: a voz pt-BR local vai junto, e a Edge fica em pt-BR de reserva.
   // O provedor padrão (voz-local, command → WAV → Opus) entra por HERMES_VOZ_LOCAL_SH; o "piper" embutido grava Vorbis.
   const voz = { "voice.auto_tts": true, "tts.piper.voice": "pt_BR-faber-medium", "tts.edge.voice": "pt-BR-FranciscaNeural" };

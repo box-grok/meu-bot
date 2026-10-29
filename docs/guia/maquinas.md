@@ -333,3 +333,36 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   lê isso com o Python do runtime do Hermes; o handler `whatsapp:status` completa `audioIn`/`audioOut` quando o
   gateway é Hermes; `installAudio` recusa com a explicação; a tela mostra "✓ ativo: o Hermes transcreve" e a voz só
   como leitura, sem botões de instalar.
+
+## Claude Code Global: a assinatura do root para todos os usuários (29 out)
+
+- **O que é:** o login de assinatura do root (`/root/.claude/.credentials.json`) responde pelos usuários da máquina.
+  A gestão é só do admin (aba "Claude Code Global", abaixo de Usuários). Cada usuário vê no meu-bot dele
+  "Claude Code · global (e-mail)", sem botão de sair. A fila tem duas fontes: o global primeiro e as contas próprias
+  do usuário (tutorial 15) como reserva. Sem nenhuma das duas, o Grok assume, como antes.
+- **Intermediário do root** (`backend-colima/claude-global.js`, serviço `meu-bot-claude-global`, `127.0.0.1:18780`):
+  - O `claude` do usuário fala com ele no modo assinatura: `CLAUDE_CODE_OAUTH_TOKEN=<chave do usuário>` e
+    `ANTHROPIC_BASE_URL`. Ele confere a chave e troca a autorização pelo token de uma conta do root. O streaming e os
+    `rate_limit_event` voltam intactos. Com `ANTHROPIC_AUTH_TOKEN` o CLI não manda os eventos de limite; com
+    `CLAUDE_CODE_OAUTH_TOKEN` manda.
+  - Só ele renova o token, contra `https://platform.claude.com/v1/oauth/token` com o client do Claude Code, gravando
+    de volta no mesmo arquivo de forma atômica. O `refreshToken` gira a cada renovação: cópias do arquivo por usuário
+    quebrariam as outras.
+  - Rodízio do root: o mesmo `contas-claude.js`, na pasta do root. Uma conta do root no limite (429) passa para a
+    próxima antes de responder ao usuário.
+  - Só passam `/v1/messages` e `/v1/models`. A API OAuth aceita criar chave de API com o mesmo token; com isso
+    bloqueado, um usuário não consegue tirar uma credencial da conta do root pelo intermediário.
+- **Arquivos:**
+  - `/opt/meu-bot-claude-global`: código, `755`, sem segredo.
+  - `/etc/meu-bot/claude-global`: só o root (700/600). Guarda `config.json` (porta), `chaves/<usuario>` e `uso.json`.
+  - No usuário: `~/.local/share/meu-bot/claude-global.json` (dono ele, 0600), com `{url, chave, email}`. A conta
+    `global` do `contas-claude.js` existe enquanto esse arquivo existe. O token do root nunca chega ao usuário.
+- **Onboarding:** com o global instalado, "Criar usuário" já liga o global para a conta nova
+  (`prepararUsuario` → `ligarClaudeGlobalPara`). O tutorial 1 só confirma a sessão e, com o global, vem concluído.
+- **Conferido no servidor (29 out):**
+  - O box-2 respondeu pelo intermediário (`apiKeySource: none`, `rate_limit_event` chegando, `--resume` ok).
+  - A chave dele não abriu `/api/oauth/claude_cli/create_api_key` nem `/api/oauth/usage` (403).
+  - O box-2 não lê `/etc/meu-bot` nem `/root/.claude`.
+  - A renovação feita pelo intermediário manteve o `claude` do root funcionando.
+- **Uso compartilhado:** experimental. Antes de levar o global a clientes ou à produção, confirme que o acordo com a
+  Anthropic cobre o uso; as contas próprias de cada usuário continuam como alternativa.

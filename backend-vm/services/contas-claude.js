@@ -6,6 +6,12 @@
  * `claude -p --resume <sessão>` acha a conversa em qualquer conta. A conta "padrao" (home null) é o login normal
  * de ~/.claude e sempre existe, por último na ordem.
  *
+ * Conta "global" (o Claude Code Global do admin): a assinatura do root servindo todos os usuários da máquina. Existe
+ * só enquanto o admin deixa ~/.local/share/meu-bot/claude-global.json ({url, chave, email}); vem sempre primeiro, não
+ * é editável aqui (a gestão é do admin) e não tem pasta própria: o `claude` usa o ~/.claude do usuário (histórico e
+ * --resume dele) e fala com o intermediário do root (ANTHROPIC_BASE_URL) com a chave deste usuário no lugar do
+ * token. O token do root nunca chega a esta conta. Esgotada, a fila segue para as contas próprias.
+ *
  * Registro em ~/.local/share/meu-bot/contas-claude.json (contas + limiares) e contas-claude-uso.json (uso por
  * conta). Estados gravados: ok | esgotada | bloqueada | desconhecida. "aviso" nunca é gravado: é derivado na
  * leitura (pct acima do limiar com reset no futuro). `esgotada` expira sozinha em `ate` + 60 s. Tempos em epoch
@@ -23,7 +29,7 @@ const accountStatus = require('./account-status');
 const LIMIARES_PADRAO = { sessao: 90, semanal: 95, estrategia: 'ordem' };
 const ESTRATEGIAS = ['ordem', 'folga'];
 const ESTADOS = ['ok', 'esgotada', 'bloqueada', 'desconhecida'];
-const ID_RE = /^(padrao|c-[a-f0-9]{8})$/;
+const ID_RE = /^(padrao|global|c-[a-f0-9]{8})$/;
 /** Pastas de ~/.claude que toda conta compartilha (histórico, tarefas, skills…). `sessions/` NÃO: é o registro de processos vivos de cada pasta. */
 const DIRS_COMPARTILHADOS = ['projects', 'todos', 'file-history', 'shell-snapshots', 'session-env', 'plans', 'tasks', 'transcripts', 'paste-cache', 'commands', 'agents', 'skills', 'plugins', 'output-styles'];
 /** Dessas, as que são criadas em ~/.claude se faltarem (o link precisa existir desde a 1ª conta). */
@@ -31,6 +37,9 @@ const DIRS_CRIAR = ['projects', 'todos', 'file-history', 'plans', 'tasks', 'tran
 /** Tempo padrão fora de rotação quando o limite não diz quando volta. */
 const ESGOTADA_PADRAO_S = 60 * 60;
 const MAX_CONTAS = 12;
+/** O que o admin grava para a conta global: o intermediário só nesta máquina e a chave deste usuário. */
+const GLOBAL_URL_RE = /^http:\/\/127\.0\.0\.1:\d{2,5}$/;
+const GLOBAL_CHAVE_RE = /^[A-Za-z0-9]{32,128}$/;
 
 const agoraS = () => Math.floor(Date.now() / 1000);
 const num = (v) => { if (v === null || v === undefined || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
@@ -100,20 +109,33 @@ function abrir(opts = {}) {
   const PASTA = path.join(base, 'contas-claude');
   /** Trocas de conta feitas fora do backend (porteiro do `claude`: WhatsApp pelo OpenClaw, Terminal), uma linha JSON por evento. */
   const EVENTOS = path.join(base, 'contas-claude-eventos.jsonl');
+  /** Conta global: gravado pelo admin (root) com dono este usuário e 0600. */
+  const GLOBAL = opts.globalFile || path.join(base, 'claude-global.json');
 
   let reg = null; // { contas: [...], limiares }
   let uso = null; // { [id]: {sessao, semanal, estado, motivo, ate, vistoEm} }
   // Carimbo (mtime+tamanho) dos arquivos na última leitura: o backend fica vivo por dias e o porteiro do `claude`
   // (claude-porteiro.js, outro processo) grava nos mesmos arquivos; sem reler, um não enxergava o outro.
-  let carimbos = { reg: null, uso: null };
+  let carimbos = { reg: null, uso: null, global: null };
   const carimbo = (f) => { try { const st = fs.statSync(f); return `${st.mtimeMs}:${st.size}`; } catch (_) { return null; } };
-  const carimbar = () => { carimbos = { reg: carimbo(REGISTRO), uso: carimbo(USO) }; };
+  const carimbar = () => { carimbos = { reg: carimbo(REGISTRO), uso: carimbo(USO), global: carimbo(GLOBAL) }; };
+
+  /** A conta global como o admin a deixou ({url, chave, email}); null sem ela (o admin desligou ou nunca ligou). */
+  function lerGlobal() {
+    const g = readJson(GLOBAL);
+    if (!g || !GLOBAL_URL_RE.test(String(g.url)) || !GLOBAL_CHAVE_RE.test(String(g.chave))) return null;
+    const email = typeof g.email === 'string' && /^[^@\s]+@[^@\s]+$/.test(g.email) ? g.email : null;
+    return { url: g.url, chave: g.chave, email };
+  }
 
   function carregar() {
-    if (reg !== null && carimbos.reg === carimbo(REGISTRO) && carimbos.uso === carimbo(USO)) return;
+    if (reg !== null && carimbos.reg === carimbo(REGISTRO) && carimbos.uso === carimbo(USO) && carimbos.global === carimbo(GLOBAL)) return;
     const raw = readJson(REGISTRO) || {};
     const contas = Array.isArray(raw.contas) ? raw.contas.map(sanearConta).filter(Boolean) : [];
     if (!contas.some((c) => c.id === 'padrao')) contas.push({ id: 'padrao', rotulo: 'Login padrão', home: null, ordem: 1000, ativa: true, criadaEm: agora(), email: null });
+    // A global não mora no registro: existe enquanto o arquivo do admin existe, sempre primeira e sempre ativa.
+    const g = lerGlobal();
+    if (g !== null) contas.unshift({ id: 'global', rotulo: 'Claude Code Global', home: null, ordem: 0, ativa: true, criadaEm: agora(), email: g.email, global: true });
     reg = { contas, limiares: sanearLimiares(raw.limiares) };
     const u = readJson(USO) || {};
     uso = {};
@@ -141,7 +163,7 @@ function abrir(opts = {}) {
     const visto = num(u.vistoEm); if (visto !== null && visto > 0) out.vistoEm = Math.floor(visto);
     return out;
   }
-  const salvarReg = () => { writeJson(REGISTRO, { versao: 1, limiares: reg.limiares, contas: reg.contas }); carimbar(); };
+  const salvarReg = () => { writeJson(REGISTRO, { versao: 1, limiares: reg.limiares, contas: reg.contas.filter((c) => !c.global) }); carimbar(); };
   /**
    * Grava o uso por conta mesclando com o que está no disco (read-modify-write): outro processo pode ter marcado
    * outra conta nesse meio tempo, e sobrescrever o arquivo inteiro apagaria isso. O que está na memória vence para
@@ -162,6 +184,7 @@ function abrir(opts = {}) {
   /** Logada: padrão → ~/.claude.json tem oauthAccount; isolada → <home>/.claude.json tem oauthAccount, ou há credencial (arquivo/Keychain). */
   function logada(c) {
     if (!c) return false;
+    if (c.global) return lerGlobal() !== null;
     if (c.home === null) { const j = readJson(claudeJson); return !!(j && j.oauthAccount); }
     const j = readJson(path.join(c.home, '.claude.json'));
     if (j && j.oauthAccount) return true;
@@ -170,6 +193,7 @@ function abrir(opts = {}) {
   }
   /** E-mail do login (oauthAccount.emailAddress) na pasta da conta; null sem login. */
   function emailDe(c) {
+    if (c.global) { const g = lerGlobal(); return g ? g.email : null; }
     const j = readJson(c.home === null ? claudeJson : path.join(c.home, '.claude.json'));
     const e = j && j.oauthAccount && typeof j.oauthAccount.emailAddress === 'string' ? j.oauthAccount.emailAddress : '';
     return /^[^@\s]+@[^@\s]+$/.test(e) ? e : null;
@@ -177,6 +201,13 @@ function abrir(opts = {}) {
 
   /** Variáveis de ambiente para o `claude` desta conta: a pasta isolada e nada de API key herdada. {} para a padrão. */
   function ambiente(c) {
+    if (c && c.global) {
+      // Modo assinatura (CLAUDE_CODE_OAUTH_TOKEN) com a chave do usuário: o CLI manda os rate_limit_event como em
+      // qualquer conta, e o intermediário troca a chave pelo token do root. Sem CLAUDE_CONFIG_DIR: ~/.claude do usuário.
+      const g = lerGlobal();
+      if (g === null) return {};
+      return { CLAUDE_CODE_OAUTH_TOKEN: g.chave, ANTHROPIC_BASE_URL: g.url, ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '' };
+    }
     if (!c || c.home === null) return {};
     return { CLAUDE_CONFIG_DIR: c.home, ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: '' };
   }
@@ -249,6 +280,8 @@ function abrir(opts = {}) {
     const pctDe = (j) => (!j ? -1 : j.resets !== null && j.resets !== undefined && j.resets <= t ? 0 : j.pct);
     const usado = (c) => { const u = uso[c.id] || {}; return Math.max(pctDe(u.sessao), pctDe(u.semanal)); };
     return [...lista].sort((a, b) => {
+      // A fila tem duas fontes: o global do root primeiro, as contas próprias como reserva (em qualquer estratégia).
+      if (!!a.global !== !!b.global) return a.global ? -1 : 1;
       if (estrategia === 'folga') {
         const ua = usado(a); const ub = usado(b);
         if (ua !== ub) { if (ua < 0) return 1; if (ub < 0) return -1; return ua - ub; }
@@ -312,6 +345,7 @@ function abrir(opts = {}) {
     carregar();
     const c = conta(id);
     if (!c) return null;
+    if (c.global) throw new Error('a conta global é gerida pelo admin');
     const p = patch && typeof patch === 'object' ? patch : {};
     if (typeof p.rotulo === 'string' && p.rotulo.trim() !== '') {
       const nome = p.rotulo.trim().slice(0, 60);
@@ -328,7 +362,7 @@ function abrir(opts = {}) {
     carregar();
     if (!Array.isArray(ids)) return;
     let n = 1;
-    for (const id of ids) { const c = conta(String(id)); if (c && c.id !== 'padrao') c.ordem = n++; }
+    for (const id of ids) { const c = conta(String(id)); if (c && c.id !== 'padrao' && !c.global) c.ordem = n++; }
     salvarReg();
   }
 
@@ -338,6 +372,7 @@ function abrir(opts = {}) {
     const c = conta(id);
     if (!c) return false;
     if (c.id === 'padrao') throw new Error('a conta padrão não pode ser removida');
+    if (c.global) throw new Error('a conta global é gerida pelo admin');
     const home = path.resolve(c.home);
     const raiz = path.resolve(PASTA) + path.sep;
     if (!home.startsWith(raiz)) throw new Error(`pasta da conta fora de ${PASTA}; não removo`);
@@ -358,7 +393,7 @@ function abrir(opts = {}) {
     const c = conta(id);
     if (!c) return null;
     const email = emailDe(c);
-    if (email !== c.email) { c.email = email; salvarReg(); }
+    if (email !== c.email) { c.email = email; if (!c.global) salvarReg(); }
     if (logada(c)) desbloquear(id);
     return vista(c);
   }
@@ -370,7 +405,7 @@ function abrir(opts = {}) {
   function vista(c) {
     const u = usoEfetivo(c.id);
     // O e-mail vem do login de verdade (o registro só guarda o visto na criação; a padrão nem isso): a tela mostra quem está logado.
-    return { id: c.id, rotulo: c.rotulo, email: emailDe(c) || c.email, padrao: c.home === null, home: c.home, ordem: c.ordem, ativa: c.ativa, logada: logada(c), uso: { sessao: u.sessao || null, semanal: u.semanal || null, estado: u.estado, motivo: u.motivo || null, ate: u.ate || null, vistoEm: u.vistoEm || null } };
+    return { id: c.id, rotulo: c.rotulo, email: emailDe(c) || c.email, padrao: c.id === 'padrao', global: !!c.global, home: c.home, ordem: c.ordem, ativa: c.ativa, logada: logada(c), uso: { sessao: u.sessao || null, semanal: u.semanal || null, estado: u.estado, motivo: u.motivo || null, ate: u.ate || null, vistoEm: u.vistoEm || null } };
   }
   function listar() {
     carregar();
@@ -401,7 +436,7 @@ function abrir(opts = {}) {
     } catch (_) { return []; }
   }
 
-  return { conta, configDir, logada, emailDe, ambiente, usoEfetivo, registrarUso, marcar, usarAgora, desbloquear, escolher, proximaDisponivelEm, criar, atualizar, reordenar, remover, conferir, limiares, definirLimiares, listar, vista, resumo, provisionar, registrarEvento, eventos, PASTA, REGISTRO, USO, EVENTOS };
+  return { conta, configDir, logada, emailDe, ambiente, lerGlobal, usoEfetivo, registrarUso, marcar, usarAgora, desbloquear, escolher, proximaDisponivelEm, criar, atualizar, reordenar, remover, conferir, limiares, definirLimiares, listar, vista, resumo, provisionar, registrarEvento, eventos, PASTA, REGISTRO, USO, EVENTOS, GLOBAL };
 }
 
 module.exports = { abrir, analisarRateLimit, servicoKeychain, LIMIARES_PADRAO, ESTRATEGIAS, DIRS_COMPARTILHADOS, ESGOTADA_PADRAO_S };

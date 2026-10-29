@@ -9,12 +9,18 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, comPrefixo, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, comPrefixo, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
 import { refreshPickerIfOpen } from "../maquina/picker";
+import { installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { getBackendPort, setBackendPortForHost } from "../app/settings";
+import { HERMES_STT_COMPARTILHADO_SH, TRANSCRITOR_BIN, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
+import { WA_AGENTE_FILE } from "../whatsapp/whatsapp-capacidades";
+import { ligarClaudeGlobalPara } from "./claude-global-admin";
+import { CG_ETC } from "./claude-global-core";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -115,8 +121,12 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   // Já entra nos dois seletores (meu-bot e admin); falhar aqui não desfaz o usuário: a resposta avisa.
   const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
-  const v = typeof pct === "number" && pct > 0 ? await definirLimite(host, nome, pct) : await usuariosDaMaquina(host);
-  return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso } };
+  if (typeof pct === "number" && pct > 0) await definirLimite(host, nome, pct);
+  // Onboarding: só devolve depois de tudo pronto. Falhou um passo: o usuário existe, a resposta diz onde parou.
+  let preparo: string | null = sel.aviso === null ? null : "sem o seletor do meu-bot, não deu para preparar a conta";
+  if (preparo === null) await prepararUsuario(host, nome, sel.alias).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); });
+  const v = await usuariosDaMaquina(host);
+  return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo };
 }
 
 /** As maiores pastas e arquivos do usuário, para o admin escolher o que apagar antes de baixar o limite. */
@@ -156,14 +166,80 @@ export async function definirRecursos(host: string, nome: unknown, ramMb: unknow
   return usuariosDaMaquina(host);
 }
 
-/** Instala o Hermes para todos os usuários da máquina (/opt/hermes + /usr/local/bin/hermes). Baixa ~1 GB na primeira vez. */
+/** Instala o Hermes e o transcritor para todos os usuários da máquina (/opt/hermes, /opt/transcriber, /usr/local/bin/hermes). Baixa ~1,5 GB na primeira vez. */
 export async function instalarHermesGlobal(host: string): Promise<UsuariosVisao> {
   await usuariosDaMaquina(host); // confere root
+  await padraoDaMaquina(host);
+  return usuariosDaMaquina(host);
+}
+
+/** O padrão da máquina (Hermes em /opt/hermes e transcritor em /opt/transcriber), do root; idempotente. */
+async function padraoDaMaquina(host: string): Promise<void> {
   const r = await runSsh(host, `${hermesGlobalSh()}\n`, 15 * 60_000);
   saida(r.stdout, /^HERMES=ok /m, `não consegui instalar o Hermes para todos: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
   const v = /^HERMES=ok (\S+)$/m.exec(r.stdout)?.[1] ?? "";
   log(`[usuarios] ${host}: Hermes ${v} para todos em /opt/hermes`);
   void registrar(host, "maquina.hermes-global", v);
+  // O padrão da máquina inclui o transcritor compartilhado: cada Hermes só aponta para ele (tutorial 16).
+  const t = await runSsh(host, `${transcritorSh()}\n`, 20 * 60_000);
+  saida(t.stdout, /^TRANSCRITOR=ok$/m, `o Hermes ficou pronto, mas não consegui instalar o transcritor em /opt/transcriber: ${/^ERRO=(.*)$/m.exec(t.stdout)?.[1] ?? ((t.stderr.trim() || t.stdout.trim()).split("\n").pop() ?? "sem resposta")}`);
+  log(`[usuarios] ${host}: transcritor para todos em /opt/transcriber`);
+  void registrar(host, "maquina.transcritor", "/opt/transcriber");
+}
+
+/**
+ * Hermes do usuário novo, antes do primeiro QR: o agente do WhatsApp dele é o Hermes (o de todos, em /opt/hermes) e a
+ * transcrição já aponta para o /opt/transcriber. O Hermes preserva o .env e o config.yaml gravados antes do primeiro
+ * uso (conferido em 29 out); o pareamento só acrescenta o WhatsApp e o modelo. Saída `SEMEADO=ok`.
+ */
+const HERMES_SEMEAR_SH = `set -e
+mkdir -p "$(dirname "${WA_AGENTE_FILE}")"; printf '%s\\n' hermes > "${WA_AGENTE_FILE}"
+if [ -x ${TRANSCRITOR_BIN} ]; then
+${HERMES_STT_COMPARTILHADO_SH}
+${hermesConfigSetSh(hermesAudioPatch({ kind: "in", compartilhado: true }))}
+fi
+echo "SEMEADO=ok"`;
+
+/**
+ * Onboarding de um passo, no clique de "Criar usuário": o admin orquestra e o usuário só fica pronto no fim. Garante o
+ * padrão da máquina, instala o Claude Code e o backend do meu-bot na conta dele (numa porta livre) e deixa o Hermes
+ * com a transcrição ligada. Sobram para a pessoa só o login do Claude (tutorial 1) e o QR (tutorial 2). Para no
+ * primeiro passo que falhar e diz qual; "Preparar" na linha do usuário retoma (cada passo pula o que já está feito).
+ */
+async function prepararUsuario(host: string, nome: string, alias: string): Promise<void> {
+  const passo = (t: string): void => log(`[usuarios] ${host}: ${nome}: ${t}`);
+  const v = await usuariosDaMaquina(host);
+  if (v.hermes !== "global") { passo("instalando o padrão da máquina (Hermes e transcritor para todos)"); await padraoDaMaquina(host); }
+  passo("instalando o Claude Code");
+  const cc = await installClaudeCode(alias, passo);
+  if (!cc.ok) throw new Error(`o Claude Code não instalou: ${cc.log.at(-1) ?? "?"}`);
+  const configurada = getBackendPort(alias);
+  const probe = await probeHost(alias, configurada);
+  if (!probe.reachable) throw new Error(`não consegui entrar como ${nome}: ${probe.error ?? "sem detalhes"}`);
+  if (!(probe.backendInstalled && probe.backendListening)) {
+    const porta = portaParaInstalar(probe, configurada);
+    passo(`instalando o backend do meu-bot na porta ${porta}`);
+    const b = await installBackend(alias, porta, passo);
+    if (!b.ok) throw new Error(`o backend não instalou: ${b.log.at(-1) ?? "?"}`);
+    if (porta !== configurada) setBackendPortForHost(alias, porta);
+  }
+  passo("deixando o Hermes como agente do WhatsApp, com a transcrição ligada");
+  const h = await runSsh(alias, `${HERMES_SEMEAR_SH}\n`, 60_000);
+  if (!/^SEMEADO=ok$/m.test(h.stdout)) throw new Error(`não consegui preparar o Hermes: ${(h.stderr.trim() || h.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  // Claude Code Global: com o intermediário do root instalado, a conta já nasce respondendo pela assinatura do root.
+  const cg = await runSsh(host, `[ -f ${CG_ETC}/config.json ] && echo CG=1 || echo CG=0\n`, 20_000);
+  const comGlobal = /^CG=1$/m.test(cg.stdout);
+  if (comGlobal) { passo("ligando o Claude Code Global"); await ligarClaudeGlobalPara(host, nome, true); }
+  passo(comGlobal ? "pronto: falta só o QR do WhatsApp (o Claude responde pelo global)" : "pronto: falta só o login do Claude e o QR do WhatsApp");
+  void registrar(host, "usuarios.preparar", nome);
+}
+
+/** "Preparar" na linha do usuário: refaz o onboarding (o que já está feito passa direto). */
+export async function prepararUsuarioDeNovo(host: string, nome: unknown): Promise<UsuariosVisao> {
+  const n = nomeValido(nome);
+  const sel = await porNosSeletores(host, n);
+  if (sel.aviso !== null) throw new Error(sel.aviso);
+  await prepararUsuario(host, n, sel.alias);
   return usuariosDaMaquina(host);
 }
 

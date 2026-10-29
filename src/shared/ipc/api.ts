@@ -10,7 +10,7 @@ import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
-import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
+import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado } from "./suporte";
 import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
@@ -447,6 +447,20 @@ export interface MeuBotAdminApi {
   adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
   /** Liga o linger do usuário: o agente dele segue rodando sem ele conectado e volta ao reiniciar. */
   adminUsuarioManterLigado(nome: string): Promise<UsuariosVisao>;
+  /** Refaz o onboarding da conta (Claude Code, backend, Hermes e transcrição); o que já está feito passa direto. */
+  adminUsuarioPreparar(nome: string): Promise<UsuariosVisao>;
+  /** Claude Code Global: estado (intermediário, conta do root, rodízio, usuários). */
+  adminClaudeGlobal(): Promise<CgEstado>;
+  /** Instala ou atualiza o intermediário do root (idempotente). */
+  adminClaudeGlobalInstalar(): Promise<CgEstado>;
+  /** Abre o login do Claude Code do root no Terminal deste Mac. */
+  adminClaudeGlobalEntrar(): Promise<void>;
+  /** Conta nova no rodízio do root (abre o login dela no Terminal). */
+  adminClaudeGlobalContaNova(): Promise<CgEstado>;
+  adminClaudeGlobalContaRemover(id: string): Promise<CgEstado>;
+  adminClaudeGlobalContaUsar(id: string): Promise<CgEstado>;
+  /** Liga ou desliga o global para um usuário da máquina. */
+  adminClaudeGlobalUsuario(nome: string, ligado: boolean): Promise<CgEstado>;
   /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
   /** Põe o usuário nos dois seletores (meu-bot e admin), sem preparar a conta; `aviso` = o do admin falhou. */
   adminUsuarioNosSeletores(nome: string): Promise<{ alias: string; novo: boolean; aviso: string | null }>;

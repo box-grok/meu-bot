@@ -284,3 +284,26 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
   - `auditoria.jsonl` (é a corrente com selo);
   - as conversas;
   - o journald.
+
+## Tutorial 16: ouvir áudios, separado do tutorial 2 (29 out)
+
+- **Por quê:** a transcrição era o passo "Áudio no WhatsApp" do tutorial 2, com "Pular: sem áudio por enquanto". Quem
+  pulava terminava o 2 e o agente seguia respondendo "não consigo ouvir seu áudio", sem nada pendente na lista. Caso
+  real: o Daniel, no meu-box-2 (Hermes), mandou um áudio e o gateway registrou `No STT provider available`.
+- **Agora:** o tutorial 2 tem 5 passos (escolher, preparar, QR, quem responde, testar com texto). O tutorial 16, "Ouvir
+  áudios do WhatsApp" (`audio-whatsapp`, depois do 2), tem dois passos: ativar a transcrição (concluído pelo
+  `audioIn` da máquina) e testar com um áudio ("Ele entendeu meu áudio"). `renderAudioControls(…, "ouvir")` desenha
+  só a linha da transcrição; o painel de gerência do 2 usa `"responder"` (resposta em áudio e voz).
+- **Hermes global, usuário novo:** `hermes pm install --extra stt-whisper` recusava com "tools not on PATH before venv
+  sync: ffmpeg: …; ripgrep: …", porque as ferramentas do pm são por `HERMES_HOME`, e o app só via "extra=falhou".
+  `hermesPmExtraSh` lê essa lista, instala só aquelas ferramentas (`hermes pm install ffmpeg ripgrep`) e tenta o extra
+  de novo. Não usa `--tools-only`, que traria também o Chromium.
+- **Transcritor compartilhado (padrão da máquina):** o root instala uma vez, junto com o Hermes global
+  ("Instalar Hermes para todos" no admin), o `/opt/transcriber`: dono root, `755` como o `/opt/hermes`, com um
+  ambiente Python próprio (`faster-whisper==1.2.1`, `av==18.1.0`; o av 19 quebra o `decode_audio`), o modelo
+  `whisper-small` (copiado de `/opt/hermes/modelos` quando já está lá) e o `bin/transcrever`. Sem grupo: todos leem e
+  executam, só o root grava. Cada Hermes chama o binário como o próprio usuário, pelo provedor `local_command`
+  (`HERMES_LOCAL_STT_COMMAND` no `~/.hermes/.env`, que é o único lugar onde o Hermes lê esse comando). Com isso, o
+  "Ativar transcrição" do tutorial 16 só confere `[ -x /opt/transcriber/bin/transcrever ]`, aponta e reinicia, em
+  segundos. Sem o binário (máquina de antes do padrão), instala o extra por usuário como antes. A leitura da máquina
+  no admin mostra `HERMES=sem-transcritor` e oferece "Instalar o transcritor para todos".

@@ -28,17 +28,18 @@ if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; e
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
-if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then echo HERMES=global; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
+if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); print $1"\\t"$3"\\t"$6"\\t"$7"\\t"g[1]}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
   [ -s "$h/.ssh/authorized_keys" ] && ch=1 || ch=0
   [ -e "/var/lib/systemd/linger/$n" ] && lg=1 || lg=0
+  [ -s "$h/.local/share/meu-bot/backend/.env" ] && [ "$(tr -d ' \\n' < "$h/.local/share/meu-bot/whatsapp-agente" 2>/dev/null)" = hermes ] && pr=1 || pr=0
   us=""; li=""
   if [ "$cota" = 1 ]; then q=$(quota -wu "$n" 2>/dev/null | awk 'NR>2 && $1 ~ /^\\// {gsub(/\\*/,"",$2); print $2" "$4; exit}'); us=\${q%% *}; li=\${q##* }; [ -n "$q" ] || { us=0; li=0; }; fi
   ram=$(ps -u "$n" -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')
   mm=$(systemctl show "user-$u.slice" -p MemoryMax --value 2>/dev/null); cq=$(systemctl show "user-$u.slice" -p CPUQuotaPerSecUSec --value 2>/dev/null)
-  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg"
+  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr"
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
@@ -54,10 +55,10 @@ export function lerUsuarios(out: string): { root: boolean; discoKb: number | nul
     const c = l.split("\t");
     if (c[0] !== "U" || c.length < 8 || !NOME_USUARIO_RE.test(c[1] ?? "")) continue;
     const limite = kb(c[9]);
-    usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0" });
+    usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0", pronto: c[15] === "1" });
   }
-  const hm = /^HERMES=(global|root|nenhum)$/m.exec(out)?.[1];
-  const hermes = hm === "global" || hm === "root" || hm === "nenhum" ? hm : null;
+  const hm = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1];
+  const hermes = hm === "global" || hm === "sem-transcritor" || hm === "root" || hm === "nenhum" ? hm : null;
   return { root, discoKb, cota, ram, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
 }
 
@@ -243,6 +244,67 @@ chmod 755 "$P/runtime/hermes-agent/.hermes" "$G" "$G/hermes"
 H=$(mktemp -d); chmod 777 "$H"
 O=$(runuser -u nobody -- env HOME="$H" "$W" --version 2>&1 | head -1); rm -rf "$H"
 case "$O" in *"v$V"*) echo "HERMES=ok $V" ;; *) echo "ERRO=o Hermes instalou, mas um usuário comum não conseguiu rodar: $O" ;; esac`;
+}
+
+/** faster-whisper e o PyAV que funcionam juntos (o av 19 quebrou o decode_audio: "unexpected keyword metadata_errors"). */
+const TRANSCRITOR_PIP = "faster-whisper==1.2.1 av==18.1.0";
+
+/**
+ * Transcritor para todos os usuários da máquina, no mesmo padrão do /opt/hermes: /opt/transcriber com dono root e 755
+ * (todos leem e executam, só o root grava). Um ambiente Python com o faster-whisper, o modelo small (copiado de
+ * /opt/hermes/modelos quando já está lá, senão baixado) e o bin/transcrever, que cada Hermes chama como o próprio
+ * usuário pelo provedor local_command (HERMES_LOCAL_STT_COMMAND). Evita ~1,5 GB por usuário (extra + modelo) e o
+ * "tools not on PATH" do hermes pm. Idempotente; confere como `nobody`. Saída `TRANSCRITOR=ok` ou `ERRO=`.
+ */
+export function transcritorSh(): string {
+  return `T=/opt/transcriber; L=/tmp/meu-bot-transcritor.log; M="$T/modelos/whisper-small"
+mkdir -p "$T/bin" "$T/modelos" || { echo "ERRO=não consegui criar $T"; exit 0; }
+if ! "$T/venv/bin/python" -c "import faster_whisper, av" >/dev/null 2>&1; then
+  rm -rf "$T/venv"
+  python3 -m venv "$T/venv" >>"$L" 2>&1 || { DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >>"$L" 2>&1; rm -rf "$T/venv"; python3 -m venv "$T/venv" >>"$L" 2>&1; } || { echo "ERRO=não consegui criar o ambiente Python em $T (log em $L)"; exit 0; }
+  "$T/venv/bin/python" -m pip install -q ${TRANSCRITOR_PIP} >>"$L" 2>&1 || { echo "ERRO=não consegui instalar o faster-whisper em $T (log em $L)"; exit 0; }
+fi
+if [ ! -s "$M/model.bin" ]; then
+  if [ -s /opt/hermes/modelos/whisper-small/model.bin ]; then rm -rf "$M"; cp -a /opt/hermes/modelos/whisper-small "$M"
+  else "$T/venv/bin/python" -c 'import sys; from huggingface_hub import snapshot_download; snapshot_download("Systran/faster-whisper-small", local_dir=sys.argv[1])' "$M" >>"$L" 2>&1 || { echo "ERRO=não consegui baixar o modelo de transcrição (log em $L)"; exit 0; }; fi
+fi
+cat > "$T/bin/transcrever" <<'PYEOF'
+#!/opt/transcriber/venv/bin/python
+"""meu-bot-transcritor: o transcritor de todos os usuários da máquina (dono root; os outros só leem e executam).
+
+Cada Hermes chama como o próprio usuário, pelo provedor local_command:
+  HERMES_LOCAL_STT_COMMAND="/opt/transcriber/bin/transcrever {input_path} {output_dir} {language}"
+Grava <output_dir>/<nome do áudio>.txt com o texto.
+"""
+import os, sys
+from pathlib import Path
+
+MODELO = "/opt/transcriber/modelos/whisper-small"
+
+def main() -> int:
+    if len(sys.argv) < 3:
+        print("uso: transcrever <audio> <pasta-saida> [idioma]", file=sys.stderr)
+        return 2
+    audio, saida = Path(sys.argv[1]), Path(sys.argv[2])
+    idioma = (sys.argv[3] if len(sys.argv) > 3 else "pt") or "pt"
+    from faster_whisper import WhisperModel
+    modelo = WhisperModel(MODELO, device="cpu", compute_type="int8", cpu_threads=min(4, os.cpu_count() or 1))
+    partes, _info = modelo.transcribe(str(audio), language=None if idioma == "auto" else idioma, vad_filter=True)
+    texto = " ".join(p.text.strip() for p in partes).strip()
+    saida.mkdir(parents=True, exist_ok=True)
+    (saida / f"{audio.stem}.txt").write_text(texto + "\\n", encoding="utf-8")
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+PYEOF
+chown -R root:root "$T"; chmod -R u=rwX,go=rX "$T"; chmod 755 "$T/bin/transcrever"
+# Confere como um usuário sem privilégio, que é quem vai usar: um segundo de silêncio tem de virar um .txt.
+H=$(mktemp -d); chmod 777 "$H"
+runuser -u nobody -- "$T/venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1], "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(bytes(32000)); w.close()' "$H/teste.wav" >>"$L" 2>&1
+runuser -u nobody -- "$T/bin/transcrever" "$H/teste.wav" "$H/saida" pt >>"$L" 2>&1
+if [ -f "$H/saida/teste.txt" ]; then echo "TRANSCRITOR=ok"; else echo "ERRO=o transcritor instalou, mas um usuário comum não conseguiu rodar (log em $L)"; fi
+rm -rf "$H"`;
 }
 
 /**
