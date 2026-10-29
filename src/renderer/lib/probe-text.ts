@@ -17,7 +17,15 @@ export interface ProbeText {
 let nicknames: Record<string, string> = {};
 /** Apelidos ("Renomear" no seletor): a partir daqui, hostLabel mostra o apelido no lugar da chave SSH. */
 export const setHostNicknames = (names: Record<string, string>): void => { nicknames = { ...names }; };
-export const hostLabel = (h: string): string => nicknames[h] ?? (h === "local" ? "este Mac (sem SSH)" : h);
+/** Apelidos gravados nas próprias máquinas (a sondagem lê): valem quando este Mac não deu um nome seu. */
+const apelidosMaquina: Record<string, string> = {};
+/** Guarda o apelido que a máquina informou; devolve se o nome mostrado mudou. */
+export function setApelidoMaquina(h: string, apelido: string | null): boolean {
+  const antes = hostLabel(h);
+  if (apelido === null || apelido.trim() === "") delete apelidosMaquina[h]; else apelidosMaquina[h] = apelido.trim();
+  return hostLabel(h) !== antes;
+}
+export const hostLabel = (h: string): string => nicknames[h] ?? apelidosMaquina[h] ?? (h === "local" ? "este Mac (sem SSH)" : h);
 
 /**
  * O que falta de opcional numa máquina que abre: a status line do Claude (cache de limites) e, com OpenClaw, a

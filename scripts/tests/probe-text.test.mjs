@@ -93,3 +93,17 @@ test("guarda do WhatsApp: o seletor não oferece nem avisa (o tutorial 8 cuida)"
   assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });
   assert.doesNotMatch(sem.text, /guarda/);
 });
+
+test("nome da máquina: o deste Mac vence o apelido gravado na máquina, que vence o nome SSH", async () => {
+  const { hostLabel, setHostNicknames, setApelidoMaquina } = await import("../../dist/renderer/lib/probe-text.js");
+  setHostNicknames({});
+  assert.equal(hostLabel("meu-box-3"), "meu-box-3");
+  assert.equal(setApelidoMaquina("meu-box-3", "Maria"), true, "mudou o nome mostrado");
+  assert.equal(hostLabel("meu-box-3"), "Maria");
+  assert.equal(setApelidoMaquina("meu-box-3", "Maria"), false, "o mesmo apelido não repinta");
+  setHostNicknames({ "meu-box-3": "Mãe" });
+  assert.equal(hostLabel("meu-box-3"), "Mãe", "o Renomear deste Mac vence");
+  setHostNicknames({});
+  setApelidoMaquina("meu-box-3", null);
+  assert.equal(hostLabel("meu-box-3"), "meu-box-3");
+});

@@ -21,6 +21,7 @@ import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedK
 import { entregar, registrar, registroSh } from "../auditoria/auditoria";
 import type { Acao } from "../auditoria/auditoria-core";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp/whatsapp";
+import { apelidoSh, apelidoLimpo } from "./usuarios-core";
 import { installAudio, installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../maquina/hostProbe";
 import { claudeAuthStatus } from "../agente/claudeLogin";
 import { closeTunnel } from "../maquina/tunnel";
@@ -265,12 +266,36 @@ async function adoptSshHost(host: string): Promise<SupportCode> {
 }
 
 /** Apelido do admin para a pessoa (vence o nome que veio no código; vazio tira). O alias não muda. */
-export function renamePerson(alias: string, nickname: string): SupportPerson[] {
+export async function renamePerson(alias: string, nickname: string): Promise<SupportPerson[]> {
   const m = load();
-  const nick = nickname.replace(/\s+/g, " ").trim().slice(0, 40);
-  for (const s of m.values()) if (supportAlias(s.code) === alias) s.nickname = nick;
+  // O mesmo apelido vai para a máquina (GECOS): o que ela não aceita (dois-pontos, vírgula) sai antes de guardar aqui,
+  // senão o admin ficava com um nome e a máquina com outro.
+  const nick = apelidoLimpo(nickname);
+  let usuario: { nome: string; raiz: string } | null = null;
+  for (const s of m.values()) if (supportAlias(s.code) === alias) {
+    s.nickname = nick;
+    // Usuário criado na aba Usuários: o apelido vai também para a máquina (o admin é root lá), e o meu-bot de qualquer
+    // Mac passa a mostrá-lo. Sem a raiz conhecida, fica só aqui.
+    const raiz = s.usuarioDe === undefined ? undefined : m.get(s.usuarioDe);
+    if (raiz !== undefined) usuario = { nome: s.code.user, raiz: supportAlias(raiz.code) };
+  }
   save(m);
+  if (usuario !== null) {
+    const r = await runSsh(usuario.raiz, `${apelidoSh(usuario.nome, nick)}\n`, 30_000).catch(() => null);
+    if (r === null || !/^APELIDO=ok$/m.test(r.stdout)) log(`[usuarios] ${usuario.raiz}: apelido de ${usuario.nome} ficou só neste admin (não gravou na máquina)`);
+  }
   return knownPeople();
+}
+
+/** O apelido que a aba Usuários gravou na máquina vale também para o nome desse usuário no seletor do admin. */
+export function apelidoDoUsuarioNoSeletor(rootAlias: string, nome: string, apelido: string): void {
+  let raiz: { id: string; code: SupportCode };
+  try { raiz = raizDe(rootAlias); } catch { return; }
+  const m = load();
+  const s = m.get(idDoUsuario(raiz.code, nome));
+  if (s === undefined || s.nickname === apelido) return;
+  s.nickname = apelido;
+  save(m);
 }
 
 /** Arquiva/desarquiva uma pessoa na lista do seletor (o acesso dela não muda). Devolve as pessoas. */

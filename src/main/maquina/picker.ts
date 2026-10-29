@@ -22,7 +22,7 @@ import { disableSshCheck } from "./tailscale";
 import { handleClient, handleShared, onShared } from "../ipc/registry";
 import { log } from "./backend";
 import { atualizarModulos } from "../modulos/modulos";
-import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "../app/settings";
+import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost, setApelidoMaquina } from "../app/settings";
 import { isPort } from "../app/settings-normalize";
 import { closeTunnel } from "./tunnel";
 import { listSshHosts } from "./sshConfig";
@@ -81,7 +81,7 @@ function probeCached(host: string): Promise<HostProbe> {
   const p = probeHost(host, getBackendPort(host)).then((probe) => {
     probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
-    if (probe.reachable) setPodHost(host, probe.grokPod);
+    if (probe.reachable) { setPodHost(host, probe.grokPod); if (setApelidoMaquina(host, probe.apelido)) broadcast("settings:changed", settingsView()); }
     // Backend antes dos plugins: o plugin do financeiro (e o do CRM) chamam a API dele.
     void ensureBackendAtual(host, probe).finally(() => {
       ensureGuarda(host, probe);

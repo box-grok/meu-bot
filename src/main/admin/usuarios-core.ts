@@ -40,7 +40,7 @@ echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
 if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then echo HERMES=global; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
-awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); print $1"\\t"$3"\\t"$6"\\t"$7"\\t"g[1]}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
+awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap = (substr(g[1], 1, 8) == "meu-bot=") ? substr(g[1], 9) : ""; print $1"\\t"$3"\\t"$6"\\t"$7"\\t"ap}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
   [ -s "$h/.ssh/authorized_keys" ] && ch=1 || ch=0
@@ -271,6 +271,10 @@ export function nivelUso(usadoKb: number | null, limiteKb: number | null): "ok" 
 }
 
 /** Apelido aceito: até 40 caracteres, sem ":", "," nem quebra (são separadores do /etc/passwd). Vazio = sem apelido. */
+/** Marca do apelido no GECOS: só o que vem depois dela é apelido do meu-bot ("root", "Ubuntu" e afins ficam de fora). ":" não entra no GECOS. */
+export const GECOS_MARCA = "meu-bot=";
+/** O apelido como dá para gravar: tira o que o GECOS e o parser não aceitam (dois-pontos, vírgula, barra, quebras) em vez de recusar. */
+export const apelidoLimpo = (v: string): string => v.replace(/[:,\\\n\r\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
 export function apelidoValido(v: unknown): string {
   if (typeof v !== "string") throw new Error("apelido inválido");
   const a = v.replace(/\s+/g, " ").trim();
@@ -280,7 +284,7 @@ export function apelidoValido(v: unknown): string {
 /** Grava o apelido no campo de descrição do usuário (GECOS); login e pasta não mudam. Saída `APELIDO=ok` ou `ERRO=`. */
 export const apelidoSh = (nome: string, apelido: string): string => `id '${nome}' >/dev/null 2>&1 || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
 A=$(printf '%s' '${Buffer.from(apelido, "utf8").toString("base64")}' | base64 -d)
-usermod -c "$A" '${nome}' && echo APELIDO=ok || echo "ERRO=não consegui gravar o apelido"`;
+usermod -c "$([ -n "$A" ] && printf '%s%s' '${GECOS_MARCA}' "$A")" '${nome}' && echo APELIDO=ok || echo "ERRO=não consegui gravar o apelido"`;
 
 /** Nome do Host no ~/.ssh/config para o usuário de uma máquina: `<máquina>-<usuário>` (só letras, números, - e .). */
 export function aliasDoUsuario(maquina: string, nome: string): string {

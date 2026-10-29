@@ -90,6 +90,8 @@ export function approveTailscaleCheck(host: string): Promise<{ ok: boolean; deta
 function probeScript(port: number): string {
   return [
     `echo "user=$(id -un 2>/dev/null)"`,
+    // Apelido da conta, gravado na própria máquina (campo de descrição do usuário; o admin o grava na aba Usuários).
+    `echo "apelido=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f5 | cut -d, -f1 | sed -n 's/^meu-bot=//p' | tr -d '\\r\\n' | { python3 -c 'import sys; sys.stdout.write(sys.stdin.read()[:40])' 2>/dev/null || head -c 40; })"`,
     `echo "os=$(. /etc/os-release 2>/dev/null && printf '%s' "$PRETTY_NAME")"`,
     `echo "arch=$(uname -m 2>/dev/null)"`,
     // Pasta do backend do meu-bot (própria, ou a herdada quando o server.js lá é o nosso); outro backend na herdada = foreign.
@@ -167,7 +169,7 @@ function parseKv(stdout: string): Map<string, string> {
 export async function probeHost(host: string, port: number): Promise<HostProbe> {
   if (host === LOCAL_HOST) return probeLocal(port);
   const base: HostProbe = {
-    host, reachable: false, user: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendVersion: null, backendBusy: null,
+    host, reachable: false, user: null, apelido: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendVersion: null, backendBusy: null,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
     claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
@@ -190,6 +192,7 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     ...base,
     reachable: true,
     user: kv.get("user") || null,
+    apelido: (kv.get("apelido") ?? "").trim() || null,
     os: kv.get("os") || null,
     arch: kv.get("arch") || null,
     backendInstalled: kv.get("env") === "1" && kv.get("server") === "1",
@@ -244,7 +247,7 @@ function probeLocal(port: number): HostProbe {
   let nodeVersion: string | null = null;
   if (node !== null) { try { nodeVersion = spawnSync(node, ["-v"], { encoding: "utf8", timeout: 5000 }).stdout.trim() || null; } catch { /* sem versão */ } }
   return {
-    host: LOCAL_HOST, reachable: true, user: os.userInfo().username, os: `macOS ${os.release()}`, arch: os.arch(),
+    host: LOCAL_HOST, reachable: true, user: os.userInfo().username, apelido: null, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendForeign: false, backendListening: localBackendAlive(), backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
     node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };
