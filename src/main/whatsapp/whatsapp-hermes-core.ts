@@ -353,7 +353,7 @@ export interface HermesGroupCfg { policy: HermesGroupPolicy; allow: string[]; re
  */
 export const HERMES_VENV_PY_SH = `HPY=$(for f in "$HOME"/.hermes/installs/*/facts.json; do [ -f "$f" ] && echo "$(stat -c %Y "$f" 2>/dev/null || echo 0) $f"; done | sort -rn | head -1 | awk '{print $2}' | xargs -r python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["packages"]["venv"]["environment"]+"/bin/python3")' 2>/dev/null); [ -x "$HPY" ] || HPY=""`;
 /** Python do runtime do Hermes (tem ruamel; PyYAML nem sempre); sem ele, o python3 da máquina. Deixa em $PY. */
-const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
+export const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
 
 /**
  * Porta do bridge do WhatsApp do Hermes deste usuário, em `$HBP`. O Hermes usa a 3000 quando ninguém diz outra; com
@@ -453,7 +453,7 @@ print("cfgset=ok")
  * Abre ~/.hermes/config.yaml para editar: `doc` (ruamel round-trip preserva comentários; sem ele, PyYAML), `sub(d, k)`
  * devolve/cria um mapa filho e `salvar()` grava com backup e escrita atômica. Vai dentro de `"$PY" -c '…'` (sem aspas simples).
  */
-const HERMES_YAML_PY = `
+export const HERMES_YAML_PY = `
 import os, shutil, time
 p = os.path.expanduser("~/.hermes/config.yaml")
 try:

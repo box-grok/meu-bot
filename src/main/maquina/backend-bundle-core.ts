@@ -22,12 +22,14 @@ export const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-cr
 export const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "licenca-crm.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
 export const FINANCE_FILES = ["install-finance.sh", "skill-finance-api.md"];
 export const FINANCE_PLUGIN_FILES = ["index.js", "regras.mjs", "backend.mjs", "finance.mjs", "package.json", "openclaw.plugin.json"];
+/** Plugin de pausa por contato do Hermes (hermes-plugins/meu-bot-pausa/): vai inline por SSH, a versão é a do plugin.yaml. */
+export const HERMES_PAUSA_FILES = ["__init__.py", "plugin.yaml"];
 
 export interface ComponenteVersionado {
   nome: string;
   /** Caminhos no repositório que, se mudarem, exigem subir a versão. */
   arquivos: string[];
-  /** Arquivo da versão: VERSION (texto) ou package.json (campo version). */
+  /** Arquivo da versão: VERSION (texto), package.json (campo version) ou plugin.yaml (linha version). */
   versao: string;
 }
 const B = (f: string): string => `backend-colima/${f}`;
@@ -37,4 +39,5 @@ export const COMPONENTES: readonly ComponenteVersionado[] = [
   { nome: "financeiro", arquivos: [...FINANCE_FILES.map(B), ...FINANCE_PLUGIN_FILES.map((f) => B(`finance/${f}`))], versao: B("finance/package.json") },
   { nome: "crm", arquivos: [...CRM_FILES.map(B), ...CRM_PLUGIN_FILES.map((f) => B(`crm/${f}`))], versao: B("crm/package.json") },
   { nome: "guarda", arquivos: [...GUARDA_FILES.map(B), ...GUARDA_PLUGIN_FILES.map((f) => B(`guarda/${f}`))], versao: B("guarda/package.json") },
+  { nome: "hermes-pausa", arquivos: HERMES_PAUSA_FILES.map((f) => B(`hermes-plugins/meu-bot-pausa/${f}`)), versao: B("hermes-plugins/meu-bot-pausa/plugin.yaml") },
 ];
