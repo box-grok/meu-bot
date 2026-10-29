@@ -38,6 +38,7 @@ test("o que escreve na máquina da pessoa é só do cliente (exceto limpar o Wha
     "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:branch",
     "claude-login:start", "claude-login:code", "claude-login:logout", "xai-login:prepare", "xai-login:start", "xai-login:logout",
     "statusline:install", "statusline:set-segments", "statusline:uninstall", "tailscale:disable-check", "tailscale:restore", "support:set", "support:name", "support:deliver", "support:progress", "support:share", "support:reset",
+    "backend:install", "backend:presente",
     "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:remove-host", "picker:rename-host", "picker:sync-ssh",
     "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
   ];

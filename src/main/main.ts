@@ -6,7 +6,7 @@
 import { app, BrowserWindow, dialog, nativeTheme, powerMonitor } from "electron";
 import { onVersaoMinima } from "./maquina/backend";
 import { LOCAL_HOST } from "./maquina/localBackend";
-import { closeTunnel, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./maquina/tunnel";
+import { closeTunnel, ehSemBackend, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./maquina/tunnel";
 import { loadConversations } from "./conversa/conversation";
 import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./app/quickEntry";
@@ -119,7 +119,7 @@ app.whenReady().then(() => {
   // Estado do túnel de cada máquina vai para a janela dela.
   onTunnelState((host, state, detail) => {
     const mapped = state === "ready" ? "ready" : state === "error" ? "error" : state === "degraded" ? "degraded" : state === "connecting" ? "connecting" : "idle";
-    sendToHost(host, "backend:status", { host, state: mapped, detail: state === "ready" ? "túnel ativo" : detail });
+    sendToHost(host, "backend:status", { host, state: mapped, detail: state === "ready" ? "túnel ativo" : detail, ...(state === "error" && ehSemBackend(detail) ? { semBackend: true } : {}) });
   });
 
   // O Mac dormiu/acordou: revalida os túneis antes de confiar neles.

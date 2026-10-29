@@ -2,6 +2,7 @@ import type { DoneEvent, ErrorEvent, BackendStatusEvent, SettingsView } from "..
 import { TUTORIAIS } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
+import { backendStatusVisto, offerBackendInstall } from "./backend-falta.js";
 
 export async function sendText(tab: Tab, raw: string): Promise<void> {
   const text = raw.trim();
@@ -98,11 +99,13 @@ export function ligarEnvio(): void {
     if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
     ctx.addNotice(tab, e.message, "error");
     ctx.offerClaudeLogin(tab, e.message);
+    offerBackendInstall(tab, e.message);
     markUnread(tab);
     ctx.maybeNotify(tab, e.message);
   });
   window.meuBot.on("backend:status", (st: BackendStatusEvent) => {
     ctx.hostStatus.set(st.host, st);
+    backendStatusVisto(st);
     const tab = ctx.active();
     if (tab !== null && tab.host === st.host) ctx.paintStatus(st.host);
   });

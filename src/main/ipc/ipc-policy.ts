@@ -48,6 +48,7 @@ export const CLIENT_CHANNELS = [
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   "contas:entrar", "contas:cancelar", "contas:sair", "contas:instalar-gh",
   // instalar e configurar a máquina
+  "backend:presente", "backend:install",
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
   "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "finance:info", "finance:abc", "finance:importar-planilha", "finance:lancamentos", "finance:categorias", "finance:lancar", "finance:confirmar", "finance:descartar", "finance:corrigir", "finance:linha-salvar", "finance:linha-remover", "finance:comprovante", "finance:confirmar-todas", "finance:conta-criar", "finance:mes", "finance:fechar-mes", "finance:config-ler", "finance:config-salvar", "finance:install", "finance:pedir", "modulos:listar", "modulos:ligar", "modulos:desligar", "modulos:credenciais", "modulos:opcoes", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",
   // aba Navegador (módulo Pro)
