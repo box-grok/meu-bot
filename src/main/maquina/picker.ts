@@ -81,7 +81,7 @@ function probeCached(host: string): Promise<HostProbe> {
   const p = probeHost(host, getBackendPort(host)).then((probe) => {
     probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
-    if (probe.reachable) { setPodHost(host, probe.grokPod); setApelidoMaquina(host, probe.apelido); }
+    if (probe.reachable) { setPodHost(host, probe.grokPod); if (setApelidoMaquina(host, probe.apelido)) broadcast("settings:changed", settingsView()); }
     // Backend antes dos plugins: o plugin do financeiro (e o do CRM) chamam a API dele.
     void ensureBackendAtual(host, probe).finally(() => {
       ensureGuarda(host, probe);

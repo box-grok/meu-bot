@@ -91,7 +91,7 @@ function probeScript(port: number): string {
   return [
     `echo "user=$(id -un 2>/dev/null)"`,
     // Apelido da conta, gravado na própria máquina (campo de descrição do usuário; o admin o grava na aba Usuários).
-    `echo "apelido=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f5 | cut -d, -f1 | tr -d '\\r\\n' | head -c 40)"`,
+    `echo "apelido=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f5 | cut -d, -f1 | sed -n 's/^meu-bot=//p' | tr -d '\\r\\n' | { python3 -c 'import sys; sys.stdout.write(sys.stdin.read()[:40])' 2>/dev/null || head -c 40; })"`,
     `echo "os=$(. /etc/os-release 2>/dev/null && printf '%s' "$PRETTY_NAME")"`,
     `echo "arch=$(uname -m 2>/dev/null)"`,
     // Pasta do backend do meu-bot (própria, ou a herdada quando o server.js lá é o nosso); outro backend na herdada = foreign.

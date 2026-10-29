@@ -93,9 +93,12 @@ export function setOpenDirect(value: boolean): void {
  * a máquina é a fonte; cada sondagem atualiza. O "Renomear" deste Mac (hostNames) vence quando existe.
  */
 const apelidosMaquina: Record<string, string> = {};
-export function setApelidoMaquina(host: string, apelido: string | null): void {
+/** Devolve se o nome mostrado mudou (quem sonda avisa as janelas com settings:changed). */
+export function setApelidoMaquina(host: string, apelido: string | null): boolean {
   const clean = (apelido ?? "").replace(/\s+/g, " ").trim().slice(0, 40);
+  const antes = getHostNames()[host];
   if (clean === "") delete apelidosMaquina[host]; else apelidosMaquina[host] = clean;
+  return getHostNames()[host] !== antes;
 }
 export const getHostNames = (): Record<string, string> => ({ ...apelidosMaquina, ...file.hostNames });
 /** "Renomear" no seletor: apelido da máquina no app (vazio tira). A chave SSH continua a mesma. */
@@ -103,7 +106,9 @@ export function setHostName(host: string, name: string): void {
   if (!isValidHost(host)) return;
   const clean = name.replace(/\s+/g, " ").trim().slice(0, 40);
   const next = { ...file.hostNames };
-  if (clean === "") delete next[host]; else next[host] = clean;
+  // O campo vem preenchido com o apelido da máquina: salvar sem mudar nada não vira um nome local, senão o apelido
+  // que o admin trocar depois nunca mais aparecia neste Mac.
+  if (clean === "" || clean === apelidosMaquina[host]) delete next[host]; else next[host] = clean;
   file.hostNames = next;
   persist();
 }

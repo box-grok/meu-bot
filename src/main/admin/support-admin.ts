@@ -21,7 +21,7 @@ import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedK
 import { entregar, registrar, registroSh } from "../auditoria/auditoria";
 import type { Acao } from "../auditoria/auditoria-core";
 import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp/whatsapp";
-import { apelidoSh, apelidoValido } from "./usuarios-core";
+import { apelidoSh, apelidoLimpo } from "./usuarios-core";
 import { installAudio, installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../maquina/hostProbe";
 import { claudeAuthStatus } from "../agente/claudeLogin";
 import { closeTunnel } from "../maquina/tunnel";
@@ -268,7 +268,9 @@ async function adoptSshHost(host: string): Promise<SupportCode> {
 /** Apelido do admin para a pessoa (vence o nome que veio no código; vazio tira). O alias não muda. */
 export async function renamePerson(alias: string, nickname: string): Promise<SupportPerson[]> {
   const m = load();
-  const nick = nickname.replace(/\s+/g, " ").trim().slice(0, 40);
+  // O mesmo apelido vai para a máquina (GECOS): o que ela não aceita (dois-pontos, vírgula) sai antes de guardar aqui,
+  // senão o admin ficava com um nome e a máquina com outro.
+  const nick = apelidoLimpo(nickname);
   let usuario: { nome: string; raiz: string } | null = null;
   for (const s of m.values()) if (supportAlias(s.code) === alias) {
     s.nickname = nick;
@@ -279,7 +281,7 @@ export async function renamePerson(alias: string, nickname: string): Promise<Sup
   }
   save(m);
   if (usuario !== null) {
-    const r = await runSsh(usuario.raiz, `${apelidoSh(usuario.nome, apelidoValido(nick))}\n`, 30_000).catch(() => null);
+    const r = await runSsh(usuario.raiz, `${apelidoSh(usuario.nome, nick)}\n`, 30_000).catch(() => null);
     if (r === null || !/^APELIDO=ok$/m.test(r.stdout)) log(`[usuarios] ${usuario.raiz}: apelido de ${usuario.nome} ficou só neste admin (não gravou na máquina)`);
   }
   return knownPeople();
