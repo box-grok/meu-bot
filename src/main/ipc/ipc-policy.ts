@@ -48,8 +48,9 @@ export const CLIENT_CHANNELS = [
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   "contas:entrar", "contas:cancelar", "contas:sair", "contas:instalar-gh",
   // instalar e configurar a máquina
+  "backend:presente", "backend:install",
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
-  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "finance:info", "finance:abc", "finance:importar-planilha", "finance:lancamentos", "finance:categorias", "finance:lancar", "finance:confirmar", "finance:descartar", "finance:corrigir", "finance:linha-salvar", "finance:linha-remover", "finance:comprovante", "finance:confirmar-todas", "finance:conta-criar", "finance:mes", "finance:fechar-mes", "finance:config-ler", "finance:config-salvar", "finance:install", "finance:pedir", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",
+  "guarda:status", "guarda:install", "guarda:uninstall", "navegador:status", "navegador:install", "finance:info", "finance:abc", "finance:importar-planilha", "finance:lancamentos", "finance:categorias", "finance:lancar", "finance:confirmar", "finance:descartar", "finance:corrigir", "finance:linha-salvar", "finance:linha-remover", "finance:comprovante", "finance:confirmar-todas", "finance:conta-criar", "finance:mes", "finance:fechar-mes", "finance:config-ler", "finance:config-salvar", "finance:install", "finance:pedir", "modulos:listar", "modulos:ligar", "modulos:desligar", "modulos:credenciais", "modulos:opcoes", "crm:info", "crm:local", "crm:pipeline-criar", "crm:pipeline-padrao", "crm:install", "crm:set", "crm:test", "crm:reset",
   // aba Navegador (módulo Pro)
   "browser:open", "browser:permissao", "browser:permissoes-esquecer", "browser:agent-whatsapp", "browser:extensions", "browser:remove-extension", "browser:request-pro", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove", "browser:workspaces-set",
   "tailscale:disable-check", "tailscale:restore",
@@ -69,6 +70,9 @@ export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "ad
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];
 export type AdminChannel = (typeof ADMIN_CHANNELS)[number];
+/** meu-bot-admin-mac: as contas deste Mac (a janela única do app). Só respondem nessa variante (caps.usuariosMac). */
+export const MAC_CHANNELS = ["mac:usuarios", "mac:usuario-criar", "mac:usuario-apagar", "mac:usuario-apelido"] as const;
+export type MacChannel = (typeof MAC_CHANNELS)[number];
 export type IpcChannel = SharedChannel | ClientChannel | AdminChannel;
 
 /** O que um canal de cliente responde no meu-bot-admin. */

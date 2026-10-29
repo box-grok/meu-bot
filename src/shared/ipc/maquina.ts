@@ -7,6 +7,8 @@ export interface BackendStatusEvent {
   host: string;
   state: "idle" | "connecting" | "ready" | "degraded" | "error";
   detail: string;
+  /** A máquina não tem o backend do meu-bot: a janela oferece "Instalar backend" ali mesmo. */
+  semBackend?: true;
 }
 
 /** Resultado da sondagem de um host SSH, para o seletor de máquinas. */
@@ -63,10 +65,18 @@ export interface HostProbe {
   diskTotalMb: number | null;
   memFreeMb: number | null;
   memTotalMb: number | null;
+  /** Swap da máquina em MB (0 = sem swap; null quando a sondagem não trouxe). */
+  swapTotalMb: number | null;
+  swapFreeMb: number | null;
+  /** Alerta do vigia do backend (/health › maquina.alerta): memória, disco ou backend travando; null = nenhum ou backend antigo. */
+  backendAlerta: MaquinaAlerta | null;
   /** Modelos que o backend desse host anuncia em /v1/models (vazio se não respondeu). */
   models: string[];
   error: string | null;
 }
+
+/** Alertas do vigia da máquina (backend-colima/saude-maquina.js). */
+export type MaquinaAlerta = "memoria" | "disco" | "lag";
 
 export interface InstallBackendResult {
   ok: boolean;

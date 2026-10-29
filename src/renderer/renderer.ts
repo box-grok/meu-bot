@@ -28,6 +28,7 @@ import { updateBlockerText, updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk } from "./lib/pro.js";
 import { mountFinancePage } from "./finance/finance-page.js";
+import { mountModulosPage } from "./modulos/modulos-page.js";
 import { mountContaGoogle } from "./conta-google/conta-google-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
@@ -47,6 +48,7 @@ import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, rend
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { PRIMARY_OF, ligarFallback, paintFallbackOrder, syncPrimaryFromModel } from "./configuracoes/fallback.js";
+import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
 import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
 import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm, renderCrmConfig, renderCrmInstall, renderCrmPipeline, renderCrmPro, renderCrmTest } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
@@ -387,7 +389,7 @@ let adminBotMirror: BotMirror | null = null;
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
 let appBuild = "";
-let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", addon: null, abreEm: null, addons: [] };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", modulos: null, usuariosMac: false, addon: null, abreEm: null, addons: [] };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const backendModelSelect = $<HTMLSelectElement>("backend-model");
 const backendPortInput = $<HTMLInputElement>("backend-port");
@@ -1923,11 +1925,13 @@ ligarCrmGuia();
 /** O agente rodou o `chave-set`? Quando o resultado chegar, consulta o CRM e segue (teste da chave, pipeline único). */
 let crmKeyFromAgent = false;
 ligarGuiaSecoes();
+ligarBackendFalta();
 let navAskedPro = false;
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 
 /* ---------- Financeiro (produto meu-bot-finance): página Finanças, lateral e tutorial 14 ---------- */
 let financePage: ReturnType<typeof mountFinancePage> | null = null;
+let modulosPage: ReturnType<typeof mountModulosPage> | null = null;
 let financeState: FinanceInfo | null = null;
 ligarNavegador();
 ligarTerminal();
@@ -2029,6 +2033,13 @@ void (async () => {
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
   });
   $<HTMLButtonElement>("financas-line").addEventListener("click", () => financePage?.open());
+  // Módulos de produto (meu-bot-diego): só nos apps que trazem o repositório de módulos.
+  if (caps.modulos !== null) {
+    const rotulo = caps.addons.find((a) => a.nome === caps.addon)?.rotulo ?? caps.nome;
+    modulosPage = mountModulosPage({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, rotulo });
+    const linha = $<HTMLButtonElement>("modulos-line"); linha.hidden = false;
+    linha.addEventListener("click", () => modulosPage?.open());
+  }
   // O app cujo add-on é o financeiro mostra o botão sempre (sem licença, a página diz como liberar).
   if (caps.addon === "meu-bot-finance") paintFinanceLine();
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
@@ -2039,6 +2050,7 @@ void (async () => {
   void refreshSupportState();
   void refreshObjective();
   void refreshClaudeLine();
+  void conferirBackend();
   void refreshXaiLine();
   // O que a lista de Tutoriais e o selo precisam saber vem todo na abertura, em paralelo: guarda, licença (Pro),
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
@@ -2059,6 +2071,7 @@ void (async () => {
   if (fixa === "tutoriais") openPage(tutoriaisPage);
   else if (fixa === "acervo") openPage(acervoPage);
   else if (fixa === "financas") financePage?.open();
+  else if (fixa === "modulos") modulosPage?.open();
   else if (fixa === "conta-google") contaGoogle.open();
   else if (fixa === "navegador") void openNavTab();
   aberturaPronta = true;

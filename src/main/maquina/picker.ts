@@ -10,7 +10,7 @@ import { parseLicense } from "../licenca/licenca";
 import { deveAtualizar, precisaAtualizarBackend } from "../atualizacao/updater-core";
 import { app, BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
-import type { HostProbe, PickerInit, PlanName } from "../../shared/ipc";
+import type { HostProbe, InstallBackendResult, PickerInit, PlanName } from "../../shared/ipc";
 import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "../suporte/support-code";
 import { LOCAL_HOST } from "./localBackend";
@@ -21,6 +21,7 @@ import { clearTailscaleCredential, saveTailscaleCredential, tailscaleCredentialS
 import { disableSshCheck } from "./tailscale";
 import { handleClient, handleShared, onShared } from "../ipc/registry";
 import { log } from "./backend";
+import { atualizarModulos } from "../modulos/modulos";
 import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost } from "../app/settings";
 import { isPort } from "../app/settings-normalize";
 import { closeTunnel } from "./tunnel";
@@ -86,6 +87,7 @@ function probeCached(host: string): Promise<HostProbe> {
       ensureGuarda(host, probe);
       ensureCrmAtual(host, probe);
       ensureFinanceAtual(host, probe);
+      ensureModulosAtuais(host, probe);
     });
     return probe;
   }).finally(() => inflight.delete(host));
@@ -163,6 +165,14 @@ function ensureFinanceAtual(host: string, probe: HostProbe): void {
     .catch((e: unknown) => { log(`[finance] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 
+/** Módulos de produto (apps com caps().modulos): os ligados numa versão anterior à deste app sobem sozinhos. */
+const modulosTried = new Set<string>();
+function ensureModulosAtuais(host: string, probe: HostProbe): void {
+  if (caps().modulos === null || !probe.reachable || host === LOCAL_HOST || modulosTried.has(host)) return;
+  modulosTried.add(host);
+  void atualizarModulos(host, log).catch((e: unknown) => { log(`[modulos] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
 const current = (): PickerSource => { if (source === null) throw new Error("seletor sem fonte: initPicker não rodou"); return source; };
 
 /** A chegada animada do seletor toca uma vez por sessão do app; depois a lista aparece seca. */
@@ -192,6 +202,29 @@ function initPayload(): PickerInit {
   };
 }
 
+/**
+ * Instala (ou reinstala) o backend do meu-bot na máquina, do seletor ou da própria janela dela. A porta é a que a
+ * sondagem decidiu: a do backend já instalado (reinstalar não muda o .env), a primeira livre quando a do app está
+ * tomada nesta máquina, senão a do app. Instalou em outra: fica gravada só para ela. No fim o túnel recomeça do zero
+ * (um "sem backend" anterior é erro fatal e não se refaz sozinho).
+ */
+export async function instalarBackendDaMaquina(host: string, onLine: (line: string) => void): Promise<InstallBackendResult> {
+  const probe = await probeCached(host);
+  const configured = getBackendPort(host);
+  const port = portaParaInstalar(probe, configured);
+  if (port !== configured) onLine(`porta ${configured} ${probe.backendInstalled ? "não é a do backend desta máquina" : "já ocupada nesta máquina"}: usando ${port} para ${host}`);
+  const r = await installBackend(host, port, onLine);
+  if (r.ok && port !== configured) { setBackendPortForHost(host, port); broadcast("settings:changed", settingsView()); }
+  if (r.ok) closeTunnel(host);
+  probes.delete(host);
+  return r;
+}
+
+/** O backend do meu-bot está instalado na máquina? (sondagem do seletor, com cache curto) */
+export async function backendPresente(host: string): Promise<boolean> {
+  return (await probeCached(host)).backendInstalled;
+}
+
 const ctx: PickerIpcContext = {
   fromPicker: (event) => pickerWin !== null && !pickerWin.isDestroyed() && event.sender === pickerWin.webContents,
   hostArg: (payload) => {
@@ -218,16 +251,7 @@ export const clientPickerSource: PickerSource = {
     handleClient("picker:install", async (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       const host = hostArg(payload);
-      // A porta é a que a sondagem decidiu: a do backend já instalado (reinstalar não muda o .env), a primeira
-      // livre quando a do app está tomada nesta máquina, senão a do app. Instalou em outra: fica gravada só para ela.
-      const probe = await probeCached(host);
-      const configured = getBackendPort(host);
-      const port = portaParaInstalar(probe, configured);
-      if (port !== configured) progress(host, `porta ${configured} ${probe.backendInstalled ? "não é a do backend desta máquina" : "já ocupada nesta máquina"}: usando ${port} para ${host}`);
-      const r = await installBackend(host, port, (line) => progress(host, line));
-      if (r.ok && port !== configured) { setBackendPortForHost(host, port); closeTunnel(host); broadcast("settings:changed", settingsView()); }
-      forgetProbe(host);
-      return r;
+      return instalarBackendDaMaquina(host, (line) => progress(host, line));
     });
     handleClient("picker:install-statusline", async (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");

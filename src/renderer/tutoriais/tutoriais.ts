@@ -3,6 +3,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, REPLY_NOTE, grupoAlvo, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
 import { ctx } from "../app/ctx.js";
+import { renderBackendInstall } from "../conversa/backend-falta.js";
 
 // ---- Tutoriais (lib/tutoriais.ts): passo a passo em aba própria.
 export const tutList = $<HTMLElement>("tutoriais-list");
@@ -241,6 +242,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
   body.append(el("span", "tut-badge", `Tutorial ${t.number} · ${view.finished ? "Concluído" : `${doneN} de ${t.steps.length} · ${t.minutes} min`}`), el("h2", "", t.title), el("p", "", t.summary));
   head.append(icon, body);
   panel.append(head);
+  // Máquina sem o backend: nenhum passo anda sem ele; o cartão instala ali e o tutorial segue de onde estava.
+  renderBackendInstall(panel);
   // Guia do WhatsApp sem o estado da máquina ainda: não há como saber em que passo a pessoa está; dizer isso,
   // não chutar o passo 1. Os outros tutoriais não dependem do WhatsApp e abrem direto.
   if (st === null && t.steps.some((x) => x.target.startsWith("wa-"))) {

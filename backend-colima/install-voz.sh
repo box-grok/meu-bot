@@ -121,14 +121,23 @@ sf.write(sys.argv[2], audio, sr)
 PY
 fi
 
-# O meu-bot-falar chama o motor da voz escolhida (o provedor no OpenClaw é sempre o tts-local-cli).
+# O meu-bot-falar limpa o texto (fala-texto.py, que o install.sh do backend copia) e chama o motor da voz escolhida,
+# o meu-bot-falar-motor (o provedor no OpenClaw é sempre o tts-local-cli). O install.sh grava o mesmo meu-bot-falar.
+MOTOR=$HOME/.local/bin/meu-bot-falar-motor
 grava_falar() {
   case "$1" in
-    faber) printf '#!/bin/sh\n# Texto na entrada, WAV em $1 (o OpenClaw passa {{OutputPath}}). Voz: faber (Piper).\nexec "%s/piper/piper" --model "%s/faber.onnx" --output_file "$1" --quiet\n' "$D" "$D" > "$BIN" ;;
-    dora) printf '#!/bin/sh\n# Texto na entrada, WAV em $1. Voz: dora (Kokoro, feminina).\nexec "%s/venv/bin/python" "%s/falar.py" pf_dora "$1"\n' "$K" "$K" > "$BIN" ;;
-    alex) printf '#!/bin/sh\n# Texto na entrada, WAV em $1. Voz: alex (Kokoro, masculina).\nexec "%s/venv/bin/python" "%s/falar.py" pm_alex "$1"\n' "$K" "$K" > "$BIN" ;;
+    faber) printf '#!/bin/sh\n# Texto na entrada, WAV em $1. Voz: faber (Piper).\nexec "%s/piper/piper" --model "%s/faber.onnx" --output_file "$1" --quiet\n' "$D" "$D" > "$MOTOR" ;;
+    dora) printf '#!/bin/sh\n# Texto na entrada, WAV em $1. Voz: dora (Kokoro, feminina).\nexec "%s/venv/bin/python" "%s/falar.py" pf_dora "$1"\n' "$K" "$K" > "$MOTOR" ;;
+    alex) printf '#!/bin/sh\n# Texto na entrada, WAV em $1. Voz: alex (Kokoro, masculina).\nexec "%s/venv/bin/python" "%s/falar.py" pm_alex "$1"\n' "$K" "$K" > "$MOTOR" ;;
   esac
-  chmod +x "$BIN"
+  cat > "$BIN" <<'SH'
+#!/bin/sh
+# Texto na entrada, WAV em $1 (o OpenClaw passa {{OutputPath}}): limpa o texto para a fala e chama o motor da voz.
+T=$(cat)
+L=$(printf '%s' "$T" | python3 "$HOME/.local/share/meu-bot/fala-texto.py" 2>/dev/null) && [ -n "$L" ] || L=$T
+printf '%s\n' "$L" | "$HOME/.local/bin/meu-bot-falar-motor" "$@"
+SH
+  chmod +x "$MOTOR" "$BIN"
 }
 grava_falar "$VOZ"
 echo "comando em $BIN (voz $VOZ)"

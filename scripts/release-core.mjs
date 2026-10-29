@@ -21,8 +21,12 @@ export function recusaPromocao(versao, tagsNoHead) {
   return null;
 }
 
-/** Produtos que cada canal publica: staging = as linhas staging; estável = as estáveis (o admin inclusive). */
-export const produtosDoCanal = (produtos, canal) => produtos.filter((p) => p.canal === canal);
+/**
+ * Produtos que cada canal publica: staging = as linhas staging; estável = as estáveis (o admin inclusive). Ficam de
+ * fora os que levam módulos de um repositório privado (`caps.modulos`, como o meu-bot-diego): as releases do meu-bot
+ * são públicas e o app levaria os módulos dentro. Esses se publicam por fora (docs/guia/meu-bot-diego.md).
+ */
+export const produtosDoCanal = (produtos, canal) => produtos.filter((p) => p.canal === canal && (p.caps?.modulos ?? null) === null);
 
 /**
  * Componentes que mudaram desde a última release sem subir a versão (as máquinas só atualizam para cima: sem a

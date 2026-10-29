@@ -7,6 +7,7 @@ import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
 import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, PlanilhaLeitura } from "./google";
 import type { LicensePatch, LicenseView } from "./licenca";
+import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
 import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare } from "./suporte";
@@ -38,6 +39,7 @@ export interface MainEvents {
   "whatsapp:event": WhatsappEvent;
   /** Linha de progresso do instalador da status line (tutorial). */
   "statusline:progress": { line: string };
+  "backend:install-progress": { line: string };
   /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
@@ -46,6 +48,8 @@ export interface MainEvents {
   "crm:progress": { line: string };
   /** Instalação do financeiro na máquina, linha a linha (tutorial 14). */
   "finance:progress": { line: string };
+  /** Módulos de produto (meu-bot-diego): uma linha do instalador do módulo `id`. */
+  "modulos:progress": { id: string; line: string };
   /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
   "admin:backup-progress": { bytes?: number; line?: string };
   /** Login do Claude Code em andamento. */
@@ -271,6 +275,10 @@ export interface MeuBotClientApi {
   statusLineSegments(): Promise<StatusLineSegments | null>;
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
+  /** O backend do meu-bot está instalado na máquina desta janela? (este Mac: sempre) */
+  backendPresente(): Promise<boolean>;
+  /** Instala o backend do meu-bot na máquina desta janela (o mesmo do seletor); progresso em backend:install-progress. */
+  installBackend(): Promise<InstallBackendResult>;
   /** Guarda do WhatsApp (plugin meu-bot-guarda no OpenClaw da máquina): instalada? (null = sem OpenClaw), instalar, desfazer. */
   /**
    * Aba "Navegador" (Pro), como no Rambox: as abas internas são `<webview>` do renderer na partição que
@@ -336,6 +344,14 @@ export interface MeuBotClientApi {
   /** Lê uma planilha do Google Sheets (link) com a Conta Google do app e importa as linhas no financeiro da máquina. */
   financeImportarPlanilha(p: { link: string; aba?: string; tipo: FinanceAbcLado; simular: boolean }): Promise<FinanceImportacao>;
   installFinance(): Promise<InstallBackendResult>;
+  /** Módulos de produto (só nos apps com `caps.modulos`): o manifesto com o estado de cada um nesta máquina. */
+  modulosListar(): Promise<ModulosLista>;
+  modulosLigar(id: string): Promise<ModuloResultado>;
+  modulosDesligar(id: string): Promise<ModuloResultado>;
+  /** Grava credenciais (valor vazio apaga); nunca devolve valores, só o estado. */
+  modulosCredenciais(id: string, patch: Record<string, string>): Promise<ModulosLista>;
+  /** Grava opções; com o módulo ligado, reinstala para valerem. */
+  modulosOpcoes(id: string, patch: Record<string, string | number | boolean>): Promise<ModuloResultado>;
   /** Pede ao admin para liberar o meu-bot-finance (fica no registro de auditoria). */
   financePedir(): Promise<void>;
   installCrm(): Promise<InstallBackendResult>;
