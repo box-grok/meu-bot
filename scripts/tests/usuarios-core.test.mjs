@@ -154,3 +154,10 @@ test("usuários: o box- é fixo na frente do nome digitado, sem repetir", async 
   const tela = readFileSync(new URL("../../src/renderer/admin/usuarios-page.ts", import.meta.url), "utf8");
   assert.equal(/const PREFIXO = "([^"]+)";/.exec(tela)?.[1], PREFIXO_USUARIO, "a cópia da tela bate com a do main");
 });
+
+test("usuários: o nome sugerido é o próximo box da sequência", async () => {
+  const { proximoBox } = await import("../../dist/renderer/lib/usuarios-nome.js");
+  assert.equal(proximoBox([]), "1");
+  assert.equal(proximoBox(["box-1", "box-2"]), "3");
+  assert.equal(proximoBox(["box-1", "box-4", "maria", "box-maria", "meu-box"]), "5", "só box-<número> conta; segue o maior");
+});
