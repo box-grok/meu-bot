@@ -17,7 +17,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 /** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
@@ -53,6 +53,15 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let liberar: { nome: string; pct: number; maiores: Maiores | null; erro: string | null; itemArmado: string | null } | null = null;
   /** Resultado da sincronização com os seletores feita ao abrir a aba (uma linha discreta; null = nada a dizer). */
   let sincronia: string | null = null;
+  /** Log do último job de criar/preparar (ao vivo enquanto roda; fica na tela depois para se ver o que aconteceu). */
+  let jobLog: string[] = [];
+  deps.api.on("admin:usuarios-progresso", (p) => {
+    if (ocupado === null || !(ocupado === "criar" || ocupado.startsWith("preparar:"))) return;
+    // A instalação do backend despeja o `systemctl status` inteiro: só as linhas que dizem algo.
+    const l = p.line.replace(/\s+$/, "");
+    if (l.trim() === "" || /^\s*(Invocation|Main PID|Tasks|Memory|CPU|CGroup|└─|Loaded|Docs):?/.test(l) || /^\s*[a-zA-Z]{3} \d{2} \d{2}:\d{2}:\d{2} /.test(l)) return;
+    jobLog.push(l); render();
+  });
 
   /** Uma vez ao abrir a aba: os usuários comuns com a chave deste Mac que faltam em algum seletor entram (em segundo plano). */
   async function sincronizar(): Promise<void> {
@@ -72,7 +81,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     render();
   }
   async function rodar(chave: string, f: () => Promise<UsuariosVisao>, ok: string): Promise<boolean> {
-    ocupado = chave; msg = null; render();
+    ocupado = chave; msg = null; if (chave === "criar" || chave.startsWith("preparar:")) jobLog = []; render();
     try { visao = await f(); msg = { text: ok, bad: false }; return true; }
     catch (e) { msg = { text: `✗ ${ipcErrorText(e).replace(/^ACIMA_DO_LIMITE: /, "")}`, bad: true }; return false; }
     finally { ocupado = null; render(); }
@@ -88,6 +97,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       const sel = visao?.seletores;
       if (sel !== undefined) msg = sel.aviso !== null ? { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true }
         : visao?.preparo != null ? { text: `Usuário ${n} criado, mas a preparação parou: ${visao.preparo}. Use "Preparar" na linha dele para continuar de onde parou.`, bad: true }
+        : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
         : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
       nome = null; pctNovo = PCT_PADRAO; render();
     }
@@ -185,7 +195,8 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     b.addEventListener("click", () => { void criar(); });
     const campo = el("span", "usuarios-nome"); campo.append(prefixo, input);
     linha.append(campo, pin, b); form.append(linha);
-    form.append(el("p", "hint", "Nasce comum (sem sudo), sempre ligado (o agente dele roda mesmo sem ele conectado), com RAM de 2 GB e CPU de 200% (dois núcleos); dá para mudar na linha dele. Já sai pronto: Claude Code, backend do meu-bot e o Hermes com a transcrição da máquina; para a pessoa sobram o login do Claude e o QR. % do disco vazio = sem limite. A primeira vez que você põe um limite, o app liga a cota de disco nesta máquina (guarda uma cópia do /etc/fstab, sem reiniciar)."));
+    // No lugar do texto descritivo: o que o job está fazendo agora (e o que fez, depois).
+    if (jobLog.length > 0) { const ul = el("ul", "support-log"); for (const l of jobLog.slice(-40)) ul.append(el("li", "", l)); form.append(ul); ul.scrollTop = ul.scrollHeight; }
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
     if (sincronia !== null) form.append(el("p", "hint", sincronia));
     panel.append(form);

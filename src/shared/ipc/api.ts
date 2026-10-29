@@ -52,6 +52,8 @@ export interface MainEvents {
   "modulos:progress": { id: string; line: string };
   /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
   "admin:backup-progress": { bytes?: number; line?: string };
+  /** Uma linha do job de criar/preparar usuário (onboarding), para o log ao vivo da aba Usuários. */
+  "admin:usuarios-progresso": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
   /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */

@@ -101,7 +101,7 @@ export async function apagarUsuario(host: string, nome: unknown): Promise<Usuari
 }
 
 /** Cria um usuário comum (sem sudo, shell bash, home própria) com a chave SSH deste Mac. Devolve a lista nova. */
-export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unknown = 0): Promise<UsuariosVisao> {
+export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unknown = 0, onLine?: (line: string) => void): Promise<UsuariosVisao> {
   const nome = typeof nomeDigitado === "string" ? comPrefixo(nomeDigitado.trim()) : nomeDigitado;
   if (typeof nome !== "string" || !NOME_USUARIO_RE.test(nome)) throw new Error("nome inválido: use minúsculas, números, - ou _, começando por letra (2 a 32)");
   if (RESERVADOS.has(nome)) throw new Error(`"${nome}" é um nome reservado do sistema; escolha outro`);
@@ -111,6 +111,7 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   if (erro !== undefined) throw new Error(erro);
   if (!/^CRIADO=/m.test(r.stdout)) throw new Error(`não consegui criar o usuário: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
   log(`[usuarios] ${host}: criou o usuário ${nome}`);
+  onLine?.(`usuário ${nome} criado (comum, sem sudo)`);
   void registrar(host, "usuarios.criar", nome);
   // Nasce sempre ligado (o agente dele não morre quando ele sai da máquina); falhar aqui também só avisa no log.
   const lg = await runSsh(host, `${lingerSh(nome)}\n`, 30_000).catch(() => null);
@@ -119,14 +120,16 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   const rec = await runSsh(host, `${recursosSh(nome, RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct)}\n`, 30_000).catch(() => null);
   if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
   // Já entra nos dois seletores (meu-bot e admin); falhar aqui não desfaz o usuário: a resposta avisa.
+  onLine?.("sempre ligado, com os tetos de RAM e CPU; entrando nos seletores do meu-bot e do admin");
   const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
   if (typeof pct === "number" && pct > 0) await definirLimite(host, nome, pct);
   // Onboarding: só devolve depois de tudo pronto. Falhou um passo: o usuário existe, a resposta diz onde parou.
   let preparo: string | null = sel.aviso === null ? null : "sem o seletor do meu-bot, não deu para preparar a conta";
-  if (preparo === null) await prepararUsuario(host, nome, sel.alias).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); });
+  let global = false;
+  if (preparo === null) await prepararUsuario(host, nome, sel.alias, onLine).then((g) => { global = g; }).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); onLine?.(`✗ parou: ${preparo}`); });
   const v = await usuariosDaMaquina(host);
-  return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo };
+  return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo, global };
 }
 
 /** As maiores pastas e arquivos do usuário, para o admin escolher o que apagar antes de baixar o limite. */
@@ -206,8 +209,8 @@ echo "SEMEADO=ok"`;
  * com a transcrição ligada. Sobram para a pessoa só o login do Claude (tutorial 1) e o QR (tutorial 2). Para no
  * primeiro passo que falhar e diz qual; "Preparar" na linha do usuário retoma (cada passo pula o que já está feito).
  */
-async function prepararUsuario(host: string, nome: string, alias: string): Promise<void> {
-  const passo = (t: string): void => log(`[usuarios] ${host}: ${nome}: ${t}`);
+async function prepararUsuario(host: string, nome: string, alias: string, onLine?: (line: string) => void): Promise<boolean> {
+  const passo = (t: string): void => { log(`[usuarios] ${host}: ${nome}: ${t}`); if (t.trim() !== "") onLine?.(t); };
   const v = await usuariosDaMaquina(host);
   if (v.hermes !== "global") { passo("instalando o padrão da máquina (Hermes e transcritor para todos)"); await padraoDaMaquina(host); }
   passo("instalando o Claude Code");
@@ -232,14 +235,15 @@ async function prepararUsuario(host: string, nome: string, alias: string): Promi
   if (comGlobal) { passo("ligando o Claude Code Global"); await ligarClaudeGlobalPara(host, nome, true); }
   passo(comGlobal ? "pronto: falta só o QR do WhatsApp (o Claude responde pelo global)" : "pronto: falta só o login do Claude e o QR do WhatsApp");
   void registrar(host, "usuarios.preparar", nome);
+  return comGlobal;
 }
 
 /** "Preparar" na linha do usuário: refaz o onboarding (o que já está feito passa direto). */
-export async function prepararUsuarioDeNovo(host: string, nome: unknown): Promise<UsuariosVisao> {
+export async function prepararUsuarioDeNovo(host: string, nome: unknown, onLine?: (line: string) => void): Promise<UsuariosVisao> {
   const n = nomeValido(nome);
   const sel = await porNosSeletores(host, n);
   if (sel.aviso !== null) throw new Error(sel.aviso);
-  await prepararUsuario(host, n, sel.alias);
+  try { await prepararUsuario(host, n, sel.alias, onLine); } catch (e) { onLine?.(`✗ parou: ${e instanceof Error ? e.message : String(e)}`); throw e; }
   return usuariosDaMaquina(host);
 }
 
