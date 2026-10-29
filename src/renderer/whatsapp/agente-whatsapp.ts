@@ -200,6 +200,8 @@ export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "re
   const box = el("div", "audio-controls");
   const hermes = st?.gateway === "hermes";
   if (parte === "ouvir") { renderOuvir(box, st); container.append(box); return; }
+  // Hermes: a pausa por contato com prazo vem do plugin meu-bot-pausa; o app instala sozinho, mas o botão fica aqui para quem ficou sem.
+  if (hermes) renderPausaContato(box, st);
   // Responder em áudio só acontece quando o agente entende o áudio que recebeu.
   if (st?.audioIn !== true) box.append(el("p", "hint", "Responder em áudio depende da transcrição ligada: tutorial 16, Ouvir áudios do WhatsApp."));
   // Mesma forma da linha "Ouvir áudios": rótulo e estado atual; os cartões abaixo, lado a lado.
@@ -257,6 +259,35 @@ export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "re
   box.append(vozes, el("div", "guide-note", "Todas as vozes rodam na própria máquina, sem custo; o texto das respostas não sai dela."));
   { const m = audioMsgEl("out"); if (m !== null) box.append(m); }
   container.append(box);
+}
+let waPausaBusy = false;
+let waPausaMsg: { text: string; bad: boolean } | null = null;
+/** Linha "Pausar por contato" (Hermes): ✓ com prazo quando o plugin está carregado; senão o botão que o instala, e o recado embaixo. */
+function renderPausaContato(box: HTMLElement, st: typeof ctx.waStatus): void {
+  const row = el("div", "audio-row");
+  row.append(el("strong", "", "Pausar por contato"));
+  if (st?.capacidades.pausaPrazo === true) row.append(el("span", "audio-ok", "✓ com prazo: no menu da conversa (2 h / 24 h / até retomar) ou /pausar 2h pelo WhatsApp"));
+  else {
+    const b = el("button", "btn btn-primary btn-small", waPausaBusy ? "Ativando…" : "Ativar pausa com prazo");
+    b.type = "button"; b.disabled = waPausaBusy || st === null || !st.connected;
+    b.addEventListener("click", () => { void runPausaPlugin(); });
+    row.append(b, el("span", "hint", "sem o plugin, pausar tira da lista de quem o agente responde e reinicia o gateway"));
+  }
+  box.append(row);
+  if (waPausaMsg !== null) box.append(el("p", `hint ${waPausaMsg.bad ? "guide-pair-note" : "audio-ok"}`, waPausaMsg.text));
+}
+async function runPausaPlugin(): Promise<void> {
+  if (waPausaBusy) return;
+  waPausaBusy = true; waPausaMsg = null;
+  ctx.paintGuide();
+  segurarConexao();
+  try {
+    const r = await window.meuBot.installPausaPlugin();
+    waPausaMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok };
+    await refreshWhatsapp();
+  } catch (err) {
+    waPausaMsg = { text: ipcErrorText(err), bad: true };
+  } finally { acaoTerminou(); waPausaBusy = false; ctx.paintGuide(); }
 }
 async function runAudioSetup(setup: AudioSetup): Promise<void> {
   if (waAudioBusy !== null) return;

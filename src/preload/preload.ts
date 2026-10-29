@@ -168,6 +168,7 @@ const clientApi: MeuBotClientApi = {
   xaiPrepare: () => ipcRenderer.invoke("xai-login:prepare", {}),
   statusLineInstalled: () => ipcRenderer.invoke("statusline:status", {}),
   installStatusLine: () => ipcRenderer.invoke("statusline:install", {}),
+  installPausaPlugin: () => ipcRenderer.invoke("whatsapp:pausa-plugin", {}),
   backendPresente: () => ipcRenderer.invoke("backend:presente", {}),
   installBackend: () => ipcRenderer.invoke("backend:install", {}),
   browserOpen: () => ipcRenderer.invoke("browser:open", {}),

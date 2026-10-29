@@ -11,7 +11,7 @@ import { deveAtualizar, precisaAtualizarBackend } from "../atualizacao/updater-c
 import { app, BrowserWindow, screen, shell } from "electron";
 import path from "node:path";
 import type { HostProbe, InstallBackendResult, PickerInit, PlanName } from "../../shared/ipc";
-import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, installAudio, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
+import { approveTailscaleCheck, bundledBackendVersion, bundledCrmVersion, bundledFinanceVersion, bundledGuardaVersion, bundledHermesPausaVersion, installAudio, installHermesPausa, installBackend, installClaudeCode, installCrm, installFinance, installGuarda, installStatusLine, probeHost, portaParaInstalar } from "./hostProbe";
 import { isSupportAlias } from "../suporte/support-code";
 import { LOCAL_HOST } from "./localBackend";
 import { runSsh } from "../whatsapp/whatsapp";
@@ -85,6 +85,7 @@ function probeCached(host: string): Promise<HostProbe> {
     // Backend antes dos plugins: o plugin do financeiro (e o do CRM) chamam a API dele.
     void ensureBackendAtual(host, probe).finally(() => {
       ensureGuarda(host, probe);
+      ensureHermesPausa(host, probe);
       ensureCrmAtual(host, probe);
       ensureFinanceAtual(host, probe);
       ensureModulosAtuais(host, probe);
@@ -100,6 +101,26 @@ function probeCached(host: string): Promise<HostProbe> {
  * não vão ao contato; despedidas bot-com-bot em 3 ciclos pausam a conversa). Uma tentativa por máquina por
  * sessão do app, em segundo plano; o tutorial 8 só confere e explica. Uma máquina sem SSH ou cujo agente não aceita a guarda fica fora.
  */
+/**
+ * Padrão do app: máquina com Hermes ganha a pausa por contato com prazo (plugin meu-bot-pausa) sozinha, como a guarda
+ * no OpenClaw. Uma tentativa por máquina por sessão, em segundo plano; só sobe de versão. Com pausa nativa, nada.
+ */
+const pausaTried = new Set<string>();
+function ensureHermesPausa(host: string, probe: HostProbe): void {
+  if (!probe.reachable || probe.gateway !== "hermes" || probe.hermesPausa === null || probe.hermesPausa === undefined || host === LOCAL_HOST || pausaTried.has(host)) return;
+  const want = bundledHermesPausaVersion();
+  if (want === null) return;
+  const missing = probe.hermesPausa === false;
+  const outdated = probe.hermesPausa === true && deveAtualizar(probe.hermesPausaVersion ?? null, want);
+  if (!missing && !outdated) return;
+  pausaTried.add(host);
+  log(`[pausa] ${host}: ${missing ? "Hermes sem o plugin de pausa" : `plugin ${probe.hermesPausaVersion ?? "sem versão"} → ${want}`}; instalando em segundo plano`);
+  void installHermesPausa(host).then((r) => {
+    log(`[pausa] ${host}: ${r.ok ? "plugin instalado sozinho" : `instalação automática falhou: ${r.log.at(-1) ?? "?"}`}`);
+    const hit = probes.get(host); if (r.ok && hit !== undefined) probes.set(host, { probe: { ...hit.probe, hermesPausa: true, hermesPausaVersion: want }, at: hit.at });
+  }).catch((e: unknown) => { log(`[pausa] ${host}: instalação automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
+}
+
 const guardaTried = new Set<string>();
 function ensureGuarda(host: string, probe: HostProbe): void {
   // `guarda === null` = a sondagem não encontrou agente que aceite a guarda (hostProbe.ts só a preenche onde ela cabe).

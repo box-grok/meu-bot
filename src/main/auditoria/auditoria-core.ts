@@ -57,6 +57,7 @@ export const ACOES = {
   "whatsapp.pausar": (a: string) => `pausou o agente do WhatsApp para ${a}`,
   "whatsapp.retomar": (a: string) => `retomou o agente do WhatsApp para ${a}`,
   "whatsapp.pausa-automatica": (a: string) => `pausou sozinho o agente para ${a} (conversa em loop)`,
+  "whatsapp.pausa-plugin": () => "ligou a pausa por contato com prazo no agente do WhatsApp (plugin do Hermes)",
   "whatsapp.parear": () => "pareou o WhatsApp",
   "whatsapp.desconectar": () => "desconectou o WhatsApp",
   "whatsapp.grupo-ligar": (a: string) => `ligou o agente no grupo do WhatsApp ${a}`,

@@ -277,6 +277,8 @@ export interface MeuBotClientApi {
   statusLineSegments(): Promise<StatusLineSegments | null>;
   setStatusLineSegments(prefs: StatusLineSegments): Promise<StatusLineSegments>;
   installStatusLine(): Promise<InstallBackendResult>;
+  /** Hermes: instala (ou atualiza) o plugin de pausa por contato com prazo (meu-bot-pausa) na máquina desta janela. */
+  installPausaPlugin(): Promise<InstallBackendResult>;
   /** O backend do meu-bot está instalado na máquina desta janela? (este Mac: sempre; `null` = a máquina não respondeu) */
   backendPresente(): Promise<boolean | null>;
   /** Instala o backend do meu-bot na máquina desta janela (o mesmo do seletor); progresso em backend:install-progress. */

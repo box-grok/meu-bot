@@ -9,6 +9,7 @@ import { BUNDLE_FILES, CLAUDE_GLOBAL_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
 import { isVozId } from "../whatsapp/vozes-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
+import { hermesPausaPluginSh, lerPausaPlugin, versaoDoPluginYaml, type PausaPluginFonte } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh, hermesPmExtraSh, hermesSttLigarSh } from "../whatsapp/whatsapp-hermes-core";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -117,6 +118,8 @@ function probeScript(port: number): string {
     `[ -f "$HOME/.local/share/meu-bot/guarda/index.js" ] && echo guarda=1 || echo guarda=0`,
     // Versão instalada com sucesso (o instalador grava .ok no fim); sem .ok = instalação antiga ou incompleta → atualiza.
     `echo "guardaver=$(cat "$HOME/.local/share/meu-bot/guarda/.ok" 2>/dev/null)"`,
+    // Plugin de pausa por contato do Hermes (meu-bot-pausa): a versão que o instalador gravou no fim (.ok); vazio = sem plugin.
+    `echo "hpausaver=$(cat "$HOME/.hermes/plugins/meu-bot-pausa/.ok" 2>/dev/null | tr -dc '0-9.')"`,
     // CRM do meu-bot (plugin meu-bot-crm + crm-job): instalado? e a versão (o seletor atualiza a que estiver atrás).
     `[ -f "$HOME/.local/share/meu-bot/crm/index.js" ] && echo crm=1 || echo crm=0`,
     `echo "crmver=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$HOME/.local/share/meu-bot/crm/package.json" 2>/dev/null)"`,
@@ -213,6 +216,8 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
     statusLine: kv.get("statusline") === "1",
     guarda: kv.get("gateway") === "openclaw" ? kv.get("guarda") === "1" : null,
     guardaVersion: kv.get("guardaver") || null,
+    hermesPausa: kv.get("gateway") === "hermes" ? (kv.get("hpausaver") ?? "") !== "" : null,
+    hermesPausaVersion: kv.get("hpausaver") || null,
     crm: kv.get("crm") === "1",
     crmVersion: kv.get("crmver") || null,
     finance: kv.get("finance") === "1",
@@ -434,6 +439,36 @@ export function bundledCrmVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "crm", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
 }
 /** Versão da guarda que vem neste app (package.json do plugin); o seletor atualiza máquinas com versão diferente. */
+/** O plugin de pausa do Hermes como está no bundle (backend-colima/hermes-plugins/meu-bot-pausa); null se o pacote veio sem ele. */
+export function pausaPluginFonte(): PausaPluginFonte | null {
+  try {
+    const d = path.join(backendBundleDir(), "hermes-plugins", "meu-bot-pausa");
+    const init = fs.readFileSync(path.join(d, "__init__.py"), "utf8"), yaml = fs.readFileSync(path.join(d, "plugin.yaml"), "utf8");
+    const versao = versaoDoPluginYaml(yaml);
+    return versao === null ? null : { init, yaml, versao };
+  } catch { return null; }
+}
+export const bundledHermesPausaVersion = (): string | null => pausaPluginFonte()?.versao ?? null;
+/** Fuso deste Mac, para os textos do plugin ("volto às 14:30") saírem na hora da pessoa. */
+export const fusoDesteMac = (): string => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo"; } catch { return "America/Sao_Paulo"; } };
+/**
+ * Instala ou atualiza o plugin de pausa por contato no Hermes do usuário da máquina (idempotente; reinicia o gateway
+ * só se mudou algo). O script leva os dois arquivos inline, como o preparo do usuário no admin.
+ */
+export async function installHermesPausa(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["a pausa por contato é do agente do WhatsApp (Hermes) de uma máquina por SSH"] };
+  const fonte = pausaPluginFonte();
+  if (fonte === null) return { ok: false, log: ["este pacote do app veio sem o plugin de pausa"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  say(`instalando a pausa por contato (plugin ${fonte.versao}) no Hermes de ${host}…`);
+  const r = await run("ssh", [...sshBase(host), "--", host, hermesPausaPluginSh(fonte, fusoDesteMac())], 3 * 60_000, say);
+  const s = lerPausaPlugin(r.stdout);
+  if (r.code !== 0 || !s.ok) return { ok: false, log: [...lines, `plugin=${s.plugin} enabled=${s.enabled}${r.stderr.trim() !== "" ? `: ${lastLine(r.stderr)}` : ""}`] };
+  say(s.plugin === "nada" ? "plugin já estava no lugar" : `plugin ${s.plugin}; gateway: ${s.restart}`);
+  return { ok: true, log: lines };
+}
+
 export function bundledGuardaVersion(): string | null {
   try { const j = JSON.parse(fs.readFileSync(path.join(backendBundleDir(), "guarda", "package.json"), "utf8")) as { version?: unknown }; return typeof j.version === "string" ? j.version : null; } catch { return null; }
 }
