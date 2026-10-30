@@ -100,7 +100,15 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       panel.append(c); if (msg) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : ""}`, msg.text)); return;
     }
     if (status === null) { panel.append(carregando("Consultando a Conta Google desta máquina…")); return; }
-    if (!status.configurado) { const c = card("Google não configurado neste app"); c.append(el("p", "", "Falta o client OAuth do Google (google-oauth.json) neste build. Instale a versão com o CRM/Google habilitado.")); panel.append(c); return; }
+    if (!status.configurado) {
+      // O build veio sem o client OAuth e a busca na release não resolveu: diz por quê e deixa repetir.
+      const c = card("Google ainda não configurado neste app");
+      c.append(el("p", "", "Este build veio sem o client OAuth do Google (google-conta-oauth.json). O app procurou na última release e vai buscar sozinho assim que o admin publicar uma com o arquivo; até lá, esta página fica assim."));
+      if (status.busca) c.append(el("p", "hint", `Última tentativa: ${status.busca}.`));
+      const b = btn(busy ? "Buscando…" : "Buscar de novo agora", "btn-ghost", () => { void agir(async () => { status = await deps.api.googleContaStatus(true); }, status?.configurado ? "client do Google encontrado" : "ainda sem o client na release"); });
+      b.disabled = busy; c.append(b);
+      panel.append(c); return;
+    }
 
     // Perfil
     const pc = card("Sua conta");

@@ -55,3 +55,7 @@ export function lerVersao(caminho, conteudo) {
   const t = String(conteudo).trim();
   return t === "" ? null : t;
 }
+
+/** Os clients OAuth do Google que a release publica como assets avulsos (assinados): só os que existem em config/ neste Mac. */
+export const CLIENTES_GOOGLE = ["google-oauth.json", "google-conta-oauth.json"];
+export const clientesGoogleParaPublicar = (existe) => CLIENTES_GOOGLE.filter((n) => existe(`config/${n}`));

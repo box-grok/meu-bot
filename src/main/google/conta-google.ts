@@ -18,7 +18,7 @@ import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegad
 import { ESCOPOS_CONTA, URL_TOKEN, parseIdToken, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
 import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null }
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null; busca?: string | null }
 const sanitHost = (h: string): string => (h || "sem-maquina").replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 100);
 const DIR = (): string => path.join(app.getPath("userData"), "google-conta");
 const ARQ = (host: string): string => path.join(DIR(), `${sanitHost(host)}.bin`);
@@ -92,7 +92,7 @@ export function contaStatus(host: string): GoogleContaStatus {
 }
 
 export async function contaConectar(host: string): Promise<GoogleContaStatus> {
-  const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-oauth.json)");
+  const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-conta-oauth.json ou google-oauth.json)");
   if (!temKeychain()) throw new Error("este Mac não tem o Keychain disponível para guardar a autorização");
   if (!conectando.has(host)) {
     conectando.add(host);
@@ -163,7 +163,7 @@ export async function contaDesconectar(host: string): Promise<GoogleContaStatus>
 export async function adotarContaDoMac(host: string): Promise<GoogleContaStatus> {
   const t = lerArq(ARQ_DO_MAC());
   if (t === null) throw new Error("não há conta antiga neste Mac para usar");
-  const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-oauth.json)");
+  const c = clienteConta(); if (c === null) throw new Error("o app ainda não tem o client OAuth do Google (google-conta-oauth.json ou google-oauth.json)");
   try { await acessoDeRefresh(c, t.refresh); } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!/invalid_grant|revoked|expired/i.test(msg)) throw e;
