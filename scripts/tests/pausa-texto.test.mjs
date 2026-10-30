@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pausaAteTexto } from "../../dist/renderer/lib/pausa-texto.js";
+import { pausaAteTexto, pausaRestanteTexto } from "../../dist/renderer/lib/pausa-texto.js";
 
 test("pausaAteTexto: hoje só a hora; amanhã diz amanhã; depois a data; sem prazo ou inválido, vazio", () => {
   const agora = new Date(2026, 9, 29, 13, 0); // 29/10/2026 13:00, hora local
@@ -10,4 +10,14 @@ test("pausaAteTexto: hoje só a hora; amanhã diz amanhã; depois a data; sem pr
   assert.equal(pausaAteTexto(null, agora), "");
   assert.equal(pausaAteTexto(undefined, agora), "");
   assert.equal(pausaAteTexto("ontem", agora), "");
+});
+
+test("pausaRestanteTexto: quanto falta, curto (1h58, 45 min, <1 min); vencida ou sem prazo, vazio", () => {
+  const agora = new Date(2026, 9, 29, 13, 0);
+  assert.equal(pausaRestanteTexto(new Date(2026, 9, 29, 14, 58).toISOString(), agora), "1h58");
+  assert.equal(pausaRestanteTexto(new Date(2026, 9, 29, 15, 0).toISOString(), agora), "2h");
+  assert.equal(pausaRestanteTexto(new Date(2026, 9, 29, 13, 45).toISOString(), agora), "45 min");
+  assert.equal(pausaRestanteTexto(new Date(2026, 9, 29, 13, 0, 30).toISOString(), agora), "<1 min");
+  assert.equal(pausaRestanteTexto(new Date(2026, 9, 29, 12, 0).toISOString(), agora), "", "vencida");
+  assert.equal(pausaRestanteTexto(null, agora), "");
 });

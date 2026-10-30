@@ -71,8 +71,8 @@ test("com pausaPrazo (Hermes + plugin): submenu Pausar o agente › 2 h / 24 h /
   assert.ok(labels(m).includes("Pausar o agente") && !labels(m).includes("Pausar"));
   const sub = m.find((e) => "submenu" in e && e.label === "Pausar o agente").submenu;
   assert.deepEqual(sub.map((e) => [e.label, e.action]), [["Por 2 horas", "pause-2h"], ["Por 24 horas", "pause-24h"], ["Até eu retomar", "pause"]]);
-  const p = waMenuTemplate({ archived: false, paused: true, deleted: false, pausaRotulo: "até 14:30" }, { manageWa: false }, HERMES_PLUGIN);
-  assert.ok(labels(p).includes("Retomar (pausado até 14:30)") && actions(p).includes("resume"));
+  const p = waMenuTemplate({ archived: false, paused: true, deleted: false, pausaRotulo: "volta às 14:30" }, { manageWa: false }, HERMES_PLUGIN);
+  assert.ok(labels(p).includes("Retomar (volta às 14:30)") && actions(p).includes("resume"));
   assert.ok(labels(waMenuTemplate({ archived: false, paused: true, deleted: false, pausaRotulo: null }, { manageWa: false }, HERMES_PLUGIN)).includes("Retomar"));
   // Sem o prazo (OpenClaw, Hermes sem plugin, capacidade desconhecida): "Pausar" simples, que nunca falha por prazo.
   for (const cap of [{ ...HERMES_PLUGIN, pausaPrazo: false }, null]) assert.ok(labels(waMenuTemplate({ archived: false, paused: false, deleted: false, pausaRotulo: null }, { manageWa: true }, cap)).includes("Pausar"));
