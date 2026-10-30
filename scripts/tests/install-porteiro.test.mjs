@@ -14,6 +14,8 @@ function maquina() {
   copyFileSync(path.join(RAIZ, "backend-colima/claude-porteiro.js"), path.join(dest, "claude-porteiro.js"));
   writeFileSync(path.join(dest, ".env"), "CLAUDE_BIN=/usr/local/bin/claude\n");
   writeFileSync(path.join(home, ".bashrc"), "[ -z \"$PS1\" ] && return\nalias ll='ls -l'\n");
+  mkdirSync(path.join(home, ".hermes")); // máquina com Hermes: o wa-enviar ganha a regra no CLAUDE.md do agente
+  mkdirSync(path.join(home, "agent-workspace")); writeFileSync(path.join(home, "agent-workspace/CLAUDE.md"), "# regras da máquina\n");
   const fakebin = path.join(home, "fakebin"); mkdirSync(fakebin);
   const chamadas = path.join(home, "systemctl.log");
   writeFileSync(path.join(fakebin, "systemctl"), `#!/usr/bin/env bash\necho "$*" >> "${chamadas}"\ncase "$*" in *"show -p Environment"*) echo "PATH=/usr/bin:/bin HOME=${home}";; esac\nexit 0\n`);
@@ -40,15 +42,24 @@ test("install-porteiro: shim, bloco de PATH no topo dos perfis e drop-in do gate
   assert.match(dropin, new RegExp(`^Environment=PATH=${m.home}/.local/share/meu-bot/bin:/usr/bin:/bin$`, "m"));
   assert.match(dropin, /^Environment=MEU_BOT_ORIGEM=whatsapp$/m);
   assert.equal(m.chamadas().filter((c) => c.includes("restart")).length, 1);
+  const waEnviar = path.join(m.home, ".local/share/meu-bot/bin/wa-enviar");
+  assert.ok(existsSync(waEnviar), "wa-enviar instalado ao lado do shim");
+  const claudeMd = readFileSync(path.join(m.home, "agent-workspace/CLAUDE.md"), "utf8");
+  assert.ok(claudeMd.startsWith("# regras da máquina\n"), "o que já havia no CLAUDE.md fica");
+  assert.equal((claudeMd.match(/meu-bot:wa-enviar v1 inicio/g) || []).length, 1);
+  assert.match(claudeMd, /wa-enviar <número com DDI>/);
   // Segunda vez: nada muda, nenhum restart.
   const r2 = m.rodar("install-porteiro.sh");
   assert.equal(r2.status, 0, r2.stdout + r2.stderr);
   assert.equal((readFileSync(path.join(m.home, ".bashrc"), "utf8").match(/meu-bot:porteiro inicio/g) || []).length, 1);
+  assert.equal((readFileSync(path.join(m.home, "agent-workspace/CLAUDE.md"), "utf8").match(/meu-bot:wa-enviar v1 inicio/g) || []).length, 1, "regra do wa-enviar não repete");
   assert.equal(m.chamadas().filter((c) => c.includes("restart")).length, 1, "drop-in igual: sem segundo restart");
   // Desinstala: shim, blocos e drop-in somem; o .bashrc volta ao que era.
   const u = m.rodar("uninstall-porteiro.sh");
   assert.equal(u.status, 0, u.stdout + u.stderr);
   assert.ok(!existsSync(shim));
+  assert.ok(!existsSync(waEnviar), "wa-enviar some");
+  assert.equal(readFileSync(path.join(m.home, "agent-workspace/CLAUDE.md"), "utf8"), "# regras da máquina\n", "só o bloco do wa-enviar sai do CLAUDE.md");
   assert.equal(readFileSync(path.join(m.home, ".bashrc"), "utf8"), "[ -z \"$PS1\" ] && return\nalias ll='ls -l'\n");
   assert.ok(!existsSync(path.join(m.home, ".config/systemd/user/openclaw-gateway.service.d/meu-bot.conf")));
   m.limpar();

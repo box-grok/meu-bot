@@ -91,6 +91,35 @@ Diferença dita na tela: o agente nem vê as mensagens da pessoa nesse período.
 - `pauseHermes` (whatsapp.ts): grava o .env com backup, reinicia se preciso, relê e confere a lista e só então grava
   a marca. Capacidade `pausar` do Hermes ligada.
 
+## Hermes: "todo mundo" precisa de `WHATSAPP_ALLOWED_USERS=*` (30 out)
+
+- O bridge.js (Node) do Hermes filtra as conversas diretas pela `WHATSAPP_ALLOWED_USERS` antes de o gateway Python
+  ver a mensagem, e só conhece `*` como "qualquer um" (`allowlist.js`, `matchesAllowedUser`). `WHATSAPP_DM_POLICY=open`
+  e `WHATSAPP_ALLOW_ALL_USERS=true` valem só no Python (`authz_mixin`). Com `open` e a lista com números, quem não
+  está nela morre no bridge com `allowlist_mismatch` em `~/.hermes/whatsapp/bridge.log` e o agente nem vê a mensagem.
+- Caso que motivou: box-1, 30 out. "Todo mundo" gravava `open` + opt-in e mantinha a lista antiga (o próprio número
+  e o dono): o bot mandava mensagem (o `/send` não passa pela lista) mas não respondia ninguém além do dono.
+- Agora `hermesEnvPara("open")` grava a lista como `*`; "só você" e "você e a lista" continuam reconstruindo a lista
+  a partir do próprio número e dos números da tela. Numa máquina gravada pela versão antiga, basta escolher
+  "todo mundo" de novo no cartão (a lista muda, o app reinicia o gateway).
+
+## Hermes: o agente da máquina manda mensagem com `wa-enviar` (30 out)
+
+- Caso que motivou: no box-1, o agente da máquina (Claude Code em `~/agent-workspace`) mandou uma mensagem à Kathy
+  por `curl localhost:3100/send`. Chegou no celular, mas não entrou na sessão dela no Hermes: a conversa do app não
+  mostrava a mensagem e a Karen não sabia o que tinha perguntado.
+- Nativo: `hermes send --to whatsapp:<chat>` usa a mesma `send_message_tool` do agente, que espelha o texto na sessão
+  do contato (`gateway/mirror.py`, `mirrored: true` no `--json`). Só espelha quando o alvo é o chat como o Hermes o
+  conhece, o LID (`hermes send --list whatsapp`); com o JID de telefone a entrega sai mas o espelho avisa "no session
+  found". Pela ponte nunca espelha.
+- `backend-colima/wa-enviar` (vai no bundle do backend; `install-porteiro.sh` o grava em `~/.local/share/meu-bot/bin/`):
+  `wa-enviar <número com DDI> "<texto>"` resolve número → LID pelo `lid-mapping-<número>.json` da sessão e chama o
+  `hermes send`; diz "ENVIADA E REGISTRADA" ou avisa "SEM registro" (contato ainda sem sessão). Nas máquinas com
+  `~/.hermes`, o instalador põe a regra no `~/agent-workspace/CLAUDE.md` (bloco `meu-bot:wa-enviar v1`): usar o
+  comando, nunca a ponte, e confirmar o texto com quem pediu antes de enviar. `uninstall-porteiro.sh` desfaz os dois.
+- Mensagem já enviada pela ponte pode ser espelhada depois com `gateway.mirror.mirror_to_session(...)` da venv do
+  Hermes, passando `session_id` (foi o que se fez com a da Kathy em 30 out).
+
 ## Grupos no Hermes: ligar/desligar e "quando chamado" (25 out)
 
 Na máquina com Hermes a política de grupos mora em `~/.hermes/config.yaml` (`platforms.whatsapp`): `group_policy`

@@ -173,6 +173,11 @@ export function threadFromHermes(data: unknown, autores: ReadonlyMap<string, str
 // gateway se recusa a subir). Tudo isso, a lista inclusive, só vale depois de reiniciar o gateway: o adapter lê
 // WHATSAPP_ALLOWED_USERS na subida e o bridge recebe a lista no spawn (Hermes 0.22.2; visto no box-2: pausa gravada
 // no .env e o contato respondido 20 s depois). Esta é a fronteira dona desse formato.
+// "Todo mundo" exige a lista com "*": o bridge.js (Node) filtra as conversas diretas pela WHATSAPP_ALLOWED_USERS
+// antes de o Python ver a mensagem e só conhece "*" como "qualquer um" (allowlist.js, matchesAllowedUser); o
+// WHATSAPP_DM_POLICY=open e o WHATSAPP_ALLOW_ALL_USERS=true valem só no gateway Python (authz_mixin). Com "open"
+// e a lista de números, quem não está nela morre no bridge com `allowlist_mismatch` (box-1, 30 out: o bot não
+// respondia ninguém além do dono).
 /** Imprime `wamode=`, `wadm=`, `waallow=` e `waall=` a partir de ~/.hermes/.env (aspas e `export` tolerados). */
 export const HERMES_POLICY_PY = `python3 -c '
 import os, re
@@ -226,11 +231,13 @@ export function politicaHermes(env: HermesWaEnv, quem: QuemArg): { dmPolicy: Wha
  * `hermes whatsapp --help` ou no .env.example): "self" grava bot sempre e o aviso dos cartões some.
  * Tabela: docs/guia/contornos.md.
  *
- * O que gravar no .env para cada cartão. "open" mantém a lista como está (volta intacta se trocar de novo). O dono
- * (e o pareado) entram sempre na lista.
+ * O que gravar no .env para cada cartão. "open" grava a lista como "*": é o único valor que o bridge aceita como
+ * "todo mundo" (ver o comentário acima); a lista anterior não precisa sobreviver, porque "só eu" e "você e a lista"
+ * reconstroem a lista a partir do dono/pareado e dos números escolhidos na tela. O dono (e o pareado) entram sempre
+ * na lista.
  */
 export function hermesEnvPara(escolha: WhatsappReplyChoice, quem: QuemArg, numbers: readonly string[] = []): Record<string, string> {
-  if (escolha === "open") return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" };
+  if (escolha === "open") return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOWED_USERS: "*", WHATSAPP_ALLOW_ALL_USERS: "true" };
   const q = quemOf(quem);
   const lista = [...new Set([...donosDe(q), ...numbers.map((n) => n.replace(/\D/g, ""))])].filter((n) => n !== "");
   if (escolha === "self") return { WHATSAPP_MODE: souEu(q) ? "self-chat" : "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };

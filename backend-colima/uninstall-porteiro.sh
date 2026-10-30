@@ -4,6 +4,15 @@
 set -u
 BIN="$HOME/.local/share/meu-bot/bin"
 rm -f "$BIN/claude" && echo "porteiro: $BIN/claude removido"
+[ -f "$BIN/wa-enviar" ] && rm -f "$BIN/wa-enviar" && echo "porteiro: $BIN/wa-enviar removido"
+if [ -f "$HOME/agent-workspace/CLAUDE.md" ]; then
+  python3 - "$HOME/agent-workspace/CLAUDE.md" <<'PY'
+import re, sys
+f = sys.argv[1]; s = open(f, encoding="utf-8").read()
+s2 = re.sub(r"\n?<!-- meu-bot:wa-enviar v1 inicio -->.*?<!-- meu-bot:wa-enviar v1 fim -->\n?", "", s, flags=re.S)
+if s2 != s: open(f, "w", encoding="utf-8").write(s2); print("porteiro: regra do wa-enviar removida de " + f)
+PY
+fi
 for f in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.bash_profile"; do
   [ -f "$f" ] || continue
   python3 - "$f" <<'PY'

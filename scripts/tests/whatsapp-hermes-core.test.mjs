@@ -115,7 +115,7 @@ test("política do Hermes (.env → contrato do app): self-chat, open só com op
 
 test("o que gravar por cartão e quando o gateway precisa reiniciar", () => {
   const { hermesEnvPara, hermesPrecisaReiniciar, HERMES_ENV_VALUE_RE } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
-  assert.deepEqual(hermesEnvPara("open", "5516900000001"), { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" });
+  assert.deepEqual(hermesEnvPara("open", "5516900000001"), { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOWED_USERS: "*", WHATSAPP_ALLOW_ALL_USERS: "true" }, "todo mundo = lista \"*\": o bridge filtra as DMs pela lista e ignora open/ALLOW_ALL (box-1, 30 out)");
   assert.deepEqual(hermesEnvPara("self", "5516900000001"), { WHATSAPP_MODE: "self-chat", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "5516900000001", WHATSAPP_ALLOW_ALL_USERS: "false" });
   assert.deepEqual(hermesEnvPara("list", "5516900000001", ["5521900000002", "+55 21 90000-0002", "5516900000001"]).WHATSAPP_ALLOWED_USERS, "5516900000001,5521900000002", "sem repetidos, dono sempre, só dígitos");
   for (const v of Object.values(hermesEnvPara("list", "1", ["2"]))) assert.match(v, HERMES_ENV_VALUE_RE);
@@ -262,6 +262,7 @@ test("hermesPrecisaReiniciar: a lista também pede reinício (o Hermes 0.22.2 n�
   assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "2,1", WHATSAPP_ALLOW_ALL_USERS: "false" }), false);
   assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: "1", WHATSAPP_ALLOW_ALL_USERS: "false" }), true);
   assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" }), true, "sem a chave da lista no patch = lista mantida; muda a política");
+  assert.equal(p({ mode: "bot", dm: "open", allow: "1,2", all: "true" }, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOWED_USERS: "*", WHATSAPP_ALLOW_ALL_USERS: "true" }), true, "todo mundo gravado sem o \"*\" (versão antiga): a lista muda, reinicia");
 });
 
 test("hermesPausaModo: nativa > plugin (instalado E carregado na mesma versão) > allowlist; HERMES_PAUSA_SH olha o .ok e o marcador do register()", () => {
