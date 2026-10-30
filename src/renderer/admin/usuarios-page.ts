@@ -37,8 +37,8 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let visao: UsuariosVisao | null = null;
   let erro: string | null = null;
   let ocupado: string | null = null; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
-  /** Limite de disco já preenchido ao criar: 2% (dá para apagar e deixar sem limite). */
-  const PCT_PADRAO = "2";
+  /** Limite de disco já preenchido ao criar: 1% (dá para apagar e deixar sem limite). */
+  const PCT_PADRAO = "1";
   /** O que a pessoa digitou depois do box-; null = ainda não mexeu (o campo mostra o próximo número da sequência). */
   let nome: string | null = null; let pctNovo = PCT_PADRAO;
   const nomeAgora = (): string => nome ?? proximoBox(visao?.usuarios.map((u) => u.nome) ?? []);
