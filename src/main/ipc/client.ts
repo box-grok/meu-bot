@@ -32,7 +32,7 @@ import {
 } from "../conversa/conversation";
 import { APAGADAS_FILE, conversasApagadas, parseApagadas } from "../conversa/apagadas-core";
 import { LOCAL_HOST } from "../maquina/localBackend";
-import { backendPresente, instalarBackendDaMaquina } from "../maquina/picker";
+import { backendPresente, instalarBackendDaMaquina, notificacaoClicada } from "../maquina/picker";
 
 /** Depois de um turno, guarda a sessão do Claude Code desta conversa (o .jsonl): a referência vale mesmo depois do TTL do backend. */
 async function rememberClaudeSession(conv: { id: string; host: string; claude?: ClaudeSessionRef }): Promise<ClaudeSessionRef | null> {
@@ -676,7 +676,7 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null || !Notification.isSupported()) throw new Error("este sistema não mostra notificações");
     const n = new Notification({ title: "meu-bot", body: "As notificações estão funcionando. Até logo!", silent: false });
-    n.on("click", () => { h.win.show(); h.win.focus(); });
+    n.on("click", () => { notificacaoClicada(); h.win.show(); h.win.focus(); });
     n.show();
   });
   // Licença e devices desta conta (licenca.json + maquinas.json): pelo backend, ou por SSH onde ele não tem a rota (Hermes).
@@ -710,6 +710,7 @@ export function registerClientIpc(): void {
     const done = (): void => { liveNotifications.delete(n); };
     n.on("click", () => {
       done();
+      notificacaoClicada();
       // A janela dona pode ter sido fechada: reabre a da máquina e foca a conversa quando ela carregar.
       const win = openMainWindow(host, "notify");
       app.focus({ steal: true });

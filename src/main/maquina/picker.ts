@@ -32,6 +32,7 @@ import {
 } from "../app/shortcuts";
 import { backgroundColor, broadcast, MIN_WINDOW_WIDTH, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
 import { posicaoNoCanto } from "../app/janela-core";
+import { seletorPodeAbrir, seletorRecemAberto, suprimirSeletorAte } from "./seletor-notificacao-core";
 import { hostIsLocalAddr } from "../app/net";
 
 /** URLs que o seletor pode pedir para abrir: lista fechada, nunca URL livre do renderer. */
@@ -65,6 +66,22 @@ let source: PickerSource | null = null;
 let pickerWin: BrowserWindow | null = null;
 let lastError: string | null = null;
 let preselectOverride: string | null = null;
+/** Quando o seletor foi mostrado pela última vez e até quando o `activate` não deve abri-lo (clique em notificação). */
+let pickerMostradoEm = 0;
+let seletorSuprimidoAte = 0;
+
+/**
+ * Clique numa notificação: no macOS ele também "reabre" o app e dispara `activate`, que abriria o seletor por cima da
+ * conversa. Por 1,5 s o `activate` é ignorado, e se o seletor acabou de abrir por isso (a ordem dos eventos não é
+ * garantida), ele é fechado. Um seletor que a pessoa abriu antes fica.
+ */
+export function notificacaoClicada(): void {
+  const agora = Date.now();
+  seletorSuprimidoAte = suprimirSeletorAte(agora);
+  if (pickerWin !== null && !pickerWin.isDestroyed() && seletorRecemAberto(pickerMostradoEm, agora)) pickerWin.close();
+}
+/** O `activate` (Dock, Finder) pode abrir o seletor agora? Não logo depois de um clique em notificação. */
+export const seletorPodeAbrirAgora = (): boolean => seletorPodeAbrir(seletorSuprimidoAte, Date.now());
 
 /** Última sondagem por host; serve `window:info` (modelos) e reabre o seletor sem esperar o ssh. */
 const probes = new Map<string, { probe: HostProbe; at: number }>();
@@ -472,6 +489,7 @@ export function initPicker(src: PickerSource): void {
 export function showPicker(opts: { error?: string; preselect?: string } = {}): void {
   if (opts.error !== undefined) lastError = opts.error;
   if (opts.preselect !== undefined) preselectOverride = opts.preselect;
+  pickerMostradoEm = Date.now();
   if (pickerWin !== null && !pickerWin.isDestroyed()) {
     pickerWin.show();
     pickerWin.focus();

@@ -24,7 +24,7 @@ import { startTermApi } from "./terminal/term-api";
 import { getBackendPort } from "./app/settings";
 import { installAppMenu } from "./app/menu";
 import { changeWindowZoom } from "./app/zoom";
-import { clientPickerSource, initPicker, showPicker } from "./maquina/picker";
+import { clientPickerSource, initPicker, seletorPodeAbrirAgora, showPicker } from "./maquina/picker";
 import { registerUsuariosMacIpc, showUsuariosMac } from "./usuarios-mac/usuarios-mac-janela";
 import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
 import { initRelief, showRelief } from "./app/relief";
@@ -113,8 +113,9 @@ app.whenReady().then(() => {
   }
   // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho.
   openFromArgs(process.argv);
-  // Clicar no app (Dock, Finder) abre sempre o seletor; para ir direto a uma máquina existe o atalho dela.
-  app.on("activate", () => { if (caps().usuariosMac) showUsuariosMac(); else showPicker(); });
+  // Clicar no app (Dock, Finder) abre sempre o seletor; para ir direto a uma máquina existe o atalho dela. O clique numa
+  // notificação também dispara `activate` no macOS: aí não (ele abre a janela da máquina e foca a conversa).
+  app.on("activate", () => { if (!seletorPodeAbrirAgora()) return; if (caps().usuariosMac) showUsuariosMac(); else showPicker(); });
 
   // Estado do túnel de cada máquina vai para a janela dela.
   onTunnelState((host, state, detail) => {
