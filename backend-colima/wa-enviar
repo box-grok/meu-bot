@@ -1,0 +1,26 @@
+#!/bin/bash
+# meu-bot: manda uma mensagem do agente (Karen) a um contato do WhatsApp desta máquina pelo Hermes,
+# registrando-a na conversa do contato (hermes send + espelho nativo na sessão, gateway/mirror.py).
+# Uso: wa-enviar <número com DDI | chat@lid | grupo@g.us> "<texto>"   (sem o texto, lê do stdin)
+# Por que existe: o Hermes só espelha na sessão quando o alvo é o chat como ele o conhece (o LID, o mesmo
+# que `hermes send --list whatsapp` mostra). Com o JID de telefone, ou pela ponte (curl :3100/send), a
+# mensagem chega no celular mas não entra na conversa, e a Karen não sabe o que foi dito.
+set -u
+[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=/opt/hermes/bin:$HOME/.local/bin:$PATH
+ALVO="${1:-}"; shift || true
+if [ -z "$ALVO" ]; then echo "uso: wa-enviar <número com DDI | chat@lid> \"<texto>\"" >&2; exit 2; fi
+if [ $# -gt 0 ]; then TEXTO="$*"; else TEXTO="$(cat)"; fi
+[ -n "$TEXTO" ] || { echo "texto vazio" >&2; exit 2; }
+case "$ALVO" in
+  *@lid|*@g.us|*@s.whatsapp.net) CHAT="$ALVO" ;;
+  *) NUM="$(printf '%s' "$ALVO" | tr -dc '0-9')"
+     [ -n "$NUM" ] || { echo "alvo inválido: $ALVO" >&2; exit 2; }
+     MAPA="$HOME/.hermes/whatsapp/session/lid-mapping-$NUM.json"
+     LID="$( [ -f "$MAPA" ] && tr -dc '0-9' < "$MAPA" )"
+     if [ -n "$LID" ]; then CHAT="$LID@lid"; else CHAT="$NUM@s.whatsapp.net"; fi ;;
+esac
+OUT="$(timeout 90 hermes send --to "whatsapp:$CHAT" --json "$TEXTO" 2>&1)"; RC=$?
+printf '%s\n' "$OUT"
+if [ $RC -ne 0 ]; then echo "NÃO ENVIADA (hermes send saiu com $RC)" >&2; exit $RC; fi
+if printf '%s' "$OUT" | grep -q '"mirrored": *true'; then echo "ENVIADA E REGISTRADA na conversa ($CHAT)."
+else echo "ENVIADA, mas SEM registro na conversa ($CHAT): o contato ainda não tem sessão no Hermes (primeiro contato) ou o alvo não é o LID dele." >&2; fi

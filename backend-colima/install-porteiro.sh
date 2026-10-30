@@ -71,4 +71,29 @@ if command -v systemctl >/dev/null 2>&1 && systemctl --user cat openclaw-gateway
 else
   echo "porteiro: sem gateway do OpenClaw no systemd de usuário; só o PATH dos shells"
 fi
+# 4. wa-enviar: o agente da máquina (Claude Code em ~/agent-workspace) manda mensagem no WhatsApp do Hermes pelo
+#    `hermes send` com o alvo em LID, que é o único jeito de a mensagem entrar na conversa do contato (espelho
+#    nativo, gateway/mirror.py); pela ponte (curl :3100/send) ou com o JID de telefone ela chega mas não fica
+#    registrada, e a Karen não sabe o que foi dito. Grava o comando em bin/ e, havendo Hermes, a regra no CLAUDE.md
+#    do workspace do agente (bloco com marcadores, idempotente).
+if [ -f "$HERE/wa-enviar" ]; then
+  if ! cmp -s "$HERE/wa-enviar" "$BIN/wa-enviar"; then install -m 755 "$HERE/wa-enviar" "$BIN/wa-enviar"; echo "porteiro: $BIN/wa-enviar gravado"; else echo "porteiro: $BIN/wa-enviar já estava igual"; fi
+  if [ -d "$HOME/.hermes" ] || command -v hermes >/dev/null 2>&1; then
+    mkdir -p "$HOME/agent-workspace"
+    python3 - "$HOME/agent-workspace/CLAUDE.md" <<'PY'
+import os, sys
+f = sys.argv[1]; ini = "<!-- meu-bot:wa-enviar v1 inicio -->"; fim = "<!-- meu-bot:wa-enviar v1 fim -->"
+regra = "\n".join([ini,
+  "## Mandar mensagem no WhatsApp (meu-bot)",
+  "- Para mandar uma mensagem a um contato do WhatsApp desta máquina, use `~/.local/share/meu-bot/bin/wa-enviar <número com DDI> \"<texto>\"`. Ele envia pelo Hermes (`hermes send`) e registra a mensagem na conversa do contato como fala do agente do WhatsApp: o agente e o app passam a ver o que foi enviado.",
+  "- Nunca envie direto pela ponte (`curl localhost:3100/send`) nem por `hermes send` com o JID de telefone: chega no celular, mas não entra na conversa, e o agente do WhatsApp não sabe o que foi dito.",
+  "- Antes de enviar a um contato, mostre o texto e espere a confirmação de quem pediu. Uma mensagem por pedido; se o comando disser \"SEM registro\", avise.",
+  fim])
+t = open(f, encoding="utf-8").read() if os.path.exists(f) else ""
+a = t.find(ini)
+novo = (t[:a] + regra + t[t.find(fim, a) + len(fim):]) if a >= 0 else ((t.rstrip() + "\n\n") if t.strip() else "") + regra + "\n"
+if novo != t: open(f, "w", encoding="utf-8").write(novo); print("porteiro: regra do wa-enviar gravada em " + f)
+PY
+  fi
+fi
 echo "porteiro: pronto ($BIN/claude → $(grep '^CLAUDE_BIN=' "$DEST/.env" 2>/dev/null | cut -d= -f2- || echo '?'))"

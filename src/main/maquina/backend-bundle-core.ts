@@ -12,6 +12,8 @@ export const BUNDLE_FILES = [
   "statusline.sh", "install-statusline.sh", "uninstall-statusline.sh",
   // Porteiro do claude (rodízio de contas para o OpenClaw/WhatsApp e o Terminal).
   "claude-porteiro.js", "claude-porteiro.sh", "install-porteiro.sh", "uninstall-porteiro.sh",
+  // wa-enviar: o agente da máquina manda mensagem no WhatsApp do Hermes registrando na conversa (install-porteiro.sh o grava em bin/ e põe a regra no CLAUDE.md).
+  "wa-enviar",
 ];
 /** Claude Code Global: o intermediário do root, o que ele lê e o instalador (rodado como root pelo admin). */
 export const CLAUDE_GLOBAL_FILES = ["claude-global.js", "contas-claude.js", "account-status.js", "install-claude-global.sh"];
