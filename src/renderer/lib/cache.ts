@@ -19,13 +19,13 @@ const PREFIX = "cache:";
 export const cacheKey = (host: string, name: string): string => `${PREFIX}${host}:${name}`;
 
 /** O último valor gravado por este `build`, ou null se não há, está corrompido, é de outro build ou passou de `maxAgeMs`. */
-export function readCache<T>(store: CacheStore, host: string, name: string, build: string, maxAgeMs: number = Number.POSITIVE_INFINITY, now: number = Date.now()): Cached<T> | null {
+export function readCache<T>(store: CacheStore, host: string, name: string, build: string, maxAgeMs: number = Number.POSITIVE_INFINITY, now: number = Date.now(), qualquerBuild = false): Cached<T> | null {
   if (host === "" || build === "") return null;
   try {
     const raw = store.getItem(cacheKey(host, name));
     if (raw === null) return null;
     const env = JSON.parse(raw) as { at?: unknown; b?: unknown; v?: unknown } | null;
-    if (env === null || typeof env !== "object" || typeof env.at !== "number" || env.b !== build || !("v" in env)) return null;
+    if (env === null || typeof env !== "object" || typeof env.at !== "number" || (env.b !== build && !qualquerBuild) || !("v" in env)) return null;
     if (now - env.at > maxAgeMs) return null;
     return { value: env.v as T, at: env.at };
   } catch {

@@ -91,13 +91,14 @@ print(json.dumps({"messages": out}, ensure_ascii=True))
  * PATH (o do Hermes em ~/.hermes/tools, ou ~/.local/node). Sem isto, "env: node: No such file or directory".
  */
 /** PATH do Hermes e do Node dele: o do usuário (~/.local, ~/.hermes/tools) na frente do de todos (/opt/hermes), que vem por último. */
-export const HERMES_PATH_SH = `[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
+export const HERMES_PATH_SH = `[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done
+hermes_version() { local C="$HOME/.cache/meu-bot/hermes-version" B P J; B=$(command -v hermes 2>/dev/null) || return 0; P=$(readlink -f "$B" 2>/dev/null); J="$(dirname "$(dirname "$P")")/package.json"; if [ -s "$C" ] && [ ! "$B" -nt "$C" ] && { [ -z "$P" ] || [ ! "$P" -nt "$C" ]; } && { [ ! -f "$J" ] || [ ! "$J" -nt "$C" ]; } && [ -n "$(find "$C" -mmin -1440 2>/dev/null)" ]; then cat "$C"; else mkdir -p "$(dirname "$C")"; timeout 20 hermes --version 2>/dev/null > "$C.tmp" && mv -f "$C.tmp" "$C" && cat "$C"; fi; }`;
 /**
  * R = pasta do código do Hermes, pelo próprio `hermes` (o de ~/.local ou o de todos, em /opt/hermes); sem resposta,
  * o lugar de sempre em ~/.local. Exige HERMES_PATH_SH antes.
  */
-export const HERMES_DIR_SH = `R=$(timeout 20 hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent`;
-export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
+export const HERMES_DIR_SH = `R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent`;
+export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
 import sys, hermes_state
 db = hermes_state.SessionDB()
 for sid in sys.argv[1:]:
@@ -293,9 +294,12 @@ export type HermesPausaModo = "nativa" | "plugin" | "allowlist";
  * Sai quando: `pausanativa=1`. Hoje é um palpite declarado (`hermes whatsapp --help` cita "pause"); trocar pelo
  * sinal real da release que fechar a issue. Tabela: docs/guia/contornos.md.
  */
-export const HERMES_PAUSA_SH = `echo "pausaplugin=$( [ -f "$HOME/.hermes/plugins/meu-bot-pausa/plugin.yaml" ] && cat "$HOME/.hermes/plugins/meu-bot-pausa/.ok" 2>/dev/null | tr -dc '0-9.')"
+export const HERMES_PAUSA_SH = `${HERMES_PATH_SH}
+echo "pausaplugin=$( [ -f "$HOME/.hermes/plugins/meu-bot-pausa/plugin.yaml" ] && cat "$HOME/.hermes/plugins/meu-bot-pausa/.ok" 2>/dev/null | tr -dc '0-9.')"
 echo "pausavivo=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["versao"])' "$HOME/.local/share/meu-bot/whatsapp-pausa.carregado" 2>/dev/null | tr -dc '0-9.')"
-echo "pausanativa=$(timeout 10 hermes whatsapp --help 2>/dev/null | grep -qiE '(^|[^a-z])pause([^a-z]|$)' && echo 1 || echo 0)"`;
+PV=$(hermes_version | head -1 | tr -dc '0-9A-Za-z.'); PC="$HOME/.cache/meu-bot/pausanativa-$PV"
+if [ -n "$PV" ] && [ -s "$PC" ]; then echo "pausanativa=$(cat "$PC")"
+else N=$(timeout 10 hermes whatsapp --help 2>/dev/null | grep -qiE '(^|[^a-z])pause([^a-z]|$)' && echo 1 || echo 0); [ -n "$PV" ] && { mkdir -p "$(dirname "$PC")"; printf '%s' "$N" > "$PC"; }; echo "pausanativa=$N"; fi`;
 const VERSAO_RE = /^\d+(\.\d+)*$/;
 /** O que a sonda (HERMES_PAUSA_SH) disse → o modo. Plugin instalado mas ainda não carregado (gateway antigo) = allowlist. */
 export function hermesPausaModo(kv: Map<string, string>): HermesPausaModo {
@@ -389,7 +393,7 @@ export interface HermesGroupCfg { policy: HermesGroupPolicy; allow: string[]; re
  */
 export const HERMES_VENV_PY_SH = `HPY=$(for f in "$HOME"/.hermes/installs/*/facts.json; do [ -f "$f" ] && echo "$(stat -c %Y "$f" 2>/dev/null || echo 0) $f"; done | sort -rn | head -1 | awk '{print $2}' | xargs -r python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["packages"]["venv"]["environment"]+"/bin/python3")' 2>/dev/null); [ -x "$HPY" ] || HPY=""`;
 /** Python do runtime do Hermes (tem ruamel; PyYAML nem sempre); sem ele, o python3 da máquina. Deixa em $PY. */
-export const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
+export const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
 
 /**
  * Porta do bridge do WhatsApp do Hermes deste usuário, em `$HBP`. O Hermes usa a 3000 quando ninguém diz outra; com

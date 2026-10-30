@@ -37,7 +37,7 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
   // Com `pausaPrazo` (Hermes com o plugin meu-bot-pausa) a pausa tem prazo e vale em qualquer política; sem ela,
   // ninguém na máquina devolveria o contato quando o prazo vencesse, então só "até eu retomar".
   const pausa: WaMenuEntry = state.paused
-    ? item(state.pausaRotulo === null ? "Retomar" : `Retomar (pausado ${state.pausaRotulo})`, "resume")
+    ? item(state.pausaRotulo === null ? "Retomar" : `Retomar (${state.pausaRotulo})`, "resume")
     : pode.pausaPrazo
       ? { label: "Pausar o agente", submenu: [item("Por 2 horas", "pause-2h"), item("Por 24 horas", "pause-24h"), item("Até eu retomar", "pause")] }
       : item("Pausar", "pause");

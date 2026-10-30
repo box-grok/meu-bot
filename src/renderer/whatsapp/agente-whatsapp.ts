@@ -451,7 +451,9 @@ export function paintWhatsapp(): void {
   waAgentBtn.hidden = true;
   paintWaPolicy();
   const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? "só você" : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
-  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who}${responde}` : `${via} · desconectado`));
+  // Antes da primeira resposta desta sessão o estado é o da última vez (cache): dizer "desconectado" aqui assustaria à toa.
+  const verificando = waCheckedAt === null && !waPairing;
+  waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who}${responde}${verificando ? " · verificando…" : ""}` : verificando ? `${via} · verificando…` : `${via} · desconectado`));
   // Conectado: só o número. Desconectado: nada (o QR e a linha de progresso dizem o resto). A ficha técnica fica no title.
   // O que o app consertou sozinho na consulta (gateway em porta própria) aparece uma vez, aqui, para a pessoa saber.
   waStatusEl.textContent = `${st.connected ? `Conectado como ${who}.` : ""}${st.repaired !== undefined ? `${st.connected ? "\n" : ""}✓ Consertado sozinho: ${st.repaired}.` : ""}`;
@@ -530,14 +532,14 @@ export const comPareamento = (st: WhatsappStatus): WhatsappStatus =>
  * cai por alguns segundos. Segura "conectado" até ele voltar, senão o tutorial voltava ao passo do QR.
  */
 let waAcaoEmCurso = false;
-function segurarConexao(): void {
+export function segurarConexao(): void {
   const st = ctx.waStatus;
   if (st === null || st.number === null || !st.capacidades.politicaReinicia) return;
   waPareadoNumero = st.number; waAcaoEmCurso = true;
   if (!waAguardando) aguardarConexao(24);
 }
 /** A ação terminou na máquina: a partir daqui, "conectado" de verdade solta a segurada (antes, era o estado de antes do reinício). */
-const acaoTerminou = (): void => { waAcaoEmCurso = false; };
+export const acaoTerminou = (): void => { waAcaoEmCurso = false; };
 function aguardarConexao(tentativas: number): void {
   waAguardando = true; ctx.paintGuide();
   setTimeout(() => {

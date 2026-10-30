@@ -9,7 +9,7 @@ import type { VoiceReplyMode } from "../../shared/ipc";
 import { runSsh } from "./whatsapp";
 import { HERMES_PATH_SH, HERMES_VENV_PY_SH, hermesSttCmdSh, lerHermesAudio } from "./whatsapp-hermes-core";
 
-const LER_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY="$R/venv/bin/python3"; [ -x "$PY" ] || PY=python3
+const LER_SH = `${HERMES_PATH_SH}; R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY="$R/venv/bin/python3"; [ -x "$PY" ] || PY=python3
 ${HERMES_VENV_PY_SH}
 echo "whisper=$( [ -n "$HPY" ] && "$HPY" -c "import faster_whisper" >/dev/null 2>&1 && echo 1 || echo 0)"
 ${hermesSttCmdSh()}

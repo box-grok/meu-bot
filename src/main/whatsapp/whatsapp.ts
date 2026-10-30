@@ -127,7 +127,7 @@ if usa_hermes; then
   ${HERMES_PATH_SH}
   echo gateway=hermes; echo present=1
   echo "bin=$(command -v hermes 2>/dev/null)"
-  echo "ver=$(timeout 10 hermes --version 2>/dev/null | head -1)"
+  echo "ver=$(hermes_version | head -1)"
   ${HERMES_DIR_SH}; B=$R/scripts/whatsapp-bridge
   [ -f "$B/bridge.js" ] && echo bridge=1 || echo bridge=0
   ${HERMES_BRIDGE_PORT_SH}

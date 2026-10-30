@@ -63,7 +63,7 @@ const logger = pino ? pino({ level: 'silent' }) : silent;
  * ao mesmo tempo. Nunca sai com código != 0 por conta do SSH: o resultado vai nas linhas GRUPOS=/ERRO=/RC=.
  */
 export const HERMES_GRUPOS_LISTAR_SH = `${HERMES_PATH_SH}
-R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent
+R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent
 B="$R/scripts/whatsapp-bridge"
 [ -d "$B/node_modules/@whiskeysockets/baileys" ] || { echo "ERRO=não achei o bridge do WhatsApp do Hermes (com o Baileys) em $B"; exit 0; }
 command -v node >/dev/null 2>&1 || { echo "ERRO=esta máquina não tem o node no PATH para o Hermes"; exit 0; }
