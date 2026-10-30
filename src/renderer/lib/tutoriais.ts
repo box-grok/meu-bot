@@ -4,7 +4,7 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo, FinanceInfo, LinkPublicoInfo } from "../../shared/ipc";
+import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, QuickEntryStatus, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo, FinanceInfo, LinkPublicoInfo } from "../../shared/ipc";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -28,8 +28,6 @@ export interface GuideContext {
    * (MCP + regra); `tabs` = abas abertas agora; `extensions` = extensões na sessão; `agentOn` = "agente pode usar".
    */
   navegador: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; installed: boolean | null; tabs: number; extensions: number; agentOn: boolean; /** Sites fixos no espaço de trabalho ativo. */ servicos: number; /** A extensão do CRM próprio (meu-bot-crm) está carregada na sessão. */ extensaoEmbutida: boolean };
-  /** Tutorial 11: notificações do Navegador ligadas nas Configurações e quantas conversas "🔔" já existem. */
-  notify: { enabled: boolean; conversas: number };
   /**
    * Fallback entre contas: `primary` = modelo padrão desta máquina (quem responde sempre); `chain` = a corrente de
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
@@ -48,11 +46,15 @@ export interface GuideContext {
   contas: readonly ContaEstado[] | null;
   /** Tutorial 17: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
   linkPublico: LinkPublicoInfo | null;
+  /** Tutorial 17: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
+  linkPublicoPossivel: boolean;
   /**
    * Tutorial 14 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
    * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
    */
   finance: { access: boolean | null; info: FinanceInfo | null };
+  /** Tutorial 18: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
+  quickEntry: { status: QuickEntryStatus | null; shortcut: string };
   /**
    * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
    * está liberado e é o motor em uso; `crmStreak` = o CRM pelo Streak é o caminho (plano gratuito, ou motor Streak).
@@ -65,9 +67,9 @@ export interface GuideContext {
   known: Record<GuideSource, boolean>;
 }
 /** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
-export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance" | "linkpublico";
-export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance", "linkpublico"];
-const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false, linkpublico: false });
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance" | "linkpublico" | "quickentry";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance", "linkpublico", "quickentry"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false, linkpublico: false, quickentry: false });
 export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
@@ -76,13 +78,14 @@ export const emptyContext = (): GuideContext => ({
   xai: { possible: null, hermes: null, loggedIn: null, label: null },
   guarda: { installed: null, possible: null },
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
-  notify: { enabled: false, conversas: 0 },
   fallback: { primary: null, chain: null },
   objective: null,
+  quickEntry: { status: null, shortcut: "" },
   crm: { access: null, info: null, local: null },
   grupos: { info: null, alvo: null, respondeu: false },
   contas: null,
   linkPublico: null,
+  linkPublicoPossivel: true,
   finance: { access: null, info: null },
   produto: { planoExigido: "free", crmProprio: false, crmStreak: true },
   known: noneKnown(),
@@ -153,13 +156,13 @@ export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
 }
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; notifySkipped: boolean; notifySeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioTestado: boolean; linkNomeVisto: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, notifySkipped: false, notifySeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, audioTestado: false, linkNomeVisto: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioTestado: boolean; linkNomeVisto: boolean; quickUsado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, audioTestado: false, linkNomeVisto: false, quickUsado: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "notifySkipped" | "notifySeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "audioTestado" | "linkNomeVisto";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "audioTestado" | "linkNomeVisto" | "quickUsado";
 
 export interface GuideStep {
   id: string;
@@ -168,7 +171,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "nav-ws" | "nav-notify-config" | "nav-notify-test" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome";
+  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome" | "quick-atalho" | "quick-testar";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -220,6 +223,8 @@ export interface Tutorial {
   needsCrmProprio?: true;
   /** Só quando a licença da máquina libera o financeiro (add-on meu-bot-finance). */
   needsFinance?: true;
+  /** Só numa conta que pode ter link público (some na janela do root: o link é das contas de usuário). */
+  needsLinkPublico?: true;
   /** Só onde o agente da máquina aceita a guarda (capacidade `guarda`); some numa máquina com outro agente. */
   needsGuarda?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
@@ -404,6 +409,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
     minutes: 3,
     icon: "target",
+    // Fora da lista (30 out): o admin instala a status line ao criar a conta (prepararUsuario), sem passo para a pessoa.
+    oculto: true,
     reset: { what: "desinstala a status line desta máquina (o settings.json anterior volta) e apaga a escolha de segmentos" },
     steps: [
       {
@@ -684,43 +691,6 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "notificacoes-navegador",
-    number: 11,
-    needs: ["navegador"],
-    // Sem `after`: não depende de o tutorial 9 estar concluído (o agente navegar não é pré-requisito); o Pro é o passo 1.
-    // 27 out: fora da lista de Tutoriais por decisão de produto.
-    oculto: true,
-    title: "Notificações do Navegador (Pro)",
-    short: "Notificações",
-    summary: "Um site fixo no Navegador (o Gmail, por exemplo) avisa quando chega algo; o agente recebe o aviso numa conversa e faz o que você mandar: traduzir, explicar para leigo, resumir.",
-    minutes: 4,
-    icon: "chat",
-    reset: { what: "desliga as notificações do Navegador e esquece \"pulei\" e \"vi funcionando\" (os espaços de trabalho e as conversas ficam)" },
-    steps: [
-      {
-        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "navegador-pro",
-        text: "As notificações são do Navegador, que é do plano Pro. Se já liberou o Navegador, este passo já está feito.",
-        done: (_st, _f, c) => c.navegador.access === "ok",
-      },
-      {
-        id: "fixar", title: "Fixar o site num espaço de trabalho", target: "none", body: "nav-ws",
-        text: "No Navegador, crie um espaço de trabalho (um por cliente, por projeto, como preferir: o nome é seu) e fixe o site com 📌 ou \"＋ Adicionar site\". Site fixo fica aberto enquanto o Navegador existe; é assim que as notificações chegam.",
-        done: (_st, _f, c) => c.navegador.access === "ok" && c.navegador.servicos > 0,
-      },
-      {
-        id: "acao", title: "Decidir o que fazer com cada notificação", target: "none", body: "nav-notify-config",
-        text: "Só o que chegar de novo conta: o que já está na caixa de entrada não dispara nada. Mesmo assim, se o site avisa muito, limite aos sites que importam e saiba que o app trata no máximo 3 por minuto por site. Se preferir, pule: fica desligado até você ligar nas Configurações.",
-        done: (_st, f, c) => c.notify.enabled || f.notifySkipped,
-      },
-      {
-        id: "ver", title: "Ver uma notificação virar conversa", target: "none", body: "nav-notify-test",
-        text: "Com a função ligada, mande um e-mail para você mesmo (ou espere o próximo). A conversa \"🔔 <site>\" aparece sozinha com a resposta do agente, e a notificação do Mac leva até ela.",
-        done: (_st, f, c) => f.notifySkipped || f.notifySeen || c.notify.conversas > 0,
-        manual: { label: "Vi a conversa aparecer", flag: "notifySeen" },
-      },
-    ],
-  },
-  {
     id: "whatsapp-grupos",
     number: 12,
     needs: ["grupos"],
@@ -840,6 +810,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["linkpublico"],
     after: "claude-login",
     needsXai: true,
+    needsLinkPublico: true,
     title: "Seu link público",
     short: "Link público",
     summary: "Um endereço só seu na internet (https://<nome>.agentesgrok.com/): peça ao agente o link de qualquer arquivo ou página e mande para quem quiser.",
@@ -864,6 +835,32 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, f, c) => f.linkNomeVisto || (c.linkPublico !== null && c.linkPublico.nome !== c.linkPublico.usuario),
         manual: { label: "Deixar como está", flag: "linkNomeVisto" },
         refazer: true,
+      },
+    ],
+  },
+  {
+    // Saiu das Configurações (30 out): a janela flutuante é sempre ativa; aqui a pessoa escolhe o atalho e experimenta.
+    id: "entrada-rapida",
+    number: 18,
+    needs: ["quickentry"],
+    after: "claude-login",
+    title: "Entrada rápida",
+    short: "Entrada rápida",
+    summary: "Pressione um atalho em qualquer app e mande uma mensagem ao agente sem procurar a janela do meu-bot. Está sempre ligada; aqui você escolhe o atalho.",
+    minutes: 1,
+    icon: "chat",
+    steps: [
+      {
+        id: "atalho", title: "Escolher o atalho", target: "none", body: "quick-atalho",
+        text: "Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa a combinação, o status mostra \"em uso\": escolha outra.",
+        done: (_st, _f, c) => c.quickEntry.status === "registered",
+      },
+      {
+        id: "usar", title: "Mandar uma mensagem pela janela flutuante", target: "none", body: "quick-testar",
+        text: "Com o meu-bot em segundo plano, pressione o atalho: uma janelinha aparece por cima de tudo. Digite uma mensagem e Enter: ela vai para a conversa ativa e o meu-bot volta para a frente.",
+        done: (_st, f) => f.quickUsado,
+        lembrar: true,
+        manual: { label: "Funcionou", flag: "quickUsado" },
       },
     ],
   },
@@ -963,6 +960,7 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.oculto === true) return false;
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
     if (t.needsXai === true && ctx.xai.possible === false) return false;
+    if (t.needsLinkPublico === true && !ctx.linkPublicoPossivel) return false;
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
     if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
     if (t.needsFinance === true && ctx.finance.access !== true) return false;

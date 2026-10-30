@@ -1,11 +1,11 @@
 import { app } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { BackendModel, NavNotifyPref, NavWorkspaces, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../../shared/ipc";
+import type { BackendModel, NavWorkspaces, QuickEntryStatus, SettingsUpdate, SettingsView, Theme } from "../../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 import { clampZoom } from "./zoom-core";
 import {
-  defaultSettings, emptyWorkspaces, FONT_MAX, FONT_MIN, isAbaFixa, isBackendModel, isBudget, isEvery, isFont, isOnboarding, isPort, isTheme, isValidHost, normalizeNavNotify, normalizeNavWorkspaces, normalizeSettings,
+  defaultSettings, emptyWorkspaces, isAbaFixa, isBackendModel, isBudget, isEvery, isOnboarding, isPort, isTheme, isValidHost, normalizeNavWorkspaces, normalizeSettings,
   type SettingsFile,
  normalizeFavoritos, type NavFavoritoItem } from "./settings-normalize";
 
@@ -57,7 +57,6 @@ export function setBackendPortForHost(host: string, port: number): void {
 export const getTheme = (): Theme => file.theme;
 export const getContextBudget = (): number => file.contextBudgetTokens;
 export const getMemoryEveryTurns = (): number => file.memoryEveryTurns;
-export const getFontSize = (): number => file.fontSize;
 /** Zoom da interface (nível -8..8, 0 = 100%); quem aplica nas janelas é zoom.ts. */
 export const getZoomLevel = (): number => file.zoomLevel;
 export function setZoomLevel(level: number): void {
@@ -66,7 +65,8 @@ export function setZoomLevel(level: number): void {
   file.zoomLevel = next;
   try { persist(); } catch { /* cortesia: o zoom vale até fechar */ }
 }
-export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ enabled: file.quickEntryEnabled, shortcut: file.quickEntryShortcut });
+/** A entrada rápida é sempre ativa: o interruptor saiu das configurações, e um "false" gravado por versões antigas é ignorado. */
+export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ enabled: true, shortcut: file.quickEntryShortcut });
 /** Cópia diária do CRM e do financeiro no Drive do dono; desligada aqui, para quem não quer nada fora da máquina. */
 export const getDadosNoDrive = (): boolean => file.dadosNoDrive;
 export function setDadosNoDrive(ligado: boolean): void { if (file.dadosNoDrive === ligado) return; file.dadosNoDrive = ligado; persist(); }
@@ -172,7 +172,6 @@ export const settingsView = (host?: string): SettingsView => ({
   backendModelForHost: getBackendModel(host),
   backendPort: file.backendPort,
   backendPortForHost: getBackendPort(host),
-  fontSize: file.fontSize,
   zoomLevel: file.zoomLevel,
   theme: file.theme,
   notifications: file.notifications,
@@ -186,14 +185,13 @@ export const settingsView = (host?: string): SettingsView => ({
   // Preenchidos pelo handler settings:get/set (dependem do app empacotado e do sistema).
   openAtLogin: false, openAtLoginAvailable: false,
   hostNames: getHostNames(),
-  navNotify: { ...file.navNotify, hosts: [...file.navNotify.hosts] },
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
-  atualizarOcioso: file.atualizarOcioso,
+  atualizarOcioso: true, // sempre ligado por enquanto (o interruptor está travado nas Configurações)
   abaFixa: file.abaFixa,
 });
 /** "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta). */
-export const getAtualizarOcioso = (): boolean => file.atualizarOcioso;
-export const getNavNotify = (): NavNotifyPref => settingsView().navNotify;
+/** Sempre ligado por enquanto: o interruptor fica travado nas Configurações; um "false" gravado antes é ignorado. */
+export const getAtualizarOcioso = (): boolean => true;
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */
 export function updateSettings(update: SettingsUpdate, host?: string): SettingsView {
@@ -214,10 +212,6 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     const next = { ...file.backendPortByHost };
     if (update.backendPortForHost === file.backendPort) delete next[host]; else next[host] = update.backendPortForHost;
     file.backendPortByHost = next;
-  }
-  if (update.fontSize !== undefined) {
-    if (!isFont(update.fontSize)) throw new Error(`Tamanho de fonte inválido (${FONT_MIN} a ${FONT_MAX}).`);
-    file.fontSize = update.fontSize;
   }
   if (update.theme !== undefined) {
     if (!isTheme(update.theme)) throw new Error("Tema inválido.");
@@ -242,7 +236,6 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     if (!isOnboarding(update.onboarding)) throw new Error("Estado de onboarding inválido.");
     file.onboarding = update.onboarding;
   }
-  if (update.navNotify !== undefined) file.navNotify = normalizeNavNotify(update.navNotify, file.navNotify);
   if (update.atualizarOcioso !== undefined) file.atualizarOcioso = update.atualizarOcioso === true;
   if (update.abaFixa !== undefined) {
     if (!isAbaFixa(update.abaFixa)) throw new Error("Aba fixada inválida.");

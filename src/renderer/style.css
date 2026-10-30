@@ -27,7 +27,7 @@ body {
   grid-template-columns: minmax(0, 1fr);
 }
 .topbar-mini { grid-row: 1; } .offline-bar { grid-row: 2; } .update-bar:not(.offline-bar) { grid-row: 3; } .topbar { grid-row: 4; }
-.body { grid-row: 5; } .ctx-line { grid-row: 6; } .composer { grid-row: 7; }
+.body { grid-row: 5; } .ctx-line { grid-row: 6; } .composer, .composer-mini { grid-row: 7; } /* nunca as duas ao mesmo tempo */
 .ctx-line { font-size: 11px; color: var(--muted); padding: 2px 16px 0; background: var(--card); border-top: 1px solid var(--line); }
 .ctx-line[hidden] { display: none; }
 dialog h3 { margin: 8px 0 0; font-size: 14px; }
@@ -200,7 +200,13 @@ body.dragging webview, body.dragging .term-box, body.dragging iframe { pointer-e
 .code-block pre { margin: 0; padding: 10px 12px; overflow-x: auto; }
 .code-block pre code.hljs { padding: 0; background: transparent; }
 
-.composer { display: flex; gap: 10px; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--card); align-items: stretch; }
+.composer { display: flex; gap: 10px; padding: 16px 14px 12px; border-top: 1px solid var(--line); background: var(--card); align-items: stretch; position: relative; }
+/* Alça centralizada no alto da barra, como a de uma gaveta; discreta até o mouse chegar. */
+.composer-toggle { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font: 13px/1 inherit; padding: 0 14px; color: var(--muted); background: transparent; border: none; border-radius: 0 0 8px 8px; cursor: pointer; opacity: .55; }
+.composer-toggle:hover { opacity: 1; color: var(--fg); background: var(--bg); }
+body.composer-hidden .composer { display: none; }
+.composer-mini { display: flex; justify-content: center; padding: 1px 0; border-top: 1px solid var(--line); background: var(--card); }
+.composer-mini[hidden] { display: none; }
 .composer textarea {
   flex: 1; min-width: 0; resize: none; font: inherit; font-size: var(--chat-font); padding: 8px 10px; border-radius: 10px;
   border: 1px solid var(--line); background: var(--bg); color: var(--fg);
@@ -780,7 +786,6 @@ body.topbar-hidden .topbar { display: none; }
 .nav-service:hover .nav-service-x { opacity: 1; }
 .nav-service-x:hover { color: var(--bad); }
 .nav-rail-add { align-self: flex-start; }
-.nav-bell.on { color: var(--accent); }
 .nav-pin { opacity: .45; filter: grayscale(1); }
 .nav-bar .nav-agent { font-size: 15px; opacity: .45; filter: grayscale(1); border-radius: 8px; }
 .nav-bar .nav-agent.on { opacity: 1; filter: none; box-shadow: 0 0 0 1px var(--ok) inset; }
@@ -798,7 +803,6 @@ body.topbar-hidden .topbar { display: none; }
 .nav-zoom[hidden] { display: none; }
 .skill-offer { display: flex; flex-direction: column; gap: 8px; }
 .skill-offer-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.nav-bell[hidden] { display: none; }
 .nav-rail-titlerow { justify-content: space-between; flex-wrap: nowrap; }
 .nav-rail-collapse { font-size: 13px; color: var(--muted); }
 .nav-rail-collapse:hover { color: var(--accent); }
@@ -911,8 +915,6 @@ body.topbar-hidden .topbar { display: none; }
 .update-line.ok { color: var(--ok); }
 .update-line.warn { color: var(--warn); }
 .update-line.bad { color: var(--bad); }
-.notify-test { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
-.notify-test-q { margin: 0; font-size: 12px; }
 .update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px; font-size: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-bottom: 1px solid var(--line); }
 .update-bar[hidden] { display: none; }
 /* Bloqueador de versão mínima: cobre a janela inteira até o app reiniciar na versão que o backend exige. */

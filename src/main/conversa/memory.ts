@@ -62,7 +62,7 @@ export function setMemory(update: { notas?: string; perfil?: string }): MemorySt
 /** Mensagem system inicial com a memória, só quando há algo gravado. */
 export function memorySystemMessage(): OutgoingMessage | undefined {
   if (memory.notas.trim() === "" && memory.perfil.trim() === "") return undefined;
-  const parts = ["Memória local do usuário (editável em Configurações > Memória). Trate como contexto confiável e permanente."];
+  const parts = ["Memória local do usuário (o app a atualiza sozinho; a pessoa ajusta pelo chat). Trate como contexto confiável e permanente."];
   if (memory.perfil.trim() !== "") parts.push(`## Perfil do usuário\n${memory.perfil.trim()}`);
   if (memory.notas.trim() !== "") parts.push(`## Notas\n${memory.notas.trim()}`);
   return { role: "system", content: parts.join("\n\n") };

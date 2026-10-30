@@ -88,8 +88,7 @@ export function ligarEnvio(): void {
       if (!had || grokNow) ctx.paintGuide(); // primeira resposta nesta máquina (tutorial 1) / primeira do grok-4 (tutorial 4)
     }
     markUnread(tab);
-    if (tab.notifyAfter !== null) { const t = tab.notifyAfter; tab.notifyAfter = null; void window.meuBot.notify(tab.id, t.title, tab.pendingText.replace(/\s+/g, " ").trim().slice(0, 200) || "tratado pelo agente"); }
-    else ctx.maybeNotify(tab, tab.pendingText);
+    ctx.maybeNotify(tab, tab.pendingText);
     if (tab.navSitesTurn.size > 0) { ctx.offerSkillFromTurn(tab); tab.navSitesTurn = new Set(); }
   });
   window.meuBot.on("chat:error", (e: ErrorEvent) => {

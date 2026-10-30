@@ -2,6 +2,28 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Configurações enxutas e tutorial 18 "Entrada rápida" (30 out 2026)
+
+- **Saíram das Configurações** (pedido do produto: a pessoa leiga não deve mexer nisso): Conexão (modelo padrão e porta
+  do backend), Aparência e avisos (tema, zoom, notificações), Entrada rápida (interruptor e atalho) e Inicialização
+  (abrir ao entrar no Mac). Ficaram só Segurança, Sobre e atualização, Suporte e Sua conta. O `Salvar` manda um
+  `setSettings({})` e fecha; os campos removidos continuam no `settings.json` e nos tipos (`SettingsView`/`SettingsUpdate`),
+  só a tela não os oferece mais.
+- **Onde cada coisa ficou:** o modelo de cada conversa continua no seletor da caixa de texto; a porta do backend é
+  ajustada pelo seletor de máquinas; a paleta (Cmd+K) ganhou "Backend desta máquina" (modelo padrão · porta), que mostra
+  um toast com a informação, acessível pelo chat; o zoom segue no menu Visualizar, na paleta e no segmento do rodapé;
+  o tema fica no valor gravado (`system` por padrão). O tutorial 5 (fallback) lia o `<select>` do modelo das
+  Configurações e agora lê `ctx.settings.backendModelForHost`.
+- **Entrada rápida sempre ativa:** `getQuickEntry()` devolve `enabled: true` ignorando um `false` gravado por versões
+  antigas. O gravador de atalho virou o tutorial 18 (`entrada-rapida`, after 1, fonte `quickentry` = as configurações
+  chegaram): passo 1 "Escolher o atalho" (`quick-atalho`: o campo salva a combinação na hora e mostra ativo / em uso /
+  inválido; concluído com `quickEntryStatus === "registered"`), passo 2 "Mandar uma mensagem pela janela flutuante"
+  (`quick-testar`: botão "Mostrar a janela flutuante"; a flag `quickUsado` é gravada quando `ui:quick-submit` chega,
+  com "Funcionou" de fallback; `lembrar`).
+- **Interruptores travados por enquanto:** "Avisar pelo meu WhatsApp" (Segurança) e "Atualizar sozinho quando o Mac
+  estiver ocioso" (Sobre) aparecem ligados e desabilitados. O main devolve `atualizarOcioso: true` sempre
+  (`getAtualizarOcioso`); ao abrir as Configurações, uma máquina com o aviso desligado é religada (`setAlertPrefs`).
+
 ## Onboarding guiado (15 out 2026)
 
 - Quando a janela abre sem nenhuma conversa na máquina e `settings.onboarding === "pending"`, em vez

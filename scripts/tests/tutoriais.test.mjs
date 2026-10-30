@@ -25,8 +25,8 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
   // O 15 (Mais contas do Claude) fica logo depois do 1 na trilha: desmembrado dele, pulável; o número é só o rótulo.
   // O 16 (Ouvir áudios) fica logo depois do 2, pelo mesmo motivo: era o passo de áudio dele.
-  // O 17 (Seu link público) fecha a trilha: depende só do 1 e do admin ter ligado o link.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 17]);
+  // O 17 (Seu link público) e o 18 (Entrada rápida, que saiu das Configurações) fecham a trilha: dependem só do 1.
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 12, 13, 14, 17, 18]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -40,7 +40,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli", "link-publico"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli", "link-publico", "entrada-rapida"], "o 3 (status line) está oculto: o admin instala ao criar a conta");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM pelo Streak) está oculto, mesmo depois do 9 (Navegador)");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };
@@ -215,12 +215,12 @@ test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui q
   for (const st of sup.steps) assert.doesNotMatch(`${st.title} ${st.text}`, /Lucas|\{admin\}/, "sem o nome de quem dá o suporte");
 });
 
-test("tutorial da status line: sempre visível; instalar, depois os limites no rodapé", async () => {
-
+test("tutorial da status line: oculto da lista (o admin instala ao criar a conta); o guia continua existindo: instalar, depois os limites no rodapé", async () => {
   const sl = TUTORIAIS.find((x) => x.id === "statusline");
-  assert.equal(sl.number, 3);
+  assert.equal(sl.number, 3); assert.equal(sl.oculto, true);
   assert.ok(!visibleTutorials(emptyContext()).includes(sl), "sem o 1 concluído não aparece");
-  assert.ok(visibleTutorials(emptyContext(), (x) => x.id === "claude-login").includes(sl));
+  assert.ok(!visibleTutorials(emptyContext(), (x) => x.id === "claude-login").includes(sl), "nem com o 1 concluído: saiu da lista em 30 out");
+  assert.ok(!visibleTutorials(emptyContext(), () => true).includes(sl));
   const ALL = { model: true, ctx: true, account: true, session: true, weekly: true };
   const c = (installed, limits, segments = null) => ({ ...emptyContext(), statusLine: { installed, limits, segments } });
   assert.equal(guideView(sl, null, emptyFlags(), c(null, false)).current, 0, "ainda não consultado");
@@ -419,6 +419,8 @@ test("tutorial 17 (link público): só em máquina por SSH; ligado pelo admin �
   assert.equal(t.number, 17); assert.deepEqual(t.needs, ["linkpublico"]); assert.equal(t.after, "claude-login"); assert.equal(t.needsXai, true);
   const mac = { ...emptyContext(), xai: { ...emptyContext().xai, possible: false } };
   assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "link-publico"), "só em máquina por SSH");
+  assert.ok(!visibleTutorials({ ...emptyContext(), linkPublicoPossivel: false }, () => true).some((x) => x.id === "link-publico"), "na janela do root não aparece: o link é das contas de usuário");
+  assert.ok(visibleTutorials(emptyContext(), () => true).some((x) => x.id === "link-publico"));
   const ctx = (lp) => ({ ...emptyContext(), linkPublico: lp, known: { ...emptyContext().known, linkpublico: true } });
   const lp = { url: "https://box-2.agentesgrok.com/", nome: "box-2", dominio: "agentesgrok.com", arquivos: 0, usuario: "box-2" };
   assert.equal(guideView(t, null, emptyFlags(), ctx(null)).current, 0, "desligado: espera o admin");

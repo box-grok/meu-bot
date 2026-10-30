@@ -225,10 +225,6 @@ function prepareSession(host: string): { ses: Session; ready: Promise<void> } {
     const polyfill = path.join(__dirname, "..", "..", "preload", "ext-polyfill.js");
     try { ses.registerPreloadScript({ type: "service-worker", filePath: polyfill }); ses.registerPreloadScript({ type: "frame", filePath: polyfill }); }
     catch (e) { log(`[navegador ${host}] polyfill de extensões não registrado: ${e instanceof Error ? e.message : String(e)}`); }
-    // Ponte das notificações das páginas (ver nav-notify-preload.ts): só expõe `window.meuBotNav.notify` em http(s).
-    const notify = path.join(__dirname, "..", "..", "preload", "nav-notify-preload.js");
-    try { ses.registerPreloadScript({ type: "frame", filePath: notify }); }
-    catch (e) { log(`[navegador ${host}] ponte de notificações não registrada: ${e instanceof Error ? e.message : String(e)}`); }
     ready = installChromeWebStore({
       session: ses,
       extensionsPath: extensionsDir(host),

@@ -48,6 +48,11 @@
 
 ## Status line e seção Fallback (15 out 2026)
 
+- **Tutorial 3 oculto (30 out):** o cartão "Status line do Claude" saiu da lista (`oculto: true` em `lib/tutoriais.ts`; o
+  guia, os canais `statusline:*` e o reset continuam no código). O admin instala a status line ao criar a conta
+  (`prepararUsuario` → `installStatusLine`, também no "Preparar"): a pessoa não tem passo nenhum. A escolha de segmentos
+  deixa de ter tela; o rodapé mostra todos.
+
 - Rodapé da conversa (`#ctx-line`) virou a status line no modelo do `statusline.sh` da box:
   `agente | Ctx: 13% · 3.2k/24.0k | 6.3 s · 258 tok · 41 t/s | m6@… (Premium) | Sessão: 37% · 1h35m |
   Semanal: 37% · 5d0h | há 12 min`. Cores: modelo amarelo, Ctx/Sessão ciano, conta verde, Semanal
@@ -142,9 +147,9 @@
   PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`.
 - Tutorial 5 · Fallback: Claude e Grok (17 out; antes "Em breve"): três passos. (1) "As duas contas nesta máquina":
   conclui com `claude.loggedIn && xai.loggedIn` no `GuideContext`. (2) "Escolher primário e reserva" (corpo
-  `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o mesmo seletor de Configurações › Fallback
-  (Claude = agente, xAI = grok-4), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
-  (`fallbackOrderText`, pura em `lib/tutoriais.ts`, agora usada também pelas Configurações) e "Manter assim" quando o
+  `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o seletor do primário (Claude = agente, xAI = grok-4; o grupo
+  Configurações › Fallback que o espelhava saiu em 30 out 2026, o tutorial é o único lugar), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
+  (`fallbackOrderText`, pura em `lib/tutoriais.ts`) e "Manter assim" quando o
   primário já está na corrente; conclui com a flag `fallbackChosen` (também gravada ao escolher nas Configurações) e
   o primário em `FALLBACK_PRIMARIES`. (3) "Ver a reserva assumir": a flag `fallbackSeen` é gravada sozinha quando um
   `chat:done` traz `fallback` (a reserva respondeu de verdade) ou pelo botão "Entendi como funciona". `needsXai`
@@ -200,6 +205,10 @@
   - **Status:** `contas-cli-core.ts` › `STATUS_SH`, um SSH só.
 
 ## Tutorial 17 · Seu link público (30 out)
+
+- **Janela do root (30 out):** o status (`link-publico:status`) responde `LINK=root` quando `id -u` é 0 e o tutorial some
+  (`needsLinkPublico` + `linkPublicoPossivel: false` no contexto): o link público é das contas de usuário, o admin não
+  liga para o root. Antes o passo 1 ficava eternamente em "o admin liga" e "Conferir de novo" não mudava nada.
 
 - **`link-publico`, number 17, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
   admin liga para a pessoa (Link Público Global, `guia/maquinas.md`). Fonte `linkpublico` (`window.meuBot.linkPublico()`,

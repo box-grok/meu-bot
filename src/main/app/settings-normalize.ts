@@ -3,7 +3,7 @@
  * migração `sshHost` (v2, host padrão global) → `lastHost` (v3, só pré-seleção do seletor).
  * Sem Electron: testável com node --test.
  */
-import type { AbaFixa, BackendModel, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, Theme } from "../../shared/ipc";
+import type { AbaFixa, BackendModel, NavService, NavWorkspace, NavWorkspaces, Theme } from "../../shared/ipc";
 import { parseAccelerator } from "./accelerator";
 import { isZoomLevel } from "./zoom-core";
 
@@ -27,7 +27,6 @@ export interface SettingsFile {
   backendPort: number;
   /** Porta por máquina; vence a padrão (duas contas na mesma máquina não cabem na mesma porta). */
   backendPortByHost: Record<string, number>;
-  fontSize: number;
   /** Zoom da interface inteira (nível do Chromium, -8..8; 0 = 100%). Um só para todas as janelas. */
   zoomLevel: number;
   theme: Theme;
@@ -52,7 +51,6 @@ export interface SettingsFile {
   /** Apelido de cada máquina no app ("Renomear" no seletor); a chave SSH não muda. */
   hostNames: Record<string, string>;
   /** Notificações das páginas do Navegador → conversas (instrução, sites, modo). */
-  navNotify: NavNotifyPref;
   /** Espaços de trabalho do Navegador, por máquina (tipo, ativo e a lista com os sites fixos). */
   navEspacos: Record<string, NavWorkspaces>;
   /** Reiniciar sozinho na versão nova com o Mac ocioso (como o Grok Bot; ligado por padrão). */
@@ -104,22 +102,6 @@ function normalizeNavEspacos(v: unknown): Record<string, NavWorkspaces> {
   for (const [host, w] of Object.entries(v as Record<string, unknown>)) { if (!isValidHost(host)) continue; const n = normalizeNavWorkspaces(w); if (n.lista.length > 0) out[host] = n; }
   return out;
 }
-export const NAV_NOTIFY_DEFAULT_INSTRUCTION = "Chegou uma notificação de um site que acompanho. Traduza para português, se estiver em outra língua, e explique em termos simples, para quem não é técnico, o que ela significa e se preciso fazer alguma coisa. Seja breve: no máximo cinco linhas.";
-export const defaultNavNotify = (): NavNotifyPref => ({ enabled: false, instruction: NAV_NOTIFY_DEFAULT_INSTRUCTION, hosts: [], mode: "site", avisar: "tratado" });
-const HOST_ITEM_RE = /^[a-z0-9.-]+$/;
-/** Aceita um objeto parcial (arquivo antigo, patch das Configurações) e devolve a preferência completa. */
-export function normalizeNavNotify(v: unknown, base: NavNotifyPref = defaultNavNotify()): NavNotifyPref {
-  const p = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
-  const hosts = Array.isArray(p["hosts"]) ? [...new Set((p["hosts"] as unknown[]).map((h) => (typeof h === "string" ? h.trim().toLowerCase() : "")).filter((h) => h !== "" && HOST_ITEM_RE.test(h)))] : base.hosts;
-  const instruction = typeof p["instruction"] === "string" ? p["instruction"].trim().slice(0, 2000) : base.instruction;
-  return {
-    enabled: typeof p["enabled"] === "boolean" ? p["enabled"] : base.enabled,
-    instruction: instruction === "" ? NAV_NOTIFY_DEFAULT_INSTRUCTION : instruction,
-    hosts,
-    mode: p["mode"] === "each" || p["mode"] === "site" ? p["mode"] : base.mode,
-    avisar: p["avisar"] === "tratado" || p["avisar"] === "chegada" || p["avisar"] === "nunca" ? p["avisar"] : base.avisar,
-  };
-}
 
 export type Onboarding = "pending" | "done" | "skipped";
 export interface NavFavoritoItem { id: string; titulo: string; url: string }
@@ -152,14 +134,10 @@ export const isOnboarding = (v: unknown): v is Onboarding => typeof v === "strin
 export const DEFAULT_SHORTCUT = "CommandOrControl+Shift+Space";
 export const DEFAULT_MODEL: BackendModel = "agente";
 export const DEFAULT_PORT = 8080;
-export const FONT_MIN = 12;
-export const FONT_MAX = 20;
-export const DEFAULT_FONT = 14;
 export const DEFAULT_BUDGET = 24000;
 export const DEFAULT_MEMORY_EVERY = 10;
 
 export const isPort = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 65535;
-export const isFont = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= FONT_MIN && v <= FONT_MAX;
 export const isBudget = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 4000 && v <= 200000;
 export const isEvery = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100;
 
@@ -168,9 +146,9 @@ export const isValidHost = (host: string): boolean => HOST_RE.test(host) && host
 const validHost = (v: unknown): string | null => (typeof v === "string" && isValidHost(v) ? v : null);
 
 export const defaultSettings = (): SettingsFile => ({
-  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, fontSize: DEFAULT_FONT, zoomLevel: 0,
+  version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navNotify: defaultNavNotify(), navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -194,7 +172,6 @@ export function normalizeSettings(input: unknown): SettingsFile {
     defaultModelByHost: byHost,
     backendPort: isPort(p["backendPort"]) ? p["backendPort"] : DEFAULT_PORT,
     backendPortByHost: portByHost,
-    fontSize: isFont(p["fontSize"]) ? p["fontSize"] : DEFAULT_FONT,
     zoomLevel: isZoomLevel(p["zoomLevel"]) ? p["zoomLevel"] : 0,
     theme: isTheme(p["theme"]) ? p["theme"] : "system",
     notifications: typeof p["notifications"] === "boolean" ? p["notifications"] : true,
@@ -209,7 +186,6 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navAgentHosts: Array.isArray(p["navAgentHosts"]) ? [...new Set((p["navAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     hostNames: normalizeHostNames(p["hostNames"]),
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
-    navNotify: normalizeNavNotify(p["navNotify"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),
     atualizarOcioso: typeof p["atualizarOcioso"] === "boolean" ? p["atualizarOcioso"] : true,
     abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",

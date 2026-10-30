@@ -450,8 +450,6 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.backendModelForHost === "string" ? { backendModelForHost: u.backendModelForHost } : {}),
       ...(typeof u.backendPort === "number" ? { backendPort: u.backendPort } : {}),
       ...(typeof u.backendPortForHost === "number" ? { backendPortForHost: u.backendPortForHost } : {}),
-      ...(u.navNotify !== null && typeof u.navNotify === "object" ? { navNotify: u.navNotify } : {}),
-      ...(typeof u.fontSize === "number" ? { fontSize: u.fontSize } : {}),
       ...(typeof u.theme === "string" ? { theme: u.theme } : {}),
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
       ...(typeof u.openAtLogin === "boolean" ? { openAtLogin: u.openAtLogin } : {}),

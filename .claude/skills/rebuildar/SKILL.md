@@ -5,6 +5,12 @@ description: Rebuilda e reinstala o meu-bot-admin (e as outras variantes afetada
 
 # Rebuildar o meu-bot depois de mudar o código
 
+> **Automático desde 30 out 2026:** o hook `Stop` em `.claude/settings.json` roda `scripts/hooks/rebuild-auto.sh` ao fim
+> de cada resposta. Se algo em `src/`, `scripts/tests`, `config/`, `assets/` ou `extensao-crm/` mudou desde o último
+> empacotamento (carimbo `.claude/.rebuild-stamp`), ele faz em segundo plano: testes → fecha os apps abertos →
+> empacota (abertos primeiro, depois admin, depois os demais instalados) → reabre, e o Mac avisa. Só rode os passos
+> abaixo à mão se o hook estiver desligado ou se quiser uma variante específica agora. `--check` mostra o plano.
+
 O app instalado é empacotado: mudança no código só vale depois de rebuildar. Ao terminar uma modificação, faça isto sem perguntar.
 
 1. **Testes primeiro**: `npm test` (já roda o build). Se falhar, pare, corrija ou mostre a falha ao usuário. Não empacote com teste quebrado.

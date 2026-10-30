@@ -160,9 +160,9 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   chamava `paintPalette()`, que reconstrói a lista com `replaceChildren` (zera a rolagem) e dava
   `scrollIntoView`. Agora `selectPalette(i, scroll)` só troca `aria-selected`; a lista é reconstruída só
   ao abrir e ao digitar, e o `scrollIntoView` fica para o teclado.
-- Configurações em quatro seções recolhíveis (`<details class="group">`): Conexão, Aparência e avisos,
-  Memória e contexto, Entrada rápida. Acordeão: abrir uma recolhe as outras; nada é lembrado:
-  toda vez que as Configurações abrem, as quatro começam recolhidas.
+- Configurações em seções recolhíveis (`<details class="group">`): Conexão, Aparência e avisos, Entrada rápida
+  (Memória e contexto existiu até 30 out 2026; ver [navegador.md](navegador.md)). Acordeão: abrir uma recolhe as
+  outras; nada é lembrado: toda vez que as Configurações abrem, todas começam recolhidas.
 
 ## Grok Bot: Atualizar vs Redefinir, deep link e verificação do Tailscale SSH (15 out 2026)
 
@@ -421,7 +421,8 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
 - **Desligar** guarda a pasta em `/var/www/publico/.desligado-<usuário>` (o nginx não serve nome com ponto) e ligar de
   novo a devolve, com o nome que a pessoa tinha escolhido.
 - **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
-  `ligarLinkPublicoPara`).
+  `ligarLinkPublicoPara`). Desde 30 out o mesmo fluxo instala a status line do Claude (`installStatusLine`, como a
+  pessoa, idempotente; o tutorial 3 saiu da lista), também no "Preparar" de uma conta que já tinha backend.
 - **Domínio próprio:** fora do alcance deste túnel (um hostname só passa por um túnel da mesma conta Cloudflare). Quem
   quer domínio próprio usa a conta Cloudflare dela (tutorial 13) e pede ao agente para subir a pasta no Pages.
 - **Conferido no servidor (30 out):** `https://box-2.agentesgrok.com/teste.html` respondeu 200 pela internet; raiz

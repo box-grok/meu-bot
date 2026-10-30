@@ -1,5 +1,5 @@
 /** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
-import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
+import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoStatus, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
@@ -178,8 +178,8 @@ export interface MeuBotSharedApi {
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
-  /** Link público desta pessoa na máquina (tutorial 17); null = desligado, máquina fora ou este Mac. */
-  linkPublico(): Promise<LinkPublicoInfo | null>;
+  /** Link público desta pessoa na máquina (tutorial 17): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
+  linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
   /** `forcar`: repete a busca do client na release agora, mesmo tendo tentado há pouco. */

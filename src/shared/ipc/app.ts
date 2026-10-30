@@ -1,6 +1,6 @@
 /** Contrato IPC · Janela, configurações, variante do produto e capacidades. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { PlanName } from "./licenca";
-import type { NavNotifyPref, NavWorkspaces } from "./navegador";
+import type { NavWorkspaces } from "./navegador";
 
 export type BackendModel = "claudecode" | "agente" | "rene-dm" | "rene" | "grok-4";
 export type Theme = "system" | "light" | "dark";
@@ -27,10 +27,8 @@ export interface SettingsView {
   /** Porta já resolvida para a máquina da janela que pediu (por máquina vence a padrão). */
   backendPortForHost: number;
   /** Notificações das páginas do Navegador viram conversas com a instrução da pessoa. */
-  navNotify: NavNotifyPref;
   /** Espaços de trabalho do Navegador da máquina da janela (para o tutorial saber antes de o Navegador abrir). */
   navEspacos: NavWorkspaces;
-  fontSize: number;
   /** Zoom da interface inteira (nível -8..8, 0 = 100%). Muda só por `zoomWindow`, nunca por setSettings. */
   zoomLevel: number;
   theme: Theme;
@@ -71,8 +69,6 @@ export interface SettingsUpdate {
   backendPort?: number;
   /** Porta só para a máquina da janela que salvou (igual à padrão tira a exceção). */
   backendPortForHost?: number;
-  navNotify?: Partial<NavNotifyPref>;
-  fontSize?: number;
   theme?: Theme;
   notifications?: boolean;
   contextBudgetTokens?: number;

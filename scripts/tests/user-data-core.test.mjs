@@ -42,9 +42,9 @@ test("fundirConversas: união por id; id repetido fica com o updatedAt maior; or
 
 test("fundirSettings: origem prevalece; mapas por máquina unem; listas unem (favoritos por url); onboarding done se qualquer", () => {
   const destino = j({ theme: "dark", onboarding: "done", podHosts: ["a"], navFavoritos: { h1: [{ url: "https://x", titulo: "X" }], h2: [{ url: "https://y" }] }, lastHost: "h1" });
-  const origem = j({ theme: "light", onboarding: "skipped", podHosts: ["b"], navFavoritos: { h1: [{ url: "https://z" }, { url: "https://x", titulo: "X2" }] }, fontSize: 15 });
+  const origem = j({ theme: "light", onboarding: "skipped", podHosts: ["b"], navFavoritos: { h1: [{ url: "https://z" }, { url: "https://x", titulo: "X2" }] }, backendPort: 9000 });
   const r = JSON.parse(fundirSettings(destino, origem));
-  assert.equal(r.theme, "light"); assert.equal(r.onboarding, "done"); assert.equal(r.fontSize, 15); assert.equal(r.lastHost, "h1");
+  assert.equal(r.theme, "light"); assert.equal(r.onboarding, "done"); assert.equal(r.backendPort, 9000); assert.equal(r.lastHost, "h1");
   assert.deepEqual(r.podHosts, ["b", "a"]);
   assert.deepEqual(r.navFavoritos.h1.map((f) => f.url), ["https://z", "https://x"], "origem primeiro, sem repetir a url");
   assert.equal(r.navFavoritos.h1[1].titulo, "X2", "na url repetida vale a da origem");

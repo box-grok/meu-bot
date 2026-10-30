@@ -1,9 +1,7 @@
-import type { BrowserExtensionInfo, NavFavorito, NavWorkspaces, NavNotifyPref, DonoInfo, NavWorkspace, NavService } from "../../shared/ipc";
+import type { BrowserExtensionInfo, NavFavorito, NavWorkspaces, DonoInfo, NavWorkspace, NavService } from "../../shared/ipc";
 import { el, byId as $ } from "../lib/dom.js";
-import { carregando } from "../lib/carregando.js";
 import { favLabel, favOf, favTitleFor } from "../lib/favoritos.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { navNotifyAllowed, toggleNotifyHost, NavNotifyDedup, NavNotifyBudget, parseNotifyHosts, parsePageNotification, type PageNotification, navNotifyTitle, navNotifyMessage } from "../lib/nav-notify.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { type ProAccess, proBlockText, tabLabel, displayUrl, browserAccess, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
@@ -23,7 +21,7 @@ interface WebviewEl extends HTMLElement {
   insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
 /** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
-interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; /** Quando o documento atual terminou de carregar (aquecimento das notificações). */ loadedAt?: number }
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; }
 /** canGoBack/canGoForward lançam antes do dom-ready do <webview> (aba recém-criada): até lá, nem voltar nem avançar; o dom-ready repinta. */
 const navPode = (f: () => boolean): boolean => { try { return f(); } catch { return false; } };
 export let navPage: PageTab | null = null;
@@ -64,22 +62,6 @@ function paintNavFavs(): void {
   paintNavStar();
 }
 export const navCurrentHost = (): string | null => { const c = navCurrent(); if (c === null || !/^https?:/.test(c.url)) return null; try { return new URL(c.url).hostname; } catch { return null; } };
-function paintNavBell(): void {
-  if (navEls === null) return;
-  const b = navEls.bar.querySelector<HTMLButtonElement>(".nav-bell"); if (b === null) return;
-  const host = navCurrentHost(); const pref = ctx.settings?.navNotify;
-  const on = host !== null && pref !== undefined && pref.enabled && navNotifyAllowed(pref.hosts, host);
-  b.hidden = host === null;
-  b.textContent = on ? "🔔" : "🔕";
-  b.classList.toggle("on", on);
-  b.title = host === null ? "" : on ? `Notificações de ${host} viram conversa com o agente. Clique para desligar neste site.` : `Clique para as notificações de ${host} virarem conversa com o agente (a ação está em Configurações › Notificações do Navegador).`;
-}
-async function navToggleBell(): Promise<void> {
-  const host = navCurrentHost(); const pref = ctx.settings?.navNotify; if (host === null || pref === undefined) return;
-  const on = !(pref.enabled && navNotifyAllowed(pref.hosts, host));
-  try { ctx.applySettings(await window.meuBot.setSettings({ navNotify: { enabled: on ? true : pref.enabled, hosts: toggleNotifyHost(pref.hosts, host, on) } })); paintNav(); ctx.paintGuide(); }
-  catch (err) { if (navEls !== null) { navEls.note.hidden = false; navEls.note.textContent = `Sino: ${ipcErrorText(err)}`; } }
-}
 function paintNavStar(): void {
   if (navEls === null) return;
   const cur = navCurrent();
@@ -128,145 +110,10 @@ function applyRecortes(tab: NavTab, fresh = false): void {
   const next = (navCutChain.get(tab) ?? Promise.resolve()).then(run, run);
   navCutChain.set(tab, next);
 }
-/**
- * Notificações das páginas (do REA do Rambox): no mundo da página entra um substituto de `window.Notification`
- * (permissão "granted"; construir uma notificação manda título/corpo/ícone pela ponte `window.meuBotNav`, exposta
- * pelo preload da sessão) e o app decide o que fazer. Sem isto, o Navegador nega a permissão e a página nem tenta.
- * Idempotente por documento; só http(s). A notificação em si nunca chega ao sistema por aqui: quem avisa é o app,
- * apontando para a conversa que a trata.
- */
-const NAV_NOTIFY_JS = `(() => {
-  if (window.__meuBotNotify || !window.meuBotNav) return; window.__meuBotNotify = true;
-  class N extends EventTarget {
-    constructor(title, options) {
-      super(); const o = options || {};
-      this.title = String(title == null ? "" : title); this.body = typeof o.body === "string" ? o.body : ""; this.icon = typeof o.icon === "string" ? o.icon : "";
-      this.tag = typeof o.tag === "string" ? o.tag : ""; this.data = o.data == null ? null : o.data; this.onclick = null; this.onclose = null; this.onerror = null; this.onshow = null;
-      try { window.meuBotNav.notify({ title: this.title, body: this.body, icon: this.icon, tag: this.tag, url: location.href, site: location.hostname }); } catch {}
-      setTimeout(() => { try { const e = new Event("show"); this.dispatchEvent(e); if (typeof this.onshow === "function") this.onshow(e); } catch {} }, 0);
-    }
-    close() { try { const e = new Event("close"); this.dispatchEvent(e); if (typeof this.onclose === "function") this.onclose(e); } catch {} }
-    static get permission() { return "granted"; }
-    static requestPermission(cb) { const p = Promise.resolve("granted"); if (typeof cb === "function") p.then(cb); return p; }
-    static get maxActions() { return 0; }
-  }
-  try { Object.defineProperty(window, "Notification", { value: N, configurable: true, writable: true }); } catch { window.Notification = N; }
-})(); undefined`;
-function navNotifyInject(tab: NavTab): void {
-  if (!/^https?:/.test(tab.url)) return;
-  try { void tab.wv.executeJavaScript(NAV_NOTIFY_JS).catch(() => undefined); } catch { /* webview ainda não anexado */ }
-}
-const navNotifyDedup = new NavNotifyDedup();
-const navNotifyBudget = new NavNotifyBudget(3, 60_000);
-const NAV_NOTIFY_WARMUP_MS = 10_000;
-const NOTIFY_TUTORIAL = TUTORIAIS.find((t) => t.id === "notificacoes-navegador") as Tutorial;
 /** Sites fixos do espaço ativo: do Navegador aberto, ou das Configurações antes de ele abrir. */
 export function navServicosCount(): number {
   const src = navWs.lista.length > 0 ? navWs : (ctx.settings?.navEspacos ?? navWs);
   return src.lista.find((w) => w.id === src.ativo)?.servicos.length ?? 0;
-}
-/** Tutorial 11, passo 1: abrir o Navegador para criar o espaço e fixar o site. */
-export function renderNavWsStep(container: HTMLElement): void {
-  const row = el("div", "audio-row");
-  const n = navServicosCount();
-  const b = el("button", "btn btn-primary btn-small", n > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
-  b.addEventListener("click", () => { void openNavTab(); });
-  row.append(b, el("span", n > 0 ? "audio-ok" : "hint", n > 0 ? `✓ ${n} site${n === 1 ? "" : "s"} fixo${n === 1 ? "" : "s"} no espaço ativo` : "No trilho à esquerda: escolha projeto ou cliente, crie o espaço e fixe o site."));
-  container.append(row);
-}
-/** Tutorial 11, passo 2: a mesma configuração das Configurações, inline, com "Pular". */
-export function renderNavNotifyConfig(container: HTMLElement): void {
-  const pref = ctx.settings?.navNotify;
-  const box = el("div", "audio-controls");
-  if (pref === undefined) { box.append(carregando("Carregando as configurações…")); container.append(box); return; }
-  if (pref.enabled) box.append(el("p", "audio-ok", "✓ Ligado. Ajuste quando quiser em Configurações › Notificações do Navegador."));
-  const inst = document.createElement("textarea"); inst.rows = 3; inst.maxLength = 2000; inst.className = "wa-list-input"; inst.value = pref.instruction; inst.placeholder = "O que o agente faz com cada notificação";
-  const hosts = document.createElement("input"); hosts.type = "text"; hosts.className = "nav-url"; hosts.placeholder = "Sites com o sino ligado (vazio = os sites fixos do espaço): mail.google.com"; hosts.value = pref.hosts.join(", ");
-  const mode = document.createElement("select"); mode.className = "nav-url";
-  for (const [v, l] of [["site", "uma conversa por site"], ["each", "uma conversa nova por notificação"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.mode === v; mode.append(o); }
-  const when = document.createElement("select"); when.className = "nav-url";
-  for (const [v, l] of [["tratado", "avisar no Mac depois de o agente tratar, com a resposta"], ["chegada", "avisar no Mac assim que chegar"], ["nunca", "não avisar no Mac: só a conversa"]] as const) { const o = document.createElement("option"); o.value = v; o.textContent = l; o.selected = pref.avisar === v; when.append(o); }
-  const row = el("div", "audio-row");
-  const on = el("button", "btn btn-primary btn-small", pref.enabled ? "Salvar" : "Ligar com esta ação"); on.type = "button";
-  on.addEventListener("click", () => {
-    // Sem sites marcados, os sites fixos do espaço ativo ganham o sino (senão "ligado" não ligaria nada).
-    let list = parseNotifyHosts(hosts.value);
-    if (list.length === 0) { const src = navWs.lista.length > 0 ? navWs : (ctx.settings?.navEspacos ?? navWs); for (const s of src.lista.find((w) => w.id === src.ativo)?.servicos ?? []) { try { list = toggleNotifyHost(list, new URL(s.url).hostname, true); } catch { /* url estranha */ } } }
-    void window.meuBot.setSettings({ navNotify: { enabled: true, instruction: inst.value, hosts: list, mode: mode.value === "each" ? "each" : "site", avisar: when.value === "chegada" ? "chegada" : when.value === "nunca" ? "nunca" : "tratado" } }).then(ctx.applySettings).then(() => { ctx.paintGuide(); paintNav(); }).catch((err: unknown) => { const t = ctx.active(); if (t !== null) ctx.addNotice(t, `Não salvou: ${ipcErrorText(err)}`, "warn"); });
-  });
-  row.append(on);
-  if (pref.enabled) { const off = el("button", "btn btn-ghost btn-small", "Desligar"); off.type = "button"; off.addEventListener("click", () => { void window.meuBot.setSettings({ navNotify: { enabled: false } }).then(ctx.applySettings).then(() => ctx.paintGuide()); }); row.append(off); }
-  else { const skip = el("button", "btn btn-ghost btn-small", "Pular esta etapa (deixar desligado)"); skip.type = "button"; skip.addEventListener("click", () => { ctx.saveGuideFlag(NOTIFY_TUTORIAL, "notifySkipped"); ctx.paintGuide(); }); row.append(skip); }
-  box.append(el("p", "hint strong-hint", "Ação"), inst, el("p", "hint strong-hint", "Sites, conversa e aviso"), hosts, mode, when, row);
-  container.append(box);
-}
-/** Tutorial 11, passo 3: a conversa "🔔" já existe? Abre-a; senão, a pessoa marca quando vir. */
-export function renderNavNotifyTest(container: HTMLElement): void {
-  const row = el("div", "audio-row");
-  const convs = [...ctx.index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived);
-  if (convs.length > 0) { const b = el("button", "btn btn-primary btn-small", `Abrir ${convs[0]!.title ?? "a conversa"}`); b.type = "button"; b.addEventListener("click", () => { void ctx.openFromIndex(convs[0]!.id); }); row.append(b, el("span", "audio-ok", `✓ ${convs.length} conversa${convs.length === 1 ? "" : "s"} de notificação`)); }
-  else if (ctx.settings?.navNotify.enabled === true) {
-    // Caixa com item não lido e nada novo chegando: dá para testar agora, com o que já está lá (só o mais recente).
-    const test = el("button", "btn btn-primary btn-small", "Testar agora com o que está na caixa"); test.type = "button"; test.disabled = navServicosCount() === 0;
-    test.title = "O agente abre o site fixo no Navegador, lê só o item não lido mais recente e aplica a sua instrução; vira a conversa 🔔 do site";
-    test.addEventListener("click", () => { void navNotifyTestNow(); });
-    row.append(test, el("span", "hint", "ou espere a próxima notificação nova do site fixo"));
-  } else row.append(el("span", "hint", "A função está desligada: ligue no passo anterior ou marque como visto."));
-  container.append(row);
-}
-/**
- * Uma notificação chegou de uma aba: vira mensagem na conversa do site (ou numa nova), com a instrução das
- * Configurações, sem roubar a aba ativa; a notificação do Mac leva à conversa. Repetidas em 60 s são ignoradas.
- */
-async function onPageNotification(tab: NavTab, raw: unknown): Promise<void> {
-  const pref = ctx.settings?.navNotify;
-  if (pref === undefined || !pref.enabled) return;
-  const n = parsePageNotification(raw);
-  if (n === null || !navNotifyAllowed(pref.hosts, n.site) || !navNotifyDedup.fresh(n)) return;
-  // Cuidado com o volume: a rajada logo depois de a página carregar (sites que avisam o que já estava na caixa)
-  // não conta, e cada site tem no máximo 3 por minuto; o excedente vira uma linha no próximo aviso tratado.
-  if (tab.loadedAt !== undefined && Date.now() - tab.loadedAt < NAV_NOTIFY_WARMUP_MS) { console.info(`[navegador] notificação de ${n.site} ignorada: página acabou de carregar`); return; }
-  const budget = navNotifyBudget.take(n.site);
-  if (!budget.ok) { console.info(`[navegador] notificação de ${n.site} ignorada: mais de 3 por minuto`); return; }
-  await navNotifyHandle(n, pref, budget.skipped > 0 ? `\n\n(Outras ${budget.skipped} notificações deste site ficaram de fora no último minuto, por volume.)` : "");
-}
-/**
- * Tutorial 11, passo "ver": testar agora com o que já está na caixa, sem esperar uma notificação nova. Vai pela
- * mesma conversa "🔔 <site>", mas o pedido é explícito: o agente abre o site fixo no Navegador e aplica a instrução
- * ao item não lido mais recente. Só este item: o histórico continua intocado.
- */
-async function navNotifyTestNow(): Promise<void> {
-  const pref = ctx.settings?.navNotify; if (pref === undefined || !pref.enabled) return;
-  const a = navActiveWs(); const s = a?.servicos[0];
-  const url = s?.url ?? navCurrent()?.url ?? ""; if (!/^https?:/.test(url)) return;
-  let site = ""; try { site = new URL(url).hostname; } catch { return; }
-  if (!ctx.navAgent.on) void window.meuBot.browserAgent(true).then((st) => { ctx.navAgent = st; paintNav(); });
-  const n = { title: "Teste pedido no tutorial", body: "", icon: "", tag: `teste-${Date.now()}`, url, site };
-  await navNotifyHandle(n, pref, `\n\nEste é um teste que eu pedi no tutorial: abra ${url} no meu Navegador (a aba já está aberta e você pode usá-la), leia só o item não lido mais recente e aplique a instrução acima a ele. Não mexa nos outros.`);
-}
-async function navNotifyHandle(n: PageNotification, pref: NavNotifyPref, extra: string): Promise<void> {
-  const title = navNotifyTitle(n, pref.mode);
-  const prev = ctx.activeId;
-  let chat: Tab | undefined;
-  if (pref.mode === "site") {
-    const existing = [...ctx.index.values()].find((c) => c.title === title && !c.archived);
-    if (existing !== undefined) { await ctx.openFromIndex(existing.id); chat = ctx.tabs.get(existing.id); }
-  }
-  if (chat === undefined) {
-    chat = await ctx.newTab();
-    ctx.applyCustomTitle(chat, title);
-    ctx.patchIndex(chat.id, { title });
-    try { await window.meuBot.renameConversation(chat.id, title); } catch { /* o título fica só local até o próximo salvamento */ }
-  }
-  if (prev !== null && prev !== chat.id && ctx.tabs.has(prev)) ctx.activate(prev); // a pessoa continua onde estava
-  // Quando avisar no Mac é escolha da pessoa: na chegada (com o aviso do site), depois do tratamento (com a
-  // resposta do agente; é o padrão) ou nunca. Pendura antes de mandar: o "done" do turno é quem dispara.
-  const head = `${n.site}: ${n.title || "notificação"}`;
-  if (pref.avisar === "tratado") chat.notifyAfter = { title: head };
-  await ctx.sendText(chat, `${navNotifyMessage(pref.instruction, n)}${extra}`);
-  if (pref.avisar === "chegada") void window.meuBot.notify(chat.id, head, n.body);
-  ctx.paintGuide(); // tutorial 11, passo 3: a conversa "🔔" existe
-  console.info(`[navegador] notificação de ${n.site} → conversa "${title}"`);
 }
 /**
  * Chrome Web Store dentro da aba: a loja vê que o navegador não é o Chrome (as marcas do client hint do Electron não
@@ -457,13 +304,12 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); navApplyZoom(tab); sync(); });
-  wv.addEventListener("did-finish-load", () => { tab.loadedAt = Date.now(); navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); navNotifyInject(tab); });
-  wv.addEventListener("ipc-message", (ev) => { const e = ev as Event & { channel?: string; args?: unknown[] }; if (e.channel === "nav:notification") void onPageNotification(tab, e.args?.[0]); });
+  wv.addEventListener("did-finish-load", () => { navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
   wv.addEventListener("did-fail-load", (ev) => { const e = ev as unknown as { errorCode: number; errorDescription: string; validatedURL: string }; if (e.errorCode !== -3) { tab.failed = `${e.errorDescription} (${e.errorCode})`; tab.loading = false; paintNav(); } });
-  wv.addEventListener("dom-ready", () => { sync(); navApplyZoom(tab); applyRecortes(tab); navStoreTweaks(tab); navNotifyInject(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
+  wv.addEventListener("dom-ready", () => { sync(); navApplyZoom(tab); applyRecortes(tab); navStoreTweaks(tab); if (navActive === tab.id) { try { window.meuBot.browserActive(wv.getWebContentsId()); } catch { /* idem */ } } });
   wv.setAttribute("src", url);
   navEls.box.append(wv);
   navTabs.push(tab);
@@ -607,7 +453,6 @@ export function paintNav(): void {
   if (cur !== null && document.activeElement !== e.url) e.url.value = displayUrl(cur.url);
   { let h = ""; try { h = cur === null ? "" : new URL(cur.url).hostname; } catch { /* url em branco */ } if (h !== navActionsHost) paintNavActions(); }
   paintNavStar();
-  paintNavBell();
   paintNavPin();
   paintNavZoom();
   e.back.disabled = cur === null || !navPode(() => cur.wv.canGoBack());
@@ -719,14 +564,10 @@ export async function openNavTab(url?: string, frente = true): Promise<void> {
     const railBtn = el("button", "mini-btn nav-rail-toggle", "◧"); railBtn.type = "button";
     railBtn.addEventListener("click", () => { navRailShown = !navRailShown; try { localStorage.setItem("navRailShown", navRailShown ? "1" : "0"); } catch { /* opcional */ } paintNavRail(); });
     bar.prepend(railBtn);
-    // Sino: as notificações deste site viram conversa com o agente? Liga/desliga por site (e liga a função).
-    const bell = el("button", "mini-btn nav-bell", "🔔"); bell.type = "button";
-    bell.addEventListener("click", () => { void navToggleBell(); });
-    star.insertAdjacentElement("afterend", bell);
     // Pino: esta aba é um site fixo do espaço? Aceso = fixa (clique solta); apagado = solta (clique fixa).
     const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button";
     pin.addEventListener("click", () => { void navTogglePin(); });
-    bell.insertAdjacentElement("afterend", pin);
+    star.insertAdjacentElement("afterend", pin);
     // Zoom da aba: clique alterna 100% ↔ 75% (o comum para planilhas largas); Cmd+=/-/0 ajusta fino.
     const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button"; zoom.title = "Zoom deste site (Cmd+= aumenta, Cmd+- diminui, Cmd+0 volta a 100%). Clique para alternar 100% e 75%.";
     zoom.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; const z = navZoomFor(c); if (Math.abs(z - 1) > 0.001) navZoomStep(0); else { navZoomStep(-1); navZoomStep(-1); navZoomStep(-1); } });

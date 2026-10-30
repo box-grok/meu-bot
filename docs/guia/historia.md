@@ -399,7 +399,9 @@ provedor OpenAI-compatível) viraram um plano de 12 funcionalidades, implementad
   onboarding; "Pular por enquanto" ou × marca pulado (`SKIPPED_MESSAGE` aponta para Tutoriais).
 - Em Tutoriais o primeiro cartão é o "Tour do meu-bot" (`TOUR_CARD`): "Começar", ou "Rever" com selo
   "Concluído" depois de feito; fecha Tutoriais e chama `restartTour()` (marca pendente e começa). A paleta usa o
-  mesmo caminho. O tutorial do WhatsApp passou a ter o selo "Próximo".
+  mesmo caminho. O tutorial do WhatsApp passou a ter o selo "Próximo". Desde 30 out o cartão também tem "Pular",
+  como os outros tutoriais: grava `onboarding = "skipped"` (o mesmo do botão do próprio tour), o cartão vai para
+  Arquivados com selo "Pulado" e "Começar" de lá inicia o tour.
 - Fim do tour: em vez de mandar uma pergunta de verdade ao agente (que falhava sem login), aparece uma
   boas-vindas local (`welcomeMessage` + `showWelcome`), não enviada e não salva. Com o Claude Code da máquina
   deslogado, ela explica e traz o botão "Entrar no Claude Code"; logado, sugere por onde começar.

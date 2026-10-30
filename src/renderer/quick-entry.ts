@@ -28,8 +28,7 @@ input.addEventListener("keydown", (ev) => {
 window.quickEntry.on("quick:shown", () => { error.hidden = true; input.focus(); input.select(); });
 const hint = document.getElementById("qe-hint") as HTMLSpanElement;
 window.quickEntry.on("quick:appearance", (p) => {
-  const a = p as { fontSize?: number; host?: string };
-  if (typeof a?.fontSize === "number") document.documentElement.style.setProperty("--chat-font", `${a.fontSize}px`);
+  const a = p as { host?: string };
   hint.textContent = typeof a?.host === "string" ? `Vai pra conversa ativa em ${a.host}` : "Vai pra conversa ativa do meu-bot";
 });
 input.focus();
