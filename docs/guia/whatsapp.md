@@ -356,3 +356,38 @@ pausa de verdade.
 - **Por que plugin e não PR no Hermes:** o hook existe para isso ("plugins can handle unauthorized senders"), vale hoje
   em qualquer versão 0.22, e não depende de revisão nem de atualizar o Hermes nas máquinas. A issue #146672 pede o
   mínimo (relê a lista); se o Hermes trouxer pausa por contato, a tabela de contornos diz como tirar o plugin.
+
+## Dono do agente: quem manda nele (30 out)
+
+Até aqui o app tratava o **número pareado** como a pessoa que manda no agente. Isso só vale quando o agente roda no
+próprio número dela (modo `self-chat` do Hermes, cartão "Desativado: só eu falo com o agente"). O Hermes recomenda
+**número dedicado** (modo `bot`): a pessoa fala com o agente do celular dela, como contato da lista. E em modo `bot`
+o bridge **descarta tudo que vem do próprio aparelho** (`bridge.js`, fromMe): "Lista" e "Todo mundo" nunca atendem o
+chat da pessoa consigo mesma — não há modo que atenda os dois. Daí o conceito **Dono**, explícito e pré-preenchido.
+
+- **O que é:** o número da pessoa que manda no agente. Padrão = o pareado (nada a decidir). Troca só para quem tem um
+  chip dedicado para o agente e fala com ele do celular. Mora em `whatsapp-lista.json › dono: { numero, desde }` (o
+  mesmo arquivo das marcas: os dois apps e o plugin leem; ausente = pareado). `quemDe(marks, self)` → `WaQuem { self,
+  dono }` é o único lugar que decide; `souEu` = dono é o próprio aparelho; `donosDe` = os que nunca saem da lista nem
+  são pausados. `waMarkSh` passou a devolver o arquivo inteiro (preserva chaves de fora) e aceita `{ dono }`.
+- **Efeitos:** o dono e o pareado entram sempre na lista (`hermesEnvPara`); **"só eu" com dono de fora vira `bot` +
+  allowlist [pareado, dono]** (contorno #5 em `docs/guia/contornos.md`) — assim o cartão funciona também no chip
+  dedicado; com dono == pareado continua `self-chat`. O home channel do Hermes (avisos e cron: `.env`
+  `WHATSAPP_HOME_CHANNEL`/`_NAME` e `platforms.whatsapp.home_channel` no config.yaml, iguais, jid em
+  `@s.whatsapp.net`) aponta para o dono ao trocar; o preparo depois do QR o deixa no próprio número quando não há
+  nenhum (nunca sobrescreve um existente). O dono nunca é pausado (`whatsappPause` recusa; o menu não oferece). No
+  OpenClaw a trava de ferramentas (`toolsBySender`) e o `allowFrom` de "só eu" seguem o dono.
+- **Plugin meu-bot-pausa 1.1.0:** `_dono()` soma o `dono.numero` do arquivo ao `me.id`/`me.lid` (cache por mtime de
+  cada fonte): do celular dele, `/pausar <número>` e `/pausados` funcionam.
+- **UI, sem tela nova:** no bloco "Quem o agente responde" (modal e tutorial 2), acima dos cartões, a linha
+  `Dono +55 … · você (este número)` (ou `· você, do seu celular (o agente atende em …)`) com **Trocar** → campo inline
+  com Salvar / Cancelar / Voltar para este número e o hint "O dono fala com o agente de qualquer modo, nunca é pausado
+  e recebe os avisos. Troque só se o agente roda num número dedicado e você fala com ele do seu celular." O cartão
+  "só eu" diz "só responde ao dono (+55 …)" quando o dono é de fora; Lista e Todo mundo (Hermes, agente no próprio
+  número) avisam que o próprio chat não é respondido nesses modos. Linha de estado: "só você" / "só o dono" / "a
+  lista". Lista de conversas: etiqueta `dono`, "Você (dono)" sem nome; o admin vê a linha sem o botão. Trocar o dono
+  reaplica a política e reinicia o gateway (a conexão fica "segurada", como no áudio). Auditoria: `whatsapp.dono`.
+- **Issue upstream a abrir:** *WhatsApp bot mode: opt-in to also answer the owner's self-chat (fromMe). Today
+  `WHATSAPP_MODE=bot` drops every fromMe message, so a user running the agent on their own number can't both talk to
+  it and serve other contacts; `self-chat` serves only themselves. Proposal: `WHATSAPP_SELF_CHAT=true` honoured in bot
+  mode when the paired number is in `WHATSAPP_ALLOWED_USERS`.*
