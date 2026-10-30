@@ -17,7 +17,6 @@ const http = require('node:http');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const https = require('node:https');
 const { execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
@@ -38,6 +37,7 @@ const { createFinanceApi } = require('./finance-api');
 const { sincronizarInvestimentos } = require('./finance-crm-sync');
 const { sincronizarVendas } = require('./crm-finance-vendas');
 const saudeMaquina = require('./saude-maquina');
+const cotaMod = require('./cota');
 const { faxinar } = require('./faxina');
 
 const ROOT = __dirname;
@@ -65,7 +65,7 @@ const AGENT_WORKSPACE = ENV.AGENT_WORKSPACE || path.join(os.homedir(), 'agent-wo
 const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'conversas');
 /**
  * Segurança: quais Macs já usaram o meu-bot desta máquina (maquinas.json) e como avisar quando aparece um novo
- * (alertas.json: WhatsApp da própria pessoa, e e-mail se ela quiser). Como o aviso de "login numa máquina nova"
+ * (alertas.json: WhatsApp da própria pessoa; o e-mail saiu em 30 out). Como o aviso de "login numa máquina nova"
  * do Rambox. O app se apresenta em POST /v1/meu-bot/hello a cada abertura; o primeiro Mac de todos não avisa
  * (é a instalação), os seguintes avisam e ficam no registro de auditoria da máquina (auditoria.py).
  */
@@ -94,7 +94,7 @@ const CRM_DB = process.env.MEU_BOT_CRM_DB || path.join(MEU_BOT_DIR, 'crm', 'db')
 const FINANCE_DB = process.env.MEU_BOT_FINANCE_DB || path.join(MEU_BOT_DIR, 'finance', 'db');
 const readJson = (f, fallback) => { try { const v = JSON.parse(fs.readFileSync(f, 'utf8')); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
 function writeJson(f, v) { fs.mkdirSync(MEU_BOT_DIR, { recursive: true, mode: 0o700 }); const tmp = `${f}.tmp`; fs.writeFileSync(tmp, JSON.stringify(v, null, 1), { mode: 0o600 }); fs.renameSync(tmp, f); }
-const alertPrefs = () => { const a = readJson(ALERTS_FILE, {}); return { whatsapp: a.whatsapp !== false, email: typeof a.email === 'string' ? a.email.slice(0, 120) : '' }; };
+const alertPrefs = () => { const a = readJson(ALERTS_FILE, {}); return { whatsapp: a.whatsapp !== false }; };
 /**
  * Registro de auditoria da máquina (quem: "sistema"): o auditoria.py ao lado é o dono do formato e da corrente. Na
  * subida, uma cópia vai para ~/.local/share/meu-bot/auditoria.py, que os plugins do OpenClaw usam (pausa automática).
@@ -134,18 +134,6 @@ function sendWhatsapp({ texto, para, midia }) {
       if (err) log(`WhatsApp (${cmd}) falhou: ${(stderr || err.message).toString().trim().split('\n').pop()}`);
       resolve(!err);
     });
-  });
-}
-/** E-mail pela API do Resend (RESEND_API_KEY no .env; remetente ALERT_EMAIL_FROM ou o de teste do Resend). */
-function sendEmail(to, subject, text) {
-  const key = ENV.RESEND_API_KEY || process.env.RESEND_API_KEY || '';
-  if (!key || !to) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    const body = JSON.stringify({ from: ENV.ALERT_EMAIL_FROM || 'meu-bot <onboarding@resend.dev>', to: [to], subject, text });
-    const req = https.request('https://api.resend.com/emails', { method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 15000 }, (res) => { res.resume(); res.on('end', () => resolve(res.statusCode >= 200 && res.statusCode < 300)); });
-    req.on('error', (e) => { log(`aviso e-mail falhou: ${e.message}`); resolve(false); });
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-    req.end(body);
   });
 }
 /** IPs com sessão SSH aberta agora (quem está entrando nesta máquina), melhor esforço. */
@@ -272,10 +260,8 @@ async function announceMachine(m) {
   const produto = typeof m.produto === 'string' && m.produto !== '' ? m.produto : 'meu-bot';
   const text = `${produto}: um Mac novo acabou de usar a sua máquina.\n\nNome: ${m.name} (${m.user})\nSistema: ${m.platform}\n${produto} ${m.app}${ips}\nQuando: ${when}${extra}\n\nSe não foi você, abra o meu-bot em Configurações › Suporte e peça ajuda ao admin.`;
   auditar(status === 'pending' ? 'device.pedido' : 'device.novo', `${m.name} (${m.user}, ${m.platform})`);
-  const prefs = alertPrefs();
-  const subject = status === 'pending' ? 'meu-bot: um device a mais pediu acesso' : 'meu-bot: um Mac novo usou a sua máquina';
-  const results = await Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, subject, text) : Promise.resolve(null)]);
-  log(`máquina nova ${m.name} (${m.id}) status=${status}: whatsapp=${results[0]} email=${results[1]}`);
+  const ok = alertPrefs().whatsapp ? await sendWhatsappSelf(text) : null;
+  log(`máquina nova ${m.name} (${m.id}) status=${status}: whatsapp=${ok}`);
   return { fresh: true, status, deviceLimit: license.deviceLimit };
 }
 const MACHINE_FIELD_RE = /^[\p{L}\p{N} ._()-]{1,60}$/u;
@@ -824,7 +810,7 @@ async function chatCompletions(req, res) {
 let chatsAtivos = 0;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
-  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos, appMinima: appMinima(), ...(vigia.ultima ? { maquina: vigia.ultima } : {}) });
+  if (url.pathname === '/health' && req.method === 'GET') return json(res, 200, { ok: true, models: listedModels().map((m) => m.id), ativos: chatsAtivos, appMinima: appMinima(), ...(vigia.ultima ? { maquina: vigia.ultima } : {}), ...(vigiaCota.ultima ? { cota: vigiaCota.ultima } : {}) });
   if (!authOk(req)) return json(res, 401, { error: { message: 'chave inválida', type: 'authentication_error', code: 'invalid_api_key' } });
   // Módulos de produto (MODULOS_KEY): só a rota de aviso. Manda texto (e um arquivo) pelo WhatsApp da máquina ao dono
   // ou a um número; quem decide o destino é a opção do módulo, gravada pela pessoa no app.
@@ -848,10 +834,12 @@ const server = http.createServer(async (req, res) => {
     const c = contas.conta(ultimaConta) || contas.escolher({ permitirAviso: true }) || contas.conta('padrao');
     atualizarUsoPelaApi(c).then((why) => {
       if (why !== lastLimitsWhy) { lastLimitsWhy = why; if (why !== 'fresh') log(`limites da conta ${c.id}: ${why}`); }
-      json(res, 200, { claude: c.global ? statusGlobal(c) : readClaudeStatus(os.homedir(), contas.configDir(c)), model: currentModelLabel(c), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })), contas: contas.resumo(c.id) });
+      json(res, 200, { claude: c.global ? statusGlobal(c) : readClaudeStatus(os.homedir(), contas.configDir(c)), model: currentModelLabel(c), providers: PROVIDERS.map((p) => ({ name: p.name, type: p.type, available: p.available })), contas: contas.resumo(c.id), cota: vigiaCota.ultima });
     });
     return;
   }
+  // Espaço da conta (Configurações › Espaço): a cota relida agora (`fresco=1` ignora o cache de 30 s, depois de apagar algo).
+  if (url.pathname === '/v1/meu-bot/cota' && req.method === 'GET') { lerCota({ forcar: url.searchParams.get('fresco') === '1' }).then((c) => json(res, 200, { cota: c })); return; }
   // Contas do Claude desta máquina (contas-claude.js): listar, criar (pasta isolada com o histórico compartilhado),
   // ajustar, reordenar, remover, "usar agora", conferir o login e os limiares do rodízio. O app roda o
   // `claude auth login` na pasta que o POST devolve.
@@ -902,9 +890,7 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/v1/meu-bot/alerts' && req.method === 'PUT') {
     let p;
     try { p = JSON.parse(await readBody(req, 16 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
-    const email = typeof p.email === 'string' ? p.email.trim().slice(0, 120) : '';
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(res, 400, { error: { message: 'e-mail inválido', type: 'invalid_request_error' } });
-    writeJson(ALERTS_FILE, { whatsapp: p.whatsapp !== false, email });
+    writeJson(ALERTS_FILE, { whatsapp: p.whatsapp !== false });
     return json(res, 200, { ok: true, ...alertPrefs() });
   }
   // A pessoa excluiu a conversa no app: a transcrição do Claude Code desta máquina vai junto (nos dois perfis),
@@ -964,14 +950,27 @@ server.listen(PORT, HOST, () => log(`ouvindo em http://${HOST}:${PORT} modelos=$
 agendarSyncVendas(15000);
 
 /**
- * Vigia da máquina (saude-maquina.js): memória, swap, disco do HOME e atraso do event loop a cada 30 s; o resultado
- * vai no /health (`maquina`) e os avisos pelo mesmo caminho do "Mac novo" (alertas.json). Os horários dos últimos
- * avisos ficam em saude-avisos.json (o intervalo de 6 h vale depois de reiniciar). Teste: MEU_BOT_VIGIA_MEM_PCT=100
- * faz a memória parecer sempre abaixo do limite. Uma vez por dia, a faxina (faxina.js) dos arquivos que crescem.
+ * Vigia da máquina (saude-maquina.js): memória, swap, disco do HOME, atraso do event loop e a própria box (o cgroup
+ * da fatia deste usuário, lido de /proc/self/cgroup) a cada 30 s; o resultado vai no /health (`maquina`) e os avisos
+ * pelo mesmo caminho do "Mac novo" (alertas.json, só WhatsApp). Os horários dos últimos avisos ficam em
+ * saude-avisos.json (o intervalo de 6 h vale depois de reiniciar; a chave `cota` é do vigia da cota, abaixo). Testes:
+ * MEU_BOT_VIGIA_MEM_PCT=100 faz a memória parecer sempre abaixo do limite; MEU_BOT_VIGIA_BOX_PCT=1 faz a box parecer
+ * sempre no limite. Uma vez por dia, a faxina (faxina.js) dos arquivos que crescem.
  */
 const SAUDE_AVISOS = path.join(MEU_BOT_DIR, 'saude-avisos.json');
+const avisosGravados = readJson(SAUDE_AVISOS, {});
 const memMinTeste = Number(ENV.MEU_BOT_VIGIA_MEM_PCT || process.env.MEU_BOT_VIGIA_MEM_PCT || '');
-const vigia = new saudeMaquina.Vigia(memMinTeste > 0 ? { memMinPct: memMinTeste } : {}, readJson(SAUDE_AVISOS, {}));
+const boxPctTeste = Number(ENV.MEU_BOT_VIGIA_BOX_PCT || process.env.MEU_BOT_VIGIA_BOX_PCT || '');
+const vigia = new saudeMaquina.Vigia({ ...(memMinTeste > 0 ? { memMinPct: memMinTeste } : {}), ...(boxPctTeste > 0 ? { boxPct: boxPctTeste } : {}) }, { ...avisosGravados, cota: undefined });
+const vigiaCota = new cotaMod.VigiaCota(avisosGravados.cota && typeof avisosGravados.cota === 'object' ? avisosGravados.cota : {});
+/** Os dois vigias dividem o arquivo: os tipos do vigia da máquina na raiz e os níveis da cota em `cota`. */
+function gravarAvisos() { try { writeJson(SAUDE_AVISOS, { ...vigia.avisadoEm, cota: vigiaCota.avisado }); } catch (_) { /* sem disco: avisa mesmo assim */ } }
+const BOX_DIR = (() => { try { const p = saudeMaquina.caminhoDaBox(fs.readFileSync('/proc/self/cgroup', 'utf8')); return p ? `/sys/fs/cgroup${p}` : null; } catch (_) { return null; } })();
+function lerBoxAgora() {
+  if (BOX_DIR === null) return null;
+  const ler = (f) => { try { return fs.readFileSync(`${BOX_DIR}/${f}`, 'utf8'); } catch (_) { return ''; } };
+  return saudeMaquina.lerBox({ current: ler('memory.current'), stat: ler('memory.stat'), high: ler('memory.high'), max: ler('memory.max'), swapCurrent: ler('memory.swap.current'), events: ler('memory.events'), pressure: ler('memory.pressure'), cpuPressure: ler('cpu.pressure'), cpuStat: ler('cpu.stat') });
+}
 const atraso = require('node:perf_hooks').monitorEventLoopDelay({ resolution: 50 });
 atraso.enable();
 function lerSaude() {
@@ -981,23 +980,68 @@ function lerSaude() {
   let disco = null;
   try { disco = saudeMaquina.discoLivrePct(fs.statfsSync(os.homedir())); } catch (_) { /* Node sem statfs */ }
   const lagMs = Math.round(atraso.max / 1e6); atraso.reset();
-  const { avisar } = vigia.registrar({ ...mem, discoLivrePct: disco, lagMs, em: new Date().toISOString() });
+  const box = lerBoxAgora();
+  const { avisar } = vigia.registrar({ ...mem, discoLivrePct: disco, lagMs, box, em: new Date().toISOString() });
   if (avisar.length === 0) return;
-  try { writeJson(SAUDE_AVISOS, vigia.avisadoEm); } catch (_) { /* sem disco: avisa mesmo assim */ }
+  gravarAvisos();
   const prefs = alertPrefs();
   for (const a of avisar) {
     const text = `meu-bot: ${a.texto}`;
     log(`vigia: ${a.tipo}: ${a.texto}`);
-    auditar(`maquina.${a.tipo}`, a.tipo === 'disco' ? `${disco}% livre` : a.tipo === 'lag' ? `${lagMs} ms` : `${mem.memLivreMB}/${mem.memTotalMB} MB`);
-    Promise.all([prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null), prefs.email ? sendEmail(prefs.email, 'meu-bot: sua máquina precisa de atenção', text) : Promise.resolve(null)])
-      .then((r) => log(`vigia: aviso ${a.tipo} whatsapp=${r[0]} email=${r[1]}`));
+    auditar(`maquina.${a.tipo}`, a.tipo === 'box' && box ? `${box.anonMB}/${box.tetoMB === null ? 'sem teto' : `${box.tetoMB} MB`}, psi mem ${box.psiMem60}% cpu ${box.psiCpu60}%` : a.tipo === 'disco' ? `${disco}% livre` : a.tipo === 'lag' ? `${lagMs} ms` : `${mem.memLivreMB}/${mem.memTotalMB} MB`);
+    (prefs.whatsapp ? sendWhatsappSelf(text) : Promise.resolve(null)).then((r) => log(`vigia: aviso ${a.tipo} whatsapp=${r}`));
   }
+}
+
+/**
+ * Vigia da cota (cota.js): a cota de disco desta conta (`quota -wu`, como a pessoa) e o que ocupa (du de uma lista fixa
+ * de pastas), a cada 10 min e nunca com uma resposta em andamento; avisa o dono pelo WhatsApp ao cruzar 80, 95 e 100%,
+ * uma vez por cruzamento (rearma 5 pontos abaixo), com o que ocupa, como liberar e como ter mais (o link de pagamento
+ * da licença, se houver). O resultado vai no /health e no /v1/meu-bot/status (`cota`) e em GET /v1/meu-bot/cota.
+ * A cota macia é o limite que a pessoa vê; a dura (folga de 10%, 7 dias) é o que deixa este aviso ainda sair.
+ */
+let lendoCota = null;
+function lerCota({ forcar = false } = {}) {
+  if (lendoCota !== null) return lendoCota;
+  const u = vigiaCota.ultima;
+  if (!forcar && u !== null && Date.now() - Date.parse(u.em) < 30_000) return Promise.resolve(u);
+  if (!forcar && chatsAtivos > 0) return Promise.resolve(u);
+  const home = os.homedir();
+  const exec = (cmd, args, timeout) => new Promise((resolve) => execFile(cmd, args, { timeout, maxBuffer: 1024 * 1024 }, (err, out) => resolve(err && !out ? null : String(out || ''))));
+  lendoCota = (async () => {
+    const q = cotaMod.lerQuota(await exec('quota', ['-wu', os.userInfo().username], 10_000));
+    let leitura = null;
+    if (q !== null) {
+      const args = cotaMod.duArgs(home);
+      const du = `${(await exec('nice', ['-n', '10', 'du', ...args.normal], 60_000)) || ''}\n${args.link.length > 1 ? (await exec('nice', ['-n', '10', 'du', ...args.link], 30_000)) || '' : ''}`;
+      const limiteKb = cotaMod.limiteKbDe(q);
+      const pct = cotaMod.pctDe(q.usadoKb, limiteKb);
+      leitura = { usadoKb: q.usadoKb, limiteKb, hardKb: q.hardKb > 0 && q.hardKb !== limiteKb ? q.hardKb : null, pct, nivel: cotaMod.nivelDe(pct), grace: q.grace, itens: cotaMod.montarItens(cotaMod.lerDu(du), home, q.usadoKb), em: new Date().toISOString() };
+    }
+    let link = null; try { const lic = ensureLicense(); link = lic.pagamento && typeof lic.pagamento.link === 'string' && lic.pagamento.link !== '' ? lic.pagamento.link : null; } catch (_) { /* sem licença */ }
+    const antes = JSON.stringify(vigiaCota.avisado);
+    const { avisar } = vigiaCota.registrar(leitura, Date.now(), { link });
+    // Grava também quando só rearmou (baixou 5 pontos): senão um reinício traria o nível velho e o próximo cruzamento passaria em silêncio.
+    if (avisar.length > 0 || JSON.stringify(vigiaCota.avisado) !== antes) gravarAvisos();
+    if (avisar.length > 0) {
+      const prefs = alertPrefs();
+      for (const a of avisar) {
+        log(`cota: aviso ${a.nivel}: ${leitura.pct}% de ${cotaMod.fmtGb(leitura.limiteKb)}`);
+        auditar('cota.aviso', `${leitura.pct}% de ${cotaMod.fmtGb(leitura.limiteKb)}`);
+        (prefs.whatsapp ? sendWhatsappSelf(a.texto) : Promise.resolve(null)).then((r) => log(`cota: aviso ${a.nivel} whatsapp=${r}`));
+      }
+    }
+    return vigiaCota.ultima;
+  })().catch((e) => { log(`cota: não li a cota: ${e.message}`); return vigiaCota.ultima; }).finally(() => { lendoCota = null; });
+  return lendoCota;
 }
 // Módulos de produto: onde está este backend e a chave da rota de aviso (0600, como o .env), para os serviços dos
 // módulos (automações, vídeos) mandarem WhatsApp sem conhecer a pasta do backend.
 if (MODULOS_KEY) { try { fs.mkdirSync(modulos.BASE, { recursive: true, mode: 0o700 }); fs.writeFileSync(path.join(modulos.BASE, 'backend.json'), JSON.stringify({ url: `http://127.0.0.1:${PORT}`, chave: MODULOS_KEY }), { mode: 0o600 }); } catch (e) { log(`módulos: backend.json não gravado (${e.message})`); } }
 setTimeout(lerSaude, 5000).unref();
 setInterval(lerSaude, 30_000).unref();
+setTimeout(() => { void lerCota(); }, 20_000).unref();
+setInterval(() => { void lerCota(); }, 10 * 60_000).unref();
 const faxinaDiaria = () => {
   for (const f of faxinar({ eventos: [contas.EVENTOS], logs: [path.join(__dirname, 'backend.log'), path.join(os.homedir(), '.cache', 'meu-bot', 'vigia-gateway.log')] })) log(`faxina: ${f}`);
 };

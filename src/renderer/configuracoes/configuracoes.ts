@@ -4,10 +4,11 @@ import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { parseNotifyHosts } from "../lib/nav-notify.js";
 import { ctx } from "../app/ctx.js";
+import { paintEspaco } from "./espaco.js";
 
 function openSettings(): void {
   if (ctx.dialog.open) return;
-  ctx.paintSupport(); void ctx.refreshSupportState(); void loadAlertPrefs();
+  ctx.paintSupport(); void ctx.refreshSupportState(); void loadAlertPrefs(); paintEspaco(ctx.account?.cota);
   void window.meuBot.updateState().then(ctx.paintUpdateState).catch(() => undefined);
   ctx.syncPrimaryFromModel();
   ctx.paintFallbackOrder();
@@ -35,7 +36,7 @@ export function maybeAskNotificationsOnce(): void {
 const alertsGroup = $<HTMLElement>("alerts-group");
 const alertWa = $<HTMLInputElement>("alert-wa");
 const alertsHint = $<HTMLElement>("alerts-hint");
-let alertPrefsLoaded: { whatsapp: boolean; email: string } | null = null;
+let alertPrefsLoaded: { whatsapp: boolean } | null = null;
 /**
  * Grupo "Sua conta" (lado da pessoa), o último das Configurações e recolhido como os outros: plano, status, membro
  * desde, ciclo e os devices da conta, só leitura, como as telas de billing do Rambox. Quem muda isso é o admin
@@ -72,10 +73,9 @@ async function loadAlertPrefs(): Promise<void> {
 }
 async function saveAlertPrefs(): Promise<void> {
   if (alertsGroup.hidden || alertPrefsLoaded === null || alertWa.disabled) return;
-  // O e-mail saiu da tela (dependia de uma chave no .env da máquina que ninguém configurava).
-  // O que já estava gravado é preservado: a tela deixa de oferecer, sem apagar o que a máquina tem.
-  const next = { whatsapp: alertWa.checked, email: alertPrefsLoaded.email };
-  if (next.whatsapp === alertPrefsLoaded.whatsapp && next.email === alertPrefsLoaded.email) return;
+  // Só WhatsApp: o e-mail (Resend) saiu por completo em 30 out.
+  const next = { whatsapp: alertWa.checked };
+  if (next.whatsapp === alertPrefsLoaded.whatsapp) return;
   try { await window.meuBot.setAlertPrefs(next); alertPrefsLoaded = next; }
   catch (err) { const tab = ctx.active(); if (tab !== null) ctx.addNotice(tab, `Avisos de segurança: ${ipcErrorText(err)}`, "warn"); }
 }
@@ -94,6 +94,8 @@ export function ligarConfiguracoes(): void {
     ctx.paintContext(ctx.active());
     ctx.paintFallbackOrder();
     ctx.checkSessionThreshold();
+    ctx.checkEspacoThreshold();
+    paintEspaco(status?.cota);
     ctx.paintGuide(); // o passo "Ver os limites no rodapé" se marca quando a conta traz números
   });
   ctx.cancelBtn.addEventListener("click", () => ctx.dialog.close());

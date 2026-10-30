@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, PREFIXO_USUARIO, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, PREFIXO_USUARIO, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -53,7 +53,38 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram };
+  const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l) };
+}
+
+/**
+ * Governança de RAM/CPU da máquina: a reserva para o sistema (teto no user.slice, o que falta para o cálculo de
+ * capacidade valer) e o isolamento das boxes que ainda não têm (swap própria, piso protegido, peso de CPU). Só o que
+ * falta; nada reinicia. Devolve a visão nova.
+ */
+export async function aplicarGovernanca(host: string): Promise<UsuariosVisao> {
+  const v = await usuariosDaMaquina(host);
+  if (!v.governanca.reserva) await garantirReserva(host, v, true);
+  if (v.governanca.semIsolamento.length > 0) {
+    const r = await runSsh(host, `${isolamentoTodosSh()}\n`, 60_000);
+    saida(r.stdout, /^ISOLAMENTO=ok /m, `não consegui aplicar o isolamento: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+    const n = /^ISOLAMENTO=ok (\d+)/m.exec(r.stdout)?.[1] ?? "0";
+    const falhas = [...r.stdout.matchAll(/^FALHOU=(\S+)$/gm)].map((m) => m[1]);
+    log(`[usuarios] ${host}: isolamento aplicado a ${n} boxes${falhas.length > 0 ? ` (falhou: ${falhas.join(", ")})` : ""}`);
+    void registrar(host, "maquina.isolamento", `${n} boxes`);
+  }
+  return usuariosDaMaquina(host);
+}
+/** A reserva do user.slice, se a máquina leu a RAM e ainda não tem; `lancar` = erro sobe (botão), senão só log (criar usuário). */
+async function garantirReserva(host: string, v: UsuariosVisao, lancar: boolean): Promise<void> {
+  if (v.ram === null || v.governanca.reserva || v.userSlice === null) return;
+  try {
+    const { capMb, lowMb } = reservaDe(v.ram.totalKb);
+    const r = await runSsh(host, `${reservaHostSh(capMb, lowMb)}\n`, 30_000);
+    saida(r.stdout, /^RESERVA=ok /m, `não consegui reservar memória para o sistema: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+    log(`[usuarios] ${host}: reserva para o sistema: teto dos usuários em ${capMb} MB`);
+    void registrar(host, "maquina.reserva", `${capMb} MB`);
+  } catch (e) { if (lancar) throw e; log(`[usuarios] ${host}: reserva não aplicada: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
 const nomeValido = (nome: unknown): string => {
@@ -111,6 +142,8 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   // o usuário pela metade, e o próximo "Criar" dizia "já existe").
   if (typeof pct === "number" && pct > 0 && (await usuariosDaMaquina(host)).discoKb === null) throw new Error("não consegui ler o tamanho do disco desta máquina: crie sem limite (deixe o % vazio) e ponha o limite depois, na linha do usuário");
   const { chave } = await acessoDesteMac(host);
+  // A reserva para o sistema entra antes da primeira box que vier a precisar dela (falhar aqui só avisa no log).
+  await usuariosDaMaquina(host).then((v) => garantirReserva(host, v, false)).catch(() => undefined);
   const r = await runSsh(host, `${usuarioComChavesSh(nome, [chave], "erro")}\n`, 60_000);
   const erro = /^ERRO=(.*)$/m.exec(r.stdout)?.[1];
   if (erro !== undefined) throw new Error(erro);

@@ -220,9 +220,9 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   sha256(hostname+usuário)[:12], `announceMachine` em `backend.ts`, uma vez por máquina por abertura); o backend guarda
   `~/.local/share/meu-bot/maquinas.json`, e um Mac desconhecido (o primeiro de todos é a instalação, sem aviso) gera
   linha no `suporte.log` ("sistema|um Mac novo usou o meu-bot: nome (usuário, sistema)"), mensagem no WhatsApp da
-  própria pessoa (`openclaw message send --channel whatsapp --target +<número dela>`) e e-mail opcional pela API do
-  Resend (`RESEND_API_KEY` e `ALERT_EMAIL_FROM` no .env do backend). Preferências em `alertas.json`
-  (`GET/PUT /v1/meu-bot/alerts`), editadas no grupo "Segurança" das Configurações (só no meu-bot, máquina por SSH).
+  própria pessoa (`openclaw message send --channel whatsapp --target +<número dela>`, ou `hermes send` no Hermes).
+  O e-mail pela Resend saiu por completo em 30 out (ninguém configurava a chave): `alertas.json` só tem `whatsapp`
+  (`GET/PUT /v1/meu-bot/alerts`), editado no grupo "Segurança" das Configurações (só no meu-bot, máquina por SSH).
   Ficou de fora: bandeja, hibernação, workspaces, telemetria/Firebase, licença e permissões de câmera/microfone/tela/
   localização/Bluetooth (sem uso; pedir assusta). Os fuses do Rambox (RunAsNode off, NodeOptions off, Inspect off,
   cookie encryption, ASAR integrity, OnlyLoadAppFromAsar) são idênticos aos nossos (`scripts/fuses.mjs`).
@@ -659,8 +659,35 @@ usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
 - **Sempre ligado (linger):** o Hermes de cada usuário roda com `systemctl --user`; sem linger ele morre quando a
   última sessão SSH do usuário fecha e não volta ao reiniciar. Criar já liga (`lingerSh`), apagar desliga antes do
   `userdel`; quem estiver sem mostra o botão "Manter ligado" (`admin:usuario-ligado`, auditado `usuarios.ligado`).
-- **Aviso de disco:** "Usado" fica amarelo a partir de 90% do limite e vermelho em 100% (`nivelUso`), com uma linha
-  contando quantos estão apertados: no limite o agente para de gravar conversas e mídia.
+- **Aviso de disco:** "Usado" fica amarelo a partir de 80% do limite macio (quando a pessoa recebe o 1º aviso no
+  WhatsApp) e vermelho em 100% (`nivelUso`), com uma linha contando quantos estão apertados.
+- **Cota macia e dura (30 out):** `limiteSh` grava macio = o limite (o que a pessoa vê e o "Limite" da tabela) e duro
+  = macio + max(10%, 300 MB) (`hardKbDe`), com carência de 7 dias (`setquota -t`). Entre os dois a conta ainda grava:
+  é o que deixa o aviso de "acabou" sair pelo WhatsApp e o Hermes seguir por uns dias. Conta de antes da folga mostra
+  "sem folga" ao lado do limite; Salvar o mesmo % aplica. `LISTAR_SH` lê `$2 $3 $4` da `quota -wu` e o duro vai na
+  coluna 16 (as antigas não mudam de lugar). O limite de 1% por box é decisão de produto (a pessoa sente e faz upgrade);
+  o que o backend dela faz com isso está em `guia/whatsapp.md` (vigia da cota) e `guia/agente.md` (Configurações › Espaço).
+- **Governança de RAM/CPU (30 out):** além dos tetos, toda box leva isolamento no `recursosSh`: `MemorySwapMax=256M`
+  (sem teto de RAM, `infinity`), `MemoryLow=640M` (o conjunto de trabalho medido: Hermes 240 + ponte 120 + backend 70)
+  e `CPUWeight=100` (parte justa sob disputa; a cota continua sendo o teto). A reserva para o sistema é um teto no
+  `user.slice` (todos os usuários juntos): total − max(3 GB, 10%), `MemoryLow` pela metade (com `memory_recursiveprot`
+  o piso de cada box só vale até o do pai) e `CPUWeight=100` (`reservaHostSh`, com guarda em `anon` do user.slice: o
+  `memory.current` do root é cache). O botão "Aplicar governança de RAM/CPU" aparece só quando falta a reserva ou há
+  box sem isolamento (`governancaDe`: box sem `MemorySwapMax`); "Criar usuário" aplica a reserva antes se faltar.
+  Tudo por `systemctl set-property` (persiste em `/etc/systemd/system.control`, vale na hora, nada reinicia).
+- **Capacidade:** "boxes: N de M (2048 MB de RAM cada, teto dos usuários X)": M = teto do user.slice ÷ teto padrão
+  por box (`capacidadeDe`); 32 GB → 28,8 GB → 14 boxes a 2 GB. CPU prometida acima dos núcleos é normal (as boxes
+  ficam ociosas; o peso divide quando disputam). Criar além de M avisa, não bloqueia.
+- **Pressão (coluna nova) e RAM:** `LISTAR_SH` lê o cgroup de cada fatia (`memory.current`, `anon` do `memory.stat`,
+  `memory.peak`, `memory.swap.current`, `memory.events`, PSI de memória e CPU, `cpu.stat`). A coluna RAM mostra a
+  memória própria (`anon`; o `memory.current` é ~70% cache descartável) com RSS, cache, pico e swap no título.
+  Pressão = `pressaoDe`: estrangulada (OOM matou alguém, PSI mem ≥ 25%, PSI CPU ≥ 50%, ou teto batido e PSI ≥ 10%),
+  apertada (PSI mem ≥ 10%, PSI CPU ≥ 25%, teto batido, ou anon ≥ 85% do MemoryHigh), senão folgada; o título diz o
+  motivo e a dica. `events high` não conta (box saudável tem centenas: cache recolhido no MemoryHigh). `max`/`oom_kill`
+  são cumulativos até recriar a fatia ou reiniciar.
+- **Vigia da box:** o backend de cada usuário lê o próprio cgroup (`/proc/self/cgroup` → `/sys/fs/cgroup/user.slice/
+  user-<uid>.slice`) e avisa a pessoa no WhatsApp (`box`, antes dos outros tipos) quando a box dela está no limite em 3
+  leituras seguidas (OOM: na hora); a saúde do admin mostra "vigia: a box dela está no limite de RAM/CPU".
 - **Swap:** liga 8 GB quando a máquina não tem nenhuma.
 - **Apelido:** nome de exibição (GECOS); login e pasta não mudam.
 - **Apagar:** usuário e pasta; nunca quem tem sudo, os do meu-bot (`PROTEGIDOS`) nem os do sistema (`RESERVADOS`).

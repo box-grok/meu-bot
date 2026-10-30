@@ -1,7 +1,14 @@
 /** Contrato IPC · Contas e ferramentas do agente: Claude, xAI, status line, objetivo, voz. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 
-/** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. */
-export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean }
+/** Segmentos da status line (barra do Claude Code na máquina e rodapé do app): ligar/desligar. `espaco` só existe no rodapé (o statusline.sh ignora). */
+export interface StatusLineSegments { model: boolean; ctx: boolean; account: boolean; session: boolean; weekly: boolean; espaco: boolean }
+
+/** Nível do espaço da conta na máquina: ok, perto (≥80%), crítico (≥95%), cheio (≥100%, ainda grava por 7 dias com a folga). */
+export type CotaNivel = "ok" | "perto" | "critico" | "cheio";
+/** O que ocupa espaço: `dela` = conta como uso dela (programas do agente não); `apagavel` = entra no "Liberar espaço". */
+export interface CotaItem { id: string; rotulo: string; kb: number; dela: boolean; apagavel: boolean }
+/** Cota de disco da conta na máquina, lida pelo backend dela (`quota -wu`): usado, limite macio, duro (null = igual), %, nível, carência quando acima do macio, o que ocupa e quando leu. */
+export interface CotaInfo { usadoKb: number; limiteKb: number; hardKb: number | null; pct: number; nivel: CotaNivel; grace: string | null; itens: CotaItem[]; em: string }
 
 export interface AccountStatus {
   /** Preferência de segmentos gravada na máquina (~/.claude/statusline-segments.json); ausente/null = todos. */
@@ -20,6 +27,8 @@ export interface AccountStatus {
   modelName?: string | null;
   /** Contas do Claude na máquina: a que respondeu por último, quantas há e quantas estão fora (limite/bloqueio); null = backend antigo. */
   contas?: { atual: string | null; rotulo: string | null; total: number; esgotadas: number; proximaEm: number | null } | null;
+  /** Cota de disco da conta na máquina; null = sem cota; ausente = backend antigo (antes do 1.9). */
+  cota?: CotaInfo | null;
 }
 
 /** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */

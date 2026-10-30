@@ -1,5 +1,5 @@
 /** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
-import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
+import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
@@ -310,6 +310,14 @@ export interface MeuBotClientApi {
   browserRequestPro(): Promise<void>;
   /** A pessoa avisou que já pagou (aviso de plano): fica no registro do suporte da máquina para o admin liberar. */
   planoAvisarPagamento(): Promise<void>;
+  /** Espaço da conta na máquina (Configurações › Espaço): a cota relida agora pelo backend dela; null = sem cota, fora do ar ou este Mac. */
+  cotaStatus(): Promise<CotaInfo | null>;
+  /** O que ela pode apagar para liberar espaço (só caches de mídia, workspaces e sessões antigas do WhatsApp), como ela. */
+  cotaMaiores(): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
+  /** Apaga um item dessa lista (conferido de novo na máquina) e devolve a lista nova. */
+  cotaApagarItem(caminho: string): Promise<{ home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] }>;
+  /** "Pedir mais espaço ao admin": fica no registro do suporte da máquina, com o % em que ela estava. */
+  cotaPedirMais(pct: number): Promise<void>;
   /** Computador (Pro): o que a máquina diz da tela do bot. */
   computadorStatus(): Promise<TelaStatus>;
   /** Liga a tela (até 3 tentativas) e devolve o status depois. */
@@ -468,6 +476,8 @@ export interface MeuBotAdminApi {
   adminUsuarioRecursos(nome: string, ramMb: number, cpuPct: number): Promise<UsuariosVisao>;
   /** Liga 8 GB de swap na máquina (só quando não tem nenhuma). */
   adminSwapLigar(): Promise<UsuariosVisao>;
+  /** Governança de RAM/CPU: reserva para o sistema (teto no user.slice) e isolamento das boxes que ainda não têm; nada reinicia. */
+  adminGovernanca(): Promise<UsuariosVisao>;
   /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
   adminHermesGlobal(): Promise<UsuariosVisao>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */

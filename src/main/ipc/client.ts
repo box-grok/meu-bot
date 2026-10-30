@@ -26,6 +26,7 @@ import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
 import { cancelarConta, entrarConta, instalarGh, sairConta } from "../agente/contas-cli";
 import { isContaId } from "../agente/contas-cli-core";
 import { linkPublicoLista, linkPublicoNome, linkPublicoPublicar, linkPublicoRemover } from "../agente/link-publico";
+import { cotaApagarItem, cotaMaiores, cotaStatus } from "../agente/espaco";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
   getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
@@ -310,6 +311,11 @@ export function registerClientIpc(): void {
   handleClient("computador:instalar", async (event) => { const host = await comp(event); const r = await installTela(host); void registrar(host, "computador.instalar", "", r.ok ? "ok" : `código ${r.codigo ?? "timeout"}`); return r; });
   handleClient("computador:url", async (event) => telaUrl(await comp(event)));
   handleClient("plano:avisar-pagamento", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pago", "avisou que já pagou (aviso de plano)"); log(`[plano] ${h.host}: avisou que já pagou`); });
+  // Espaço da conta na máquina (Configurações › Espaço): a cota dela, o que dá para apagar (só caches e workspaces, como ela) e o pedido de mais espaço.
+  handleClient("cota:status", (event) => cotaStatus(ctxOf(event).host));
+  handleClient("cota:maiores", (event) => cotaMaiores(ctxOf(event).host));
+  handleClient("cota:apagar-item", (event, payload: unknown) => cotaApagarItem(ctxOf(event).host, (payload as { caminho?: unknown } | null)?.caminho));
+  handleClient("cota:pedir-mais", async (event, payload: unknown) => { const h = ctxOf(event); const pct = Number((payload as { pct?: unknown } | null)?.pct); await registrar(h.host, "cota.pedir-mais", Number.isFinite(pct) ? `${Math.round(pct)}%` : ""); log(`[cota] ${h.host}: pediu mais espaço${Number.isFinite(pct) ? ` (${Math.round(pct)}%)` : ""}`); });
   handleClient("finance:pedir", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pedir", "pediu para liberar o meu-bot-finance (financeiro)"); log(`[finance] ${h.host}: pediu o meu-bot-finance`); });
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
   // Tutorial 10 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.
@@ -691,10 +697,8 @@ export function registerClientIpc(): void {
   handleClient("alerts:set", (event, payload: unknown) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    const p = payload as { whatsapp?: unknown; email?: unknown } | null;
-    const email = typeof p?.email === "string" ? p.email.trim().slice(0, 120) : "";
-    if (email !== "" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("e-mail inválido");
-    return saveAlertPrefs(h.host, { whatsapp: p?.whatsapp !== false, email });
+    const p = payload as { whatsapp?: unknown } | null;
+    return saveAlertPrefs(h.host, { whatsapp: p?.whatsapp !== false });
   });
   handleClient("ui:notify", (event, payload: unknown) => {
     const owned = ownedConversation(event, payload);

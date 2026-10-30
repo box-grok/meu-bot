@@ -79,3 +79,47 @@ test("faxina: log acima do teto vai para .1 e o original fica vazio no mesmo lug
   assert.deepEqual(feito, [], "nada a fazer, nada no log");
   assert.ok(existsSync(`${log}.1`));
 });
+
+const CG = {
+  current: "1363148800\n", stat: "anon 331350016\nfile 1000000000\n", high: "1932525568\n", max: "2147483648\n", swapCurrent: "12288\n",
+  events: "low 0\nhigh 393\nmax 0\noom 0\noom_kill 0\noom_group_kill 0\n", pressure: "some avg10=0.00 avg60=0.00 avg300=0.00 total=1234\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n",
+  cpuPressure: "some avg10=1.50 avg60=3.20 avg300=2.00 total=99\n", cpuStat: "usage_usec 1\nuser_usec 1\nsystem_usec 0\nnr_periods 791000\nnr_throttled 3083\nthrottled_usec 2439000000\n",
+};
+
+test("box: o caminho da fatia vem do /proc/self/cgroup; os arquivos do cgroup viram MB, eventos e PSI", () => {
+  assert.equal(s.caminhoDaBox("0::/user.slice/user-1001.slice/user@1001.service/app.slice/meu-bot-backend.service\n"), "/user.slice/user-1001.slice");
+  assert.equal(s.caminhoDaBox("0::/system.slice/sshd.service\n"), null); assert.equal(s.caminhoDaBox("0::/user.slice/user-0.slice/session-1.scope"), "/user.slice/user-0.slice");
+  assert.equal(s.caminhoDaBox(""), null);
+  const b = s.lerBox(CG);
+  assert.deepEqual(b, { usoMB: 1300, anonMB: 316, altoMB: 1843, tetoMB: 2048, swapMB: 0, eventos: { high: 393, max: 0, oomKill: 0 }, psiMem60: 0, psiCpu60: 3.2, periodos: 791000, estranguladoUsec: 2439000000 });
+  assert.equal(s.lerBox({ ...CG, max: "max\n", high: "max\n" }).tetoMB, null);
+  assert.equal(s.lerBox({ current: "", stat: "" }), null);
+});
+
+test("Vigia: a própria box no limite só avisa na 3ª leitura seguida (OOM na hora), com texto de memória ou de CPU, antes dos outros tipos", () => {
+  const ok = { memTotalMB: 32000, memLivreMB: 28000, swapTotalMB: 8192, discoLivrePct: 90, lagMs: 3 };
+  const box = s.lerBox(CG);
+  const v = new s.Vigia();
+  assert.deepEqual(v.registrar({ ...ok, box }, 1).avisar, [], "folgada");
+  const cheia = { ...box, anonMB: 1800 };
+  assert.deepEqual(v.registrar({ ...ok, box: cheia }, 2).avisar, []); assert.deepEqual(v.registrar({ ...ok, box: cheia }, 3).avisar, []);
+  const r = v.registrar({ ...ok, box: cheia }, 4);
+  assert.equal(r.alerta, "box"); assert.match(r.avisar[0].texto, /limite de memória da sua box \(1800 MB de 2048 MB\)/);
+  assert.deepEqual(v.registrar({ ...ok, box: cheia }, 5).avisar, [], "6 h de intervalo"); assert.equal(v.ultima.alerta, "box");
+  // CPU: só a PSI de CPU alta → o texto de processador.
+  const w = new s.Vigia();
+  for (let i = 0; i < 2; i += 1) w.registrar({ ...ok, box: { ...box, psiCpu60: 70 } }, 10 + i);
+  assert.match(w.registrar({ ...ok, box: { ...box, psiCpu60: 70 } }, 12).avisar[0].texto, /sem fôlego de processador.*70%/);
+  // OOM: o contador subiu desde a leitura anterior → avisa na hora, uma vez.
+  const x = new s.Vigia();
+  x.registrar({ ...ok, box }, 20);
+  const o = x.registrar({ ...ok, box: { ...box, eventos: { ...box.eventos, oomKill: 1 } } }, 21);
+  assert.equal(o.avisar.length, 1); assert.equal(o.alerta, "box");
+  // Prioridade: box antes de memória da máquina; sem box (null) nada muda.
+  const y = new s.Vigia({ boxPct: 1 });
+  const baixa = { memTotalMB: 8000, memLivreMB: 700, swapTotalMB: 0, discoLivrePct: 60, lagMs: 3, box };
+  y.registrar(baixa, 30); y.registrar(baixa, 31);
+  assert.equal(y.registrar(baixa, 32).alerta, "box");
+  const z = new s.Vigia(); z.registrar({ ...ok, box: null }, 40); z.registrar({ ...ok, box: null }, 41);
+  assert.deepEqual(z.registrar({ ...ok, box: null }, 42), { alerta: null, avisar: [] });
+});

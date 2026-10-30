@@ -1,7 +1,8 @@
-/** Status line do chat (modelo da box: modelo | Ctx | conta | Sessão | Semanal). Puro: testável. */
+/** Status line do chat (modelo da box: modelo | Ctx | conta | Sessão | Semanal | Espaço). Puro: testável. */
 import type { AccountStatus, StatusLineSegments } from "../../shared/ipc";
+import { tam } from "./espaco.js";
 
-export interface Segment { kind: "model" | "ctx" | "turn" | "account" | "session" | "weekly" | "age"; text: string; title?: string }
+export interface Segment { kind: "model" | "ctx" | "turn" | "account" | "session" | "weekly" | "age" | "espaco"; text: string; title?: string; /** Cor de aviso (amarelo) ou de perigo (vermelho): o Espaço a partir de 80% e 95%. */ tone?: "warn" | "bad" }
 
 /** 1234 → "1.2k", 2500000 → "2.5M" (igual ao fmt do statusline.sh). */
 export const fmtK = (n: number): string => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
@@ -27,12 +28,14 @@ export function ageText(updatedEpochSec: number | null, nowMs = Date.now()): str
 
 /** Limiares de aviso (os mesmos do alerta do Hermes no WhatsApp). */
 export const SESSION_THRESHOLDS = [80, 90, 95] as const;
+/** Limiares do espaço da conta na máquina (os mesmos do aviso do backend no WhatsApp). */
+export const ESPACO_THRESHOLDS = [80, 95] as const;
 
 /** Maior limiar cruzado por `pct` que ainda não foi avisado (`warned` = último avisado). */
-export function thresholdToWarn(pct: number | null, warned: number): number | null {
+export function thresholdToWarn(pct: number | null, warned: number, thresholds: readonly number[] = SESSION_THRESHOLDS): number | null {
   if (pct === null) return null;
   let hit: number | null = null;
-  for (const t of SESSION_THRESHOLDS) if (pct >= t && t > warned) hit = t;
+  for (const t of thresholds) if (pct >= t && t > warned) hit = t;
   return hit;
 }
 
@@ -57,6 +60,7 @@ export function previewLine(segments: StatusLineSegments | null): string {
   if (on("account")) parts.push("você@exemplo.com (Premium)");
   if (on("session")) parts.push("Sessão: 57% · 1h4m");
   if (on("weekly")) parts.push("Semanal: 12% · 3d");
+  if (on("espaco")) parts.push("Espaço: 72%");
   return parts.join(" | ");
 }
 
@@ -83,6 +87,9 @@ export function buildSegments(input: StatusInput): Segment[] {
     const age = ageText(a.updated, now);
     if (age !== "" && (a.sessionPct !== null || a.weeklyPct !== null)) out.push({ kind: "age", text: age, title: "idade do cache do statusline.sh na máquina" });
   }
+  // Espaço da conta na máquina (cota de disco), de qualquer modelo: é da máquina, não do Claude.
+  const c = input.account?.cota ?? null;
+  if (on("espaco") && c !== null) out.push({ kind: "espaco", text: `Espaço: ${c.pct}%`, title: `espaço da sua conta na máquina: ${tam(c.usadoKb)} de ${tam(c.limiteKb)} (Configurações › Espaço)`, ...(c.pct >= 95 ? { tone: "bad" as const } : c.pct >= 80 ? { tone: "warn" as const } : {}) });
   return out;
 }
 
