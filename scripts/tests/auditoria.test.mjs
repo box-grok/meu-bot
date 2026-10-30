@@ -15,6 +15,7 @@ const ler = (home, ...args) => execFileSync("python3", [PY, "ler", ...args], { e
 
 test("catálogo e marcas: texto da tela sai da ação; legado mostra o texto antigo; marca da lista vira ação", () => {
   assert.equal(a.textoDaLinha({ acao: "whatsapp.pausar", alvo: "+5511999990000", detalhe: "" }), "pausou o agente do WhatsApp para +5511999990000");
+  assert.equal(a.textoDaLinha({ acao: "whatsapp.dono", alvo: "+5521923670743", detalhe: "" }), "definiu o dono do agente do WhatsApp (+5521923670743)");
   assert.equal(a.textoDaLinha({ acao: "legado", alvo: "", detalhe: "reiniciou o gateway" }), "reiniciou o gateway");
   assert.equal(a.acaoDaMarca({ deleted: true, archived: false }), "whatsapp.excluir");
   assert.equal(a.acaoDaMarca({ deleted: false }), "whatsapp.restaurar");

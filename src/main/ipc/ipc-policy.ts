@@ -40,7 +40,7 @@ export const CLIENT_CHANNELS = [
   "ui:quick-toggle", "quick:submit", "quick:hide", "quick:ack",
   // WhatsApp: o que mexe na máquina ou no agente dela
   "whatsapp:pair", "whatsapp:audio", "whatsapp:logout", "whatsapp:dm-policy", "whatsapp:agente", "whatsapp:branch",
-  "whatsapp:cancel", "whatsapp:pausa-plugin",
+  "whatsapp:cancel", "whatsapp:pausa-plugin", "whatsapp:dono",
   // logins
   "claude-login:start", "claude-login:code", "claude-login:logout", "claude-login:cancel",
   // várias contas do Claude na máquina (rodízio no limite de uso)

@@ -383,6 +383,8 @@ export interface MeuBotClientApi {
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo; "list" = você + `numbers` (só dígitos, com DDI). Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
+  /** Quem manda no agente (null = volta ao número pareado). Reaplica "quem responde" e, no Hermes, o home channel (reinicia o gateway). */
+  whatsappSetDono(numero: string | null): Promise<WhatsappStatus>;
   /** Grava qual agente atende o WhatsApp desta máquina; trocar desconecta o número do agente anterior. */
   whatsappEscolherAgente(agente: WhatsappAgente): Promise<WhatsappStatus>;
   /** Conversa nova do meu-bot com a conversa do WhatsApp como contexto. */

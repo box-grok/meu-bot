@@ -235,6 +235,7 @@ const clientApi: MeuBotClientApi = {
   setSupportShare: (share: SupportShare) => ipcRenderer.invoke("support:share", share),
   whatsappCancel: () => ipcRenderer.invoke("whatsapp:cancel", {}),
   whatsappSetDmPolicy: (policy: "self" | "open" | "list", numbers?: readonly string[]) => ipcRenderer.invoke("whatsapp:dm-policy", { policy, numbers: numbers ?? [] }),
+  whatsappSetDono: (numero: string | null) => ipcRenderer.invoke("whatsapp:dono", { numero }),
   whatsappEscolherAgente: (agente: "openclaw" | "hermes") => ipcRenderer.invoke("whatsapp:agente", { agente }),
   whatsappBranch: (number: string) => ipcRenderer.invoke("whatsapp:branch", { number }),
   claudeLogin: () => ipcRenderer.invoke("claude-login:start", {}),
