@@ -854,6 +854,11 @@ body.topbar-hidden .topbar { display: none; }
 .wa-rename input { width: 100%; box-sizing: border-box; padding: 6px 8px; font: inherit; font-size: 12px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
 .wa-rename input:focus { outline: none; border-color: var(--accent); }
 .wa-busy { cursor: progress; animation: wa-busy .8s ease-in-out infinite alternate; }
+/* Pausar/retomar: a etiqueta respira devagar enquanto a máquina trabalha e depois confirma e some sozinha. */
+.si-tab.wa-aguarde { color: var(--muted); animation: wa-aguarde 1.4s ease-in-out infinite; }
+@keyframes wa-aguarde { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
+.si-tab.wa-pronto { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 10%, transparent); animation: wa-pronto 2.5s ease forwards; }
+@keyframes wa-pronto { 0% { opacity: 0; transform: translateY(3px); } 15% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes wa-busy { to { opacity: .35; } }
 .wa-in { align-self: flex-start; background: var(--assistant); border: 1px solid var(--line); }
 .wa-in .wa-body { white-space: pre-wrap; }

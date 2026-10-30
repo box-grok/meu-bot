@@ -151,6 +151,8 @@ async function migrateWaMarks(): Promise<void> {
   ctx.waChats = await window.meuBot.whatsappChats();
 }
 
+/** Pausar/retomar em andamento por contato: a linha mostra "aguarde…" piscando e depois "pronto!" por um instante. */
+const waPausaEtapa = new Map<string, "aguarde" | "pronto">();
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
   const fail = (what: string, err: unknown): void => {
@@ -187,19 +189,19 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
       await markWa({ number: row.number, deleted: false }, "Não deu para restaurar");
       break;
     case "pause": case "pause-2h": case "pause-24h": case "resume": {
-      const item = [...ctx.sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
-      item?.classList.add("wa-busy");
       const pausar = action !== "resume";
       const horas = action === "pause-2h" ? 2 : action === "pause-24h" ? 24 : undefined;
       // Otimista: o fim real vem da máquina na próxima leitura da lista (relógio dela).
       const pausaAte = pausar && horas !== undefined ? new Date(Date.now() + horas * 3_600_000).toISOString() : null;
+      // A etiqueta da linha conta a história: "pausado" → "aguarde…" (piscando; sem o plugin o gateway reinicia, ~15 s) → "pronto!" → some.
+      waPausaEtapa.set(row.number, "aguarde"); ctx.renderSidebar();
       try {
         await window.meuBot.pauseWhatsapp(row.number, pausar, horas);
         ctx.waChats = ctx.waChats.map((c) => (c.number === row.number ? { ...c, paused: pausar, pausaAte } : c));
         for (const g of ctx.waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: pausar, pausaAte }; if (ctx.pageShown(g.page)) ctx.renderWaChat(g); }
-        ctx.renderSidebar();
-      } catch (err) { fail(pausar ? "Não deu para pausar" : "Não deu para retomar", err); }
-      finally { item?.classList.remove("wa-busy"); }
+        waPausaEtapa.set(row.number, "pronto"); ctx.renderSidebar();
+        setTimeout(() => { if (waPausaEtapa.get(row.number) === "pronto") { waPausaEtapa.delete(row.number); ctx.renderSidebar(); } }, 2500);
+      } catch (err) { waPausaEtapa.delete(row.number); ctx.renderSidebar(); fail(pausar ? "Não deu para pausar" : "Não deu para retomar", err); }
       break;
     }
     case "clear":
@@ -468,8 +470,11 @@ export function paintWaSidebar(query: string): void {
         item.classList.toggle("wa-sel-on", sel.has(row.number));
       }
       const rotuloPausa = row.paused ? `pausado${pausaAteTexto(row.pausaAte) ? ` ${pausaAteTexto(row.pausaAte)}` : ""}` : "";
+      const etapa = waPausaEtapa.get(row.number);
       item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
-      if (row.paused) item.append(el("span", "si-tab", rotuloPausa));
+      if (etapa === "aguarde") item.append(el("span", "si-tab wa-aguarde", "aguarde…"));
+      else if (etapa === "pronto") item.append(el("span", "si-tab wa-pronto", "✓ pronto"));
+      else if (row.paused) item.append(el("span", "si-tab", rotuloPausa));
       if (deleted) item.append(el("span", "si-tab", "excluída"));
       item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
       item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : ctx.fmtPhone(row.number)}${row.paused ? ` · ${rotuloPausa}: o agente não responde` : ""}`;
