@@ -7,10 +7,14 @@ import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { URL_TOKEN, parseClienteOAuth, type ClienteOAuth } from "./google-core";
+import { PASTA_BAIXADOS } from "./cliente-release-core";
 
-/** O client OAuth do app: userData/google-oauth.json ou Resources/google-oauth.json (o JSON do Google Cloud). */
+/**
+ * O client OAuth do app: userData/google-oauth.json, Resources/google-oauth.json (o JSON do Google Cloud) ou, por
+ * último, o que o app baixou da release (userData/google-cliente-baixado/, cliente-release.ts) quando o build veio sem.
+ */
 export function cliente(): ClienteOAuth | null {
-  for (const f of [path.join(app.getPath("userData"), "google-oauth.json"), path.join(process.resourcesPath ?? "", "google-oauth.json")]) {
+  for (const f of [path.join(app.getPath("userData"), "google-oauth.json"), path.join(process.resourcesPath ?? "", "google-oauth.json"), path.join(app.getPath("userData"), PASTA_BAIXADOS, "google-oauth.json")]) {
     try { const c = parseClienteOAuth(JSON.parse(fs.readFileSync(f, "utf8"))); if (c) return c; } catch { /* próximo */ }
   }
   return null;
@@ -34,11 +38,13 @@ export function clienteConta(): ClienteOAuth | null {
  * sobrevive a toda atualização e venceria para sempre. Mostrar isso na tela transforma uma caçada
  * em dois segundos de leitura.
  */
-export function clienteContaOrigem(): { cliente: ClienteOAuth; origem: "pasta de dados" | "pacote do app" | "client do app"; projeto: string } | null {
+export function clienteContaOrigem(): { cliente: ClienteOAuth; origem: "pasta de dados" | "pacote do app" | "release" | "client do app"; projeto: string } | null {
   const projetoDe = (c: ClienteOAuth): string => c.clientId.split("-")[0] ?? "?";
-  const tentativas: { f: string; origem: "pasta de dados" | "pacote do app" }[] = [
+  // O baixado da release fica atrás do manual e do pacote: um build que passe a trazer o arquivo vence o baixado.
+  const tentativas: { f: string; origem: "pasta de dados" | "pacote do app" | "release" }[] = [
     { f: path.join(app.getPath("userData"), "google-conta-oauth.json"), origem: "pasta de dados" },
     { f: path.join(process.resourcesPath ?? "", "google-conta-oauth.json"), origem: "pacote do app" },
+    { f: path.join(app.getPath("userData"), PASTA_BAIXADOS, "google-conta-oauth.json"), origem: "release" },
   ];
   for (const { f, origem } of tentativas) {
     try { const c = parseClienteOAuth(JSON.parse(fs.readFileSync(f, "utf8"))); if (c) return { cliente: c, origem, projeto: projetoDe(c) }; } catch { /* próximo */ }

@@ -182,7 +182,8 @@ export interface MeuBotSharedApi {
   linkPublico(): Promise<LinkPublicoInfo | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
-  googleContaStatus(): Promise<GoogleContaStatus>;
+  /** `forcar`: repete a busca do client na release agora, mesmo tendo tentado há pouco. */
+  googleContaStatus(forcar?: boolean): Promise<GoogleContaStatus>;
   /** Usa nesta máquina a conta que estava conectada no Mac antes de a conta ser por máquina. */
   googleContaAdotarDoMac(): Promise<GoogleContaStatus>;
   googleContaConectar(): Promise<GoogleContaStatus>;

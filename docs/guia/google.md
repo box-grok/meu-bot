@@ -134,3 +134,32 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
 - O login abre no Navegador da própria máquina (partição `persist:navegador-<host>`), então os cookies também são dela.
 - Fica de fora: o token de Contatos do CRM (`google-contatos.bin`, usado em "guardar conversa no Drive") ainda é um
   por app.
+
+## O client OAuth do Google viaja na release e o app busca sozinho (30 out)
+
+- **Problema:** `config/google-oauth.json` (CRM, Contatos) e `config/google-conta-oauth.json` (Conta Google geral:
+  login, Gmail, Agenda, Planilhas, Drive) ficam fora do git, e `scripts/package.mjs` só os copia para o pacote se
+  existirem no Mac que empacota. Um Mac sem os arquivos gera apps em que a página Conta Google diz "Google não
+  configurado neste app" e a única saída era reinstalar outra versão. Em 30 out a release 0.3.0 publicada também
+  não os trazia: nenhum build tinha o Google ligado.
+- **Agora:**
+  - `scripts/release.mjs` publica os dois JSONs que existirem em `config/` como assets avulsos da release, cada um
+    com o `.sig` (Ed25519, a mesma chave dos zips, conferida com `UPDATE_PUBLIC_KEYS` antes do upload). Sem os
+    arquivos no Mac da release, avisa e segue (`clientesGoogleParaPublicar` em `release-core.mjs`).
+  - No app, `src/main/google/cliente-release.ts` (`garantirClientesGoogle`): quando `contaStatus` diz "não
+    configurado", o handler de `google-conta:status` consulta a release estável, baixa `<nome>` e `<nome>.sig`
+    (até 64 KB), confere a assinatura com `verificaAssinatura`, valida com `parseClienteOAuth` e grava em
+    `userData/google-cliente-baixado/<nome>` (0600). Sem o arquivo na release, repete só depois de 6 h ou quando a
+    pessoa clica "Buscar de novo agora" (`googleContaStatus(true)`). Nunca lança: sem internet vira o texto da tela.
+  - Ordem de origem do client (`comum.ts`): arquivo manual em userData → pacote do app → **baixado da release**. O
+    baixado fica por último de propósito: um build que passe a trazer o arquivo vence o baixado, e o problema do
+    "arquivo velho em userData que vence para sempre" (comentário de `clienteContaOrigem`) não se repete. A tela
+    mostra "client vindo da release".
+  - Texto da página quando ainda falta: diz o nome certo do arquivo (`google-conta-oauth.json`), que o app vai
+    buscar sozinho quando a release trouxer, e a última tentativa ("a release v0.3.0 não traz …", "sem internet").
+- **Criar o client (uma vez, pelo dono):** receita em `crm.md › Configuração única` (projeto no Google Cloud, tela
+  de consentimento, credencial "App para computador", baixar o JSON). Para a Conta Google geral, um projeto
+  separado, salvo como `config/google-conta-oauth.json`. Depois, uma release: todos os apps instalados se resolvem
+  ao abrir a página.
+- Testes: `scripts/tests/cliente-release-core.test.mjs` (asset + .sig, só https, tamanho, draft; assinatura
+  roundtrip; rebusca; motivo; lista da release igual à do app).
