@@ -162,3 +162,22 @@ test("add-ons com nome para o admin: o rótulo vem do catálogo da janela (caps.
   const view = { license: { plan: "pro", status: "active", produtos: ["meu-bot-finance"], memberSince: null, interval: null, trialEnd: null, expiresAt: null }, activeCount: 1, deviceLimit: 1, pendingCount: 0 };
   assert.equal(licenseSummary(view, Date.now(), ADDONS_ROTULOS)[0].text, "Plano: Pro + Financeiro");
 });
+
+test("admin: backendAtras compara número a número e trata sem versão como antigo", async () => {
+  const { backendAtras } = await import("../../dist/renderer/lib/admin-view.js");
+  assert.equal(backendAtras("1.8.2", "1.9.0"), true); assert.equal(backendAtras("1.9.0", "1.9.0"), false); assert.equal(backendAtras("1.10.0", "1.9.0"), false);
+  assert.equal(backendAtras("1.9", "1.9.0"), false); assert.equal(backendAtras(null, "1.9.0"), true); assert.equal(backendAtras("1.8.2", null), false);
+});
+
+test("admin: toda ação oferecida em ADMIN_ACTIONS é aceita pelo handler admin:action do main", async () => {
+  const fs = await import("node:fs");
+  const src = fs.readFileSync(new URL("../../dist/main/admin/ipc.js", import.meta.url), "utf8");
+  const guard = /admin:action[\s\S]*?ação inválida/.exec(src)?.[0] ?? "";
+  for (const a of ADMIN_ACTIONS) assert.ok(guard.includes(`"${a.id}"`), `o main recusa a ação ${a.id} que a tela oferece`);
+});
+
+test("admin: linhasPreparar vira ✓ / ✗ / • com o detalhe no passo", async () => {
+  const { linhasPreparar } = await import("../../dist/renderer/lib/admin-view.js");
+  const l = linhasPreparar({ itens: [{ id: "swap", titulo: "Swap", estado: "ok", detalhe: "8 GB", opcional: false }, { id: "gh", titulo: "gh", estado: "falta", detalhe: "", opcional: false }, { id: "link-publico", titulo: "Link", estado: "humano", detalhe: "entre na Cloudflare", opcional: false, pagina: "link-publico" }] });
+  assert.deepEqual(l, [{ text: "Swap", ok: true, step: " · 8 GB" }, { text: "gh", ok: false }, { text: "Link", ok: null, step: " · entre na Cloudflare" }]);
+});

@@ -277,3 +277,16 @@ test("cota macia e dura: o limite que a pessoa vê e a folga (10% ou 300 MB) com
   assert.match(c.limiteSh("ana", 0), /setquota -u 'ana' 0 0 0 0 \//);
   assert.equal(c.nivelUso(80, 100), "perto"); assert.equal(c.nivelUso(79, 100), "ok"); assert.equal(c.nivelUso(100, 100), "cheio");
 });
+
+test("usuários: backend por box vem em linha própria (B) e boxesDesatualizadas compara com a versão do app", () => {
+  const { boxesDesatualizadas } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const u = (n, uid, sudo) => `U\t${n}\t${uid}\t/home/${n}\t/bin/bash\t${sudo}\t1\t1\t\t\t0\tinfinity\tinfinity\t`;
+  const out = `ROOT\n${u("box-1", 1000, 0)}\nB\tbox-1\t1.8.2\n${u("box-2", 1001, 0)}\nB\tbox-2\t1.9.0\n${u("ana", 1002, 1)}\nB\tana\t1.0.0\n${u("zed", 1003, 0)}\n${u("box-4", 1004, 0)}\nB\tbox-4\t\nB\tbox-9\t1.0.0\nB\tNome Ruim\t1.0.0\n`;
+  const r = lerUsuarios(out);
+  assert.deepEqual(r.usuarios.map((x) => [x.nome, x.backendInstalado, x.backendVersao]), [["box-1", true, "1.8.2"], ["box-2", true, "1.9.0"], ["ana", true, "1.0.0"], ["zed", false, null], ["box-4", true, null]]);
+  // sem versão gravada conta como antigo; sudo e sem backend ficam de fora; app sem VERSION = nenhuma; 1.10 > 1.9.
+  assert.deepEqual(boxesDesatualizadas(r.usuarios, "1.9.0"), ["box-1", "box-4"]);
+  assert.deepEqual(boxesDesatualizadas(r.usuarios, "1.10.0"), ["box-1", "box-2", "box-4"]);
+  assert.deepEqual(boxesDesatualizadas(r.usuarios, null), []);
+  assert.match(LISTAR_SH, /\$bd\/VERSION/); assert.match(LISTAR_SH, /share\/meu-bot\/backend"/); assert.match(LISTAR_SH, /printf 'B\\t%s\\t%s\\n'/); assert.match(LISTAR_SH, /\[ -f "\$bd\/server\.js" \]/);
+});

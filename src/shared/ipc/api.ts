@@ -11,7 +11,7 @@ import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
-import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
+import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararId, PrepararVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
 import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
@@ -478,6 +478,12 @@ export interface MeuBotAdminApi {
   adminSwapLigar(): Promise<UsuariosVisao>;
   /** Governança de RAM/CPU: reserva para o sistema (teto no user.slice) e isolamento das boxes que ainda não têm; nada reinicia. */
   adminGovernanca(): Promise<UsuariosVisao>;
+  /** Reinstala o backend do meu-bot nas boxes atrás da versão deste app, uma por vez (pula quem está com chat em andamento ou sem alias neste Mac). */
+  adminBackendsAtualizar(): Promise<UsuariosVisao>;
+  /** Preparar máquina (root): o checklist (ok / falta / humano). */
+  adminPrepararEstado(): Promise<PrepararVisao>;
+  /** Aplica os ids pedidos (sem lista = tudo que falta, sem os opcionais) na ordem de dependência; devolve o estado relido com `falhas`. */
+  adminPrepararAplicar(ids?: PrepararId[]): Promise<PrepararVisao>;
   /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
   adminHermesGlobal(): Promise<UsuariosVisao>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */

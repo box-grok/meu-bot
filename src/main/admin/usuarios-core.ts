@@ -2,6 +2,7 @@
  * Puro (testado): o nome aceito, os scripts da aba Usuários (listar, ligar a cota, limite, apagar) e a leitura da
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
+import { deveAtualizar } from "../atualizacao/updater-core";
 import type { Capacidade, HermesNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
@@ -37,16 +38,20 @@ export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
  * oom_kill, PSI de memória avg10/avg60 e de CPU avg60, cpu.stat períodos/estrangulados/µs). Máquina sem cgroup v2
  * deixa essas colunas vazias.
  */
+/** `COTA=0|1` (cota de usuário ligada no disco principal); deixa `$cota` para quem vier depois. Também no checklist de Preparar máquina. */
+export const COTA_ESTADO_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"`;
+/** `HERMES=global|sem-transcritor|root|nenhum`: onde está o Hermes e se o transcritor compartilhado existe. Também no checklist. */
+export const HERMES_ESTADO_SH = `if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi`;
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 echo ROOT
 echo "DISCO=$(df -k --output=size / 2>/dev/null | tail -1 | tr -d ' ')"
-if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"
+${COTA_ESTADO_SH}
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
 echo "CPUS=$(nproc 2>/dev/null)"
 US=/sys/fs/cgroup/user.slice; [ -f "$US/memory.max" ] && echo "USERSLICE=$(cat $US/memory.max 2>/dev/null) $(cat $US/memory.current 2>/dev/null) $(awk '$1=="anon"{print $2}' $US/memory.stat 2>/dev/null) $(cat $US/memory.low 2>/dev/null)"
-if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
+${HERMES_ESTADO_SH}
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap = (substr(g[1], 1, 8) == "meu-bot=") ? substr(g[1], 9) : ""; print $1"\\t"$3"\\t"$6"\\t"$7"\\t"ap}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
@@ -68,6 +73,7 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap
     cg=$(printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s' "$cur" "$an" "$pk" "$sc" "$ev" "$pm" "$pc" "$cs")
   fi
   printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr" "$hd" "$sx" "$ml" "$cw" "$cg"
+  bd="$h/.local/share/meu-bot/backend"; [ -s "$bd/.env" ] && [ -f "$bd/server.js" ] && printf 'B\\t%s\\t%s\\n' "$n" "$(tr -dc '0-9.' < "$bd/VERSION" 2>/dev/null)"
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
@@ -94,6 +100,13 @@ export function lerUsuarios(out: string): ListaUsuarios {
   const cpus = kb(/^CPUS=(\d+)$/m.exec(out)?.[1]);
   const us = /^USERSLICE=(max|\d+) (\d+) (\d+) (\d+)$/m.exec(out);
   const userSlice = us === null ? null : { maxKb: us[1] === "max" ? null : Math.round(Number(us[1]) / 1024), usoKb: Math.round(Number(us[2]) / 1024), anonKb: Math.round(Number(us[3]) / 1024), lowKb: Math.round(Number(us[4]) / 1024) };
+  // Linha própria por box com o backend do meu-bot (`B\t<nome>\t<versão>`): a coluna do cgroup é variável, uma coluna
+  // depois dela mudaria de posição. Versão vazia = instalado antes do VERSION (conta como antigo).
+  const backends = new Map<string, string | null>();
+  for (const l of out.split("\n")) {
+    const c = l.split("\t");
+    if (c[0] === "B" && NOME_USUARIO_RE.test(c[1] ?? "")) backends.set(c[1]!, /^\d+(\.\d+)*$/.test(c[2] ?? "") ? c[2]! : null);
+  }
   const usuarios: UsuarioMaquina[] = [];
   for (const l of out.split("\n")) {
     const c = l.split("\t");
@@ -108,11 +121,20 @@ export function lerUsuarios(out: string): ListaUsuarios {
       swapMaxMb: ramMaxDe(c[17]), lowMb: c[18] === undefined || c[18] === "" || c[18] === "0" ? null : ramMaxDe(c[18]), cpuWeight: kb(c[19]),
       box, pressao: pressaoDe(box, ramMaxMb),
       apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0", pronto: c[15] === "1",
+      backendInstalado: backends.has(c[1]!), backendVersao: backends.get(c[1]!) ?? null,
     });
   }
   const hm = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1];
   const hermes = hm === "global" || hm === "sem-transcritor" || hm === "root" || hm === "nenhum" ? hm : null;
   return { root, discoKb, cota, ram, userSlice, cpus, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+}
+
+/**
+ * Boxes cujo backend do meu-bot está atrás do que este app traz (`deveAtualizar`: só sobe, nunca desce; sem versão
+ * gravada conta como antigo). Sem backend, com sudo ou protegidas ficam de fora. `doApp` null (app sem VERSION) = nenhuma.
+ */
+export function boxesDesatualizadas(usuarios: readonly UsuarioMaquina[], doApp: string | null): string[] {
+  return usuarios.filter((u) => u.backendInstalado && !u.sudo && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome) && deveAtualizar(u.backendVersao, doApp)).map((u) => u.nome);
 }
 
 /**
@@ -210,7 +232,7 @@ export function limiteKbDe(pct: number, discoKb: number): number {
  * arquivo de cota e liga. Já ligada: não faz nada. Saída: `COTA=ok` ou `ERRO=<motivo>`.
  */
 export const COTA_LIGAR_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then echo COTA=ok; exit 0; fi
-command -v quotaon >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y -q quota >/dev/null 2>&1 || { echo "ERRO=não consegui instalar o pacote quota"; exit 0; }
+command -v quotaon >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -q quota >/dev/null 2>&1 || { echo "ERRO=não consegui instalar o pacote quota"; exit 0; }
 modprobe quota_v2 >/dev/null 2>&1 || true
 B=/etc/fstab.bak-meu-bot-$(date +%Y%m%d-%H%M%S); cp /etc/fstab "$B" || { echo "ERRO=não consegui guardar a cópia do /etc/fstab"; exit 0; }
 python3 - <<'PY' || { cp "$B" /etc/fstab; echo "ERRO=não consegui ajustar o /etc/fstab (a cópia voltou)"; exit 0; }

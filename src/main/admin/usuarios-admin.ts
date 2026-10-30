@@ -9,13 +9,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, PREFIXO_USUARIO, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
+import { RECURSOS_PADRAO, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
 import { refreshPickerIfOpen } from "../maquina/picker";
-import { fusoDesteMac, installBackend, installClaudeCode, pausaPluginFonte, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { bundledBackendVersion, fusoDesteMac, installBackend, installClaudeCode, pausaPluginFonte, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { precisaAtualizarBackend } from "../atualizacao/updater-core";
 import { hermesPausaPluginSh } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { getBackendPort, setBackendPortForHost } from "../app/settings";
 import { HERMES_STT_COMPARTILHADO_SH, TRANSCRITOR_BIN, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
@@ -24,6 +25,7 @@ import { ligarClaudeGlobalPara } from "./claude-global-admin";
 import { CG_ETC } from "./claude-global-core";
 import { ligarLinkPublicoPara, linkPublicoInstalado } from "./link-publico-admin";
 import { textoAvisos } from "./link-publico-core";
+import { prepararMaquinaSuave } from "./preparar-admin";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -54,7 +56,47 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l) };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion() };
+}
+
+/**
+ * "Atualizar todas": reinstala o backend do meu-bot nas boxes que estão atrás da versão que este app traz, uma por
+ * vez, pelo alias de cada uma neste Mac (o install.sh roda como a pessoa). Pula quem não tem alias aqui ("Nos
+ * seletores" resolve) e quem está com chat em andamento (`/health.ativos`, a mesma regra da atualização ociosa);
+ * uma falha não para as outras. Devolve a visão nova com o resultado por box.
+ */
+const atualizandoEm = new Set<string>();
+export async function atualizarBackends(host: string, onLine?: (line: string) => void): Promise<UsuariosVisao> {
+  if (atualizandoEm.has(host)) throw new Error("já estou atualizando as boxes desta máquina; espere terminar");
+  atualizandoEm.add(host);
+  try {
+    const v = await usuariosDaMaquina(host);
+    const want = v.backendDoApp;
+    if (want === null) throw new Error("este app veio sem a versão do backend (backend-colima/VERSION)");
+    const { texto } = lerSshConfig();
+    const atualizacao: NonNullable<UsuariosVisao["atualizacao"]> = [];
+    for (const nome of boxesDesatualizadas(v.usuarios, want)) {
+      const alias = aliasNoMeuBot(host, nome).alias;
+      const feito = (estado: "atualizada" | "pulada" | "falhou", motivo: string): void => { atualizacao.push({ nome, estado, motivo }); onLine?.(`${estado === "atualizada" ? "✓" : estado === "pulada" ? "·" : "✗"} ${nome}: ${motivo}`); log(`[backends] ${host} ${nome}: ${estado} (${motivo})`); };
+      if (!configTemHost(texto, alias)) { feito("pulada", "sem alias neste Mac: use Nos seletores e tente de novo"); continue; }
+      const configurada = getBackendPort(alias);
+      const probe = await probeHost(alias, configurada);
+      if (!probe.reachable) { feito("falhou", probe.error ?? "não consegui entrar na conta dela"); continue; }
+      const decisao = precisaAtualizarBackend(probe, want);
+      if (decisao === "nao") { feito("pulada", `já está em ${probe.backendVersion ?? want}`); continue; }
+      if (decisao === "ocupado") { feito("pulada", `${probe.backendBusy} chat${probe.backendBusy === 1 ? "" : "s"} em andamento; tento de novo quando terminar`); continue; }
+      const porta = portaParaInstalar(probe, configurada);
+      onLine?.(`${nome}: atualizando ${probe.backendVersion ?? "sem versão"} → ${want} na porta ${porta}…`);
+      const r = await installBackend(alias, porta, onLine);
+      if (!r.ok) { feito("falhou", r.log.at(-1) ?? "o instalador não terminou"); continue; }
+      if (porta !== configurada) setBackendPortForHost(alias, porta);
+      void registrar(host, "backend.instalar", nome, `${want}, porta ${porta}`);
+      feito("atualizada", `${probe.backendVersion ?? "sem versão"} → ${want}`);
+    }
+    return { ...await usuariosDaMaquina(host), atualizacao };
+  } finally {
+    atualizandoEm.delete(host);
+  }
 }
 
 /**
@@ -144,6 +186,8 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   const { chave } = await acessoDesteMac(host);
   // A reserva para o sistema entra antes da primeira box que vier a precisar dela (falhar aqui só avisa no log).
   await usuariosDaMaquina(host).then((v) => garantirReserva(host, v, false)).catch(() => undefined);
+  // O resto do checklist de Preparar máquina (cota, pacotes, gh, Hermes, transcritor…): idem, só avisa no log.
+  await prepararMaquinaSuave(host, onLine);
   const r = await runSsh(host, `${usuarioComChavesSh(nome, [chave], "erro")}\n`, 60_000);
   const erro = /^ERRO=(.*)$/m.exec(r.stdout)?.[1];
   if (erro !== undefined) throw new Error(erro);
