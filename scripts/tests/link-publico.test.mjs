@@ -13,6 +13,9 @@ test("link público: o nginx só em 127.0.0.1, por subdomínio, sem listar pasta
   assert.match(n, /server_name "~\^\(\?<sub>\[a-z0-9\]\(\[a-z0-9-\]\{0,61\}\[a-z0-9\]\)\?\)\\\.agentesgrok\\\.com\$";/, "regex com chaves vai entre aspas, senão o nginx recusa");
   assert.match(n, /root \/var\/www\/publico\/\$sub;/); assert.match(n, /autoindex off;/); assert.match(n, /disable_symlinks if_not_owner from=\/var\/www\/publico;/);
   assert.match(n, /default_server; server_name _; return 404;/, "outro host: 404");
+  assert.match(n, /include \/etc\/nginx\/mime\.types;\n\s+types \{ text\/markdown md markdown; \}/, "o .md sai como texto (sem tipo o navegador baixava)");
+  assert.match(n, /charset utf-8;/);
+  assert.match(n, /absolute_redirect off;/, "pasta sem barra: Location relativo, não http://host:8099/");
 });
 
 test("link público: instalar valida o domínio, grava config, modelos, site e os dois comandos; a pasta dos links é root 1733", () => {
@@ -21,6 +24,8 @@ test("link público: instalar valida o domínio, grava config, modelos, site e o
   assert.match(sh, /chmod 1733 \/var\/www\/publico/); assert.match(sh, /chmod 755 \/etc\/meu-bot-link-publico/, "os usuários leem o domínio e os modelos daqui (não de /etc/meu-bot, que é 700)");
   assert.match(sh, /"dominio": "agentesgrok.com", "porta": 8099/);
   assert.match(sh, /cat > \/usr\/local\/bin\/publicar <<'EOF_PUB'/); assert.match(sh, /cat > \/usr\/local\/bin\/link-publico-nome <<'EOF_NOME'/);
+  assert.match(sh, /cat > \/etc\/meu-bot-link-publico\/md2html\.py <<'EOF_MD'\n#!\/usr\/bin\/env python3/, "conversor de markdown vai junto");
+  assert.match(sh, /apt-get -y -qq install python3-markdown/);
   assert.match(sh, /cloudflared-linux-\$a\.deb/); assert.match(sh, /^echo "INSTALADO=ok"$/m);
   assert.throws(() => core.lpInstalarSh("agentes grok.com"), /domínio inválido/);
   assert.throws(() => core.lpInstalarSh("x; rm -rf /"), /domínio inválido/);
@@ -51,6 +56,13 @@ test("link público: túnel cria uma vez (deleted_at dos vivos vem como 0001-…
 test("link público: os comandos do usuário recusam fora da pasta dos links, limpam o nome e trocam o subdomínio com regras", () => {
   assert.match(core.PUBLICAR_SH, /case "\$ALVO" in \/var\/www\/publico\/\*\) ;; \*\) echo "ERRO: o seu link público não está ligado/);
   assert.match(core.PUBLICAR_SH, /tr -c 'A-Za-z0-9\._-' '-'/, "nome no link só com caracteres seguros");
+  assert.match(core.PUBLICAR_SH, /case "\$ARQ" in \*\.md\|\*\.MD\|\*\.markdown\)/, "md vira página");
+  assert.match(core.PUBLICAR_SH, /DEST=\$\{DEST%\.md\}/, "a URL do .md fica sem extensão (…/fluxo/)");
+  assert.match(core.PUBLICAR_SH, /python3 \/etc\/meu-bot-link-publico\/md2html\.py "\$ARQ" > "\$ALVO\/\$DEST\/index\.html"/);
+  assert.match(core.PUBLICAR_SH, /cp -f "\$ARQ" "\$ALVO\/\$DEST\/\$DEST\.md"/, "o .md original fica ao lado da página");
+  assert.match(core.MD2HTML_PY, /import markdown/); assert.match(core.MD2HTML_PY, /except ImportError:\n\s+corpo = "<pre>"/, "sem o módulo, ainda sai página");
+  assert.match(core.MD2HTML_PY, /lang="pt-BR"/); assert.match(core.MD2HTML_PY, /prefers-color-scheme:dark/);
+  assert.match(core.skillLinkPublico("agentesgrok.com"), /publicar fluxo-atendimento\.md.*fluxo-atendimento\//, "a skill diz que .md vira página");
   assert.match(core.LINK_NOME_SH, /www\|admin\|api\|mail/, "nomes reservados");
   assert.match(core.LINK_NOME_SH, /getent passwd "\$NOVO"/, "nome de outro usuário não vale");
   assert.match(core.LINK_NOME_SH, /mv "\/var\/www\/publico\/\$ATUAL" "\/var\/www\/publico\/\$NOVO"/, "a pasta é dele: renomeia sem root (sticky bit)");

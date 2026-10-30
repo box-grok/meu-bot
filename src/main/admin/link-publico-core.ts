@@ -28,6 +28,7 @@ const SO_ROOT = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }`;
 export const PUBLICAR_SH = `#!/bin/sh
 # meu-bot: publica um arquivo (ou pasta) no link público deste usuário e imprime a URL.
 # Uso: publicar <arquivo|pasta> [nome-no-link]   ·   publicar --lista   ·   publicar --remover <nome-no-link>
+# Um .md vira página: <nome>/index.html (renderizado por ${LP_ETC}/md2html.py) + o .md original ao lado; a URL é https://<link>/<nome>/.
 set -u
 DOM=$(python3 -c 'import json; print(json.load(open("${LP_ETC}/config.json"))["dominio"])' 2>/dev/null) || { echo "ERRO: o link público não está instalado nesta máquina (é o admin quem instala, no meu-bot-admin › Link Público Global)." >&2; exit 1; }
 P="$HOME/publico"
@@ -36,15 +37,55 @@ case "$ALVO" in ${LP_WWW}/*) ;; *) echo "ERRO: o seu link público não está li
 [ -d "$ALVO" ] || { echo "ERRO: a pasta do seu link ($ALVO) não existe: peça ao admin para ligar de novo." >&2; exit 1; }
 NOME=$(basename "$ALVO")
 case "\${1:-}" in
-  --lista) ls -1A "$ALVO" 2>/dev/null | sed "s|^|https://$NOME.$DOM/|"; exit 0 ;;
+  --lista) ls -1Ap "$ALVO" 2>/dev/null | sed "s|^|https://$NOME.$DOM/|"; exit 0 ;;
   --remover) [ -n "\${2:-}" ] || { echo "Uso: publicar --remover <nome-no-link>" >&2; exit 1; }; N=$(basename "$2"); rm -rf "$ALVO/$N"; echo "fora do ar: https://$NOME.$DOM/$N"; exit 0 ;;
   ""|-h|--help) echo "Uso: publicar <arquivo|pasta> [nome-no-link]   ·   publicar --lista   ·   publicar --remover <nome>" >&2; echo "Seu link: https://$NOME.$DOM/" >&2; exit 1 ;;
 esac
 ARQ="$1"; [ -e "$ARQ" ] || { echo "ERRO: não existe: $ARQ" >&2; exit 1; }
 DEST=$(basename "\${2:-$ARQ}"); DEST=$(printf '%s' "$DEST" | tr -c 'A-Za-z0-9._-' '-'); DEST=\${DEST#.}
 [ -n "$DEST" ] || { echo "ERRO: nome inválido" >&2; exit 1; }
+MD=0; case "$ARQ" in *.md|*.MD|*.markdown) [ -f "$ARQ" ] && MD=1 ;; esac
 if [ -d "$ARQ" ]; then rm -rf "$ALVO/$DEST"; cp -r "$ARQ" "$ALVO/$DEST"; chmod -R u+rwX,go+rX "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST/"
+elif [ "$MD" = 1 ]; then
+  DEST=\${DEST%.md}; DEST=\${DEST%.MD}; DEST=\${DEST%.markdown}; [ -n "$DEST" ] || { echo "ERRO: nome inválido" >&2; exit 1; }
+  rm -rf "$ALVO/$DEST"; mkdir -p "$ALVO/$DEST"
+  python3 ${LP_ETC}/md2html.py "$ARQ" > "$ALVO/$DEST/index.html" || { rm -rf "$ALVO/$DEST"; echo "ERRO: não consegui transformar o markdown em página." >&2; exit 1; }
+  cp -f "$ARQ" "$ALVO/$DEST/$DEST.md"; chmod 755 "$ALVO/$DEST"; chmod 644 "$ALVO/$DEST/index.html" "$ALVO/$DEST/$DEST.md"
+  echo "https://$NOME.$DOM/$DEST/"
 else cp -f "$ARQ" "$ALVO/$DEST"; chmod 644 "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST"; fi
+`;
+
+/**
+ * Conversor markdown → página (vai para ${LP_ETC}/md2html.py; o `publicar` chama para todo .md). Usa o python3-markdown
+ * do Debian (tabelas, código, ids nos títulos); sem o módulo, cai num <pre> para a página nunca faltar. Título = 1º "# ".
+ */
+export const MD2HTML_PY = `#!/usr/bin/env python3
+# meu-bot: markdown -> página HTML completa (o comando publicar usa para .md). Uso: md2html.py arquivo.md > index.html
+import html, os, re, sys
+src = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+m = re.search(r"^#\\s+(.+?)\\s*#*\\s*$", src, re.M)
+titulo = m.group(1) if m else re.sub(r"\\.(md|markdown)$", "", os.path.basename(sys.argv[1]), flags=re.I)
+try:
+    import markdown
+    corpo = markdown.markdown(src, extensions=["extra", "sane_lists", "toc"], output_format="html5")
+except ImportError:
+    corpo = "<pre>" + html.escape(src) + "</pre>"
+css = """
+:root{color-scheme:light dark;--bg:#fff;--fg:#1b1b1b;--muted:#6b6b6b;--line:#e4e4e4;--code:#f3f3f3;--link:#0b57d0}
+@media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#e8e8e8;--muted:#9c9c9c;--line:#2d2d2d;--code:#1f1f1f;--link:#8ab4f8}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 20px 64px}
+h1,h2,h3,h4{line-height:1.25}h1{font-size:1.9em;margin:.2em 0 .6em}
+h2{font-size:1.4em;margin:1.6em 0 .5em;padding-bottom:.2em;border-bottom:1px solid var(--line)}h3{font-size:1.15em;margin:1.3em 0 .4em}
+p,ul,ol{margin:.6em 0}li{margin:.25em 0}a{color:var(--link)}img{max-width:100%}
+code{background:var(--code);padding:.1em .35em;border-radius:4px;font-size:.92em}
+pre{background:var(--code);padding:14px;border-radius:8px;overflow-x:auto}pre code{padding:0;background:none}
+table{border-collapse:collapse;display:block;overflow-x:auto;max-width:100%}th,td{border:1px solid var(--line);padding:6px 10px;text-align:left}th{background:var(--code)}
+blockquote{margin:1em 0;padding:.2em 1em;border-left:4px solid var(--line);color:var(--muted)}
+hr{border:0;border-top:1px solid var(--line);margin:2em 0}
+"""
+sys.stdout.write('<!doctype html>\\n<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                 '<title>' + html.escape(titulo) + '</title><style>' + css + '</style></head><body><main>\\n' + corpo + '\\n</main></body></html>\\n')
 `;
 
 /** Comando `link-publico-nome` de todo usuário: troca o subdomínio dele (renomeia a pasta, que é dele, e refaz ~/publico). */
@@ -72,7 +113,7 @@ echo "https://$NOVO.$DOM/"
 export const skillLinkPublico = (dominio: string): string => `---
 name: meu-bot-link-publico
 description: Dar um link público (URL https) de um arquivo, página HTML ou pasta desta máquina com o comando \`publicar\`. Use quando pedirem "link", "URL", "me manda o link", "publica", "compartilha", "coloca no ar" ou um site/página para alguém ver.
-version: 1.0.0
+version: 1.1.0
 author: meu-bot
 platforms: [linux]
 metadata:
@@ -85,12 +126,15 @@ Cada usuário desta máquina tem um link público próprio, \`https://<nome>.${d
 Você CONSEGUE gerar link público: nunca diga que não tem como.
 
 ## Como dar o link de um arquivo
-1. Rode \`publicar /caminho/do/arquivo\` (opcional, o nome que aparece no link: \`publicar arquivo.md fluxo.md\`). O comando imprime a URL.
+1. Rode \`publicar /caminho/do/arquivo\` (opcional, o nome que aparece no link: \`publicar fluxo-atendimento.md fluxo\`). O comando imprime a URL.
 2. Responda com a URL que ele imprimiu, sem inventar outra.
+
+Um \`.md\` vira uma página pronta, com título e formatação: \`publicar fluxo-atendimento.md\` abre em \`https://<nome>.${dominio}/fluxo-atendimento/\`
+(o .md original fica ao lado, em \`fluxo-atendimento/fluxo-atendimento.md\`). Não precisa converter nada antes.
 
 ## Regras
 - Tudo em \`~/publico\` fica visível para qualquer pessoa na internet, sem senha. Não publique dados pessoais, senhas ou arquivos de terceiros sem a pessoa pedir.
-- Para uma página, gere um \`.html\` e publique; \`publicar pasta/ nome\` publica uma pasta inteira, e \`index.html\` abre na raiz.
+- Para uma página feita à mão, gere um \`.html\` e publique; \`publicar pasta/ nome\` publica uma pasta inteira, e \`index.html\` abre na raiz.
 - \`publicar --lista\` mostra o que está no ar; \`publicar --remover <nome>\` tira do ar.
 - \`link-publico-nome --ver\` mostra o link; \`link-publico-nome <novo-nome>\` troca o nome (só se a pessoa pedir).
 - Se o comando disser que o link "não está ligado" ou "não está instalado", diga que o admin precisa ligar o Link Público Global no meu-bot-admin.
@@ -100,18 +144,23 @@ Você CONSEGUE gerar link público: nunca diga que não tem como.
 export const claudeMdLinkPublico = (dominio: string): string => `<!-- meu-bot:link-publico v1 inicio -->
 ## Link público (meu-bot)
 Para dar um link público de um arquivo, página ou pasta: \`publicar <arquivo> [nome-no-link]\`, que imprime a URL (\`https://<nome>.${dominio}/...\`, a pasta \`~/publico\`).
-Responda com a URL impressa. Tudo ali é público na internet: não publique dados pessoais ou segredos sem a pessoa pedir.
+Um \`.md\` vira página pronta (\`publicar fluxo.md\` → \`https://<nome>.${dominio}/fluxo/\`), sem converter antes. Responda com a URL impressa. Tudo ali é público na internet: não publique dados pessoais ou segredos sem a pessoa pedir.
 \`publicar --lista\` mostra o que está no ar; \`publicar --remover <nome>\` tira; \`link-publico-nome <novo>\` troca o nome do link (só se a pessoa pedir).
 <!-- meu-bot:link-publico v1 fim -->
 `;
 
-/** O site do nginx: `<nome>.<domínio>` → `${LP_WWW}/<nome>`, só em 127.0.0.1 (atrás do túnel), sem listar pastas nem seguir symlink de outro dono. */
+/** O site do nginx: `<nome>.<domínio>` → `${LP_WWW}/<nome>`, só em 127.0.0.1 (atrás do túnel), sem listar pastas nem seguir symlink de outro dono. `.md` sai como texto utf-8 (sem o tipo, o navegador baixava em vez de mostrar); redirect relativo (`/pasta/`), senão o nginx mandava `http://…:8099/`. */
 export const nginxSite = (dominio: string): string => `# meu-bot: link público de cada usuário da máquina (<nome>.${dominio} → ${LP_WWW}/<nome>), atrás do Cloudflare Tunnel.
 server {
     listen 127.0.0.1:${LP_PORTA};
     server_name "~^(?<sub>[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)\\.${dominio.replace(/\./g, "\\.")}$";
     root ${LP_WWW}/$sub;
     index index.html index.htm;
+    include /etc/nginx/mime.types;
+    types { text/markdown md markdown; }
+    charset utf-8;
+    charset_types text/html text/plain text/markdown text/css application/javascript application/json;
+    absolute_redirect off;
     autoindex off;
     disable_symlinks if_not_owner from=${LP_WWW};
     client_max_body_size 1m;
@@ -165,7 +214,8 @@ print("ESTADO=" + json.dumps({
 /**
  * Instala (idempotente): nginx e cloudflared (pacote .deb do GitHub), a pasta dos links (root, 1733: cada usuário cria
  * a sua, ninguém lista as outras), o site do nginx, os modelos (skill e bloco do CLAUDE.md), o config.json com o
- * domínio e os comandos `publicar` e `link-publico-nome` em /usr/local/bin. Saída `INSTALADO=ok` ou `ERRO=`.
+ * domínio, o conversor md2html.py (com o python3-markdown do Debian) e os comandos `publicar` e `link-publico-nome` em
+ * /usr/local/bin. Saída `INSTALADO=ok` ou `ERRO=`.
  */
 export function lpInstalarSh(dominio: string): string {
   const d = dominioOk(dominio);
@@ -177,6 +227,7 @@ if ! command -v cloudflared >/dev/null 2>&1; then
   curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$a.deb" -o "$t/cf.deb" && dpkg -i "$t/cf.deb" >>$LOG 2>&1 || { rm -rf "$t"; echo "ERRO=não consegui instalar o cloudflared (log em $LOG)"; exit 0; }
   rm -rf "$t"
 fi
+python3 -c 'import markdown' >/dev/null 2>&1 || { apt-get -qq update >>$LOG 2>&1 || true; apt-get -y -qq install python3-markdown >>$LOG 2>&1 || true; }
 mkdir -p ${LP_WWW}; chown root:root ${LP_WWW}; chmod 1733 ${LP_WWW}
 mkdir -p ${LP_ETC}; chmod 755 ${LP_ETC}
 printf '{"dominio": "${d}", "porta": ${LP_PORTA}}\\n' > ${LP_ETC}/config.json
@@ -184,7 +235,9 @@ cat > ${LP_ETC}/SKILL.md <<'EOF_SKILL'
 ${skillLinkPublico(d)}EOF_SKILL
 cat > ${LP_ETC}/claude.md <<'EOF_CLAUDE'
 ${claudeMdLinkPublico(d)}EOF_CLAUDE
-chmod 644 ${LP_ETC}/config.json ${LP_ETC}/SKILL.md ${LP_ETC}/claude.md
+cat > ${LP_ETC}/md2html.py <<'EOF_MD'
+${MD2HTML_PY}EOF_MD
+chmod 644 ${LP_ETC}/config.json ${LP_ETC}/SKILL.md ${LP_ETC}/claude.md ${LP_ETC}/md2html.py
 cat > /etc/nginx/sites-available/meu-bot-publico <<'EOF_NGINX'
 ${nginxSite(d)}EOF_NGINX
 ln -sfn /etc/nginx/sites-available/meu-bot-publico /etc/nginx/sites-enabled/meu-bot-publico

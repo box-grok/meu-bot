@@ -383,7 +383,8 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   curinga, então nome novo de usuário não mexe em DNS.
 - **Arquivos:**
   - `/etc/meu-bot-link-publico` (755, à parte do `/etc/meu-bot`, que é 700): `config.json` (domínio, porta), `SKILL.md`
-    e `claude.md` (modelos que o ligar copia para o usuário).
+    e `claude.md` (modelos que o ligar copia para o usuário) e `md2html.py` (markdown → página, com o `python3-markdown`
+    do Debian que o instalar põe).
   - `/var/www/publico` (root, 1733, sticky): `<nome>/` é a pasta do usuário (dona ele, 755). Ninguém lista as outras; o
     nginx só atravessa. `disable_symlinks if_not_owner`: symlink dentro da pasta só para arquivo do mesmo dono.
   - No usuário: `~/publico` → `/var/www/publico/<nome>`; `~/.local/share/meu-bot/link-publico.json` (`{url, nome, dominio}`,
@@ -392,6 +393,10 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   - `/usr/local/bin/publicar <arquivo|pasta> [nome]` (também `--lista`, `--remover`) e `/usr/local/bin/link-publico-nome
     <novo>`: como a pasta é dele numa pasta sticky, trocar o nome é um `mv` sem root. Nomes reservados (www, admin…)
     e nomes de outros usuários são recusados.
+  - **`.md` vira página** (30 out): `publicar fluxo-atendimento.md` grava `fluxo-atendimento/index.html` (título do 1º
+    `#`, CSS claro/escuro, tabelas e código) e o `.md` original ao lado, e imprime `https://<nome>.<domínio>/fluxo-atendimento/`.
+    Motivo: o primeiro link do Daniel era o `.md` cru, que o nginx mandava como `application/octet-stream` (com nosniff,
+    o navegador baixava em vez de mostrar). O nginx agora também serve `.md` como `text/markdown; charset=utf-8`.
 - **Desligar** guarda a pasta em `/var/www/publico/.desligado-<usuário>` (o nginx não serve nome com ponto) e ligar de
   novo a devolve, com o nome que a pessoa tinha escolhido.
 - **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
