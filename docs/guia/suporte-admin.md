@@ -650,7 +650,10 @@ Linha "Usuários" na lateral, abaixo de Auditoria, só quando o admin entra na m
 (`src/renderer/admin/usuarios-page.ts`, `src/main/admin/usuarios-admin.ts`, puro em `usuarios-core.ts`). Lista os
 usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
 - **Cria** usuários comuns (sem sudo, `useradd -m`, a chave deste Mac no authorized_keys). Nasce com os tetos padrão
-  `RECURSOS_PADRAO` (2 GB de RAM, 200% = dois núcleos): cobre o OpenClaw (~1,6 GB parado) e o Hermes com áudio; um agente travado não derruba a máquina.
+  `RECURSOS_PADRAO` (1,25 GB de RAM desde 30 out, antes 2 GB; 200% = dois núcleos): 22 boxes em 32 GB. O uso próprio é
+  ~0,3-0,4 GB, mas o transcritor de áudio roda dentro da box (~0,6 GB por áudio): perto do MemoryHigh (1152 MB) a box
+  fica apertada durante um áudio, e a coluna Pressão mostra. As boxes de antes seguem com o teto que tinham até o
+  admin mudar na linha. Um agente travado não derruba a máquina.
 - **Disco em %:** limite por cota de usuário no disco principal, em % do tamanho dele (uma fatia que se redistribui).
   A primeira vez liga a cota (com backup do fstab). Baixar abaixo do que o usuário já ocupa é recusado; a aba mostra
   as maiores pastas dele para o admin escolher o que apagar.
@@ -675,8 +678,8 @@ usuários de login (sudo, meu-bot, chave deste Mac, disco, RAM e tetos) e:
   `memory.current` do root é cache). O botão "Aplicar governança de RAM/CPU" aparece só quando falta a reserva ou há
   box sem isolamento (`governancaDe`: box sem `MemorySwapMax`); "Criar usuário" aplica a reserva antes se faltar.
   Tudo por `systemctl set-property` (persiste em `/etc/systemd/system.control`, vale na hora, nada reinicia).
-- **Capacidade:** "boxes: N de M (2048 MB de RAM cada, teto dos usuários X)": M = teto do user.slice ÷ teto padrão
-  por box (`capacidadeDe`); 32 GB → 28,8 GB → 14 boxes a 2 GB. CPU prometida acima dos núcleos é normal (as boxes
+- **Capacidade:** "boxes: N de M (1280 MB de RAM cada, teto dos usuários X)": M = teto do user.slice ÷ teto padrão
+  por box (`capacidadeDe`); 32 GB → 28,9 GB → 22 boxes a 1,25 GB (14 a 2 GB). CPU prometida acima dos núcleos é normal (as boxes
   ficam ociosas; o peso divide quando disputam). Criar além de M avisa, não bloqueia.
 - **Pressão (coluna nova) e RAM:** `LISTAR_SH` lê o cgroup de cada fatia (`memory.current`, `anon` do `memory.stat`,
   `memory.peak`, `memory.swap.current`, `memory.events`, PSI de memória e CPU, `cpu.stat`). A coluna RAM mostra a

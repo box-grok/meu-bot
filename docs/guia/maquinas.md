@@ -440,9 +440,11 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   numa cota de 2 núcleos: ~3% do tempo segurado; follow-up: ler `cpu.max` do próprio cgroup e usar
   `cpu_threads = min(4, cota)`; `nice` não ajuda com cota).
 - **Valores:** `user.slice` MemoryMax = total − max(3 GB, 10%) (28,8 GB aqui), MemoryLow pela metade, CPUWeight 100;
-  cada `user-<uid>.slice` mantém MemoryHigh/Max (90%/2 GB) e CPUQuota (200%) e ganha MemorySwapMax 256M, MemoryLow 640M
-  e CPUWeight 100. Com 2 GB por box cabem 14; com 1,5 GB, 19; com 1,25 GB, 22, mas aí o aperto (MemoryHigh 1,125 GB)
-  começa na hora do áudio. O teto padrão é `RECURSOS_PADRAO` (uma constante) e a capacidade acompanha.
+  cada `user-<uid>.slice` mantém MemoryHigh/Max (90% do teto) e CPUQuota (200%) e ganha MemorySwapMax 256M, MemoryLow
+  640M e CPUWeight 100. Teto padrão por box: **1,25 GB** (decisão de produto de 30 out: 22 boxes em 32 GB; com 1,5 GB
+  seriam 19 e com 2 GB, 14). A ressalva: o aperto (MemoryHigh 1152 MB) começa na hora do áudio, porque o transcritor
+  roda dentro da box; a coluna Pressão mostra e a medição com 10 boxes decide se muda. As duas boxes de antes
+  receberam o teto novo à mão em 30 out. O teto é `RECURSOS_PADRAO` (uma constante) e a capacidade acompanha.
 - **Como ler:** aba Usuários do admin, linha "boxes: N de M", coluna Pressão (folgada/apertada/estrangulada; título com
   PSI, teto batido, mortes e CPU segurada) e RAM = memória própria. Comandos de conferência:
   `systemctl show user.slice -p MemoryMax -p MemoryLow -p CPUWeight`; `systemctl show user-1001.slice -p MemorySwapMax

@@ -517,8 +517,13 @@ Host ${o.alias}
 export const configTemHost = (texto: string, alias: string): boolean =>
   texto.split("\n").some((l) => { const m = /^\s*Host\s+(.+)$/i.exec(l); return m !== null && m[1]!.trim().split(/\s+/).includes(alias); });
 
-/** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
-export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
+/**
+ * Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. 1,25 GB (30 out,
+ * decisão de produto: 22 boxes em 32 GB): o uso próprio medido é ~0,3-0,4 GB, mas o transcritor de áudio roda dentro
+ * da box e chega a ~0,6 GB por áudio, então perto do MemoryHigh (1152 MB) a box fica apertada durante um áudio; a
+ * coluna Pressão mostra, e a medição com 10 boxes decide se muda.
+ */
+export const RECURSOS_PADRAO = { ramMb: 1280, cpuPct: 200 } as const;
 
 const CHAVE_PUB_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]{20,}( [\w@.:-]{0,80})?$/;
 /**

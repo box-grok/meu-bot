@@ -102,10 +102,10 @@ test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica u
   assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
 });
 
-test("usuários: todo usuário novo nasce com 2 GB de RAM e 200% de CPU (cobre o OpenClaw, ~1,6 GB, e o Hermes com áudio)", async () => {
+test("usuários: todo usuário novo nasce com 1,25 GB de RAM e 200% de CPU (22 boxes em 32 GB; o áudio aperta perto do high, a coluna Pressão mostra)", async () => {
   const { RECURSOS_PADRAO, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
-  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 2048, cpuPct: 200 });
-  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=2048M CPUQuota=200%/);
+  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 1280, cpuPct: 200 });
+  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryHigh=1152M MemoryMax=1280M CPUQuota=200%/);
 });
 
 test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {
@@ -262,6 +262,7 @@ test("capacidade: quantas boxes cabem no teto dos usuários com o teto padrão; 
   const usuarios = [u("box-1"), u("box-2"), u("root-like", { sudo: true }), u("hermes"), u("admin")];
   const cap = c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios });
   assert.deepEqual(cap, { boxes: 2, cabem: 14, capMb: 28_890, padraoMb: 2048, reservaAplicada: false, cpuNucleos: 8, cpuPrometidoPct: 400 });
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: c.RECURSOS_PADRAO.ramMb, usuarios }).cabem, 22, "o padrão de 1,25 GB dá 22 boxes em 32 GB");
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: 29_491_200, cpus: 8, padraoMb: 2048, usuarios }).reservaAplicada, true);
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 1536, usuarios }).cabem, 18);
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios: [u("x", { cpuMaxPct: null })] }).cpuPrometidoPct, 800, "sem cota de CPU conta como a máquina inteira");
