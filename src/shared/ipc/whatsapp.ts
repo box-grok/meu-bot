@@ -73,6 +73,8 @@ export interface WhatsappChat {
   alias: string | null;
   /** O próprio número do aparelho (mensagens para si mesmo). */
   isSelf: boolean;
+  /** O dono gravado na máquina (quem manda no agente), quando não é o próprio aparelho. */
+  isDono?: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
   /** Chave da sessão → UUID interno do OpenClaw (troca a cada "Limpar"); para "Copiar ID". */

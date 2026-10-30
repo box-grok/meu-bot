@@ -111,18 +111,18 @@ export const REPLY_OPTIONS: readonly ReplyOption[] = [
 export const REPLY_NOTE = "Para atender clientes, as respostas precisam estar ativas. Você pode testar só com você agora e ativar depois no canal WhatsApp.";
 /** Só dígitos de um número como o OpenClaw guarda ("+5511…", "5511…"). */
 const digitsOf = (n: string): string => n.replace(/\D/g, "");
-/** Números da allowlist além do dono (sem "*"): o que a pessoa listou. */
-export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null): string[] {
-  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self))];
+/** Números da allowlist além do aparelho e do dono (sem "*"): o que a pessoa listou. */
+export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null, dono: string | null = self): string[] {
+  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self && n !== dono))];
 }
 /**
  * A política gravada no OpenClaw → qual cartão está marcado (null = nenhum: pairing ou disabled). allowlist com
  * alguém além do dono em allowFrom é "list"; só o dono (ou vazio) é "self".
  */
-export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null): "self" | "open" | "list" | null {
+export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null, dono: string | null = self): "self" | "open" | "list" | null {
   if (dmPolicy === "open") return "open";
   if (dmPolicy !== "allowlist") return null;
-  return listedNumbers(allowFrom, self).length > 0 ? "list" : "self";
+  return listedNumbers(allowFrom, self, dono).length > 0 ? "list" : "self";
 }
 /**
  * Texto digitado → números para a lista (um por linha, vírgula ou ponto e vírgula). Sem "+", 10 ou 11 dígitos

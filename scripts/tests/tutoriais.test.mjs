@@ -397,3 +397,10 @@ test("tutorial 12 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar
   assert.equal(modo.resumo({ ...c, grupos: { ...c.grupos, info: { ...info, grupos: [{ ...g, agente: "sempre" }] } } }), "Responde sempre que tiver algo útil");
   for (const s of [grupo, quem, modo]) assert.equal(s.refazer, true, `${s.id} com "Trocar"`);
 });
+
+test("listedNumbers/replyChoiceOf com dono de fora: o aparelho e o dono não contam como \"listados\"", () => {
+  assert.deepEqual(listedNumbers(["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), ["5511999990000"]);
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831", "5521923670743"), "self", "só os dois = só eu");
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), "list");
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831"), "list", "sem saber do dono, o segundo número parece listado (jeito antigo)");
+});

@@ -8,6 +8,7 @@
  * per-channel-peer`). Um contato pode ter mensagens nas duas (antes e depois do isolamento).
  */
 import type { WhatsappChat, WhatsappThreadMessage } from "../../shared/ipc";
+import { quemOf, type QuemArg } from "./whatsapp-hermes-core";
 
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -39,10 +40,12 @@ function participantNumbers(session: Record<string, unknown>): string[] {
  * contato. `names` traz o último `senderName` visto (cache do main); `self` marca o próprio aparelho;
  * `pausedNumbers` = pausados pela lista durável do openclaw.json (whatsapp-pause.ts).
  */
-export function chatsFromSessions(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map(), pausedNumbers: ReadonlySet<string> = new Set()): WhatsappChat[] {
+export function chatsFromSessions(list: unknown, quem: QuemArg, names: ReadonlyMap<string, string> = new Map(), pausedNumbers: ReadonlySet<string> = new Set()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
   const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; updated: number; paused: boolean }>();
-  const selfN = self === null ? null : digits(self);
+  const q = quemOf(quem);
+  const selfN = q.self === null ? null : digits(q.self);
+  const donoN = q.dono === null ? null : digits(q.dono);
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string") continue;
     // Sessão de grupo é do grupo (área "Grupos"), nunca de um contato: senão "Limpar histórico" de quem fala no grupo
@@ -66,7 +69,7 @@ export function chatsFromSessions(list: unknown, self: string | null, names: Rea
   }
   return [...byNumber.entries()]
     .map(([number, v]) => ({
-      number, name: names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
+      number, name: names.get(number) ?? null, isSelf: number === selfN, isDono: number === donoN && donoN !== selfN, sessionKeys: v.keys, sessionIds: v.ids,
       ownSession: v.keys.some((k) => peerOfSessionKey(k) === number), paused: v.paused || pausedNumbers.has(number), updatedAt: new Date(v.updated).toISOString(),
       // Arquivado/excluído/apelido vêm do whatsapp-lista.json da máquina (whatsapp-marks.ts aplica depois).
       alias: null, archived: false, deleted: false,

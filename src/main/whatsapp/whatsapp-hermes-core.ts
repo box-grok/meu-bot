@@ -7,6 +7,7 @@
  * tipos do contrato. É a fronteira dona desse formato: o renderer nunca vê o esquema do Hermes.
  */
 import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../../shared/ipc";
+import { donosDe, souEu, type WaQuem } from "./whatsapp-marks";
 import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 
@@ -115,10 +116,12 @@ const isoOf = (seconds: unknown): string => (typeof seconds === "number" && Numb
  * próprio aparelho; `names` (cache do main) vence só quando o Hermes não tem o nome. Sessões escondidas no Hermes
  * ficam de fora; arquivado/apelido/excluído vêm das marcas da máquina (whatsapp-marks.ts), como no OpenClaw.
  */
-export function chatsFromHermes(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
+export function chatsFromHermes(list: unknown, quem: QuemArg, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
+  const q = quemOf(quem);
   // "5516992294486:36@s.whatsapp.net": o sufixo de aparelho (:36) e o domínio não fazem parte do número.
-  const selfN = self === null ? null : digits(self.replace(/[:@].*$/, ""));
+  const selfN = q.self === null ? null : digits(q.self.replace(/[:@].*$/, ""));
+  const donoN = q.dono === null ? null : digits(q.dono.replace(/[:@].*$/, ""));
   const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; started: Record<string, number>; updated: string; name: string | null }>();
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string" || typeof s.id !== "string" || s.hidden === 1 || s.hidden === true) continue;
@@ -137,7 +140,7 @@ export function chatsFromHermes(list: unknown, self: string | null, names: Reado
   }
   return [...byNumber.entries()]
     .map(([number, v]) => ({
-      number, name: v.name ?? names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
+      number, name: v.name ?? names.get(number) ?? null, isSelf: number === selfN, isDono: number === donoN && donoN !== selfN, sessionKeys: v.keys, sessionIds: v.ids,
       ownSession: true, paused: false, updatedAt: v.updated, alias: null, archived: false, deleted: false,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -192,17 +195,20 @@ export const hermesEnvOf = (kv: Map<string, string>): HermesWaEnv => ({ mode: kv
 const truthy = (v: string): boolean => /^(true|1|yes|on)$/i.test(v.trim());
 const listaDe = (allow: string): string[] => [...new Set(allow.split(",").map((s) => s.trim()).filter((s) => s !== ""))];
 const comMais = (n: string): string => (n === "*" || n.startsWith("+") ? n : `+${n}`);
+/** Quem manda: `WaQuem` (whatsapp-marks.ts quemDe) ou, pelo jeito antigo, só o número pareado (dono = ele). */
+export type QuemArg = WaQuem | string | null;
+export const quemOf = (q: QuemArg): WaQuem => (q === null || typeof q === "string" ? { self: q, dono: q } : q);
 
 /**
  * O .env do Hermes → a política no contrato do app (a mesma que o OpenClaw devolve): self-chat é "só você";
  * open só vale com o opt-in (sem ele o gateway nem sobe: tratado como desligado); "*" na lista também é todo mundo;
  * lista preenchida é allowlist; pairing sem lista fica pairing.
  */
-export function politicaHermes(env: HermesWaEnv, self: string | null): { dmPolicy: WhatsappDmPolicy; allowFrom: string[] } {
+export function politicaHermes(env: HermesWaEnv, quem: QuemArg): { dmPolicy: WhatsappDmPolicy; allowFrom: string[] } {
   const mode = (env.mode.trim().toLowerCase() || "self-chat");
   const dm = (env.dm.trim().toLowerCase() || "pairing");
   const lista = listaDe(env.allow);
-  if (mode === "self-chat") return { dmPolicy: "allowlist", allowFrom: self === null ? [] : [`+${self}`] };
+  if (mode === "self-chat") return { dmPolicy: "allowlist", allowFrom: donosDe(quemOf(quem)).map(comMais) };
   if (dm === "disabled") return { dmPolicy: "disabled", allowFrom: lista.map(comMais) };
   if ((dm === "open" && truthy(env.all)) || lista.includes("*")) return { dmPolicy: "open", allowFrom: ["*"] };
   if (dm === "open") return { dmPolicy: "disabled", allowFrom: lista.map(comMais) };
@@ -210,11 +216,24 @@ export function politicaHermes(env: HermesWaEnv, self: string | null): { dmPolic
   return { dmPolicy: dm === "allowlist" ? "allowlist" : "pairing", allowFrom: [] };
 }
 
-/** O que gravar no .env para cada cartão. "open" mantém a lista como está (volta intacta se trocar de novo). */
-export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null, numbers: readonly string[] = []): Record<string, string> {
+/**
+ * CONTORNO #5 (Hermes): em modo bot o bridge descarta tudo que vem do próprio aparelho, e em self-chat só atende o
+ * próprio chat — não há modo que atenda a pessoa no próprio chat E outros contatos (issue upstream: a abrir).
+ * O que fazemos: o conceito "dono" (whatsapp-lista.json › dono): com dono ≠ pareado, "só eu" vira bot + allowlist
+ * [pareado, dono], e a pessoa fala com o agente do celular dela; com dono == pareado, os cartões Lista/Todo mundo
+ * avisam que o próprio chat não é respondido.
+ * Sai quando: o Hermes aceitar self-chat em modo bot (uma chave do tipo WHATSAPP_SELF_CHAT junto de MODE=bot em
+ * `hermes whatsapp --help` ou no .env.example): "self" grava bot sempre e o aviso dos cartões some.
+ * Tabela: docs/guia/contornos.md.
+ *
+ * O que gravar no .env para cada cartão. "open" mantém a lista como está (volta intacta se trocar de novo). O dono
+ * (e o pareado) entram sempre na lista.
+ */
+export function hermesEnvPara(escolha: WhatsappReplyChoice, quem: QuemArg, numbers: readonly string[] = []): Record<string, string> {
   if (escolha === "open") return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" };
-  const lista = [...new Set([...(self === null ? [] : [self]), ...numbers.map((n) => n.replace(/\D/g, ""))])].filter((n) => n !== "");
-  if (escolha === "self") return { WHATSAPP_MODE: "self-chat", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
+  const q = quemOf(quem);
+  const lista = [...new Set([...donosDe(q), ...numbers.map((n) => n.replace(/\D/g, ""))])].filter((n) => n !== "");
+  if (escolha === "self") return { WHATSAPP_MODE: souEu(q) ? "self-chat" : "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
   return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
 }
 
@@ -223,8 +242,8 @@ export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null,
  * em "só você" todo mundo menos o próprio; desligado, todos; numa lista, quem está fora dela. "Todo mundo" e pairing
  * (o número fora da lista recebe pedido de pareamento, não silêncio) não pausam ninguém.
  */
-export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number: string): boolean {
-  if (self !== null && number === self) return false;
+export function hermesNaoResponde(env: HermesWaEnv, quem: QuemArg, number: string): boolean {
+  if (donosDe(quemOf(quem)).includes(number)) return false;
   const mode = env.mode.trim().toLowerCase() || "self-chat";
   const dm = env.dm.trim().toLowerCase() || "pairing";
   const lista = listaDe(env.allow);
@@ -250,7 +269,7 @@ export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number:
  * precisa passar por "Quem o agente responde"). Pausar em "só você"/desligado não tem o que tirar; em "todo mundo"
  * não há lista de onde tirar. Diferença do OpenClaw, dita na tela: o agente nem vê as mensagens durante a pausa.
  */
-export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
+export function hermesPausaPlano(env: HermesWaEnv, quem: QuemArg, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
   const mode = env.mode.trim().toLowerCase() || "self-chat";
   const dm = env.dm.trim().toLowerCase() || "pairing";
   const lista = listaDe(env.allow);
@@ -260,7 +279,7 @@ export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: 
   // Em "só você" a lista gravada pode trazer números de antes; a pausa/retomada parte do que vale hoje (só o próprio).
   const efetiva = new Set(mode === "self-chat" ? [] : lista);
   if (paused) efetiva.delete(number); else efetiva.add(number);
-  if (self !== null) efetiva.add(self);
+  for (const d of donosDe(quemOf(quem))) efetiva.add(d);
   for (const n of pausados) if (n !== number) efetiva.delete(n);
   const patch: Record<string, string> = { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: [...efetiva].join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
   return { patch, reinicia: hermesPrecisaReiniciar(env, patch) };
