@@ -48,6 +48,8 @@ export interface GuideContext {
   contas: readonly ContaEstado[] | null;
   /** Tutorial 17: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
   linkPublico: LinkPublicoInfo | null;
+  /** Tutorial 17: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
+  linkPublicoPossivel: boolean;
   /**
    * Tutorial 14 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
    * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
@@ -83,6 +85,7 @@ export const emptyContext = (): GuideContext => ({
   grupos: { info: null, alvo: null, respondeu: false },
   contas: null,
   linkPublico: null,
+  linkPublicoPossivel: true,
   finance: { access: null, info: null },
   produto: { planoExigido: "free", crmProprio: false, crmStreak: true },
   known: noneKnown(),
@@ -220,6 +223,8 @@ export interface Tutorial {
   needsCrmProprio?: true;
   /** Só quando a licença da máquina libera o financeiro (add-on meu-bot-finance). */
   needsFinance?: true;
+  /** Só numa conta que pode ter link público (some na janela do root: o link é das contas de usuário). */
+  needsLinkPublico?: true;
   /** Só onde o agente da máquina aceita a guarda (capacidade `guarda`); some numa máquina com outro agente. */
   needsGuarda?: true;
   /** Trilha em ordem: só aparece depois que este tutorial (id) foi concluído. */
@@ -842,6 +847,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     needs: ["linkpublico"],
     after: "claude-login",
     needsXai: true,
+    needsLinkPublico: true,
     title: "Seu link público",
     short: "Link público",
     summary: "Um endereço só seu na internet (https://<nome>.agentesgrok.com/): peça ao agente o link de qualquer arquivo ou página e mande para quem quiser.",
@@ -965,6 +971,7 @@ export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => b
     if (t.oculto === true) return false;
     if (t.needsSupport === true && ctx.support?.available !== true) return false;
     if (t.needsXai === true && ctx.xai.possible === false) return false;
+    if (t.needsLinkPublico === true && !ctx.linkPublicoPossivel) return false;
     if (t.needsCrmStreak === true && !ctx.produto.crmStreak) return false;
     if (t.needsCrmProprio === true && !ctx.produto.crmProprio) return false;
     if (t.needsFinance === true && ctx.finance.access !== true) return false;

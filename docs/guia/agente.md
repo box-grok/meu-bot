@@ -206,6 +206,10 @@
 
 ## Tutorial 17 · Seu link público (30 out)
 
+- **Janela do root (30 out):** o status (`link-publico:status`) responde `LINK=root` quando `id -u` é 0 e o tutorial some
+  (`needsLinkPublico` + `linkPublicoPossivel: false` no contexto): o link público é das contas de usuário, o admin não
+  liga para o root. Antes o passo 1 ficava eternamente em "o admin liga" e "Conferir de novo" não mudava nada.
+
 - **`link-publico`, number 17, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
   admin liga para a pessoa (Link Público Global, `guia/maquinas.md`). Fonte `linkpublico` (`window.meuBot.linkPublico()`,
   um SSH como ela: `~/.local/share/meu-bot/link-publico.json` + quantos itens em `~/publico`).

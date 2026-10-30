@@ -98,6 +98,8 @@ export type ContaId = "cloudflare" | "github";
 export interface ContaEstado { id: ContaId; presente: boolean; conectado: boolean; conta: string | null; amplo: boolean }
 /** Link público da pessoa (tutorial 17): a URL, o nome (subdomínio), o domínio e quantos arquivos estão no ar. */
 export interface LinkPublicoInfo { url: string; nome: string; dominio: string; arquivos: number; /** O nome de login dela (o nome inicial do link). */ usuario: string }
+/** Estado do link dela: `info` null = desligado, máquina fora ou este Mac; `possivel` false = esta conta não tem link por desenho (o root: o link é das contas de usuário). */
+export interface LinkPublicoStatus { info: LinkPublicoInfo | null; possivel: boolean }
 /** Um item no ar no link dela (`publicar --lista`): a URL, o nome (último segmento) e se é pasta ou página (termina em /). */
 export interface LinkPublicoItem { url: string; nome: string; pasta: boolean }
 /** O link dela e o que está no ar. */

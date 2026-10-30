@@ -419,6 +419,8 @@ test("tutorial 17 (link público): só em máquina por SSH; ligado pelo admin �
   assert.equal(t.number, 17); assert.deepEqual(t.needs, ["linkpublico"]); assert.equal(t.after, "claude-login"); assert.equal(t.needsXai, true);
   const mac = { ...emptyContext(), xai: { ...emptyContext().xai, possible: false } };
   assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "link-publico"), "só em máquina por SSH");
+  assert.ok(!visibleTutorials({ ...emptyContext(), linkPublicoPossivel: false }, () => true).some((x) => x.id === "link-publico"), "na janela do root não aparece: o link é das contas de usuário");
+  assert.ok(visibleTutorials(emptyContext(), () => true).some((x) => x.id === "link-publico"));
   const ctx = (lp) => ({ ...emptyContext(), linkPublico: lp, known: { ...emptyContext().known, linkpublico: true } });
   const lp = { url: "https://box-2.agentesgrok.com/", nome: "box-2", dominio: "agentesgrok.com", arquivos: 0, usuario: "box-2" };
   assert.equal(guideView(t, null, emptyFlags(), ctx(null)).current, 0, "desligado: espera o admin");

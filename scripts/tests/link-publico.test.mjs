@@ -88,6 +88,9 @@ test("link público da pessoa: lê LINK=1 + json; desligado, json torto ou nome 
   const ok = cli.lerLinkPublico('LINK=1 2 box-2\n{"url": "https://daniel.agentesgrok.com/", "nome": "daniel", "dominio": "agentesgrok.com"}\n');
   assert.deepEqual(ok, { url: "https://daniel.agentesgrok.com/", nome: "daniel", dominio: "agentesgrok.com", arquivos: 2, usuario: "box-2" });
   assert.equal(cli.lerLinkPublico("LINK=0\n"), null);
+  assert.deepEqual(cli.lerLinkPublicoStatus("LINK=root\n"), { info: null, possivel: false }, "janela do root: sem link por desenho");
+  assert.deepEqual(cli.lerLinkPublicoStatus("LINK=0\n"), { info: null, possivel: true });
+  assert.equal(cli.lerLinkPublicoStatus('LINK=1 2 box-2\n{"url": "https://daniel.agentesgrok.com/", "nome": "daniel", "dominio": "agentesgrok.com"}\n').info.nome, "daniel");
   assert.equal(cli.lerLinkPublico('LINK=1 0 box-2\n{"url": "javascript:x", "nome": "daniel", "dominio": "agentesgrok.com"}\n'), null);
   assert.equal(cli.lerLinkPublico('LINK=1 0 box-2\n{"url": "https://a.b/", "nome": "Ruim Nome", "dominio": "b"}\n'), null);
 });

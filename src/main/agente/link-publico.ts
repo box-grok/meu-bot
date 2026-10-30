@@ -9,14 +9,15 @@ import { app, dialog, type BrowserWindow } from "electron";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { LinkPublicoInfo, LinkPublicoItem, LinkPublicoLista, LinkPublicoPublicado } from "../../shared/ipc";
+import type { LinkPublicoInfo, LinkPublicoItem, LinkPublicoLista, LinkPublicoPublicado, LinkPublicoStatus } from "../../shared/ipc";
 import { runSsh, scpPara } from "../whatsapp/whatsapp";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 import { registrar } from "../auditoria/auditoria";
 import { ITEM_LINK_RE, LP_MAX_BYTES, NOME_LINK_RE, nomeNoLinkDe } from "../admin/link-publico-core";
 
-const STATUS_SH = `F="$HOME/.local/share/meu-bot/link-publico.json"
+const STATUS_SH = `[ "$(id -u)" = 0 ] && { echo "LINK=root"; exit 0; }
+F="$HOME/.local/share/meu-bot/link-publico.json"
 [ -f "$F" ] && [ -L "$HOME/publico" ] && [ -d "$HOME/publico/" ] || { echo "LINK=0"; exit 0; }
 N=$(ls -1A "$HOME/publico/" 2>/dev/null | grep -vc '^\\.')
 echo "LINK=1 $N $USER"; cat "$F"`;
@@ -82,10 +83,15 @@ export function lerLinkPublico(out: string): LinkPublicoInfo | null {
   } catch { return null; }
 }
 
-export async function linkPublicoStatus(host: string): Promise<LinkPublicoInfo | null> {
-  if (!remota(host)) return null;
+/** `LINK=root` = a janela é da conta root: o link público é das contas de usuário (o admin não liga para o root), então o tutorial 17 some. */
+export function lerLinkPublicoStatus(out: string): LinkPublicoStatus {
+  return { info: lerLinkPublico(out), possivel: !/^LINK=root$/m.test(out) };
+}
+
+export async function linkPublicoStatus(host: string): Promise<LinkPublicoStatus> {
+  if (!remota(host)) return { info: null, possivel: true };
   const r = await runSsh(host, `${STATUS_SH}\n`, 30_000);
-  return lerLinkPublico(r.stdout);
+  return lerLinkPublicoStatus(r.stdout);
 }
 
 /** Troca o nome do link (o comando confere nome válido, reservado, de outro usuário ou em uso). */
