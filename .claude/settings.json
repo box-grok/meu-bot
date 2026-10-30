@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/rebuild-auto.sh\"",
+            "timeout": 30,
+            "statusMessage": "Conferindo se o app precisa ser reempacotado…"
+          }
+        ]
+      }
+    ]
+  }
+}

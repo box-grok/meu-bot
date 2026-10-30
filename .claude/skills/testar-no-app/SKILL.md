@@ -5,6 +5,12 @@ description: Ciclo fecha → rebuilda → abre → testa de um app do meu-bot (m
 
 # Testar no app: fecha, rebuilda, abre e confere
 
+> **Os passos 1 a 4 já rodam sozinhos**: o hook `Stop` do projeto (`scripts/hooks/rebuild-auto.sh`, ver skill
+> `rebuildar`) faz testes → fecha → empacota → reabre → confere o log, em segundo plano, sempre que algo do app mudou.
+> Esta skill continua valendo para o passo 5 (ver na tela) e para quando a pessoa pedir o ciclo agora, numa variante
+> específica. Atenção: `System Events` (clicar, digitar) só funciona se o Terminal tiver Acessibilidade; sem ela,
+> confira o conteúdo do build com `grep -a` no `app.asar` instalado e a tela só pelo que já está visível.
+
 O app instalado é empacotado e só mostra a mudança depois de rebuildar. Pedir esta skill já autoriza fechar e
 reabrir o app sem perguntar de novo.
 

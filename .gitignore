@@ -14,3 +14,7 @@ config/google-oauth.json
 config/google-conta-oauth.json
 config/google-conta-oauth.json.*
 node_modules
+
+# hook de rebuild automático (scripts/hooks/rebuild-auto.sh): carimbo e trava locais
+.claude/.rebuild-stamp
+.claude/.rebuild-lock/
