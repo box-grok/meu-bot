@@ -4,6 +4,8 @@ name: Testes
 
 on:
   pull_request:
+  # O Claude dispara pelo gh workflow run: push feito com GITHUB_TOKEN não aciona pull_request.
+  workflow_dispatch:
   push:
     branches: [main]
 
