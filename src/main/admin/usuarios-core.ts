@@ -2,6 +2,7 @@
  * Puro (testado): o nome aceito, os scripts da aba Usuários (listar, ligar a cota, limite, apagar) e a leitura da
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
+import { deveAtualizar } from "../atualizacao/updater-core";
 import type { Capacidade, HermesNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
@@ -68,6 +69,7 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap
     cg=$(printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s' "$cur" "$an" "$pk" "$sc" "$ev" "$pm" "$pc" "$cs")
   fi
   printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr" "$hd" "$sx" "$ml" "$cw" "$cg"
+  bd="$h/.local/share/meu-bot/backend"; [ -s "$bd/.env" ] && [ -f "$bd/server.js" ] && printf 'B\\t%s\\t%s\\n' "$n" "$(tr -dc '0-9.' < "$bd/VERSION" 2>/dev/null)"
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
@@ -94,6 +96,13 @@ export function lerUsuarios(out: string): ListaUsuarios {
   const cpus = kb(/^CPUS=(\d+)$/m.exec(out)?.[1]);
   const us = /^USERSLICE=(max|\d+) (\d+) (\d+) (\d+)$/m.exec(out);
   const userSlice = us === null ? null : { maxKb: us[1] === "max" ? null : Math.round(Number(us[1]) / 1024), usoKb: Math.round(Number(us[2]) / 1024), anonKb: Math.round(Number(us[3]) / 1024), lowKb: Math.round(Number(us[4]) / 1024) };
+  // Linha própria por box com o backend do meu-bot (`B\t<nome>\t<versão>`): a coluna do cgroup é variável, uma coluna
+  // depois dela mudaria de posição. Versão vazia = instalado antes do VERSION (conta como antigo).
+  const backends = new Map<string, string | null>();
+  for (const l of out.split("\n")) {
+    const c = l.split("\t");
+    if (c[0] === "B" && NOME_USUARIO_RE.test(c[1] ?? "")) backends.set(c[1]!, /^\d+(\.\d+)*$/.test(c[2] ?? "") ? c[2]! : null);
+  }
   const usuarios: UsuarioMaquina[] = [];
   for (const l of out.split("\n")) {
     const c = l.split("\t");
@@ -108,11 +117,20 @@ export function lerUsuarios(out: string): ListaUsuarios {
       swapMaxMb: ramMaxDe(c[17]), lowMb: c[18] === undefined || c[18] === "" || c[18] === "0" ? null : ramMaxDe(c[18]), cpuWeight: kb(c[19]),
       box, pressao: pressaoDe(box, ramMaxMb),
       apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0", pronto: c[15] === "1",
+      backendInstalado: backends.has(c[1]!), backendVersao: backends.get(c[1]!) ?? null,
     });
   }
   const hm = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1];
   const hermes = hm === "global" || hm === "sem-transcritor" || hm === "root" || hm === "nenhum" ? hm : null;
   return { root, discoKb, cota, ram, userSlice, cpus, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+}
+
+/**
+ * Boxes cujo backend do meu-bot está atrás do que este app traz (`deveAtualizar`: só sobe, nunca desce; sem versão
+ * gravada conta como antigo). Sem backend, com sudo ou protegidas ficam de fora. `doApp` null (app sem VERSION) = nenhuma.
+ */
+export function boxesDesatualizadas(usuarios: readonly UsuarioMaquina[], doApp: string | null): string[] {
+  return usuarios.filter((u) => u.backendInstalado && !u.sudo && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome) && deveAtualizar(u.backendVersao, doApp)).map((u) => u.nome);
 }
 
 /**

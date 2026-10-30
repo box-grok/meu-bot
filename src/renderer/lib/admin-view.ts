@@ -5,6 +5,15 @@
 import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, SupportPerson, SupportProgress } from "../../shared/ipc";
 import { tutorialNumber } from "./tutoriais.js";
 
+/** Backend de uma box atrás do que o app traz: sem versão gravada conta como antigo; compara número a número (1.10 > 1.9). */
+export function backendAtras(instalada: string | null, doApp: string | null): boolean {
+  if (doApp === null) return false;
+  if (instalada === null) return true;
+  const a = instalada.split(".").map(Number); const b = doApp.split(".").map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { const x = a[i] ?? 0; const y = b[i] ?? 0; if (x !== y) return x < y; }
+  return false;
+}
+
 export const ADMIN_ACTIONS: readonly { id: AdminAction; label: string; confirm: string }[] = [
   { id: "install-backend", label: "Instalar o backend do meu-bot", confirm: "Confirmar? instala na conta dela (porta livre escolhida sozinha)" },
   { id: "restart-gateway", label: "Reiniciar o gateway do WhatsApp", confirm: "Confirmar? o WhatsApp dela cai por ~1 min" },

@@ -478,6 +478,8 @@ export interface MeuBotAdminApi {
   adminSwapLigar(): Promise<UsuariosVisao>;
   /** Governança de RAM/CPU: reserva para o sistema (teto no user.slice) e isolamento das boxes que ainda não têm; nada reinicia. */
   adminGovernanca(): Promise<UsuariosVisao>;
+  /** Reinstala o backend do meu-bot nas boxes atrás da versão deste app, uma por vez (pula quem está com chat em andamento ou sem alias neste Mac). */
+  adminBackendsAtualizar(): Promise<UsuariosVisao>;
   /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
   adminHermesGlobal(): Promise<UsuariosVisao>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */
