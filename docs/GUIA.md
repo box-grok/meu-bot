@@ -9,7 +9,7 @@ a data em que entrou. Coisa nova vai no guia do assunto dela, no fim.
 | Guia | Seções |
 |---|---|
 | [História: do REA ao meu-bot (13 e 14 out)](guia/historia.md) | Visão geral; Passo 1: preparar o REA no Mac; Passo 2: engenharia reversa do Grok Bot com o REA; Passo 3: o que descobrimos sobre o Grok Bot; Passo 4: botão "REA Grok Bot" na área de trabalho; Passo 5: o backend do Hermes na VM… |
-| [Máquinas, backend e seletor](guia/maquinas.md) | Backend local no Colima; Máquinas; Máquina "local"; Modelo `agente` na grokbot-1; Mapa das máquinas; v3: uma janela por máquina… |
+| [Máquinas, backend e seletor](guia/maquinas.md) | Backend local no Colima; Máquinas; Máquina "local"; Modelo `agente` na grokbot-1; Mapa das máquinas; v3: uma janela por máquina; Claude Code Global; Link Público Global… |
 | [Agente: modelos, fallback, status line, Claude e xAI](guia/agente.md) | Provedores com fallback e o modelo grok-4; Status line e seção Fallback; Instalar status line pelo seletor; Entrar no Claude Code pelo app; Grok; Limite do Fable: o turno refaz com o Opus 5.5… |
 | [WhatsApp do agente](guia/whatsapp.md) | WhatsApp do Hermes: estado e pareamento por QR no app; WhatsApp: "Só alguns contatos"; Voz das respostas em áudio e o modelo do agente; Skill whatsapp-grupos; Pausar contato no Hermes; Grupos no Hermes: ligar/desligar e "quando chamado"… |
 | [CRM](guia/crm.md) | CRM: caminho real da chave da API do Streak; CRM: o agente gera a chave da API do Streak; CRM → WhatsApp; Limpar histórico do WhatsApp guarda antes no CRM; Google Contatos → CRM; Caixa fixa do grupo no CRM ao limpar o histórico… |

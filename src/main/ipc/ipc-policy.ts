@@ -16,7 +16,7 @@ export const SHARED_CHANNELS = [
   "whatsapp:archive-crm",
   // grupos: ler, ligar/desligar o agente, quem aciona e reler a lista (a pessoa e o admin; mudanças na auditoria)
   "whatsapp:groups", "whatsapp:group-thread", "whatsapp:group-set", "whatsapp:groups-refresh", "ui:wa-group-menu",
-  "claude-login:auth", "xai-login:auth", "xai-key:status", "contas:status",
+  "claude-login:auth", "xai-login:auth", "xai-key:status", "contas:status", "link-publico:status",
   // terminal na máquina da janela (os dois apps; no admin a pessoa vê no registro dela)
   "term:open", "term:input", "term:resize", "term:close", "term:replay",
   // atualização automática do próprio app
@@ -47,6 +47,8 @@ export const CLIENT_CHANNELS = [
   "contas-claude:listar", "contas-claude:criar", "contas-claude:entrar", "contas-claude:atualizar", "contas-claude:reordenar", "contas-claude:remover", "contas-claude:usar-agora", "contas-claude:conferir", "contas-claude:limiares",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   "contas:entrar", "contas:cancelar", "contas:sair", "contas:instalar-gh",
+  // link público da pessoa (tutorial 17): trocar o nome do subdomínio dela
+  "link-publico:nome",
   // instalar e configurar a máquina
   "backend:presente", "backend:install",
   "statusline:status", "statusline:install", "statusline:segments", "statusline:set-segments", "statusline:uninstall",
@@ -65,7 +67,7 @@ export const CLIENT_CHANNELS = [
 ] as const;
 
 /** Só o meu-bot-admin: a página "Suporte" e as pessoas do seletor. */
-export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:auditoria-visivel", "admin:auditoria", "admin:auditoria-exportar", "admin:usuarios-visivel", "admin:usuarios", "admin:usuario-criar", "admin:usuario-limite", "admin:usuario-apagar", "admin:usuario-recursos", "admin:swap-ligar", "admin:hermes-global", "admin:usuario-apelido", "admin:usuario-ligado", "admin:usuario-preparar", "admin:claude-global", "admin:claude-global-instalar", "admin:claude-global-limiares", "admin:claude-global-entrar", "admin:claude-global-conta-editar", "admin:claude-global-conta-nova", "admin:claude-global-conta-remover", "admin:claude-global-conta-usar", "admin:claude-global-usuario", "admin:usuario-seletores", "admin:usuarios-sincronizar", "admin:usuario-maiores", "admin:usuario-apagar-item", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-abrir", "produtos:listar", "produtos:salvar", "produtos:remover", "produtos:exportar", "produtos:catalogo", "ui:bot-menu"] as const;
+export const ADMIN_CHANNELS = ["admin:health", "admin:logs", "admin:action", "admin:bot-chats", "admin:bot-thread", "admin:bot-delete", "admin:license-set", "admin:license-approve", "admin:license-revoke", "admin:produtos-list", "admin:auditoria-visivel", "admin:auditoria", "admin:auditoria-exportar", "admin:usuarios-visivel", "admin:usuarios", "admin:usuario-criar", "admin:usuario-limite", "admin:usuario-apagar", "admin:usuario-recursos", "admin:swap-ligar", "admin:hermes-global", "admin:usuario-apelido", "admin:usuario-ligado", "admin:usuario-preparar", "admin:claude-global", "admin:claude-global-instalar", "admin:claude-global-limiares", "admin:claude-global-entrar", "admin:claude-global-conta-editar", "admin:claude-global-conta-nova", "admin:claude-global-conta-remover", "admin:claude-global-conta-usar", "admin:claude-global-usuario", "admin:link-publico", "admin:link-publico-instalar", "admin:link-publico-entrar", "admin:link-publico-tunel", "admin:link-publico-usuario", "admin:usuario-seletores", "admin:usuarios-sincronizar", "admin:usuario-maiores", "admin:usuario-apagar-item", "admin:backup-listar", "admin:backup-criar", "admin:backup-conferir", "admin:backup-restaurar", "admin:backup-whatsapp", "picker:support-refresh", "picker:support-add", "picker:support-archive", "picker:support-rename", "picker:support-remove", "picker:produtos-abrir", "produtos:listar", "produtos:salvar", "produtos:remover", "produtos:exportar", "produtos:catalogo", "ui:bot-menu"] as const;
 
 export type SharedChannel = (typeof SHARED_CHANNELS)[number];
 export type ClientChannel = (typeof CLIENT_CHANNELS)[number];

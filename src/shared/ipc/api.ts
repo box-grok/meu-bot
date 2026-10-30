@@ -1,5 +1,5 @@
 /** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
-import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
+import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
@@ -11,7 +11,7 @@ import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
-import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado } from "./suporte";
+import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado } from "./suporte";
 import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
@@ -178,6 +178,8 @@ export interface MeuBotSharedApi {
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
+  /** Link público desta pessoa na máquina (tutorial 17); null = desligado, máquina fora ou este Mac. */
+  linkPublico(): Promise<LinkPublicoInfo | null>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
   googleContaStatus(): Promise<GoogleContaStatus>;
@@ -431,6 +433,8 @@ export interface MeuBotClientApi {
    * `trocar` = entrar com outra conta (a página não cai na conta que o Navegador já tem).
    */
   contasEntrar(id: ContaId, navegador: boolean, trocar: boolean): Promise<void>;
+  /** Tutorial 17: troca o nome do link público dela (`<nome>.<domínio>`); devolve o estado novo. */
+  linkPublicoNome(nome: string): Promise<LinkPublicoInfo>;
   contasCancelar(): Promise<void>;
   contasSair(id: ContaId): Promise<ContaEstado[] | null>;
   /** Instala o GitHub CLI (gh) na máquina da janela, sem sudo; devolve o estado novo das contas. */
@@ -482,6 +486,16 @@ export interface MeuBotAdminApi {
   adminClaudeGlobalUsuario(nome: string, ligado: boolean): Promise<CgEstado>;
   /** Limiares do rodízio do root: troca ao passar de sessão %/semana %, e qual conta vai primeiro. */
   adminClaudeGlobalLimiares(t: { sessao?: number; semanal?: number; estrategia?: "ordem" | "folga" }): Promise<CgEstado>;
+  /** Link Público Global: estado (instalação, login do root na Cloudflare, túnel, usuários). */
+  adminLinkPublico(): Promise<LpEstado>;
+  /** Instala nginx e cloudflared com o domínio dos links (idempotente). */
+  adminLinkPublicoInstalar(dominio: string): Promise<LpEstado>;
+  /** Abre o login do root na Cloudflare (no navegador deste Mac); a página confirma sozinha. */
+  adminLinkPublicoEntrar(): Promise<{ url: string }>;
+  /** Cria o túnel, aponta `*.<domínio>` e sobe o serviço. */
+  adminLinkPublicoTunel(): Promise<LpEstado>;
+  /** Liga ou desliga o link de um usuário da máquina. */
+  adminLinkPublicoUsuario(nome: string, ligado: boolean): Promise<LpEstado>;
   /** Põe o usuário no ~/.ssh/config deste Mac como máquina; ele aparece no seletor do meu-bot. */
   /** Põe o usuário nos dois seletores (meu-bot e admin), sem preparar a conta; `aviso` = o do admin falhou. */
   adminUsuarioNosSeletores(nome: string): Promise<{ alias: string; novo: boolean; aviso: string | null }>;

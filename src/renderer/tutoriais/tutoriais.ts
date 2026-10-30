@@ -358,6 +358,8 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         ctx.renderConta(txt, step.body === "conta-cloudflare" ? "cloudflare" : "github");
       } else if (step.body !== undefined && step.body.startsWith("finance-")) {
         ctx.renderFinanceStep(txt, step.body);
+      } else if (step.body === "link-publico-ver" || step.body === "link-publico-testar" || step.body === "link-publico-nome") {
+        ctx.renderLinkPublico(txt, step.body === "link-publico-ver" ? "ver" : step.body === "link-publico-testar" ? "testar" : "nome");
       } else if (step.body === "grupos-teste") {
         ctx.renderGruposTeste(txt);
       } else if (step.body === "objective-choice") {

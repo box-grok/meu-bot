@@ -1,4 +1,4 @@
-import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento } from "../../shared/ipc";
+import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -53,6 +53,7 @@ export const guideCtx = (): GuideContext => ({
   crm: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), info: ctx.crmState, local: ctx.crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(ctx.waGroups, ctx.loadGrupoAlvo()); return { info: ctx.waGroups, alvo: ctx.loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || ctx.waGroupReplied.get(alvo.jid) === true) }; })(),
   contas: contasState,
+  linkPublico: linkPublicoState,
   finance: { access: ctx.navLicenseAsked ? financeOk(ctx.license, ctx.windowHost) : null, info: ctx.financeState },
   produto: (() => { const proprio = ctx.crmProprio() && ctx.motorCrm() === "proprio"; return { planoExigido: ctx.caps.planoExigido, crmProprio: proprio, crmStreak: !proprio }; })(),
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
@@ -72,6 +73,7 @@ export const guideCtx = (): GuideContext => ({
       crm: ctx.navLicenseAsked && (ctx.crmState !== null || !remote) && (!ctx.crmProprio() || !remote || ctx.crmLocalState !== null),
       grupos: ctx.waGroups !== null || !remote || (ctx.waStatus !== null && !ctx.waStatus.capacidades.grupos),
       contas: contasState !== null || !remote,
+      linkpublico: linkPublicoLido || !remote,
       finance: ctx.navLicenseAsked && (!remote || !financeOk(ctx.license, ctx.windowHost) || ctx.financeState !== null),
     };
   })(),
@@ -255,6 +257,60 @@ export async function refreshGuarda(): Promise<void> {
   if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
   try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
+}
+/** Tutorial 17: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
+let linkPublicoState: LinkPublicoInfo | null = null;
+let linkPublicoLido = false;
+let linkNomeMsg: { text: string; bad: boolean } | null = null;
+let linkNomeOcupado = false;
+export async function refreshLinkPublico(): Promise<void> {
+  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
+  try { linkPublicoState = await window.meuBot.linkPublico(); linkPublicoLido = true; } catch { /* máquina fora: fica o que havia */ }
+  ctx.paintGuide();
+}
+/** Tutorial 17: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
+export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar" | "nome"): void {
+  const box = el("div", "audio-controls");
+  const lp = linkPublicoState;
+  if (!linkPublicoLido) { box.append(carregando("Consultando a máquina…", "guia-link")); container.append(box); return; }
+  if (lp === null) {
+    box.append(el("p", "hint", "Seu link ainda não está ligado. É o admin quem liga, no meu-bot-admin › Link Público Global."));
+    const b = el("button", "btn btn-ghost btn-small", "Conferir de novo"); b.type = "button"; b.addEventListener("click", () => { void refreshLinkPublico(); });
+    box.append(b); container.append(box); return;
+  }
+  const row = el("div", "audio-row");
+  const a = el("a", "audio-ok", lp.url) as HTMLAnchorElement; a.href = lp.url; a.target = "_blank"; a.rel = "noopener"; row.append(a);
+  const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
+  copy.addEventListener("click", () => { void navigator.clipboard.writeText(lp.url).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+  row.append(copy); box.append(row);
+  if (parte === "testar") {
+    box.append(el("p", "hint", lp.arquivos === 0 ? "Nada no ar ainda." : `${lp.arquivos} ${lp.arquivos === 1 ? "item" : "itens"} no ar em ${lp.url}`));
+    const pedir = el("button", "btn btn-primary btn-small", "Pedir um link de teste ao agente"); pedir.type = "button";
+    pedir.addEventListener("click", () => { void ctx.goToChatFromGuide("Crie uma página HTML simples chamada ola.html com um \"Olá!\" e me dê o link público dela.", "O agente publica a página em ~/publico e responde com a URL; quando houver algo no ar, este passo se conclui sozinho."); });
+    const rever = el("button", "btn btn-ghost btn-small", "Conferir"); rever.type = "button"; rever.addEventListener("click", () => { void refreshLinkPublico(); });
+    const r2 = el("div", "audio-row"); r2.append(pedir, rever); box.append(r2);
+  }
+  if (parte === "nome") {
+    const r2 = el("div", "audio-row");
+    const i = el("input") as HTMLInputElement; i.type = "text"; i.value = lp.nome; i.maxLength = 63; i.placeholder = lp.usuario; i.style.width = "160px"; i.disabled = linkNomeOcupado;
+    i.title = "Só letras minúsculas, números e hífen (2 a 63 caracteres)";
+    const salvar = el("button", "btn btn-primary btn-small", linkNomeOcupado ? "Trocando…" : "Trocar o nome"); salvar.type = "button"; salvar.disabled = linkNomeOcupado;
+    const trocar = (): void => {
+      const n = i.value.trim().toLowerCase();
+      if (n === lp.nome) { linkNomeMsg = { text: "Esse já é o nome do seu link.", bad: false }; ctx.paintGuide(); return; }
+      if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(n)) { linkNomeMsg = { text: "Nome inválido: só letras minúsculas, números e hífen (2 a 63 caracteres).", bad: true }; ctx.paintGuide(); return; }
+      linkNomeOcupado = true; linkNomeMsg = null; ctx.paintGuide();
+      void window.meuBot.linkPublicoNome(n)
+        .then((r) => { linkPublicoState = r; linkNomeMsg = { text: `✓ Seu link agora é ${r.url}`, bad: false }; })
+        .catch((e: unknown) => { linkNomeMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
+        .finally(() => { linkNomeOcupado = false; ctx.paintGuide(); });
+    };
+    salvar.addEventListener("click", trocar);
+    i.addEventListener("keydown", (ev) => { if (ev.key === "Enter") trocar(); });
+    r2.append(i, el("span", "hint", `.${lp.dominio}`), salvar); box.append(r2);
+    if (linkNomeMsg !== null) box.append(el("p", linkNomeMsg.bad ? "hint bad-hint" : "hint audio-ok", linkNomeMsg.text));
+  }
+  container.append(box);
 }
 /** Tutorial 13: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
 let contasState: ContaEstado[] | null = null;

@@ -96,6 +96,8 @@ export type ClaudeLoginEvent =
 export type ContaId = "cloudflare" | "github";
 /** `presente` = a ferramenta existe na máquina; `amplo` = logada com mais acesso que o necessário (refazer limita). */
 export interface ContaEstado { id: ContaId; presente: boolean; conectado: boolean; conta: string | null; amplo: boolean }
+/** Link público da pessoa (tutorial 17): a URL, o nome (subdomínio), o domínio e quantos arquivos estão no ar. */
+export interface LinkPublicoInfo { url: string; nome: string; dominio: string; arquivos: number; /** O nome de login dela (o nome inicial do link). */ usuario: string }
 /** Login de uma conta de CLI: o link (e o código de dispositivo, se a página pedir) e o fim, com o estado conferido. */
 export type ContaEvento =
   | { kind: "url"; id: ContaId; url: string; codigo: string | null }

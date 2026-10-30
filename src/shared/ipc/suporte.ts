@@ -103,6 +103,14 @@ export interface CgConta { id: string; rotulo: string; email: string | null; log
 export interface CgUsuario { nome: string; ligado: boolean; chamadas: number; ultima: number | null; limites: number }
 /** Estado do Claude Code Global da máquina: o intermediário do root, a conta do root, o rodízio e os usuários. */
 export interface CgEstado { instalado: boolean; ativo: boolean; porta: number | null; login: boolean; email: string | null; plano: string | null; contas: CgConta[]; /** Limiares do rodízio do root (os do tutorial 15); null = ainda não instalado. */ limiares: { sessao: number; semanal: number; estrategia: "ordem" | "folga" } | null; usuarios: CgUsuario[] }
+/** Link Público Global: um usuário da máquina e o link dele (`link` = o subdomínio que ele usa; null = desligado). */
+export interface LpUsuario { nome: string; ligado: boolean; link: string | null; arquivos: number }
+/**
+ * Link Público Global (admin): nginx e cloudflared instalados com o domínio; `login` = o root entrou na Cloudflare
+ * (cert.pem); `loginUrl` = um login está aberto esperando a autorização; `tunel` = id do túnel criado; `servico` = o
+ * cloudflared está no ar; `rota` = `*.<domínio>` resolve no DNS.
+ */
+export interface LpEstado { instalado: boolean; nginx: boolean; login: boolean; loginUrl: string | null; tunel: string | null; servico: boolean; rota: boolean; dominio: string | null; usuarios: LpUsuario[] }
 /** "sem-transcritor" = Hermes global sem o /opt/transcriber (máquina de antes do padrão): falta completar. */
 export type HermesNaMaquina = "global" | "sem-transcritor" | "root" | "nenhum";
 export interface UsuariosVisao { usuarios: UsuarioMaquina[]; hostname: string | null; port: string | null; /** Chave privada deste Mac que entra nos usuários criados (~/.ssh/…). */ chave: string | null; /** Tamanho do disco principal (KB) e se a cota de usuário está ligada nele. */ discoKb: number | null; cota: boolean; /** Onde está o Hermes (null = máquina antiga que não informou). */ hermes: HermesNaMaquina | null; /** RAM da máquina: total, em uso e quanto é do root (KB); null = não leu. */ ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; /** Só na resposta de criar: o nome no seletor do meu-bot e o aviso se o do admin falhou. */ seletores?: { alias: string; aviso: string | null }; /** Só na resposta de criar: null = conta preparada (backend, Hermes, transcrição); texto = onde o preparo parou. */ preparo?: string | null; /** Só na resposta de criar: a conta já responde pelo Claude Code Global (sem login próprio). */ global?: boolean }

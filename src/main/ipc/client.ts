@@ -25,6 +25,7 @@ import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCod
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
 import { cancelarConta, entrarConta, instalarGh, sairConta } from "../agente/contas-cli";
 import { isContaId } from "../agente/contas-cli-core";
+import { linkPublicoNome } from "../agente/link-publico";
 import {
   archiveConversation, branchConversation, closeTab, createConversation, dropConversation, duplicateConversation, getConversation,
   getStoredConversation, listConversationsForHost, openConversation, persistConversations, renameConversation, reorderConversations, setConversationModel,
@@ -510,6 +511,8 @@ export function registerClientIpc(): void {
     return entrarConta(h.host, p.id, p.navegador === true, p.trocar === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
   });
   handleClient("contas:instalar-gh", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return instalarGh(h.host); });
+  // Tutorial 17: a pessoa troca o nome do link público dela (o comando da máquina renomeia a pasta dela, sem root).
+  handleClient("link-publico:nome", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoNome(h.host, (payload as { nome?: unknown } | null)?.nome); });
   handleClient("contas:cancelar", (event) => { if (hostFromEvent(event) === null) throw new Error("origem inválida"); cancelarConta(); });
   handleClient("contas:sair", (event, payload: unknown) => {
     const h = hostFromEvent(event);

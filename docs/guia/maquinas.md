@@ -366,3 +366,39 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   - A renovação feita pelo intermediário manteve o `claude` do root funcionando.
 - **Uso compartilhado:** experimental. Antes de levar o global a clientes ou à produção, confirme que o acordo com a
   Anthropic cobre o uso; as contas próprias de cada usuário continuam como alternativa.
+
+## Link Público Global: um link por usuário, atrás de um túnel da Cloudflare do root (30 out)
+
+- **O que é:** cada usuário da máquina ganha `https://<nome>.<domínio>/` (hoje `agentesgrok.com`), servido pela pasta
+  `~/publico` dele. A gestão é do admin (aba "Link Público Global", abaixo do Claude Code Global): instalar, entrar na
+  Cloudflare, subir o túnel e ligar ou desligar o link por usuário. O agente de cada um dá links com o comando
+  `publicar` (skill do Hermes `meu-bot-link-publico` e bloco no CLAUDE.md do workspace); o nome do link a pessoa troca
+  no meu-bot dela (tutorial 17). Motivo: a Karen da box-2 respondeu "não tenho como gerar um link público" quando o
+  Daniel pediu o arquivo do fluxo por link.
+- **Por que túnel:** o domínio está na Cloudflare e as portas 80/443 da VM são filtradas. O `cloudflared` do root
+  (serviço `cloudflared`, `/etc/cloudflared/config.yml`) leva `*.<domínio>` a um nginx só em `127.0.0.1:8099`; a máquina
+  não abre porta e o TLS é da Cloudflare. O login do root (`cloudflared tunnel login`, cert em `/root/.cloudflared`) é
+  uma vez; a aba abre o link no navegador do Mac e confirma sozinha quando o cert chega. O túnel `meu-bot-publico` é
+  criado uma vez (no `tunnel list -o json` os vivos têm `deleted_at` "0001-01-01", não vazio) e a rota é um CNAME
+  curinga, então nome novo de usuário não mexe em DNS.
+- **Arquivos:**
+  - `/etc/meu-bot-link-publico` (755, à parte do `/etc/meu-bot`, que é 700): `config.json` (domínio, porta), `SKILL.md`
+    e `claude.md` (modelos que o ligar copia para o usuário).
+  - `/var/www/publico` (root, 1733, sticky): `<nome>/` é a pasta do usuário (dona ele, 755). Ninguém lista as outras; o
+    nginx só atravessa. `disable_symlinks if_not_owner`: symlink dentro da pasta só para arquivo do mesmo dono.
+  - No usuário: `~/publico` → `/var/www/publico/<nome>`; `~/.local/share/meu-bot/link-publico.json` (`{url, nome, dominio}`,
+    o que a tela dele lê); `~/.hermes/skills/meu-bot-link-publico/SKILL.md`; bloco `meu-bot:link-publico v1` no
+    `~/agent-workspace/CLAUDE.md`. Tudo isso gravado por ele (`runuser`), nunca pelo root.
+  - `/usr/local/bin/publicar <arquivo|pasta> [nome]` (também `--lista`, `--remover`) e `/usr/local/bin/link-publico-nome
+    <novo>`: como a pasta é dele numa pasta sticky, trocar o nome é um `mv` sem root. Nomes reservados (www, admin…)
+    e nomes de outros usuários são recusados.
+- **Desligar** guarda a pasta em `/var/www/publico/.desligado-<usuário>` (o nginx não serve nome com ponto) e ligar de
+  novo a devolve, com o nome que a pessoa tinha escolhido.
+- **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
+  `ligarLinkPublicoPara`).
+- **Domínio próprio:** fora do alcance deste túnel (um hostname só passa por um túnel da mesma conta Cloudflare). Quem
+  quer domínio próprio usa a conta Cloudflare dela (tutorial 13) e pede ao agente para subir a pasta no Pages.
+- **Conferido no servidor (30 out):** `https://box-2.agentesgrok.com/teste.html` respondeu 200 pela internet; raiz
+  vazia 403; host desconhecido 404; `hermes skills list` da box-2 lista `meu-bot-link-publico` como local/enabled.
+  Código: `admin/link-publico-core.ts` (scripts), `admin/link-publico-admin.ts`, `renderer/admin/link-publico-page.ts`,
+  `agente/link-publico.ts` (lado da pessoa).

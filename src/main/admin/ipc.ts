@@ -13,6 +13,7 @@ import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
 import { contaEditarClaudeGlobal, contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, limiaresClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
+import { entrarLinkPublico, estadoLinkPublico, instalarLinkPublico, tunelLinkPublico, usuarioLinkPublico } from "./link-publico-admin";
 import { prepararUsuarioDeNovo, manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
@@ -52,6 +53,12 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:claude-global-conta-editar", (event, payload: unknown) => contaEditarClaudeGlobal(adminHost(event), payload));
   handleAdmin("admin:claude-global-limiares", (event, payload: unknown) => limiaresClaudeGlobal(adminHost(event), payload));
   handleAdmin("admin:claude-global-usuario", (event, payload: unknown) => usuarioClaudeGlobal(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
+  // Link Público Global (abaixo do Claude Code Global, também só como root): nginx + Cloudflare Tunnel do root, um link por usuário.
+  handleAdmin("admin:link-publico", (event) => estadoLinkPublico(adminHost(event)));
+  handleAdmin("admin:link-publico-instalar", (event, payload: unknown) => instalarLinkPublico(adminHost(event), (payload as { dominio?: unknown } | null)?.dominio));
+  handleAdmin("admin:link-publico-entrar", (event) => entrarLinkPublico(adminHost(event)));
+  handleAdmin("admin:link-publico-tunel", (event) => tunelLinkPublico(adminHost(event)));
+  handleAdmin("admin:link-publico-usuario", (event, payload: unknown) => usuarioLinkPublico(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
   handleAdmin("admin:usuario-preparar", (event, payload: unknown) => prepararUsuarioDeNovo(adminHost(event), (payload as { nome?: unknown } | null)?.nome, progresso(event)));
   handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));

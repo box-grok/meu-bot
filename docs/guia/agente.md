@@ -198,6 +198,18 @@
   - **GitHub:** `gh auth login -w` sem terminal, por código de dispositivo. O código aparece no passo com o botão
     Copiar. O passo é opcional: "Não uso GitHub".
   - **Status:** `contas-cli-core.ts` › `STATUS_SH`, um SSH só.
+
+## Tutorial 17 · Seu link público (30 out)
+
+- **`link-publico`, number 17, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
+  admin liga para a pessoa (Link Público Global, `guia/maquinas.md`). Fonte `linkpublico` (`window.meuBot.linkPublico()`,
+  um SSH como ela: `~/.local/share/meu-bot/link-publico.json` + quantos itens em `~/publico`).
+  1. **Ver o seu link:** concluído quando o admin ligou (o json existe). Desligado, o passo diz quem liga.
+  2. **Pedir o primeiro link ao agente:** botão que manda ao chat "crie ola.html e me dê o link público"; concluído
+     (`lembrar`) quando há algo no ar.
+  3. **Escolher o nome do link:** campo com o nome atual e "Trocar o nome" (`link-publico:nome` → comando
+     `link-publico-nome` na máquina, como ela); concluído quando o nome difere do login, ou "Deixar como está"
+     (flag `linkNomeVisto`). `refazer` para trocar de novo.
     - Sem o arquivo de login do wrangler, não chama o `npx`.
     - A saída vai para um arquivo com `timeout`: num pipe, o `npm exec` às vezes fica pendurado.
   - **Canais:** `contas:status` (shared); `contas:entrar`, `contas:cancelar` e `contas:sair` (client); evento
