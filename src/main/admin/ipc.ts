@@ -3,6 +3,7 @@
  * registros, ações). Só valem numa janela de pessoa do suporte (alias `suporte-…`); no meu-bot normal o
  * registro vira recusa (ipc/registry.ts).
  */
+import { aplicarPreparar, estadoPreparar } from "./preparar-admin";
 import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../suporte/support-code";
@@ -67,6 +68,9 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));
   handleAdmin("admin:governanca", (event) => aplicarGovernanca(adminHost(event)));
   handleAdmin("admin:backends-atualizar", (event) => atualizarBackends(adminHost(event), progresso(event)));
+  // Preparar máquina (root): o checklist e o "aplicar o que falta", com o log no mesmo canal do job de criar.
+  handleAdmin("admin:preparar-estado", (event) => estadoPreparar(adminHost(event)));
+  handleAdmin("admin:preparar-aplicar", (event, payload: unknown) => aplicarPreparar(adminHost(event), (payload as { ids?: unknown } | null)?.ids, progresso(event)));
   handleAdmin("admin:hermes-global", (event) => instalarHermesGlobal(adminHost(event)));
   handleAdmin("admin:usuario-recursos", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; ramMb?: unknown; cpuPct?: unknown }; return definirRecursos(adminHost(event), p.nome, p.ramMb, p.cpuPct); });
   handleAdmin("admin:usuario-maiores", (event, payload: unknown) => maioresDoUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));

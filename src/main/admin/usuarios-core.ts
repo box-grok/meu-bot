@@ -38,16 +38,20 @@ export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
  * oom_kill, PSI de memória avg10/avg60 e de CPU avg60, cpu.stat períodos/estrangulados/µs). Máquina sem cgroup v2
  * deixa essas colunas vazias.
  */
+/** `COTA=0|1` (cota de usuário ligada no disco principal); deixa `$cota` para quem vier depois. Também no checklist de Preparar máquina. */
+export const COTA_ESTADO_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"`;
+/** `HERMES=global|sem-transcritor|root|nenhum`: onde está o Hermes e se o transcritor compartilhado existe. Também no checklist. */
+export const HERMES_ESTADO_SH = `if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi`;
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 echo ROOT
 echo "DISCO=$(df -k --output=size / 2>/dev/null | tail -1 | tr -d ' ')"
-if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"
+${COTA_ESTADO_SH}
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
 echo "CPUS=$(nproc 2>/dev/null)"
 US=/sys/fs/cgroup/user.slice; [ -f "$US/memory.max" ] && echo "USERSLICE=$(cat $US/memory.max 2>/dev/null) $(cat $US/memory.current 2>/dev/null) $(awk '$1=="anon"{print $2}' $US/memory.stat 2>/dev/null) $(cat $US/memory.low 2>/dev/null)"
-if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
+${HERMES_ESTADO_SH}
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap = (substr(g[1], 1, 8) == "meu-bot=") ? substr(g[1], 9) : ""; print $1"\\t"$3"\\t"$6"\\t"$7"\\t"ap}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
@@ -228,7 +232,7 @@ export function limiteKbDe(pct: number, discoKb: number): number {
  * arquivo de cota e liga. Já ligada: não faz nada. Saída: `COTA=ok` ou `ERRO=<motivo>`.
  */
 export const COTA_LIGAR_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then echo COTA=ok; exit 0; fi
-command -v quotaon >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get install -y -q quota >/dev/null 2>&1 || { echo "ERRO=não consegui instalar o pacote quota"; exit 0; }
+command -v quotaon >/dev/null 2>&1 || DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -q quota >/dev/null 2>&1 || { echo "ERRO=não consegui instalar o pacote quota"; exit 0; }
 modprobe quota_v2 >/dev/null 2>&1 || true
 B=/etc/fstab.bak-meu-bot-$(date +%Y%m%d-%H%M%S); cp /etc/fstab "$B" || { echo "ERRO=não consegui guardar a cópia do /etc/fstab"; exit 0; }
 python3 - <<'PY' || { cp "$B" /etc/fstab; echo "ERRO=não consegui ajustar o /etc/fstab (a cópia voltou)"; exit 0; }

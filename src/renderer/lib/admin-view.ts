@@ -2,8 +2,13 @@
  * Variante: admin. Textos e linhas da página "Suporte" do meu-bot-admin e do seletor de pessoas, sem DOM.
  * Puro: testável com node --test. O desenho fica em admin/suporte-page.ts e admin/picker-chrome.ts.
  */
-import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, SupportPerson, SupportProgress } from "../../shared/ipc";
+import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, PrepararVisao, SupportPerson, SupportProgress } from "../../shared/ipc";
 import { tutorialNumber } from "./tutoriais.js";
+
+/** Preparar máquina: um item por linha; ok → ✓, falta → ✗ com o detalhe, humano → • com o que a pessoa faz. */
+export function linhasPreparar(v: Pick<PrepararVisao, "itens">): HealthLine[] {
+  return v.itens.map((i) => { const l: HealthLine = { text: i.titulo, ok: i.estado === "ok" ? true : i.estado === "falta" ? false : null }; if (i.detalhe !== "") l.step = ` · ${i.detalhe}`; return l; });
+}
 
 /** Backend de uma box atrás do que o app traz: sem versão gravada conta como antigo; compara número a número (1.10 > 1.9). */
 export function backendAtras(instalada: string | null, doApp: string | null): boolean {

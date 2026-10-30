@@ -255,7 +255,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const gv = el("div", "admin-actions");
           const b = el("button", "btn btn-ghost btn-small", ocupado === "governanca" ? "Aplicando…" : "Aplicar governança de RAM/CPU"); b.type = "button"; b.disabled = ocupado !== null;
           b.title = "Reserva memória para o sistema (teto de todos os usuários juntos no user.slice, deixando 3 GB ou 10% livres) e aplica a cada box swap própria de 256 MB, 640 MB protegidos e peso de CPU igual; nada reinicia";
-          b.addEventListener("click", () => { void rodar("governanca", () => deps.api.adminGovernanca(), "✓ Governança aplicada: reserva para o sistema e isolamento das boxes."); });
+          b.title = "Só isto; tudo de uma vez em Preparar máquina"; b.addEventListener("click", () => { void rodar("governanca", () => deps.api.adminGovernanca(), "✓ Governança aplicada: reserva para o sistema e isolamento das boxes."); });
           gv.append(b, el("span", "hint", !g.reserva ? "Sem a reserva, os usuários juntos podem tomar toda a RAM e derrubar o sistema (SSH, túnel, nginx)." : `${g.semIsolamento.length === 1 ? "1 box ainda está" : `${g.semIsolamento.length} boxes ainda estão`} sem isolamento (${g.semIsolamento.join(", ")}): uma delas estourando puxa o swap de todas.`));
           lista.append(gv);
         }

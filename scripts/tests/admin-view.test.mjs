@@ -175,3 +175,9 @@ test("admin: toda ação oferecida em ADMIN_ACTIONS é aceita pelo handler admin
   const guard = /admin:action[\s\S]*?ação inválida/.exec(src)?.[0] ?? "";
   for (const a of ADMIN_ACTIONS) assert.ok(guard.includes(`"${a.id}"`), `o main recusa a ação ${a.id} que a tela oferece`);
 });
+
+test("admin: linhasPreparar vira ✓ / ✗ / • com o detalhe no passo", async () => {
+  const { linhasPreparar } = await import("../../dist/renderer/lib/admin-view.js");
+  const l = linhasPreparar({ itens: [{ id: "swap", titulo: "Swap", estado: "ok", detalhe: "8 GB", opcional: false }, { id: "gh", titulo: "gh", estado: "falta", detalhe: "", opcional: false }, { id: "link-publico", titulo: "Link", estado: "humano", detalhe: "entre na Cloudflare", opcional: false, pagina: "link-publico" }] });
+  assert.deepEqual(l, [{ text: "Swap", ok: true, step: " · 8 GB" }, { text: "gh", ok: false }, { text: "Link", ok: null, step: " · entre na Cloudflare" }]);
+});

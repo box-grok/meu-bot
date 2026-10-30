@@ -25,6 +25,7 @@ import { ligarClaudeGlobalPara } from "./claude-global-admin";
 import { CG_ETC } from "./claude-global-core";
 import { ligarLinkPublicoPara, linkPublicoInstalado } from "./link-publico-admin";
 import { textoAvisos } from "./link-publico-core";
+import { prepararMaquinaSuave } from "./preparar-admin";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -185,6 +186,8 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   const { chave } = await acessoDesteMac(host);
   // A reserva para o sistema entra antes da primeira box que vier a precisar dela (falhar aqui só avisa no log).
   await usuariosDaMaquina(host).then((v) => garantirReserva(host, v, false)).catch(() => undefined);
+  // O resto do checklist de Preparar máquina (cota, pacotes, gh, Hermes, transcritor…): idem, só avisa no log.
+  await prepararMaquinaSuave(host, onLine);
   const r = await runSsh(host, `${usuarioComChavesSh(nome, [chave], "erro")}\n`, 60_000);
   const erro = /^ERRO=(.*)$/m.exec(r.stdout)?.[1];
   if (erro !== undefined) throw new Error(erro);
