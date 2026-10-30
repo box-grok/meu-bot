@@ -25,7 +25,8 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
   // O 15 (Mais contas do Claude) fica logo depois do 1 na trilha: desmembrado dele, pulável; o número é só o rótulo.
   // O 16 (Ouvir áudios) fica logo depois do 2, pelo mesmo motivo: era o passo de áudio dele.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14]);
+  // O 17 (Seu link público) fecha a trilha: depende só do 1 e do admin ter ligado o link.
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 17]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -39,7 +40,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli"]);
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "statusline", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli", "link-publico"]);
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM pelo Streak) está oculto, mesmo depois do 9 (Navegador)");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };
@@ -411,4 +412,19 @@ test("linha Dono e textos dos cartões com dono de fora", () => {
   assert.equal(donoLinhaTexto({ numero: "5521923670743", souEu: false }, "595986120831", fmt), "+5521923670743 · você, do seu celular (o agente atende em +595986120831)");
   assert.equal(replySelfTextoDono("+5521923670743"), "O agente só responde ao dono (+5521923670743). Ninguém mais recebe resposta nem código de pareamento.");
   assert.match(REPLY_AVISO_SELF_CHAT, /número dedicado/); assert.match(DONO_HINT, /nunca é pausado/);
+});
+
+test("tutorial 17 (link público): só em máquina por SSH; ligado pelo admin → passo 1; algo no ar → passo 2; nome trocado ou \"deixar como está\" → concluído", () => {
+  const t = byId("link-publico");
+  assert.equal(t.number, 17); assert.deepEqual(t.needs, ["linkpublico"]); assert.equal(t.after, "claude-login"); assert.equal(t.needsXai, true);
+  const mac = { ...emptyContext(), xai: { ...emptyContext().xai, possible: false } };
+  assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "link-publico"), "só em máquina por SSH");
+  const ctx = (lp) => ({ ...emptyContext(), linkPublico: lp, known: { ...emptyContext().known, linkpublico: true } });
+  const lp = { url: "https://box-2.agentesgrok.com/", nome: "box-2", dominio: "agentesgrok.com", arquivos: 0, usuario: "box-2" };
+  assert.equal(guideView(t, null, emptyFlags(), ctx(null)).current, 0, "desligado: espera o admin");
+  assert.equal(guideView(t, null, emptyFlags(), ctx(lp)).current, 1, "ligado, nada no ar: pedir o primeiro link");
+  assert.equal(guideView(t, null, emptyFlags(), ctx({ ...lp, arquivos: 2 })).current, 2, "algo no ar: escolher o nome");
+  assert.equal(guideView(t, null, emptyFlags(), ctx({ ...lp, arquivos: 2, nome: "daniel", url: "https://daniel.agentesgrok.com/" })).finished, true, "nome trocado");
+  assert.equal(guideView(t, null, { ...emptyFlags(), linkNomeVisto: true }, ctx({ ...lp, arquivos: 1 })).finished, true, "deixou como está");
+  assert.equal(tutorialKnown(t, emptyContext()), false, "sem a consulta, verificando");
 });

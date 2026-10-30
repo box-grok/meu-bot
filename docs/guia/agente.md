@@ -198,6 +198,24 @@
   - **GitHub:** `gh auth login -w` sem terminal, por código de dispositivo. O código aparece no passo com o botão
     Copiar. O passo é opcional: "Não uso GitHub".
   - **Status:** `contas-cli-core.ts` › `STATUS_SH`, um SSH só.
+
+## Tutorial 17 · Seu link público (30 out)
+
+- **`link-publico`, number 17, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
+  admin liga para a pessoa (Link Público Global, `guia/maquinas.md`). Fonte `linkpublico` (`window.meuBot.linkPublico()`,
+  um SSH como ela: `~/.local/share/meu-bot/link-publico.json` + quantos itens em `~/publico`).
+  1. **Ver o seu link:** concluído quando o admin ligou (o json existe). Desligado, o passo diz quem liga.
+  2. **Colocar algo no ar** (30 out): "Publicar um arquivo…" abre o diálogo do Mac no main (`link-publico:publicar
+     {nome?}`; o renderer nunca manda caminho), o main faz `scp` como ela para `~/.local/share/meu-bot/publicar-tmp/<id>/`
+     e roda o `publicar` dela (um .md vira página; até 100 MB; nome no link opcional, acentos e espaços viram hífen, e
+     um arquivo comum com nome sem extensão ganha a do arquivo). Mostra a URL com Copiar e a lista do que está no ar
+     (`link-publico:lista` = `publicar --lista`, só URLs do link dela com nome seguro) com Abrir e "Tirar do ar" em dois
+     cliques ("Tirar mesmo?" por 5 s, sem `confirm()`; `link-publico:remover` = `publicar --remover`). O botão "Pedir um
+     link de teste ao agente" continua, secundário. Concluído (`lembrar`, `refazer`) quando há algo no ar. Auditoria
+     `link-publico.publicar` / `link-publico.remover`.
+  3. **Escolher o nome do link:** campo com o nome atual e "Trocar o nome" (`link-publico:nome` → comando
+     `link-publico-nome` na máquina, como ela); concluído quando o nome difere do login, ou "Deixar como está"
+     (flag `linkNomeVisto`). `refazer` para trocar de novo.
     - Sem o arquivo de login do wrangler, não chama o `npx`.
     - A saída vai para um arquivo com `timeout`: num pipe, o `npm exec` às vezes fica pendurado.
   - **Canais:** `contas:status` (shared); `contas:entrar`, `contas:cancelar` e `contas:sair` (client); evento

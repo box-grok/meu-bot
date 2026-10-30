@@ -7,6 +7,7 @@ import { mountSuportePage } from "./admin/suporte-page.js";
 import { mountAuditoriaPage } from "./admin/auditoria-page.js";
 import { mountUsuariosPage } from "./admin/usuarios-page.js";
 import { mountClaudeGlobalPage } from "./admin/claude-global-page.js";
+import { mountLinkPublicoPage } from "./admin/link-publico-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -51,7 +52,7 @@ import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, res
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { PRIMARY_OF, ligarFallback, paintFallbackOrder, syncPrimaryFromModel } from "./configuracoes/fallback.js";
 import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
-import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, renderLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
 import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm, renderCrmConfig, renderCrmInstall, renderCrmPipeline, renderCrmPro, renderCrmTest } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
 import { paintFinanceLine, renderFinanceStep } from "./finance/financeiro-guia.js";
@@ -222,6 +223,7 @@ const ctxImpl = {
   get quickShortcut() { return quickShortcut; },
   get refreshClaudeLine() { return refreshClaudeLine; },
   get refreshContas() { return refreshContas; },
+  get refreshLinkPublico() { return refreshLinkPublico; },
   get refreshContasClaude() { return refreshContasClaude; },
   get refreshCrm() { return refreshCrm; },
   get refreshGuarda() { return refreshGuarda; },
@@ -238,6 +240,7 @@ const ctxImpl = {
   get renderAgentChoice() { return renderAgentChoice; },
   get renderChannelEditor() { return renderChannelEditor; },
   get renderConta() { return renderConta; },
+  get renderLinkPublico() { return renderLinkPublico; },
   get renderContasClaude() { return renderContasClaude; },
   get contasClaudeView() { return contasClaudeView; },
   get renderCrmConfig() { return renderCrmConfig; },
@@ -2019,10 +2022,15 @@ void (async () => {
     const claudeGlobalLine = $<HTMLButtonElement>("claude-global-line");
     const claudeGlobalPage = mountClaudeGlobalPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     claudeGlobalLine.addEventListener("click", () => claudeGlobalPage.open());
+    // Link Público Global: abaixo do Claude Code Global, também só como root.
+    const linkPublicoLine = $<HTMLButtonElement>("link-publico-line");
+    const linkPublicoPage = mountLinkPublicoPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
+    linkPublicoLine.addEventListener("click", () => linkPublicoPage.open());
     const paginaAntes = pageActive;
     void window.meuBot.adminUsuariosVisivel().then((v) => {
       usuariosLine.hidden = !v;
       claudeGlobalLine.hidden = !v;
+      linkPublicoLine.hidden = !v;
       if (!v) return;
       usuariosAdmin = usuariosPage;
       // A resposta leva de 2 a 20 s: quem já clicou em outra aba nesse meio tempo não é puxado de volta.
@@ -2078,6 +2086,7 @@ void (async () => {
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
   void refreshGuarda();
   void refreshContas();
+  void refreshLinkPublico();
   void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); computador.repintar(); });
   void refreshNavInst();
   void refreshCrm();

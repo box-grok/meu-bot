@@ -366,3 +366,65 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   - A renovação feita pelo intermediário manteve o `claude` do root funcionando.
 - **Uso compartilhado:** experimental. Antes de levar o global a clientes ou à produção, confirme que o acordo com a
   Anthropic cobre o uso; as contas próprias de cada usuário continuam como alternativa.
+
+## Link Público Global: um link por usuário, atrás de um túnel da Cloudflare do root (30 out)
+
+- **O que é:** cada usuário da máquina ganha `https://<nome>.<domínio>/` (hoje `agentesgrok.com`), servido pela pasta
+  `~/publico` dele. A gestão é do admin (aba "Link Público Global", abaixo do Claude Code Global): instalar, entrar na
+  Cloudflare, subir o túnel e ligar ou desligar o link por usuário. O agente de cada um dá links com o comando
+  `publicar` (skill do Hermes `meu-bot-link-publico` e bloco no CLAUDE.md do workspace); o nome do link a pessoa troca
+  no meu-bot dela (tutorial 17). Motivo: a Karen da box-2 respondeu "não tenho como gerar um link público" quando o
+  Daniel pediu o arquivo do fluxo por link.
+- **Por que túnel:** o domínio está na Cloudflare e as portas 80/443 da VM são filtradas. O `cloudflared` do root
+  (serviço `cloudflared`, `/etc/cloudflared/config.yml`) leva `*.<domínio>` a um nginx só em `127.0.0.1:8099`; a máquina
+  não abre porta e o TLS é da Cloudflare. O login do root (`cloudflared tunnel login`, cert em `/root/.cloudflared`) é
+  uma vez; a aba abre o link no navegador do Mac e confirma sozinha quando o cert chega. O túnel `meu-bot-publico` é
+  criado uma vez (no `tunnel list -o json` os vivos têm `deleted_at` "0001-01-01", não vazio) e a rota é um CNAME
+  curinga, então nome novo de usuário não mexe em DNS.
+- **Arquivos:**
+  - `/etc/meu-bot-link-publico` (755, à parte do `/etc/meu-bot`, que é 700): `config.json` (domínio, porta), `SKILL.md`
+    e `claude.md` (modelos que o ligar copia para o usuário) e `md2html.py` (markdown → página, com o `python3-markdown`
+    do Debian que o instalar põe).
+  - `/var/www/publico` (root, 1733, sticky): `<nome>/` é a pasta do usuário (dona ele, 755). Ninguém lista as outras; o
+    nginx só atravessa. `disable_symlinks if_not_owner`: symlink dentro da pasta só para arquivo do mesmo dono.
+  - No usuário: `~/publico` → `/var/www/publico/<nome>`; `~/.local/share/meu-bot/link-publico.json` (`{url, nome, dominio}`,
+    o que a tela dele lê); `~/.hermes/skills/meu-bot-link-publico/SKILL.md`; bloco `meu-bot:link-publico v1` no
+    `~/agent-workspace/CLAUDE.md`. Tudo isso gravado por ele (`runuser`), nunca pelo root.
+  - `/usr/local/bin/publicar <arquivo|pasta> [nome]` (também `--lista`, `--remover`) e `/usr/local/bin/link-publico-nome
+    <novo>`: como a pasta é dele numa pasta sticky, trocar o nome é um `mv` sem root. Nomes reservados (www, admin…)
+    e nomes de outros usuários são recusados.
+  - **Publicar pelo admin** (30 out): "Publicar arquivo…" na linha do usuário abre o diálogo do Mac (no main: o renderer
+    nunca manda caminho), faz `scp` para `/tmp/meu-bot-publicar-<token>` (700 do root), `chown root:<usuário>` 750/640 só
+    ali, e roda `runuser -u <usuário> -- /usr/local/bin/publicar` (caminho absoluto: o runuser sem `-l` reseta o PATH).
+    O arquivo nasce dono do usuário, na cota dele, e a passagem some deu certo ou não (`lpPublicarSh`). Limite de 100 MB
+    (o que a Cloudflare entrega por resposta). "Tirar do ar" é sempre `publicar --remover` como ele (`lpRemoverSh`),
+    nunca `rm` do root. Canais `admin:link-publico-publicar` / `-remover`; auditoria `usuarios.link-publico-publicar` / `-remover`.
+  - **No ar e Agente** (30 out): o `ESTADO=` traz por usuário até 50 itens do primeiro nível (`os.lstat`, sem dotfile, só
+    nomes `[A-Za-z0-9][A-Za-z0-9._-]*`; `pagina` = pasta com index.html) e o estado do agente dele (`skill` e `claudeMd`:
+    ok / antiga / faltando / sem-hermes ou sem-workspace), comparando com os modelos de `/etc/meu-bot-link-publico`, só
+    leitura (`O_NOFOLLOW`, teto 256 KB). A tabela ganhou as colunas Agente e "No ar" (abre a lista com Abrir e "Tirar do
+    ar" em dois cliques). Itens com nome fora do padrão contam mas não aparecem (só pelo terminal).
+  - **Atualizar alcança os agentes** (30 out): "Atualizar a instalação" roda `lpAtualizarAgentesSh` depois de regravar os
+    modelos: para cada usuário com `~/publico` apontando para a pasta dele, refaz skill, bloco do CLAUDE.md e json como
+    ele (`LP_AGENTE_SH`, o mesmo corpo do ligar). Antes, quem já estava ligado ficava com a skill velha.
+  - **Ligar avisa o que pulou** (30 out): `LINK=ok <nome> [sem-hermes] [sem-workspace]`: a conta sem `~/.hermes` não
+    recebe a skill e sem `~/agent-workspace` não recebe o bloco; a aba e o onboarding mostram "ligado, mas … prepare a
+    conta na aba Usuários e ligue de novo" em vez de um ok que não gravou nada.
+  - **`publicar` endurecido** (30 out): `--remover ..`/`.x`/vazio é recusado e item inexistente dá "não está no ar"; `cp`
+    falhando (cota cheia) vira `ERRO: não consegui copiar…` em vez de imprimir uma URL que não existe.
+  - **A pessoa também publica pela tela** (tutorial 17, `guia/agente.md`): `link-publico:lista|remover|publicar`, scp para
+    `~/.local/share/meu-bot/publicar-tmp/<id>/` (restos de mais de 2 h são varridos a cada uso) e o `publicar` dela.
+  - **`.md` vira página** (30 out): `publicar fluxo-atendimento.md` grava `fluxo-atendimento/index.html` (título do 1º
+    `#`, CSS claro/escuro, tabelas e código) e o `.md` original ao lado, e imprime `https://<nome>.<domínio>/fluxo-atendimento/`.
+    Motivo: o primeiro link do Daniel era o `.md` cru, que o nginx mandava como `application/octet-stream` (com nosniff,
+    o navegador baixava em vez de mostrar). O nginx agora também serve `.md` como `text/markdown; charset=utf-8`.
+- **Desligar** guarda a pasta em `/var/www/publico/.desligado-<usuário>` (o nginx não serve nome com ponto) e ligar de
+  novo a devolve, com o nome que a pessoa tinha escolhido.
+- **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
+  `ligarLinkPublicoPara`).
+- **Domínio próprio:** fora do alcance deste túnel (um hostname só passa por um túnel da mesma conta Cloudflare). Quem
+  quer domínio próprio usa a conta Cloudflare dela (tutorial 13) e pede ao agente para subir a pasta no Pages.
+- **Conferido no servidor (30 out):** `https://box-2.agentesgrok.com/teste.html` respondeu 200 pela internet; raiz
+  vazia 403; host desconhecido 404; `hermes skills list` da box-2 lista `meu-bot-link-publico` como local/enabled.
+  Código: `admin/link-publico-core.ts` (scripts), `admin/link-publico-admin.ts`, `renderer/admin/link-publico-page.ts`,
+  `agente/link-publico.ts` (lado da pessoa).
