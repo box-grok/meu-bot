@@ -230,6 +230,22 @@ export function runSsh(host: string, script: string, timeoutMs: number): Promise
   });
 }
 
+/**
+ * Copia um arquivo deste Mac para a máquina, pelo mesmo alias e opções do runSsh (como root no admin, como a pessoa no
+ * meu-bot). `remoto` é um caminho na máquina (relativo ao home do alias quando não começa com /). Só o stderr volta:
+ * quem chama decide a frase. Binário seguro e sem inflar em base64: é o scp que o instalador do backend já usa.
+ */
+export function scpPara(host: string, local: string, remoto: string, timeoutMs: number): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("scp", ["-q", ...SSH_OPTS, "--", local, `${host}:${remoto}`], { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = ""; let done = false;
+    const timer = setTimeout(() => { if (!done) child.kill("SIGKILL"); }, timeoutMs);
+    child.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf8"); });
+    child.on("error", (e) => { if (!done) { done = true; clearTimeout(timer); resolve({ code: null, stderr: e.message }); } });
+    child.on("close", (code) => { if (!done) { done = true; clearTimeout(timer); resolve({ code, stderr }); } });
+  });
+}
+
 const phoneOf = (jid: string): string | null => { const m = /^(\d{8,15})[:@]/.exec(jid); return m === null ? null : m[1]!; };
 
 /** Estado do WhatsApp do agente da máquina. `present=false` quando não há Hermes, OpenClaw nem PicoClaw. */

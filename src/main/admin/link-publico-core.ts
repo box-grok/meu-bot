@@ -6,7 +6,7 @@
  * links com o comando `publicar`, ensinado por uma skill do Hermes e um bloco no CLAUDE.md. O nome do link a pessoa
  * troca sozinha (`link-publico-nome`, tutorial 17): a pasta é dela numa pasta com sticky bit, sem passar pelo root.
  */
-import type { LpEstado } from "../../shared/ipc";
+import type { LpAgente, LpAviso, LpEstado, LpItem } from "../../shared/ipc";
 import { NOME_USUARIO_RE } from "./usuarios-core";
 
 export const LP_ETC = "/etc/meu-bot-link-publico";
@@ -14,12 +14,33 @@ export const LP_WWW = "/var/www/publico";
 export const LP_PORTA = 8099;
 export const LP_TUNEL = "meu-bot-publico";
 export const LP_LOGIN_LOG = "/tmp/meu-bot-cf-login.log";
+/** Maior arquivo que vale publicar: a Cloudflare não entrega mais que 100 MB por resposta pelo túnel. */
+export const LP_MAX_BYTES = 100 * 1024 * 1024;
 /** Domínio raiz dos links (ex.: agentesgrok.com): só letras minúsculas, números, hífen e pontos. */
 export const DOMINIO_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$/;
 /** Nome do link (subdomínio): o que o nginx aceita e o `link-publico-nome` confere. */
 export const NOME_LINK_RE = /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/;
 
+/** Nome de um item no ar (o que o `publicar` grava depois de limpar o nome): sem barra, sem ponto inicial, até 128. */
+export const ITEM_LINK_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** Pasta de passagem do upload do admin: o root cria em /tmp com um token gerado no Mac. */
+export const STAGE_RE = /^\/tmp\/meu-bot-publicar-[a-f0-9]{12}$/;
+/** O arquivo dentro da pasta de passagem: nome fixo, só a extensão vem do Mac (um .md continua .md, para virar página). */
+export const ARQUIVO_STAGE_RE = /^arquivo(\.[A-Za-z0-9]{1,10})?$/;
+
 const nomeOk = (nome: string): string => { if (!NOME_USUARIO_RE.test(nome)) throw new Error("nome de usuário inválido"); return nome; };
+const itemOk = (item: string): string => { if (!ITEM_LINK_RE.test(item)) throw new Error("nome de item inválido: só letras, números, ponto, hífen e sublinhado, sem começar com ponto"); return item; };
+const stageOk = (s: string): string => { if (!STAGE_RE.test(s)) throw new Error("pasta de passagem inválida"); return s; };
+
+/** Nome no link a partir do nome do arquivo no Mac: sem acento, minúsculas, só [a-z0-9._-] (o `publicar` trocaria cada byte do acento por "-"); null se não sobrar nada. */
+export function nomeNoLinkDe(nome: string): string | null {
+  const s = nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/-{2,}/g, "-").replace(/-+(?=\.)|(?<=\.)-+/g, "").replace(/^[-.]+|-+$/g, "").slice(0, 128);
+  return ITEM_LINK_RE.test(s) ? s : null;
+}
+const AVISOS: readonly LpAviso[] = ["sem-hermes", "sem-workspace"];
+const avisosDe = (s: string): LpAviso[] => [...new Set(s.trim().split(/\s+/).filter((a): a is LpAviso => (AVISOS as readonly string[]).includes(a)))];
+/** Frase para a tela com o que o ligar pulou e o que fazer. */
+export const textoAvisos = (a: LpAviso[]): string => a.length === 0 ? "" : `${a.map((x) => x === "sem-hermes" ? "a conta não tem Hermes (a skill não foi copiada)" : "a conta não tem agent-workspace (o CLAUDE.md não foi tocado)").join("; ")}: prepare a conta na aba Usuários e ligue o link de novo`;
 const dominioOk = (d: string): string => { if (!DOMINIO_RE.test(d)) throw new Error("domínio inválido: use algo como agentesgrok.com"); return d; };
 
 const SO_ROOT = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }`;
@@ -29,6 +50,7 @@ export const PUBLICAR_SH = `#!/bin/sh
 # meu-bot: publica um arquivo (ou pasta) no link público deste usuário e imprime a URL.
 # Uso: publicar <arquivo|pasta> [nome-no-link]   ·   publicar --lista   ·   publicar --remover <nome-no-link>
 # Um .md vira página: <nome>/index.html (renderizado por ${LP_ETC}/md2html.py) + o .md original ao lado; a URL é https://<link>/<nome>/.
+# Erros saem como "ERRO: …" no stderr (o meu-bot mostra a frase); o admin também chama este comando como o usuário (runuser).
 set -u
 DOM=$(python3 -c 'import json; print(json.load(open("${LP_ETC}/config.json"))["dominio"])' 2>/dev/null) || { echo "ERRO: o link público não está instalado nesta máquina (é o admin quem instala, no meu-bot-admin › Link Público Global)." >&2; exit 1; }
 P="$HOME/publico"
@@ -38,21 +60,22 @@ case "$ALVO" in ${LP_WWW}/*) ;; *) echo "ERRO: o seu link público não está li
 NOME=$(basename "$ALVO")
 case "\${1:-}" in
   --lista) ls -1Ap "$ALVO" 2>/dev/null | sed "s|^|https://$NOME.$DOM/|"; exit 0 ;;
-  --remover) [ -n "\${2:-}" ] || { echo "Uso: publicar --remover <nome-no-link>" >&2; exit 1; }; N=$(basename "$2"); rm -rf "$ALVO/$N"; echo "fora do ar: https://$NOME.$DOM/$N"; exit 0 ;;
+  --remover) [ -n "\${2:-}" ] || { echo "Uso: publicar --remover <nome-no-link>" >&2; exit 1; }; N=$(basename "$2"); case "$N" in ""|.|..|.*) echo "ERRO: nome inválido" >&2; exit 1;; esac; [ -e "$ALVO/$N" ] || { echo "ERRO: não está no ar: $N" >&2; exit 1; }; rm -rf "$ALVO/$N"; echo "fora do ar: https://$NOME.$DOM/$N"; exit 0 ;;
   ""|-h|--help) echo "Uso: publicar <arquivo|pasta> [nome-no-link]   ·   publicar --lista   ·   publicar --remover <nome>" >&2; echo "Seu link: https://$NOME.$DOM/" >&2; exit 1 ;;
 esac
 ARQ="$1"; [ -e "$ARQ" ] || { echo "ERRO: não existe: $ARQ" >&2; exit 1; }
 DEST=$(basename "\${2:-$ARQ}"); DEST=$(printf '%s' "$DEST" | tr -c 'A-Za-z0-9._-' '-'); DEST=\${DEST#.}
 [ -n "$DEST" ] || { echo "ERRO: nome inválido" >&2; exit 1; }
 MD=0; case "$ARQ" in *.md|*.MD|*.markdown) [ -f "$ARQ" ] && MD=1 ;; esac
-if [ -d "$ARQ" ]; then rm -rf "$ALVO/$DEST"; cp -r "$ARQ" "$ALVO/$DEST"; chmod -R u+rwX,go+rX "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST/"
+SEM_ESPACO="ERRO: não consegui copiar para o seu link (sem espaço na sua cota?)"
+if [ -d "$ARQ" ]; then rm -rf "$ALVO/$DEST"; cp -r "$ARQ" "$ALVO/$DEST" || { rm -rf "$ALVO/$DEST"; echo "$SEM_ESPACO" >&2; exit 1; }; chmod -R u+rwX,go+rX "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST/"
 elif [ "$MD" = 1 ]; then
   DEST=\${DEST%.md}; DEST=\${DEST%.MD}; DEST=\${DEST%.markdown}; [ -n "$DEST" ] || { echo "ERRO: nome inválido" >&2; exit 1; }
   rm -rf "$ALVO/$DEST"; mkdir -p "$ALVO/$DEST"
   python3 ${LP_ETC}/md2html.py "$ARQ" > "$ALVO/$DEST/index.html" || { rm -rf "$ALVO/$DEST"; echo "ERRO: não consegui transformar o markdown em página." >&2; exit 1; }
-  cp -f "$ARQ" "$ALVO/$DEST/$DEST.md"; chmod 755 "$ALVO/$DEST"; chmod 644 "$ALVO/$DEST/index.html" "$ALVO/$DEST/$DEST.md"
+  cp -f "$ARQ" "$ALVO/$DEST/$DEST.md" || { rm -rf "$ALVO/$DEST"; echo "$SEM_ESPACO" >&2; exit 1; }; chmod 755 "$ALVO/$DEST"; chmod 644 "$ALVO/$DEST/index.html" "$ALVO/$DEST/$DEST.md"
   echo "https://$NOME.$DOM/$DEST/"
-else cp -f "$ARQ" "$ALVO/$DEST"; chmod 644 "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST"; fi
+else cp -f "$ARQ" "$ALVO/$DEST" || { echo "$SEM_ESPACO" >&2; exit 1; }; chmod 644 "$ALVO/$DEST"; echo "https://$NOME.$DOM/$DEST"; fi
 `;
 
 /**
@@ -174,7 +197,7 @@ server { listen 127.0.0.1:${LP_PORTA} default_server; server_name _; return 404;
 /**
  * Estado para a tela, numa linha `ESTADO=<json>`: instalado (nginx + cloudflared + config), nginx no ar, login do root
  * na Cloudflare (cert.pem), túnel criado e serviço no ar, rota curinga no DNS, domínio, e os usuários com o link
- * ligado (nome do link e quantos arquivos no ar).
+ * ligado (nome do link, quantos arquivos no ar, até 50 itens do primeiro nível e o estado da skill/CLAUDE.md do agente dele, só leitura).
  */
 export const LP_ESTADO_SH = `${SO_ROOT}
 NGINX=0; command -v nginx >/dev/null 2>&1 && [ -f /etc/nginx/sites-enabled/meu-bot-publico ] && NGINX=1
@@ -188,8 +211,46 @@ ROTA=0; [ -n "$DOM" ] && getent hosts "meu-bot-sonda.$DOM" >/dev/null 2>&1 && RO
 LOGINURL=$(grep -o 'https://dash.cloudflare.com/argotunnel[^ ]*' ${LP_LOGIN_LOG} 2>/dev/null | head -1)
 pgrep -f '^cloudflared tunnel login' >/dev/null 2>&1 || LOGINURL=""
 NGINX=$NGINX NGATIVO=$NGATIVO CF=$CF LOGIN=$LOGIN TID="$TID" SERV=$SERV DOM="$DOM" ROTA=$ROTA LOGINURL="$LOGINURL" python3 -c '
-import json, os, pwd
-www = "${LP_WWW}"
+import json, os, pwd, re, stat
+www = "${LP_WWW}"; etc = "${LP_ETC}"
+ITEM = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+def itens_de(alvo):
+    out = []
+    for x in os.listdir(alvo):
+        if x.startswith(".") or not ITEM.fullmatch(x): continue
+        c = os.path.join(alvo, x)
+        try: st = os.lstat(c)
+        except OSError: continue
+        if stat.S_ISDIR(st.st_mode): tipo = "pagina" if os.path.isfile(os.path.join(c, "index.html")) else "pasta"; b = None
+        elif stat.S_ISREG(st.st_mode): tipo = "arquivo"; b = st.st_size
+        else: continue
+        out.append({"nome": x, "tipo": tipo, "bytes": b, "mtime": int(st.st_mtime)})
+    out.sort(key=lambda i: -i["mtime"]); return out[:50]
+def le(p, uid, teto=262144):
+    try: fd = os.open(p, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError: return None
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != uid or st.st_size > teto: return None
+        return os.read(fd, teto)
+    except OSError: return None
+    finally: os.close(fd)
+def modelo(nome):
+    try: return open(os.path.join(etc, nome), "rb").read()
+    except OSError: return None
+SKILL = modelo("SKILL.md"); BLOCO = (modelo("claude.md") or b"").rstrip(b"\\n")
+def agente_de(p):
+    h = p.pw_dir
+    if not os.path.isdir(os.path.join(h, ".hermes")): skill = "sem-hermes"
+    else:
+        s = le(os.path.join(h, ".hermes", "skills", "meu-bot-link-publico", "SKILL.md"), p.pw_uid)
+        skill = "faltando" if s is None else ("ok" if SKILL is not None and s == SKILL else "antiga")
+    if not os.path.isdir(os.path.join(h, "agent-workspace")): cm = "sem-workspace"
+    else:
+        t = le(os.path.join(h, "agent-workspace", "CLAUDE.md"), p.pw_uid)
+        if t is None or b"<!-- meu-bot:link-publico v1 inicio -->" not in t: cm = "faltando"
+        else: cm = "ok" if BLOCO and BLOCO in t else "antigo"
+    return {"skill": skill, "claudeMd": cm}
 usuarios = []
 for p in pwd.getpwall():
     if p.pw_uid < 1000 or p.pw_uid >= 60000 or p.pw_shell.endswith(("nologin", "false")): continue
@@ -198,11 +259,12 @@ for p in pwd.getpwall():
         a = os.readlink(os.path.join(p.pw_dir, "publico"))
         if a.startswith(www + "/") and os.path.isdir(a) and os.stat(a).st_uid == p.pw_uid: alvo = a
     except OSError: pass
-    n = 0
+    n = 0; itens = []; agente = None
     if alvo:
-        try: n = len([x for x in os.listdir(alvo) if not x.startswith(".")])
+        try: n = len([x for x in os.listdir(alvo) if not x.startswith(".")]); itens = itens_de(alvo)
         except OSError: n = 0
-    usuarios.append({"nome": p.pw_name, "ligado": alvo is not None, "link": os.path.basename(alvo) if alvo else None, "arquivos": n})
+        agente = agente_de(p)
+    usuarios.append({"nome": p.pw_name, "ligado": alvo is not None, "link": os.path.basename(alvo) if alvo else None, "arquivos": n, "itens": itens, "agente": agente})
 usuarios.sort(key=lambda x: x["nome"])
 e = os.environ
 print("ESTADO=" + json.dumps({
@@ -304,6 +366,95 @@ echo "TUNEL=ok $ID"`;
 }
 
 /**
+ * O que o usuário grava no próprio home ao ligar (e ao atualizar a instalação), rodado como ele via `runuser … sh -c`:
+ * `$1` = pasta do link, o json vem no stdin. Imprime `sem-hermes` / `sem-workspace` quando pula a skill ou o CLAUDE.md
+ * (a conta não tem ~/.hermes ou ~/agent-workspace), para o admin ver em vez de um "ok" que não gravou nada.
+ */
+export const LP_AGENTE_SH = `
+  ln -sfn "$1" "$HOME/publico"
+  mkdir -p "$HOME/.local/share/meu-bot" && cat > "$HOME/.local/share/meu-bot/link-publico.json"
+  if [ -d "$HOME/.hermes" ]; then mkdir -p "$HOME/.hermes/skills/meu-bot-link-publico" && cp -f ${LP_ETC}/SKILL.md "$HOME/.hermes/skills/meu-bot-link-publico/SKILL.md"; else echo sem-hermes; fi
+  if [ -d "$HOME/agent-workspace" ]; then python3 - "$HOME/agent-workspace/CLAUDE.md" <<"PY"
+import re, sys
+p = sys.argv[1]; bloco = open("${LP_ETC}/claude.md").read().rstrip("\\n")
+try: t = open(p).read()
+except FileNotFoundError: t = ""
+t2 = re.sub(r"\\n?<!-- meu-bot:link-publico v1 inicio -->.*?<!-- meu-bot:link-publico v1 fim -->\\n?", "\\n", t, flags=re.S).rstrip("\\n")
+t2 = (t2 + "\\n\\n" if t2 else "") + bloco + "\\n"
+if t2 != t: open(p, "w").write(t2)
+PY
+  else echo sem-workspace; fi`;
+
+/** `LINK=ok <nome> [sem-hermes] [sem-workspace]` → o nome do link e o que o ligar pulou; null se não ligou. */
+export function lerLinkOk(out: string): { nome: string; avisos: LpAviso[] } | null {
+  const m = /^LINK=ok (\S+)(.*)$/m.exec(out);
+  if (m === null || !NOME_LINK_RE.test(m[1]!)) return null;
+  return { nome: m[1]!, avisos: avisosDe(m[2]!) };
+}
+
+/**
+ * Refaz, para todo usuário com o link ligado (~/publico apontando para a pasta dele em ${LP_WWW}), o que ele tem no
+ * home (skill, bloco do CLAUDE.md, json), como ele. É o que "Atualizar a instalação" roda depois de regravar os
+ * modelos: sem isto, quem já estava ligado ficava com a skill velha. Linhas `AGENTE=<usuário> <nome> [avisos]`, fim `AGENTES=ok <n>`.
+ */
+export function lpAtualizarAgentesSh(): string {
+  return `${SO_ROOT}
+DOM=$(python3 -c 'import json; print(json.load(open("${LP_ETC}/config.json"))["dominio"])' 2>/dev/null) || { echo "ERRO=o Link Público Global ainda não está instalado nesta máquina"; exit 0; }
+N=0
+for u in $(getent passwd | awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1}'); do
+  H=$(getent passwd "$u" | cut -d: -f6); [ -d "$H" ] || continue
+  A=$(runuser -u "$u" -- readlink -f "$H/publico" 2>/dev/null || true)
+  case "$A" in ${LP_WWW}/*) ;; *) continue;; esac
+  [ "$(stat -c %U "$A" 2>/dev/null)" = "$u" ] || continue
+  NOME=$(basename "$A"); J=$(printf '{"url": "https://%s.%s/", "nome": "%s", "dominio": "%s"}' "$NOME" "$DOM" "$NOME" "$DOM")
+  AV=$(printf '%s\\n' "$J" | runuser -u "$u" -- sh -c '${LP_AGENTE_SH}' sh "$A" | tr '\\n' ' '); AV=\${AV% }
+  echo "AGENTE=$u $NOME\${AV:+ $AV}"; N=$((N+1))
+done
+echo "AGENTES=ok $N"`;
+}
+/** Lê as linhas `AGENTE=` (usuário e nome do link validados). */
+export function lerAgentes(out: string): { usuario: string; nome: string; avisos: LpAviso[] }[] {
+  const r: { usuario: string; nome: string; avisos: LpAviso[] }[] = [];
+  for (const m of out.matchAll(/^AGENTE=(\S+) (\S+)(.*)$/gm)) {
+    if (!NOME_USUARIO_RE.test(m[1]!) || !NOME_LINK_RE.test(m[2]!)) continue;
+    r.push({ usuario: m[1]!, nome: m[2]!, avisos: avisosDe(m[3]!) });
+  }
+  return r;
+}
+
+/** Pasta de passagem do upload do admin (700 do root até o scp acabar). Saída `STAGE=ok` ou `ERRO=`. */
+export function lpStageSh(stage: string): string {
+  return `${SO_ROOT}
+mkdir -m 700 '${stageOk(stage)}' && echo "STAGE=ok" || echo "ERRO=não consegui criar a pasta de passagem em /tmp"`;
+}
+
+/**
+ * Publica, COMO o usuário, um arquivo que o admin deixou na pasta de passagem: o `publicar` dele copia (a cópia nasce
+ * dele, na cota dele), renderiza .md e limpa o nome, igual ao que o agente faz. O root só entrega o arquivo (chown do
+ * grupo em /tmp, fora do home) e apaga a passagem no fim, deu certo ou não. Saída `PUBLICADO=<url>` ou `ERRO=`.
+ */
+export function lpPublicarSh(nome: string, stage: string, arquivo: string, nomeNoLink: string): string {
+  const n = nomeOk(nome); const s = stageOk(stage); const d = itemOk(nomeNoLink);
+  if (!ARQUIVO_STAGE_RE.test(arquivo)) throw new Error("nome de arquivo inválido");
+  return `${SO_ROOT}
+S='${s}'; F="$S/${arquivo}"
+getent passwd ${n} >/dev/null 2>&1 || { rm -rf "$S"; echo "ERRO=usuário ${n} não existe"; exit 0; }
+[ -f "$F" ] || { rm -rf "$S"; echo "ERRO=o arquivo não chegou na máquina"; exit 0; }
+chown root:${n} "$S" "$F" && chmod 750 "$S" && chmod 640 "$F" || { rm -rf "$S"; echo "ERRO=não consegui entregar o arquivo para ${n}"; exit 0; }
+OUT=$(runuser -u ${n} -- /usr/local/bin/publicar "$F" '${d}' 2>&1); RC=$?
+rm -rf "$S"
+if [ "$RC" = 0 ]; then echo "PUBLICADO=$(printf '%s\\n' "$OUT" | tail -1)"; else echo "ERRO=$(printf '%s\\n' "$OUT" | tail -1 | sed 's/^ERRO: //')"; fi`;
+}
+
+/** Tira um item do ar COMO o usuário (`publicar --remover`), nunca um rm do root. Saída `REMOVIDO=<url>` ou `ERRO=`. */
+export function lpRemoverSh(nome: string, item: string): string {
+  const n = nomeOk(nome); const i = itemOk(item);
+  return `${SO_ROOT}
+OUT=$(runuser -u ${n} -- /usr/local/bin/publicar --remover '${i}' 2>&1); RC=$?
+if [ "$RC" = 0 ]; then echo "REMOVIDO=$(printf '%s\\n' "$OUT" | tail -1 | sed 's/^fora do ar: //')"; else echo "ERRO=$(printf '%s\\n' "$OUT" | tail -1 | sed 's/^ERRO: //')"; fi`;
+}
+
+/**
  * Liga o link do usuário: a pasta `${LP_WWW}/<nome>` (dona ele, 755; se ele já trocou o nome, fica o que ele escolheu;
  * se estava desligado, volta a pasta guardada), e, gravados por ele dentro do home (symlink plantado não leva o root a
  * lugar nenhum): `~/publico`, o json que a tela dele lê, a skill do Hermes e o bloco no CLAUDE.md. Saída `LINK=ok <nome>`.
@@ -319,21 +470,8 @@ D="${LP_WWW}/$NOME"
 [ -d "${LP_WWW}/.desligado-${n}" ] && [ ! -e "$D" ] && mv "${LP_WWW}/.desligado-${n}" "$D"
 if [ ! -e "$D" ]; then mkdir "$D"; chown ${n}:${n} "$D"; chmod 755 "$D"; fi
 J=$(printf '{"url": "https://%s.%s/", "nome": "%s", "dominio": "%s"}' "$NOME" "$DOM" "$NOME" "$DOM")
-printf '%s\\n' "$J" | runuser -u ${n} -- sh -c '
-  ln -sfn "$1" "$HOME/publico"
-  mkdir -p "$HOME/.local/share/meu-bot" && cat > "$HOME/.local/share/meu-bot/link-publico.json"
-  if [ -d "$HOME/.hermes" ]; then mkdir -p "$HOME/.hermes/skills/meu-bot-link-publico" && cp -f ${LP_ETC}/SKILL.md "$HOME/.hermes/skills/meu-bot-link-publico/SKILL.md"; fi
-  if [ -d "$HOME/agent-workspace" ]; then python3 - "$HOME/agent-workspace/CLAUDE.md" <<"PY"
-import re, sys
-p = sys.argv[1]; bloco = open("${LP_ETC}/claude.md").read().rstrip("\\n")
-try: t = open(p).read()
-except FileNotFoundError: t = ""
-t2 = re.sub(r"\\n?<!-- meu-bot:link-publico v1 inicio -->.*?<!-- meu-bot:link-publico v1 fim -->\\n?", "\\n", t, flags=re.S).rstrip("\\n")
-t2 = (t2 + "\\n\\n" if t2 else "") + bloco + "\\n"
-if t2 != t: open(p, "w").write(t2)
-PY
-  fi' sh "$D"
-echo "LINK=ok $NOME"`;
+AV=$(printf '%s\\n' "$J" | runuser -u ${n} -- sh -c '${LP_AGENTE_SH}' sh "$D" | tr '\\n' ' '); AV=\${AV% }
+echo "LINK=ok $NOME\${AV:+ $AV}"`;
 }
 
 /** Desliga o link do usuário: a pasta sai do ar (guardada em `.desligado-<nome>`, para voltar igual), e some o que era dele no home. Saída `LINK=desligado`. */
@@ -355,6 +493,27 @@ PY
 echo "LINK=desligado"`;
 }
 
+const TIPOS_ITEM = new Set<string>(["arquivo", "pasta", "pagina"]);
+const SKILL_ESTADOS = new Set<string>(["ok", "antiga", "faltando", "sem-hermes"]);
+const CLAUDE_ESTADOS = new Set<string>(["ok", "antigo", "faltando", "sem-workspace"]);
+/** Itens do `ESTADO=`: só nomes seguros, tipo conhecido (senão arquivo), até 50. */
+export function itensDe(v: unknown): LpItem[] {
+  if (!Array.isArray(v)) return [];
+  const r: LpItem[] = [];
+  for (const i of v) {
+    const x = (i ?? {}) as { nome?: unknown; tipo?: unknown; bytes?: unknown; mtime?: unknown };
+    if (typeof x.nome !== "string" || !ITEM_LINK_RE.test(x.nome)) continue;
+    r.push({ nome: x.nome, tipo: typeof x.tipo === "string" && TIPOS_ITEM.has(x.tipo) ? (x.tipo as LpItem["tipo"]) : "arquivo", bytes: typeof x.bytes === "number" && x.bytes >= 0 ? x.bytes : null, mtime: typeof x.mtime === "number" ? x.mtime : 0 });
+    if (r.length === 50) break;
+  }
+  return r;
+}
+const agenteDe = (v: unknown, ligado: boolean): LpAgente | null => {
+  if (!ligado) return null;
+  const a = (v ?? {}) as { skill?: unknown; claudeMd?: unknown };
+  return { skill: typeof a.skill === "string" && SKILL_ESTADOS.has(a.skill) ? (a.skill as LpAgente["skill"]) : "faltando", claudeMd: typeof a.claudeMd === "string" && CLAUDE_ESTADOS.has(a.claudeMd) ? (a.claudeMd as LpAgente["claudeMd"]) : "faltando" };
+};
+
 /** Lê a linha `ESTADO=` (null se o script não respondeu ou não é root). */
 export function lerEstadoLp(out: string): LpEstado | null {
   const m = /^ESTADO=(.*)$/m.exec(out);
@@ -366,7 +525,7 @@ export function lerEstadoLp(out: string): LpEstado | null {
       loginUrl: typeof v.loginUrl === "string" && /^https:\/\/dash\.cloudflare\.com\//.test(v.loginUrl) ? v.loginUrl : null,
       tunel: typeof v.tunel === "string" && /^[a-f0-9-]{36}$/.test(v.tunel) ? v.tunel : null, servico: v.servico === true, rota: v.rota === true,
       dominio: typeof v.dominio === "string" && DOMINIO_RE.test(v.dominio) ? v.dominio : null,
-      usuarios: Array.isArray(v.usuarios) ? v.usuarios.filter((u) => NOME_USUARIO_RE.test(String(u?.nome))).map((u) => ({ nome: String(u.nome), ligado: u.ligado === true, link: typeof u.link === "string" && NOME_LINK_RE.test(u.link) ? u.link : null, arquivos: typeof u.arquivos === "number" ? u.arquivos : 0 })) : [],
+      usuarios: Array.isArray(v.usuarios) ? v.usuarios.filter((u) => NOME_USUARIO_RE.test(String(u?.nome))).map((u) => ({ nome: String(u.nome), ligado: u.ligado === true, link: typeof u.link === "string" && NOME_LINK_RE.test(u.link) ? u.link : null, arquivos: typeof u.arquivos === "number" ? u.arquivos : 0, itens: u.ligado === true ? itensDe(u.itens) : [], agente: agenteDe(u.agente, u.ligado === true) })) : [],
     };
   } catch { return null; }
 }

@@ -23,6 +23,7 @@ import { WA_AGENTE_FILE } from "../whatsapp/whatsapp-capacidades";
 import { ligarClaudeGlobalPara } from "./claude-global-admin";
 import { CG_ETC } from "./claude-global-core";
 import { ligarLinkPublicoPara, linkPublicoInstalado } from "./link-publico-admin";
+import { textoAvisos } from "./link-publico-core";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
@@ -242,7 +243,7 @@ async function prepararUsuario(host: string, nome: string, alias: string, onLine
   const comGlobal = /^CG=1$/m.test(cg.stdout);
   if (comGlobal) { passo("ligando o Claude Code Global"); await ligarClaudeGlobalPara(host, nome, true); }
   // Link Público Global: instalado na máquina, a conta já nasce com o link dela (falhar aqui não desfaz a conta: avisa e segue).
-  if (await linkPublicoInstalado(host).catch(() => false)) { passo("ligando o link público"); await ligarLinkPublicoPara(host, nome, true).catch((e: unknown) => passo(`✗ link público não ligou: ${e instanceof Error ? e.message : String(e)}`)); }
+  if (await linkPublicoInstalado(host).catch(() => false)) { passo("ligando o link público"); await ligarLinkPublicoPara(host, nome, true).then((av) => { if (av.length > 0) passo(`link público ligado, mas ${textoAvisos(av)}`); }).catch((e: unknown) => passo(`✗ link público não ligou: ${e instanceof Error ? e.message : String(e)}`)); }
   passo(comGlobal ? "pronto: falta só o QR do WhatsApp (o Claude responde pelo global)" : "pronto: falta só o login do Claude e o QR do WhatsApp");
   void registrar(host, "usuarios.preparar", nome);
   return comGlobal;

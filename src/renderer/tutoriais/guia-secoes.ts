@@ -1,4 +1,4 @@
-import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo } from "../../shared/ipc";
+import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -263,6 +263,29 @@ let linkPublicoState: LinkPublicoInfo | null = null;
 let linkPublicoLido = false;
 let linkNomeMsg: { text: string; bad: boolean } | null = null;
 let linkNomeOcupado = false;
+/** Passo 2: o que está no ar (null = ainda não lido), o publicar em andamento, o nome pedido, e o item armado para tirar do ar (dois cliques, 5 s). */
+let linkLista: LinkPublicoItem[] | null = null;
+let linkListaLida = false;
+let linkListaPedida = false;
+let linkPubOcupado = false;
+let linkPubNome = "";
+let linkRemovendo: string | null = null;
+let linkPubMsg: { text: string; bad: boolean; url?: string } | null = null;
+let linkRemoverArmado: string | null = null;
+let linkRemoverTimer: number | null = null;
+export async function refreshLinkLista(): Promise<void> {
+  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
+  linkListaPedida = true;
+  try { const r = await window.meuBot.linkPublicoLista(); if (r !== null) { linkPublicoState = r.info; linkPublicoLido = true; linkLista = r.itens; } } catch { /* máquina fora: fica o que havia */ }
+  linkListaLida = true; linkListaPedida = false;
+  ctx.paintGuide();
+}
+function botaoCopiar(url: string): HTMLButtonElement {
+  const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
+  copy.addEventListener("click", () => { void navigator.clipboard.writeText(url).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
+  return copy;
+}
+function desarmarRemover(): void { linkRemoverArmado = null; if (linkRemoverTimer !== null) { window.clearTimeout(linkRemoverTimer); linkRemoverTimer = null; } }
 export async function refreshLinkPublico(): Promise<void> {
   if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
   try { linkPublicoState = await window.meuBot.linkPublico(); linkPublicoLido = true; } catch { /* máquina fora: fica o que havia */ }
@@ -280,14 +303,58 @@ export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar
   }
   const row = el("div", "audio-row");
   const a = el("a", "audio-ok", lp.url) as HTMLAnchorElement; a.href = lp.url; a.target = "_blank"; a.rel = "noopener"; row.append(a);
-  const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
-  copy.addEventListener("click", () => { void navigator.clipboard.writeText(lp.url).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
-  row.append(copy); box.append(row);
+  row.append(botaoCopiar(lp.url)); box.append(row);
   if (parte === "testar") {
-    box.append(el("p", "hint", lp.arquivos === 0 ? "Nada no ar ainda." : `${lp.arquivos} ${lp.arquivos === 1 ? "item" : "itens"} no ar em ${lp.url}`));
-    const pedir = el("button", "btn btn-primary btn-small", "Pedir um link de teste ao agente"); pedir.type = "button";
+    if (!linkListaLida && !linkListaPedida) void refreshLinkLista();
+    // Publicar um arquivo deste Mac (o diálogo abre no main), com o nome no link opcional.
+    const r1 = el("div", "audio-row");
+    const pub = el("button", "btn btn-primary btn-small", linkPubOcupado && linkRemovendo === null ? "Publicando…" : "Publicar um arquivo…"); pub.type = "button"; pub.disabled = linkPubOcupado;
+    pub.title = "Escolhe um arquivo deste Mac e põe no ar no seu link; um .md vira página; até 100 MB; um item com o mesmo nome é substituído";
+    pub.addEventListener("click", () => {
+      linkPubOcupado = true; linkPubMsg = null; desarmarRemover(); ctx.paintGuide();
+      const pedido = linkPubNome.trim();
+      void window.meuBot.linkPublicoPublicar(pedido === "" ? undefined : pedido)
+        .then((r) => { if (r === null) return; linkPublicoState = r.info; linkLista = r.itens; linkListaLida = true; linkPubNome = ""; linkPubMsg = { text: "✓ No ar:", url: r.url, bad: false }; })
+        .catch((e: unknown) => { linkPubMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
+        .finally(() => { linkPubOcupado = false; ctx.paintGuide(); });
+    });
+    const nomeI = el("input") as HTMLInputElement; nomeI.type = "text"; nomeI.placeholder = "nome no link (opcional)"; nomeI.maxLength = 128; nomeI.style.width = "180px"; nomeI.disabled = linkPubOcupado; nomeI.value = linkPubNome;
+    nomeI.title = "Vazio = o nome do arquivo. Acentos e espaços viram hífen.";
+    nomeI.addEventListener("input", () => { linkPubNome = nomeI.value; });
+    r1.append(pub, nomeI); box.append(r1);
+    if (linkPubMsg !== null) {
+      const pm = el("p", linkPubMsg.bad ? "hint bad-hint" : "hint audio-ok", linkPubMsg.text);
+      if (linkPubMsg.url !== undefined) { const u = linkPubMsg.url; const a2 = el("a", "audio-ok", u) as HTMLAnchorElement; a2.href = u; a2.target = "_blank"; a2.rel = "noopener"; pm.append(" ", a2, " ", botaoCopiar(u)); }
+      box.append(pm);
+    }
+    // O que está no ar: abrir, ou tirar do ar em dois cliques (sem confirm(): o botão vira "Tirar mesmo?" por 5 s).
+    if (!linkListaLida) box.append(carregando("Vendo o que está no ar…", "guia-link-lista"));
+    else if (linkLista === null || linkLista.length === 0) box.append(el("p", "hint", "Nada no ar ainda."));
+    else {
+      box.append(el("p", "hint", `${linkLista.length} ${linkLista.length === 1 ? "item" : "itens"} no ar em ${lp.url}`));
+      for (const it of linkLista) {
+        const rowI = el("div", "audio-row");
+        const nome = el("span", "", `${it.pasta ? "📁" : "📄"} /${it.nome}${it.pasta ? "/" : ""}`); nome.title = it.url;
+        const abrir = el("button", "btn btn-ghost btn-small", "Abrir"); abrir.type = "button"; abrir.addEventListener("click", () => { void abrirLinkDoChat(it.url, false); });
+        const armado = linkRemoverArmado === it.nome;
+        const tirar = el("button", `btn btn-ghost btn-small${armado ? " bad-hint" : ""}`, linkRemovendo === it.nome ? "Tirando…" : armado ? "Tirar mesmo?" : "Tirar do ar"); tirar.type = "button"; tirar.disabled = linkPubOcupado;
+        tirar.addEventListener("click", () => {
+          if (!armado) { desarmarRemover(); linkRemoverArmado = it.nome; linkRemoverTimer = window.setTimeout(() => { linkRemoverArmado = null; linkRemoverTimer = null; ctx.paintGuide(); }, 5000); ctx.paintGuide(); return; }
+          desarmarRemover(); linkPubOcupado = true; linkRemovendo = it.nome; linkPubMsg = null; ctx.paintGuide();
+          void window.meuBot.linkPublicoRemover(it.nome)
+            .then((r) => { linkPublicoState = r.info; linkLista = r.itens; linkPubMsg = { text: `✓ /${it.nome} saiu do ar.`, bad: false }; })
+            .catch((e: unknown) => { linkPubMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
+            .finally(() => { linkPubOcupado = false; linkRemovendo = null; ctx.paintGuide(); });
+        });
+        rowI.append(nome, abrir, tirar);
+        if (armado) { const c = el("button", "btn btn-ghost btn-small", "Cancelar"); c.type = "button"; c.addEventListener("click", () => { desarmarRemover(); ctx.paintGuide(); }); rowI.append(c); }
+        box.append(rowI);
+      }
+    }
+    box.append(el("p", "hint", "Tudo o que está aqui é público na internet, sem senha. Publicar de novo com o mesmo nome substitui."));
+    const pedir = el("button", "btn btn-ghost btn-small", "Pedir um link de teste ao agente"); pedir.type = "button";
     pedir.addEventListener("click", () => { void ctx.goToChatFromGuide("Crie uma página HTML simples chamada ola.html com um \"Olá!\" e me dê o link público dela.", "O agente publica a página em ~/publico e responde com a URL; quando houver algo no ar, este passo se conclui sozinho."); });
-    const rever = el("button", "btn btn-ghost btn-small", "Conferir"); rever.type = "button"; rever.addEventListener("click", () => { void refreshLinkPublico(); });
+    const rever = el("button", "btn btn-ghost btn-small", "Conferir"); rever.type = "button"; rever.addEventListener("click", () => { void refreshLinkPublico(); void refreshLinkLista(); });
     const r2 = el("div", "audio-row"); r2.append(pedir, rever); box.append(r2);
   }
   if (parte === "nome") {

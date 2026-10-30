@@ -5,7 +5,7 @@
  * esta aba confirma sozinha), subir o túnel e ligar ou desligar o link por usuário. O nome do link cada pessoa troca
  * no meu-bot dela (tutorial 17). Fábrica como claude-global-page.ts; o main confere tudo como root.
  */
-import type { LpEstado, MeuBotApi } from "../../shared/ipc";
+import type { LpAgente, LpAviso, LpEstado, LpItem, LpUsuario, MeuBotApi } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando as espera } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -16,7 +16,7 @@ export interface LinkPublicoPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminLinkPublico" | "adminLinkPublicoInstalar" | "adminLinkPublicoEntrar" | "adminLinkPublicoTunel" | "adminLinkPublicoUsuario" | "on">;
+  api: Pick<MeuBotApi, "adminLinkPublico" | "adminLinkPublicoInstalar" | "adminLinkPublicoEntrar" | "adminLinkPublicoTunel" | "adminLinkPublicoUsuario" | "adminLinkPublicoPublicar" | "adminLinkPublicoRemover" | "on">;
 }
 
 /** Domínio sugerido quando a máquina ainda não tem um (o da Karen). */
@@ -31,6 +31,24 @@ export function etapaLp(e: LpEstado): "instalar" | "entrar" | "tunel" | "pronto"
   return "pronto";
 }
 
+/** URL de um item no ar: arquivo é `/nome`; pasta e página terminam em `/`. */
+export const urlDoItem = (link: string, dominio: string, it: Pick<LpItem, "nome" | "tipo">): string => `https://${link}.${dominio}/${it.nome}${it.tipo === "arquivo" ? "" : "/"}`;
+/** Coluna "Agente": o que o agente do usuário tem do link; `falta` = algo a fazer (e o título diz o quê). */
+export function resumoAgente(a: LpAgente | null): { texto: string; falta: boolean; titulo: string } {
+  if (a === null) return { texto: "—", falta: false, titulo: "" };
+  const skill = a.skill === "ok" ? "skill ✓" : a.skill === "antiga" ? "skill antiga" : a.skill === "faltando" ? "sem a skill" : "sem Hermes";
+  const cm = a.claudeMd === "ok" ? "CLAUDE.md ✓" : a.claudeMd === "antigo" ? "CLAUDE.md antigo" : a.claudeMd === "faltando" ? "sem o bloco no CLAUDE.md" : "sem agent-workspace";
+  const falta = a.skill !== "ok" || a.claudeMd !== "ok";
+  const dicas: string[] = [];
+  if (a.skill === "antiga" || a.claudeMd === "antigo" || a.skill === "faltando" || a.claudeMd === "faltando") dicas.push("clique em \"Atualizar a instalação\" (refaz a skill e o CLAUDE.md de quem está ligado)");
+  if (a.skill === "sem-hermes" || a.claudeMd === "sem-workspace") dicas.push("prepare a conta na aba Usuários e ligue o link de novo");
+  return { texto: `${skill} · ${cm}`, falta, titulo: falta ? dicas.join("; ") : "O agente dele já dá links com `publicar` e sabe que .md vira página" };
+}
+/** Frase do que o ligar pulou (a mesma do main, para a tela). */
+export const textoAvisosLp = (a: LpAviso[]): string => a.length === 0 ? "" : `${a.map((x) => x === "sem-hermes" ? "a conta não tem Hermes (a skill não foi copiada)" : "a conta não tem agent-workspace (o CLAUDE.md não foi tocado)").join("; ")}: prepare a conta na aba Usuários e ligue o link de novo`;
+const tamanho = (b: number): string => b < 1024 ? `${b} B` : b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / 1024 / 1024).toFixed(1)} MB`;
+const icone = (tipo: LpItem["tipo"]): string => tipo === "pagina" ? "📝" : tipo === "pasta" ? "📁" : "📄";
+
 export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => void } {
   let page: PageTab | null = null;
   let estado: LpEstado | null = null;
@@ -38,6 +56,10 @@ export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => v
   let ocupado: string | null = null;
   let msg: { text: string; bad: boolean } | null = null;
   let dominio: string | null = null;
+  /** Usuário com a lista "No ar" aberta; item armado para tirar do ar (dois cliques); última URL publicada (para copiar). */
+  let aberto: string | null = null;
+  let itemArmado: string | null = null;
+  let ultimaUrl: string | null = null;
   /** Link de login aberto nesta sessão (a página mostra para copiar se o navegador não abriu). */
   let loginUrl: string | null = null;
   let vigia: ReturnType<typeof setInterval> | null = null;
@@ -47,9 +69,15 @@ export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => v
     try { estado = await deps.api.adminLinkPublico(); } catch (e) { erro = ipcErrorText(e); }
     render();
   }
-  async function rodar(chave: string, f: () => Promise<LpEstado | void>, ok: string): Promise<boolean> {
-    ocupado = chave; msg = null; render();
-    try { const r = await f(); if (r) estado = r; msg = { text: ok, bad: false }; return true; }
+  /** `f` devolve o estado novo (mensagem `ok`), ou `{ estado, texto, bad }` quando a frase depende do resultado (texto vazio = sem mensagem). */
+  async function rodar(chave: string, f: () => Promise<LpEstado | void | { estado: LpEstado; texto: string; bad?: boolean }>, ok: string): Promise<boolean> {
+    ocupado = chave; msg = null; ultimaUrl = null; render();
+    try {
+      const r = await f();
+      if (r && "estado" in r) { estado = r.estado; msg = r.texto === "" ? null : { text: r.texto, bad: r.bad === true }; }
+      else { if (r) estado = r; msg = { text: ok, bad: false }; }
+      return true;
+    }
     catch (e) { msg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; return false; }
     finally { ocupado = null; render(); }
   }
@@ -100,8 +128,8 @@ export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => v
       row.append(i, b); inst.append(row);
     } else {
       inst.append(el("p", "", `Links em https://<nome>.${e.dominio ?? "?"}/ · nginx ${e.nginx ? "no ar (127.0.0.1)" : "parado"}`));
-      const b = botao("Atualizar a instalação", "instalar"); b.title = "Refaz nginx, cloudflared, comandos e modelos (idempotente)";
-      b.addEventListener("click", () => { if (e.dominio !== null) void rodar("instalar", () => deps.api.adminLinkPublicoInstalar(e.dominio!), "✓ Instalação atualizada."); });
+      const b = botao("Atualizar a instalação", "instalar"); b.title = "Refaz nginx, cloudflared, comandos e modelos (idempotente) e atualiza a skill e o CLAUDE.md de quem já tem o link ligado";
+      b.addEventListener("click", () => { if (e.dominio !== null) void rodar("instalar", () => deps.api.adminLinkPublicoInstalar(e.dominio!), "✓ Instalação atualizada: skill e CLAUDE.md refeitos para quem tem o link ligado."); });
       inst.append(b);
     }
     panel.append(inst);
@@ -143,7 +171,7 @@ export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => v
       panel.append(tn);
     }
 
-    // 4. Usuários.
+    // 4. Usuários: link, estado do agente, o que está no ar (abre uma linha com os itens) e as ações, sempre como o usuário.
     if (e.instalado) {
       const us = el("div", "admin-card");
       const cab = el("div", "admin-actions"); cab.append(el("strong", "", "Usuários com link"));
@@ -153,24 +181,95 @@ export function mountLinkPublicoPage(deps: LinkPublicoPageDeps): { open: () => v
       if (e.usuarios.length === 0) us.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const tu = el("table", "usuarios-tabela");
-        const hu = el("tr"); for (const h of ["Usuário", "Link", "No ar", ""]) hu.append(el("th", "", h)); tu.append(hu);
+        const hu = el("tr"); for (const h of ["Usuário", "Link", "Agente", "No ar", ""]) hu.append(el("th", "", h)); tu.append(hu);
         for (const u of e.usuarios) {
           const tr = el("tr");
           const link = u.ligado && u.link !== null ? `https://${u.link}.${e.dominio ?? "?"}/` : null;
           const tdLink = el("td", "");
           if (link !== null) { const a = el("a", "", link) as HTMLAnchorElement; a.href = link; a.target = "_blank"; a.rel = "noopener"; tdLink.append(a); } else tdLink.append(el("span", "hint", "desligado"));
-          tr.append(el("td", "", u.nome), tdLink, el("td", "", u.ligado ? `${u.arquivos} ${u.arquivos === 1 ? "item" : "itens"}` : "—"));
+          const ag = resumoAgente(u.agente);
+          const tdAg = el("td", ""); const sAg = el("span", ag.falta ? "hint bad-hint" : "hint", ag.texto); sAg.title = ag.titulo; tdAg.append(sAg);
+          const tdAr = el("td", "");
+          if (!u.ligado) tdAr.append(el("span", "", "—"));
+          else if (u.arquivos === 0) tdAr.append(el("span", "hint", "nada"));
+          else {
+            const ab = el("button", "btn btn-ghost btn-small", `${u.arquivos} ${u.arquivos === 1 ? "item" : "itens"} ${aberto === u.nome ? "▴" : "▾"}`) as HTMLButtonElement; ab.type = "button";
+            ab.title = aberto === u.nome ? "Fechar a lista" : "Ver o que está no ar, abrir ou tirar do ar";
+            ab.addEventListener("click", () => { aberto = aberto === u.nome ? null : u.nome; itemArmado = null; render(); });
+            tdAr.append(ab);
+          }
+          tr.append(el("td", "", u.nome), tdLink, tdAg, tdAr);
           const td = el("td", "");
+          if (u.ligado) {
+            const pb = botao("Publicar arquivo…", `publicar:${u.nome}`);
+            pb.title = "Escolhe um arquivo deste Mac e publica no link dele, como ele: um .md vira página; até 100 MB; um item com o mesmo nome é substituído";
+            pb.addEventListener("click", () => {
+              void rodar(`publicar:${u.nome}`, async () => {
+                const r = await deps.api.adminLinkPublicoPublicar(u.nome);
+                if (r.url === null) return { estado: r.estado, texto: "" };
+                ultimaUrl = r.url; aberto = u.nome;
+                return { estado: r.estado, texto: `✓ No ar no link de ${u.nome}:` };
+              }, "");
+            });
+            td.append(pb, " ");
+          }
           const b = botao(u.ligado ? "Desligar" : "Ligar", `usuario:${u.nome}`, !u.ligado);
           b.title = u.ligado ? "O link sai do ar (os arquivos ficam guardados); a skill e o comando somem para o agente dele" : "Cria a pasta ~/publico dele, a skill do Hermes e o bloco no CLAUDE.md; o agente dele passa a dar links";
-          b.addEventListener("click", () => { void rodar(`usuario:${u.nome}`, () => deps.api.adminLinkPublicoUsuario(u.nome, !u.ligado), u.ligado ? `✓ Link de ${u.nome} desligado.` : `✓ Link de ${u.nome} ligado: o agente dele já dá links com \`publicar\`.`); });
+          b.addEventListener("click", () => {
+            void rodar(`usuario:${u.nome}`, async () => {
+              const r = await deps.api.adminLinkPublicoUsuario(u.nome, !u.ligado);
+              if (u.ligado) return { estado: r.estado, texto: `✓ Link de ${u.nome} desligado.` };
+              return r.avisos.length === 0 ? { estado: r.estado, texto: `✓ Link de ${u.nome} ligado: o agente dele já dá links com \`publicar\`.` } : { estado: r.estado, texto: `✓ Link de ${u.nome} ligado, mas ${textoAvisosLp(r.avisos)}.`, bad: true };
+            }, "");
+          });
           td.append(b); tr.append(td); tu.append(tr);
+          if (aberto === u.nome && u.ligado) tu.append(linhaItens(u, e.dominio));
         }
         const rolo = el("div", "usuarios-rolo"); rolo.append(tu); us.append(rolo);
       }
       panel.append(us);
     }
-    if (msg !== null) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
+    if (msg !== null) {
+      panel.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));
+      if (ultimaUrl !== null) {
+        const u = ultimaUrl; const row = el("div", "audio-row");
+        const code = el("code", "conta-codigo", u); code.style.wordBreak = "break-all";
+        const copy = el("button", "btn btn-ghost btn-small", "Copiar o link"); copy.type = "button";
+        copy.addEventListener("click", () => { void navigator.clipboard.writeText(u).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar o link"; }, 1500); }); });
+        const abrir = el("a", "btn btn-ghost btn-small", "Abrir") as HTMLAnchorElement; abrir.href = u; abrir.target = "_blank"; abrir.rel = "noopener";
+        row.append(code, copy, abrir); panel.append(row);
+      }
+    }
+  }
+
+  /** A linha aberta embaixo do usuário: os itens no ar (até 50), com abrir e tirar do ar em dois cliques. */
+  function linhaItens(u: LpUsuario, dominio: string | null): HTMLElement {
+    const tr = el("tr"); const td = el("td", "") as HTMLTableCellElement; td.colSpan = 5;
+    if (u.itens.length === 0) td.append(el("p", "hint", "Nada com nome no padrão (só pelo terminal)."));
+    else {
+      const t = el("table", "auditoria-tabela");
+      const cab = el("tr"); for (const h of ["Item", "Tamanho", "Quando", ""]) cab.append(el("th", "", h)); t.append(cab);
+      for (const it of u.itens) {
+        const url = urlDoItem(u.link ?? u.nome, dominio ?? "?", it);
+        const r = el("tr");
+        const a = el("a", "", `${icone(it.tipo)} ${it.nome}${it.tipo === "arquivo" ? "" : "/"}`) as HTMLAnchorElement; a.href = url; a.target = "_blank"; a.rel = "noopener"; a.title = url;
+        const tdNome = el("td", ""); tdNome.append(a);
+        const chave = `${u.nome}/${it.nome}`;
+        const rb = el("button", "btn btn-ghost btn-small", ocupado === `remover:${chave}` ? "Tirando…" : itemArmado === chave ? "Confirmar? sai do ar" : "Tirar do ar") as HTMLButtonElement; rb.type = "button"; rb.disabled = ocupado !== null;
+        rb.addEventListener("click", () => {
+          if (itemArmado !== chave) { itemArmado = chave; render(); return; }
+          itemArmado = null;
+          void rodar(`remover:${chave}`, () => deps.api.adminLinkPublicoRemover(u.nome, it.nome), `✓ ${it.nome} saiu do ar no link de ${u.nome}.`);
+        });
+        const tdB = el("td", ""); tdB.append(rb);
+        r.append(tdNome, el("td", "", it.bytes === null ? "—" : tamanho(it.bytes)), el("td", "", it.mtime > 0 ? new Date(it.mtime * 1000).toLocaleString("pt-BR") : "—"), tdB);
+        t.append(r);
+      }
+      td.append(t);
+    }
+    const fora = u.arquivos - u.itens.length;
+    if (fora > 0) td.append(el("p", "hint", `+${fora} ${fora === 1 ? "item" : "itens"} com nome fora do padrão (só pelo terminal).`));
+    tr.append(td); return tr;
   }
 
   return {

@@ -8,12 +8,12 @@ import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../suporte/support-code";
 import type { LicensePatch } from "../../shared/ipc";
 import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, removeDevice, setLicense } from "./support-admin";
-import { hostFromEvent } from "../ipc/context";
+import { hostFromEvent, windowFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
 import { listProdutos } from "./produtos";
 import { auditoriaDaJanela, auditoriaExportarDaJanela, auditoriaVisivel } from "./auditoria-admin";
 import { contaEditarClaudeGlobal, contaNovaClaudeGlobal, contaRemoverClaudeGlobal, contaUsarAgoraClaudeGlobal, entrarClaudeGlobal, estadoClaudeGlobal, instalarClaudeGlobal, limiaresClaudeGlobal, usuarioClaudeGlobal } from "./claude-global-admin";
-import { entrarLinkPublico, estadoLinkPublico, instalarLinkPublico, tunelLinkPublico, usuarioLinkPublico } from "./link-publico-admin";
+import { entrarLinkPublico, estadoLinkPublico, instalarLinkPublico, publicarLinkPublico, removerLinkPublico, tunelLinkPublico, usuarioLinkPublico } from "./link-publico-admin";
 import { prepararUsuarioDeNovo, manterLigado, nosSeletores, sincronizarSeletores, definirApelido, ligarSwap, instalarHermesGlobal, definirRecursos, apagarItemDoUsuario, apagarUsuario, criarUsuario, definirLimite, maioresDoUsuario, usuariosDaMaquina, usuariosVisivel } from "./usuarios-admin";
 import { conferirRestauracao, criarBackup, listarBackups, restaurarBackup, trocarWhatsapp } from "./backup-admin";
 
@@ -59,6 +59,9 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:link-publico-entrar", (event) => entrarLinkPublico(adminHost(event)));
   handleAdmin("admin:link-publico-tunel", (event) => tunelLinkPublico(adminHost(event)));
   handleAdmin("admin:link-publico-usuario", (event, payload: unknown) => usuarioLinkPublico(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { ligado?: unknown } | null)?.ligado));
+  // Publicar (arquivo deste Mac, escolhido no diálogo do main) e tirar do ar no link de um usuário, sempre como ele.
+  handleAdmin("admin:link-publico-publicar", (event, payload: unknown) => publicarLinkPublico(adminHost(event), (payload as { nome?: unknown } | null)?.nome, windowFromEvent(event)));
+  handleAdmin("admin:link-publico-remover", (event, payload: unknown) => removerLinkPublico(adminHost(event), (payload as { nome?: unknown } | null)?.nome, (payload as { item?: unknown } | null)?.item));
   handleAdmin("admin:usuario-preparar", (event, payload: unknown) => prepararUsuarioDeNovo(adminHost(event), (payload as { nome?: unknown } | null)?.nome, progresso(event)));
   handleAdmin("admin:usuario-ligado", (event, payload: unknown) => manterLigado(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   handleAdmin("admin:swap-ligar", (event) => ligarSwap(adminHost(event)));

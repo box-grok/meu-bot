@@ -103,8 +103,14 @@ export interface CgConta { id: string; rotulo: string; email: string | null; log
 export interface CgUsuario { nome: string; ligado: boolean; chamadas: number; ultima: number | null; limites: number }
 /** Estado do Claude Code Global da máquina: o intermediário do root, a conta do root, o rodízio e os usuários. */
 export interface CgEstado { instalado: boolean; ativo: boolean; porta: number | null; login: boolean; email: string | null; plano: string | null; contas: CgConta[]; /** Limiares do rodízio do root (os do tutorial 15); null = ainda não instalado. */ limiares: { sessao: number; semanal: number; estrategia: "ordem" | "folga" } | null; usuarios: CgUsuario[] }
-/** Link Público Global: um usuário da máquina e o link dele (`link` = o subdomínio que ele usa; null = desligado). */
-export interface LpUsuario { nome: string; ligado: boolean; link: string | null; arquivos: number }
+/** Um item no ar no link de um usuário: `pagina` = pasta com index.html (um .md publicado), `pasta` = pasta sem índice. */
+export interface LpItem { nome: string; tipo: "arquivo" | "pasta" | "pagina"; bytes: number | null; mtime: number }
+/** O que o agente do usuário tem do link, comparado com os modelos de /etc/meu-bot-link-publico: a skill do Hermes e o bloco do CLAUDE.md. */
+export interface LpAgente { skill: "ok" | "antiga" | "faltando" | "sem-hermes"; claudeMd: "ok" | "antigo" | "faltando" | "sem-workspace" }
+/** O que o ligar não conseguiu gravar na conta (sem ~/.hermes a skill não vai; sem ~/agent-workspace o CLAUDE.md não é tocado). */
+export type LpAviso = "sem-hermes" | "sem-workspace";
+/** Link Público Global: um usuário da máquina e o link dele (`link` = o subdomínio que ele usa; null = desligado); `itens` = até 50 do primeiro nível, mais novos primeiro; `agente` null = desligado. */
+export interface LpUsuario { nome: string; ligado: boolean; link: string | null; arquivos: number; itens: LpItem[]; agente: LpAgente | null }
 /**
  * Link Público Global (admin): nginx e cloudflared instalados com o domínio; `login` = o root entrou na Cloudflare
  * (cert.pem); `loginUrl` = um login está aberto esperando a autorização; `tunel` = id do túnel criado; `servico` = o

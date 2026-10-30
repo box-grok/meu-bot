@@ -852,10 +852,11 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => c.linkPublico !== null,
       },
       {
-        id: "publicar", title: "Pedir o primeiro link ao agente", target: "chat", body: "link-publico-testar",
-        text: "Peça no chat: \"me dá um link público deste arquivo\" (ou de uma página que ele crie). Ele publica em ~/publico e responde com a URL. Tudo o que está lá é público na internet. Este passo se conclui quando houver algo no ar.",
+        id: "publicar", title: "Colocar algo no ar", target: "none", body: "link-publico-testar",
+        text: "Escolha um arquivo deste Mac e ele vai para o ar no seu link (um .md vira uma página pronta). Ou peça no chat: \"me dá um link público deste arquivo\". Aqui aparece tudo o que está no ar, para abrir ou tirar. Tudo ali é público na internet.",
         done: (_st, _f, c) => c.linkPublico !== null && c.linkPublico.arquivos > 0,
         lembrar: true,
+        refazer: true,
       },
       {
         id: "nome", title: "Escolher o nome do link", target: "none", body: "link-publico-nome",

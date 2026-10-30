@@ -393,6 +393,27 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   - `/usr/local/bin/publicar <arquivo|pasta> [nome]` (também `--lista`, `--remover`) e `/usr/local/bin/link-publico-nome
     <novo>`: como a pasta é dele numa pasta sticky, trocar o nome é um `mv` sem root. Nomes reservados (www, admin…)
     e nomes de outros usuários são recusados.
+  - **Publicar pelo admin** (30 out): "Publicar arquivo…" na linha do usuário abre o diálogo do Mac (no main: o renderer
+    nunca manda caminho), faz `scp` para `/tmp/meu-bot-publicar-<token>` (700 do root), `chown root:<usuário>` 750/640 só
+    ali, e roda `runuser -u <usuário> -- /usr/local/bin/publicar` (caminho absoluto: o runuser sem `-l` reseta o PATH).
+    O arquivo nasce dono do usuário, na cota dele, e a passagem some deu certo ou não (`lpPublicarSh`). Limite de 100 MB
+    (o que a Cloudflare entrega por resposta). "Tirar do ar" é sempre `publicar --remover` como ele (`lpRemoverSh`),
+    nunca `rm` do root. Canais `admin:link-publico-publicar` / `-remover`; auditoria `usuarios.link-publico-publicar` / `-remover`.
+  - **No ar e Agente** (30 out): o `ESTADO=` traz por usuário até 50 itens do primeiro nível (`os.lstat`, sem dotfile, só
+    nomes `[A-Za-z0-9][A-Za-z0-9._-]*`; `pagina` = pasta com index.html) e o estado do agente dele (`skill` e `claudeMd`:
+    ok / antiga / faltando / sem-hermes ou sem-workspace), comparando com os modelos de `/etc/meu-bot-link-publico`, só
+    leitura (`O_NOFOLLOW`, teto 256 KB). A tabela ganhou as colunas Agente e "No ar" (abre a lista com Abrir e "Tirar do
+    ar" em dois cliques). Itens com nome fora do padrão contam mas não aparecem (só pelo terminal).
+  - **Atualizar alcança os agentes** (30 out): "Atualizar a instalação" roda `lpAtualizarAgentesSh` depois de regravar os
+    modelos: para cada usuário com `~/publico` apontando para a pasta dele, refaz skill, bloco do CLAUDE.md e json como
+    ele (`LP_AGENTE_SH`, o mesmo corpo do ligar). Antes, quem já estava ligado ficava com a skill velha.
+  - **Ligar avisa o que pulou** (30 out): `LINK=ok <nome> [sem-hermes] [sem-workspace]`: a conta sem `~/.hermes` não
+    recebe a skill e sem `~/agent-workspace` não recebe o bloco; a aba e o onboarding mostram "ligado, mas … prepare a
+    conta na aba Usuários e ligue de novo" em vez de um ok que não gravou nada.
+  - **`publicar` endurecido** (30 out): `--remover ..`/`.x`/vazio é recusado e item inexistente dá "não está no ar"; `cp`
+    falhando (cota cheia) vira `ERRO: não consegui copiar…` em vez de imprimir uma URL que não existe.
+  - **A pessoa também publica pela tela** (tutorial 17, `guia/agente.md`): `link-publico:lista|remover|publicar`, scp para
+    `~/.local/share/meu-bot/publicar-tmp/<id>/` (restos de mais de 2 h são varridos a cada uso) e o `publicar` dela.
   - **`.md` vira página** (30 out): `publicar fluxo-atendimento.md` grava `fluxo-atendimento/index.html` (título do 1º
     `#`, CSS claro/escuro, tabelas e código) e o `.md` original ao lado, e imprime `https://<nome>.<domínio>/fluxo-atendimento/`.
     Motivo: o primeiro link do Daniel era o `.md` cru, que o nginx mandava como `application/octet-stream` (com nosniff,
