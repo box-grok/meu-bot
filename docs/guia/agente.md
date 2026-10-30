@@ -147,9 +147,9 @@
   PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`.
 - Tutorial 5 · Fallback: Claude e Grok (17 out; antes "Em breve"): três passos. (1) "As duas contas nesta máquina":
   conclui com `claude.loggedIn && xai.loggedIn` no `GuideContext`. (2) "Escolher primário e reserva" (corpo
-  `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o mesmo seletor de Configurações › Fallback
-  (Claude = agente, xAI = grok-4), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
-  (`fallbackOrderText`, pura em `lib/tutoriais.ts`, agora usada também pelas Configurações) e "Manter assim" quando o
+  `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o seletor do primário (Claude = agente, xAI = grok-4; o grupo
+  Configurações › Fallback que o espelhava saiu em 30 out 2026, o tutorial é o único lugar), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
+  (`fallbackOrderText`, pura em `lib/tutoriais.ts`) e "Manter assim" quando o
   primário já está na corrente; conclui com a flag `fallbackChosen` (também gravada ao escolher nas Configurações) e
   o primário em `FALLBACK_PRIMARIES`. (3) "Ver a reserva assumir": a flag `fallbackSeen` é gravada sozinha quando um
   `chat:done` traz `fallback` (a reserva respondeu de verdade) ou pelo botão "Entendi como funciona". `needsXai`

@@ -1,4 +1,4 @@
-import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
+import type { BackendModel, ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -8,6 +8,9 @@ import { hostLabel } from "../lib/probe-text.js";
 import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
 import { type GuideContext, grupoAlvo, OBJECTIVE_OPTIONS, LEVEL_OPTIONS, fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/tutoriais.js";
 import { ctx } from "../app/ctx.js";
+
+/** Primário do tutorial 5 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
+const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
 
 let supportBusy = false;
 const supportGroup = $<HTMLDetailsElement>("support-group");
@@ -45,16 +48,16 @@ export const guideCtx = (): GuideContext => ({
     hermes: ctx.xaiAuth !== null ? true : ctx.xaiKey === null ? null : false,
     loggedIn: ctx.xaiAuth?.loggedIn ?? null, label: ctx.xaiAuth?.email ?? null,
   },
-  fallback: { primary: ctx.backendModelSelect.value === "" ? null : ctx.backendModelSelect.value, chain: ctx.account?.providers ?? null },
+  fallback: { primary: ctx.settings?.backendModelForHost ?? null, chain: ctx.account?.providers ?? null },
   guarda: { installed: guardaState, possible: ctx.waStatus === null ? null : ctx.waStatus.capacidades.guarda },
   navegador: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), installed: navInstState, tabs: ctx.navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: ctx.navExtensions.length, agentOn: ctx.navAgent.on && ctx.navAgent.state === "up", servicos: ctx.navServicosCount(), extensaoEmbutida: ctx.navExtensions.some((x) => x.embutida === true) },
-  notify: { enabled: ctx.settings?.navNotify.enabled === true, conversas: [...ctx.index.values()].filter((c) => (c.title ?? "").startsWith("🔔 ") && !c.archived).length },
   objective: ctx.objectiveState,
   crm: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), info: ctx.crmState, local: ctx.crmLocalState },
   grupos: (() => { const alvo = grupoAlvo(ctx.waGroups, ctx.loadGrupoAlvo()); return { info: ctx.waGroups, alvo: ctx.loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || ctx.waGroupReplied.get(alvo.jid) === true) }; })(),
   contas: contasState,
   linkPublico: linkPublicoState,
   linkPublicoPossivel,
+  quickEntry: { status: ctx.settings?.quickEntryStatus ?? null, shortcut: ctx.settings?.quickEntryShortcut ?? "" },
   finance: { access: ctx.navLicenseAsked ? financeOk(ctx.license, ctx.windowHost) : null, info: ctx.financeState },
   produto: (() => { const proprio = ctx.crmProprio() && ctx.motorCrm() === "proprio"; return { planoExigido: ctx.caps.planoExigido, crmProprio: proprio, crmStreak: !proprio }; })(),
   // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
@@ -75,6 +78,7 @@ export const guideCtx = (): GuideContext => ({
       grupos: ctx.waGroups !== null || !remote || (ctx.waStatus !== null && !ctx.waStatus.capacidades.grupos),
       contas: contasState !== null || !remote,
       linkpublico: linkPublicoLido || !remote,
+      quickentry: ctx.settings !== null,
       finance: ctx.navLicenseAsked && (!remote || !financeOk(ctx.license, ctx.windowHost) || ctx.financeState !== null),
     };
   })(),
@@ -170,16 +174,16 @@ export function renderFallbackOrder(container: HTMLElement): void {
   const label = el("label", "", "Primário nesta máquina ");
   const sel = el("select");
   for (const [value, text] of [["claude", "Claude (agente)"], ["xai", "xAI (grok-4)"]] as const) { const o = el("option", "", text); o.value = value; sel.append(o); }
-  const cur = ctx.backendModelSelect.value;
+  const cur: string = ctx.settings?.backendModelForHost ?? "";
   if (cur === "grok-4") sel.value = "xai"; else if (cur === "agente") sel.value = "claude"; else { const o = el("option", "", `outro (${cur || "sem modelo"}): fora da corrente`); o.value = "other"; o.disabled = true; sel.append(o); sel.value = "other"; }
   label.append(sel);
   const hint = el("p", "hint", fallbackOrderText(cur, ctx.account?.providers ?? null));
   sel.addEventListener("change", () => {
-    const m = ctx.PRIMARY_OF[sel.value];
+    const m = PRIMARY_OF[sel.value];
     if (m === undefined) return;
     sel.disabled = true;
     void window.meuBot.setSettings({ backendModelForHost: m }).then((view) => {
-      ctx.applySettings(view); ctx.backendModelSelect.value = m; ctx.syncPrimaryFromModel(); ctx.paintFallbackOrder();
+      ctx.applySettings(view);
       ctx.saveGuideFlag(ctx.FALLBACK_TUTORIAL, "fallbackChosen"); ctx.paintGuide();
     }).catch((err: unknown) => { hint.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { sel.disabled = false; });
   });
@@ -550,6 +554,49 @@ export function renderStatusLineSegments(container: HTMLElement): void {
   container.append(box);
 }
 /** Passo "Conferir no terminal": digita o teste do script num terminal desta máquina; a pessoa dá Enter. */
+/** Texto do status do atalho global, como era nas Configurações. */
+const quickStatusText = (): string => {
+  const st = ctx.settings?.quickEntryStatus ?? null;
+  return st === "registered" ? "✓ ativo" : st === "taken" ? "em uso por outro app: escolha outra combinação" : st === "invalid" ? "combinação inválida" : st === "disabled" ? "desligado" : "…";
+};
+let quickMsg: string | null = null;
+/** Tutorial 18, passo 1: o gravador de atalho (saiu das Configurações em 30 out). A combinação pressionada é salva na hora. */
+export function renderQuickAtalho(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const row = el("div", "audio-row");
+  const input = el("input") as HTMLInputElement;
+  input.type = "text"; input.autocomplete = "off"; input.placeholder = "CommandOrControl+Shift+Space";
+  input.value = ctx.settings?.quickEntryShortcut ?? "";
+  input.title = "Clique e pressione a combinação; Backspace limpa";
+  const salvar = (shortcut: string): void => {
+    input.disabled = true; quickMsg = null;
+    void window.meuBot.setSettings({ quickEntryShortcut: shortcut }).then((view) => { ctx.applySettings(view); ctx.paintGuide(); })
+      .catch((err: unknown) => { quickMsg = `✗ ${ipcErrorText(err)}`; ctx.paintGuide(); })
+      .finally(() => { input.disabled = false; });
+  };
+  input.addEventListener("keydown", (ev) => {
+    ev.preventDefault(); ev.stopPropagation();
+    if (ev.key === "Backspace") { input.value = ""; return; }
+    if (["Meta", "Control", "Alt", "Shift"].includes(ev.key)) return;
+    const mods = [ev.metaKey || ev.ctrlKey ? "CommandOrControl" : null, ev.altKey ? "Alt" : null, ev.shiftKey ? "Shift" : null].filter((m): m is string => m !== null);
+    if (mods.length === 0) return;
+    const key = ev.key === " " ? "Space" : ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
+    input.value = [...mods, key].join("+");
+    salvar(input.value);
+  });
+  const status = el("span", (ctx.settings?.quickEntryStatus ?? null) === "registered" ? "audio-ok" : "hint", quickStatusText());
+  row.append(input, status);
+  box.append(row);
+  if (quickMsg !== null) box.append(el("p", "hint guide-pair-note", quickMsg));
+  container.append(box);
+}
+/** Tutorial 18, passo 2: mostrar a janela flutuante daqui mesmo, para quem quer ver antes de decorar o atalho. */
+export function renderQuickTestar(container: HTMLElement): void {
+  const b = el("button", "btn btn-ghost btn-small", "Mostrar a janela flutuante"); b.type = "button";
+  b.title = ctx.settings?.quickEntryShortcut ? `O mesmo que pressionar ${ctx.settings.quickEntryShortcut}` : "";
+  b.addEventListener("click", () => { void window.meuBot.toggleQuickEntry(); });
+  container.append(b);
+}
 export function renderStatusLineTest(container: HTMLElement): void {
   const b = el("button", "btn btn-primary btn-small", "Testar no terminal"); b.type = "button";
   b.addEventListener("click", () => { void ctx.runInTerminal(SL_TEST_COMMAND, "bash", true); });

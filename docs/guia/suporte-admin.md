@@ -208,8 +208,8 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   em cada fase (primeira consulta aos 3 s; sem release no GitHub a fase é up-to-date), `update:check` é o "Verificar
   agora"; na tela, o ponto "verificando atualizações…" na barra de cima enquanto `checking` e o grupo "Sobre e
   atualização" nas Configurações (versão, frase da fase por `lib/update-text.ts`, Verificar agora, Notas de lançamento,
-  Reiniciar e atualizar). (B) Notificação de teste ("Enviar uma notificação de teste" → "Você viu? Sim / Não, abrir
-  Ajustes do Sistema", `ui:notify-test`), e a primeira notificação desta instalação disparada no momento certo
+  Reiniciar e atualizar). (B) Notificação de teste (`ui:notify-test`; o botão "Enviar uma notificação de teste" das
+  Configurações saiu em 30 out 2026), e a primeira notificação desta instalação disparada no momento certo
   (quando a pessoa marca "Testei, funcionou" no tutorial do WhatsApp, `maybeAskNotificationsOnce`): o macOS pede a
   permissão junto. Sem `node-mac-permissions`: para notificações não há API de estado, e o Rambox também usa o teste.
   (C) "Abrir ao entrar no Mac" (grupo Inicialização): `app.setLoginItemSettings` no `settings:set`, estado lido do

@@ -309,153 +309,11 @@
       <p class="hint">Esta janela é da máquina mostrada no topo. Para outra máquina: Arquivo › Nova janela em outra máquina (Cmd+Shift+N).</p>
       <p id="last-host" class="hint"></p>
 
-      <details class="group" data-group="conexao">
-        <summary>Conexão <span class="sum-hint">modelo padrão e porta do backend</span></summary>
-        <label>
-          Modelo padrão nesta máquina (conversas novas)
-          <select id="backend-model">
-            <option value="claudecode">claudecode · chat puro, rápido</option>
-            <option value="agente">agente · bypass (ferramentas sem pedir permissão, pode levar minutos)</option>
-            <option value="rene-dm">rene-dm · agente René com ferramentas, só na grokbot-1</option>
-            <option value="rene">rene · agente René com MCP completo, só na grokbot-1</option>
-            <option value="grok-4">grok-4 · Grok da xAI, onde o backend tiver o provedor configurado</option>
-          </select>
-        </label>
-        <p class="hint">Cada conversa pode trocar o próprio modelo no seletor ao lado da caixa de texto.</p>
-        <label>
-          Porta do backend nesta máquina
-          <input id="backend-port" type="number" min="1" max="65535" placeholder="8080" />
-        </label>
-        <p class="hint">Cada máquina pode ter a sua (na janela deste Mac, o campo é a porta padrão das demais). O seletor avisa e ajusta com um clique quando o backend está em outra porta. A chave do backend é lida da própria máquina na hora de conectar.</p>
-      </details>
-
-      <details class="group" data-group="fallback">
-        <summary>Fallback <span class="sum-hint">primário e reserva automática</span></summary>
-        <label>
-          Primário nesta máquina
-          <select id="primary-provider">
-            <option value="claude">Claude (agente · bypass)</option>
-            <option value="xai">xAI (grok-4)</option>
-            <option value="other" disabled>outro modelo escolhido acima</option>
-          </select>
-        </label>
-        <p id="fallback-order" class="hint"></p>
-        <p class="hint">O primário é quem gasta o orçamento da conta dele. Se ele falhar antes de responder, o backend desce para a reserva e a conversa recebe um aviso. A ordem vem do providers.json do backend.</p>
-      </details>
-
-      <details class="group" data-group="aparencia">
-        <summary>Aparência e avisos <span class="sum-hint">fonte, tema, notificações</span></summary>
-        <div class="row">
-          <label>
-            Tamanho da fonte
-            <input id="font-size" type="number" min="12" max="20" />
-          </label>
-          <label>
-            Tema
-            <select id="theme">
-              <option value="system">Sistema</option>
-              <option value="light">Claro</option>
-              <option value="dark">Escuro</option>
-            </select>
-          </label>
-        </div>
-        <!-- Zoom da janela (interface inteira, todas as janelas). Não passa pelo Salvar: cada botão aplica na hora. -->
-        <div class="row zoom-row">
-          <span class="zoom-label">Zoom da janela</span>
-          <button type="button" id="zoom-out" class="btn btn-ghost btn-small" title="Diminuir (Cmd+-)">−</button>
-          <span id="zoom-pct" class="zoom-pct">100%</span>
-          <button type="button" id="zoom-in" class="btn btn-ghost btn-small" title="Aumentar (Cmd+=)">+</button>
-          <button type="button" id="zoom-reset" class="btn btn-ghost btn-small" title="Tamanho real (Cmd+0)">Restaurar</button>
-        </div>
-        <p class="hint">Cmd+= / Cmd+- / Cmd+0 fora da página do Navegador mudam a janela toda; dentro dela mudam só o zoom daquele site.</p>
-        <!-- Notificação de teste (como no Rambox): confirma que o macOS deixa as do meu-bot passarem; na primeira, ele pede a permissão. -->
-        <div class="notify-test">
-          <button type="button" id="notify-test-btn" class="btn btn-ghost btn-small">Enviar uma notificação de teste</button>
-          <span class="hint">Confirme que o seu Mac deixa as do meu-bot passarem antes de depender delas.</span>
-          <p id="notify-test-q" class="notify-test-q" hidden>Você viu a notificação? <button type="button" id="notify-yes" class="btn btn-ghost btn-small">Sim</button> <button type="button" id="notify-no" class="btn btn-ghost btn-small">Não, abrir Ajustes do Sistema</button></p>
-        </div>
-        <label class="switch switch-row"><input id="notifications" type="checkbox" /><span class="track"></span><span class="switch-label">Avisar com notificação quando uma resposta terminar em segundo plano</span></label>
-      </details>
-
-      <details class="group" data-group="memoria">
-        <summary>Memória e contexto <span class="sum-hint">o que vai em toda mensagem</span></summary>
-        <div class="row">
-          <label>
-            Orçamento de contexto (tokens)
-            <input id="context-budget" type="number" min="4000" max="200000" step="1000" />
-          </label>
-          <label>
-            Extrair memória a cada N turnos (0 desliga)
-            <input id="memory-every" type="number" min="0" max="100" />
-          </label>
-        </div>
-        <p class="hint">Fatos permanentes enviados em toda mensagem. O app também preenche sozinho a cada N turnos.</p>
-        <label>
-          Perfil do usuário <span id="perfil-count" class="count"></span>
-          <textarea id="memory-perfil" rows="3" placeholder="- Nome, papel, preferências de resposta…"></textarea>
-        </label>
-        <label>
-          Notas <span id="notas-count" class="count"></span>
-          <textarea id="memory-notas" rows="5" placeholder="- Convenções, ambiente, decisões permanentes…"></textarea>
-        </label>
-      </details>
-
-      <details class="group" data-group="entrada-rapida">
-        <summary>Entrada rápida <span class="sum-hint">janela flutuante por atalho global</span></summary>
-        <label class="switch switch-row"><input id="quick-enabled" type="checkbox" /><span class="track"></span><span class="switch-label">Janela flutuante por atalho global</span></label>
-        <div class="row">
-          <label>
-            Atalho <span id="quick-status" class="count"></span>
-            <input id="quick-shortcut" type="text" autocomplete="off" placeholder="CommandOrControl+Shift+Space" />
-          </label>
-        </div>
-        <p class="hint">Clique no campo e pressione a combinação desejada (ex.: Cmd+Shift+Espaço). Backspace limpa. Se outro app já usa o atalho, o status mostra "em uso".</p>
-      </details>
-
-      <!-- Inicialização (do REA do Rambox): item de início do macOS; o sistema é a fonte da verdade. -->
-      <details class="group" data-group="inicio">
-        <summary>Inicialização <span class="sum-hint">abrir ao entrar no Mac</span></summary>
-        <label class="switch switch-row"><input id="open-at-login" type="checkbox" /><span class="track"></span><span class="switch-label">Abrir ao entrar no Mac</span></label>
-        <p id="open-at-login-hint" class="hint">O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina.</p>
-      </details>
-
-      <!-- Notificações das páginas do Navegador (do REA do Rambox): cada uma vira uma conversa com a instrução da pessoa. -->
-      <details class="group" data-group="nav-notify">
-        <summary>Notificações do Navegador <span class="sum-hint">viram conversas com o agente</span></summary>
-        <label class="switch switch-row"><input id="nav-notify-on" type="checkbox" /><span class="track"></span><span class="switch-label">Tratar as notificações dos sites abertos no Navegador</span></label>
-        <p class="hint">Com um site aberto numa aba do Navegador (Gmail, por exemplo), cada notificação dele vira uma mensagem numa conversa, com a instrução abaixo, e o agente responde. A notificação do Mac leva direto à conversa. O sino 🔔 na barra do Navegador liga ou desliga por site.</p>
-        <label>
-          O que fazer com cada notificação
-          <textarea id="nav-notify-instruction" rows="3" maxlength="2000" placeholder="Ex.: traduza para português e explique em termos simples o que significa e se preciso fazer algo."></textarea>
-        </label>
-        <div class="row">
-          <label>
-            Sites com o sino ligado
-            <input id="nav-notify-hosts" type="text" autocomplete="off" placeholder="mail.google.com, web.whatsapp.com" />
-          </label>
-          <label>
-            Conversa
-            <select id="nav-notify-mode">
-              <option value="site">uma por site (as notificações vão se acumulando)</option>
-              <option value="each">uma nova por notificação</option>
-            </select>
-          </label>
-          <label>
-            Avisar no Mac
-            <select id="nav-notify-when">
-              <option value="tratado">depois de o agente tratar, com a resposta dele</option>
-              <option value="chegada">assim que chegar, com o aviso do site</option>
-              <option value="nunca">nunca: só a conversa</option>
-            </select>
-          </label>
-        </div>
-      </details>
-
       <!-- Segurança (do REA do Rambox: aviso de login numa máquina nova). Só no meu-bot; a máquina avisa. -->
       <details class="group" data-group="seguranca" id="alerts-group">
         <summary>Segurança <span class="sum-hint">aviso quando um Mac novo usar o seu meu-bot</span></summary>
         <p class="hint">Quando um Mac que esta máquina nunca viu abrir o meu-bot dela, você é avisada. Fica também no registro do suporte.</p>
-        <label class="switch switch-row"><input id="alert-wa" type="checkbox" /><span class="track"></span><span class="switch-label">Avisar pelo meu WhatsApp (mensagem para o meu próprio número)</span></label>
+        <label class="switch switch-row"><input id="alert-wa" type="checkbox" checked disabled title="Por enquanto, sempre ligado" /><span class="track"></span><span class="switch-label">Avisar pelo meu WhatsApp (mensagem para o meu próprio número)</span></label>
         <p id="alerts-hint" class="hint"></p>
       </details>
 
@@ -470,8 +328,8 @@
           <button type="button" id="update-apply-2" class="btn btn-primary btn-small" hidden>Reiniciar e atualizar</button>
         </div>
         <!-- Como no Grok Bot: a versão pronta entra sozinha com o Mac ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. -->
-        <label class="switch switch-row"><input id="atualizar-ocioso" type="checkbox" /><span class="track"></span><span class="switch-label">Atualizar sozinho quando o Mac estiver ocioso (sem resposta nem terminal em andamento)</span></label>
-        <p class="hint">A versão nova é baixada e conferida em segundo plano; a troca também acontece ao fechar o app.</p>
+        <label class="switch switch-row"><input id="atualizar-ocioso" type="checkbox" checked disabled title="Por enquanto, sempre ligado" /><span class="track"></span><span class="switch-label">Atualizar sozinho quando o Mac estiver ocioso (sem resposta nem terminal em andamento)</span></label>
+        <p class="hint">A versão nova é baixada e conferida em segundo plano; a troca também acontece ao fechar o app. Por enquanto, sempre ligado.</p>
       </details>
 
       <!-- Suporte (só no meu-bot com o pacote de suporte, em máquina por SSH): liga sozinho; aqui o nome, "avisar o admin

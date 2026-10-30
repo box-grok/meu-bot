@@ -1,4 +1,4 @@
-import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavNotifyPref, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ContasClaudeView, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
+import type { FinanceInfo, ZoomAction, ZoomState, BrowserAgentState, BrowserExtensionInfo, NavFavorito, NavService, NavWorkspace, NavWorkspaces, CrmInfo, CrmDiag, CrmLocal, LicenseView, NetState, UpdateState, AccountStatus, ClaudeAuthInfo, ClaudeLoginEvent, ContasClaudeView, ObjectiveChoice, ObjectiveInfo, WaMarkPatch, WhatsappChat, WhatsappEvent, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage, WhatsappMenuAction, WhatsappGroup, WhatsappGroups, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappOrigin, WhatsappArchive, AudioSetup, VoiceReplyMode, VozId, SupportInfo, SupportShare, Capabilities, XaiKeyStatus, ToolEvent, BackendModel, BackendStatusEvent, ContextEvent, DoneEvent, ErrorEvent, ExportFormat, MemoryView, SettingsView, StoredConversationView, TabMenuAction, Theme, StatusLineSegments, ContaEstado, ContaEvento, ContaId , DonoInfo } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { byId as $, el } from "./lib/dom.js";
 import { deviceLine, licenseSummary } from "./lib/admin-view.js";
@@ -18,7 +18,6 @@ import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js";
-import { NavNotifyBudget, NavNotifyDedup, navNotifyAllowed, navNotifyMessage, navNotifyTitle, parseNotifyHosts, parsePageNotification, toggleNotifyHost, type PageNotification } from "./lib/nav-notify.js";
 import { FALLBACK_PRIMARIES, GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido, GUIDE_ACTION_LABEL, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_NOTE, REPLY_OPTIONS, TUTORIAIS, emptyFlags, fallbackOrderText, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { MODELOS_PIPELINE, etapasDoTexto, validarPipeline } from "./lib/crm-modelos.js";
@@ -50,13 +49,12 @@ import { TUT_GRUPOS, loadGrupoAlvo, refreshWaGroups, renderGruposEscolher, rende
 import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, renderWaQuote, waBubble, waChatPages, waCopy, waMsgKey, waSkeleton } from "./whatsapp/chat.js";
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
-import { PRIMARY_OF, ligarFallback, paintFallbackOrder, syncPrimaryFromModel } from "./configuracoes/fallback.js";
 import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
-import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, renderLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, renderLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderQuickAtalho, renderQuickTestar, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
 import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm, renderCrmConfig, renderCrmInstall, renderCrmPipeline, renderCrmPro, renderCrmTest } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
 import { paintFinanceLine, renderFinanceStep } from "./finance/financeiro-guia.js";
-import { NAV_TUTORIAL, disposeNav, ligarNavegador, navAccess, navCurrent, navCurrentHost, navDonoView, navEstavaAberto, navExtensions, navFavsShown, navMarcarAberto, navPage, navPartition, navServicosCount, navTabs, navZoomStep, openNavTab, origemNome, paintNav, renderNavNotifyConfig, renderNavNotifyTest, renderNavWsStep, toggleFavsBar } from "./navegador/navegador.js";
+import { NAV_TUTORIAL, disposeNav, ligarNavegador, navAccess, navCurrent, navCurrentHost, navDonoView, navEstavaAberto, navExtensions, navFavsShown, navMarcarAberto, navPage, navPartition, navServicosCount, navTabs, navZoomStep, openNavTab, origemNome, paintNav, toggleFavsBar } from "./navegador/navegador.js";
 import { cssVar, disposeTerminal, ligarTerminal, openTerminalTab, rethemeTerminals, runInTerminal, terminals, themeNow, xtermClass } from "./terminal/terminal.js";
 import type { XTermCtor } from "./terminal/terminal.js";
 import { askAgentAbout, cancelAutoSend, goToChatFromGuide } from "./conversa/ponte-chat.js";
@@ -83,14 +81,11 @@ const ctxImpl = {
   get appBuild() { return appBuild; },
   get appendMessage() { return appendMessage; },
   get applyCustomTitle() { return applyCustomTitle; },
-  get applyMemory() { return applyMemory; },
   get applySettings() { return applySettings; },
   get appVersion() { return appVersion; },
   get armConfirm() { return armConfirm; },
   get askAgentAbout() { return askAgentAbout; },
   get autoSend() { return autoSend; }, set autoSend(v) { autoSend = v; },
-  get backendModelSelect() { return backendModelSelect; },
-  get backendPortInput() { return backendPortInput; },
   get buildTab() { return buildTab; },
   get cacheDrop() { return cacheDrop; },
   get cacheRead() { return cacheRead; },
@@ -103,7 +98,6 @@ const ctxImpl = {
   get clGuide() { return clGuide; },
   get closePage() { return closePage; },
   get closePalette() { return closePalette; },
-  get contextBudgetInput() { return contextBudgetInput; },
   get copyReference() { return copyReference; },
   get crmAfterAgentKey() { return crmAfterAgentKey; },
   get crmKeyFromAgent() { return crmKeyFromAgent; }, set crmKeyFromAgent(v) { crmKeyFromAgent = v; },
@@ -124,7 +118,6 @@ const ctxImpl = {
   get firstReplyOnHost() { return firstReplyOnHost; },
   get flushRender() { return flushRender; },
   get fmtPhone() { return fmtPhone; },
-  get fontSizeInput() { return fontSizeInput; },
   get form() { return form; },
   get getListMode() { return getListMode; },
   get goToChatFromGuide() { return goToChatFromGuide; },
@@ -144,9 +137,6 @@ const ctxImpl = {
   get logoutXai() { return logoutXai; },
   get maybeAskNotificationsOnce() { return maybeAskNotificationsOnce; },
   get maybeNotify() { return maybeNotify; },
-  get memoryEveryInput() { return memoryEveryInput; },
-  get memoryNotas() { return memoryNotas; },
-  get memoryPerfil() { return memoryPerfil; },
   get motorCrm() { return motorCrm; },
   get NAV_TUTORIAL() { return NAV_TUTORIAL; },
   get navAccess() { return navAccess; },
@@ -160,18 +150,12 @@ const ctxImpl = {
   get navInstState() { return navInstState; },
   get navLicenseAsked() { return navLicenseAsked; },
   get navMarcarAberto() { return navMarcarAberto; },
-  get navNotifyHosts() { return navNotifyHosts; },
-  get navNotifyInstruction() { return navNotifyInstruction; },
-  get navNotifyMode() { return navNotifyMode; },
-  get navNotifyOn() { return navNotifyOn; },
-  get navNotifyWhen() { return navNotifyWhen; },
   get navPage() { return navPage; },
   get navPartition() { return navPartition; },
   get navServicosCount() { return navServicosCount; },
   get navTabs() { return navTabs; },
   get newBtn() { return newBtn; },
   get newTab() { return newTab; },
-  get notificationsInput() { return notificationsInput; },
   get objectiveBusy() { return objectiveBusy; },
   get objectiveDo() { return objectiveDo; },
   get objectiveDraft() { return objectiveDraft; }, set objectiveDraft(v) { objectiveDraft = v; },
@@ -180,7 +164,6 @@ const ctxImpl = {
   get offerClaudeLogin() { return offerClaudeLogin; },
   get offerSkillFromTurn() { return offerSkillFromTurn; },
   get onboardEvent() { return onboardEvent; },
-  get openAtLoginInput() { return openAtLoginInput; },
   get openFromIndex() { return openFromIndex; },
   get openGuide() { return openGuide; },
   get visibleNow() { return visibleNow; },
@@ -198,7 +181,6 @@ const ctxImpl = {
   get pageShown() { return pageShown; },
   get paintAcervoCount() { return paintAcervoCount; },
   get paintContext() { return paintContext; },
-  get paintFallbackOrder() { return paintFallbackOrder; },
   get paintFinanceLine() { return paintFinanceLine; },
   get paintGuide() { return paintGuide; },
   get paintGuideTargets() { return paintGuideTargets; },
@@ -218,9 +200,6 @@ const ctxImpl = {
   get patchIndex() { return patchIndex; },
   get perguntar() { return perguntar; },
   get prefersReducedMotion() { return prefersReducedMotion; },
-  get PRIMARY_OF() { return PRIMARY_OF; },
-  get quickEnabled() { return quickEnabled; },
-  get quickShortcut() { return quickShortcut; },
   get refreshClaudeLine() { return refreshClaudeLine; },
   get refreshContas() { return refreshContas; },
   get refreshLinkPublico() { return refreshLinkPublico; },
@@ -256,11 +235,10 @@ const ctxImpl = {
   get renderGruposTeste() { return renderGruposTeste; },
   get renderGuardaInstall() { return renderGuardaInstall; },
   get renderNavInstall() { return renderNavInstall; },
-  get renderNavNotifyConfig() { return renderNavNotifyConfig; },
-  get renderNavNotifyTest() { return renderNavNotifyTest; },
   get renderNavOpen() { return renderNavOpen; },
+  get renderQuickAtalho() { return renderQuickAtalho; },
+  get renderQuickTestar() { return renderQuickTestar; },
   get renderNavPro() { return renderNavPro; },
-  get renderNavWsStep() { return renderNavWsStep; },
   get renderObjectiveChoice() { return renderObjectiveChoice; },
   get renderObjectiveLevel() { return renderObjectiveLevel; },
   get renderObjectiveSkill() { return renderObjectiveSkill; },
@@ -308,12 +286,10 @@ const ctxImpl = {
   get supportState() { return supportState; }, set supportState(v) { supportState = v; },
   get svgIcon() { return svgIcon; },
   get syncComposer() { return syncComposer; },
-  get syncPrimaryFromModel() { return syncPrimaryFromModel; },
   get syncRest() { return syncRest; },
   get tabs() { return tabs; },
   get tabsEl() { return tabsEl; },
   get themeNow() { return themeNow; },
-  get themeSelect() { return themeSelect; },
   get toggleSidebar() { return toggleSidebar; },
   get toggleSplit() { return toggleSplit; },
   get TUT_GRUPOS() { return TUT_GRUPOS; },
@@ -398,32 +374,11 @@ let appVersion = "";
 let appBuild = "";
 let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", modulos: null, usuariosMac: false, addon: null, abreEm: null, addons: [] };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
-const backendModelSelect = $<HTMLSelectElement>("backend-model");
-const backendPortInput = $<HTMLInputElement>("backend-port");
-const fontSizeInput = $<HTMLInputElement>("font-size");
-const themeSelect = $<HTMLSelectElement>("theme");
 const settingsError = $<HTMLParagraphElement>("settings-error");
 const cancelBtn = $<HTMLButtonElement>("btn-cancel");
-const notificationsInput = $<HTMLInputElement>("notifications");
-const navNotifyOn = $<HTMLInputElement>("nav-notify-on");
-const navNotifyInstruction = $<HTMLTextAreaElement>("nav-notify-instruction");
-const navNotifyHosts = $<HTMLInputElement>("nav-notify-hosts");
-const navNotifyMode = $<HTMLSelectElement>("nav-notify-mode");
-const navNotifyWhen = $<HTMLSelectElement>("nav-notify-when");
-const openAtLoginInput = $<HTMLInputElement>("open-at-login");
-const openAtLoginHint = $<HTMLElement>("open-at-login-hint");
-const contextBudgetInput = $<HTMLInputElement>("context-budget");
-const memoryEveryInput = $<HTMLInputElement>("memory-every");
-const memoryPerfil = $<HTMLTextAreaElement>("memory-perfil");
-const memoryNotas = $<HTMLTextAreaElement>("memory-notas");
-const perfilCount = $<HTMLSpanElement>("perfil-count");
-const notasCount = $<HTMLSpanElement>("notas-count");
 const ctxLine = $<HTMLElement>("ctx-line");
 /** A janela terminou de abrir (abas restauradas e a fixada na frente): a status line pode aparecer. */
 let aberturaPronta = false;
-const quickEnabled = $<HTMLInputElement>("quick-enabled");
-const quickShortcut = $<HTMLInputElement>("quick-shortcut");
-const quickStatus = $<HTMLSpanElement>("quick-status");
 const sidebarEl = $<HTMLElement>("sidebar");
 const sidebarBtn = $<HTMLButtonElement>("btn-sidebar");
 const sidebarSearch = $<HTMLInputElement>("sidebar-search");
@@ -450,8 +405,6 @@ export interface Tab {
   modelEl: HTMLElement;
   /** Sites que o agente visitou pelo Navegador neste turno (para sugerir uma skill no fim). */
   navSitesTurn: Set<string>;
-  /** Notificação de site à espera do tratamento: o Mac avisa quando o agente responder, com a resposta. */
-  notifyAfter: { title: string } | null;
   /** Máquina (host SSH) desta conversa; fixa desde a criação. */
   host: string;
   dotEl: HTMLElement;
@@ -1110,7 +1063,6 @@ function showTextToast(name: string, desc: string): void {
  * Cmd+0 com o foco na página do Navegador (webview, barra de endereço, botões dela) continuam sendo o zoom do site;
  * em qualquer outro lugar são o zoom da janela. O menu Visualizar, a paleta e as Configurações são sempre da janela. */
 let zoomLevel = 0;
-const zoomPctEl = $<HTMLElement>("zoom-pct");
 /** O foco está na página do Navegador (webview ativa ou a barra dela)? Aí Cmd+=/-/0 são do site, não da janela. */
 function navHasFocus(): boolean {
   if (navPage === null || navPage.panel.hidden) return false;
@@ -1126,14 +1078,10 @@ function applyZoomState(st: ZoomState, announce: boolean): void {
   zoomLevel = st.level;
   document.documentElement.style.setProperty("--zoom-factor", String(st.factor));
   document.documentElement.dataset["zoom"] = String(st.level);
-  zoomPctEl.textContent = `${st.percent}%`;
   paintContext(active());
   if (announce && changed) showTextToast(`Zoom ${st.percent}%`, st.level === 0 ? "tamanho real" : "Cmd+0 volta a 100%");
 }
 window.meuBot.on("window:zoom-changed", (st) => applyZoomState(st, true));
-$<HTMLButtonElement>("zoom-in").addEventListener("click", () => zoomWindow({ action: "step", delta: 1 }));
-$<HTMLButtonElement>("zoom-out").addEventListener("click", () => zoomWindow({ action: "step", delta: -1 }));
-$<HTMLButtonElement>("zoom-reset").addEventListener("click", () => zoomWindow({ action: "reset" }));
 
 /* Janela estreita (em CSS px, então o zoom entra na conta): a lateral recolhe sozinha e volta quando cabe de novo, sem
  * mexer na preferência (localStorage). Cmd+B / ☰ nesse estado mostram a lateral por cima do conteúdo até o próximo
@@ -1183,11 +1131,6 @@ function toggleSidebar(force?: boolean): void {
 let paletteItems: PaletteItem[] = [];
 let paletteSelected = 0;
 const paletteActions = new Map<string, () => void | Promise<void>>();
-
-function focusSettingsField(id: string): void {
-  settingsBtn.click();
-  window.setTimeout(() => document.getElementById(id)?.focus(), 50);
-}
 
 function buildPaletteItems(): PaletteItem[] {
   paletteActions.clear();
@@ -1245,8 +1188,12 @@ function buildPaletteItems(): PaletteItem[] {
     }, () => openFromIndex(c.id));
   }
   add({ id: "a:new-window", kind: "action", label: "Nova janela em outra máquina", detail: "Cmd+Shift+N", keywords: ["janela", "máquina", "host", "ssh", "trocar"] }, () => { void window.meuBot.openPicker(); });
-  const settingsFields: [string, string][] = [["backend-model", "Modelo padrão nesta máquina"], ["backend-port", "Porta do backend"], ["font-size", "Tamanho da fonte"], ["theme", "Tema"], ["notifications", "Notificações"]];
-  for (const [id, label] of settingsFields) add({ id: `s:${id}`, kind: "setting", label, detail: "Configurações" }, () => focusSettingsField(id));
+  // Conexão saiu das Configurações (30 out): o modelo de cada conversa muda no seletor da caixa de texto e a porta é
+  // ajustada pelo seletor de máquinas; a informação continua à mão pela paleta.
+  if (settings !== null) {
+    const info = `Modelo padrão ${settings.backendModelForHost} · porta ${settings.backendPortForHost}`;
+    add({ id: "s:backend-info", kind: "setting", label: "Backend desta máquina", detail: info, keywords: ["modelo", "porta", "backend", "padrão", "conexão"] }, () => showTextToast(info, "O modelo de cada conversa muda no seletor da caixa de texto; a porta, no seletor de máquinas."));
+  }
   return items;
 }
 
@@ -1399,7 +1346,7 @@ function buildTab(conversationId: string, model: BackendModel, host: string, res
   messagesEl.addEventListener("scroll", () => { tab.followBottom = nearBottom(messagesEl); }, { passive: true });
   const tab: Tab = {
     id: conversationId, model, host, tabEl, titleEl, modelEl, dotEl, messagesEl, followBottom: true, currentAssistant: null,
-    pendingText: "", navSitesTurn: new Set(), notifyAfter: null, renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
+    pendingText: "", navSitesTurn: new Set(), renderTimer: null, busy: false, draft: "", titled: false, customTitle: false, context: null, lastTurn: null,
   };
   tabs.set(conversationId, tab);
   // Voltando do disco, na ordem salva; aberta agora, entra na frente (depois da fixada) e a ordem nova fica salva.
@@ -1502,22 +1449,7 @@ function applySettings(view: SettingsView): void {
   if (windowHost !== "" && caps.chat) document.title = `${caps.titulo} · ${hostLabel(windowHost)}`;
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
-  backendModelSelect.value = view.backendModelForHost;
-  backendPortInput.value = String(view.backendPortForHost);
-  fontSizeInput.value = String(view.fontSize);
-  themeSelect.value = view.theme;
-  notificationsInput.checked = view.notifications;
-  navNotifyOn.checked = view.navNotify.enabled; navNotifyInstruction.value = view.navNotify.instruction; navNotifyHosts.value = view.navNotify.hosts.join(", "); navNotifyMode.value = view.navNotify.mode; navNotifyWhen.value = view.navNotify.avisar;
-  contextBudgetInput.value = String(view.contextBudgetTokens);
-  memoryEveryInput.value = String(view.memoryEveryTurns);
-  quickEnabled.checked = view.quickEntryEnabled;
-  quickShortcut.value = view.quickEntryShortcut;
-  openAtLoginInput.checked = view.openAtLogin;
-  openAtLoginInput.disabled = !view.openAtLoginAvailable;
   atualizarOciosoInput.checked = view.atualizarOcioso;
-  openAtLoginHint.textContent = view.openAtLoginAvailable ? "O seletor de máquinas abre sozinho; as conversas e o WhatsApp continuam na máquina." : "Só no app instalado (em desenvolvimento não dá para registrar o item de início).";
-  quickStatus.textContent = view.quickEntryStatus === "registered" ? "ativo" : view.quickEntryStatus === "taken" ? "em uso por outro app" : view.quickEntryStatus === "invalid" ? "inválido" : "desligado";
-  document.documentElement.style.setProperty("--chat-font", `${view.fontSize}px`);
   applyZoomState({ level: view.zoomLevel, factor: Math.pow(1.2, view.zoomLevel), percent: Math.round(Math.pow(1.2, view.zoomLevel) * 100) }, false);
   document.documentElement.dataset["theme"] = view.theme;
   pintarFixada();
@@ -1798,36 +1730,10 @@ window.meuBot.on("chat:context", (c: ContextEvent) => {
   tab.context = { ...c, sent: c.sent === 0 && tab.context !== null ? tab.context.sent : c.sent };
   if (tab.id === activeId) paintContext(tab);
 });
-window.meuBot.on("memory:changed", (m: MemoryView) => {
-  applyMemory(m);
+// A memória não tem mais editor nas Configurações: o agente a preenche sozinho e a pessoa ajusta pelo chat.
+window.meuBot.on("memory:changed", (_m: MemoryView) => {
   const tab = active();
-  if (tab !== null) addNotice(tab, "Memória atualizada automaticamente (veja em Configurações > Memória).");
-});
-
-function applyMemory(m: MemoryView): void {
-  memoryPerfil.value = m.perfil;
-  memoryNotas.value = m.notas;
-  memoryPerfil.maxLength = m.limits.perfil;
-  memoryNotas.maxLength = m.limits.notas;
-  updateCounts(m.limits);
-}
-
-let memoryLimits = { notas: 2200, perfil: 1375 };
-function updateCounts(limits = memoryLimits): void {
-  memoryLimits = limits;
-  perfilCount.textContent = `${memoryPerfil.value.length}/${limits.perfil}`;
-  notasCount.textContent = `${memoryNotas.value.length}/${limits.notas}`;
-}
-// Gravador de atalho: a combinação pressionada vira o texto do campo.
-quickShortcut.addEventListener("keydown", (ev) => {
-  ev.preventDefault();
-  ev.stopPropagation();
-  if (ev.key === "Backspace") { quickShortcut.value = ""; return; }
-  if (["Meta", "Control", "Alt", "Shift"].includes(ev.key)) return;
-  const mods = [ev.metaKey || ev.ctrlKey ? "CommandOrControl" : null, ev.altKey ? "Alt" : null, ev.shiftKey ? "Shift" : null].filter((m): m is string => m !== null);
-  if (mods.length === 0) return;
-  const key = ev.key === " " ? "Space" : ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
-  quickShortcut.value = [...mods, key].join("+");
+  if (tab !== null) addNotice(tab, "Memória atualizada automaticamente.");
 });
 
 /** Texto vindo da entrada rápida: vai pra aba ativa (ou nova se ocupada) e confirma pro main. */
@@ -1838,6 +1744,9 @@ async function handleQuickSubmit(correlationId: string, text: string): Promise<v
     let tab = active();
     if (tab === null || tab.busy) tab = await newTab();
     window.meuBot.quickAck(correlationId, true);
+    // Tutorial 18: uma mensagem chegou pela janela flutuante; a flag lembra, senão o passo "desfaz" ao recarregar.
+    const tq = TUTORIAIS.find((x) => x.id === "entrada-rapida");
+    if (tq !== undefined && !loadGuideFlags(tq).quickUsado) { saveGuideFlag(tq, "quickUsado"); paintGuide(); }
     await sendText(tab, text);
   } catch (err) {
     window.meuBot.quickAck(correlationId, false, err instanceof Error ? err.message : String(err));
@@ -1847,9 +1756,6 @@ window.meuBot.on("ui:quick-submit", ({ correlationId, text }) => {
   if (!tabsReady) { pendingQuick.push({ correlationId, text }); return; }
   void handleQuickSubmit(correlationId, text);
 });
-
-memoryPerfil.addEventListener("input", () => updateCounts());
-memoryNotas.addEventListener("input", () => updateCounts());
 
 tabsEl.addEventListener("dragover", (ev) => {
   if (draggingId === null) return;
@@ -1928,7 +1834,6 @@ function burstNew(): void {
   }
 }
 newBtn.addEventListener("click", () => { burstNew(); void newTab(); });
-ligarFallback();
 
 /** Abre as Configurações (botão ou Cmd+,): sempre com as seções recolhidas e a memória recém-lida. */
 /**
@@ -2083,7 +1988,7 @@ void (async () => {
   }
   // O app cujo add-on é o financeiro mostra o botão sempre (sem licença, a página diz como liberar).
   if (caps.addon === "meu-bot-finance") paintFinanceLine();
-  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); paintFallbackOrder(); checkSessionThreshold(); paintGuide(); });
+  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); checkSessionThreshold(); paintGuide(); });
   void refreshStatusLine();
   void refreshWhatsapp();
   // O Navegador estava aberto quando o app fechou: volta sozinho, em segundo plano, com as abas de antes.

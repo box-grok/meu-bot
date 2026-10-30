@@ -160,9 +160,9 @@ O sshd da `agente-br` aceita senha (`PasswordAuthentication yes` em `/etc/ssh/ss
   chamava `paintPalette()`, que reconstrói a lista com `replaceChildren` (zera a rolagem) e dava
   `scrollIntoView`. Agora `selectPalette(i, scroll)` só troca `aria-selected`; a lista é reconstruída só
   ao abrir e ao digitar, e o `scrollIntoView` fica para o teclado.
-- Configurações em quatro seções recolhíveis (`<details class="group">`): Conexão, Aparência e avisos,
-  Memória e contexto, Entrada rápida. Acordeão: abrir uma recolhe as outras; nada é lembrado:
-  toda vez que as Configurações abrem, as quatro começam recolhidas.
+- Configurações em seções recolhíveis (`<details class="group">`): Conexão, Aparência e avisos, Entrada rápida
+  (Memória e contexto existiu até 30 out 2026; ver [navegador.md](navegador.md)). Acordeão: abrir uma recolhe as
+  outras; nada é lembrado: toda vez que as Configurações abrem, todas começam recolhidas.
 
 ## Grok Bot: Atualizar vs Redefinir, deep link e verificação do Tailscale SSH (15 out 2026)
 

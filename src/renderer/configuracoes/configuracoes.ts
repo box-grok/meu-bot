@@ -1,29 +1,18 @@
-import type { BackendModel, Theme } from "../../shared/ipc";
 import { licenseSummary, deviceLine } from "../lib/admin-view.js";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { parseNotifyHosts } from "../lib/nav-notify.js";
 import { ctx } from "../app/ctx.js";
 
 function openSettings(): void {
   if (ctx.dialog.open) return;
   ctx.paintSupport(); void ctx.refreshSupportState(); void loadAlertPrefs();
   void window.meuBot.updateState().then(ctx.paintUpdateState).catch(() => undefined);
-  ctx.syncPrimaryFromModel();
-  ctx.paintFallbackOrder();
   ctx.settingsError.hidden = true;
   for (const g of ctx.settingsGroups) g.open = false;
-  void window.meuBot.getMemory().then(ctx.applyMemory);
   ctx.dialog.showModal();
 }
 
-/* ---------- Notificação de teste (REA do Rambox) e pedido no momento certo ---------- */
-const notifyTestBtn = $<HTMLButtonElement>("notify-test-btn");
-const notifyTestQ = $<HTMLElement>("notify-test-q");
-function sendTestNotification(): void {
-  notifyTestQ.hidden = true;
-  void window.meuBot.notifyTest().then(() => { notifyTestQ.hidden = false; }).catch((err: unknown) => { ctx.settingsError.textContent = ipcErrorText(err); ctx.settingsError.hidden = false; });
-}
+/* ---------- Primeira notificação no momento certo (o botão "Enviar uma notificação de teste" saiu das Configurações em 30 out 2026) ---------- */
 /** Primeira notificação desta instalação no momento certo (WhatsApp pareado e testado): o macOS pede a permissão junto. */
 export function maybeAskNotificationsOnce(): void {
   if (!ctx.caps.chat || ctx.settings?.notifications !== true) return;
@@ -65,9 +54,10 @@ async function loadAlertPrefs(): Promise<void> {
   try {
     alertPrefsLoaded = await window.meuBot.alertPrefs();
     if (alertPrefsLoaded === null) { alertsHint.textContent = "A máquina ainda não tem o backend novo: reinstale o backend para ligar os avisos."; alertWa.disabled = true; return; }
-    alertWa.disabled = false;
-    alertWa.checked = alertPrefsLoaded.whatsapp;
-    alertsHint.textContent = "O aviso vai pelo seu próprio número, já pareado nesta máquina.";
+    // Por enquanto o aviso é sempre ligado (o interruptor fica travado): uma máquina que estava desligada liga de novo.
+    if (!alertPrefsLoaded.whatsapp) { const next = { whatsapp: true, email: alertPrefsLoaded.email }; await window.meuBot.setAlertPrefs(next); alertPrefsLoaded = next; }
+    alertWa.checked = true; alertWa.disabled = true;
+    alertsHint.textContent = "O aviso vai pelo seu próprio número, já pareado nesta máquina. Por enquanto, sempre ligado.";
   } catch (err) { alertsHint.textContent = `Não consegui ler: ${ipcErrorText(err)}`; }
 }
 async function saveAlertPrefs(): Promise<void> {
@@ -84,15 +74,11 @@ async function saveAlertPrefs(): Promise<void> {
 export function ligarConfiguracoes(): void {
   ctx.settingsBtn.addEventListener("click", () => openSettings());
   window.meuBot.on("ui:toggle-settings", () => { if (ctx.dialog.open) ctx.dialog.close(); else openSettings(); });
-  notifyTestBtn.addEventListener("click", sendTestNotification);
-  $<HTMLButtonElement>("notify-yes").addEventListener("click", () => { notifyTestQ.hidden = true; try { localStorage.setItem("notif:ok", "1"); } catch { /* opcional */ } });
-  $<HTMLButtonElement>("notify-no").addEventListener("click", () => { void window.meuBot.openExternal("x-apple.systempreferences:com.apple.Notifications-Settings.extension"); });
   window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = ctx.tabs.get(conversationId); if (tab !== undefined) { ctx.addNotice(tab, text, "warn"); ctx.offerClaudeLogin(tab, text); } });
   window.meuBot.on("chat:account", ({ host, status }) => {
     if (host !== ctx.windowHost) return;
     ctx.account = status;
     ctx.paintContext(ctx.active());
-    ctx.paintFallbackOrder();
     ctx.checkSessionThreshold();
     ctx.paintGuide(); // o passo "Ver os limites no rodapé" se marca quando a conta traz números
   });
@@ -101,25 +87,9 @@ export function ligarConfiguracoes(): void {
   ctx.form.addEventListener("submit", (ev) => {
     ev.preventDefault();
     ctx.settingsError.hidden = true;
-    const port = Number.parseInt(ctx.backendPortInput.value, 10);
-    const fontSize = Number.parseInt(ctx.fontSizeInput.value, 10);
-    const budget = Number.parseInt(ctx.contextBudgetInput.value, 10);
-    const every = Number.parseInt(ctx.memoryEveryInput.value, 10);
-    void window.meuBot.setMemory({ notas: ctx.memoryNotas.value, perfil: ctx.memoryPerfil.value }).then(ctx.applyMemory);
-    const update = {
-      backendModelForHost: ctx.backendModelSelect.value as BackendModel,
-      theme: ctx.themeSelect.value as Theme,
-      notifications: ctx.notificationsInput.checked,
-      navNotify: { enabled: ctx.navNotifyOn.checked, instruction: ctx.navNotifyInstruction.value, hosts: parseNotifyHosts(ctx.navNotifyHosts.value), mode: ctx.navNotifyMode.value === "each" ? "each" as const : "site" as const, avisar: ctx.navNotifyWhen.value === "chegada" ? "chegada" as const : ctx.navNotifyWhen.value === "nunca" ? "nunca" as const : "tratado" as const },
-      // Na janela de uma máquina a porta é só dela; na deste Mac (sem túnel) o campo edita a padrão das demais.
-      ...(Number.isInteger(port) ? (ctx.windowHost === "local" ? { backendPort: port } : { backendPortForHost: port }) : {}),
-      ...(Number.isInteger(fontSize) ? { fontSize } : {}),
-      ...(Number.isInteger(budget) ? { contextBudgetTokens: budget } : {}),
-      ...(Number.isInteger(every) ? { memoryEveryTurns: every } : {}),
-      quickEntryEnabled: ctx.quickEnabled.checked,
-      ...(ctx.quickShortcut.value.trim() === "" ? {} : { quickEntryShortcut: ctx.quickShortcut.value.trim() }),
-      ...(ctx.openAtLoginInput.disabled ? {} : { openAtLogin: ctx.openAtLoginInput.checked }),
-    };
+    // Conexão, Aparência, Entrada rápida e Inicialização saíram daqui (30 out): o modelo muda no seletor da caixa de
+    // texto, o zoom pelo menu Visualizar, o atalho da entrada rápida no tutorial 18. Salvar só confirma o que ficou.
+    const update = {};
     void saveAlertPrefs();
     window.meuBot.setSettings(update).then(
       (view) => {

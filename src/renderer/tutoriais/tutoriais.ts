@@ -294,6 +294,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         }
       } else if (step.body === "audio-ouvir") {
         ctx.renderAudioControls(txt, "ouvir");
+      } else if (step.body === "quick-atalho") {
+        ctx.renderQuickAtalho(txt);
+      } else if (step.body === "quick-testar") {
+        ctx.renderQuickTestar(txt);
       } else if (step.body === "statusline-install") {
         ctx.renderStatusLineInstall(txt);
       } else if (step.body === "guarda-install") {
@@ -318,12 +322,6 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         ctx.renderCrmPipeline(txt);
       } else if (step.body === "crm-importar") {
         txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada."));
-      } else if (step.body === "nav-ws") {
-        ctx.renderNavWsStep(txt);
-      } else if (step.body === "nav-notify-config") {
-        ctx.renderNavNotifyConfig(txt);
-      } else if (step.body === "nav-notify-test") {
-        ctx.renderNavNotifyTest(txt);
       } else if (step.body === "statusline-segments") {
         ctx.renderStatusLineSegments(txt);
       } else if (step.body === "statusline-test") {
@@ -539,8 +537,6 @@ export async function resetTutorial(t: Tutorial): Promise<void> {
       await ctx.logoutClaude(false);
     } else if (t.id === "xai-login") {
       if (ctx.xaiAuth?.loggedIn === true) await ctx.logoutXai(false);
-    } else if (t.id === "notificacoes-navegador") {
-      ctx.applySettings(await window.meuBot.setSettings({ navNotify: { enabled: false } }));
     } else if (t.id === "whatsapp-objetivo") {
       ctx.objectiveState = await window.meuBot.resetObjective(); ctx.objectiveDraft = null; ctx.objectiveMsg = null; ctx.paintAcervoCount();
     }

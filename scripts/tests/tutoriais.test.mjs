@@ -25,8 +25,8 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
   // O 10 existe em duas versões, pela licença/motor (CRM no Gmail com o CRM próprio; CRM pelo Streak no resto): nunca juntas.
   // O 15 (Mais contas do Claude) fica logo depois do 1 na trilha: desmembrado dele, pulável; o número é só o rótulo.
   // O 16 (Ouvir áudios) fica logo depois do 2, pelo mesmo motivo: era o passo de áudio dele.
-  // O 17 (Seu link público) fecha a trilha: depende só do 1 e do admin ter ligado o link.
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 17]);
+  // O 17 (Seu link público) e o 18 (Entrada rápida, que saiu das Configurações) fecham a trilha: dependem só do 1.
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 15, 2, 16, 3, 4, 5, 6, 7, 8, 9, 10, 10, 12, 13, 14, 17, 18]);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
     assert.deepEqual(nums, [...new Set(nums)], `números únicos no produto ${JSON.stringify(produto)}`);
@@ -40,7 +40,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
 test("visibleTutorials: 3 e 4 só depois do 1 concluído; 5 só depois do 4; sem pré-requisito, some em vez de ir para arquivados", () => {
   const ids = (finished) => visibleTutorials(emptyContext(), finished).map((x) => x.id);
   assert.deepEqual(ids(() => false), ["claude-login", "whatsapp-openclaw", "whatsapp-objetivo"]);
-  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli", "link-publico"], "o 3 (status line) está oculto: o admin instala ao criar a conta");
+  assert.deepEqual(ids((x) => x.id === "claude-login"), ["claude-login", "contas-claude", "whatsapp-openclaw", "xai-login", "whatsapp-objetivo", "navegador", "contas-cli", "link-publico", "entrada-rapida"], "o 3 (status line) está oculto: o admin instala ao criar a conta");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-whatsapp"), "o 10 (CRM pelo Streak) está oculto, mesmo depois do 9 (Navegador)");
   assert.ok(!ids((x) => x.id === "claude-login" || x.id === "navegador").includes("crm-gmail"), "o CRM no Gmail só com o CRM próprio liberado pela licença");
   const crm = { ...emptyContext(), produto: { planoExigido: "free", crmProprio: true, crmStreak: false } };

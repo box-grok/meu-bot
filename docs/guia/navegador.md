@@ -19,28 +19,17 @@
   (🧩, Web Store na aba, `browser:extensions`) continua. O CRM passa a vir depois do Navegador (9) e vira o
   10 (a trilha exige números contínuos 1..N).
 
-## Notificações do Navegador viram conversas (19 out 2026) · REA do Rambox
+## Notificações do Navegador removidas (30 out 2026)
 
-- **O que o Rambox faz** (app.asar 3.1.1, `.vite/build/injected.js`, lido com `@electron/asar` numa pasta
-  isolada): injeta na página um substituto de `window.Notification`: classe cujo construtor normaliza as opções
-  (ícone vira data URL por `fetch`, senão o logo do serviço) e chama `window.rambox.sendNotificationToApp({title,
-  options})` (ponte do preload); `Notification.permission = "granted"` e `requestPermission` resolve "granted"
-  (callback e promessa); o objeto devolvido tem `addEventListener`/`close` inertes (`close` avisa o app). O main
-  mostra a notificação nativa e o clique foca o serviço. A sessão também libera a permissão "notifications".
-- **No meu-bot** (só no Navegador, logo só Pro): `nav-notify-preload.ts` (preload de frame da partição, só http(s))
-  expõe `window.meuBotNav.notify` → `ipcRenderer.sendToHost("nav:notification")`; o renderer injeta `NAV_NOTIFY_JS`
-  em `dom-ready`/`did-finish-load` (substituto de `Notification`, idempotente) e trata o `ipc-message` do
-  <webview>: `parsePageNotification` → filtro de sites → dedup 60 s → conversa "🔔 <site>" (uma por site, ou uma por
-  notificação) sem roubar a aba ativa → `sendText` com a instrução das Configurações + título/corpo/url →
-  `ui:notify` (clique leva à conversa) **quando** a pessoa escolheu (`avisar`: "tratado" = depois de o agente
-  responder, com a resposta, o padrão; "chegada" = na hora, com o aviso do site; "nunca"). A permissão do
-  Chromium continua negada: só o substituto age.
-- **Configurações › "Notificações do Navegador"**: ligado/desligado, a instrução (padrão: traduzir e explicar para
-  leigo em até cinco linhas), os sites com o sino ligado (vazio = nenhum; o 🔔/🔕 na barra do Navegador liga e
-  desliga por site, e ligar no tutorial sem sites marca os fixos do espaço ativo) e o modo da conversa. O 📌 da
-  barra saiu (fixar é por "＋ Adicionar site", que já vem com a URL aberta). `navNotify` no settings.json
-  (`normalizeNavNotify`, patch parcial). Puro e testado: `lib/nav-notify.ts`.
-- Pré-requisito: o site aberto numa aba do Navegador (a aba fica aberta enquanto a página Navegador existe).
+- A função "Notificações do Navegador viram conversas" (19 out) saiu inteira por decisão de produto: o sino 🔔 da
+  barra, o grupo nas Configurações, `navNotify` no settings.json (chave antiga é ignorada), `nav-notify-preload.ts`,
+  `lib/nav-notify.ts`, o substituto de `window.Notification` injetado nas abas e o tutorial 11 (já estava oculto
+  desde 27 out; o 12 segue sendo 12). As notificações das páginas voltam a ser negadas pelo Chromium, como antes.
+- No mesmo dia saíram das Configurações o campo "Tamanho da fonte" (o zoom da janela cobre) e o grupo "Memória e
+  contexto": a memória continua sendo extraída a cada N turnos (padrões 24000 tokens / 10 turnos) e a pessoa a
+  ajusta pelo chat; só o editor manual sumiu. Também saíram o grupo "Fallback" (o seletor do primário vive no
+  tutorial 5, `renderFallbackOrder`; `configuracoes/fallback.ts` apagado), o botão "Enviar uma notificação de teste"
+  (`maybeAskNotificationsOnce` continua) e a dica de texto dos atalhos de zoom.
 
 ## Espaços de trabalho do Navegador (19 out 2026) · REA do Rambox
 
@@ -55,15 +44,7 @@
   dá; a escolha por tipo existiu por umas horas e saiu em 19/10), seletor do espaço (com o grupo "Ocultos": escolher um traz de volta), ＋ (novo), ⋯ (renomear/ocultar/remover; ocultar
   fecha as abas fixas dele e não apaga nada), lista dos sites fixos, "＋ Adicionar site"; 📌 na barra fixa a
   aba aberta. Abas fixas (`NavTab.serviceId`) nascem com o Navegador (`navMountWorkspace`), sem ✕ na tira; as de
-  outros espaços ficam vivas (notificações) mas fora da tira (`navVisibleTabs`).
-- **Tutorial 11 · Notificações do Navegador (Pro)**, visível sempre (sem `after`; o Pro é o passo 1): fixar o site; decidir a ação (a função nasce
-  **desligada**; o passo liga com instrução/sites/modo ou "Pular esta etapa"); ver a conversa "🔔" aparecer
-  (automático quando ela existe, ou "Vi a conversa aparecer"; "Testar agora com o que está na caixa" manda o
-  agente abrir o site fixo no Navegador e aplicar a instrução só ao item não lido mais recente). "Refazer do
-  zero" desliga.
-- **Cuidados de volume** (`onPageNotification`): 10 s de aquecimento depois de a página carregar (sites que avisam
-  o que já estava na caixa de entrada não disparam nada); `NavNotifyBudget` 3 por minuto por site, e o próximo
-  aviso tratado diz quantas ficaram de fora; dedup de 60 s; só notificações novas, nunca o histórico.
+  outros espaços ficam vivas mas fora da tira (`navVisibleTabs`).
 
 ## Balão "guardar numa skill" depois de o agente navegar (19 out 2026)
 

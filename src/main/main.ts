@@ -8,7 +8,7 @@ import { onVersaoMinima } from "./maquina/backend";
 import { LOCAL_HOST } from "./maquina/localBackend";
 import { closeTunnel, ehSemBackend, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./maquina/tunnel";
 import { loadConversations } from "./conversa/conversation";
-import { getFontSize, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
+import { getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./app/quickEntry";
 import { loadMemory } from "./conversa/memory";
 import { appVariant, caps, produto, userDataName } from "./app/variant";
@@ -105,7 +105,6 @@ app.whenReady().then(() => {
     setQuickEntryStatusProvider(quickEntryStatus);
     initQuickEntry({
       mainWindow: () => lastFocusedWindow() ?? openMainWindow(getLastFocusedHost() ?? getLastHost() ?? LOCAL_HOST, "quick"),
-      fontSize: getFontSize,
       hostLabel: (win) => { const h = hostOfWindow(win) ?? "?"; return h === LOCAL_HOST ? "este Mac" : h; },
     });
     const qe = getQuickEntry();

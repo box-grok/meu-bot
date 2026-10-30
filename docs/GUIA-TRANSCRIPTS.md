@@ -66,7 +66,7 @@ Cada conversa: `id`, `title` (só existe se foi renomeada), `model`, `host`, `me
 ```bash
 cd ~/Library/Application\ Support/meu-bot
 jq -r '.conversations[] | "\(.createdAt)  \(.host)  \(.title // "(sem título)")"' conversations.json
-jq '{onboarding, lastHost, backendModel, theme, fontSize, backendPort}' settings.json
+jq '{onboarding, lastHost, backendModel, theme, zoomLevel, backendPort}' settings.json
 ```
 
 `onboarding`: `pending` (força na próxima janela), `done` ou `skipped`. Quais seções das Configurações abrem e se a barra lateral aparece **não** ficam em arquivo (localStorage da janela).

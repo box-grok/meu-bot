@@ -6,8 +6,6 @@
  * leva à conversa. `hosts` vazio = todo site; `mode` "site" = uma conversa por site, "each" = uma por notificação.
  */
 /** Quando o Mac avisa: "tratado" = depois de o agente responder, com a resposta; "chegada" = na hora, com o aviso do site; "nunca" = só a conversa. */
-export type NavNotifyWhen = "tratado" | "chegada" | "nunca";
-export interface NavNotifyPref { enabled: boolean; instruction: string; hosts: string[]; mode: "site" | "each"; avisar: NavNotifyWhen }
 
 /** Aba "Navegador" (módulo Pro): a sessão da máquina (partição dos `<webview>`) e as extensões instaladas nela. */
 /** `icon` = data URL do ícone (para o botão na barra, como no Chrome/Rambox); `popup` = url chrome-extension:// do popup, se houver. */

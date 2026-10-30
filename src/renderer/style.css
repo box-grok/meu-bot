@@ -767,7 +767,6 @@ body.topbar-hidden .topbar { display: none; }
 .nav-service:hover .nav-service-x { opacity: 1; }
 .nav-service-x:hover { color: var(--bad); }
 .nav-rail-add { align-self: flex-start; }
-.nav-bell.on { color: var(--accent); }
 .nav-pin { opacity: .45; filter: grayscale(1); }
 .nav-bar .nav-agent { font-size: 15px; opacity: .45; filter: grayscale(1); border-radius: 8px; }
 .nav-bar .nav-agent.on { opacity: 1; filter: none; box-shadow: 0 0 0 1px var(--ok) inset; }
@@ -785,7 +784,6 @@ body.topbar-hidden .topbar { display: none; }
 .nav-zoom[hidden] { display: none; }
 .skill-offer { display: flex; flex-direction: column; gap: 8px; }
 .skill-offer-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.nav-bell[hidden] { display: none; }
 .nav-rail-titlerow { justify-content: space-between; flex-wrap: nowrap; }
 .nav-rail-collapse { font-size: 13px; color: var(--muted); }
 .nav-rail-collapse:hover { color: var(--accent); }
@@ -898,8 +896,6 @@ body.topbar-hidden .topbar { display: none; }
 .update-line.ok { color: var(--ok); }
 .update-line.warn { color: var(--warn); }
 .update-line.bad { color: var(--bad); }
-.notify-test { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
-.notify-test-q { margin: 0; font-size: 12px; }
 .update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px; font-size: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-bottom: 1px solid var(--line); }
 .update-bar[hidden] { display: none; }
 /* Bloqueador de versão mínima: cobre a janela inteira até o app reiniciar na versão que o backend exige. */
