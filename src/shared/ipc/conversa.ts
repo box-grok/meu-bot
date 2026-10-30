@@ -43,6 +43,8 @@ export interface ErrorEvent {
   conversationId: string;
   kind: ErrorKind;
   message: string;
+  /** Código que o backend da máquina mandou (model_limit, conta_limite, auth…), quando mandou. */
+  code?: string;
 }
 
 export interface ConversationRef {

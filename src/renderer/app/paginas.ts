@@ -358,6 +358,8 @@ export async function restoreSplit(): Promise<void> {
       else if (id === "atividade") splitOn(ctx.activityPage());
       else if (id === "tutoriais") { openPage(ctx.tutoriaisPage); splitOn(ctx.tutoriaisPage); }
       else if (id === "acervo") { openPage(ctx.acervoPage); splitOn(ctx.acervoPage); }
+      // Páginas montadas na abertura (Computador, Conta Google): já estão registradas; elas mesmas conferem o plano.
+      else if (id === "computador" || id === "conta-google") { const p = pages.get(id); if (p !== undefined) { openPage(p); splitOn(p); } }
       else if (id.startsWith("tut-")) { const t = TUTORIAIS.find((x) => `tut-${x.id}` === id); if (t !== undefined) { ctx.openGuide(t); const g = pages.get(id); if (g !== undefined) splitOn(g); } }
     } catch { /* essa página não abriu: segue com as outras */ }
   }

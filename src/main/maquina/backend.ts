@@ -282,9 +282,11 @@ export async function chatCompletion(host: string, model: BackendModel, messages
   try { data = JSON.parse(res.body) as ChatCompletion; } catch { data = {}; }
   if (res.status < 200 || res.status >= 300) {
     const msg = data.error?.message ?? `HTTP ${res.status}`;
-    if (res.status === 401) throw new Error(`Backend recusou a chave: ${msg}`);
-    if (res.status === 503) throw new Error(`Backend indisponível: ${msg}`);
-    throw new Error(`Backend respondeu ${res.status}: ${msg}`);
+    // O `code` do backend (model_limit, conta_limite, auth…) segue junto: a tela explica o motivo em vez do texto cru.
+    const comCodigo = (e: Error): Error => Object.assign(e, { backendCode: typeof data.error?.code === "string" ? data.error.code : undefined });
+    if (res.status === 401) throw comCodigo(new Error(`Backend recusou a chave: ${msg}`));
+    if (res.status === 503) throw comCodigo(new Error(`Backend indisponível: ${msg}`));
+    throw comCodigo(new Error(`Backend respondeu ${res.status}: ${msg}`));
   }
   return { text: data.choices?.[0]?.message?.content ?? "", finishReason: data.choices?.[0]?.finish_reason ?? "stop", streamed: false, resumed, provider };
 }
@@ -586,7 +588,8 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     const message = offline ? offlineMessage("chat") : describeFetchError(err, model);
     if (isConnectionError(err)) markDegraded(host, errCode(err));
     out.send("backend:status", { host, state: "error", detail: offline ? "sem internet" : message });
-    if (!cancelled()) out.send("chat:error", { conversationId, kind: "backend", message });
+    const backendCode = (err as { backendCode?: unknown } | null)?.backendCode;
+    if (!cancelled()) out.send("chat:error", { conversationId, kind: "backend", message, ...(typeof backendCode === "string" ? { code: backendCode } : {}) });
   } finally {
     delete conv.abort;
     if (conv.pendingNote !== undefined && conv.backendMessages.includes(userMsg)) { delete conv.pendingNote; persistConversations(); }
