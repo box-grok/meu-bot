@@ -1606,19 +1606,30 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   const active: HTMLElement[] = [];
   const archived: HTMLElement[] = [];
   const pulados = loadTutPulados();
-  // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela.
+  // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela. "Pular" grava
+  // onboarding = "skipped" (o mesmo que o botão do próprio tour): vai para Arquivados, de onde "Começar" o inicia (30 out).
   {
     const done = tourDone();
-    const card = el("article", `tut-card${done ? " finished archived" : ""}`);
+    const pulado = !done && settings?.onboarding === "skipped";
+    const card = el("article", `tut-card${done ? " finished archived" : ""}${pulado ? " archived" : ""}`);
     const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS.tour;
     const body = el("div", "tut-body");
     const n = ONBOARD_STEPS.length;
-    body.append(el("span", "tut-badge", done ? "Concluído" : `Comece por aqui · ${n} passos · ${TOUR_CARD.minutes} min`), el("h3", "", TOUR_CARD.title), el("p", "", TOUR_CARD.summary));
+    body.append(el("span", "tut-badge", done ? "Concluído" : pulado ? "Pulado" : `Comece por aqui · ${n} passos · ${TOUR_CARD.minutes} min`), el("h3", "", TOUR_CARD.title), el("p", "", TOUR_CARD.summary));
     const start = el("button", "btn tut-start", done ? "Rever" : "Começar"); start.type = "button";
     start.addEventListener("click", () => { tutNext = false; closePage(tutoriaisPage); void restartTour(); });
-    const head = el("div", "tut-head"); head.append(icon, body, start);
+    const head = el("div", "tut-head"); head.append(icon, body);
+    if (!done && !pulado) {
+      const skip = el("button", "btn btn-ghost btn-small tut-skip", "Pular"); skip.type = "button";
+      skip.title = "Tira o tour da lista (fica em Arquivados; nada muda na máquina)";
+      skip.addEventListener("click", () => {
+        void window.meuBot.setSettings({ onboarding: "skipped" }).then((v) => { applySettings(v); reportProgress(); tutoriaisPage.render(); }).catch(() => undefined);
+      });
+      head.append(skip);
+    }
+    head.append(start);
     card.append(head);
-    (done ? archived : active).push(card);
+    (done || pulado ? archived : active).push(card);
   }
   for (const t of vis) {
     const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
