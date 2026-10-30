@@ -3,6 +3,7 @@ import { TUTORIAIS } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
 import { backendStatusVisto, offerBackendInstall } from "./backend-falta.js";
+import { avisoLimiteNoChat } from "../lib/contas-claude.js";
 
 export async function sendText(tab: Tab, raw: string): Promise<void> {
   const text = raw.trim();
@@ -97,7 +98,8 @@ export function ligarEnvio(): void {
     ctx.setSendPhase(tab, null);
     if (tab.renderTimer !== null) { clearTimeout(tab.renderTimer); ctx.flushRender(tab); }
     if (tab.currentAssistant !== null && tab.pendingText === "") tab.currentAssistant.remove();
-    ctx.addNotice(tab, e.message, "error");
+    const limite = avisoLimiteNoChat(e.code);
+    ctx.addNotice(tab, limite !== null ? `${limite.title}. ${limite.text}` : e.message, limite !== null ? "warn" : "error");
     ctx.offerClaudeLogin(tab, e.message);
     offerBackendInstall(tab, e.message);
     markUnread(tab);

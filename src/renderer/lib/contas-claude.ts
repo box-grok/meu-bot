@@ -42,3 +42,15 @@ export function avisoSemConta(view: ContasClaudeView): string | null {
 
 /** Nome exibido: o rótulo e, quando há, o e-mail. */
 export const nomeConta = (c: ContaClaude): string => (c.email !== null && !c.rotulo.includes(c.email) ? `${c.rotulo} · ${c.email}` : c.rotulo);
+
+/**
+ * Erro do chat por limite de uso (o backend já tentou todas as contas e o reserva): o motivo em português e o que
+ * fazer, no lugar de "Backend indisponível: You've hit your limit". null = não é limite (fica o aviso de sempre).
+ */
+export function avisoLimiteNoChat(code: string | undefined): { title: string; text: string } | null {
+  if (code !== "model_limit" && code !== "conta_limite") return null;
+  return {
+    title: "As contas do Claude desta máquina chegaram no limite de uso",
+    text: "Não é falha do meu-bot nem da máquina: o Claude limita o uso por conta e o reserva também esgotou. Dá para esperar a volta do limite, entrar com outra conta do Claude (tutorial 1, «Contas do Claude nesta máquina») ou pedir ao admin uma conta a mais.",
+  };
+}

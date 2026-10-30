@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { avisoSemConta, estadoTexto, nomeConta, usoTexto } from "../../dist/renderer/lib/contas-claude.js";
+import { avisoLimiteNoChat, avisoSemConta, estadoTexto, nomeConta, usoTexto } from "../../dist/renderer/lib/contas-claude.js";
 
 const NOW = 1_800_000_000_000;
 const conta = (over = {}) => ({ id: "c-00000001", rotulo: "Conta 2", email: "b@x.y", padrao: false, home: "/h", ordem: 1, ativa: true, logada: true, uso: { sessao: { pct: 42, resets: NOW / 1000 + 4800 }, semanal: { pct: 10, resets: NOW / 1000 + 3 * 86400 + 7200 }, estado: "ok", motivo: null, ate: null, vistoEm: null }, ...over });
@@ -35,4 +35,12 @@ test("eventoTexto: quando · origem · de → para (motivo); sem conta livre e o
   const t = eventoTexto({ em: NOW / 1000, origem: "whatsapp", de: "Segunda", para: "Login padrão", motivo: "limite de uso", resets: null });
   assert.match(t, /^\d\d\/\d\d \d\d:\d\d · WhatsApp · Segunda → Login padrão \(limite de uso\)$/);
   assert.match(eventoTexto({ em: NOW / 1000, origem: "terminal", de: "A", para: null, motivo: "", resets: null }), /Terminal · A → nenhuma conta livre$/);
+});
+
+test("avisoLimiteNoChat: limite de uso vira o motivo em português; outros erros ficam como estão", () => {
+  for (const code of ["model_limit", "conta_limite"]) {
+    const a = avisoLimiteNoChat(code);
+    assert.match(a.title, /limite de uso/); assert.match(a.text, /Não é falha do meu-bot/);
+  }
+  for (const code of [undefined, "auth", "cli_failed", "device_pending"]) assert.equal(avisoLimiteNoChat(code), null, String(code));
 });

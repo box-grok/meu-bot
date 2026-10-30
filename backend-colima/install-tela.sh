@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # Instala a tela do bot (painel "Computador" do meu-bot) nesta máquina: pacotes (Debian/Ubuntu, via sudo sem senha),
-# tela.sh em ~/.local/share/meu-bot/tela e o serviço de usuário meu-bot-tela (sem iniciar: quem acorda é o app).
+# tela.sh em ~/.local/share/meu-bot/tela, o serviço de usuário meu-bot-tela (sem iniciar: quem acorda é o app) e,
+# para o agente usar a mesma tela, o comando `tela` (~/.local/bin) e a skill computador-do-bot.
 # Idempotente. Escolhe display e portas livres uma vez (tela.env) para não brigar com outros usuários da máquina.
 # Saídas: 0 ok · 2 sem apt (distro não suportada) · 3 faltam pacotes e não há sudo sem senha.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 [ -f "$HERE/tela/tela.sh" ] || { echo "a pasta tela/ não está ao lado deste script"; exit 1; }
-PKGS="xvfb x11-utils openbox x11vnc novnc python3-websockify"
+PKGS="xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot"
 falta=""
-for b in Xvfb xdpyinfo openbox x11vnc websockify; do command -v "$b" >/dev/null 2>&1 || falta="$falta $b"; done
+for b in Xvfb xdpyinfo openbox x11vnc websockify xdotool scrot; do command -v "$b" >/dev/null 2>&1 || falta="$falta $b"; done
 [ -f /usr/share/novnc/vnc.html ] || falta="$falta novnc"
 if [ -n "$falta" ]; then
   command -v apt-get >/dev/null 2>&1 || { echo "esta máquina não usa apt; instale à mão:$falta"; exit 2; }
@@ -19,7 +20,11 @@ if [ -n "$falta" ]; then
 fi
 D=$HOME/.local/share/meu-bot
 mkdir -p "$D/tela"; chmod 700 "$D"
-cp "$HERE/tela/tela.sh" "$D/tela/"; chmod 755 "$D/tela/tela.sh"
+cp "$HERE/tela/tela.sh" "$HERE/tela/tela-agente.sh" "$D/tela/"; chmod 755 "$D/tela/tela.sh" "$D/tela/tela-agente.sh"
+# O agente usa a mesma tela: comando `tela` no PATH e a skill computador-do-bot (regravada a cada instalação).
+mkdir -p "$HOME/.local/bin"; ln -sf "$D/tela/tela-agente.sh" "$HOME/.local/bin/tela"
+K=$HOME/.claude/skills/computador-do-bot; mkdir -p "$K"; cp "$HERE/tela/skill/SKILL.md" "$K/"
+echo "comando tela e skill computador-do-bot prontos para o agente"
 livre() { python3 - "$1" <<'PY'
 import socket, sys
 p = int(sys.argv[1])

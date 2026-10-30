@@ -5,7 +5,7 @@
  *
  * Usa ssh/scp avulsos (ControlMaster=no, sem o mux do túnel) para não interferir no túnel ativo.
  */
-import { BUNDLE_FILES, CLAUDE_GLOBAL_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES, TELA_FILES, TELA_PLUGIN_FILES } from "./backend-bundle-core";
+import { BUNDLE_FILES, CLAUDE_GLOBAL_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES, TELA_FILES, TELA_PLUGIN_FILES, TELA_SKILL_FILES } from "./backend-bundle-core";
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
 import { isVozId } from "../whatsapp/vozes-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
@@ -589,11 +589,12 @@ export async function installTela(host: string, onLine?: (line: string) => void)
   const say = (l: string): void => { lines.push(l); onLine?.(l); };
   const dir = backendBundleDir();
   say(`enviando a tela para ${host}:${stageDe("tela")}…`);
-  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("tela")}; mkdir -p ${stageDe("tela")}/tela`], 20_000);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("tela")}; mkdir -p ${stageDe("tela")}/tela/skill`], 20_000);
   if (mk.code !== 0) return { ok: false, codigo: mk.code, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
   const scp1 = await run("scp", ["-q", ...sshBase(host), "--", ...TELA_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("tela")}/`], 60_000);
   const scp2 = scp1.code !== 0 ? scp1 : await run("scp", ["-q", ...sshBase(host), "--", ...TELA_PLUGIN_FILES.map((f) => path.join(dir, "tela", f)), `${host}:${stageDe("tela")}/tela/`], 60_000);
-  if (scp2.code !== 0) return { ok: false, codigo: scp2.code, log: [...lines, `scp falhou: ${lastLine(scp2.stderr)}`] };
+  const scp3 = scp2.code !== 0 ? scp2 : await run("scp", ["-q", ...sshBase(host), "--", ...TELA_SKILL_FILES.map((f) => path.join(dir, "tela", "skill", f)), `${host}:${stageDe("tela")}/tela/skill/`], 60_000);
+  if (scp3.code !== 0) return { ok: false, codigo: scp3.code, log: [...lines, `scp falhou: ${lastLine(scp3.stderr)}`] };
   say("rodando o instalador…");
   const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("tela")}/install-tela.sh 2>&1`], 10 * 60_000, say);
   return { ok: inst.code === 0, codigo: inst.code, log: lines };

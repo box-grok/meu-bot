@@ -20,7 +20,8 @@ export const GUARDA_FILES = ["install-guarda.sh", "uninstall-guarda.sh"];
 export const GUARDA_PLUGIN_FILES = ["index.js", "regras.mjs", "memoria.mjs", "package.json", "openclaw.plugin.json", "vigia-gateway.sh"];
 /** Tela do bot (painel Computador): o instalador e a pasta tela/. Instalada sob pedido pelo painel, sem atualização automática. */
 export const TELA_FILES = ["install-tela.sh"];
-export const TELA_PLUGIN_FILES = ["tela.sh"];
+export const TELA_PLUGIN_FILES = ["tela.sh", "tela-agente.sh"];
+export const TELA_SKILL_FILES = ["SKILL.md"];
 export const CRM_FILES = ["install-crm.sh", "uninstall-crm.sh", "skill-streak-crm-api.md", "skill-crm-api.md"];
 export const CRM_PLUGIN_FILES = ["index.js", "regras.mjs", "licenca-crm.mjs", "crm-job.mjs", "backend.mjs", "crm.mjs", "streak.mjs", "importar-streak.mjs", "package.json", "openclaw.plugin.json"];
 export const FINANCE_FILES = ["install-finance.sh", "skill-finance-api.md"];
