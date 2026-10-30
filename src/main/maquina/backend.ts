@@ -6,6 +6,7 @@ import { app } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
+import { lerCotaJson } from "../agente/espaco-core";
 import type { AlertPrefs, AccountStatus, ClaudeSessionRef, BackendModel, ContaClaude, ContasClaudeView, LicenseView, LimiaresClaude, ToolEvent } from "../../shared/ipc";
 import type { MainEventChannel, MainEvents } from "../../shared/ipc";
 import { persistConversations, saveTranscript, type BackendMessage, type Conversation } from "../conversa/conversation";
@@ -315,7 +316,7 @@ export async function deleteBackendSession(host: string, conversationId: string)
 }
 
 /** Pedido JSON ao backend desta máquina pelo túnel; null se não há túnel, a rota não existe ou falhou. */
-async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", pathname: string, body?: unknown): Promise<T | null> {
+export async function backendJson<T>(host: string, method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", pathname: string, body?: unknown): Promise<T | null> {
   let tunnel: { localPort: number; apiKey: string };
   try { tunnel = await readyTunnel(host, null); } catch { return null; }
   const payload = body === undefined ? null : Buffer.from(JSON.stringify(body), "utf8");
@@ -429,7 +430,7 @@ export async function fetchAccountStatus(host: string): Promise<AccountStatus | 
       res.on("end", () => {
         if (res.statusCode !== 200) { resolve(null); return; }
         try {
-          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"]; model?: unknown; contas?: { atual?: unknown; rotulo?: unknown; total?: unknown; esgotadas?: unknown; proximaEm?: unknown } | null };
+          const j = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { claude?: Partial<AccountStatus>; providers?: AccountStatus["providers"]; model?: unknown; contas?: { atual?: unknown; rotulo?: unknown; total?: unknown; esgotadas?: unknown; proximaEm?: unknown } | null; cota?: unknown };
           const c = j.claude ?? {};
           const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
           const str = (v: unknown): string | null => (typeof v === "string" && v.length <= 80 ? v : null);
@@ -440,6 +441,8 @@ export async function fetchAccountStatus(host: string): Promise<AccountStatus | 
             modelName: typeof j.model === "string" && j.model.length <= 40 ? j.model : null,
             contas: ct && typeof ct === "object" ? { atual: str(ct.atual), rotulo: str(ct.rotulo), total: num(ct.total) ?? 1, esgotadas: num(ct.esgotadas) ?? 0, proximaEm: num(ct.proximaEm) } : null,
             providers: Array.isArray(j.providers) ? j.providers.filter((p) => p && typeof p.name === "string").map((p) => ({ name: p.name, type: p.type === "openai" ? "openai" : "claude", available: p.available === true })) : [],
+            // Backend 1.9+: a cota de disco dela (null = sem cota); antes disso o campo não vem (a tela diz "backend antigo").
+            ...("cota" in j ? { cota: lerCotaJson(j.cota) } : {}),
           });
         } catch { resolve(null); }
       });

@@ -425,3 +425,18 @@ chat da pessoa consigo mesma — não há modo que atenda os dois. Daí o concei
   `WHATSAPP_MODE=bot` drops every fromMe message, so a user running the agent on their own number can't both talk to
   it and serve other contacts; `self-chat` serves only themselves. Proposal: `WHATSAPP_SELF_CHAT=true` honoured in bot
   mode when the paired number is in `WHATSAPP_ALLOWED_USERS`.*
+
+**Vigia da box e vigia da cota (backend 1.9.0).** O vigia da máquina ganhou o tipo `box`: o backend de cada usuário lê o
+próprio cgroup (`/proc/self/cgroup` → `/sys/fs/cgroup/user.slice/user-<uid>.slice`: `memory.current`, `anon`,
+`memory.high/max`, `memory.events`, PSI de memória e CPU, `cpu.stat`; `saude-maquina.js › caminhoDaBox/lerBox`) e avisa
+a pessoa quando a memória própria passa de 95% do MemoryHigh, a PSI de memória de 10%, a de CPU de 50% ou o teto foi
+batido desde a leitura anterior, em 3 leituras seguidas (OOM avisa na hora), com texto de memória ou de processador e
+"avise o admin em Configurações › Suporte"; `MEU_BOT_VIGIA_BOX_PCT=1` para testar. O vigia da cota (`cota.js`) lê a
+cota de disco da conta (`quota -wu`, como a pessoa) e o que ocupa (`du -sk` de uma lista fixa: imagens, áudios,
+WhatsApp, conversas, publicações, arquivos do agente, programas do agente) a cada 10 min, nunca com resposta em
+andamento; avisa no WhatsApp ao cruzar 80, 95 e 100% uma vez por cruzamento (rearma 5 pontos abaixo; um salto de 70 a
+97 manda só o texto de 95), com o que ocupa, como liberar (Configurações › Espaço › Liberar espaço) e como ter mais (o
+`pagamento.link` da licença, senão "fale com o admin"); `cota.aviso` na auditoria. Os níveis avisados ficam em
+`saude-avisos.json › cota`. O resultado vai em `/health.cota`, `/v1/meu-bot/status.cota` e `GET /v1/meu-bot/cota?fresco=1`.
+A cota macia é o limite que a pessoa vê; a dura (folga de 10%/300 MB, 7 dias) é o que deixa o aviso de 100% ainda sair.
+Os avisos (Mac novo, vigia, cota) vão só pelo WhatsApp da pessoa: o e-mail pela Resend saiu em 30 out.

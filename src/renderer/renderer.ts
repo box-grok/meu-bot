@@ -36,7 +36,7 @@ import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, spli
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
-import { buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
+import { ESPACO_THRESHOLDS, buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, clGuide, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, paintLoginControls, paintXaiLogin, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiGuide, xaiKey, xaiPrep } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
@@ -62,6 +62,9 @@ import { activityPage, ligarAtividade } from "./conversa/atividade.js";
 import { ligarRede, net, paintNet, setNet } from "./app/rede.js";
 import { atualizarOciosoInput, lastUpdate, ligarAtualizacao, paintUpdateState } from "./atualizacao/atualizacao.js";
 import { ligarConfiguracoes, maybeAskNotificationsOnce } from "./configuracoes/configuracoes.js";
+import { paintEspaco } from "./configuracoes/espaco.js";
+import { tam as tamEspaco } from "./lib/espaco.js";
+import type { CotaInfo } from "../shared/ipc";
 
 /* ctx:inicio */
 // Ponte para as páginas por domínio: cada uma usa o que é do renderer por ctx.<nome> (app/ctx.ts).
@@ -93,6 +96,8 @@ const ctxImpl = {
   get cancelBtn() { return cancelBtn; },
   get caps() { return caps; },
   get checkSessionThreshold() { return checkSessionThreshold; },
+  get checkEspacoThreshold() { return checkEspacoThreshold; },
+  get atualizarCota() { return atualizarCota; },
   get chooseReply() { return chooseReply; },
   get clAuth() { return clAuth; },
   get clGuide() { return clGuide; },
@@ -390,6 +395,7 @@ const modeIcon = $<HTMLSpanElement>("mode-icon");
 const modeMenu = $<HTMLDivElement>("mode-menu");
 const modeList = $<HTMLUListElement>("mode-list");
 const topbarMini = $<HTMLElement>("topbar-mini");
+const composerMini = $<HTMLElement>("composer-mini");
 const miniText = $<HTMLSpanElement>("mini-text");
 const topbarHideBtn = $<HTMLButtonElement>("btn-topbar-hide");
 const topbarShowBtn = $<HTMLButtonElement>("btn-topbar-show");
@@ -537,7 +543,7 @@ function paintContext(tab: Tab | null): void {
   const segs = buildSegments({ model: tab.model, ctx, turn: tab.lastTurn, account, segments: statusLineSegs ?? account?.segments ?? null });
   ctxLine.hidden = false;
   const nodes = segs.flatMap((s, i) => {
-    const span = el("span", `seg seg-${s.kind}`, s.text);
+    const span = el("span", `seg seg-${s.kind}${s.tone !== undefined ? ` seg-${s.tone}` : ""}`, s.text);
     if (s.title !== undefined) span.title = s.title;
     return i === 0 ? [span] : [el("span", "seg-sep", "|"), span];
   });
@@ -557,6 +563,26 @@ function checkSessionThreshold(): void {
   if (tab === null) return;
   const renew = account.sessionResets !== null ? ` Renova em ${timeUntil(account.sessionResets)}.` : "";
   addNotice(tab, `⚠ Sessão do Claude em ${Math.round(pct ?? 0)}% do limite de 5 h.${renew}`, "warn");
+}
+
+/** Último limiar do espaço (cota de disco) já avisado nesta janela (80 ou 95); zera quando baixa de 75. */
+let warnedEspaco = 0;
+/** Mesma regra do aviso do backend no WhatsApp: avisa na conversa ao cruzar 80 e 95% do espaço da conta na máquina. */
+function checkEspacoThreshold(): void {
+  const c = account?.cota ?? null;
+  const pct = c?.pct ?? null;
+  if (pct !== null && pct < 75) warnedEspaco = 0;
+  const t = thresholdToWarn(pct, warnedEspaco, ESPACO_THRESHOLDS);
+  if (t === null || c === null) return;
+  warnedEspaco = t;
+  const tab = active();
+  if (tab === null) return;
+  addNotice(tab, `⚠ Espaço da sua conta na máquina em ${c.pct}% (${tamEspaco(c.usadoKb)} de ${tamEspaco(c.limiteKb)}). Em Configurações › Espaço dá para liberar ou aumentar.`, "warn");
+}
+/** A cota relida (depois de "Liberar espaço"): rodapé, aviso e o bloco Espaço acompanham. */
+function atualizarCota(c: CotaInfo | null): void {
+  if (account !== null) account = { ...account, cota: c };
+  paintContext(active()); checkEspacoThreshold(); paintEspaco(c);
 }
 
 function setBusy(tab: Tab, value: boolean): void {
@@ -930,10 +956,11 @@ function paintAtalhosAviso(): void {
 }
 /**
  * Um padrão só para toda a moldura: **Cmd+B** recolhe (ou mostra) de uma vez a barra de cima, os atalhos da
- * lateral e a lista de conversas. É o "modo limpo": sobra a conversa. Cmd+Shift+B faz o mesmo, por hábito antigo.
+ * lateral, a lista de conversas e a barra de escrever. É o "modo limpo": sobra a conversa (ou a página). Cmd+Shift+B
+ * faz o mesmo, por hábito antigo.
  *
- * Cada peça continua tendo o controle dela no clique, para quem quer granularidade: o ☰ para a lista e o botão
- * Atalhos para o grupo.
+ * Cada peça continua tendo o controle dela no clique, para quem quer granularidade: o ☰ para a lista, o botão
+ * Atalhos para o grupo e a alça ⌄ para a barra de escrever.
  */
 const interfaceRecolhida = (): boolean => document.body.classList.contains("topbar-hidden");
 function setInterfaceRecolhida(recolhida: boolean): void {
@@ -941,6 +968,18 @@ function setInterfaceRecolhida(recolhida: boolean): void {
   // Ao mostrar de volta, o grupo volta ao que a pessoa escolheu, não forçado aberto: a preferência dela manda.
   setAtalhosAbertos(recolhida ? false : atalhosLembrado(), { lembrar: recolhida ? false : true });
   toggleSidebar(!recolhida);
+  setComposerHidden(recolhida);
+}
+/**
+ * Barra de escrever recolhida: vira a faixa fina "⌃ Escrever" (como a topbar-mini). Volta pelo clique, pelo Cmd+B
+ * ou simplesmente começando a digitar fora de um campo: a tecla já cai na caixa. A escolha fica no localStorage.
+ */
+const composerHidden = (): boolean => document.body.classList.contains("composer-hidden");
+function setComposerHidden(hidden: boolean, opts: { focar?: boolean } = {}): void {
+  document.body.classList.toggle("composer-hidden", hidden);
+  composerMini.hidden = !hidden;
+  try { localStorage.setItem("composerShown", hidden ? "0" : "1"); } catch { /* opcional */ }
+  if (!hidden && opts.focar === true) inputEl.focus();
 }
 /** O que a pessoa escolheu para o grupo; padrão recolhido. */
 function atalhosLembrado(): boolean {
@@ -1150,7 +1189,8 @@ function buildPaletteItems(): PaletteItem[] {
   for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
-  add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar tudo (barra, atalhos e lista)", detail: "Cmd+B" }, () => setInterfaceRecolhida(!interfaceRecolhida()));
+  add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar tudo (barra, atalhos, lista e barra de escrever)", detail: "Cmd+B" }, () => setInterfaceRecolhida(!interfaceRecolhida()));
+  add({ id: "a:composer", kind: "action", label: "Mostrar ou ocultar barra de escrever", detail: "alça ⌄ na barra", keywords: ["escrever", "caixa", "composer", "barra de baixo", "recolher"] }, () => setComposerHidden(!composerHidden(), { focar: true }));
   add({ id: "a:zoom-in", kind: "action", label: "Aumentar zoom da janela", detail: "Cmd+= (fora da página do Navegador)", keywords: ["zoom", "ampliar", "maior", "aumentar", "fonte"] }, () => zoomWindow({ action: "step", delta: 1 }));
   add({ id: "a:zoom-out", kind: "action", label: "Diminuir zoom da janela", detail: "Cmd+-", keywords: ["zoom", "reduzir", "menor", "diminuir", "fonte"] }, () => zoomWindow({ action: "step", delta: -1 }));
   add({ id: "a:zoom-reset", kind: "action", label: "Restaurar zoom da janela (100%)", detail: "Cmd+0", keywords: ["zoom", "restaurar", "100", "tamanho real"] }, () => zoomWindow({ action: "reset" }));
@@ -1695,6 +1735,8 @@ panelsEl.addEventListener("click", (ev) => {
 });
 
 sidebarBtn.addEventListener("click", () => toggleSidebar());
+$<HTMLButtonElement>("composer-toggle").addEventListener("click", () => setComposerHidden(true));
+$<HTMLButtonElement>("composer-show").addEventListener("click", () => setComposerHidden(false, { focar: true }));
 sidebarSearch.addEventListener("input", () => renderSidebar());
 sidebarArchived.addEventListener("change", () => renderSidebar());
 // Seções das Configurações: todas recolhidas sempre que o painel abre; abrir uma recolhe as outras. Nada é lembrado.
@@ -1805,6 +1847,8 @@ document.addEventListener("keydown", (ev) => {
     return;
   }
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
+  // Barra de escrever recolhida e a pessoa começou a digitar fora de um campo: a barra volta e a tecla cai nela.
+  if (composerHidden() && !mod && !ev.altKey && ev.key.length === 1 && (ev.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable], webview, dialog") == null) { setComposerHidden(false, { focar: true }); return; }
   if (!paletteEl.hidden) return;
   if (mod && ev.key === "n" && !ev.shiftKey) { ev.preventDefault(); void newTab(); } // Cmd+Shift+N é a janela nova (menu)
   if (mod && ev.shiftKey && (ev.key === "b" || ev.key === "B")) { ev.preventDefault(); setInterfaceRecolhida(!interfaceRecolhida()); return; }
@@ -1889,6 +1933,7 @@ void (async () => {
   applyNarrow();
   // Barra recolhida por padrão (como a lista): só fica aberta se a pessoa a mostrou da última vez.
   try { setTopbarHidden(localStorage.getItem("topbarShown") !== "1"); } catch { setTopbarHidden(true); }
+  try { setComposerHidden(localStorage.getItem("composerShown") === "0"); } catch { setComposerHidden(false); }
   const info = await window.meuBot.getWindowInfo();
   if (info === null) throw new Error("janela sem máquina registrada");
   windowHost = info.host;
@@ -1988,7 +2033,7 @@ void (async () => {
   }
   // O app cujo add-on é o financeiro mostra o botão sempre (sem licença, a página diz como liberar).
   if (caps.addon === "meu-bot-finance") paintFinanceLine();
-  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); checkSessionThreshold(); paintGuide(); });
+  void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); checkSessionThreshold(); checkEspacoThreshold(); paintEspaco(s?.cota); paintGuide(); });
   void refreshStatusLine();
   void refreshWhatsapp();
   // O Navegador estava aberto quando o app fechou: volta sozinho, em segundo plano, com as abas de antes.

@@ -511,10 +511,11 @@ const SEGMENT_LABELS: { key: keyof StatusLineSegments; label: string; hint: stri
   { key: "account", label: "Conta", hint: "e-mail e plano (Premium/Padrão)" },
   { key: "session", label: "Sessão", hint: "limite de 5 horas e quando reinicia" },
   { key: "weekly", label: "Semanal", hint: "limite de 7 dias e quando reinicia" },
+  { key: "espaco", label: "Espaço", hint: "quanto do seu espaço na máquina já está usado (só no rodapé do meu-bot)" },
 ];
 /** Passo "Escolher o que aparece": cinco interruptores, prévia da linha, gravação na máquina a cada troca. */
 export function renderStatusLineSegments(container: HTMLElement): void {
-  const cur: StatusLineSegments = ctx.statusLineSegs ?? { model: true, ctx: true, account: true, session: true, weekly: true };
+  const cur: StatusLineSegments = ctx.statusLineSegs ?? { model: true, ctx: true, account: true, session: true, weekly: true, espaco: true };
   const box = el("div", "audio-controls");
   box.append(el("code", "sl-preview", previewLine(cur) || "(nada ligado)"));
   const list = el("div", "sl-switches");

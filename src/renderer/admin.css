@@ -100,3 +100,5 @@ body.produtos-janela .head .add-actions { margin-top: 8px; }
 .usuarios-nome { display: inline-flex; align-items: center; }
 .usuarios-prefixo { padding: 4px 2px 4px 8px; font: 12px var(--mono, monospace); color: var(--muted); border: 1px solid var(--line); border-right: none; border-radius: 6px 0 0 6px; background: var(--bg); }
 .usuarios-nome input { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+.usuarios-pressao { font-weight: 600; }

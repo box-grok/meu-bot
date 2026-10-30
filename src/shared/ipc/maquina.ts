@@ -81,7 +81,7 @@ export interface HostProbe {
 }
 
 /** Alertas do vigia da máquina (backend-colima/saude-maquina.js). */
-export type MaquinaAlerta = "memoria" | "disco" | "lag";
+export type MaquinaAlerta = "box" | "memoria" | "disco" | "lag";
 
 export interface InstallBackendResult {
   ok: boolean;

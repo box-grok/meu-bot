@@ -17,7 +17,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminGovernanca" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 /** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
@@ -27,9 +27,11 @@ const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 const tam = (kb: number): string => (kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(1).replace(".", ",")} GB` : kb >= 1024 ? `${Math.round(kb / 1024)} MB` : `${kb} KB`);
 /** % do disco que o limite representa (arredondado). */
 const pctDe = (limiteKb: number | null, discoKb: number | null): number | null => (limiteKb === null || discoKb === null || discoKb === 0 ? null : Math.round((limiteKb * 100) / discoKb));
-/** Quanto do limite de disco já foi usado: perto a partir de 90%, cheio em 100% (espelha nivelUso de usuarios-core.ts). */
+/** Quanto do limite macio já foi usado: perto a partir de 80% (o 1º aviso da pessoa), cheio em 100% (espelha nivelUso de usuarios-core.ts). */
 const nivelUso = (usadoKb: number | null, limiteKb: number | null): "ok" | "perto" | "cheio" =>
-  usadoKb === null || limiteKb === null || limiteKb <= 0 ? "ok" : usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.9 ? "perto" : "ok";
+  usadoKb === null || limiteKb === null || limiteKb <= 0 ? "ok" : usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.8 ? "perto" : "ok";
+/** % do tempo em que a cota de CPU segurou a box (cpu.stat: µs parados ÷ períodos de 100 ms). */
+const cpuSegurada = (b: { cpuPeriodos: number; cpuEstranguladoUsec: number }): number => (b.cpuPeriodos > 0 ? Math.round(b.cpuEstranguladoUsec / (b.cpuPeriodos * 1000)) : 0);
 type Maiores = { home: string | null; itens: { kb: number; pasta: boolean; caminho: string }[] };
 
 export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } {
@@ -93,6 +95,9 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     // Sem o tamanho do disco (df falhou na máquina), não há como calcular a fatia: cria sem limite.
     const p = visao?.discoKb === null ? 0 : pctNovo.trim() === "" ? 0 : Number(pctNovo);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
+    // Mais boxes do que cabem na RAM com o teto padrão: avisa, não bloqueia (a conta é do admin; a coluna Pressão mostra o efeito).
+    const cap = visao?.capacidade ?? null;
+    const avisoCap = cap !== null && cap.boxes + 1 > cap.cabem ? ` Atenção: com este serão ${cap.boxes + 1} boxes, mais que as ${cap.cabem} que cabem na RAM com ${cap.padraoMb} MB cada; acompanhe a coluna Pressão.` : "";
     if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
       // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
       const sel = visao?.seletores;
@@ -100,6 +105,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
         : visao?.preparo != null ? { text: `Usuário ${n} criado, mas a preparação parou: ${visao.preparo}. Use "Preparar" na linha dele para continuar de onde parou.`, bad: true }
         : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
         : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
+      if (avisoCap !== "" && msg !== null) msg = { text: `${msg.text}${avisoCap}`, bad: true };
       nome = null; pctNovo = PCT_PADRAO; render();
     }
   }
@@ -216,11 +222,32 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       const distribuido = v.usuarios.reduce((s, u) => s + (pctDe(u.limiteKb, v.discoKb) ?? 0), 0);
       const apertados = v.usuarios.filter((u) => nivelUso(u.usadoKb, u.limiteKb) !== "ok").length;
       if (v.discoKb !== null) lista.append(el("p", `hint ${distribuido > 100 ? "bad-hint" : ""}`, `Disco: ${tam(v.discoKb)} · distribuído: ${distribuido}% · livre: ${Math.max(0, 100 - distribuido)}%${distribuido > 100 ? " (passou de 100%: se todos encherem, o disco acaba antes dos limites)" : ""}${v.cota ? "" : " · cota de disco ainda desligada nesta máquina"}`));
-      if (apertados > 0) lista.append(el("p", "hint notice-warn", `${apertados === 1 ? "1 usuário está" : `${apertados} usuários estão`} perto do limite de disco: no limite, o agente dele para de gravar conversas e mídia. Use "Liberar espaço" ou aumente o %.`));
+      if (apertados > 0) lista.append(el("p", "hint notice-warn", `${apertados === 1 ? "1 usuário está" : `${apertados} usuários estão`} perto do limite de disco (a pessoa já foi avisada no WhatsApp a 80%): no limite ainda grava por 7 dias com a folga, depois trava. Use "Liberar espaço" ou aumente o %.`));
+      const pressionadas = v.usuarios.filter((u) => u.pressao !== null && u.pressao.estado !== "folgada");
+      if (pressionadas.length > 0) lista.append(el("p", "hint notice-warn", `${pressionadas.length === 1 ? "1 box está" : `${pressionadas.length} boxes estão`} ${pressionadas.some((u) => u.pressao?.estado === "estrangulada") ? "apertada ou estrangulada" : "apertada"} de RAM/CPU: ${pressionadas.map((u) => u.nome).join(", ")}. Passe o mouse na coluna Pressão para ver o motivo e o que fazer.`));
       // RAM: os agentes (OpenClaw, Hermes, Claude) ficam ligados e cada um usa centenas de MB; aqui se vê quem usa quanto.
       if (v.ram !== null) {
         const outros = v.usuarios.reduce((s, u) => s + u.ramKb, 0);
         lista.append(el("p", "hint", `RAM: ${tam(v.ram.usoKb)} em uso de ${tam(v.ram.totalKb)} (${Math.round((v.ram.usoKb * 100) / Math.max(1, v.ram.totalKb))}%) · root: ${tam(v.ram.rootKb)} · usuários: ${tam(outros)} · swap: ${v.ram.swapKb > 0 ? `${tam(v.ram.swapUsoKb)} de ${tam(v.ram.swapKb)}` : "nenhuma"}`));
+        // Capacidade: quantas boxes cabem no teto dos usuários (user.slice) com o teto padrão por box; e a CPU prometida.
+        const c = v.capacidade;
+        if (c !== null) {
+          const passou = c.boxes > c.cabem;
+          const nucleos = c.cpuNucleos ?? 0;
+          const linha = el("p", `hint ${passou ? "notice-warn" : ""}`, `boxes: ${c.boxes} de ${c.cabem} (${c.padraoMb} MB de RAM cada, teto dos usuários ${tam(c.capMb * 1024)}${c.reservaAplicada ? "" : ", reserva do sistema ainda não aplicada"})${nucleos > 0 ? ` · CPU: ${nucleos} núcleos, ${Math.round(c.cpuPrometidoPct / 100)} prometidos` : ""}${passou ? " · mais boxes do que cabem na RAM: acompanhe a coluna Pressão" : ""}`);
+          linha.title = "Cabem = teto dos usuários ÷ teto padrão por box (RECURSOS_PADRAO). CPU prometida acima dos núcleos é normal: as boxes ficam ociosas quase sempre (o Claude roda na API); o peso de CPU divide por igual quando disputam.";
+          lista.append(linha);
+        }
+        // Governança: a reserva para o sistema e o isolamento das boxes; um botão só quando falta algo (nada reinicia).
+        const g = v.governanca;
+        if (!g.reserva || g.semIsolamento.length > 0) {
+          const gv = el("div", "admin-actions");
+          const b = el("button", "btn btn-ghost btn-small", ocupado === "governanca" ? "Aplicando…" : "Aplicar governança de RAM/CPU"); b.type = "button"; b.disabled = ocupado !== null;
+          b.title = "Reserva memória para o sistema (teto de todos os usuários juntos no user.slice, deixando 3 GB ou 10% livres) e aplica a cada box swap própria de 256 MB, 640 MB protegidos e peso de CPU igual; nada reinicia";
+          b.addEventListener("click", () => { void rodar("governanca", () => deps.api.adminGovernanca(), "✓ Governança aplicada: reserva para o sistema e isolamento das boxes."); });
+          gv.append(b, el("span", "hint", !g.reserva ? "Sem a reserva, os usuários juntos podem tomar toda a RAM e derrubar o sistema (SSH, túnel, nginx)." : `${g.semIsolamento.length === 1 ? "1 box ainda está" : `${g.semIsolamento.length} boxes ainda estão`} sem isolamento (${g.semIsolamento.join(", ")}): uma delas estourando puxa o swap de todas.`));
+          lista.append(gv);
+        }
         // Sem swap, RAM cheia faz o Linux matar um processo (um agente some); com ela, a máquina só desacelera.
         if (v.ram.swapKb === 0) {
           const sw = el("div", "admin-actions");
@@ -245,7 +272,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const t = el("table", "auditoria-tabela");
-        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "RAM máx (MB)", "CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
+        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "Pressão", "RAM máx (MB)", "CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
         for (const u of v.usuarios) {
           const tr = el("tr");
           const acesso = v.hostname !== null ? `ssh${v.chave !== null ? ` -i ${v.chave}` : ""} ${u.nome}@${v.hostname}${v.port !== null && v.port !== "22" ? ` -p ${v.port}` : ""}` : "";
@@ -254,7 +281,17 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const limite = u.usadoKb === null ? "—" : u.limiteKb === null ? "sem limite" : tam(u.limiteKb);
           const nu = nivelUso(u.usadoKb, u.limiteKb);
           const tdUsado = el("td", nu === "cheio" ? "notice-error" : nu === "perto" ? "notice-warn" : "", usado);
-          if (nu !== "ok") tdUsado.title = nu === "cheio" ? "no limite: o agente dele não consegue mais gravar; use Liberar espaço ou aumente o %" : "perto do limite (90%+): use Liberar espaço ou aumente o %";
+          if (nu !== "ok") tdUsado.title = nu === "cheio" ? "no limite: ainda grava por até 7 dias com a folga de 10%, depois trava; use Liberar espaço ou aumente o %" : "perto do limite (80%+; a pessoa já foi avisada no WhatsApp): use Liberar espaço ou aumente o %";
+          // Limite: macio (o que a pessoa vê); conta criada antes da folga mostra "sem folga" até o admin salvar de novo.
+          const tdLimite = el("td", "", limite);
+          if (u.limiteKb !== null && u.hardKb !== null && u.hardKb === u.limiteKb) { const sf = el("span", "hint", " · sem folga"); sf.title = "Limite macio igual ao duro (conta de antes da folga): Salvar o mesmo % aplica a folga de 10% e os 7 dias de carência"; tdLimite.append(sf); }
+          // RAM: a memória própria (anon) do cgroup, que o kernel não solta; sem cgroup, a soma dos processos (RSS).
+          const tdRamUso = el("td", "", u.box !== null ? tam(u.box.anonKb) : u.ramKb > 0 ? tam(u.ramKb) : "—");
+          if (u.box !== null) tdRamUso.title = `processos (RSS): ${tam(u.ramKb)} · com cache do Linux: ${tam(u.box.usoKb)} (ele solta quando aperta) · pico desde que subiu: ${u.box.picoKb === null ? "—" : tam(u.box.picoKb)} · swap: ${tam(u.box.swapKb)}`;
+          // Pressão: folgada / apertada / estrangulada, com o motivo e o que fazer no título.
+          const pr = u.pressao;
+          const tdPr = el("td", pr === null ? "" : pr.estado === "estrangulada" ? "notice-error usuarios-pressao" : pr.estado === "apertada" ? "notice-warn usuarios-pressao" : "usuarios-pressao", pr === null ? "—" : pr.estado);
+          if (pr !== null && u.box !== null) tdPr.title = `${pr.motivo}${pr.dica !== "" ? `. ${pr.dica}` : ""} · PSI mem 60 s: ${u.box.psiMem60}% · PSI CPU 60 s: ${u.box.psiCpu60}% · teto batido: ${u.box.evMax}× · mortes por memória: ${u.box.oomKill} · CPU segurada pela cota: ${cpuSegurada(u.box)}% do tempo`;
           const tdPct = el("td");
           const ip = el("input") as HTMLInputElement; ip.type = "number"; ip.min = "0"; ip.max = "100"; ip.step = "1"; ip.style.width = "64px";
           ip.value = rascunho.get(u.nome) ?? (pct === null ? "" : String(pct)); ip.placeholder = "—"; ip.disabled = ocupado !== null || u.sudo;
@@ -327,7 +364,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           }
           // Entrar: o comando inteiro numa linha (quebrado no meio ele não serve para copiar).
           const tdAcesso = el("td"); if (acesso !== "") tdAcesso.append(el("code", "usuarios-ssh", acesso));
-          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), el("td", "", u.ramKb > 0 ? tam(u.ramKb) : "—"), tdRam, tdCpu, tdUsado, el("td", "", limite), tdPct, tdAcesso, tdAp);
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), tdRamUso, tdPr, tdRam, tdCpu, tdUsado, tdLimite, tdPct, tdAcesso, tdAp);
           t.append(tr);
         }
         // Onze colunas não cabem numa janela estreita: a tabela rola de lado dentro do cartão em vez de vazar dele.

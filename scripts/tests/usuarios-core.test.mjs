@@ -102,10 +102,10 @@ test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica u
   assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
 });
 
-test("usuários: todo usuário novo nasce com 2 GB de RAM e 200% de CPU (cobre o OpenClaw, ~1,6 GB, e o Hermes com áudio)", async () => {
+test("usuários: todo usuário novo nasce com 1,25 GB de RAM e 200% de CPU (22 boxes em 32 GB; o áudio aperta perto do high, a coluna Pressão mostra)", async () => {
   const { RECURSOS_PADRAO, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
-  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 2048, cpuPct: 200 });
-  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryMax=2048M CPUQuota=200%/);
+  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 1280, cpuPct: 200 });
+  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryHigh=1152M MemoryMax=1280M CPUQuota=200%/);
 });
 
 test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {
@@ -206,4 +206,74 @@ test("nome para criar: vazio ou só o prefixo não vira usuário \"box-\"; com o
   assert.equal(nomeParaCriar(3), null); assert.equal(nomeParaCriar("Maria"), null, "maiúscula não entra");
   assert.equal(nomeParaCriar("3"), "box-3"); assert.equal(nomeParaCriar("box-3"), "box-3"); assert.equal(nomeParaCriar(" maria "), "box-maria");
   assert.equal(nomeParaCriar("root"), "box-root", "o prefixo tira do caminho dos nomes reservados");
+});
+
+test("governança de RAM/CPU: toda box leva isolamento (swap própria, piso protegido, peso igual); reserva do user.slice; reaplicar só nas que faltam", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.match(c.recursosSh("ana", 1024, 100), /CPUQuota=100% MemorySwapMax=256M MemoryLow=640M CPUWeight=100/);
+  assert.match(c.recursosSh("ana", 0, 0), /MemorySwapMax=infinity MemoryLow=640M CPUWeight=100/, "sem teto de RAM, sem teto de swap");
+  assert.deepEqual(c.reservaDe(32_870_400), { capMb: 28_890, lowMb: 14_445 }, "10% > 3 GB numa máquina de 32 GB (32100 MB − 3210)");
+  assert.deepEqual(c.reservaDe(8_000_000), { capMb: 4_740, lowMb: 2_370 }, "o piso de 3 GB vence numa máquina de 8 GB");
+  assert.throws(() => c.reservaDe(2_000_000), /RAM de menos/); assert.throws(() => c.reservaDe(0));
+  const r = c.reservaHostSh(28800, 14400);
+  assert.match(r, /awk '\$1=="anon"/, "a guarda olha a memória de verdade (anon), não o cache do root");
+  assert.match(r, /set-property user\.slice MemoryMax=28800M MemoryLow=14400M CPUWeight=100/); assert.match(r, /RESERVA=ok 28800/);
+  assert.throws(() => c.reservaHostSh(500, 0)); assert.throws(() => c.reservaHostSh(2000, 3000));
+  const iso = c.isolamentoTodosSh();
+  assert.match(iso, /MemorySwapMax=256M MemoryLow=640M CPUWeight=100/); assert.doesNotMatch(iso, /MemoryMax=|CPUQuota=/, "não mexe nos tetos de cada box");
+  assert.match(iso, /sudo "\*\|\*" wheel "\*\|\*" admin "\*\) continue/); assert.match(iso, /^echo "ISOLAMENTO=ok \$N\$L"$/m);
+  assert.deepEqual({ ...c.ISOLAMENTO_PADRAO }, { swapMb: 256, lowMb: 640, cpuWeight: 100 }); assert.deepEqual({ ...c.RESERVA_HOST }, { minMb: 3072, pct: 10 });
+});
+
+test("lista: CPUS, USERSLICE e as colunas do cgroup por usuário; linha antiga continua lendo (box null)", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.match(c.LISTAR_SH, /CPUS=\$\(nproc/); assert.match(c.LISTAR_SH, /USERSLICE=/); assert.match(c.LISTAR_SH, /memory\.pressure/); assert.match(c.LISTAR_SH, /cpu\.stat/); assert.match(c.LISTAR_SH, /memory\.swap\.current/);
+  assert.match(c.LISTAR_SH, /print \$2" "\$3" "\$4; exit/, "usado, macio e duro da cota");
+  const cg = ["1363148800", "331350016", "1940000000", "12288", "393", "0", "0", "0.00", "0.00", "0.00", "791000", "3083", "2439000000"].join("\t");
+  const linha = ["U", "ana", "1001", "/home/ana", "/bin/bash", "0", "1", "1", "2902256", "4126300", "500000", "2147483648", "2s", "", "1", "1", "4538930", "268435456", "671088640", "100", cg].join("\t");
+  const l = c.lerUsuarios(`ROOT\nRAM=32870400 2100000\nRAMROOT=900000\nSWAP=8388604 2048\nCPUS=8\nUSERSLICE=30198988800 22600000000 1200000000 15099494400\n${linha}\n`);
+  assert.equal(l.cpus, 8); assert.deepEqual(l.userSlice, { maxKb: 29491200, usoKb: 22070313, anonKb: 1171875, lowKb: 14745600 });
+  const u = l.usuarios[0];
+  assert.deepEqual([u.limiteKb, u.hardKb, u.swapMaxMb, u.lowMb, u.cpuWeight], [4126300, 4538930, 256, 640, 100]);
+  assert.deepEqual(u.box, { usoKb: 1331200, anonKb: 323584, picoKb: 1894531, swapKb: 12, evHigh: 393, evMax: 0, oomKill: 0, psiMem10: 0, psiMem60: 0, psiCpu60: 0, cpuPeriodos: 791000, cpuEstrangulados: 3083, cpuEstranguladoUsec: 2439000000 });
+  assert.equal(u.pressao.estado, "folgada", "events high sozinho não é pressão (é o kernel recolhendo cache)");
+  const antiga = c.lerUsuarios("ROOT\nU\tana\t1001\t/home/ana\t/bin/bash\t0\t0\t1\t300\t100000\t0\tinfinity\tinfinity\t\t1\t0\n");
+  assert.deepEqual([antiga.usuarios[0].hardKb, antiga.usuarios[0].swapMaxMb, antiga.usuarios[0].box, antiga.usuarios[0].pressao, antiga.userSlice, antiga.cpus], [null, null, null, null, null, null]);
+  const semMax = c.lerUsuarios("ROOT\nUSERSLICE=max 1000 500 0\n");
+  assert.equal(semMax.userSlice.maxKb, null);
+});
+
+test("pressão: folgada, apertada e estrangulada pelos sinais certos (anon, PSI, teto batido, OOM)", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const b = (o = {}) => ({ usoKb: 1300000, anonKb: 400 * 1024, picoKb: null, swapKb: 0, evHigh: 393, evMax: 0, oomKill: 0, psiMem10: 0, psiMem60: 0, psiCpu60: 0, cpuPeriodos: 0, cpuEstrangulados: 0, cpuEstranguladoUsec: 0, ...o });
+  assert.equal(c.pressaoDe(b(), 2048).estado, "folgada");
+  assert.equal(c.pressaoDe(b({ anonKb: 1600 * 1024 }), 2048).estado, "apertada", "anon ≥ 85% do MemoryHigh (1843)");
+  assert.equal(c.pressaoDe(b({ anonKb: 1600 * 1024 }), null).estado, "folgada", "sem teto a regra do anon não vale");
+  assert.equal(c.pressaoDe(b({ psiMem60: 12 }), 2048).estado, "apertada"); assert.equal(c.pressaoDe(b({ evMax: 1 }), 2048).estado, "apertada");
+  assert.equal(c.pressaoDe(b({ psiCpu60: 30 }), 2048).estado, "apertada"); assert.match(c.pressaoDe(b({ psiCpu60: 30 }), 2048).dica, /CPU/);
+  assert.equal(c.pressaoDe(b({ oomKill: 1 }), 2048).estado, "estrangulada"); assert.equal(c.pressaoDe(b({ psiCpu60: 60 }), 2048).estado, "estrangulada");
+  assert.equal(c.pressaoDe(b({ psiMem60: 30 }), 2048).estado, "estrangulada"); assert.equal(c.pressaoDe(b({ evMax: 2, psiMem60: 12 }), 2048).estado, "estrangulada");
+  assert.equal(c.pressaoDe(null, 2048), null);
+});
+
+test("capacidade: quantas boxes cabem no teto dos usuários com o teto padrão; CPU prometida; governança diz o que falta", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const u = (nome, o = {}) => ({ nome, uid: 1001, sudo: false, cpuMaxPct: 200, swapMaxMb: 256, box: { anonKb: 1 }, ...o });
+  const usuarios = [u("box-1"), u("box-2"), u("root-like", { sudo: true }), u("hermes"), u("admin")];
+  const cap = c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios });
+  assert.deepEqual(cap, { boxes: 2, cabem: 14, capMb: 28_890, padraoMb: 2048, reservaAplicada: false, cpuNucleos: 8, cpuPrometidoPct: 400 });
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: c.RECURSOS_PADRAO.ramMb, usuarios }).cabem, 22, "o padrão de 1,25 GB dá 22 boxes em 32 GB");
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: 29_491_200, cpus: 8, padraoMb: 2048, usuarios }).reservaAplicada, true);
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 1536, usuarios }).cabem, 18);
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios: [u("x", { cpuMaxPct: null })] }).cpuPrometidoPct, 800, "sem cota de CPU conta como a máquina inteira");
+  assert.deepEqual(c.governancaDe({ userSlice: null, usuarios }), { reserva: false, semIsolamento: [] });
+  assert.deepEqual(c.governancaDe({ userSlice: { maxKb: 1, usoKb: 0, anonKb: 0, lowKb: 0 }, usuarios: [u("box-1", { swapMaxMb: null }), u("box-2"), u("velha", { swapMaxMb: null, box: null })] }), { reserva: true, semIsolamento: ["box-1"] }, "sem cgroup lido não dá para saber: fora da lista");
+});
+
+test("cota macia e dura: o limite que a pessoa vê e a folga (10% ou 300 MB) com 7 dias de carência; 'perto' a partir de 80%", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(c.hardKbDe(1_000_000), 1_307_200, "o piso de 300 MB vence em 1 GB"); assert.equal(c.hardKbDe(5_000_000), 5_500_000); assert.equal(c.hardKbDe(0), 0);
+  assert.match(c.limiteSh("ana", 1_000_000), /setquota -u 'ana' 1000000 1307200 0 0 \//); assert.match(c.limiteSh("ana", 1_000_000), /setquota -t 604800 604800 \//);
+  assert.match(c.limiteSh("ana", 0), /setquota -u 'ana' 0 0 0 0 \//);
+  assert.equal(c.nivelUso(80, 100), "perto"); assert.equal(c.nivelUso(79, 100), "ok"); assert.equal(c.nivelUso(100, 100), "cheio");
 });

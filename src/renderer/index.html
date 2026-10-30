@@ -203,6 +203,8 @@
 
   <div id="ctx-line" class="ctx-line" hidden></div>
   <footer class="composer">
+    <!-- Alça de gaveta: recolhe a barra de escrever (Cmd+B recolhe junto com a lateral e a barra de cima). -->
+    <button type="button" id="composer-toggle" class="composer-toggle" title="Recolher a barra de escrever (Cmd+B recolhe tudo)" aria-label="Recolher a barra de escrever">⌄</button>
     <!-- Os dois círculos empilhados: modo do agente em cima, atalho da lista embaixo. -->
     <div class="composer-modos">
     <div class="mode-wrap">
@@ -230,6 +232,8 @@
       <button id="btn-new" class="btn btn-ghost btn-new" type="button" title="Nova conversa (Cmd+N)">Novo</button>
     </div>
   </footer>
+  <!-- A barra de escrever recolhida vira esta faixa fina (como a topbar-mini): clique, Cmd+B ou começar a digitar trazem-na de volta. -->
+  <div id="composer-mini" class="composer-mini" hidden><button type="button" id="composer-show" class="mini-btn" title="Mostrar a barra de escrever (Cmd+B mostra tudo)">⌃ Escrever</button></div>
 
   <dialog id="cl-dialog">
     <div class="wa-box">
@@ -315,6 +319,12 @@
         <p class="hint">Quando um Mac que esta máquina nunca viu abrir o meu-bot dela, você é avisada. Fica também no registro do suporte.</p>
         <label class="switch switch-row"><input id="alert-wa" type="checkbox" checked disabled title="Por enquanto, sempre ligado" /><span class="track"></span><span class="switch-label">Avisar pelo meu WhatsApp (mensagem para o meu próprio número)</span></label>
         <p id="alerts-hint" class="hint"></p>
+      </details>
+
+      <!-- Espaço da conta na máquina (cota de disco): o medidor, o que ocupa, Liberar espaço e Aumentar espaço. O backend dela lê e avisa no WhatsApp a 80/95%. -->
+      <details class="group" data-group="espaco" id="espaco-group" hidden>
+        <summary>Espaço <span class="sum-hint" id="espaco-sum">quanto do seu espaço na máquina está usado</span></summary>
+        <div id="espaco-body"></div>
       </details>
 
       <!-- Sobre e atualização (do REA do Rambox): versão instalada, estado da verificação, verificar agora, notas. -->

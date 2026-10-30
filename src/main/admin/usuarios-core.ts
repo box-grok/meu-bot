@@ -2,7 +2,7 @@
  * Puro (testado): o nome aceito, os scripts da aba Usuários (listar, ligar a cota, limite, apagar) e a leitura da
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
-import type { HermesNaMaquina, UsuarioMaquina } from "../../shared/ipc";
+import type { Capacidade, HermesNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
 export const NOME_USUARIO_RE = /^[a-z][a-z0-9_-]{1,31}$/;
@@ -26,11 +26,16 @@ export const RESERVADOS = new Set(["root", "admin", "sudo", "daemon", "bin", "sy
 export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 
 /**
- * Lista: `DISCO=<kb>` (tamanho de /), `COTA=0|1`, `RAM=<total kb> <em uso kb>`, `RAMROOT=<kb>` (o que é do root) e uma linha
- * `U<TAB>nome<TAB>uid<TAB>home<TAB>shell<TAB>sudo<TAB>meubot<TAB>chave<TAB>usadoKb<TAB>limiteKb` por usuário de login
- * (usado e limite vazios sem cota; limite 0 = sem limite), a RAM dos processos dele (KB) e os tetos do systemd na
- * fatia dele (`user-<uid>.slice`): RAM máxima (bytes ou "infinity") e CPU por segundo ("1s" = 100%, "infinity"),
- * o apelido e se tem linger (1 = os serviços dele seguem rodando sem ele conectado e voltam ao reiniciar).
+ * Lista: `DISCO=<kb>` (tamanho de /), `COTA=0|1`, `RAM=<total kb> <em uso kb>`, `RAMROOT=<kb>` (o que é do root), `SWAP=`,
+ * `CPUS=<núcleos>`, `USERSLICE=<memory.max> <memory.current> <anon> <memory.low>` (o cgroup de todos os usuários juntos; a
+ * linha falta sem cgroup v2) e uma linha `U<TAB>nome<TAB>uid<TAB>home<TAB>shell<TAB>sudo<TAB>meubot<TAB>chave<TAB>usadoKb
+ * <TAB>limiteKb` por usuário de login (usado e limite vazios sem cota; limite 0 = sem limite), a RAM dos processos dele
+ * (KB) e os tetos do systemd na fatia dele (`user-<uid>.slice`): RAM máxima (bytes ou "infinity") e CPU por segundo
+ * ("1s" = 100%, "infinity"), o apelido, se tem linger (1 = os serviços dele seguem rodando sem ele conectado e voltam ao
+ * reiniciar), se está pronto; e, no fim (colunas novas, as antigas não mudam de lugar): o limite duro da cota, o
+ * isolamento (MemorySwapMax, MemoryLow, CPUWeight) e o cgroup dele (memory.current, anon, peak, swap, events high/max/
+ * oom_kill, PSI de memória avg10/avg60 e de CPU avg60, cpu.stat períodos/estrangulados/µs). Máquina sem cgroup v2
+ * deixa essas colunas vazias.
  */
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 echo ROOT
@@ -39,6 +44,8 @@ if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; e
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2" "$3}')"
 echo "RAMROOT=$(ps -u root -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
+echo "CPUS=$(nproc 2>/dev/null)"
+US=/sys/fs/cgroup/user.slice; [ -f "$US/memory.max" ] && echo "USERSLICE=$(cat $US/memory.max 2>/dev/null) $(cat $US/memory.current 2>/dev/null) $(awk '$1=="anon"{print $2}' $US/memory.stat 2>/dev/null) $(cat $US/memory.low 2>/dev/null)"
 if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap = (substr(g[1], 1, 8) == "meu-bot=") ? substr(g[1], 9) : ""; print $1"\\t"$3"\\t"$6"\\t"$7"\\t"ap}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
@@ -46,31 +53,149 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap
   [ -s "$h/.ssh/authorized_keys" ] && ch=1 || ch=0
   [ -e "/var/lib/systemd/linger/$n" ] && lg=1 || lg=0
   [ -s "$h/.local/share/meu-bot/backend/.env" ] && [ "$(tr -d ' \\n' < "$h/.local/share/meu-bot/whatsapp-agente" 2>/dev/null)" = hermes ] && pr=1 || pr=0
-  us=""; li=""
-  if [ "$cota" = 1 ]; then q=$(quota -wu "$n" 2>/dev/null | awk 'NR>2 && $1 ~ /^\\// {gsub(/\\*/,"",$2); print $2" "$4; exit}'); us=\${q%% *}; li=\${q##* }; [ -n "$q" ] || { us=0; li=0; }; fi
+  us=""; li=""; hd=""
+  if [ "$cota" = 1 ]; then q=$(quota -wu "$n" 2>/dev/null | awk 'NR>2 && $1 ~ /^\\// {gsub(/\\*/,"",$2); print $2" "$3" "$4; exit}'); if [ -n "$q" ]; then set -- $q; us=$1; li=$2; hd=$3; else us=0; li=0; hd=0; fi; fi
   ram=$(ps -u "$n" -o rss= 2>/dev/null | awk '{s+=$1} END {print s+0}')
-  mm=$(systemctl show "user-$u.slice" -p MemoryMax --value 2>/dev/null); cq=$(systemctl show "user-$u.slice" -p CPUQuotaPerSecUSec --value 2>/dev/null)
-  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr"
+  sp=$(systemctl show "user-$u.slice" -p MemoryMax -p CPUQuotaPerSecUSec -p MemorySwapMax -p MemoryLow -p CPUWeight 2>/dev/null | awk -F= '{v[$1]=$2} END {print v["MemoryMax"]"\\t"v["CPUQuotaPerSecUSec"]"\\t"v["MemorySwapMax"]"\\t"v["MemoryLow"]"\\t"v["CPUWeight"]}')
+  mm=$(printf '%s' "$sp" | cut -f1); cq=$(printf '%s' "$sp" | cut -f2); sx=$(printf '%s' "$sp" | cut -f3); ml=$(printf '%s' "$sp" | cut -f4); cw=$(printf '%s' "$sp" | cut -f5)
+  d="/sys/fs/cgroup/user.slice/user-$u.slice"; cg=""
+  if [ -f "$d/memory.current" ]; then
+    cur=$(cat "$d/memory.current" 2>/dev/null); an=$(awk '$1=="anon"{print $2}' "$d/memory.stat" 2>/dev/null); pk=$(cat "$d/memory.peak" 2>/dev/null); sc=$(cat "$d/memory.swap.current" 2>/dev/null)
+    ev=$(awk '$1=="high"{h=$2} $1=="max"{m=$2} $1=="oom_kill"{o=$2} END {print (h+0)"\\t"(m+0)"\\t"(o+0)}' "$d/memory.events" 2>/dev/null)
+    pm=$(awk '$1=="some"{for(i=2;i<=NF;i++){split($i,a,"="); if(a[1]=="avg10")x=a[2]; if(a[1]=="avg60")y=a[2]}} END {print (x+0)"\\t"(y+0)}' "$d/memory.pressure" 2>/dev/null)
+    pc=$(awk '$1=="some"{for(i=2;i<=NF;i++){split($i,a,"="); if(a[1]=="avg60")y=a[2]}} END {print (y+0)}' "$d/cpu.pressure" 2>/dev/null)
+    cs=$(awk '$1=="nr_periods"{p=$2} $1=="nr_throttled"{t=$2} $1=="throttled_usec"{w=$2} END {print (p+0)"\\t"(t+0)"\\t"(w+0)}' "$d/cpu.stat" 2>/dev/null)
+    cg=$(printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s' "$cur" "$an" "$pk" "$sc" "$ev" "$pm" "$pc" "$cs")
+  fi
+  printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr" "$hd" "$sx" "$ml" "$cw" "$cg"
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);
-export function lerUsuarios(out: string): { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; hermes: HermesNaMaquina | null; usuarios: UsuarioMaquina[] } {
+const dec = (v: string | undefined): number | null => (v !== undefined && /^\d+(\.\d+)?$/.test(v) ? Number(v) : null);
+/** As 13 colunas do cgroup da fatia (memory.current em diante); null se as duas primeiras não vieram (sem cgroup v2 / máquina antiga). */
+export function lerBox(c: readonly (string | undefined)[]): PressaoBox | null {
+  const uso = kb(c[0]); const anon = kb(c[1]);
+  if (uso === null || anon === null) return null;
+  const b = (v: string | undefined): number => kb(v) ?? 0;
+  return {
+    usoKb: Math.round(uso / 1024), anonKb: Math.round(anon / 1024), picoKb: kb(c[2]) === null ? null : Math.round((kb(c[2]) ?? 0) / 1024), swapKb: Math.round(b(c[3]) / 1024),
+    evHigh: b(c[4]), evMax: b(c[5]), oomKill: b(c[6]), psiMem10: dec(c[7]) ?? 0, psiMem60: dec(c[8]) ?? 0, psiCpu60: dec(c[9]) ?? 0,
+    cpuPeriodos: b(c[10]), cpuEstrangulados: b(c[11]), cpuEstranguladoUsec: b(c[12]),
+  };
+}
+export type ListaUsuarios = { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; userSlice: { maxKb: number | null; usoKb: number; anonKb: number; lowKb: number } | null; cpus: number | null; hermes: HermesNaMaquina | null; usuarios: UsuarioMaquina[] };
+export function lerUsuarios(out: string): ListaUsuarios {
   const root = /^ROOT$/m.test(out);
   const discoKb = kb(/^DISCO=(\d+)$/m.exec(out)?.[1]);
   const cota = /^COTA=1$/m.test(out);
   const rm = /^RAM=(\d+) (\d+)$/m.exec(out);
   const sw = /^SWAP=(\d+) (\d+)$/m.exec(out);
   const ram = rm === null ? null : { totalKb: Number(rm[1]), usoKb: Number(rm[2]), rootKb: kb(/^RAMROOT=(\d+)$/m.exec(out)?.[1]) ?? 0, swapKb: sw === null ? 0 : Number(sw[1]), swapUsoKb: sw === null ? 0 : Number(sw[2]) };
+  const cpus = kb(/^CPUS=(\d+)$/m.exec(out)?.[1]);
+  const us = /^USERSLICE=(max|\d+) (\d+) (\d+) (\d+)$/m.exec(out);
+  const userSlice = us === null ? null : { maxKb: us[1] === "max" ? null : Math.round(Number(us[1]) / 1024), usoKb: Math.round(Number(us[2]) / 1024), anonKb: Math.round(Number(us[3]) / 1024), lowKb: Math.round(Number(us[4]) / 1024) };
   const usuarios: UsuarioMaquina[] = [];
   for (const l of out.split("\n")) {
     const c = l.split("\t");
     if (c[0] !== "U" || c.length < 8 || !NOME_USUARIO_RE.test(c[1] ?? "")) continue;
-    const limite = kb(c[9]);
-    usuarios.push({ nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1", usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, ramKb: kb(c[10]) ?? 0, ramMaxMb: ramMaxDe(c[11]), cpuMaxPct: cpuMaxDe(c[12]), apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0", pronto: c[15] === "1" });
+    const limite = kb(c[9]); const hard = kb(c[16]);
+    const ramMaxMb = ramMaxDe(c[11]);
+    const box = lerBox(c.slice(20, 33));
+    usuarios.push({
+      nome: c[1]!, uid: Number(c[2]), home: c[3] ?? "", shell: c[4] ?? "", sudo: c[5] === "1", meuBot: c[6] === "1", chave: c[7] === "1",
+      usadoKb: kb(c[8]), limiteKb: limite === 0 ? null : limite, hardKb: hard === null || hard === 0 ? null : hard,
+      ramKb: kb(c[10]) ?? 0, ramMaxMb, cpuMaxPct: cpuMaxDe(c[12]),
+      swapMaxMb: ramMaxDe(c[17]), lowMb: c[18] === undefined || c[18] === "" || c[18] === "0" ? null : ramMaxDe(c[18]), cpuWeight: kb(c[19]),
+      box, pressao: pressaoDe(box, ramMaxMb),
+      apelido: (c[13] ?? "").trim(), ligado: c[14] !== "0", pronto: c[15] === "1",
+    });
   }
   const hm = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1];
   const hermes = hm === "global" || hm === "sem-transcritor" || hm === "root" || hm === "nenhum" ? hm : null;
-  return { root, discoKb, cota, ram, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+  return { root, discoKb, cota, ram, userSlice, cpus, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+}
+
+/**
+ * Pressão de uma box, para quem não pensa. Sinais que valem: a memória anônima (a que o kernel não solta) perto do
+ * MemoryHigh, a PSI (quanto tempo os processos dela ficaram parados esperando memória/CPU), bater no MemoryMax e o
+ * OOM matar alguém. O que não vale: `memory.current` (70% é cache descartável) e `events high` (uma box saudável tem
+ * centenas: é só o kernel recolhendo cache no MemoryHigh). Contadores `max`/`oom_kill` são cumulativos desde que a
+ * fatia subiu (zeram só ao recriar a fatia ou reiniciar).
+ */
+export function pressaoDe(b: PressaoBox | null, ramMaxMb: number | null): Pressao | null {
+  if (b === null) return null;
+  const highMb = ramMaxMb === null ? null : Math.floor(ramMaxMb * 0.9);
+  const anonMb = Math.round(b.anonKb / 1024);
+  const dicaMem = `aumente a RAM máx dele (hoje ${ramMaxMb === null ? "sem teto" : `${ramMaxMb} MB`}) ou veja o que pesa na box`;
+  const dicaCpu = "a box está pesada de CPU: aumente o CPU % dele ou veja o que roda";
+  if (b.oomKill > 0) return { estado: "estrangulada", motivo: `o Linux já matou ${b.oomKill} processo${b.oomKill === 1 ? "" : "s"} dele por falta de memória desde que a box subiu`, dica: dicaMem };
+  if (b.psiMem60 >= 25) return { estado: "estrangulada", motivo: `${b.psiMem60}% do último minuto parada esperando memória`, dica: dicaMem };
+  if (b.psiCpu60 >= 50) return { estado: "estrangulada", motivo: `${b.psiCpu60}% do último minuto parada esperando CPU`, dica: dicaCpu };
+  if (b.evMax > 0 && b.psiMem60 >= 10) return { estado: "estrangulada", motivo: `encostou no teto de memória ${b.evMax} vez${b.evMax === 1 ? "" : "es"} e segue apertada (${b.psiMem60}%)`, dica: dicaMem };
+  if (b.psiMem60 >= 10) return { estado: "apertada", motivo: `${b.psiMem60}% do último minuto esperando memória`, dica: dicaMem };
+  if (b.psiCpu60 >= 25) return { estado: "apertada", motivo: `${b.psiCpu60}% do último minuto esperando CPU`, dica: dicaCpu };
+  if (b.evMax > 0) return { estado: "apertada", motivo: `já encostou no teto de memória ${b.evMax} vez${b.evMax === 1 ? "" : "es"}`, dica: dicaMem };
+  if (highMb !== null && anonMb >= highMb * 0.85) return { estado: "apertada", motivo: `${anonMb} MB de memória própria, perto do aperto em ${highMb} MB`, dica: dicaMem };
+  return { estado: "folgada", motivo: `${anonMb} MB de memória própria${highMb !== null ? ` de ${highMb} MB` : ""}, sem espera`, dica: "" };
+}
+
+/** Quanto do total fica para o sistema (sshd, nginx, túnel, journald): o maior entre 3 GB e 10%. */
+export const RESERVA_HOST = { minMb: 3072, pct: 10 } as const;
+/** Teto e proteção do user.slice (todos os usuários juntos) para uma máquina com `totalKb` de RAM. */
+export function reservaDe(totalKb: number): { capMb: number; lowMb: number } {
+  if (!Number.isInteger(totalKb) || totalKb <= 0) throw new Error("RAM total inválida");
+  const totalMb = Math.floor(totalKb / 1024);
+  const reserva = Math.max(RESERVA_HOST.minMb, Math.floor((totalMb * RESERVA_HOST.pct) / 100));
+  const capMb = totalMb - reserva;
+  if (capMb < 1024) throw new Error("máquina com RAM de menos para reservar algo ao sistema");
+  return { capMb, lowMb: Math.floor(capMb / 2) };
+}
+/**
+ * A reserva para o sistema: teto em `user.slice` (todos os usuários juntos), MemoryLow pela metade (com
+ * memory_recursiveprot, o MemoryLow de cada box só vale até o do pai) e CPUWeight igual ao system.slice. Guarda em
+ * `anon` do user.slice (não em memory.current, que é cache do root): recusa se os usuários já usam de verdade mais de
+ * 90% do teto. `set-property` persiste e vale na hora, sem reiniciar nada. Saída `RESERVA=ok <capMb>` ou `ERRO=`.
+ */
+export function reservaHostSh(capMb: number, lowMb: number): string {
+  if (!Number.isInteger(capMb) || capMb < 1024 || !Number.isInteger(lowMb) || lowMb < 0 || lowMb > capMb) throw new Error("reserva inválida");
+  return `[ "$(id -u)" = 0 ] || { echo "ERRO=só o root reserva memória"; exit 0; }
+A=$(awk '$1=="anon"{print int($2/1048576)}' /sys/fs/cgroup/user.slice/memory.stat 2>/dev/null); A=\${A:-0}
+[ "$A" -le $(( ${capMb} * 9 / 10 )) ] || { echo "ERRO=os usuários já usam $A MB de memória de verdade, acima de 90% do teto de ${capMb} MB: não dá para reservar sem apertar alguém"; exit 0; }
+systemctl set-property user.slice MemoryMax=${capMb}M MemoryLow=${lowMb}M CPUWeight=100 >/dev/null 2>&1 && echo "RESERVA=ok ${capMb}" || echo "ERRO=o systemd recusou a reserva"`;
+}
+
+/** Isolamento que toda box leva além dos tetos: swap própria pequena, um piso de memória protegida e peso de CPU igual. */
+export const ISOLAMENTO_PADRAO = { swapMb: 256, lowMb: 640, cpuWeight: 100 } as const;
+/**
+ * Aplica o isolamento às boxes que já existem (só as três propriedades novas; MemoryHigh/Max e CPUQuota de cada uma
+ * ficam como estão), para cada usuário de login sem sudo. Linhas `ISOLAMENTO=ok <n> <nomes>` e `FALHOU=<nome>`.
+ */
+export function isolamentoTodosSh(): string {
+  const { swapMb, lowMb, cpuWeight } = ISOLAMENTO_PADRAO;
+  return `[ "$(id -u)" = 0 ] || { echo "ERRO=só o root aplica o isolamento"; exit 0; }
+N=0; L=""
+for n in $(awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1}' /etc/passwd); do
+  case " $(id -nG "$n" 2>/dev/null) " in *" sudo "*|*" wheel "*|*" admin "*) continue ;; esac
+  u=$(id -u "$n")
+  if systemctl set-property "user-$u.slice" MemorySwapMax=${swapMb}M MemoryLow=${lowMb}M CPUWeight=${cpuWeight} >/dev/null 2>&1; then N=$((N+1)); L="$L $n"; else echo "FALHOU=$n"; fi
+done
+echo "ISOLAMENTO=ok $N$L"`;
+}
+
+/** Quantas boxes cabem: o teto do user.slice (o aplicado, ou o planejado) dividido pelo teto padrão por box; e a CPU prometida. */
+export function capacidadeDe(o: { totalKb: number; userSliceMaxKb: number | null; cpus: number | null; padraoMb: number; usuarios: readonly UsuarioMaquina[] }): Capacidade {
+  const boxes = o.usuarios.filter((u) => !u.sudo && u.uid >= 1000 && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome));
+  const planejado = reservaDe(o.totalKb).capMb;
+  const capMb = o.userSliceMaxKb === null ? planejado : Math.round(o.userSliceMaxKb / 1024);
+  const cpuPrometidoPct = boxes.reduce((s, u) => s + (u.cpuMaxPct ?? (o.cpus ?? 1) * 100), 0);
+  return { boxes: boxes.length, cabem: Math.max(0, Math.floor(capMb / o.padraoMb)), capMb, padraoMb: o.padraoMb, reservaAplicada: o.userSliceMaxKb !== null, cpuNucleos: o.cpus, cpuPrometidoPct };
+}
+/** O que falta da governança: a reserva no user.slice e as boxes que nunca receberam o isolamento (sem MemorySwapMax). */
+export function governancaDe(l: Pick<ListaUsuarios, "userSlice" | "usuarios">): { reserva: boolean; semIsolamento: string[] } {
+  return {
+    reserva: l.userSlice !== null && l.userSlice.maxKb !== null,
+    semIsolamento: l.usuarios.filter((u) => !u.sudo && u.uid >= 1000 && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome) && u.swapMaxMb === null && u.box !== null).map((u) => u.nome),
+  };
 }
 
 /** Limite em KB para `pct`% do disco (inteiro de 1 a 100); 0 = sem limite. */
@@ -104,9 +229,13 @@ quotacheck -cum / >/dev/null 2>&1 || true
 quotaon -u / >/dev/null 2>&1 || true
 quotaon -pu / 2>/dev/null | grep -q " is on" && echo COTA=ok || echo "ERRO=a cota não ligou neste disco"`;
 
-/** Grava o limite (KB; 0 = sem limite) do usuário `nome` (já validado). Saída `LIMITE=ok` ou `ERRO=`. */
+/** Folga entre o limite macio (o que a pessoa vê) e o duro: 10% ou 300 MB, o que for maior; durante 7 dias acima do macio ainda grava. */
+export const FOLGA_HARD = { pct: 10, minKb: 300 * 1024 } as const;
+/** Limite duro a partir do macio (0 = sem limite): com ele o aviso de "acabou" ainda sai pelo WhatsApp e o Hermes ainda grava por uns dias. */
+export const hardKbDe = (kb: number): number => (kb === 0 ? 0 : kb + Math.max(Math.floor((kb * FOLGA_HARD.pct) / 100), FOLGA_HARD.minKb));
+/** Grava o limite (KB; 0 = sem limite) do usuário `nome` (já validado): macio = o limite, duro = com a folga, carência de 7 dias. Saída `LIMITE=ok` ou `ERRO=`. */
 export const limiteSh = (nome: string, limiteKb: number): string => `id '${nome}' >/dev/null 2>&1 || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
-setquota -u '${nome}' ${limiteKb} ${limiteKb} 0 0 / && echo LIMITE=ok || echo "ERRO=não consegui gravar o limite"`;
+setquota -u '${nome}' ${limiteKb} ${hardKbDe(limiteKb)} 0 0 / && { setquota -t 604800 604800 / >/dev/null 2>&1 || true; echo LIMITE=ok; } || echo "ERRO=não consegui gravar o limite"`;
 
 /** Apaga o usuário `nome` (já validado) e a pasta dele; recusa quem tem sudo ou uid de sistema. Saída `APAGADO=` ou `ERRO=`. */
 export const apagarSh = (nome: string): string => `N='${nome}'
@@ -176,16 +305,18 @@ export function cpuMaxDe(v: string | undefined): number | null {
 /**
  * Tetos de RAM (MB; 0 = sem teto) e CPU (% de um núcleo; 0 = sem teto) na fatia do usuário, pelo systemd: vale para
  * tudo o que ele roda (agente, terminal…), persiste sem reiniciar e é o mesmo para qualquer agente. MemoryHigh a 90%
- * do máximo: o Linux aperta antes de matar. Saída `RECURSOS=ok` ou `ERRO=`.
+ * do máximo: o Linux aperta antes de matar. Leva junto o isolamento (ISOLAMENTO_PADRAO). Saída `RECURSOS=ok` ou `ERRO=`.
  */
 export function recursosSh(nome: string, ramMb: number, cpuPct: number): string {
   if (!Number.isInteger(ramMb) || ramMb < 0 || ramMb > 1_048_576) throw new Error("RAM máxima: um número inteiro de MB (0 = sem teto)");
   if (!Number.isInteger(cpuPct) || cpuPct < 0 || cpuPct > 6400) throw new Error("CPU: uma porcentagem inteira de um núcleo (100 = um núcleo; 0 = sem teto)");
   const mem = ramMb === 0 ? "MemoryHigh=infinity MemoryMax=infinity" : `MemoryHigh=${Math.floor(ramMb * 0.9)}M MemoryMax=${ramMb}M`;
   const cpu = cpuPct === 0 ? "CPUQuota=" : `CPUQuota=${cpuPct}%`;
+  // O isolamento vai junto (sempre): swap própria pequena (sem teto de RAM, sem teto de swap), piso protegido e peso igual.
+  const iso = `MemorySwapMax=${ramMb === 0 ? "infinity" : `${ISOLAMENTO_PADRAO.swapMb}M`} MemoryLow=${ISOLAMENTO_PADRAO.lowMb}M CPUWeight=${ISOLAMENTO_PADRAO.cpuWeight}`;
   return `U=$(id -u '${nome}' 2>/dev/null) || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
 [ "$U" -ge 1000 ] || { echo "ERRO=${nome} é um usuário do sistema"; exit 0; }
-systemctl set-property "user-$U.slice" ${mem} ${cpu} >/dev/null 2>&1 && echo RECURSOS=ok || echo "ERRO=o systemd recusou os limites"`;
+systemctl set-property "user-$U.slice" ${mem} ${cpu} ${iso} >/dev/null 2>&1 && echo RECURSOS=ok || echo "ERRO=o systemd recusou os limites"`;
 }
 
 /**
@@ -344,10 +475,10 @@ rm -rf "$H"`;
 export const lingerSh = (nome: string): string => `id '${nome}' >/dev/null 2>&1 || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
 loginctl enable-linger '${nome}' >/dev/null 2>&1; [ -e '/var/lib/systemd/linger/${nome}' ] && echo LINGER=ok || echo "ERRO=o systemd não deixou ${nome} sempre ligado"`;
 
-/** Quanto do limite de disco o usuário já usou: `perto` a partir de 90%, `cheio` em 100% (aí o agente falha ao gravar). */
+/** Quanto do limite macio o usuário já usou: `perto` a partir de 80% (quando a pessoa recebe o 1º aviso), `cheio` em 100% (ainda grava por 7 dias, com a folga). */
 export function nivelUso(usadoKb: number | null, limiteKb: number | null): "ok" | "perto" | "cheio" {
   if (usadoKb === null || limiteKb === null || limiteKb <= 0) return "ok";
-  return usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.9 ? "perto" : "ok";
+  return usadoKb >= limiteKb ? "cheio" : usadoKb >= limiteKb * 0.8 ? "perto" : "ok";
 }
 
 /** Apelido aceito: até 40 caracteres, sem ":", "," nem quebra (são separadores do /etc/passwd). Vazio = sem apelido. */
@@ -386,8 +517,13 @@ Host ${o.alias}
 export const configTemHost = (texto: string, alias: string): boolean =>
   texto.split("\n").some((l) => { const m = /^\s*Host\s+(.+)$/i.exec(l); return m !== null && m[1]!.trim().split(/\s+/).includes(alias); });
 
-/** Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. */
-export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
+/**
+ * Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. 1,25 GB (30 out,
+ * decisão de produto: 22 boxes em 32 GB): o uso próprio medido é ~0,3-0,4 GB, mas o transcritor de áudio roda dentro
+ * da box e chega a ~0,6 GB por áudio, então perto do MemoryHigh (1152 MB) a box fica apertada durante um áudio; a
+ * coluna Pressão mostra, e a medição com 10 boxes decide se muda.
+ */
+export const RECURSOS_PADRAO = { ramMb: 1280, cpuPct: 200 } as const;
 
 const CHAVE_PUB_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]{20,}( [\w@.:-]{0,80})?$/;
 /**

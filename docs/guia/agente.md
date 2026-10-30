@@ -246,3 +246,21 @@
 - **Backend como root:** o Claude Code recusa `--dangerously-skip-permissions` como root; na meu-root todo turno do
   agente caía no Grok. O backend passa `IS_SANDBOX=1` quando roda como uid 0 no modo sem permissões.
 - Testado na meu-root chamando o backend como o Hermes: `conversa` e `consulta` recusam "rode echo", `age` executa.
+
+## Espaço da conta (Configurações › Espaço, 30 out)
+
+- **Por quê:** o limite de disco por conta (1%) é de propósito (a pessoa sente e faz upgrade), mas até aqui ela só
+  sofria: nada na tela, e com a cota cheia o Hermes falhava em gravar, a mídia não chegava, o áudio não transcrevia.
+- **Rodapé:** segmento "Espaço: 82%" (`status-line.ts › buildSegments`, de qualquer modelo), amarelo a partir de 80% e
+  vermelho de 95%; liga/desliga em Tutoriais › Status line (chave `espaco`, só do rodapé: o statusline.sh ignora). Aviso
+  único na conversa ao cruzar 80 e 95% (`checkEspacoThreshold`, rearma abaixo de 75), como o da sessão do Claude.
+- **Grupo Espaço** (`src/renderer/configuracoes/espaco.ts`, oculto em `local`): barra, "3,2 GB usados de 3,9 GB · 82%",
+  o que ocupa (programas do agente marcados como fixos), **Liberar espaço** (lista do que ela pode apagar: caches de
+  imagens e áudios, workspaces do agente e sessões antigas do WhatsApp; nunca a sessão atual do WhatsApp nem programas;
+  `espaco-core.ts › caminhoApagavel` + `apagarMeuItemSh` com allowlist e `realpath -m`; Apagar em dois cliques; relê a
+  cota por `GET /v1/meu-bot/cota?fresco=1`) e **Aumentar espaço** (o `pagamento.link` da licença quando o admin definiu,
+  e sempre "Pedir mais espaço ao admin" → auditoria `cota.pedir-mais (estava em N%)`). Backend antigo: "atualiza sozinho".
+- **Canais** `cota:status`, `cota:maiores`, `cota:apagar-item` (auditoria `cota.liberar`), `cota:pedir-mais` (cliente).
+  `AccountStatus.cota` (ausente = backend antigo; null = sem cota) vem do `/v1/meu-bot/status`.
+- **O aviso no WhatsApp** é do backend dela (vigia da cota, `guia/whatsapp.md`); a tela e o aviso usam os mesmos
+  limiares. Admin: `guia/suporte-admin.md` (cota macia/dura).
