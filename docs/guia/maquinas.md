@@ -421,7 +421,8 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
 - **Desligar** guarda a pasta em `/var/www/publico/.desligado-<usuário>` (o nginx não serve nome com ponto) e ligar de
   novo a devolve, com o nome que a pessoa tinha escolhido.
 - **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
-  `ligarLinkPublicoPara`).
+  `ligarLinkPublicoPara`). Desde 30 out o mesmo fluxo instala a status line do Claude (`installStatusLine`, como a
+  pessoa, idempotente; o tutorial 3 saiu da lista), também no "Preparar" de uma conta que já tinha backend.
 - **Domínio próprio:** fora do alcance deste túnel (um hostname só passa por um túnel da mesma conta Cloudflare). Quem
   quer domínio próprio usa a conta Cloudflare dela (tutorial 13) e pede ao agente para subir a pasta no Pages.
 - **Conferido no servidor (30 out):** `https://box-2.agentesgrok.com/teste.html` respondeu 200 pela internet; raiz

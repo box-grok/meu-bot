@@ -48,6 +48,11 @@
 
 ## Status line e seção Fallback (15 out 2026)
 
+- **Tutorial 3 oculto (30 out):** o cartão "Status line do Claude" saiu da lista (`oculto: true` em `lib/tutoriais.ts`; o
+  guia, os canais `statusline:*` e o reset continuam no código). O admin instala a status line ao criar a conta
+  (`prepararUsuario` → `installStatusLine`, também no "Preparar"): a pessoa não tem passo nenhum. A escolha de segmentos
+  deixa de ter tela; o rodapé mostra todos.
+
 - Rodapé da conversa (`#ctx-line`) virou a status line no modelo do `statusline.sh` da box:
   `agente | Ctx: 13% · 3.2k/24.0k | 6.3 s · 258 tok · 41 t/s | m6@… (Premium) | Sessão: 37% · 1h35m |
   Semanal: 37% · 5d0h | há 12 min`. Cores: modelo amarelo, Ctx/Sessão ciano, conta verde, Semanal

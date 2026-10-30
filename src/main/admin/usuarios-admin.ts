@@ -15,7 +15,7 @@ import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
 import { refreshPickerIfOpen } from "../maquina/picker";
-import { fusoDesteMac, installBackend, installClaudeCode, pausaPluginFonte, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { fusoDesteMac, installBackend, installClaudeCode, installStatusLine, pausaPluginFonte, portaParaInstalar, probeHost } from "../maquina/hostProbe";
 import { hermesPausaPluginSh } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { getBackendPort, setBackendPortForHost } from "../app/settings";
 import { HERMES_STT_COMPARTILHADO_SH, TRANSCRITOR_BIN, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
@@ -235,6 +235,11 @@ async function prepararUsuario(host: string, nome: string, alias: string, onLine
     if (!b.ok) throw new Error(`o backend não instalou: ${b.log.at(-1) ?? "?"}`);
     if (porta !== configurada) setBackendPortForHost(alias, porta);
   }
+  // Status line do Claude (30 out): sem tutorial para a pessoa; a conta já nasce com ela. O install.sh do backend já a
+  // instala numa conta nova; este passo garante também quando o backend já existia ("Preparar"). Idempotente; falhar não desfaz a conta.
+  passo("instalando a status line do Claude");
+  const sl = await installStatusLine(alias, passo).catch((e: unknown) => ({ ok: false, log: [e instanceof Error ? e.message : String(e)] }));
+  if (!sl.ok) passo(`✗ status line não instalou: ${sl.log.at(-1) ?? "?"} (a conta segue sem ela)`);
   passo("deixando o Hermes como agente do WhatsApp, com a transcrição ligada");
   const h = await runSsh(alias, `${hermesSemearSh()}\n`, 120_000);
   if (!/^SEMEADO=ok$/m.test(h.stdout)) throw new Error(`não consegui preparar o Hermes: ${(h.stderr.trim() || h.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);

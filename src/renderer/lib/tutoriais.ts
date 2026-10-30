@@ -404,6 +404,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
     minutes: 3,
     icon: "target",
+    // Fora da lista (30 out): o admin instala a status line ao criar a conta (prepararUsuario), sem passo para a pessoa.
+    oculto: true,
     reset: { what: "desinstala a status line desta máquina (o settings.json anterior volta) e apaga a escolha de segmentos" },
     steps: [
       {
