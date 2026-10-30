@@ -330,6 +330,11 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
   sync: ffmpeg: …; ripgrep: …", porque as ferramentas do pm são por `HERMES_HOME`, e o app só via "extra=falhou".
   `hermesPmExtraSh` lê essa lista, instala só aquelas ferramentas (`hermes pm install ffmpeg ripgrep`) e tenta o extra
   de novo. Não usa `--tools-only`, que traria também o Chromium.
+- **Hermes global, reinício do gateway:** o serviço do usuário chama `<código>/.hermes/bin/hermes`, que antes passava
+  pelo lançador Node do pacote npm; ele não repassa SIGTERM ao Python e o `KillMode=mixed` do systemd dava SIGKILL no
+  gateway ("exited UNCLEANLY" no `gateway.log` a cada reinício). Agora o atalho dá `exec` direto em `venv/bin/hermes`
+  (CONTORNO #6 em `contornos.md`), o Python vira o PID principal e o desligamento limpo roda. Vale depois de rodar o
+  instalador de novo na máquina.
 - **Transcritor compartilhado (padrão da máquina):** o root instala uma vez, junto com o Hermes global
   ("Instalar Hermes para todos" no admin), o `/opt/transcriber`: dono root, `755` como o `/opt/hermes`, com um
   ambiente Python próprio (`faster-whisper==1.2.1`, `av==18.1.0`; o av 19 quebra o `decode_audio`), o modelo
