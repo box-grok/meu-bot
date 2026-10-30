@@ -11,7 +11,8 @@ Sai quando: o status do app imprimir `pausanativa=1` (sonda HERMES_PAUSA_SH troc
 a issue); aí `capacidadesDe` prefere o nativo e `hermesPausaPluginRemoverSh` tira este plugin.
 Tabela: docs/guia/contornos.md.
 
-Regras: o dono (me.id/me.lid do creds.json) nunca é descartado nem pausado; um contato só pausa a si mesmo e só com
+Regras: o dono (me.id/me.lid do creds.json e, se gravado pelo app, `dono.numero` de whatsapp-lista.json — a pessoa
+falando do celular dela quando o agente roda num chip dedicado) nunca é descartado nem pausado; um contato só pausa a si mesmo e só com
 prazo (pausado ele não consegue pedir para voltar); o dono pausa qualquer um, com ou sem prazo. Grupos passam reto.
 Só a biblioteca padrão; qualquer erro deixa a mensagem seguir (fail-open) — este plugin nunca derruba o gateway.
 """
@@ -24,7 +25,7 @@ import re
 import time
 from datetime import datetime, timedelta, timezone
 
-VERSAO = "1.0.0"  # igual ao plugin.yaml (o teste confere)
+VERSAO = "1.1.0"  # igual ao plugin.yaml (o teste confere)
 NOME = "meu-bot-pausa"
 log = logging.getLogger(NOME)
 
@@ -236,25 +237,31 @@ def _aprender_lid(lids, numeros):
         _gravar_json(_caminho(LIDS), mapa)
 
 
-_dono_cache = {"mtime": None, "ids": set()}
+_dono_cache = {}
 
 
-def _dono():
-    """Dígitos de me.id e me.lid do creds.json do bridge (cache por mtime). Vazio sem pareamento."""
-    caminho = os.path.join(_home(), CREDS)
+def _cache_por_mtime(chave, caminho, extrair):
+    """Relê `caminho` só quando o mtime mudou; sem arquivo, conjunto vazio."""
     try:
         mt = os.stat(caminho).st_mtime
     except Exception:
         return set()
-    if _dono_cache["mtime"] == mt:
-        return _dono_cache["ids"]
-    me = _ler_json(caminho, {}).get("me") or {}
-    ids = set()
-    for k in ("id", "lid"):
-        d = _digitos(me.get(k))
-        if d:
-            ids.add(d)
-    _dono_cache.update(mtime=mt, ids=ids)
+    hit = _dono_cache.get(chave)
+    if hit is not None and hit[0] == mt:
+        return hit[1]
+    try:
+        ids = set(extrair(_ler_json(caminho, {})))
+    except Exception:
+        ids = set()
+    _dono_cache[chave] = (mt, ids)
+    return ids
+
+
+def _dono():
+    """Quem manda: me.id/me.lid do creds.json do bridge + o dono gravado pelo app (whatsapp-lista.json › dono.numero),
+    para a pessoa que fala do celular dela num chip dedicado. Vazio sem pareamento."""
+    ids = set(_cache_por_mtime("creds", os.path.join(_home(), CREDS), lambda d: [x for k in ("id", "lid") for x in [_digitos((d.get("me") or {}).get(k))] if x]))
+    ids |= _cache_por_mtime("lista", _caminho(LISTA), lambda d: [n for n in [_digitos((d.get("dono") or {}).get("numero"))] if n and NUMERO_RE.match(n)])
     return ids
 
 

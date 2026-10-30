@@ -42,13 +42,13 @@ const DONO = "595986120831", DIEGO = "5521923670743", OUTRO = "5511988887777", L
 const jid = (n) => `${n}@s.whatsapp.net`;
 const T0 = "2026-10-29T13:00:00+00:00";
 
-function homeFalso({ paused = {}, fuso = "America/Sao_Paulo" } = {}) {
+function homeFalso({ paused = {}, fuso = "America/Sao_Paulo", dono = null } = {}) {
   const home = mkdtempSync(join(tmpdir(), "pausa-"));
   mkdirSync(join(home, ".hermes", "whatsapp", "session"), { recursive: true });
   writeFileSync(join(home, ".hermes", "whatsapp", "session", "creds.json"), JSON.stringify({ me: { id: `${DONO}:8@s.whatsapp.net`, lid: "35503055339687:8@lid", name: "Daniel" } }));
   const d = join(home, ".local", "share", "meu-bot");
   mkdirSync(d, { recursive: true });
-  writeFileSync(join(d, "whatsapp-lista.json"), JSON.stringify({ archived: { [OUTRO]: "2026-10-01T00:00:00Z" }, deleted: {}, names: { [DIEGO]: { name: "Diego", alias: null, at: "2026-10-01T00:00:00Z" } }, groupsDeleted: {}, groupNames: { "1@g.us": { alias: "Família", at: "2026-10-01T00:00:00Z" } }, paused, extra: { fica: true } }, null, 1));
+  writeFileSync(join(d, "whatsapp-lista.json"), JSON.stringify({ archived: { [OUTRO]: "2026-10-01T00:00:00Z" }, deleted: {}, names: { [DIEGO]: { name: "Diego", alias: null, at: "2026-10-01T00:00:00Z" } }, groupsDeleted: {}, groupNames: { "1@g.us": { alias: "Família", at: "2026-10-01T00:00:00Z" } }, paused, ...(dono === null ? {} : { dono: { numero: dono, desde: "2026-10-30T01:00:00Z" } }), extra: { fica: true } }, null, 1));
   writeFileSync(join(d, "fuso"), fuso);
   return home;
 }
@@ -214,4 +214,24 @@ test("fail-open: lista corrompida = ninguém pausado; pasta sem escrita não der
     assert.ok(r.passos[0] === null || r.passos[0].action === "skip", "comando com disco travado não quebra");
     assert.equal(r.passos[1], null);
   } finally { chmodSync(d, 0o700); }
+});
+
+test("dono gravado pelo app (chip dedicado): do celular dele manda como dono, nunca é descartado, a marca nele some; o pareado continua dono; trocar o arquivo vale na hora", { skip: semPython }, () => {
+  const home = homeFalso({ dono: DIEGO, paused: { [DIEGO]: "2026-10-29T12:00:00Z" } });
+  const r = rodar(home, [
+    { agora: T0, ...evento(DIEGO, "oi, sou o dono agora") },
+    evento(DIEGO, `/pausar ${OUTRO} 2h`),
+    evento(DIEGO, "/pausados"),
+    evento(DONO, `/pausar ${DIEGO}`),
+  ]);
+  assert.equal(r.passos[0], null, "o dono gravado passa mesmo com marca de pausa nele");
+  assert.equal(lista(home).paused[DIEGO], undefined, "a marca no dono foi apagada");
+  assert.equal(r.passos[1].action, "skip"); assert.match(r.enviadas[0][1], /^Pausei \+5511988887777 por 2 horas/);
+  assert.match(r.enviadas[1][1], /^Pausados: \+5511988887777/);
+  assert.match(r.enviadas[2][1], /Você é o dono/, "o pareado também é dono e não pausa o outro dono");
+  // Trocar o dono no arquivo (mtime novo) vale na próxima mensagem, sem reiniciar.
+  const f = JSON.parse(readFileSync(join(home, ".local", "share", "meu-bot", "whatsapp-lista.json"), "utf8"));
+  delete f.dono; writeFileSync(join(home, ".local", "share", "meu-bot", "whatsapp-lista.json"), JSON.stringify(f));
+  const r2 = rodar(home, [{ agora: "2026-10-29T13:05:00+00:00", ...evento(DIEGO, `/pausar ${OUTRO} 2h`) }]);
+  assert.match(r2.enviadas[0][1], /Só consigo pausar esta conversa/, "sem a marca, o Diego volta a ser contato comum");
 });
