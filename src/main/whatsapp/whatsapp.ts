@@ -23,7 +23,7 @@ import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threa
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
-import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
+import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaDonoPatch, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
 import { chatsComPausados, mensagensDaPausa, parsePausados, waPausadosSh } from "./whatsapp-pausados";
 import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo, type HermesWaEnv } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
@@ -867,11 +867,11 @@ export async function whatsappLearnNames(host: string, numbers: readonly string[
 }
 
 /** Grava na máquina os ajustes de arquivado/excluído, de conversas e de grupos (merge lá, para o admin e a pessoa não se sobrescreverem). */
-export async function whatsappSetMarks(host: string, patches: readonly (WaMarkPatch | WaGroupMarkPatch)[]): Promise<void> {
+export async function whatsappSetMarks(host: string, patches: readonly (WaMarkPatch | WaGroupMarkPatch | WaDonoPatch)[]): Promise<void> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const r = await runSsh(host, waMarkSh(patches), 20_000);
   if (r.code !== 0 || !r.stdout.includes("MARKS=1")) throw new Error(`não deu para gravar na máquina: ${r.stderr.trim().split("\n").pop() || "ssh falhou"}`);
-  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("jid" in p ? `grupo ${p.jid}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}${p.alias !== undefined ? ` apelido=${p.alias === "" ? "(apagado)" : "sim"}` : ""}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
+  log(`whatsapp: marcações gravadas em ${host}: ${patches.map((p) => ("dono" in p ? `dono=${p.dono === "" ? "(pareado)" : `+${p.dono}`}` : "jid" in p ? `grupo ${p.jid}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}${p.alias !== undefined ? ` apelido=${p.alias === "" ? "(apagado)" : "sim"}` : ""}` : `${p.number}${p.archived !== undefined ? ` a=${p.archived}` : ""}${p.deleted !== undefined ? ` d=${p.deleted}` : ""}`)).join(", ")}`);
 }
 
 export async function whatsappThread(host: string, number: string, limit = 200): Promise<WhatsappThreadMessage[]> {

@@ -8,6 +8,8 @@
  *           "groupsDeleted": { "<jid>@g.us": "<ISO da exclusão>" },
  *           "groupNames": { "<jid>@g.us": { "alias": "<apelido>", "at": "<ISO>" } },
  *           "paused": { "<número>": { "desde": "<ISO>", "ate": "<ISO>" | null, "por": "app"|"dono"|"contato" } } }
+ *           "dono": { "numero": "<dígitos>", "desde": "<ISO>" } | ausente  ← quem manda no agente, quando não é o
+ *           próprio número pareado (agente num chip dedicado; a pessoa fala do celular dela). Ausente = o pareado.
  *           ← só no Hermes (no OpenClaw a pausa mora no openclaw.json). `ate` nulo = até retomar. Formato antigo
  *           ("<número>": "<ISO>") ainda é lido. O plugin meu-bot-pausa da máquina lê e grava a mesma marca (é ele
  *           que apaga as vencidas; o app só as ignora); sem o plugin, a marca acompanha a saída da WHATSAPP_ALLOWED_USERS.
@@ -23,7 +25,21 @@ export const WA_MARKS_FILE = "$HOME/.local/share/meu-bot/whatsapp-lista.json";
 export interface WaName { name: string | null; alias: string | null; at: string }
 /** Pausa de um contato: `ate` nulo = até retomar. */
 export interface WaPausa { desde: string; ate: string | null }
-export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> ; paused: Record<string, WaPausa> }
+/** Quem manda no agente, quando não é o número pareado (gravado pela tela "Dono"). */
+export interface WaDono { numero: string; desde: string }
+export interface WaMarks { archived: Record<string, string>; deleted: Record<string, string>; names: Record<string, WaName>; groupsDeleted: Record<string, string>; groupNames: Record<string, { alias: string; at: string }> ; paused: Record<string, WaPausa>; dono: WaDono | null }
+/**
+ * Os dois números que mandam na conversa: `self` = o aparelho pareado (o agente responde por ele), `dono` = a pessoa
+ * (o dono gravado, senão o próprio pareado). Único lugar que decide quem é o dono; o resto recebe `WaQuem`.
+ */
+export interface WaQuem { self: string | null; dono: string | null }
+export const quemDe = (m: WaMarks, self: string | null): WaQuem => ({ self, dono: m.dono?.numero ?? self });
+/** O dono é o próprio aparelho (agente no número da pessoa): "só eu" é o self-chat do Hermes. */
+export const souEu = (q: WaQuem): boolean => q.dono === null || q.dono === q.self;
+/** Os números que nunca saem da lista nem são pausados (sem repetição, sem nulos). */
+export const donosDe = (q: WaQuem): string[] => [...new Set([q.self, q.dono].filter((n): n is string => n !== null))];
+/** Ajuste do dono (só o main manda): número só dígitos, ou "" para voltar ao pareado. */
+export interface WaDonoPatch { dono: string }
 /** Um ajuste: `at` só a migração do localStorage manda (sem ele, a máquina usa a hora dela); `name`/`alias` vazios apagam. */
 export type { WaGroupMarkPatch, WaMarkPatch };
 /** Prazos que a tela oferece (o plugin aceita os mesmos do contato). */
@@ -35,7 +51,8 @@ export const pausaVigente = (m: WaMarks, n: string, agora: number = Date.now()):
 };
 /** Números pausados em vigor (marca do Hermes), só dígitos. */
 export const pausadosDe = (m: WaMarks, agora: number = Date.now()): string[] => Object.keys(m.paused).filter((n) => pausaVigente(m, n, agora) !== null);
-const isGroupPatch = (p: WaMarkPatch | WaGroupMarkPatch): p is WaGroupMarkPatch => "jid" in p;
+const isGroupPatch = (p: WaMarkPatch | WaGroupMarkPatch | WaDonoPatch): p is WaGroupMarkPatch => "jid" in p;
+const isDonoPatch = (p: WaMarkPatch | WaGroupMarkPatch | WaDonoPatch): p is WaDonoPatch => "dono" in p;
 
 const NUMBER_RE = /^\d{8,15}$/;
 const NAME_MAX = 80;
@@ -96,8 +113,10 @@ function parseGroupNames(v: unknown): Record<string, { alias: string; at: string
 
 /** O que veio da máquina, saneado (lixo ou arquivo corrompido = sem marcas). */
 export function parseWaMarks(raw: unknown): WaMarks {
-  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} };
-  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames), paused: parsePausas(raw.paused) };
+  if (!isObj(raw)) return { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {}, dono: null };
+  const d = raw.dono;
+  const dono: WaDono | null = isObj(d) && typeof d.numero === "string" && NUMBER_RE.test(d.numero) ? { numero: d.numero, desde: isoOrNull(d.desde) ?? "" } : null;
+  return { archived: parseMap(raw.archived), deleted: parseMap(raw.deleted), names: parseNames(raw.names), groupsDeleted: parseMap(raw.groupsDeleted, JID_RE), groupNames: parseGroupNames(raw.groupNames), paused: parsePausas(raw.paused), dono };
 }
 
 /**
@@ -152,8 +171,12 @@ export function parseWaMarkPatches(payload: unknown): WaMarkPatch[] {
  * Script remoto: lê o arquivo atual, aplica os ajustes e grava (tmp + mv). O merge é na máquina para o admin e a
  * pessoa não se sobrescreverem. Os ajustes vão em base64 (sem problema de aspas); python3 já é exigido pelo app.
  */
-export function waMarkSh(patches: readonly (WaMarkPatch | WaGroupMarkPatch)[]): string {
+export function waMarkSh(patches: readonly (WaMarkPatch | WaGroupMarkPatch | WaDonoPatch)[]): string {
   for (const p of patches) {
+    if (isDonoPatch(p)) {
+      if (p.dono !== "" && !NUMBER_RE.test(p.dono)) throw new Error("número do dono inválido");
+      continue;
+    }
     if (isGroupPatch(p)) {
       if (!JID_RE.test(p.jid)) throw new Error("grupo inválido");
       if (p.alias !== undefined && (p.alias.length > NAME_MAX || /[\r\n]/.test(p.alias))) throw new Error("apelido inválido");
@@ -179,6 +202,7 @@ names = cur.get("names") if isinstance(cur.get("names"), dict) else {}
 gdel = cur.get("groupsDeleted") if isinstance(cur.get("groupsDeleted"), dict) else {}
 gnames = cur.get("groupNames") if isinstance(cur.get("groupNames"), dict) else {}
 paus = cur.get("paused") if isinstance(cur.get("paused"), dict) else {}
+dono = cur.get("dono") if isinstance(cur.get("dono"), dict) else None
 # Formato antigo da pausa ("<número>": "<ISO>") vira o novo ({desde, ate}) ao regravar: um formato só para o plugin e o app.
 for k, v in list(paus.items()):
     if isinstance(v, str): paus[k] = {"desde": v, "ate": None, "por": "app"}
@@ -186,6 +210,9 @@ iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 now = iso(time.time())
 for p in json.load(sys.stdin):
     at = p.get("at") or now
+    if "dono" in p:
+        dono = {"numero": p["dono"], "desde": at} if p["dono"] else None
+        continue
     if "jid" in p:
         if "alias" in p:
             if p["alias"]: gnames[p["jid"]] = {"alias": p["alias"], "at": at}
@@ -214,7 +241,11 @@ for p in json.load(sys.stdin):
         if e.get("name") or e.get("alias"): names[n] = e
         else: names.pop(n, None)
 tmp = f + ".tmp"
-with open(tmp, "w") as o: json.dump({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel, "groupNames": gnames, "paused": paus}, o, indent=1, ensure_ascii=False)
+# O arquivo inteiro volta (chaves de outras versões ou do plugin ficam); só as nossas são trocadas.
+out = dict(cur); out.update({"archived": arch, "deleted": dele, "names": names, "groupsDeleted": gdel, "groupNames": gnames, "paused": paus})
+if dono is None: out.pop("dono", None)
+else: out["dono"] = dono
+with open(tmp, "w") as o: json.dump(out, o, indent=1, ensure_ascii=False)
 os.chmod(tmp, 0o600); os.replace(tmp, f)
 print("MARKS=1")
 '
