@@ -152,7 +152,7 @@ function sizePair(v: string | undefined, kind: "disk" | "mem" | "swap"): { diskT
   const total = m === null ? null : Math.round(Number(m[1]) / 1024), free = m === null ? null : Math.round(Number(m[2]) / 1024);
   return kind === "disk" ? { diskTotalMb: total, diskFreeMb: free } : kind === "mem" ? { memTotalMb: total, memFreeMb: free } : { swapTotalMb: total, swapFreeMb: free };
 }
-const ALERTAS_MAQUINA: readonly MaquinaAlerta[] = ["memoria", "disco", "lag"];
+const ALERTAS_MAQUINA: readonly MaquinaAlerta[] = ["box", "memoria", "disco", "lag"];
 
 /** Porta vinda da sondagem (só dígitos, 1 a 65535); vazio ou lixo = null. */
 function parsePort(v: string | undefined): number | null {

@@ -86,8 +86,8 @@ export interface SettingsUpdate {
   atualizarOcioso?: boolean;
   abaFixa?: AbaFixa;
 }
-/** Avisos de segurança gravados na máquina (o backend envia): um Mac novo usou o meu-bot desta máquina. */
-export interface AlertPrefs { whatsapp: boolean; email: string }
+/** Avisos gravados na máquina (o backend envia pelo WhatsApp da própria pessoa): Mac novo, vigia da máquina e da box, cota de disco. */
+export interface AlertPrefs { whatsapp: boolean }
 
 /**
  * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)

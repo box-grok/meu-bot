@@ -428,3 +428,33 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   vazia 403; host desconhecido 404; `hermes skills list` da box-2 lista `meu-bot-link-publico` como local/enabled.
   Código: `admin/link-publico-core.ts` (scripts), `admin/link-publico-admin.ts`, `renderer/admin/link-publico-page.ts`,
   `agente/link-publico.ts` (lado da pessoa).
+
+## Capacidade e governança de RAM/CPU (30 out)
+
+- **Linha de base medida na `meu` (8 vCPU, 32 GB, 8 GB de swap com swappiness 10, 2 boxes):** cada box tem ~0,3-0,4 GB
+  de memória própria (`anon`: Hermes 240-340 MB, que cresce com as sessões; ponte do WhatsApp 120 MB; backend 70 MB) e
+  ~1,3 GB de `memory.current`, 70% disso cache descartável. O transcritor de áudio (`/opt/transcriber`) roda **dentro
+  da box** de quem mandou o áudio e chega a 607 MB de pico por áudio: o pior caso de uma box é ~1,15 GB próprios. O
+  `user.slice` tinha 21,6 GB, 18,7 GB deles cache das sessões do root. As duas boxes já registravam `events high`
+  (393/78, recolhimento de cache no MemoryHigh, não é pressão) e `cpu.stat nr_throttled` (o transcritor usa 4 threads
+  numa cota de 2 núcleos: ~3% do tempo segurado; follow-up: ler `cpu.max` do próprio cgroup e usar
+  `cpu_threads = min(4, cota)`; `nice` não ajuda com cota).
+- **Valores:** `user.slice` MemoryMax = total − max(3 GB, 10%) (28,8 GB aqui), MemoryLow pela metade, CPUWeight 100;
+  cada `user-<uid>.slice` mantém MemoryHigh/Max (90% do teto) e CPUQuota (200%) e ganha MemorySwapMax 256M, MemoryLow
+  640M e CPUWeight 100. Teto padrão por box: **1,25 GB** (decisão de produto de 30 out: 22 boxes em 32 GB; com 1,5 GB
+  seriam 19 e com 2 GB, 14). A ressalva: o aperto (MemoryHigh 1152 MB) começa na hora do áudio, porque o transcritor
+  roda dentro da box; a coluna Pressão mostra e a medição com 10 boxes decide se muda. As duas boxes de antes
+  receberam o teto novo à mão em 30 out. O teto é `RECURSOS_PADRAO` (uma constante) e a capacidade acompanha.
+- **Como ler:** aba Usuários do admin, linha "boxes: N de M", coluna Pressão (folgada/apertada/estrangulada; título com
+  PSI, teto batido, mortes e CPU segurada) e RAM = memória própria. Comandos de conferência:
+  `systemctl show user.slice -p MemoryMax -p MemoryLow -p CPUWeight`; `systemctl show user-1001.slice -p MemorySwapMax
+  -p MemoryLow -p CPUWeight`; `cat /sys/fs/cgroup/user.slice/user-1001.slice/{memory.current,memory.events,memory.pressure,
+  cpu.pressure,cpu.stat}`; `awk '$1=="anon"' .../memory.stat`.
+- **Pressão controlada (dentro da fatia; `runuser` do SSH do root cai no `user-0.slice`):**
+  `systemd-run --machine=box-2@ --user --collect -u teste-pressao python3 -c 'import time; x=b"\x01"*(1400*1024*1024); time.sleep(600)'`
+  → "apertada" e, em 90 s, o aviso `box` no WhatsApp dela; 1900 MB → OOM → "estrangulada"; 4 × `yes` por 2 min → PSI de
+  CPU > 50% → "estrangulada" (texto de processador). Limpar: `systemctl --machine=box-2@ --user stop teste-pressao`.
+  `max`/`oom_kill` só zeram recriando a fatia (parar `user@1001.service`) ou no reboot; `saude-avisos.json` guarda o
+  intervalo de 6 h (apague a chave `box` para repetir).
+- **Regra de crescimento:** mais máquinas, não uma maior (o admin já é multi-máquina); vertical só como ponte. Próxima
+  medição com 10 boxes (RAM por box com o tempo, swap, CPU de áudio, cota) decide se o teto padrão baixa.

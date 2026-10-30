@@ -109,6 +109,8 @@ test("healthLines: swap, a régua de 10% do vigia e o alerta que o backend já m
   assert.deepEqual([mem(baixa).text, mem(baixa).ok], ["memória: 700 MB livres de 7,8 GB · sem swap · apertada", false]);
   const alerta = healthLines({ ...base, probe: { ...base.probe, backendAlerta: "memoria" } }, fmt).find((l) => l.text.startsWith("vigia:"));
   assert.deepEqual([alerta.text, alerta.ok], ["vigia: memória quase no fim (a pessoa foi avisada)", false]);
+  const box = healthLines({ ...base, probe: { ...base.probe, backendAlerta: "box" } }, fmt).find((l) => l.text.startsWith("vigia:"));
+  assert.deepEqual([box.text, box.ok], ["vigia: a box dela está no limite de RAM/CPU (a pessoa foi avisada): aumente a RAM máx na aba Usuários ou veja o que pesa", false]);
   assert.equal(healthLines(base, fmt).some((l) => l.text.startsWith("vigia:")), false);
 });
 

@@ -385,6 +385,19 @@ body.app-enter > :not(.intro) { animation: app-settle .46s cubic-bezier(.2, .8, 
 .ctx-line .seg-account { color: var(--ok); }
 .ctx-line .seg-weekly { color: #a85fc9; }
 .ctx-line .seg-turn, .ctx-line .seg-age { color: var(--muted); }
+.ctx-line .seg-espaco { color: var(--muted); }
+.ctx-line .seg-warn { color: var(--warn, #c9a227); font-weight: 600; }
+.ctx-line .seg-bad { color: var(--bad, #d64545); font-weight: 600; }
+/* Configurações › Espaço: barra do medidor e a lista do que ocupa / do que dá para apagar. */
+.espaco-barra { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 6px 0; }
+.espaco-barra i { display: block; height: 100%; border-radius: 4px; background: var(--ok); }
+.espaco-barra.warn i { background: var(--warn, #c9a227); }
+.espaco-barra.bad i { background: var(--bad, #d64545); }
+.espaco-itens, .espaco-liberar { list-style: none; padding: 0; margin: 6px 0; font-size: 13px; }
+.espaco-itens li, .espaco-linha { display: flex; gap: 8px; align-items: center; padding: 2px 0; }
+.espaco-tam { min-width: 64px; color: var(--muted); font: 12px var(--mono); }
+.espaco-caminho { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-danger { color: var(--bad, #d64545); border-color: var(--bad, #d64545); }
 .ctx-line .seg-zoom { color: var(--accent); cursor: pointer; }
 /* Configurações › Zoom da janela: − 100% + Restaurar. */
 dialog .zoom-row { align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }

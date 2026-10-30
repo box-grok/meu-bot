@@ -41,7 +41,7 @@ function readJson(file) {
 }
 
 /** Segmentos da status line (ligar/desligar no meu-bot); a mesma lista do statusline.sh e do rodapé do app. */
-const SEGMENT_KEYS = ['model', 'ctx', 'account', 'session', 'weekly'];
+const SEGMENT_KEYS = ['model', 'ctx', 'account', 'session', 'weekly', 'espaco'];
 /** ~/.claude/statusline-segments.json validado (cada chave vale true salvo `false` explícito); null sem arquivo. */
 function readSegments(home = os.homedir()) {
   const raw = readJson(path.join(home, '.claude', 'statusline-segments.json'));

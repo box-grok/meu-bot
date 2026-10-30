@@ -11,7 +11,7 @@ import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 import { runSsh } from "../whatsapp/whatsapp";
 
-export const SEGMENT_KEYS = ["model", "ctx", "account", "session", "weekly"] as const;
+export const SEGMENT_KEYS = ["model", "ctx", "account", "session", "weekly", "espaco"] as const;
 const REMOTE_FILE = "$HOME/.claude/statusline-segments.json";
 
 /** Objeto válido: cada chave true salvo `false` explícito; null se não é um objeto. */

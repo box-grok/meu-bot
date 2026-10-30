@@ -43,9 +43,9 @@ export function healthLines(h: AdminHealth, fmtPhone: (digits: string | null) =>
     const swap = p.swapTotalMb === 0 ? " · sem swap" : typeof p.swapTotalMb === "number" && typeof p.swapFreeMb === "number" ? ` · swap ${gb(p.swapFreeMb)} livres` : "";
     lines.push({ text: `memória: ${gb(p.memFreeMb)} livres de ${gb(p.memTotalMb)}${swap}${apertada ? " · apertada" : ""}`, ok: apertada ? false : null });
   }
-  // Alerta do vigia (o backend já avisou o dono pelo WhatsApp/e-mail): memória acabando por 90 s, disco cheio ou travando.
+  // Alerta do vigia (o backend já avisou o dono pelo WhatsApp): a box dela no limite, memória da máquina acabando por 90 s, disco cheio ou travando.
   if (p.backendAlerta !== null && p.backendAlerta !== undefined) {
-    lines.push({ text: p.backendAlerta === "memoria" ? "vigia: memória quase no fim (a pessoa foi avisada)" : p.backendAlerta === "disco" ? "vigia: disco quase cheio (a pessoa foi avisada)" : "vigia: o backend está travando (a pessoa foi avisada)", ok: false });
+    lines.push({ text: p.backendAlerta === "box" ? "vigia: a box dela está no limite de RAM/CPU (a pessoa foi avisada): aumente a RAM máx na aba Usuários ou veja o que pesa" : p.backendAlerta === "memoria" ? "vigia: memória quase no fim (a pessoa foi avisada)" : p.backendAlerta === "disco" ? "vigia: disco quase cheio (a pessoa foi avisada)" : "vigia: o backend está travando (a pessoa foi avisada)", ok: false });
   }
   const wa = h.whatsapp;
   if (wa !== null && wa.present) {
