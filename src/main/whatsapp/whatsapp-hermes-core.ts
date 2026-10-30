@@ -299,6 +299,30 @@ export function hermesPrecisaReiniciar(antes: HermesWaEnv, depois: Record<string
     || !listaIgual(antes.allow, depois["WHATSAPP_ALLOWED_USERS"]);
 }
 
+// ---- Home channel do Hermes: para onde ele manda avisos e cron (`WHATSAPP_HOME_CHANNEL` no .env e
+// `platforms.whatsapp.home_channel` no config.yaml; gateway/config.py lê o yaml, o .env entra na entrega do cron).
+/** Nome do dono como vai para o .env/yaml: uma linha, sem aspas simples nem controle, até 60 caracteres. */
+export const nomeHomeChannel = (nome: string | null): string => (nome ?? "").replace(/['\\\r\n\t]/g, "").replace(/\s+/g, " ").trim().slice(0, 60) || "Dono";
+/**
+ * Grava o home channel do Hermes para o dono: o .env (`WHATSAPP_HOME_CHANNEL`, `_NAME`) e o config.yaml
+ * (`platforms.whatsapp.home_channel {platform, chat_id, name, user_id}`), iguais, com o jid em `@s.whatsapp.net`
+ * (o LID fica por conta do Hermes; sessões já são por número). Imprime `home=ok`. Lido na subida: quem chama reinicia.
+ */
+export function hermesHomeChannelSh(numero: string, nome: string | null): string {
+  if (!/^\d{8,15}$/.test(numero)) throw new Error("número do dono inválido");
+  const jid = `${numero}@s.whatsapp.net`;
+  const b64 = Buffer.from(JSON.stringify({ platform: "whatsapp", chat_id: jid, name: nomeHomeChannel(nome), user_id: jid }), "utf8").toString("base64");
+  return `${HERMES_ENV_SET_PY} 'WHATSAPP_HOME_CHANNEL=${jid}' 'WHATSAPP_HOME_CHANNEL_NAME=${nomeHomeChannel(nome)}' >/dev/null
+${HERMES_PY_SH}; "$PY" -c '
+import base64, json, sys
+${HERMES_YAML_PY}
+h = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+pw = sub(sub(doc, "platforms"), "whatsapp")
+pw["home_channel"] = h
+salvar(); print("home=ok")
+' '${b64}'`;
+}
+
 // ---- Como a pausa por contato é feita nesta máquina.
 /**
  * `nativa` = o Hermes tem pausa por contato (ainda não existe; critério abaixo); `plugin` = o meu-bot-pausa está
@@ -573,6 +597,8 @@ novos = {}
 if pega("WHATSAPP_ENABLED").lower() != "true": novos["WHATSAPP_ENABLED"] = "true"
 if not tem("WHATSAPP_MODE"): novos["WHATSAPP_MODE"] = "self-chat"
 if not tem("WHATSAPP_ALLOWED_USERS") and eu: novos["WHATSAPP_ALLOWED_USERS"] = eu
+# Avisos e cron do Hermes vão para o dono; sem nada definido, o próprio número (a tela "Dono" troca os dois depois).
+if not tem("WHATSAPP_HOME_CHANNEL") and eu: novos["WHATSAPP_HOME_CHANNEL"] = eu + "@s.whatsapp.net"
 if novos:
     feitos = set()
     for i, l in enumerate(linhas):
@@ -607,6 +633,8 @@ pw = sub(sub(doc, "platforms"), "whatsapp")
 ex = pw.get("extra") if isinstance(pw.get("extra"), dict) else {}
 if os.getuid() != 0 and "bridge_port" not in pw and "bridge_port" not in ex:
     pw["bridge_port"] = 3100 + max(0, os.getuid() - 1000); grava = True; mud.append("bridge_port:%d" % pw["bridge_port"])
+if "home_channel" not in pw and eu:
+    pw["home_channel"] = {"platform": "whatsapp", "chat_id": eu + "@s.whatsapp.net", "name": "Dono", "user_id": eu + "@s.whatsapp.net"}; grava = True; mud.append("home_channel")
 if grava: salvar()
 print("hwa=" + (";".join(mud) or "nada"))
 ' 2>&1 | grep '^hwa=' || echo "hwa=falhou"`;

@@ -56,6 +56,8 @@ export interface WhatsappStatus {
   repaired?: string;
   /** Agente que a pessoa escolheu para o WhatsApp desta máquina; null = ainda não escolheu (vale o que estiver instalado). */
   escolha?: WhatsappAgente | null;
+  /** Quem manda no agente: o dono gravado na máquina (whatsapp-lista.json › dono) ou o próprio número pareado (`souEu`). Ausente sem número. */
+  dono?: { numero: string; nome: string | null; souEu: boolean };
 }
 
 /** Os agentes que a pessoa pode escolher para atender o WhatsApp (o app trabalha igual com os dois). */

@@ -190,7 +190,8 @@ ${WORKSPACE_SH}
 mkdir -p "$W/skills/${OBJECTIVE_SKILL}"
 printf '%s' '${b64(md)}' | base64 -d > "$W/skills/${OBJECTIVE_SKILL}/SKILL.md.tmp" && mv "$W/skills/${OBJECTIVE_SKILL}/SKILL.md.tmp" "$W/skills/${OBJECTIVE_SKILL}/SKILL.md"
 echo "SKILL=$W/skills/${OBJECTIVE_SKILL}/SKILL.md"
-N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
+N=$(python3 -c 'import json,sys;print((json.load(open(sys.argv[1])).get("dono") or {}).get("numero",""))' "$HOME/.local/share/meu-bot/whatsapp-lista.json" 2>/dev/null | tr -dc '0-9')
+[ -n "$N" ] || N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
 if usa_hermes; then
   # Hermes: quem executa é o Claude Code do backend (modelo "whatsapp"), que lê o nível do objetivo.json a cada
   # mensagem. Aqui só garante o modelo; se ele mudou, o gateway relê a config.
@@ -214,7 +215,8 @@ export function resetObjectiveSh(): string {
 ${WORKSPACE_SH}
 rm -rf "$W/skills/${OBJECTIVE_SKILL}"
 rm -f "${OBJECTIVE_FILE}"
-N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
+N=$(python3 -c 'import json,sys;print((json.load(open(sys.argv[1])).get("dono") or {}).get("numero",""))' "$HOME/.local/share/meu-bot/whatsapp-lista.json" 2>/dev/null | tr -dc '0-9')
+[ -n "$N" ] || N=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("me",{}).get("id",""))' "$HOME/.openclaw/credentials/whatsapp/default/creds.json" 2>/dev/null | sed 's/[:@].*//' | tr -dc '0-9')
 if [ -n "$N" ] && command -v openclaw >/dev/null 2>&1; then
   LOCK=$(python3 -c 'import json,sys;n=sys.argv[1];star=${JSON.stringify(STAR_DENY)};print(json.dumps({"e164:+"+n:{},"*":{"deny":star}}))' "$N")
   openclaw config set tools.toolsBySender "$LOCK" --strict-json >/dev/null 2>&1 || true

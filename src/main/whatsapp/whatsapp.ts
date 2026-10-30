@@ -23,9 +23,9 @@ import { JID_RE, aplicarPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threa
 import { agenteEscolhido, capacidadesDe, WA_AGENTE_FILE, WA_ESCOLHA_SH } from "./whatsapp-capacidades";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { chatsFromSessions, ownSessionKeys, gatewayFailures, grupoToMarkdown, peerOfSessionKey, SAFE_KEY, threadFor, threadToMarkdown, whatsappContextNote, type SessionHistory } from "./whatsapp-chats";
-import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, waMarkSh, type WaDonoPatch, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
+import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, parseWaMarks, pausaVigente, pausadosDe, quemDe, souEu, donosDe, waMarkSh, type WaDonoPatch, type WaGroupMarkPatch, type WaMarkPatch, type WaMarks, type WaQuem } from "./whatsapp-marks";
 import { chatsComPausados, mensagensDaPausa, parsePausados, waPausadosSh } from "./whatsapp-pausados";
-import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo, type HermesWaEnv } from "./whatsapp-hermes-core";
+import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, isHermesKey, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesHomeChannelSh, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesPausaModo, type HermesWaEnv } from "./whatsapp-hermes-core";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
 import { createFromWhatsapp, type StoredConversation } from "../conversa/conversation";
 import { log } from "../maquina/backend";
@@ -281,7 +281,8 @@ async function lerWhatsappStatus(host: string): Promise<Omit<WhatsappStatus, "ca
 function lerGateway(host: string, kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   const gateway: Gateway = kv.get("gateway") === "openclaw" ? "openclaw" : kv.get("gateway") === "picoclaw" ? "picoclaw" : "hermes";
   gatewayByHost.set(host, gateway);
-  if (gateway === "openclaw") return openclawStatus(kv);
+  const marks = parseWaMarks(jsonOr(kv.get("marks")));
+  if (gateway === "openclaw") { const st = openclawStatus(kv); return { ...st, ...donoStatus(quemDe(marks, st.number), marks) }; }
   if (gateway === "picoclaw") return picoclawStatus(kv);
   const agent = describeInstall("Hermes", kv);
   if ((kv.get("bin") ?? "") === "") return { present: true, gateway, agent: "Hermes (não instalado)", ready: false, missing: "o Hermes ainda não está instalado nesta máquina", connected: false, state: "sem instalar", number: null, loggedOut: false, detail: "Hermes escolhido, ainda não instalado", dmPolicy: null, channelConfig: null };
@@ -296,15 +297,23 @@ function lerGateway(host: string, kv: Map<string, string>): Omit<WhatsappStatus,
   const detail = connected ? "conectado" : loggedOut ? "deslogado no WhatsApp; precisa parear de novo" : number === null ? "sem sessão; precisa parear" : `bridge ${state}`;
   // Quem o agente responde: o .env do Hermes, traduzido para o mesmo contrato do OpenClaw (whatsapp-hermes-core.ts).
   const env = hermesEnvOf(kv);
-  const politica = politicaHermes(env, number);
+  const quem = quemDe(marks, number);
+  const politica = politicaHermes(env, quem);
   const pausaModo = hermesPausaModo(kv);
   pausaModoByHost.set(host, pausaModo);
   // Sem o plugin, pausado = fora da lista gravada enquanto durar; para a tela ele continua "quem o agente responde".
   // Com o plugin a lista não muda ao pausar, então não há o que repor.
-  const pausados = pausadosDe(parseWaMarks(jsonOr(kv.get("marks"))));
+  const pausados = pausadosDe(marks);
   const allowFrom = politica.dmPolicy === "allowlist" && pausaModo === "allowlist" ? [...new Set([...politica.allowFrom, ...pausados.map((n) => `+${n}`)])] : politica.allowFrom;
   const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all, pausados, pausaModo }, null, 2);
-  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom };
+  return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom, ...donoStatus(quem, marks) };
+}
+
+/** O dono para a tela: quem é, o nome em cache e se é o próprio aparelho. Sem número pareado nem dono gravado, nada. */
+function donoStatus(quem: WaQuem, marks: WaMarks): Pick<WhatsappStatus, "dono"> {
+  if (quem.dono === null) return {};
+  const nm = marks.names[quem.dono];
+  return { dono: { numero: quem.dono, nome: nm?.alias ?? nm?.name ?? null, souEu: souEu(quem) } };
 }
 
 /** Número pareado no Hermes (creds.json do bridge); null sem sessão. */
@@ -314,14 +323,25 @@ async function readHermesSelfNumber(host: string): Promise<string | null> {
 }
 
 /**
+ * Quem manda nesta máquina, numa leitura só: o número pareado (creds.json do gateway) e o dono gravado em
+ * whatsapp-lista.json (sem ele, o dono é o pareado). Tudo que grava lista/política/pausa parte daqui.
+ */
+async function readQuem(host: string, gateway: "hermes" | "openclaw"): Promise<WaQuem> {
+  const me = gateway === "hermes" ? HERMES_SELF_SH : CREDS_ME;
+  const r = await runSsh(host, `echo "self=$(${me})"\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 20_000);
+  const kv = kvOf(r.stdout);
+  return quemDe(parseWaMarks(jsonOr(kv.get("marks"))), phoneOf(kv.get("self") ?? ""));
+}
+
+/**
  * Quem o agente responde numa máquina com Hermes: grava modo, política e lista em ~/.hermes/.env (com backup) e
  * reinicia o gateway só quando modo, política ou opt-in mudaram (a lista é relida ao vivo). Confere o que ficou
  * gravado antes de devolver o estado.
  */
-async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numbers: readonly string[]): Promise<WhatsappStatus> {
+async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numbers: readonly string[], opts: { home?: { numero: string; nome: string | null } } = {}): Promise<WhatsappStatus> {
   const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
   if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
-  const self = await readHermesSelfNumber(host);
+  const quem = await readQuem(host, "hermes");
   const antes = await runSsh(host, `${HERMES_PATH_SH}\n${HERMES_POLICY_PY}\n${HERMES_PAUSA_SH}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 30_000);
   if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const kvAntes = new Map<string, string>();
@@ -332,18 +352,21 @@ async function setDmPolicyHermes(host: string, policy: WhatsappReplyChoice, numb
   const modo = hermesPausaModo(kvAntes);
   pausaModoByHost.set(host, modo);
   const pausados = modo === "allowlist" ? pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks")))) : [];
-  const patch = hermesEnvPara(policy, self, numbers.filter((n) => !pausados.includes(n)));
+  const patch = hermesEnvPara(policy, quem, numbers.filter((n) => !pausados.includes(n)));
   for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
   const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
-  const reinicia = hermesPrecisaReiniciar(envAntes, patch);
-  const script = `set -e\n${HERMES_ENV_SET_PY} ${args}\n${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`;
+  // O home channel (avisos do Hermes) acompanha o dono quando ele muda; é lido na subida, então reinicia junto.
+  const home = opts.home === undefined ? "" : `${hermesHomeChannelSh(opts.home.numero, opts.home.nome)}\n`;
+  const reinicia = hermesPrecisaReiniciar(envAntes, patch) || opts.home !== undefined;
+  const script = `set -e\n${HERMES_ENV_SET_PY} ${args}\n${home}${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`;
   const r = await runSsh(host, script, 120_000);
   if (r.code !== 0 || !r.stdout.includes("envset=ok")) throw new Error(`não consegui gravar o .env do Hermes: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const restart = /restart=(.*)/.exec(r.stdout)?.[1]?.trim() ?? "";
   if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
   const kvDepois = new Map<string, string>();
   for (const line of r.stdout.split("\n")) { const i = line.indexOf("="); if (i > 0) kvDepois.set(line.slice(0, i), line.slice(i + 1).trim()); }
-  const ficou = politicaHermes(hermesEnvOf(kvDepois), self);
+  if (opts.home !== undefined && !r.stdout.includes("home=ok")) throw new Error("gravei a política, mas o home channel do Hermes não ficou gravado; tente de novo");
+  const ficou = politicaHermes(hermesEnvOf(kvDepois), quem);
   const erro = politicaNaoBate(policy, ficou);
   if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
   log(`[whatsapp] ${host} (hermes): dmPolicy=${policy} restart=${restart || "?"}`);
@@ -443,9 +466,9 @@ async function readSelfNumber(host: string): Promise<string | null> {
   return phoneOf(r.stdout.trim());
 }
 
-/** " && <trava>" com o número pareado; sem número (ainda não pareou), nada. */
+/** " && <trava>" com o dono (o gravado, senão o pareado); sem número (ainda não pareou), nada. */
 async function ownerLockFor(host: string): Promise<string> {
-  const n = await readSelfNumber(host);
+  const n = (await readQuem(host, "openclaw")).dono;
   return n === null ? "" : ` && ${ownerLockSh(n)}`;
 }
 
@@ -464,12 +487,12 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
     // perdia o próprio agente); a trava de ferramentas continua só para o dono.
     const bad = numbers.filter((n) => !/^\d{8,15}$/.test(n));
     if (bad.length > 0) throw new Error(`número inválido na lista: ${bad.join(", ")} (só dígitos, com DDI, 8 a 15)`);
-    const self = await readSelfNumber(host);
-    const list = [...new Set([...(self === null ? [] : [self]), ...numbers])].map((n) => `+${n}`);
+    const quem = await readQuem(host, "openclaw");
+    const list = [...new Set([...donosDe(quem), ...numbers])].map((n) => `+${n}`);
     const allow = JSON.stringify(list).replace(/'/g, "");
-    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '${allow}' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${self === null ? "" : ` && ${ownerLockSh(self)}`}`;
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '${allow}' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json${quem.dono === null ? "" : ` && ${ownerLockSh(quem.dono)}`}`;
   } else {
-    script = `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readSelfNumber(host))}`;
+    script = `export PATH=$HOME/.local/bin:$PATH; set -e; ${selfPolicySh(await readQuem(host, "openclaw"))}`;
   }
   // Relê o que ficou gravado: a política só vale se dmPolicy e allowFrom batem com a escolha.
   const confere = `python3 -c 'import json,os;w=((json.load(open(os.path.expanduser("~/.openclaw/openclaw.json"))).get("channels") or {}).get("whatsapp") or {});print("POLICY=%s ALLOW=%s" % (w.get("dmPolicy",""), json.dumps(w.get("allowFrom",[]))))'`;
@@ -487,7 +510,10 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
 /** Política "só você" (ver setDmPolicy); também é o padrão gravado antes do primeiro login. */
 export const SELF_POLICY_SH = `openclaw config set session.dmScope per-channel-peer && openclaw config set channels.whatsapp.dmPolicy allowlist && openclaw config set channels.whatsapp.allowFrom '[]' --strict-json && openclaw config set channels.whatsapp.selfChatMode true --strict-json && openclaw config set channels.whatsapp.groupPolicy disabled && openclaw config set channels.whatsapp.responsePrefix '""' --strict-json`;
 /** Com o número já conhecido, ele entra no allowFrom: tira o aviso "allowFrom vazio" e deixa explícito quem é "você". */
-const selfPolicySh = (number: string | null): string => number === null ? SELF_POLICY_SH : `${SELF_POLICY_SH.replace(`'[]'`, `'["+${number}"]'`)} && ${ownerLockSh(number)}`;
+const selfPolicySh = (quem: WaQuem): string => {
+  const donos = donosDe(quem);
+  return quem.dono === null ? SELF_POLICY_SH : `${SELF_POLICY_SH.replace(`'[]'`, `'${JSON.stringify(donos.map((n) => `+${n}`))}'`)} && ${ownerLockSh(quem.dono)}`;
+};
 
 /** O que um contato que não é o dono não pode usar: gravar, editar, rodar comandos, agendar, mexer no gateway. */
 export const NON_OWNER_DENY = ["write", "edit", "apply_patch", "exec", "process", "code_execution", "cron", "gateway", "group:automation", "group:nodes", "terminal", "skill_workshop", "sessions_spawn"] as const;
@@ -798,10 +824,11 @@ ${SEND_POLICY_READ_SH}
   // responde ("só você" = todo mundo; lista = quem está fora): Retomar nesses põe o contato na lista.
   // No OpenClaw vem da sessão e do openclaw.json.
   const self = phoneOf(kv.get("self") ?? "");
+  const quem = quemDe(parsed, self);
   const env = hermesEnvOf(kv);
   const chats = hermes
-    ? chatsFromHermes(list, self, names).map((c) => { const p = pausaVigente(parsed, c.number); return { ...c, paused: p !== null || hermesNaoResponde(env, self, c.number), pausaAte: p?.ate ?? null }; })
-    : chatsFromSessions(list, self, names, pausedNumbersOfPolicy(policy));
+    ? chatsFromHermes(list, quem, names).map((c) => { const p = pausaVigente(parsed, c.number); return { ...c, paused: p !== null || hermesNaoResponde(env, quem, c.number), pausaAte: p?.ate ?? null }; })
+    : chatsFromSessions(list, quem, names, pausedNumbersOfPolicy(policy));
   // O que chegou durante a pausa (plugin meu-bot-pausa) entra antes das marcas: mensagem nova traz excluída de volta.
   return applyWaMarks(hermes ? chatsComPausados(chats, parsePausados(jsonOr(kv.get("pausados"))), parsed) : chats, parsed);
 }
@@ -1030,10 +1057,41 @@ export async function whatsappClearSessions(host: string, keys: readonly string[
  * segundo plano, whatsapp-pause.ts), e o AGENTS.md da máquina ganha a regra do que fazer com essas notas. A nota e
  * a regra não desfazem a pausa se falharem.
  */
+/**
+ * Define quem manda no agente desta máquina (null = volta ao número pareado): grava a marca, reaplica "quem responde"
+ * com o dono dentro (no Hermes, "só eu" com dono de fora vira bot + allowlist) e, no Hermes, aponta o home channel
+ * para ele (reinicia o gateway). Devolve o estado novo.
+ */
+export async function whatsappSetDono(host: string, numero: string | null): Promise<WhatsappStatus> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  if (numero !== null && !/^\d{8,15}$/.test(numero)) throw new Error("número inválido (só dígitos, com DDI, 8 a 15)");
+  const gateway = gatewayByHost.get(host) ?? (await whatsappStatus(host)).gateway;
+  if (gateway !== "hermes" && gateway !== "openclaw") throw new Error(`esta máquina (${gateway ?? "sem agente"}) não permite definir o dono pelo app`);
+  const antes = await readQuem(host, gateway);
+  if (numero !== null && numero === antes.self) numero = null; // o pareado é o padrão: gravar explícito só confunde
+  await whatsappSetMarks(host, [{ dono: numero ?? "" }]);
+  const st = await whatsappStatus(host);
+  const quem = { self: st.number, dono: numero ?? st.number };
+  // Mesma leitura dos cartões (renderer/lib/tutoriais.ts replyChoiceOf/listedNumbers): fora o aparelho e o dono, o que sobra é "lista".
+  const fora = (donos: readonly (string | null)[]): string[] => [...new Set((st.allowFrom ?? []).filter((n) => n !== "*").map((n) => n.replace(/\D/g, "")).filter((n) => n !== "" && !donos.includes(n)))];
+  const choice: WhatsappReplyChoice = st.dmPolicy === "open" ? "open" : st.dmPolicy !== "allowlist" ? "self" : fora([antes.self, antes.dono]).length > 0 ? "list" : "self";
+  const numbers = fora([quem.self, quem.dono]);
+  const nome = st.dono?.numero === quem.dono ? st.dono.nome : null;
+  log(`[whatsapp] ${host}: dono ${numero === null ? "volta ao pareado" : `+${numero}`} (antes ${antes.dono ?? "?"}); reaplicando ${choice}`);
+  if (gateway === "hermes") return setDmPolicyHermes(host, choice, numbers, quem.dono === null ? {} : { home: { numero: quem.dono, nome } });
+  return setDmPolicy(host, choice, numbers);
+}
+
+/** O dono (e o próprio aparelho) nunca é pausado: o agente sempre responde a ele. */
+function recusarPausarDono(quem: WaQuem, number: string): void {
+  if (donosDe(quem).includes(number)) throw new Error("o dono não é pausado: o agente sempre responde a ele. Para silenciar o agente para todos, use \"Quem o agente responde\"");
+}
+
 export async function whatsappPause(host: string, number: string, paused: boolean, by: PauseBy, horas?: 2 | 24): Promise<void> {
   const want = number.replace(/\D/g, "");
   if (await hostIsHermes(host)) return pauseHermes(host, want, paused, by, horas);
   if (horas !== undefined) throw new Error("no OpenClaw a pausa não tem prazo: use \"Pausar\" e retome quando quiser");
+  recusarPausarDono(await readQuem(host, "openclaw"), want);
   const { own } = await whatsappClearPlan(host, want);
   // A lista durável (session.sendPolicy do openclaw.json) vale mesmo sem sessão própria e sobrevive a limpar.
   const policy = withPauseRule(await readSendPolicy(host), want, paused, pauseRulePrefixes(want, own));
@@ -1063,19 +1121,21 @@ async function pauseHermes(host: string, want: string, paused: boolean, by: Paus
   const antes = await runSsh(host, `${HERMES_PATH_SH}\n${HERMES_POLICY_PY}\n${HERMES_PAUSA_SH}\necho "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"\n`, 30_000);
   if (antes.code !== 0) throw new Error(`não consegui ler o .env do Hermes: ${(antes.stderr.trim() || antes.stdout.trim()).split("\n").pop() ?? "ssh falhou"}`);
   const kvAntes = kvOf(antes.stdout);
+  const quem = quemDe(parseWaMarks(jsonOr(kvAntes.get("marks"))), self);
+  recusarPausarDono(quem, want);
   const env = hermesEnvOf(kvAntes);
   const modo = hermesPausaModo(kvAntes);
   pausaModoByHost.set(host, modo);
   if (modo !== "allowlist") {
     if (modo === "nativa") log(`whatsapp: ${host} tem pausa nativa no Hermes; o app ainda usa a marca (docs/guia/contornos.md #2)`);
     await whatsappSetMarks(host, [{ number: want, paused, ...(paused && horas !== undefined ? { pausaHoras: horas } : {}) }]);
-    if (!paused && self !== null && hermesNaoResponde(env, self, want)) await aplicarPlanoAllowlist(host, env, self, want, false, []);
+    if (!paused && hermesNaoResponde(env, quem, want)) await aplicarPlanoAllowlist(host, env, quem, want, false, []);
     log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes/${modo}, ${by})${paused && horas !== undefined ? ` por ${horas} h` : ""}`);
     return;
   }
   if (horas !== undefined) throw new Error("pausa com prazo precisa do plugin de pausa do meu-bot nesta máquina (o app o instala ao abrir o WhatsApp); por ora use \"Até eu retomar\"");
   const pausados = pausadosDe(parseWaMarks(jsonOr(kvAntes.get("marks"))));
-  const restart = await aplicarPlanoAllowlist(host, env, self, want, paused, pausados);
+  const restart = await aplicarPlanoAllowlist(host, env, quem, want, paused, pausados);
   await whatsappSetMarks(host, [{ number: want, paused }]);
   log(`whatsapp: ${paused ? "pausado" : "retomado"} +${want} em ${host} (hermes/allowlist, ${by}): fora da lista enquanto durar; restart=${restart || "?"}`);
 }
@@ -1087,8 +1147,8 @@ async function pauseHermes(host: string, want: string, paused: boolean, by: Paus
  * Sai quando: toda máquina Hermes do mapa estiver com o plugin (pausaplugin) ou com pausanativa=1 — aí o ramo
  * "allowlist" de hermesPausaModo some e esta função com ele. Tabela: docs/guia/contornos.md.
  */
-async function aplicarPlanoAllowlist(host: string, env: HermesWaEnv, self: string | null, want: string, paused: boolean, pausados: readonly string[]): Promise<string> {
-  const { patch, reinicia } = hermesPausaPlano(env, self, want, paused, pausados);
+async function aplicarPlanoAllowlist(host: string, env: HermesWaEnv, quem: WaQuem, want: string, paused: boolean, pausados: readonly string[]): Promise<string> {
+  const { patch, reinicia } = hermesPausaPlano(env, quem, want, paused, pausados);
   for (const [k, v] of Object.entries(patch)) if (!HERMES_ENV_VALUE_RE.test(v)) throw new Error(`valor inválido para ${k}`);
   const args = Object.entries(patch).map(([k, v]) => `'${k}=${v}'`).join(" ");
   const r = await runSsh(host, `set -e\n${HERMES_ENV_SET_PY} ${args}\n${reinicia ? HERMES_RESTART_SH : 'echo "restart=nao-precisou"'}\n${HERMES_POLICY_PY}\n`, 120_000);
@@ -1233,7 +1293,7 @@ echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\n')"
   if (kv.get("gateway")?.trim() === "hermes") {
     gatewayByHost.set(host, "hermes");
     const self = phoneOf(kv.get("self") ?? "");
-    const pol = politicaHermes(hermesEnvOf(kv), self);
+    const pol = politicaHermes(hermesEnvOf(kv), quemDe(marks, self));
     const quem: string[] | "todos" = pol.dmPolicy === "open" ? "todos" : pol.allowFrom.map((n) => n.replace(/\D/g, "")).filter((n) => n !== "");
     const g = gruposHermes(parseHermesGroupCfg(jsonOr(kv.get("gcfg"))), jsonOr(kv.get("hgroups")), self, quem, jsonOr(kv.get("cache")));
     // `skill` aqui = o bridge pareado: "Atualizar lista" lista pelo WhatsApp (hermes-grupos-listar.ts). Sem isto ficava
