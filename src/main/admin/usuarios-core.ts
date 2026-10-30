@@ -218,6 +218,12 @@ const HERMES_NODE = "v20.20.2";
  * Antes, o Hermes do root morava em /root/.local (pasta 700): o atalho global dava "Permission denied" para os
  * outros e o instalador do Grok baixava uma cópia de ~900 MB em cada conta. Idempotente; o atalho que não for nosso
  * fica guardado ao lado. Saída `HERMES=ok <versão>` ou `ERRO=`.
+ *
+ * CONTORNO #6 (Hermes): o lançador npm (lib/python-launcher.js) não repassa SIGTERM ao filho Python; com o
+ * KillMode=mixed do unit, o systemd mata só o Node e dá SIGKILL no gateway ("exited UNCLEANLY") (issue upstream a abrir; ver a tabela).
+ * O que fazemos: o atalho do serviço (<código>/.hermes/bin/hermes) dá exec direto no venv/bin/hermes, com o ambiente do lançador.
+ * Sai quando: `grep -q 'process.on("SIGTERM"' /opt/hermes/lib/node_modules/hermes-agent/lib/python-launcher.js` achar.
+ * Tabela: docs/guia/contornos.md.
  */
 export function hermesGlobalSh(): string {
   return `D=/opt/hermes; V='${HERMES_VERSAO}'; NV='${HERMES_NODE}'; W=/usr/local/bin/hermes
@@ -249,7 +255,19 @@ chmod 755 "$W"
 # Hermes de todos. Uma reinstalação do pacote apaga a pasta; rodar de novo a recria.
 G="$P/runtime/hermes-agent/.hermes/bin"; mkdir -p "$G"
 [ -e "$G/hermes" ] && ! grep -q meu-bot-hermes-global "$G/hermes" && mv "$G/hermes" "$G/hermes.antes-do-meu-bot"
-printf '#!/bin/sh\n# meu-bot-hermes-global: o atalho que o serviço do gateway de cada usuário chama.\nexec %s "$@"\n' "$W" > "$G/hermes"
+cat > "$G/hermes" <<'EOF'
+#!/bin/sh
+# meu-bot-hermes-global: o atalho que o serviço do gateway de cada usuário chama.
+P=/opt/hermes/lib/node_modules/hermes-agent; R="$P/runtime/hermes-agent"
+# Sem o venv, cai no caminho de sempre (o lançador Node).
+[ -x "$R/venv/bin/hermes" ] || exec /usr/local/bin/hermes "$@"
+export PATH="/opt/hermes/bin:/opt/hermes/node/bin:$PATH"
+export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0="$R"
+export VIRTUAL_ENV="$R/venv" HERMES_NPM_BRIDGE=1 HERMES_NPM_PACKAGE_ROOT="$P" HERMES_NPM_PACKAGE_VERSION=@V@ HERMES_NPM_RELEASE_TAG=v@V@
+unset PYTHONHOME PYTHONPATH
+exec "$R/venv/bin/hermes" "$@"
+EOF
+sed -i "s/@V@/$V/g" "$G/hermes"
 chmod 755 "$P/runtime/hermes-agent/.hermes" "$G" "$G/hermes"
 # Confere como um usuário sem privilégio, que é quem vai usar.
 H=$(mktemp -d); chmod 777 "$H"

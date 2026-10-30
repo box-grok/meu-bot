@@ -143,6 +143,12 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.match(sh, /GIT_CONFIG_VALUE_0=\/opt\/hermes\/lib\/node_modules\/hermes-agent\/runtime\/hermes-agent/);
   assert.match(sh, /runuser -u nobody/);
   assert.match(sh, /runtime\/hermes-agent\/\.hermes\/bin/, "o atalho que o serviço do gateway de cada usuário chama");
+  // CONTORNO #6: o atalho do serviço pula o lançador Node para o SIGTERM do systemd chegar ao Python.
+  const atalho = sh.slice(sh.indexOf('cat > "$G/hermes"'));
+  assert.match(atalho, /exec "\$R\/venv\/bin\/hermes" "\$@"/);
+  assert.match(atalho, /export VIRTUAL_ENV="\$R\/venv" HERMES_NPM_BRIDGE=1/);
+  assert.match(atalho, /unset PYTHONHOME PYTHONPATH/);
+  assert.match(atalho, /\[ -x "\$R\/venv\/bin\/hermes" \] \|\| exec \/usr\/local\/bin\/hermes/, "sem venv, o caminho antigo");
   assert.match(listar, /HERMES=global/);
   assert.equal(ler("ROOT\nHERMES=global\n").hermes, "global");
   assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
