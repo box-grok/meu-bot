@@ -163,3 +163,15 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   ao abrir a página.
 - Testes: `scripts/tests/cliente-release-core.test.mjs` (asset + .sig, só https, tamanho, draft; assinatura
   roundtrip; rebusca; motivo; lista da release igual à do app).
+
+
+## Empacotamento barulhento sem o client OAuth (30 out, issue #36)
+
+- **Problema:** `scripts/package.mjs` copiava `config/google-conta-oauth.json` para o pacote só se existisse e seguia em
+  silêncio quando não: quem empacota num Mac sem o arquivo gera um app sem Google e só descobre abrindo a página. A
+  busca pela release (seção acima) também não salva, porque uma release feita nesse Mac sai sem o asset.
+- **Agora** (`scripts/google-client.mjs`, puro; quem imprime e sai é o `package.mjs`): app cliente (não admin) sem o
+  arquivo imprime um aviso destacado; com `--versao` (release, como faz o `release.mjs`) o build **falha**.
+  `--sem-google` permite de propósito (`npm run dist:staging -- --sem-google`; o `dist.mjs` e o `release.mjs` repassam).
+- Testes: `scripts/tests/google-client.test.mjs` (ok com o arquivo ou no admin; aviso no build local; falha no release;
+  `--sem-google` permite; o aviso cita o app e o arquivo).
