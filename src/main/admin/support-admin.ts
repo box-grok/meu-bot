@@ -9,8 +9,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
-import { applyLicensePatch, parseLicense } from "../licenca/licenca";
+import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, Pagamento, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
+import { applyLicensePatch, parseLicense, parsePagamento } from "../licenca/licenca";
 import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
@@ -31,18 +31,19 @@ import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from
 import { log } from "../maquina/backend";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
-interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string } }
+/** `pagamentoPadrao`: orientação de pagamento (Pix, link) gravada em toda licença que ainda não tem uma, ao mexer nela. */
+interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: string; inbox: { alias: string }; pagamentoPadrao: Pagamento | null }
 interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName; /** Entrou por "ssh <host>" (conta do admin, sem o meu-bot dela): o admin prepara Claude Code, login e backend. */ adotada?: true; /** Usuário de login criado/visto na aba "Usuários" da máquina com este id (a raiz): só aparece, ninguém o prepara. */ usuarioDe?: string }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
 function adminConfig(): AdminConfig {
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; backupDestinatario?: unknown; inbox?: { alias?: unknown } };
+    const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; backupDestinatario?: unknown; inbox?: { alias?: unknown }; pagamentoPadrao?: unknown };
     const alias = raw.inbox?.alias;
     const dest = typeof raw.backupDestinatario === "string" && /^age1[0-9a-z]{58}$/.test(raw.backupDestinatario) ? raw.backupDestinatario : "";
-    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", superAdmin: raw.superAdmin === true, backupDestinatario: dest, inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" } };
+    return { admin: typeof raw.admin === "string" ? raw.admin : "suporte", superAdmin: raw.superAdmin === true, backupDestinatario: dest, inbox: { alias: typeof alias === "string" && isValidHost(alias) ? alias : "" }, pagamentoPadrao: parsePagamento(raw.pagamentoPadrao) };
   } catch {
-    return { admin: "suporte", superAdmin: false, backupDestinatario: "", inbox: { alias: "" } };
+    return { admin: "suporte", superAdmin: false, backupDestinatario: "", inbox: { alias: "" }, pagamentoPadrao: null };
   }
 }
 export const adminName = (): string => adminConfig().admin;
@@ -355,7 +356,10 @@ async function writeJson(host: string, remotePath: string, value: unknown): Prom
 /** meu-bot-admin: muda a licença da pessoa (plano, status, validade, limite). Grava licenca.json por SSH. */
 export async function setLicense(host: string, patch: LicensePatch): Promise<LicenseView> {
   const current = await fetchJson(host, LICENSE_PATH);
-  const next = applyLicensePatch(Object.keys(current).length ? current : null, patch);
+  // Conta sem orientação de pagamento herda a padrão do admin (suporte.json) na primeira mudança.
+  const padrao = adminConfig().pagamentoPadrao;
+  const comPadrao: LicensePatch = patch.pagamento === undefined && padrao !== null && parsePagamento(current.pagamento) === null ? { ...patch, pagamento: padrao } : patch;
+  const next = applyLicensePatch(Object.keys(current).length ? current : null, comPadrao);
   await writeJson(host, LICENSE_PATH, next);
   await registrar(host, "licenca.atualizar", "", JSON.stringify(patch).slice(0, 300));
   const view = await readLicenseView(host);

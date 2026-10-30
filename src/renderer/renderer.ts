@@ -31,6 +31,7 @@ import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type
 import { mountFinancePage } from "./finance/finance-page.js";
 import { mountModulosPage } from "./modulos/modulos-page.js";
 import { mountContaGoogle } from "./conta-google/conta-google-page.js";
+import { mountComputador } from "./computador/computador-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
@@ -2045,6 +2046,8 @@ void (async () => {
   applySettings(await window.meuBot.getSettings());
   const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
+  const computador = mountComputador({ panelsEl, definePage, openPage, api: window.meuBot, host: () => windowHost, local: () => windowHost === "local", license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  $<HTMLButtonElement>("computador-line").addEventListener("click", () => computador.open());
   // Etiqueta "Pro" na lateral, como no Navegador (só no produto free; nos apps com assinatura tudo é um pacote só).
   $<HTMLElement>("conta-google-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   financePage = mountFinancePage({
@@ -2075,7 +2078,7 @@ void (async () => {
   // Navegador e CRM antes só eram consultados ao abrir o guia, e até lá os cartões ficavam "pendentes" por engano.
   void refreshGuarda();
   void refreshContas();
-  void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); });
+  void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); computador.repintar(); });
   void refreshNavInst();
   void refreshCrm();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
@@ -2092,6 +2095,7 @@ void (async () => {
   else if (fixa === "financas") financePage?.open();
   else if (fixa === "modulos") modulosPage?.open();
   else if (fixa === "conta-google") contaGoogle.open();
+  else if (fixa === "computador") computador.open();
   else if (fixa === "navegador") void openNavTab();
   aberturaPronta = true;
   paintContext(active());

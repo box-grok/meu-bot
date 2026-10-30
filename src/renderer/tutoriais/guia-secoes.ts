@@ -2,7 +2,8 @@ import type { ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, Support
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { browserAccess, financeOk, proBlockText } from "../lib/pro.js";
+import { browserAccess, financeOk, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
+import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
 import { type GuideContext, grupoAlvo, OBJECTIVE_OPTIONS, LEVEL_OPTIONS, fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/tutoriais.js";
@@ -219,6 +220,8 @@ export function renderNavPro(container: HTMLElement): void {
   if (a === "ok") { box.append(el("p", "audio-ok", ctx.caps.planoExigido === "free" ? `✓ plano Pro ativo em ${hostLabel(ctx.windowHost)}` : `✓ assinatura do ${ctx.caps.produto} ativa em ${hostLabel(ctx.windowHost)}`)); container.append(box); return; }
   const t = proBlockText(a, ctx.license, "navegador", ctx.caps.produto);
   box.append(el("p", "hint", t.text));
+  const pg = pagamentoDoBloqueio(a, ctx.license);
+  if (pg !== null) box.append(blocoPagamento(pg));
   const row = el("div", "audio-row");
   if (t.askAdmin) {
     const b = el("button", "btn btn-primary btn-small", ctx.navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = ctx.navAskedPro;

@@ -2,6 +2,7 @@
 import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
+import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
@@ -305,6 +306,16 @@ export interface MeuBotClientApi {
   browserRemoveExtension(extId: string): Promise<BrowserExtensionInfo[]>;
   /** Free pediu o Pro: fica no registro do suporte da máquina. */
   browserRequestPro(): Promise<void>;
+  /** A pessoa avisou que já pagou (aviso de plano): fica no registro do suporte da máquina para o admin liberar. */
+  planoAvisarPagamento(): Promise<void>;
+  /** Computador (Pro): o que a máquina diz da tela do bot. */
+  computadorStatus(): Promise<TelaStatus>;
+  /** Liga a tela (até 3 tentativas) e devolve o status depois. */
+  computadorAcordar(): Promise<TelaStatus>;
+  /** Instala a tela na máquina (pacotes + serviço de usuário). */
+  computadorInstalar(): Promise<TelaInstalacao>;
+  /** Endereço local do noVNC (abre o forward); lança se a tela não está ligada. */
+  computadorUrl(): Promise<TelaEndereco>;
   /** Resposta ao balão de câmera/microfone de um site do Navegador. */
   browserPermissao(id: string, decisao: "sempre" | "agora" | "nunca"): Promise<void>;
   /** Esquece as permissões de câmera/microfone dadas aos sites (uma origem ou todas) nesta máquina. */

@@ -5,7 +5,8 @@ import { favLabel, favOf, favTitleFor } from "../lib/favoritos.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { navNotifyAllowed, toggleNotifyHost, NavNotifyDedup, NavNotifyBudget, parseNotifyHosts, parsePageNotification, type PageNotification, navNotifyTitle, navNotifyMessage } from "../lib/nav-notify.js";
 import type { PageTab } from "../lib/pages-types.js";
-import { type ProAccess, proBlockText, tabLabel, displayUrl, browserAccess } from "../lib/pro.js";
+import { type ProAccess, proBlockText, tabLabel, displayUrl, browserAccess, pagamentoDoBloqueio } from "../lib/pro.js";
+import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { type RecortesPref, parseRecortesPref, recortesPara, recorteOculto, type Recorte, recorteTitulo } from "../lib/recortes.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
@@ -560,6 +561,8 @@ export function paintNav(): void {
     const a = navAccess === null || navAccess === "ok" ? "unknown" : navAccess;
     const t = proBlockText(a, ctx.license, "navegador", ctx.caps.produto);
     e.block.replaceChildren(...(ctx.caps.planoExigido === "free" ? [el("span", "nav-pro-badge", "módulo Pro")] : []), el("h2", "", t.title), el("p", "", t.text));
+    const pg = pagamentoDoBloqueio(a, ctx.license);
+    if (pg !== null) e.block.append(blocoPagamento(pg));
     const row = el("div", "actions");
     if (t.askAdmin) {
       const b = el("button", "btn btn-primary", ctx.navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : a === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = ctx.navAskedPro;

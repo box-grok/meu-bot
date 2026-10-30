@@ -163,3 +163,18 @@ test("financeOk (backend): só o add-on meu-bot-finance, com ou sem o Pro; o Pro
   assert.equal(be.financeOk(l({ plan: "pro", status: "active", produtos: ["meu-bot-finance"] }), t), true, "Pro + Finance");
   assert.equal(be.financeOk(l({ produtos: ["meu-bot-fit"] }), t), false);
 });
+
+test("pagamento: os dois lados normalizam igual; inválido vira null; o patch grava e apaga", () => {
+  for (const side of [be, fe]) {
+    assert.equal(side.parseLicense({ plan: "pro" }).pagamento, null, "licença antiga sem o campo");
+    assert.deepEqual(side.parseLicense({ pagamento: { instrucoes: "  Pix x@y.com  ", link: "https://pague.exemplo/abc" } }).pagamento, { instrucoes: "Pix x@y.com", link: "https://pague.exemplo/abc" });
+    assert.deepEqual(side.parseLicense({ pagamento: { instrucoes: "Pix", link: "javascript:alert(1)" } }).pagamento, { instrucoes: "Pix", link: null }, "link só http(s)");
+    assert.equal(side.parseLicense({ pagamento: { instrucoes: "   ", link: null } }).pagamento, null, "vazio vira null");
+    assert.equal(side.parseLicense({ pagamento: "Pix" }).pagamento, null);
+    assert.equal(side.parseLicense({ pagamento: { instrucoes: "x".repeat(3000) } }).pagamento.instrucoes.length, 2000);
+    const gravada = side.applyLicensePatch({ plan: "pro" }, { pagamento: { instrucoes: "Pix", link: null } });
+    assert.deepEqual(gravada.pagamento, { instrucoes: "Pix", link: null });
+    assert.deepEqual(side.applyLicensePatch(gravada, { deviceLimit: 2 }).pagamento, { instrucoes: "Pix", link: null }, "patch sem o campo preserva");
+    assert.equal(side.applyLicensePatch(gravada, { pagamento: null }).pagamento, null, "null apaga");
+  }
+});

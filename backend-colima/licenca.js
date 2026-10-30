@@ -28,6 +28,17 @@ const ADDONS_DO_PERSONALIZADO = ['meu-bot-finance'];
  */
 const legadoCrmContratado = (raw) => raw !== null && typeof raw === 'object' && (raw.plan === 'personalizado' || (Array.isArray(raw.produtos) && raw.produtos.includes('meu-bot-crm')));
 
+/**
+ * Orientação de pagamento que o admin grava para a conta (chave Pix, link, contato). Aparece no aviso de plano do app.
+ * Texto livre até 2000 caracteres; link só http(s). Inválido ou vazio vira null (sem orientação: só "pedir ao admin").
+ */
+const parsePagamento = (v) => {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return null;
+  const instrucoes = typeof v.instrucoes === 'string' ? v.instrucoes.trim().slice(0, 2000) : '';
+  const link = typeof v.link === 'string' && /^https?:\/\/\S+$/i.test(v.link.trim()) ? v.link.trim() : null;
+  return instrucoes === '' && link === null ? null : { instrucoes, link };
+};
+
 const isIso = (v) => typeof v === 'string' && v !== '' && !Number.isNaN(Date.parse(v));
 const nowIso = (now = Date.now()) => new Date(now).toISOString();
 
@@ -43,6 +54,7 @@ function defaultLicense(now = Date.now()) {
     expiresAt: null,
     deviceLimit: 1,
     produtos: [],
+    pagamento: null,
     updatedAt: at,
     updatedBy: 'system',
   };
@@ -67,7 +79,8 @@ function parseLicense(raw, now = Date.now()) {
   const updatedAt = isIso(o.updatedAt) ? o.updatedAt : base.updatedAt;
   const updatedBy = o.updatedBy === 'admin' || o.updatedBy === 'system' ? o.updatedBy : base.updatedBy;
   const produtos = parseProdutos(personalizado ? [...(Array.isArray(o.produtos) ? o.produtos : []), ...ADDONS_DO_PERSONALIZADO] : o.produtos);
-  return { plan, status, interval, memberSince, trialEnd, expiresAt, deviceLimit, produtos, updatedAt, updatedBy };
+  const pagamento = parsePagamento(o.pagamento);
+  return { plan, status, interval, memberSince, trialEnd, expiresAt, deviceLimit, produtos, pagamento, updatedAt, updatedBy };
 }
 
 /** Aplica uma mudança do admin (só campos válidos) e carimba updatedAt/updatedBy=admin. */
@@ -82,6 +95,7 @@ function applyLicensePatch(current, patch, now = Date.now()) {
   if (p.expiresAt === null || isIso(p.expiresAt)) next.expiresAt = p.expiresAt ?? null;
   if (Number.isInteger(p.deviceLimit) && p.deviceLimit >= 1 && p.deviceLimit <= 100) next.deviceLimit = p.deviceLimit;
   if (Array.isArray(p.produtos)) next.produtos = parseProdutos(p.produtos);
+  if ('pagamento' in p) next.pagamento = parsePagamento(p.pagamento);
   next.updatedAt = nowIso(now);
   next.updatedBy = 'admin';
   return next;

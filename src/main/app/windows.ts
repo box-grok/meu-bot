@@ -3,7 +3,7 @@
  * presas a um host, roteia eventos por host e desmonta o túnel de uma máquina com carência quando
  * a última janela dela fecha.
  */
-import { BrowserWindow, nativeTheme, screen, shell } from "electron";
+import { BrowserWindow, nativeTheme, screen, session, shell } from "electron";
 import path from "node:path";
 import type { MainEventChannel, MainEvents } from "../../shared/ipc";
 import { hostBusy } from "../conversa/conversation";
@@ -14,6 +14,7 @@ import { closeTunnel, ensureTunnel, log } from "../maquina/tunnel";
 import { caps } from "./variant";
 import { closeTerminalsOfWindow } from "../terminal/terminal";
 import { browserForget } from "../navegador/browser";
+import { PARTICAO_COMPUTADOR, particaoComputador, urlTelaPermitida } from "../maquina/tela-core";
 
 export type OpenOrigin = "startup" | "picker" | "notify" | "quick" | "menu" | "shortcut";
 
@@ -134,6 +135,18 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event) => event.preventDefault());
+  // Computador: o <webview> da tela do bot só carrega o noVNC do forward local, sem preload, e não navega para fora.
+  win.webContents.on("will-attach-webview", (event, prefs, params) => {
+    if (params.partition?.startsWith(PARTICAO_COMPUTADOR) !== true) return;
+    if (params.partition !== particaoComputador(host) || params.src === undefined || !urlTelaPermitida(params.src)) { event.preventDefault(); return; }
+    delete prefs.preload;
+    prefs.nodeIntegration = false; prefs.contextIsolation = true; prefs.sandbox = true; prefs.webSecurity = true;
+  });
+  win.webContents.on("did-attach-webview", (_event, guest) => {
+    if (guest.session !== session.fromPartition(particaoComputador(host))) return;
+    guest.on("will-navigate", (e, url) => { if (!urlTelaPermitida(url)) e.preventDefault(); });
+    guest.setWindowOpenHandler(() => ({ action: "deny" }));
+  });
   win.on("focus", () => { lastFocusedId = win.id; lastFocusedHost = host; });
   win.on("closed", () => {
     closeTerminalsOfWindow(win.id);

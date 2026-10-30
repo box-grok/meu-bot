@@ -8,7 +8,7 @@
  * App que exigisse mais que o free (`exige !== "free"`): sem etiqueta Pro; ou está tudo aberto ("ok") ou o add-on
  * `produto` falta/venceu ("assinatura"), uma tela só. Mesmas regras do src/main/licenca.ts (lado do main).
  */
-import type { LicenseView, PlanName } from "../../shared/ipc";
+import type { LicenseView, Pagamento, PlanName } from "../../shared/ipc";
 
 export type ProAccess = "ok" | "free" | "expired" | "unknown" | "assinatura";
 
@@ -55,13 +55,22 @@ export function browserAccess(view: LicenseView | null, host: string, exige: Pla
 }
 
 /** Texto do bloqueio, por situação. */
-export type ProModule = "navegador" | "crm" | "finance" | "google";
+export type ProModule = "navegador" | "crm" | "finance" | "google" | "computador";
 const MODULE_TEXT: Record<ProModule, { name: string; pitch: string; back: string }> = {
   navegador: { name: "Navegador", pitch: "Um navegador dentro do meu-bot, com abas, cookies separados por máquina e extensões do Chrome (como o Streak CRM no Gmail). E o agente da conversa pode navegar por você.", back: "a aba volta a abrir" },
   finance: { name: "Financeiro", pitch: "Seu financeiro no WhatsApp: o agente lança os gastos que você conta ou fotografa, categoriza sozinho e só pede o que depende de você.", back: "a página Finanças abre" },
   google: { name: "Conta Google", pitch: "A conta Google da máquina dentro do meu-bot: o agente lê o Gmail, a Agenda e as planilhas por você, e o backup dos seus dados vai para o seu Drive.", back: "a página Conta Google abre" },
+  computador: { name: "Computador", pitch: "A tela da máquina do seu bot, ao vivo dentro do meu-bot: você vê o que o agente está fazendo, sem abrir nada.", back: "a tela aparece aqui" },
   crm: { name: "CRM pelo WhatsApp", pitch: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: cria e atualiza boxes, campos e comentários, e pede sua confirmação antes de mudar de etapa.", back: "o tutorial continua" },
 };
+/**
+ * Orientação de pagamento a mostrar junto do bloqueio: só quando pagar resolve (grátis, venceu, add-on faltando) e o
+ * admin gravou uma. "unknown" (não deu para ler o plano) nunca mostra: pagar não resolve o que é técnico.
+ */
+export function pagamentoDoBloqueio(a: Exclude<ProAccess, "ok">, view: LicenseView | null): Pagamento | null {
+  if (a === "unknown" || view === null) return null;
+  return view.license.pagamento ?? null;
+}
 export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | null, modulo: ProModule = "navegador", produto: string = "meu-bot"): { title: string; text: string; askAdmin: boolean } {
   const m = MODULE_TEXT[modulo];
   if (a === "assinatura") return { title: `${produto}: produto não liberado nesta máquina`, text: `O ${produto} é contratado por cima do seu plano${view !== null && (view.license.produtos ?? []).includes(produto) ? `, e a licença desta máquina venceu${view.license.expiresAt ? ` em ${new Date(view.license.expiresAt).toLocaleDateString("pt-BR")}` : ""}` : ", e esta máquina ainda não o tem"}. Fale com o admin para liberar; assim que ele gravar, ${m.back}.`, askAdmin: true };

@@ -3,7 +3,7 @@
  * maquinas.json). Puro, sem IO: a fronteira dona do formato do lado do admin. Vem de fora = dado, nunca comando.
  * Mesmo esquema do backend-colima/licenca.js (o backend é quem grava de fato); mudar os dois juntos.
  */
-import type { License, LicenseDevice, LicensePatch, LicenseView, PlanName } from "../../shared/ipc";
+import type { License, LicenseDevice, LicensePatch, LicenseView, Pagamento, PlanName } from "../../shared/ipc";
 import { ADDONS_DO_PERSONALIZADO, NAO_ADDON } from "../app/variant-core";
 
 const PLANS: License["plan"][] = ["free", "pro"];
@@ -18,10 +18,19 @@ const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const NAO_ADDON_SET = new Set(NAO_ADDON);
 export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && !NAO_ADDON_SET.has(x)))].sort() : []);
 
+/** Orientação de pagamento gravada pelo admin (texto até 2000, link só http(s)); vazia/inválida = null. Igual ao licenca.js. */
+export function parsePagamento(v: unknown): Pagamento | null {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const instrucoes = typeof o.instrucoes === "string" ? o.instrucoes.trim().slice(0, 2000) : "";
+  const link = typeof o.link === "string" && /^https?:\/\/\S+$/i.test(o.link.trim()) ? o.link.trim() : null;
+  return instrucoes === "" && link === null ? null : { instrucoes, link };
+}
+
 /** Licença de uma conta ainda não configurada: grátis, um device. */
 export function defaultLicense(now: number = Date.now()): License {
   const at = nowIso(now);
-  return { plan: "free", status: "free", interval: null, memberSince: at, trialEnd: null, expiresAt: null, deviceLimit: 1, produtos: [], updatedAt: at, updatedBy: "system" };
+  return { plan: "free", status: "free", interval: null, memberSince: at, trialEnd: null, expiresAt: null, deviceLimit: 1, produtos: [], pagamento: null, updatedAt: at, updatedBy: "system" };
 }
 
 /** Normaliza o licenca.json lido; campo inválido/ausente cai no default (memberSince preservado). Nunca lança. */
@@ -39,6 +48,7 @@ export function parseLicense(raw: unknown, now: number = Date.now()): License {
     expiresAt: isIso(o.expiresAt) ? o.expiresAt : null,
     deviceLimit: Number.isInteger(o.deviceLimit) && (o.deviceLimit as number) >= 1 && (o.deviceLimit as number) <= 100 ? (o.deviceLimit as number) : base.deviceLimit,
     produtos: parseProdutos(personalizado ? [...(Array.isArray(o.produtos) ? o.produtos : []), ...ADDONS_DO_PERSONALIZADO] : o.produtos),
+    pagamento: parsePagamento(o.pagamento),
     updatedAt: isIso(o.updatedAt) ? o.updatedAt : base.updatedAt,
     updatedBy: o.updatedBy === "admin" || o.updatedBy === "system" ? o.updatedBy : base.updatedBy,
   };
@@ -56,6 +66,7 @@ export function applyLicensePatch(current: unknown, patch: LicensePatch, now: nu
   if (p.expiresAt !== undefined && (p.expiresAt === null || isIso(p.expiresAt))) next.expiresAt = p.expiresAt;
   if (p.deviceLimit !== undefined && Number.isInteger(p.deviceLimit) && p.deviceLimit >= 1 && p.deviceLimit <= 100) next.deviceLimit = p.deviceLimit;
   if (p.produtos !== undefined) next.produtos = parseProdutos(p.produtos);
+  if (p.pagamento !== undefined) next.pagamento = parsePagamento(p.pagamento);
   next.updatedAt = nowIso(now);
   next.updatedBy = "admin";
   return next;

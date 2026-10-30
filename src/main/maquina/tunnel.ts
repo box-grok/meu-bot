@@ -199,7 +199,10 @@ function portOpen(port: number): Promise<boolean> {
  * num pipe aberto enquanto o filho viver.
  */
 function startForward(h: HostTunnel, localPort: number, remotePort: number): Promise<ChildProcess> {
-  const { host } = h;
+  return spawnForward(h.host, localPort, remotePort, (child) => onForwardExit(h, child));
+}
+/** Abre o `ssh -N -L` pelo master; `afterExit` roda se ele morrer depois de pronto (cada dono decide o que refazer). */
+function spawnForward(host: string, localPort: number, remotePort: number, afterExit: (child: ChildProcess) => void): Promise<ChildProcess> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "ssh",
@@ -229,7 +232,7 @@ function startForward(h: HostTunnel, localPort: number, remotePort: number): Pro
     child.on("exit", (code, signal) => {
       log(`[${host}] forward pid ${child.pid ?? "?"} saiu após ${Date.now() - startedAt} ms: code=${code} signal=${signal} stderr=${JSON.stringify(lastLine(err).slice(-300))}`);
       if (!done) finish(false, `Túnel SSH encerrou (${code}): ${lastLine(err) || "sem detalhes"}`);
-      else onForwardExit(h, child);
+      else afterExit(child);
     });
     setTimeout(() => finish(false, "Túnel SSH não abriu em 20s."), 20_000);
   });
@@ -257,6 +260,35 @@ async function rebuildForward(h: HostTunnel, remotePort: number): Promise<void> 
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Forwards além do backend (hoje: a tela noVNC do painel Computador), um por host e porta remota, no mesmo master.
+ * Não se refazem sozinhos: quem usa pede de novo (o painel faz isso no "Reconectar"). Caem junto com o túnel do host.
+ */
+const extras = new Map<string, { child: ChildProcess; localPort: number }>();
+const extraKey = (host: string, remotePort: number): string => `${host}\u0000${remotePort}`;
+export async function ensureForwardExtra(host: string, remotePort: number): Promise<number> {
+  const k = extraKey(host, remotePort);
+  const cur = extras.get(k);
+  if (cur !== undefined && cur.child.exitCode === null && await portOpen(cur.localPort)) return cur.localPort;
+  if (cur !== undefined) { cur.child.stdin?.end(); cur.child.kill(); extras.delete(k); }
+  await ensureMaster(host);
+  const localPort = await freePort();
+  const child = await spawnForward(host, localPort, remotePort, (c) => { if (extras.get(k)?.child === c) extras.delete(k); });
+  extras.set(k, { child, localPort });
+  return localPort;
+}
+function closeForwardExtras(host: string): void {
+  for (const [k, e] of extras) {
+    if (!k.startsWith(`${host}\u0000`)) continue;
+    e.child.stdin?.end(); e.child.kill(); extras.delete(k);
+  }
+}
+/** Comando remoto pelo master (abre o master se preciso). Para quem não é o túnel do backend (ex.: a tela). */
+export async function execNaMaquina(host: string, command: string, timeoutMs: number): Promise<RunResult> {
+  await ensureMaster(host);
+  return execViaMux(host, command, timeoutMs);
+}
 
 async function withRetry<T>(label: string, fn: () => Promise<T>, onStatus?: (detail: string) => void): Promise<T> {
   let last: unknown;
@@ -495,6 +527,7 @@ export function closeTunnel(host?: string): void {
   const targets = host === undefined ? [...hosts.values()] : [entry(host)];
   for (const h of targets) {
     if (h.host === LOCAL_HOST) { stopLocalBackend(); setState(h, "idle", "teardown"); continue; }
+    closeForwardExtras(h.host);
     h.stopping = true;
     const prev = h.live;
     h.live = undefined;

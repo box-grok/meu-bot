@@ -5,7 +5,8 @@
  */
 import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
 import type { LicenseView, PlanName } from "../../shared/ipc";
-import { browserAccess, proBlockText } from "../lib/pro.js";
+import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
+import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
@@ -90,6 +91,8 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     if (acesso !== "ok") {
       const t = proBlockText(acesso, deps.license(), "google", deps.produto);
       const c = card(t.title); c.append(el("p", "", t.text));
+      const pg = pagamentoDoBloqueio(acesso, deps.license());
+      if (pg !== null) c.append(blocoPagamento(pg));
       if (t.askAdmin) {
         const b = btn(proPedido ? "Pedido enviado ao admin ✓" : acesso === "assinatura" ? "Avisar o admin" : acesso === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin", "btn-primary", () => { void agir(async () => { await deps.api.browserRequestPro(); proPedido = true; }, "pedido enviado ao admin; assim que ele liberar, esta página abre"); });
         b.disabled = busy || proPedido; c.append(b);

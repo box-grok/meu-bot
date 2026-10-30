@@ -9,7 +9,8 @@ import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { financeOk, proBlockText } from "../lib/pro.js";
+import { financeOk, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
+import { blocoPagamento } from "../lib/aviso-pagamento.js";
 
 export interface FinancePageDeps {
   panelsEl: HTMLElement;
@@ -220,6 +221,8 @@ export function mountFinancePage(deps: FinancePageDeps): { open: () => void; ref
       const t = proBlockText(host === "local" ? "unknown" : "assinatura", deps.license(), "finance", "meu-bot-finance");
       const c = card(host === "local" ? "O financeiro mora numa máquina" : t.title);
       c.append(el("p", "", host === "local" ? "Abra uma janela numa máquina por SSH (é lá que ficam o agente do WhatsApp e os seus dados)." : t.text));
+      const pg = host === "local" ? null : pagamentoDoBloqueio("assinatura", deps.license());
+      if (pg !== null) c.append(blocoPagamento(pg));
       if (host !== "local" && t.askAdmin) c.append(btn("Pedir ao admin", "btn-primary", () => { void agir(() => deps.api.financePedir(), "pedido enviado ao admin; assim que ele liberar, esta página abre") }));
       panel.append(c); if (msg) panel.append(el("p", `hint ${msg.bad ? "bad-hint" : ""}`, msg.text)); return;
     }

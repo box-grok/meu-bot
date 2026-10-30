@@ -12,6 +12,7 @@ import { conversationToMarkdown, conversationTitle, slugify } from "../conversa/
 import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchContasClaude, limiaresContasClaude, log, removerContaClaude, reordenarContasClaude, runBackendTurn, saveAlertPrefs, usarAgoraContaClaude } from "../maquina/backend";
 import { lerLicenca, lerLicencaDaMaquina } from "../licenca/licenca-maquina";
 import { assertAcesso, assertFinance } from "../licenca/acesso";
+import { telaAcordar, telaStatus, telaUrl } from "../maquina/tela";
 import { esquecerPermissoes, responderPermissao } from "../navegador/nav-permissoes";
 import { financeAbc, financeImportarPlanilha, financeCategorias, financeComprovante, financeConfig, financeConfigLer, financeCorrigir, financeLinhaRemover, financeLinhaSalvar, financeConfirmar, financeConfirmarTodas, financeContaCriar, financeDescartar, financeFecharMes, financeInfo, financeLancamentos, financeLancar, financeMes } from "../financeiro/finance-local";
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp";
@@ -42,7 +43,7 @@ import { getHostNames, isBackendModel } from "../app/settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../agente/objetivo";
 import { crmInfo, crmTest, resetCrm, setCrm } from "../crm/crm";
 import { toggleQuickEntry } from "../app/quickEntry";
-import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installHermesPausa, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
+import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installHermesPausa, installNavegador, installStatusLine, installTela, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
 import { readSegments, writeSegments } from "../agente/statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../app/windows";
@@ -301,6 +302,13 @@ export function registerClientIpc(): void {
     void registrar(h.host, "modulo.opcoes", id);
     return r;
   });
+  // Computador (módulo Pro): a tela do bot ao vivo. O plano é conferido aqui de novo, não só na tela.
+  const comp = async (event: Electron.IpcMainInvokeEvent): Promise<string> => { const h = ctxOf(event); await assertAcesso(h.host); return h.host; };
+  handleClient("computador:status", async (event) => telaStatus(await comp(event)));
+  handleClient("computador:acordar", async (event) => { const host = await comp(event); const st = await telaAcordar(host); log(`[computador] ${host}: acordar → ${st.erro ?? (st.rodando ? "no ar" : "parada")}`); return st; });
+  handleClient("computador:instalar", async (event) => { const host = await comp(event); const r = await installTela(host); void registrar(host, "computador.instalar", "", r.ok ? "ok" : `código ${r.codigo ?? "timeout"}`); return r; });
+  handleClient("computador:url", async (event) => telaUrl(await comp(event)));
+  handleClient("plano:avisar-pagamento", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pago", "avisou que já pagou (aviso de plano)"); log(`[plano] ${h.host}: avisou que já pagou`); });
   handleClient("finance:pedir", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pedir", "pediu para liberar o meu-bot-finance (financeiro)"); log(`[finance] ${h.host}: pediu o meu-bot-finance`); });
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
   // Tutorial 10 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.

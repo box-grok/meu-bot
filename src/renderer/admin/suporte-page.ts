@@ -211,7 +211,20 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       prodCtl.append(el("span", "hint", contratados.length === 0 && candidatos.length === 0 ? "Add-ons: nenhum (só o plano)" : "Add-ons (por cima do plano):"));
       for (const nome of contratados) prodCtl.append(licBtnConfirm(`× ${produtoLabel(nome, deps.addons())}`, `Confirmar? tira o ${produtoLabel(nome, deps.addons())} dela`, () => setLic(`produto ${nome} tirado`, { produtos: contratados.filter((x) => x !== nome) })));
       for (const nome of candidatos) prodCtl.append(licBtn(`＋ ${produtoLabel(nome, deps.addons())}`, () => setLic(`produto ${nome} incluído`, { produtos: [...contratados, nome] })));
-      lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl);
+      // Orientação de pagamento: aparece para a pessoa no aviso de plano (Pro vencido, add-on, Computador…).
+      const pg0 = view.license.pagamento ?? null;
+      const pagTxt = el("textarea", "admin-pagamento") as HTMLTextAreaElement;
+      pagTxt.rows = 3; pagTxt.maxLength = 2000; pagTxt.placeholder = "Ex.: Pix (chave e-mail) financeiro@…; valor R$ 49/mês. Depois toque em \"Já paguei\"."; pagTxt.value = pg0?.instrucoes ?? ""; pagTxt.disabled = state.licBusy;
+      const pagLink = el("input") as HTMLInputElement; pagLink.type = "url"; pagLink.placeholder = "https://… (opcional)"; pagLink.value = pg0?.link ?? "";
+      const pagCtl = el("div", "admin-actions");
+      const pagWrap = el("label", "admin-field"); pagWrap.append(el("span", "hint", "Como pagar (a pessoa vê no aviso de plano)"), pagTxt);
+      pagCtl.append(
+        pagWrap,
+        field("Link de pagamento", pagLink),
+        licBtn("Salvar orientação", () => setLic("orientação de pagamento", { pagamento: { instrucoes: pagTxt.value, link: pagLink.value.trim() === "" ? null : pagLink.value.trim() } })),
+        ...(pg0 !== null ? [licBtnConfirm("Apagar orientação", "Confirmar? o aviso volta a só \"pedir ao admin\"", () => setLic("orientação de pagamento apagada", { pagamento: null }))] : []),
+      );
+      lc.append(expCtl, triCtl, cycleCtl, limCtl, prodCtl, ctl, pagCtl);
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }
     panel.append(lc);

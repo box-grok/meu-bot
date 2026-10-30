@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { acessoAddon, acessoProduto, browserAccess, crmProprioOk, displayUrl, financeOk, planoLiberaPro, proBlockText, tabLabel } from "../../dist/renderer/lib/pro.js";
+import { acessoAddon, acessoProduto, browserAccess, crmProprioOk, displayUrl, financeOk, pagamentoDoBloqueio, planoLiberaPro, proBlockText, tabLabel } from "../../dist/renderer/lib/pro.js";
 
 const lic = (over) => ({ license: { plan: "free", status: "free", interval: null, memberSince: "2026-10-18T00:00:00Z", trialEnd: null, expiresAt: null, deviceLimit: 1, produtos: [], updatedAt: "2026-10-18T00:00:00Z", updatedBy: "admin", ...over }, devices: [] });
 
@@ -70,4 +70,20 @@ test("proBlockText: Conta Google é módulo Pro, com o mesmo pedido ao admin", (
   const t = proBlockText("free", lic({}), "google", "meu-bot");
   assert.ok(t.title.includes("Conta Google") && t.askAdmin, t.title);
   assert.ok(proBlockText("expired", lic({ plan: "pro", status: "expired" }), "google").title.includes("venceu"));
+});
+
+test("pagamentoDoBloqueio: só mostra a orientação quando pagar resolve e o admin gravou uma", () => {
+  const pg = { instrucoes: "Pix financeiro@exemplo.com", link: null };
+  assert.deepEqual(pagamentoDoBloqueio("free", lic({ pagamento: pg })), pg);
+  assert.deepEqual(pagamentoDoBloqueio("expired", lic({ plan: "pro", status: "expired", pagamento: pg })), pg);
+  assert.deepEqual(pagamentoDoBloqueio("assinatura", lic({ pagamento: pg })), pg);
+  assert.equal(pagamentoDoBloqueio("unknown", lic({ pagamento: pg })), null, "problema técnico: pagar não resolve");
+  assert.equal(pagamentoDoBloqueio("free", lic({})), null, "licença antiga sem o campo");
+  assert.equal(pagamentoDoBloqueio("free", null), null);
+});
+
+test("proBlockText: módulo Computador tem texto próprio e oferece pedir ao admin", () => {
+  const t = proBlockText("free", lic({}), "computador");
+  assert.match(t.title, /Computador/);
+  assert.equal(t.askAdmin, true);
 });

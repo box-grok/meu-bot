@@ -6,6 +6,12 @@
  */
 /** Planos da licença: free (a base) e pro (Navegador e CRM). Módulos pagos à parte (meu-bot-finance…) são add-ons em `produtos`. */
 export type PlanName = "free" | "pro";
+/** Como pagar, gravado pelo admin (chave Pix, link, contato); aparece no aviso de plano. */
+export interface Pagamento {
+  instrucoes: string;
+  /** Link de pagamento (http/https) ou null. */
+  link: string | null;
+}
 export interface License {
   plan: PlanName;
   status: "free" | "trialing" | "active" | "expired";
@@ -18,6 +24,8 @@ export interface License {
   deviceLimit: number;
   /** Produtos contratados por cima do plano, acumulativos (meu-bot-crm, meu-bot-fit…); vazio = só o plano. */
   produtos: string[];
+  /** Orientação de pagamento desta conta; null = sem orientação (o aviso só oferece "pedir ao admin"). */
+  pagamento: Pagamento | null;
   updatedAt: string;
   updatedBy: "admin" | "system";
 }
@@ -53,4 +61,6 @@ export interface LicensePatch {
   deviceLimit?: number;
   /** A lista inteira de produtos contratados (substitui a atual). */
   produtos?: string[];
+  /** Orientação de pagamento (null apaga). */
+  pagamento?: Pagamento | null;
 }

@@ -62,7 +62,7 @@ export interface SettingsView {
  * Aba que fica na frente ao abrir: "padrao" = a do produto (Finanças no finance-staging, Tutoriais nos outros, para
  * quem chega leigo); "conversa" = sem alfinete, a última conversa; o resto é o id de uma página.
  */
-export type AbaFixa = "padrao" | "conversa" | "tutoriais" | "acervo" | "conta-google" | "financas" | "navegador" | "modulos" | "usuarios";
+export type AbaFixa = "padrao" | "conversa" | "tutoriais" | "acervo" | "conta-google" | "computador" | "financas" | "navegador" | "modulos" | "usuarios";
 
 export interface SettingsUpdate {
   backendModel?: BackendModel;
