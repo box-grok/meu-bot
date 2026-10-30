@@ -1,7 +1,7 @@
 import type { WhatsappAgente, WhatsappStatus, WhatsappReplyChoice, VoiceReplyMode, VozId, AudioSetup, WhatsappEvent } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, TUTORIAIS } from "../lib/tutoriais.js";
+import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, TUTORIAIS, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/tutoriais.js";
 import { ctx } from "../app/ctx.js";
 
 const waLine = $<HTMLButtonElement>("wa-line");
@@ -100,12 +100,18 @@ let waListEditing = false;
 let waListDraft: string | null = null;
 let waListError: string | null = null;
 /** O cartão marcado hoje, pelo que está gravado na máquina. */
-export const replyChoiceNow = (st: WhatsappStatus): WhatsappReplyChoice | null => replyChoiceOf(st.dmPolicy, st.allowFrom, st.number);
+export const replyChoiceNow = (st: WhatsappStatus): WhatsappReplyChoice | null => replyChoiceOf(st.dmPolicy, st.allowFrom, st.number, st.dono?.numero ?? st.number);
+/** O que a pessoa listou além do aparelho e do dono. */
+const listados = (st: WhatsappStatus): string[] => listedNumbers(st.allowFrom, st.number, st.dono?.numero ?? st.number);
 export function renderReplyCards(container: HTMLElement, current: WhatsappReplyChoice | null, disabled: boolean, onChoose: (c: WhatsappReplyChoice) => void): void {
   container.replaceChildren();
   // Máquina cujo agente não deixa escolher pelo app (capacidade, não produto): diz isso em vez de cartões que falhariam.
   if (ctx.waStatus !== null && !ctx.waStatus.capacidades.politicaDm) { container.append(el("p", "hint", `O agente desta máquina (${ctx.waStatus.gateway ?? "desconhecido"}) não permite escolher quem responde pelo app.`)); return; }
+  // Quem manda no agente, antes dos cartões: pré-preenchido com o número pareado; troca só para quem usa um chip dedicado.
+  if (ctx.waStatus?.dono !== undefined) renderDonoLinha(container, ctx.waStatus, disabled);
   const marked = waPolicyTarget ?? (waListEditing ? "list" : current); // otimista: enquanto grava, o cartão clicado já aparece marcado
+  const dono = ctx.waStatus?.dono;
+  const avisoSelfChat = ctx.waStatus?.gateway === "hermes" && (dono === undefined || dono.souEu);
   for (const o of REPLY_OPTIONS) {
     const saving = waPolicyTarget === o.id;
     const card = el("button", `reply-card${marked === o.id ? " on" : ""}${saving ? " saving" : ""}`);
@@ -113,9 +119,11 @@ export function renderReplyCards(container: HTMLElement, current: WhatsappReplyC
     const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
     if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
     if (saving) title.append(el("span", "reply-saving", "aplicando…"));
-    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
+    const texto = o.id === "self" && dono !== undefined && !dono.souEu ? replySelfTextoDono(fmtPhone(dono.numero)) : o.text;
+    const body = el("div", "reply-body"); body.append(title, el("p", "", texto));
+    if (o.id !== "self" && avisoSelfChat) body.append(el("p", "hint", REPLY_AVISO_SELF_CHAT));
     if (o.id === "list" && current === "list" && ctx.waStatus !== null && !waListEditing) {
-      const nums = listedNumbers(ctx.waStatus.allowFrom, ctx.waStatus.number);
+      const nums = listados(ctx.waStatus);
       body.append(el("p", "reply-list-now", `Na lista: ${nums.map((n) => fmtPhone(n)).join(", ")}. Clique para mudar.`));
     }
     card.append(saving ? el("span", "reply-spin") : el("span", "reply-radio"), body);
@@ -127,12 +135,79 @@ export function renderReplyCards(container: HTMLElement, current: WhatsappReplyC
   if (waPolicyError !== null) container.append(el("p", "hint bad-hint", waPolicyError));
   else if (ctx.waStatus?.capacidades.politicaReinicia === true && waPolicySaving) container.append(el("p", "hint", "Trocar o modo reinicia o gateway do WhatsApp desta máquina: leva alguns segundos."));
 }
-/** Campo da lista: um número por linha; "Salvar lista" grava a allowlist (você entra sempre). */
+let waDonoEditing = false;
+let waDonoDraft: string | null = null;
+let waDonoError: string | null = null;
+let waDonoSaving = false;
+/**
+ * Linha "Dono" (padrão da linha de áudio): quem manda no agente e de onde fala; "Trocar" abre o editor inline.
+ * Padrão = o número pareado, sem nada a decidir; a troca é para quem tem um chip dedicado para o agente.
+ */
+function renderDonoLinha(container: HTMLElement, st: WhatsappStatus, disabled: boolean): void {
+  const dono = st.dono; if (dono === undefined) return;
+  const row = el("div", "audio-row wa-dono-row");
+  row.append(el("strong", "", "Dono"), el("span", "audio-ok", donoLinhaTexto(dono, dono.souEu ? null : st.number, fmtPhone)));
+  if (ctx.caps.manageWa && !waDonoEditing) {
+    const b = el("button", "btn btn-ghost btn-small", "Trocar"); b.type = "button"; b.title = DONO_HINT;
+    b.disabled = disabled || waDonoSaving || waPolicySaving || !st.connected;
+    b.addEventListener("click", () => { waDonoEditing = true; waDonoDraft = null; waDonoError = null; paintWhatsapp(); ctx.paintGuide(); });
+    row.append(b);
+  }
+  container.append(row);
+  if (waDonoEditing) container.append(renderDonoEditor(st, disabled));
+}
+function renderDonoEditor(st: WhatsappStatus, disabled: boolean): HTMLElement {
+  const dono = st.dono;
+  const box = el("div", "wa-list-editor");
+  const input = document.createElement("input"); input.type = "text"; input.className = "wa-list-input";
+  input.placeholder = "Com DDD: 11 99999-9999 (o +55 entra sozinho) ou +1 212 555 0100";
+  input.value = waDonoDraft ?? (dono === undefined || dono.souEu ? "" : `+${dono.numero}`);
+  input.disabled = disabled || waDonoSaving;
+  input.addEventListener("input", () => { waDonoDraft = input.value; waDonoError = null; });
+  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); void saveDono(input.value); } });
+  const row = el("div", "wa-list-row");
+  const save = el("button", "btn btn-primary btn-small", waDonoSaving ? "Salvando…" : "Salvar"); save.type = "button"; save.disabled = disabled || waDonoSaving;
+  save.addEventListener("click", () => { void saveDono(input.value); });
+  const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button"; cancel.disabled = waDonoSaving;
+  cancel.addEventListener("click", () => { waDonoEditing = false; waDonoDraft = null; waDonoError = null; paintWhatsapp(); ctx.paintGuide(); });
+  row.append(save, cancel);
+  if (dono !== undefined && !dono.souEu) {
+    const volta = el("button", "btn btn-ghost btn-small", "Voltar para este número"); volta.type = "button"; volta.disabled = disabled || waDonoSaving;
+    volta.addEventListener("click", () => { void saveDono(null); });
+    row.append(volta);
+  }
+  box.append(input, row, el("p", waDonoError === null ? "hint" : "hint bad-hint", waDonoError ?? DONO_HINT));
+  return box;
+}
+/** Grava o dono (null = volta ao pareado): a máquina reaplica "quem responde" e, no Hermes, o home channel (reinicia o gateway). */
+async function saveDono(texto: string | null): Promise<void> {
+  if (waDonoSaving) return;
+  let numero: string | null = null;
+  if (texto !== null) {
+    const { ok, bad } = parseWaNumbers(texto);
+    if (bad.length > 0) { waDonoError = `não entendi: ${bad.join(", ")} (use só dígitos, com DDD; de fora do Brasil, comece com +)`; paintWhatsapp(); ctx.paintGuide(); return; }
+    if (ok.length === 0) { waDonoError = "digite o seu número ou use \"Voltar para este número\""; paintWhatsapp(); ctx.paintGuide(); return; }
+    if (ok.length > 1) { waDonoError = "um número só: o dono é uma pessoa"; paintWhatsapp(); ctx.paintGuide(); return; }
+    numero = ok[0]!;
+    const atual = ctx.waStatus?.dono;
+    if (atual !== undefined && numero === atual.numero) { waDonoEditing = false; waDonoDraft = null; paintWhatsapp(); ctx.paintGuide(); return; }
+  }
+  waDonoSaving = true; waDonoError = null; waPolicySaving = true;
+  paintWhatsapp(); ctx.paintGuide();
+  segurarConexao();
+  try {
+    ctx.waStatus = comPareamento(await window.meuBot.whatsappSetDono(numero));
+    waDonoEditing = false; waDonoDraft = null;
+  } catch (err) {
+    waDonoError = ipcErrorText(err);
+  } finally { acaoTerminou(); waDonoSaving = false; waPolicySaving = false; paintWhatsapp(); ctx.paintGuide(); }
+}
+/** Campo da lista: um número por linha; "Salvar lista" grava a allowlist (o dono entra sempre). */
 function renderListEditor(disabled: boolean): HTMLElement {
   const box = el("div", "wa-list-editor");
   const ta = document.createElement("textarea"); ta.className = "wa-list-input"; ta.rows = 3;
   ta.placeholder = "Um número por linha, com DDD: 11 99999-9999 (o +55 entra sozinho) ou +1 212 555 0100";
-  ta.value = waListDraft ?? (ctx.waStatus === null ? "" : listedNumbers(ctx.waStatus.allowFrom, ctx.waStatus.number).map((n) => `+${n}`).join("\n"));
+  ta.value = waListDraft ?? (ctx.waStatus === null ? "" : listados(ctx.waStatus).map((n) => `+${n}`).join("\n"));
   ta.disabled = disabled;
   ta.addEventListener("input", () => { waListDraft = ta.value; waListError = null; });
   const row = el("div", "wa-list-row");
@@ -141,7 +216,7 @@ function renderListEditor(disabled: boolean): HTMLElement {
   const cancel = el("button", "btn btn-ghost btn-small", "Cancelar"); cancel.type = "button"; cancel.disabled = disabled;
   cancel.addEventListener("click", () => { waListEditing = false; waListDraft = null; waListError = null; paintWhatsapp(); });
   row.append(save, cancel);
-  box.append(ta, row, el("p", waListError === null ? "hint" : "hint bad-hint", waListError ?? "Você fica na lista sempre. Vale na hora, sem reiniciar nada."));
+  box.append(ta, row, el("p", waListError === null ? "hint" : "hint bad-hint", waListError ?? "O dono fica na lista sempre. Vale na hora, sem reiniciar nada."));
   return box;
 }
 async function saveReplyList(text: string): Promise<void> {
@@ -450,7 +525,8 @@ export function paintWhatsapp(): void {
   }
   waAgentBtn.hidden = true;
   paintWaPolicy();
-  const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? "só você" : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
+  const soEu = st.dono !== undefined && !st.dono.souEu ? "só o dono" : "só você";
+  const responde = st.connected && st.dmPolicy !== null ? ` · responde ${st.dmPolicy === "open" ? "todo mundo" : st.dmPolicy === "allowlist" ? (listados(st).length > 0 ? "a lista" : soEu) : st.dmPolicy === "disabled" ? "ninguém" : "com código"}` : "";
   // Antes da primeira resposta desta sessão o estado é o da última vez (cache): dizer "desconectado" aqui assustaria à toa.
   const verificando = waCheckedAt === null && !waPairing;
   waLine.replaceChildren(el("span", "dot"), el("span", "", st.connected ? `${via} · ${who}${responde}${verificando ? " · verificando…" : ""}` : verificando ? `${via} · verificando…` : `${via} · desconectado`));

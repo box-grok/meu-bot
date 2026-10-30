@@ -93,7 +93,7 @@ function waAgentTyping(g: WaChatPage): boolean {
   const last = g.msgs.at(-1);
   const st = ctx.waStatus;
   if (last === undefined || last.role !== "contact" || g.chat.paused || st === null || !st.connected) return false;
-  if (!(st.dmPolicy === "open" || (st.dmPolicy === "allowlist" && g.chat.isSelf))) return false;
+  if (!(st.dmPolicy === "open" || (st.dmPolicy === "allowlist" && (g.chat.isSelf || g.chat.isDono === true)))) return false;
   return Date.now() - new Date(last.at).getTime() < WA_TYPING_WINDOW;
 }
 /** Balão do agente com três pontinhos. */

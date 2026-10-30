@@ -10,7 +10,7 @@ export type WaMenuCaps = Pick<WhatsappCapacidades, "pausar" | "pausaPrazo" | "li
 const TUDO: WaMenuCaps = { pausar: true, pausaPrazo: false, limparHistorico: true, grupos: true };
 
 /** `deleted`: excluída para a pessoa (só o meu-bot-admin a vê na lista, para restaurar). `pausaRotulo`: "até 14:30", pronto da tela, ou null. */
-export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null }
+export interface WaMenuState { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null; /** O próprio aparelho ou o dono: nunca se pausa. */ dono: boolean }
 export type WaMenuEntry =
   | { label: string; action: WhatsappMenuAction | null; enabled: boolean }
   | { label: string; submenu: WaMenuEntry[] }
@@ -43,7 +43,8 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
       : item("Pausar", "pause");
   // Excluir = só tirar da lista (o agente continua de onde parou), sem confirmação; volta se o contato mandar outra mensagem. Zerar é o Limpar.
   const excluir = item("Excluir conversa", "delete");
-  const mexe: WaMenuEntry[] = [...(pode.pausar ? [pausa] : []), ...(pode.limparHistorico ? [item("Limpar histórico…", "clear")] : [])];
+  // O dono (e o próprio aparelho) não é pausado: o agente sempre responde a ele.
+  const mexe: WaMenuEntry[] = [...(pode.pausar && !state.dono ? [pausa] : []), ...(pode.limparHistorico ? [item("Limpar histórico…", "clear")] : [])];
   // Sem manageWa (o admin): exportar, arquivar, pausar, limpar e excluir (o que mexe na máquina fica no registro dela).
   if (!caps.manageWa) return [exportar, referencia, renomear, arquivo, ...mexe, excluir];
   return [
@@ -60,10 +61,10 @@ export function waMenuTemplate(state: WaMenuState, caps: Pick<Capabilities, "man
 
 /** O estado que a lista manda no payload, saneado. */
 export const waMenuState = (payload: unknown): WaMenuState => {
-  const s = (payload as { state?: { archived?: unknown; paused?: unknown; deleted?: unknown; pausaRotulo?: unknown } } | null)?.state ?? {};
+  const s = (payload as { state?: { archived?: unknown; paused?: unknown; deleted?: unknown; pausaRotulo?: unknown; dono?: unknown } } | null)?.state ?? {};
   const r = s.pausaRotulo;
   const pausaRotulo = typeof r === "string" && r.length >= 1 && r.length <= 40 && !/[\r\n]/.test(r) ? r : null;
-  return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true, pausaRotulo };
+  return { archived: s.archived === true, paused: s.paused === true, deleted: s.deleted === true, pausaRotulo, dono: s.dono === true };
 };
 
 /**

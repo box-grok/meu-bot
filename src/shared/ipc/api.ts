@@ -136,7 +136,7 @@ export interface MeuBotSharedApi {
   /** Histórico de um contato (número só com dígitos). Só leitura. */
   whatsappThread(number: string): Promise<WhatsappThreadMessage[]>;
   /** Menu "…" de uma conversa do WhatsApp na lista. */
-  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null }): Promise<WhatsappMenuAction | null>;
+  showWhatsappMenu(number: string, state: { archived: boolean; paused: boolean; deleted: boolean; pausaRotulo: string | null; dono: boolean }): Promise<WhatsappMenuAction | null>;
   /** Grupos do WhatsApp desta máquina: agente ligado ou não, quem o aciona, membros (cache da skill). Só leitura. */
   whatsappGroups(): Promise<WhatsappGroups>;
   /** Conversa de um grupo (jid "…@g.us"), com o autor de cada mensagem. Só leitura. */

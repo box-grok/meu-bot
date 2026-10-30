@@ -348,7 +348,7 @@ function waRenameBox(row: WhatsappChat): HTMLElement {
   requestAnimationFrame(() => { input.focus(); input.select(); });
   return box;
 }
-export const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.alias ?? c.name ?? ctx.fmtPhone(c.number));
+export const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : c.isDono === true ? (c.alias ?? c.name ?? "Você (dono)") : (c.alias ?? c.name ?? ctx.fmtPhone(c.number));
 /**
  * Seleção em massa na lista do WhatsApp ("Selecionar"): marca várias conversas e exclui ou limpa de uma vez.
  * Excluir é só tirar da lista (o agente continua de onde parou); uma gravação só na máquina. Limpar histórico zera o
@@ -465,7 +465,7 @@ export function paintWaSidebar(query: string): void {
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, deleted, pausaRotulo: pausaAteTexto(row.pausaAte).replace(/^até /, "volta às ").replace(/^volta às amanhã, /, "volta amanhã às ") || null }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, deleted, pausaRotulo: pausaAteTexto(row.pausaAte).replace(/^até /, "volta às ").replace(/^volta às amanhã, /, "volta amanhã às ") || null, dono: row.isSelf || row.isDono === true }).then((a) => waMenuAction(row, a));
       });
       if (waSelecao !== null) {
         const sel = waSelecao;
@@ -480,14 +480,15 @@ export function paintWaSidebar(query: string): void {
       const rotuloPausa = row.paused ? `⏸${restante ? ` ${restante}` : ""}` : "";
       const etapa = waPausaEtapa.get(row.number);
       item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
+      if (row.isDono === true && !row.isSelf) item.append(el("span", "si-tab", "dono"));
       if (etapa === "aguarde") item.append(el("span", "si-tab wa-aguarde", "aguarde…"));
       else if (etapa === "pronto") item.append(el("span", "si-tab wa-pronto", "✓ pronto"));
       else if (row.paused) item.append(el("span", "si-tab", rotuloPausa));
       if (deleted) item.append(el("span", "si-tab", "excluída"));
       item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
-      item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : ctx.fmtPhone(row.number)}${row.paused ? ` · pausado${pausaAteTexto(row.pausaAte) ? ` ${pausaAteTexto(row.pausaAte)}` : ""}: o agente não responde` : ""}`;
+      const quemE = row.isSelf ? "Mensagens que você manda para o próprio número" : row.isDono === true ? `Dono: fala com o agente do celular dele (${ctx.fmtPhone(row.number)})` : ctx.fmtPhone(row.number);
+      item.title = `${quemE}${row.paused ? ` · pausado${pausaAteTexto(row.pausaAte) ? ` ${pausaAteTexto(row.pausaAte)}` : ""}: o agente não responde` : ""} · Option+clique: abre ao lado (tela dividida)`;
       // Selecionando, o clique na linha marca/desmarca em vez de abrir a conversa.
-      item.title = "Option+clique: abre ao lado (tela dividida)";
       item.addEventListener("click", (ev) => { if (waSelecao === null) { ctx.openWaChat(row, ev.altKey); return; } if (deleted) return; if (waSelecao.has(row.number)) waSelecao.delete(row.number); else waSelecao.add(row.number); ctx.renderSidebar(); });
       ctx.sidebarList.appendChild(item);
       if (waClear?.number === row.number) ctx.sidebarList.appendChild(waClearBox(waClear));

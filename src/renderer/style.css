@@ -690,6 +690,7 @@ body.topbar-hidden .topbar { display: none; }
 @keyframes wa-dot { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-4px); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .wa-dot { animation: none; opacity: .7; } }
 .audio-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
+.wa-dono-row { margin-bottom: 2px; }
 .audio-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .audio-ok { color: var(--ok); font-size: 12px; }
 .voice-cards { flex-direction: row; flex-wrap: wrap; }
