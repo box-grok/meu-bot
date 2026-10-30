@@ -459,3 +459,28 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   intervalo de 6 h (apague a chave `box` para repetir).
 - **Regra de crescimento:** mais máquinas, não uma maior (o admin já é multi-máquina); vertical só como ponte. Próxima
   medição com 10 boxes (RAM por box com o tempo, swap, CPU de áudio, cota) decide se o teto padrão baixa.
+
+## Padrão de uma máquina nova (30 out)
+
+O que o checklist **Preparar máquina** do meu-bot-admin garante numa máquina em que o admin entra como root (a
+ordem é a de dependência; tudo idempotente; nada reinicia o que está no ar). É também o que o implantador roda
+numa infraestrutura prioritária nova antes de migrar uma pessoa para lá.
+
+| Item | Onde fica | Conferir |
+|---|---|---|
+| Swap 8 GB | `/swapfile`, `/etc/fstab`, `/etc/sysctl.d/90-meu-bot-swap.conf` (swappiness 10) | `swapon --show` |
+| Cota por usuário | `usrquota` no `/` em `/etc/fstab`, `quotaon` | `quotaon -pu /` |
+| Governança | `user.slice` (`MemoryMax` = total − max(3 GB, 10%), `MemoryLow` metade, `CPUWeight=100`); por box `MemorySwapMax=256M MemoryLow=640M CPUWeight=100` | `systemctl show user.slice -p MemoryMax -p MemoryLow -p CPUWeight`; `systemctl show user-<uid>.slice -p MemorySwapMax` |
+| Pacotes | `jq`, `ffmpeg`, `xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot`; opcional `chromium` | `dpkg-query -W jq ffmpeg xvfb novnc chromium` |
+| gh | `/usr/local/bin/gh` (root 755) | `/usr/local/bin/gh --version` |
+| Hermes | `/opt/hermes` + `/usr/local/bin/hermes` | `hermes --version` como qualquer usuário |
+| Transcritor | `/opt/transcriber` (venv, modelo, `bin/transcrever`) | `grep meu-bot-transcritor /opt/transcriber/bin/transcrever` |
+| Claude Code Global | `/opt/meu-bot-claude-global`, `/etc/meu-bot/claude-global`, unit `meu-bot-claude-global`; login do root em `/root/.claude` (humano) | `systemctl is-active meu-bot-claude-global` |
+| Link Público | nginx + cloudflared, `/etc/meu-bot-link-publico/config.json`, `/var/www/publico` (1733), `/root/.cloudflared/cert.pem` (humano), túnel em `/etc/cloudflared/config.yml` | `systemctl is-active nginx cloudflared` |
+
+O script de estado (`PREPARAR_ESTADO_SH`) lê exatamente isso e imprime `KEY=value`; `lerPreparar` decide ok / falta /
+humano. "Criar usuário" aplica o que falta antes de criar. Ver `docs/guia/suporte-admin.md › Preparar máquina`.
+
+**Aviso sobre a janela root:** o chat do root (meu-bot comum aberto no host root) é bancada de teste do dono, só em
+staging; o agente ali roda como root e hoje tem login do GitHub, da Cloudflare e a tela do bot. Em produção, cada
+pessoa conversa pela box dela; o root fica para as abas de admin.

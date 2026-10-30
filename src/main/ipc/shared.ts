@@ -31,6 +31,7 @@ import { getMemory, NOTAS_MAX, PERFIL_MAX, setMemory } from "../conversa/memory"
 import { knownModels, showPicker } from "../maquina/picker";
 import { broadcast, sendToHost } from "../app/windows";
 import { adotarContaDoMac, contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil } from "../google/conta-google";
+import { garantirClientesGoogle } from "../google/cliente-release";
 import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../app/settings";
@@ -85,11 +86,14 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
   // Conta Google da máquina da janela (cada VM tem a sua; desconectar numa não mexe nas outras).
   const hostConta = (event: Electron.IpcMainInvokeEvent): string => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return h.host; };
-  handleShared("google-conta:status", (event) => {
+  handleShared("google-conta:status", async (event, payload: unknown) => {
     const host = hostConta(event);
+    // Build sem o client OAuth (config/google-*.json fora do git): busca na release antes de dizer "não configurado".
+    let busca: string | null = null;
+    if (!contaStatus(host).configurado) busca = await garantirClientesGoogle({ forcar: (payload as { forcar?: unknown } | null)?.forcar === true });
     // A foto pode faltar num token gravado antes do cache; busca em segundo plano e avisa quando entrar.
     void garantirFotoPerfil(host).then((r) => { if (r !== null) sendToHost(host, "google-conta:changed", r); }).catch(() => { /* sem foto a tela so fica sem avatar */ });
-    return contaStatus(host);
+    return { ...contaStatus(host), busca };
   });
   // Conta Google é do plano Pro: conectar (ou adotar a conta antiga) passa pelo mesmo portão do Navegador.
   handleShared("google-conta:adotar-do-mac", async (event) => { const host = hostConta(event); await assertAcesso(host); const r = await adotarContaDoMac(host); sendToHost(host, "google-conta:changed", r); if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); return r; });

@@ -15,11 +15,11 @@
 // última release sem subir a versão: o seletor só atualiza para cima, então a mudança nunca chegaria às máquinas.
 import { sign } from "node:crypto";
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
-import { componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { clientesGoogleParaPublicar, componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
 const base = JSON.parse(readFileSync("package.json", "utf8")).version;
@@ -91,6 +91,19 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   if (!verificaAssinatura(readFileSync(zip), sig)) { console.error("✗ a assinatura não confere com nenhuma chave de UPDATE_PUBLIC_KEYS: nada foi publicado"); process.exit(1); }
   writeFileSync(`${zip}.sig`, `${sig}\n`);
   zips.push(zip, `${zip}.sig`);
+}
+// Client OAuth do Google como asset avulso e assinado: o app que veio sem (Mac que empacotou sem config/) baixa daqui
+// sozinho e confere com UPDATE_PUBLIC_KEYS (src/main/google/cliente-release.ts). Sem os arquivos neste Mac, avisa.
+const clientes = clientesGoogleParaPublicar(existsSync);
+if (clientes.length === 0) console.log("\n(sem config/google-oauth.json nem config/google-conta-oauth.json neste Mac: a release sai sem o client do Google e os apps mostram \"não configurado\")");
+for (const n of clientes) {
+  step(`assinando ${n} (client OAuth do Google, para os apps que vieram sem)`);
+  const dst = join("out", n); copyFileSync(join("config", n), dst);
+  const s = sign(null, readFileSync(dst), chave).toString("base64");
+  const { verificaAssinatura } = createRequire(import.meta.url)("../dist/main/atualizacao/updater-core.js");
+  if (!verificaAssinatura(readFileSync(dst), s)) { console.error(`✗ a assinatura de ${n} não confere com UPDATE_PUBLIC_KEYS: nada foi publicado`); process.exit(1); }
+  writeFileSync(`${dst}.sig`, `${s}\n`);
+  zips.push(dst, `${dst}.sig`);
 }
 step(`criando a release ${tag}`);
 execFileSync("git", ["tag", tag]); execFileSync("git", ["push", "origin", tag], { stdio: "inherit" });

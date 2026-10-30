@@ -5,6 +5,7 @@
  * de quem já ocupa mais não corta às cegas: a aba mostra o que ocupa espaço e o admin escolhe o que apagar.
  * O main acha a máquina pela janela e confere tudo; a tela só pede. Fábrica como auditoria-page.ts.
  */
+import { backendAtras } from "../lib/admin-view.js";
 import type { MeuBotApi, UsuarioMaquina, UsuariosVisao } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando as espera } from "../lib/carregando.js";
@@ -17,7 +18,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminGovernanca" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminGovernanca" | "adminBackendsAtualizar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 /** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
@@ -58,7 +59,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   /** Log do último job de criar/preparar (ao vivo enquanto roda; fica na tela depois para se ver o que aconteceu). */
   let jobLog: string[] = [];
   deps.api.on("admin:usuarios-progresso", (p) => {
-    if (ocupado === null || !(ocupado === "criar" || ocupado.startsWith("preparar:"))) return;
+    if (ocupado === null || !(ocupado === "criar" || ocupado === "backends" || ocupado.startsWith("preparar:"))) return;
     // A instalação do backend despeja o `systemctl status` inteiro: só as linhas que dizem algo.
     const l = p.line.replace(/\s+$/, "");
     if (l.trim() === "" || /^\s*(Invocation|Main PID|Tasks|Memory|CPU|CGroup|└─|Loaded|Docs):?/.test(l) || /^\s*[a-zA-Z]{3} \d{2} \d{2}:\d{2}:\d{2} /.test(l)) return;
@@ -83,7 +84,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     render();
   }
   async function rodar(chave: string, f: () => Promise<UsuariosVisao>, ok: string): Promise<boolean> {
-    ocupado = chave; msg = null; if (chave === "criar" || chave.startsWith("preparar:")) jobLog = []; render();
+    ocupado = chave; msg = null; if (chave === "criar" || chave === "backends" || chave.startsWith("preparar:")) jobLog = []; render();
     try { visao = await f(); msg = { text: ok, bad: false }; return true; }
     catch (e) { msg = { text: `✗ ${ipcErrorText(e).replace(/^ACIMA_DO_LIMITE: /, "")}`, bad: true }; return false; }
     finally { ocupado = null; render(); }
@@ -213,6 +214,16 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
 
     const lista = el("div", "admin-card");
     const topo = el("div", "admin-actions"); topo.append(el("strong", "grow", "Usuários de login"));
+    // Backend por box: quem está atrás da versão deste app ganha o botão de reinstalar em todas (uma por vez; quem
+    // está com chat em andamento é pulado e aparece na mensagem final).
+    const doApp = visao?.backendDoApp ?? null;
+    const atrasadas = visao === null || doApp === null ? [] : visao.usuarios.filter((u) => u.backendInstalado && !u.sudo && backendAtras(u.backendVersao, doApp));
+    if (atrasadas.length > 0) {
+      const ab = el("button", "btn btn-primary btn-small", ocupado === "backends" ? "Atualizando… (alguns minutos)" : `Atualizar todas (${atrasadas.length})`); ab.type = "button"; ab.disabled = ocupado !== null;
+      ab.title = `Reinstala o backend do meu-bot ${visao?.backendDoApp ?? ""} em: ${atrasadas.map((u) => u.nome).join(", ")}. O serviço de cada uma reinicia; quem está com chat em andamento é pulado.`;
+      ab.addEventListener("click", () => { void rodar("backends", () => deps.api.adminBackendsAtualizar(), "✓ Backends atualizados.").then((ok) => { const r = visao?.atualizacao ?? []; const resto = r.filter((x) => x.estado !== "atualizada"); if (ok && resto.length > 0) { msg = { text: `${r.filter((x) => x.estado === "atualizada").length} atualizada(s) · ${resto.map((x) => `${x.nome}: ${x.motivo}`).join(" · ")}`, bad: true }; render(); } }); });
+      topo.append(ab);
+    }
     const at = el("button", "btn btn-ghost btn-small", "Atualizar"); at.type = "button"; at.addEventListener("click", () => { void ler(); }); topo.append(at);
     lista.append(topo);
     if (erro !== null) lista.append(el("p", "hint bad-hint", erro));
@@ -244,7 +255,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           const gv = el("div", "admin-actions");
           const b = el("button", "btn btn-ghost btn-small", ocupado === "governanca" ? "Aplicando…" : "Aplicar governança de RAM/CPU"); b.type = "button"; b.disabled = ocupado !== null;
           b.title = "Reserva memória para o sistema (teto de todos os usuários juntos no user.slice, deixando 3 GB ou 10% livres) e aplica a cada box swap própria de 256 MB, 640 MB protegidos e peso de CPU igual; nada reinicia";
-          b.addEventListener("click", () => { void rodar("governanca", () => deps.api.adminGovernanca(), "✓ Governança aplicada: reserva para o sistema e isolamento das boxes."); });
+          b.title = "Só isto; tudo de uma vez em Preparar máquina"; b.addEventListener("click", () => { void rodar("governanca", () => deps.api.adminGovernanca(), "✓ Governança aplicada: reserva para o sistema e isolamento das boxes."); });
           gv.append(b, el("span", "hint", !g.reserva ? "Sem a reserva, os usuários juntos podem tomar toda a RAM e derrubar o sistema (SSH, túnel, nginx)." : `${g.semIsolamento.length === 1 ? "1 box ainda está" : `${g.semIsolamento.length} boxes ainda estão`} sem isolamento (${g.semIsolamento.join(", ")}): uma delas estourando puxa o swap de todas.`));
           lista.append(gv);
         }
@@ -272,7 +283,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {
         const t = el("table", "auditoria-tabela");
-        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "RAM", "Pressão", "RAM máx (MB)", "CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
+        const cab = el("tr"); for (const h of ["Usuário", "Sudo", "meu-bot", "Backend", "RAM", "Pressão", "RAM máx (MB)", "CPU %", "Usado", "Limite", "Limite %", "Entrar", ""]) cab.append(el("th", "", h)); t.append(cab);
         for (const u of v.usuarios) {
           const tr = el("tr");
           const acesso = v.hostname !== null ? `ssh${v.chave !== null ? ` -i ${v.chave}` : ""} ${u.nome}@${v.hostname}${v.port !== null && v.port !== "22" ? ` -p ${v.port}` : ""}` : "";
@@ -364,7 +375,11 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           }
           // Entrar: o comando inteiro numa linha (quebrado no meio ele não serve para copiar).
           const tdAcesso = el("td"); if (acesso !== "") tdAcesso.append(el("code", "usuarios-ssh", acesso));
-          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), tdRamUso, tdPr, tdRam, tdCpu, tdUsado, tdLimite, tdPct, tdAcesso, tdAp);
+          // Backend: a versão gravada na conta dela; "desatualizado" quando este app traz uma mais nova ("Atualizar todas" no topo).
+          const atras = u.backendInstalado && v.backendDoApp !== null && backendAtras(u.backendVersao, v.backendDoApp);
+          const tdBk = el("td", atras ? "notice-warn" : "", !u.backendInstalado ? "—" : `${u.backendVersao ?? "sem versão"}${atras ? " · desatualizado" : ""}`);
+          if (atras) tdBk.title = `este app traz o backend ${v.backendDoApp}; "Atualizar todas" reinstala (o serviço dela reinicia; com chat em andamento ela é pulada)`;
+          tr.append(tdNome, el("td", "", u.sudo ? "sim" : "não"), el("td", "", u.meuBot ? "instalado" : "—"), tdBk, tdRamUso, tdPr, tdRam, tdCpu, tdUsado, tdLimite, tdPct, tdAcesso, tdAp);
           t.append(tr);
         }
         // Onze colunas não cabem numa janela estreita: a tabela rola de lado dentro do cartão em vez de vazar dele.

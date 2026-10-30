@@ -719,3 +719,54 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   passava segundos lendo a caixa e os planos por SSH e gravava a cópia velha: o `box-1`, que a sincronização gravou
   nesse meio tempo, sumiu. Agora a caixa é lida para uma lista (`pullInbox`) e juntada (`juntarCaixa`) ao arquivo
   relido no fim; `adicionarUsuario`, `esquecer` e `turnSupportOff` também releem depois do SSH e mudam só a pessoa deles.
+
+## Preparar máquina: o checklist do root (30 out)
+
+- **Problema:** o que uma máquina precisa antes da primeira box era feito em pedaços e em lugares diferentes: a
+  reserva de RAM na criação do usuário, a status line na criação, o `gh` por conta em `~/.local/bin` (ou à mão em
+  `/usr/local/bin`), os pacotes da tela do bot que `install-tela.sh` não consegue instalar sem sudo (sai com 3,
+  "precisa-admin"), o Hermes e o transcritor pelo botão da aba Usuários, o Claude Code Global e o Link Público
+  cada um na sua aba. Não havia uma lista "o que esta máquina ainda precisa".
+- **Agora:** aba **Preparar máquina**, acima de Usuários, só quando o admin entra como root (a mesma conferência
+  das outras três). Uma viagem SSH (`PREPARAR_ESTADO_SH`, `src/main/admin/preparar-core.ts`) imprime fatos
+  `KEY=value` e `lerPreparar` decide, em TypeScript testado, o estado de cada item:
+  - **ok** (✓), **falta** (✗, o botão aplica) ou **humano** (•, com o botão "Abrir …" da aba onde se resolve).
+  - Itens, na ordem de dependência (`ORDEM_PREPARAR`): swap de 8 GB → cota de usuário → governança de RAM/CPU
+    (reserva no `user.slice` e isolamento das boxes, só o que falta) → pacotes do sistema (`jq` da status line,
+    `ffmpeg` da voz, e os da tela: `xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot`, lidos
+    por `dpkg-query`, não por `command -v`: o novnc não tem binário) → `gh` em `/usr/local/bin` (binário oficial,
+    versão pela URL final de `releases/latest`, sem a API) → Hermes em `/opt/hermes` → transcritor em
+    `/opt/transcriber` → Claude Code Global (instalar é automático; o login do root é humano) → Chromium
+    (opcional, marcado por padrão: o "gostinho" do Pro na box compartilhada inclui navegar na tela; no Ubuntu vira
+    humano porque o apt entrega só o atalho do snap).
+  - Link Público Global é sempre humano (domínio e login na Cloudflare): a lista só aponta para a aba.
+- **Aplicar o que falta (N):** um `runSsh` por passo, com o prazo e a auditoria do instalador que já existia
+  (`maquina.swap`, `maquina.cota`, `maquina.reserva`, `maquina.isolamento`, `maquina.pacotes`, `maquina.gh`,
+  `maquina.hermes-global`, `maquina.transcritor`, `maquina.claude-global`) e `maquina.preparar` no fim com o que
+  entrou. Falhar num passo não para os outros (os dependentes já imprimem o próprio `ERRO=`); a resposta traz
+  `falhas` e a tela lista. Uma rodada por máquina de cada vez; o log do job vai pelo mesmo canal do "Criar usuário".
+  Todo passo nasce com o guard de root, inclusive os instaladores antigos que confiavam em quem os chamava.
+  Pacotes: `DEBIAN_FRONTEND=noninteractive`, `dpkg --configure -a` antes (conserta uma rodada interrompida) e
+  `-o DPkg::Lock::Timeout=120` (o unattended-upgrades segura o lock); o log fica em `/tmp/meu-bot-pacotes.log`.
+- **Criar usuário** chama `prepararMaquinaSuave` logo depois da reserva: aplica o que falta sem nunca falhar a
+  criação (só o log avisa). Uma box nova não nasce numa máquina sem preparo.
+- Os três botões da aba Usuários (governança, swap, Hermes) continuam: chamam as mesmas funções e aparecem só
+  quando falta; a aba nova é o "tudo de uma vez".
+- Canais `admin:preparar-estado` e `admin:preparar-aplicar` (ids opcionais; sem lista = tudo que falta, sem os
+  opcionais). Testes: `scripts/tests/preparar-core.test.mjs`.
+
+## Backend por box e "Atualizar todas" (30 out)
+
+- **Problema:** nenhuma tela mostrava a versão do backend de cada box; a atualização dependia da sondagem ociosa do
+  app de cada pessoa (`ensureBackendAtual`), uma por sessão. Na `meu`, a box-1 ficou no 1.8 enquanto a box-2 já
+  tinha o 1.9. E o botão "Instalar o backend do meu-bot" da aba Suporte dava "ação inválida": `ADMIN_ACTIONS`
+  oferecia `install-backend`, mas o guard do `admin:action` não o aceitava.
+- **Agora:** `LISTAR_SH` imprime, por box com o backend na pasta própria (`~/.local/share/meu-bot/backend` com
+  `.env` e `server.js`), uma linha `B\t<nome>\t<versão>` (linha separada, não coluna: a do cgroup é variável e
+  deslocaria as seguintes). A tabela ganha a coluna **Backend** (`1.9.0`; `1.8.2 · desatualizado`; `sem versão ·
+  desatualizado` para quem foi instalado antes do VERSION) e, quando alguma está atrás do que o app traz
+  (`bundledBackendVersion()`), o botão **Atualizar todas (N)**: `atualizarBackends` reinstala uma por vez pelo
+  alias de cada box neste Mac, pulando quem não tem alias ("Nos seletores" resolve) e quem está com chat em
+  andamento (`/health.ativos`, a mesma regra da atualização ociosa); auditoria `backend.instalar` por box; a
+  mensagem final lista puladas e falhas. O guard do `admin:action` aceita `install-backend`, e um teste em
+  `admin-view.test.mjs` confere todo id de `ADMIN_ACTIONS` contra o main.

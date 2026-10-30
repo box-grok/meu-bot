@@ -8,6 +8,7 @@ import { mountAuditoriaPage } from "./admin/auditoria-page.js";
 import { mountUsuariosPage } from "./admin/usuarios-page.js";
 import { mountClaudeGlobalPage } from "./admin/claude-global-page.js";
 import { mountLinkPublicoPage } from "./admin/link-publico-page.js";
+import { mountPrepararPage } from "./admin/preparar-page.js";
 import { mountBotMirror, type BotMirror } from "./admin/bot-mirror.js";
 import { loginView, type LoginProvider, type LoginView } from "./lib/login-steps.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -1987,11 +1988,16 @@ void (async () => {
     const linkPublicoLine = $<HTMLButtonElement>("link-publico-line");
     const linkPublicoPage = mountLinkPublicoPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot });
     linkPublicoLine.addEventListener("click", () => linkPublicoPage.open());
+    // Preparar máquina: o checklist do root, acima de Usuários (os passos humanos abrem as duas abas de cima).
+    const prepararLine = $<HTMLButtonElement>("preparar-line");
+    const prepararPage = mountPrepararPage({ who: info.person ?? windowHost, panelsEl, definePage, openPage, api: window.meuBot, abrirPagina: (id) => { if (id === "claude-global") claudeGlobalPage.open(); else linkPublicoPage.open(); } });
+    prepararLine.addEventListener("click", () => prepararPage.open());
     const paginaAntes = pageActive;
     void window.meuBot.adminUsuariosVisivel().then((v) => {
       usuariosLine.hidden = !v;
       claudeGlobalLine.hidden = !v;
       linkPublicoLine.hidden = !v;
+      prepararLine.hidden = !v;
       if (!v) return;
       usuariosAdmin = usuariosPage;
       // A resposta leva de 2 a 20 s: quem já clicou em outra aba nesse meio tempo não é puxado de volta.
