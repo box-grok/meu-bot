@@ -3,7 +3,18 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { capacidadesDe } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-capacidades.js");
 
-const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "grupos", "guarda", "politicaDm", "audio", "politicaReinicia"];
+const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "pausaPrazo", "pausaNativa", "grupos", "guarda", "politicaDm", "audio", "politicaReinicia"];
+
+test("Hermes: pausa com prazo vem do plugin meu-bot-pausa ou do nativo; sem os dois, pausar é pela lista (sem prazo); no OpenClaw não há prazo", () => {
+  const sem = capacidadesDe("hermes", true, true);
+  assert.ok(sem.pausar && !sem.pausaPrazo && !sem.pausaNativa, "padrão = allowlist");
+  const plugin = capacidadesDe("hermes", true, true, { pausaModo: "plugin" });
+  assert.ok(plugin.pausar && plugin.pausaPrazo && !plugin.pausaNativa);
+  const nativa = capacidadesDe("hermes", true, true, { pausaModo: "nativa" });
+  assert.ok(nativa.pausaPrazo && nativa.pausaNativa);
+  assert.ok(!capacidadesDe("hermes", true, false, { pausaModo: "plugin" }).pausaPrazo, "sem número conectado não há o que pausar");
+  assert.ok(!capacidadesDe("openclaw", true, true, { pausaModo: "plugin" }).pausaPrazo, "o modo do Hermes não vaza para o OpenClaw");
+});
 
 test("sem gateway ou sem bridge/plugin, a máquina não oferece nada", () => {
   for (const c of [capacidadesDe(null, true, true), capacidadesDe("openclaw", false, false), capacidadesDe("hermes", false, false)]) {

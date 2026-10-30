@@ -2,6 +2,7 @@ import type { WhatsappChat, WhatsappThreadMessage, WhatsappOrigin } from "../../
 import { el } from "../lib/dom.js";
 import { renderMarkdown } from "../lib/markdown.js";
 import type { PageTab } from "../lib/pages-types.js";
+import { pausaAteTexto } from "../lib/pausa-texto.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { waReferenceText } from "../lib/reference.js";
 import type { Tab } from "../renderer.js";
@@ -58,7 +59,9 @@ export function waBubble(m: WhatsappThreadMessage): HTMLElement {
   bubble.dataset["waAt"] = m.at;
   // Grupos: o autor de cada mensagem em cima da bolha.
   if (m.autor !== undefined && m.role === "contact") bubble.append(el("span", "wa-author", m.autor));
-  bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : ""}${hhmm(m.at)}`));
+  // Recebida na pausa: o agente não a viu (o plugin a guardou); ao retomar, ele recebe um resumo numa nota só.
+  if (m.durantePausa === true) { bubble.classList.add("wa-pausa"); bubble.title = "Recebida durante a pausa: o agente não viu esta mensagem. Ao retomar, ele recebe um resumo do que chegou."; }
+  bubble.append(body, el("span", "wa-time", `${m.role === "agent" ? "agente · " : m.durantePausa === true ? "na pausa · " : ""}${hhmm(m.at)}`));
   return bubble;
 }
 /** Conversa do WhatsApp trazida, no topo da aba do meu-bot: o mesmo visual do espelho, só para ler. */
@@ -90,7 +93,7 @@ function waAgentTyping(g: WaChatPage): boolean {
   const last = g.msgs.at(-1);
   const st = ctx.waStatus;
   if (last === undefined || last.role !== "contact" || g.chat.paused || st === null || !st.connected) return false;
-  if (!(st.dmPolicy === "open" || (st.dmPolicy === "allowlist" && g.chat.isSelf))) return false;
+  if (!(st.dmPolicy === "open" || (st.dmPolicy === "allowlist" && (g.chat.isSelf || g.chat.isDono === true)))) return false;
   return Date.now() - new Date(last.at).getTime() < WA_TYPING_WINDOW;
 }
 /** Balão do agente com três pontinhos. */
@@ -133,7 +136,7 @@ export function renderWaChat(g: WaChatPage): void {
   idBtn.title = `${ref}\n\nClique para copiar`;
   idBtn.addEventListener("click", () => ctx.copyReference(ref));
   head.replaceChildren(el("strong", "", ctx.waChatTitle(g.chat)), el("span", "wa-chat-num", sub), idBtn,
-    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? "pausado: o agente não responde a esta pessoa · somente leitura" : "somente leitura · atualiza sozinho"));
+    el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : g.chat.paused ? `pausado${pausaAteTexto(g.chat.pausaAte) ? ` ${pausaAteTexto(g.chat.pausaAte)}` : ""}: o agente não responde a esta pessoa · somente leitura` : "somente leitura · atualiza sozinho"));
   panel.dataset["rendered"] = "1";
   const keys = g.msgs.map(waMsgKey);
   const shown = g.shown ?? [];

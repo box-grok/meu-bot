@@ -109,20 +109,30 @@ export const REPLY_OPTIONS: readonly ReplyOption[] = [
   { id: "list", title: "Só alguns contatos", text: "Você e os números que você listar. Quem não estiver na lista não recebe resposta nem código.", isDefault: false },
 ];
 export const REPLY_NOTE = "Para atender clientes, as respostas precisam estar ativas. Você pode testar só com você agora e ativar depois no canal WhatsApp.";
+/** Texto do cartão "só eu" quando o dono não é o aparelho: o agente responde ao dono, do celular dele. */
+export const replySelfTextoDono = (donoFmt: string): string => `O agente só responde ao dono (${donoFmt}). Ninguém mais recebe resposta nem código de pareamento.`;
+/** Aviso nos cartões Lista/Todo mundo quando o agente roda no próprio número da pessoa (Hermes): o próprio chat não é respondido nesses modos. */
+export const REPLY_AVISO_SELF_CHAT = "Neste modo o Hermes não responde ao seu próprio chat (limitação dele): para falar com o agente e atender outras pessoas, use um número dedicado para o agente e cadastre o seu como dono.";
+/** A linha "Dono" do bloco "Quem o agente responde": quem é e de onde fala. */
+export function donoLinhaTexto(dono: { numero: string; souEu: boolean }, agenteNumero: string | null, fmt: (n: string) => string): string {
+  if (dono.souEu) return `${fmt(dono.numero)} · você (este número)`;
+  return `${fmt(dono.numero)} · você, do seu celular${agenteNumero !== null ? ` (o agente atende em ${fmt(agenteNumero)})` : ""}`;
+}
+export const DONO_HINT = "O dono fala com o agente de qualquer modo, nunca é pausado e recebe os avisos. Troque só se o agente roda num número dedicado e você fala com ele do seu celular.";
 /** Só dígitos de um número como o OpenClaw guarda ("+5511…", "5511…"). */
 const digitsOf = (n: string): string => n.replace(/\D/g, "");
-/** Números da allowlist além do dono (sem "*"): o que a pessoa listou. */
-export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null): string[] {
-  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self))];
+/** Números da allowlist além do aparelho e do dono (sem "*"): o que a pessoa listou. */
+export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null, dono: string | null = self): string[] {
+  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self && n !== dono))];
 }
 /**
  * A política gravada no OpenClaw → qual cartão está marcado (null = nenhum: pairing ou disabled). allowlist com
  * alguém além do dono em allowFrom é "list"; só o dono (ou vazio) é "self".
  */
-export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null): "self" | "open" | "list" | null {
+export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null, dono: string | null = self): "self" | "open" | "list" | null {
   if (dmPolicy === "open") return "open";
   if (dmPolicy !== "allowlist") return null;
-  return listedNumbers(allowFrom, self).length > 0 ? "list" : "self";
+  return listedNumbers(allowFrom, self, dono).length > 0 ? "list" : "self";
 }
 /**
  * Texto digitado → números para a lista (um por linha, vírgula ou ponto e vírgula). Sem "+", 10 ou 11 dígitos
@@ -244,7 +254,7 @@ const WHATSAPP_STEPS: GuideStep[] = [
   },
   {
     id: "teste", title: "Testar com uma mensagem", target: "none",
-    text: "Com \"só eu\", mande para o seu próprio número; com \"todo mundo\", mande de outro celular. Mande um texto: o agente deve responder sobre o que você escreveu.",
+    text: "Com \"só eu\", mande para o seu próprio número (ou, se o dono é outro número, do celular do dono para o número do agente); com \"todo mundo\", mande de outro celular. Mande um texto: o agente deve responder sobre o que você escreveu.",
     done: (_st, f) => f.tested,
     manual: { label: "Testei, funcionou", flag: "tested" },
   },

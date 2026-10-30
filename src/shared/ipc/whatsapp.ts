@@ -12,7 +12,12 @@ import type { Gateway } from "./maquina";
  */
 export interface WhatsappCapacidades {
   parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
-  pausar: boolean; grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
+  pausar: boolean;
+  /** Pausar aceita prazo (2 h / 24 h / até retomar), vale em qualquer política e guarda o que chegou na pausa (Hermes com o plugin meu-bot-pausa, ou nativo). */
+  pausaPrazo: boolean;
+  /** O próprio Hermes faz a pausa por contato (ainda não existe; quando existir, o app prefere o nativo ao plugin). */
+  pausaNativa: boolean;
+  grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
   /** Aplicar "quem o agente responde" reinicia o gateway do WhatsApp da máquina (alguns segundos fora do ar). */
   politicaReinicia: boolean;
 }
@@ -51,6 +56,8 @@ export interface WhatsappStatus {
   repaired?: string;
   /** Agente que a pessoa escolheu para o WhatsApp desta máquina; null = ainda não escolheu (vale o que estiver instalado). */
   escolha?: WhatsappAgente | null;
+  /** Quem manda no agente: o dono gravado na máquina (whatsapp-lista.json › dono) ou o próprio número pareado (`souEu`). Ausente sem número. */
+  dono?: { numero: string; nome: string | null; souEu: boolean };
 }
 
 /** Os agentes que a pessoa pode escolher para atender o WhatsApp (o app trabalha igual com os dois). */
@@ -68,6 +75,8 @@ export interface WhatsappChat {
   alias: string | null;
   /** O próprio número do aparelho (mensagens para si mesmo). */
   isSelf: boolean;
+  /** O dono gravado na máquina (quem manda no agente), quando não é o próprio aparelho. */
+  isDono?: boolean;
   /** Sessões do agente com mensagens desse contato (principal e/ou por contato). */
   sessionKeys: string[];
   /** Chave da sessão → UUID interno do OpenClaw (troca a cada "Limpar"); para "Copiar ID". */
@@ -76,6 +85,8 @@ export interface WhatsappChat {
   ownSession: boolean;
   /** O agente está pausado para este contato (não responde). */
   paused: boolean;
+  /** Fim da pausa (ISO) quando ela tem prazo; null/ausente = sem prazo ou não pausado. */
+  pausaAte?: string | null;
   /** ISO da atividade mais recente. */
   updatedAt: string;
   /** Arquivada na máquina (whatsapp-lista.json): os dois apps veem igual. */
@@ -85,13 +96,25 @@ export interface WhatsappChat {
 }
 
 /** Um ajuste de uma conversa do WhatsApp gravado na máquina: arquivado/excluído, nome em cache, apelido (vazio apaga); `at` só na migração. */
-export interface WaMarkPatch { number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string; /** Só o main grava (pausa no Hermes); a tela não manda. */ paused?: boolean }
+export interface WaMarkPatch {
+  number: string; archived?: boolean; deleted?: boolean; name?: string; alias?: string; at?: string;
+  /** Só o main grava (pausa no Hermes); a tela não manda. */
+  paused?: boolean;
+  /** Só com `paused: true`: prazo em horas (2 ou 24); a máquina calcula o fim com o relógio dela. Sem ele, até retomar. */
+  pausaHoras?: 2 | 24;
+}
 /** Marca de um grupo (`<dígitos>@g.us`): só excluído/restaurado; `at` como na conversa. */
 /** Marca de grupo: excluir/restaurar da lista e/ou o apelido ("" apaga). */
 export interface WaGroupMarkPatch { jid: string; deleted?: boolean; alias?: string; at?: string }
 
 /** Uma mensagem do espelho: do contato ou do agente; hora em ISO. */
-export interface WhatsappThreadMessage { role: "contact" | "agent"; text: string; at: string; /** Grupos: quem mandou (nome ou +número). */ autor?: string }
+export interface WhatsappThreadMessage {
+  role: "contact" | "agent"; text: string; at: string;
+  /** Grupos: quem mandou (nome ou +número). */
+  autor?: string;
+  /** Chegou enquanto o contato estava pausado: o agente não a viu (whatsapp-pausados.jsonl do plugin meu-bot-pausa). */
+  durantePausa?: true;
+}
 /** Como o agente fica num grupo: desligado, "só quando mencionado" (requireMention) ou "sempre". */
 export type WhatsappGroupAgent = "desligado" | "mencao" | "sempre";
 export interface WhatsappGroup {
@@ -184,4 +207,5 @@ export type WhatsappEvent =
 
 /** Menu "…" de um grupo na área "Grupos". */
 export type WhatsappGroupMenuAction = "group-on" | "group-off" | "group-who" | "group-copy-id" | "group-rename" | "group-clear" | "group-delete" | "group-restore" | "groups-refresh";
-export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "resume";
+/** `pause` = até eu retomar; `pause-2h`/`pause-24h` = com prazo (só com a capacidade `pausaPrazo`). */
+export type WhatsappMenuAction = "talk" | "export-md" | "export-json" | "copy-ref" | "rename" | "archive" | "unarchive" | "clear" | "delete" | "restore" | "pause" | "pause-2h" | "pause-24h" | "resume";

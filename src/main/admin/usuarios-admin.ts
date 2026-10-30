@@ -15,7 +15,8 @@ import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
 import { refreshPickerIfOpen } from "../maquina/picker";
-import { installBackend, installClaudeCode, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { fusoDesteMac, installBackend, installClaudeCode, pausaPluginFonte, portaParaInstalar, probeHost } from "../maquina/hostProbe";
+import { hermesPausaPluginSh } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { getBackendPort, setBackendPortForHost } from "../app/settings";
 import { HERMES_STT_COMPARTILHADO_SH, TRANSCRITOR_BIN, hermesAudioPatch, hermesConfigSetSh } from "../whatsapp/whatsapp-hermes-core";
 import { WA_AGENTE_FILE } from "../whatsapp/whatsapp-capacidades";
@@ -197,13 +198,17 @@ async function padraoDaMaquina(host: string): Promise<void> {
  * transcrição já aponta para o /opt/transcriber. O Hermes preserva o .env e o config.yaml gravados antes do primeiro
  * uso (conferido em 29 out); o pareamento só acrescenta o WhatsApp e o modelo. Saída `SEMEADO=ok`.
  */
-const HERMES_SEMEAR_SH = `set -e
+const hermesSemearSh = (): string => {
+  const fonte = pausaPluginFonte();
+  return `set -e
 mkdir -p "$(dirname "${WA_AGENTE_FILE}")"; printf '%s\\n' hermes > "${WA_AGENTE_FILE}"
 if [ -x ${TRANSCRITOR_BIN} ]; then
 ${HERMES_STT_COMPARTILHADO_SH}
 ${hermesConfigSetSh(hermesAudioPatch({ kind: "in", compartilhado: true }))}
 fi
+${fonte === null ? 'echo "plugin=sem-bundle"' : `( ${hermesPausaPluginSh(fonte, fusoDesteMac())} ) || echo "plugin=falhou"`}
 echo "SEMEADO=ok"`;
+};
 
 /**
  * Onboarding de um passo, no clique de "Criar usuário": o admin orquestra e o usuário só fica pronto no fim. Garante o
@@ -229,7 +234,7 @@ async function prepararUsuario(host: string, nome: string, alias: string, onLine
     if (porta !== configurada) setBackendPortForHost(alias, porta);
   }
   passo("deixando o Hermes como agente do WhatsApp, com a transcrição ligada");
-  const h = await runSsh(alias, `${HERMES_SEMEAR_SH}\n`, 60_000);
+  const h = await runSsh(alias, `${hermesSemearSh()}\n`, 120_000);
   if (!/^SEMEADO=ok$/m.test(h.stdout)) throw new Error(`não consegui preparar o Hermes: ${(h.stderr.trim() || h.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
   // Claude Code Global: com o intermediário do root instalado, a conta já nasce respondendo pela assinatura do root.
   const cg = await runSsh(host, `[ -f ${CG_ETC}/config.json ] && echo CG=1 || echo CG=0\n`, 20_000);

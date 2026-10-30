@@ -45,4 +45,6 @@ test("lerVersao: VERSION em texto, package.json pelo campo version", () => {
   assert.equal(lerVersao("x/package.json", '{"name":"a","version":"2.0.1"}'), "2.0.1");
   assert.equal(lerVersao("x/package.json", "lixo"), null);
   assert.equal(lerVersao("x/package.json", null), null);
+  assert.equal(lerVersao("x/plugin.yaml", 'name: a\nversion: "1.2.3"\n'), "1.2.3", "plugin do Hermes: a linha version do yaml");
+  assert.equal(lerVersao("x/plugin.yaml", "name: a\n"), null);
 });

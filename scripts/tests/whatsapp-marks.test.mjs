@@ -1,16 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 const { parseWaMarks, applyWaMarks, applyWaGroupMarks, parseWaMarkPatches, waMarkSh, WA_MARKS_FILE } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-marks.js");
 
 const chat = (number, updatedAt, name = null) => ({ number, name, alias: null, isSelf: false, sessionKeys: [], sessionIds: {}, ownSession: true, paused: false, updatedAt, archived: false, deleted: false });
 
 test("parseWaMarks: só números de 8 a 15 dígitos com hora válida; lixo vira vazio", () => {
   const m = parseWaMarks({ archived: { "5511999990000": "2026-10-17T02:10:00Z", "abc": "2026-10-17T02:10:00Z", "5511999990001": "ontem" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, outro: 1 });
-  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
-  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
-  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
-  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {} });
+  assert.deepEqual(m, { archived: { "5511999990000": "2026-10-17T02:10:00Z" }, deleted: { "5521988880000": "2026-10-17T02:12:00Z" }, names: {}, groupsDeleted: {}, groupNames: {}, paused: {}, dono: null });
+  assert.deepEqual(parseWaMarks(null), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {}, dono: null });
+  assert.deepEqual(parseWaMarks("x"), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {}, dono: null });
+  assert.deepEqual(parseWaMarks({ archived: [1] }), { archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: {}, dono: null });
   // grupos excluídos: só jid de grupo com hora válida
   assert.deepEqual(parseWaMarks({ groupsDeleted: { "120363427290582156@g.us": "2026-10-25T03:40:00Z", "5511999990000": "2026-10-25T03:40:00Z", "1203@g.us": "ontem" } }).groupsDeleted, { "120363427290582156@g.us": "2026-10-25T03:40:00Z" });
 });
@@ -111,8 +115,60 @@ test("waMarkSh: embute os ajustes em base64, grava com tmp+mv e recusa número i
 });
 
 
-test("paused (Hermes): só números válidos; waMarkSh grava e apaga a marca", () => {
-  assert.deepEqual(parseWaMarks({ paused: { "5522925501274": "2026-10-25T06:00:00Z", "abc": "2026-10-25T06:00:00Z" } }).paused, { "5522925501274": "2026-10-25T06:00:00Z" });
-  const sh = waMarkSh([{ number: "5522925501274", paused: true }]);
-  assert.ok(sh.includes('"paused"') && sh.includes("paus[n] = at"));
+test("paused (Hermes): lê o formato antigo (string) e o novo ({desde, ate}); só números válidos; vencida não conta", () => {
+  const { pausaVigente, pausadosDe, PAUSA_HORAS } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-marks.js");
+  const p = parseWaMarks({ paused: {
+    "5522925501274": "2026-10-25T06:00:00Z",
+    "5521923670743": { desde: "2026-10-29T13:00:00Z", ate: "2026-10-29T15:00:00Z", por: "contato" },
+    "5511999990000": { desde: "2026-10-29T13:00:00Z", ate: null },
+    "5511888880000": { ate: "2026-10-29T15:00:00Z" },
+    "abc": "2026-10-25T06:00:00Z",
+  } }).paused;
+  assert.deepEqual(p, {
+    "5522925501274": { desde: "2026-10-25T06:00:00Z", ate: null },
+    "5521923670743": { desde: "2026-10-29T13:00:00Z", ate: "2026-10-29T15:00:00Z" },
+    "5511999990000": { desde: "2026-10-29T13:00:00Z", ate: null },
+  }, "sem `desde` não vale; `por` é do plugin, a tela não precisa");
+  const marks = { ...parseWaMarks(null), paused: p };
+  const antes = Date.parse("2026-10-29T14:00:00Z"), depois = Date.parse("2026-10-29T15:00:00Z");
+  assert.deepEqual(pausaVigente(marks, "5521923670743", antes), { desde: "2026-10-29T13:00:00Z", ate: "2026-10-29T15:00:00Z" });
+  assert.equal(pausaVigente(marks, "5521923670743", depois), null, "no instante do fim já venceu");
+  assert.deepEqual(pausadosDe(marks, antes).sort(), ["5511999990000", "5521923670743", "5522925501274"]);
+  assert.deepEqual(pausadosDe(marks, depois).sort(), ["5511999990000", "5522925501274"]);
+  assert.deepEqual([...PAUSA_HORAS], [2, 24]);
+});
+
+test("paused (Hermes): waMarkSh grava {desde, ate} com o prazo calculado na máquina, migra as strings antigas e só aceita 2 ou 24 h", () => {
+  const sh = waMarkSh([{ number: "5522925501274", paused: true, pausaHoras: 2 }]);
+  assert.ok(sh.includes('"pausaHoras"') && sh.includes('"ate": iso(time.time() + h * 3600)'));
+  assert.ok(sh.includes('if isinstance(v, str): paus[k] = {"desde": v, "ate": None'), "string antiga vira objeto ao regravar");
+  assert.ok(waMarkSh([{ number: "5522925501274", paused: false }]).includes("paus.pop(n, None)"));
+  assert.throws(() => waMarkSh([{ number: "5522925501274", paused: true, pausaHoras: 3 }]), /prazo de pausa inválido/);
+});
+
+test("dono (quem manda no agente): lido do arquivo, só número válido; quemDe/souEu/donosDe decidem num lugar só", () => {
+  const { quemDe, souEu, donosDe } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-marks.js");
+  assert.deepEqual(parseWaMarks({ dono: { numero: "5521923670743", desde: "2026-10-30T01:00:00Z" } }).dono, { numero: "5521923670743", desde: "2026-10-30T01:00:00Z" });
+  assert.equal(parseWaMarks({ dono: { numero: "abc" } }).dono, null); assert.equal(parseWaMarks({ dono: "5521923670743" }).dono, null);
+  const sem = parseWaMarks(null), com = parseWaMarks({ dono: { numero: "5521923670743", desde: "" } });
+  assert.deepEqual(quemDe(sem, "595986120831"), { self: "595986120831", dono: "595986120831" }, "sem dono gravado, o dono é o pareado");
+  assert.deepEqual(quemDe(com, "595986120831"), { self: "595986120831", dono: "5521923670743" });
+  assert.equal(souEu(quemDe(sem, "595986120831")), true); assert.equal(souEu(quemDe(com, "595986120831")), false); assert.equal(souEu(quemDe(sem, null)), true);
+  assert.deepEqual(donosDe(quemDe(com, "595986120831")), ["595986120831", "5521923670743"]); assert.deepEqual(donosDe(quemDe(sem, "595986120831")), ["595986120831"]); assert.deepEqual(donosDe(quemDe(sem, null)), []);
+});
+
+test("waMarkSh grava o dono, apaga com \"\" e preserva as chaves que não são dele (plugin, versões futuras) — python3 de verdade", { skip: spawnSync("python3", ["--version"]).status !== 0 }, () => {
+  assert.throws(() => waMarkSh([{ dono: "abc" }]), /dono inválido/);
+  const home = mkdtempSync(join(tmpdir(), "marks-"));
+  const d = join(home, ".local", "share", "meu-bot"); mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, "whatsapp-lista.json"), JSON.stringify({ archived: {}, deleted: {}, names: {}, groupsDeleted: {}, groupNames: {}, paused: { "5511999990000": "2026-10-25T06:00:00Z" }, extra: { fica: true } }));
+  const run = (patches) => { const r = spawnSync("bash", ["-c", waMarkSh(patches)], { env: { HOME: home, PATH: process.env.PATH }, encoding: "utf8" }); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /MARKS=1/); return JSON.parse(readFileSync(join(d, "whatsapp-lista.json"), "utf8")); };
+  let f = run([{ dono: "5521923670743" }]);
+  assert.equal(f.dono.numero, "5521923670743"); assert.ok(/^\d{4}-/.test(f.dono.desde));
+  assert.deepEqual(f.extra, { fica: true }, "chave de fora continua");
+  assert.deepEqual(f.paused["5511999990000"], { desde: "2026-10-25T06:00:00Z", ate: null, por: "app" }, "a pausa antiga migrou e ficou");
+  f = run([{ number: "5522925501274", archived: true }]);
+  assert.equal(f.dono.numero, "5521923670743", "outro ajuste não apaga o dono"); assert.ok(f.archived["5522925501274"]);
+  f = run([{ dono: "" }]);
+  assert.equal(f.dono, undefined, "\"\" volta ao pareado"); assert.deepEqual(f.extra, { fica: true });
 });

@@ -18,7 +18,7 @@ import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
-import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappStatus } from "../whatsapp/whatsapp";
+import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
@@ -42,7 +42,7 @@ import { getHostNames, isBackendModel } from "../app/settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../agente/objetivo";
 import { crmInfo, crmTest, resetCrm, setCrm } from "../crm/crm";
 import { toggleQuickEntry } from "../app/quickEntry";
-import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
+import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installHermesPausa, installNavegador, installStatusLine, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
 import { readSegments, writeSegments } from "../agente/statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../app/windows";
@@ -77,7 +77,27 @@ async function ensurePauseRule(host: string, send: (ev: WhatsappEvent) => void):
   send({ kind: rule === "erro" ? "log" : "step", text: rule === "erro" ? "não deu para gravar a regra de pausa no AGENTS.md do agente" : rule === "1" ? "regra de pausa do meu-bot gravada no agente (AGENTS.md)" : "regra de pausa do meu-bot já estava no agente" });
 }
 
+/**
+ * Padrão do app: no Hermes, a pausa por contato com prazo vem do plugin meu-bot-pausa. Depois de parear, se a máquina
+ * ainda pausa pela lista (sem `pausaPrazo`), instala o plugin e conta pelo canal do pareamento. Idempotente.
+ */
+async function ensureHermesPausa(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
+  const st = await whatsappStatus(host).catch(() => null);
+  if (st === null || st.gateway !== "hermes" || !st.capacidades.pausar || st.capacidades.pausaPrazo) return;
+  send({ kind: "step", text: "ligando a pausa por contato com prazo (padrão do meu-bot: plugin do Hermes)…" });
+  const r = await installHermesPausa(host, (line) => send({ kind: "log", text: line }));
+  send({ kind: r.ok ? "step" : "log", text: r.ok ? "pausa por contato pronta: Pausar o agente por 2 h / 24 h / até retomar" : `a pausa com prazo não ligou: ${r.log.at(-1) ?? "erro"}` });
+}
+
 export function registerClientIpc(): void {
+  // Pausa por contato com prazo no Hermes: instala (ou atualiza) o plugin meu-bot-pausa nesta máquina.
+  handleClient("whatsapp:pausa-plugin", async (event) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const r = await installHermesPausa(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", { kind: "log", text: line }); });
+    if (r.ok) void registrar(h.host, "whatsapp.pausa-plugin");
+    return r;
+  });
   // Suporte, lado da pessoa (só com o pacote de suporte no .dmg).
   handleClient("support:info", (event) => {
     const h = hostFromEvent(event);
@@ -349,7 +369,7 @@ export function registerClientIpc(): void {
     let connected = false;
     const send = (ev: WhatsappEvent): void => { if (ev.kind === "connected") connected = true; if (!h.win.isDestroyed()) h.win.webContents.send("whatsapp:event", ev); };
     await startPairing(h.host, reset, send);
-    if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); void registrar(h.host, "whatsapp.parear"); }
+    if (connected) { void ensureTranscription(h.host, send); void ensurePauseRule(h.host, send); void ensureHermesPausa(h.host, send); void registrar(h.host, "whatsapp.parear"); }
   });
   handleClient("whatsapp:audio", async (event, payload: unknown) => {
     const h = hostFromEvent(event);
@@ -377,6 +397,15 @@ export function registerClientIpc(): void {
     const numbers = Array.isArray(p?.numbers) ? p.numbers.filter((n): n is string => typeof n === "string") : [];
     if (policy === "list" && numbers.length === 0) throw new Error("a lista precisa de pelo menos um número");
     return setDmPolicy(h.host, policy, numbers).then((r) => { void registrar(h.host, "whatsapp.quem-responde", policy === "open" ? "todo mundo" : policy === "self" ? "só você" : `você e ${numbers.length} números`); return r; });
+  });
+  // Dono do agente: quem manda nele (null = volta ao número pareado). Reaplica "quem responde" e, no Hermes, o home channel.
+  handleClient("whatsapp:dono", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const raw = (payload as { numero?: unknown } | null)?.numero;
+    const numero = raw === null ? null : typeof raw === "string" ? raw.replace(/\D/g, "") : undefined;
+    if (numero === undefined || (numero !== null && !/^\d{8,15}$/.test(numero))) throw new Error("número inválido (só dígitos, com DDI, 8 a 15)");
+    return whatsappSetDono(h.host, numero).then((r) => { void registrar(h.host, "whatsapp.dono", numero === null ? "este número" : `+${numero}`); return r; });
   });
   handleClient("whatsapp:agente", (event, payload: unknown) => {
     const h = hostFromEvent(event);

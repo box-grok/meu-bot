@@ -264,6 +264,38 @@ test("hermesPrecisaReiniciar: a lista também pede reinício (o Hermes 0.22.2 n�
   assert.equal(p(antes, { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" }), true, "sem a chave da lista no patch = lista mantida; muda a política");
 });
 
+test("hermesPausaModo: nativa > plugin (instalado E carregado na mesma versão) > allowlist; HERMES_PAUSA_SH olha o .ok e o marcador do register()", () => {
+  const { hermesPausaModo, HERMES_PAUSA_SH } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const kv = (o) => new Map(Object.entries(o));
+  assert.equal(hermesPausaModo(kv({})), "allowlist");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.0.0", pausavivo: "1.0.0", pausanativa: "0" })), "plugin");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.0.0", pausavivo: "", pausanativa: "0" })), "allowlist", "instalado mas o gateway de agora não o carregou: ainda é pela lista");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "1.1.0", pausavivo: "1.0.0" })), "allowlist", "versões diferentes = reinício pendente");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "lixo", pausavivo: "lixo" })), "allowlist");
+  assert.equal(hermesPausaModo(kv({ pausaplugin: "", pausavivo: "", pausanativa: "1" })), "nativa");
+  assert.ok(HERMES_PAUSA_SH.includes("meu-bot-pausa/.ok") && HERMES_PAUSA_SH.includes("whatsapp-pausa.carregado") && HERMES_PAUSA_SH.includes("pausanativa="));
+});
+
+test("dono ≠ pareado (agente num chip dedicado): os dois ficam na lista, \"só eu\" vira bot+allowlist, nenhum dos dois é \"não respondido\" nem pausado; na lista de conversas o dono ganha isDono", () => {
+  const { politicaHermes, hermesEnvPara, hermesNaoResponde, hermesPausaPlano, chatsFromHermes, quemOf } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+  const self = "595986120831", dono = "5521923670743";
+  const q = { self, dono };
+  assert.deepEqual(quemOf(self), { self, dono: self }, "string = jeito antigo: o pareado é o dono");
+  assert.deepEqual(hermesEnvPara("self", q), { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: `${self},${dono}`, WHATSAPP_ALLOW_ALL_USERS: "false" }, "só eu com dono de fora: bot, não self-chat");
+  assert.equal(hermesEnvPara("self", self).WHATSAPP_MODE, "self-chat", "dono == pareado: self-chat como sempre");
+  assert.equal(hermesEnvPara("list", q, ["5511999990000"]).WHATSAPP_ALLOWED_USERS, `${self},${dono},5511999990000`);
+  assert.deepEqual(politicaHermes({ mode: "self-chat", dm: "", allow: "", all: "" }, q).allowFrom, [`+${self}`, `+${dono}`]);
+  const envBot = { mode: "bot", dm: "allowlist", allow: `${self},${dono}`, all: "false" };
+  assert.equal(hermesNaoResponde(envBot, q, dono), false); assert.equal(hermesNaoResponde(envBot, q, self), false); assert.equal(hermesNaoResponde(envBot, q, "5511999990000"), true);
+  const plano = hermesPausaPlano(envBot, q, "5511999990000", true, []);
+  assert.equal(plano.patch.WHATSAPP_ALLOWED_USERS, `${self},${dono}`, "pausar um terceiro mantém os dois donos");
+  const list = { sessions: [{ key: `agent:main:whatsapp:dm:${dono}`, id: "20261029_1", started: 1, last: 2, name: "Diego" }, { key: `agent:main:whatsapp:dm:${self}`, id: "20261029_2", started: 1, last: 3 }] };
+  const chats = chatsFromHermes(list, q);
+  assert.equal(chats.find((c) => c.number === dono).isDono, true); assert.equal(chats.find((c) => c.number === dono).isSelf, false);
+  assert.equal(chats.find((c) => c.number === self).isSelf, true); assert.equal(chats.find((c) => c.number === self).isDono, false, "o pareado é self, não dono, quando há dono de fora");
+  assert.equal(chatsFromHermes(list, self).find((c) => c.number === self).isDono, false, "dono == pareado: só isSelf");
+});
+
 test("Hermes: uma porta de bridge por usuário (root na 3000, os outros 3100 + uid − 1000) e o app lê a porta de cada um", async () => {
   const c = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   assert.deepEqual([0, 1000, 1001, 1042].map(c.portaBridgeHermes), [3000, 3100, 3101, 3142]);

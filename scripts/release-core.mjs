@@ -47,10 +47,11 @@ export function componentesSemVersao(componentes, mudancas, versoes) {
   return out;
 }
 
-/** Versão de um arquivo de versão: VERSION é texto puro; package.json, o campo `version`. null = ausente/ilegível. */
+/** Versão de um arquivo de versão: VERSION é texto puro; package.json, o campo `version`; plugin.yaml, a linha `version:`. null = ausente/ilegível. */
 export function lerVersao(caminho, conteudo) {
   if (conteudo === null || conteudo === undefined) return null;
   if (caminho.endsWith(".json")) { try { const v = JSON.parse(conteudo).version; return typeof v === "string" && v !== "" ? v : null; } catch { return null; } }
+  if (/\.ya?ml$/.test(caminho)) { const m = /^version:\s*["']?([\w.-]+)["']?\s*$/m.exec(String(conteudo)); return m === null ? null : m[1]; }
   const t = String(conteudo).trim();
   return t === "" ? null : t;
 }

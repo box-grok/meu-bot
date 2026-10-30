@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, donoLinhaTexto, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, DONO_HINT, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -396,4 +396,19 @@ test("tutorial 12 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar
   assert.equal(modo.resumo(c), "Responde só quando chamado");
   assert.equal(modo.resumo({ ...c, grupos: { ...c.grupos, info: { ...info, grupos: [{ ...g, agente: "sempre" }] } } }), "Responde sempre que tiver algo útil");
   for (const s of [grupo, quem, modo]) assert.equal(s.refazer, true, `${s.id} com "Trocar"`);
+});
+
+test("listedNumbers/replyChoiceOf com dono de fora: o aparelho e o dono não contam como \"listados\"", () => {
+  assert.deepEqual(listedNumbers(["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), ["5511999990000"]);
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831", "5521923670743"), "self", "só os dois = só eu");
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), "list");
+  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831"), "list", "sem saber do dono, o segundo número parece listado (jeito antigo)");
+});
+
+test("linha Dono e textos dos cartões com dono de fora", () => {
+  const fmt = (n) => `+${n}`;
+  assert.equal(donoLinhaTexto({ numero: "595986120831", souEu: true }, null, fmt), "+595986120831 · você (este número)");
+  assert.equal(donoLinhaTexto({ numero: "5521923670743", souEu: false }, "595986120831", fmt), "+5521923670743 · você, do seu celular (o agente atende em +595986120831)");
+  assert.equal(replySelfTextoDono("+5521923670743"), "O agente só responde ao dono (+5521923670743). Ninguém mais recebe resposta nem código de pareamento.");
+  assert.match(REPLY_AVISO_SELF_CHAT, /número dedicado/); assert.match(DONO_HINT, /nunca é pausado/);
 });

@@ -8,7 +8,7 @@ import path from "node:path";
 import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
 import { log } from "../maquina/backend";
-import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf } from "../whatsapp/whatsapp";
+import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf, whatsappPausaModoOf } from "../whatsapp/whatsapp";
 import { JID_RE } from "../whatsapp/whatsapp-grupos-core";
 import { setNavWhatsapp } from "../navegador/navegador-whatsapp";
 import { parseWaMarkPatches } from "../whatsapp/whatsapp-marks";
@@ -45,7 +45,7 @@ import { capacidadesDe } from "../whatsapp/whatsapp-capacidades";
 /** O que o menu pode oferecer nesta máquina, pela tabela de capacidades (gateway visto na última consulta); desconhecido = menu completo. */
 function waMenuCapsOf(host: string): WaMenuCaps | null {
   const gateway = whatsappGatewayOf(host);
-  return gateway === null ? null : capacidadesDe(gateway, true, true);
+  return gateway === null ? null : capacidadesDe(gateway, true, true, { pausaModo: whatsappPausaModoOf(host) });
 }
 import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
@@ -363,8 +363,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     const paused = (payload as { paused?: unknown }).paused === true;
-    await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono");
-    void registrar(h.host, paused ? "whatsapp.pausar" : "whatsapp.retomar", `+${waNumber(payload)}`);
+    // Prazo só com pausar (2 ou 24 h); fora disso, até retomar. A máquina calcula o fim com o relógio dela.
+    const h0 = (payload as { horas?: unknown }).horas;
+    const horas = paused && (h0 === 2 || h0 === 24) ? h0 : undefined;
+    await whatsappPause(h.host, waNumber(payload), paused, caps().supportAdmin ? "admin" : "dono", horas);
+    void registrar(h.host, paused ? "whatsapp.pausar" : "whatsapp.retomar", `+${waNumber(payload)}`, paused ? (horas === undefined ? "até retomar" : `por ${horas} h`) : "");
   });
 
   // Arquivar/desarquivar/excluir conversas: a marcação mora na máquina (whatsapp-lista.json), então o meu-bot da

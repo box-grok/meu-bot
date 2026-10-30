@@ -52,6 +52,9 @@ export interface HostProbe {
   guarda: boolean | null;
   /** Versão da guarda instalada (package.json do plugin); null = sem guarda ou desconhecida. */
   guardaVersion: string | null;
+  /** Plugin de pausa por contato do Hermes (meu-bot-pausa) instalado? null fora do Hermes. */
+  hermesPausa?: boolean | null;
+  hermesPausaVersion?: string | null;
   /** CRM do meu-bot instalado na máquina (null = não consultado) e a versão do plugin. */
   crm: boolean | null;
   crmVersion: string | null;

@@ -7,6 +7,7 @@
  * tipos do contrato. É a fronteira dona desse formato: o renderer nunca vê o esquema do Hermes.
  */
 import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../../shared/ipc";
+import { donosDe, souEu, type WaQuem } from "./whatsapp-marks";
 import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 
@@ -91,13 +92,14 @@ print(json.dumps({"messages": out}, ensure_ascii=True))
  * PATH (o do Hermes em ~/.hermes/tools, ou ~/.local/node). Sem isto, "env: node: No such file or directory".
  */
 /** PATH do Hermes e do Node dele: o do usuário (~/.local, ~/.hermes/tools) na frente do de todos (/opt/hermes), que vem por último. */
-export const HERMES_PATH_SH = `[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done`;
+export const HERMES_PATH_SH = `[ -d /opt/hermes/node/bin ] && PATH=/opt/hermes/node/bin:$PATH; export PATH=$HOME/.local/bin:$HOME/.npm-global/bin:$PATH; for d in "$HOME/.local/node/bin" "$HOME"/.hermes/tools/node-*/bin "$HOME"/.hermes/tools/npm-*/bin; do [ -d "$d" ] && PATH=$d:$PATH; done
+hermes_version() { local C="$HOME/.cache/meu-bot/hermes-version" B P J; B=$(command -v hermes 2>/dev/null) || return 0; P=$(readlink -f "$B" 2>/dev/null); J="$(dirname "$(dirname "$P")")/package.json"; if [ -s "$C" ] && [ ! "$B" -nt "$C" ] && { [ -z "$P" ] || [ ! "$P" -nt "$C" ]; } && { [ ! -f "$J" ] || [ ! "$J" -nt "$C" ]; } && [ -n "$(find "$C" -mmin -1440 2>/dev/null)" ]; then cat "$C"; else mkdir -p "$(dirname "$C")"; timeout 20 hermes --version 2>/dev/null > "$C.tmp" && mv -f "$C.tmp" "$C" && cat "$C"; fi; }`;
 /**
  * R = pasta do código do Hermes, pelo próprio `hermes` (o de ~/.local ou o de todos, em /opt/hermes); sem resposta,
  * o lugar de sempre em ~/.local. Exige HERMES_PATH_SH antes.
  */
-export const HERMES_DIR_SH = `R=$(timeout 20 hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent`;
-export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
+export const HERMES_DIR_SH = `R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent`;
+export const HERMES_END_SH = `${HERMES_PATH_SH}; R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; cd "$R" && "$R/venv/bin/python3" -c '
 import sys, hermes_state
 db = hermes_state.SessionDB()
 for sid in sys.argv[1:]:
@@ -114,10 +116,12 @@ const isoOf = (seconds: unknown): string => (typeof seconds === "number" && Numb
  * próprio aparelho; `names` (cache do main) vence só quando o Hermes não tem o nome. Sessões escondidas no Hermes
  * ficam de fora; arquivado/apelido/excluído vêm das marcas da máquina (whatsapp-marks.ts), como no OpenClaw.
  */
-export function chatsFromHermes(list: unknown, self: string | null, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
+export function chatsFromHermes(list: unknown, quem: QuemArg, names: ReadonlyMap<string, string> = new Map()): WhatsappChat[] {
   const sessions = isObj(list) && Array.isArray(list.sessions) ? list.sessions : [];
+  const q = quemOf(quem);
   // "5516992294486:36@s.whatsapp.net": o sufixo de aparelho (:36) e o domínio não fazem parte do número.
-  const selfN = self === null ? null : digits(self.replace(/[:@].*$/, ""));
+  const selfN = q.self === null ? null : digits(q.self.replace(/[:@].*$/, ""));
+  const donoN = q.dono === null ? null : digits(q.dono.replace(/[:@].*$/, ""));
   const byNumber = new Map<string, { keys: string[]; ids: Record<string, string>; started: Record<string, number>; updated: string; name: string | null }>();
   for (const s of sessions) {
     if (!isObj(s) || typeof s.key !== "string" || typeof s.id !== "string" || s.hidden === 1 || s.hidden === true) continue;
@@ -136,7 +140,7 @@ export function chatsFromHermes(list: unknown, self: string | null, names: Reado
   }
   return [...byNumber.entries()]
     .map(([number, v]) => ({
-      number, name: v.name ?? names.get(number) ?? null, isSelf: number === selfN, sessionKeys: v.keys, sessionIds: v.ids,
+      number, name: v.name ?? names.get(number) ?? null, isSelf: number === selfN, isDono: number === donoN && donoN !== selfN, sessionKeys: v.keys, sessionIds: v.ids,
       ownSession: true, paused: false, updatedAt: v.updated, alias: null, archived: false, deleted: false,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -191,17 +195,20 @@ export const hermesEnvOf = (kv: Map<string, string>): HermesWaEnv => ({ mode: kv
 const truthy = (v: string): boolean => /^(true|1|yes|on)$/i.test(v.trim());
 const listaDe = (allow: string): string[] => [...new Set(allow.split(",").map((s) => s.trim()).filter((s) => s !== ""))];
 const comMais = (n: string): string => (n === "*" || n.startsWith("+") ? n : `+${n}`);
+/** Quem manda: `WaQuem` (whatsapp-marks.ts quemDe) ou, pelo jeito antigo, só o número pareado (dono = ele). */
+export type QuemArg = WaQuem | string | null;
+export const quemOf = (q: QuemArg): WaQuem => (q === null || typeof q === "string" ? { self: q, dono: q } : q);
 
 /**
  * O .env do Hermes → a política no contrato do app (a mesma que o OpenClaw devolve): self-chat é "só você";
  * open só vale com o opt-in (sem ele o gateway nem sobe: tratado como desligado); "*" na lista também é todo mundo;
  * lista preenchida é allowlist; pairing sem lista fica pairing.
  */
-export function politicaHermes(env: HermesWaEnv, self: string | null): { dmPolicy: WhatsappDmPolicy; allowFrom: string[] } {
+export function politicaHermes(env: HermesWaEnv, quem: QuemArg): { dmPolicy: WhatsappDmPolicy; allowFrom: string[] } {
   const mode = (env.mode.trim().toLowerCase() || "self-chat");
   const dm = (env.dm.trim().toLowerCase() || "pairing");
   const lista = listaDe(env.allow);
-  if (mode === "self-chat") return { dmPolicy: "allowlist", allowFrom: self === null ? [] : [`+${self}`] };
+  if (mode === "self-chat") return { dmPolicy: "allowlist", allowFrom: donosDe(quemOf(quem)).map(comMais) };
   if (dm === "disabled") return { dmPolicy: "disabled", allowFrom: lista.map(comMais) };
   if ((dm === "open" && truthy(env.all)) || lista.includes("*")) return { dmPolicy: "open", allowFrom: ["*"] };
   if (dm === "open") return { dmPolicy: "disabled", allowFrom: lista.map(comMais) };
@@ -209,11 +216,24 @@ export function politicaHermes(env: HermesWaEnv, self: string | null): { dmPolic
   return { dmPolicy: dm === "allowlist" ? "allowlist" : "pairing", allowFrom: [] };
 }
 
-/** O que gravar no .env para cada cartão. "open" mantém a lista como está (volta intacta se trocar de novo). */
-export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null, numbers: readonly string[] = []): Record<string, string> {
+/**
+ * CONTORNO #5 (Hermes): em modo bot o bridge descarta tudo que vem do próprio aparelho, e em self-chat só atende o
+ * próprio chat — não há modo que atenda a pessoa no próprio chat E outros contatos (issue upstream: a abrir).
+ * O que fazemos: o conceito "dono" (whatsapp-lista.json › dono): com dono ≠ pareado, "só eu" vira bot + allowlist
+ * [pareado, dono], e a pessoa fala com o agente do celular dela; com dono == pareado, os cartões Lista/Todo mundo
+ * avisam que o próprio chat não é respondido.
+ * Sai quando: o Hermes aceitar self-chat em modo bot (uma chave do tipo WHATSAPP_SELF_CHAT junto de MODE=bot em
+ * `hermes whatsapp --help` ou no .env.example): "self" grava bot sempre e o aviso dos cartões some.
+ * Tabela: docs/guia/contornos.md.
+ *
+ * O que gravar no .env para cada cartão. "open" mantém a lista como está (volta intacta se trocar de novo). O dono
+ * (e o pareado) entram sempre na lista.
+ */
+export function hermesEnvPara(escolha: WhatsappReplyChoice, quem: QuemArg, numbers: readonly string[] = []): Record<string, string> {
   if (escolha === "open") return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "open", WHATSAPP_ALLOW_ALL_USERS: "true" };
-  const lista = [...new Set([...(self === null ? [] : [self]), ...numbers.map((n) => n.replace(/\D/g, ""))])].filter((n) => n !== "");
-  if (escolha === "self") return { WHATSAPP_MODE: "self-chat", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
+  const q = quemOf(quem);
+  const lista = [...new Set([...donosDe(q), ...numbers.map((n) => n.replace(/\D/g, ""))])].filter((n) => n !== "");
+  if (escolha === "self") return { WHATSAPP_MODE: souEu(q) ? "self-chat" : "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
   return { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: lista.join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
 }
 
@@ -222,8 +242,8 @@ export function hermesEnvPara(escolha: WhatsappReplyChoice, self: string | null,
  * em "só você" todo mundo menos o próprio; desligado, todos; numa lista, quem está fora dela. "Todo mundo" e pairing
  * (o número fora da lista recebe pedido de pareamento, não silêncio) não pausam ninguém.
  */
-export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number: string): boolean {
-  if (self !== null && number === self) return false;
+export function hermesNaoResponde(env: HermesWaEnv, quem: QuemArg, number: string): boolean {
+  if (donosDe(quemOf(quem)).includes(number)) return false;
   const mode = env.mode.trim().toLowerCase() || "self-chat";
   const dm = env.dm.trim().toLowerCase() || "pairing";
   const lista = listaDe(env.allow);
@@ -236,15 +256,20 @@ export function hermesNaoResponde(env: HermesWaEnv, self: string | null, number:
 }
 
 /**
- * Pausar um contato no Hermes: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem o agente
- * responde (WHATSAPP_ALLOWED_USERS) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado" mora em
+ * CONTORNO #1 (Hermes): não há pausa por contato (NousResearch/hermes-agent#146672).
+ * O que fazemos: pausar é tirar o número da WHATSAPP_ALLOWED_USERS e reiniciar o gateway; retomar é devolvê-lo.
+ * Sai quando: toda máquina Hermes do mapa estiver com o plugin meu-bot-pausa (pausaplugin) ou com pausanativa=1 — o
+ * ramo "allowlist" de hermesPausaModo some e esta função com ele. Tabela: docs/guia/contornos.md.
+ *
+ * Pausar um contato no Hermes sem o plugin: não existe pausa por contato lá, então pausar é tirá-lo da lista de quem
+ * o agente responde (WHATSAPP_ALLOWED_USERS) enquanto a pausa durar, e retomar é devolvê-lo. A marca "pausado" mora em
  * whatsapp-lista.json (whatsapp-marks.ts); os outros pausados ficam fora da lista gravada. A política fica fixa em
  * "lista" (allowlist): em pairing, um número fora da lista receberia pedido de pareamento, o oposto de pausa.
  * Retomar vale em qualquer política: em "só você" ou desligado, a conversa clicada vira "você e ele" (a pessoa não
  * precisa passar por "Quem o agente responde"). Pausar em "só você"/desligado não tem o que tirar; em "todo mundo"
  * não há lista de onde tirar. Diferença do OpenClaw, dita na tela: o agente nem vê as mensagens durante a pausa.
  */
-export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
+export function hermesPausaPlano(env: HermesWaEnv, quem: QuemArg, number: string, paused: boolean, pausados: readonly string[]): { patch: Record<string, string>; reinicia: boolean } {
   const mode = env.mode.trim().toLowerCase() || "self-chat";
   const dm = env.dm.trim().toLowerCase() || "pairing";
   const lista = listaDe(env.allow);
@@ -254,7 +279,7 @@ export function hermesPausaPlano(env: HermesWaEnv, self: string | null, number: 
   // Em "só você" a lista gravada pode trazer números de antes; a pausa/retomada parte do que vale hoje (só o próprio).
   const efetiva = new Set(mode === "self-chat" ? [] : lista);
   if (paused) efetiva.delete(number); else efetiva.add(number);
-  if (self !== null) efetiva.add(self);
+  for (const d of donosDe(quemOf(quem))) efetiva.add(d);
   for (const n of pausados) if (n !== number) efetiva.delete(n);
   const patch: Record<string, string> = { WHATSAPP_MODE: "bot", WHATSAPP_DM_POLICY: "allowlist", WHATSAPP_ALLOWED_USERS: [...efetiva].join(","), WHATSAPP_ALLOW_ALL_USERS: "false" };
   return { patch, reinicia: hermesPrecisaReiniciar(env, patch) };
@@ -272,6 +297,58 @@ export function hermesPrecisaReiniciar(antes: HermesWaEnv, depois: Record<string
     || norm(antes.dm, "pairing") !== norm(depois["WHATSAPP_DM_POLICY"], "pairing")
     || truthy(antes.all) !== truthy(depois["WHATSAPP_ALLOW_ALL_USERS"] ?? "")
     || !listaIgual(antes.allow, depois["WHATSAPP_ALLOWED_USERS"]);
+}
+
+// ---- Home channel do Hermes: para onde ele manda avisos e cron (`WHATSAPP_HOME_CHANNEL` no .env e
+// `platforms.whatsapp.home_channel` no config.yaml; gateway/config.py lê o yaml, o .env entra na entrega do cron).
+/** Nome do dono como vai para o .env/yaml: uma linha, sem aspas simples nem controle, até 60 caracteres. */
+export const nomeHomeChannel = (nome: string | null): string => (nome ?? "").replace(/['\\\r\n\t]/g, "").replace(/\s+/g, " ").trim().slice(0, 60) || "Dono";
+/**
+ * Grava o home channel do Hermes para o dono: o .env (`WHATSAPP_HOME_CHANNEL`, `_NAME`) e o config.yaml
+ * (`platforms.whatsapp.home_channel {platform, chat_id, name, user_id}`), iguais, com o jid em `@s.whatsapp.net`
+ * (o LID fica por conta do Hermes; sessões já são por número). Imprime `home=ok`. Lido na subida: quem chama reinicia.
+ */
+export function hermesHomeChannelSh(numero: string, nome: string | null): string {
+  if (!/^\d{8,15}$/.test(numero)) throw new Error("número do dono inválido");
+  const jid = `${numero}@s.whatsapp.net`;
+  const b64 = Buffer.from(JSON.stringify({ platform: "whatsapp", chat_id: jid, name: nomeHomeChannel(nome), user_id: jid }), "utf8").toString("base64");
+  return `${HERMES_ENV_SET_PY} 'WHATSAPP_HOME_CHANNEL=${jid}' 'WHATSAPP_HOME_CHANNEL_NAME=${nomeHomeChannel(nome)}' >/dev/null
+${HERMES_PY_SH}; "$PY" -c '
+import base64, json, sys
+${HERMES_YAML_PY}
+h = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
+pw = sub(sub(doc, "platforms"), "whatsapp")
+pw["home_channel"] = h
+salvar(); print("home=ok")
+' '${b64}'`;
+}
+
+// ---- Como a pausa por contato é feita nesta máquina.
+/**
+ * `nativa` = o Hermes tem pausa por contato (ainda não existe; critério abaixo); `plugin` = o meu-bot-pausa está
+ * instalado E carregado pelo gateway de agora (a marca basta, vale em qualquer política, sem reinício);
+ * `allowlist` = sem os dois: pausar é tirar da WHATSAPP_ALLOWED_USERS com reinício (contorno #1).
+ */
+export type HermesPausaModo = "nativa" | "plugin" | "allowlist";
+/**
+ * CONTORNO #2 (Hermes): não há pausa por contato (NousResearch/hermes-agent#146672).
+ * O que fazemos: a sonda diz se o plugin meu-bot-pausa está instalado (`pausaplugin` = versão do .ok) e carregado
+ * (`pausavivo` = versão que o register() gravou); iguais = o gateway de agora já pausa pela marca.
+ * Sai quando: `pausanativa=1`. Hoje é um palpite declarado (`hermes whatsapp --help` cita "pause"); trocar pelo
+ * sinal real da release que fechar a issue. Tabela: docs/guia/contornos.md.
+ */
+export const HERMES_PAUSA_SH = `${HERMES_PATH_SH}
+echo "pausaplugin=$( [ -f "$HOME/.hermes/plugins/meu-bot-pausa/plugin.yaml" ] && cat "$HOME/.hermes/plugins/meu-bot-pausa/.ok" 2>/dev/null | tr -dc '0-9.')"
+echo "pausavivo=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["versao"])' "$HOME/.local/share/meu-bot/whatsapp-pausa.carregado" 2>/dev/null | tr -dc '0-9.')"
+PV=$(hermes_version | head -1 | tr -dc '0-9A-Za-z.'); PC="$HOME/.cache/meu-bot/pausanativa-$PV"
+if [ -n "$PV" ] && [ -s "$PC" ]; then echo "pausanativa=$(cat "$PC")"
+else N=$(timeout 10 hermes whatsapp --help 2>/dev/null | grep -qiE '(^|[^a-z])pause([^a-z]|$)' && echo 1 || echo 0); [ -n "$PV" ] && { mkdir -p "$(dirname "$PC")"; printf '%s' "$N" > "$PC"; }; echo "pausanativa=$N"; fi`;
+const VERSAO_RE = /^\d+(\.\d+)*$/;
+/** O que a sonda (HERMES_PAUSA_SH) disse → o modo. Plugin instalado mas ainda não carregado (gateway antigo) = allowlist. */
+export function hermesPausaModo(kv: Map<string, string>): HermesPausaModo {
+  if ((kv.get("pausanativa") ?? "").trim() === "1") return "nativa";
+  const instalado = (kv.get("pausaplugin") ?? "").trim(), vivo = (kv.get("pausavivo") ?? "").trim();
+  return VERSAO_RE.test(instalado) && instalado === vivo ? "plugin" : "allowlist";
 }
 
 /** Valores que podem ir num argumento de shell entre aspas simples (os nossos: palavras, números, vírgulas). */
@@ -299,6 +376,12 @@ print("envset=ok")
 '`;
 
 /**
+ * CONTORNO #3 (Hermes): `hermes pm install --extra stt-whisper` recusa num usuário novo de Hermes global porque as
+ * ferramentas (ffmpeg, ripgrep) são por HERMES_HOME (issue upstream a abrir; ver a tabela).
+ * O que fazemos: instalamos só as ferramentas que ele listou e tentamos de novo.
+ * Sai quando: `hermes pm install --extra stt-whisper` sair 0 num usuário recém-criado de Hermes global, sem o passo extra.
+ * Tabela: docs/guia/contornos.md.
+ *
  * Instala um extra do Hermes (`stt-whisper`, `piper`) no ambiente do gateway; imprime `extra=ok` ou `extra=falhou` e
  * sai 3. O `hermes pm` recusa o extra quando faltam as ferramentas dele no PATH ("tools not on PATH before venv sync:
  * ffmpeg: …; ripgrep: …"), o que acontece num usuário novo de um Hermes global (/opt/hermes): as ferramentas são por
@@ -353,7 +436,7 @@ export interface HermesGroupCfg { policy: HermesGroupPolicy; allow: string[]; re
  */
 export const HERMES_VENV_PY_SH = `HPY=$(for f in "$HOME"/.hermes/installs/*/facts.json; do [ -f "$f" ] && echo "$(stat -c %Y "$f" 2>/dev/null || echo 0) $f"; done | sort -rn | head -1 | awk '{print $2}' | xargs -r python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["packages"]["venv"]["environment"]+"/bin/python3")' 2>/dev/null); [ -x "$HPY" ] || HPY=""`;
 /** Python do runtime do Hermes (tem ruamel; PyYAML nem sempre); sem ele, o python3 da máquina. Deixa em $PY. */
-const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes --version 2>/dev/null | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
+export const HERMES_PY_SH = `${HERMES_PATH_SH}; R=$(hermes_version | sed -n "s/^Install directory: //p"); [ -n "$R" ] || R=$HOME/.local/lib/node_modules/hermes-agent/runtime/hermes-agent; PY=$R/venv/bin/python; [ -x "$PY" ] || PY=python3`;
 
 /**
  * Porta do bridge do WhatsApp do Hermes deste usuário, em `$HBP`. O Hermes usa a 3000 quando ninguém diz outra; com
@@ -453,7 +536,7 @@ print("cfgset=ok")
  * Abre ~/.hermes/config.yaml para editar: `doc` (ruamel round-trip preserva comentários; sem ele, PyYAML), `sub(d, k)`
  * devolve/cria um mapa filho e `salvar()` grava com backup e escrita atômica. Vai dentro de `"$PY" -c '…'` (sem aspas simples).
  */
-const HERMES_YAML_PY = `
+export const HERMES_YAML_PY = `
 import os, shutil, time
 p = os.path.expanduser("~/.hermes/config.yaml")
 try:
@@ -514,6 +597,8 @@ novos = {}
 if pega("WHATSAPP_ENABLED").lower() != "true": novos["WHATSAPP_ENABLED"] = "true"
 if not tem("WHATSAPP_MODE"): novos["WHATSAPP_MODE"] = "self-chat"
 if not tem("WHATSAPP_ALLOWED_USERS") and eu: novos["WHATSAPP_ALLOWED_USERS"] = eu
+# Avisos e cron do Hermes vão para o dono; sem nada definido, o próprio número (a tela "Dono" troca os dois depois).
+if not tem("WHATSAPP_HOME_CHANNEL") and eu: novos["WHATSAPP_HOME_CHANNEL"] = eu + "@s.whatsapp.net"
 if novos:
     feitos = set()
     for i, l in enumerate(linhas):
@@ -548,6 +633,8 @@ pw = sub(sub(doc, "platforms"), "whatsapp")
 ex = pw.get("extra") if isinstance(pw.get("extra"), dict) else {}
 if os.getuid() != 0 and "bridge_port" not in pw and "bridge_port" not in ex:
     pw["bridge_port"] = 3100 + max(0, os.getuid() - 1000); grava = True; mud.append("bridge_port:%d" % pw["bridge_port"])
+if "home_channel" not in pw and eu:
+    pw["home_channel"] = {"platform": "whatsapp", "chat_id": eu + "@s.whatsapp.net", "name": "Dono", "user_id": eu + "@s.whatsapp.net"}; grava = True; mud.append("home_channel")
 if grava: salvar()
 print("hwa=" + (";".join(mud) or "nada"))
 ' 2>&1 | grep '^hwa=' || echo "hwa=falhou"`;
@@ -576,6 +663,11 @@ export const HERMES_STT_COMANDO = `${TRANSCRITOR_BIN} {input_path} {output_dir} 
 /** Grava (ou troca) a linha do comando no ~/.hermes/.env deste usuário; o resto do arquivo fica como está. */
 export const HERMES_STT_COMPARTILHADO_SH = `install -d -m 700 "$HOME/.hermes"; [ -e "$HOME/.hermes/.env" ] || (umask 077; touch "$HOME/.hermes/.env"); sed -i '/^HERMES_LOCAL_STT_COMMAND=/d' "$HOME/.hermes/.env"; printf '%s\\n' 'HERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"' >> "$HOME/.hermes/.env"`;
 /**
+ * CONTORNO #4 (Hermes): cada usuário baixava o próprio transcritor e modelo (~1,5 GB) e rodava um Whisper por gateway
+ * (sem issue: desenho de produto).
+ * O que fazemos: um transcritor compartilhado em /opt/transcriber e cada Hermes aponta por HERMES_LOCAL_STT_COMMAND.
+ * Sai quando: o Hermes oferecer STT compartilhado entre HERMES_HOMEs. Tabela: docs/guia/contornos.md.
+ *
  * Ligar a transcrição no Hermes deste usuário. Com o transcritor compartilhado da máquina (`bin` executável), só aponta
  * o Hermes para ele (.env + local_command) e imprime `stt=compartilhado`; sem ele (máquina de antes do padrão), instala
  * o extra no ambiente deste usuário e grava o provedor local, imprimindo `stt=proprio`. Os dois imprimem `cfgset=ok`.

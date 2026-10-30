@@ -3,6 +3,8 @@ import { type CacheStore, type Cached, readCache, writeCache, dropCache } from "
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
+import { pausaAteTexto, pausaRestanteTexto } from "../lib/pausa-texto.js";
+import { acaoTerminou, segurarConexao } from "./agente-whatsapp.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { waReferenceText } from "../lib/reference.js";
 import { normalize, groupByDate, shortDate } from "../lib/sidebar.js";
@@ -115,7 +117,8 @@ const isWaDeleted = (c: WhatsappChat): boolean => c.deleted;
  * real troca por baixo. Chave por máquina; sem localStorage, segue sem cache.
  */
 const cacheStore = (): CacheStore | null => { try { return window.localStorage; } catch { return null; } };
-export function cacheRead<T>(name: string): Cached<T> | null { const st = cacheStore(); return st === null ? null : readCache<T>(st, ctx.windowHost, name, ctx.appBuild); }
+/** `qualquerBuild`: aceita o valor gravado por outro build (estado do WhatsApp: a forma é estável e vale mais mostrar o de ontem do que nada). */
+export function cacheRead<T>(name: string, qualquerBuild = false): Cached<T> | null { const st = cacheStore(); return st === null ? null : readCache<T>(st, ctx.windowHost, name, ctx.appBuild, Number.POSITIVE_INFINITY, Date.now(), qualquerBuild); }
 export function cacheWrite(name: string, value: unknown): void { const st = cacheStore(); if (st !== null) writeCache(st, ctx.windowHost, name, ctx.appBuild, value); }
 export function cacheDrop(name: string): void { const st = cacheStore(); if (st !== null) dropCache(st, ctx.windowHost, name); }
 /** Marca na máquina e aplica na lista local na hora (otimista); em erro, relê a lista e avisa. */
@@ -150,6 +153,8 @@ async function migrateWaMarks(): Promise<void> {
   ctx.waChats = await window.meuBot.whatsappChats();
 }
 
+/** Pausar/retomar em andamento por contato: a linha mostra "aguarde…" piscando e depois "pronto!" por um instante. */
+const waPausaEtapa = new Map<string, "aguarde" | "pronto">();
 async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null): Promise<void> {
   if (action === null) return;
   const fail = (what: string, err: unknown): void => {
@@ -185,16 +190,24 @@ async function waMenuAction(row: WhatsappChat, action: WhatsappMenuAction | null
     case "restore":
       await markWa({ number: row.number, deleted: false }, "Não deu para restaurar");
       break;
-    case "pause": case "resume": {
-      const item = [...ctx.sidebarList.querySelectorAll<HTMLElement>(".wa-item")].find((x) => x.dataset["number"] === row.number);
-      item?.classList.add("wa-busy");
+    case "pause": case "pause-2h": case "pause-24h": case "resume": {
+      const pausar = action !== "resume";
+      const horas = action === "pause-2h" ? 2 : action === "pause-24h" ? 24 : undefined;
+      // Otimista: o fim real vem da máquina na próxima leitura da lista (relógio dela).
+      const pausaAte = pausar && horas !== undefined ? new Date(Date.now() + horas * 3_600_000).toISOString() : null;
+      // A etiqueta da linha conta a história: "pausado" → "aguarde…" (piscando; sem o plugin o gateway reinicia, ~15 s) → "pronto!" → some.
+      waPausaEtapa.set(row.number, "aguarde"); ctx.renderSidebar();
+      // Sem o plugin, pausar/retomar reinicia o gateway: segura "conectado" até ele voltar (senão o tutorial voltava ao QR).
+      const reinicia = ctx.waStatus?.capacidades.pausaPrazo !== true;
+      if (reinicia) segurarConexao();
       try {
-        await window.meuBot.pauseWhatsapp(row.number, action === "pause");
-        ctx.waChats = ctx.waChats.map((c) => (c.number === row.number ? { ...c, paused: action === "pause" } : c));
-        for (const g of ctx.waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: action === "pause" }; if (ctx.pageShown(g.page)) ctx.renderWaChat(g); }
-        ctx.renderSidebar();
-      } catch (err) { fail(action === "pause" ? "Não deu para pausar" : "Não deu para retomar", err); }
-      finally { item?.classList.remove("wa-busy"); }
+        await window.meuBot.pauseWhatsapp(row.number, pausar, horas);
+        if (reinicia) acaoTerminou();
+        ctx.waChats = ctx.waChats.map((c) => (c.number === row.number ? { ...c, paused: pausar, pausaAte } : c));
+        for (const g of ctx.waChatPages.values()) if (g.chat.number === row.number) { g.chat = { ...g.chat, paused: pausar, pausaAte }; if (ctx.pageShown(g.page)) ctx.renderWaChat(g); }
+        waPausaEtapa.set(row.number, "pronto"); ctx.renderSidebar();
+        setTimeout(() => { if (waPausaEtapa.get(row.number) === "pronto") { waPausaEtapa.delete(row.number); ctx.renderSidebar(); } }, 2500);
+      } catch (err) { if (reinicia) acaoTerminou(); waPausaEtapa.delete(row.number); ctx.renderSidebar(); fail(pausar ? "Não deu para pausar" : "Não deu para retomar", err); }
       break;
     }
     case "clear":
@@ -335,7 +348,7 @@ function waRenameBox(row: WhatsappChat): HTMLElement {
   requestAnimationFrame(() => { input.focus(); input.select(); });
   return box;
 }
-export const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : (c.alias ?? c.name ?? ctx.fmtPhone(c.number));
+export const waChatTitle = (c: WhatsappChat): string => c.isSelf ? "Você (este número)" : c.isDono === true ? (c.alias ?? c.name ?? "Você (dono)") : (c.alias ?? c.name ?? ctx.fmtPhone(c.number));
 /**
  * Seleção em massa na lista do WhatsApp ("Selecionar"): marca várias conversas e exclui ou limpa de uma vez.
  * Excluir é só tirar da lista (o agente continua de onde parou); uma gravação só na máquina. Limpar histórico zera o
@@ -452,7 +465,7 @@ export function paintWaSidebar(query: string): void {
       menu.type = "button"; menu.title = "Ações";
       menu.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, deleted }).then((a) => waMenuAction(row, a));
+        void window.meuBot.showWhatsappMenu(row.number, { archived, paused: row.paused, deleted, pausaRotulo: pausaAteTexto(row.pausaAte).replace(/^até /, "volta às ").replace(/^volta às amanhã, /, "volta amanhã às ") || null, dono: row.isSelf || row.isDono === true }).then((a) => waMenuAction(row, a));
       });
       if (waSelecao !== null) {
         const sel = waSelecao;
@@ -462,13 +475,20 @@ export function paintWaSidebar(query: string): void {
         item.append(cb);
         item.classList.toggle("wa-sel-on", sel.has(row.number));
       }
+      // Etiqueta curta: ⏸ e quanto falta ("⏸ 1h58"); sem prazo, só o ⏸. A explicação inteira fica no title e no cabeçalho da conversa.
+      const restante = row.paused ? pausaRestanteTexto(row.pausaAte) : "";
+      const rotuloPausa = row.paused ? `⏸${restante ? ` ${restante}` : ""}` : "";
+      const etapa = waPausaEtapa.get(row.number);
       item.append(el("span", `wa-item-dot${row.paused ? " paused" : ""}`), el("span", "si-title", waChatTitle(row)));
-      if (row.paused) item.append(el("span", "si-tab", "pausado"));
+      if (row.isDono === true && !row.isSelf) item.append(el("span", "si-tab", "dono"));
+      if (etapa === "aguarde") item.append(el("span", "si-tab wa-aguarde", "aguarde…"));
+      else if (etapa === "pronto") item.append(el("span", "si-tab wa-pronto", "✓ pronto"));
+      else if (row.paused) item.append(el("span", "si-tab", rotuloPausa));
       if (deleted) item.append(el("span", "si-tab", "excluída"));
       item.append(el("span", "si-date", shortDate(row.updatedAt)), menu);
-      item.title = `${row.isSelf ? "Mensagens que você manda para o próprio número" : ctx.fmtPhone(row.number)}${row.paused ? " · pausado: o agente não responde" : ""}`;
+      const quemE = row.isSelf ? "Mensagens que você manda para o próprio número" : row.isDono === true ? `Dono: fala com o agente do celular dele (${ctx.fmtPhone(row.number)})` : ctx.fmtPhone(row.number);
+      item.title = `${quemE}${row.paused ? ` · pausado${pausaAteTexto(row.pausaAte) ? ` ${pausaAteTexto(row.pausaAte)}` : ""}: o agente não responde` : ""} · Option+clique: abre ao lado (tela dividida)`;
       // Selecionando, o clique na linha marca/desmarca em vez de abrir a conversa.
-      item.title = "Option+clique: abre ao lado (tela dividida)";
       item.addEventListener("click", (ev) => { if (waSelecao === null) { ctx.openWaChat(row, ev.altKey); return; } if (deleted) return; if (waSelecao.has(row.number)) waSelecao.delete(row.number); else waSelecao.add(row.number); ctx.renderSidebar(); });
       ctx.sidebarList.appendChild(item);
       if (waClear?.number === row.number) ctx.sidebarList.appendChild(waClearBox(waClear));

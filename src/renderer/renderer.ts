@@ -2040,7 +2040,7 @@ void (async () => {
   document.title = `${caps.titulo} · ${hostLabel(windowHost)}`;
   document.documentElement.style.setProperty("--host-accent", hostAccent(windowHost));
   // Estado do WhatsApp da última vez: o modo WhatsApp e a lista em cache aparecem antes do SSH responder.
-  { const c = cacheRead<WhatsappStatus>("waStatus"); if (c !== null && waStatus === null) { waStatus = c.value; paintListMode(); } }
+  { const c = cacheRead<WhatsappStatus>("waStatus", true); if (c !== null && waStatus === null && typeof c.value.connected === "boolean" && c.value.capacidades !== undefined) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
   const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
