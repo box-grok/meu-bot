@@ -800,6 +800,7 @@ body.topbar-hidden .topbar { display: none; }
 .nav-pin[hidden] { display: none; }
 .nav-zoom { font-size: 11px; min-width: 40px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .nav-zoom.on { color: var(--accent); }
+.nav-zoom.auto { text-decoration: underline dotted; text-underline-offset: 3px; }
 .nav-zoom[hidden] { display: none; }
 .skill-offer { display: flex; flex-direction: column; gap: 8px; }
 .skill-offer-row { display: flex; gap: 6px; flex-wrap: wrap; }
