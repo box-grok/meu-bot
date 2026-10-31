@@ -123,6 +123,15 @@ export function setNavAgentHost(host: string, on: boolean): void {
   file.navAgentHosts = next;
   persist();
 }
+/** "O agente pode usar o Gmail": lembrado por máquina (religa sozinho com a conta conectada). */
+export const isGmailAgentHost = (host: string): boolean => file.gmailAgentHosts.includes(host);
+export function setGmailAgentHost(host: string, on: boolean): void {
+  if (!isValidHost(host)) return;
+  const next = file.gmailAgentHosts.filter((h) => h !== host);
+  if (on) next.push(host);
+  file.gmailAgentHosts = next;
+  persist();
+}
 /** Favoritos do Navegador da máquina (cópia). */
 export const navFavoritos = (host: string): NavFavoritoItem[] => (file.navFavoritos[host] ?? []).map((f) => ({ ...f }));
 /** Adiciona (ou, com a mesma url, só atualiza o título se vier um) e devolve a lista; limite MAX_FAVORITOS. */

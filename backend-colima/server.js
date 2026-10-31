@@ -23,7 +23,10 @@ const { spawn } = require('node:child_process');
 const sessions = require('./session-map');
 const toolEvents = require('./tool-events');
 const navegador = require('./navegador');
+const gmailPonte = require('./gmail');
+const pontes = require('./pontes');
 const NAVEGADOR_MCP = path.join(os.homedir(), '.local/share/meu-bot/navegador-mcp.mjs');
+const GMAIL_MCP = path.join(os.homedir(), '.local/share/meu-bot/gmail-mcp.mjs');
 /** Passos por mensagem quando o Navegador está ligado (o perfil "agente" tem 30 sem ele). */
 const BROWSER_MAX_TURNS = 100;
 const providers = require('./providers');
@@ -429,15 +432,15 @@ function currentModelLabel(conta) {
   return MODEL_LABELS[k] || (m || null);
 }
 
-function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, model, conta, bloqueadas, mcpModulos }) {
+function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDelta, onTool, browser, gmail, model, conta, bloqueadas, mcpModulos }) {
   return new Promise((resolve, reject) => {
     const contaId = conta ? conta.id : 'padrao';
     // Limite forçado (teste): a conta parece esgotada antes de a CLI subir.
     if (forcarLimite !== '' && forcarLimite === contaId && --forcarNa <= 0) { forcarLimite = ''; const e = new Error('limite de uso forçado (MEU_BOT_FORCAR_LIMITE)'); e.code = 'conta_limite'; e.resets = Math.floor(Date.now() / 1000) + 5 * 60; reject(e); return; }
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--max-turns', String(maxTurns)];
     args.push(...(bypass ? ['--dangerously-skip-permissions'] : ['--permission-mode', 'default']));
-    // Navegador da pessoa ligado neste turno: o MCP navegador entra pela porta do túnel reverso (navegador.js).
-    if (browser) args.push(...navegador.browserCliArgs({ port: browser.port, dono: browser.dono, mcpPath: NAVEGADOR_MCP, nodeBin: process.execPath, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
+    // Pontes do app ligadas neste turno (Navegador, Gmail): os MCPs entram pela porta do túnel reverso de cada um (pontes.js).
+    args.push(...pontes.pontesCliArgs({ browser, gmail, nodeBin: process.execPath, navegadorMcp: NAVEGADOR_MCP, gmailMcp: GMAIL_MCP, snapshotOff: navegador.cliSupportsSnapshotOff(CLAUDE_VERSION) }));
     // Módulos de produto ligados para este perfil (modulos.js): os MCPs deles vêm de um arquivo 0600 do turno.
     if (mcpModulos) args.push('--mcp-config', mcpModulos);
     if (Array.isArray(bloqueadas) && bloqueadas.length > 0) args.push('--disallowedTools', bloqueadas.join(','));
@@ -490,7 +493,8 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     });
     child.stderr.on('data', (d) => { stderr += d.toString('utf8'); });
     child.stdin.on('error', () => {});
-    child.stdin.end(browser ? `${navegador.browserTurnNote()}\n\n${prompt}` : prompt);
+    const notas = pontes.pontesTurnoNotas({ browser, gmail, browserNote: navegador.browserTurnNote, gmailNote: gmailPonte.gmailTurnNote });
+    child.stdin.end(notas.length > 0 ? `${notas.join('\n')}\n\n${prompt}` : prompt);
 
     function handle(ev) {
       if (ev.session_id && !sessionId) sessionId = ev.session_id;
@@ -606,10 +610,20 @@ async function chatCompletions(req, res) {
     else if (!fs.existsSync(NAVEGADOR_MCP)) log(`navegador pedido, mas ${NAVEGADOR_MCP} não existe; ignorado`);
     else browser = { port: browserPort };
   }
+  // Gmail do agente (módulo Pro, 31 out): a mesma regra do Navegador, com o próprio MCP e a própria porta.
+  let gmail = null;
+  const gmailPort = gmailPonte.parseGmailPort(req.headers['x-meu-bot-gmail-port']);
+  if (gmailPort !== null) {
+    const lic = licenseView().license;
+    if (!licenca.proOk(lic)) log(`gmail pedido sem Pro (plano ${lic.plan}/${lic.status}); ignorado`);
+    else if (!fs.existsSync(GMAIL_MCP)) log(`gmail pedido, mas ${GMAIL_MCP} não existe; ignorado`);
+    else gmail = { port: gmailPort };
+  }
   const convRaw = req.headers['x-conversation-id'];
   const convId = typeof convRaw === 'string' && CONV_ID_RE.test(convRaw) ? convRaw : null;
   // Dono das abas que este turno abrir no Navegador (cada conversa trabalha nas próprias abas): id da conversa + título.
   if (browser !== null && convId !== null) browser.dono = { id: `meu-bot:${convId}`, rotulo: navegador.parseRotulo(req.headers['x-meu-bot-browser-rotulo']) };
+  if (gmail !== null && convId !== null) gmail.dono = { id: `meu-bot:${convId}`, rotulo: navegador.parseRotulo(req.headers['x-meu-bot-browser-rotulo']) };
   const hash = sysHash(messages);
   const id = `chatcmpl-${crypto.randomBytes(8).toString('hex')}`;
   const created = Math.floor(Date.now() / 1000);
@@ -672,7 +686,7 @@ async function chatCompletions(req, res) {
       const ultimaFala = [...messages].reverse().find((m) => m.role === 'user');
       const acao = modulos.ajusteDaAcao(doModulo.acoes, ultimaFala ? messageText(ultimaFala) : '');
       const regrasModulos = [...doModulo.regras, ...(acao && acao.adendo ? [acao.adendo] : [])].join('\n\n');
-      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}${avisoNivel ? `\n\n${avisoNivel}` : ''}${regrasModulos ? `\n\n${regrasModulos}` : ''}`;
+      const identity = `Você responde dentro do meu-bot pelo Claude Code, perfil "${name}" (Anthropic). Se perguntarem qual modelo ou IA você é, diga exatamente isso.${browser ? `\n\n${navegador.BROWSER_RULE}` : ''}${gmail ? `\n\n${gmailPonte.GMAIL_RULE}` : ''}${avisoNivel ? `\n\n${avisoNivel}` : ''}${regrasModulos ? `\n\n${regrasModulos}` : ''}`;
       plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
       resumed = Boolean(plan.resume);
       // A melhor conta agora (uma em aviso só se não há outra). Sem nenhuma: erro com a hora em que a próxima volta;
@@ -693,7 +707,7 @@ async function chatCompletions(req, res) {
       let mcpModulos = null;
       if (Object.keys(doModulo.mcp).length > 0) { try { mcpModulos = modulos.arquivoMcp(doModulo.mcp); } catch (e) { log(`módulos: MCP do turno não gravado (${e.message})`); } }
       if (doModulo.ids.length > 0) log(`módulos no turno ${name}: ${doModulo.ids.join(', ')}${acao ? ' (ação)' : ''}`);
-      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, model, conta, bloqueadas, mcpModulos });
+      const call = () => runClaude({ ...withModel(plan), cwd: profile.cwd, maxTurns, bypass: profile.bypass, signal: abort.signal, onDelta, onTool, browser, gmail, model, conta, bloqueadas, mcpModulos });
       let out;
       try {
       for (let tries = 0; ; tries++) {

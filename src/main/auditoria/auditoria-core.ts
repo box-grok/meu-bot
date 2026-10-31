@@ -126,6 +126,8 @@ export const ACOES = {
   "usuarios.recursos": (a: string) => `mudou os tetos de RAM e CPU do usuário ${a}`,
   "usuarios.liberar": (a: string) => `apagou arquivos do usuário ${a} para liberar espaço`,
   "backup.dados-drive": (a: string) => `guardou uma cópia dos dados desta máquina no Google Drive do dono${a ? ` (${a})` : ""}`,
+  "gmail.apagar": (a: string) => `moveu um e-mail para a lixeira do Gmail${a ? ` (${a})` : ""}`,
+  "gmail.restaurar": (a: string) => `tirou um e-mail da lixeira do Gmail${a ? ` (${a})` : ""}`,
 } satisfies Record<string, (alvo: string) => string>;
 export type Acao = keyof typeof ACOES;
 export const isAcao = (v: string): v is Acao => Object.prototype.hasOwnProperty.call(ACOES, v);

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -78,6 +78,12 @@ test("escopos: temEscopo por token, temTodosEscopos para precisa reconectar, url
   assert.ok(!temTodosEscopos(comoOGoogleVolta, ESCOPOS_CONTA), "sem drive.file: precisa reconectar");
   assert.ok(temTodosEscopos(`${comoOGoogleVolta} https://www.googleapis.com/auth/drive.file`, ESCOPOS_CONTA), "com drive.file: completo");
   assert.ok(ESCOPOS_CONTA.includes("https://www.googleapis.com/auth/drive.file"), "drive.file faz parte da conta");
+  // 31 out: a lixeira do Gmail pede gmail.modify no login (ESCOPOS_PEDIDOS), mas quem conectou antes nao "precisa
+  // reconectar" por isso (o backup seguiria parado): so a pagina Gmail pede reconectar, e so para apagar.
+  const completo = `${comoOGoogleVolta} https://www.googleapis.com/auth/drive.file`;
+  assert.ok(ESCOPOS_PEDIDOS.includes(GMAIL_MODIFY) && !ESCOPOS_CONTA.includes(GMAIL_MODIFY));
+  assert.ok(temTodosEscopos(completo, ESCOPOS_CONTA) && !temEscopo(completo, GMAIL_MODIFY), "token de antes: completo para a conta, sem lixeira");
+  assert.ok(temEscopo(`${completo} ${GMAIL_MODIFY}`, GMAIL_MODIFY), "reconectou: pode apagar");
   const url = new URL(urlDeAutorizacao({ clientId: "c", redirect: "http://127.0.0.1:9/oauth", challenge: "ch", state: "st", scope: g }));
   assert.equal(url.searchParams.get("scope"), g);
   assert.equal(url.searchParams.get("code_challenge_method"), "S256");

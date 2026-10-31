@@ -35,7 +35,9 @@ import { garantirClientesGoogle } from "../google/cliente-release";
 import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../app/settings";
-import { agendaCriar, agendaProximos, gmailResumo, planilhaEscrever, planilhaLer } from "../google/apis";
+import { agendaCriar, agendaProximos, gmailApagar, gmailLer, gmailListar, gmailRestaurar, planilhaEscrever, planilhaLer } from "../google/apis";
+import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-core";
+import { gmailAgenteParar } from "../google/gmail-api";
 import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
 import { caps } from "../app/variant";
@@ -102,7 +104,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (r.conectado && !r.precisaReconectar) dispararDadosAoDrive(); // a cópia que falhou "sem conta" sai agora
     return r;
   });
-  handleShared("google-conta:desconectar", async (event) => { const host = hostConta(event); const r = await contaDesconectar(host); sendToHost(host, "google-conta:changed", r); return r; });
+  handleShared("google-conta:desconectar", async (event) => { const host = hostConta(event); const r = await contaDesconectar(host); gmailAgenteParar(host); sendToHost(host, "google-conta:changed", r); return r; });
   // Cópia do CRM e do financeiro desta máquina no Drive da Conta Google: estado, "guardar agora" e o interruptor.
   handleShared("backup-dados:status", (event) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
@@ -134,7 +136,17 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     setDadosNoDrive((payload as { ligado?: unknown } | null)?.ligado === true);
     return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
   });
-  handleShared("google-conta:gmail", (event) => gmailResumo(hostConta(event)));
+  // Página Gmail (31 out): recurso Pro, como a Conta Google. Ler e buscar valem com a autorização antiga; a lixeira
+  // pede gmail.modify (GMAIL_SEM_PERMISSAO → a tela oferece Reconectar).
+  const idDe = (payload: unknown): string => { const id = validaId((payload as { id?: unknown } | null)?.id); if (id === null) throw new Error("id de mensagem inválido"); return id; };
+  handleShared("gmail:listar", async (event, payload: unknown) => {
+    const host = hostConta(event); await assertAcesso(host);
+    const p = (payload ?? {}) as Record<string, unknown>;
+    return gmailListar(host, { busca: validaBusca(p["busca"]), max: validaMax(p["max"]), pagina: validaPagina(p["pagina"]) });
+  });
+  handleShared("gmail:ler", async (event, payload: unknown) => { const host = hostConta(event); await assertAcesso(host); return gmailLer(host, idDe(payload)); });
+  handleShared("gmail:apagar", async (event, payload: unknown) => { const host = hostConta(event); await assertAcesso(host); return gmailApagar(host, idDe(payload)); });
+  handleShared("gmail:restaurar", async (event, payload: unknown) => { const host = hostConta(event); await assertAcesso(host); return gmailRestaurar(host, idDe(payload)); });
   handleShared("google-conta:agenda", (event, payload: unknown) => { const d = (payload as { dias?: unknown } | null)?.dias; return agendaProximos(hostConta(event), typeof d === "number" ? d : 7); });
   handleShared("google-conta:agenda-criar", (event, payload: unknown) => {
     const p = (payload ?? {}) as Record<string, unknown>;
@@ -213,7 +225,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });
-  // Grupos: a área "Grupos" da lista e o tutorial 12. As regras (nunca "*", nunca ligar sem quem aciona, desligar o
+  // Grupos: a área "Grupos" da lista e o tutorial 11. As regras (nunca "*", nunca ligar sem quem aciona, desligar o
   // último fecha o canal de grupos) moram em whatsapp-grupos-core.ts; as mudanças vão para a auditoria.
   const waJid = (payload: unknown): string => {
     const jid = (payload as { jid?: unknown } | null)?.jid;

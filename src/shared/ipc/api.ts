@@ -6,7 +6,7 @@ import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
-import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, PlanilhaLeitura } from "./google";
+import type { AgendaEvento, BackupDadosView, GmailAgenteState, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
@@ -45,6 +45,9 @@ export interface MainEvents {
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 10). */
   "navegador:progress": { line: string };
+  "gmail:progress": { line: string };
+  /** Gmail: estado do "o agente pode usar" (socket + túnel reverso). */
+  "gmail:agent": GmailAgenteState;
   /** Instalação do CRM pelo WhatsApp (tutorial 17): uma linha de progresso. */
   "crm:progress": { line: string };
   /** Instalação do financeiro na máquina, linha a linha (tutorial 13). */
@@ -200,7 +203,12 @@ export interface MeuBotSharedApi {
   backupDadosSenha(senha: string): Promise<BackupDadosView>;
   /** Apaga a senha: o pacote cifrado deixa de ser enviado (o que já está no Drive continua lá). */
   backupDadosLimparSenha(): Promise<BackupDadosView>;
-  gmailResumo(): Promise<GmailResumo>;
+  /** Página Gmail (Pro): uma página da caixa de entrada, ou de uma busca na sintaxe do Gmail; `pagina` é o token de `proxima`. */
+  gmailListar(opts?: { busca?: string; max?: number; pagina?: string | undefined }): Promise<GmailLista>;
+  gmailLer(id: string): Promise<GmailDetalhe>;
+  /** Move para a lixeira (reversível); sem gmail.modify na autorização, falha com GMAIL_SEM_PERMISSAO. */
+  gmailApagar(id: string): Promise<GmailApagado>;
+  gmailRestaurar(id: string): Promise<GmailApagado>;
   agendaProximos(dias?: number): Promise<AgendaEvento[]>;
   agendaCriar(evento: { titulo: string; inicio: string; fim: string; descricao?: string }): Promise<AgendaEvento>;
   planilhaLer(id: string, intervalo: string): Promise<PlanilhaLeitura>;
@@ -340,6 +348,11 @@ export interface MeuBotClientApi {
   /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
   navegadorInstalled(): Promise<boolean | null>;
   installNavegador(): Promise<InstallBackendResult>;
+  /** Gmail para o agente (Pro): liga/desliga (socket + túnel reverso) ou só consulta, sem `on` (religa se a chave estiver lembrada); estado em gmail:agent. */
+  gmailAgente(on?: boolean): Promise<GmailAgenteState>;
+  /** O lado da máquina do Gmail (MCP + regra) está instalado? e instalar (progresso em gmail:progress). */
+  gmailInstalado(): Promise<boolean | null>;
+  instalarGmail(): Promise<InstallBackendResult>;
   installGuarda(): Promise<InstallBackendResult>;
   uninstallGuarda(): Promise<InstallBackendResult>;
   /** Tutorial 17 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */
