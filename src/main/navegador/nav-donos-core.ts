@@ -106,3 +106,16 @@ export function podeFechar(posses: ReadonlyMap<number, Posse>, aba: number, dono
   if (p === undefined) return "essa aba não é desta conversa (é da pessoa): não feche";
   return p.id === dono.id ? null : recusa(p);
 }
+
+/**
+ * O agente fechou a aba dele depois de mexer num site: as abas **da pessoa** (sem posse) que estão no mesmo site ficam
+ * velhas, mostrando a versão de antes, e ela tinha de atualizar na mão. Devolve as abas a recarregar: mesma origem
+ * (esquema + host + porta) da aba fechada, fora a própria e fora as de qualquer conversa (recarregar a aba de outro
+ * agente no meio de uma ação dele seria pior). URL inválida ou sem origem (about:blank) não conta.
+ */
+export function abasParaRecarregar(urlFechada: string, abas: readonly { id: number; url: string }[], fechada: number, posses: ReadonlyMap<number, Posse>): number[] {
+  const origem = (u: string): string | null => { try { const o = new URL(u).origin; return o === "null" ? null : o; } catch { return null; } };
+  const alvo = origem(urlFechada);
+  if (alvo === null) return [];
+  return abas.filter((a) => a.id !== fechada && !posses.has(a.id) && origem(a.url) === alvo).map((a) => a.id);
+}
