@@ -42,15 +42,15 @@ Regras:
 | Pasta | Do que é dona |
 |---|---|
 | `app/` | `ctx.ts` (ponte para o renderer), `paginas.ts` (páginas em aba própria e modo dividido), `rede.ts` (barra offline) |
-| `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok), oferta de skill depois de navegar |
-| `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts`, `chat.ts` |
-| `tutoriais/` | `tutoriais.ts` (página e guia ao vivo), `passos.ts` (registro body → quem desenha o passo; cada domínio registra os seus no `ligar…()`), `guia-secoes.ts` (passos sem dono ainda: suporte, status line, contas, Navegador…) |
+| `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok) e o passo do fallback, oferta de skill depois de navegar; guias de domínio: `objetivo-guia.ts` (objetivo do WhatsApp, estado e passos), `contas-cli-guia.ts` (Cloudflare, GitHub), `link-publico-guia.ts` |
+| `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts` (área Grupos e os passos do tutorial), `guarda-guia.ts`, `chat.ts` |
+| `tutoriais/` | Só o motor: `tutoriais.ts` (guia ao vivo), `catalogo.ts` (página Tutoriais, os cartões), `passos.ts` (registro body → quem desenha o passo), `guia-secoes.ts` (`guideCtx()` e os passos sem domínio: suporte, status line) |
 | `crm/` | Passo do CRM no guia (instalação, chave, pipeline, teste) |
 | `finance/`, `conta-google/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, páginas do meu-bot-admin |
-| `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom) e abas de terminal |
+| `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom; `navegador-guia.ts` = passos do tutorial e `abrirLinkDoChat`) e abas de terminal |
 | `conversa/` | Envio e streaming (`envio.ts`), voltar ao chat (`ponte-chat.ts`), ferramentas em uso (`atividade.ts`) |
 | `inicio/`, `acervo/`, `licenca/` | Abertura/onboarding/tour, Acervo de skills e objetivo, plano e licença |
-| `configuracoes/`, `atualizacao/` | Diálogo de configurações, alertas e fallback; atualização do app |
+| `configuracoes/`, `atualizacao/` | Diálogo de configurações, alertas e fallback (`entrada-rapida-guia.ts` = passos do atalho global); atualização do app |
 | `lib/` | Regras puras com teste (`scripts/tests/`): `tutoriais.ts` é só o motor dos tutoriais; o que é regra de domínio tem arquivo próprio (`whatsapp-resposta.ts`, `whatsapp-grupos.ts`, `fallback.ts`, `objetivo.ts`, `crm-modelos.ts`, `contas-claude.ts`…) |
 
 Regras do renderer:
@@ -59,6 +59,9 @@ Regras do renderer:
 - **Nada de `ctx` no carregamento do módulo**: o `ctx` só vale depois que o `renderer.ts` começa a rodar. Eventos e
   estado inicial de cada página ficam numa função `ligar…()` que o `renderer.ts` chama.
 - Uma variável que outro arquivo grava fica com quem grava (ou ganha uma função para mudar); import não se grava.
+- **A tela de um passo de tutorial mora em `<domínio>/<x>-guia.ts`**, junto do estado e do `refresh…` que ela lê, e o
+  módulo registra os seus bodies no próprio `ligar<X>Guia()` (`registrarPassos`, de `tutoriais/passos.ts`). Em
+  `tutoriais/` fica só o motor; em `renderer.ts`, só a chamada `ligar<X>Guia()`.
 - `backend-colima/` — o backend que roda em cada máquina (Node puro): `server.js` (rotas), `crm-*` e `finance-*`
   (modelo puro + API), pontes `finance-crm-sync.js` e `crm-finance-vendas.js`, plugins `crm/` e `finance/`.
 - `scripts/tests/` — um teste por módulo puro, importando de `dist/`.

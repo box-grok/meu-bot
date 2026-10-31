@@ -1,4 +1,4 @@
-import type { ClaudeAuthInfo, ContasClaudeView, ClaudeLoginEvent, XaiKeyStatus } from "../../shared/ipc";
+import type { BackendModel, ClaudeAuthInfo, ContasClaudeView, ClaudeLoginEvent, XaiKeyStatus } from "../../shared/ipc";
 import { avisoSemConta, estadoTexto, eventoTexto, nomeConta, usoTexto } from "../lib/contas-claude.js";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -7,6 +7,7 @@ import { hostLabel } from "../lib/probe-text.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
+import { FALLBACK_PRIMARIES, fallbackOrderText } from "../lib/fallback.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 // ---- Entrar no Claude Code: roda `claude auth login` na máquina, abre o link e recebe o código. Um estado só
@@ -430,12 +431,50 @@ function renderClaudeLoginPasso(txt: HTMLElement): void {
   paintLoginControls(clGuide, "guide");
   if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
 }
+/** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
+const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
+/**
+ * Passo "Escolher primário e reserva" (tutorial 6): a mesma escolha de Configurações › Fallback, salva na hora
+ * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
+ */
+export function renderFallbackOrder(container: HTMLElement): void {
+  const box = el("div", "audio-controls");
+  const accounts = el("div", "sl-switches");
+  const line = (ok: boolean | null, text: string): HTMLElement => el("div", `hint${ok === true ? " ok" : ok === false ? " bad" : ""}`, `${ok === true ? "✓" : ok === false ? "✗" : "•"} ${text}`);
+  accounts.append(
+    line(ctx.clAuth?.loggedIn ?? null, `Claude Code${ctx.clAuth?.email ? `: ${ctx.clAuth.email}` : ""} → modelo agente`),
+    line(ctx.xaiAuth?.loggedIn ?? null, `xAI${ctx.xaiAuth?.email ? `: ${ctx.xaiAuth.email}` : ""} → modelo grok-4`),
+  );
+  const label = el("label", "", "Primário nesta máquina ");
+  const sel = el("select");
+  for (const [value, text] of [["claude", "Claude (agente)"], ["xai", "xAI (grok-4)"]] as const) { const o = el("option", "", text); o.value = value; sel.append(o); }
+  const cur: string = ctx.settings?.backendModelForHost ?? "";
+  if (cur === "grok-4") sel.value = "xai"; else if (cur === "agente") sel.value = "claude"; else { const o = el("option", "", `outro (${cur || "sem modelo"}): fora da corrente`); o.value = "other"; o.disabled = true; sel.append(o); sel.value = "other"; }
+  label.append(sel);
+  const hint = el("p", "hint", fallbackOrderText(cur, ctx.account?.providers ?? null));
+  sel.addEventListener("change", () => {
+    const m = PRIMARY_OF[sel.value];
+    if (m === undefined) return;
+    sel.disabled = true;
+    void window.meuBot.setSettings({ backendModelForHost: m }).then((view) => {
+      ctx.applySettings(view);
+      ctx.saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); ctx.paintGuide();
+    }).catch((err: unknown) => { hint.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { sel.disabled = false; });
+  });
+  const keep = el("button", "btn btn-small", "Manter assim"); keep.type = "button";
+  keep.title = "A escolha atual já serve: o primário fica como está";
+  keep.hidden = !FALLBACK_PRIMARIES.includes(cur) || ctx.loadGuideFlags(FALLBACK_TUTORIAL).fallbackChosen;
+  keep.addEventListener("click", () => { ctx.saveGuideFlag(FALLBACK_TUTORIAL, "fallbackChosen"); ctx.paintGuide(); });
+  box.append(accounts, label, hint, keep);
+  container.append(box);
+}
 export function ligarContasAgente(): void {
   registrarPassos({
     "contas-claude": (txt) => renderContasClaude(txt),
     "claude-login": renderClaudeLoginPasso,
     "xai-prepare": (txt) => { txt.append(xaiPrep.box); paintXaiLogin(); },
     "xai-login": (txt) => { txt.append(xaiGuide.box); paintXaiLogin(); },
+    "fallback-order": (txt) => renderFallbackOrder(txt),
   });
   wireLogin(clModal);
    wireLogin(clGuide);

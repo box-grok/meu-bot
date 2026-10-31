@@ -8,6 +8,7 @@ import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { ctx } from "../app/ctx.js";
 import { registrarPassos } from "../tutoriais/passos.js";
+import { navInstState, renderNavOpen } from "../navegador/navegador-guia.js";
 
 // ---- Tutorial 17 · CRM pelo WhatsApp (Pro): estado na máquina, instalação, chave/pipeline/regras, teste.
 export let crmState: CrmInfo | null = null;
@@ -166,8 +167,8 @@ export function renderCrmConfig(container: HTMLElement): void {
   // streak-crm-navegador tem o caminho). O app percebe a gravação pela linha da ferramenta e segue sozinho.
   if (st?.configured !== true) {
     const ag = el("div", "audio-row");
-    const btn = el("button", "btn btn-ghost btn-small", "Pedir ao agente para gerar a chave"); btn.type = "button"; btn.disabled = crmBusy || ctx.navInstState !== true;
-    btn.title = ctx.navInstState === true ? "Abre a conversa com o Navegador ligado para o agente: ele cria a chave no Streak e guarda na máquina, sem mostrar" : "Antes, conclua o tutorial do Navegador (o agente precisa dele)";
+    const btn = el("button", "btn btn-ghost btn-small", "Pedir ao agente para gerar a chave"); btn.type = "button"; btn.disabled = crmBusy || navInstState !== true;
+    btn.title = navInstState === true ? "Abre a conversa com o Navegador ligado para o agente: ele cria a chave no Streak e guarda na máquina, sem mostrar" : "Antes, conclua o tutorial do Navegador (o agente precisa dele)";
     btn.addEventListener("click", () => {
       if (!ctx.navAgent.on) void window.meuBot.browserAgent(true).then((s) => { ctx.navAgent = s; ctx.paintNav(); });
       void ctx.goToChatFromGuide(CRM_KEY_PROMPT, "O agente abre o Gmail na aba Navegador, cria a chave no Streak e guarda na máquina; quando o `chave-set` responder, o passo se conclui aqui sozinho.");
@@ -227,8 +228,8 @@ export function ligarCrmGuia(): void {
     "crm-config": (txt) => renderCrmConfig(txt),
     "crm-test": (txt) => renderCrmTest(txt),
     "crm-pipeline": (txt) => renderCrmPipeline(txt),
-    // O Gmail web com a barra do CRM abre no Navegador do agente (renderizador do Navegador, em guia-secoes).
-    "crm-gmail": (txt) => ctx.renderNavOpen(txt, "https://mail.google.com/"),
+    // O Gmail web com a barra do CRM abre no Navegador do agente (renderizador do Navegador, em navegador-guia).
+    "crm-gmail": (txt) => renderNavOpen(txt, "https://mail.google.com/"),
     "crm-importar": (txt) => { txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada.")); },
   });
   window.meuBot.on("crm:progress", ({ line }) => { crmLog = [...crmLog, line].slice(-6); if (crmBusy) ctx.paintGuide(); });

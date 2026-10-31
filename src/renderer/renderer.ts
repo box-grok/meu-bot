@@ -19,7 +19,7 @@ import { ACERVO_SKILLS, installPrompt } from "./lib/acervo.js";
 import { hostLabel, setHostNicknames } from "./lib/probe-text.js";
 import { shellBlockToPaste, xtermTheme } from "./lib/terminal.js";
 import { ID_INFO_TEXT, ID_INFO_TITLE, infoBalloon } from "./lib/info-balloon.js";
-import { GUIDE_ACTION_LABEL, TUTORIAIS, emptyFlags, guideTabTitle, guideView, parseTutMemory, parseTutPulados, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, tutorialKnown, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
+import { GUIDE_ACTION_LABEL, TUTORIAIS, emptyFlags, guideTabTitle, parseTutMemory, parseTutPulados, sidebarBadge, tutorialState, tutorialBadge, visibleTutorials, type GuideContext, type GuideFlagName, type GuideFlags, type GuideTarget, type Tutorial, type TutorialState } from "./lib/tutoriais.js";
 import { REPLY_NOTE, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replyChoiceOf } from "./lib/whatsapp-resposta.js";
 import { GRUPOS_AVISO, GRUPOS_QUEM_NOTA, grupoAlvo, quemEscolhido } from "./lib/whatsapp-grupos.js";
 import { FALLBACK_PRIMARIES, fallbackOrderText } from "./lib/fallback.js";
@@ -43,13 +43,13 @@ import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Rec
 import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { ESPACO_THRESHOLDS, buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
-import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
+import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_INVITE, initialOnboardState, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
 import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiKey } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
 import { conferirPassos } from "./tutoriais/passos.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
-import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
-import { TUT_ICONS, TUT_VISIVEIS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
+import { acervoList, ligarAcervo, paintAcervoCount } from "./acervo/acervo.js";
+import { activeGuide, ligarTutoriais, loadGuideFlags, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, saveGuideFlag, tutCounts, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
 import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
 import { cacheDrop, cacheRead, cacheWrite, getListMode, ligarConversas, paintArquivadas, paintListMode, paintWaSidebar, setListMode, waChatTitle } from "./whatsapp/conversas.js";
 import { TUT_GRUPOS, ligarGrupos, loadGrupoAlvo, refreshWaGroups, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
@@ -57,7 +57,14 @@ import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, rend
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
-import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderNavOpen, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { firstReplyOnHost, guideCtx, ligarGuiaSecoes, paintSupport, refreshStatusLine, refreshSupportState, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { abrirLinkDoChat, ligarNavegadorGuia, refreshNavInst } from "./navegador/navegador-guia.js";
+import { ligarLinkPublicoGuia, refreshLinkPublico } from "./agente/link-publico-guia.js";
+import { ligarContasCliGuia, refreshContas, renderConta } from "./agente/contas-cli-guia.js";
+import { guardaMsg, ligarGuardaGuia, refreshGuarda, setGuardaMsg } from "./whatsapp/guarda-guia.js";
+import { ligarEntradaRapidaGuia } from "./configuracoes/entrada-rapida-guia.js";
+import { ligarObjetivoGuia, objectiveBusy, objectiveDo, objectiveDraft, objectiveMsg, objectiveState, refreshObjective, setObjectiveDraft, setObjectiveMsg, setObjectiveState } from "./agente/objetivo-guia.js";
+import { ligarCatalogo, setTutNext, tutNext, tutoriaisPage } from "./tutoriais/catalogo.js";
 import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
 import { ligarFinanceiroGuia, paintFinanceLine } from "./finance/financeiro-guia.js";
@@ -132,7 +139,7 @@ const ctxImpl = {
   get form() { return form; },
   get getListMode() { return getListMode; },
   get goToChatFromGuide() { return goToChatFromGuide; },
-  get guardaMsg() { return guardaMsg; }, set guardaMsg(v) { guardaMsg = v; },
+  get guardaMsg() { return guardaMsg; }, set guardaMsg(v) { setGuardaMsg(v); },
   get guideCtx() { return guideCtx; },
   get hostLocalAddr() { return hostLocalAddr; },
   get hostStatus() { return hostStatus; },
@@ -158,7 +165,6 @@ const ctxImpl = {
   get navDonoView() { return navDonoView; },
   get navExtensions() { return navExtensions; },
   get navHostsIn() { return navHostsIn; },
-  get navInstState() { return navInstState; },
   get navLicenseAsked() { return navLicenseAsked; },
   get navMarcarAberto() { return navMarcarAberto; },
   get navPage() { return navPage; },
@@ -169,9 +175,9 @@ const ctxImpl = {
   get newTab() { return newTab; },
   get objectiveBusy() { return objectiveBusy; },
   get objectiveDo() { return objectiveDo; },
-  get objectiveDraft() { return objectiveDraft; }, set objectiveDraft(v) { objectiveDraft = v; },
-  get objectiveMsg() { return objectiveMsg; }, set objectiveMsg(v) { objectiveMsg = v; },
-  get objectiveState() { return objectiveState; }, set objectiveState(v) { objectiveState = v; },
+  get objectiveDraft() { return objectiveDraft; }, set objectiveDraft(v) { setObjectiveDraft(v); },
+  get objectiveMsg() { return objectiveMsg; }, set objectiveMsg(v) { setObjectiveMsg(v); },
+  get objectiveState() { return objectiveState; }, set objectiveState(v) { setObjectiveState(v); },
   get offerClaudeLogin() { return offerClaudeLogin; },
   get offerSkillFromTurn() { return offerSkillFromTurn; },
   get onboardEvent() { return onboardEvent; },
@@ -229,7 +235,6 @@ const ctxImpl = {
   get renderConta() { return renderConta; },
   get renderContasClaude() { return renderContasClaude; },
   get contasClaudeView() { return contasClaudeView; },
-  get renderNavOpen() { return renderNavOpen; },
   get renderReplyCards() { return renderReplyCards; },
   get renderSidebar() { return renderSidebar; },
   get renderStatusLineSegments() { return renderStatusLineSegments; },
@@ -280,7 +285,7 @@ const ctxImpl = {
   get toggleSidebar() { return toggleSidebar; },
   get toggleSplit() { return toggleSplit; },
   get TUT_GRUPOS() { return TUT_GRUPOS; },
-  get tutNext() { return tutNext; }, set tutNext(v) { tutNext = v; },
+  get tutNext() { return tutNext; }, set tutNext(v) { setTutNext(v); },
   get tutoriaisPage() { return tutoriaisPage; },
   get tutorialDone() { return tutorialDone; },
   get tutorialsReady() { return tutorialsReady; },
@@ -1167,7 +1172,7 @@ function buildPaletteItems(): PaletteItem[] {
   if (usuariosAdmin !== null) { const u = usuariosAdmin; add({ id: "a:usuarios", kind: "action", label: `Usuários de ${hostLabel(windowHost)}`, detail: "criar, limitar e apagar os usuários de login desta máquina", keywords: ["usuarios", "usuários", "contas", "box", "criar", "linux"] }, () => u.open()); }
   add({ id: "a:terminal", kind: "action", label: `Terminal em ${hostLabel(windowHost)}`, detail: "abre um shell nesta máquina (Cmd+J)", keywords: ["terminal", "shell", "ssh", "console"] }, () => { void openTerminalTab(); });
   if (caps.chat) add({ id: "a:navegador", kind: "action", label: `Navegador em ${hostLabel(windowHost)}`, detail: `quick view com extensões do Chrome; o agente pode navegar por você${caps.planoExigido === "free" ? " (Pro)" : ""}`, keywords: ["navegador", "browser", "site", "web", "extensão", "chrome", "pro"] }, () => { void openNavTab(); });
-  for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { tutNext = false; openGuide(t); });
+  for (const t of visibleNow()) if (t.comingSoon !== true) add({ id: `a:tut:${t.id}`, kind: "action", label: `Tutorial ${t.number}: ${t.title}`, detail: tutorialBadge(t, false), keywords: ["tutorial", String(t.number), t.short.toLowerCase(), ...t.title.toLowerCase().split(/\s+/)] }, () => { setTutNext(false); openGuide(t); });
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar tudo (barra, atalhos, lista e barra de escrever)", detail: "Cmd+B" }, () => setInterfaceRecolhida(!interfaceRecolhida()));
@@ -1479,12 +1484,6 @@ function applySettings(view: SettingsView): void {
 ligarContasAgente();
 ligarPaginas();
 
-// ---- Tutorial 8 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
-let objectiveState: ObjectiveInfo | null = null;
-/** Último recado do tutorial 8 (erro ou "skill salva"). */
-let objectiveMsg: { text: string; bad: boolean } | null = null;
-/** Rascunho do passo 1 antes de "Salvar objetivo" (cartão marcado e frase digitada). */
-let objectiveDraft: { id: string; text: string } | null = null;
 /** A Biblioteca do meu-bot (skills do Cloudflare) fica oculta até a pessoa pedir. */
 let acervoBibliotecaAberta = false;
 const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel"), () => {
@@ -1545,110 +1544,7 @@ const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel")
 });
 ligarAcervo();
 
-/** Acabou de concluir o tour: Tutoriais destaca o próximo (o primeiro pendente) até a pessoa começar algum. */
-let tutNext = false;
-const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutoriais-panel"), () => {
-  tutList.replaceChildren();
-  let nextMarked = false;
-  const showArchived = tutArchivedEl.checked;
-  // Abrir a página é o "visto": o que está à vista agora deixa de ser novidade (a etiqueta "Novo" fica só nesta visita).
-  const vis = visibleNow();
-  const seen = loadTutSeen();
-  const unseen = vis.filter((t) => !seen.has(t.id)).map((t) => t.id);
-  if (unseen.length > 0) { markTutSeen(unseen); for (const id of unseen) tutNovoLabels.add(id); }
-  const active: HTMLElement[] = [];
-  // Arquivados saem pelo número (o tour, sem número, primeiro): a trilha ordena só os pendentes.
-  const archived: { n: number; card: HTMLElement }[] = [];
-  const pulados = loadTutPulados();
-  // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela. "Pular" grava
-  // onboarding = "skipped" (o mesmo que o botão do próprio tour): vai para Arquivados, de onde "Começar" o inicia (30 out).
-  {
-    const done = tourDone();
-    const pulado = !done && settings?.onboarding === "skipped";
-    const card = el("article", `tut-card${done ? " finished archived" : ""}${pulado ? " archived" : ""}`);
-    const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS.tour;
-    const body = el("div", "tut-body");
-    const n = ONBOARD_STEPS.length;
-    body.append(el("span", "tut-badge", done ? "Concluído" : pulado ? "Pulado" : `Comece por aqui · ${n} passos · ${TOUR_CARD.minutes} min`), el("h3", "", TOUR_CARD.title), el("p", "", TOUR_CARD.summary));
-    const start = el("button", "btn tut-start", done ? "Rever" : "Começar"); start.type = "button";
-    start.addEventListener("click", () => { tutNext = false; closePage(tutoriaisPage); void restartTour(); });
-    const head = el("div", "tut-head"); head.append(icon, body);
-    if (!done && !pulado) {
-      const skip = el("button", "btn btn-ghost btn-small tut-skip", "Pular"); skip.type = "button";
-      skip.title = "Tira o tour da lista (fica em Arquivados; nada muda na máquina)";
-      skip.addEventListener("click", () => {
-        void window.meuBot.setSettings({ onboarding: "skipped" }).then((v) => { applySettings(v); reportProgress(); tutoriaisPage.render(); }).catch(() => undefined);
-      });
-      head.append(skip);
-    }
-    head.append(start);
-    card.append(head);
-    if (done || pulado) archived.push({ n: 0, card }); else active.push(card);
-  }
-  for (const t of vis) {
-    const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
-    const state = tutState(t);
-    const known = tutorialKnown(t, guideCtx());
-    const started = known && view.done.some(Boolean);
-    const soon = t.comingSoon === true;
-    const done = !soon && state === "done";
-    // Fontes ainda a caminho e sem lembrança: o cartão espera, quieto, em vez de nascer "pendente" e mudar depois.
-    const checking = !soon && state === "unknown";
-    const pulado = !soon && !done && !checking && pulados.has(t.id);
-    const next = tutNext && !nextMarked && !soon && !done && !checking && !pulado && tourDone();
-    if (next) nextMarked = true;
-    const novo = !done && !checking && !pulado && tutNovoLabels.has(t.id);
-    const card = el("article", `tut-card${done ? " finished archived" : ""}${pulado ? " archived" : ""}${soon ? " soon" : ""}${next ? " next" : ""}${checking ? " checking" : ""}`);
-    const icon = el("span", "tut-icon"); icon.innerHTML = TUT_ICONS[t.icon ?? "target"];
-    const body = el("div", "tut-body");
-    // "NOVO · SEU PRÓXIMO PASSO · TUTORIAL 3 · 2 DE 4 · 3 MIN": número sempre; progresso quando começou.
-    const badge = done ? `Tutorial ${t.number} · Concluído`
-      : pulado ? `Tutorial ${t.number} · Pulado${started ? ` · ${view.done.filter(Boolean).length} de ${t.steps.length}` : ""}`
-      : checking ? `Tutorial ${t.number} · verificando a máquina…`
-      : [novo ? "Novo" : null, next ? "Seu próximo passo" : null, `Tutorial ${t.number}`, started ? `${view.done.filter(Boolean).length} de ${t.steps.length} · ${t.minutes} min` : tutorialBadge(t, false)].filter((x): x is string => x !== null).join(" · ");
-    body.append(el("span", "tut-badge", badge), el("h3", "", t.title), el("p", "", t.summary));
-    const start = el("button", soon || checking ? "btn btn-ghost tut-soon" : "btn tut-start", soon ? "Em breve" : checking ? "Aguarde…" : done ? "Rever" : pulado ? "Retomar" : started ? "Continuar" : "Começar"); start.type = "button";
-    if (soon || checking) start.disabled = true;
-    else start.addEventListener("click", () => { tutNext = false; if (pulado) { setTutPulado(t.id, false); paintTutCount(); } openGuide(t); });
-    const head = el("div", "tut-head"); head.append(icon, body);
-    // "Pular": o pendente sai da lista e da contagem (vai para Arquivados, de onde "Retomar" o traz de volta).
-    if (!soon && !checking && !done && !pulado) {
-      const skip = el("button", "btn btn-ghost btn-small tut-skip", "Pular"); skip.type = "button";
-      skip.title = "Tira este tutorial da lista (fica em Arquivados; nada muda na máquina)";
-      skip.addEventListener("click", () => { setTutPulado(t.id, true); paintTutCount(); tutoriaisPage.render(); });
-      head.append(skip);
-    }
-    head.append(start);
-    card.append(head);
-    // Concluído: "Refazer do zero" desfaz na máquina o que o tutorial fez e volta ao passo 1 (dois cliques).
-    if (done && t.reset !== undefined && caps.install) {
-      const foot = el("div", "tut-reset");
-      const btn = el("button", "btn btn-ghost btn-small", tutResetting === t.id ? "Desfazendo…" : "Refazer do zero"); btn.type = "button"; btn.disabled = tutResetting !== null;
-      btn.title = `Desfaz: ${t.reset.what}. Depois o tutorial volta ao passo 1.`;
-      btn.addEventListener("click", () => armConfirm(btn, "Confirmar? desfaz na máquina", () => { void resetTutorial(t); }));
-      foot.append(btn, el("span", "hint", t.reset.what));
-      if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
-      card.append(foot);
-    }
-    if (done || pulado) archived.push({ n: t.number, card }); else active.push(card);
-  }
-  // Resumo: "Você fez 2 de 6 · próximo: 3 · Status line · 1 novo · 2 em breve" (o tour conta; "em breve" não).
-  const c = tutCounts();
-  $<HTMLElement>("tutoriais-summary").textContent = [
-    c.todo === 0 && c.pulados === 0 ? `Você fez ${c.total} de ${c.total}: tudo feito` : `Você fez ${c.archived - c.pulados} de ${c.total}`,
-    ...(c.next !== null ? [`próximo: ${c.next.number} · ${c.next.short}`] : []),
-    ...(c.novos > 0 ? [`${c.novos} ${c.novos === 1 ? "novo" : "novos"}`] : []),
-    ...(c.soon > 0 ? [`${c.soon} em breve`] : []),
-    ...(c.pulados > 0 ? [`${c.pulados} ${c.pulados === 1 ? "pulado" : "pulados"}`] : []),
-    ...(c.checking > 0 ? [`verificando ${c.checking} na máquina…`] : []),
-  ].join(" · ");
-  paintTutCount();
-  if (active.length === 0) tutList.append(el("div", "acervo-empty", archived.length > 0 && !showArchived ? "Tudo feito por aqui. Ligue \"arquivados\" para rever um tutorial." : "Nenhum tutorial ainda."));
-  // Só os dois primeiros à vista: concluir ou pular um traz o próximo, para a lista não pesar.
-  tutList.append(...active.slice(0, TUT_VISIVEIS));
-  if (active.length > TUT_VISIVEIS) tutList.append(el("div", "acervo-empty", `Mais ${active.length - TUT_VISIVEIS} aparecem conforme você conclui estes.`));
-  if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived.sort((a, b) => a.n - b.n).map((x) => x.card)); }
-});
+ligarCatalogo();
 ligarTutoriais();
 /** Pede ao agente da máquina para preparar (modal ou guia): fecha o modal se aberto, abre uma conversa e manda o pedido. */
 /** Confirmação sem caixa sobreposta: o 1º clique arma o botão ("Confirmar?"), o 2º em até 4 s executa. */
@@ -1869,7 +1765,6 @@ newBtn.addEventListener("click", () => { burstNew(); void newTab(); });
  * que o suporte fez aqui. Tudo vale na hora; depois de cada ação as duas telas repintam.
  */
 let supportState: SupportInfo | null = null;
-let guardaMsg: { text: string; bad: boolean } | null = null;
 /** Segmentos escolhidos (arquivo na máquina); null = todos. O rodapé e a barra do terminal seguem a mesma escolha. */
 let statusLineSegs: StatusLineSegments | null = null;
 ligarCrmGuia();
@@ -1877,6 +1772,12 @@ ligarFinanceiroGuia();
 /** O agente rodou o `chave-set`? Quando o resultado chegar, consulta o CRM e segue (teste da chave, pipeline único). */
 let crmKeyFromAgent = false;
 ligarGuiaSecoes();
+ligarNavegadorGuia();
+ligarObjetivoGuia();
+ligarLinkPublicoGuia();
+ligarContasCliGuia();
+ligarGuardaGuia();
+ligarEntradaRapidaGuia();
 ligarBackendFalta();
 let navAskedPro = false;
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
