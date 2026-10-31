@@ -235,6 +235,9 @@ export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   // ficam de fora o que se reinstala e não é da pessoa: node_modules (1,2 GB na grokbot-1), o venv do Whisper
   // (433 MB), caches, temporários, logs, binários e as sessões antigas do WhatsApp. Sem isso o .hermes passava de
   // 2,5 GB e o pacote (limite de 512 MB) nunca subia. Os padrões do tar casam em qualquer profundidade.
+  // `.hermes/tools` (ffmpeg, Python, Node e uv baixados pelo Hermes: 1,6 GB na meu-root-root em 31/10) e
+  // `.hermes/installs` (os ambientes montados a partir deles: 728 MB) também se reinstalam; com eles o pacote passava
+  // de 512 MB de novo. Sem os dois, o mesmo .hermes dá 1,4 MB.
   {
     id: "trabalho", nome: "Trabalho", pasta: "Trabalho", prefixo: "trabalho",
     dirs: [
@@ -245,6 +248,7 @@ export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
       ".hermes/auth.json", ".hermes/.env", ".hermes/.env.bak-*", ".hermes/*/*/.env", ".hermes/*/.env",
       ".hermes/whatsapp/session", ".hermes/whatsapp/session.loggedout-*", ".hermes/whatsapp/backups",
       "node_modules", ".hermes/venv-whisper", ".hermes/cache", ".hermes/tmp", ".hermes/logs", ".hermes/sandboxes", ".hermes/audio_cache", ".hermes/bin", ".hermes/models_dev_cache.json",
+      ".hermes/tools", ".hermes/installs",
     ],
   },
   // 183 dos 208 MB do .openclaw são cache, temporários e extensões que se reinstalam. Do Hermes vão o auth.json, o

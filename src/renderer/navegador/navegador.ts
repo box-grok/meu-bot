@@ -7,6 +7,7 @@ import { type ProAccess, proBlockText, tabLabel, displayUrl, browserAccess, paga
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { type RecortesPref, parseRecortesPref, recortesPara, recorteOculto, type Recorte, recorteTitulo } from "../lib/recortes.js";
+import { NAV_ZOOM_STEPS, caberAuto, larguraMinima, zoomParaCaber } from "../lib/nav-caber-core.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
@@ -148,7 +149,9 @@ function navStoreTweaks(tab: NavTab): void {
 const NAV_REFIT_JS = "window.scrollTo(0, 0); document.documentElement.scrollTop = 0; if (document.body) document.body.scrollTop = 0; window.dispatchEvent(new Event('resize')); undefined";
 function navRefit(tab: NavTab): void {
   if (tab.loading) return;
+  if (navZoomAuto(tab)) navApplyZoom(tab); // a área mudou de largura: o zoom automático acompanha antes de a página medir
   try { void tab.wv.executeJavaScript(NAV_REFIT_JS).catch(() => undefined); } catch { /* webview ainda não anexado */ }
+  navCaberSoon(tab);
 }
 let navRefitTimer: ReturnType<typeof setTimeout> | null = null;
 function navRefitSoon(): void {
@@ -161,6 +164,7 @@ function toggleRecorte(r: Recorte): void {
   try { localStorage.setItem("navRecortes", JSON.stringify(navRecortes)); } catch { /* opcional */ }
   for (const t of navTabs) applyRecortes(t);
   // Atualiza o próprio botão em vez de recriar a barra: recriar sob o mouse deixava a dica antiga presa na tela.
+  if (r.resize === true) navMinimos.clear(); // mostrar/ocultar uma coluna muda a largura mínima do site: mede de novo
   const hidden = recorteOculto(navRecortes, r);
   const b = navEls?.actions.querySelector<HTMLButtonElement>(`.nav-cut[data-cut="${r.id}"]`);
   if (b != null) { b.classList.toggle("off", hidden); b.title = recorteTitulo(r, hidden); b.setAttribute("aria-pressed", String(!hidden)); }
@@ -304,7 +308,7 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
   wv.addEventListener("did-navigate", () => { tab.cssKeys.clear(); navApplyZoom(tab); sync(); });
-  wv.addEventListener("did-finish-load", () => { navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); });
+  wv.addEventListener("did-finish-load", () => { navApplyZoom(tab); applyRecortes(tab, true); navStoreTweaks(tab); navCaberSoon(tab); });
   wv.addEventListener("did-navigate-in-page", sync);
   wv.addEventListener("page-title-updated", sync);
   wv.addEventListener("page-favicon-updated", (ev) => { tab.favicon = ((ev as unknown as { favicons?: string[] }).favicons ?? [])[0] ?? null; paintNav(); });
@@ -569,8 +573,13 @@ export async function openNavTab(url?: string, frente = true): Promise<void> {
     pin.addEventListener("click", () => { void navTogglePin(); });
     star.insertAdjacentElement("afterend", pin);
     // Zoom da aba: clique alterna 100% ↔ 75% (o comum para planilhas largas); Cmd+=/-/0 ajusta fino.
-    const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button"; zoom.title = "Zoom deste site (Cmd+= aumenta, Cmd+- diminui, Cmd+0 volta a 100%). Clique para alternar 100% e 75%.";
-    zoom.addEventListener("click", () => { const c = navCurrent(); if (c === null) return; const z = navZoomFor(c); if (Math.abs(z - 1) > 0.001) navZoomStep(0); else { navZoomStep(-1); navZoomStep(-1); navZoomStep(-1); } });
+    const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button";
+    zoom.addEventListener("click", () => {
+      const c = navCurrent(); if (c === null) return; const h = navHostOf(c.url); if (h === null) return;
+      // Site de largura fixa (Gmail): o clique alterna automático ↔ 100% fixo. Nos outros, 100% ↔ 75%.
+      if (caberAuto(h)) { if (navZoomManual(h) === undefined) navZoomSet(h, 1); else navZoomStep(0); return; }
+      const z = navZoomFor(c); if (Math.abs(z - 1) > 0.001) navZoomStep(0); else { navZoomStep(-1); navZoomStep(-1); navZoomStep(-1); }
+    });
     pin.insertAdjacentElement("afterend", zoom);
     navEls = { rail, favs, star, tabs: tabsEl2, url: urlEl, back, fwd, reload, loading, box, block, note, menu, bar, agent, wa, actions, popup };
     back.addEventListener("click", () => navCurrent()?.wv.goBack());
@@ -659,29 +668,79 @@ function navUpdateActive(fn: (w: NavWorkspace) => NavWorkspace): NavWorkspaces |
  * Zoom por site (como no Chrome): sites largos (a planilha do Streak no Gmail) cabem na área do Navegador com
  * menos zoom. Cmd+= / Cmd+- / Cmd+0 ou o botão "%" na barra; lembrado por host neste Mac e reaplicado a cada carga.
  */
-const NAV_ZOOM_STEPS = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
+/** Largura mínima medida de cada site de largura fixa (px CSS), nesta sessão; `caberAuto` diz quais sites entram. */
+const navMinimos = new Map<string, number>();
 function navZoomMap(): Record<string, number> { try { const v = JSON.parse(localStorage.getItem("navZoom") ?? "{}") as Record<string, unknown>; const out: Record<string, number> = {}; for (const [k, n] of Object.entries(v)) if (typeof n === "number" && n >= 0.3 && n <= 3) out[k] = n; return out; } catch { return {}; } }
 const navHostOf = (url: string): string | null => { try { return /^https?:/.test(url) ? new URL(url).hostname : null; } catch { return null; } };
-function navZoomFor(tab: NavTab): number { const h = navHostOf(tab.url); return h === null ? 1 : navZoomMap()[h] ?? 1; }
+/** Zoom escolhido pela pessoa para o host (undefined = nenhum: 100%, ou o automático nos sites de largura fixa). */
+const navZoomManual = (h: string): number | undefined => navZoomMap()[h];
+/** Largura da área da aba em px da tela (0 enquanto escondida). */
+const navLarguraDe = (tab: NavTab): number => tab.wv.clientWidth || navEls?.box.clientWidth || 0;
+/**
+ * Zoom da aba: o escolhido pela pessoa; senão, num site de largura fixa (Gmail), o maior degrau em que a largura mínima
+ * medida cabe na área; senão 100%.
+ */
+function navZoomFor(tab: NavTab): number {
+  const h = navHostOf(tab.url); if (h === null) return 1;
+  const manual = navZoomManual(h); if (manual !== undefined) return manual;
+  return caberAuto(h) ? zoomParaCaber(navLarguraDe(tab), navMinimos.get(h) ?? null) : 1;
+}
+/** O zoom desta aba está no automático (site de largura fixa sem escolha da pessoa)? */
+function navZoomAuto(tab: NavTab): boolean { const h = navHostOf(tab.url); return h !== null && caberAuto(h) && navZoomManual(h) === undefined; }
 function navApplyZoom(tab: NavTab): void { try { tab.wv.setZoomFactor(navZoomFor(tab)); } catch { /* ainda não anexado */ } }
+/** Grava (ou apaga, com null) a escolha da pessoa para o host e aplica em todas as abas dele. */
+function navZoomSet(h: string, z: number | null): void {
+  const map = navZoomMap(); if (z === null) delete map[h]; else map[h] = z;
+  try { localStorage.setItem("navZoom", JSON.stringify(map)); } catch { /* opcional */ }
+  for (const t of navTabs) if (navHostOf(t.url) === h) navApplyZoom(t);
+  paintNavZoom(); navRefitSoon();
+}
 export function navZoomStep(dir: -1 | 0 | 1): void {
   const cur = navCurrent(); if (cur === null) return;
   const h = navHostOf(cur.url); if (h === null) return;
   const z = navZoomFor(cur);
   let i = NAV_ZOOM_STEPS.findIndex((s) => s >= z - 0.001); if (i < 0) i = NAV_ZOOM_STEPS.length - 1;
   const next = dir === 0 ? 1 : NAV_ZOOM_STEPS[Math.max(0, Math.min(NAV_ZOOM_STEPS.length - 1, i + dir))]!;
-  const map = navZoomMap(); if (next === 1) delete map[h]; else map[h] = next;
-  try { localStorage.setItem("navZoom", JSON.stringify(map)); } catch { /* opcional */ }
+  // Cmd+0 apaga a escolha (100%, ou o automático no Gmail); num site de largura fixa, 100% escolhido fica gravado.
+  navZoomSet(h, dir === 0 || (next === 1 && !caberAuto(h)) ? null : next);
+}
+/**
+ * Mede a página de um site de largura fixa depois do relayout: estourou (scrollWidth > innerWidth) → a largura mínima
+ * cresce e o zoom desce um degrau de cada vez até caber (cada aplicação dispara um novo refit, que mede de novo).
+ */
+const navCaberTimers = new Map<string, ReturnType<typeof setTimeout>>();
+function navCaberSoon(tab: NavTab): void {
+  if (!navZoomAuto(tab)) return;
+  const t = navCaberTimers.get(tab.id); if (t !== undefined) clearTimeout(t);
+  navCaberTimers.set(tab.id, setTimeout(() => { navCaberTimers.delete(tab.id); void navMedirCaber(tab); }, 400));
+}
+async function navMedirCaber(tab: NavTab): Promise<void> {
+  const h = navHostOf(tab.url); if (h === null || tab.loading || !navZoomAuto(tab) || tab.wv.hidden) return;
+  let medida: unknown;
+  try { medida = await tab.wv.executeJavaScript("[document.documentElement.scrollWidth, window.innerWidth]"); } catch { return; }
+  if (!Array.isArray(medida) || typeof medida[0] !== "number" || typeof medida[1] !== "number") return;
+  const antes = navMinimos.get(h) ?? null;
+  const novo = larguraMinima(antes, medida[0], medida[1]);
+  if (novo === null || novo === antes) return;
+  navMinimos.set(h, novo);
+  const zAntes = navZoomFor(tab);
   for (const t of navTabs) if (navHostOf(t.url) === h) navApplyZoom(t);
-  paintNavZoom(); navRefitSoon();
+  paintNavZoom();
+  if (Math.abs(navZoomFor(tab) - zAntes) > 0.001) navRefitSoon();
 }
 function paintNavZoom(): void {
   if (navEls === null) return;
   const b = navEls.bar.querySelector<HTMLButtonElement>(".nav-zoom"); if (b === null) return;
   const cur = navCurrent(); const z = cur === null ? 1 : navZoomFor(cur);
-  b.hidden = cur === null || navHostOf(cur.url) === null;
+  const h = cur === null ? null : navHostOf(cur.url);
+  b.hidden = cur === null || h === null;
   b.textContent = `${Math.round(z * 100)}%`;
   b.classList.toggle("on", Math.abs(z - 1) > 0.001);
+  const auto = cur !== null && navZoomAuto(cur);
+  b.classList.toggle("auto", auto);
+  b.title = h !== null && caberAuto(h)
+    ? (auto ? "Zoom automático: reduz sozinho para a página caber na largura. Clique para fixar 100%; Cmd+= / Cmd+- fixam outro valor." : "Zoom fixado por você (Cmd+= aumenta, Cmd+- diminui). Clique ou Cmd+0 voltam ao automático, que reduz para a página caber.")
+    : "Zoom deste site (Cmd+= aumenta, Cmd+- diminui, Cmd+0 volta a 100%). Clique para alternar 100% e 75%.";
 }
 /** 📌 na barra: fixa a aba atual no espaço ativo (nome = título, ícone = favicon) ou, se já é fixa, solta. */
 async function navTogglePin(): Promise<void> {

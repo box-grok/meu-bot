@@ -267,6 +267,19 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
 - Testes: `scripts/tests/pontes.test.mjs` (args da CLI com uma, duas ou nenhuma ponte; notas do turno; regra; as
   ferramentas do `.mjs` iguais a `GMAIL_TOOLS`), `tool-events.test.mjs` (resumos `✉️`).
 
+## Backup do trabalho: as ferramentas do Hermes ficam de fora (31 out)
+
+- **O que aconteceu:** na meu-root-root o cartão "Backup no Drive" dizia `trabalho: o pacote de trabalho passou de
+  512 MB`. O `.hermes` tinha 3,5 GB, e 2,4 GB eram coisa que se reinstala: `.hermes/tools` (ffmpeg, Python, Node e uv
+  que o Hermes baixa, 1,6 GB) e `.hermes/installs` (os ambientes montados a partir deles, 728 MB). Nenhum dos dois
+  estava na lista de exclusão do conjunto Trabalho (`CONJUNTOS_DADOS`, google-core.ts); o `cache` (1 GB) já estava.
+- **Agora:** os dois entram no `excluir`. Medido na mesma máquina, o pacote cai para 1,4 MB. Teste em
+  `scripts/tests/google-core.test.mjs`.
+- **"financeiro: a máquina não empacotou financeiro: nada de financeiro nesta maquina" deixou de ser erro.** O
+  comando remoto sai com 3 quando nenhuma pasta do conjunto existe (máquina sem o financeiro, por exemplo), e
+  `empacotar` (dados-drive.ts) tratava qualquer saída diferente de 0 como falha, então o cartão mostrava um erro em
+  toda máquina sem financeiro. Saída 3 agora é "ausente": vai só para o log e a tela fica com o que subiu.
+
 ## Tutorial 16 "Gmail (Pro)" (31 out)
 
 - Tutorial da página Gmail, em `src/renderer/gmail/gmail-guia.ts` (passos e a fonte `google` do guia) e a entrada
