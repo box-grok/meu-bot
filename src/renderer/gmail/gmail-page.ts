@@ -27,7 +27,6 @@ export interface GmailDeps {
   openPage(page: PageTab): void;
   /** Sem conta conectada, a página manda para a Conta Google. */
   openContaGoogle: () => void;
-  armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   host: () => string;
   license: () => LicenseView | null;
   licenseKnown: () => boolean;
@@ -241,7 +240,8 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     dc.append(corpoEl(d.corpo));
     if (d.truncado) dc.append(el("p", "hint", "A mensagem é longa e foi cortada aqui; abra no Gmail para ver inteira."));
     acoes.append(btn("Abrir no Gmail", "btn-ghost", () => { void deps.api.openExternal(d.link); }));
-    if (status?.gmailEscreve) { const lx = btn("Mover para a lixeira", "btn-ghost", () => { deps.armConfirm(lx, "Confirmar? vai para a lixeira (dá para desfazer)", () => { void apagar(d); }); }); acoes.append(lx); }
+    // Sem confirmação (pedido de 31 out): a lixeira é reversível e o "Desfazer" aparece logo em seguida.
+    if (status?.gmailEscreve) acoes.append(btn("Mover para a lixeira", "btn-ghost", () => { void apagar(d); }));
     else acoes.append(btn("Reconectar para poder apagar", "btn-ghost", () => { void agir(() => deps.api.googleContaConectar(), "reautorização aberta no Navegador; conclua lá e volte"); }));
     dc.append(acoes);
     panel.append(dc);

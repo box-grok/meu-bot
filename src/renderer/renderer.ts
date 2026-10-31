@@ -1918,7 +1918,7 @@ void (async () => {
   const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, openGmail: () => gmailPage?.open(), armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
   contaGooglePage = contaGoogle;
-  const gmail = mountGmail({ panelsEl, definePage, openPage, openContaGoogle: () => contaGoogle.open(), aoUsar: gmailGuiaFato, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  const gmail = mountGmail({ panelsEl, definePage, openPage, openContaGoogle: () => contaGoogle.open(), aoUsar: gmailGuiaFato, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   gmailPage = gmail;
   $<HTMLButtonElement>("gmail-line").addEventListener("click", () => gmail.open());
   const computador = mountComputador({ panelsEl, definePage, openPage, api: window.meuBot, host: () => windowHost, local: () => windowHost === "local", license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
