@@ -708,16 +708,36 @@ export function navZoomStep(dir: -1 | 0 | 1): void {
  * Mede a página de um site de largura fixa depois do relayout: estourou (scrollWidth > innerWidth) → a largura mínima
  * cresce e o zoom desce um degrau de cada vez até caber (cada aplicação dispara um novo refit, que mede de novo).
  */
-const navCaberTimers = new Map<string, ReturnType<typeof setTimeout>>();
+/**
+ * Mede a largura que a página ocupa de verdade, em px CSS: o scrollWidth do documento e a borda direita de cada elemento
+ * visível que entra pela tela e sai pela direita. Só o scrollWidth não basta: o Gmail esconde a rolagem nos contêineres
+ * dele, e o documento diz que cabe enquanto o título e o corpo do e-mail saem cortados. Elementos em uma linha só
+ * (white-space: nowrap, o texto com reticências) não contam: estourar o próprio contêiner é o desenho deles.
+ */
+const NAV_MEDIR_JS = `(() => {
+  const iw = window.innerWidth; const body = document.body;
+  let max = Math.max(document.documentElement.scrollWidth, body ? body.scrollWidth : 0);
+  const els = body ? body.getElementsByTagName("*") : []; const n = Math.min(els.length, 8000);
+  for (let i = 0; i < n; i++) {
+    const e = els[i]; const r = e.getBoundingClientRect();
+    if (!(r.width > 0 && r.height > 0 && r.left < iw && r.right > max)) continue;
+    const ws = getComputedStyle(e).whiteSpace; if (ws === "nowrap" || ws === "pre") continue;
+    max = r.right;
+  }
+  return [Math.ceil(max), iw];
+})()`;
+const navCaberTimers = new Map<string, ReturnType<typeof setTimeout>[]>();
+/** Duas medidas: logo depois do relayout e de novo mais tarde (o Gmail termina o layout do e-mail aberto depois da carga). */
+const CABER_ESPERAS_MS = [400, 1500];
 function navCaberSoon(tab: NavTab): void {
   if (!navZoomAuto(tab)) return;
-  const t = navCaberTimers.get(tab.id); if (t !== undefined) clearTimeout(t);
-  navCaberTimers.set(tab.id, setTimeout(() => { navCaberTimers.delete(tab.id); void navMedirCaber(tab); }, 400));
+  for (const t of navCaberTimers.get(tab.id) ?? []) clearTimeout(t);
+  navCaberTimers.set(tab.id, CABER_ESPERAS_MS.map((ms) => setTimeout(() => { void navMedirCaber(tab); }, ms)));
 }
 async function navMedirCaber(tab: NavTab): Promise<void> {
   const h = navHostOf(tab.url); if (h === null || tab.loading || !navZoomAuto(tab) || tab.wv.hidden) return;
   let medida: unknown;
-  try { medida = await tab.wv.executeJavaScript("[document.documentElement.scrollWidth, window.innerWidth]"); } catch { return; }
+  try { medida = await tab.wv.executeJavaScript(NAV_MEDIR_JS); } catch { return; }
   if (!Array.isArray(medida) || typeof medida[0] !== "number" || typeof medida[1] !== "number") return;
   const antes = navMinimos.get(h) ?? null;
   const novo = larguraMinima(antes, medida[0], medida[1]);

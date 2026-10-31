@@ -10,7 +10,11 @@
   site já existia (botão "%", Cmd+= / Cmd+-), mas nada ajustava sozinho.
 - **Agora:** para os sites de largura fixa listados em `CABER_HOSTS` (`src/renderer/lib/nav-caber-core.ts`; hoje só
   `mail.google.com`) o Navegador mede a página depois de cada relayout (`navRefit`: ao mostrar a aba, ao mudar a
-  largura, nos recortes e após carregar) com `[scrollWidth, innerWidth]`. Estourou → a largura mínima do site
+  largura, nos recortes e após carregar), duas vezes (400 ms e 1,5 s, porque o Gmail termina o layout do e-mail aberto
+  tarde). A medida (`NAV_MEDIR_JS`) é a borda direita do elemento visível que vai mais longe, não só o `scrollWidth` do
+  documento: o Gmail esconde a rolagem nos contêineres dele e o documento diz que cabe enquanto o título e o corpo do
+  e-mail saem cortados. Elementos em uma linha só (`white-space: nowrap`, texto com reticências) não contam, porque
+  estourar o próprio contêiner é o desenho deles. Estourou → a largura mínima do site
   (`larguraMinima`, só cresce, com folga de 4 px e ignorando medidas absurdas da página ainda montando) é lembrada na
   sessão (`navMinimos`) e o zoom desce para o maior degrau em que ela cabe (`zoomParaCaber`); cada aplicação dispara
   novo refit, que mede de novo até caber. Alargou a janela → o degrau sobe de volta (até 100%, nunca amplia).
