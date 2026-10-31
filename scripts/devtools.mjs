@@ -8,19 +8,22 @@
  *   node scripts/devtools.mjs eval "<título|índice>" "<JS>"  avalia no renderer e imprime o valor (Promise é aguardada)
  *   node scripts/devtools.mjs console "<título>"            recarrega a página e junta por 12 s erros/avisos do console
  * Porta: --porta=NNNN ou MEU_BOT_DEVTOOLS_PORT (padrão 9334). Só Node ≥ 22 (fetch e WebSocket globais), sem dependências.
+ * Por padrão só as janelas do app (type page); `--todos` inclui as webviews do Navegador, iframes e service workers.
+ * Cuidado: `console` recarrega a página escolhida; numa webview isso recarrega o site da pessoa.
  * Ver a skill `testar-no-app`.
  */
 const args = process.argv.slice(2);
 const portaArg = args.find((a) => a.startsWith("--porta="));
 const porta = Number(portaArg?.slice(8) ?? process.env["MEU_BOT_DEVTOOLS_PORT"] ?? 9334);
+const todos = args.includes("--todos");
 const [cmd, sel, expr] = args.filter((a) => !a.startsWith("--"));
 
 async function paginas() {
-  try { return await (await fetch(`http://127.0.0.1:${porta}/json`)).json(); }
+  try { const lista = await (await fetch(`http://127.0.0.1:${porta}/json`)).json(); return todos ? lista : lista.filter((p) => p.type === "page"); }
   catch { console.error(`Nada escuta em 127.0.0.1:${porta}. Lance o app com --remote-debugging-port=${porta} (feche o instalado antes).`); process.exit(2); }
 }
 function escolher(lista, s) {
-  const p = /^\d+$/.test(s ?? "") ? lista[Number(s)] : lista.find((x) => x.type === "page" && x.title.includes(s ?? ""));
+  const p = /^\d+$/.test(s ?? "") ? lista[Number(s)] : lista.find((x) => x.title.includes(s ?? ""));
   if (!p) { console.error("página não achada; títulos:", lista.map((x) => x.title)); process.exit(2); }
   return p;
 }
@@ -59,5 +62,5 @@ if (cmd === "paginas") {
   console.log(saida.length > 0 ? saida.join("\n") : "(nenhum erro ou aviso no console do renderer)");
   ws.close();
 } else {
-  console.error("uso: devtools.mjs [--porta=9334] paginas | eval <título|índice> <expressão> | console <título>"); process.exit(1);
+  console.error("uso: devtools.mjs [--porta=9334] [--todos] paginas | eval <título|índice> <expressão> | console <título|índice>"); process.exit(1);
 }

@@ -58,8 +58,9 @@ O app caiu ou há erro novo no log: pare e mostre o trecho do log.
    outra sessão pode ter reinstalado outro branch). Feche o app e lance o binário com a porta (`open -a` não passa
    argumentos; os fuses não bloqueiam esta flag):
    `~/Applications/<app>.app/Contents/MacOS/<app> --remote-debugging-port=9334 &`. Depois, com `scripts/devtools.mjs`:
-   - `node scripts/devtools.mjs paginas` lista as janelas; o admin abre no seletor e **não tem máquina em "Este Mac"**:
-     para a janela do Mac local use o cliente `meu-bot`.
+   - `node scripts/devtools.mjs paginas` lista as janelas do app (`--todos` inclui as webviews do Navegador, que são os
+     sites da pessoa: não recarregue uma delas); o admin abre no seletor e **não tem máquina em "Este Mac"**: para a
+     janela do Mac local use o cliente `meu-bot`.
    - `node scripts/devtools.mjs eval "<título>" "<JS>"` avalia no renderer e imprime o valor. Ninguém clica: navegue
      pelo DOM. Seletor: `document.querySelector("button[data-tipo=mac]").click()` → a `.row` visível → `#pk-open`.
      Janela: `#tutoriais-line`, cartões `#tutoriais-list .tut-card` (botão "Começar"/"Continuar"), guia
