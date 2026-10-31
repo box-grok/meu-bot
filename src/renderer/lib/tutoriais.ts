@@ -18,7 +18,7 @@ export interface GuideContext {
   claude: { loggedIn: boolean | null; email: string | null; /** Responde pelo Claude Code Global do admin (a sessão já existe). */ global: boolean; firstReply: boolean; contasExtras: number; trocas: number };
   /**
    * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
-   * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
+   * tutorial 5); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
   xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
   /** Guarda do WhatsApp: `possible` = o agente da máquina aceita a guarda (capacidade `guarda`; null = sem status ainda); `installed` = está lá? (null = não consultado). */
@@ -33,27 +33,27 @@ export interface GuideContext {
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
    */
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
-  /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
+  /** Tutorial 8: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
-  /** Tutorial 10 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
+  /** Tutorial 17 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null; /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp (null = ainda não lido). */ local: CrmLocal | null };
   /**
-   * Tutorial 12: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
+   * Tutorial 11: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
    * o agente já respondeu nesse grupo.
    */
   grupos: { info: WhatsappGroups | null; alvo: string | null; respondeu: boolean };
-  /** Tutorial 13: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
+  /** Tutorial 12: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
   contas: readonly ContaEstado[] | null;
-  /** Tutorial 17: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
+  /** Tutorial 14: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
   linkPublico: LinkPublicoInfo | null;
-  /** Tutorial 17: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
+  /** Tutorial 14: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
   linkPublicoPossivel: boolean;
   /**
-   * Tutorial 14 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
+   * Tutorial 13 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
    * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
    */
   finance: { access: boolean | null; info: FinanceInfo | null };
-  /** Tutorial 18: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
+  /** Tutorial 15: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
   quickEntry: { status: QuickEntryStatus | null; shortcut: string };
   /**
    * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
@@ -95,7 +95,7 @@ export const emptyContext = (): GuideContext => ({
 export const FALLBACK_PRIMARIES: readonly string[] = ["agente", "grok-4"];
 /** A reserva de um primário: quem mais está disponível na corrente, em ordem (vazio = sem reserva). */
 export const fallbackReserve = (primary: string, chain: readonly FallbackProvider[]): string[] => chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
-/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 5, a partir do que o backend informa. */
+/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 6, a partir do que o backend informa. */
 export function fallbackOrderText(primary: string, chain: readonly FallbackProvider[] | null): string {
   if (chain === null || chain.length === 0) return "O backend desta máquina ainda não informa a corrente de provedores.";
   if (!chain.some((p) => p.name === primary)) return `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`;
@@ -196,7 +196,11 @@ export const passoFeito = (s: GuideStep, status: WhatsappStatus | null, flags: G
 export interface Tutorial {
   /** Identificador estável (kebab-case). */
   id: string;
-  /** Número fixo do tutorial ("tutorial 3" é o mesmo no app da pessoa, no admin e no GUIA), na ordem da trilha. */
+  /**
+   * Número fixo do tutorial (o mesmo no app da pessoa, no admin e no GUIA), na ordem da trilha: o array é a ordem da
+   * lista, então os números sobem 1, 2, 3… sem buraco entre os que podem aparecer; os `oculto` ficam no fim (16, 17).
+   * Renumerados em 31 out 2026 (mapa antigo → novo em docs/guia/app.md).
+   */
   number: number;
   title: string;
   /** Nome curto para a aba do guia ("WhatsApp"). */
@@ -239,7 +243,7 @@ export interface Tutorial {
 const WHATSAPP_STEPS: GuideStep[] = [
   {
     id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
-    text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio (tutorial 16). Se não souber, fique com o recomendado.",
+    text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio (tutorial 4). Se não souber, fique com o recomendado.",
     // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
     done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
   },
@@ -269,7 +273,7 @@ const WHATSAPP_STEPS: GuideStep[] = [
 ];
 
 /**
- * Grupo do tutorial 12: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
+ * Grupo do tutorial 11: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
  * ligado (máquina que já tem grupo configurado entra com os passos concluídos pelo estado real).
  */
 /** Nome do grupo para a tela: o apelido dado no app, senão o nome do WhatsApp, senão o id. */
@@ -333,7 +337,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     // Desmembrado do tutorial 1 (27 out): entrar é obrigatório; contas extras e o rodízio são opcionais e têm outro momento
     // (a primeira vez que o limite bate). Vale para o app, o WhatsApp (porteiro do claude) e o Terminal.
     id: "contas-claude",
-    number: 15,
+    number: 2,
     needs: ["claude"],
     after: "claude-login",
     title: "Mais contas do Claude",
@@ -363,7 +367,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "whatsapp-openclaw",
-    number: 2,
+    number: 3,
     needs: ["whatsapp"],
     title: "Conectar o WhatsApp ao agente",
     short: "WhatsApp",
@@ -374,10 +378,10 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: WHATSAPP_STEPS,
   },
   {
-    // Desmembrado do tutorial 2 (29 out): a transcrição era um passo pulável lá dentro, e quem pulava ficava com o
-    // tutorial 2 concluído e o agente respondendo "não consigo ouvir seu áudio" sem nada pendente apontando o porquê.
+    // Desmembrado do tutorial 3 (29 out): a transcrição era um passo pulável lá dentro, e quem pulava ficava com o
+    // tutorial 3 concluído e o agente respondendo "não consigo ouvir seu áudio" sem nada pendente apontando o porquê.
     id: "audio-whatsapp",
-    number: 16,
+    number: 4,
     needs: ["whatsapp"],
     after: "whatsapp-openclaw",
     title: "Ouvir áudios do WhatsApp",
@@ -400,45 +404,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "statusline",
-    number: 3,
-    needs: ["statusline"],
-    after: "claude-login",
-    title: "Status line do Claude",
-    short: "Status line",
-    summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
-    minutes: 3,
-    icon: "target",
-    // Fora da lista (30 out): o admin instala a status line ao criar a conta (prepararUsuario), sem passo para a pessoa.
-    oculto: true,
-    reset: { what: "desinstala a status line desta máquina (o settings.json anterior volta) e apaga a escolha de segmentos" },
-    steps: [
-      {
-        id: "instalar", title: "Instalar a status line nesta máquina", target: "none", body: "statusline-install",
-        text: "É um pequeno script do Claude Code que anota os seus limites de uso. O meu-bot lê essa anotação e mostra no rodapé.",
-        done: (_st, _f, c) => c.statusLine.installed === true,
-      },
-      {
-        id: "segmentos", title: "Escolher o que aparece", target: "none", body: "statusline-segments",
-        text: "Ligue e desligue cada parte da barra: modelo, contexto, conta, sessão (5 horas) e semanal (7 dias). Vale na barra do Claude Code no terminal desta máquina e no rodapé do meu-bot, ao mesmo tempo.",
-        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.segments !== null,
-      },
-      {
-        id: "conferir", title: "Conferir no terminal", target: "none", body: "statusline-test",
-        text: "O botão abre um terminal desta máquina e roda um teste do script com um JSON de exemplo; a linha aparece com as cores. Avisos de \"/dev/tty\" nesse teste são normais fora do Claude Code.",
-        done: (_st, f) => f.statusTested,
-        manual: { label: "Apareceu certo", flag: "statusTested" },
-      },
-      {
-        id: "limites", title: "Ver os limites na conversa", target: "chat", lembrar: true,
-        text: "Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal, os limites da sua conta do Claude nesta máquina.",
-        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
-      },
-    ],
-  },
-  {
     id: "xai-login",
-    number: 4,
+    number: 5,
     needs: ["xai"],
     after: "claude-login",
     needsXai: true,
@@ -468,7 +435,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "fallback-contas",
-    number: 5,
+    number: 6,
     needs: ["claude", "xai", "fallback"],
     after: "xai-login",
     needsXai: true,
@@ -481,7 +448,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: [
       {
         id: "contas", title: "As duas contas nesta máquina", target: "none",
-        text: "O fallback precisa das duas contas logadas nesta máquina: Claude (tutorial 1) e xAI (tutorial 4). Se uma falhar antes de responder, a outra assume sem você fazer nada.",
+        text: "O fallback precisa das duas contas logadas nesta máquina: Claude (tutorial 1) e xAI (tutorial 5). Se uma falhar antes de responder, a outra assume sem você fazer nada.",
         done: (_st, _f, c) => c.claude.loggedIn === true && c.xai.loggedIn === true,
       },
       {
@@ -499,7 +466,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "suporte",
-    number: 6,
+    number: 7,
     needs: ["support"],
     title: "Ligar o suporte",
     short: "Suporte",
@@ -522,7 +489,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "whatsapp-objetivo",
-    number: 7,
+    number: 8,
     needs: ["objective"],
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
@@ -550,7 +517,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "guarda-whatsapp",
-    number: 8,
+    number: 9,
     needs: ["guarda"],
     needsGuarda: true,
     after: "whatsapp-openclaw",
@@ -576,7 +543,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "navegador",
-    number: 9,
+    number: 10,
     needs: ["navegador"],
     after: "claude-login",
     title: "Navegador do agente (Pro)",
@@ -611,88 +578,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "crm-gmail",
-    number: 10,
-    needs: ["crm", "navegador"],
-    after: "navegador",
-    needsCrmProprio: true,
-    // 27 out: fora da lista; o cartão ficava parado em "verificando a máquina…" para quem nem conhece o CRM.
-    oculto: true,
-    title: "CRM no Gmail e no WhatsApp",
-    short: "CRM",
-    summary: "O CRM do meu-bot mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
-    minutes: 5,
-    icon: "chat",
-    steps: [
-      {
-        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
-        text: "Entra um plugin no OpenClaw da máquina (vê as conversas do WhatsApp e percebe o silêncio) e a ferramenta que o agente usa para anotar. Os dados ficam só na sua máquina; funciona com o app fechado.",
-        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
-      },
-      {
-        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail", lembrar: true,
-        text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
-        done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
-      },
-      {
-        id: "pipeline", title: "Criar o primeiro pipeline", target: "none", body: "crm-pipeline",
-        text: "O CRM anota cada conversa do WhatsApp numa caixa de um pipeline (as etapas da sua operação de mídia paga). Sem pipeline, nada é anotado. Escolha um modelo, ajuste o nome e as etapas e crie: ele vira o pipeline do WhatsApp.",
-        done: (_st, _f, c) => (c.crm.local?.padrao ?? null) !== null,
-      },
-      {
-        id: "importar", title: "Trazer os dados do Streak (opcional)", target: "none", body: "crm-importar",
-        text: "Tem pipelines no Streak? Peça ao agente: \"importa do Streak o pipeline X\" com a sua chave da API do Streak. É só uma vez, as chaves e os boxes são preservados, e a chave não fica gravada.",
-        done: (_st, f) => f.crmImportSeen,
-        manual: { label: "Importei (ou não preciso)", flag: "crmImportSeen" },
-      },
-      {
-        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
-        text: "No WhatsApp, abra a conversa com você mesmo e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇; a mudança aparece no Gmail em segundos.",
-        done: (_st, f) => f.crmSeen,
-        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
-      },
-    ],
-  },
-  {
-    id: "crm-whatsapp",
-    number: 10,
-    needs: ["crm"],
-    after: "navegador",
-    needsCrmStreak: true,
-    // 27 out: fora da lista, como o CRM no Gmail; aparecia (e sumia) assim que o 9 contava como concluído.
-    oculto: true,
-    title: "CRM pelo WhatsApp (Pro)",
-    short: "CRM",
-    summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",
-    minutes: 6,
-    icon: "chat",
-    steps: [
-      {
-        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "crm-pro",
-        text: "O CRM pelo WhatsApp é do plano Pro, como o Navegador. Se já liberou o Navegador, este passo já está feito.",
-        done: (_st, _f, c) => c.crm.access === "ok",
-      },
-      {
-        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
-        text: "Entra um plugin no OpenClaw da máquina (vê as conversas e percebe quando uma fica em silêncio) e uma ferramenta que fala com o Streak pela API. Nada passa pelo seu computador: funciona com o app fechado.",
-        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
-      },
-      {
-        id: "config", title: "Chave da API do Streak, pipeline e regras", target: "none", body: "crm-config",
-        text: "Peça ao agente: ele gera a chave no Gmail pelo Navegador (botão do Streak › Integrações e Automações › Integrações personalizadas) e guarda direto na máquina. Ou faça você: copie a chave lá e cole aqui. Nos dois casos ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline (um só, o app escolhe sozinho) e quanto tempo de silêncio na conversa dispara a anotação.",
-        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.configured === true && c.crm.info.pipelineKey !== null,
-      },
-      {
-        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
-        text: "No WhatsApp, abra a conversa com você mesmo (seu próprio número) e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇. Se ele propuser algo (mudar de etapa, criar box), responda \"ok\" ou \"não\".",
-        done: (_st, f) => f.crmSeen,
-        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
-      },
-    ],
-  },
-  {
     id: "whatsapp-grupos",
-    number: 12,
+    number: 11,
     needs: ["grupos"],
     after: "whatsapp-openclaw",
     title: "O agente nos grupos do WhatsApp",
@@ -729,7 +616,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "contas-cli",
-    number: 13,
+    number: 12,
     needs: ["contas"],
     after: "claude-login",
     needsXai: true,
@@ -761,7 +648,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "financeiro",
-    number: 14,
+    number: 13,
     needs: ["finance"],
     after: "claude-login",
     needsFinance: true,
@@ -806,7 +693,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "link-publico",
-    number: 17,
+    number: 14,
     needs: ["linkpublico"],
     after: "claude-login",
     needsXai: true,
@@ -841,7 +728,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     // Saiu das Configurações (30 out): a janela flutuante é sempre ativa; aqui a pessoa escolhe o atalho e experimenta.
     id: "entrada-rapida",
-    number: 18,
+    number: 15,
     needs: ["quickentry"],
     after: "claude-login",
     title: "Entrada rápida",
@@ -864,9 +751,126 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
     ],
   },
+  {
+    id: "statusline",
+    number: 16,
+    needs: ["statusline"],
+    after: "claude-login",
+    title: "Status line do Claude",
+    short: "Status line",
+    summary: "Veja no rodapé de cada conversa quanto da sua sessão e da sua semana do Claude você já usou, e escolha o que aparece.",
+    minutes: 3,
+    icon: "target",
+    // Fora da lista (30 out): o admin instala a status line ao criar a conta (prepararUsuario), sem passo para a pessoa.
+    oculto: true,
+    reset: { what: "desinstala a status line desta máquina (o settings.json anterior volta) e apaga a escolha de segmentos" },
+    steps: [
+      {
+        id: "instalar", title: "Instalar a status line nesta máquina", target: "none", body: "statusline-install",
+        text: "É um pequeno script do Claude Code que anota os seus limites de uso. O meu-bot lê essa anotação e mostra no rodapé.",
+        done: (_st, _f, c) => c.statusLine.installed === true,
+      },
+      {
+        id: "segmentos", title: "Escolher o que aparece", target: "none", body: "statusline-segments",
+        text: "Ligue e desligue cada parte da barra: modelo, contexto, conta, sessão (5 horas) e semanal (7 dias). Vale na barra do Claude Code no terminal desta máquina e no rodapé do meu-bot, ao mesmo tempo.",
+        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.segments !== null,
+      },
+      {
+        id: "conferir", title: "Conferir no terminal", target: "none", body: "statusline-test",
+        text: "O botão abre um terminal desta máquina e roda um teste do script com um JSON de exemplo; a linha aparece com as cores. Avisos de \"/dev/tty\" nesse teste são normais fora do Claude Code.",
+        done: (_st, f) => f.statusTested,
+        manual: { label: "Apareceu certo", flag: "statusTested" },
+      },
+      {
+        id: "limites", title: "Ver os limites na conversa", target: "chat", lembrar: true,
+        text: "Vá para a conversa e mande uma mensagem ao agente: quando a resposta chegar, o rodapé dela mostra Sessão e Semanal, os limites da sua conta do Claude nesta máquina.",
+        done: (_st, _f, c) => c.statusLine.installed === true && c.statusLine.limits,
+      },
+    ],
+  },
+  {
+    id: "crm-gmail",
+    number: 17,
+    needs: ["crm", "navegador"],
+    after: "navegador",
+    needsCrmProprio: true,
+    // 27 out: fora da lista; o cartão ficava parado em "verificando a máquina…" para quem nem conhece o CRM.
+    oculto: true,
+    title: "CRM no Gmail e no WhatsApp",
+    short: "CRM",
+    summary: "O CRM do meu-bot mora na sua máquina e aparece dentro do Gmail: pipelines, caixas e conversas. O agente anota pelo WhatsApp e pela conversa; sem Streak, sem chave de API.",
+    minutes: 5,
+    icon: "chat",
+    steps: [
+      {
+        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
+        text: "Entra um plugin no OpenClaw da máquina (vê as conversas do WhatsApp e percebe o silêncio) e a ferramenta que o agente usa para anotar. Os dados ficam só na sua máquina; funciona com o app fechado.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
+      },
+      {
+        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail", lembrar: true,
+        text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
+        done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
+      },
+      {
+        id: "pipeline", title: "Criar o primeiro pipeline", target: "none", body: "crm-pipeline",
+        text: "O CRM anota cada conversa do WhatsApp numa caixa de um pipeline (as etapas da sua operação de mídia paga). Sem pipeline, nada é anotado. Escolha um modelo, ajuste o nome e as etapas e crie: ele vira o pipeline do WhatsApp.",
+        done: (_st, _f, c) => (c.crm.local?.padrao ?? null) !== null,
+      },
+      {
+        id: "importar", title: "Trazer os dados do Streak (opcional)", target: "none", body: "crm-importar",
+        text: "Tem pipelines no Streak? Peça ao agente: \"importa do Streak o pipeline X\" com a sua chave da API do Streak. É só uma vez, as chaves e os boxes são preservados, e a chave não fica gravada.",
+        done: (_st, f) => f.crmImportSeen,
+        manual: { label: "Importei (ou não preciso)", flag: "crmImportSeen" },
+      },
+      {
+        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
+        text: "No WhatsApp, abra a conversa com você mesmo e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇; a mudança aparece no Gmail em segundos.",
+        done: (_st, f) => f.crmSeen,
+        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
+      },
+    ],
+  },
+  {
+    id: "crm-whatsapp",
+    number: 17,
+    needs: ["crm"],
+    after: "navegador",
+    needsCrmStreak: true,
+    // 27 out: fora da lista, como o CRM no Gmail; aparecia (e sumia) assim que o 10 (Navegador) contava como concluído.
+    oculto: true,
+    title: "CRM pelo WhatsApp (Pro)",
+    short: "CRM",
+    summary: "O agente da máquina anota no seu Streak CRM, pela API, o que acontece nas conversas do WhatsApp: comentários e campos sozinho; box novo e mudança de etapa só com o seu \"ok\".",
+    minutes: 6,
+    icon: "chat",
+    steps: [
+      {
+        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "crm-pro",
+        text: "O CRM pelo WhatsApp é do plano Pro, como o Navegador. Se já liberou o Navegador, este passo já está feito.",
+        done: (_st, _f, c) => c.crm.access === "ok",
+      },
+      {
+        id: "instalar", title: "Instalar o CRM na máquina", target: "none", body: "crm-install",
+        text: "Entra um plugin no OpenClaw da máquina (vê as conversas e percebe quando uma fica em silêncio) e uma ferramenta que fala com o Streak pela API. Nada passa pelo seu computador: funciona com o app fechado.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
+      },
+      {
+        id: "config", title: "Chave da API do Streak, pipeline e regras", target: "none", body: "crm-config",
+        text: "Peça ao agente: ele gera a chave no Gmail pelo Navegador (botão do Streak › Integrações e Automações › Integrações personalizadas) e guarda direto na máquina. Ou faça você: copie a chave lá e cole aqui. Nos dois casos ela fica só na máquina (arquivo 0600) e nunca volta ao app. Depois escolha o pipeline (um só, o app escolhe sozinho) e quanto tempo de silêncio na conversa dispara a anotação.",
+        done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.configured === true && c.crm.info.pipelineKey !== null,
+      },
+      {
+        id: "testar", title: "Testar pelo seu WhatsApp", target: "none", body: "crm-test",
+        text: "No WhatsApp, abra a conversa com você mesmo (seu próprio número) e mande: \"anota no CRM: <nome do contato> <o que aconteceu>\". Em até um minuto chega a confirmação 📇. Se ele propuser algo (mudar de etapa, criar box), responda \"ok\" ou \"não\".",
+        done: (_st, f) => f.crmSeen,
+        manual: { label: "Recebi a confirmação", flag: "crmSeen" },
+      },
+    ],
+  },
 ];
 
-/** Tutorial 7, passo 1: os cartões de objetivo (o rótulo vai para o SKILL.md; "outro" exige a frase). */
+/** Tutorial 8, passo 1: os cartões de objetivo (o rótulo vai para o SKILL.md; "outro" exige a frase). */
 export interface ObjectiveOption { id: string; label: string; text: string; needsText: boolean }
 export const OBJECTIVE_OPTIONS: readonly ObjectiveOption[] = [
   { id: "atendimento", label: "Atender clientes", text: "Tirar dúvidas, dar informações e encaminhar o que não resolver.", needsText: false },
@@ -875,7 +879,7 @@ export const OBJECTIVE_OPTIONS: readonly ObjectiveOption[] = [
   { id: "suporte", label: "Dar suporte", text: "Ajudar quem já é cliente a resolver problemas passo a passo.", needsText: false },
   { id: "outro", label: "Outro", text: "Descreva em uma frase o que você quer resolver.", needsText: true },
 ];
-/** Tutorial 7, passo 2: os três níveis de liberdade (os mesmos ids do main, que grava a trava). */
+/** Tutorial 8, passo 2: os três níveis de liberdade (os mesmos ids do main, que grava a trava). */
 export const LEVEL_OPTIONS: readonly { id: FreedomLevel; title: string; text: string; isDefault: boolean }[] = [
   { id: "conversa", title: "Só conversa", text: "Responde, orienta e combina coisas, mas não mexe em nada: não roda comandos, não grava arquivos, não agenda.", isDefault: true },
   { id: "consulta", title: "Consulta e organiza", text: "Lê arquivos e a internet, anota e organiza no workspace dele, mas não roda comandos nem agenda.", isDefault: false },
@@ -953,7 +957,7 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
  * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; o do Grok só onde ele é
  * possível (null = ainda não consultado = mostra); o da guarda só onde ela é possível (null = esconde); os da trilha (`after`) só depois que o anterior foi
  * concluído (`finished` é do chamador: concluir depende de flags e da máquina). Um `after` escondido esconde
- * quem depende dele (o 5 some junto com o 4).
+ * quem depende dele (o 6 some junto com o 5).
  */
 export function visibleTutorials(ctx: GuideContext, finished: (t: Tutorial) => boolean = () => false): Tutorial[] {
   const visible = (t: Tutorial): boolean => {

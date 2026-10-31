@@ -128,7 +128,7 @@ test("banco do OpenClaw: UUID e .jsonl para o ID da aba; vale mesmo sem sessions
   assert.equal(g1.sessionId, "22bb9aae-56c4-46de-8a2c-34dcdb3bcc26");
   assert.match(g1.transcript, /e23e862d-7ca3-44bb-bd84-fcb0feab8721\.jsonl$/);
   assert.equal(g1.nome, "Time de casa");
-  assert.equal(g1.agenteRespondeu, true); // o tutorial 12 sabe na mesma leitura, sem esperar a conversa do grupo
+  assert.equal(g1.agenteRespondeu, true); // o tutorial 11 sabe na mesma leitura, sem esperar a conversa do grupo
   const g2 = r.grupos.find((g) => g.jid === G2);
   assert.equal(g2.sessionId, null); // valores estranhos não passam
   assert.equal(g2.transcript, null);

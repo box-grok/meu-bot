@@ -112,7 +112,7 @@ export interface CgConta { id: string; rotulo: string; email: string | null; log
 /** Um usuário da máquina no Claude Code Global: ligado (tem chave) e quanto usou. */
 export interface CgUsuario { nome: string; ligado: boolean; chamadas: number; ultima: number | null; limites: number }
 /** Estado do Claude Code Global da máquina: o intermediário do root, a conta do root, o rodízio e os usuários. */
-export interface CgEstado { instalado: boolean; ativo: boolean; porta: number | null; login: boolean; email: string | null; plano: string | null; contas: CgConta[]; /** Limiares do rodízio do root (os do tutorial 15); null = ainda não instalado. */ limiares: { sessao: number; semanal: number; estrategia: "ordem" | "folga" } | null; usuarios: CgUsuario[] }
+export interface CgEstado { instalado: boolean; ativo: boolean; porta: number | null; login: boolean; email: string | null; plano: string | null; contas: CgConta[]; /** Limiares do rodízio do root (os do tutorial 2); null = ainda não instalado. */ limiares: { sessao: number; semanal: number; estrategia: "ordem" | "folga" } | null; usuarios: CgUsuario[] }
 /** Um item no ar no link de um usuário: `pagina` = pasta com index.html (um .md publicado), `pasta` = pasta sem índice. */
 export interface LpItem { nome: string; tipo: "arquivo" | "pasta" | "pagina"; bytes: number | null; mtime: number }
 /** O que o agente do usuário tem do link, comparado com os modelos de /etc/meu-bot-link-publico: a skill do Hermes e o bloco do CLAUDE.md. */

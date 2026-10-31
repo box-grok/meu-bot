@@ -138,7 +138,7 @@ export function registerClientIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return setSupportShare(h.host, payload);
   });
-  // Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace, trava do nível).
+  // Tutorial 8 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace, trava do nível).
   handleClient("objective:info", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
@@ -224,8 +224,8 @@ export function registerClientIpc(): void {
   handleClient("browser:permissao", (event, payload: unknown) => { ctxOf(event); const p = (payload ?? {}) as { id?: unknown; decisao?: unknown }; if (typeof p.id === "string" && (p.decisao === "sempre" || p.decisao === "agora" || p.decisao === "nunca")) responderPermissao(p.id, p.decisao); });
   handleClient("browser:permissoes-esquecer", (event, payload: unknown) => { const h = ctxOf(event); const o = (payload as { origem?: unknown } | null)?.origem; esquecerPermissoes(h.host, typeof o === "string" ? o : undefined); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); const pedido = caps().planoExigido === "free" ? "pediu o plano Pro (aba Navegador)" : `pediu para liberar o ${caps().produto} (assinatura)`; await registrar(h.host, "plano.pedir", pedido); log(`[navegador] ${h.host}: ${pedido}`); });
-  // Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
-  // Financeiro (produto meu-bot-finance): página Finanças e tutorial 14. Tudo passa pelo gate da licença (o backend confere de novo).
+  // Tutorial 17 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
+  // Financeiro (produto meu-bot-finance): página Finanças e tutorial 13. Tudo passa pelo gate da licença (o backend confere de novo).
   const fin = async (event: Electron.IpcMainInvokeEvent): Promise<string> => { const h = ctxOf(event); await assertFinance(h.host); return h.host; };
   const txt = (v: unknown, max = 200): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : undefined);
   const mesOk = (v: unknown): string => { if (typeof v !== "string" || !/^\d{4}-\d{2}$/.test(v)) throw new Error("mês inválido"); return v; };
@@ -318,7 +318,7 @@ export function registerClientIpc(): void {
   handleClient("cota:pedir-mais", async (event, payload: unknown) => { const h = ctxOf(event); const pct = Number((payload as { pct?: unknown } | null)?.pct); await registrar(h.host, "cota.pedir-mais", Number.isFinite(pct) ? `${Math.round(pct)}%` : ""); log(`[cota] ${h.host}: pediu mais espaço${Number.isFinite(pct) ? ` (${Math.round(pct)}%)` : ""}`); });
   handleClient("finance:pedir", async (event) => { const h = ctxOf(event); await registrar(h.host, "plano.pedir", "pediu para liberar o meu-bot-finance (financeiro)"); log(`[finance] ${h.host}: pediu o meu-bot-finance`); });
   handleClient("crm:info", (event) => crmInfo(ctxOf(event).host));
-  // Tutorial 10 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.
+  // Tutorial 17 (meu-bot-crm): o primeiro pipeline do CRM da máquina e qual é o do WhatsApp.
   handleClient("crm:local", (event) => crmLocal(ctxOf(event).host));
   handleClient("crm:pipeline-criar", async (event, payload: unknown) => {
     const h = ctxOf(event); await assertAcesso(h.host);
@@ -517,9 +517,9 @@ export function registerClientIpc(): void {
     return entrarConta(h.host, p.id, p.navegador === true, p.trocar === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
   });
   handleClient("contas:instalar-gh", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return instalarGh(h.host); });
-  // Tutorial 17: a pessoa troca o nome do link público dela (o comando da máquina renomeia a pasta dela, sem root).
+  // Tutorial 14: a pessoa troca o nome do link público dela (o comando da máquina renomeia a pasta dela, sem root).
   handleClient("link-publico:nome", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoNome(h.host, (payload as { nome?: unknown } | null)?.nome); });
-  // Tutorial 17: o que está no ar, tirar do ar e publicar um arquivo deste Mac (o diálogo abre no main; o renderer nunca manda caminho), tudo como ela.
+  // Tutorial 14: o que está no ar, tirar do ar e publicar um arquivo deste Mac (o diálogo abre no main; o renderer nunca manda caminho), tudo como ela.
   handleClient("link-publico:lista", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoLista(h.host); });
   handleClient("link-publico:remover", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoRemover(h.host, (payload as { nome?: unknown } | null)?.nome); });
   handleClient("link-publico:publicar", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoPublicar(h.host, h.win, (payload as { nome?: unknown } | null)?.nome); });

@@ -1,5 +1,5 @@
 /**
- * Link público da pessoa na máquina da janela (tutorial 17): lê o que o admin ligou para ela
+ * Link público da pessoa na máquina da janela (tutorial 14): lê o que o admin ligou para ela
  * (~/.local/share/meu-bot/link-publico.json, gravado por ela), troca o nome do link (`link-publico-nome`, que renomeia
  * a pasta dela sem passar pelo root), vê o que está no ar, tira do ar e publica um arquivo deste Mac (scp para uma
  * pasta de passagem no home dela e o `publicar` dela, que renderiza .md). Tudo como ela, por SSH; o admin gere o
@@ -83,7 +83,7 @@ export function lerLinkPublico(out: string): LinkPublicoInfo | null {
   } catch { return null; }
 }
 
-/** `LINK=root` = a janela é da conta root: o link público é das contas de usuário (o admin não liga para o root), então o tutorial 17 some. */
+/** `LINK=root` = a janela é da conta root: o link público é das contas de usuário (o admin não liga para o root), então o tutorial 14 some. */
 export function lerLinkPublicoStatus(out: string): LinkPublicoStatus {
   return { info: lerLinkPublico(out), possivel: !/^LINK=root$/m.test(out) };
 }

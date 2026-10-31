@@ -13,7 +13,7 @@
   com URL carregada. O tutorial ganhou "Refazer do zero" (só apaga a flag; plano, instalação e abas ficam),
   para quem já estava marcado errado.
 
-## Tutorial 10 "Extensões no Navegador" removido (19 out 2026)
+## Tutorial "Extensões no Navegador" (o 10 da época) removido (19 out 2026)
 
 - Só o tutorial saiu (bloco em `tutoriais.ts`, flag `extSeen`, corpo `navegador-ext`); o recurso de extensões
   (🧩, Web Store na aba, `browser:extensions`) continua. O CRM passa a vir depois do Navegador (9) e vira o
@@ -23,12 +23,12 @@
 
 - A função "Notificações do Navegador viram conversas" (19 out) saiu inteira por decisão de produto: o sino 🔔 da
   barra, o grupo nas Configurações, `navNotify` no settings.json (chave antiga é ignorada), `nav-notify-preload.ts`,
-  `lib/nav-notify.ts`, o substituto de `window.Notification` injetado nas abas e o tutorial 11 (já estava oculto
+  `lib/nav-notify.ts`, o substituto de `window.Notification` injetado nas abas e o tutorial do CRM pelo WhatsApp, 11 na época (já estava oculto
   desde 27 out; o 12 segue sendo 12). As notificações das páginas voltam a ser negadas pelo Chromium, como antes.
 - No mesmo dia saíram das Configurações o campo "Tamanho da fonte" (o zoom da janela cobre) e o grupo "Memória e
   contexto": a memória continua sendo extraída a cada N turnos (padrões 24000 tokens / 10 turnos) e a pessoa a
   ajusta pelo chat; só o editor manual sumiu. Também saíram o grupo "Fallback" (o seletor do primário vive no
-  tutorial 5, `renderFallbackOrder`; `configuracoes/fallback.ts` apagado), o botão "Enviar uma notificação de teste"
+  tutorial 6, `renderFallbackOrder`; `configuracoes/fallback.ts` apagado), o botão "Enviar uma notificação de teste"
   (`maybeAskNotificationsOnce` continua) e a dica de texto dos atalhos de zoom.
 
 ## Espaços de trabalho do Navegador (19 out 2026) · REA do Rambox
@@ -73,7 +73,7 @@ fica na auditoria (`navegador.whatsapp-ligar`/`-desligar`).
   O app grava esse arquivo quando o túnel reverso sobe e o apaga quando ele cai (`browser.ts`, `onReverseState`). Com
   o app fechado, a ferramenta responde "o Navegador do dono está fechado".
 - **Trava:** `tools.toolsBySender`. Só o número do agente e a lista de quem pode conversar com ele nos grupos
-  (`groupAllowFrom`, tutorial 12) podem usar. O `*` nega sempre `navegador__*` e cada ferramenta pelo nome, em todos os
+  (`groupAllowFrom`, tutorial 11) podem usar. O `*` nega sempre `navegador__*` e cada ferramenta pelo nome, em todos os
   lugares que gravam a trava (pareamento, objetivo e Navegador). Assim, uma regravação falha fechada; mudar a lista dos
   grupos ou salvar o objetivo ressincroniza. No runtime `claude-cli`, o OpenClaw só repassa ao Claude
   (`mcp__openclaw__<nome>`) as ferramentas que a política do remetente libera.

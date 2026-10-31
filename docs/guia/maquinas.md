@@ -339,7 +339,7 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
 - **O que é:** o login de assinatura do root (`/root/.claude/.credentials.json`) responde pelos usuários da máquina.
   A gestão é só do admin (aba "Claude Code Global", abaixo de Usuários). Cada usuário vê no meu-bot dele
   "Claude Code · global (e-mail)", sem botão de sair. A fila tem duas fontes: o global primeiro e as contas próprias
-  do usuário (tutorial 15) como reserva. Sem nenhuma das duas, o Grok assume, como antes.
+  do usuário (tutorial 2) como reserva. Sem nenhuma das duas, o Grok assume, como antes.
 - **Intermediário do root** (`backend-colima/claude-global.js`, serviço `meu-bot-claude-global`, `127.0.0.1:18780`):
   - O `claude` do usuário fala com ele no modo assinatura: `CLAUDE_CODE_OAUTH_TOKEN=<chave do usuário>` e
     `ANTHROPIC_BASE_URL`. Ele confere a chave e troca a autorização pelo token de uma conta do root. O streaming e os
@@ -373,7 +373,7 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   `~/publico` dele. A gestão é do admin (aba "Link Público Global", abaixo do Claude Code Global): instalar, entrar na
   Cloudflare, subir o túnel e ligar ou desligar o link por usuário. O agente de cada um dá links com o comando
   `publicar` (skill do Hermes `meu-bot-link-publico` e bloco no CLAUDE.md do workspace); o nome do link a pessoa troca
-  no meu-bot dela (tutorial 17). Motivo: a Karen da box-2 respondeu "não tenho como gerar um link público" quando o
+  no meu-bot dela (tutorial 14). Motivo: a Karen da box-2 respondeu "não tenho como gerar um link público" quando o
   Daniel pediu o arquivo do fluxo por link.
 - **Por que túnel:** o domínio está na Cloudflare e as portas 80/443 da VM são filtradas. O `cloudflared` do root
   (serviço `cloudflared`, `/etc/cloudflared/config.yml`) leva `*.<domínio>` a um nginx só em `127.0.0.1:8099`; a máquina
@@ -412,7 +412,7 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
     conta na aba Usuários e ligue de novo" em vez de um ok que não gravou nada.
   - **`publicar` endurecido** (30 out): `--remover ..`/`.x`/vazio é recusado e item inexistente dá "não está no ar"; `cp`
     falhando (cota cheia) vira `ERRO: não consegui copiar…` em vez de imprimir uma URL que não existe.
-  - **A pessoa também publica pela tela** (tutorial 17, `guia/agente.md`): `link-publico:lista|remover|publicar`, scp para
+  - **A pessoa também publica pela tela** (tutorial 14, `guia/agente.md`): `link-publico:lista|remover|publicar`, scp para
     `~/.local/share/meu-bot/publicar-tmp/<id>/` (restos de mais de 2 h são varridos a cada uso) e o `publicar` dela.
   - **`.md` vira página** (30 out): `publicar fluxo-atendimento.md` grava `fluxo-atendimento/index.html` (título do 1º
     `#`, CSS claro/escuro, tabelas e código) e o `.md` original ao lado, e imprime `https://<nome>.<domínio>/fluxo-atendimento/`.
@@ -422,9 +422,9 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   novo a devolve, com o nome que a pessoa tinha escolhido.
 - **Onboarding:** com o global instalado, "Criar usuário" já liga o link da conta nova (`prepararUsuario` →
   `ligarLinkPublicoPara`). Desde 30 out o mesmo fluxo instala a status line do Claude (`installStatusLine`, como a
-  pessoa, idempotente; o tutorial 3 saiu da lista), também no "Preparar" de uma conta que já tinha backend.
+  pessoa, idempotente; o tutorial 16 saiu da lista), também no "Preparar" de uma conta que já tinha backend.
 - **Domínio próprio:** fora do alcance deste túnel (um hostname só passa por um túnel da mesma conta Cloudflare). Quem
-  quer domínio próprio usa a conta Cloudflare dela (tutorial 13) e pede ao agente para subir a pasta no Pages.
+  quer domínio próprio usa a conta Cloudflare dela (tutorial 12) e pede ao agente para subir a pasta no Pages.
 - **Conferido no servidor (30 out):** `https://box-2.agentesgrok.com/teste.html` respondeu 200 pela internet; raiz
   vazia 403; host desconhecido 404; `hermes skills list` da box-2 lista `meu-bot-link-publico` como local/enabled.
   Código: `admin/link-publico-core.ts` (scripts), `admin/link-publico-admin.ts`, `renderer/admin/link-publico-page.ts`,

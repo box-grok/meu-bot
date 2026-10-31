@@ -23,7 +23,7 @@ export function paintAcervoCount(): void {
   $<HTMLElement>("acervo-count").textContent = n === 1 ? "1 skill" : `${n} skills`;
 }
 
-// ---- Acervo: biblioteca de skills (lib/acervo.ts) + as skills do workspace do agente nesta máquina (tutorial 7).
+// ---- Acervo: biblioteca de skills (lib/acervo.ts) + as skills do workspace do agente nesta máquina (tutorial 8).
 export const acervoList = $<HTMLElement>("acervo-list");
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */

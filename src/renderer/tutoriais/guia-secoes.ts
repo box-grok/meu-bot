@@ -9,7 +9,7 @@ import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
 import { type GuideContext, grupoAlvo, OBJECTIVE_OPTIONS, LEVEL_OPTIONS, fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/tutoriais.js";
 import { ctx } from "../app/ctx.js";
 
-/** Primário do tutorial 5 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
+/** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
 const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
 
 let supportBusy = false;
@@ -23,7 +23,7 @@ let supportCodeShown: string | null = null;
 let supportPoll: number | null = null;
 /** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
 let statusLineState: boolean | null = null;
-/** Guarda do WhatsApp nesta máquina (tutorial 8): null = não consultado ou sem OpenClaw. */
+/** Guarda do WhatsApp nesta máquina (tutorial 9): null = não consultado ou sem OpenClaw. */
 let guardaState: boolean | null = null;
 export let navInstState: boolean | null = null;
 let navInstBusy = false;
@@ -84,7 +84,7 @@ export const guideCtx = (): GuideContext => ({
   })(),
 });
 
-/** Tutorial 7, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
+/** Tutorial 8, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
 export function renderObjectiveChoice(container: HTMLElement): void {
   const cur = ctx.objectiveState?.objective ?? null;
   const draft = ctx.objectiveDraft ?? (cur === null ? null : { id: cur.id, text: cur.text });
@@ -120,7 +120,7 @@ export function renderObjectiveChoice(container: HTMLElement): void {
   container.append(row);
   if (ctx.objectiveMsg !== null && ctx.objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${ctx.objectiveMsg.text}`));
 }
-/** Tutorial 7, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
+/** Tutorial 8, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
 export function renderObjectiveLevel(container: HTMLElement): void {
   const cur = ctx.objectiveState?.level ?? null;
   const cards = el("div", "reply-cards guide-cards");
@@ -138,7 +138,7 @@ export function renderObjectiveLevel(container: HTMLElement): void {
   container.append(cards);
   if (ctx.objectiveMsg !== null && ctx.objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${ctx.objectiveMsg.text}`));
 }
-/** Tutorial 7, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
+/** Tutorial 8, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
 export function renderObjectiveSkill(container: HTMLElement): void {
   const st = ctx.objectiveState;
   const box = el("div", "audio-controls");
@@ -160,7 +160,7 @@ export function renderObjectiveSkill(container: HTMLElement): void {
   container.append(box);
 }
 /**
- * Passo "Escolher primário e reserva" (tutorial 5): a mesma escolha de Configurações › Fallback, salva na hora
+ * Passo "Escolher primário e reserva" (tutorial 6): a mesma escolha de Configurações › Fallback, salva na hora
  * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
  */
 export function renderFallbackOrder(container: HTMLElement): void {
@@ -199,7 +199,7 @@ export async function refreshNavInst(): Promise<void> {
   try { navInstState = await window.meuBot.navegadorInstalled(); } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
-/** Tutorial 9, passo 2: instalar o lado da máquina (MCP + regra). */
+/** Tutorial 10, passo 2: instalar o lado da máquina (MCP + regra). */
 export function renderNavInstall(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const row = el("div", "audio-row");
@@ -220,7 +220,7 @@ export function renderNavInstall(container: HTMLElement): void {
   if (navInstMsg !== null) box.append(el("p", `hint ${navInstMsg.bad ? "guide-pair-note" : "audio-ok"}`, navInstMsg.text));
   container.append(box);
 }
-/** Tutorial 9, passo 1: o plano desta máquina e o pedido ao admin. */
+/** Tutorial 10, passo 1: o plano desta máquina e o pedido ao admin. */
 export function renderNavPro(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const a = browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto);
@@ -250,7 +250,7 @@ export async function abrirLinkDoChat(url: string, externo: boolean): Promise<vo
   await ctx.openNavTab(url);
   if (ctx.navAccess !== "ok" || ctx.navPartition === null) void window.meuBot.openExternal(url);
 }
-/** Tutorial 9, passo 3: abrir a aba do Navegador. */
+/** Tutorial 10, passo 3: abrir a aba do Navegador. */
 export function renderNavOpen(container: HTMLElement, url?: string): void {
   const row = el("div", "audio-row");
   const b = el("button", "btn btn-primary btn-small", url !== undefined ? "Abrir o Gmail no Navegador" : ctx.navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
@@ -263,10 +263,10 @@ export async function refreshGuarda(): Promise<void> {
   try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
-/** Tutorial 17: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
+/** Tutorial 14: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
 let linkPublicoState: LinkPublicoInfo | null = null;
 let linkPublicoLido = false;
-/** false = a janela é do root: sem link por desenho (o tutorial 17 some da lista). */
+/** false = a janela é do root: sem link por desenho (o tutorial 14 some da lista). */
 let linkPublicoPossivel = true;
 let linkNomeMsg: { text: string; bad: boolean } | null = null;
 let linkNomeOcupado = false;
@@ -298,7 +298,7 @@ export async function refreshLinkPublico(): Promise<void> {
   try { const r = await window.meuBot.linkPublico(); linkPublicoState = r.info; linkPublicoPossivel = r.possivel; linkPublicoLido = true; } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
-/** Tutorial 17: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
+/** Tutorial 14: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
 export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar" | "nome"): void {
   const box = el("div", "audio-controls");
   const lp = linkPublicoState;
@@ -386,7 +386,7 @@ export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar
   }
   container.append(box);
 }
-/** Tutorial 13: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
+/** Tutorial 12: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
 let contasState: ContaEstado[] | null = null;
 let contaLogin: { id: ContaId; trocar: boolean; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
 export async function refreshContas(): Promise<void> {
@@ -561,7 +561,7 @@ const quickStatusText = (): string => {
   return st === "registered" ? "✓ ativo" : st === "taken" ? "em uso por outro app: escolha outra combinação" : st === "invalid" ? "combinação inválida" : st === "disabled" ? "desligado" : "…";
 };
 let quickMsg: string | null = null;
-/** Tutorial 18, passo 1: o gravador de atalho (saiu das Configurações em 30 out). A combinação pressionada é salva na hora. */
+/** Tutorial 15, passo 1: o gravador de atalho (saiu das Configurações em 30 out). A combinação pressionada é salva na hora. */
 export function renderQuickAtalho(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const row = el("div", "audio-row");
@@ -591,7 +591,7 @@ export function renderQuickAtalho(container: HTMLElement): void {
   if (quickMsg !== null) box.append(el("p", "hint guide-pair-note", quickMsg));
   container.append(box);
 }
-/** Tutorial 18, passo 2: mostrar a janela flutuante daqui mesmo, para quem quer ver antes de decorar o atalho. */
+/** Tutorial 15, passo 2: mostrar a janela flutuante daqui mesmo, para quem quer ver antes de decorar o atalho. */
 export function renderQuickTestar(container: HTMLElement): void {
   const b = el("button", "btn btn-ghost btn-small", "Mostrar a janela flutuante"); b.type = "button";
   b.title = ctx.settings?.quickEntryShortcut ? `O mesmo que pressionar ${ctx.settings.quickEntryShortcut}` : "";

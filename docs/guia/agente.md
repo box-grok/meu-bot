@@ -48,7 +48,7 @@
 
 ## Status line e seção Fallback (15 out 2026)
 
-- **Tutorial 3 oculto (30 out):** o cartão "Status line do Claude" saiu da lista (`oculto: true` em `lib/tutoriais.ts`; o
+- **Tutorial 16 oculto (30 out):** o cartão "Status line do Claude" saiu da lista (`oculto: true` em `lib/tutoriais.ts`; o
   guia, os canais `statusline:*` e o reset continuam no código). O admin instala a status line ao criar a conta
   (`prepararUsuario` → `installStatusLine`, também no "Preparar"): a pessoa não tem passo nenhum. A escolha de segmentos
   deixa de ter tela; o rodapé mostra todos.
@@ -145,7 +145,7 @@
   colima (16 out): login OAuth concluído pelo app; o proxy aceita o id `grok-4` (responde com `grok-4.3`; lista
   também 4.5/4.6/4.7 e os de imagem) e o backend respondeu `X-Provider: grok-4`. O `hermes` precisa do node no
   PATH do ssh sem login (`~/.local/node/bin` do backend, `/opt/node/bin`): `REMOTE_PATH` do `xaiLogin.ts`.
-- Tutorial 5 · Fallback: Claude e Grok (17 out; antes "Em breve"): três passos. (1) "As duas contas nesta máquina":
+- Tutorial 6 · Fallback: Claude e Grok (17 out; antes "Em breve"): três passos. (1) "As duas contas nesta máquina":
   conclui com `claude.loggedIn && xai.loggedIn` no `GuideContext`. (2) "Escolher primário e reserva" (corpo
   `fallback-order`, `renderFallbackOrder`): o estado das duas contas, o seletor do primário (Claude = agente, xAI = grok-4; o grupo
   Configurações › Fallback que o espelhava saiu em 30 out 2026, o tutorial é o único lugar), salvo na hora com `setSettings({ backendModelForHost })`, a linha da corrente
@@ -187,14 +187,14 @@
 - **Acervo:** o primeiro cartão é "Token do Cloudflare (só leitura)". Skills que já vêm com o meu-bot têm `usar`, com o
   botão "Criar o token" e o pedido pronto, em vez de "Pedir ao agente para instalar".
 
-## Links do terminal e tutorial 13 · Conectar contas na máquina (22 out)
+## Links do terminal e tutorial 12 · Conectar contas na máquina (22 out)
 
 - **Links do terminal** abrem no Navegador do app (Cmd+clique abre no navegador do Mac).
 - **Retorno de login de CLI** (`browser.ts` › `retornoParaMaquina`): numa janela de máquina por SSH, quando a página vai
   para `http://localhost:<porta>/…` com cara de retorno OAuth, o app entrega esse endereço na máquina por SSH (`curl`) e
   segue para o redirecionamento ou mostra "Login concluído". É assim que o `wrangler login` termina, mesmo com o
   navegador no Mac.
-- **Tutorial 13 (`contas-cli`, after 1, só em máquina por SSH):** "Conectar" roda o login da ferramenta na máquina e o
+- **Tutorial 12 (`contas-cli`, after 1, só em máquina por SSH):** "Conectar" roda o login da ferramenta na máquina e o
   link abre sozinho no Navegador. Não precisa de terminal.
   - **Cloudflare:** `wrangler login --scopes account:read user:read pages:write zone:read`, só sites e domínios.
     - O `wrangler login` puro pede quase a conta inteira: Workers, D1, e-mail e segredos.
@@ -204,13 +204,13 @@
     Copiar. O passo é opcional: "Não uso GitHub".
   - **Status:** `contas-cli-core.ts` › `STATUS_SH`, um SSH só.
 
-## Tutorial 17 · Seu link público (30 out)
+## Tutorial 14 · Seu link público (30 out)
 
 - **Janela do root (30 out):** o status (`link-publico:status`) responde `LINK=root` quando `id -u` é 0 e o tutorial some
   (`needsLinkPublico` + `linkPublicoPossivel: false` no contexto): o link público é das contas de usuário, o admin não
   liga para o root. Antes o passo 1 ficava eternamente em "o admin liga" e "Conferir de novo" não mudava nada.
 
-- **`link-publico`, number 17, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
+- **`link-publico`, number 14, after 1, só em máquina por SSH (`needsXai`):** o link `https://<nome>.<domínio>/` que o
   admin liga para a pessoa (Link Público Global, `guia/maquinas.md`). Fonte `linkpublico` (`window.meuBot.linkPublico()`,
   um SSH como ela: `~/.local/share/meu-bot/link-publico.json` + quantos itens em `~/publico`).
   1. **Ver o seu link:** concluído quando o admin ligou (o json existe). Desligado, o passo diz quem liga.
@@ -234,7 +234,7 @@
 
 ## Nível de liberdade no backend e agente como root (28 out, backend 1.3.0)
 
-- **Perfil `whatsapp`** (backend-colima/server.js): igual ao `agente`, mas com o nível do tutorial 7 aplicado pelo
+- **Perfil `whatsapp`** (backend-colima/server.js): igual ao `agente`, mas com o nível do tutorial 8 aplicado pelo
   `nivel-ferramentas.js`, que lê `~/.local/share/meu-bot/objetivo.json` a cada turno: `conversa` bloqueia Bash,
   BashOutput, KillShell, Write, Edit, MultiEdit, NotebookEdit e Task; `consulta` bloqueia Bash/BashOutput/KillShell/Task
   (lê, pesquisa e anota); `age` sem trava. Vai como `--disallowedTools`, e o agente recebe a frase do nível para

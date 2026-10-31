@@ -10,7 +10,7 @@ export function paintFinanceLine(): void {
   const n = ctx.financeState?.estado?.pendencias ?? 0;
   const c = document.getElementById("financas-count"); if (c !== null) c.textContent = n > 0 ? `${n} para confirmar` : "";
 }
-/** Corpo dos passos do tutorial 14: atalhos para a página, para o chat e a instalação na máquina. */
+/** Corpo dos passos do tutorial 13: atalhos para a página, para o chat e a instalação na máquina. */
 export function renderFinanceStep(txt: HTMLElement, body: string): void {
   const row = el("div", "admin-actions");
   const abrir = el("button", "btn btn-ghost btn-small", "Abrir Finanças"); abrir.type = "button"; abrir.addEventListener("click", () => ctx.financePage?.open());

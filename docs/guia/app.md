@@ -2,7 +2,24 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
-## Configurações enxutas e tutorial 18 "Entrada rápida" (30 out 2026)
+## Tutoriais renumerados na ordem da trilha (31 out 2026)
+
+- **Problema:** a lista de Tutoriais sai na ordem do array `TUTORIAIS`, mas os números eram fixos de quando cada um
+  nasceu (os desmembrados ganharam 15 e 16 e ficaram logo depois do 1 e do 2). Na tela saía 1, 15, 2, 16, 5, 7, 9,
+  12…, e os dois tutoriais de CRM dividiam o 10 sem haver 11. Confuso, principalmente nos arquivados do root.
+- **Agora:** número = posição na trilha. Os que podem aparecer na lista são 1..15 sem buraco (o que some numa máquina
+  é só o que ela não oferece: Grok, suporte, guarda, financeiro, link público). Os `oculto` por decisão de produto foram
+  para o fim do array e da numeração: 16 (status line) e 17 (CRM, nas duas versões excludentes, Gmail e Streak).
+  O teste "trilha numerada" trava a ordem, a contiguidade dos visíveis e o array ordenado.
+- **Mapa antigo → novo** (o diário abaixo desta seção já usa os números novos; commits, issues e PRs anteriores a
+  31 out usam os antigos): 1→1 Entrar no Claude · 15→2 Mais contas do Claude · 2→3 WhatsApp · 16→4 Ouvir áudios ·
+  4→5 xAI · 5→6 Fallback · 6→7 Suporte · 7→8 Objetivo do WhatsApp · 8→9 Guarda · 9→10 Navegador · 12→11 Grupos ·
+  13→12 Contas na máquina · 14→13 Financeiro · 17→14 Link público · 18→15 Entrada rápida · 3→16 Status line (oculto) ·
+  10→17 CRM no Gmail e CRM pelo WhatsApp (ocultos). O 11 antigo ("Extensões no Navegador") já tinha sido removido.
+- Toda menção "tutorial N" em `src/`, `scripts/`, `docs/` e nos textos da tela foi trocada pelo mapa; o `number` é
+  usado só como rótulo (`tutorialBadge`, `guideTabTitle`, `tutorialNumber`), o progresso para o admin vai por id.
+
+## Configurações enxutas e tutorial 15 "Entrada rápida" (30 out 2026)
 
 - **Saíram das Configurações** (pedido do produto: a pessoa leiga não deve mexer nisso): Conexão (modelo padrão e porta
   do backend), Aparência e avisos (tema, zoom, notificações), Entrada rápida (interruptor e atalho) e Inicialização
@@ -12,10 +29,10 @@
 - **Onde cada coisa ficou:** o modelo de cada conversa continua no seletor da caixa de texto; a porta do backend é
   ajustada pelo seletor de máquinas; a paleta (Cmd+K) ganhou "Backend desta máquina" (modelo padrão · porta), que mostra
   um toast com a informação, acessível pelo chat; o zoom segue no menu Visualizar, na paleta e no segmento do rodapé;
-  o tema fica no valor gravado (`system` por padrão). O tutorial 5 (fallback) lia o `<select>` do modelo das
+  o tema fica no valor gravado (`system` por padrão). O tutorial 6 (fallback) lia o `<select>` do modelo das
   Configurações e agora lê `ctx.settings.backendModelForHost`.
 - **Entrada rápida sempre ativa:** `getQuickEntry()` devolve `enabled: true` ignorando um `false` gravado por versões
-  antigas. O gravador de atalho virou o tutorial 18 (`entrada-rapida`, after 1, fonte `quickentry` = as configurações
+  antigas. O gravador de atalho virou o tutorial 15 (`entrada-rapida`, after 1, fonte `quickentry` = as configurações
   chegaram): passo 1 "Escolher o atalho" (`quick-atalho`: o campo salva a combinação na hora e mostra ativo / em uso /
   inválido; concluído com `quickEntryStatus === "registered"`), passo 2 "Mandar uma mensagem pela janela flutuante"
   (`quick-testar`: botão "Mostrar a janela flutuante"; a flag `quickUsado` é gravada quando `ui:quick-submit` chega,
@@ -195,7 +212,7 @@ linha numa tabela:
 | `extensao-crm/` | a extensão do Gmail (InboxSDK `@inboxsdk/core` 2.2.31 fixo, esbuild, DOM vanilla, pt-BR). `npm run build:extensao` → `build/extensao-crm/` (o app em dev carrega daí); o `package.mjs` copia para `Resources/extensao-crm/`. Id estável pelo `key` do manifesto (`scripts/id-da-extensao.mjs`). Dev: `npm run build:extensao && MEU_BOT_VARIANT=crm npm run dev` (ou `MEU_BOT_EXTENSAO_CRM_DIR=<pasta>` para outra cópia). |
 | `backend-colima/crm-modelo.js`, `crm-store.js`, `crm-api.js` | o CRM próprio no host: domínio puro, store em `~/.local/share/meu-bot/crm/db/` (JSON por pipeline, escritor único, feed `mudancas.jsonl`, lixeira, backup diário), rotas `/v1/crm/*` montadas no `server.js` (exige `personalizado`). |
 | `backend-colima/crm/crm.mjs`, `backend.mjs`, `importar-streak.mjs` | CLI do agente (mesmos subcomandos do `streak.mjs`, falando HTTP com o backend), helper do `.env`, importador do Streak (preserva as chaves; idempotente). `crm-job.mjs` escolhe a CLI pela licença: personalizado → `crm.mjs`; pro → `streak.mjs`. |
-| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 10 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
+| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 17 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
 | `src/main/backend.ts`, `backend-colima/server.js` | o `hello` leva `produto`; o backend guarda `apps[produto] = {version, lastSeen}` por device (um Mac pode ter o meu-bot e o meu-bot-crm: mesmo `deviceId`, não gasta `deviceLimit`); o admin vê em `appsText`. |
 
 Regras novas:
@@ -310,7 +327,7 @@ O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`ext
   `whatsapp:archive-crm`.
 - **Motor explícito na máquina:** `crm.json.motor: "proprio" | "streak"`; sem ele, quem tem a chave do Streak fica no
   Streak (nada muda em silêncio para quem já o usava com Pro), senão a licença decide (`motorCrm` em `crm-job.mjs`,
-  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 10 é `crm-gmail` quando
+  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 17 é `crm-gmail` quando
   `crmProprio && motor === "proprio"`, senão `crm-whatsapp` (Streak); `ctx.produto = { planoExigido, crmProprio, crmStreak }`.
 - **Extensões:** o meu-bot traz as duas (`CLIENT.extensoes`). O Autenticador carrega na cadeia `ready` da sessão; a do
   CRM entra por `sincronizarExtensaoCrm` (idempotente: carrega/`removeExtension`) em `browserOpen` (que recebe a

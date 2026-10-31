@@ -4,14 +4,14 @@
 
 ## CRM: caminho real da chave da API do Streak (19 out 2026)
 
-- O passo 3 do tutorial 10 dizia "Streak › Configurações › Integrações (API)". Verificado ao vivo no Gmail da
+- O passo 3 do tutorial 17 dizia "Streak › Configurações › Integrações (API)". Verificado ao vivo no Gmail da
   `agente-box` (pelo agente com o Navegador) e na documentação do Streak: o botão do Streak na barra do Gmail abre
   um menu com "Integrações e Automações" (irmão de "Configurações"), e a chave fica em "Integrações personalizadas
   – Use nossa API" (criar/copiar). O texto do passo agora segue esses rótulos.
 
 ## CRM: o agente gera a chave da API do Streak (19 out 2026)
 
-- Passo 3 do tutorial 10 ganhou "Pedir ao agente para gerar a chave" (só com o Navegador instalado): liga o
+- Passo 3 do tutorial 17 ganhou "Pedir ao agente para gerar a chave" (só com o Navegador instalado): liga o
   Navegador para o agente e manda o pedido pronto (`CRM_KEY_PROMPT`). O agente segue a skill
   `streak-crm-navegador` (seção "Gerar a chave da API": botão do Streak › Integrações e Automações › Integrações
   personalizadas) e grava com `node ~/.local/share/meu-bot/crm/streak.mjs chave-set <chave>`.
@@ -115,12 +115,12 @@ Functions) e o cookie é salgado com o commit do deploy, então troca a cada pub
 **Limpar histórico do WhatsApp:** se a exportação bater no teto de 1000 mensagens, o app recusa limpar em vez
 de guardar 1000 e zerar o resto em silêncio.
 
-## Primeiro pipeline do CRM no tutorial 10 (21 out)
+## Primeiro pipeline do CRM no tutorial 17 (21 out)
 
 O CRM só anota conversas do WhatsApp com um pipeline padrão. A box-lv tinha o CRM instalado e nenhum pipeline, e a
 pessoa só recebia no WhatsApp o erro da CLI (`config --pipeline <key>`).
 
-- **Tutorial 10 (`crm-gmail`):** ganhou o passo **"Criar o primeiro pipeline"**, antes do Streak e do teste. Ele conclui
+- **Tutorial 17 (`crm-gmail`):** ganhou o passo **"Criar o primeiro pipeline"**, antes do Streak e do teste. Ele conclui
   pelo estado real (`ctx.crm.local.padrao`): quem já tem pipeline padrão continua concluído.
 - **Corpo do passo** (`renderCrmPipeline`):
   - modelos prontos de mídia paga ("Operação de mídia paga" e "Testes de anúncio") ou "Do meu jeito", em `lib/crm-modelos.ts` com

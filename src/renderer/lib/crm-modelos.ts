@@ -1,5 +1,5 @@
 /**
- * Tutorial 10, passo "Criar o primeiro pipeline": os modelos prontos e a validação, puros (testáveis sem DOM).
+ * Tutorial 17, passo "Criar o primeiro pipeline": os modelos prontos e a validação, puros (testáveis sem DOM).
  * O CRM anota cada conversa do WhatsApp numa caixa de um pipeline; sem nenhum, nada é anotado.
  */
 export interface ModeloPipeline { id: string; titulo: string; texto: string; nome: string; etapas: readonly string[] }

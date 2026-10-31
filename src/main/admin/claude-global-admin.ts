@@ -67,7 +67,7 @@ export async function contaUsarAgoraClaudeGlobal(host: string, id: unknown): Pro
   return estadoClaudeGlobal(host);
 }
 
-/** Ordem, ligar/desligar ou conferir uma conta do rodízio do root (os controles do tutorial 15). */
+/** Ordem, ligar/desligar ou conferir uma conta do rodízio do root (os controles do tutorial 2). */
 export async function contaEditarClaudeGlobal(host: string, p: unknown): Promise<CgEstado> {
   const r = await runSsh(host, `${cgContaEditarSh((p ?? {}) as { ordem?: unknown; id?: unknown; ativa?: unknown; conferir?: unknown })}\n`, 60_000);
   if (!/^CONTA=ok$/m.test(r.stdout)) throw new Error(`não consegui mudar a conta: ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout)}`);

@@ -1,6 +1,6 @@
 /** Contrato IPC · CRM da máquina. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 
-/** Tutorial 10 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
+/** Tutorial 17 · CRM pelo WhatsApp (Pro): configuração na máquina (crm.json sem a chave) e instalação do plugin. */
 /** CRM próprio da máquina (meu-bot-crm): pipelines e o padrão do WhatsApp (null = nenhum: nada é anotado). */
 export interface CrmLocal { pipelines: { key: string; name: string; boxes: number }[]; padrao: string | null }
 

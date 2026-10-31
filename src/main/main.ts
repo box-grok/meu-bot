@@ -72,7 +72,7 @@ app.whenReady().then(() => {
   // Aviso único depois de adotar a pasta do antigo meu-bot-crm: o que veio e o que precisa ser refeito.
   if (relatorioFusao !== null) {
     const r = relatorioFusao;
-    void dialog.showMessageBox({ type: "info", title: "meu-bot", message: `Trouxe o que você tinha no ${r.origem}.`, detail: `${r.conversas} ${r.conversas === 1 ? "conversa veio" : "conversas vieram"} junto, com favoritos, memória e preferências. O CRM no Gmail abre com o seu plano. Só o login do Google (tutorial 10) e os logins do Navegador precisam ser refeitos uma vez. A pasta do ${r.origem} ficou intacta, como cópia de segurança.`, buttons: ["Entendi"] });
+    void dialog.showMessageBox({ type: "info", title: "meu-bot", message: `Trouxe o que você tinha no ${r.origem}.`, detail: `${r.conversas} ${r.conversas === 1 ? "conversa veio" : "conversas vieram"} junto, com favoritos, memória e preferências. O CRM no Gmail abre com o seu plano. Só o login do Google (tutorial 17) e os logins do Navegador precisam ser refeitos uma vez. A pasta do ${r.origem} ficou intacta, como cópia de segurança.`, buttons: ["Entendi"] });
   }
   installAppMenu({
     openPicker: () => { if (caps().usuariosMac) showUsuariosMac(); else showPicker(); },

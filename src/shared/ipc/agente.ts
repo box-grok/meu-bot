@@ -31,7 +31,7 @@ export interface AccountStatus {
   cota?: CotaInfo | null;
 }
 
-/** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */
+/** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 5 prepara). */
 export interface XaiKeyStatus { backend: boolean }
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
@@ -42,13 +42,13 @@ export type VoiceReplyMode = "off" | "inbound" | "always";
 export type VozId = "faber" | "dora" | "alex";
 export type AudioSetup = { kind: "in"; off?: boolean } | { kind: "out"; mode: VoiceReplyMode; voz?: VozId };
 
-/** Tutorial 7 · objetivo do WhatsApp: a escolha da pessoa (rótulo do cartão + frase livre; "outro" exige a frase). */
+/** Tutorial 8 · objetivo do WhatsApp: a escolha da pessoa (rótulo do cartão + frase livre; "outro" exige a frase). */
 export interface ObjectiveChoice { id: string; label: string; text: string }
 /** Quanta liberdade o agente tem: só conversa, consulta e organiza, ou age pelo dono. */
 export type FreedomLevel = "conversa" | "consulta" | "age";
-/** Uma skill do workspace do OpenClaw na máquina (`<workspace>/skills/<nome>/SKILL.md`); `objective` = a do tutorial 7. */
+/** Uma skill do workspace do OpenClaw na máquina (`<workspace>/skills/<nome>/SKILL.md`); `objective` = a do tutorial 8. */
 export interface MachineSkill { name: string; description: string; objective: boolean; /** Skill aprendida/instalada para o Claude Code da máquina (~/.claude/skills), não do workspace do OpenClaw. */ learned?: boolean }
-/** Estado do tutorial 7 na máquina (objetivo.json + skills do workspace). */
+/** Estado do tutorial 8 na máquina (objetivo.json + skills do workspace). */
 export interface ObjectiveInfo {
   /** Janela de máquina por SSH (neste Mac não há agente). */
   available: boolean;
@@ -101,11 +101,11 @@ export type ClaudeLoginEvent =
   | { kind: "log"; text: string }
   | { kind: "done"; ok: boolean; text: string };
 
-/** Contas de CLI na máquina (tutorial 13). */
+/** Contas de CLI na máquina (tutorial 12). */
 export type ContaId = "cloudflare" | "github";
 /** `presente` = a ferramenta existe na máquina; `amplo` = logada com mais acesso que o necessário (refazer limita). */
 export interface ContaEstado { id: ContaId; presente: boolean; conectado: boolean; conta: string | null; amplo: boolean }
-/** Link público da pessoa (tutorial 17): a URL, o nome (subdomínio), o domínio e quantos arquivos estão no ar. */
+/** Link público da pessoa (tutorial 14): a URL, o nome (subdomínio), o domínio e quantos arquivos estão no ar. */
 export interface LinkPublicoInfo { url: string; nome: string; dominio: string; arquivos: number; /** O nome de login dela (o nome inicial do link). */ usuario: string }
 /** Estado do link dela: `info` null = desligado, máquina fora ou este Mac; `possivel` false = esta conta não tem link por desenho (o root: o link é das contas de usuário). */
 export interface LinkPublicoStatus { info: LinkPublicoInfo | null; possivel: boolean }

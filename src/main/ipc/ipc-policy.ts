@@ -47,7 +47,7 @@ export const CLIENT_CHANNELS = [
   "contas-claude:listar", "contas-claude:criar", "contas-claude:entrar", "contas-claude:atualizar", "contas-claude:reordenar", "contas-claude:remover", "contas-claude:usar-agora", "contas-claude:conferir", "contas-claude:limiares",
   "xai-login:prepare", "xai-login:start", "xai-login:logout", "xai-login:cancel",
   "contas:entrar", "contas:cancelar", "contas:sair", "contas:instalar-gh",
-  // link público da pessoa (tutorial 17): trocar o nome do subdomínio dela, ver o que está no ar, tirar do ar e publicar um arquivo deste Mac
+  // link público da pessoa (tutorial 14): trocar o nome do subdomínio dela, ver o que está no ar, tirar do ar e publicar um arquivo deste Mac
   "link-publico:nome", "link-publico:lista", "link-publico:remover", "link-publico:publicar",
   // espaço da conta na máquina (Configurações › Espaço): a cota relida, o que dá para apagar, apagar e pedir mais ao admin
   "cota:status", "cota:maiores", "cota:apagar-item", "cota:pedir-mais",
@@ -58,7 +58,7 @@ export const CLIENT_CHANNELS = [
   // aba Navegador (módulo Pro)
   "browser:open", "browser:permissao", "browser:permissoes-esquecer", "browser:agent-whatsapp", "browser:extensions", "browser:remove-extension", "browser:request-pro", "plano:avisar-pagamento", "computador:status", "computador:acordar", "computador:instalar", "computador:url", "browser:agent", "browser:active", "browser:favorite-add", "browser:favorite-remove", "browser:workspaces-set",
   "tailscale:disable-check", "tailscale:restore",
-  // tutorial 7: objetivo do WhatsApp (objetivo.json, skill no workspace do OpenClaw, trava do nível)
+  // tutorial 8: objetivo do WhatsApp (objetivo.json, skill no workspace do OpenClaw, trava do nível)
   "objective:info", "objective:set", "objective:save", "objective:reset",
   // suporte, lado da pessoa
   "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share", "support:reset",

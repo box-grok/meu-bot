@@ -1,5 +1,5 @@
 /**
- * Grupos do WhatsApp (OpenClaw) para a área "Grupos" da lista e o tutorial 12. Puro (sem IO): recebe o
+ * Grupos do WhatsApp (OpenClaw) para a área "Grupos" da lista e o tutorial 11. Puro (sem IO): recebe o
  * `sessions.list`, o `channels.whatsapp` do openclaw.json e o cache da skill whatsapp-grupos
  * (`data/grupos-live.json`) e é o dono das regras de grupo do app, as mesmas do `habilitar.py` da skill:
  *

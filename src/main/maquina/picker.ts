@@ -116,7 +116,7 @@ function probeCached(host: string): Promise<HostProbe> {
 /**
  * Anti-loop é padrão da conta: toda máquina com OpenClaw recebe a guarda do WhatsApp sozinha (notas técnicas
  * não vão ao contato; despedidas bot-com-bot em 3 ciclos pausam a conversa). Uma tentativa por máquina por
- * sessão do app, em segundo plano; o tutorial 8 só confere e explica. Uma máquina sem SSH ou cujo agente não aceita a guarda fica fora.
+ * sessão do app, em segundo plano; o tutorial 9 só confere e explica. Uma máquina sem SSH ou cujo agente não aceita a guarda fica fora.
  */
 /**
  * Padrão do app: máquina com Hermes ganha a pausa por contato com prazo (plugin meu-bot-pausa) sozinha, como a guarda
@@ -191,7 +191,7 @@ async function ensureBackendAtual(host: string, probe: HostProbe): Promise<void>
   } catch (e) { log(`[backend] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); }
 }
 
-/** Mesmo trato para o financeiro: só sobe de versão onde ele já está instalado (instalar é o tutorial 14). */
+/** Mesmo trato para o financeiro: só sobe de versão onde ele já está instalado (instalar é o tutorial 13). */
 const financeTried = new Set<string>();
 function ensureFinanceAtual(host: string, probe: HostProbe): void {
   if (!probe.reachable || probe.finance !== true || host === LOCAL_HOST || financeTried.has(host)) return;

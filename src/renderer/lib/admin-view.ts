@@ -144,7 +144,7 @@ export function progressLines(prog: SupportProgress): HealthLine[] {
     { text: prog.tour === "done" ? "Tour do meu-bot: feito" : prog.tour === "skipped" ? "Tour do meu-bot: pulado" : "Tour do meu-bot: não feito", ok: prog.tour === "done" },
   ];
   for (const t of prog.tutorials) {
-    // O payload traz só o id; o número fixo vem da trilha ("3 · Status line do Claude"), para o suporte dizer "faz o 3".
+    // O payload traz só o id; o número fixo vem da trilha ("16 · Status line do Claude"), para o suporte dizer "faz o 16".
     const n = tutorialNumber(t.id);
     const name = n === null ? t.title : `${n} · ${t.title}`;
     if (t.comingSoon) { lines.push({ text: `${name}: em breve`, ok: null }); continue; }

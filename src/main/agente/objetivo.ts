@@ -1,5 +1,5 @@
 /**
- * Variante: cliente. Tutorial 7 · objetivo do WhatsApp, lado do SSH: lê e grava objetivo.json na máquina, salva a
+ * Variante: cliente. Tutorial 8 · objetivo do WhatsApp, lado do SSH: lê e grava objetivo.json na máquina, salva a
  * skill no workspace do OpenClaw e aplica a trava de ferramentas do nível (objetivo-core.ts tem a parte pura).
  */
 import type { FreedomLevel, ObjectiveChoice, ObjectiveInfo } from "../../shared/ipc";
@@ -61,7 +61,7 @@ export async function saveObjectiveSkill(host: string, machine: string): Promise
   return { ...(await objectiveInfo(host)), detail };
 }
 
-/** "Refazer do zero" do tutorial 7. */
+/** "Refazer do zero" do tutorial 8. */
 export async function resetObjective(host: string): Promise<ObjectiveInfo> {
   if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("máquina inválida");
   const r = await runSsh(host, resetObjectiveSh(), 30_000);
