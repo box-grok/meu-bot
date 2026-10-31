@@ -1579,7 +1579,8 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   const unseen = vis.filter((t) => !seen.has(t.id)).map((t) => t.id);
   if (unseen.length > 0) { markTutSeen(unseen); for (const id of unseen) tutNovoLabels.add(id); }
   const active: HTMLElement[] = [];
-  const archived: HTMLElement[] = [];
+  // Arquivados saem pelo número (o tour, sem número, primeiro): a trilha ordena só os pendentes.
+  const archived: { n: number; card: HTMLElement }[] = [];
   const pulados = loadTutPulados();
   // Primeiro cartão: o tour (onboarding). Começar/Rever fecha Tutoriais e começa o guia sobre a janela. "Pular" grava
   // onboarding = "skipped" (o mesmo que o botão do próprio tour): vai para Arquivados, de onde "Começar" o inicia (30 out).
@@ -1604,7 +1605,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
     }
     head.append(start);
     card.append(head);
-    (done || pulado ? archived : active).push(card);
+    if (done || pulado) archived.push({ n: 0, card }); else active.push(card);
   }
   for (const t of vis) {
     const view = guideView(t, waStatus, loadGuideFlags(t), guideCtx());
@@ -1651,7 +1652,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
       if (tutResetMsg?.id === t.id) foot.append(el("span", `hint ${tutResetMsg.bad ? "guide-pair-note" : "audio-ok"}`, tutResetMsg.text));
       card.append(foot);
     }
-    (done || pulado ? archived : active).push(card);
+    if (done || pulado) archived.push({ n: t.number, card }); else active.push(card);
   }
   // Resumo: "Você fez 2 de 6 · próximo: 3 · Status line · 1 novo · 2 em breve" (o tour conta; "em breve" não).
   const c = tutCounts();
@@ -1668,7 +1669,7 @@ const tutoriaisPage = definePage("tutoriais", "Tutoriais", $<HTMLElement>("tutor
   // Só os dois primeiros à vista: concluir ou pular um traz o próximo, para a lista não pesar.
   tutList.append(...active.slice(0, TUT_VISIVEIS));
   if (active.length > TUT_VISIVEIS) tutList.append(el("div", "acervo-empty", `Mais ${active.length - TUT_VISIVEIS} aparecem conforme você conclui estes.`));
-  if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived); }
+  if (showArchived && archived.length > 0) { tutList.append(el("div", "tut-group", "Arquivados"), ...archived.sort((a, b) => a.n - b.n).map((x) => x.card)); }
 });
 ligarTutoriais();
 /** Pede ao agente da máquina para preparar (modal ou guia): fecha o modal se aberto, abre uma conversa e manda o pedido. */

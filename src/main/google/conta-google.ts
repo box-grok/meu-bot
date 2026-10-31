@@ -15,7 +15,7 @@ import { randomBytes } from "node:crypto";
 import { safeStorage } from "electron";
 import { log } from "../maquina/tunnel";
 import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
-import { ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, URL_TOKEN, parseIdToken, temEscopo, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
+import { ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, URL_TOKEN, parseIdToken, refreshRecusadoDeVez, temEscopo, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
 import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 
 export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; /** A autorização inclui gmail.modify (lixeira do Gmail). */ gmailEscreve: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null; busca?: string | null }
@@ -177,7 +177,7 @@ export async function adotarContaDoMac(host: string): Promise<GoogleContaStatus>
   return contaStatus(host);
 }
 
-/** access token válido para as APIs; renova pelo refresh quando o cache venceu. Em invalid_grant, apaga o token. */
+/** access token válido para as APIs; renova pelo refresh quando o cache venceu. Refresh recusado de vez (revogado, vencido ou de outro client) apaga o token. */
 export async function acessoValido(host: string): Promise<string> {
   const t = lerToken(host); const c = clienteConta();
   if (t === null || c === null) throw new Error("GOOGLE_CONTA_DESCONECTADA");
@@ -188,7 +188,7 @@ export async function acessoValido(host: string): Promise<string> {
     return acesso;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (/invalid_grant|revoked|expired/i.test(msg)) { try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ } cache.delete(host); throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
+    if (refreshRecusadoDeVez(msg)) { try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ } cache.delete(host); throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
     throw e;
   }
 }
