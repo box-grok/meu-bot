@@ -6,7 +6,8 @@ import { type LoginView, type LoginProvider, loginView } from "../lib/login-step
 import { hostLabel } from "../lib/probe-text.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { FALLBACK_PRIMARIES, fallbackOrderText } from "../lib/fallback.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
@@ -468,7 +469,15 @@ export function renderFallbackOrder(container: HTMLElement): void {
   box.append(accounts, label, hint, keep);
   container.append(box);
 }
+/** Alguma conversa desta máquina já teve resposta do agente (o index só tem conversas do windowHost): tutorial 1, passo 3. */
+export const firstReplyOnHost = (): boolean => [...ctx.index.values()].some((c) => c.messages.some((m) => m.role === "assistant"));
 export function ligarContasAgente(): void {
+  registrarFonte("claude", () => ({ known: clAuth !== null, dados: { claude: { loggedIn: clAuth?.loggedIn ?? null, email: clAuth?.email ?? null, global: clAuth?.global === true, firstReply: firstReplyOnHost(), contasExtras: (contasClaudeView()?.contas ?? []).filter((c) => !c.padrao && c.global !== true && c.logada).length, trocas: (contasClaudeView()?.eventos ?? []).length } } }));
+  registrarFonte("xai", () => ({
+    known: !ehRemoto() || xaiAuth !== null || xaiKey !== null,
+    dados: { xai: { possible: !ctx.caps.install || ctx.windowHost === "local" ? false : xaiAuth !== null ? true : xaiKey === null ? null : xaiKey.backend, hermes: xaiAuth !== null ? true : xaiKey === null ? null : false, loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null } },
+  }));
+  registrarFonte("fallback", () => ({ known: ctx.account !== null, dados: { fallback: { primary: ctx.settings?.backendModelForHost ?? null, chain: ctx.account?.providers ?? null } } }));
   registrarPassos({
     "contas-claude": (txt) => renderContasClaude(txt),
     "claude-login": renderClaudeLoginPasso,

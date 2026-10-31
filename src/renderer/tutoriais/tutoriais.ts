@@ -1,7 +1,7 @@
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
-import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
+import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, GUIDE_ACTION_LABEL, type GuideContext } from "../lib/tutoriais.js";
 import { grupoAlvo } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
 import { renderPasso } from "./passos.js";
@@ -208,8 +208,7 @@ export function reportProgress(): void {
 }
 
 /** Passos `lembrar` concluídos agora pelo estado real ficam gravados (o tutorial não volta a "falta fazer" depois). */
-function lembrarFeitos(): void {
-  const c = ctx.guideCtx();
+function lembrarFeitos(c: GuideContext): void {
   for (const t of TUTORIAIS) {
     const novos = t.steps.filter((s) => s.lembrar === true && s.done(ctx.waStatus, loadGuideFlags(t), c)).map((s) => s.id);
     if (novos.length === 0) continue;
@@ -219,12 +218,14 @@ function lembrarFeitos(): void {
   }
 }
 export function paintGuide(): void {
-  lembrarFeitos();
+  // O contexto é montado uma vez por pintura (antes era remontado por guia aberto e mais uma vez em lembrarFeitos).
+  const c = ctx.guideCtx();
+  lembrarFeitos(c);
   reportProgress();
   paintTutCount();
   for (const { tutorial } of guidePages.values()) reconcileGuideFlags(tutorial);
   for (const { page, tutorial } of guidePages.values()) {
-    const v = guideView(tutorial, ctx.waStatus, loadGuideFlags(tutorial), ctx.guideCtx());
+    const v = guideView(tutorial, ctx.waStatus, loadGuideFlags(tutorial), c);
     const title = page.tabEl?.querySelector(".tab-title"); if (title !== null && title !== undefined) title.textContent = guideTabTitle(tutorial, v);
     if (ctx.pageShown(page)) page.render();
   }

@@ -44,7 +44,7 @@ import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { ESPACO_THRESHOLDS, buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_INVITE, initialOnboardState, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
-import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiKey } from "./agente/contas-agente.js";
+import { firstReplyOnHost, FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiKey } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
 import { conferirPassos } from "./tutoriais/passos.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
@@ -57,7 +57,8 @@ import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, rend
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
-import { firstReplyOnHost, guideCtx, ligarGuiaSecoes, paintSupport, refreshStatusLine, refreshSupportState, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { ligarGuiaSecoes, paintSupport, refreshStatusLine, refreshSupportState, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { conferirFontes, montarGuideCtx } from "./tutoriais/fontes.js";
 import { abrirLinkDoChat, ligarNavegadorGuia, refreshNavInst } from "./navegador/navegador-guia.js";
 import { ligarLinkPublicoGuia, refreshLinkPublico } from "./agente/link-publico-guia.js";
 import { ligarContasCliGuia, refreshContas, renderConta } from "./agente/contas-cli-guia.js";
@@ -140,7 +141,7 @@ const ctxImpl = {
   get getListMode() { return getListMode; },
   get goToChatFromGuide() { return goToChatFromGuide; },
   get guardaMsg() { return guardaMsg; }, set guardaMsg(v) { setGuardaMsg(v); },
-  get guideCtx() { return guideCtx; },
+  get guideCtx() { return montarGuideCtx; },
   get hostLocalAddr() { return hostLocalAddr; },
   get hostStatus() { return hostStatus; },
   get ICON_CHECK() { return ICON_CHECK; },
@@ -1813,6 +1814,7 @@ ligarAtualizacao();
 ligarConfiguracoes();
 // Todo body dos tutoriais precisa de alguém que o desenhe (cada módulo registra os seus no `ligar…()` dele).
 { const faltam = conferirPassos(TUTORIAIS); if (faltam.length > 0) console.error("passos de tutorial sem tela:", faltam.join(", ")); }
+{ const faltam = conferirFontes(); if (faltam.length > 0) console.error("fontes do guia sem registro:", faltam.join(", ")); }
 
 void (async () => {
   // Lista de conversas oculta por padrão (Cmd+B ou ☰ mostra); só fica visível se a pessoa a abriu antes.

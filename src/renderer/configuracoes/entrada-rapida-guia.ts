@@ -2,6 +2,7 @@
 import { el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { ctx } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 /** Texto do status do atalho global, como era nas Configurações. */
@@ -50,5 +51,6 @@ export function renderQuickTestar(container: HTMLElement): void {
 
 /** Liga os dois passos da entrada rápida ao guia; o renderer.ts chama uma vez. */
 export function ligarEntradaRapidaGuia(): void {
+  registrarFonte("quickentry", () => ({ known: ctx.settings !== null, dados: { quickEntry: { status: ctx.settings?.quickEntryStatus ?? null, shortcut: ctx.settings?.quickEntryShortcut ?? "" } } }));
   registrarPassos({ "quick-atalho": (txt) => renderQuickAtalho(txt), "quick-testar": (txt) => renderQuickTestar(txt) });
 }

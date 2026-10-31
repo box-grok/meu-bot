@@ -44,7 +44,7 @@ Regras:
 | `app/` | `ctx.ts` (ponte para o renderer), `paginas.ts` (páginas em aba própria e modo dividido), `rede.ts` (barra offline) |
 | `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok) e o passo do fallback, oferta de skill depois de navegar; guias de domínio: `objetivo-guia.ts` (objetivo do WhatsApp, estado e passos), `contas-cli-guia.ts` (Cloudflare, GitHub), `link-publico-guia.ts` |
 | `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts` (área Grupos e os passos do tutorial), `guarda-guia.ts`, `chat.ts` |
-| `tutoriais/` | Só o motor: `tutoriais.ts` (guia ao vivo), `catalogo.ts` (página Tutoriais, os cartões), `passos.ts` (registro body → quem desenha o passo), `guia-secoes.ts` (`guideCtx()` e os passos sem domínio: suporte, status line) |
+| `tutoriais/` | Só o motor: `tutoriais.ts` (guia ao vivo), `catalogo.ts` (página Tutoriais, os cartões), `passos.ts` (registro body → quem desenha o passo), `fontes.ts` (registro fonte → fatia do `GuideContext`; `montarGuideCtx()` junta), `guia-secoes.ts` (passos e fontes sem domínio: suporte, status line) |
 | `crm/` | Passo do CRM no guia (instalação, chave, pipeline, teste) |
 | `finance/`, `conta-google/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, páginas do meu-bot-admin |
 | `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom; `navegador-guia.ts` = passos do tutorial e `abrirLinkDoChat`) e abas de terminal |
@@ -88,12 +88,33 @@ abaixo: `meu-bot-fit`.
    - main: `src/main/<domínio>/<x>-local.ts` (pelo túnel, como `financeiro/finance-local.ts`) e os canais em
      `ipc/client.ts`, `ipc/ipc-policy.ts`, `preload/preload.ts` e `shared/ipc.ts`;
    - telas: `src/renderer/<domínio>/<x>-page.ts` com `mount<X>Page(deps)` (molde `finance/finance-page.ts`) e, se
-     fizer sentido, um tutorial em `lib/tutoriais.ts`.
+     fizer sentido, um tutorial (seção "Como adicionar um tutorial", abaixo).
 6. **Conferir**: `npm test`. O `produtos-alinhados.test.mjs` diz o que faltou (ícone, add-on fora do catálogo,
    auditoria, backend desalinhado, tipo `AppVariant`, atalho de build).
 7. **Empacotar**: `npm run dist -- --variant <id>` (sem entrada nova no `package.json`; um atalho `dist:<id>` é
    opcional e precisa chamar `scripts/dist.mjs`).
 8. **Liberar**: no meu-bot-admin, Suporte › Conta e licença › `＋ <rótulo>` na máquina da pessoa.
+
+## Como adicionar um tutorial
+
+Um tutorial toca três arquivos (quatro com o teste). Molde: `finance/financeiro-guia.ts` + a entrada `financeiro` em
+`lib/tutoriais.ts`.
+
+1. **`src/renderer/lib/tutoriais.ts`** (puro): a entrada em `TUTORIAIS` (número = o próximo da trilha; os `oculto`
+   ficam no fim da numeração), os bodies novos no union de `GuideStep.body`, o campo novo em `GuideContext` e em
+   `emptyContext()`, e a fonte nova em `GuideSource`, `GUIDE_SOURCES` e `noneKnown`. Cada passo diz como se conclui
+   pelo estado real (`done`), e `lembrar: true` quando o fato não se desfaz.
+2. **`src/renderer/<domínio>/<x>-guia.ts`**: o estado lido da máquina, o `refresh<X>…()` que o preenche (termina em
+   `ctx.paintGuide()`), um renderizador por body e `ligar<X>Guia()`, que chama `registrarPassos({...})`
+   (`tutoriais/passos.ts`) e `registrarFonte("<fonte>", () => ({ known, dados }))` (`tutoriais/fontes.ts`); a fonte
+   entra também em `CAMPOS_POR_FONTE`. Estado que outro arquivo grava ganha função (`set<X>…`).
+3. **`src/renderer/renderer.ts`**: uma linha `ligar<X>Guia();` junto das outras; se o guia precisa ler a máquina ao
+   abrir, o `refresh` entra em `openGuide` (`tutoriais/tutoriais.ts`).
+4. **Testes**: os passos e a conclusão em `scripts/tests/tutoriais.test.mjs` (o teste "trilha numerada" trava a ordem
+   e `fontes.test.mjs` confere o mapa de campos); seção datada no guia do assunto em `docs/guia/`.
+
+O `renderer.ts` acusa no console, ao abrir a janela, body sem renderizador ("passos de tutorial sem tela") e fonte sem
+registro ("fontes do guia sem registro").
 
 ## Próximas fases da organização
 1. ~~Processo principal por domínio~~ (26/10).

@@ -2,7 +2,8 @@
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 /** Guarda do WhatsApp nesta máquina (tutorial 9): null = não consultado ou sem OpenClaw. */
@@ -43,6 +44,7 @@ export function renderGuardaInstall(container: HTMLElement): void {
 
 /** Liga o passo da guarda ao guia e o progresso do instalador; o renderer.ts chama uma vez. */
 export function ligarGuardaGuia(): void {
+  registrarFonte("guarda", () => ({ known: guardaState !== null || !ehRemoto() || (ctx.waStatus !== null && !ctx.waStatus.capacidades.guarda), dados: { guarda: { installed: guardaState, possible: ctx.waStatus === null ? null : ctx.waStatus.capacidades.guarda } } }));
   registrarPassos({ "guarda-install": (txt) => renderGuardaInstall(txt) });
   window.meuBot.on("guarda:progress", ({ line }) => { guardaLog = [...guardaLog, line].slice(-6); if (guardaBusy) ctx.paintGuide(); });
 }

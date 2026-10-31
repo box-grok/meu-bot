@@ -8,7 +8,8 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 /** Lado da máquina do Navegador (tutorial 10): instalado? null = ainda não consultado. */
@@ -84,6 +85,10 @@ export function renderNavOpen(container: HTMLElement, url?: string): void {
 
 /** Liga os passos do Navegador ao guia e o progresso do instalador; o renderer.ts chama uma vez. */
 export function ligarNavegadorGuia(): void {
+  registrarFonte("navegador", () => ({
+    known: ctx.navLicenseAsked && (navInstState !== null || !ehRemoto()),
+    dados: { navegador: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), installed: navInstState, tabs: ctx.navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: ctx.navExtensions.length, agentOn: ctx.navAgent.on && ctx.navAgent.state === "up", servicos: ctx.navServicosCount(), extensaoEmbutida: ctx.navExtensions.some((x) => x.embutida === true) } },
+  }));
   registrarPassos({
     "navegador-pro": (txt) => renderNavPro(txt),
     "navegador-install": (txt) => renderNavInstall(txt),

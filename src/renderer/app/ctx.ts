@@ -7,3 +7,6 @@
 import type { AppCtx } from "../renderer.js";
 
 export const ctx = {} as AppCtx;
+
+/** Janela de uma máquina por SSH (nem este Mac, nem o seletor): o que depende da máquina só se aplica aqui. */
+export const ehRemoto = (): boolean => ctx.caps.install && ctx.windowHost !== "" && ctx.windowHost !== "local";

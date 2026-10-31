@@ -1,6 +1,7 @@
 import { el } from "../lib/dom.js";
 import { financeOk } from "../lib/pro.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 /** Botão "Finanças" da lateral: só com a licença do financeiro; o número são as pendências. */
@@ -30,6 +31,7 @@ export function renderFinanceStep(txt: HTMLElement, body: string): void {
 }
 /** Liga os seis passos do tutorial 13 ao guia (todos passam por `renderFinanceStep`, que escolhe pelo body). */
 export function ligarFinanceiroGuia(): void {
+  registrarFonte("finance", () => ({ known: ctx.navLicenseAsked && (!ehRemoto() || !financeOk(ctx.license, ctx.windowHost) || ctx.financeState !== null), dados: { finance: { access: ctx.navLicenseAsked ? financeOk(ctx.license, ctx.windowHost) : null, info: ctx.financeState } } }));
   const passo = (txt: HTMLElement, step: { body?: string }): void => renderFinanceStep(txt, step.body ?? "");
   registrarPassos({ "finance-install": passo, "finance-contas": passo, "finance-renda": passo, "finance-testar": passo, "finance-foto": passo, "finance-pendencias": passo });
 }
