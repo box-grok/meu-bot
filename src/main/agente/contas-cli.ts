@@ -1,5 +1,5 @@
 /**
- * Contas de CLI na máquina da janela (tutorial 13): roda o login por SSH, manda o link (e o código, quando há) para a
+ * Contas de CLI na máquina da janela (tutorial 12): roda o login por SSH, manda o link (e o código, quando há) para a
  * janela abrir no Navegador do app e espera a ferramenta terminar. O retorno do Cloudflare para o localhost da
  * máquina é entregue pelo Navegador (`retornoParaMaquina`, browser.ts). As regras de cada ferramenta: contas-cli-core.
  */
@@ -103,7 +103,7 @@ export function cancelarConta(): void {
   try { atual.child.kill("SIGTERM"); } catch { /* ok */ }
 }
 
-/** Botão "Instalar o GitHub CLI" (tutorial 13): instala o gh na máquina e devolve o estado novo das contas. */
+/** Botão "Instalar o GitHub CLI" (tutorial 12): instala o gh na máquina e devolve o estado novo das contas. */
 export async function instalarGh(host: string): Promise<ContaEstado[] | null> {
   if (!remota(host)) throw new Error("só numa máquina por SSH");
   const r = await ssh(host, INSTALAR_GH_SH, 300_000);

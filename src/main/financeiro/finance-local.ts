@@ -1,6 +1,6 @@
 /**
  * Financeiro da máquina (produto meu-bot-finance) pelo túnel: o mesmo caminho do crm-local.ts, sobre /v1/finance/*.
- * A página Finanças e o tutorial 14 leem e mexem por aqui; a validação final é da máquina (finance-modelo.js), e a
+ * A página Finanças e o tutorial 13 leem e mexem por aqui; a validação final é da máquina (finance-modelo.js), e a
  * licença é conferida nas três camadas (renderer, acesso.ts › assertFinance, backend › financeOk).
  */
 import type { FinanceImportacao, FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceEstado, FinanceInfo, FinanceLancamento, FinanceLancarInput } from "../../shared/ipc";

@@ -1,5 +1,5 @@
 /**
- * Contas de ferramentas de linha de comando na máquina (tutorial 13), parte pura e testada: que comando entra, sai
+ * Contas de ferramentas de linha de comando na máquina (tutorial 12), parte pura e testada: que comando entra, sai
  * e diz quem está logado, e como ler o link (e o código) que cada uma imprime. Quem roda é `contas-cli.ts`, por SSH;
  * a pessoa só clica: o link abre no Navegador do app e o retorno do login (localhost da máquina) chega por lá.
  */

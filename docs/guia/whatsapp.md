@@ -154,7 +154,7 @@ lista, mas o agente continua respondendo nele, porque a marca não mexe na confi
 o admin, com o interruptor de arquivadas, vê os excluídos para restaurar. Auditoria: `whatsapp.grupo.excluir`/`restaurar`.
 Caso que motivou: grupo "zohomail" na `grokbot-1`, sem sessão, que não tinha como sair da lista.
 
-## Grupos no app, tutorial 12 e monitor (21 out)
+## Grupos no app, tutorial 11 e monitor (21 out)
 
 **Área "Grupos" na lista do WhatsApp.** Fica no fim da lista e pode ser recolhida. Junta três fontes:
 - as sessões de grupo do `sessions.list`;
@@ -180,13 +180,13 @@ A gravação usa `openclaw config patch --stdin`; depois o app relê o openclaw.
 compartilhados pela pessoa e pelo admin. Na auditoria entram `whatsapp.grupo-ligar`, `grupo-desligar` e
 `grupo-quem`.
 
-**Tutorial 12 · O agente nos grupos do WhatsApp** (after 2). Os passos são:
+**Tutorial 11 · O agente nos grupos do WhatsApp** (after 3, o do WhatsApp). Os passos são:
 1. escolher o grupo, com o aviso fixo "nunca grupo com clientes";
 2. quem pode conversar: só você por padrão, mais os membros ou números digitados;
 3. como responde: só quando chamado (padrão) ou sempre;
 4. testar: o passo se conclui quando aparece uma resposta do agente no grupo.
 
-O passo "quem" do tutorial 2 aponta para este tutorial quando a máquina tem grupos.
+O passo "quem" do tutorial 3 aponta para este tutorial quando a máquina tem grupos.
 
 **Monitor.** `skills/whatsapp-grupos/scripts/monitor.py` lê o SQLite do OpenClaw (`session_nodes` →
 `transcript_events`, `event_zstd` quando houver) em modo só leitura e segue o `/new` sozinho. Também junta os alertas
@@ -248,8 +248,8 @@ v0.21.1) a linha de cima mostrava "conectado", o pareamento por QR funcionava, m
 - **Whisper ocioso:** o ajuste de transcrição grava `stt.local.unload_after_idle_seconds: 300`. O modelo carrega no
   primeiro áudio e sai da memória 5 min depois do último: na meu-root o gateway caiu de 526 MB para 208 MB parado.
 - **Lista de grupos pelo WhatsApp:** `hermes-grupos-listar.ts` para o gateway, lista com o Baileys do bridge do Hermes
-  (`groupFetchAllParticipating`) e grava o cache que `gruposHermes` lê; "Atualizar lista" no tutorial 12.
-- **Objetivo (tutorial 7):** a skill `objetivo-whatsapp` vai para a pasta do agente escolhido (Hermes:
+  (`groupFetchAllParticipating`) e grava o cache que `gruposHermes` lê; "Atualizar lista" no tutorial 11.
+- **Objetivo (tutorial 8):** a skill `objetivo-whatsapp` vai para a pasta do agente escolhido (Hermes:
   `~/.hermes/skills/`; OpenClaw: o workspace) e uma cópia antiga no lugar errado é movida na leitura.
 - **Nível de liberdade no Hermes:** quem executa é o Claude Code do backend, então a trava fica lá (ver agente.md,
   "Nível de liberdade no backend").
@@ -317,12 +317,12 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
   - as conversas;
   - o journald.
 
-## Tutorial 16: ouvir áudios, separado do tutorial 2 (29 out)
+## Tutorial 4: ouvir áudios, separado do tutorial 3 (29 out)
 
-- **Por quê:** a transcrição era o passo "Áudio no WhatsApp" do tutorial 2, com "Pular: sem áudio por enquanto". Quem
+- **Por quê:** a transcrição era o passo "Áudio no WhatsApp" do tutorial 3, com "Pular: sem áudio por enquanto". Quem
   pulava terminava o 2 e o agente seguia respondendo "não consigo ouvir seu áudio", sem nada pendente na lista. Caso
   real: o Daniel, no meu-box-2 (Hermes), mandou um áudio e o gateway registrou `No STT provider available`.
-- **Agora:** o tutorial 2 tem 5 passos (escolher, preparar, QR, quem responde, testar com texto). O tutorial 16, "Ouvir
+- **Agora:** o tutorial 3 tem 5 passos (escolher, preparar, QR, quem responde, testar com texto). O tutorial 4, "Ouvir
   áudios do WhatsApp" (`audio-whatsapp`, depois do 2), tem dois passos: ativar a transcrição (concluído pelo
   `audioIn` da máquina) e testar com um áudio ("Ele entendeu meu áudio"). `renderAudioControls(…, "ouvir")` desenha
   só a linha da transcrição; o painel de gerência do 2 usa `"responder"` (resposta em áudio e voz).
@@ -341,7 +341,7 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
   `whisper-small` (copiado de `/opt/hermes/modelos` quando já está lá) e o `bin/transcrever`. Sem grupo: todos leem e
   executam, só o root grava. Cada Hermes chama o binário como o próprio usuário, pelo provedor `local_command`
   (`HERMES_LOCAL_STT_COMMAND` no `~/.hermes/.env`, que é o único lugar onde o Hermes lê esse comando). Com isso, o
-  "Ativar transcrição" do tutorial 16 só confere `[ -x /opt/transcriber/bin/transcrever ]`, aponta e reinicia, em
+  "Ativar transcrição" do tutorial 4 só confere `[ -x /opt/transcriber/bin/transcrever ]`, aponta e reinicia, em
   segundos. Sem o binário (máquina de antes do padrão), instala o extra por usuário como antes. A leitura da máquina
   no admin mostra `HERMES=sem-transcritor` e oferece "Instalar o transcritor para todos".
 
@@ -413,7 +413,7 @@ chat da pessoa consigo mesma — não há modo que atenda os dois. Daí o concei
   OpenClaw a trava de ferramentas (`toolsBySender`) e o `allowFrom` de "só eu" seguem o dono.
 - **Plugin meu-bot-pausa 1.1.0:** `_dono()` soma o `dono.numero` do arquivo ao `me.id`/`me.lid` (cache por mtime de
   cada fonte): do celular dele, `/pausar <número>` e `/pausados` funcionam.
-- **UI, sem tela nova:** no bloco "Quem o agente responde" (modal e tutorial 2), acima dos cartões, a linha
+- **UI, sem tela nova:** no bloco "Quem o agente responde" (modal e tutorial 3), acima dos cartões, a linha
   `Dono +55 … · você (este número)` (ou `· você, do seu celular (o agente atende em …)`) com **Trocar** → campo inline
   com Salvar / Cancelar / Voltar para este número e o hint "O dono fala com o agente de qualquer modo, nunca é pausado
   e recebe os avisos. Troque só se o agente roda num número dedicado e você fala com ele do seu celular." O cartão

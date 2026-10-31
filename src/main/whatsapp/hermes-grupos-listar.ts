@@ -33,7 +33,7 @@ const logger = pino ? pino({ level: 'silent' }) : silent;
   await new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('tempo esgotado (45 s) esperando a conexão com o WhatsApp')), 45000);
     sock.ev.on('connection.update', (u) => {
-      if (u.qr) { clearTimeout(t); reject(new Error('o WhatsApp pediu QR: a sessão do Hermes não está pareada (tutorial 2)')); }
+      if (u.qr) { clearTimeout(t); reject(new Error('o WhatsApp pediu QR: a sessão do Hermes não está pareada (tutorial 3)')); }
       if (u.connection === 'open') { clearTimeout(t); resolve(); }
       if (u.connection === 'close') {
         clearTimeout(t);
@@ -68,7 +68,7 @@ B="$R/scripts/whatsapp-bridge"
 [ -d "$B/node_modules/@whiskeysockets/baileys" ] || { echo "ERRO=não achei o bridge do WhatsApp do Hermes (com o Baileys) em $B"; exit 0; }
 command -v node >/dev/null 2>&1 || { echo "ERRO=esta máquina não tem o node no PATH para o Hermes"; exit 0; }
 S=$HOME/.hermes/whatsapp/session
-[ -f "$S/creds.json" ] || { echo "ERRO=o WhatsApp do Hermes não está pareado nesta máquina (tutorial 2)"; exit 0; }
+[ -f "$S/creds.json" ] || { echo "ERRO=o WhatsApp do Hermes não está pareado nesta máquina (tutorial 3)"; exit 0; }
 C=$HOME/.claude/skills/whatsapp-grupos/data/grupos-live.json
 LOCK=$HOME/.cache/meu-bot/wa-admin.lock; mkdir -p "$(dirname "$LOCK")"
 exec 9>"$LOCK.flock"

@@ -23,7 +23,7 @@ export interface FinancePageDeps {
   /** A licença desta janela já foi lida (antes disso, nada de bloqueio precipitado). */
   licenseKnown(): boolean;
   goToChat(message: string, hint: string, model?: BackendModel): Promise<void>;
-  /** Avisa a janela (tutorial 14, contador da lateral) quando o estado muda. */
+  /** Avisa a janela (tutorial 13, contador da lateral) quando o estado muda. */
   onInfo(info: FinanceInfo | null): void;
 }
 

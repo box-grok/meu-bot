@@ -618,7 +618,7 @@ if novos:
 m = sub(doc, "model")
 prov = str(m.get("provider") or "auto").strip().lower()
 grava = False
-# Modelo do WhatsApp: "whatsapp" (o agente com o nível de liberdade do tutorial 7, nivel-ferramentas.js) quando o
+# Modelo do WhatsApp: "whatsapp" (o agente com o nível de liberdade do tutorial 8, nivel-ferramentas.js) quando o
 # backend da máquina já o conhece (1.3.0+); num backend mais antigo, "agente" (o "whatsapp" daria erro lá).
 def vtupla(v):
     try: return tuple(int(x) for x in (v or "0").split(".")[:3])

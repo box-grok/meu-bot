@@ -1229,7 +1229,7 @@ timeout 60 openclaw channels logout --channel whatsapp >/dev/null 2>&1
   log(`[whatsapp] desconectado em ${host} (${out})`);
 }
 
-// ── Grupos (área "Grupos" da lista e tutorial 12). As regras ficam em whatsapp-grupos-core.ts; aqui só o IO. ──
+// ── Grupos (área "Grupos" da lista e tutorial 11). As regras ficam em whatsapp-grupos-core.ts; aqui só o IO. ──
 const WA_GRUPOS_DIR = "$HOME/.claude/skills/whatsapp-grupos";
 /** channels.whatsapp do openclaw.json (só essa seção: nada de tokens). */
 const WA_CONFIG_SH = `echo "wa=$(python3 -c 'import json,os;c=json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")));print(json.dumps((c.get("channels") or {}).get("whatsapp") or {}))' 2>/dev/null)"`;

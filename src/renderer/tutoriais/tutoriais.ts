@@ -35,7 +35,7 @@ export const visibleNow = (): Tutorial[] => visibleTutorials(ctx.guideCtx(), tut
 /**
  * Tutoriais já vistos nesta máquina (ids), só cresce: a pessoa "vê" ao abrir Tutoriais. Novidade = visível,
  * pendente e nunca visto (novo numa atualização, ou recém-destravado na trilha). Um que some e volta
- * (Refazer do 1 esconde 3/4; relogar mostra de novo) continua visto: reaparecer não é novidade.
+ * (Refazer do 1 esconde o 2 e o 5; relogar mostra de novo) continua visto: reaparecer não é novidade.
  */
 const tutSeenKey = (): string => `tutVisto:${ctx.windowHost}`;
 export function loadTutSeen(): Set<string> {
@@ -285,7 +285,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
         ctx.renderReplyCards(cards, ctx.replyChoiceNow(st), ctx.waPolicySaving || !st.connected, ctx.chooseReply);
         txt.append(cards, el("div", "guide-note", REPLY_NOTE));
         ctx.renderChannelEditor(txt);
-        // Grupos têm a própria lista de quem conversa com o agente (tutorial 12).
+        // Grupos têm a própria lista de quem conversa com o agente (tutorial 11).
         if ((ctx.waGroups?.grupos.length ?? 0) > 0 && ctx.TUT_GRUPOS !== null) {
           const tg = ctx.TUT_GRUPOS;
           const p = el("p", "hint"); p.append("Isto vale para as conversas diretas. Nos grupos, quem conversa com o agente é outra lista: ");
@@ -422,7 +422,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       const swap = el("button", "btn btn-ghost btn-small", "Sair e entrar com outra conta"); swap.type = "button";
       swap.addEventListener("click", () => ctx.armConfirm(swap, "Confirmar? o grok-4 para até entrar de novo", () => { void ctx.logoutXai(true); }));
       row.append(`xAI (Grok) · ${ctx.xaiAuth?.email ?? "logada"}. `, swap);
-      manage.append(row, el("p", "hint", "Para o Grok assumir quando o Claude falhar: tutorial 5 · Fallback (em breve)."));
+      manage.append(row, el("p", "hint", "Para o Grok assumir quando o Claude falhar: tutorial 6 · Fallback (em breve)."));
       panel.append(manage);
     } else if (t.id === "claude-login") {
       const manage = el("div", "guide-manage");

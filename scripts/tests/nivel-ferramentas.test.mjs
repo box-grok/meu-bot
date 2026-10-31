@@ -7,7 +7,7 @@ import path from "node:path";
 const require = createRequire(import.meta.url);
 const nivel = require("../../backend-colima/nivel-ferramentas.js");
 
-test("nível do WhatsApp (Hermes): o backend bloqueia ferramentas conforme o tutorial 7", () => {
+test("nível do WhatsApp (Hermes): o backend bloqueia ferramentas conforme o tutorial 8", () => {
   assert.deepEqual(nivel.ferramentasBloqueadas("age"), []);
   for (const t of ["Bash", "Write", "Edit", "Task"]) assert.ok(nivel.ferramentasBloqueadas("conversa").includes(t), `conversa sem ${t}`);
   assert.ok(nivel.ferramentasBloqueadas("consulta").includes("Bash"));
@@ -35,7 +35,7 @@ test("backend: o perfil whatsapp existe, passa --disallowedTools e segue a corre
   assert.match(lista, /nivel-ferramentas\.js/, "o install.sh copia o módulo");
 });
 
-test("Hermes: o WhatsApp usa o modelo 'whatsapp' só com backend 1.3.0+, e o tutorial 7 informa a trava pelo backend", () => {
+test("Hermes: o WhatsApp usa o modelo 'whatsapp' só com backend 1.3.0+, e o tutorial 8 informa a trava pelo backend", () => {
   const h = require("../../dist/main/whatsapp/whatsapp-hermes-core.js");
   assert.match(h.HERMES_WA_ENSURE_SH, /mod_wa = "whatsapp" if vtupla\(os\.environ\.get\("HV"\)\) >= \(1, 3, 0\) else "agente"/);
   const o = require("../../dist/main/agente/objetivo-core.js");

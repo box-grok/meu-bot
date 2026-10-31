@@ -1,7 +1,7 @@
 /**
  * Variante: admin. Aba "Claude Code Global", abaixo de Usuários: a assinatura do root servindo todos os usuários desta
  * máquina, gerida só aqui. Instala o intermediário do root, entra na conta do root (Terminal), mantém o rodízio de
- * contas do root (o que o tutorial 15 faz para uma pessoa, aqui para todos) e liga ou desliga o global por usuário.
+ * contas do root (o que o tutorial 2 faz para uma pessoa, aqui para todos) e liga ou desliga o global por usuário.
  * Quem está no global vê isso no meu-bot dele, sem poder mexer; se o global esgotar, cai para a conta própria dele.
  * Fábrica como usuarios-page.ts; o main confere tudo como root.
  */
@@ -100,13 +100,13 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
     conta.append(inst);
     panel.append(conta);
 
-    // 2. Rodízio do root (o tutorial 15, aqui para todos).
+    // 2. Rodízio do root (o tutorial 2, aqui para todos).
     if (e.instalado) {
       const rod = el("div", "admin-card"); rod.append(el("strong", "", "Rodízio de contas do root"));
       rod.append(el("p", "hint", "Quando uma conta chega ao limite, a próxima assume para todos. O login do root é a base e fica por último."));
       const t = el("table", "usuarios-tabela");
       const th = el("tr"); for (const h of ["Conta", "Sessão", "Semana", "Estado", ""]) th.append(el("th", "", h)); t.append(th);
-      // As contas que a pessoa ordena (o login do root fica sempre por último, como a padrão no tutorial 15).
+      // As contas que a pessoa ordena (o login do root fica sempre por último, como a padrão no tutorial 2).
       const isoladas = e.contas.filter((x) => x.id !== "padrao");
       for (const c of e.contas) {
         const tr = el("tr");
@@ -150,7 +150,7 @@ export function mountClaudeGlobalPage(deps: ClaudeGlobalPageDeps): { open: () =>
         void rodar("nova", () => deps.api.adminClaudeGlobalContaNova(), "Login da conta nova aberto no Terminal. Esta aba confirma sozinha.").then(() => vigiar((x) => x.contas.filter((c) => c.logada).length > antes));
       });
       rod.append(nova);
-      // Os limiares do tutorial 15, para o rodízio do root: o intermediário anota o uso a cada resposta.
+      // Os limiares do tutorial 2, para o rodízio do root: o intermediário anota o uso a cada resposta.
       if (e.limiares !== null) {
         const lim = el("div", "conta-claude-limiares");
         const num = (rotulo: string, k: "sessao" | "semanal"): HTMLLabelElement => {

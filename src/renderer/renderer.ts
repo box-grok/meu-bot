@@ -1501,9 +1501,9 @@ function applySettings(view: SettingsView): void {
 ligarContasAgente();
 ligarPaginas();
 
-// ---- Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
+// ---- Tutorial 8 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace do OpenClaw).
 let objectiveState: ObjectiveInfo | null = null;
-/** Último recado do tutorial 7 (erro ou "skill salva"). */
+/** Último recado do tutorial 8 (erro ou "skill salva"). */
 let objectiveMsg: { text: string; bad: boolean } | null = null;
 /** Rascunho do passo 1 antes de "Salvar objetivo" (cartão marcado e frase digitada). */
 let objectiveDraft: { id: string; text: string } | null = null;
@@ -1526,14 +1526,14 @@ const acervoPage = definePage("acervo", "Acervo", $<HTMLElement>("acervo-panel")
   }
   if (objectiveState?.available === true) {
     acervoList.append(el("div", "tut-group", `Skills do agente do WhatsApp em ${hostLabel(windowHost)}`));
-    if (machine.length === 0) acervoList.append(el("div", "acervo-empty", "O agente desta máquina ainda não tem skills no workspace. O tutorial 7 cria a primeira: o objetivo dele no WhatsApp."));
+    if (machine.length === 0) acervoList.append(el("div", "acervo-empty", "O agente desta máquina ainda não tem skills no workspace. O tutorial 8 cria a primeira: o objetivo dele no WhatsApp."));
     for (const sk of machine) {
       const info = el("div", "grow");
       info.append(el("strong", "", sk.objective ? `${sk.name} · objetivo do WhatsApp` : sk.name), el("span", "", sk.description !== "" ? sk.description : "sem descrição"));
       const item = el("div", `acervo-item${sk.objective ? " on" : ""}`);
       item.append(info);
       if (sk.objective) {
-        const go = el("button", "btn btn-ghost btn-small", "Ajustar no tutorial 7"); go.type = "button";
+        const go = el("button", "btn btn-ghost btn-small", "Ajustar no tutorial 8"); go.type = "button";
         go.addEventListener("click", () => { const t = TUTORIAIS.find((x) => x.id === "whatsapp-objetivo"); if (t !== undefined) openGuide(t); });
         item.append(go);
       }
@@ -1790,7 +1790,7 @@ async function handleQuickSubmit(correlationId: string, text: string): Promise<v
     let tab = active();
     if (tab === null || tab.busy) tab = await newTab();
     window.meuBot.quickAck(correlationId, true);
-    // Tutorial 18: uma mensagem chegou pela janela flutuante; a flag lembra, senão o passo "desfaz" ao recarregar.
+    // Tutorial 15: uma mensagem chegou pela janela flutuante; a flag lembra, senão o passo "desfaz" ao recarregar.
     const tq = TUTORIAIS.find((x) => x.id === "entrada-rapida");
     if (tq !== undefined && !loadGuideFlags(tq).quickUsado) { saveGuideFlag(tq, "quickUsado"); paintGuide(); }
     await sendText(tab, text);
@@ -1901,7 +1901,7 @@ ligarBackendFalta();
 let navAskedPro = false;
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 
-/* ---------- Financeiro (produto meu-bot-finance): página Finanças, lateral e tutorial 14 ---------- */
+/* ---------- Financeiro (produto meu-bot-finance): página Finanças, lateral e tutorial 13 ---------- */
 let financePage: ReturnType<typeof mountFinancePage> | null = null;
 /** Página Gmail (31 out): montada na abertura, como a Conta Google; a paleta e a aba fixada a alcançam por aqui. */
 let gmailPage: ReturnType<typeof mountGmail> | null = null;

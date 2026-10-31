@@ -99,14 +99,14 @@ echo "GLOBAL=desligado"`;
 }
 
 /**
- * Conta nova no rodízio do root: cria a pasta isolada pelo registro (o mesmo do tutorial 15) e imprime
+ * Conta nova no rodízio do root: cria a pasta isolada pelo registro (o mesmo do tutorial 2) e imprime
  * `CONTA=<id> <home>` para o admin abrir o login nela.
  */
 export const CG_CONTA_NOVA_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 ${NODE_SH}
 cd /tmp && HOME=/root "$NODE" -e 'const c = require("${CG_DIR}/contas-claude.js").abrir().criar(""); console.log("CONTA=" + c.id + " " + c.home)'`;
 
-/** Limiares do rodízio do root (os mesmos do tutorial 15): troca ao passar de sessão %/semana %, e qual vai primeiro. Saída `LIMIARES=ok`. */
+/** Limiares do rodízio do root (os mesmos do tutorial 2): troca ao passar de sessão %/semana %, e qual vai primeiro. Saída `LIMIARES=ok`. */
 export function cgLimiaresSh(t: { sessao?: unknown; semanal?: unknown; estrategia?: unknown }): string {
   const p: Record<string, unknown> = {};
   for (const k of ["sessao", "semanal"] as const) { const n = Number(t[k]); if (t[k] !== undefined) { if (!Number.isInteger(n) || n < 50 || n > 100) throw new Error("limiar: um número inteiro de 50 a 100"); p[k] = n; } }
@@ -117,7 +117,7 @@ cd /tmp && HOME=/root "$NODE" -e 'require("${CG_DIR}/contas-claude.js").abrir().
 }
 
 /**
- * Mexe numa conta do rodízio do root, como o tutorial 15 faz numa conta da pessoa: `ordem` (ids das contas isoladas
+ * Mexe numa conta do rodízio do root, como o tutorial 2 faz numa conta da pessoa: `ordem` (ids das contas isoladas
  * na ordem nova; o login do root fica sempre por último), `ativa` (ligar/desligar no rodízio, sem sair) ou `conferir`
  * (relê login, e-mail e uso). Saída `CONTA=ok`.
  */

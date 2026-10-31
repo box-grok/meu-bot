@@ -1,6 +1,6 @@
 /**
  * Navegador do meu-bot para o agente do WhatsApp: o IO (SSH) sobre navegador-whatsapp-core.ts. Ligar instala o lado
- * da máquina se faltar (o mesmo do tutorial 9), grava o servidor MCP e a trava por remetente, recarrega e confere.
+ * da máquina se faltar (o mesmo do tutorial 10), grava o servidor MCP e a trava por remetente, recarrega e confere.
  * O arquivo da porta é do browser.ts (grava quando o túnel reverso sobe).
  */
 import { CREDS_ME, runSsh } from "../whatsapp/whatsapp";

@@ -267,8 +267,8 @@ function renderOuvir(box: HTMLElement, st: typeof ctx.waStatus): void {
 }
 /**
  * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
- * responder em áudio. `parte`: "ouvir" no tutorial 16 (só a transcrição), "responder" no painel de gerência do
- * tutorial 2 (só a resposta em áudio e a voz); os instaladores rodam na máquina.
+ * responder em áudio. `parte`: "ouvir" no tutorial 4 (só a transcrição), "responder" no painel de gerência do
+ * tutorial 3 (só a resposta em áudio e a voz); os instaladores rodam na máquina.
  */
 export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "responder"): void {
   const st = ctx.waStatus;
@@ -278,7 +278,7 @@ export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "re
   // Hermes: a pausa por contato com prazo vem do plugin meu-bot-pausa; o app instala sozinho, mas o botão fica aqui para quem ficou sem.
   if (hermes) renderPausaContato(box, st);
   // Responder em áudio só acontece quando o agente entende o áudio que recebeu.
-  if (st?.audioIn !== true) box.append(el("p", "hint", "Responder em áudio depende da transcrição ligada: tutorial 16, Ouvir áudios do WhatsApp."));
+  if (st?.audioIn !== true) box.append(el("p", "hint", "Responder em áudio depende da transcrição ligada: tutorial 4, Ouvir áudios do WhatsApp."));
   // Mesma forma da linha "Ouvir áudios": rótulo e estado atual; os cartões abaixo, lado a lado.
   const current = st?.audioOut ?? "off";
   const speak = el("div", "audio-row");

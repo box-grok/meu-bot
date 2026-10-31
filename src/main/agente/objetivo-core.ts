@@ -1,5 +1,5 @@
 /**
- * Tutorial 7 · "O que você quer resolver pelo WhatsApp?": a parte pura. A pessoa escolhe um objetivo e quanta
+ * Tutorial 8 · "O que você quer resolver pelo WhatsApp?": a parte pura. A pessoa escolhe um objetivo e quanta
  * liberdade o agente tem; o app grava isso na máquina (objetivo.json), escreve uma skill de verdade no workspace
  * do OpenClaw (`<workspace>/skills/objetivo-whatsapp/SKILL.md`, que ele carrega como "openclaw-workspace") e
  * trava as ferramentas do dono conforme o nível. Testável sem Electron; o SSH fica em objetivo.ts.
@@ -95,7 +95,7 @@ export function skillMarkdown(objective: ObjectiveChoice, level: FreedomLevel, m
     "",
     "# O que você resolve pelo WhatsApp",
     "",
-    `Gerado pelo meu-bot (tutorial 7) na máquina ${machine}. Salvar de novo no app substitui este arquivo.`,
+    `Gerado pelo meu-bot (tutorial 8) na máquina ${machine}. Salvar de novo no app substitui este arquivo.`,
     "",
     `**Objetivo:** ${objective.label}${objective.text !== "" ? ` — ${objective.text}` : ""}`,
     "",

@@ -10,7 +10,7 @@ import { TUTORIAIS, grupoAlvo, quemEscolhido, GRUPOS_AVISO, parseWaNumbers, GRUP
 import { ctx } from "../app/ctx.js";
 
 // ---- Grupos do WhatsApp: a área "Grupos" no fim da lista, a página de cada grupo (só leitura, com o autor de cada
-// mensagem) e os passos do tutorial 12. As regras (nunca "*", nunca ligar sem quem aciona, desligar o último fecha o
+// mensagem) e os passos do tutorial 11. As regras (nunca "*", nunca ligar sem quem aciona, desligar o último fecha o
 // canal de grupos) moram no main (whatsapp-grupos-core.ts); aqui só a tela. Lidos a cada minuto no modo WhatsApp.
 export let waGroups: WhatsappGroups | null = null;
 let waGroupsErr: string | null = null;
@@ -21,7 +21,7 @@ let waGroupsListing = false;
 let waGroupsMsg: { text: string; bad: boolean } | null = null;
 /** Grupo com gravação em andamento (desliga os botões dele). */
 let waGroupSaving: string | null = null;
-/** O agente já respondeu neste grupo (jid → sim/não), para o passo "Testar" do tutorial 12. */
+/** O agente já respondeu neste grupo (jid → sim/não), para o passo "Testar" do tutorial 11. */
 export const waGroupReplied = new Map<string, boolean>();
 const waGroupCheckedAt = new Map<string, number>();
 export const TUT_GRUPOS = TUTORIAIS.find((t) => t.id === "whatsapp-grupos") ?? null;
@@ -58,7 +58,7 @@ export function refreshWaGroups(): Promise<void> {
 }
 /** Grupos mudaram: páginas abertas, lista e guia acompanham. */
 function afterWaGroups(): void {
-  // O agente já respondeu no grupo do tutorial 12: é um fato que não se desfaz (limpar o grupo não reabre o tutorial).
+  // O agente já respondeu no grupo do tutorial 11: é um fato que não se desfaz (limpar o grupo não reabre o tutorial).
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   if (TUT_GRUPOS !== null && alvo !== null && (alvo.agenteRespondeu === true || waGroupReplied.get(alvo.jid) === true) && !ctx.loadGuideFlags(TUT_GRUPOS).gruposTested) ctx.saveGuideFlag(TUT_GRUPOS, "gruposTested");
   for (const g of waGroupPages.values()) {
@@ -78,7 +78,7 @@ const gruposGerenciaveis = (): boolean => ctx.waStatus !== null && ctx.waStatus.
  * é o pareamento; no OpenClaw é a guarda, que traz a skill.
  */
 const DICA_SEM_SKILL = (): string => ctx.waStatus !== null && !ctx.waStatus.capacidades.guarda
-  ? "O WhatsApp do Hermes não está pareado nesta máquina: faça o tutorial 2 e volte aqui."
+  ? "O WhatsApp do Hermes não está pareado nesta máquina: faça o tutorial 3 e volte aqui."
   : "A skill whatsapp-grupos não está nesta máquina: atualize a guarda do WhatsApp pelo seletor.";
 const GRUPOS_INDISPONIVEL = "O agente desta máquina ainda não permite ligar o grupo nem escolher quem conversa pelo app. Dá para ler e limpar o histórico; para mudar quem responde, ajuste na própria máquina.";
 /** Sem a capacidade, a seção explica em vez de oferecer botões que falhariam. Devolve true quando bloqueou. */
@@ -102,7 +102,7 @@ async function listarWaGroups(): Promise<void> {
   catch (err) { waGroupsMsg = { text: `Não deu para atualizar a lista: ${ipcErrorText(err)}`, bad: true }; }
   finally { waGroupsListing = false; afterWaGroups(); }
 }
-/** Ligar pelo menu: com a lista de quem aciona já escolhida, liga em "só quando chamado"; sem ela, o tutorial 12. */
+/** Ligar pelo menu: com a lista de quem aciona já escolhida, liga em "só quando chamado"; sem ela, o tutorial 11. */
 async function ligarWaGroup(g: WhatsappGroup): Promise<void> {
   saveGrupoAlvo(g.jid);
   if (waGroups === null || !quemEscolhido(waGroups) || TUT_GRUPOS === null) { if (TUT_GRUPOS !== null) ctx.openGuide(TUT_GRUPOS); return; }
@@ -297,7 +297,7 @@ function noteGroupReplied(jid: string, msgs: readonly WhatsappThreadMessage[]): 
   waGroupCheckedAt.set(jid, Date.now());
   if (waGroupReplied.get(jid) !== yes) { waGroupReplied.set(jid, yes); if (yes && TUT_GRUPOS !== null && grupoAlvo(waGroups, loadGrupoAlvo())?.jid === jid && !ctx.loadGuideFlags(TUT_GRUPOS).gruposTested) ctx.saveGuideFlag(TUT_GRUPOS, "gruposTested"); ctx.paintGuide(); }
 }
-/** Passo "Testar" do tutorial 12: relê a conversa do grupo (no máximo a cada 8 s) até aparecer a resposta do agente. */
+/** Passo "Testar" do tutorial 11: relê a conversa do grupo (no máximo a cada 8 s) até aparecer a resposta do agente. */
 function checkGroupReplied(jid: string): void {
   if (waGroupReplied.get(jid) === true || Date.now() - (waGroupCheckedAt.get(jid) ?? 0) < 8_000) return;
   waGroupCheckedAt.set(jid, Date.now());
@@ -368,7 +368,7 @@ function renderWaGroup(g: WaGroupPage): void {
   if (ctx.pageShown(g.page) && g.inflight === null && g.timer === null) void refreshWaGroupThread(g);
 }
 
-/** Rascunho da lista de quem aciona (editor do tutorial 12 e da página do grupo). */
+/** Rascunho da lista de quem aciona (editor do tutorial 11 e da página do grupo). */
 let grupoQuemDraft: { nums: string[]; todosArmado: boolean; bad: string | null } | null = null;
 /** "Quem pode conversar com o agente no grupo": só você por padrão; gente de casa pelos membros ou digitando; "todos" escondido atrás de aviso. */
 export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): void {
@@ -430,7 +430,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
   box.append(det);
   container.append(box);
 }
-/** Tutorial 12, passo 1: os grupos como cartões; aviso fixo de "só grupos internos". */
+/** Tutorial 11, passo 1: os grupos como cartões; aviso fixo de "só grupos internos". */
 export function renderGruposEscolher(container: HTMLElement): void {
   if (gruposIndisponivelNota(container)) return;
   container.append(el("p", "hint bad-hint", GRUPOS_AVISO));
@@ -458,7 +458,7 @@ export function renderGruposEscolher(container: HTMLElement): void {
   if (waGroupsMsg !== null) container.append(el("p", `hint${waGroupsMsg.bad ? " guide-pair-note" : ""}`, waGroupsMsg.text));
 }
 /**
- * Tutorial 12, passo 3: um botão grande "Ligar o agente neste grupo" (só quando chamado, o que evita bagunça) e, à
+ * Tutorial 11, passo 3: um botão grande "Ligar o agente neste grupo" (só quando chamado, o que evita bagunça) e, à
  * parte, "ou responder sempre", que mostra o aviso do robô antes de ligar.
  */
 let modoSempreAberto = false;
@@ -486,7 +486,7 @@ export function renderGruposModo(container: HTMLElement): void {
 }
 /** Desde quando o passo 4 está aberto para este grupo (a dica de "não respondeu" espera 1 min). */
 let testeDesde: { jid: string; em: number } | null = null;
-/** Tutorial 12, passo 4: abrir o grupo e esperar a resposta do agente aparecer. */
+/** Tutorial 11, passo 4: abrir o grupo e esperar a resposta do agente aparecer. */
 export function renderGruposTeste(container: HTMLElement): void {
   const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
   if (alvo === null) return;

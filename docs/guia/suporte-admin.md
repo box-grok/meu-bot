@@ -255,7 +255,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   porque a chave é estável e o UUID (`WhatsappChat.sessionIds`, do `sessions.list`) troca a cada "Limpar". A cópia
   é só do que a lista já tem (sem SSH); aviso "✓ ID copiado" por 1,5 s na lateral (`sidebar-notice`).
   Canais novos: `chat:reference` (cliente), `ui:bot-menu` (admin). Backend atualizado no colima em 17 out.
-- Tutorial 7 · O que você quer resolver pelo WhatsApp? (17 out): deixou de ser "Em breve". Tudo mora na máquina, como a
+- Tutorial 8 · O que você quer resolver pelo WhatsApp? (17 out): deixou de ser "Em breve". Tudo mora na máquina, como a
   pausa: `~/.local/share/meu-bot/objetivo.json` (`{objective: {id, label, text}, level, savedAt}`) e uma skill de
   verdade em `<workspace do OpenClaw>/skills/objetivo-whatsapp/SKILL.md` (o OpenClaw a lista como
   `openclaw-workspace`, confirmado na agente-box). Passo 1 *Escolher o objetivo* (corpo `objective-choice`: cartões
@@ -267,7 +267,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   ferramentas que mudam a máquina; sem número pareado a trava fica para depois). Conclui quando `savedAt` existe e o
   SKILL.md está na máquina. "Refazer do zero" (`objective:reset`) apaga a skill e o objetivo.json e devolve a
   liberdade total ao dono. O Acervo passa a listar as skills do workspace da máquina (a do objetivo primeiro, com
-  "Ajustar no tutorial 7") além da biblioteca estática; o contador da lateral soma as duas. Puro e testado em
+  "Ajustar no tutorial 8") além da biblioteca estática; o contador da lateral soma as duas. Puro e testado em
   `src/main/objetivo-core.ts`; SSH em `src/main/objetivo.ts`; opções da tela em `lib/tutoriais.ts`
   (`OBJECTIVE_OPTIONS`, `LEVEL_OPTIONS`); `GuideContext.objective`.
 - Excluir máquina no seletor do admin (17 out): "Excluir máquina" (um clique, sem confirmação; é máquina, não pessoa: cada
@@ -313,7 +313,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   diária) para "Sessão:", o mesmo do rodapé do app e da prévia do passo 2.
 - Trilha numerada e tutorial 1 · Entrar no Claude Code (16 out): cada tutorial tem `number` fixo (1 Claude,
   2 WhatsApp, 3 Status line, 4 xAI/Grok, 5 Fallback, 6 Suporte, 7 Objetivo): selo "TUTORIAL 3 · 4 PASSOS · 3 MIN",
-  aba "3 · Status line 2/4", paleta "Tutorial 3: …", admin "3 · Status line do Claude: 2 de 4" (`tutorialNumber`
+  aba "3 · Status line 2/4", paleta "Tutorial 16: …", admin "3 · Status line do Claude: 2 de 4" (`tutorialNumber`
   pelo id; o payload do progresso não mudou). `Tutorial.after` (id) esconde o tutorial até o anterior ser
   concluído — `visibleTutorials(ctx, finished)` — e `needsSupport` substitui `requires: "support"`: 3 e 4 só
   depois do 1, 5 só depois do 4 (4 e 5 continuam "Em breve"; o cartão Fallback sumiu de quem não chegou lá).
@@ -344,7 +344,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   (molde de whatsapp-pause.ts). Humanos não batem: três "ok" com 5 min de intervalo estouram a janela; conversa
   com conteúdo não passa. Logs em `/tmp/openclaw/openclaw-<data>.log` ("meu-bot-guarda: …"). No app: sonda
   `guarda` (null sem OpenClaw), `guarda:status|install|uninstall`, botão "Ativar guarda do WhatsApp" no seletor
-  (depois de status line e transcrição) e **tutorial 8 · Guarda do WhatsApp** (após o 2: ativar + "Entendi").
+  (depois de status line e transcrição) e **tutorial 9 · Guarda do WhatsApp** (após o 2: ativar + "Entendi").
   Instalada na agente-box em 18 out (geração 5 do gateway); confirmação ao vivo pendente do próximo loop.
 - Módulo Pro "Navegador" (18 out), como o quick view do Rambox: aba `navegador` (renderer, `openNavTab`) com
   abas internas que são `<webview>` (`webviewTag: true` na janela; `windows.ts`) na partição
@@ -453,9 +453,9 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   listo, nos vemos, que andes bien, cuidate, hasta la próxima, quedamos así, vos también, abraço; log
   "observando <contato> (entrada recebida)" na 1ª entrada por sessão para confirmar ao vivo; e o seletor
   (`picker.ts: ensureGuarda`) instala a guarda sozinho em toda máquina com OpenClaw que a sonda achar sem ela
-  (uma tentativa por máquina por sessão do app). Tutorial 8 vira conferência. Depois de editar o plugin, o
+  (uma tentativa por máquina por sessão do app). Tutorial 9 vira conferência. Depois de editar o plugin, o
   `--link --force` pode dizer "replacement not applied": rodar `openclaw plugins reload meu-bot-guarda`.
-- CRM pelo WhatsApp, tutorial 11 (18 out, módulo Pro): o agente da máquina anota no Streak **pela API**, sem
+- CRM pelo WhatsApp, tutorial 14 (11 na época; 18 out, módulo Pro): o agente da máquina anota no Streak **pela API**, sem
   navegador, 24 h. Lado da VM em `backend-colima/crm/`: `streak.mjs` (CLI node puro: diag, pipelines,
   pipeline, box-find, box-create, box-update, field-set, comment, contact-upsert, telefone-set; chave em
   `~/.local/share/meu-bot/crm.json` 0600, nunca impressa), `crm-job.mjs` (lê a conversa com `gateway call
@@ -473,7 +473,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   do dono no chat consigo mesmo é o caminho garantido. Sem box e sem pedido do dono, o job não cria nada (só
   marca `semBox`). App: `crm-core.ts` (puro: `parseCrmPatch`, `setCrmSh` em base64, `crmInfoSh`, `streakSh`
   diag/pipelines) + `crm.ts` (gate Pro via `fetchLicense`), IPC `crm:info|install|set|test|reset` + evento
-  `crm:progress`, `hostProbe.installCrm/uninstallCrm`, tutorial 11 `crm-whatsapp` (after `navegador`; o tutorial 10 de extensões foi removido em 19 out 2026,
+  `crm:progress`, `hostProbe.installCrm/uninstallCrm`, tutorial 14 `crm-whatsapp` (after `navegador`; o tutorial de extensões, 10 na época, foi removido em 19 out 2026,
   bodies crm-pro/crm-install/crm-config/crm-test, flag `crmSeen`), `proBlockText(a, view, "crm")`. Também
   corrigido: `licenca.js` faltava no `install.sh` e em `BUNDLE_FILES` (backend novo quebrava no require).
 - Modo dividido (18 out): conversa à esquerda e uma página fixada à direita (Navegador, Terminal, Atividade,
@@ -534,7 +534,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
   "ainda sem internet (verificado agora)" depois do botão); pill "sem internet" e barra mini vermelha enquanto
   offline; aviso "✓ internet de volta" na conversa ativa. O grid do `body` ganhou linhas fixas por elemento
   (`grid-row`): antes, com a barra recolhida e a update-bar visível, o `1fr` caía na update-bar.
-- Tutorial 4 · Entrar na xAI (Grok) (16 out): deixou de ser "Em breve". `needsXai` esconde o 4 (e o 5, que
+- Tutorial 5 · Entrar na xAI (Grok) (16 out): deixou de ser "Em breve". `needsXai` esconde o 4 (e o 5, que
   depende dele: `visibleTutorials` é recursiva no `after`) onde o Grok não é possível — este Mac ou máquina sem o
   backend (`GuideContext.xai.possible`; null = ainda não consultado = mostra). Passos: *Preparar o Grok nesta
   máquina* (corpo `xai-prepare`: botão "Preparar" → `xaiPrepare()`/`install-grok-oauth.sh`, log no passo; conclui

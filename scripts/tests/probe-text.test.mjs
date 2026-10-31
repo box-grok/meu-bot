@@ -29,7 +29,7 @@ test("estados do local", () => {
   assert.equal(hostLabel("colima"), "colima");
 });
 
-test("status line do Claude: o seletor não oferece nem avisa (o tutorial 3 instala)", () => {
+test("status line do Claude: o seletor não oferece nem avisa (o tutorial 16 instala)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"] };
   assert.deepEqual(pick(describeProbe(up)), { kind: "ok", install: null, canOpen: true });
   const sem = describeProbe({ ...up, statusLine: false });
@@ -42,7 +42,7 @@ test("status line do Claude: o seletor não oferece nem avisa (o tutorial 3 inst
   assert.deepEqual(pick(describeProbe(local)), { kind: "ok", install: null, canOpen: true });
 });
 
-test("transcrição de áudio: o seletor não oferece nem avisa (o tutorial 2 cuida do áudio)", () => {
+test("transcrição de áudio: o seletor não oferece nem avisa (o tutorial 3 cuida do áudio)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"], gateway: "openclaw" };
   const sem = describeProbe({ ...up, audioIn: false });
   assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });
@@ -87,7 +87,7 @@ test("backend de outro agente na pasta herdada: não é instalado; instalar vai 
   assert.equal(t.install, "install"); assert.equal(t.port, 8081); assert.match(t.text, /outro agente desta máquina/);
 });
 
-test("guarda do WhatsApp: o seletor não oferece nem avisa (o tutorial 8 cuida)", () => {
+test("guarda do WhatsApp: o seletor não oferece nem avisa (o tutorial 9 cuida)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"], gateway: "openclaw" };
   const sem = describeProbe({ ...up, guarda: false });
   assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });

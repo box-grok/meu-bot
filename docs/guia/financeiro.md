@@ -4,7 +4,7 @@
 
 ## CRM e financeiro numa máquina sem OpenClaw (25 out)
 
-- `install-crm.sh` deixou de recusar máquina sem OpenClaw (saía com 2: "instalador saiu com código 2" no tutorial 10 da
+- `install-crm.sh` deixou de recusar máquina sem OpenClaw (saía com 2: "instalador saiu com código 2" no tutorial 17 da
   `grokbot-1`). Sem OpenClaw entram a CLI `crm.mjs`, as skills `crm-api`/`streak-crm-api` e a pasta `crm/` (marcador
   `index.js` para a sondagem); o plugin do WhatsApp (hooks, notas automáticas, `crm-job.mjs`) é só do OpenClaw e a
   saída diz isso. `install-finance.sh` já fazia o mesmo.

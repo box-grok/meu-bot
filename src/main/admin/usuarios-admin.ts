@@ -265,7 +265,7 @@ async function padraoDaMaquina(host: string): Promise<void> {
   const v = /^HERMES=ok (\S+)$/m.exec(r.stdout)?.[1] ?? "";
   log(`[usuarios] ${host}: Hermes ${v} para todos em /opt/hermes`);
   void registrar(host, "maquina.hermes-global", v);
-  // O padrão da máquina inclui o transcritor compartilhado: cada Hermes só aponta para ele (tutorial 16).
+  // O padrão da máquina inclui o transcritor compartilhado: cada Hermes só aponta para ele (tutorial 4).
   const t = await runSsh(host, `${transcritorSh()}\n`, 20 * 60_000);
   saida(t.stdout, /^TRANSCRITOR=ok$/m, `o Hermes ficou pronto, mas não consegui instalar o transcritor em /opt/transcriber: ${/^ERRO=(.*)$/m.exec(t.stdout)?.[1] ?? ((t.stderr.trim() || t.stdout.trim()).split("\n").pop() ?? "sem resposta")}`);
   log(`[usuarios] ${host}: transcritor para todos em /opt/transcriber`);
@@ -292,7 +292,7 @@ echo "SEMEADO=ok"`;
 /**
  * Onboarding de um passo, no clique de "Criar usuário": o admin orquestra e o usuário só fica pronto no fim. Garante o
  * padrão da máquina, instala o Claude Code e o backend do meu-bot na conta dele (numa porta livre) e deixa o Hermes
- * com a transcrição ligada. Sobram para a pessoa só o login do Claude (tutorial 1) e o QR (tutorial 2). Para no
+ * com a transcrição ligada. Sobram para a pessoa só o login do Claude (tutorial 1) e o QR (tutorial 3). Para no
  * primeiro passo que falhar e diz qual; "Preparar" na linha do usuário retoma (cada passo pula o que já está feito).
  */
 async function prepararUsuario(host: string, nome: string, alias: string, onLine?: (line: string) => void): Promise<boolean> {
