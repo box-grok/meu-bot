@@ -752,6 +752,16 @@ body.topbar-hidden .topbar { display: none; }
 .nav-url:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .nav-agent { white-space: nowrap; }
 .nav-actions { display: flex; align-items: center; gap: 2px; }
+/* Barra compacta (área estreita): o "⋯" aparece, as ações secundárias somem e voltam numa segunda linha quando ele abre. */
+.nav-mais { display: none; }
+.nav-quebra { display: none; flex-basis: 100%; height: 0; order: 5; }
+.nav-bar.compacta .nav-mais { display: inline-block; }
+.nav-bar.compacta .nav-secundario { display: none; }
+.nav-bar.compacta.aberta { flex-wrap: wrap; row-gap: 4px; }
+.nav-bar.compacta.aberta .nav-quebra { display: block; }
+.nav-bar.compacta.aberta .nav-secundario:not([hidden]) { display: inline-block; order: 10; }
+.nav-bar.compacta.aberta .nav-actions.nav-secundario { display: flex; }
+.nav-mais.on { color: var(--accent); border-color: var(--line); }
 .nav-action { width: 28px; height: 28px; padding: 4px; border-radius: 6px; border: 1px solid transparent; background: transparent; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; color: var(--fg); font: 12px/1 inherit; }
 .nav-action:hover, .nav-action.on { border-color: var(--line); background: var(--card); }
 .nav-action img { width: 18px; height: 18px; }

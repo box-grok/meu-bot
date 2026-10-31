@@ -8,6 +8,7 @@ import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { type RecortesPref, parseRecortesPref, recortesPara, recorteOculto, type Recorte, recorteTitulo } from "../lib/recortes.js";
 import { NAV_ZOOM_STEPS, caberAuto, larguraMinima, zoomParaCaber } from "../lib/nav-caber-core.js";
+import { barraCompacta } from "../lib/nav-barra-core.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
@@ -539,7 +540,18 @@ export async function openNavTab(url?: string, frente = true): Promise<void> {
     const favs = el("div", "nav-favs"); favs.hidden = true;
     const actions = el("div", "nav-actions");
     const popup = el("div", "nav-popup"); popup.hidden = true;
-    bar.append(back, fwd, reload, urlEl, loading, star, agent, wa, actions, ext, open, menu, popup);
+    // Área estreita: as ações secundárias (classe nav-secundario) somem atrás do "⋯" e voltam numa segunda linha da
+    // barra quando ele é apertado; o endereço fica com a largura. O ResizeObserver abaixo decide pela largura da barra.
+    const mais = el("button", "mini-btn nav-mais", "⋯"); mais.type = "button"; mais.title = "Mais ações (favorito, zoom, recortes, extensões…)"; mais.setAttribute("aria-expanded", "false");
+    mais.addEventListener("click", () => { const aberta = bar.classList.toggle("aberta"); mais.setAttribute("aria-expanded", String(aberta)); mais.classList.toggle("on", aberta); });
+    const quebra = el("div", "nav-quebra");
+    for (const b of [star, wa, actions, ext, open]) b.classList.add("nav-secundario");
+    bar.append(back, fwd, reload, urlEl, loading, mais, agent, quebra, star, wa, actions, ext, open, menu, popup);
+    new ResizeObserver(() => {
+      const compacta = barraCompacta(bar.clientWidth);
+      bar.classList.toggle("compacta", compacta);
+      if (!compacta) { bar.classList.remove("aberta"); mais.classList.remove("on"); mais.setAttribute("aria-expanded", "false"); }
+    }).observe(bar);
     refreshNavWa();
     star.addEventListener("click", () => toggleFavCurrent());
     agent.addEventListener("click", () => {
@@ -569,11 +581,11 @@ export async function openNavTab(url?: string, frente = true): Promise<void> {
     railBtn.addEventListener("click", () => { navRailShown = !navRailShown; try { localStorage.setItem("navRailShown", navRailShown ? "1" : "0"); } catch { /* opcional */ } paintNavRail(); });
     bar.prepend(railBtn);
     // Pino: esta aba é um site fixo do espaço? Aceso = fixa (clique solta); apagado = solta (clique fixa).
-    const pin = el("button", "mini-btn nav-pin", "📌"); pin.type = "button";
+    const pin = el("button", "mini-btn nav-pin nav-secundario", "📌"); pin.type = "button";
     pin.addEventListener("click", () => { void navTogglePin(); });
     star.insertAdjacentElement("afterend", pin);
     // Zoom da aba: clique alterna 100% ↔ 75% (o comum para planilhas largas); Cmd+=/-/0 ajusta fino.
-    const zoom = el("button", "mini-btn nav-zoom", "100%"); zoom.type = "button";
+    const zoom = el("button", "mini-btn nav-zoom nav-secundario", "100%"); zoom.type = "button";
     zoom.addEventListener("click", () => {
       const c = navCurrent(); if (c === null) return; const h = navHostOf(c.url); if (h === null) return;
       // Site de largura fixa (Gmail): o clique alterna automático ↔ 100% fixo. Nos outros, 100% ↔ 75%.
