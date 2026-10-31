@@ -6,7 +6,9 @@ description: Leva uma correção do meu-bot feita neste Mac até um pull request
 # Contribuir: fork → pull request
 
 A conta do GitHub deste Mac (`box-grok`) só lê o `diegofornalha/meu-bot`: toda mudança vai por um branch no fork
-`box-grok/meu-bot` (remote `fork`) e chega no original por PR. Publicar é público: só abra o PR quando o usuário pedir.
+`box-grok/meu-bot` (remote `fork`) e chega no original por PR. Publicar é público: abra o PR quando o usuário pedir **ou
+quando o hook `scripts/hooks/pr-lembrete.sh` apontar, ao fim de uma resposta, commits sem PR num branch que você fez
+nesta sessão** (branch de outra sessão: só avise o usuário).
 
 ## Antes
 
@@ -21,9 +23,14 @@ A conta do GitHub deste Mac (`box-grok`) só lê o `diegofornalha/meu-bot`: toda
 ## A sequência
 
 1. **Testes**: `npm test` (já roda o build). Com teste quebrado, pare e mostre a falha: não mande PR.
-2. **Branch atualizado**: `git fetch origin` e um branch novo a partir de `origin/main`, com nome curto em pt-BR do que
-   muda (ex.: `usuarios-tabela-rola`). Se a mudança foi feita no `main`, crie o branch a partir dali com `git switch -c`
-   (as mudanças não commitadas vão junto). Nunca commite direto no `main`.
+2. **Worktree próprio, branch atualizado**: `git fetch origin` e um worktree novo com o branch a partir de `origin/main`,
+   nome curto em pt-BR do que muda: `git worktree add -b <branch> ../meu-bot-<nome> origin/main`. Nunca troque de branch
+   no checkout principal (outras sessões usam o mesmo diretório ao mesmo tempo) e nunca commite direto no `main`. Se a
+   mudança já foi feita no checkout principal, leve-a para o worktree (`git stash` → `git -C ../meu-bot-<nome> stash pop`,
+   ou `git diff | git -C ../meu-bot-<nome> apply`). Para o worktree empacotar: `ln -s` de `node_modules` e de
+   `extensao-crm/node_modules` do checkout principal; cópia (não symlink: o `build:extensao` recusa) de
+   `build/extensao-autenticador`; cópia de `config/google-oauth.json` e `config/google-conta-oauth.json` (fora do git; sem
+   eles o cliente sai sem Google e o `package.mjs` avisa). Rode `npm test` e `npm run dist…` de dentro do worktree.
 3. **Commit**: só os arquivos da mudança (`git add <arquivos>`, nada de `git add -A`, que pegaria `.env`, `out/` e afins).
    Mensagem no estilo do `git log`: `Área: o que muda` na primeira linha, em pt-BR, e um parágrafo com o porquê. Termine
    com a linha de coautoria que a conversa indicar.
@@ -40,8 +47,9 @@ A conta do GitHub deste Mac (`box-grok`) só lê o `diegofornalha/meu-bot`: toda
 
 ## Ao terminar
 
-Diga em pt-BR, em poucas linhas: o link do PR, o branch, o que foi testado e o que falta conferir. Avise que o
-repositório local ficou no branch novo, não no `main`.
+Diga em pt-BR, em poucas linhas: o link do PR, o branch, o que foi testado e o que falta conferir. Avise onde está o
+worktree (`../meu-bot-<nome>`), que o checkout principal não mudou, e que ele sai com `git worktree remove ../meu-bot-<nome>`
+quando a PR entrar.
 
 ## Regras
 

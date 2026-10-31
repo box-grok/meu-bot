@@ -10,6 +10,16 @@
             "statusMessage": "Conferindo se o app precisa ser reempacotado…"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/scripts/hooks/pr-lembrete.sh\"",
+            "timeout": 20,
+            "statusMessage": "Conferindo se há trabalho commitado sem PR…"
+          }
+        ]
       }
     ]
   }

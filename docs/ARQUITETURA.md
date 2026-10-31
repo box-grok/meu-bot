@@ -51,7 +51,7 @@ Regras:
 | `conversa/` | Envio e streaming (`envio.ts`), voltar ao chat (`ponte-chat.ts`), ferramentas em uso (`atividade.ts`) |
 | `inicio/`, `acervo/`, `licenca/` | Abertura/onboarding/tour, Acervo de skills e objetivo, plano e licença |
 | `configuracoes/`, `atualizacao/` | Diálogo de configurações, alertas e fallback (`entrada-rapida-guia.ts` = passos do atalho global); atualização do app |
-| `lib/` | Regras puras com teste (`scripts/tests/`): `tutoriais.ts` é só o motor dos tutoriais; o que é regra de domínio tem arquivo próprio (`whatsapp-resposta.ts`, `whatsapp-grupos.ts`, `fallback.ts`, `objetivo.ts`, `crm-modelos.ts`, `contas-claude.ts`…) |
+| `lib/` | Regras puras com teste (`scripts/tests/`; ferramentas de desenvolvedor em `scripts/*.mjs`, como `devtools.mjs`, e hooks do Claude em `scripts/hooks/`): `tutoriais.ts` é só o motor dos tutoriais; o que é regra de domínio tem arquivo próprio (`whatsapp-resposta.ts`, `whatsapp-grupos.ts`, `fallback.ts`, `objetivo.ts`, `crm-modelos.ts`, `contas-claude.ts`…) |
 
 Regras do renderer:
 - **Página não importa `renderer.ts` em tempo de execução.** O que ela usa da raiz vem por `ctx.<nome>` (`app/ctx.ts`):
