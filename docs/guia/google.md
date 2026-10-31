@@ -175,3 +175,34 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   `--sem-google` permite de propósito (`npm run dist:staging -- --sem-google`; o `dist.mjs` e o `release.mjs` repassam).
 - Testes: `scripts/tests/google-client.test.mjs` (ok com o arquivo ou no admin; aviso no build local; falha no release;
   `--sem-google` permite; o aviso cita o app e o arquivo).
+## Token preso ao client e tela de consentimento em Teste (31 out)
+
+- **O que aconteceu:** a conta foi conectada no meu-bot num build sem `google-conta-oauth.json`, e `clienteConta()`
+  (comum.ts) caiu no client do CRM. Um minuto depois entrou o app rebuildado, com o client de outro projeto. Um refresh
+  token só vale para o client que o emitiu: o Google passou a responder `unauthorized_client` (descrição só
+  "Unauthorized") a toda renovação, "Guardar agora" mostrava "Unauthorized" e a tela seguia "conectada", porque
+  `acessoValido` só apagava o token em `invalid_grant`/revoked/expired.
+- **Agora:** `refreshRecusadoDeVez` (google-core.ts, puro) decide quando o refresh foi recusado de vez: revogado,
+  vencido ou de outro client (`unauthorized`). `acessoValido` (conta-google.ts) apaga o token e lança
+  `GOOGLE_CONTA_DESCONECTADA`, que a página já traduz em "a conta Google desconectou; entre de novo" e volta a mostrar
+  Conectar. Erro de rede ou 5xx não apaga: a conta continua válida, foi a tentativa que falhou. Teste em
+  `scripts/tests/google-core.test.mjs`.
+- **Trocar o client exige reconectar.** O client da Conta Google pode ser o mesmo do CRM (`clienteConta` cai nele
+  quando não há `google-conta-oauth.json`), e foi o que se fez em 31 out neste Mac: o JSON do projeto meu-bot-crm
+  salvo também como `config/google-conta-oauth.json`.
+- **"Erro 403: access_denied" no login** ("o app não concluiu o processo de verificação do Google"): a tela de
+  consentimento do projeto está em modo Teste e o e-mail não está na lista de testadores. A página já explica
+  (mensagem em `fluxo`, conta-google.ts). Só o dono do projeto resolve, e há dois jeitos de sair do modo Teste:
+  - **Interno** (console → Tela de consentimento OAuth → Público): para domínio Google Workspace. Todo e-mail do
+    domínio entra, sem lista de testadores e sem verificação do Google. É o caminho de uma ferramenta de empresa.
+  - **Externo, publicado**: para qualquer conta Gmail. O Google exige verificação do app; escopos sensíveis (Agenda,
+    Planilhas) pedem formulário com vídeo e política de privacidade, escopos restritos (Gmail leitura, Drive além do
+    `drive.file`) pedem ainda a auditoria de segurança CASA. Sem verificação: "app não verificado" no login e teto de
+    100 usuários. O backup no Drive só precisa de `drive.file`, que não exige verificação; o Gmail é o escopo caro.
+- **Issue #36, correção de registro:** o arquivo existia neste Mac, em
+  `/Users/box/Applications/*.app/Contents/Resources/config/` (0600 do usuário `box`); a busca da issue falhou por
+  permissão, não por ausência. Ao procurar credencial "em todo o Mac", conferir as pastas dos outros usuários com
+  `sudo` antes de concluir que não existe.
+- **O client OAuth de app instalado não é segredo** (o Google documenta isso: o app precisa dele em claro, e quem
+  protege o login é o PKCE). O que é segredo já vai cifrado: o refresh token no Keychain (`google-conta/<máquina>.bin`)
+  e os pacotes do backup, só com a senha de backup. Se o JSON vazar, "Redefinir secret" no console e reempacotar.
