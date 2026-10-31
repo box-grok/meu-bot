@@ -21,6 +21,10 @@ O app instalado é empacotado: mudança no código só vale depois de rebuildar.
    - Mudou algo fora de `src/*/admin/` que o app comum usa (inclui `extensao-crm/` e o CRM): também `npm run dist`.
    - Mudou algo que os staging usam: também `npm run dist:staging` e `npm run dist:finance-staging`.
    Use timeout de 10 min. Confira na saída "Assinado com" e "Instalado em".
+   **Mudança sem efeito visível** (refatoração, mover ou renomear arquivo, só teste ou doc): empacote só a variante que
+   vai ser conferida na tela (`npm run dist` para o cliente, ou `dist:admin`); as outras ficam para a última fase de
+   uma série de PRs ou para quando a mudança for visível. Cada variante leva minutos e o hook de outra sessão pode
+   sobrescrever o resultado logo depois. Num worktree, rode o `npm run dist…` de dentro dele (ver skill `contribuir`).
 4. **Avise em pt-BR**, em poucas linhas: o que foi rebuildado, onde ficou instalado e que é só abrir o app de novo.
 
 Não faça commit nem push por conta disso.

@@ -2,6 +2,30 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Fluxo: worktree por PR, conferência pelo DevTools remoto, rebuild enxuto e lembrete de PR (31 out 2026)
+
+- **O que aconteceu nas PRs #48 a #54:** duas sessões (Claude e Cursor) no mesmo checkout trocavam de branch uma
+  debaixo da outra, e o hook de rebuild de qualquer uma reempacotava os quatro apps a partir do branch em que o checkout
+  estivesse, sobrescrevendo o build da outra em `~/Applications`. Uma conferência na tela foi feita contra o build
+  errado. A skill `testar-no-app` não conseguia clicar (Acessibilidade negada ao `osascript`, erro -25211). E cada fase
+  de refatoração empacotava quatro variantes para ser sobrescrita minutos depois.
+- **Worktree por PR** (`CLAUDE.md`, skill `contribuir`): mudança que vira PR nasce em `../meu-bot-<nome>` a partir de
+  `origin/main`; o checkout principal não troca de branch. O que o worktree precisa para empacotar: symlink de
+  `node_modules` e `extensao-crm/node_modules`, cópia de `build/extensao-autenticador` (o `build:extensao` recusa
+  symlink) e dos `config/google-*oauth.json`.
+- **Conferência pelo DevTools remoto** (skill `testar-no-app`, `scripts/devtools.mjs`): lançar o binário instalado com
+  `--remote-debugging-port` e dirigir o renderer (`paginas`, `eval`, `console`); antes, `grep -a` no `app.asar` para ter
+  certeza de que o instalado é o seu build. Seletores úteis estão na skill.
+- **Rebuild enxuto** (skill `rebuildar`): mudança sem efeito visível empacota só a variante que vai ser conferida.
+- **Lembrete de PR** (`scripts/hooks/pr-lembrete.sh`, segundo hook `Stop` em `.claude/settings.json`): ao fim de cada
+  resposta, varre o checkout e os worktrees; branch ≠ `main`, árvore limpa, commits à frente de `origin/main`, último
+  commit com menos de 1 h e sem PR aberta → devolve `decision: block` com a razão, e a sessão abre a PR pela skill
+  `contribuir`, com o corpo certo. Não publica nada por conta própria; lembra uma vez por (branch, commit)
+  (`.claude/.pr-check-*`, fora do git); `stop_hook_active` evita o loop; `--check` mostra o que faria. Ficam de fora os
+  branches de `.claude/pr-lembrete-ignorar` (ex.: `local-teste`) e os que terminam num merge (integração local).
+- **Fora desta mudança, em issue para o Diego:** fazer o hook de rebuild empacotar só a partir do `main` atualizado,
+  num worktree fixo, em vez do branch em que o checkout estiver.
+
 ## Tutorial 16 "Gmail (Pro)" pela receita nova (31 out 2026, fase 5 da reorganização)
 
 - **O que é:** o primeiro tutorial feito pela receita "Como adicionar um tutorial" do `ARQUITETURA.md`: três arquivos
@@ -218,8 +242,9 @@ Regras:
   novos `if`.
 - Dev: `npm run dev` (cliente) e `MEU_BOT_VARIANT=admin npm run dev` (admin). Com o app instalado aberto, a
   trava de instância única (pelo userData) faz um dev sair calado; para testar ao lado dele:
-  `./node_modules/.bin/electron . --user-data-dir=<pasta> --remote-debugging-port=9333` e `curl
-  127.0.0.1:9333/json` lista as janelas.
+  `./node_modules/.bin/electron . --user-data-dir=<pasta> --remote-debugging-port=9333` e
+  `node scripts/devtools.mjs --porta=9333 paginas` lista as janelas (o mesmo script dirige o app instalado; ver a
+  skill `testar-no-app`).
 
 ## Atualização automática do app (16 out 2026)
 

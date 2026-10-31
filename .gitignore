@@ -18,3 +18,5 @@ node_modules
 # hook de rebuild automático (scripts/hooks/rebuild-auto.sh): carimbo e trava locais
 .claude/.rebuild-stamp
 .claude/.rebuild-lock/
+# hook de lembrete de PR (scripts/hooks/pr-lembrete.sh): um carimbo por branch+commit já conferido
+.claude/.pr-check-*

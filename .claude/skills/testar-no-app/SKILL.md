@@ -8,8 +8,8 @@ description: Ciclo fecha → rebuilda → abre → testa de um app do meu-bot (m
 > **Os passos 1 a 4 já rodam sozinhos**: o hook `Stop` do projeto (`scripts/hooks/rebuild-auto.sh`, ver skill
 > `rebuildar`) faz testes → fecha → empacota → reabre → confere o log, em segundo plano, sempre que algo do app mudou.
 > Esta skill continua valendo para o passo 5 (ver na tela) e para quando a pessoa pedir o ciclo agora, numa variante
-> específica. Atenção: `System Events` (clicar, digitar) só funciona se o Terminal tiver Acessibilidade; sem ela,
-> confira o conteúdo do build com `grep -a` no `app.asar` instalado e a tela só pelo que já está visível.
+> específica. Atenção: `System Events` (clicar, digitar) só funciona se o Terminal tiver Acessibilidade, o que neste
+> Mac é negado (erro -25211): o caminho que funciona é o **DevTools remoto** (passo 5, item 2), com `scripts/devtools.mjs`.
 
 O app instalado é empacotado e só mostra a mudança depois de rebuildar. Pedir esta skill já autoriza fechar e
 reabrir o app sem perguntar de novo.
@@ -53,11 +53,25 @@ O app caiu ou há erro novo no log: pare e mostre o trecho do log.
 
 1. **Ver**: `osascript -e 'tell application "<app>" to activate'`, `screencapture -x <scratchpad>/tela.png`,
    `sips -Z 1600` para reduzir e Read na imagem. A captura funciona sem permissão extra.
-2. **Navegar até a mudança** (clicar, digitar, Enter) com `osascript` e `System Events` (`keystroke`, `key code`,
-   `click at {x, y}`). Isso exige que o Terminal tenha **Acessibilidade** (Ajustes do Sistema › Privacidade e
-   Segurança › Acessibilidade). Sem ela, o `keystroke` não falha, mas o texto não chega ao app. Confira com uma
-   captura depois de cada passo. Antes de digitar, sempre `activate` no app e confira na captura que ele está na
-   frente: o usuário pode estar digitando no Terminal, e as teclas iriam para lá.
+2. **Navegar até a mudança sem Acessibilidade (o normal neste Mac): DevTools remoto.** Antes, confirme que o app
+   instalado é o seu build (`grep -a -c <símbolo novo> ~/Applications/<app>.app/Contents/Resources/app.asar`; o hook de
+   outra sessão pode ter reinstalado outro branch). Feche o app e lance o binário com a porta (`open -a` não passa
+   argumentos; os fuses não bloqueiam esta flag):
+   `~/Applications/<app>.app/Contents/MacOS/<app> --remote-debugging-port=9334 &`. Depois, com `scripts/devtools.mjs`:
+   - `node scripts/devtools.mjs paginas` lista as janelas do app (`--todos` inclui as webviews do Navegador, que são os
+     sites da pessoa: não recarregue uma delas); o admin abre no seletor e **não tem máquina em "Este Mac"**: para a
+     janela do Mac local use o cliente `meu-bot`.
+   - `node scripts/devtools.mjs eval "<título>" "<JS>"` avalia no renderer e imprime o valor. Ninguém clica: navegue
+     pelo DOM. Seletor: `document.querySelector("button[data-tipo=mac]").click()` → a `.row` visível → `#pk-open`.
+     Janela: `#tutoriais-line`, cartões `#tutoriais-list .tut-card` (botão "Começar"/"Continuar"), guia
+     `.guide-panel li.current .tut-step`; paleta: clique em `#btn-palette`, valor em `#palette-input` + evento
+     `input`, clique no `li` (os itens só existem depois de abrir a paleta de verdade).
+   - `node scripts/devtools.mjs console "<título>"` recarrega a página e junta por 12 s erros e avisos do console do
+     renderer (é como se vê "passos de tutorial sem tela" e "fontes do guia sem registro").
+   Limites: `import()` dinâmico de módulos do asar falha (só DOM); ao terminar, feche e reabra o app sem a porta.
+   Com Acessibilidade liberada (Ajustes do Sistema › Privacidade e Segurança › Acessibilidade), `osascript` com
+   `System Events` (`keystroke`, `click at {x, y}`) também serve; sem ela o `keystroke` não falha, mas o texto não
+   chega ao app, então confira com uma captura depois de cada passo.
 3. **Conferir o resultado esperado** na captura (o botão novo, a tabela no lugar, a mensagem de sucesso) e no log.
 4. Não conseguiu navegar até lá: diga ao usuário onde clicar e o que ele deve ver, e confira pela captura depois que
    ele clicar.
