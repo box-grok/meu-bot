@@ -6,7 +6,9 @@ import type { PageTab } from "../lib/pages-types.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { grupoReferenceText } from "../lib/reference.js";
 import { normalize, shortDate } from "../lib/sidebar.js";
-import { TUTORIAIS, grupoAlvo, quemEscolhido, GRUPOS_AVISO, parseWaNumbers, GRUPOS_QUEM_NOTA } from "../lib/tutoriais.js";
+import { TUTORIAIS } from "../lib/tutoriais.js";
+import { parseWaNumbers } from "../lib/whatsapp-resposta.js";
+import { grupoAlvo, quemEscolhido, GRUPOS_AVISO, GRUPOS_QUEM_NOTA } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
 
 // ---- Grupos do WhatsApp: a área "Grupos" no fim da lista, a página de cada grupo (só leitura, com o autor de cada
