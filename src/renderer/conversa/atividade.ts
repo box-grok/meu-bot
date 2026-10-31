@@ -33,10 +33,19 @@ export function activityPage(): PageTab {
   activity = a;
   return a.page;
 }
+/** Linhas guardadas enquanto a aba nunca foi aberta: o bastante para o histórico recente, sem crescer sem fim. */
+const PENDENTES_MAX = 2000;
+/**
+ * A aba não nasce sozinha (31 out): cada ferramenta já aparece na conversa como linha recolhível, e a aba surgindo
+ * (e voltando a cada ferramenta depois de fechada) só atrapalhava. Ela abre pela paleta ("Atividade do agente") ou
+ * pelo modo dividido, já com o histórico; fechada, fica fechada e segue recebendo as linhas por trás.
+ */
 function activityWrite(text: string): void {
-  const page = activityPage();
-  if (page.tabEl === null) ctx.openPage(page, false); // a aba nasce atrás da conversa; a pessoa abre quando quiser
-  if (activity!.term === null) activity!.pending.push(text); else activity!.term.write(text);
+  activityPage();
+  const a = activity!;
+  if (a.term !== null) { a.term.write(text); return; }
+  a.pending.push(text);
+  if (a.pending.length > PENDENTES_MAX) a.pending.splice(0, a.pending.length - PENDENTES_MAX);
 }
 const ANSI = { dim: "\u001b[2m", bold: "\u001b[1m", yellow: "\u001b[33m", cyan: "\u001b[36m", red: "\u001b[31m", green: "\u001b[32m", reset: "\u001b[0m" };
 /** Linha recolhível na conversa + eco na aba de atividade. */

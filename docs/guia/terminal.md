@@ -37,8 +37,12 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
   o backend (`backend-colima/tool-events.js`, testado; `runClaude` ganhou `onTool`) emite `x_meu_bot.tool`
   para cada `tool_use` (Bash → comando; Read/Write/Edit → arquivo; Grep/Glob → padrão…) e `tool_result`
   (20 linhas); `backend.ts` → `chat:tool`; na conversa vira uma linha recolhível "rodou `cmd`" (verde/vermelho
-  pelo resultado) e a aba **"Agente · atividade"** (xterm só leitura, nasce atrás na primeira ferramenta;
-  também pela paleta) mostra `$ comando` e o resultado ao vivo. Exige backend reinstalado (colima: feito).
+  pelo resultado) e a aba **"Agente · atividade"** (xterm só leitura) mostra `$ comando` e o resultado ao vivo.
+  Exige backend reinstalado (colima: feito). **Desde 31 out a aba não nasce sozinha:** antes ela aparecia atrás
+  da conversa na primeira ferramenta e voltava a cada ferramenta depois de fechada, repetindo o que a linha
+  recolhível da conversa já mostra. Agora abre só pela paleta ("Atividade do agente") ou pelo modo dividido, com o
+  histórico recente (até 2000 linhas guardadas enquanto nunca foi aberta); fechada, fica fechada e segue recebendo
+  as linhas por trás (`activityWrite` em `src/renderer/conversa/atividade.ts`).
 - Verificado: broker local no teste; terminal na colima pelo app (prompt, `uname`, `stty size` = tamanho da
   aba, cores). Pendente de ver no app: "este Mac", barra de seleção, Rodar no terminal, Reconectar.
 
