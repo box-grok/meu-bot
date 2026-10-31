@@ -278,3 +278,9 @@ test("achaSegredoEmBuffer: varre por janelas com sobra; segredo na fronteira da 
   // pequeno (cabe numa janela) usa a varredura direta
   assert.equal(achaSegredoEmBuffer(Buffer.from(`x ${jwt} y`, "latin1"), janela, sobra), "token JWT");
 });
+
+test("refreshRecusadoDeVez: revogado, vencido ou de outro client (Unauthorized) apagam o token; rede/5xx não", async () => {
+  const { refreshRecusadoDeVez } = await import("../../src/main/google/google-core.ts");
+  for (const m of ["invalid_grant", "Token has been expired or revoked.", "Unauthorized", "unauthorized_client"]) assert.equal(refreshRecusadoDeVez(m), true, m);
+  for (const m of ["Google respondeu 500", "fetch failed", "Rate Limit Exceeded"]) assert.equal(refreshRecusadoDeVez(m), false, m);
+});
