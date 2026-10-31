@@ -1,20 +1,19 @@
-import type { BackendModel, ObjectiveChoice, ContaEstado, ContaId, StatusLineSegments, SupportInfo, SupportShare, ContaEvento, LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
+import type { StatusLineSegments, SupportInfo, SupportShare } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { browserAccess, financeOk, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
-import { blocoPagamento } from "../lib/aviso-pagamento.js";
+import { browserAccess, financeOk } from "../lib/pro.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
 import { type GuideContext } from "../lib/tutoriais.js";
 import { grupoAlvo } from "../lib/whatsapp-grupos.js";
-import { fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/fallback.js";
-import { OBJECTIVE_OPTIONS, LEVEL_OPTIONS } from "../lib/objetivo.js";
 import { ctx } from "../app/ctx.js";
 import { registrarPassos } from "./passos.js";
+import { navInstState } from "../navegador/navegador-guia.js";
+import { guardaState } from "../whatsapp/guarda-guia.js";
+import { contasState } from "../agente/contas-cli-guia.js";
+import { linkPublicoLido, linkPublicoPossivel, linkPublicoState } from "../agente/link-publico-guia.js";
 
-/** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
-const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
 
 let supportBusy = false;
 const supportGroup = $<HTMLDetailsElement>("support-group");
@@ -27,14 +26,6 @@ let supportCodeShown: string | null = null;
 let supportPoll: number | null = null;
 /** Status line do Claude nesta máquina: instalada? (null = ainda não consultado); limites = a conta já tem números. */
 let statusLineState: boolean | null = null;
-/** Guarda do WhatsApp nesta máquina (tutorial 9): null = não consultado ou sem OpenClaw. */
-let guardaState: boolean | null = null;
-export let navInstState: boolean | null = null;
-let navInstBusy = false;
-let navInstLog: string[] = [];
-let navInstMsg: { text: string; bad: boolean } | null = null;
-let guardaBusy = false;
-let guardaLog: string[] = [];
 let statusLineBusy = false;
 let statusLineLog: string[] = [];
 let statusLineMsg: { text: string; bad: boolean } | null = null;
@@ -88,420 +79,6 @@ export const guideCtx = (): GuideContext => ({
   })(),
 });
 
-/** Tutorial 8, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
-export function renderObjectiveChoice(container: HTMLElement): void {
-  const cur = ctx.objectiveState?.objective ?? null;
-  const draft = ctx.objectiveDraft ?? (cur === null ? null : { id: cur.id, text: cur.text });
-  const cards = el("div", "reply-cards guide-cards");
-  for (const o of OBJECTIVE_OPTIONS) {
-    const on = draft?.id === o.id;
-    const card = el("button", `reply-card${on ? " on" : ""}`); card.type = "button"; card.disabled = ctx.objectiveBusy;
-    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(on));
-    const title = el("div", "reply-title"); title.append(el("strong", "", o.label));
-    if (cur?.id === o.id) title.append(el("span", "reply-default", "Salvo"));
-    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
-    card.append(el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { ctx.objectiveDraft = { id: o.id, text: draft?.id === o.id ? draft.text : (cur?.id === o.id ? cur.text : "") }; ctx.paintGuide(); });
-    cards.append(card);
-  }
-  container.append(cards);
-  const row = el("div", "support-name");
-  const opt = OBJECTIVE_OPTIONS.find((o) => o.id === draft?.id) ?? null;
-  const input = el("input"); input.type = "text"; input.maxLength = 300; input.disabled = ctx.objectiveBusy || draft === null;
-  input.placeholder = opt?.needsText === true ? "Em uma frase: o que o agente deve resolver (obrigatório)" : "Complete em uma frase, se quiser";
-  input.value = draft?.text ?? "";
-  input.addEventListener("input", () => { if (ctx.objectiveDraft !== null) ctx.objectiveDraft.text = input.value; else if (draft !== null) ctx.objectiveDraft = { id: draft.id, text: input.value }; });
-  const save = el("button", "btn btn-primary btn-small", cur === null ? "Salvar objetivo" : "Salvar mudança"); save.type = "button";
-  save.disabled = ctx.objectiveBusy || draft === null || (opt?.needsText === true && input.value.trim() === "");
-  input.addEventListener("input", () => { save.disabled = ctx.objectiveBusy || (opt?.needsText === true && input.value.trim() === ""); });
-  save.addEventListener("click", () => {
-    if (draft === null || opt === null) return;
-    const choice: ObjectiveChoice = { id: opt.id, label: opt.label, text: input.value.trim() };
-    void ctx.objectiveDo(() => window.meuBot.setObjective({ objective: choice }), null).then(() => { ctx.objectiveDraft = null; ctx.paintGuide(); });
-  });
-  input.addEventListener("keydown", (ev) => { if (ev.key === "Enter" && !save.disabled) { ev.preventDefault(); save.click(); } });
-  row.append(input, save);
-  container.append(row);
-  if (ctx.objectiveMsg !== null && ctx.objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${ctx.objectiveMsg.text}`));
-}
-/** Tutorial 8, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
-export function renderObjectiveLevel(container: HTMLElement): void {
-  const cur = ctx.objectiveState?.level ?? null;
-  const cards = el("div", "reply-cards guide-cards");
-  for (const o of LEVEL_OPTIONS) {
-    const on = cur === o.id;
-    const card = el("button", `reply-card${on ? " on" : ""}`); card.type = "button"; card.disabled = ctx.objectiveBusy;
-    card.setAttribute("role", "radio"); card.setAttribute("aria-checked", String(on));
-    const title = el("div", "reply-title"); title.append(el("strong", "", o.title));
-    if (o.isDefault) title.append(el("span", "reply-default", "Padrão"));
-    const body = el("div", "reply-body"); body.append(title, el("p", "", o.text));
-    card.append(el("span", "reply-radio"), body);
-    card.addEventListener("click", () => { if (cur !== o.id) void ctx.objectiveDo(() => window.meuBot.setObjective({ level: o.id }), null); });
-    cards.append(card);
-  }
-  container.append(cards);
-  if (ctx.objectiveMsg !== null && ctx.objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${ctx.objectiveMsg.text}`));
-}
-/** Tutorial 8, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
-export function renderObjectiveSkill(container: HTMLElement): void {
-  const st = ctx.objectiveState;
-  const box = el("div", "audio-controls");
-  if (st?.objective !== null && st?.objective !== undefined && st.level !== null) {
-    const lv = LEVEL_OPTIONS.find((l) => l.id === st.level);
-    box.append(el("div", "hint", `🎯 ${st.objective.label}${st.objective.text !== "" ? `: ${st.objective.text}` : ""}`), el("div", "hint", `🔒 ${lv?.title ?? st.level}`));
-  }
-  const save = el("button", "btn btn-primary btn-small", ctx.objectiveBusy ? "Salvando…" : st?.savedAt === null || st?.savedAt === undefined ? "Salvar como skill no Acervo" : "Salvar de novo"); save.type = "button";
-  save.disabled = ctx.objectiveBusy || st?.objective === null || st?.level === null;
-  save.addEventListener("click", () => { void ctx.objectiveDo(async () => { const r = await window.meuBot.saveObjectiveSkill(); ctx.objectiveMsg = { text: r.detail, bad: false }; return r; }, "skill salva"); });
-  const row = el("div", "support-name"); row.append(save);
-  if (st?.savedAt !== null && st?.savedAt !== undefined) {
-    const open = el("button", "btn btn-ghost btn-small", "Abrir o Acervo"); open.type = "button";
-    open.addEventListener("click", () => ctx.openPage(ctx.acervoPage));
-    row.append(open);
-  }
-  box.append(row);
-  if (ctx.objectiveMsg !== null) box.append(el("p", `hint${ctx.objectiveMsg.bad ? " bad" : " ok"}`, `${ctx.objectiveMsg.bad ? "✗" : "✓"} ${ctx.objectiveMsg.text}`));
-  container.append(box);
-}
-/**
- * Passo "Escolher primário e reserva" (tutorial 6): a mesma escolha de Configurações › Fallback, salva na hora
- * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
- */
-export function renderFallbackOrder(container: HTMLElement): void {
-  const box = el("div", "audio-controls");
-  const accounts = el("div", "sl-switches");
-  const line = (ok: boolean | null, text: string): HTMLElement => el("div", `hint${ok === true ? " ok" : ok === false ? " bad" : ""}`, `${ok === true ? "✓" : ok === false ? "✗" : "•"} ${text}`);
-  accounts.append(
-    line(ctx.clAuth?.loggedIn ?? null, `Claude Code${ctx.clAuth?.email ? `: ${ctx.clAuth.email}` : ""} → modelo agente`),
-    line(ctx.xaiAuth?.loggedIn ?? null, `xAI${ctx.xaiAuth?.email ? `: ${ctx.xaiAuth.email}` : ""} → modelo grok-4`),
-  );
-  const label = el("label", "", "Primário nesta máquina ");
-  const sel = el("select");
-  for (const [value, text] of [["claude", "Claude (agente)"], ["xai", "xAI (grok-4)"]] as const) { const o = el("option", "", text); o.value = value; sel.append(o); }
-  const cur: string = ctx.settings?.backendModelForHost ?? "";
-  if (cur === "grok-4") sel.value = "xai"; else if (cur === "agente") sel.value = "claude"; else { const o = el("option", "", `outro (${cur || "sem modelo"}): fora da corrente`); o.value = "other"; o.disabled = true; sel.append(o); sel.value = "other"; }
-  label.append(sel);
-  const hint = el("p", "hint", fallbackOrderText(cur, ctx.account?.providers ?? null));
-  sel.addEventListener("change", () => {
-    const m = PRIMARY_OF[sel.value];
-    if (m === undefined) return;
-    sel.disabled = true;
-    void window.meuBot.setSettings({ backendModelForHost: m }).then((view) => {
-      ctx.applySettings(view);
-      ctx.saveGuideFlag(ctx.FALLBACK_TUTORIAL, "fallbackChosen"); ctx.paintGuide();
-    }).catch((err: unknown) => { hint.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { sel.disabled = false; });
-  });
-  const keep = el("button", "btn btn-small", "Manter assim"); keep.type = "button";
-  keep.title = "A escolha atual já serve: o primário fica como está";
-  keep.hidden = !FALLBACK_PRIMARIES.includes(cur) || ctx.loadGuideFlags(ctx.FALLBACK_TUTORIAL).fallbackChosen;
-  keep.addEventListener("click", () => { ctx.saveGuideFlag(ctx.FALLBACK_TUTORIAL, "fallbackChosen"); ctx.paintGuide(); });
-  box.append(accounts, label, hint, keep);
-  container.append(box);
-}
-export async function refreshNavInst(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
-  try { navInstState = await window.meuBot.navegadorInstalled(); } catch { /* máquina fora: fica o que havia */ }
-  ctx.paintGuide();
-}
-/** Tutorial 10, passo 2: instalar o lado da máquina (MCP + regra). */
-export function renderNavInstall(container: HTMLElement): void {
-  const box = el("div", "audio-controls");
-  const row = el("div", "audio-row");
-  if (navInstState === true && !navInstBusy) row.append(el("span", "audio-ok", "✓ pronto nesta máquina"));
-  const b = el("button", `btn ${navInstState === true ? "btn-ghost" : "btn-primary"} btn-small`, navInstBusy ? "Preparando…" : navInstState === true ? "Reinstalar" : "Preparar");
-  b.type = "button"; b.disabled = navInstBusy || navInstState === null;
-  b.addEventListener("click", () => {
-    navInstBusy = true; navInstLog = []; navInstMsg = null; ctx.paintGuide();
-    void window.meuBot.installNavegador()
-      .then((r) => { navInstMsg = r.ok ? { text: "Máquina pronta: o agente já tem as ações do navegador.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
-      .catch((err: unknown) => { navInstMsg = { text: ipcErrorText(err), bad: true }; })
-      .finally(() => { navInstBusy = false; void refreshNavInst(); });
-  });
-  row.append(b);
-  box.append(row);
-  if (navInstState === null) box.append(carregando("Consultando a máquina…", "guia-navegador"));
-  if (navInstBusy && navInstLog.length > 0) box.append(el("pre", "admin-logs", navInstLog.join("\n")));
-  if (navInstMsg !== null) box.append(el("p", `hint ${navInstMsg.bad ? "guide-pair-note" : "audio-ok"}`, navInstMsg.text));
-  container.append(box);
-}
-/** Tutorial 10, passo 1: o plano desta máquina e o pedido ao admin. */
-export function renderNavPro(container: HTMLElement): void {
-  const box = el("div", "audio-controls");
-  const a = browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto);
-  if (a === "ok") { box.append(el("p", "audio-ok", ctx.caps.planoExigido === "free" ? `✓ plano Pro ativo em ${hostLabel(ctx.windowHost)}` : `✓ assinatura do ${ctx.caps.produto} ativa em ${hostLabel(ctx.windowHost)}`)); container.append(box); return; }
-  const t = proBlockText(a, ctx.license, "navegador", ctx.caps.produto);
-  box.append(el("p", "hint", t.text));
-  const pg = pagamentoDoBloqueio(a, ctx.license);
-  if (pg !== null) box.append(blocoPagamento(pg));
-  const row = el("div", "audio-row");
-  if (t.askAdmin) {
-    const b = el("button", "btn btn-primary btn-small", ctx.navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = ctx.navAskedPro;
-    b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { ctx.navAskedPro = true; ctx.paintGuide(); }).catch(() => { b.disabled = false; }); });
-    row.append(b);
-  }
-  const again = el("button", "btn btn-ghost btn-small", "Conferir de novo"); again.type = "button";
-  again.addEventListener("click", () => { void ctx.refreshLicense().then(() => ctx.paintGuide()); });
-  row.append(again);
-  box.append(row);
-  container.append(box);
-}
-/**
- * Link de uma mensagem: site (http/https) abre numa aba do Navegador do próprio app, onde o agente também enxerga;
- * Cmd+clique, outros esquemas (mailto:…) ou Navegador indisponível (sem módulo/assinatura) → navegador do Mac.
- */
-export async function abrirLinkDoChat(url: string, externo: boolean): Promise<void> {
-  if (externo || !ctx.caps.navegador || !/^https?:\/\//i.test(url)) { void window.meuBot.openExternal(url); return; }
-  await ctx.openNavTab(url);
-  if (ctx.navAccess !== "ok" || ctx.navPartition === null) void window.meuBot.openExternal(url);
-}
-/** Tutorial 10, passo 3: abrir a aba do Navegador. */
-export function renderNavOpen(container: HTMLElement, url?: string): void {
-  const row = el("div", "audio-row");
-  const b = el("button", "btn btn-primary btn-small", url !== undefined ? "Abrir o Gmail no Navegador" : ctx.navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";
-  b.addEventListener("click", () => { void ctx.openNavTab(url); });
-  row.append(b);
-  container.append(row);
-}
-export async function refreshGuarda(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
-  try { guardaState = await window.meuBot.guardaInstalled(); } catch { /* máquina fora: fica o que havia */ }
-  ctx.paintGuide();
-}
-/** Tutorial 14: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
-let linkPublicoState: LinkPublicoInfo | null = null;
-let linkPublicoLido = false;
-/** false = a janela é do root: sem link por desenho (o tutorial 14 some da lista). */
-let linkPublicoPossivel = true;
-let linkNomeMsg: { text: string; bad: boolean } | null = null;
-let linkNomeOcupado = false;
-/** Passo 2: o que está no ar (null = ainda não lido), o publicar em andamento, o nome pedido, e o item armado para tirar do ar (dois cliques, 5 s). */
-let linkLista: LinkPublicoItem[] | null = null;
-let linkListaLida = false;
-let linkListaPedida = false;
-let linkPubOcupado = false;
-let linkPubNome = "";
-let linkRemovendo: string | null = null;
-let linkPubMsg: { text: string; bad: boolean; url?: string } | null = null;
-let linkRemoverArmado: string | null = null;
-let linkRemoverTimer: number | null = null;
-export async function refreshLinkLista(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
-  linkListaPedida = true;
-  try { const r = await window.meuBot.linkPublicoLista(); if (r !== null) { linkPublicoState = r.info; linkPublicoLido = true; linkLista = r.itens; } } catch { /* máquina fora: fica o que havia */ }
-  linkListaLida = true; linkListaPedida = false;
-  ctx.paintGuide();
-}
-function botaoCopiar(url: string): HTMLButtonElement {
-  const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
-  copy.addEventListener("click", () => { void navigator.clipboard.writeText(url).then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
-  return copy;
-}
-function desarmarRemover(): void { linkRemoverArmado = null; if (linkRemoverTimer !== null) { window.clearTimeout(linkRemoverTimer); linkRemoverTimer = null; } }
-export async function refreshLinkPublico(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
-  try { const r = await window.meuBot.linkPublico(); linkPublicoState = r.info; linkPublicoPossivel = r.possivel; linkPublicoLido = true; } catch { /* máquina fora: fica o que havia */ }
-  ctx.paintGuide();
-}
-/** Tutorial 14: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
-export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar" | "nome"): void {
-  const box = el("div", "audio-controls");
-  const lp = linkPublicoState;
-  if (!linkPublicoLido) { box.append(carregando("Consultando a máquina…", "guia-link")); container.append(box); return; }
-  if (lp === null) {
-    box.append(el("p", "hint", linkPublicoPossivel ? "Seu link ainda não está ligado. É o admin quem liga, no meu-bot-admin › Link Público Global." : "Esta janela é da conta root da máquina: o link público é das contas de usuário (box-1, box-2…), que o admin liga no meu-bot-admin › Link Público Global."));
-    const b = el("button", "btn btn-ghost btn-small", "Conferir de novo"); b.type = "button"; b.addEventListener("click", () => { void refreshLinkPublico(); });
-    box.append(b); container.append(box); return;
-  }
-  const row = el("div", "audio-row");
-  const a = el("a", "audio-ok", lp.url) as HTMLAnchorElement; a.href = lp.url; a.target = "_blank"; a.rel = "noopener"; row.append(a);
-  row.append(botaoCopiar(lp.url)); box.append(row);
-  if (parte === "testar") {
-    if (!linkListaLida && !linkListaPedida) void refreshLinkLista();
-    // Publicar um arquivo deste Mac (o diálogo abre no main), com o nome no link opcional.
-    const r1 = el("div", "audio-row");
-    const pub = el("button", "btn btn-primary btn-small", linkPubOcupado && linkRemovendo === null ? "Publicando…" : "Publicar um arquivo…"); pub.type = "button"; pub.disabled = linkPubOcupado;
-    pub.title = "Escolhe um arquivo deste Mac e põe no ar no seu link; um .md vira página; até 100 MB; um item com o mesmo nome é substituído";
-    pub.addEventListener("click", () => {
-      linkPubOcupado = true; linkPubMsg = null; desarmarRemover(); ctx.paintGuide();
-      const pedido = linkPubNome.trim();
-      void window.meuBot.linkPublicoPublicar(pedido === "" ? undefined : pedido)
-        .then((r) => { if (r === null) return; linkPublicoState = r.info; linkLista = r.itens; linkListaLida = true; linkPubNome = ""; linkPubMsg = { text: "✓ No ar:", url: r.url, bad: false }; })
-        .catch((e: unknown) => { linkPubMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
-        .finally(() => { linkPubOcupado = false; ctx.paintGuide(); });
-    });
-    const nomeI = el("input") as HTMLInputElement; nomeI.type = "text"; nomeI.placeholder = "nome no link (opcional)"; nomeI.maxLength = 128; nomeI.style.width = "180px"; nomeI.disabled = linkPubOcupado; nomeI.value = linkPubNome;
-    nomeI.title = "Vazio = o nome do arquivo. Acentos e espaços viram hífen.";
-    nomeI.addEventListener("input", () => { linkPubNome = nomeI.value; });
-    r1.append(pub, nomeI); box.append(r1);
-    if (linkPubMsg !== null) {
-      const pm = el("p", linkPubMsg.bad ? "hint bad-hint" : "hint audio-ok", linkPubMsg.text);
-      if (linkPubMsg.url !== undefined) { const u = linkPubMsg.url; const a2 = el("a", "audio-ok", u) as HTMLAnchorElement; a2.href = u; a2.target = "_blank"; a2.rel = "noopener"; pm.append(" ", a2, " ", botaoCopiar(u)); }
-      box.append(pm);
-    }
-    // O que está no ar: abrir, ou tirar do ar em dois cliques (sem confirm(): o botão vira "Tirar mesmo?" por 5 s).
-    if (!linkListaLida) box.append(carregando("Vendo o que está no ar…", "guia-link-lista"));
-    else if (linkLista === null || linkLista.length === 0) box.append(el("p", "hint", "Nada no ar ainda."));
-    else {
-      box.append(el("p", "hint", `${linkLista.length} ${linkLista.length === 1 ? "item" : "itens"} no ar em ${lp.url}`));
-      for (const it of linkLista) {
-        const rowI = el("div", "audio-row");
-        const nome = el("span", "", `${it.pasta ? "📁" : "📄"} /${it.nome}${it.pasta ? "/" : ""}`); nome.title = it.url;
-        const abrir = el("button", "btn btn-ghost btn-small", "Abrir"); abrir.type = "button"; abrir.addEventListener("click", () => { void abrirLinkDoChat(it.url, false); });
-        const armado = linkRemoverArmado === it.nome;
-        const tirar = el("button", `btn btn-ghost btn-small${armado ? " bad-hint" : ""}`, linkRemovendo === it.nome ? "Tirando…" : armado ? "Tirar mesmo?" : "Tirar do ar"); tirar.type = "button"; tirar.disabled = linkPubOcupado;
-        tirar.addEventListener("click", () => {
-          if (!armado) { desarmarRemover(); linkRemoverArmado = it.nome; linkRemoverTimer = window.setTimeout(() => { linkRemoverArmado = null; linkRemoverTimer = null; ctx.paintGuide(); }, 5000); ctx.paintGuide(); return; }
-          desarmarRemover(); linkPubOcupado = true; linkRemovendo = it.nome; linkPubMsg = null; ctx.paintGuide();
-          void window.meuBot.linkPublicoRemover(it.nome)
-            .then((r) => { linkPublicoState = r.info; linkLista = r.itens; linkPubMsg = { text: `✓ /${it.nome} saiu do ar.`, bad: false }; })
-            .catch((e: unknown) => { linkPubMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
-            .finally(() => { linkPubOcupado = false; linkRemovendo = null; ctx.paintGuide(); });
-        });
-        rowI.append(nome, abrir, tirar);
-        if (armado) { const c = el("button", "btn btn-ghost btn-small", "Cancelar"); c.type = "button"; c.addEventListener("click", () => { desarmarRemover(); ctx.paintGuide(); }); rowI.append(c); }
-        box.append(rowI);
-      }
-    }
-    box.append(el("p", "hint", "Tudo o que está aqui é público na internet, sem senha. Publicar de novo com o mesmo nome substitui."));
-    const pedir = el("button", "btn btn-ghost btn-small", "Pedir um link de teste ao agente"); pedir.type = "button";
-    pedir.addEventListener("click", () => { void ctx.goToChatFromGuide("Crie uma página HTML simples chamada ola.html com um \"Olá!\" e me dê o link público dela.", "O agente publica a página em ~/publico e responde com a URL; quando houver algo no ar, este passo se conclui sozinho."); });
-    const rever = el("button", "btn btn-ghost btn-small", "Conferir"); rever.type = "button"; rever.addEventListener("click", () => { void refreshLinkPublico(); void refreshLinkLista(); });
-    const r2 = el("div", "audio-row"); r2.append(pedir, rever); box.append(r2);
-  }
-  if (parte === "nome") {
-    const r2 = el("div", "audio-row");
-    const i = el("input") as HTMLInputElement; i.type = "text"; i.value = lp.nome; i.maxLength = 63; i.placeholder = lp.usuario; i.style.width = "160px"; i.disabled = linkNomeOcupado;
-    i.title = "Só letras minúsculas, números e hífen (2 a 63 caracteres)";
-    const salvar = el("button", "btn btn-primary btn-small", linkNomeOcupado ? "Trocando…" : "Trocar o nome"); salvar.type = "button"; salvar.disabled = linkNomeOcupado;
-    const trocar = (): void => {
-      const n = i.value.trim().toLowerCase();
-      if (n === lp.nome) { linkNomeMsg = { text: "Esse já é o nome do seu link.", bad: false }; ctx.paintGuide(); return; }
-      if (!/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(n)) { linkNomeMsg = { text: "Nome inválido: só letras minúsculas, números e hífen (2 a 63 caracteres).", bad: true }; ctx.paintGuide(); return; }
-      linkNomeOcupado = true; linkNomeMsg = null; ctx.paintGuide();
-      void window.meuBot.linkPublicoNome(n)
-        .then((r) => { linkPublicoState = r; linkNomeMsg = { text: `✓ Seu link agora é ${r.url}`, bad: false }; })
-        .catch((e: unknown) => { linkNomeMsg = { text: `✗ ${ipcErrorText(e)}`, bad: true }; })
-        .finally(() => { linkNomeOcupado = false; ctx.paintGuide(); });
-    };
-    salvar.addEventListener("click", trocar);
-    i.addEventListener("keydown", (ev) => { if (ev.key === "Enter") trocar(); });
-    r2.append(i, el("span", "hint", `.${lp.dominio}`), salvar); box.append(r2);
-    if (linkNomeMsg !== null) box.append(el("p", linkNomeMsg.bad ? "hint bad-hint" : "hint audio-ok", linkNomeMsg.text));
-  }
-  container.append(box);
-}
-/** Tutorial 12: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
-let contasState: ContaEstado[] | null = null;
-let contaLogin: { id: ContaId; trocar: boolean; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
-export async function refreshContas(): Promise<void> {
-  if (!ctx.caps.install || ctx.windowHost === "" || ctx.windowHost === "local") return;
-  try { const r = await window.meuBot.contasStatus(); if (r !== null) contasState = r; } catch { /* máquina fora: fica o que havia */ }
-  ctx.paintGuide();
-}
-/** O link do login abre no Navegador do app: é por ele que o retorno do Cloudflare chega ao localhost da máquina. */
-const navegadorPronto = (): boolean => ctx.caps.chat && ctx.caps.navegador && browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto) === "ok";
-async function entrarConta(id: ContaId, trocar = false): Promise<void> {
-  if (contaLogin?.rodando === true) return;
-  contaLogin = { id, trocar, url: null, codigo: null, texto: "Pedindo o login na máquina…", rodando: true, ok: null };
-  ctx.paintGuide();
-  try { await window.meuBot.contasEntrar(id, navegadorPronto(), trocar); }
-  catch (err) { contaLogin = { ...contaLogin, texto: `✗ ${ipcErrorText(err)}`, ok: false }; }
-  finally { if (contaLogin !== null) contaLogin.rodando = false; ctx.paintGuide(); }
-}
-/** Botão "Instalar o GitHub CLI": em andamento, e o erro da última tentativa (some ao tentar de novo). */
-let ghInstalando = false;
-let ghErro: string | null = null;
-export function renderConta(container: HTMLElement, id: ContaId): void {
-  const box = el("div", "audio-controls");
-  const st = contasState?.find((c) => c.id === id) ?? null;
-  const login = contaLogin?.id === id ? contaLogin : null;
-  const row = el("div", "audio-row");
-  if (contasState === null) row.append(carregando("Consultando a máquina…", "guia-contas"));
-  else if (st !== null && !st.presente && id === "github") {
-    row.append(el("span", "hint", ghInstalando ? "Instalando o GitHub CLI na máquina…" : "O GitHub CLI (gh) não está instalado nesta máquina."));
-    const b = el("button", "btn btn-primary btn-small", ghInstalando ? "Instalando…" : "Instalar o GitHub CLI"); b.type = "button";
-    b.disabled = ghInstalando;
-    b.addEventListener("click", () => {
-      ghInstalando = true; ghErro = null; ctx.paintGuide();
-      void window.meuBot.contasInstalarGh()
-        .then((r) => { if (r !== null) contasState = r; })
-        .catch((e: unknown) => { ghErro = `Não instalou: ${ipcErrorText(e)}`; })
-        .finally(() => { ghInstalando = false; ctx.paintGuide(); });
-    });
-    row.append(b);
-  }
-  else if (st !== null && !st.presente) row.append(el("span", "hint", "Esta máquina não tem o Node (npx) para o Cloudflare."));
-  else {
-    if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
-    // Conectada: "Trocar de conta" (outra conta); "Conectar de novo" só quando o acesso é amplo (mesma conta, só sites).
-    const conectada = st?.conectado === true;
-    if (!conectada || st?.amplo === true || login?.rodando === true) {
-      const b = el("button", `btn ${conectada ? "btn-ghost" : "btn-primary"} btn-small`, login?.rodando === true ? "Esperando a autorização…" : conectada ? "Conectar de novo (só sites)" : "Conectar"); b.type = "button";
-      b.disabled = contaLogin?.rodando === true;
-      b.addEventListener("click", () => { void entrarConta(id); });
-      row.append(b);
-    }
-    if (conectada && login?.rodando !== true) {
-      const t = el("button", "btn btn-ghost btn-small", "Trocar de conta"); t.type = "button";
-      t.disabled = contaLogin?.rodando === true;
-      t.addEventListener("click", () => { void entrarConta(id, true); });
-      row.append(t);
-    }
-    if (login?.rodando === true) {
-      const c = el("button", "btn btn-ghost btn-small", "Cancelar"); c.type = "button";
-      c.addEventListener("click", () => { void window.meuBot.contasCancelar(); });
-      row.append(c);
-    } else if (st?.conectado === true) {
-      const sair = el("button", "btn btn-ghost btn-small", "Sair"); sair.type = "button";
-      sair.addEventListener("click", () => ctx.armConfirm(sair, "Confirmar? o agente perde o acesso", () => {
-        void window.meuBot.contasSair(id).then((r) => { if (r !== null) contasState = r; contaLogin = null; ctx.paintGuide(); });
-      }));
-      row.append(sair);
-    }
-  }
-  box.append(row);
-  if (id === "github" && ghErro !== null) box.append(el("p", "hint bad-hint", ghErro));
-  if (st?.amplo === true && login?.rodando !== true) box.append(el("p", "hint", "Esta conta foi logada com acesso amplo (Workers, D1, e-mail…). \"Conectar de novo\" troca por um acesso só para sites."));
-  if (login !== null) {
-    box.append(el("p", login.ok === false ? "hint bad-hint" : "hint", login.texto));
-    if (login.codigo !== null && login.rodando) {
-      const cr = el("div", "audio-row");
-      const code = el("code", "conta-codigo", login.codigo);
-      const copy = el("button", "btn btn-ghost btn-small", "Copiar"); copy.type = "button";
-      copy.addEventListener("click", () => { void navigator.clipboard.writeText(login.codigo ?? "").then(() => { copy.textContent = "Copiado"; window.setTimeout(() => { copy.textContent = "Copiar"; }, 1500); }); });
-      cr.append(code, copy);
-      box.append(cr);
-    }
-    if (login.url !== null && login.rodando) {
-      const again = el("button", "btn btn-ghost btn-small", "Abrir a página de novo"); again.type = "button";
-      again.addEventListener("click", () => { if (login.url !== null) void abrirLinkDoChat(login.url, false); });
-      box.append(again);
-    }
-  }
-  container.append(box);
-}
-export function renderGuardaInstall(container: HTMLElement): void {
-  const box = el("div", "audio-controls");
-  // Agente que não aceita a guarda (capacidade): explica, sem botão que falharia na máquina.
-  if (ctx.waStatus !== null && !ctx.waStatus.capacidades.guarda) { box.append(el("p", "hint", "O agente desta máquina não aceita a guarda do meu-bot; este tutorial não se aplica aqui.")); container.append(box); return; }
-  const row = el("div", "audio-row");
-  if (guardaState === true && !guardaBusy) row.append(el("span", "audio-ok", "✓ ativa nesta máquina"));
-  const b = el("button", `btn ${guardaState === true ? "btn-ghost" : "btn-primary"} btn-small`, guardaBusy ? "Ativando…" : guardaState === true ? "Reinstalar" : "Ativar");
-  b.type = "button"; b.disabled = guardaBusy || guardaState === null;
-  b.addEventListener("click", () => {
-    guardaBusy = true; guardaLog = []; ctx.guardaMsg = null; ctx.paintGuide();
-    void window.meuBot.installGuarda()
-      .then((r) => { ctx.guardaMsg = r.ok ? { text: "Guarda ativa.", bad: false } : { text: r.log.at(-1) ?? "a instalação falhou", bad: true }; })
-      .catch((err: unknown) => { ctx.guardaMsg = { text: ipcErrorText(err), bad: true }; })
-      .finally(() => { guardaBusy = false; void refreshGuarda(); });
-  });
-  row.append(b);
-  box.append(row);
-  if (guardaState === null) box.append(carregando("Consultando a máquina…", "guia-guarda"));
-  if (guardaBusy && guardaLog.length > 0) box.append(el("pre", "admin-logs", guardaLog.join("\n")));
-  if (ctx.guardaMsg !== null) box.append(el("p", `hint ${ctx.guardaMsg.bad ? "guide-pair-note" : "audio-ok"}`, ctx.guardaMsg.text));
-  container.append(box);
-}
 export async function refreshStatusLine(): Promise<void> {
   if (!ctx.caps.install || ctx.windowHost === "") return;
   try { statusLineState = await window.meuBot.statusLineInstalled(); } catch { /* máquina fora: fica o que havia */ }
@@ -559,49 +136,6 @@ export function renderStatusLineSegments(container: HTMLElement): void {
   container.append(box);
 }
 /** Passo "Conferir no terminal": digita o teste do script num terminal desta máquina; a pessoa dá Enter. */
-/** Texto do status do atalho global, como era nas Configurações. */
-const quickStatusText = (): string => {
-  const st = ctx.settings?.quickEntryStatus ?? null;
-  return st === "registered" ? "✓ ativo" : st === "taken" ? "em uso por outro app: escolha outra combinação" : st === "invalid" ? "combinação inválida" : st === "disabled" ? "desligado" : "…";
-};
-let quickMsg: string | null = null;
-/** Tutorial 15, passo 1: o gravador de atalho (saiu das Configurações em 30 out). A combinação pressionada é salva na hora. */
-export function renderQuickAtalho(container: HTMLElement): void {
-  const box = el("div", "audio-controls");
-  const row = el("div", "audio-row");
-  const input = el("input") as HTMLInputElement;
-  input.type = "text"; input.autocomplete = "off"; input.placeholder = "CommandOrControl+Shift+Space";
-  input.value = ctx.settings?.quickEntryShortcut ?? "";
-  input.title = "Clique e pressione a combinação; Backspace limpa";
-  const salvar = (shortcut: string): void => {
-    input.disabled = true; quickMsg = null;
-    void window.meuBot.setSettings({ quickEntryShortcut: shortcut }).then((view) => { ctx.applySettings(view); ctx.paintGuide(); })
-      .catch((err: unknown) => { quickMsg = `✗ ${ipcErrorText(err)}`; ctx.paintGuide(); })
-      .finally(() => { input.disabled = false; });
-  };
-  input.addEventListener("keydown", (ev) => {
-    ev.preventDefault(); ev.stopPropagation();
-    if (ev.key === "Backspace") { input.value = ""; return; }
-    if (["Meta", "Control", "Alt", "Shift"].includes(ev.key)) return;
-    const mods = [ev.metaKey || ev.ctrlKey ? "CommandOrControl" : null, ev.altKey ? "Alt" : null, ev.shiftKey ? "Shift" : null].filter((m): m is string => m !== null);
-    if (mods.length === 0) return;
-    const key = ev.key === " " ? "Space" : ev.key.length === 1 ? ev.key.toUpperCase() : ev.key;
-    input.value = [...mods, key].join("+");
-    salvar(input.value);
-  });
-  const status = el("span", (ctx.settings?.quickEntryStatus ?? null) === "registered" ? "audio-ok" : "hint", quickStatusText());
-  row.append(input, status);
-  box.append(row);
-  if (quickMsg !== null) box.append(el("p", "hint guide-pair-note", quickMsg));
-  container.append(box);
-}
-/** Tutorial 15, passo 2: mostrar a janela flutuante daqui mesmo, para quem quer ver antes de decorar o atalho. */
-export function renderQuickTestar(container: HTMLElement): void {
-  const b = el("button", "btn btn-ghost btn-small", "Mostrar a janela flutuante"); b.type = "button";
-  b.title = ctx.settings?.quickEntryShortcut ? `O mesmo que pressionar ${ctx.settings.quickEntryShortcut}` : "";
-  b.addEventListener("click", () => { void window.meuBot.toggleQuickEntry(); });
-  container.append(b);
-}
 export function renderStatusLineTest(container: HTMLElement): void {
   const b = el("button", "btn btn-primary btn-small", "Testar no terminal"); b.type = "button";
   b.addEventListener("click", () => { void ctx.runInTerminal(SL_TEST_COMMAND, "bash", true); });
@@ -768,55 +302,16 @@ export function renderSupportParts(container: HTMLElement, parts: readonly Suppo
 /** "ver tudo" no registro da máquina (Configurações › Suporte). */
 let supportLogAll = false;
 
-/** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
-/** Passo "Entrar no Cloudflare" do guia: só o botão que abre o login no Navegador do agente. */
-function renderCloudflareEntrar(txt: HTMLElement): void {
-  const abrir = el("button", "btn btn-primary btn-small", "Abrir o Cloudflare"); abrir.type = "button";
-  abrir.addEventListener("click", () => { void ctx.openNavTab("https://dash.cloudflare.com/login"); });
-  txt.append(abrir);
-}
+/** Liga eventos e registra os passos sem dono próprio (status line, suporte); o renderer.ts chama uma vez. */
 export function ligarGuiaSecoes(): void {
   registrarPassos({
-    "objective-choice": (txt) => renderObjectiveChoice(txt),
-    "objective-level": (txt) => renderObjectiveLevel(txt),
-    "objective-skill": (txt) => renderObjectiveSkill(txt),
-    "fallback-order": (txt) => renderFallbackOrder(txt),
-    "navegador-pro": (txt) => renderNavPro(txt),
-    "navegador-install": (txt) => renderNavInstall(txt),
-    "navegador-open": (txt) => renderNavOpen(txt),
-    "link-publico-ver": (txt) => renderLinkPublico(txt, "ver"),
-    "link-publico-testar": (txt) => renderLinkPublico(txt, "testar"),
-    "link-publico-nome": (txt) => renderLinkPublico(txt, "nome"),
-    "cloudflare-entrar": renderCloudflareEntrar,
-    "conta-cloudflare": (txt) => renderConta(txt, "cloudflare"),
-    "conta-github": (txt) => renderConta(txt, "github"),
-    "guarda-install": (txt) => renderGuardaInstall(txt),
     "statusline-install": (txt) => renderStatusLineInstall(txt),
     "statusline-segments": (txt) => renderStatusLineSegments(txt),
     "statusline-test": (txt) => renderStatusLineTest(txt),
-    "quick-atalho": (txt) => renderQuickAtalho(txt),
-    "quick-testar": (txt) => renderQuickTestar(txt),
     "support-name": (txt) => renderSupportParts(txt, ["name"]),
     "support-switch": (txt) => renderSupportParts(txt, ["share", "delivery", "log"]),
     "support-delivery": (txt) => renderSupportParts(txt, ["share", "delivery", "log"]),
   });
-  window.meuBot.on("navegador:progress", ({ line }) => { navInstLog = [...navInstLog, line].slice(-6); if (navInstBusy) ctx.paintGuide(); });
-  window.meuBot.on("contas:evento", (ev: ContaEvento) => {
-    if (contaLogin === null || contaLogin.id !== ev.id) return;
-    if (ev.kind === "url") {
-      contaLogin.url = ev.url; contaLogin.codigo = ev.codigo;
-      contaLogin.texto = contaLogin.trocar
-        ? ev.id === "github" ? "A página abriu no Navegador: entre com a outra conta do GitHub, cole o código abaixo e autorize. A conta antiga sai desta máquina quando a nova entrar." : "A página abriu no Navegador, já fora da conta antiga: entre com a outra conta do Cloudflare e autorize."
-        : ev.codigo !== null ? "A página abriu no Navegador: cole o código abaixo e autorize." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
-      void abrirLinkDoChat(ev.url, false);
-    } else if (ev.kind === "log") contaLogin.texto = ev.text;
-    else {
-      contaLogin.ok = ev.ok; contaLogin.texto = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
-      if (ev.estado != null) { const est = ev.estado; contasState = [...(contasState ?? []).filter((c) => c.id !== est.id), est]; }
-    }
-    ctx.paintGuide();
-  });
-  window.meuBot.on("guarda:progress", ({ line }) => { guardaLog = [...guardaLog, line].slice(-6); if (guardaBusy) ctx.paintGuide(); });
   window.meuBot.on("statusline:progress", ({ line }) => {
     statusLineLog = [...statusLineLog, line].slice(-6);
     ctx.paintGuide();

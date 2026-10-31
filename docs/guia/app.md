@@ -2,6 +2,28 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Guia: um dono por peça (31 out 2026, fase 3 da reorganização)
+
+- **Problema:** `tutoriais/guia-secoes.ts` tinha 790 linhas com os passos de sete assuntos diferentes (objetivo,
+  fallback, Navegador, link público, contas CLI, guarda, entrada rápida), o estado do objetivo e o catálogo da página
+  Tutoriais moravam no `renderer.ts`, e `refreshObjective` estava no Acervo. Não havia critério de onde pôr uma peça.
+- **Critério (agora no `ARQUITETURA.md`):** a tela de um passo mora em `<domínio>/<x>-guia.ts`, junto do estado e do
+  `refresh…` que ela lê, e o módulo registra os seus bodies no próprio `ligar<X>Guia()`. Em `tutoriais/` fica só o
+  motor; em `renderer.ts`, só a chamada `ligar<X>Guia()`.
+- **Movimentos:** `navegador/navegador-guia.ts` (Navegador ×3, `navInstState`, `refreshNavInst`, `abrirLinkDoChat`,
+  evento `navegador:progress`), `agente/objetivo-guia.ts` (objetivo ×3 + `objectiveState/Msg/Draft` com setters +
+  `refreshObjective`/`objectiveDo`, antes no renderer e no Acervo), `agente/link-publico-guia.ts`,
+  `agente/contas-cli-guia.ts` (contas + evento `contas:evento` + "Entrar no Cloudflare"), `whatsapp/guarda-guia.ts`
+  (+ `guardaMsg`, antes no renderer), `configuracoes/entrada-rapida-guia.ts`, `fallback-order` para
+  `agente/contas-agente.ts`, e o catálogo da página Tutoriais (`tutoriaisPage`, `tutNext`) para
+  `tutoriais/catalogo.ts` com `ligarCatalogo()`. `guia-secoes.ts` ficou com `guideCtx()`, suporte e status line
+  (319 linhas) e importa dos donos o estado que o contexto lê (`navInstState`, `guardaState`, `contasState`,
+  `linkPublico*`). O `crm-guia` importa `renderNavOpen`/`navInstState` direto do Navegador, sem passar pelo `ctx`.
+- **Regra do ARQUITETURA respeitada:** estado que outro arquivo grava ganhou função (`setObjectiveState`,
+  `setGuardaMsg`, `setTutNext`); os getters/setters do `ctx` apontam para elas, então `ctx.objectiveState = …`
+  continua valendo onde já era usado. Nada novo entrou no `ctx`; saíram `renderNavOpen` e `navInstState`.
+- Comportamento igual na tela; `npm test` segue verde (841).
+
 ## Guia: registro de passos no lugar da cadeia de `if/else` (31 out 2026, fase 2 da reorganização)
 
 - **Problema:** `tutoriais/tutoriais.ts` desenhava o corpo de cada passo com 44 ramos `else if (step.body === …)`,
