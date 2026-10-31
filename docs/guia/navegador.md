@@ -2,6 +2,19 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Barra compacta: as ações somem atrás de "⋯" na área estreita (31 out 2026)
+
+- **Sintoma:** com a janela em meia tela, a barra do Navegador (voltar, avançar, recarregar, endereço, favorito, pino,
+  zoom, agente, WhatsApp, recortes do site, extensões, abrir fora) não cabia: o campo de endereço encolhia a uma
+  bolinha com duas letras e a barra parecia tudo menos um navegador.
+- **Agora:** um `ResizeObserver` na barra aplica `.nav-bar.compacta` abaixo de `NAV_BARRA_COMPACTA_PX` (720 px,
+  `src/renderer/lib/nav-barra-core.ts`). Compacta, as ações com a classe `nav-secundario` (favorito, pino, zoom,
+  WhatsApp do agente, recortes, extensões, abrir fora) somem e aparece o botão "⋯" (`nav-mais`) depois do endereço;
+  ficam à vista só navegação, endereço e o 🤖 do agente. Apertar "⋯" (`.aberta`) faz a barra quebrar linha
+  (`flex-wrap` + `.nav-quebra` com `order: 5`; as secundárias com `order: 10`) e as ações voltam numa segunda linha,
+  sem mexer no DOM. Alargou a janela, a barra volta ao normal e fecha a segunda linha. `[hidden]` continua valendo
+  (`:not([hidden])`), então pino e zoom escondidos pela página não reaparecem.
+
 ## Gmail estourava pela direita na janela estreita: zoom automático para caber (31 out 2026)
 
 - **Sintoma:** com a janela em meia tela (área do Navegador com uns 640 px), a Caixa de entrada do Gmail saía cortada à
