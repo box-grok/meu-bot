@@ -1,5 +1,6 @@
 /**
- * Página "Gmail" (31 out): a caixa de entrada da Conta Google da máquina, com busca, leitura e lixeira (desfazível).
+ * Página "E-mail" (31 out; chamou-se "Gmail" no primeiro dia, e "Gmail" agora é só o site do Google no Navegador): os
+ * e-mails da Conta Google da máquina, com busca, leitura e lixeira (desfazível).
  * Recurso Pro, com a trava da Conta Google. O token fica no Mac (main › conta-google.ts); aqui só se lê e se pede.
  * Fábrica com dependências explícitas, como conta-google-page.ts. Saiu do cartão de teste da Conta Google para ter
  * um lugar próprio. O cartão "Agente do chat" liga a ponte (socket + túnel reverso, main › gmail-api.ts) pela qual o
@@ -13,6 +14,7 @@ import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
+import { blocosDoCorpo } from "../lib/email-texto-core.js";
 
 /** O que a página conta ao guia (tutorial 16): a pessoa leu uma mensagem, buscou, mandou para a lixeira, desfez. */
 export type GmailFato = "lido" | "buscou" | "lixeira" | "desfez";
@@ -72,11 +74,11 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     }
   }
   async function ligarAgente(on: boolean): Promise<void> {
-    await agir(async () => { agente = await deps.api.gmailAgente(on); }, on ? "o agente do chat pode usar o Gmail nesta máquina" : "o agente do chat não usa mais o Gmail");
+    await agir(async () => { agente = await deps.api.gmailAgente(on); }, on ? "o agente do chat pode ler seus e-mails nesta máquina" : "o agente do chat não lê mais seus e-mails");
   }
   async function instalarNaMaquina(): Promise<void> {
     instalando = true; render();
-    try { const r = await deps.api.instalarGmail(); instalado = r.ok; msg = { text: r.ok ? "Gmail do agente instalado na máquina" : `não instalou: ${r.log.at(-1) ?? "sem detalhes"}`, bad: !r.ok }; }
+    try { const r = await deps.api.instalarGmail(); instalado = r.ok; msg = { text: r.ok ? "lado do agente instalado na máquina" : `não instalou: ${r.log.at(-1) ?? "sem detalhes"}`, bad: !r.ok }; }
     catch (e) { msg = { text: erroGmailTexto(e), bad: true }; }
     instalando = false; render();
   }
@@ -119,7 +121,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
   function render(): void {
     panel.replaceChildren();
     const head = el("div", "guide-head"); const hb = el("div", "tut-body");
-    hb.append(el("span", "tut-badge", "gmail"), el("h2", "", "Gmail"), el("p", "", status !== null ? `A caixa de entrada da Conta Google da máquina ${status.maquina}. Leia, busque e mande para a lixeira; o que vai para a lixeira pode voltar por 30 dias. O acesso fica só neste Mac.` : "A caixa de entrada da Conta Google desta máquina."));
+    hb.append(el("span", "tut-badge", "e-mail"), el("h2", "", "E-mail"), el("p", "", status !== null ? `Seus e-mails da Conta Google da máquina ${status.maquina}, aqui dentro do meu-bot. Leia, busque e mande para a lixeira; o que vai para a lixeira pode voltar por 30 dias. O acesso fica só neste Mac.` : "Seus e-mails da Conta Google desta máquina, aqui dentro do meu-bot."));
     head.append(hb); panel.append(head);
     // Módulo Pro: sem o plano, a página é o bloqueio (como a Conta Google), com o pedido ao admin.
     if (!deps.licenseKnown()) { panel.append(carregando("Consultando a licença desta máquina…")); return; }
@@ -138,7 +140,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     if (status === null) { panel.append(carregando("Consultando a Conta Google desta máquina…")); return; }
     if (!status.configurado || !status.conectado || status.precisaReconectar) {
       const c = card(!status.configurado ? "Google ainda não configurado neste app" : !status.conectado ? "Conecte a Conta Google desta máquina" : "A Conta Google precisa reautorizar");
-      c.append(el("p", "hint", !status.configurado ? "Este build veio sem o client OAuth do Google. A página Conta Google explica e busca sozinha na release." : !status.conectado ? "O Gmail usa a conta conectada na página Conta Google. Entre lá uma vez e volte aqui." : "Faltam permissões na autorização atual. Reconecte na página Conta Google e volte aqui."));
+      c.append(el("p", "hint", !status.configurado ? "Este build veio sem o client OAuth do Google. A página Conta Google explica e busca sozinha na release." : !status.conectado ? "O E-mail usa a conta conectada na página Conta Google. Entre lá uma vez e volte aqui." : "Faltam permissões na autorização atual. Reconecte na página Conta Google e volte aqui."));
       const a = el("div", "admin-actions");
       a.append(btn("Abrir a Conta Google", "btn-primary", deps.openContaGoogle));
       if (status.configurado && !status.conectado) a.append(btn("Entrar com Google", "btn-ghost", () => { void agir(() => deps.api.googleContaConectar(), "login aberto no Navegador desta máquina; conclua lá e volte"); }));
@@ -166,8 +168,8 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     form.addEventListener("submit", (ev) => { ev.preventDefault(); busca = inp.value.trim(); void carregarLista(); });
     bc.append(form);
     if (lista === null) {
-      if (listaErro === null) bc.append(carregando("Carregando o Gmail…"));
-      else bc.append(el("p", "hint bad-hint", `Não deu para ler o Gmail: ${listaErro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarLista(); }));
+      if (listaErro === null) bc.append(carregando("Carregando os e-mails…"));
+      else bc.append(el("p", "hint bad-hint", `Não deu para ler os e-mails: ${listaErro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarLista(); }));
     } else {
       bc.append(el("p", "hint", `${lista.email ?? ""} · ${lista.naoLidas} não ${lista.naoLidas === 1 ? "lida" : "lidas"} na caixa de entrada${lista.busca !== "" ? ` · busca: ${lista.busca}` : ""}`));
       if (lista.mensagens.length === 0) bc.append(el("p", "hint", lista.busca === "" ? "Nenhuma mensagem na caixa de entrada." : "Nada encontrado com essa busca."));
@@ -185,13 +187,13 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     panel.append(cartaoAgente());
   }
 
-  /** "O agente do chat pode usar o Gmail": a chave da ponte, o estado do túnel e, se faltar, o instalador na máquina. */
+  /** "O agente do chat pode ler seus e-mails": a chave da ponte, o estado do túnel e, se faltar, o instalador na máquina. */
   function cartaoAgente(): HTMLElement {
     const c = card("Agente do chat");
     c.append(el("p", "hint", "Com a chave ligada, o agente desta máquina lista, busca, lê e manda e-mails para a lixeira quando você pede no chat (\"detalha o segundo\", \"apaga esse\"). Antes de apagar ele diz qual mensagem é e espera você confirmar; a lixeira é reversível. O acesso à conta continua só neste Mac: a máquina recebe o conteúdo, nunca o token."));
-    if (instalado === null) { c.append(el("p", "hint", "O agente do chat usa o Gmail só em máquinas por SSH; neste Mac a página basta.")); return c; }
+    if (instalado === null) { c.append(el("p", "hint", "O agente do chat lê e-mails só em máquinas por SSH; neste Mac a página basta.")); return c; }
     if (instalado === false) {
-      c.append(el("p", "hint bad-hint", "A máquina ainda não tem o lado dela (o servidor que apresenta o Gmail ao agente)."));
+      c.append(el("p", "hint bad-hint", "A máquina ainda não tem o lado dela (o servidor que apresenta os e-mails ao agente)."));
       c.append(btn(instalando ? "Instalando…" : "Instalar na máquina", "btn-primary", () => { void instalarNaMaquina(); }));
       return c;
     }
@@ -200,11 +202,29 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     c.append(el("p", `hint ${a?.on && a.state === "up" ? "audio-ok" : ""}`, `Estado: ${estado}${instalado === "?" ? " · conferindo a máquina…" : ""}`));
     const acoes = el("div", "admin-actions");
     const on = a?.on === true;
-    acoes.append(btn(on ? "Desligar para o agente" : "Deixar o agente usar o Gmail", on ? "btn-ghost" : "btn-primary", () => { void ligarAgente(!on); }));
+    acoes.append(btn(on ? "Desligar para o agente" : "Deixar o agente ler os e-mails", on ? "btn-ghost" : "btn-primary", () => { void ligarAgente(!on); }));
     c.append(acoes);
     return c;
   }
 
+  /** O corpo em parágrafos, separadores, citações e links curtos (email-texto-core); o link abre no navegador do Mac. */
+  function corpoEl(corpo: string): HTMLElement {
+    const box = el("div", "gmail-corpo");
+    const blocos = blocosDoCorpo(corpo);
+    if (blocos.length === 0) { box.append(el("p", "hint", "(sem texto; a mensagem pode ser só imagem ou anexo)")); return box; }
+    for (const b of blocos) {
+      if (b.tipo === "separador") { box.append(el("hr")); continue; }
+      const p = el(b.tipo === "citacao" ? "blockquote" : "p");
+      for (const t of b.trechos) {
+        if (t.tipo === "texto") { p.append(t.texto); continue; }
+        const a = el("a", "gmail-link", t.rotulo); a.href = "#"; a.title = t.url;
+        a.addEventListener("click", (ev) => { ev.preventDefault(); void deps.api.openExternal(t.url); });
+        p.append(a);
+      }
+      box.append(p);
+    }
+    return box;
+  }
   function renderDetalhe(): void {
     const dc = card(detalhe?.assunto ?? "Mensagem");
     const acoes = el("div", "admin-actions");
@@ -218,7 +238,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     const d = detalhe;
     dc.append(el("p", "hint", `De: ${d.de}`), el("p", "hint", `Para: ${d.para || "(sem destinatário)"}`), el("p", "hint", `Data: ${dataCurta(d.data)}${d.naoLida ? " · não lida" : ""}`));
     if (d.anexos.length > 0) dc.append(el("p", "hint", `Anexos: ${d.anexos.map((a) => `${a.nome} (${tamanho(a.bytes)})`).join(", ")} · abra no Gmail para baixar`));
-    dc.append(el("pre", "gmail-corpo", d.corpo === "" ? "(sem texto; a mensagem pode ser só imagem ou anexo)" : d.corpo));
+    dc.append(corpoEl(d.corpo));
     if (d.truncado) dc.append(el("p", "hint", "A mensagem é longa e foi cortada aqui; abra no Gmail para ver inteira."));
     acoes.append(btn("Abrir no Gmail", "btn-ghost", () => { void deps.api.openExternal(d.link); }));
     if (status?.gmailEscreve) { const lx = btn("Mover para a lixeira", "btn-ghost", () => { deps.armConfirm(lx, "Confirmar? vai para a lixeira (dá para desfazer)", () => { void apagar(d); }); }); acoes.append(lx); }
@@ -227,7 +247,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     panel.append(dc);
   }
 
-  const page = deps.definePage("gmail", "Gmail", panel, () => { render(); void refresh(); });
+  const page = deps.definePage("gmail", "E-mail", panel, () => { render(); void refresh(); });
   // `repintar`: a licença chegou depois de a página abrir (ela mostrava "consultando a licença").
   return { open: () => deps.openPage(page), refresh, repintar: () => { if (!panel.hidden) render(); } };
 }

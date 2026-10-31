@@ -1114,7 +1114,11 @@ body.topbar-hidden .topbar { display: none; }
 .gmail-msg-topo { display: flex; justify-content: space-between; gap: 10px; }
 .gmail-msg-topo .conta-msg-de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gmail-msg-data { flex: none; }
-.gmail-corpo { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.45; margin: 8px 0 0; max-height: 60vh; overflow: auto; }
+.gmail-corpo { font-size: 13px; line-height: 1.5; margin: 10px 0 0; max-height: 60vh; overflow: auto; }
+.gmail-corpo p, .gmail-corpo blockquote { margin: 0 0 .75em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gmail-corpo blockquote { padding-left: 10px; border-left: 2px solid var(--line); color: var(--muted); }
+.gmail-corpo hr { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
+.gmail-corpo a.gmail-link { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
 .gmail-panel .admin-field { flex: 1; min-width: 220px; }
 /* Contas do Claude (tutorial 1): lista com estado, uso e ações; limiares do rodízio. */
 .contas-claude { display: flex; flex-direction: column; gap: 6px; }

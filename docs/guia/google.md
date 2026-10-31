@@ -207,6 +207,25 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   protege o login é o PKCE). O que é segredo já vai cifrado: o refresh token no Keychain (`google-conta/<máquina>.bin`)
   e os pacotes do backup, só com a senha de backup. Se o JSON vazar, "Redefinir secret" no console e reempacotar.
 
+## A página Gmail vira "E-mail"; o corpo da mensagem fica legível (31 out, fim do dia)
+
+- **Nome.** Havia dois "Gmail" na tela: a página própria do app e o site mail.google.com numa aba do Navegador. Agora
+  a página própria chama-se **E-mail** (lateral `#gmail-line` com ícone `@`, aba, paleta `a:gmail`, badge `e-mail`,
+  botão "Abrir o E-mail" na Conta Google) e **Gmail** é só o site/serviço do Google: a aba do Navegador em
+  `mail.google.com` recebe o rótulo fixo "Gmail" em `tabLabel` (antes herdava "Caixa de entrada - … - Gmail", que
+  variava e se confundia com a caixa de entrada do app), "Abrir no Gmail" continua abrindo o site, e os tutoriais do
+  CRM "no Gmail" não mudam. Os ids não mudaram (`gmail` em `definePage`/`FIXAVEIS`/`PAGE_ID`, `gmail-line`,
+  `gmail-count`, canais `gmail:*`): aba fixada e divisão gravadas continuam valendo. O cartão do agente fala em "ler
+  seus e-mails" em vez de "usar o Gmail".
+- **Corpo.** O `text/plain` vinha cru num `<pre>`: quebras duras a ~70 colunas, URLs de rastreamento partidas em
+  quatro linhas, asteriscos como separador. `src/renderer/lib/email-texto-core.ts` (puro, testado em
+  `scripts/tests/email-texto-core.test.mjs`) transforma em blocos: parágrafos corridos (`juntarLinhas`: a quebra depois
+  de uma linha com 50+ caracteres vira espaço; linha curta, item de lista e separador ficam na própria linha; URL
+  aberta no fim da linha + linha seguinte só com caracteres de URL juntam sem espaço), separadores (`hr`), citações
+  (`>` → `blockquote`) e links (`trechosDe`: pontuação final fora do link; rótulo = host + caminho até 40 caracteres).
+  O renderer (`corpoEl` em `gmail-page.ts`) monta `p`/`blockquote`/`hr`/`a.gmail-link`; o link abre no navegador do Mac
+  por `openExternal`, com a URL inteira na dica.
+
 ## Gmail: página própria, busca, leitura e lixeira (31 out)
 
 - **Antes:** o Gmail era um cartão de teste escondido atrás de "Mostrar Gmail e Agenda" na Conta Google: 8 linhas,
