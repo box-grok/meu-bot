@@ -44,22 +44,23 @@ import { favLabel, favOf, favTitleFor } from "./lib/favoritos.js";
 import { rankPalette, type PaletteItem } from "./lib/palette-rank.js";
 import { ESPACO_THRESHOLDS, buildSegments, previewLine, SL_TEST_COMMAND, thresholdToWarn, timeUntil } from "./lib/status-line.js";
 import { advanceOnboard, FINAL_MESSAGE, SKIPPED_MESSAGE, TOUR_CARD, TOUR_INVITE, initialOnboardState, ONBOARD_STEPS, pickFeedback, welcomeMessage, type Feedback, type OnboardEvent, type OnboardState } from "./lib/onboarding.js";
-import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, clGuide, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, paintLoginControls, paintXaiLogin, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiGuide, xaiKey, xaiPrep } from "./agente/contas-agente.js";
+import { FALLBACK_TUTORIAL, XAI_TUTORIAL, clAuth, enterClaude, ligarContasAgente, logoutClaude, logoutXai, navHostsIn, offerClaudeLogin, offerSkillFromTurn, refreshClaudeLine, refreshContasClaude, refreshXaiLine, renderContasClaude, contasClaudeView, xaiAuth, xaiKey } from "./agente/contas-agente.js";
 import { ctx } from "./app/ctx.js";
+import { conferirPassos } from "./tutoriais/passos.js";
 import { abaFixaAtual, inserirAba, activatePage, closePage, deactivatePage, definePage, pintarFixada, ehVazia, ligarPaginas, openPage, pageActive, pagePrev, pageShown, pages, preencherEsquerda, relayoutSplit, restoreSplit, splitColunaVazia, splitOff, splitOn, splitOnAny, splitPages, toggleSplit } from "./app/paginas.js";
 import { acervoList, ligarAcervo, objectiveBusy, objectiveDo, paintAcervoCount, refreshObjective } from "./acervo/acervo.js";
 import { TUT_ICONS, TUT_VISIVEIS, activeGuide, ligarTutoriais, loadGuideFlags, loadTutPulados, loadTutSeen, markTutSeen, openGuide, paintGuide, paintGuideTargets, paintTutCount, reportProgress, resetTutorial, saveGuideFlag, setTutPulado, tourDone, tutArchivedEl, tutCounts, tutList, tutNovoLabels, tutResetMsg, tutResetting, tutState, tutorialDone, tutorialsReady, visibleNow } from "./tutoriais/tutoriais.js";
-import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAgentChoice, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
+import { chooseReply, comPareamento, disconnectWhatsapp, fmtPhone, ligarAgenteWhatsapp, openWhatsapp, paintWhatsapp, pairWhatsapp, refreshWhatsapp, renderAudioControls, renderChannelEditor, renderReplyCards, replyChoiceNow, requestAgentPrepare, waAgentBtn, waConnected, waDialog, waPairBtn, waPairing, waPolicyBox, waPolicyCards, waPolicySaving, waProgress, waProgressText, waQr, waSuccess } from "./whatsapp/agente-whatsapp.js";
 import { cacheDrop, cacheRead, cacheWrite, getListMode, ligarConversas, paintArquivadas, paintListMode, paintWaSidebar, setListMode, waChatTitle } from "./whatsapp/conversas.js";
-import { TUT_GRUPOS, loadGrupoAlvo, refreshWaGroups, renderGruposEscolher, renderGruposModo, renderGruposQuem, renderGruposTeste, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
+import { TUT_GRUPOS, ligarGrupos, loadGrupoAlvo, refreshWaGroups, waGroupReplied, waGroupTitle, waGroups, waGroupsAt, waGroupsInflight, waGroupsSection } from "./whatsapp/grupos.js";
 import { ligarChat, openWaBranch, openWaChat, paintWaChatTab, renderWaChat, renderWaQuote, waBubble, waChatPages, waCopy, waMsgKey, waSkeleton } from "./whatsapp/chat.js";
 import { ligarInicio, onboardEvent, playIntro, prefersReducedMotion, restEl, restartTour, showTourWelcome, syncRest } from "./inicio/inicio.js";
 import { ligarEnvio, sendMessage, sendText } from "./conversa/envio.js";
 import { conferirBackend, ligarBackendFalta } from "./conversa/backend-falta.js";
-import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, renderLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderFallbackOrder, renderGuardaInstall, renderNavInstall, renderNavOpen, renderNavPro, renderObjectiveChoice, renderObjectiveLevel, renderObjectiveSkill, renderQuickAtalho, renderQuickTestar, renderStatusLineInstall, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
-import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm, renderCrmConfig, renderCrmInstall, renderCrmPipeline, renderCrmPro, renderCrmTest } from "./crm/crm-guia.js";
+import { abrirLinkDoChat, firstReplyOnHost, guideCtx, ligarGuiaSecoes, navInstState, paintSupport, refreshContas, refreshLinkPublico, refreshGuarda, refreshNavInst, refreshStatusLine, refreshSupportState, renderConta, renderNavOpen, renderStatusLineSegments, renderStatusLineTest, renderSupportParts, repaintSupport } from "./tutoriais/guia-secoes.js";
+import { crmAfterAgentKey, crmLocalState, crmState, ligarCrmGuia, refreshCrm } from "./crm/crm-guia.js";
 import { crmProprio, license, motorCrm, navLicenseAsked, refreshLicense, setPlanBadge } from "./licenca/licenca.js";
-import { paintFinanceLine, renderFinanceStep } from "./finance/financeiro-guia.js";
+import { ligarFinanceiroGuia, paintFinanceLine } from "./finance/financeiro-guia.js";
 import { NAV_TUTORIAL, disposeNav, ligarNavegador, navAccess, navCurrent, navCurrentHost, navDonoView, navEstavaAberto, navExtensions, navFavsShown, navMarcarAberto, navPage, navPartition, navServicosCount, navTabs, navZoomStep, openNavTab, origemNome, paintNav, toggleFavsBar } from "./navegador/navegador.js";
 import { cssVar, disposeTerminal, ligarTerminal, openTerminalTab, rethemeTerminals, runInTerminal, terminals, themeNow, xtermClass } from "./terminal/terminal.js";
 import type { XTermCtor } from "./terminal/terminal.js";
@@ -106,7 +107,6 @@ const ctxImpl = {
   get atualizarCota() { return atualizarCota; },
   get chooseReply() { return chooseReply; },
   get clAuth() { return clAuth; },
-  get clGuide() { return clGuide; },
   get closePage() { return closePage; },
   get closePalette() { return closePalette; },
   get copyReference() { return copyReference; },
@@ -196,14 +196,12 @@ const ctxImpl = {
   get paintGuide() { return paintGuide; },
   get paintGuideTargets() { return paintGuideTargets; },
   get paintListMode() { return paintListMode; },
-  get paintLoginControls() { return paintLoginControls; },
   get paintNav() { return paintNav; },
   get paintProviderLabel() { return paintProviderLabel; },
   get paintStatus() { return paintStatus; },
   get paintSupport() { return paintSupport; },
   get paintUpdateState() { return paintUpdateState; },
   get paintWaChatTab() { return paintWaChatTab; },
-  get paintXaiLogin() { return paintXaiLogin; },
   get pairWhatsapp() { return pairWhatsapp; },
   get paletteBtn() { return paletteBtn; },
   get paletteEl() { return paletteEl; },
@@ -227,35 +225,13 @@ const ctxImpl = {
   get relayoutSplit() { return relayoutSplit; },
   get renderAssistant() { return renderAssistant; },
   get renderAudioControls() { return renderAudioControls; },
-  get renderAgentChoice() { return renderAgentChoice; },
   get renderChannelEditor() { return renderChannelEditor; },
   get renderConta() { return renderConta; },
-  get renderLinkPublico() { return renderLinkPublico; },
   get renderContasClaude() { return renderContasClaude; },
   get contasClaudeView() { return contasClaudeView; },
-  get renderCrmConfig() { return renderCrmConfig; },
-  get renderCrmInstall() { return renderCrmInstall; },
-  get renderCrmPipeline() { return renderCrmPipeline; },
-  get renderCrmPro() { return renderCrmPro; },
-  get renderCrmTest() { return renderCrmTest; },
-  get renderFallbackOrder() { return renderFallbackOrder; },
-  get renderFinanceStep() { return renderFinanceStep; },
-  get renderGruposEscolher() { return renderGruposEscolher; },
-  get renderGruposModo() { return renderGruposModo; },
-  get renderGruposQuem() { return renderGruposQuem; },
-  get renderGruposTeste() { return renderGruposTeste; },
-  get renderGuardaInstall() { return renderGuardaInstall; },
-  get renderNavInstall() { return renderNavInstall; },
   get renderNavOpen() { return renderNavOpen; },
-  get renderQuickAtalho() { return renderQuickAtalho; },
-  get renderQuickTestar() { return renderQuickTestar; },
-  get renderNavPro() { return renderNavPro; },
-  get renderObjectiveChoice() { return renderObjectiveChoice; },
-  get renderObjectiveLevel() { return renderObjectiveLevel; },
-  get renderObjectiveSkill() { return renderObjectiveSkill; },
   get renderReplyCards() { return renderReplyCards; },
   get renderSidebar() { return renderSidebar; },
-  get renderStatusLineInstall() { return renderStatusLineInstall; },
   get renderStatusLineSegments() { return renderStatusLineSegments; },
   get renderStatusLineTest() { return renderStatusLineTest; },
   get renderSupportParts() { return renderSupportParts; },
@@ -338,9 +314,7 @@ const ctxImpl = {
   get windowHost() { return windowHost; },
   get XAI_TUTORIAL() { return XAI_TUTORIAL; },
   get xaiAuth() { return xaiAuth; },
-  get xaiGuide() { return xaiGuide; },
   get xaiKey() { return xaiKey; },
-  get xaiPrep() { return xaiPrep; },
   get xtermClass() { return xtermClass; },
 };
 export type AppCtx = typeof ctxImpl;
@@ -1693,6 +1667,7 @@ ligarChat();
 
 let waTimer: ReturnType<typeof setTimeout> | null = null;
 ligarAgenteWhatsapp();
+ligarGrupos();
 ligarInicio();
 ligarEnvio();
 
@@ -1898,6 +1873,7 @@ let guardaMsg: { text: string; bad: boolean } | null = null;
 /** Segmentos escolhidos (arquivo na máquina); null = todos. O rodapé e a barra do terminal seguem a mesma escolha. */
 let statusLineSegs: StatusLineSegments | null = null;
 ligarCrmGuia();
+ligarFinanceiroGuia();
 /** O agente rodou o `chave-set`? Quando o resultado chegar, consulta o CRM e segue (teste da chave, pipeline único). */
 let crmKeyFromAgent = false;
 ligarGuiaSecoes();
@@ -1934,6 +1910,8 @@ let hostLocalAddr = false;
 ligarRede();
 ligarAtualizacao();
 ligarConfiguracoes();
+// Todo body dos tutoriais precisa de alguém que o desenhe (cada módulo registra os seus no `ligar…()` dele).
+{ const faltam = conferirPassos(TUTORIAIS); if (faltam.length > 0) console.error("passos de tutorial sem tela:", faltam.join(", ")); }
 
 void (async () => {
   // Lista de conversas oculta por padrão (Cmd+B ou ☰ mostra); só fica visível se a pessoa a abriu antes.

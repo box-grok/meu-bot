@@ -11,6 +11,7 @@ import { grupoAlvo } from "../lib/whatsapp-grupos.js";
 import { fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/fallback.js";
 import { OBJECTIVE_OPTIONS, LEVEL_OPTIONS } from "../lib/objetivo.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "./passos.js";
 
 /** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
 const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
@@ -768,7 +769,37 @@ export function renderSupportParts(container: HTMLElement, parts: readonly Suppo
 let supportLogAll = false;
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
+/** Passo "Entrar no Cloudflare" do guia: só o botão que abre o login no Navegador do agente. */
+function renderCloudflareEntrar(txt: HTMLElement): void {
+  const abrir = el("button", "btn btn-primary btn-small", "Abrir o Cloudflare"); abrir.type = "button";
+  abrir.addEventListener("click", () => { void ctx.openNavTab("https://dash.cloudflare.com/login"); });
+  txt.append(abrir);
+}
 export function ligarGuiaSecoes(): void {
+  registrarPassos({
+    "objective-choice": (txt) => renderObjectiveChoice(txt),
+    "objective-level": (txt) => renderObjectiveLevel(txt),
+    "objective-skill": (txt) => renderObjectiveSkill(txt),
+    "fallback-order": (txt) => renderFallbackOrder(txt),
+    "navegador-pro": (txt) => renderNavPro(txt),
+    "navegador-install": (txt) => renderNavInstall(txt),
+    "navegador-open": (txt) => renderNavOpen(txt),
+    "link-publico-ver": (txt) => renderLinkPublico(txt, "ver"),
+    "link-publico-testar": (txt) => renderLinkPublico(txt, "testar"),
+    "link-publico-nome": (txt) => renderLinkPublico(txt, "nome"),
+    "cloudflare-entrar": renderCloudflareEntrar,
+    "conta-cloudflare": (txt) => renderConta(txt, "cloudflare"),
+    "conta-github": (txt) => renderConta(txt, "github"),
+    "guarda-install": (txt) => renderGuardaInstall(txt),
+    "statusline-install": (txt) => renderStatusLineInstall(txt),
+    "statusline-segments": (txt) => renderStatusLineSegments(txt),
+    "statusline-test": (txt) => renderStatusLineTest(txt),
+    "quick-atalho": (txt) => renderQuickAtalho(txt),
+    "quick-testar": (txt) => renderQuickTestar(txt),
+    "support-name": (txt) => renderSupportParts(txt, ["name"]),
+    "support-switch": (txt) => renderSupportParts(txt, ["share", "delivery", "log"]),
+    "support-delivery": (txt) => renderSupportParts(txt, ["share", "delivery", "log"]),
+  });
   window.meuBot.on("navegador:progress", ({ line }) => { navInstLog = [...navInstLog, line].slice(-6); if (navInstBusy) ctx.paintGuide(); });
   window.meuBot.on("contas:evento", (ev: ContaEvento) => {
     if (contaLogin === null || contaLogin.id !== ev.id) return;

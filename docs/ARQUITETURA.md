@@ -44,7 +44,7 @@ Regras:
 | `app/` | `ctx.ts` (ponte para o renderer), `paginas.ts` (páginas em aba própria e modo dividido), `rede.ts` (barra offline) |
 | `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok), oferta de skill depois de navegar |
 | `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts`, `chat.ts` |
-| `tutoriais/` | `tutoriais.ts` (página e guia ao vivo), `guia-secoes.ts` (passos: suporte, status line, contas, Navegador…) |
+| `tutoriais/` | `tutoriais.ts` (página e guia ao vivo), `passos.ts` (registro body → quem desenha o passo; cada domínio registra os seus no `ligar…()`), `guia-secoes.ts` (passos sem dono ainda: suporte, status line, contas, Navegador…) |
 | `crm/` | Passo do CRM no guia (instalação, chave, pipeline, teste) |
 | `finance/`, `conta-google/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, páginas do meu-bot-admin |
 | `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom) e abas de terminal |

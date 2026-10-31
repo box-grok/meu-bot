@@ -382,3 +382,20 @@ test("tutorial 14 (link público): só em máquina por SSH; ligado pelo admin �
   assert.equal(guideView(t, null, { ...emptyFlags(), linkNomeVisto: true }, ctx({ ...lp, arquivos: 1 })).finished, true, "deixou como está");
   assert.equal(tutorialKnown(t, emptyContext()), false, "sem a consulta, verificando");
 });
+
+test("registro de passos (tutoriais/passos.ts): cada body dos tutoriais tem quem desenhe; repetir é erro; `false` devolve o botão de ação", async () => {
+  const { registrarPassos, renderPasso, conferirPassos, limparPassos } = await import("../../dist/renderer/tutoriais/passos.js");
+  limparPassos();
+  const bodies = [...new Set(TUTORIAIS.flatMap((t) => t.steps.map((s) => s.body)).filter((b) => b !== undefined))];
+  assert.deepEqual(conferirPassos(TUTORIAIS).sort(), [...bodies].sort(), "sem registro, falta tudo");
+  const chamados = [];
+  registrarPassos(Object.fromEntries(bodies.map((b) => [b, (_txt, step) => { chamados.push(step.body); return b === "reply-choice" ? false : undefined; }])));
+  assert.deepEqual(conferirPassos(TUTORIAIS), []);
+  assert.throws(() => registrarPassos({ "crm-pro": () => undefined }), /duas vezes/);
+  const txt = { append() {} };
+  const passo = (b) => TUTORIAIS.flatMap((t) => t.steps.map((s) => [t, s])).find(([, s]) => s.body === b);
+  const [t1, s1] = passo("crm-pro"); assert.equal(renderPasso("crm-pro", txt, s1, t1), true);
+  const [t2, s2] = passo("reply-choice"); assert.equal(renderPasso("reply-choice", txt, s2, t2), false, "sem status do WhatsApp, o passo deixa o botão de ação aparecer");
+  assert.deepEqual(chamados, ["crm-pro", "reply-choice"]);
+  limparPassos();
+});

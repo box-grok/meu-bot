@@ -1,6 +1,7 @@
 import { el } from "../lib/dom.js";
 import { financeOk } from "../lib/pro.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "../tutoriais/passos.js";
 
 /** Botão "Finanças" da lateral: só com a licença do financeiro; o número são as pendências. */
 export function paintFinanceLine(): void {
@@ -26,4 +27,9 @@ export function renderFinanceStep(txt: HTMLElement, body: string): void {
   else if (body === "finance-foto") txt.append(el("p", "hint", "Funciona no WhatsApp: mande a foto para você mesmo. O lançamento fica pendente até você confirmar o valor e a categoria."));
   else if (body === "finance-pendencias") { row.append(abrir); const n = ctx.financeState?.estado?.pendencias ?? 0; if (n > 0) txt.append(el("p", "hint", `${n} ${n === 1 ? "lançamento espera" : "lançamentos esperam"} você.`)); }
   if (row.childElementCount > 0) txt.append(row);
+}
+/** Liga os seis passos do tutorial 13 ao guia (todos passam por `renderFinanceStep`, que escolhe pelo body). */
+export function ligarFinanceiroGuia(): void {
+  const passo = (txt: HTMLElement, step: { body?: string }): void => renderFinanceStep(txt, step.body ?? "");
+  registrarPassos({ "finance-install": passo, "finance-contas": passo, "finance-renda": passo, "finance-testar": passo, "finance-foto": passo, "finance-pendencias": passo });
 }

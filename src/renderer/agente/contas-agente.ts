@@ -7,6 +7,7 @@ import { hostLabel } from "../lib/probe-text.js";
 import { TUTORIAIS, type Tutorial } from "../lib/tutoriais.js";
 import type { Tab } from "../renderer.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "../tutoriais/passos.js";
 
 // ---- Entrar no Claude Code: roda `claude auth login` na máquina, abre o link e recebe o código. Um estado só
 // (clState) pintado em dois conjuntos de controles: o passo 1 do tutorial "Entrar no Claude Code" (dentro da
@@ -421,7 +422,21 @@ export async function logoutXai(relogin: boolean): Promise<void> {
 }
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
+/** Passo "Entrar na conta do Claude" do guia: os controles são os mesmos de sempre (reanexados), o código digitado sobrevive à repintura e o foco volta. */
+function renderClaudeLoginPasso(txt: HTMLElement): void {
+  const refocus = document.activeElement === clGuide.code;
+  const sel: [number, number] = [clGuide.code.selectionStart ?? 0, clGuide.code.selectionEnd ?? 0];
+  txt.append(clGuide.box);
+  paintLoginControls(clGuide, "guide");
+  if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
+}
 export function ligarContasAgente(): void {
+  registrarPassos({
+    "contas-claude": (txt) => renderContasClaude(txt),
+    "claude-login": renderClaudeLoginPasso,
+    "xai-prepare": (txt) => { txt.append(xaiPrep.box); paintXaiLogin(); },
+    "xai-login": (txt) => { txt.append(xaiGuide.box); paintXaiLogin(); },
+  });
   wireLogin(clModal);
    wireLogin(clGuide);
   window.meuBot.on("claude-login:event", (ev: ClaudeLoginEvent) => {

@@ -2,9 +2,9 @@ import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
-import { REPLY_NOTE } from "../lib/whatsapp-resposta.js";
 import { grupoAlvo } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
+import { renderPasso } from "./passos.js";
 import { renderBackendInstall } from "../conversa/backend-falta.js";
 
 // ---- Tutoriais (lib/tutoriais.ts): passo a passo em aba própria.
@@ -278,96 +278,10 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     }
     if (cur || reaberto) {
       txt.append(el("p", "", step.text));
-      if (step.body === "contas-claude") {
-        ctx.renderContasClaude(txt);
-      } else if (step.body === "agent-choice") {
-        ctx.renderAgentChoice(txt);
-      } else if (step.body === "reply-choice" && st !== null) {
-        const cards = el("div", "reply-cards guide-cards");
-        ctx.renderReplyCards(cards, ctx.replyChoiceNow(st), ctx.waPolicySaving || !st.connected, ctx.chooseReply);
-        txt.append(cards, el("div", "guide-note", REPLY_NOTE));
-        ctx.renderChannelEditor(txt);
-        // Grupos têm a própria lista de quem conversa com o agente (tutorial 11).
-        if ((ctx.waGroups?.grupos.length ?? 0) > 0 && ctx.TUT_GRUPOS !== null) {
-          const tg = ctx.TUT_GRUPOS;
-          const p = el("p", "hint"); p.append("Isto vale para as conversas diretas. Nos grupos, quem conversa com o agente é outra lista: ");
-          const b = el("button", "linkish", `tutorial ${tg.number}, ${tg.title}`); b.type = "button"; b.addEventListener("click", () => openGuide(tg));
-          p.append(b, "."); txt.append(p);
-        }
-      } else if (step.body === "audio-ouvir") {
-        ctx.renderAudioControls(txt, "ouvir");
-      } else if (step.body === "quick-atalho") {
-        ctx.renderQuickAtalho(txt);
-      } else if (step.body === "quick-testar") {
-        ctx.renderQuickTestar(txt);
-      } else if (step.body === "statusline-install") {
-        ctx.renderStatusLineInstall(txt);
-      } else if (step.body === "guarda-install") {
-        ctx.renderGuardaInstall(txt);
-      } else if (step.body === "navegador-pro") {
-        ctx.renderNavPro(txt);
-      } else if (step.body === "navegador-install") {
-        ctx.renderNavInstall(txt);
-      } else if (step.body === "navegador-open") {
-        ctx.renderNavOpen(txt);
-      } else if (step.body === "crm-pro") {
-        ctx.renderCrmPro(txt);
-      } else if (step.body === "crm-install") {
-        ctx.renderCrmInstall(txt);
-      } else if (step.body === "crm-config") {
-        ctx.renderCrmConfig(txt);
-      } else if (step.body === "crm-test") {
-        ctx.renderCrmTest(txt);
-      } else if (step.body === "crm-gmail") {
-        ctx.renderNavOpen(txt, "https://mail.google.com/");
-      } else if (step.body === "crm-pipeline") {
-        ctx.renderCrmPipeline(txt);
-      } else if (step.body === "crm-importar") {
-        txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada."));
-      } else if (step.body === "statusline-segments") {
-        ctx.renderStatusLineSegments(txt);
-      } else if (step.body === "statusline-test") {
-        ctx.renderStatusLineTest(txt);
-      } else if (step.body === "fallback-order") {
-        ctx.renderFallbackOrder(txt);
-      } else if (step.body === "xai-prepare") {
-        txt.append(ctx.xaiPrep.box); ctx.paintXaiLogin();
-      } else if (step.body === "xai-login") {
-        txt.append(ctx.xaiGuide.box); ctx.paintXaiLogin();
-      } else if (step.body === "claude-login") {
-        // Os controles são os mesmos de sempre (reanexados): o código digitado sobrevive à repintura; o foco volta.
-        const refocus = document.activeElement === ctx.clGuide.code;
-        const sel: [number, number] = [ctx.clGuide.code.selectionStart ?? 0, ctx.clGuide.code.selectionEnd ?? 0];
-        txt.append(ctx.clGuide.box);
-        ctx.paintLoginControls(ctx.clGuide, "guide");
-        if (refocus) { ctx.clGuide.code.focus(); ctx.clGuide.code.setSelectionRange(sel[0], sel[1]); }
-      } else if (step.body === "support-name" || step.body === "support-switch" || step.body === "support-delivery") {
-        ctx.renderSupportParts(txt, step.body === "support-name" ? ["name"] : ["share", "delivery", "log"]);
-      } else if (step.body === "grupos-escolher") {
-        ctx.renderGruposEscolher(txt);
-      } else if (step.body === "grupos-quem") {
-        const alvo = grupoAlvo(ctx.waGroups, ctx.loadGrupoAlvo());
-        if (alvo !== null) { txt.append(el("p", "hint", `Grupo: ${ctx.waGroupTitle(alvo)}`)); ctx.renderGruposQuem(txt, alvo); }
-      } else if (step.body === "grupos-modo") {
-        ctx.renderGruposModo(txt);
-      } else if (step.body === "cloudflare-entrar") {
-        const abrir = el("button", "btn btn-primary btn-small", "Abrir o Cloudflare"); abrir.type = "button";
-        abrir.addEventListener("click", () => { void ctx.openNavTab("https://dash.cloudflare.com/login"); });
-        txt.append(abrir);
-      } else if (step.body === "conta-cloudflare" || step.body === "conta-github") {
-        ctx.renderConta(txt, step.body === "conta-cloudflare" ? "cloudflare" : "github");
-      } else if (step.body !== undefined && step.body.startsWith("finance-")) {
-        ctx.renderFinanceStep(txt, step.body);
-      } else if (step.body === "link-publico-ver" || step.body === "link-publico-testar" || step.body === "link-publico-nome") {
-        ctx.renderLinkPublico(txt, step.body === "link-publico-ver" ? "ver" : step.body === "link-publico-testar" ? "testar" : "nome");
-      } else if (step.body === "grupos-teste") {
-        ctx.renderGruposTeste(txt);
-      } else if (step.body === "objective-choice") {
-        ctx.renderObjectiveChoice(txt);
-      } else if (step.body === "objective-level") {
-        ctx.renderObjectiveLevel(txt);
-      } else if (step.body === "objective-skill") {
-        ctx.renderObjectiveSkill(txt);
+      // O corpo do passo é de quem registrou o body (tutoriais/passos.ts); `false` = não desenhou, e o alvo ganha o botão.
+      const desenhado = step.body !== undefined && renderPasso(step.body, txt, step, t);
+      if (desenhado) {
+        // Nada: quem desenhou o corpo não quer botão de ação (é o que a cadeia antiga fazia ao casar o body).
       } else if (step.target === "wa-pair" && ctx.waPairing && waInlineGuide === t) {
         // Pareamento dentro da aba: só o QR (o texto do passo já diz onde ler), linha de progresso e Cancelar embaixo.
         const pair = el("div", "pair-inline");
