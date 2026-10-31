@@ -4,7 +4,8 @@ import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { browserAccess } from "../lib/pro.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { abrirLinkDoChat } from "../navegador/navegador-guia.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
@@ -106,6 +107,7 @@ function renderCloudflareEntrar(txt: HTMLElement): void {
 }
 /** Liga os passos das contas ao guia e os eventos do login; o renderer.ts chama uma vez. */
 export function ligarContasCliGuia(): void {
+  registrarFonte("contas", () => ({ known: contasState !== null || !ehRemoto(), dados: { contas: contasState } }));
   registrarPassos({
     "cloudflare-entrar": renderCloudflareEntrar,
     "conta-cloudflare": (txt) => renderConta(txt, "cloudflare"),

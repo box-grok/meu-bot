@@ -4,6 +4,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { TUTORIAIS } from "../lib/tutoriais.js";
 import { REPLY_NOTE, replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
 import { ctx } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 const waLine = $<HTMLButtonElement>("wa-line");
@@ -695,6 +696,8 @@ function renderReplyChoicePasso(txt: HTMLElement): void | false {
   }
 }
 export function ligarAgenteWhatsapp(): void {
+  // O estado do WhatsApp vai ao guia por fora do contexto (`status`); aqui só se a consulta já respondeu.
+  registrarFonte("whatsapp", () => ({ known: ctx.waStatus !== null, dados: {} }));
   registrarPassos({
     "agent-choice": (txt) => renderAgentChoice(txt),
     "reply-choice": renderReplyChoicePasso,

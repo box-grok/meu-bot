@@ -6,7 +6,8 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 import { navInstState, renderNavOpen } from "../navegador/navegador-guia.js";
 
@@ -222,6 +223,13 @@ export function renderCrmTest(container: HTMLElement): void {
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarCrmGuia(): void {
+  registrarFonte("crm", () => {
+    const proprio = ctx.crmProprio() && ctx.motorCrm() === "proprio";
+    return {
+      known: ctx.navLicenseAsked && (crmState !== null || !ehRemoto()) && (!ctx.crmProprio() || !ehRemoto() || crmLocalState !== null),
+      dados: { crm: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), info: crmState, local: crmLocalState }, produto: { planoExigido: ctx.caps.planoExigido, crmProprio: proprio, crmStreak: !proprio } },
+    };
+  });
   registrarPassos({
     "crm-pro": (txt) => renderCrmPro(txt),
     "crm-install": (txt) => renderCrmInstall(txt),

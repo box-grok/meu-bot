@@ -2,17 +2,11 @@ import type { StatusLineSegments, SupportInfo, SupportShare } from "../../shared
 import { byId as $, el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { browserAccess, financeOk } from "../lib/pro.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
-import { type GuideContext } from "../lib/tutoriais.js";
-import { grupoAlvo } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
 import { registrarPassos } from "./passos.js";
-import { navInstState } from "../navegador/navegador-guia.js";
-import { guardaState } from "../whatsapp/guarda-guia.js";
-import { contasState } from "../agente/contas-cli-guia.js";
-import { linkPublicoLido, linkPublicoPossivel, linkPublicoState } from "../agente/link-publico-guia.js";
+import { registrarFonte } from "./fontes.js";
 
 
 let supportBusy = false;
@@ -32,52 +26,6 @@ let statusLineMsg: { text: string; bad: boolean } | null = null;
 const accountHasLimits = (): boolean => ctx.account !== null && (ctx.account.sessionPct !== null || ctx.account.weeklyPct !== null);
 let statusLineSegsBusy = false;
 let statusLineSegsMsg: string | null = null;
-/** Alguma conversa desta máquina já teve resposta do agente (o index só tem conversas do windowHost). */
-export const firstReplyOnHost = (): boolean => [...ctx.index.values()].some((c) => c.messages.some((m) => m.role === "assistant"));
-export const guideCtx = (): GuideContext => ({
-  support: ctx.supportState,
-  statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: ctx.statusLineSegs },
-  claude: { loggedIn: ctx.clAuth?.loggedIn ?? null, email: ctx.clAuth?.email ?? null, global: ctx.clAuth?.global === true, firstReply: firstReplyOnHost(), contasExtras: (ctx.contasClaudeView()?.contas ?? []).filter((c) => !c.padrao && c.global !== true && c.logada).length, trocas: (ctx.contasClaudeView()?.eventos ?? []).length },
-  xai: {
-    possible: !ctx.caps.install || ctx.windowHost === "local" ? false : ctx.xaiAuth !== null ? true : ctx.xaiKey === null ? null : ctx.xaiKey.backend,
-    hermes: ctx.xaiAuth !== null ? true : ctx.xaiKey === null ? null : false,
-    loggedIn: ctx.xaiAuth?.loggedIn ?? null, label: ctx.xaiAuth?.email ?? null,
-  },
-  fallback: { primary: ctx.settings?.backendModelForHost ?? null, chain: ctx.account?.providers ?? null },
-  guarda: { installed: guardaState, possible: ctx.waStatus === null ? null : ctx.waStatus.capacidades.guarda },
-  navegador: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), installed: navInstState, tabs: ctx.navTabs.filter((t) => t.url !== "" && !t.url.startsWith("about:")).length, extensions: ctx.navExtensions.length, agentOn: ctx.navAgent.on && ctx.navAgent.state === "up", servicos: ctx.navServicosCount(), extensaoEmbutida: ctx.navExtensions.some((x) => x.embutida === true) },
-  objective: ctx.objectiveState,
-  crm: { access: !ctx.navLicenseAsked ? null : browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto), info: ctx.crmState, local: ctx.crmLocalState },
-  grupos: (() => { const alvo = grupoAlvo(ctx.waGroups, ctx.loadGrupoAlvo()); return { info: ctx.waGroups, alvo: ctx.loadGrupoAlvo(), respondeu: alvo !== null && (alvo.agenteRespondeu === true || ctx.waGroupReplied.get(alvo.jid) === true) }; })(),
-  contas: contasState,
-  linkPublico: linkPublicoState,
-  linkPublicoPossivel,
-  quickEntry: { status: ctx.settings?.quickEntryStatus ?? null, shortcut: ctx.settings?.quickEntryShortcut ?? "" },
-  finance: { access: ctx.navLicenseAsked ? financeOk(ctx.license, ctx.windowHost) : null, info: ctx.financeState },
-  produto: (() => { const proprio = ctx.crmProprio() && ctx.motorCrm() === "proprio"; return { planoExigido: ctx.caps.planoExigido, crmProprio: proprio, crmStreak: !proprio }; })(),
-  // Fonte "conhecida" = a consulta desta janela já respondeu, ou ela não se aplica aqui (este Mac, sem o pacote,
-  // máquina sem OpenClaw). Consulta que falhou deixa null: continua desconhecida, não vira "não feito".
-  known: (() => {
-    const remote = ctx.caps.install && ctx.windowHost !== "" && ctx.windowHost !== "local";
-    return {
-      whatsapp: ctx.waStatus !== null,
-      claude: ctx.clAuth !== null,
-      statusline: statusLineState !== null || !ctx.caps.install || ctx.windowHost === "",
-      xai: !remote || ctx.xaiAuth !== null || ctx.xaiKey !== null,
-      fallback: ctx.account !== null,
-      support: ctx.supportState !== null || !ctx.caps.supportClient || ctx.windowHost === "" || ctx.windowHost === "local",
-      objective: ctx.objectiveState !== null || !remote,
-      guarda: guardaState !== null || !remote || (ctx.waStatus !== null && !ctx.waStatus.capacidades.guarda),
-      navegador: ctx.navLicenseAsked && (navInstState !== null || !remote),
-      crm: ctx.navLicenseAsked && (ctx.crmState !== null || !remote) && (!ctx.crmProprio() || !remote || ctx.crmLocalState !== null),
-      grupos: ctx.waGroups !== null || !remote || (ctx.waStatus !== null && !ctx.waStatus.capacidades.grupos),
-      contas: contasState !== null || !remote,
-      linkpublico: linkPublicoLido || !remote,
-      quickentry: ctx.settings !== null,
-      finance: ctx.navLicenseAsked && (!remote || !financeOk(ctx.license, ctx.windowHost) || ctx.financeState !== null),
-    };
-  })(),
-});
 
 export async function refreshStatusLine(): Promise<void> {
   if (!ctx.caps.install || ctx.windowHost === "") return;
@@ -304,6 +252,8 @@ let supportLogAll = false;
 
 /** Liga eventos e registra os passos sem dono próprio (status line, suporte); o renderer.ts chama uma vez. */
 export function ligarGuiaSecoes(): void {
+  registrarFonte("statusline", () => ({ known: statusLineState !== null || !ctx.caps.install || ctx.windowHost === "", dados: { statusLine: { installed: statusLineState, limits: accountHasLimits(), segments: ctx.statusLineSegs } } }));
+  registrarFonte("support", () => ({ known: ctx.supportState !== null || !ctx.caps.supportClient || ctx.windowHost === "" || ctx.windowHost === "local", dados: { support: ctx.supportState } }));
   registrarPassos({
     "statusline-install": (txt) => renderStatusLineInstall(txt),
     "statusline-segments": (txt) => renderStatusLineSegments(txt),

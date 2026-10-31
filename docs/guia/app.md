@@ -2,6 +2,24 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Guia: `GuideContext` fatiado por fonte (31 out 2026, fase 4 da reorganização)
+
+- **Problema:** `guideCtx()` em `guia-secoes.ts` montava o contexto inteiro do guia (15 fontes) lendo estado de três
+  donos diferentes, e era remontado várias vezes por pintura (uma por guia aberto, mais uma em `lembrarFeitos`).
+  Adicionar uma fonte exigia mexer lá, além do módulo dono.
+- **Agora:** `tutoriais/fontes.ts` é um registro fonte → fatia (`registrarFonte`, `montarGuideCtx`,
+  `conferirFontes`), sem import de domínio. Cada módulo registra a própria fatia no `ligar…()` dele, ao lado do
+  `refresh…` que a preenche: `{ known, dados }`, com a condição de "conhecida" que antes estava em `guideCtx`.
+  `CAMPOS_POR_FONTE` diz que campos cada fonte preenche (teste puro: cada campo tem exatamente uma dona; `produto`
+  ficou com o CRM). `ehRemoto()` em `app/ctx.ts` substitui o `remote` que oito fontes recalculavam.
+- **Onde cada fatia mora:** claude, xai e fallback em `agente/contas-agente.ts` (com `firstReplyOnHost`, que saiu do
+  guia-secoes); whatsapp em `agente-whatsapp.ts` (só `known`: o status vai ao guia por fora); objective, guarda,
+  navegador, crm (+ produto), grupos, contas, linkpublico, quickentry e finance nos `*-guia.ts` e módulos de domínio
+  respectivos; statusline e support ficam em `guia-secoes.ts` (269 linhas agora).
+- **Pintura:** `paintGuide()` monta o contexto uma vez e passa para `lembrarFeitos` e para o título de cada guia aberto.
+- **Guarda:** no fim do `renderer.ts`, `conferirFontes()` acusa no console fonte sem registro, como `conferirPassos`.
+  Receita completa de "Como adicionar um tutorial" entrou no `ARQUITETURA.md`.
+
 ## Guia: um dono por peça (31 out 2026, fase 3 da reorganização)
 
 - **Problema:** `tutoriais/guia-secoes.ts` tinha 790 linhas com os passos de sete assuntos diferentes (objetivo,

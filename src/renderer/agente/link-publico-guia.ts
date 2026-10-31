@@ -3,7 +3,8 @@ import type { LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { abrirLinkDoChat } from "../navegador/navegador-guia.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
@@ -133,6 +134,7 @@ export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar
 
 /** Liga os passos do link público ao guia; o renderer.ts chama uma vez. */
 export function ligarLinkPublicoGuia(): void {
+  registrarFonte("linkpublico", () => ({ known: linkPublicoLido || !ehRemoto(), dados: { linkPublico: linkPublicoState, linkPublicoPossivel } }));
   registrarPassos({
     "link-publico-ver": (txt) => renderLinkPublico(txt, "ver"),
     "link-publico-testar": (txt) => renderLinkPublico(txt, "testar"),

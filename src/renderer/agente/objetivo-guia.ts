@@ -6,7 +6,8 @@ import type { ObjectiveChoice, ObjectiveInfo } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { LEVEL_OPTIONS, OBJECTIVE_OPTIONS } from "../lib/objetivo.js";
-import { ctx } from "../app/ctx.js";
+import { ctx, ehRemoto } from "../app/ctx.js";
+import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 export let objectiveState: ObjectiveInfo | null = null;
@@ -112,6 +113,7 @@ export function renderObjectiveSkill(container: HTMLElement): void {
 
 /** Liga os três passos do objetivo ao guia; o renderer.ts chama uma vez. */
 export function ligarObjetivoGuia(): void {
+  registrarFonte("objective", () => ({ known: objectiveState !== null || !ehRemoto(), dados: { objective: objectiveState } }));
   registrarPassos({
     "objective-choice": (txt) => renderObjectiveChoice(txt),
     "objective-level": (txt) => renderObjectiveLevel(txt),
