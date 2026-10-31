@@ -37,6 +37,7 @@ import { mountFinancePage } from "./finance/finance-page.js";
 import { mountModulosPage } from "./modulos/modulos-page.js";
 import { mountContaGoogle } from "./conta-google/conta-google-page.js";
 import { mountGmail } from "./gmail/gmail-page.js";
+import { gmailGuiaFato, ligarGmailGuia, refreshGmailGuia } from "./gmail/gmail-guia.js";
 import { mountComputador } from "./computador/computador-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
@@ -139,6 +140,9 @@ const ctxImpl = {
   get fmtPhone() { return fmtPhone; },
   get form() { return form; },
   get getListMode() { return getListMode; },
+  get gmailPage() { return gmailPage; },
+  get contaGooglePage() { return contaGooglePage; },
+  get refreshGmailGuia() { return refreshGmailGuia; },
   get goToChatFromGuide() { return goToChatFromGuide; },
   get guardaMsg() { return guardaMsg; }, set guardaMsg(v) { setGuardaMsg(v); },
   get guideCtx() { return montarGuideCtx; },
@@ -1779,6 +1783,7 @@ ligarLinkPublicoGuia();
 ligarContasCliGuia();
 ligarGuardaGuia();
 ligarEntradaRapidaGuia();
+ligarGmailGuia();
 ligarBackendFalta();
 let navAskedPro = false;
 let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
@@ -1787,6 +1792,7 @@ let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 let financePage: ReturnType<typeof mountFinancePage> | null = null;
 /** Página Gmail (31 out): montada na abertura, como a Conta Google; a paleta e a aba fixada a alcançam por aqui. */
 let gmailPage: ReturnType<typeof mountGmail> | null = null;
+let contaGooglePage: ReturnType<typeof mountContaGoogle> | null = null;
 let modulosPage: ReturnType<typeof mountModulosPage> | null = null;
 let financeState: FinanceInfo | null = null;
 ligarNavegador();
@@ -1911,7 +1917,8 @@ void (async () => {
   applySettings(await window.meuBot.getSettings());
   const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, openGmail: () => gmailPage?.open(), armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
-  const gmail = mountGmail({ panelsEl, definePage, openPage, openContaGoogle: () => contaGoogle.open(), armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  contaGooglePage = contaGoogle;
+  const gmail = mountGmail({ panelsEl, definePage, openPage, openContaGoogle: () => contaGoogle.open(), aoUsar: gmailGuiaFato, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   gmailPage = gmail;
   $<HTMLButtonElement>("gmail-line").addEventListener("click", () => gmail.open());
   const computador = mountComputador({ panelsEl, definePage, openPage, api: window.meuBot, host: () => windowHost, local: () => windowHost === "local", license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
@@ -1949,6 +1956,7 @@ void (async () => {
   void refreshGuarda();
   void refreshContas();
   void refreshLinkPublico();
+  void refreshGmailGuia();
   void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); gmail.repintar(); computador.repintar(); });
   void refreshNavInst();
   void refreshCrm();

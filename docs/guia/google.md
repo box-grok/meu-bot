@@ -266,3 +266,10 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   lida/etiquetar, enviar e-mail.
 - Testes: `scripts/tests/pontes.test.mjs` (args da CLI com uma, duas ou nenhuma ponte; notas do turno; regra; as
   ferramentas do `.mjs` iguais a `GMAIL_TOOLS`), `tool-events.test.mjs` (resumos `✉️`).
+
+## Tutorial 16 "Gmail (Pro)" (31 out)
+
+- Tutorial da página Gmail, em `src/renderer/gmail/gmail-guia.ts` (passos e a fonte `google` do guia) e a entrada
+  `gmail` em `lib/tutoriais.ts`: Pro → Conta Google conectada → ler uma mensagem → buscar → lixeira + desfazer. A
+  página conta ao guia o que a pessoa fez por `GmailDeps.aoUsar` (`"lido" | "buscou" | "lixeira" | "desfez"`), e o guia
+  grava como fato lembrado. Detalhes da reorganização dos tutoriais em `docs/guia/app.md` (fases 1 a 5).

@@ -2,6 +2,22 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Tutorial 16 "Gmail (Pro)" pela receita nova (31 out 2026, fase 5 da reorganização)
+
+- **O que é:** o primeiro tutorial feito pela receita "Como adicionar um tutorial" do `ARQUITETURA.md`: três arquivos
+  (`lib/tutoriais.ts`, `gmail/gmail-guia.ts`, uma linha no `renderer.ts`) e o teste. Cinco passos: ter o Pro (pela
+  licença, com "Pedir o Pro ao admin"), conectar a Conta Google (abre a página dela), ler uma mensagem, buscar na
+  sintaxe do Gmail, mandar para a lixeira e desfazer. Os três últimos são fatos que a própria página Gmail conta ao
+  guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`). Conta de antes da lixeira
+  (`gmailEscreve === false`) vê no passo 5 o aviso para reconectar uma vez.
+- **Renumeração:** o Gmail entra como **16**, depois de 15 Entrada rápida (trilha: `after: "claude-login"`); os
+  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões). O mapa antigo → novo da seção de 31 out continua
+  valendo para os 15 primeiros.
+- **Fonte `google`:** `known` = a Conta Google da máquina já respondeu (`googleContaStatus`, mais o evento
+  `google-conta:changed`); `access` pela licença como o Navegador. `refreshGmailGuia` roda no boot e ao abrir o guia.
+- O passo do tutorial 18 (CRM no Gmail) que abre o Gmail web no Navegador foi renomeado para não confundir com a
+  página Gmail: "Abrir o Gmail web no Navegador (com a barra do CRM)".
+
 ## Guia: `GuideContext` fatiado por fonte (31 out 2026, fase 4 da reorganização)
 
 - **Problema:** `guideCtx()` em `guia-secoes.ts` montava o contexto inteiro do guia (15 fontes) lendo estado de três
