@@ -91,7 +91,7 @@ async function handle(host: string, req: http.IncomingMessage, res: http.ServerR
   }
 }
 
-// ---- "O agente pode usar o Gmail": socket + -R (chave "gmail"); o backend recebe a porta em X-Meu-Bot-Gmail-Port.
+// ---- "O agente pode ler seus e-mails" (página E-mail): socket + -R (chave "gmail"); o backend recebe a porta em X-Meu-Bot-Gmail-Port.
 const agentOn = new Set<string>();
 const agentState = new Map<string, GmailAgenteState>();
 const tell = (host: string, st: GmailAgenteState): void => { agentState.set(host, st); sendToHost(host, "gmail:agent", st); };

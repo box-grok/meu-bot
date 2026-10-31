@@ -47,6 +47,8 @@ test("proBlockText: free pede ao admin; unknown não; vencido traz a data", () =
 
 test("tabLabel e displayUrl", () => {
   assert.equal(tabLabel("Gmail", "https://mail.google.com/mail/u/0/"), "Gmail");
+  assert.equal(tabLabel("Caixa de entrada (3) - box@agentesgrok.com - Gmail", "https://mail.google.com/mail/u/0/#inbox"), "Gmail"); // o site do Gmail tem nome fixo
+  assert.equal(tabLabel("Caixa de entrada", "https://outlook.live.com/"), "Caixa de entrada");
   assert.equal(tabLabel("", "https://www.google.com/"), "google.com");
   assert.equal(tabLabel("https://x.com/a", "https://x.com/a"), "x.com");
   assert.equal(tabLabel("", "about:blank"), "Nova aba");

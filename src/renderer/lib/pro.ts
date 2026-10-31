@@ -81,6 +81,9 @@ export function proBlockText(a: Exclude<ProAccess, "ok">, view: LicenseView | nu
 
 /** Título curto de uma aba interna (favicon à parte): o título da página, senão o domínio, senão "Nova aba". */
 export function tabLabel(title: string, url: string): string {
+  // O site do Gmail no Navegador chama-se "Gmail", fixo: o título dele ("Caixa de entrada - … - Gmail") varia e se
+  // confunde com a página E-mail do app.
+  try { if (new URL(url).hostname === "mail.google.com") return "Gmail"; } catch { /* sem url */ }
   const t = title.trim();
   if (t !== "" && t !== url) return t.length > 28 ? `${t.slice(0, 27)}…` : t;
   try { const h = new URL(url).hostname.replace(/^www\./, ""); if (h !== "") return h; } catch { /* sem url */ }
