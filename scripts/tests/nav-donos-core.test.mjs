@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { parseDono, limpar, abasDe, escolherAba, decidirAbrir, tomar, donoTexto, podeFechar, POSSE_TTL_MS, MAX_ABAS } = createRequire(import.meta.url)("../../dist/main/navegador/nav-donos-core.js");
+const { parseDono, limpar, abasDe, escolherAba, decidirAbrir, tomar, donoTexto, podeFechar, abasParaRecarregar, POSSE_TTL_MS, MAX_ABAS } = createRequire(import.meta.url)("../../dist/main/navegador/nav-donos-core.js");
 
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64");
 const WA = { id: "agent:main:whatsapp:direct:+5516992294486", rotulo: "WhatsApp", origem: "whatsapp" };
@@ -64,4 +64,22 @@ test("posse vence em 10 min sem uso e some quando a aba fecha; fechar só a pró
   assert.equal(podeFechar(posses, 3, WA), null);
   assert.match(podeFechar(posses, 3, BOT), /outra conversa/);
   assert.match(podeFechar(posses, 4, BOT), /da pessoa/);
+});
+
+test("fechar: as abas da pessoa no mesmo site recarregam; as de conversas, de outros sites, a própria e about:blank não", () => {
+  const dono = { id: "a:1", rotulo: "a", origem: "meu-bot" };
+  const posses = new Map([[7, { ...dono, em: 0 }], [9, { id: "b:2", rotulo: "b", origem: "whatsapp", em: 0 }]]);
+  const abas = [
+    { id: 3, url: "https://dalefit.cloud/" },            // da pessoa, mesmo site → recarrega
+    { id: 4, url: "https://dalefit.cloud/sobre?x=1" },   // da pessoa, mesmo site, outro caminho → recarrega
+    { id: 5, url: "http://dalefit.cloud/" },             // outro esquema = outra origem → não
+    { id: 6, url: "https://google.com/" },               // outro site → não
+    { id: 7, url: "https://dalefit.cloud/?v=nofooter" }, // a aba do agente, que está fechando → não
+    { id: 8, url: "about:blank" },                       // sem origem → não
+    { id: 9, url: "https://dalefit.cloud/x" },           // aba de outra conversa → não (no meio de uma ação dela)
+  ];
+  assert.deepEqual(abasParaRecarregar("https://dalefit.cloud/?v=nofooter", abas, 7, posses), [3, 4]);
+  assert.deepEqual(abasParaRecarregar("about:blank", abas, 7, posses), [], "aba fechada sem origem: nada");
+  assert.deepEqual(abasParaRecarregar("não é url", abas, 7, posses), []);
+  assert.deepEqual(abasParaRecarregar("https://dalefit.cloud:8443/", abas, 7, posses), [], "porta diferente é outra origem");
 });

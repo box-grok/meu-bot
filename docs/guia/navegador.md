@@ -137,3 +137,19 @@ Regras em `src/main/nav-donos-core.ts` (testadas), aplicadas em `nav-api.ts`:
 `✳️ Claude Code (Mac)` (origem `claude-code`, o Claude Code deste Mac pelo socket). Um clique
 copia a referência: máquina, aba, url e dono, com chave e sessão. A máquina com o servidor v1 é atualizada sozinha
 (`navegadorInstalled` e `mcpfile` conferem o marcador `meu-bot-navegador v2`).
+
+## Fechar a aba do agente recarrega a aba da pessoa no mesmo site (31 out)
+
+- **O que acontecia:** a pessoa pedia ao agente para tirar uma frase do site dela (dalefit.cloud). O agente editava,
+  publicava, abria uma aba nova em `…/?v=nofooter` para conferir, tirava um print e fechava essa aba. Ao fechar, o
+  Navegador voltava para a aba dela, aberta antes e nunca recarregada: a versão antiga. Parecia que a mudança
+  "voltava"; na verdade o servidor já estava certo (conferido com `curl`) e só a aba estava velha. Ela atualizava na mão.
+- **Agora:** `/fechar` (nav-api.ts) recarrega sem cache (`reloadIgnoringCache`) as abas **da pessoa** (sem posse) que
+  estão na mesma origem da aba fechada. Abas de outras conversas não (poderiam estar no meio de uma ação), nem a
+  própria, nem `about:blank`. Regra pura em `abasParaRecarregar` (nav-donos-core.ts), testada. A resposta devolve
+  `recarregadas`, e a descrição da ferramenta `fechar` no `navegador-mcp.mjs` passa a dizer isso ao agente.
+- **Como foi depurado** (sem Acessibilidade): log do app ao vivo; app relançado com `--remote-debugging-port` e um
+  fluxo contínuo do console das janelas e webviews; a webview do site vigiada a cada 2 s (data de carga, URL, rodapé)
+  mostrou que a aba carregou às 15:32:09 e nunca navegou; `curl` no site separou "servidor" de "aba"; as ações 🌐 do
+  agente lidas no DOM da conversa (`abrir ?v=nofooter`, `print`, `fechar`) fecharam o caso. Roteiro na skill
+  `testar-no-app` e `scripts/devtools.mjs`.

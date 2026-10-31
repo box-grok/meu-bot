@@ -9,7 +9,7 @@
  * · POST /digitar {aba?, n?|seletor?, texto, enter?} · POST /tecla {aba?, tecla} · POST /print {aba?}
  * · POST /voltar|/avancar|/recarregar {aba?} · POST /js {aba?, codigo}
  * · /favoritos · POST /favoritar {url, titulo?} · POST /desfavoritar {id?|url?}  (barra de favoritos da máquina)
- * · POST /fechar {aba?}  (só aba da própria conversa)
+ * · POST /fechar {aba?}  (só aba da própria conversa; as abas da pessoa no mesmo site recarregam sem cache)
  * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (nav-donos-core.ts): cada conversa trabalha nas próprias abas.
  */
 import { controlDir } from "../app/control-dir";
@@ -17,7 +17,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import type { WebContents } from "electron";
-import { DONO_LEGADO, decidirAbrir, donoTexto, escolherAba, limpar, parseDono, podeFechar, tomar, abasDe, type Dono, type Posse, type Tipo } from "./nav-donos-core";
+import { DONO_LEGADO, abasParaRecarregar, decidirAbrir, donoTexto, escolherAba, limpar, parseDono, podeFechar, tomar, abasDe, type Dono, type Posse, type Tipo } from "./nav-donos-core";
 import { browserActiveWcId, browserAsk, browserDonos, browserConsole, browserExtensions, browserFavoriteAdd, browserFavoriteRemove, browserFavorites, browserServiceWorkers, browserWebContents } from "./browser";
 import { log } from "../maquina/tunnel";
 
@@ -158,9 +158,16 @@ async function act(host: string, route: string, b: Req, dono: Dono | null): Prom
       if (aba === undefined) throw new Error("esta conversa não tem aba aberta para fechar");
       const motivo = podeFechar(m, aba, dono);
       if (motivo !== null) throw new Error(motivo);
+      // O agente costuma abrir uma aba só para conferir o que publicou e fechá-la: a aba da pessoa no mesmo site ainda
+      // mostra a versão de antes e parecia que "voltou". Ela recarrega (sem cache) junto com o fechamento.
+      const vivas = tabsOf(host);
+      const fechadaUrl = vivas.find((w) => w.id === aba)?.getURL() ?? "";
+      const recarregar = abasParaRecarregar(fechadaUrl, vivas.map((w) => ({ id: w.id, url: w.getURL() })), aba, m);
       browserAsk(host, { kind: "close", wcId: aba });
       m.delete(aba); publicar(host);
-      return { ok: true, fechada: aba };
+      for (const id of recarregar) { const w = vivas.find((x) => x.id === id); if (w !== undefined && !w.isDestroyed()) { try { w.reloadIgnoringCache(); } catch { /* aba fechou no meio */ } } }
+      if (recarregar.length > 0) log(`[navegador ${host}] /fechar recarregou ${recarregar.length} aba(s) da pessoa no mesmo site (${fechadaUrl.slice(0, 80)})`);
+      return { ok: true, fechada: aba, recarregadas: recarregar };
     }
     case "/ler": {
       const wc = ler(); await waitLoad(wc);
