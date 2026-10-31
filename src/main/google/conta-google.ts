@@ -15,10 +15,10 @@ import { randomBytes } from "node:crypto";
 import { safeStorage } from "electron";
 import { log } from "../maquina/tunnel";
 import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
-import { ESCOPOS_CONTA, URL_TOKEN, parseIdToken, refreshRecusadoDeVez, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
+import { ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, URL_TOKEN, parseIdToken, refreshRecusadoDeVez, temEscopo, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
 import { acessoDeRefresh, clienteConta, clienteContaOrigem, gravar, postForm, temKeychain } from "./comum";
 
-export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null; busca?: string | null }
+export interface GoogleContaStatus { configurado: boolean; conectado: boolean; conectando: boolean; /** Máquina a que esta conta pertence (cada VM tem a sua). */ maquina: string; /** E-mail da conta antiga, única do Mac, que pode ser adotada nesta máquina; null = não há. */ contaDoMac: string | null; precisaReconectar: boolean; /** A autorização inclui gmail.modify (lixeira do Gmail). */ gmailEscreve: boolean; perfil: PerfilGoogle | null; escopos: string[]; cliente: { projeto: string; origem: string } | null; busca?: string | null }
 const sanitHost = (h: string): string => (h || "sem-maquina").replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 100);
 const DIR = (): string => path.join(app.getPath("userData"), "google-conta");
 const ARQ = (host: string): string => path.join(DIR(), `${sanitHost(host)}.bin`);
@@ -88,7 +88,7 @@ export function contaStatus(host: string): GoogleContaStatus {
   const t = lerToken(host);
   const doMac = t === null ? lerArq(ARQ_DO_MAC()) : null;
   const c = clienteContaOrigem();
-  return { configurado: c !== null, conectado: t !== null, conectando: conectando.has(host), maquina: host, contaDoMac: doMac?.perfil?.email ?? (doMac !== null ? "(conta sem e-mail)" : null), precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [], cliente: c === null ? null : { projeto: c.projeto, origem: c.origem } };
+  return { configurado: c !== null, conectado: t !== null, conectando: conectando.has(host), maquina: host, contaDoMac: doMac?.perfil?.email ?? (doMac !== null ? "(conta sem e-mail)" : null), precisaReconectar: t !== null && !temTodosEscopos(t.escopo, ESCOPOS_CONTA), gmailEscreve: t !== null && temEscopo(t.escopo, GMAIL_MODIFY), perfil: t?.perfil ?? null, escopos: t ? t.escopo.split(/\s+/).filter(Boolean) : [], cliente: c === null ? null : { projeto: c.projeto, origem: c.origem } };
 }
 
 export async function contaConectar(host: string): Promise<GoogleContaStatus> {
@@ -123,7 +123,7 @@ async function fluxo(host: string, c: { clientId: string; clientSecret: string }
       const a = srv.address(); const port = typeof a === "object" && a !== null ? a.port : 0;
       srv.on("close", reservarRetornoLocal(port)); // o retorno deste loopback é local (Mac), não entrega por SSH
       redirect = `http://127.0.0.1:${port}/oauth`;
-      const url = urlDeAutorizacao({ clientId: c.clientId, redirect, challenge, state, scope: ESCOPOS_CONTA.join(" ") });
+      const url = urlDeAutorizacao({ clientId: c.clientId, redirect, challenge, state, scope: ESCOPOS_PEDIDOS.join(" ") });
       const navAberto = browserWebContents(host).some((w) => { try { return w.getURL().startsWith("http"); } catch { return false; } });
       if (!navAberto || !browserAsk(host, { kind: "new-tab", url })) void shell.openExternal(url);
     });
