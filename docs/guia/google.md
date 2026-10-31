@@ -226,6 +226,13 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   O renderer (`corpoEl` em `gmail-page.ts`) monta `p`/`blockquote`/`hr`/`a.gmail-link`; o link abre no navegador do Mac
   por `openExternal`, com a URL inteira na dica.
 
+## Lixeira sem confirmação na página E-mail (31 out, fim do dia)
+
+- "Mover para a lixeira" apagava em dois cliques (`armConfirm`: "Confirmar? vai para a lixeira"). A pedido, agora é um
+  clique: a lixeira do Gmail é reversível por 30 dias e o "Desfazer" aparece logo abaixo da lista, então a confirmação
+  só atrasava. `mountGmail` deixou de receber `armConfirm`. O agente do chat continua pedindo confirmação antes de
+  apagar (é outra pessoa agindo, não um clique da própria).
+
 ## Gmail: página própria, busca, leitura e lixeira (31 out)
 
 - **Antes:** o Gmail era um cartão de teste escondido atrás de "Mostrar Gmail e Agenda" na Conta Google: 8 linhas,
