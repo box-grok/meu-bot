@@ -61,7 +61,7 @@ elif listening "$PORT"; then
   exit 4
 fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
-cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/nivel-ferramentas.js" "$HERE/modulos.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/saude-maquina.js" "$HERE/cota.js" "$HERE/faxina.js" "$HERE/auditoria.py" "$DEST/"
+cp "$HERE/server.js" "$HERE/session-map.js" "$HERE/nivel-ferramentas.js" "$HERE/modulos.js" "$HERE/providers.js" "$HERE/account-status.js" "$HERE/contas-claude.js" "$HERE/tool-events.js" "$HERE/navegador.js" "$HERE/gmail.js" "$HERE/pontes.js" "$HERE/licenca.js" "$HERE/crm-modelo.js" "$HERE/crm-store.js" "$HERE/crm-api.js" "$HERE/finance-modelo.js" "$HERE/finance-store.js" "$HERE/finance-api.js" "$HERE/finance-crm-sync.js" "$HERE/crm-finance-vendas.js" "$HERE/autenticador.js" "$HERE/claude-porteiro.js" "$HERE/saude-maquina.js" "$HERE/cota.js" "$HERE/faxina.js" "$HERE/auditoria.py" "$DEST/"
 [ -f "$DEST/providers.json" ] || { cp "$HERE/providers.json" "$DEST/providers.json"; echo "providers.json criado (agente → grok-4; grok-4 precisa de XAI_API_KEY no .env ou base_url local)"; }
 if [ ! -f "$DEST/.env" ]; then
   # umask só para o .env (num subshell): vazando para o resto, a unidade de sistema nascia 600 e ilegível.

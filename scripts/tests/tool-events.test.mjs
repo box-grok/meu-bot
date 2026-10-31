@@ -46,6 +46,9 @@ test("ações do navegador viram uma linha com 🌐; digitar nunca mostra o text
   const d = sum("mcp__navegador__digitar", { n: 3, texto: "minha-senha-secreta", enter: true });
   assert.equal(d, "🌐 digitou em o elemento 3 e apertou Enter"); assert.doesNotMatch(d, /secreta/);
   assert.equal(sum("mcp__navegador__print", {}), "🌐 tirou um print");
+  assert.equal(sum("mcp__gmail__listar", { busca: "from:ana" }), "✉️ listou e-mails (busca: from:ana)");
+  assert.equal(sum("mcp__gmail__ler", { id: "abc" }), "✉️ leu um e-mail");
+  assert.equal(sum("mcp__gmail__apagar", { id: "abc" }), "✉️ moveu um e-mail para a lixeira");
   assert.match(sum("mcp__outro__x", { a: 1 }), /^\{/);
 });
 

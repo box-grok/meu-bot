@@ -25,6 +25,7 @@ function summarize(name, input) {
     case 'TodoWrite': return Array.isArray(i.todos) ? `${i.todos.length} itens` : '';
     default: {
       if (name.startsWith('mcp__navegador__')) return navegadorSummary(name.slice('mcp__navegador__'.length), i);
+      if (name.startsWith('mcp__gmail__')) return gmailSummary(name.slice('mcp__gmail__'.length), i);
       try { return JSON.stringify(i); } catch (_) { return ''; }
     }
   }
@@ -40,6 +41,16 @@ function crmSummary(command) {
   return `📇 CRM: ${m[1]}${rest ? ` ${rest}` : ''}`;
 }
 /** Ações do agente no Navegador da pessoa, em uma linha. "digitar" nunca mostra o texto (pode ser senha). */
+/** Gmail do agente (31 out): o que ele fez, sem o conteúdo do e-mail na linha. */
+function gmailSummary(tool, i) {
+  switch (tool) {
+    case 'listar': return `✉️ listou e-mails${typeof i.busca === 'string' && i.busca !== '' ? ` (busca: ${i.busca.slice(0, 60)})` : ''}`;
+    case 'ler': return '✉️ leu um e-mail';
+    case 'apagar': return '✉️ moveu um e-mail para a lixeira';
+    case 'restaurar': return '✉️ tirou um e-mail da lixeira';
+    default: return `✉️ gmail: ${tool}`;
+  }
+}
 function navegadorSummary(tool, i) {
   const s = (k) => (typeof i[k] === 'string' ? i[k] : null);
   const alvo = typeof i.n === 'number' ? `o elemento ${i.n}` : (s('texto') && tool === 'clicar') ? `"${i.texto.slice(0, 40)}"` : s('seletor') ? `\`${i.seletor.slice(0, 40)}\`` : null;

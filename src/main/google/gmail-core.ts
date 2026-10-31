@@ -10,6 +10,9 @@ export interface GmailDetalheView extends GmailMensagemView { para: string; corp
 
 /** Corpo em texto: o bastante para ler um e-mail longo sem virar um despejo na conversa do agente. */
 export const CORPO_MAX = 20_000;
+/** Ferramentas que gmail-mcp.mjs apresenta ao Claude (o teste confere que são as mesmas) e o marcador de versão do arquivo. */
+export const GMAIL_TOOLS = ["listar", "ler", "apagar", "restaurar"] as const;
+export const GMAIL_MCP_VERSAO = "meu-bot-gmail v1";
 export const BUSCA_MAX = 200;
 export const LISTA_MAX = 50;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;

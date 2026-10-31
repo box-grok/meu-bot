@@ -233,3 +233,36 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
 - **Próximo passo (PR separada):** o agente do chat lê e manda para a lixeira pela mesma API, pela ponte do Navegador
   (socket no Mac, túnel reverso, MCP na máquina), com confirmação antes de apagar.
 - Testes: `scripts/tests/gmail-core.test.mjs`; casos novos em `google-core.test.mjs` (escopo) e `split.test.mjs`.
+
+## O agente do chat no Gmail: a ponte (31 out)
+
+- **O que é:** com a chave "Deixar o agente usar o Gmail" ligada na página Gmail (recurso Pro), o agente da máquina
+  ganha as ferramentas `mcp__gmail__listar/ler/apagar/restaurar` nas conversas do app. "Detalha o segundo e-mail",
+  "apaga esse": ele lista, lê e move para a lixeira pela **mesma API da página**; antes de apagar diz qual mensagem é e
+  espera a confirmação na conversa; `restaurar` desfaz. O token do Google **nunca sai do Mac**: a máquina recebe o
+  conteúdo, não a credencial. Só nas conversas do app; o WhatsApp (OpenClaw) fica para depois.
+- **Desenho (o mesmo do Navegador do agente):** `src/main/google/gmail-api.ts` sobe um socket Unix 0600
+  (`/tmp/<app>-<uid>/gmail-<máquina>.sock`) com as rotas `/status` (sonda), `/listar`, `/ler`, `/apagar`,
+  `/restaurar`, cada uma chamando `apis.ts` e exigindo `assertAcesso` (Pro; sem o plano, 403). O túnel reverso leva o
+  socket a `127.0.0.1:<porta>` na máquina; `backend.ts` manda `X-Meu-Bot-Gmail-Port` (e o rótulo da conversa) em
+  cada turno; `server.js` confere Pro e o `.mjs` e liga o MCP `gmail` (`gmail-mcp.mjs`, um arquivo, sem npm) com
+  `--dono meu-bot:<conversa>`, que vai para a auditoria do `gmail.apagar` ("pedido pela conversa X"). A regra de
+  conduta (`backend-colima/gmail.js › GMAIL_RULE`) entra no system prompt e no CLAUDE.md dos workspaces
+  (`install-gmail-mcp.sh`, bloco `meu-bot:gmail v1`).
+- **Túnel reverso com mais de um encaminhamento:** `tunnel.ts` tinha um `-R` só por máquina, com a sonda fixa em
+  `/abas`. Agora é um mapa por chave (`"nav"`, `"gmail"`), cada um com o próprio socket, porta, sonda e reinícios;
+  `setReverseWanted(host, socket, { chave, sonda })` e `reversePort(host, chave)`. A chamada antiga do Navegador
+  continua igual (chave `"nav"` por padrão).
+- **Chave lembrada por máquina** (`gmailAgentHosts`): com ela ligada e a conta conectada, a ponte religa quando o
+  túnel fica pronto ou quando a página pergunta; desconectar a Conta Google derruba o socket sem apagar a escolha.
+- **"Os dois caminhos":** a API é o principal. A regra diz ao agente que, se a ferramenta responder "não conectada",
+  "sem permissão" ou "fechado", ele avisa a pessoa; para **ler** pode usar o Navegador na aba do Gmail; para
+  **apagar** nunca troca de caminho sozinho. Fallback automático ficou de fora de propósito: os dois caminhos
+  identificam a mensagem de jeitos diferentes (id na API, tela no Navegador) e um "apaga" repetido apagaria errado.
+- **Instalar na máquina:** o cartão "Agente do chat" da página mostra "Instalar na máquina" quando falta o MCP
+  (`hostProbe.ts › gmailInstalled/installGmail`, como o Navegador). Uma CLI só: `pontes.js` monta um `--mcp-config`
+  com os servidores ligados no turno (Navegador e/ou Gmail) e um `--allowedTools`.
+- **Fora desta versão:** WhatsApp/OpenClaw (`mcp.servers.gmail` com `--port-file`, trava por remetente), marcar como
+  lida/etiquetar, enviar e-mail.
+- Testes: `scripts/tests/pontes.test.mjs` (args da CLI com uma, duas ou nenhuma ponte; notas do turno; regra; as
+  ferramentas do `.mjs` iguais a `GMAIL_TOOLS`), `tool-events.test.mjs` (resumos `✉️`).

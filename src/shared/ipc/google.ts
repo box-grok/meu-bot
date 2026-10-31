@@ -13,6 +13,8 @@ export interface GmailMensagem { id: string; de: string; assunto: string; data: 
 export interface GmailLista { email: string | null; naoLidas: number; mensagens: GmailMensagem[]; proxima: string | null; busca: string }
 export interface GmailAnexo { nome: string; tipo: string; bytes: number }
 export interface GmailDetalhe extends GmailMensagem { para: string; corpo: string; anexos: GmailAnexo[]; truncado: boolean; /** Para "Abrir no Gmail". */ link: string }
+/** "O agente pode usar o Gmail" (socket + túnel reverso): a mesma forma do estado do Navegador. */
+export interface GmailAgenteState { on: boolean; state: "connecting" | "up" | "down"; port: number | null }
 /** O que foi para a lixeira (ou voltou dela): o bastante para a tela e o agente dizerem qual. */
 export interface GmailApagado { id: string; de: string; assunto: string; data: string }
 export interface AgendaEvento { id: string; titulo: string; inicio: string; fim: string; local: string; link: string }

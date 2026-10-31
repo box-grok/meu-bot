@@ -6,7 +6,7 @@ import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
-import type { AgendaEvento, BackupDadosView, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
+import type { AgendaEvento, BackupDadosView, GmailAgenteState, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
@@ -45,6 +45,9 @@ export interface MainEvents {
   "guarda:progress": { line: string };
   /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
   "navegador:progress": { line: string };
+  "gmail:progress": { line: string };
+  /** Gmail: estado do "o agente pode usar" (socket + túnel reverso). */
+  "gmail:agent": GmailAgenteState;
   /** Instalação do CRM pelo WhatsApp (tutorial 10): uma linha de progresso. */
   "crm:progress": { line: string };
   /** Instalação do financeiro na máquina, linha a linha (tutorial 14). */
@@ -345,6 +348,11 @@ export interface MeuBotClientApi {
   /** Navegador do agente na máquina (MCP + regra): instalado? e instalar (progresso em navegador:progress). */
   navegadorInstalled(): Promise<boolean | null>;
   installNavegador(): Promise<InstallBackendResult>;
+  /** Gmail para o agente (Pro): liga/desliga (socket + túnel reverso) ou só consulta, sem `on` (religa se a chave estiver lembrada); estado em gmail:agent. */
+  gmailAgente(on?: boolean): Promise<GmailAgenteState>;
+  /** O lado da máquina do Gmail (MCP + regra) está instalado? e instalar (progresso em gmail:progress). */
+  gmailInstalado(): Promise<boolean | null>;
+  instalarGmail(): Promise<InstallBackendResult>;
   installGuarda(): Promise<InstallBackendResult>;
   uninstallGuarda(): Promise<InstallBackendResult>;
   /** Tutorial 10 · CRM pelo WhatsApp (Pro): estado, instalar o plugin na máquina, gravar chave/pipeline/regras, testar a chave, refazer. */

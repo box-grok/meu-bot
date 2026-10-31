@@ -2,9 +2,10 @@
  * Página "Gmail" (31 out): a caixa de entrada da Conta Google da máquina, com busca, leitura e lixeira (desfazível).
  * Recurso Pro, com a trava da Conta Google. O token fica no Mac (main › conta-google.ts); aqui só se lê e se pede.
  * Fábrica com dependências explícitas, como conta-google-page.ts. Saiu do cartão de teste da Conta Google para ter
- * um lugar próprio; o passo seguinte é o agente do chat ler e apagar daqui pela mesma API.
+ * um lugar próprio. O cartão "Agente do chat" liga a ponte (socket + túnel reverso, main › gmail-api.ts) pela qual o
+ * agente da máquina lista, lê e manda para a lixeira pela mesma API, sempre com o token aqui no Mac.
  */
-import type { GmailApagado, GmailDetalhe, GmailLista, GmailMensagem, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
+import type { GmailAgenteState, GmailApagado, GmailDetalhe, GmailLista, GmailMensagem, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
 import type { LicenseView, PlanName } from "../../shared/ipc";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
@@ -25,7 +26,7 @@ export interface GmailDeps {
   licenseKnown: () => boolean;
   planoExigido: PlanName;
   produto: string;
-  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "gmailListar" | "gmailLer" | "gmailApagar" | "gmailRestaurar" | "openExternal" | "on">;
+  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "gmailListar" | "gmailLer" | "gmailApagar" | "gmailRestaurar" | "gmailAgente" | "gmailInstalado" | "instalarGmail" | "openExternal" | "on">;
 }
 
 /** Erros do main em frase: a conta caiu, falta o Pro, ou falta a permissão de escrita (token de antes de 31 out). */
@@ -50,12 +51,29 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
   let busca = "";
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   let proPedido = false;
+  /** Ponte do agente: estado da chave (null = ainda não perguntado) e se a máquina tem o MCP (null = este Mac). */
+  let agente: GmailAgenteState | null = null; let instalado: boolean | null | "?" = "?"; let instalando = false;
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado && !st.precisaReconectar) void carregarLista(); } });
+  deps.api.on("gmail:agent", (st) => { agente = st; if (!panel.hidden) render(); });
 
   async function refresh(): Promise<void> {
     try { status = await deps.api.googleContaStatus(); } catch (e) { msg = { text: ipcErrorText(e), bad: true }; }
     render();
-    if (status?.conectado && !status.precisaReconectar && lista === null) await carregarLista();
+    if (status?.conectado && !status.precisaReconectar) {
+      // A chave do agente: perguntar religa sozinha se ficou lembrada; e se a máquina já tem o MCP (uma vez).
+      void deps.api.gmailAgente().then((a) => { agente = a; render(); }).catch(() => undefined);
+      if (instalado === "?") void deps.api.gmailInstalado().then((i) => { instalado = i; render(); }).catch(() => { instalado = false; render(); });
+      if (lista === null) await carregarLista();
+    }
+  }
+  async function ligarAgente(on: boolean): Promise<void> {
+    await agir(async () => { agente = await deps.api.gmailAgente(on); }, on ? "o agente do chat pode usar o Gmail nesta máquina" : "o agente do chat não usa mais o Gmail");
+  }
+  async function instalarNaMaquina(): Promise<void> {
+    instalando = true; render();
+    try { const r = await deps.api.instalarGmail(); instalado = r.ok; msg = { text: r.ok ? "Gmail do agente instalado na máquina" : `não instalou: ${r.log.at(-1) ?? "sem detalhes"}`, bad: !r.ok }; }
+    catch (e) { msg = { text: erroGmailTexto(e), bad: true }; }
+    instalando = false; render();
   }
   async function carregarLista(pagina?: string): Promise<void> {
     if (pagina === undefined) { lista = null; listaErro = null; render(); }
@@ -158,6 +176,27 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
       if (lista.proxima !== null) { const pr = lista.proxima; bc.append(btn("Mais mensagens", "btn-ghost", () => { void carregarLista(pr); })); }
     }
     panel.append(bc);
+    panel.append(cartaoAgente());
+  }
+
+  /** "O agente do chat pode usar o Gmail": a chave da ponte, o estado do túnel e, se faltar, o instalador na máquina. */
+  function cartaoAgente(): HTMLElement {
+    const c = card("Agente do chat");
+    c.append(el("p", "hint", "Com a chave ligada, o agente desta máquina lista, busca, lê e manda e-mails para a lixeira quando você pede no chat (\"detalha o segundo\", \"apaga esse\"). Antes de apagar ele diz qual mensagem é e espera você confirmar; a lixeira é reversível. O acesso à conta continua só neste Mac: a máquina recebe o conteúdo, nunca o token."));
+    if (instalado === null) { c.append(el("p", "hint", "O agente do chat usa o Gmail só em máquinas por SSH; neste Mac a página basta.")); return c; }
+    if (instalado === false) {
+      c.append(el("p", "hint bad-hint", "A máquina ainda não tem o lado dela (o servidor que apresenta o Gmail ao agente)."));
+      c.append(btn(instalando ? "Instalando…" : "Instalar na máquina", "btn-primary", () => { void instalarNaMaquina(); }));
+      return c;
+    }
+    const a = agente;
+    const estado = a === null ? "consultando…" : !a.on ? "desligado" : a.state === "up" ? `ligado · túnel de pé (porta ${a.port ?? "?"} na máquina)` : a.state === "connecting" ? "ligando o túnel…" : "ligado, mas o túnel está fora: volta sozinho quando a máquina responder";
+    c.append(el("p", `hint ${a?.on && a.state === "up" ? "audio-ok" : ""}`, `Estado: ${estado}${instalado === "?" ? " · conferindo a máquina…" : ""}`));
+    const acoes = el("div", "admin-actions");
+    const on = a?.on === true;
+    acoes.append(btn(on ? "Desligar para o agente" : "Deixar o agente usar o Gmail", on ? "btn-ghost" : "btn-primary", () => { void ligarAgente(!on); }));
+    c.append(acoes);
+    return c;
   }
 
   function renderDetalhe(): void {
