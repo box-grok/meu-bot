@@ -124,12 +124,13 @@ export function setNavAgentHost(host: string, on: boolean): void {
   persist();
 }
 /** "O agente pode usar o Gmail": lembrado por máquina (religa sozinho com a conta conectada). */
-export const isGmailAgentHost = (host: string): boolean => file.gmailAgentHosts.includes(host);
+/** Ligado por padrão: só as máquinas em que a pessoa desligou ficam de fora. */
+export const isGmailAgentHost = (host: string): boolean => !file.gmailAgentDesligados.includes(host);
 export function setGmailAgentHost(host: string, on: boolean): void {
   if (!isValidHost(host)) return;
-  const next = file.gmailAgentHosts.filter((h) => h !== host);
-  if (on) next.push(host);
-  file.gmailAgentHosts = next;
+  const next = file.gmailAgentDesligados.filter((h) => h !== host);
+  if (!on) next.push(host);
+  file.gmailAgentDesligados = next;
   persist();
 }
 /** Favoritos do Navegador da máquina (cópia). */

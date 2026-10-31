@@ -348,7 +348,7 @@ export function registerClientIpc(): void {
   // Gmail para o agente (Pro): a chave da página, e o lado da máquina (MCP + regra), como o Navegador.
   handleClient("gmail:agent", async (event, payload: unknown) => {
     const h = ctxOf(event); const on = (payload as { on?: unknown } | null)?.on;
-    if (typeof on !== "boolean") { gmailAgenteReligar(h.host); return gmailAgenteInfo(h.host); }
+    if (typeof on !== "boolean") { await gmailAgenteReligar(h.host); return gmailAgenteInfo(h.host); }
     if (on) await assertAcesso(h.host);
     return gmailAgente(h.host, on);
   });

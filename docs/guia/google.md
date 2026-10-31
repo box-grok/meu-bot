@@ -312,3 +312,14 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   `gmail` em `lib/tutoriais.ts`: Pro → Conta Google conectada → ler uma mensagem → buscar → lixeira + desfazer. A
   página conta ao guia o que a pessoa fez por `GmailDeps.aoUsar` (`"lido" | "buscou" | "lixeira" | "desfez"`), e o guia
   grava como fato lembrado. Detalhes da reorganização dos tutoriais em `docs/guia/app.md` (fases 1 a 5).
+
+## Agente do chat no Gmail ligado por padrão (31 out)
+
+- **Pedido:** o cartão "Agente do chat" da página Gmail exigia clicar em "Deixar o agente ler os e-mails" em cada
+  máquina; a pessoa quis isso ligado sozinho.
+- **Agora:** ligado é o padrão. `gmailAgentHosts` (lista de ligados) virou `gmailAgentDesligados` (lista de quem
+  desligou de propósito; `settings-normalize.ts`, `settings.ts`): `isGmailAgentHost` é "não está na lista de
+  desligados". `gmailAgenteReligar` (gmail-api.ts) sobe a ponte quando o túnel fica pronto, com a conta conectada **e**
+  passando pelo mesmo `assertAcesso` do botão (sem Pro, nada sobe; a página mostra o bloqueio). O arquivo antigo com
+  `gmailAgentHosts` é só ignorado: quem tinha ligado continua ligado, quem nunca ligou passa a ter. "Desligar para o
+  agente" continua valendo e fica lembrado. Teste em `settings-normalize.test.mjs`.

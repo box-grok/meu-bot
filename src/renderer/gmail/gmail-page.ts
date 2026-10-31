@@ -66,7 +66,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     try { status = await deps.api.googleContaStatus(); } catch (e) { msg = { text: ipcErrorText(e), bad: true }; }
     render();
     if (status?.conectado && !status.precisaReconectar) {
-      // A chave do agente: perguntar religa sozinha se ficou lembrada; e se a máquina já tem o MCP (uma vez).
+      // A chave do agente: perguntar liga sozinha (padrão ligado, salvo se a pessoa desligou); e se a máquina já tem o MCP (uma vez).
       void deps.api.gmailAgente().then((a) => { agente = a; render(); }).catch(() => undefined);
       if (instalado === "?") void deps.api.gmailInstalado().then((i) => { instalado = i; render(); }).catch(() => { instalado = false; render(); });
       if (lista === null) await carregarLista();
@@ -189,7 +189,7 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
   /** "O agente do chat pode ler seus e-mails": a chave da ponte, o estado do túnel e, se faltar, o instalador na máquina. */
   function cartaoAgente(): HTMLElement {
     const c = card("Agente do chat");
-    c.append(el("p", "hint", "Com a chave ligada, o agente desta máquina lista, busca, lê e manda e-mails para a lixeira quando você pede no chat (\"detalha o segundo\", \"apaga esse\"). Antes de apagar ele diz qual mensagem é e espera você confirmar; a lixeira é reversível. O acesso à conta continua só neste Mac: a máquina recebe o conteúdo, nunca o token."));
+    c.append(el("p", "hint", "Ligado por padrão quando a conta está conectada e a máquina tem o Pro: o agente desta máquina lista, busca, lê e manda e-mails para a lixeira quando você pede no chat (\"detalha o segundo\", \"apaga esse\"). Antes de apagar ele diz qual mensagem é e espera você confirmar; a lixeira é reversível. O acesso à conta continua só neste Mac: a máquina recebe o conteúdo, nunca o token."));
     if (instalado === null) { c.append(el("p", "hint", "O agente do chat lê e-mails só em máquinas por SSH; neste Mac a página basta.")); return c; }
     if (instalado === false) {
       c.append(el("p", "hint bad-hint", "A máquina ainda não tem o lado dela (o servidor que apresenta os e-mails ao agente)."));
