@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { GRUPOS_AVISO, grupoAlvo, quemEscolhido, LEVEL_OPTIONS, OBJECTIVE_OPTIONS, REPLY_OPTIONS, TUTORIAIS, emptyContext, emptyFlags, fallbackOrderText, fallbackReserve, guideTabTitle, guideView, listedNumbers, donoLinhaTexto, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, DONO_HINT, parseTutMemory, parseTutPulados, parseWaNumbers, replyChoiceOf, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { TUTORIAIS, emptyContext, emptyFlags, guideTabTitle, guideView, parseTutMemory, parseTutPulados, sidebarBadge, tutorialKnown, tutorialState, GUIDE_SOURCES, tutorialBadge, tutorialNumber, visibleTutorials } from "../../dist/renderer/lib/tutoriais.js";
+import { quemEscolhido } from "../../dist/renderer/lib/whatsapp-grupos.js";
 
 const wa = (over = {}) => ({ present: true, gateway: "openclaw", agent: "OpenClaw", ready: false, missing: null, connected: false, state: "", number: null, loggedOut: false, detail: "", dmPolicy: null, channelConfig: null, audioIn: false, audioOut: null, ...over });
 const t = TUTORIAIS.find((x) => x.id === "whatsapp-openclaw");
@@ -101,12 +102,6 @@ test("tutorial 6 · Fallback: duas contas → escolher primário → ver a reser
   assert.equal(t5.steps[1].body, "fallback-order"); assert.deepEqual(t5.steps[2].manual, { label: "Entendi como funciona", flag: "fallbackSeen" });
   assert.equal(tutorialBadge(t5), "Tutorial 6 · 3 passos · 2 min");
   // a linha da corrente, igual em Configurações e no guia
-  assert.deepEqual(fallbackReserve("agente", chain), ["grok-4"]);
-  assert.deepEqual(fallbackReserve("agente", [{ name: "agente", available: true }, { name: "grok-4", available: false }]), []);
-  assert.match(fallbackOrderText("agente", null), /ainda não informa/);
-  assert.match(fallbackOrderText("claudecode", chain), /fora da corrente/);
-  assert.match(fallbackOrderText("agente", [{ name: "agente", available: true }]), /Sem reserva/);
-  assert.equal(fallbackOrderText("agente", chain), "Primário: agente. Reserva: grok-4, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.");
 });
 
 test("tutorial 9 · Guarda do WhatsApp: depois do 3; ativa → entendi", () => {
@@ -168,28 +163,6 @@ test("título da aba do guia: progresso, e ✓ quando termina", () => {
   assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true, dmPolicy: "open" }), { policyChosen: true, tested: true })), "3 · WhatsApp ✓");
 });
 
-test("cartões de quem responder: só você é o padrão; a política gravada marca o cartão certo", () => {
-  assert.deepEqual(REPLY_OPTIONS.map((o) => [o.id, o.isDefault]), [["self", true], ["open", false], ["list", false]]);
-  assert.equal(replyChoiceOf("allowlist"), "self");
-  assert.equal(replyChoiceOf("open"), "open");
-  assert.equal(replyChoiceOf("pairing"), null);
-  assert.equal(replyChoiceOf("disabled"), null);
-  // allowlist com alguém além do dono = "Só alguns contatos"; só o dono (ou vazio, ou "*") continua "self".
-  assert.equal(replyChoiceOf("allowlist", ["+5547999990000"], "5547999990000"), "self");
-  assert.equal(replyChoiceOf("allowlist", ["+5547999990000", "+5511988887777"], "5547999990000"), "list");
-  assert.equal(replyChoiceOf("allowlist", ["+5511988887777"], null), "list");
-  assert.equal(replyChoiceOf("allowlist", ["*"], null), "self");
-  assert.deepEqual(listedNumbers(["+5547999990000", "+5511988887777", "5511988887777", "*"], "5547999990000"), ["5511988887777"]);
-  assert.deepEqual(listedNumbers(undefined, null), []);
-});
-
-test("parseWaNumbers: um por linha ou vírgula; sem + e com 10/11 dígitos ganha o 55; lixo vai para bad", () => {
-  assert.deepEqual(parseWaNumbers("11 99999-9999\n+1 212 555 0100, (47) 3333-2222; +5547999990000\n\n"), { ok: ["5511999999999", "12125550100", "554733332222", "5547999990000"], bad: [] });
-  assert.deepEqual(parseWaNumbers("abc\n123\n+5511999999999"), { ok: ["5511999999999"], bad: ["abc", "123"] });
-  assert.deepEqual(parseWaNumbers("5511999999999\n+5511999999999"), { ok: ["5511999999999"], bad: [] }, "repetido entra uma vez");
-  assert.deepEqual(parseWaNumbers("  "), { ok: [], bad: [] });
-});
-
 test("guia é sequencial: marcações antigas não acendem passos à frente de um pendente", () => {
   const v = guideView(t, wa({ ready: true, connected: false }), { policyChosen: true, tested: true });
   assert.deepEqual(v.done, [true, true, false, false, false]);
@@ -248,9 +221,6 @@ test("tutorial 8 · objetivo do WhatsApp: objetivo → nível → skill salva (t
   assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa" })).current, 2, "nível salvo: skill");
   assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa", savedAt: "2026-10-17T03:00:00Z" })).finished, false, "savedAt sem o arquivo na máquina não conclui");
   assert.equal(guideView(t7, null, emptyFlags(), c({ objective: obj, level: "conversa", savedAt: "2026-10-17T03:00:00Z", skillPresent: true })).finished, true);
-  assert.equal(OBJECTIVE_OPTIONS.filter((o) => o.needsText).map((o) => o.id).join(), "outro");
-  assert.deepEqual(LEVEL_OPTIONS.map((l) => l.id), ["conversa", "consulta", "age"]);
-  assert.equal(LEVEL_OPTIONS.filter((l) => l.isDefault).length, 1);
 });
 
 test("fontes: todo tutorial declara de onde vêm os fatos; antes de chegarem, o estado é 'verificando' ou o lembrado", () => {
@@ -281,7 +251,6 @@ test("tutorial 11 (grupos): escolher, quem aciona (nunca herdado), ligar e testa
   assert.equal(t12.number, 11);
   assert.equal(t12.after, "whatsapp-openclaw");
   assert.deepEqual(t12.steps.map((s) => s.id), ["grupo", "quem", "modo", "teste"]);
-  assert.match(GRUPOS_AVISO, /Nunca ligue o agente num grupo com clientes/);
   const G1 = { jid: "120363000000000001@g.us", nome: "Casa", membros: 2, participantes: [], agente: "desligado", sessionKey: null, updatedAt: null };
   const G2 = { ...G1, jid: "120363000000000002@g.us", nome: "Time", agente: "mencao" };
   const info = (over = {}) => ({ grupos: [G1], quemAciona: [], quemAcionaHerdado: true, todosAdmitidos: false, cacheEm: null, skill: true, self: null, ...over });
@@ -299,9 +268,6 @@ test("tutorial 11 (grupos): escolher, quem aciona (nunca herdado), ligar e testa
   assert.equal(guideView(t12, null, emptyFlags(), ctx({ info: ligado, alvo: G2.jid, respondeu: true })).finished, true);
   assert.equal(guideView(t12, null, { ...emptyFlags(), gruposTested: true }, ctx({ info: ligado, alvo: G2.jid, respondeu: false })).finished, true);
   // Sem escolha guardada, o primeiro grupo com o agente ligado é o do tutorial; escolha que sumiu também cai nele.
-  assert.equal(grupoAlvo(ligado, null).jid, G2.jid);
-  assert.equal(grupoAlvo(ligado, "999999999999@g.us").jid, G2.jid);
-  assert.equal(grupoAlvo(ligado, G1.jid).jid, G1.jid);
   assert.equal(quemEscolhido(info({ quemAciona: "todos", quemAcionaHerdado: false })), true);
   assert.equal(quemEscolhido(info({ quemAciona: ["5511999998888"], quemAcionaHerdado: true })), false);
 });
@@ -384,7 +350,7 @@ test("tutorial 9 (guarda) só aparece onde o agente aceita a guarda; sem status 
 });
 
 test("tutorial 11 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar'); grupo, quem chama e modo", async () => {
-  const { nomeDoGrupo, quemResumo } = await import("../../dist/renderer/lib/tutoriais.js");
+  const { nomeDoGrupo, quemResumo } = await import("../../dist/renderer/lib/whatsapp-grupos.js");
   const t = byId("whatsapp-grupos");
   const g = { jid: "123@g.us", nome: "status", apelido: null, agente: "mencao" };
   const info = { grupos: [g], quemAciona: ["5521999990000"], quemAcionaHerdado: false, self: "5521888880000", todosAdmitidos: false, cacheEm: null, skill: true };
@@ -398,21 +364,6 @@ test("tutorial 11 enxuto: etapa feita mostra o resultado numa linha (com 'Trocar
   assert.equal(modo.resumo(c), "Responde só quando chamado");
   assert.equal(modo.resumo({ ...c, grupos: { ...c.grupos, info: { ...info, grupos: [{ ...g, agente: "sempre" }] } } }), "Responde sempre que tiver algo útil");
   for (const s of [grupo, quem, modo]) assert.equal(s.refazer, true, `${s.id} com "Trocar"`);
-});
-
-test("listedNumbers/replyChoiceOf com dono de fora: o aparelho e o dono não contam como \"listados\"", () => {
-  assert.deepEqual(listedNumbers(["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), ["5511999990000"]);
-  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831", "5521923670743"), "self", "só os dois = só eu");
-  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743", "+5511999990000"], "595986120831", "5521923670743"), "list");
-  assert.equal(replyChoiceOf("allowlist", ["+595986120831", "+5521923670743"], "595986120831"), "list", "sem saber do dono, o segundo número parece listado (jeito antigo)");
-});
-
-test("linha Dono e textos dos cartões com dono de fora", () => {
-  const fmt = (n) => `+${n}`;
-  assert.equal(donoLinhaTexto({ numero: "595986120831", souEu: true }, null, fmt), "+595986120831 · você (este número)");
-  assert.equal(donoLinhaTexto({ numero: "5521923670743", souEu: false }, "595986120831", fmt), "+5521923670743 · você, do seu celular (o agente atende em +595986120831)");
-  assert.equal(replySelfTextoDono("+5521923670743"), "O agente só responde ao dono (+5521923670743). Ninguém mais recebe resposta nem código de pareamento.");
-  assert.match(REPLY_AVISO_SELF_CHAT, /número dedicado/); assert.match(DONO_HINT, /nunca é pausado/);
 });
 
 test("tutorial 14 (link público): só em máquina por SSH; ligado pelo admin → passo 1; algo no ar → passo 2; nome trocado ou \"deixar como está\" → concluído", () => {

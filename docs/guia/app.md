@@ -2,6 +2,22 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## `lib/tutoriais.ts` fica só com o motor dos tutoriais (31 out 2026, fase 1 da reorganização)
+
+- **Problema:** o arquivo puro dos tutoriais carregava 20 exports que não são tutorial, só porque o guia foi o
+  primeiro a precisar deles: política de resposta do WhatsApp (cartões, `replyChoiceOf`, `listedNumbers`,
+  `parseWaNumbers`), grupos (`grupoAlvo`, `quemResumo`…), fallback de modelos (`FALLBACK_PRIMARIES`,
+  `fallbackOrderText`) e objetivo (`OBJECTIVE_OPTIONS`, `LEVEL_OPTIONS`). Quem mexia na regra do WhatsApp abria o
+  arquivo dos tutoriais.
+- **Agora:** cada regra tem o próprio arquivo puro em `src/renderer/lib/`: `whatsapp-resposta.ts`,
+  `whatsapp-grupos.ts`, `fallback.ts` e `objetivo.ts`, com teste próprio em `scripts/tests/` (`whatsapp-resposta`,
+  `whatsapp-grupos`, `fallback`, `objetivo`). `lib/tutoriais.ts` importa de volta só o que os passos usam
+  (`grupoAlvo`/`nomeDoGrupo`/`quemResumo`/`quemEscolhido`, `FALLBACK_PRIMARIES`, o tipo `FallbackProvider`) e não
+  reexporta nada: quem precisa da regra importa do arquivo dela. Comportamento igual; só mudou o endereço.
+- **Plano completo da reorganização** (fases 2 a 5: registro de passos no lugar da cadeia de `if/else`, um dono por
+  peça de guia, `GuideContext` fatiado por fonte, tutorial do Gmail pela receita nova): seção "Como adicionar um
+  tutorial" do `ARQUITETURA.md` quando as fases entrarem; até lá, o critério está nas PRs de cada fase.
+
 ## Tutoriais renumerados na ordem da trilha (31 out 2026)
 
 - **Problema:** a lista de Tutoriais sai na ordem do array `TUTORIAIS`, mas os números eram fixos de quando cada um

@@ -4,7 +4,9 @@
  * estilo do onboarding: cada passo é uma ação da pessoa, o botão certo pulsa, e o passo se marca concluído
  * sozinho pelo estado real da máquina (QR já lido = concluído). Puro: as regras ficam aqui, testáveis.
  */
-import type { ContaEstado, CrmLocal, FreedomLevel, ObjectiveInfo, QuickEntryStatus, StatusLineSegments, SupportInfo, WhatsappGroup, WhatsappGroups, WhatsappStatus, CrmInfo, FinanceInfo, LinkPublicoInfo } from "../../shared/ipc";
+import type { ContaEstado, CrmLocal, ObjectiveInfo, QuickEntryStatus, StatusLineSegments, SupportInfo, WhatsappGroups, WhatsappStatus, CrmInfo, FinanceInfo, LinkPublicoInfo } from "../../shared/ipc";
+import { type FallbackProvider, FALLBACK_PRIMARIES } from "./fallback.js";
+import { grupoAlvo, nomeDoGrupo, quemEscolhido, quemResumo } from "./whatsapp-grupos.js";
 
 /**
  * O que mais o guia sabe além do WhatsApp: o suporte nesta máquina (null = ainda não consultado), a status
@@ -70,7 +72,6 @@ export interface GuideContext {
 export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance" | "linkpublico" | "quickentry";
 export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance", "linkpublico", "quickentry"];
 const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false, linkpublico: false, quickentry: false });
-export interface FallbackProvider { name: string; available: boolean }
 export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
@@ -91,69 +92,9 @@ export const emptyContext = (): GuideContext => ({
   known: noneKnown(),
 });
 
-/** Modelos que entram na corrente de fallback (os outros respondem sozinhos, sem reserva). */
-export const FALLBACK_PRIMARIES: readonly string[] = ["agente", "grok-4"];
-/** A reserva de um primário: quem mais está disponível na corrente, em ordem (vazio = sem reserva). */
-export const fallbackReserve = (primary: string, chain: readonly FallbackProvider[]): string[] => chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
-/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 6, a partir do que o backend informa. */
-export function fallbackOrderText(primary: string, chain: readonly FallbackProvider[] | null): string {
-  if (chain === null || chain.length === 0) return "O backend desta máquina ainda não informa a corrente de provedores.";
-  if (!chain.some((p) => p.name === primary)) return `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`;
-  const reserve = fallbackReserve(primary, chain);
-  return reserve.length === 0 ? `Primário: ${primary}. Sem reserva disponível nesta máquina.` : `Primário: ${primary}. Reserva: ${reserve.join(" → ")}, só se o primário falhar antes de responder. A reserva não gasta nada até ser acionada.`;
-}
-
 /** Onde o guia aponta: o botão que deve pulsar enquanto o passo está pendente. */
 /** `chat` leva à conversa do meu-bot (passo que se conclui vendo algo no rodapé). */
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "chat" | "none";
-
-/** Quem o agente responde, como o guia e o modal oferecem (os mesmos dois cartões). */
-export interface ReplyOption { id: "self" | "open" | "list"; title: string; text: string; isDefault: boolean }
-export const REPLY_OPTIONS: readonly ReplyOption[] = [
-  { id: "self", title: "Desativado: só eu falo com o agente", text: "O agente só responde mensagens que você manda para si mesmo. Ninguém mais recebe resposta nem código de pareamento.", isDefault: true },
-  { id: "open", title: "Responder todo mundo", text: "Logo depois do pareamento, o agente responde qualquer pessoa que mandar mensagem para este número.", isDefault: false },
-  { id: "list", title: "Só alguns contatos", text: "Você e os números que você listar. Quem não estiver na lista não recebe resposta nem código.", isDefault: false },
-];
-export const REPLY_NOTE = "Para atender clientes, as respostas precisam estar ativas. Você pode testar só com você agora e ativar depois no canal WhatsApp.";
-/** Texto do cartão "só eu" quando o dono não é o aparelho: o agente responde ao dono, do celular dele. */
-export const replySelfTextoDono = (donoFmt: string): string => `O agente só responde ao dono (${donoFmt}). Ninguém mais recebe resposta nem código de pareamento.`;
-/** Aviso nos cartões Lista/Todo mundo quando o agente roda no próprio número da pessoa (Hermes): o próprio chat não é respondido nesses modos. */
-export const REPLY_AVISO_SELF_CHAT = "Neste modo o Hermes não responde ao seu próprio chat (limitação dele): para falar com o agente e atender outras pessoas, use um número dedicado para o agente e cadastre o seu como dono.";
-/** A linha "Dono" do bloco "Quem o agente responde": quem é e de onde fala. */
-export function donoLinhaTexto(dono: { numero: string; souEu: boolean }, agenteNumero: string | null, fmt: (n: string) => string): string {
-  if (dono.souEu) return `${fmt(dono.numero)} · você (este número)`;
-  return `${fmt(dono.numero)} · você, do seu celular${agenteNumero !== null ? ` (o agente atende em ${fmt(agenteNumero)})` : ""}`;
-}
-export const DONO_HINT = "O dono fala com o agente de qualquer modo, nunca é pausado e recebe os avisos. Troque só se o agente roda num número dedicado e você fala com ele do seu celular.";
-/** Só dígitos de um número como o OpenClaw guarda ("+5511…", "5511…"). */
-const digitsOf = (n: string): string => n.replace(/\D/g, "");
-/** Números da allowlist além do aparelho e do dono (sem "*"): o que a pessoa listou. */
-export function listedNumbers(allowFrom: readonly string[] | undefined, self: string | null, dono: string | null = self): string[] {
-  return [...new Set((allowFrom ?? []).filter((n) => n !== "*").map(digitsOf).filter((n) => n !== "" && n !== self && n !== dono))];
-}
-/**
- * A política gravada no OpenClaw → qual cartão está marcado (null = nenhum: pairing ou disabled). allowlist com
- * alguém além do dono em allowFrom é "list"; só o dono (ou vazio) é "self".
- */
-export function replyChoiceOf(dmPolicy: WhatsappStatus["dmPolicy"], allowFrom?: readonly string[], self: string | null = null, dono: string | null = self): "self" | "open" | "list" | null {
-  if (dmPolicy === "open") return "open";
-  if (dmPolicy !== "allowlist") return null;
-  return listedNumbers(allowFrom, self, dono).length > 0 ? "list" : "self";
-}
-/**
- * Texto digitado → números para a lista (um por linha, vírgula ou ponto e vírgula). Sem "+", 10 ou 11 dígitos
- * é número brasileiro com DDD e ganha o 55. `bad` são os que não viraram número (8 a 15 dígitos).
- */
-export function parseWaNumbers(text: string): { ok: string[]; bad: string[] } {
-  const ok: string[] = []; const bad: string[] = [];
-  for (const raw of text.split(/[\n,;]+/)) {
-    const item = raw.trim(); if (item === "") continue;
-    let d = digitsOf(item);
-    if (!item.startsWith("+") && (d.length === 10 || d.length === 11)) d = `55${d}`;
-    if (/^\d{8,15}$/.test(d)) { if (!ok.includes(d)) ok.push(d); } else bad.push(item);
-  }
-  return { ok, bad };
-}
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
 export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioTestado: boolean; linkNomeVisto: boolean; quickUsado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
@@ -271,29 +212,6 @@ const WHATSAPP_STEPS: GuideStep[] = [
     manual: { label: "Testei, funcionou", flag: "tested" },
   },
 ];
-
-/**
- * Grupo do tutorial 11: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
- * ligado (máquina que já tem grupo configurado entra com os passos concluídos pelo estado real).
- */
-/** Nome do grupo para a tela: o apelido dado no app, senão o nome do WhatsApp, senão o id. */
-export const nomeDoGrupo = (g: WhatsappGroup): string => g.apelido ?? g.nome ?? g.jid.replace(/@g\.us$/, "");
-/** "Quem chama: só você" / "você + 2" / "todo mundo do grupo" (o número do agente não conta). */
-export function quemResumo(info: WhatsappGroups | null): string | null {
-  if (info === null || !quemEscolhido(info)) return null;
-  if (info.quemAciona === "todos") return "Quem chama: todo mundo do grupo";
-  const outros = info.quemAciona.filter((n) => n !== info.self).length;
-  return outros <= 1 ? "Quem chama: só você" : `Quem chama: você + ${outros - 1}`;
-}
-export function grupoAlvo(info: WhatsappGroups | null, escolhido: string | null): WhatsappGroup | null {
-  if (info === null) return null;
-  return info.grupos.find((g) => g.jid === escolhido) ?? info.grupos.find((g) => g.agente !== "desligado") ?? null;
-}
-/** Quem aciona o agente nos grupos já foi escolhido de propósito (lista própria ou "todos"), não herdado das diretas. */
-export const quemEscolhido = (info: WhatsappGroups | null): boolean =>
-  info !== null && !info.quemAcionaHerdado && (info.quemAciona === "todos" || info.quemAciona.length > 0);
-export const GRUPOS_AVISO = "Só grupos internos, com gente de casa. Nunca ligue o agente num grupo com clientes.";
-export const GRUPOS_QUEM_NOTA = "Quem não está nesta lista pode escrever no grupo à vontade: o agente simplesmente não responde a essa pessoa. A lista vale para todos os grupos com o agente ligado.";
 
 /** A conta está logada na máquina (pelo último status lido). */
 export const contaConectada = (c: GuideContext, id: ContaEstado["id"]): boolean => c.contas?.some((x) => x.id === id && x.conectado) === true;
@@ -868,22 +786,6 @@ export const TUTORIAIS: readonly Tutorial[] = [
       },
     ],
   },
-];
-
-/** Tutorial 8, passo 1: os cartões de objetivo (o rótulo vai para o SKILL.md; "outro" exige a frase). */
-export interface ObjectiveOption { id: string; label: string; text: string; needsText: boolean }
-export const OBJECTIVE_OPTIONS: readonly ObjectiveOption[] = [
-  { id: "atendimento", label: "Atender clientes", text: "Tirar dúvidas, dar informações e encaminhar o que não resolver.", needsText: false },
-  { id: "vendas", label: "Vender", text: "Apresentar produtos ou serviços, tirar objeções e fechar pedidos.", needsText: false },
-  { id: "agenda", label: "Marcar horários", text: "Agendar, confirmar e remarcar compromissos.", needsText: false },
-  { id: "suporte", label: "Dar suporte", text: "Ajudar quem já é cliente a resolver problemas passo a passo.", needsText: false },
-  { id: "outro", label: "Outro", text: "Descreva em uma frase o que você quer resolver.", needsText: true },
-];
-/** Tutorial 8, passo 2: os três níveis de liberdade (os mesmos ids do main, que grava a trava). */
-export const LEVEL_OPTIONS: readonly { id: FreedomLevel; title: string; text: string; isDefault: boolean }[] = [
-  { id: "conversa", title: "Só conversa", text: "Responde, orienta e combina coisas, mas não mexe em nada: não roda comandos, não grava arquivos, não agenda.", isDefault: true },
-  { id: "consulta", title: "Consulta e organiza", text: "Lê arquivos e a internet, anota e organiza no workspace dele, mas não roda comandos nem agenda.", isDefault: false },
-  { id: "age", title: "Age por mim", text: "Faz o que for preciso: roda comandos, mexe em arquivos e agenda, como se fosse você.", isDefault: false },
 ];
 
 /** Selo do cartão: "TUTORIAL 3 · 4 PASSOS · 3 MIN" (o renderer põe em caixa alta); sem número, só passos e minutos. */

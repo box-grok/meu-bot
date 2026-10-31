@@ -1088,7 +1088,7 @@ export async function whatsappSetDono(host: string, numero: string | null): Prom
   await whatsappSetMarks(host, [{ dono: numero ?? "" }]);
   const st = await whatsappStatus(host);
   const quem = { self: st.number, dono: numero ?? st.number };
-  // Mesma leitura dos cartões (renderer/lib/tutoriais.ts replyChoiceOf/listedNumbers): fora o aparelho e o dono, o que sobra é "lista".
+  // Mesma leitura dos cartões (renderer/lib/whatsapp-resposta.ts replyChoiceOf/listedNumbers): fora o aparelho e o dono, o que sobra é "lista".
   const fora = (donos: readonly (string | null)[]): string[] => [...new Set((st.allowFrom ?? []).filter((n) => n !== "*").map((n) => n.replace(/\D/g, "")).filter((n) => n !== "" && !donos.includes(n)))];
   const choice: WhatsappReplyChoice = st.dmPolicy === "open" ? "open" : st.dmPolicy !== "allowlist" ? "self" : fora([antes.self, antes.dono]).length > 0 ? "list" : "self";
   const numbers = fora([quem.self, quem.dono]);

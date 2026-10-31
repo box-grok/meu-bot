@@ -6,7 +6,10 @@ import { browserAccess, financeOk, proBlockText, pagamentoDoBloqueio } from "../
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { previewLine, SL_TEST_COMMAND } from "../lib/status-line.js";
-import { type GuideContext, grupoAlvo, OBJECTIVE_OPTIONS, LEVEL_OPTIONS, fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/tutoriais.js";
+import { type GuideContext } from "../lib/tutoriais.js";
+import { grupoAlvo } from "../lib/whatsapp-grupos.js";
+import { fallbackOrderText, FALLBACK_PRIMARIES } from "../lib/fallback.js";
+import { OBJECTIVE_OPTIONS, LEVEL_OPTIONS } from "../lib/objetivo.js";
 import { ctx } from "../app/ctx.js";
 
 /** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */

@@ -1,7 +1,8 @@
 import type { WhatsappAgente, WhatsappStatus, WhatsappReplyChoice, VoiceReplyMode, VozId, AudioSetup, WhatsappEvent } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
-import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, TUTORIAIS, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/tutoriais.js";
+import { TUTORIAIS } from "../lib/tutoriais.js";
+import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
 import { ctx } from "../app/ctx.js";
 
 const waLine = $<HTMLButtonElement>("wa-line");

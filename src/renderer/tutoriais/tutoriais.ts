@@ -1,7 +1,9 @@
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
-import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, REPLY_NOTE, grupoAlvo, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
+import { parseTutMemory, type TutorialState, TUTORIAIS, tutorialKnown, type Tutorial, tutorialState, visibleTutorials, parseTutPulados, sidebarBadge, type GuideFlags, emptyFlags, type GuideFlagName, type GuideTarget, guideView, guideTabTitle, GUIDE_ACTION_LABEL } from "../lib/tutoriais.js";
+import { REPLY_NOTE } from "../lib/whatsapp-resposta.js";
+import { grupoAlvo } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
 import { renderBackendInstall } from "../conversa/backend-falta.js";
 
