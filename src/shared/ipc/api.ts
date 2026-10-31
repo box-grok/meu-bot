@@ -6,7 +6,7 @@ import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
-import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, PlanilhaLeitura } from "./google";
+import type { AgendaEvento, BackupDadosView, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
@@ -200,7 +200,12 @@ export interface MeuBotSharedApi {
   backupDadosSenha(senha: string): Promise<BackupDadosView>;
   /** Apaga a senha: o pacote cifrado deixa de ser enviado (o que já está no Drive continua lá). */
   backupDadosLimparSenha(): Promise<BackupDadosView>;
-  gmailResumo(): Promise<GmailResumo>;
+  /** Página Gmail (Pro): uma página da caixa de entrada, ou de uma busca na sintaxe do Gmail; `pagina` é o token de `proxima`. */
+  gmailListar(opts?: { busca?: string; max?: number; pagina?: string | undefined }): Promise<GmailLista>;
+  gmailLer(id: string): Promise<GmailDetalhe>;
+  /** Move para a lixeira (reversível); sem gmail.modify na autorização, falha com GMAIL_SEM_PERMISSAO. */
+  gmailApagar(id: string): Promise<GmailApagado>;
+  gmailRestaurar(id: string): Promise<GmailApagado>;
   agendaProximos(dias?: number): Promise<AgendaEvento[]>;
   agendaCriar(evento: { titulo: string; inicio: string; fim: string; descricao?: string }): Promise<AgendaEvento>;
   planilhaLer(id: string, intervalo: string): Promise<PlanilhaLeitura>;

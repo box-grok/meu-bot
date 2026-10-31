@@ -30,6 +30,8 @@ test("parseSplitPref: só páginas conhecidas, sem repetir, até o teto; formato
   assert.deepEqual(parseSplitPref(JSON.stringify({ pageId: "navegador", ratio: 0.4 })), { pageIds: ["navegador"], ratio: 0.4 });
   assert.deepEqual(parseSplitPref(JSON.stringify({ pageIds: ["term-1", "navegador", "term-1", "../x", "acervo", "tutoriais"], ratio: 5 })), { pageIds: ["term-1", "navegador", "acervo", "tutoriais"], ratio: 0.55 });
   assert.deepEqual(parseSplitPref(JSON.stringify({ pageId: "tut-claude-login" })), { pageIds: ["tut-claude-login"], ratio: 0.55 });
+  // 31 out: Gmail, Conta Google e Computador tambem voltam no modo dividido (os dois ultimos faltavam no PAGE_ID).
+  assert.deepEqual(parseSplitPref(JSON.stringify({ pageIds: ["gmail", "conta-google", "computador"] })), { pageIds: ["gmail", "conta-google", "computador"], ratio: 0.55 });
   for (const v of [null, "", "x", JSON.stringify({ pageId: "../etc" }), JSON.stringify({ pageId: 3 }), JSON.stringify({ pageIds: [] })]) assert.equal(parseSplitPref(v), null, String(v));
   assert.deepEqual(splitPrefPageIds(["term-7", "navegador", "term-9"]), ["term-1", "navegador", "term-2"]);
 });

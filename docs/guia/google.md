@@ -175,3 +175,29 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   `--sem-google` permite de propósito (`npm run dist:staging -- --sem-google`; o `dist.mjs` e o `release.mjs` repassam).
 - Testes: `scripts/tests/google-client.test.mjs` (ok com o arquivo ou no admin; aviso no build local; falha no release;
   `--sem-google` permite; o aviso cita o app e o arquivo).
+## Gmail: página própria, busca, leitura e lixeira (31 out)
+
+- **Antes:** o Gmail era um cartão de teste escondido atrás de "Mostrar Gmail e Agenda" na Conta Google: 8 linhas,
+  sem abrir nem apagar. **Agora** é a página **Gmail** (lateral, paleta "Gmail", fixável com 📌 e aceita no modo
+  dividido): caixa de entrada com "Mais mensagens", busca na sintaxe do próprio Gmail (`from:ana is:unread
+  has:attachment`), leitura (cabeçalhos, corpo em texto, nomes dos anexos, "Abrir no Gmail") e **"Mover para a
+  lixeira"** com clique duplo e **"Desfazer"**. Recurso Pro, com a mesma trava da Conta Google (`assertAcesso` nos
+  handlers; bloqueio e "Pedir o Pro ao admin" na tela). Sem conta conectada, a página manda para a Conta Google.
+- **Escopo sem quebrar quem já está conectado:** a lixeira pede `gmail.modify`. Ele entra no pedido de login
+  (`ESCOPOS_PEDIDOS`, google-core.ts), mas **não** em `ESCOPOS_CONTA`, que é o que `precisaReconectar` confere: incluir
+  ali marcaria toda conta já conectada como "precisa reconectar" e pararia a cópia diária no Drive. Quem conectou antes
+  lê e busca normalmente; só o botão da lixeira vira "Reconectar para poder apagar" (`gmailEscreve` em
+  `GoogleContaStatus`; o main lança `GMAIL_SEM_PERMISSAO`). Apagar de vez exigiria o escopo total do Gmail: fica de
+  fora; a lixeira é reversível por 30 dias. No console do projeto do client, listar `gmail.modify` na tela de
+  consentimento (em modo Teste os testadores já conseguem conceder).
+- **Código:** `src/main/google/gmail-core.ts` (puro, testado): corpo em texto a partir do `payload` em `format=full`
+  (`text/plain` ganha; só HTML vira texto, com entidades decodificadas), anexos por nome, limites de busca/max/id/página,
+  link `#all/<id>`. `apis.ts`: `gmailListar` (metadados de 5 em 5 em paralelo), `gmailLer`, `gmailApagar` (trash) e
+  `gmailRestaurar` (untrash), os dois últimos com auditoria `gmail.apagar`/`gmail.restaurar`. IPC `gmail:listar`,
+  `gmail:ler`, `gmail:apagar`, `gmail:restaurar` (shared.ts); saiu o `google-conta:gmail` do cartão de teste.
+  Página: `src/renderer/gmail/gmail-page.ts`, fábrica `mountGmail` no molde da Conta Google.
+- **Modo dividido:** `PAGE_ID` (split.ts) não aceitava `conta-google` nem `computador`, então o ramo deles em
+  `restoreSplit` nunca rodava; entraram junto com `gmail`.
+- **Próximo passo (PR separada):** o agente do chat lê e manda para a lixeira pela mesma API, pela ponte do Navegador
+  (socket no Mac, túnel reverso, MCP na máquina), com confirmação antes de apagar.
+- Testes: `scripts/tests/gmail-core.test.mjs`; casos novos em `google-core.test.mjs` (escopo) e `split.test.mjs`.

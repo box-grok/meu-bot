@@ -32,7 +32,8 @@ export function splitAdd(ids: readonly string[], id: string, max = MAX_SPLIT): s
 }
 
 export interface SplitPref { pageIds: string[]; ratio: number }
-const PAGE_ID = /^(navegador|acervo|tutoriais|atividade|term-\d+|tut-[a-z0-9-]+|wa-\d+)$/;
+/** Ids que a preferência aceita. `conta-google`/`computador` faltavam aqui (31 out): o ramo deles em restoreSplit nunca rodava. */
+const PAGE_ID = /^(navegador|acervo|tutoriais|atividade|conta-google|gmail|computador|term-\d+|tut-[a-z0-9-]+|wa-\d+)$/;
 /** A preferência gravada (`split:<host>`): só ids de página conhecidos, sem repetir, até MAX_SPLIT; aceita o formato antigo `{pageId}`. */
 export function parseSplitPref(json: string | null): SplitPref | null {
   if (json === null || json === "") return null;

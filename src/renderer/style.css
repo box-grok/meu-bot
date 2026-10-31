@@ -1109,7 +1109,15 @@ body.topbar-hidden .topbar { display: none; }
 .conta-msg.nova .conta-msg-assunto { color: var(--accent); }
 .conta-msg-resumo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .conta-evento { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
-.conta-google-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.conta-google-panel .admin-field input, .gmail-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+/* Gmail (31 out): linha clicável abre a mensagem; o corpo é texto puro com as quebras do e-mail. */
+.gmail-panel .conta-msg.gmail-msg { cursor: pointer; border-radius: 6px; padding: 6px 6px; }
+.gmail-panel .conta-msg.gmail-msg:hover, .gmail-panel .conta-msg.gmail-msg:focus-visible { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: none; }
+.gmail-msg-topo { display: flex; justify-content: space-between; gap: 10px; }
+.gmail-msg-topo .conta-msg-de { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gmail-msg-data { flex: none; }
+.gmail-corpo { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 13px; line-height: 1.45; margin: 8px 0 0; max-height: 60vh; overflow: auto; }
+.gmail-panel .admin-field { flex: 1; min-width: 220px; }
 .conta-tabela { border-collapse: collapse; font-size: 13px; margin-top: 6px; }
 .conta-tabela td { border: 1px solid var(--line); padding: 4px 8px; }
 /* Contas do Claude (tutorial 1): lista com estado, uso e ações; limiares do rodízio. */

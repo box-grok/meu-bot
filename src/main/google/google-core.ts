@@ -47,6 +47,13 @@ export const ESCOPOS_CONTA = [
   "https://www.googleapis.com/auth/drive.metadata.readonly",
   ESCOPO_DRIVE,
 ] as const;
+/**
+ * Mover e-mail para a lixeira (página Gmail e o agente, 31 out) pede `gmail.modify`. Ele entra no pedido de login
+ * (`ESCOPOS_PEDIDOS`), mas não em `ESCOPOS_CONTA`: incluir ali marcaria toda conta já conectada como "precisa
+ * reconectar" e pararia a cópia diária no Drive. Sem ele, a página lê e busca; só o botão da lixeira pede reconectar.
+ */
+export const GMAIL_MODIFY = "https://www.googleapis.com/auth/gmail.modify";
+export const ESCOPOS_PEDIDOS = [...ESCOPOS_CONTA, GMAIL_MODIFY] as const;
 
 /**
  * Perfil do id_token. `foto` e a URL que o Google devolveu (preservada como veio); `fotoLocal` e essa imagem ja

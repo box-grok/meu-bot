@@ -1,9 +1,9 @@
 /**
- * Página "Conta Google" (login + Gmail + Agenda + Sheets) no visual do meu-bot. A conta mora neste Mac (token cifrado
+ * Página "Conta Google" (login, backup no Drive, Agenda e Sheets; o Gmail tem página própria desde 31 out) no visual do meu-bot. A conta mora neste Mac (token cifrado
  * no Keychain, via main › conta-google.ts); aqui só se conecta, lê e escreve. A verificação de telefone/QR, quando o
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
-import type { AgendaEvento, BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
+import type { AgendaEvento, BackupDadosView, GoogleContaStatus, MeuBotApi, PlanilhaLeitura } from "../../shared/ipc";
 import type { LicenseView, PlanName } from "../../shared/ipc";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
@@ -16,6 +16,8 @@ export interface ContaGoogleDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
+  /** Abre a página Gmail (o cartão de teste do Gmail saiu daqui em 31 out). */
+  openGmail?: () => void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
   /** Conta Google é do plano Pro (27 out): a mesma regra do Navegador; a licença chega depois da janela abrir. */
   host: () => string;
@@ -23,25 +25,24 @@ export interface ContaGoogleDeps {
   licenseKnown: () => boolean;
   planoExigido: PlanName;
   produto: string;
-  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "gmailResumo" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
+  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "agendaProximos" | "agendaCriar" | "planilhaLer" | "planilhaEscrever" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void>; repintar: () => void } {
   const panel = el("section", "acervo-panel conta-google-panel"); panel.hidden = true;
   deps.panelsEl.append(panel);
   let status: GoogleContaStatus | null = null;
-  let gmail: GmailResumo | null = null;
   let agenda: AgendaEvento[] | null = null;
   let planilha: PlanilhaLeitura | null = null;
   let backup: BackupDadosView | null = null;
   // Cada cartão guarda o próprio erro: "Carregando…" para sempre escondia o motivo (Gmail e Backup, 25 out).
-  let gmailErro: string | null = null; let agendaErro: string | null = null; let backupErro: string | null = null;
+  let agendaErro: string | null = null; let backupErro: string | null = null;
   const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo").replace(/^PRO_REQUIRED$/, "esta máquina não tem o plano Pro");
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   /** "Pedir o Pro ao admin" já foi clicado nesta janela. */
   let proPedido = false;
   let plId = ""; let plRange = "Página1!A1:C10";
-  // Gmail, Agenda e Planilha são ferramentas de teste: ficam ocultas (e sem carregar) até a pessoa pedir.
+  // Agenda e Planilha são ferramentas de teste: ficam ocultas (e sem carregar) até a pessoa pedir. O Gmail tem página própria.
   let mostrarFerramentas = false;
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
 
@@ -50,7 +51,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     render();
     if (status?.conectado && !status.precisaReconectar) await carregarDados();
   }
-  /** Os três cartões carregam em paralelo e cada um aparece quando chega (o Gmail faz até doze chamadas; antes ele segurava os outros). */
+  /** Os cartões carregam em paralelo e cada um aparece quando chega. */
   async function carregarDados(): Promise<void> {
     backup = null; backupErro = null; render();
     await Promise.all([
@@ -59,11 +60,8 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     ]);
   }
   async function carregarFerramentas(): Promise<void> {
-    gmail = null; agenda = null; gmailErro = null; agendaErro = null; render();
-    await Promise.all([
-      deps.api.gmailResumo().then((g) => { gmail = g; }, (e: unknown) => { gmailErro = erroTexto(e); }).then(render),
-      deps.api.agendaProximos(7).then((a) => { agenda = a; }, (e: unknown) => { agendaErro = erroTexto(e); }).then(render),
-    ]);
+    agenda = null; agendaErro = null; render();
+    await deps.api.agendaProximos(7).then((a) => { agenda = a; }, (e: unknown) => { agendaErro = erroTexto(e); }).then(render);
   }
   /** Cartão sem dado: o erro, com "Tentar de novo", ou "Carregando…" enquanto não chegou. */
   const pendente = (c: HTMLElement, erro: string | null, oQue: string): void => {
@@ -178,19 +176,10 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     panel.append(bc);
 
     const tg = el("div", "admin-actions");
-    tg.append(btn(mostrarFerramentas ? "Ocultar Gmail, Agenda e Planilha" : "Mostrar Gmail, Agenda e Planilha", "btn-ghost", () => { mostrarFerramentas = !mostrarFerramentas; if (mostrarFerramentas) void carregarFerramentas(); else render(); }));
+    if (deps.openGmail !== undefined) { const abrir = deps.openGmail; tg.append(btn("Abrir o Gmail", "btn-ghost", abrir)); }
+    tg.append(btn(mostrarFerramentas ? "Ocultar Agenda e Planilha" : "Mostrar Agenda e Planilha", "btn-ghost", () => { mostrarFerramentas = !mostrarFerramentas; if (mostrarFerramentas) void carregarFerramentas(); else render(); }));
     panel.append(tg);
     if (!mostrarFerramentas) return;
-
-    // Gmail
-    const gc = card("Gmail");
-    if (gmail === null) pendente(gc, gmailErro, "o Gmail");
-    else {
-      gc.append(el("p", "hint", `${gmail.email ?? ""} · ${gmail.naoLidas} não ${gmail.naoLidas === 1 ? "lida" : "lidas"} na caixa de entrada`));
-      for (const m of gmail.mensagens.slice(0, 8)) { const r = el("div", `conta-msg${m.naoLida ? " nova" : ""}`); r.append(el("strong", "conta-msg-assunto", m.assunto), el("span", "hint conta-msg-de", m.de.replace(/<.*>/, "").trim() || m.de), el("span", "hint conta-msg-resumo", m.resumo.slice(0, 120))); gc.append(r); }
-      if (gmail.mensagens.length === 0) gc.append(el("p", "hint", "Nenhuma mensagem recente."));
-    }
-    panel.append(gc);
 
     // Agenda
     const ac = card("Agenda (próximos 7 dias)");
