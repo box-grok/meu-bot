@@ -10,6 +10,7 @@ import { TUTORIAIS } from "../lib/tutoriais.js";
 import { parseWaNumbers } from "../lib/whatsapp-resposta.js";
 import { grupoAlvo, quemEscolhido, GRUPOS_AVISO, GRUPOS_QUEM_NOTA } from "../lib/whatsapp-grupos.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "../tutoriais/passos.js";
 
 // ---- Grupos do WhatsApp: a área "Grupos" no fim da lista, a página de cada grupo (só leitura, com o autor de cada
 // mensagem) e os passos do tutorial 11. As regras (nunca "*", nunca ligar sem quem aciona, desligar o último fecha o
@@ -499,4 +500,17 @@ export function renderGruposTeste(container: HTMLElement): void {
   // A dica de "não respondeu" só depois de 1 min no passo: antes disso ela só atrapalha.
   if (testeDesde?.jid !== alvo.jid) { testeDesde = { jid: alvo.jid, em: Date.now() }; setTimeout(() => { ctx.paintGuide(); }, 61_000); }
   if (Date.now() - testeDesde.em > 60_000) container.append(el("p", "hint", "Não respondeu? Quem mandou precisa estar na lista do passo 2 e mencionar o número do agente (escrever o nome não basta)."));
+}
+
+/** Liga os passos do tutorial 11 ao guia: os renderizadores moram aqui, junto do estado dos grupos. */
+export function ligarGrupos(): void {
+  registrarPassos({
+    "grupos-escolher": (txt) => renderGruposEscolher(txt),
+    "grupos-quem": (txt) => {
+      const alvo = grupoAlvo(waGroups, loadGrupoAlvo());
+      if (alvo !== null) { txt.append(el("p", "hint", `Grupo: ${waGroupTitle(alvo)}`)); renderGruposQuem(txt, alvo); }
+    },
+    "grupos-modo": (txt) => renderGruposModo(txt),
+    "grupos-teste": (txt) => renderGruposTeste(txt),
+  });
 }

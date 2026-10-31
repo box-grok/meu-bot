@@ -2,6 +2,26 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Guia: registro de passos no lugar da cadeia de `if/else` (31 out 2026, fase 2 da reorganização)
+
+- **Problema:** `tutoriais/tutoriais.ts` desenhava o corpo de cada passo com 44 ramos `else if (step.body === …)`,
+  quase todos chamando um `ctx.renderXxx` definido em outro módulo e exposto no `ctx` só para fugir do import
+  circular. Para entender o passo do CRM eram quatro arquivos (definição, cadeia, `crm-guia.ts`, `ctx`).
+- **Agora:** `tutoriais/passos.ts` é um registro `body → renderizador` (`registrarPassos`, `renderPasso`,
+  `conferirPassos`), sem import de módulo de domínio (não há ciclo). Cada módulo registra os seus bodies dentro do
+  próprio `ligar…()`: `contas-agente` (login do Claude, xAI, contas), `agente-whatsapp` (agente, quem responde, áudio),
+  `grupos` (novo `ligarGrupos`), `crm-guia`, `financeiro-guia` (novo `ligarFinanceiroGuia`) e `guia-secoes` (o resto).
+  Os ramos que eram código solto na cadeia viraram funções nomeadas no módulo dono (`renderClaudeLoginPasso`,
+  `renderReplyChoicePasso`, `renderCloudflareEntrar`).
+- **O que não mudou:** um renderizador pode devolver `false` ("não desenhei") e o guia cai para o botão de ação do
+  alvo, como a cadeia fazia quando o `reply-choice` ainda não tinha o status do WhatsApp; o QR inline do pareamento
+  e o botão de ação continuam em `renderGuide`. O painel do tutorial concluído (cadeia por `t.id`) fica para depois.
+- **Guarda:** no fim do `renderer.ts`, depois do último `ligar…()`, `conferirPassos(TUTORIAIS)` acusa no console
+  qualquer body sem renderizador; um body sem registro mostra "Este passo ainda não tem tela nesta versão do app".
+  Saíram 27 getters `render*`/`clGuide`/`xaiGuide`/`paintXaiLogin`… do `ctx` que só a cadeia usava.
+- Teste: `tutoriais.test.mjs` registra stubs para todos os bodies e confere `conferirPassos`, o erro ao repetir e o
+  `false`.
+
 ## `lib/tutoriais.ts` fica só com o motor dos tutoriais (31 out 2026, fase 1 da reorganização)
 
 - **Problema:** o arquivo puro dos tutoriais carregava 20 exports que não são tutorial, só porque o guia foi o

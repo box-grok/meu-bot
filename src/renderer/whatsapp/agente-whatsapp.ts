@@ -2,8 +2,9 @@ import type { WhatsappAgente, WhatsappStatus, WhatsappReplyChoice, VoiceReplyMod
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { TUTORIAIS } from "../lib/tutoriais.js";
-import { replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
+import { REPLY_NOTE, replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "../tutoriais/passos.js";
 
 const waLine = $<HTMLButtonElement>("wa-line");
 export const waDialog = $<HTMLDialogElement>("wa-dialog");
@@ -675,7 +676,30 @@ function waShowSuccess(number: string | null): void {
 const waCancelIfPairing = (): void => { if (waPairing && !waConnected) void window.meuBot.whatsappCancel(); };
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
+/**
+ * Passo "Quem o agente responde" do guia: os cartões, o editor do canal e o aviso de que os grupos têm outra lista.
+ * Sem o status do WhatsApp ainda, devolve `false` e o guia mostra o botão de ação do alvo.
+ */
+function renderReplyChoicePasso(txt: HTMLElement): void | false {
+  const st = ctx.waStatus; if (st === null) return false;
+  const cards = el("div", "reply-cards guide-cards");
+  renderReplyCards(cards, replyChoiceNow(st), waPolicySaving || !st.connected, chooseReply);
+  txt.append(cards, el("div", "guide-note", REPLY_NOTE));
+  renderChannelEditor(txt);
+  // Grupos têm a própria lista de quem conversa com o agente (tutorial 11).
+  if ((ctx.waGroups?.grupos.length ?? 0) > 0 && ctx.TUT_GRUPOS !== null) {
+    const tg = ctx.TUT_GRUPOS;
+    const p = el("p", "hint"); p.append("Isto vale para as conversas diretas. Nos grupos, quem conversa com o agente é outra lista: ");
+    const b = el("button", "linkish", `tutorial ${tg.number}, ${tg.title}`); b.type = "button"; b.addEventListener("click", () => ctx.openGuide(tg));
+    p.append(b, "."); txt.append(p);
+  }
+}
 export function ligarAgenteWhatsapp(): void {
+  registrarPassos({
+    "agent-choice": (txt) => renderAgentChoice(txt),
+    "reply-choice": renderReplyChoicePasso,
+    "audio-ouvir": (txt) => renderAudioControls(txt, "ouvir"),
+  });
   waRefreshBtn.addEventListener("click", () => {
     waRefreshBtn.disabled = true; waRefreshBtn.textContent = "Consultando a máquina…";
     void refreshWhatsapp().finally(() => {

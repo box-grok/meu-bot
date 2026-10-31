@@ -7,6 +7,7 @@ import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js"
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { ctx } from "../app/ctx.js";
+import { registrarPassos } from "../tutoriais/passos.js";
 
 // ---- Tutorial 17 · CRM pelo WhatsApp (Pro): estado na máquina, instalação, chave/pipeline/regras, teste.
 export let crmState: CrmInfo | null = null;
@@ -220,5 +221,15 @@ export function renderCrmTest(container: HTMLElement): void {
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarCrmGuia(): void {
+  registrarPassos({
+    "crm-pro": (txt) => renderCrmPro(txt),
+    "crm-install": (txt) => renderCrmInstall(txt),
+    "crm-config": (txt) => renderCrmConfig(txt),
+    "crm-test": (txt) => renderCrmTest(txt),
+    "crm-pipeline": (txt) => renderCrmPipeline(txt),
+    // O Gmail web com a barra do CRM abre no Navegador do agente (renderizador do Navegador, em guia-secoes).
+    "crm-gmail": (txt) => ctx.renderNavOpen(txt, "https://mail.google.com/"),
+    "crm-importar": (txt) => { txt.append(el("p", "hint", "Na conversa, peça por exemplo: \"importa do Streak o pipeline Parceiros\" e cole a chave quando o agente pedir. Ele usa o importador da máquina; a chave não fica gravada.")); },
+  });
   window.meuBot.on("crm:progress", ({ line }) => { crmLog = [...crmLog, line].slice(-6); if (crmBusy) ctx.paintGuide(); });
 }
