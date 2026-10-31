@@ -55,7 +55,9 @@ function gravarLocal(host: string, c: ConjuntoDados, arquivo: string, pacote: Bu
  * Os padrões do `--exclude` são relativos ao membro que o tar gera (`db/...`, sem `./`): com `./` na frente eles
  * não casam e o backup local entra no pacote em silêncio.
  */
-async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
+/** Sai com 3 quando nenhuma pasta do conjunto existe na máquina (ver `comandoPacoteSh`): não há o que copiar, não é falha. */
+const SEM_NADA = 3;
+async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer | null> {
   // O comando é puro e testado (google-core.ts): lista só o que existe e tolera o tar 1 ("file changed as we read it").
   const filho = spawn("ssh", [...SSH_OPTS, "--", host, comandoPacoteSh(c)], { stdio: ["ignore", "pipe", "pipe"] });
   const partes: Buffer[] = [];
@@ -69,6 +71,7 @@ async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
   filho.stderr.on("data", (d: Buffer) => { erro += d.toString("utf8"); });
   const code = await new Promise<number | null>((res) => filho.on("close", res));
   if (estourou) throw new Error(`o pacote de ${c.id} passou de ${Math.round(PACOTE_MAX / 1024 / 1024)} MB`);
+  if (code === SEM_NADA) { log(`[dados-drive] ${host}: ${c.id}: nada desse conjunto nesta máquina; pulado`); return null; }
   if (code !== 0) throw new Error(`a máquina não empacotou ${c.id}: ${erro.trim().split("\n").pop() ?? `código ${code}`}`);
   if (/aviso: .*tar 1/.test(erro)) log(`[dados-drive] ${host}: ${c.id}: arquivos mudaram durante o empacotamento (a máquina estava gravando); o pacote saiu inteiro`);
   const pacote = Buffer.concat(partes);
@@ -77,13 +80,15 @@ async function empacotar(host: string, c: ConjuntoDados): Promise<Buffer> {
 }
 
 /**
- * Sobe um conjunto e apaga os pacotes anteriores daquela pasta. `null` = pulado de propósito (conjunto cifrado sem
- * senha definida): nunca cai no caminho de subir em texto claro, nem "só desta vez".
+ * Sobe um conjunto e apaga os pacotes anteriores daquela pasta. `"sem-senha"` = pulado de propósito (conjunto cifrado
+ * sem senha definida): nunca cai no caminho de subir em texto claro, nem "só desta vez". `"ausente"` = a máquina não
+ * tem esse conjunto (ex.: Financeiro numa máquina sem o financeiro); não é erro e a tela não precisa falar dele.
  */
-async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): Promise<EnvioDados | null> {
+async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): Promise<EnvioDados | "sem-senha" | "ausente"> {
   const senha = c.cifrar === true ? lerSenhaBackup() : null;
-  if (c.cifrar === true && senha === null) return null;
+  if (c.cifrar === true && senha === null) return "sem-senha";
   const cru = await empacotar(host, c);
+  if (cru === null) return "ausente";
   // O que sobe sem cifra passa por varredura antes: achou cara de segredo, não sobe e a tela diz o porquê.
   if (c.cifrar !== true) {
     const tipo = achaSegredoEmBuffer(gunzipSync(cru));
@@ -149,7 +154,7 @@ export async function enviarDadosAoDrive(host: string): Promise<EstadoDadosDrive
   const enviados: EnvioDados[] = []; const erros: string[] = [];
   const pulados: string[] = [];
   for (const c of CONJUNTOS_DADOS) {
-    try { const r = await enviarConjunto(s, host, c); if (r === null) pulados.push(c.nome); else enviados.push(r); }
+    try { const r = await enviarConjunto(s, host, c); if (r === "sem-senha") pulados.push(c.nome); else if (r !== "ausente") enviados.push(r); }
     catch (e) { erros.push(`${c.id}: ${e instanceof Error ? e.message : String(e)}`); }
   }
   if (pulados.length > 0) erros.push(`${pulados.join(" e ")}: sem senha de backup definida, não subiu (credencial nunca vai sem cifra)`);
