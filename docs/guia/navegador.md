@@ -2,6 +2,24 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Gmail estourava pela direita na janela estreita: zoom automático para caber (31 out 2026)
+
+- **Sintoma:** com a janela em meia tela (área do Navegador com uns 640 px), a Caixa de entrada do Gmail saía cortada à
+  direita (o "1–1 de 1", a data da mensagem, o rodapé). O Gmail web não encolhe abaixo de uns 760–800 px CSS: abaixo
+  disso ele estoura, e no `<webview>` a barra de rolagem horizontal fica no fim da página, fora da vista. O zoom por
+  site já existia (botão "%", Cmd+= / Cmd+-), mas nada ajustava sozinho.
+- **Agora:** para os sites de largura fixa listados em `CABER_HOSTS` (`src/renderer/lib/nav-caber-core.ts`; hoje só
+  `mail.google.com`) o Navegador mede a página depois de cada relayout (`navRefit`: ao mostrar a aba, ao mudar a
+  largura, nos recortes e após carregar) com `[scrollWidth, innerWidth]`. Estourou → a largura mínima do site
+  (`larguraMinima`, só cresce, com folga de 4 px e ignorando medidas absurdas da página ainda montando) é lembrada na
+  sessão (`navMinimos`) e o zoom desce para o maior degrau em que ela cabe (`zoomParaCaber`); cada aplicação dispara
+  novo refit, que mede de novo até caber. Alargou a janela → o degrau sobe de volta (até 100%, nunca amplia).
+  Mostrar/ocultar um recorte com `resize` zera as medidas (a largura mínima muda).
+- **A pessoa manda:** um zoom escolhido (Cmd+= / Cmd+-) fica gravado por host e desliga o automático; nesses sites
+  100% escolhido também fica gravado (antes 100% apagava a entrada). Cmd+0 apaga a escolha e volta ao automático. O
+  botão "%" nesses sites alterna automático ↔ 100% fixo (nos outros segue 100% ↔ 75%), com sublinhado pontilhado e
+  dica explicando quando está no automático. Testes em `scripts/tests/nav-caber-core.test.mjs`.
+
 ## Tutorial do Navegador concluía sem o agente ter navegado (18 out 2026)
 
 - **Causa:** o passo "Deixar o agente navegar" marcava `navAgentUsed` em qualquer evento `chat:tool` cujo nome
