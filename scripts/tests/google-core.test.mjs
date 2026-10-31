@@ -225,7 +225,7 @@ test("achaSegredo: o que nao pode subir sem cifra", () => {
 test("trabalho (sem cifra) nunca leva segredo nem lixo do Hermes; credenciais leva o .env e a sessão viva do WhatsApp do Hermes", async () => {
   const { CONJUNTOS_DADOS } = await import("../../src/main/google/google-core.ts");
   const por = (id) => CONJUNTOS_DADOS.find((c) => c.id === id);
-  for (const x of [".hermes/.env", ".hermes/.env.bak-*", ".hermes/whatsapp/session", ".hermes/whatsapp/session.loggedout-*", "node_modules", ".hermes/venv-whisper", ".hermes/cache"]) {
+  for (const x of [".hermes/.env", ".hermes/.env.bak-*", ".hermes/whatsapp/session", ".hermes/whatsapp/session.loggedout-*", "node_modules", ".hermes/venv-whisper", ".hermes/cache", ".hermes/tools", ".hermes/installs"]) {
     assert.ok(por("trabalho").excluir.includes(x), `${x} tem que ficar fora do trabalho`);
   }
   for (const x of [".hermes/.env", ".hermes/whatsapp/session", ".hermes/auth.json"]) assert.ok(por("credenciais").dirs.includes(x), `${x} vai cifrado em credenciais`);
