@@ -7,6 +7,7 @@
  */
 import { BUNDLE_FILES, CLAUDE_GLOBAL_FILES, CRM_FILES, CRM_PLUGIN_FILES, FINANCE_FILES, FINANCE_PLUGIN_FILES, GUARDA_FILES, GUARDA_PLUGIN_FILES, TELA_FILES, TELA_PLUGIN_FILES, TELA_SKILL_FILES } from "./backend-bundle-core";
 import { NAV_MCP_VERSAO } from "../navegador/navegador-whatsapp-core";
+import { GMAIL_MCP_VERSAO } from "../google/gmail-core";
 import { isVozId } from "../whatsapp/vozes-core";
 import { WA_ESCOLHA_SH } from "../whatsapp/whatsapp-capacidades";
 import { hermesPausaPluginSh, lerPausaPlugin, versaoDoPluginYaml, type PausaPluginFonte } from "../whatsapp/whatsapp-hermes-pausa-core";
@@ -496,6 +497,30 @@ export async function installNavegador(host: string, onLine?: (line: string) => 
   if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
   say("rodando o instalador…");
   const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("navegador")}/install-navegador-mcp.sh 2>&1`], 2 * 60_000, say);
+  if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
+  return { ok: true, log: lines };
+}
+/** Gmail do agente (Pro, 31 out): o servidor MCP (um arquivo) e o instalador, no molde do Navegador. */
+const GMAIL_FILES = ["gmail-mcp.mjs", "install-gmail-mcp.sh"];
+/** O lado da máquina do Gmail está instalado? (null para este Mac) */
+export async function gmailInstalled(host: string): Promise<boolean | null> {
+  if (host === LOCAL_HOST || !isValidHost(host)) return null;
+  const r = await run("ssh", [...sshBase(host), "--", host, `[ -f "$HOME/.local/share/meu-bot/gmail-mcp.mjs" ] && grep -q "meu-bot:gmail" "$HOME/agent-workspace/CLAUDE.md" 2>/dev/null && echo gm=1 || echo gm=0; grep -qs "${GMAIL_MCP_VERSAO}" "$HOME/.local/share/meu-bot/gmail-mcp.mjs" && echo ver=ok || echo ver=velha`], 25_000);
+  if (r.stdout.includes("gm=1") && r.stdout.includes("ver=velha")) void installGmail(host).catch(() => undefined);
+  return r.stdout.includes("gm=1");
+}
+export async function installGmail(host: string, onLine?: (line: string) => void): Promise<InstallBackendResult> {
+  if (host === LOCAL_HOST) return { ok: false, log: ["o Gmail do agente é para máquinas por SSH"] };
+  const lines: string[] = [];
+  const say = (l: string): void => { lines.push(l); onLine?.(l); };
+  const dir = backendBundleDir();
+  say(`enviando o Gmail do agente para ${host}:${stageDe("gmail")}…`);
+  const mk = await run("ssh", [...sshBase(host), "--", host, `${limparStage("gmail")}; mkdir -p ${stageDe("gmail")}`], 20_000);
+  if (mk.code !== 0) return { ok: false, log: [...lines, `falha ao preparar a pasta remota: ${lastLine(mk.stderr)}`] };
+  const scp = await run("scp", ["-q", ...sshBase(host), "--", ...GMAIL_FILES.map((f) => path.join(dir, f)), `${host}:${stageDe("gmail")}/`], 60_000);
+  if (scp.code !== 0) return { ok: false, log: [...lines, `scp falhou: ${lastLine(scp.stderr)}`] };
+  say("rodando o instalador…");
+  const inst = await run("ssh", [...sshBase(host), "--", host, `bash ${stageDe("gmail")}/install-gmail-mcp.sh 2>&1`], 2 * 60_000, say);
   if (inst.code !== 0) return { ok: false, log: [...lines, `instalador saiu com código ${inst.code ?? "timeout"}`] };
   return { ok: true, log: lines };
 }

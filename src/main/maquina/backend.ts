@@ -16,6 +16,7 @@ import { getBackendPort, getContextBudget, getMemoryEveryTurns } from "../app/se
 import { ensureTunnel, markDegraded, TunnelFatalError } from "./tunnel";
 import { netState, noteNetworkError } from "../app/net";
 import { browserAgentPort } from "../navegador/browser";
+import { gmailAgentePort } from "../google/gmail-api";
 import { looksLikeOffline, offlineMessage } from "../app/net-core";
 import { broadcast, sendToHost } from "../app/windows";
 
@@ -544,7 +545,10 @@ export async function runBackendTurn(conv: Conversation, userText: string): Prom
     // Retomada de sessão no backend: diz quantas mensagens do começo ele já conhece.
     const seen = alreadySeenPrefix(plan.outgoing, conv.serverSeen);
     const browserPort = browserAgentPort(host);
-    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId(), ...(browserPort === null ? {} : { "X-Meu-Bot-Browser-Port": String(browserPort), "X-Meu-Bot-Browser-Rotulo": Buffer.from((conv.title ?? "conversa do meu-bot").slice(0, 80), "utf8").toString("base64") }) };
+    const gmailPort = gmailAgentePort(host);
+    // O rótulo da conversa (selo das abas do Navegador, auditoria do Gmail) vai com qualquer ponte ligada.
+    const rotulo = browserPort === null && gmailPort === null ? {} : { "X-Meu-Bot-Browser-Rotulo": Buffer.from((conv.title ?? "conversa do meu-bot").slice(0, 80), "utf8").toString("base64") };
+    const headers = { "X-Conversation-Id": conversationId, "X-Conversation-Seen": String(seen), "X-Device-Id": deviceId(), ...rotulo, ...(browserPort === null ? {} : { "X-Meu-Bot-Browser-Port": String(browserPort) }), ...(gmailPort === null ? {} : { "X-Meu-Bot-Gmail-Port": String(gmailPort) }) };
     log(`contexto ${conversationId}: modo=${plan.mode} enviadas=${plan.sentCount}/${conv.backendMessages.length}${memory === undefined ? "" : " +memória"} seen=${seen}`);
     let fallbackNote: string | undefined;
     const { text, finishReason, streamed, resumed, provider, usage } = await chatCompletion(host, model, outgoing, out, abort.signal, (delta) => {

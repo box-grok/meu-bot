@@ -32,6 +32,7 @@ import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type
 import { mountFinancePage } from "./finance/finance-page.js";
 import { mountModulosPage } from "./modulos/modulos-page.js";
 import { mountContaGoogle } from "./conta-google/conta-google-page.js";
+import { mountGmail } from "./gmail/gmail-page.js";
 import { mountComputador } from "./computador/computador-page.js";
 import { clampSplitRatio, maxColunas, minDireita, parseSplitPref, splitAdd, splitLabel, splitLayout, splitPrefPageIds, SPLIT_MIN_PX } from "./lib/split.js";
 import { recorteOculto, recorteTitulo, recortesPara, parseRecortesPref, type Recorte, type RecortesPref } from "./lib/recortes.js";
@@ -1180,6 +1181,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:new", kind: "action", label: "Nova conversa", detail: "Cmd+N" }, async () => { await newTab(); });
   add({ id: "a:settings", kind: "action", label: "Configurações" }, () => settingsBtn.click());
   add({ id: "a:acervo", kind: "action", label: "Acervo: biblioteca de skills", detail: ACERVO_SKILLS.length === 0 ? "vazio por enquanto" : `${ACERVO_SKILLS.length} skills; instalar é pedir ao agente`, keywords: ["acervo", "skills", "biblioteca", "instalar"] }, () => openPage(acervoPage));
+  if (gmailPage !== null) { const g = gmailPage; add({ id: "a:gmail", kind: "action", label: "Gmail", detail: `sua caixa de entrada: ler, buscar e mandar para a lixeira${caps.planoExigido === "free" ? " (Pro)" : ""}`, keywords: ["gmail", "e-mail", "email", "caixa", "mensagens", "google"] }, () => g.open()); }
   add({ id: "a:atividade", kind: "action", label: "Atividade do agente", detail: "o que o modo agente roda nesta máquina, ao vivo", keywords: ["atividade", "agente", "ferramentas", "comandos", "log"] }, () => { openPage(activityPage(), true); });
   add({ id: "a:split-vazia", kind: "action", label: "Nova coluna vazia", detail: "a próxima página que você abrir entra nela", keywords: ["coluna", "dividir", "vazia", "split", "tela"] }, () => splitColunaVazia());
   add({ id: "a:split", kind: "action", label: splitLabel(splitPages.at(-1)?.title ?? null, (pageActive ?? [...pages.values()].filter((p) => p.tabEl !== null).at(-1))?.title ?? null), detail: "Cmd+\\ · conversa à esquerda, página à direita", keywords: ["dividir", "split", "lado a lado", "tela"] }, () => toggleSplit());
@@ -1901,6 +1903,8 @@ let navAgent: BrowserAgentState = { on: false, state: "down", port: null };
 
 /* ---------- Financeiro (produto meu-bot-finance): página Finanças, lateral e tutorial 14 ---------- */
 let financePage: ReturnType<typeof mountFinancePage> | null = null;
+/** Página Gmail (31 out): montada na abertura, como a Conta Google; a paleta e a aba fixada a alcançam por aqui. */
+let gmailPage: ReturnType<typeof mountGmail> | null = null;
 let modulosPage: ReturnType<typeof mountModulosPage> | null = null;
 let financeState: FinanceInfo | null = null;
 ligarNavegador();
@@ -2020,12 +2024,16 @@ void (async () => {
   { const c = cacheRead<WhatsappStatus>("waStatus", true); if (c !== null && waStatus === null && typeof c.value.connected === "boolean" && c.value.capacidades !== undefined) { waStatus = c.value; paintListMode(); } }
   if (info.models.length > 0) hostModels.set(windowHost, info.models);
   applySettings(await window.meuBot.getSettings());
-  const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  const contaGoogle = mountContaGoogle({ panelsEl, definePage, openPage, openGmail: () => gmailPage?.open(), armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("conta-google-line").addEventListener("click", () => contaGoogle.open());
+  const gmail = mountGmail({ panelsEl, definePage, openPage, openContaGoogle: () => contaGoogle.open(), armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  gmailPage = gmail;
+  $<HTMLButtonElement>("gmail-line").addEventListener("click", () => gmail.open());
   const computador = mountComputador({ panelsEl, definePage, openPage, api: window.meuBot, host: () => windowHost, local: () => windowHost === "local", license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
   $<HTMLButtonElement>("computador-line").addEventListener("click", () => computador.open());
   // Etiqueta "Pro" na lateral, como no Navegador (só no produto free; nos apps com assinatura tudo é um pacote só).
   $<HTMLElement>("conta-google-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
+  $<HTMLElement>("gmail-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   $<HTMLElement>("computador-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   financePage = mountFinancePage({
     panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked,
@@ -2056,7 +2064,7 @@ void (async () => {
   void refreshGuarda();
   void refreshContas();
   void refreshLinkPublico();
-  void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); computador.repintar(); });
+  void refreshLicense().then(() => { paintGuide(); contaGoogle.repintar(); gmail.repintar(); computador.repintar(); });
   void refreshNavInst();
   void refreshCrm();
   const intro = playIntro(); // cobre a janela enquanto as abas voltam; some sozinha
@@ -2073,6 +2081,7 @@ void (async () => {
   else if (fixa === "financas") financePage?.open();
   else if (fixa === "modulos") modulosPage?.open();
   else if (fixa === "conta-google") contaGoogle.open();
+  else if (fixa === "gmail") gmail.open();
   else if (fixa === "computador") computador.open();
   else if (fixa === "navegador") void openNavTab();
   aberturaPronta = true;

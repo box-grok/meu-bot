@@ -1,5 +1,5 @@
 /**
- * Página "Conta Google" (login + backup no Drive) no visual do meu-bot. A conta mora neste Mac (token cifrado
+ * Página "Conta Google" (login + backup no Drive; o Gmail tem página própria desde 31 out) no visual do meu-bot. A conta mora neste Mac (token cifrado
  * no Keychain, via main › conta-google.ts); aqui só se conecta, lê e escreve. A verificação de telefone/QR, quando o
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
@@ -17,6 +17,8 @@ export interface ContaGoogleDeps {
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
   armConfirm(btn: HTMLButtonElement, label: string, run: () => void): void;
+  /** Abre a página Gmail (o cartão de teste do Gmail saiu daqui em 31 out). */
+  openGmail?: () => void;
   /** Conta Google é do plano Pro (27 out): a mesma regra do Navegador; a licença chega depois da janela abrir. */
   host: () => string;
   license: () => LicenseView | null;
@@ -161,6 +163,8 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       bc.append(acoes);
     }
     panel.append(bc);
+
+    if (deps.openGmail !== undefined) { const abrir = deps.openGmail; const tg = el("div", "admin-actions"); tg.append(btn("Abrir o Gmail", "btn-ghost", abrir)); panel.append(tg); }
   }
   const fmtData = (iso: string): string => { if (iso === "") return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
