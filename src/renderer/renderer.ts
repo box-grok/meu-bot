@@ -2034,6 +2034,7 @@ void (async () => {
   // Etiqueta "Pro" na lateral, como no Navegador (só no produto free; nos apps com assinatura tudo é um pacote só).
   $<HTMLElement>("conta-google-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   $<HTMLElement>("gmail-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
+  $<HTMLElement>("computador-count").textContent = caps.planoExigido === "free" ? "Pro" : "";
   financePage = mountFinancePage({
     panelsEl, definePage, openPage, armConfirm, api: window.meuBot, host: () => windowHost, license: () => license, licenseKnown: () => navLicenseAsked,
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
