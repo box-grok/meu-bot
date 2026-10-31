@@ -2,8 +2,9 @@
  * Gmail para o agente (31 out, Pro): as mesmas ações da página Gmail num socket Unix 0600 deste Mac, que o túnel
  * reverso leva a 127.0.0.1:<porta> da máquina, onde `gmail-mcp.mjs` as apresenta ao Claude. O token nunca sai do Mac:
  * a máquina só pede "liste", "leia", "lixeira" e recebe o conteúdo. Mesmo molde de nav-api.ts e do "agente pode usar"
- * de browser.ts, com uma diferença: não depende de janela aberta. A chave é lembrada por máquina; com ela ligada e a
- * conta conectada, religa quando o túnel fica pronto, e para quando a conta é desconectada.
+ * de browser.ts, com uma diferença: não depende de janela aberta. A chave é **ligada por padrão** (31 out): com a conta
+ * conectada e o Pro na máquina, sobe sozinha quando o túnel fica pronto, e para quando a conta é desconectada; o app
+ * lembra só as máquinas em que a pessoa desligou (`gmailAgentDesligados`).
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -120,7 +121,12 @@ export const gmailAgenteInfo = (host: string): GmailAgenteState => agentState.ge
 /** Porta remota a mandar ao backend neste turno (só com a chave ligada e o -R de pé). */
 export const gmailAgentePort = (host: string): number | null => (agentOn.has(host) ? reversePort(host, CHAVE) : null);
 /** Religa sozinho: chave lembrada + conta conectada. A página chama ao abrir; o túnel chama ao ficar pronto. */
-export function gmailAgenteReligar(host: string): void {
-  if (isGmailAgentHost(host) && !agentOn.has(host) && contaStatus(host).conectado) ligar(host);
+export async function gmailAgenteReligar(host: string): Promise<void> {
+  if (!isGmailAgentHost(host) || agentOn.has(host) || !contaStatus(host).conectado) return;
+  // Mesmo portão do botão: sem o Pro na máquina a ponte não sobe sozinha (o botão explica, a página mostra o bloqueio).
+  try { await assertAcesso(host); } catch { return; }
+  if (agentOn.has(host)) return;
+  log(`[gmail ${host}] agente do chat ligado sozinho (conta conectada, Pro em vigor)`);
+  ligar(host);
 }
-onTunnelState((host, state) => { if (state === "ready") gmailAgenteReligar(host); });
+onTunnelState((host, state) => { if (state === "ready") void gmailAgenteReligar(host); });
