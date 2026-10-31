@@ -1,9 +1,9 @@
 /**
- * Página "Conta Google" (login + backup no Drive + Gmail de teste) no visual do meu-bot. A conta mora neste Mac (token cifrado
+ * Página "Conta Google" (login + backup no Drive) no visual do meu-bot. A conta mora neste Mac (token cifrado
  * no Keychain, via main › conta-google.ts); aqui só se conecta, lê e escreve. A verificação de telefone/QR, quando o
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
-import type { BackupDadosView, GmailResumo, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
+import type { BackupDadosView, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
 import type { LicenseView, PlanName } from "../../shared/ipc";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
@@ -23,23 +23,22 @@ export interface ContaGoogleDeps {
   licenseKnown: () => boolean;
   planoExigido: PlanName;
   produto: string;
-  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "gmailResumo" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
+  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void>; repintar: () => void } {
   const panel = el("section", "acervo-panel conta-google-panel"); panel.hidden = true;
   deps.panelsEl.append(panel);
   let status: GoogleContaStatus | null = null;
-  let gmail: GmailResumo | null = null;
   let backup: BackupDadosView | null = null;
-  // Cada cartão guarda o próprio erro: "Carregando…" para sempre escondia o motivo (Gmail e Backup, 25 out).
-  let gmailErro: string | null = null; let backupErro: string | null = null;
+  // O cartão guarda o próprio erro: "Carregando…" para sempre escondia o motivo (25 out).
+  let backupErro: string | null = null;
   const erroTexto = (e: unknown): string => ipcErrorText(e).replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; entre de novo").replace(/^PRO_REQUIRED$/, "esta máquina não tem o plano Pro");
   let busy = false; let msg: { text: string; bad: boolean } | null = null;
   /** "Pedir o Pro ao admin" já foi clicado nesta janela. */
   let proPedido = false;
-  // O Gmail é ferramenta de teste (Agenda e Planilha saíram em 31 out: ninguém usava; as APIs continuam no main): ficam ocultas (e sem carregar) até a pessoa pedir.
-  let mostrarFerramentas = false;
+  // Gmail, Agenda e Planilha saíram da página (31 out): eram ferramentas de teste sem serventia aqui; o agente continua
+  // usando as três pelo backend.
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
 
   async function refresh(): Promise<void> {
@@ -47,22 +46,14 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     render();
     if (status?.conectado && !status.precisaReconectar) await carregarDados();
   }
-  /** Os três cartões carregam em paralelo e cada um aparece quando chega (o Gmail faz até doze chamadas; antes ele segurava os outros). */
   async function carregarDados(): Promise<void> {
     backup = null; backupErro = null; render();
-    await Promise.all([
-      deps.api.backupDadosStatus().then((b) => { backup = b; }, (e: unknown) => { backupErro = erroTexto(e); }).then(render),
-      mostrarFerramentas ? carregarFerramentas() : Promise.resolve(),
-    ]);
-  }
-  async function carregarFerramentas(): Promise<void> {
-    gmail = null; gmailErro = null; render();
-    await deps.api.gmailResumo().then((g) => { gmail = g; }, (e: unknown) => { gmailErro = erroTexto(e); }).then(render);
+    await deps.api.backupDadosStatus().then((b) => { backup = b; }, (e: unknown) => { backupErro = erroTexto(e); }).then(render);
   }
   /** Cartão sem dado: o erro, com "Tentar de novo", ou "Carregando…" enquanto não chegou. */
   const pendente = (c: HTMLElement, erro: string | null, oQue: string): void => {
     if (erro === null) { c.append(carregando(`Carregando ${oQue}…`)); return; }
-    c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void (oQue === "o estado do backup" ? carregarDados() : carregarFerramentas()); }));
+    c.append(el("p", "hint bad-hint", `Não deu para ler ${oQue}: ${erro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarDados(); }));
   };
   async function agir(run: () => Promise<unknown>, ok: string): Promise<void> {
     if (busy) return; busy = true; msg = null; render();
@@ -170,22 +161,6 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       bc.append(acoes);
     }
     panel.append(bc);
-
-    const tg = el("div", "admin-actions");
-    tg.append(btn(mostrarFerramentas ? "Ocultar Gmail" : "Mostrar Gmail", "btn-ghost", () => { mostrarFerramentas = !mostrarFerramentas; if (mostrarFerramentas) void carregarFerramentas(); else render(); }));
-    panel.append(tg);
-    if (!mostrarFerramentas) return;
-
-    // Gmail
-    const gc = card("Gmail");
-    if (gmail === null) pendente(gc, gmailErro, "o Gmail");
-    else {
-      gc.append(el("p", "hint", `${gmail.email ?? ""} · ${gmail.naoLidas} não ${gmail.naoLidas === 1 ? "lida" : "lidas"} na caixa de entrada`));
-      for (const m of gmail.mensagens.slice(0, 8)) { const r = el("div", `conta-msg${m.naoLida ? " nova" : ""}`); r.append(el("strong", "conta-msg-assunto", m.assunto), el("span", "hint conta-msg-de", m.de.replace(/<.*>/, "").trim() || m.de), el("span", "hint conta-msg-resumo", m.resumo.slice(0, 120))); gc.append(r); }
-      if (gmail.mensagens.length === 0) gc.append(el("p", "hint", "Nenhuma mensagem recente."));
-    }
-    panel.append(gc);
-
   }
   const fmtData = (iso: string): string => { if (iso === "") return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 
