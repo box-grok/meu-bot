@@ -333,6 +333,15 @@ export function planilhaValoresDeRaw(j: Record<string, unknown>): string[][] {
   return Array.isArray(j["values"]) ? (j["values"] as unknown[]).map((l) => (Array.isArray(l) ? l.map((c) => String(c ?? "")) : [])) : [];
 }
 
+/**
+ * O Google recusou o refresh de vez? Aí o token guardado não presta mais e o app apaga para a tela pedir para entrar
+ * de novo. `invalid_grant`/revoked/expired: o dono revogou ou o token venceu. `unauthorized_client` (o Google responde
+ * só "Unauthorized" na descrição): o refresh foi emitido para outro client OAuth, o que acontece quando a conta foi
+ * conectada num build sem google-conta-oauth.json (que caiu no client do CRM) e o app seguinte veio com o certo.
+ * Erro de rede ou 5xx não entra: a conta continua válida, foi a tentativa que falhou.
+ */
+export const refreshRecusadoDeVez = (msg: string): boolean => /invalid_grant|revoked|expired|unauthorized/i.test(msg);
+
 // ---- Backup no Drive: erros que descrevem o estado da Conta Google, não da cópia. O cartão mostra o resultado da
 // última tentativa gravado em disco; se a conta voltou depois, esse erro já não descreve a máquina e some sozinho.
 export const ERRO_DRIVE_DESCONECTADA = "a Conta Google não está conectada neste Mac";
