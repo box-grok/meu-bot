@@ -45,7 +45,8 @@ import { getHostNames, isBackendModel } from "../app/settings";
 import { objectiveInfo, resetObjective, saveObjectiveSkill, setObjective } from "../agente/objetivo";
 import { crmInfo, crmTest, resetCrm, setCrm } from "../crm/crm";
 import { toggleQuickEntry } from "../app/quickEntry";
-import { guardaInstalled, installAudio, installCrm, installFinance, installGuarda, installHermesPausa, installNavegador, installStatusLine, installTela, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
+import { gmailInstalled, guardaInstalled, installAudio, installCrm, installFinance, installGmail, installGuarda, installHermesPausa, installNavegador, installStatusLine, installTela, navegadorInstalled, prepareGrokOauth, statusLineInstalled, uninstallCrm, uninstallGuarda, uninstallStatusLine } from "../maquina/hostProbe";
+import { gmailAgente, gmailAgenteInfo, gmailAgenteReligar } from "../google/gmail-api";
 import { readSegments, writeSegments } from "../agente/statusLine";
 import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupportNameOnly, setSupportShare, supportCodeText, supportInfo } from "../client/support";
 import { openMainWindow, sendWhenLoaded } from "../app/windows";
@@ -344,6 +345,15 @@ export function registerClientIpc(): void {
   // Guarda do WhatsApp (tutorial): está? instalar (progresso em guarda:progress) e desfazer.
   handleClient("guarda:status", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return guardaInstalled(h.host); });
   handleClient("navegador:status", (event) => navegadorInstalled(ctxOf(event).host));
+  // Gmail para o agente (Pro): a chave da página, e o lado da máquina (MCP + regra), como o Navegador.
+  handleClient("gmail:agent", async (event, payload: unknown) => {
+    const h = ctxOf(event); const on = (payload as { on?: unknown } | null)?.on;
+    if (typeof on !== "boolean") { gmailAgenteReligar(h.host); return gmailAgenteInfo(h.host); }
+    if (on) await assertAcesso(h.host);
+    return gmailAgente(h.host, on);
+  });
+  handleClient("gmail:status", (event) => gmailInstalled(ctxOf(event).host));
+  handleClient("gmail:install", (event) => { const h = ctxOf(event); return installGmail(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("gmail:progress", { line }); }); });
   handleClient("navegador:install", (event) => { const h = ctxOf(event); return installNavegador(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("navegador:progress", { line }); }); });
   handleClient("guarda:install", (event) => {
     const h = hostFromEvent(event);

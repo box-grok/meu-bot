@@ -42,6 +42,8 @@ export interface SettingsFile {
   podHosts: string[];
   /** Máquinas em que "🤖 agente pode usar" o Navegador ficou ligado (religa sozinho ao abrir a aba). */
   navAgentHosts: string[];
+  /** Máquinas em que "o agente pode usar o Gmail" ficou ligado (religa sozinho com a conta conectada). */
+  gmailAgentHosts: string[];
   /** Barra de favoritos do Navegador, por máquina (a pessoa ou o agente adicionam). */
   navFavoritos: Record<string, NavFavoritoItem[]>;
   /** Onboarding guiado da primeira vez: pendente até a pessoa concluir ou pular. */
@@ -148,7 +150,7 @@ const validHost = (v: unknown): string | null => (typeof v === "string" && isVal
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentHosts: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -184,6 +186,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     navAgentHosts: Array.isArray(p["navAgentHosts"]) ? [...new Set((p["navAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
+    gmailAgentHosts: Array.isArray(p["gmailAgentHosts"]) ? [...new Set((p["gmailAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     hostNames: normalizeHostNames(p["hostNames"]),
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),

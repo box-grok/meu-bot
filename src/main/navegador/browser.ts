@@ -386,7 +386,8 @@ const tellAgent = (host: string, st: BrowserAgentState): void => {
   agentState.set(host, st);
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:agent", st);
 };
-onReverseState((host, state, port) => {
+onReverseState((host, chave, state, port) => {
+  if (chave !== "nav") return; // o -R do Gmail (gmail-api.ts) tem o próprio aviso
   if (agentOn.has(host)) tellAgent(host, { on: true, state, port });
   // O agente do WhatsApp (OpenClaw, 24 h) acha o túnel por este arquivo na máquina (navegador-mcp.mjs --port-file).
   if (state !== "connecting") void gravarPortaNavegador(host, state === "up" ? port : null);
