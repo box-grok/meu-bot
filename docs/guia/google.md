@@ -279,3 +279,10 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   comando remoto sai com 3 quando nenhuma pasta do conjunto existe (máquina sem o financeiro, por exemplo), e
   `empacotar` (dados-drive.ts) tratava qualquer saída diferente de 0 como falha, então o cartão mostrava um erro em
   toda máquina sem financeiro. Saída 3 agora é "ausente": vai só para o log e a tela fica com o que subiu.
+
+## Tutorial 16 "Gmail (Pro)" (31 out)
+
+- Tutorial da página Gmail, em `src/renderer/gmail/gmail-guia.ts` (passos e a fonte `google` do guia) e a entrada
+  `gmail` em `lib/tutoriais.ts`: Pro → Conta Google conectada → ler uma mensagem → buscar → lixeira + desfazer. A
+  página conta ao guia o que a pessoa fez por `GmailDeps.aoUsar` (`"lido" | "buscou" | "lixeira" | "desfez"`), e o guia
+  grava como fato lembrado. Detalhes da reorganização dos tutoriais em `docs/guia/app.md` (fases 1 a 5).

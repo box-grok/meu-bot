@@ -421,6 +421,7 @@ export function openGuide(t: Tutorial): void {
   if (t.id === "xai-login") void ctx.refreshXaiLine();
   if (t.id === "whatsapp-grupos") void ctx.refreshWaGroups();
   if (t.id === "contas-cli") void ctx.refreshContas();
+  if (t.id === "gmail") { void ctx.refreshLicense().then(() => paintGuide()); void ctx.refreshGmailGuia(); }
   paintGuide();
 }
 /** "Refazer do zero" em andamento (id do tutorial) e o último recado por tutorial. */

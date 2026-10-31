@@ -14,7 +14,12 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 
+/** O que a página conta ao guia (tutorial 16): a pessoa leu uma mensagem, buscou, mandou para a lixeira, desfez. */
+export type GmailFato = "lido" | "buscou" | "lixeira" | "desfez";
+
 export interface GmailDeps {
+  /** Chamado quando a pessoa usa a página; o guia marca o passo (opcional: o cartão de teste antigo não tinha guia). */
+  aoUsar?: (fato: GmailFato) => void;
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
@@ -80,12 +85,13 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
     try {
       const r = await deps.api.gmailListar({ busca, max: 20, pagina });
       lista = pagina !== undefined && lista !== null ? { ...r, mensagens: [...lista.mensagens, ...r.mensagens] } : r;
+      if (busca !== "") deps.aoUsar?.("buscou");
     } catch (e) { if (pagina === undefined) listaErro = erroGmailTexto(e); else msg = { text: erroGmailTexto(e), bad: true }; }
     render();
   }
   async function abrir(id: string): Promise<void> {
     abrindo = id; detalhe = null; detalheErro = null; render();
-    try { detalhe = await deps.api.gmailLer(id); } catch (e) { detalheErro = erroGmailTexto(e); }
+    try { detalhe = await deps.api.gmailLer(id); deps.aoUsar?.("lido"); } catch (e) { detalheErro = erroGmailTexto(e); }
     render();
   }
   function fechar(): void { detalhe = null; detalheErro = null; abrindo = null; render(); }
@@ -97,14 +103,14 @@ export function mountGmail(deps: GmailDeps): { open: () => void; refresh: () => 
   /** Lixeira: tira a mensagem da lista na hora e guarda o "Desfazer"; a lista inteira só recarrega na próxima busca. */
   async function apagar(m: GmailMensagem | GmailDetalhe): Promise<void> {
     await agir(async () => {
-      apagado = await deps.api.gmailApagar(m.id);
+      apagado = await deps.api.gmailApagar(m.id); deps.aoUsar?.("lixeira");
       if (lista !== null) lista = { ...lista, mensagens: lista.mensagens.filter((x) => x.id !== m.id) };
       if (detalhe?.id === m.id) { detalhe = null; abrindo = null; }
     }, `"${m.assunto}" foi para a lixeira`);
   }
   async function restaurar(): Promise<void> {
     const a = apagado; if (a === null) return;
-    await agir(async () => { await deps.api.gmailRestaurar(a.id); apagado = null; }, `"${a.assunto}" voltou da lixeira`);
+    await agir(async () => { await deps.api.gmailRestaurar(a.id); apagado = null; deps.aoUsar?.("desfez"); }, `"${a.assunto}" voltou da lixeira`);
     await carregarLista();
   }
   const btn = (label: string, cls: string, run: () => void): HTMLButtonElement => { const b = el("button", `btn ${cls} btn-small`, label); b.type = "button"; b.disabled = busy; b.addEventListener("click", run); return b; };

@@ -37,7 +37,7 @@ export interface GuideContext {
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
   /** Tutorial 8: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
-  /** Tutorial 17 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
+  /** Tutorial 18 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null; /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp (null = ainda não lido). */ local: CrmLocal | null };
   /**
    * Tutorial 11: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
@@ -55,6 +55,12 @@ export interface GuideContext {
    * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
    */
   finance: { access: boolean | null; info: FinanceInfo | null };
+  /**
+   * Tutorial 16 (Pro): `access` pela licença (como o Navegador; null = não lida); a Conta Google da máquina
+   * (`conectado` já desconta `precisaReconectar`; `gmailEscreve` null = sem status) e os fatos que a página Gmail conta
+   * ao guia (leu, buscou, mandou para a lixeira, desfez), que viram `lembrar` nos passos.
+   */
+  gmail: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; conectado: boolean; precisaReconectar: boolean; gmailEscreve: boolean | null; lido: boolean; buscou: boolean; lixeira: boolean; desfez: boolean };
   /** Tutorial 15: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
   quickEntry: { status: QuickEntryStatus | null; shortcut: string };
   /**
@@ -69,9 +75,9 @@ export interface GuideContext {
   known: Record<GuideSource, boolean>;
 }
 /** De onde vêm os fatos que concluem passos; cada tutorial declara as suas em `needs`. */
-export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance" | "linkpublico" | "quickentry";
-export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance", "linkpublico", "quickentry"];
-const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false, linkpublico: false, quickentry: false });
+export type GuideSource = "whatsapp" | "claude" | "statusline" | "xai" | "fallback" | "support" | "objective" | "guarda" | "navegador" | "crm" | "grupos" | "contas" | "finance" | "linkpublico" | "quickentry" | "google";
+export const GUIDE_SOURCES: readonly GuideSource[] = ["whatsapp", "claude", "statusline", "xai", "fallback", "support", "objective", "guarda", "navegador", "crm", "grupos", "contas", "finance", "linkpublico", "quickentry", "google"];
+const noneKnown = (): Record<GuideSource, boolean> => ({ whatsapp: false, claude: false, statusline: false, xai: false, fallback: false, support: false, objective: false, guarda: false, navegador: false, crm: false, grupos: false, contas: false, finance: false, linkpublico: false, quickentry: false, google: false });
 export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
@@ -88,6 +94,7 @@ export const emptyContext = (): GuideContext => ({
   linkPublico: null,
   linkPublicoPossivel: true,
   finance: { access: null, info: null },
+  gmail: { access: null, conectado: false, precisaReconectar: false, gmailEscreve: null, lido: false, buscou: false, lixeira: false, desfez: false },
   produto: { planoExigido: "free", crmProprio: false, crmStreak: true },
   known: noneKnown(),
 });
@@ -112,7 +119,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome" | "quick-atalho" | "quick-testar";
+  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome" | "quick-atalho" | "quick-testar" | "gmail-pro" | "gmail-conectar" | "gmail-ler" | "gmail-buscar" | "gmail-lixeira";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -139,7 +146,7 @@ export interface Tutorial {
   id: string;
   /**
    * Número fixo do tutorial (o mesmo no app da pessoa, no admin e no GUIA), na ordem da trilha: o array é a ordem da
-   * lista, então os números sobem 1, 2, 3… sem buraco entre os que podem aparecer; os `oculto` ficam no fim (16, 17).
+   * lista, então os números sobem 1, 2, 3… sem buraco entre os que podem aparecer; os `oculto` ficam no fim (17, 18).
    * Renumerados em 31 out 2026 (mapa antigo → novo em docs/guia/app.md).
    */
   number: number;
@@ -670,8 +677,46 @@ export const TUTORIAIS: readonly Tutorial[] = [
     ],
   },
   {
-    id: "statusline",
+    id: "gmail",
     number: 16,
+    needs: ["google"],
+    after: "claude-login",
+    title: "Gmail (Pro)",
+    short: "Gmail",
+    summary: "Leia, busque e mande para a lixeira os e-mails da Conta Google desta máquina, dentro do meu-bot. O que vai para a lixeira volta com um clique.",
+    minutes: 4,
+    icon: "target",
+    steps: [
+      {
+        id: "pro", title: "Ter o plano Pro nesta máquina", target: "none", body: "gmail-pro",
+        text: "O Gmail é do plano Pro. Se a sua máquina ainda é free, peça ao admin por aqui: ele libera e o tutorial continua sozinho.",
+        done: (_st, _f, c) => c.gmail.access === "ok",
+      },
+      {
+        id: "conectar", title: "Conectar a Conta Google", target: "none", body: "gmail-conectar",
+        text: "O Gmail usa a conta conectada na página Conta Google. Entre lá uma vez; a conta fica nesta máquina e a página Gmail passa a abrir a caixa de entrada.",
+        done: (_st, _f, c) => c.gmail.conectado,
+      },
+      {
+        id: "ler", title: "Abrir o Gmail e ler uma mensagem", target: "none", body: "gmail-ler", lembrar: true,
+        text: "Abra a página Gmail e clique numa mensagem: o texto aparece aqui dentro, com os anexos pelo nome e um botão para abrir no Gmail.",
+        done: (_st, _f, c) => c.gmail.lido,
+      },
+      {
+        id: "buscar", title: "Buscar como no Gmail", target: "none", body: "gmail-buscar", lembrar: true,
+        text: "Na caixa de busca vale a sintaxe do próprio Gmail: from:ana is:unread has:attachment. Faça uma busca qualquer.",
+        done: (_st, _f, c) => c.gmail.buscou,
+      },
+      {
+        id: "lixeira", title: "Mandar para a lixeira e desfazer", target: "none", body: "gmail-lixeira", lembrar: true,
+        text: "Abra uma mensagem, clique em \"Mover para a lixeira\" (duas vezes, para confirmar) e depois em \"Desfazer\". Nada se perde: a lixeira guarda por 30 dias.",
+        done: (_st, _f, c) => c.gmail.lixeira && c.gmail.desfez,
+      },
+    ],
+  },
+  {
+    id: "statusline",
+    number: 17,
     needs: ["statusline"],
     after: "claude-login",
     title: "Status line do Claude",
@@ -708,7 +753,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "crm-gmail",
-    number: 17,
+    number: 18,
     needs: ["crm", "navegador"],
     after: "navegador",
     needsCrmProprio: true,
@@ -726,7 +771,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
         done: (_st, _f, c) => c.crm.access === "ok" && c.crm.info?.installed === true,
       },
       {
-        id: "gmail", title: "Abrir o Gmail no Navegador", target: "none", body: "crm-gmail", lembrar: true,
+        id: "gmail", title: "Abrir o Gmail web no Navegador (com a barra do CRM)", target: "none", body: "crm-gmail", lembrar: true,
         text: "Abra o Navegador: o Gmail abre com a barra do CRM (entre na sua conta do Google, se ainda não entrou). Numa conversa, o painel \"CRM\" à direita mostra em que caixa ela está ou deixa adicionar a um pipeline; o botão \"CRM\" na lista abre o pipeline inteiro.",
         done: (_st, _f, c) => c.navegador.extensaoEmbutida && c.navegador.tabs > 0,
       },
@@ -751,7 +796,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "crm-whatsapp",
-    number: 17,
+    number: 18,
     needs: ["crm"],
     after: "navegador",
     needsCrmStreak: true,

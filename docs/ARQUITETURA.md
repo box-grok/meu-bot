@@ -46,7 +46,7 @@ Regras:
 | `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts` (área Grupos e os passos do tutorial), `guarda-guia.ts`, `chat.ts` |
 | `tutoriais/` | Só o motor: `tutoriais.ts` (guia ao vivo), `catalogo.ts` (página Tutoriais, os cartões), `passos.ts` (registro body → quem desenha o passo), `fontes.ts` (registro fonte → fatia do `GuideContext`; `montarGuideCtx()` junta), `guia-secoes.ts` (passos e fontes sem domínio: suporte, status line) |
 | `crm/` | Passo do CRM no guia (instalação, chave, pipeline, teste) |
-| `finance/`, `conta-google/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, páginas do meu-bot-admin |
+| `finance/`, `conta-google/`, `gmail/`, `admin/` | Finanças (e o passo dela no guia), Conta Google, Gmail (`gmail-page.ts` e `gmail-guia.ts`, o tutorial 16), páginas do meu-bot-admin |
 | `navegador/`, `terminal/` | Aba Navegador (abas, espaços, favoritos, notificações, zoom; `navegador-guia.ts` = passos do tutorial e `abrirLinkDoChat`) e abas de terminal |
 | `conversa/` | Envio e streaming (`envio.ts`), voltar ao chat (`ponte-chat.ts`), ferramentas em uso (`atividade.ts`) |
 | `inicio/`, `acervo/`, `licenca/` | Abertura/onboarding/tour, Acervo de skills e objetivo, plano e licença |
