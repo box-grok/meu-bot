@@ -12,6 +12,9 @@ const bar = $<HTMLElement>("depuracao-bar");
 const buildEl = $<HTMLElement>("dep-build");
 const feedEl = $<HTMLElement>("dep-feed");
 const saudeEl = $<HTMLElement>("dep-saude");
+const listaEl = $<HTMLElement>("dep-lista");
+/** A lista das últimas ações, aberta pelo clique no fluxo. */
+let aberta = false;
 let ligada = false;
 /** Hora (deste relógio) em que o último tique do main chegou; null = nenhum ainda. */
 let ultimoTique: number | null = null;
@@ -32,7 +35,21 @@ function pintar(): void {
   saudeEl.textContent = [textoSaude(b, b.ok ? null : marca), rotuloTunel(st?.state ?? null), rotuloReversos(navPorta, gmailPorta)].filter((x) => x !== "").join(" · ");
   const ultimo = eventos[eventos.length - 1];
   feedEl.textContent = ultimo !== undefined ? linhaEvento(ultimo, hora) : "sem ações de fora ainda";
-  feedEl.title = eventos.slice(-6).reverse().map((e) => linhaEvento(e, hora)).join("\n");
+  feedEl.classList.toggle("dep-nota", ultimo?.origem === "nota");
+  feedEl.title = ultimo !== undefined ? "clique para ver as últimas ações" : "";
+  listaEl.hidden = !aberta;
+  if (aberta) pintarLista();
+}
+/** As últimas 6 ações, mais nova primeiro; cada uma abre o JSON do pedido. */
+function pintarLista(): void {
+  listaEl.replaceChildren();
+  for (const e of eventos.slice(-6).reverse()) {
+    const d = document.createElement("details"); d.className = `dep-item${e.ok ? "" : " dep-erro"}${e.origem === "nota" ? " dep-nota" : ""}`;
+    const sum = document.createElement("summary"); sum.textContent = linhaEvento(e, hora) + (e.ms !== null ? ` · ${e.ms} ms` : "");
+    const pre = document.createElement("pre"); pre.textContent = JSON.stringify({ origem: e.origem, dono: e.dono, rota: e.rota, ok: e.ok, ms: e.ms, em: new Date(e.em).toISOString(), detalhe: e.detalhe ?? null }, null, 1);
+    d.append(sum, pre); listaEl.append(d);
+  }
+  if (eventos.length === 0) listaEl.textContent = "nada chegou de fora ainda";
 }
 function aplicarEstado(e: EstadoDepuracao): void {
   ligada = e.ligado; eventos = e.eventos; ultimoTique = Date.now(); marca = e.batimento.marca;
@@ -42,6 +59,7 @@ function aplicarEstado(e: EstadoDepuracao): void {
 }
 /** Liga eventos e o estado inicial; o renderer.ts chama uma vez (depois de ligarEnvio, que mantém ctx.hostStatus). */
 export function ligarFaixaDepuracao(): void {
+  feedEl.addEventListener("click", () => { aberta = !aberta; pintar(); });
   void window.meuBot.getWindowInfo().then((i) => { if (i !== null) buildEl.textContent = rotuloBuild(i.version, i.compilacao); }).catch(() => undefined);
   void window.meuBot.depuracaoEstado().then(aplicarEstado).catch(() => undefined);
   window.meuBot.on("depuracao:estado", aplicarEstado);

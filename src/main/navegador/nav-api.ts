@@ -20,6 +20,7 @@ import type { WebContents } from "electron";
 import { DONO_LEGADO, abasParaRecarregar, decidirAbrir, donoTexto, escolherAba, limpar, parseDono, podeFechar, tomar, abasDe, type Dono, type Posse, type Tipo } from "./nav-donos-core";
 import { browserActiveWcId, browserAsk, browserDonos, browserConsole, browserExtensions, browserFavoriteAdd, browserFavoriteRemove, browserFavorites, browserServiceWorkers, browserWebContents } from "./browser";
 import { log } from "../maquina/tunnel";
+import { registrarAcao } from "../app/depuracao";
 
 const sanit = (h: string): string => h.replace(/[^A-Za-z0-9_-]/g, "_");
 export const navSocketPath = (host: string): string => path.join(controlDir(), `nav-${sanit(host)}.sock`);
@@ -237,11 +238,13 @@ async function handle(host: string, req: http.IncomingMessage, res: http.ServerR
   const dono = parseDono(req.headers["x-meu-bot-dono"]) ?? DONO_LEGADO;
   // Primeira vez de cada conversa: registra quem é (no WhatsApp mostra se veio a chave da sessão ou um id por processo).
   if (dono !== null && !vistos.has(dono.id)) { vistos.add(dono.id); log(`[navegador ${host}] conversa nova usando o Navegador: ${dono.origem} · ${dono.id} · ${dono.rotulo}`); }
-  try { send(200, await act(host, route, body, dono)); }
+  const t0 = Date.now();
+  try { const r = await act(host, route, body, dono); send(200, r); registrarAcao({ origem: "navegador", dono, rota: route, corpo: body as Record<string, unknown>, t0, resultado: r }); }
   catch (e) {
     const st = (e as { status?: number }).status ?? 400;
     const msg = (e instanceof Error ? e.message : String(e)) || "a ação falhou sem mensagem (a aba pode ter mudado); chame 'abas' e tente de novo";
     log(`[navegador ${host}] ${route}${dono !== null ? ` (${dono.origem}: ${dono.id})` : ""} → ${st}: ${msg.slice(0, 200)}`);
+    registrarAcao({ origem: "navegador", dono, rota: route, corpo: body as Record<string, unknown>, t0, erro: msg });
     send(st, { erro: msg });
   }
 }

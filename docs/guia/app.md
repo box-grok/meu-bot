@@ -2,6 +2,21 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Modo de depuração: o fluxo de ações e a `nota` (1 nov 2026, fase 2)
+
+- **O que entra no fluxo:** cada pedido que chega pelos sockets de controle, com sucesso ou erro, no `handle()` de
+  `nav-api.ts`, `gmail-api.ts` e `term-api.ts`: `registrarAcao({ origem, dono, rota, corpo, t0, resultado | erro })`
+  (`app/depuracao.ts`). O resumo por rota é puro (`app/depuracao-core.ts`, testado): "`https://… → aba 5 (nova)`",
+  "`fechou a aba 5 → recarregou [4]`", "`busca "from:ana" → 3 mensagens`", "`digitou 6 caracteres no t1 + Enter`". O
+  detalhe (JSON na faixa) é o pedido com textos cortados em 200 caracteres e sem payload de `/ler` e `/print`.
+  Sondas (`/abas`, `/terminais`, `/status`, `/diag`) entram uma vez a cada 30 s por rota; as outras só no log. As
+  linhas dos instaladores (`navegador:progress`, `crm:progress`…, `client.ts`) entram como origem `hook`.
+- **Rotas novas no `term.sock`:** `POST /nota {texto}` (quem dirige o app de fora anuncia o que vai fazer; aparece
+  destacada na faixa) e `POST /depuracao {on: true|false|null}` (liga/desliga; sem `on`, só consulta).
+- **Na faixa:** o centro mostra a última ação; clicar abre a lista das últimas 6 (mais nova primeiro), cada uma com o
+  JSON do pedido; erro em vermelho, nota em destaque. `--depuracao-travar` passou a valer só no canal staging:
+  produção não tem botão de travar.
+
 ## Modo de depuração: faixa no topo com build, batimento do main e túnel (1 nov 2026, fase 1)
 
 - **Por quê:** em 31 out, depurando o app de fora, fiquei cego duas vezes: o build instalado não era o meu, e o
