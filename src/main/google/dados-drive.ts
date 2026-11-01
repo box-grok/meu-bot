@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
-import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoEmBuffer, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoNoTar, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
 import { lerSenhaBackup } from "./senha-backup";
@@ -91,8 +91,8 @@ async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): P
   if (cru === null) return "ausente";
   // O que sobe sem cifra passa por varredura antes: achou cara de segredo, não sobe e a tela diz o porquê.
   if (c.cifrar !== true) {
-    const tipo = achaSegredoEmBuffer(gunzipSync(cru));
-    if (tipo !== null) throw new Error(`encontrei o que parece um ${tipo} no pacote; não sobe sem cifra. Confira o conteúdo ou mova o conjunto para cifrado`);
+    const achado = achaSegredoNoTar(gunzipSync(cru));
+    if (achado !== null) throw new Error(`encontrei o que parece um ${achado.tipo}${achado.arquivo !== null ? ` em ${achado.arquivo}` : ""} no pacote; não sobe sem cifra. Confira esse arquivo (apague a linha, ou tire-o do conjunto) ou mova o conjunto para cifrado`);
   }
   const pacote = senha === null ? cru : await cifrarPacote(cru, senha);
   const { pastas, arquivo } = caminhoDadosNoDrive(host, c, Date.now());

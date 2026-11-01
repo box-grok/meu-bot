@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { achaSegredo, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, achaSegredoNoTar, ehPlaceholder, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -289,4 +289,34 @@ test("refreshRecusadoDeVez: revogado, vencido ou de outro client (Unauthorized) 
   const { refreshRecusadoDeVez } = await import("../../src/main/google/google-core.ts");
   for (const m of ["invalid_grant", "Token has been expired or revoked.", "Unauthorized", "unauthorized_client"]) assert.equal(refreshRecusadoDeVez(m), true, m);
   for (const m of ["Google respondeu 500", "fetch failed", "Rate Limit Exceeded"]) assert.equal(refreshRecusadoDeVez(m), false, m);
+});
+
+test("achaSegredo ignora placeholder de documentação (ghp_xxxx…, sk-XXXX…, caractere repetido) e ainda pega o token real ao lado", () => {
+  assert.equal(ehPlaceholder("ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"), true);
+  assert.equal(ehPlaceholder("sk-XXXXXXXXXXXXXXXXXXXXXXXXXX"), true);
+  assert.equal(ehPlaceholder("ghp_aaaaaaaaaaaaaaaaaaaaaaaa"), true);
+  assert.equal(ehPlaceholder("ghp_abcdefghijklmnopqrstuvwxyz0123456789"), false);
+  assert.equal(ehPlaceholder("AKIAIOSFODNN7EXAMPLE"), false, "o exemplo oficial da AWS continua contando: parece real");
+  assert.equal(achaSegredo('GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"'), null);
+  assert.equal(achaSegredo('ex: "ghp_xxxxxxxxxxxxxxxxxxxxxxxx" e o meu ghp_abcdefghijklmnopqrstuvwxyz0123456789'), "token do GitHub");
+});
+
+function entradaTar(nome, conteudo) {
+  const h = Buffer.alloc(512); const c = Buffer.from(conteudo, "utf8");
+  h.write(nome, 0, 100, "latin1"); h.write("0000644\0", 100); h.write("0000000\0", 108); h.write("0000000\0", 116);
+  h.write(c.length.toString(8).padStart(11, "0") + "\0", 124); h.write("00000000000\0", 136); h.write("        ", 148); h.write("0", 156); h.write("ustar\0", 257); h.write("00", 263);
+  let soma = 0; for (let i = 0; i < 512; i++) soma += h[i];
+  h.write(soma.toString(8).padStart(6, "0") + "\0 ", 148);
+  const corpo = Buffer.alloc(Math.ceil(c.length / 512) * 512); c.copy(corpo);
+  return Buffer.concat([h, corpo]);
+}
+const tar = (...entradas) => Buffer.concat([...entradas, Buffer.alloc(1024)]);
+
+test("achaSegredoNoTar: diz o arquivo onde achou; placeholder numa referência não derruba; buffer que não é tar varre inteiro", () => {
+  const limpo = tar(entradaTar("./agent-workspace/notas.md", "lançamento de 1.200,00"), entradaTar("./.hermes/skills/x/references/native-mcp.md", 'GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"'));
+  assert.equal(achaSegredoNoTar(limpo), null);
+  const sujo = tar(entradaTar("./agent-workspace/notas.md", "ok"), entradaTar("./chat-workspace/.env.exemplo", "GH=ghp_abcdefghijklmnopqrstuvwxyz0123456789"));
+  assert.deepEqual(achaSegredoNoTar(sujo), { tipo: "token do GitHub", arquivo: "chat-workspace/.env.exemplo" });
+  assert.deepEqual(achaSegredoNoTar(Buffer.from("texto solto com sk-abcdefghijklmnopqrstuvwxyz0123456789", "utf8")), { tipo: "chave de API (sk-…)", arquivo: null });
+  assert.equal(achaSegredoNoTar(Buffer.from("nada aqui", "utf8")), null);
 });

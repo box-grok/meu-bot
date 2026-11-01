@@ -323,3 +323,15 @@ mostrava a conta do dono e desconectar numa máquina desconectava todas (agente-
   passando pelo mesmo `assertAcesso` do botão (sem Pro, nada sobe; a página mostra o bloqueio). O arquivo antigo com
   `gmailAgentHosts` é só ignorado: quem tinha ligado continua ligado, quem nunca ligou passa a ter. "Desligar para o
   agente" continua valendo e fica lembrado. Teste em `settings-normalize.test.mjs`.
+
+
+## Varredura do backup: diz o arquivo e ignora placeholder (1 nov)
+
+- **O que acontecia:** o conjunto Trabalho da meu-root-root não subia desde 31 out: "encontrei o que parece um token
+  do GitHub no pacote; não sobe sem cifra", sem dizer onde. Era `.hermes/skills/autonomous-ai-agents/hermes-agent/
+  references/native-mcp.md`, um documento de referência de skill com `ghp_xxxx…` de exemplo.
+- **Agora:** `achaSegredo` ignora valores claramente de exemplo (`ehPlaceholder`: `ghp_xxxx…`, `sk-XXXX…`, um
+  caractere repetido; o exemplo oficial da AWS continua contando) e `achaSegredoNoTar` percorre o pacote entrada por
+  entrada e devolve o arquivo: a mensagem passa a ser "…token do GitHub em chat-workspace/.env.exemplo…; confira
+  esse arquivo (apague a linha, ou tire-o do conjunto) ou mova o conjunto para cifrado". Testes em
+  `google-core.test.mjs` com um tar montado à mão.
