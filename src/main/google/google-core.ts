@@ -307,8 +307,55 @@ const SEGREDOS: readonly { tipo: string; re: RegExp }[] = [
  * segredo, devolve o tipo e o envio aborta. "Verificado limpo hoje" vira "verificado limpo a cada envio".
  */
 export function achaSegredo(texto: string): string | null {
-  for (const s of SEGREDOS) if (s.re.test(texto)) return s.tipo;
+  for (const s of SEGREDOS) {
+    const re = new RegExp(s.re.source, "g");
+    for (const m of texto.matchAll(re)) if (!ehPlaceholder(m[0])) return s.tipo;
+  }
   return null;
+}
+/**
+ * Exemplo de documentação, não credencial (1 nov): `ghp_xxxxxxxx…`, `sk-XXXX…`, um caractere repetido. Era o caso
+ * de um `references/native-mcp.md` de uma skill do Hermes que travava o backup do conjunto Trabalho por dias.
+ */
+export function ehPlaceholder(valor: string): boolean {
+  const corpo = valor.replace(/^(ghp_|sk-|AKIA|eyJ)/, "");
+  return /^(.)\1*$/.test(corpo) || /^[xX0-9_.-]*[xX]{6,}[xX0-9_.-]*$/.test(corpo);
+}
+/**
+ * Varre um tar (o pacote descomprimido) entrada por entrada e diz em que arquivo achou: a mensagem de erro deixa de
+ * ser um "tem segredo em algum lugar" que ninguém consegue conferir. Cabeçalho inválido (não é tar): varre o buffer
+ * inteiro como antes, sem nome de arquivo.
+ */
+export function achaSegredoNoTar(dados: Buffer): { tipo: string; arquivo: string | null } | null {
+  // Não começa com um cabeçalho de tar válido (buffer curto, texto solto): varre inteiro, sem nome de arquivo.
+  if (dados.length < 512 || !checksumTarOk(dados.subarray(0, 512))) { const tipo = achaSegredoEmBuffer(dados); return tipo === null ? null : { tipo, arquivo: null }; }
+  let off = 0; let nomeLongo: string | null = null;
+  const campo = (ini: number, n: number): string => dados.subarray(ini, ini + n).toString("latin1").replace(/\0.*$/s, "");
+  while (off + 512 <= dados.length) {
+    const h = dados.subarray(off, off + 512);
+    if (h.every((b) => b === 0)) break;
+    if (!checksumTarOk(h)) return (() => { const tipo = achaSegredoEmBuffer(dados); return tipo === null ? null : { tipo, arquivo: null }; })();
+    const tamanho = parseInt(campo(off + 124, 12).trim() || "0", 8);
+    const tipoEntrada = String.fromCharCode(h[156] ?? 0);
+    const prefixo = campo(off + 345, 155);
+    const nome = nomeLongo ?? (prefixo !== "" ? `${prefixo}/${campo(off, 100)}` : campo(off, 100));
+    nomeLongo = null;
+    const ini = off + 512; const fim = Math.min(dados.length, ini + tamanho);
+    if (tipoEntrada === "L") nomeLongo = dados.subarray(ini, fim).toString("utf8").replace(/\0.*$/s, "");
+    else if (tipoEntrada === "0" || tipoEntrada === "\0" || tipoEntrada === "") {
+      const tipo = achaSegredoEmBuffer(dados.subarray(ini, fim));
+      if (tipo !== null) return { tipo, arquivo: nome.replace(/^\.\//, "") };
+    }
+    off = ini + Math.ceil(tamanho / 512) * 512;
+  }
+  return null;
+}
+function checksumTarOk(h: Buffer): boolean {
+  const dito = parseInt(h.subarray(148, 156).toString("latin1").replace(/[^0-7]/g, " ").trim() || "-1", 8);
+  if (!Number.isFinite(dito) || dito < 0) return false;
+  let soma = 0;
+  for (let i = 0; i < 512; i++) soma += i >= 148 && i < 156 ? 32 : (h[i] ?? 0);
+  return soma === dito;
 }
 /**
  * A mesma varredura num pacote descomprimido grande: por janelas com sobra, porque virar o pacote inteiro numa string
