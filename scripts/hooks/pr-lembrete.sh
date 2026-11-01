@@ -37,7 +37,8 @@ while IFS= read -r dir; do
   sha=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null) || continue
   carimbo="$RAIZ/.claude/.pr-check-$(printf '%s' "$branch" | tr '/' '_')-$sha"
   [ -e "$carimbo" ] && continue
-  if ! pr=$(gh pr list -R "$REPO" --head "$DONO_FORK:$branch" --state open --json number -q '.[0].number' 2>>"$LOG"); then
+  # `--head dono:branch` não acha PR vinda de fork no gh; `--head branch` acha, e o dono do head é conferido no JSON.
+  if ! pr=$(gh pr list -R "$REPO" --head "$branch" --state open --json number,headRepositoryOwner -q ".[] | select(.headRepositoryOwner.login == \"$DONO_FORK\") | .number" 2>>"$LOG"); then
     log "gh falhou para $branch (sem login ou sem rede); nada a fazer"; exit 0
   fi
   touch "$carimbo"
