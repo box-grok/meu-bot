@@ -33,8 +33,9 @@ function fake(modo = {}) {
     }
     const fatia = st.corpo.subarray(inicio);
     if (st.cortaEm !== undefined && st.pedidos.length === 1) {
-      res.write(fatia.subarray(0, st.cortaEm));
-      setTimeout(() => res.socket?.destroy(), 20);
+      // Derruba só depois de o pedaço sair para o cliente (callback do write): com um tempo fixo, num runner lento o
+      // cliente ainda não tinha recebido nada, o .partial ficava vazio e a 2.ª tentativa recomeçava do zero (retomadas = 0).
+      res.write(fatia.subarray(0, st.cortaEm), () => setTimeout(() => res.socket?.destroy(), 50));
       return;
     }
     res.end(fatia);
