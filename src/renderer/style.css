@@ -29,7 +29,12 @@ body {
 .topbar-mini { grid-row: 1; } .offline-bar { grid-row: 2; } .update-bar:not(.offline-bar) { grid-row: 3; } .depuracao-bar { grid-row: 4; } .topbar { grid-row: 5; }
 .body { grid-row: 6; } .ctx-line { grid-row: 7; } .composer, .composer-mini { grid-row: 8; } /* nunca as duas ao mesmo tempo */
 /* Faixa de depuração (31 out): monoespaçada e discreta; vermelha quando o main para de bater. */
-.depuracao-bar { display: flex; align-items: center; gap: 12px; padding: 2px 10px; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-bottom: 1px solid var(--line); color: var(--muted); }
+.depuracao-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding: 2px 10px; font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: color-mix(in srgb, var(--accent) 10%, var(--card)); border-bottom: 1px solid var(--line); color: var(--muted); }
+.dep-feed { cursor: pointer; } .dep-feed.dep-nota, .dep-item.dep-nota > summary { color: var(--accent); font-weight: 600; }
+.dep-lista { grid-column: 1 / -1; max-height: 7.5em; overflow: auto; border-top: 1px dashed var(--line); padding-top: 2px; }
+.dep-lista[hidden] { display: none; }
+.dep-item > summary { cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .dep-item.dep-erro > summary { color: var(--bad); }
+.dep-item > pre { margin: 2px 0 4px 12px; font-size: 10px; white-space: pre-wrap; color: var(--fg); }
 .depuracao-bar[hidden] { display: none; }
 .dep-build, .dep-saude { white-space: nowrap; }
 .dep-feed { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

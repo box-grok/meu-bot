@@ -1,0 +1,73 @@
+/** Modo de depuração, parte pura: o resumo de uma ação por rota, o detalhe sem payload pesado, as sondas agrupadas e a poda do anel. */
+export type Corpo = Record<string, unknown>;
+const str = (v: unknown, n = 80): string => (typeof v === "string" ? v : v === undefined || v === null ? "" : JSON.stringify(v)).slice(0, n);
+const num = (v: unknown): string => (typeof v === "number" ? String(v) : "");
+const texto = (v: unknown): number => (typeof v === "string" ? v.length : 0);
+
+/** Uma linha curta que diz o que a ação fez, a partir do pedido e da resposta (ou do erro). */
+export function resumoAcao(origem: string, rota: string, corpo: Corpo, resultado: unknown, erro: string | null): string {
+  // A linha da faixa já marca o erro com ✗ depois da rota: aqui vai só a mensagem.
+  if (erro !== null) return erro.slice(0, 160);
+  const r = (resultado ?? {}) as Corpo;
+  if (origem === "navegador") {
+    switch (rota) {
+      case "/abas": return `${Array.isArray(r["abas"]) ? (r["abas"] as unknown[]).length : "?"} aba(s)`;
+      case "/abrir": return `${str(corpo["url"], 100)} → aba ${num(r["aba"])}${corpo["nova"] === true ? " (nova)" : ""}`;
+      case "/fechar": { const rec = Array.isArray(r["recarregadas"]) ? (r["recarregadas"] as unknown[]) : []; return `fechou a aba ${num(r["fechada"])}${rec.length > 0 ? ` → recarregou [${rec.join(", ")}]` : ""}`; }
+      case "/ler": return `aba ${num(r["aba"])}: ${str(r["title"], 60)}${Array.isArray(r["elements"]) ? ` · ${(r["elements"] as unknown[]).length} elementos` : ""}`;
+      case "/clicar": return `clicou ${corpo["n"] !== undefined ? `no ${num(corpo["n"])}` : corpo["texto"] !== undefined ? `em "${str(corpo["texto"], 40)}"` : `em ${str(corpo["seletor"], 40)}`}`;
+      case "/digitar": return `digitou ${texto(corpo["texto"])} caracteres${corpo["n"] !== undefined ? ` no ${num(corpo["n"])}` : ""}${corpo["enter"] === true ? " + Enter" : ""}`;
+      case "/tecla": return `tecla ${str(corpo["tecla"], 20)}`;
+      case "/print": return `print da aba ${num(r["aba"]) || "atual"}`;
+      case "/js": return `js: ${texto(corpo["codigo"])} caracteres`;
+      case "/recarregar": case "/voltar": case "/avancar": return `aba ${num(r["aba"])}: ${str(r["url"], 80)}`;
+      default: break;
+    }
+  }
+  if (origem === "gmail") {
+    switch (rota) {
+      case "/status": return r["conectada"] === true ? `conectada${typeof r["conta"] === "string" ? ` (${r["conta"]})` : ""}` : "sem conta";
+      case "/listar": return `${corpo["busca"] !== undefined && corpo["busca"] !== "" ? `busca "${str(corpo["busca"], 40)}"` : "caixa de entrada"} → ${Array.isArray(r["mensagens"]) ? (r["mensagens"] as unknown[]).length : "?"} mensagens`;
+      case "/ler": return `leu ${str(corpo["id"], 24)}: ${str(r["assunto"], 60)}`;
+      case "/apagar": return `lixeira: ${str(r["assunto"], 60) || str(corpo["id"], 24)}`;
+      case "/restaurar": return `restaurou ${str(corpo["id"], 24)}`;
+      default: break;
+    }
+  }
+  if (origem === "terminal") {
+    switch (rota) {
+      case "/terminais": return `${Array.isArray(r["terminais"]) ? (r["terminais"] as unknown[]).length : "?"} terminal(is)`;
+      case "/abrir": return `terminal ${num(r["terminal"])} em ${str(r["maquina"], 40)}`;
+      case "/ler": return `leu o terminal ${str(corpo["id"], 24)}`;
+      case "/digitar": return corpo["tecla"] !== undefined ? `tecla ${str(corpo["tecla"], 20)} no ${str(corpo["id"], 24)}` : `digitou ${texto(corpo["texto"])} caracteres no ${str(corpo["id"], 24)}${corpo["enter"] === true ? " + Enter" : ""}`;
+      case "/dividir": return `dividiu: ${str(r["direita"], 40)}`;
+      case "/juntar": return "juntou";
+      case "/nota": return str(corpo["texto"], 200);
+      case "/depuracao": return `modo ${r["ligado"] === true ? "ligado" : "desligado"}`;
+      default: break;
+    }
+  }
+  const chaves = Object.keys(corpo).filter((k) => corpo[k] !== undefined);
+  return chaves.length > 0 ? chaves.map((k) => `${k}=${str(corpo[k], 40)}`).join(" ") : "ok";
+}
+/** O pedido, para o JSON da faixa: textos longos cortados; as rotas que carregam a página inteira ficam sem payload. */
+export function detalheSeguro(rota: string, corpo: Corpo): Corpo | null {
+  if (rota === "/ler" || rota === "/print") return null;
+  const d: Corpo = {};
+  for (const [k, v] of Object.entries(corpo)) {
+    if (v === undefined) continue;
+    d[k] = typeof v === "string" && v.length > 200 ? `${v.slice(0, 200)}… (${v.length} caracteres)` : v;
+  }
+  return d;
+}
+/** As sondas (o agente perguntando "que abas há?", a máquina conferindo o /status) viriam a cada poucos segundos: uma por rota a cada 30 s basta. */
+export const SONDAS = new Set(["/abas", "/terminais", "/status", "/diag"]);
+export function deveEmitirSonda(ultimaEm: number | null, agora: number, intervaloMs = 30_000): boolean {
+  return ultimaEm === null || agora - ultimaEm >= intervaloMs;
+}
+/** Anel: no máximo `max` eventos e nada mais velho que `janelaMs`. Muta e devolve a lista. */
+export function podar<T extends { em: number }>(eventos: T[], agora: number, max = 300, janelaMs = 15 * 60_000): T[] {
+  const limite = agora - janelaMs;
+  while (eventos.length > 0 && (eventos.length > max || (eventos[0]?.em ?? 0) < limite)) eventos.shift();
+  return eventos;
+}

@@ -8,6 +8,8 @@
  * · POST /digitar {id, texto, enter?} | {id, tecla}
  * · POST /dividir {id} | {pagina: "navegador"|"tutoriais"|"acervo"|"vazia", maquina?}: mais uma coluna à direita (quantas a
  *   largura da janela comportar) · POST /juntar {id?|pagina?, maquina?}: tira essa coluna, ou todas
+ * · POST /nota {texto}: uma linha de quem está dirigindo o app de fora, para a faixa de depuração ("vou pedir ao agente…")
+ * · POST /depuracao {on: true|false|null}: liga/desliga o modo de depuração (null = padrão da variante)
  * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (o mesmo do Navegador, nav-donos-core.ts) e aparece como selo no
  * terminal ("✳️ Claude Code (Mac) · digitou"), para a pessoa saber quem está mexendo.
  */
@@ -21,10 +23,11 @@ import { liveTerminals, replayTerminal, terminalById, waitNewTerminal, writeTerm
 import { entradaDigitar, textoDoTerminal } from "./term-api-core";
 import { parseDono, type Dono } from "../navegador/nav-donos-core";
 import { log } from "../maquina/backend";
+import { estado as estadoDepuracao, evento as eventoDepuracao, registrarAcao, setDepuracao } from "../app/depuracao";
 
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
 
-interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown }
+interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown; on?: unknown }
 const PAGINAS = ["navegador", "tutoriais", "acervo", "vazia"] as const;
 
 /** Janela da máquina pedida (ou a última focada que tenha máquina). */
@@ -106,6 +109,16 @@ async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
       janela(b.maquina).webContents.send("ui:split", pagina === undefined || pagina === "vazia" ? { alvo: "juntar" } : { alvo: "juntar", pagina });
       return { ok: true };
     }
+    case "/nota": {
+      const texto = typeof b.texto === "string" ? b.texto.trim().slice(0, 500) : "";
+      if (texto === "") throw new Error("falta texto");
+      eventoDepuracao({ origem: "nota", dono: `${dono.rotulo} (${dono.origem})`, rota: "/nota", ok: true, ms: null, resumo: texto });
+      return { ok: true };
+    }
+    case "/depuracao": {
+      const e = b.on === true ? setDepuracao(true) : b.on === false ? setDepuracao(false) : b.on === null ? setDepuracao(null) : estadoDepuracao();
+      return { ligado: e.ligado, gravado: e.gravado, padraoDaVariante: e.padraoDaVariante, forcado: e.forcado };
+    }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });
   }
 }
@@ -131,11 +144,17 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     try { body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as Req; } catch { return send(400, { erro: "JSON inválido" }); }
   }
   const dono = parseDono(req.headers["x-meu-bot-dono"]) ?? SEM_ID;
+  const t0 = Date.now();
   try {
-    send(200, await act(route, body, dono));
+    const r = await act(route, body, dono);
+    send(200, r);
     if (route !== "/terminais" && route !== "/ler") log(`[terminal] controle (${dono.origem}: ${dono.id}): ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
+    // /nota já entrou no fluxo como "nota" dentro do act(); as outras rotas entram como ações do terminal.
+    if (route !== "/nota") registrarAcao({ origem: "terminal", dono, rota: route, corpo: body as Record<string, unknown>, t0, resultado: r });
   } catch (e) {
     const st = (e as { status?: number }).status ?? 400;
-    send(st, { erro: e instanceof Error ? e.message : String(e) });
+    const msg = e instanceof Error ? e.message : String(e);
+    registrarAcao({ origem: "terminal", dono, rota: route, corpo: body as Record<string, unknown>, t0, erro: msg });
+    send(st, { erro: msg });
   }
 }

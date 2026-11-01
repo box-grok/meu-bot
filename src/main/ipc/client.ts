@@ -18,6 +18,7 @@ import { financeAbc, financeImportarPlanilha, financeCategorias, financeComprova
 import { navWhatsappInfo, setNavWhatsapp } from "../navegador/navegador-whatsapp";
 import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
+import { eventoHook } from "../app/depuracao";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
 import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
@@ -190,12 +191,12 @@ export function registerClientIpc(): void {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
     if (h.host === LOCAL_HOST) throw new Error("este Mac não usa backend por SSH");
-    return instalarBackendDaMaquina(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("backend:install-progress", { line }); });
+    return instalarBackendDaMaquina(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("backend:install-progress", { line }), eventoHook("backend:install-progress", line)); });
   });
   handleClient("statusline:install", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("statusline:progress", { line }); });
+    return installStatusLine(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("statusline:progress", { line }), eventoHook("statusline:progress", line)); });
   });
   // Aba "Navegador" (módulo Pro): a sessão é da máquina da janela; abrir exige plano Pro (o renderer já bloqueia;
   // aqui é a defesa). Os <webview> são do renderer; o main só prepara a sessão e cuida das extensões.
@@ -281,7 +282,7 @@ export function registerClientIpc(): void {
   handleClient("finance:config-salvar", async (event, payload: unknown) => { const p = (payload ?? {}) as Record<string, unknown>; const patch: { taxas?: Record<string, number>; moedaExibicao?: string } = {}; if (p.taxas && typeof p.taxas === "object") { const t: Record<string, number> = {}; for (const [k, v] of Object.entries(p.taxas as Record<string, unknown>)) if (typeof v === "number" && Number.isFinite(v) && v > 0) t[k] = v; patch.taxas = t; } if (txt(p.moedaExibicao, 8)) patch.moedaExibicao = txt(p.moedaExibicao, 8)!; return financeConfig(await fin(event), patch); });
   handleClient("finance:mes", async (event, payload: unknown) => { const p = (payload ?? {}) as Record<string, unknown>; return financeMes(await fin(event), mesOk(p.mes), { ...(p.metaDireto === null || typeof p.metaDireto === "string" ? { metaDireto: p.metaDireto as string | null } : {}), ...(p.metaIndireto === null || typeof p.metaIndireto === "string" ? { metaIndireto: p.metaIndireto as string | null } : {}), ...(typeof p.metaNotas === "string" ? { metaNotas: p.metaNotas.slice(0, 500) } : {}), ...(p.orcamento === null || typeof p.orcamento === "string" ? { orcamento: p.orcamento as string | null } : {}), ...(p.rendaPrevista === null || typeof p.rendaPrevista === "string" ? { rendaPrevista: p.rendaPrevista as string | null } : {}), ...(typeof p.dinheiroInformado === "boolean" ? { dinheiroInformado: p.dinheiroInformado } : {}) }); });
   handleClient("finance:fechar-mes", async (event, payload: unknown) => { const host = await fin(event); const mes = mesOk((payload as { mes?: unknown } | null)?.mes); await financeFecharMes(host, mes); void registrar(host, "finance.fechar-mes", mes); });
-  handleClient("finance:install", async (event) => { const h = ctxOf(event); await assertFinance(h.host); const r = await installFinance(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("finance:progress", { line }); }); if (r.ok) void registrar(h.host, "finance.instalar"); return r; });
+  handleClient("finance:install", async (event) => { const h = ctxOf(event); await assertFinance(h.host); const r = await installFinance(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("finance:progress", { line }), eventoHook("finance:progress", line)); }); if (r.ok) void registrar(h.host, "finance.instalar"); return r; });
   // Módulos de produto (meu-bot-diego): só nos apps com caps().modulos; a licença (add-on do produto) é conferida no
   // main a cada ação e de novo pelo backend da máquina a cada turno.
   const modId = (p: unknown): string => { const id = p !== null && typeof p === "object" ? (p as { id?: unknown }).id : undefined; if (typeof id !== "string" || !/^[a-z][a-z0-9-]{1,40}$/.test(id) || caps().modulos === null) throw new Error("módulo inválido"); return id; };
@@ -338,7 +339,7 @@ export function registerClientIpc(): void {
     void registrar(h.host, "crm.pipeline-padrao", `"${r.pipelines.find((x) => x.key === key)?.name ?? key}"`);
     return r;
   });
-  handleClient("crm:install", async (event) => { const h = ctxOf(event); await assertAcesso(h.host); const r = await installCrm(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("crm:progress", { line }); }); if (r.ok) void registrar(h.host, "crm.instalar"); return r; });
+  handleClient("crm:install", async (event) => { const h = ctxOf(event); await assertAcesso(h.host); const r = await installCrm(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("crm:progress", { line }), eventoHook("crm:progress", line)); }); if (r.ok) void registrar(h.host, "crm.instalar"); return r; });
   handleClient("crm:set", (event, payload: unknown) => setCrm(ctxOf(event).host, payload));
   handleClient("crm:test", (event) => crmTest(ctxOf(event).host));
   handleClient("crm:reset", async (event) => { const h = ctxOf(event); await uninstallCrm(h.host).catch(() => undefined); void registrar(h.host, "crm.desinstalar"); return resetCrm(h.host); });
@@ -353,12 +354,12 @@ export function registerClientIpc(): void {
     return gmailAgente(h.host, on);
   });
   handleClient("gmail:status", (event) => gmailInstalled(ctxOf(event).host));
-  handleClient("gmail:install", (event) => { const h = ctxOf(event); return installGmail(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("gmail:progress", { line }); }); });
-  handleClient("navegador:install", (event) => { const h = ctxOf(event); return installNavegador(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("navegador:progress", { line }); }); });
+  handleClient("gmail:install", (event) => { const h = ctxOf(event); return installGmail(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("gmail:progress", { line }), eventoHook("gmail:progress", line)); }); });
+  handleClient("navegador:install", (event) => { const h = ctxOf(event); return installNavegador(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("navegador:progress", { line }), eventoHook("navegador:progress", line)); }); });
   handleClient("guarda:install", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
-    return installGuarda(h.host, (line) => { if (!h.win.isDestroyed()) h.win.webContents.send("guarda:progress", { line }); });
+    return installGuarda(h.host, (line) => { if (!h.win.isDestroyed()) (h.win.webContents.send("guarda:progress", { line }), eventoHook("guarda:progress", line)); });
   });
   handleClient("guarda:uninstall", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return uninstallGuarda(h.host); });
   // Segmentos da status line (preferência na máquina) e "Refazer do zero".

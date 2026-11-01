@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { controlDir } from "../app/control-dir";
 import { isGmailAgentHost, setGmailAgentHost } from "../app/settings";
+import { registrarAcao } from "../app/depuracao";
 import { sendToHost } from "../app/windows";
 import { assertAcesso } from "../licenca/acesso";
 import { log, onReverseState, onTunnelState, reversePort, setReverseWanted } from "../maquina/tunnel";
@@ -80,14 +81,18 @@ async function handle(host: string, req: http.IncomingMessage, res: http.ServerR
   }
   const dono = parseDono(req.headers["x-meu-bot-dono"]) ?? DONO_LEGADO;
   if (!vistos.has(dono.id)) { vistos.add(dono.id); log(`[gmail ${host}] conversa nova usando o Gmail: ${dono.origem} · ${dono.id} · ${dono.rotulo}`); }
+  const t0 = Date.now();
   try {
     // Recurso Pro: a mesma trava da página. Sem o plano, a máquina recebe 403 e o agente avisa a pessoa.
     if (route !== "/status") await assertAcesso(host).catch((e: unknown) => { throw erro(e instanceof Error ? e.message : String(e), 403); });
-    send(200, await act(host, route, body, dono));
+    const r = await act(host, route, body, dono);
+    send(200, r);
+    registrarAcao({ origem: "gmail", dono, rota: route, corpo: body as Record<string, unknown>, t0, resultado: r });
   } catch (e) {
     const st = (e as { status?: number }).status ?? 400;
     const msg = (e instanceof Error ? e.message : String(e)).replace(/^GMAIL_SEM_PERMISSAO$/, "a autorização desta conta é de antes da lixeira: peça à pessoa que reconecte a Conta Google uma vez").replace(/^GOOGLE_CONTA_DESCONECTADA$/, "a conta Google desconectou; peça à pessoa que entre de novo na página Conta Google") || "a ação falhou sem mensagem";
     log(`[gmail ${host}] ${route} (${dono.origem}: ${dono.id}) → ${st}: ${msg.slice(0, 200)}`);
+    registrarAcao({ origem: "gmail", dono, rota: route, corpo: body as Record<string, unknown>, t0, erro: msg });
     send(st, { erro: msg });
   }
 }
