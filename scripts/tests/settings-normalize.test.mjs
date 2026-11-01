@@ -112,3 +112,10 @@ test("agente do Gmail: ligado por padrão; só a lista de desligados é lembrada
   assert.deepEqual(s.gmailAgentDesligados, ["box-2"]);
   assert.equal("gmailAgentHosts" in s, false);
 });
+
+test("modo de depuração: null por padrão (a variante decide); true/false gravados; lixo vira null", () => {
+  assert.equal(defaultSettings().depuracao, null);
+  assert.equal(normalizeSettings({ version: 1, depuracao: true }).depuracao, true);
+  assert.equal(normalizeSettings({ version: 1, depuracao: false }).depuracao, false);
+  assert.equal(normalizeSettings({ version: 1, depuracao: "sim" }).depuracao, null);
+});

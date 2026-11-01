@@ -3,6 +3,7 @@
  * do macOS). Arquivo userData/tailscale-oauth.bin, modo 0600, escrito com tmp + rename. Nunca vai
  * para o renderer: ele só recebe {configured, encryptionAvailable}. Nunca é logada.
  */
+import { marcar } from "./depuracao";
 import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +41,7 @@ export function saveTailscaleCredential(clientIdRaw: string, clientSecretRaw: st
 export function loadTailscaleCredential(): TailscaleCredential | null {
   try {
     const blob = fs.readFileSync(file());
+    marcar("safeStorage: credencial do Tailscale");
     const j = JSON.parse(safeStorage.decryptString(blob)) as { clientId?: unknown; clientSecret?: unknown };
     if (typeof j.clientId !== "string" || typeof j.clientSecret !== "string") return null;
     return { clientId: j.clientId, clientSecret: j.clientSecret };

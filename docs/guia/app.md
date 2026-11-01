@@ -2,6 +2,32 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Modo de depuração: faixa no topo com build, batimento do main e túnel (1 nov 2026, fase 1)
+
+- **Por quê:** em 31 out, depurando o app de fora, fiquei cego duas vezes: o build instalado não era o meu, e o
+  processo principal travou num diálogo do Chaveiro ("meu-bot Safe Storage") sem que a tela dissesse nada. A
+  informação existia no app e não estava visível.
+- **O que é:** `#depuracao-bar` (`src/renderer/depuracao/faixa.ts`, molde da faixa OFFLINE): esquerda o build
+  ("v0.4.0 · branch · commit", de `Resources/build.json`, que o `package.mjs` grava com `git rev-parse`/`branch`;
+  em dev, "dev"); centro a última ação que chegou de fora (a fase 2 traz o fluxo inteiro); direita a saúde: "main ok"
+  ou, em vermelho, "main sem responder há N s · última marca: …", mais o túnel e os reversos (`nav :porta ·
+  gmail :porta`). Regra pura e testada em `lib/depuracao-core.ts`.
+- **Batimento:** `src/main/app/depuracao.ts` faz `broadcast("depuracao:batimento")` a cada 1 s. Uma chamada síncrona
+  (safeStorage com o diálogo do Chaveiro na tela, spawn do ssh) prende o fio de JS do main e o tique para junto; a
+  janela acusa com mais de 3 s sem tique. `marcar(texto)` anuncia a próxima chamada síncrona (antes de
+  `safeStorage.decryptString` em conta-google, senha-backup e secrets; antes dos `spawn` do ssh em tunnel.ts), então a
+  última marca já está na janela quando o main trava. `--depuracao-travar=<ms>` (só com o modo ligado) prende o
+  main de propósito 10 s depois de subir, para conferir que a faixa acusa e volta.
+- **Ligado onde:** `--depuracao` força neste processo; senão o gravado (`settings.depuracao: true|false|null`,
+  paleta "Modo de depuração: ligar/desligar", vale para todas as janelas); senão o padrão da variante: ligado no
+  staging (`caps().canal === "staging"`). IPC: `window:info` traz `depuracao` e `compilacao`; canais
+  `depuracao:estado`/`depuracao:ligar`; eventos `depuracao:batimento`, `depuracao:estado`, `depuracao:evento`.
+- **A trava do Chaveiro, corrigida na raiz:** `conta-google.ts` decifra cada arquivo de token uma vez e lembra em
+  memória (`decifrados`; gravar/apagar invalida; falha ao decifrar não entra no cache). Antes, `contaStatus(host)`
+  decifrava a cada sonda do socket do Gmail e a cada religamento, e cada build ad-hoc novo reabria o pedido de senha.
+  **Preparar máquina de desenvolvimento:** rodar uma vez `node scripts/assinatura.mjs --criar` (certificado local
+  "meu-bot local"); sem ele a assinatura muda a cada build e o macOS pede a senha de novo.
+
 ## Fluxo: worktree por PR, conferência pelo DevTools remoto, rebuild enxuto e lembrete de PR (31 out 2026)
 
 - **O que aconteceu nas PRs #48 a #54:** duas sessões (Claude e Cursor) no mesmo checkout trocavam de branch uma

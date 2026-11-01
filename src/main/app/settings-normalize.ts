@@ -60,6 +60,8 @@ export interface SettingsFile {
   navEspacos: Record<string, NavWorkspaces>;
   /** Reiniciar sozinho na versão nova com o Mac ocioso (como o Grok Bot; ligado por padrão). */
   atualizarOcioso: boolean;
+  /** Modo de depuração: true/false gravado pela pessoa; null = o padrão da variante (ligado no staging). */
+  depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
   abaFixa: AbaFixa;
 }
@@ -153,7 +155,7 @@ const validHost = (v: unknown): string | null => (typeof v === "string" && isVal
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, abaFixa: "padrao",
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, depuracao: null, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -195,6 +197,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),
     atualizarOcioso: typeof p["atualizarOcioso"] === "boolean" ? p["atualizarOcioso"] : true,
+    depuracao: p["depuracao"] === true ? true : p["depuracao"] === false ? false : null,
     abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",
   };
 }

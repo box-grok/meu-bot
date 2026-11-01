@@ -42,6 +42,7 @@ Regras:
 | Pasta | Do que é dona |
 |---|---|
 | `app/` | `ctx.ts` (ponte para o renderer), `paginas.ts` (páginas em aba própria e modo dividido), `rede.ts` (barra offline) |
+| `depuracao/` | `faixa.ts`: a faixa do modo de depuração no topo (build, batimento do main, túnel, o que chega de fora); regra pura em `lib/depuracao-core.ts`; o lado do main é `src/main/app/depuracao.ts` |
 | `agente/` | Entrar no Claude Code, contas do Claude (rodízio), xAI (Grok) e o passo do fallback, oferta de skill depois de navegar; guias de domínio: `objetivo-guia.ts` (objetivo do WhatsApp, estado e passos), `contas-cli-guia.ts` (Cloudflare, GitHub), `link-publico-guia.ts` |
 | `whatsapp/` | `agente-whatsapp.ts` (linha, pareamento, política, voz), `conversas.ts` (lista e marcas), `grupos.ts` (área Grupos e os passos do tutorial), `guarda-guia.ts`, `chat.ts` |
 | `tutoriais/` | Só o motor: `tutoriais.ts` (guia ao vivo), `catalogo.ts` (página Tutoriais, os cartões), `passos.ts` (registro body → quem desenha o passo), `fontes.ts` (registro fonte → fatia do `GuideContext`; `montarGuideCtx()` junta), `guia-secoes.ts` (passos e fontes sem domínio: suporte, status line) |

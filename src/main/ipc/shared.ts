@@ -40,7 +40,7 @@ import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-
 import { gmailAgenteParar } from "../google/gmail-api";
 import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
-import { caps } from "../app/variant";
+import { caps, compilacao } from "../app/variant";
 import { whatsappArchiveToCrm, whatsappGroupArchiveToCrm } from "../crm/whatsapp-crm";
 import { assertAcesso, assertCrmProprio } from "../licenca/acesso";
 import { waGroupAgente, waGroupDeleted, waGroupMenuTemplate, waMenuState, waMenuTemplate, type WaMenuCaps, type WaMenuEntry } from "../whatsapp/wa-menu";
@@ -53,6 +53,7 @@ function waMenuCapsOf(host: string): WaMenuCaps | null {
 }
 import { EXTERNAL_URL, hostFromEvent, waJid, waNumber, windowFromEvent } from "./context";
 import { handleShared, onShared } from "./registry";
+import { estado as estadoDepuracao, modoDepuracao, setDepuracao } from "../app/depuracao";
 
 export interface SharedIpcDeps {
   /** No meu-bot-admin: a pessoa dona da máquina e o apelido dela para ela (vem de admin/support-admin.ts; aqui só se injeta). */
@@ -76,7 +77,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (ctx === null) return null;
     const c = caps();
     const p = c.supportAdmin ? deps.person(ctx.host) : null;
-    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion(), build: appBuildId() };
+    return { host: ctx.host, models: knownModels(ctx.host), caps: c, person: p?.name ?? null, machine: p?.machine ?? null, version: app.getVersion(), build: appBuildId(), depuracao: modoDepuracao(), compilacao: compilacao() };
   });
   // Zoom da janela (interface inteira): só de uma janela de máquina; payload fora do contrato é ignorado.
   handleShared("window:zoom", (event, action: unknown) => {
@@ -85,6 +86,9 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return a === null ? currentZoom() : changeWindowZoom(a);
   });
   handleShared("ui:open-picker", () => showPicker());
+  // Modo de depuração (faixa no topo): estado com os últimos eventos, e ligar/desligar para todas as janelas.
+  handleShared("depuracao:estado", () => estadoDepuracao());
+  handleShared("depuracao:ligar", (_event, payload: unknown) => { const on = (payload as { on?: unknown } | null)?.on; return setDepuracao(on === true ? true : on === false ? false : null); });
   // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
   // Conta Google da máquina da janela (cada VM tem a sua; desconectar numa não mexe nas outras).
   const hostConta = (event: Electron.IpcMainInvokeEvent): string => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return h.host; };

@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { app } from "electron";
+import type { Compilacao } from "../../shared/ipc";
 import { capsFor, produtoDe, resolveVariant, titleFor, userDataNameFor, type AppVariant, type Capabilities, type Produto } from "./variant-core";
 
 export type { AppVariant, Capabilities };
@@ -25,3 +26,18 @@ export const appTitle = (): string => titleFor(appVariant());
 export const userDataName = (): string | null => userDataNameFor(appVariant());
 export const caps = (): Capabilities => capsFor(appVariant(), app.getVersion());
 export const produto = (): Produto => produtoDe(appVariant());
+
+/** Commit e branch de onde este build saiu (`scripts/package.mjs` grava Resources/build.json); em dev, "dev". */
+let compilacaoCache: Compilacao | null = null;
+export function compilacao(): Compilacao {
+  if (compilacaoCache !== null) return compilacaoCache;
+  let c: Compilacao = app.isPackaged ? { commit: "", branch: "", em: "" } : { commit: "dev", branch: "dev", em: "" };
+  if (app.isPackaged) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(process.resourcesPath, "build.json"), "utf8")) as Partial<Compilacao>;
+      c = { commit: typeof j.commit === "string" ? j.commit : "", branch: typeof j.branch === "string" ? j.branch : "", em: typeof j.em === "string" ? j.em : "" };
+    } catch { /* build sem o arquivo (empacotado antes de 31 out): fica vazio */ }
+  }
+  compilacaoCache = c;
+  return c;
+}

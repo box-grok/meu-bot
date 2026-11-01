@@ -9,6 +9,7 @@
  * Perder a senha torna aquele pacote inabrível. Como toda credencial ali é reemissível, a perda é recuperável —
  * diferente do CRM, e por isso a tela avisa em vez de impedir.
  */
+import { marcar } from "../app/depuracao";
 import { app, safeStorage } from "electron";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,6 +21,7 @@ export const SENHA_MIN = 8;
 
 export function lerSenhaBackup(): string | null {
   try {
+    marcar("safeStorage: senha do backup");
     const s = safeStorage.decryptString(fs.readFileSync(ARQ()));
     return s.length >= SENHA_MIN ? s : null;
   } catch { return null; }
