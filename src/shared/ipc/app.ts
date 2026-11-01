@@ -1,3 +1,4 @@
+import type { Compilacao } from "./depuracao";
 /** Contrato IPC · Janela, configurações, variante do produto e capacidades. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { PlanName } from "./licenca";
 import type { NavWorkspaces } from "./navegador";
@@ -53,6 +54,8 @@ export interface SettingsView {
   hostNames: Record<string, string>;
   /** Reiniciar sozinho na versão nova quando o Mac está ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. */
   atualizarOcioso: boolean;
+  /** Modo de depuração gravado (null = o padrão da variante: ligado no staging). */
+  depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir a janela. */
   abaFixa: AbaFixa;
 }
@@ -80,7 +83,8 @@ export interface SettingsUpdate {
   onboarding?: "pending" | "done" | "skipped";
   openAtLogin?: boolean;
   atualizarOcioso?: boolean;
-  abaFixa?: AbaFixa;
+  abaFixa?: AbaFixa;  /** Modo de depuração: true/false grava; null volta ao padrão da variante. */
+  depuracao?: boolean | null;
 }
 /** Avisos gravados na máquina (o backend envia pelo WhatsApp da própria pessoa): Mac novo, vigia da máquina e da box, cota de disco. */
 export interface AlertPrefs { whatsapp: boolean }
@@ -162,6 +166,10 @@ export interface WindowInfo {
   build: string;
   /** Modelos conhecidos dessa máquina (da última sondagem); vazio se desconhecido. */
   models: string[];
+  /** Modo de depuração ligado neste processo (padrão da variante, gravado ou `--depuracao`). */
+  depuracao: boolean;
+  /** Commit e branch de onde este build saiu (Resources/build.json). */
+  compilacao: Compilacao;
 }
 
 /** Eventos da janela de alívio (aliviar <host>). */

@@ -1,5 +1,6 @@
 import { packager } from "@electron/packager";
 import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
@@ -66,6 +67,9 @@ const paths = await packager({
 for (const p of paths) {
   const res = join(p, `${name}.app`, "Contents", "Resources");
   writeFileSync(join(res, "variant.json"), `${JSON.stringify({ variant: produto.variant })}\n`);
+  // Build: commit e branch de onde o app saiu, para a faixa de depuração dizer qual build está aberto (vazio se o git não responde).
+  const git = (args) => { try { return execFileSync("git", args, { encoding: "utf8" }).trim(); } catch { return ""; } };
+  writeFileSync(join(res, "build.json"), `${JSON.stringify({ commit: git(["rev-parse", "--short", "HEAD"]), branch: git(["branch", "--show-current"]), em: new Date().toISOString() })}\n`);
   // Extensões embutidas (meu-bot-crm): Resources/<pasta da extensão>/ (manifest.json, content.js, popup.js, …).
   for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
   // Módulos do produto: a pasta do submódulo sem o .git (src/main/modulos/modulos.ts lê Resources/<nome>/).

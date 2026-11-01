@@ -52,6 +52,9 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "browser:workspaces",
   "window:zoom-changed",
   "google-conta:changed",
+  "depuracao:batimento",
+  "depuracao:estado",
+  "depuracao:evento",
 ];
 
 /** Os dois apps. */
@@ -61,6 +64,8 @@ const sharedApi: MeuBotSharedApi = {
   setMemory: (update: { notas?: string; perfil?: string }): Promise<MemoryView> => ipcRenderer.invoke("memory:set", update),
   getSettings: (): Promise<SettingsView> => ipcRenderer.invoke("settings:get", {}),
   getWindowInfo: (): Promise<WindowInfo | null> => ipcRenderer.invoke("window:info", {}),
+  depuracaoEstado: () => ipcRenderer.invoke("depuracao:estado", {}),
+  depuracaoLigar: (on: boolean | null) => ipcRenderer.invoke("depuracao:ligar", { on }),
   openPicker: () => ipcRenderer.invoke("ui:open-picker", {}),
   whatsappStatus: () => ipcRenderer.invoke("whatsapp:status", {}),
   xaiKeyStatus: () => ipcRenderer.invoke("xai-key:status", {}),

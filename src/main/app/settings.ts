@@ -197,6 +197,7 @@ export const settingsView = (host?: string): SettingsView => ({
   hostNames: getHostNames(),
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
   atualizarOcioso: true, // sempre ligado por enquanto (o interruptor está travado nas Configurações)
+  depuracao: file.depuracao,
   abaFixa: file.abaFixa,
 });
 /** "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta). */
@@ -223,6 +224,7 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     if (update.backendPortForHost === file.backendPort) delete next[host]; else next[host] = update.backendPortForHost;
     file.backendPortByHost = next;
   }
+  if (update.depuracao !== undefined) file.depuracao = update.depuracao === true ? true : update.depuracao === false ? false : null;
   if (update.theme !== undefined) {
     if (!isTheme(update.theme)) throw new Error("Tema inválido.");
     file.theme = update.theme;
@@ -254,3 +256,5 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
   persist();
   return settingsView(host);
 }
+/** Modo de depuração gravado (null = o padrão da variante decide). */
+export const getDepuracaoGravado = (): boolean | null => file.depuracao;

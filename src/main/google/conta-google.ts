@@ -13,6 +13,7 @@ import http from "node:http";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
 import { safeStorage } from "electron";
+import { marcar } from "../app/depuracao";
 import { log } from "../maquina/tunnel";
 import { browserAsk, browserWebContents, reservarRetornoLocal } from "../navegador/browser";
 import { ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, URL_TOKEN, parseIdToken, refreshRecusadoDeVez, temEscopo, temTodosEscopos, urlDeAutorizacao, type PerfilGoogle } from "./google-core";
@@ -26,7 +27,23 @@ const ARQ = (host: string): string => path.join(DIR(), `${sanitHost(host)}.bin`)
 const ARQ_DO_MAC = (): string => path.join(app.getPath("userData"), "google-conta.bin");
 interface Guardado { refresh: string; perfil: PerfilGoogle | null; escopo: string }
 function lerToken(host: string): Guardado | null { return lerArq(ARQ(host)); }
+/**
+ * Decifrado uma vez por arquivo (31 out): `safeStorage.decryptString` é síncrono e, com o diálogo do Chaveiro na tela,
+ * prende o fio principal do app inteiro; `contaStatus` roda a cada sonda do socket do Gmail, então decifrar sempre era
+ * um pedido de senha atrás do outro. Arquivo ausente também fica lembrado (null); gravar ou apagar invalida. Falha ao
+ * decifrar (Chaveiro negado) não entra no cache: a próxima leitura tenta de novo.
+ */
+const decifrados = new Map<string, Guardado | null>();
 function lerArq(arq: string): Guardado | null {
+  const lembrado = decifrados.get(arq);
+  if (lembrado !== undefined) return lembrado;
+  if (!fs.existsSync(arq)) { decifrados.set(arq, null); return null; }
+  marcar(`safeStorage: decifrar ${path.basename(arq)}`);
+  const r = decifrarArq(arq);
+  if (r !== null) decifrados.set(arq, r);
+  return r;
+}
+function decifrarArq(arq: string): Guardado | null {
   try {
     const j = JSON.parse(safeStorage.decryptString(fs.readFileSync(arq))) as Partial<Guardado>;
     if (typeof j.refresh !== "string") return null;
@@ -78,7 +95,7 @@ export async function garantirFotoPerfil(host: string): Promise<GoogleContaStatu
   const atual = lerToken(host);
   // Desconectou ou reconectou durante o download: o token de agora manda, nao reescreve por cima.
   if (atual === null || atual.perfil === null || atual.refresh !== t.refresh || atual.perfil.fotoLocal !== null) return null;
-  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ ...atual, perfil: { ...atual.perfil, fotoLocal } })));
+  decifrados.delete(ARQ(host)); gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ ...atual, perfil: { ...atual.perfil, fotoLocal } })));
   return contaStatus(host);
 }
 /** Access token em cache (expira antes da hora real, com folga), para não trocar o refresh a cada chamada. */
@@ -132,7 +149,7 @@ async function fluxo(host: string, c: { clientId: string; clientSecret: string }
   if (typeof tok["refresh_token"] !== "string") throw new Error("o Google não devolveu a autorização permanente; tente conectar de novo");
   const perfil = await comFoto(parseIdToken(tok["id_token"]));
   fs.mkdirSync(DIR(), { recursive: true, mode: 0o700 });
-  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ refresh: tok["refresh_token"], perfil, escopo: typeof tok["scope"] === "string" ? tok["scope"] : "" })));
+  decifrados.delete(ARQ(host)); gravar(ARQ(host), safeStorage.encryptString(JSON.stringify({ refresh: tok["refresh_token"], perfil, escopo: typeof tok["scope"] === "string" ? tok["scope"] : "" })));
   cache.delete(host);
   log(`[google conta] ${host}: conectada (${perfil?.email ?? "conta sem e-mail"})`);
 }
@@ -150,7 +167,7 @@ function contaEmUsoEmOutra(t: Guardado, exceto: string): boolean {
 export async function contaDesconectar(host: string): Promise<GoogleContaStatus> {
   const t = lerToken(host);
   if (t && !contaEmUsoEmOutra(t, ARQ(host))) { try { await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(t.refresh)}`, { method: "POST" }); } catch { /* cortesia */ } }
-  try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ }
+  try { decifrados.delete(ARQ(host)); fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ }
   cache.delete(host); log(`[google conta] ${host}: desconectada`);
   return contaStatus(host);
 }
@@ -167,12 +184,12 @@ export async function adotarContaDoMac(host: string): Promise<GoogleContaStatus>
   try { await acessoDeRefresh(c, t.refresh); } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!/invalid_grant|revoked|expired/i.test(msg)) throw e;
-    try { fs.rmSync(ARQ_DO_MAC(), { force: true }); } catch { /* ok */ }
+    try { decifrados.delete(ARQ_DO_MAC()); fs.rmSync(ARQ_DO_MAC(), { force: true }); } catch { /* ok */ }
     log(`[google conta] ${host}: conta antiga do Mac (${t.perfil?.email ?? "sem e-mail"}) revogada no Google; apagada`);
     throw new Error(`a autorização antiga de ${t.perfil?.email ?? "conta"} não vale mais (o Google revogou); use "Entrar com Google" para conectar de novo`);
   }
   fs.mkdirSync(DIR(), { recursive: true, mode: 0o700 });
-  gravar(ARQ(host), safeStorage.encryptString(JSON.stringify(t)));
+  decifrados.delete(ARQ(host)); gravar(ARQ(host), safeStorage.encryptString(JSON.stringify(t)));
   cache.delete(host); log(`[google conta] ${host}: usando a conta que já estava no Mac (${t.perfil?.email ?? "sem e-mail"})`);
   return contaStatus(host);
 }
@@ -188,7 +205,7 @@ export async function acessoValido(host: string): Promise<string> {
     return acesso;
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    if (refreshRecusadoDeVez(msg)) { try { fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ } cache.delete(host); throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
+    if (refreshRecusadoDeVez(msg)) { try { decifrados.delete(ARQ(host)); fs.rmSync(ARQ(host), { force: true }); } catch { /* ok */ } cache.delete(host); throw new Error("GOOGLE_CONTA_DESCONECTADA"); }
     throw e;
   }
 }

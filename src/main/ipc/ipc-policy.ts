@@ -23,6 +23,8 @@ export const SHARED_CHANNELS = [
   "update:state", "update:apply", "update:check",
   // internet deste Mac (faixa OFFLINE) e "a máquina desta janela é este Mac?"
   "net:check", "host:local-addr",
+  // modo de depuração (faixa no topo): estado e ligar/desligar
+  "depuracao:estado", "depuracao:ligar",
   // seletor
   "picker:list", "picker:plans", "picker:locais", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",

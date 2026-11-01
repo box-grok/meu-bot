@@ -76,6 +76,7 @@ import type { XTermCtor } from "./terminal/terminal.js";
 import { askAgentAbout, cancelAutoSend, goToChatFromGuide } from "./conversa/ponte-chat.js";
 import { activityPage, ligarAtividade } from "./conversa/atividade.js";
 import { ligarRede, net, paintNet, setNet } from "./app/rede.js";
+import { alternarDepuracao, faixaLigada, ligarFaixaDepuracao } from "./depuracao/faixa.js";
 import { atualizarOciosoInput, lastUpdate, ligarAtualizacao, paintUpdateState } from "./atualizacao/atualizacao.js";
 import { ligarConfiguracoes, maybeAskNotificationsOnce } from "./configuracoes/configuracoes.js";
 import { paintEspaco } from "./configuracoes/espaco.js";
@@ -270,6 +271,7 @@ const ctxImpl = {
   get setTitle() { return setTitle; },
   get setTopbarHidden() { return setTopbarHidden; },
   get showModeToast() { return showModeToast; },
+  get showTextToast() { return showTextToast; },
   get sidebarArchived() { return sidebarArchived; },
   get sidebarBtn() { return sidebarBtn; },
   get sidebarEl() { return sidebarEl; },
@@ -1181,6 +1183,7 @@ function buildPaletteItems(): PaletteItem[] {
   add({ id: "a:tutoriais", kind: "action", label: "Tutoriais: passo a passo do meu-bot", detail: ((c) => c.todo === 0 ? "tudo feito" : `${c.todo} para fazer`)(tutCounts()), keywords: ["tutorial", "tutoriais", "ajuda", "como"] }, () => openPage(tutoriaisPage));
   add({ id: "a:sidebar", kind: "action", label: "Mostrar ou ocultar lista de conversas", detail: "Cmd+B" }, () => toggleSidebar());
   add({ id: "a:topbar", kind: "action", label: "Recolher ou mostrar tudo (barra, atalhos, lista e barra de escrever)", detail: "Cmd+B" }, () => setInterfaceRecolhida(!interfaceRecolhida()));
+  add({ id: "a:depuracao", kind: "action", label: faixaLigada() ? "Modo de depuração: desligar" : "Modo de depuração: ligar", detail: "faixa no topo com build, batimento do processo principal, túnel e o que chega de fora", keywords: ["debug", "depuração", "depuracao", "faixa", "log"] }, () => { void alternarDepuracao(); });
   add({ id: "a:composer", kind: "action", label: "Mostrar ou ocultar barra de escrever", detail: "alça ⌄ na barra", keywords: ["escrever", "caixa", "composer", "barra de baixo", "recolher"] }, () => setComposerHidden(!composerHidden(), { focar: true }));
   add({ id: "a:zoom-in", kind: "action", label: "Aumentar zoom da janela", detail: "Cmd+= (fora da página do Navegador)", keywords: ["zoom", "ampliar", "maior", "aumentar", "fonte"] }, () => zoomWindow({ action: "step", delta: 1 }));
   add({ id: "a:zoom-out", kind: "action", label: "Diminuir zoom da janela", detail: "Cmd+-", keywords: ["zoom", "reduzir", "menor", "diminuir", "fonte"] }, () => zoomWindow({ action: "step", delta: -1 }));
@@ -1816,6 +1819,7 @@ ligarAtividade();
 /** A máquina desta janela é este próprio Mac (colima): sem internet o túnel segue, só o Claude não responde. */
 let hostLocalAddr = false;
 ligarRede();
+ligarFaixaDepuracao();
 ligarAtualizacao();
 ligarConfiguracoes();
 // Todo body dos tutoriais precisa de alguém que o desenhe (cada módulo registra os seus no `ligar…()` dele).

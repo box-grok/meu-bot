@@ -14,6 +14,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { isValidHost } from "../app/settings";
+import { marcar } from "../app/depuracao";
 import { checkLocalBackend, ensureLocalBackend, LOCAL_HOST, localBackendAlive, onLocalBackendExit, stopLocalBackend } from "./localBackend";
 
 export type TunnelState = "idle" | "connecting" | "ready" | "degraded" | "error";
@@ -114,6 +115,7 @@ interface RunResult { code: number | null; stdout: string; stderr: string }
 
 function runSsh(args: string[], timeoutMs: number): Promise<RunResult> {
   return new Promise((resolve) => {
+    marcar(`ssh: ${args.filter((a) => !a.startsWith("-")).slice(-2).join(" ").slice(0, 80)}`);
     const child = spawn("ssh", args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
@@ -209,6 +211,7 @@ function startForward(h: HostTunnel, localPort: number, remotePort: number): Pro
 /** Abre o `ssh -N -L` pelo master; `afterExit` roda se ele morrer depois de pronto (cada dono decide o que refazer). */
 function spawnForward(host: string, localPort: number, remotePort: number, afterExit: (child: ChildProcess) => void): Promise<ChildProcess> {
   return new Promise((resolve, reject) => {
+    marcar(`ssh -L ${host}: ${localPort} → ${remotePort}`);
     const child = spawn(
       "ssh",
       ["-N", "-v", "-o", "ControlMaster=no", "-o", "ExitOnForwardFailure=yes", "-L", `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`, ...muxOpts(host)],
@@ -479,6 +482,7 @@ function startReverse(h: HostTunnel, chave: string, q: ReverseWanted, restarts: 
   return new Promise((resolve, reject) => {
     void (async () => {
       const remotePort = await remoteFreePort(host, chave);
+      marcar(`ssh -R ${host} (${chave}): ${remotePort}`);
       const child = spawn("ssh", ["-N", "-o", "ControlMaster=no", "-o", "ExitOnForwardFailure=yes", "-R", `127.0.0.1:${remotePort}:${localSocket}`, ...muxOpts(host)], { stdio: ["pipe", "ignore", "pipe"] });
       child.stdin?.on("error", () => { /* fechou antes */ });
       let err = ""; let done = false; const t0 = Date.now();

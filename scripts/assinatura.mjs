@@ -30,7 +30,9 @@ function criar() {
     execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "3650", "-subj", `/CN=${NOME}`,
       "-addext", "basicConstraints=critical,CA:false", "-addext", "keyUsage=critical,digitalSignature", "-addext", "extendedKeyUsage=critical,codeSigning",
       "-keyout", join(d, "k.pem"), "-out", join(d, "c.pem")], { stdio: "ignore" });
-    execFileSync("openssl", ["pkcs12", "-export", "-legacy", "-inkey", join(d, "k.pem"), "-in", join(d, "c.pem"), "-name", NOME, "-out", join(d, "id.p12"), "-passout", `pass:${senha}`], { stdio: "ignore" });
+    // OpenSSL 3 precisa de -legacy para o `security import` aceitar o .p12; o LibreSSL do macOS não tem a flag (e nem precisa).
+    const pkcs12 = (extra) => execFileSync("openssl", ["pkcs12", "-export", ...extra, "-inkey", join(d, "k.pem"), "-in", join(d, "c.pem"), "-name", NOME, "-out", join(d, "id.p12"), "-passout", `pass:${senha}`], { stdio: "ignore" });
+    try { pkcs12(["-legacy"]); } catch { pkcs12([]); }
     execFileSync("security", ["import", join(d, "id.p12"), "-k", CHAVEIRO, "-P", senha, "-T", "/usr/bin/codesign"], { stdio: "inherit" });
   } finally { rmSync(d, { recursive: true, force: true }); }
   console.log(existe() ? `✓ "${NOME}" criado no chaveiro de login.` : `✗ não apareceu como identidade de assinatura`);

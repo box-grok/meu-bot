@@ -1,4 +1,5 @@
 /** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
+import type { BatimentoDepuracao, EstadoDepuracao, EventoDepuracao } from "./depuracao";
 import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoStatus, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
@@ -15,6 +16,12 @@ import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararI
 import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
+  /** Modo de depuração: tique de 1 s do main (para a faixa saber se ele está preso) e a última marca. */
+  "depuracao:batimento": BatimentoDepuracao;
+  /** Modo de depuração ligado/desligado (ou o estado inicial pedido). */
+  "depuracao:estado": EstadoDepuracao;
+  /** Uma ação de fora que o main viu (só com o modo ligado). */
+  "depuracao:evento": EventoDepuracao;
   "chat:assistant-start": ConversationRef;
   "chat:delta": ConversationRef & { text: string };
   "chat:done": DoneEvent;
@@ -114,6 +121,9 @@ export interface MeuBotSharedApi {
   getSettings(): Promise<SettingsView>;
   /** Máquina desta janela; null se a janela não está registrada (não deveria acontecer). */
   getWindowInfo(): Promise<WindowInfo | null>;
+  /** Modo de depuração: estado atual (com os últimos eventos) e ligar/desligar (null = padrão da variante). */
+  depuracaoEstado(): Promise<EstadoDepuracao>;
+  depuracaoLigar(on: boolean | null): Promise<EstadoDepuracao>;
   /** Abre o seletor de máquinas (nova janela em outra máquina). */
   openPicker(): Promise<void>;
   /** WhatsApp do Hermes na máquina desta janela. */

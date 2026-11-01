@@ -3,6 +3,7 @@
  * energia. Os handlers IPC moram em ipc/ (comuns e do meu-bot normal) e admin/ (meu-bot-admin); aqui só se
  * compõe: registerIpc, initPicker e o que depende da variante (caps()).
  */
+import { ligarDepuracao } from "./app/depuracao";
 import { app, BrowserWindow, dialog, nativeTheme, powerMonitor } from "electron";
 import { onVersaoMinima } from "./maquina/backend";
 import { LOCAL_HOST } from "./maquina/localBackend";
@@ -29,7 +30,7 @@ import { registerUsuariosMacIpc, showUsuariosMac } from "./usuarios-mac/usuarios
 import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
 import { initRelief, showRelief } from "./app/relief";
 import { listSshHosts } from "./maquina/sshConfig";
-import { allMainWindows, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
+import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
@@ -112,6 +113,8 @@ app.whenReady().then(() => {
   }
   // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho.
   openFromArgs(process.argv);
+  // Modo de depuração: o tique de 1 s do main para a faixa da janela (ligado no staging, pela paleta ou --depuracao).
+  ligarDepuracao(broadcast);
   // Clicar no app (Dock, Finder) abre sempre o seletor; para ir direto a uma máquina existe o atalho dela. O clique numa
   // notificação também dispara `activate` no macOS: aí não (ele abre a janela da máquina e foca a conversa).
   app.on("activate", () => { if (!seletorPodeAbrirAgora()) return; if (caps().usuariosMac) showUsuariosMac(); else showPicker(); });
