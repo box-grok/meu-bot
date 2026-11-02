@@ -62,7 +62,7 @@ elif listening "$PORT"; then
   # Sem .env a instalação parece "do zero", mas a porta pode ser do nosso meu-bot-backend antigo rodando de memória:
   # a pasta do backend foi apagada e o node segue vivo (root da VM, 1/11). Parar o serviço desta conta libera a porta
   # e a reinstalação fica na mesma; porta de outra conta ou de outro programa continua sendo erro.
-  liberar_porta_propria() { # $1 porta → 0 se era do meu-bot-backend desta conta (e ele foi parado); 1 se não
+  liberar_porta_propria() { # $1 porta → 0 se era do meu-bot-backend desta conta e ele foi parado; 1 se não é nosso; 2 se é nosso e não soltou
     local pid sistema=""
     pid=$(systemctl --user show -p MainPID --value meu-bot-backend.service 2>/dev/null | tr -dc 0-9)
     if [ "${pid:-0}" -le 0 ] && [ "$(systemctl show -p User --value meu-bot-backend.service 2>/dev/null)" = "$(id -un)" ]; then
@@ -71,15 +71,18 @@ elif listening "$PORT"; then
     [ "${pid:-0}" -gt 0 ] || return 1
     (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep ":$1 " | grep -qE "pid=$pid,|[[:space:]]$pid/" || return 1
     echo "a porta $1 é do meu-bot-backend antigo desta conta (os arquivos sumiram do disco): parando o serviço para reinstalar na mesma porta"
-    if [ -z "$sistema" ]; then systemctl --user stop meu-bot-backend.service
-    elif [ "$(id -u)" -eq 0 ]; then systemctl stop meu-bot-backend.service
-    else sudo -n systemctl stop meu-bot-backend.service || { echo "ERRO: não consegui parar o serviço de sistema (sem sudo)" >&2; return 1; }; fi
+    if [ -z "$sistema" ]; then systemctl --user stop meu-bot-backend.service || { echo "ERRO: não consegui parar o meu-bot-backend desta conta (systemctl --user stop falhou)" >&2; return 2; }
+    elif [ "$(id -u)" -eq 0 ]; then systemctl stop meu-bot-backend.service || { echo "ERRO: não consegui parar o meu-bot-backend (systemctl stop falhou)" >&2; return 2; }
+    else sudo -n systemctl stop meu-bot-backend.service || { echo "ERRO: não consegui parar o serviço de sistema meu-bot-backend (sem sudo)" >&2; return 2; }; fi
+    # O node solta a porta um instante depois do stop; sem esperar, o resto do instalador podia correr com ela ainda presa.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do (ss -ltn 2>/dev/null || netstat -ltn 2>/dev/null) | grep -q ":$1 " || return 0; sleep 1; done
+    echo "ERRO: o meu-bot-backend foi parado, mas a porta $1 continua ocupada" >&2; return 2
   }
   # --- porta: fim
-  if ! liberar_porta_propria "$PORT"; then
-    echo "ERRO: a porta $PORT já está ocupada nesta máquina (outra conta ou outro programa). Instale em outra porta: PORT=<n> bash install.sh" >&2
-    exit 4
-  fi
+  # 1 = a porta não é nossa (outra conta ou outro programa); 2 = é nossa, mas não liberou (o erro já foi dito).
+  RC=0; liberar_porta_propria "$PORT" || RC=$?
+  if [ "$RC" -eq 1 ]; then echo "ERRO: a porta $PORT já está ocupada nesta máquina (outra conta ou outro programa). Instale em outra porta: PORT=<n> bash install.sh" >&2; fi
+  [ "$RC" -eq 0 ] || exit 4
 fi
 mkdir -p "$DEST/data" "$HOME/chat-workspace" "$HOME/agent-workspace"
 # --- copiar: início (o teste install-backend-copia.test.mjs roda este trecho sozinho)
