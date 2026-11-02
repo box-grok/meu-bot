@@ -492,5 +492,5 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   porta ocupada e o seletor oferecia instalar na porta seguinte: dois backends na mesma conta.
 - Agora a sondagem traz `unitpid`/`unitport` (PID principal da unidade desta conta e a porta dele): `backendSumiu` →
   o seletor explica e "Reinstalar backend" vai para a mesma porta (`portaParaInstalar`, `porta-backend-core.ts`); o
-  `install.sh` (1.9.3) para o serviço próprio antes de reclamar de porta ocupada (`liberar_porta_propria`). Sessões e
+  `install.sh` (1.10.0, junto com o #79) para o serviço próprio antes de reclamar de porta ocupada (`liberar_porta_propria`). Sessões e
   `providers.json` não voltam: o Grok precisa de "preparar" e login de novo.
