@@ -13,7 +13,7 @@ import type { ModuloResultado, ModulosLista } from "./modulos";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
 import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararId, PrepararVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
-import type { WaMarkPatch, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
+import type { WaMarkPatch, WhatsappAlvo, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
   /** Modo de depuração: tique de 1 s do main (para a faixa saber se ele está preso) e a última marca. */
@@ -129,7 +129,8 @@ export interface MeuBotSharedApi {
   /** Abre o seletor de máquinas (nova janela em outra máquina). */
   openPicker(): Promise<void>;
   /** WhatsApp do Hermes na máquina desta janela. */
-  whatsappStatus(): Promise<WhatsappStatus>;
+  /** `force` pula a validade do cache do main (botão Atualizar); sem ele, dentro de 45 s a resposta é a da última consulta. */
+  whatsappStatus(force?: boolean): Promise<WhatsappStatus>;
   xaiKeyStatus(): Promise<XaiKeyStatus>;
   /** Terminal na máquina desta janela (pty-broker por ssh; neste Mac, local). Os dois apps; no admin fica no registro da pessoa. */
   termOpen(cols: number, rows: number): Promise<{ id: string }>;
@@ -512,6 +513,8 @@ export interface MeuBotAdminApi {
   adminPrepararAplicar(ids?: PrepararId[]): Promise<PrepararVisao>;
   /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
   adminHermesGlobal(): Promise<UsuariosVisao>;
+  /** Onde vive o WhatsApp de um usuário da máquina (conta/agente num gateway de outro usuário); null volta ao padrão. */
+  adminWhatsappAlvo(nome: string, alvo: WhatsappAlvo | null): Promise<{ nome: string; alvo: WhatsappAlvo | null }>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */
   adminUsuarioApelido(nome: string, apelido: string): Promise<UsuariosVisao>;
   /** Liga o linger do usuário: o agente dele segue rodando sem ele conectado e volta ao reiniciar. */
