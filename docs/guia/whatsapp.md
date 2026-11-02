@@ -441,6 +441,113 @@ andamento; avisa no WhatsApp ao cruzar 80, 95 e 100% uma vez por cruzamento (rea
 A cota macia é o limite que a pessoa vê; a dura (folga de 10%/300 MB, 7 dias) é o que deixa o aviso de 100% ainda sair.
 Os avisos (Mac novo, vigia, cota) vão só pelo WhatsApp da pessoa: o e-mail pela Resend saiu em 30 out.
 
+## Regra única do motor do WhatsApp (1 nov)
+
+- Motivo: havia quatro regras para decidir se a máquina atende pelo Hermes, OpenClaw ou PicoClaw, e elas divergiam: o
+  status da janela (`WA_ESCOLHA_SH`: Hermes vence sem escolha), a sondagem do seletor (`hostProbe.ts`: OpenClaw vence e
+  o arquivo de escolha era ignorado), os módulos (`modulos.ts`: sem PicoClaw) e o backend (`server.js`, cópia em JS).
+  Numa máquina com os dois motores, o seletor dizia OpenClaw e a janela, Hermes.
+- `WA_MOTOR_SH` (`src/main/whatsapp/whatsapp-capacidades.ts`) é a regra: deixa `$ESC` (a escolha gravada em
+  `~/.local/share/meu-bot/whatsapp-agente`, que agora aceita `picoclaw`), `$MOTOR` e `usa_hermes`. Precedência: escolha
+  gravada > Hermes já com o WhatsApp configurado > binário `openclaw` (PATH ou `~/.openclaw/bin`) > binário `hermes`
+  (PATH ou `~/.local/bin`) > `picoclaw` com `~/.picoclaw/config.json`. Uma linha, sem comentários (o `probeScript` junta
+  por `; `) e só com `if` (segura sob `set -e`). Todos os consumidores passaram a usá-la: status, pareamento, lista,
+  logout (`MOTOR=<qual>` quando a tela manda desconectar o outro motor), grupos, sondagem, módulos, reinício no admin
+  (`case "$MOTOR"`) e a pasta de skills do objetivo.
+- `backend-colima/motor-whatsapp.js` é o espelho em JS (entra no pacote do backend; VERSION 1.10.0); o `server.js` decide
+  por ele por onde mandar mensagem. `scripts/tests/motor-whatsapp.test.mjs` roda o shell e o JS no mesmo HOME de mentira
+  em 100 combinações e exige o mesmo resultado.
+- Mudança de comportamento: na sondagem do seletor, uma máquina com Hermes configurado e OpenClaw instalado passa a
+  aparecer como Hermes (como a janela já dizia); uma máquina com o binário do Hermes mas sem o WhatsApp dele e sem OpenClaw
+  aparece como "Hermes sem bridge" em vez de "sem agente".
+
+## Status do OpenClaw com uma chamada só, cache no main e consulta mais espaçada (1 nov)
+
+- Motivo: cada chamada da CLI `openclaw` sobe um Node de ~300 MB na máquina. A consulta de estado fazia 7 ou 8 por vez
+  (`--version`, `plugins list`, dois `config get`, `channels status`, mais modelo e reserva), por janela aberta, a cada
+  60 s. Na VM agente (8 GB, quatro gateways de ~1,4 GB) isso somava ao OOM.
+- `STATUS_SCRIPT` (`whatsapp.ts`): uma passada de Python no `openclaw.json` (`OC_CONFIG_PY`) responde dmPolicy, o bloco do
+  canal, se o plugin do WhatsApp está ligado e instalado (`plugins.entries`, `plugins.allow`, pasta em
+  `~/.openclaw/extensions/whatsapp` ou `~/.openclaw/npm/projects/openclaw-whatsapp-*`), se faltam modelo e reserva,
+  áudio e voz. A versão vem do `package.json` ao lado do binário resolvido (`oc_versao`), senão de `openclaw --version`
+  guardado em `~/.cache/meu-bot/openclaw-version` enquanto o binário não muda. A CLI só é chamada para `channels status`
+  (sempre), `plugins list` (só quando os arquivos não acham o plugin) e `config set` (só quando falta modelo ou reserva).
+  `GW_PROPRIO` (hoje sempre 1) condiciona `gw_fix`/`gw_ensure`: com gateway compartilhado o app não vai instalar nem
+  religar gateway nenhum.
+- Main: `TtlCache` (`whatsapp-cache-core.ts`) guarda status (45 s), lista de conversas (15 s) e grupos (30 s) por máquina,
+  com coalescência (várias janelas = uma consulta). Toda mudança feita pelo app (parear, política, dono, pausa, marcas,
+  limpar, grupos, logout, escolha do agente) chama `esquecerWhatsapp(host)`. O botão Atualizar manda `force`
+  (`whatsapp:status` aceita `{ force }`).
+- Tela: conectado, consulta a cada 2 min (antes 1); desconectado, 10 s; pareando, 8 s. Lista de conversas a cada 30 s
+  (antes 20). Com a janela escondida, só reagenda; o `focus` consulta na volta.
+- Testes: `whatsapp-status-sh.test.mjs` roda o `STATUS_SCRIPT` num HOME de mentira com um `openclaw` falso que anota as
+  chamadas (máquina pronta = 1 chamada; VM nova = modelo e reserva gravados; versão por cache); `whatsapp-cache-core.test.mjs`.
+
+## Adaptadores por motor: o contrato MotorWhatsapp (1 nov)
+
+- Motivo: `whatsapp.ts` tinha 1 500 linhas misturando os três motores de dois jeitos: scripts bash monolíticos com
+  `if usa_hermes … elif openclaw … picoclaw` (status, pareamento, lista, logout) e ramos em TS (`hostIsHermes`,
+  `gateway === "hermes"`), função por função. O lado consumidor (tela) já era agnóstico pelas capacidades; o lado
+  implementador não tinha costura, e o OpenClaw multi-conta (gateway único no root) não tinha onde entrar.
+- `whatsapp-motor.ts`: a interface `MotorWhatsapp` (fragmentos de shell `statusSh`, `chatsSh`, `groupsSh`, `pairSh`,
+  `logoutSh`, `restartSh`; parsers `parseStatus/parseChats/parseGroups`; e o IO `readQuem`, `thread`, `learnNames`,
+  `clearSessions`, `pause`, `keepPaused`, `setDmPolicy`, `groupClearPlan/groupClear/groupThread/setGroup/refreshGroups`),
+  o registro `MOTORES` e `motorDe(host)` (o motor visto na última consulta, senão a regra única numa sonda curta, em
+  cache). Cada adaptador é uma fábrica `criarMotorX(run = runSsh)`: o executor é injetável para o teste.
+- `whatsapp-openclaw-core.ts` (puro: shell e parse) + `whatsapp-openclaw.ts` (IO); `whatsapp-hermes.ts` (IO; o puro já
+  estava em `whatsapp-hermes-core.ts`); `whatsapp-picoclaw.ts` (status e reinício; o resto responde "ainda não");
+  `whatsapp-pair.ts` (o stream do QR, agnóstico); `whatsapp-ssh.ts` (`runSsh`/`scpPara`), `whatsapp-kv.ts`
+  (`kvOf`/`jsonOr`/`phoneOf`/`describeInstall`), `whatsapp-estado.ts` (motor visto, modo de pausa, nomes, caches).
+- `whatsapp.ts` virou a fachada (~400 linhas): monta os scripts com `case "$MOTOR"` e o fragmento de cada motor (UMA
+  viagem de SSH, como antes), despacha o parse pelo `gateway=` impresso e mantém todas as exportações que o IPC, o admin
+  e o resto do app importam. O que é decidido pelos dados fica nela: chaves de sessão do Hermes vs. do OpenClaw em
+  `whatsappThread`, `whatsappClearPlan` e `whatsappClearSessions`.
+- Sem mudança de comportamento, fora três detalhes: (1) máquina sem motor nenhum recebe "não tem agente com WhatsApp"
+  nas ações em vez de cair no caminho do OpenClaw; (2) o PicoClaw tem ramo próprio na lista e nos grupos (vazios) em vez
+  de cair no do OpenClaw; (3) `oc_fallback_ensure` gravava a reserva do Grok como `[grok/…]` sem as aspas internas
+  (escape perdido no template) e o OpenClaw recusava em silêncio; agora vai como JSON válido (teste cobre).
+
+## Onde vive o WhatsApp: o alvo (conta, agente e gateway) por máquina (1 nov)
+
+- Motivo: até aqui alias SSH = usuário Linux = gateway do OpenClaw. Para várias contas num gateway único (o root da VM
+  agente), o app precisa saber que o WhatsApp do `agente-box` vive no gateway do `root`, como conta `box` e agente `box`.
+- `~/.local/share/meu-bot/whatsapp-alvo.json` na máquina (dono: `whatsapp-capacidades.ts`): `{ accountId, agentId,
+  gatewayUser, numero? }`. Sem o arquivo vale `default`/`main`/próprio, o layout de sempre: nada muda nas máquinas de hoje.
+  `gatewayUser` é o usuário Linux, não um alias (alias é conceito do Mac): o Mac resolve o alias do gateway pelo
+  `~/.ssh/config` (mesmo HostName, User = gatewayUser; `sshConfig.ts` agora dá HostName e User por bloco). Sem alias,
+  `missing` diz o que falta e o app não inventa conexão.
+- O status lê o alvo (`WA_ALVO_SH`), devolve `WhatsappStatus.alvo` e, com gateway de outro usuário, `agent` diz "gateway
+  de root (agente-root), conta box, agente box". Capacidades novas: `gatewayProprio` e `gruposAtualizar` (a guarda e o
+  "Atualizar lista" de grupos são do gateway inteiro, então ficam fora com gateway compartilhado).
+- Quem grava: `whatsappDefinirAlvo(host, alvo | null)` (main) e, no admin, `admin:whatsapp-alvo` (`{ nome, alvo }` na
+  máquina do root; `whatsappAlvoSh` grava no home do usuário com dono e modo certos). Registrar a conta e o agente no
+  gateway é outro passo (migração). Os comandos ainda rodam no alias da própria conta: o PR seguinte os leva ao gateway.
+
+## OpenClaw com várias contas num gateway só (1 nov)
+
+- Motivo: a VM agente vai ter um gateway único no root com uma conta de WhatsApp e um agente por usuário
+  (`channels.whatsapp.accounts.<u>`, `agents.entries.<u>`, `bindings`). O app precisava rodar os comandos no alias do
+  gateway, com `--account`, e ler só o que é daquela conta.
+- Com um alvo gravado (`whatsapp-alvo.json`), o ramo do OpenClaw que roda no alias da conta para cedo (`poralvo=1`) e a
+  fachada roda o fragmento do alvo (`porAlvo` do contrato, só o OpenClaw tem) no alias do gateway (`execHostDe`): status,
+  lista, grupos, logout e pareamento. Marcas, escolha e alvo continuam na própria conta; o que vem do gateway vence.
+- Por conta: `cfgDe` (`channels.whatsapp` ou `channels.whatsapp.accounts.<id>`), `credsDe`, `credsMeSh`, a vista efetiva
+  (`CONTA_EFETIVA_PY`: a conta herda de `accounts.default` e da raiz tudo menos authDir, enabled, name e selfChatMode),
+  o estado pela entrada em `channelAccounts.whatsapp[]` (`ocStatusPy`), `--account` em login/logout, política silenciosa
+  e allowFrom na conta, patch de grupo embrulhado em `accounts.<id>` (`envolverPatch`) e conferido pela vista efetiva.
+- Por agente: `sqliteDe` (`agents/<id>/agent/openclaw-agent.sqlite`), `workspaceSh` (regra de pausa no AGENTS.md do
+  agente), `sessoesDoAgente` (o `sessions.list` do gateway traz as sessões de todos os usuários: sem o filtro um veria
+  as conversas do outro), pausa com `rawKeyPrefix` e o agente dentro (`pauseRulePrefixes`/`withPauseRule` com `agentId`;
+  `pausedNumbersOfPolicy` só conta as regras do agente) e modelo/reserva do agente (`ocmodel` olha `agents.entries`).
+- Gateway de outro usuário (`proprio` false): `GW_PROPRIO=0` (nada de instalar, religar ou mudar porta), sem reinício do
+  gateway ao fim do pareamento (o canal da conta sobe sozinho), `pkill` só do login desta conta, trava do dono por
+  união (`ownerLockSh` acrescenta o `e164:` do dono e nunca remove o de outro), e "Atualizar lista" de grupos recusado
+  (pararia o gateway de todos). Conta ainda não registrada no gateway: o status explica, sem inventar.
+- Limitação conhecida: a lista de pausados (`session.sendPolicy`) é lida e gravada em duas idas; dois usuários pausando
+  no mesmo segundo podem se sobrescrever (o `config set` do OpenClaw é atômico, o arquivo não corrompe).
+- Testes: `openclaw-multi-conta.test.mjs` (puros e com `openclaw` falso: status por conta com uma chamada, config
+  efetiva, conta inexistente, lista com filtro, pareamento/logout por conta); `whatsapp-status-sh.test.mjs` continua
+  cobrindo o layout de sempre.
 ## Versões fixadas dos motores (1 nov)
 
 - Motivo: na VM agente, `openclaw plugins install clawhub:@openclaw/whatsapp` (sem versão) resolvia a 2026.10.9 do ClawHub
