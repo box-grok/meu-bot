@@ -37,8 +37,19 @@ export const hostLabel = (h: string): string => nicknames[h] ?? apelidosMaquina[
 const slNote = (_p: HostProbe): string => "";
 const slInstall = (_p: HostProbe): null => null;
 
+/**
+ * O que vai depois do nome na lista para diferenciar máquinas de mesmo nome: o HostName do ~/.ssh/config (IP ou DNS)
+ * e o User, quando o alias não o traz no próprio nome ("agente-root" já diz "root"). "" sem bloco ou sem HostName.
+ */
+export function enderecoLabel(alias: string, endereco: { hostName: string | null; user: string | null } | undefined): string {
+  if (endereco === undefined || endereco.hostName === null || endereco.hostName === alias) return "";
+  const user = endereco.user !== null && !alias.toLowerCase().includes(endereco.user.toLowerCase()) ? ` · ${endereco.user}` : "";
+  return ` · ${endereco.hostName}${user}`;
+}
+
 export function describeProbe(p: HostProbe): ProbeText {
-  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : p.gateway === "picoclaw" ? " · PicoClaw" : ""}`;
+  const endereco = p.hostName !== null && p.hostName !== p.host ? ` (${p.hostName})` : "";
+  const who = `${p.user ?? "?"}@${p.host === "local" ? "mac" : p.host}${endereco}${p.os ? ` · ${p.os}` : ""}${p.arch ? ` · ${p.arch}` : ""}${p.grokPod ? " · computador do Grok Bot" : ""}${p.gateway === "openclaw" ? " · OpenClaw" : p.gateway === "hermes" ? " · Hermes" : p.gateway === "picoclaw" ? " · PicoClaw" : ""}`;
   if (p.host === "local") {
     if (p.error !== null || p.claudePath === null || !p.claudeLoggedIn) {
       const why = p.error ?? (p.claudePath === null ? "Claude Code não encontrado" : "Claude Code não está logado");
@@ -47,7 +58,8 @@ export function describeProbe(p: HostProbe): ProbeText {
     return { kind: "ok", text: `✓ ${who} · Node ${p.node ?? "?"} · Claude Code logado · backend sobe com a janela${p.backendListening ? " (no ar agora)" : ""}${slNote(p)}`, install: slInstall(p), canOpen: true };
   }
   if (!p.reachable && p.tailscaleCheck) return { kind: "warn", text: `⚠ ${p.host}: o Tailscale SSH pede uma verificação extra no navegador. Clique em "Aprovar verificação do Tailscale": o link abre e a máquina entra quando você aprovar.`, install: null, canOpen: false };
-  if (!p.reachable) return { kind: "bad", text: `✗ ${p.host} inacessível por SSH: ${p.error ?? "sem detalhes"}`, install: null, canOpen: false };
+  if (!p.reachable && p.hostKeyChanged) return { kind: "bad", text: `✗ ${p.host}${endereco}: a chave SSH da máquina mudou. Ou o sistema foi reinstalado, ou outra máquina responde nesse endereço. Confira no painel da hospedagem; se for esperado, rode no Terminal: ssh-keygen -R ${p.hostName ?? p.host}`, install: null, canOpen: false };
+  if (!p.reachable) return { kind: "bad", text: `✗ ${p.host}${endereco} inacessível por SSH: ${p.error ?? "sem detalhes"}`, install: null, canOpen: false };
   // O serviço meu-bot-backend está no ar, mas os arquivos sumiram do disco (pasta apagada; o node antigo roda de memória).
   // Sem este ramo a sondagem lia "porta ocupada por outro programa" e o seletor instalava um segundo backend ao lado.
   if (p.backendSumiu) {

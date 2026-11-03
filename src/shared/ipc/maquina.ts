@@ -14,7 +14,11 @@ export interface BackendStatusEvent {
 /** Resultado da sondagem de um host SSH, para o seletor de máquinas. */
 export interface HostProbe {
   host: string;
+  /** `HostName` do bloco deste alias no ~/.ssh/config deste Mac (IP ou nome DNS, como está lá); null sem bloco ou sem HostName. */
+  hostName: string | null;
   reachable: boolean;
+  /** O ssh recusou entrar porque a chave da máquina mudou (sistema reinstalado, ou outra máquina no mesmo endereço): não é "fora do ar". */
+  hostKeyChanged: boolean;
   user: string | null;
   /** Apelido da conta gravado na máquina (o admin dá na aba Usuários); null = nenhum. Vale para qualquer Mac. */
   apelido: string | null;
@@ -100,6 +104,8 @@ export interface InstallProgressEvent {
 /** Dados iniciais do seletor de máquinas. */
 export interface PickerInit {
   hosts: string[];
+  /** Endereço de cada alias no ~/.ssh/config deste Mac (HostName e User do bloco), para a lista diferenciar máquinas de mesmo nome. */
+  enderecos: Record<string, { hostName: string | null; user: string | null }>;
   /** meu-bot-admin: as pessoas (os hosts são os aliases delas, só as com suporte ligado). null = meu-bot normal. */
   support: { people: SupportPerson[]; adminKey: boolean } | null;
   /** Máquina a pré-selecionar (última aberta). */
