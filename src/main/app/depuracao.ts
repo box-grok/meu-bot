@@ -31,8 +31,11 @@ let marcaEm: number | null = null;
 let tique: NodeJS.Timeout | null = null;
 
 const forcado = (): boolean => app.commandLine.hasSwitch("depuracao");
-/** No staging a faixa vem ligada: é o app de teste, e quem o usa está sempre conferindo alguma coisa. */
-export const padraoDaVariante = (): boolean => caps().canal === "staging";
+/**
+ * No staging a faixa vem ligada: é o app de teste, e quem o usa está sempre conferindo alguma coisa. No meu-bot-admin
+ * também (3 nov): quem dá suporte precisa ver o build e o que falhou sem ter de ligar nada antes.
+ */
+export const padraoDaVariante = (): boolean => caps().canal === "staging" || caps().supportAdmin;
 export function modoDepuracao(): boolean {
   if (forcado()) return true;
   return getDepuracaoGravado() ?? padraoDaVariante();

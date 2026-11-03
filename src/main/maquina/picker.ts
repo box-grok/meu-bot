@@ -330,7 +330,8 @@ export const clientPickerSource: PickerSource = {
       forgetProbe(host);
       return r;
     });
-    handleClient("picker:sync-ssh", (event) => {
+    // Compartilhado: no admin o canal de cliente viraria o stub "só lê", e o ⇅ falhava sem mexer em máquina nenhuma.
+    handleShared("picker:sync-ssh", (event) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       return syncSshConfig();
     });
