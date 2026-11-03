@@ -1,15 +1,17 @@
 /**
  * Botão "sincronizar ssh" do seletor: acrescenta ao ~/.ssh/config do Mac as máquinas do modelo
- * versionado (config/ssh-hosts.conf) que ainda faltam. O Cursor (Remote SSH) lê o mesmo arquivo, então
- * depois disso as duas listas, a do seletor e a do Cursor, ficam iguais. Nunca altera um Host existente;
- * faz backup antes de escrever.
+ * versionado (config/ssh-hosts.conf) que ainda faltam. O Cursor (Remote SSH) lê o mesmo arquivo (ou um
+ * arquivo que este inclui), então depois disso as duas listas, a do seletor e a do Cursor, ficam iguais.
+ * Nunca altera um Host existente, não traz de volta o que foi removido pelo seletor nem repete uma máquina
+ * que já existe com outro nome; faz backup antes de escrever.
  */
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
 import type { SshSyncResult } from "../../shared/ipc";
-import { identityFiles, planSshSync, removeSshHost, renderSshAppend } from "./ssh-sync";
+import { identityFiles, parseSshConfig, planSshSync, removeSshHost, renderSshAppend } from "./ssh-sync";
+import { expandInclude } from "./sshConfig";
 
 /** config/ssh-hosts.conf: Resources/config no .app; raiz do projeto no dev. */
 export function sshHostsTemplatePath(): string {
@@ -17,6 +19,22 @@ export function sshHostsTemplatePath(): string {
 }
 
 const stamp = (): string => new Date().toISOString().slice(0, 19).replace("T", " ");
+
+/** Texto dos arquivos que o ~/.ssh/config inclui (até 3 níveis): o que está neles também conta como existente. */
+function includedTexts(text: string, depth = 0, seen = new Set<string>()): string[] {
+  if (depth > 3) return [];
+  const out: string[] = [];
+  for (const pat of parseSshConfig(text).includes) {
+    for (const f of expandInclude(pat)) {
+      if (seen.has(f)) continue;
+      seen.add(f);
+      let t: string;
+      try { t = fs.readFileSync(f, "utf8"); } catch { continue; }
+      out.push(t, ...includedTexts(t, depth + 1, seen));
+    }
+  }
+  return out;
+}
 
 export function syncSshConfig(): SshSyncResult {
   const home = os.homedir();
@@ -26,7 +44,7 @@ export function syncSshConfig(): SshSyncResult {
   let current = "";
   let exists = false;
   try { current = fs.readFileSync(configPath, "utf8"); exists = true; } catch { /* ainda não há ~/.ssh/config */ }
-  const plan = planSshSync(template, current, home);
+  const plan = planSshSync(template, current, home, includedTexts(current));
   const append = renderSshAppend(plan, stamp());
   let backup: string | null = null;
   if (append !== "") {
@@ -45,6 +63,8 @@ export function syncSshConfig(): SshSyncResult {
     includesAdded: plan.includesToAdd.length,
     kept: plan.kept,
     onlyLocal: plan.onlyLocal,
+    skipped: plan.skipped,
+    sameTarget: plan.sameTarget,
     backup,
     missingKeys: identityFiles(template, home).filter((p) => !fs.existsSync(p)),
   };

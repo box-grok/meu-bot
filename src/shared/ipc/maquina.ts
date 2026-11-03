@@ -159,6 +159,10 @@ export interface SshSyncResult {
   kept: string[];
   /** Aliases só deste Mac, que o modelo versionado não conhece. */
   onlyLocal: string[];
+  /** Aliases do modelo removidos pela pessoa (marca `# meu-bot: não sincronizar …` no ~/.ssh/config): não voltaram. */
+  skipped: string[];
+  /** Aliases do modelo cuja máquina já existe neste Mac com outro nome (mesmo HostName, User e Port): não entraram. */
+  sameTarget: { alias: string; as: string }[];
   backup: string | null;
   /** Chaves (IdentityFile) do modelo que não existem neste Mac. */
   missingKeys: string[];

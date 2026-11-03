@@ -6,7 +6,7 @@ import { isValidHost } from "../app/settings";
 const MAX_DEPTH = 3;
 
 /** Expande um padrão de Include do ssh: ~, relativo a ~/.ssh, e um único * no nome do arquivo. */
-function expandInclude(pattern: string): string[] {
+export function expandInclude(pattern: string): string[] {
   const home = os.homedir();
   let p = pattern.startsWith("~") ? path.join(home, pattern.slice(1)) : pattern;
   if (!path.isAbsolute(p)) p = path.join(home, ".ssh", p);

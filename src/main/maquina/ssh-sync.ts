@@ -57,27 +57,72 @@ export interface SshSyncPlan {
   kept: string[];
   /** Aliases só do arquivo local, sem curinga, que o modelo não conhece. */
   onlyLocal: string[];
+  /** Aliases do modelo que a pessoa removeu pelo seletor (marca `# meu-bot: não sincronizar …`): não voltam. */
+  skipped: string[];
+  /** Aliases do modelo cuja máquina (HostName, User, Port) já existe no Mac com outro nome: não entram de novo. */
+  sameTarget: { alias: string; as: string }[];
 }
 
 const plainAliases = (blocks: SshBlock[]): string[] => blocks.flatMap((b) => b.aliases).filter((a) => !WILDCARD.test(a));
 
-export function planSshSync(templateText: string, currentText: string, home: string): SshSyncPlan {
+/** Marca que "Remover do seletor" deixa no ~/.ssh/config: o sync não traz esses aliases de volta do modelo. */
+const SKIP_RE = /^\s*#\s*meu-bot:\s*não sincronizar\s+(.+?)\s*$/i;
+export const skipLine = (host: string): string => `# meu-bot: não sincronizar ${host}`;
+export function skippedAliases(text: string): string[] {
+  const out = new Set<string>();
+  for (const raw of text.split(/\r?\n/)) {
+    const m = SKIP_RE.exec(raw);
+    if (m !== null) for (const a of m[1]!.split(/\s+/)) if (a !== "") out.add(a);
+  }
+  return [...out];
+}
+
+/** Destino de um bloco (`user@hostname:porta`, porta 22 por padrão), para reconhecer a mesma máquina sob outro nome; null sem HostName. */
+export function targetOf(block: SshBlock): string | null {
+  let hostName: string | null = null; let user = ""; let port = "22";
+  for (const raw of block.text.split(/\r?\n/)) {
+    const m = /^\s*(\S+)\s*(?:=|\s)\s*(.*)$/.exec(raw);
+    if (m === null) continue;
+    const k = m[1]!.toLowerCase(); const v = m[2]!.trim();
+    if (k === "hostname") hostName = v.toLowerCase(); else if (k === "user") user = v; else if (k === "port") port = v;
+  }
+  return hostName === null ? null : `${user}@${hostName}:${port}`;
+}
+
+/**
+ * `includedTexts`: conteúdo dos arquivos que o ~/.ssh/config inclui (o Cursor deste Mac pode ter a lista dele num
+ * Include): máquina que está lá conta como existente. Em 3/11 o sync recriava agente-box e agente-root já presentes
+ * no cursor_config, trazia de volta o que a pessoa tinha removido e repetia a VM que ela tinha renomeado.
+ */
+export function planSshSync(templateText: string, currentText: string, home: string, includedTexts: readonly string[] = []): SshSyncPlan {
   const tpl = parseSshConfig(templateText);
   const cur = parseSshConfig(currentText);
+  const allBlocks = [...cur.blocks, ...includedTexts.flatMap((t) => parseSshConfig(t).blocks)];
   const curIncludes = new Set(cur.includes.map((p) => normalizeInclude(p, home)));
   const includesToAdd = tpl.includes.filter((p) => !curIncludes.has(normalizeInclude(p, home)));
-  const curAliases = new Set(plainAliases(cur.blocks));
+  const curAliases = new Set(plainAliases(allBlocks));
+  const skip = new Set(skippedAliases(currentText));
+  const targets = new Map<string, string>();
+  for (const b of allBlocks) {
+    const t = targetOf(b); const a = b.aliases.find((x) => !WILDCARD.test(x));
+    if (t !== null && a !== undefined && !targets.has(t)) targets.set(t, a);
+  }
   const hostsToAdd: SshBlock[] = [];
   const kept: string[] = [];
+  const skipped: string[] = [];
+  const sameTarget: { alias: string; as: string }[] = [];
   for (const b of tpl.blocks) {
     const plain = b.aliases.filter((a) => !WILDCARD.test(a));
     if (plain.length === 0) continue;
-    if (plain.some((a) => curAliases.has(a))) kept.push(...plain.filter((a) => curAliases.has(a)));
-    else hostsToAdd.push(b);
+    if (plain.some((a) => curAliases.has(a))) { kept.push(...plain.filter((a) => curAliases.has(a))); continue; }
+    if (plain.some((a) => skip.has(a))) { skipped.push(...plain.filter((a) => skip.has(a))); continue; }
+    const t = targetOf(b); const as = t === null ? undefined : targets.get(t);
+    if (as !== undefined) { sameTarget.push({ alias: plain[0]!, as }); continue; }
+    hostsToAdd.push(b);
   }
   const tplAliases = new Set(plainAliases(tpl.blocks));
-  const onlyLocal = [...curAliases].filter((a) => !tplAliases.has(a));
-  return { includesToAdd, hostsToAdd, kept, onlyLocal };
+  const onlyLocal = [...new Set(plainAliases(cur.blocks))].filter((a) => !tplAliases.has(a));
+  return { includesToAdd, hostsToAdd, kept, onlyLocal, skipped, sameTarget };
 }
 
 /** Texto a acrescentar no fim do ~/.ssh/config (vazio se não há nada a fazer). */
@@ -104,8 +149,8 @@ export function identityFiles(templateText: string, home: string): string[] {
 /**
  * Tira um host do texto do ~/.ssh/config ("Remover do seletor"). Bloco só dele: sai o bloco inteiro (da linha
  * Host até a próxima Host/Match). Bloco com vários nomes (`Host a b`): sai só o nome. O resto do arquivo fica
- * igual, comentários e Include inclusive. `removed: null` = o host não está neste arquivo (pode vir de um
- * Include, que não é mexido).
+ * igual, comentários e Include inclusive, e entra a marca `# meu-bot: não sincronizar <host>` no fim.
+ * `removed: null` = o host não está neste arquivo (pode vir de um Include, que não é mexido).
  */
 export function removeSshHost(text: string, host: string): { text: string; removed: "block" | "alias" | null } {
   const lines = text.split(/\r?\n/);
@@ -119,14 +164,16 @@ export function removeSshHost(text: string, host: string): { text: string; remov
     if (list.includes(host)) { start = i; aliases = list; break; }
   }
   if (start < 0) return { text, removed: null };
+  // A marca no fim: o "sincronizar ssh" não traz este host de volta do modelo.
+  const marcado = (t: string): string => (skippedAliases(t).includes(host) ? t : `${t.replace(/\n*$/, "\n")}${skipLine(host)}\n`);
   if (aliases.length > 1) {
     const m = isHeader(lines[start]!)!;
     const indent = /^\s*/.exec(lines[start]!)![0];
     lines[start] = `${indent}${m[1]} ${aliases.filter((a) => a !== host).join(" ")}`;
-    return { text: lines.join("\n"), removed: "alias" };
+    return { text: marcado(lines.join("\n")), removed: "alias" };
   }
   let end = start + 1;
   while (end < lines.length && isHeader(lines[end]!) === null) end++;
   const out = [...lines.slice(0, start), ...lines.slice(end)].join("\n").replace(/\n{3,}/g, "\n\n");
-  return { text: out, removed: "block" };
+  return { text: marcado(out), removed: "block" };
 }
