@@ -777,3 +777,12 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   cada pessoa já abre com a faixa (build · branch · commit, batimento do main, túnel, o que chega de fora). Quem dá
   suporte precisa ver o build e o que falhou sem ter de ligar nada antes. Continua desligável pela paleta (Cmd+K,
   "Modo de depuração: desligar"), e a escolha gravada vence o padrão.
+
+## Adotar um alias de máquina que já é pessoa (3 nov 2026)
+
+- A identidade de uma pessoa é "chave do host + usuário@porta" (`machineId`). "ssh <host>" de um alias que resolve
+  para a mesma identidade de alguém que já está na lista (`meu-root-hermes` e `meu-root`, por exemplo) **mantém a
+  entrada que existe**, com apelido, plano e histórico; só o "visto" avança. Antes `addSupportCode` sobrescrevia a
+  entrada, e o ⇅ do admin (que adota todo alias do `~/.ssh/config`) trocaria o nome da pessoa pelo alias e apagaria
+  o plano Pro. Código colado (`MBS1.…`) continua substituindo: é a própria pessoa mandando de novo. O seletor relata
+  esses aliases como "já estavam (mesma máquina e usuário)".

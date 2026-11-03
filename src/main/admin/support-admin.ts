@@ -194,6 +194,16 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
   const host = text.trim().startsWith("MBS1.") ? null : parseSshAddTarget(text);
   const code = host !== null ? await adoptSshHost(host) : (() => { const d = decodeSupportCode(text); if (!d.ok) throw new Error(d.reason); return d.code; })();
   const m = load();
+  // "ssh <host>" de uma máquina que já é pessoa (outro alias para a mesma chave de host + usuário, como meu-root-hermes
+  // e meu-root): fica a entrada que existe, com apelido, plano e histórico; só o "visto" avança. Sobrescrever apagava
+  // tudo isso e trocava o nome dela pelo alias (3 nov). Código colado continua substituindo: é a própria pessoa mandando de novo.
+  const existente = host !== null ? m.get(machineId(code)) : undefined;
+  if (existente !== undefined) {
+    existente.seenAt = new Date().toISOString();
+    save(m);
+    log(`[adotar] ${host}: já é a pessoa ${toPerson(existente).name} (${supportAlias(existente.code)}); mantida`);
+    return toPerson(existente);
+  }
   const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };
   m.set(machineId(code), s);
   save(m);

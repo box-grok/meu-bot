@@ -459,13 +459,18 @@ async function adotarMaquinasDoProjeto(r: SshSyncResult, texto: string): Promise
   const faltam = maquinasParaAdotar([...r.added, ...r.kept, ...Object.keys(enderecos)], support.people);
   if (faltam.length === 0) return linhas;
   if (!support.adminKey) return [`⚠ ${faltam.length === 1 ? `${faltam[0]} não entrou` : `${faltam.join(", ")} não entraram`} na lista: falta a chave ~/.ssh/meu-bot-admin neste Mac.`];
-  const entraram: string[] = []; const falharam: string[] = [];
+  const entraram: string[] = []; const falharam: string[] = []; const jaEram: string[] = [];
+  const aliasesAntes = new Set(support.people.map((p) => p.alias));
   for (const h of faltam) {
-    noteEl.textContent = `${texto}
-adicionando ${h} à lista (${entraram.length + falharam.length + 1}/${faltam.length})…`;
-    try { await window.picker.supportAdd(h); entraram.push(h); } catch (err) { falharam.push(`${h} (${ipcErrorText(err)})`); }
+    noteEl.textContent = `${texto}\nadicionando ${h} à lista (${entraram.length + falharam.length + jaEram.length + 1}/${faltam.length})…`;
+    try {
+      const p = await window.picker.supportAdd(h);
+      // Mesma máquina e usuário de alguém que já está na lista (outro alias): o main mantém a pessoa; aqui só se conta.
+      if (aliasesAntes.has(p.alias)) jaEram.push(`${h} = ${p.name}`); else { entraram.push(h); aliasesAntes.add(p.alias); }
+    } catch (err) { falharam.push(`${h} (${ipcErrorText(err)})`); }
   }
   if (entraram.length > 0) linhas.push(`✓ na lista: ${entraram.join(", ")}.`);
+  if (jaEram.length > 0) linhas.push(`já estavam (mesma máquina e usuário): ${jaEram.join(", ")}.`);
   if (falharam.length > 0) linhas.push(`⚠ não entraram na lista: ${falharam.join("; ")}.`);
   return linhas;
 }
