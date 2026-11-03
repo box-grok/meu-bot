@@ -221,6 +221,20 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
     return toPerson(existente);
   }
   const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };
+  // Mesmo endereço, usuário e porta de alguém da lista, mas chave do servidor diferente: a máquina foi reinstalada
+  // (identidade nova). A entrada velha sairia da lista só por "Excluir máquina" e o admin recusaria entrar nela
+  // (StrictHostKeyChecking). Ela é substituída pela nova, levando apelido, plano e usuário de login; some do conf.
+  if (host !== null) {
+    const velha = [...m.entries()].find(([id, v]) => id !== machineId(code) && v.code.hostname === code.hostname && v.code.user === code.user && v.code.port === code.port);
+    if (velha !== undefined) {
+      const [idVelho, v] = velha;
+      s.nickname = v.nickname === v.code.name || v.nickname === (v.code.machine ?? "") ? "" : v.nickname;
+      if (v.plan !== undefined) s.plan = v.plan;
+      if (v.usuarioDe !== undefined) s.usuarioDe = v.usuarioDe;
+      m.delete(idVelho);
+      log(`[adotar] ${host}: chave do servidor mudou (máquina reinstalada); ${toPerson(v).name} (${supportAlias(v.code)}) substituída por ${supportAlias(code)}`);
+    }
+  }
   m.set(machineId(code), s);
   save(m);
   writeSshFiles(m);
