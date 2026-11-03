@@ -442,6 +442,8 @@ function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
     lines.push(`⚠ falta a chave ${r.missingKeys.map((k) => k.replace(/^.*\/\.ssh\//, "~/.ssh/")).join(", ")} neste Mac: copie do outro Mac, ou gere uma nova e coloque a .pub no authorized_keys de cada máquina (PLAYBOOK, seção 1).`);
   }
   lines.push("O Cursor (Remote SSH) lê o mesmo arquivo, então as máquinas aparecem lá também.");
+  // No admin a lista é de pessoas: a máquina entrou no ~/.ssh/config, mas só vira linha aqui por "Adicionar pessoa" com o nome SSH dela.
+  if (support !== null && r.added.length > 0) lines.push(`Para alguém dessas máquinas aparecer nesta lista, use "Adicionar pessoa" com o nome SSH (por exemplo: ${r.added[0]}).`);
   return { kind, text: lines.join("\n") };
 }
 

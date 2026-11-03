@@ -509,3 +509,7 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   confirmou que é esperado. Antes aparecia só `inacessível por SSH: Host key verification failed`, e foi assim que
   a VM `agente` reinstalada em 1 nov passou despercebida por um dia. `HostProbe.hostName` traz o mesmo HostName para
   o texto da caixa de estado (`box@agente-box (187.127.41.175) · Debian 13`).
+- O ⇅ "sincronizar ssh" passa a existir também no seletor do **meu-bot-admin** (antes `admin.css` o escondia): num
+  Mac novo do suporte ele enche o `~/.ssh/config` com as máquinas do projeto do mesmo jeito. Como a lista do admin é
+  de pessoas, o resultado lembra que a máquina só vira linha por "Adicionar pessoa" com o nome SSH dela. Os
+  interruptores Intro/Onboarding seguem só no meu-bot da pessoa.
