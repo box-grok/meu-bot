@@ -81,7 +81,9 @@ awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap
     cg=$(printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s' "$cur" "$an" "$pk" "$sc" "$ev" "$pm" "$pc" "$cs")
   fi
   printf 'U\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$n" "$u" "$h" "$s" "$su" "$mb" "$ch" "$us" "$li" "$ram" "$mm" "$cq" "$ap" "$lg" "$pr" "$hd" "$sx" "$ml" "$cw" "$cg"
-  bd="$h/.local/share/meu-bot/backend"; [ -s "$bd/.env" ] && [ -f "$bd/server.js" ] && printf 'B\\t%s\\t%s\\n' "$n" "$(tr -dc '0-9.' < "$bd/VERSION" 2>/dev/null)"
+  # if, não &&: o status do script é o da última linha da última volta do loop, e um && falho (último usuário
+  # sem backend) fazia o ssh sair com 1 sem stderr ("não consegui ler os usuários da máquina").
+  bd="$h/.local/share/meu-bot/backend"; if [ -s "$bd/.env" ] && [ -f "$bd/server.js" ]; then printf 'B\\t%s\\t%s\\n' "$n" "$(tr -dc '0-9.' < "$bd/VERSION" 2>/dev/null)"; fi
 done`;
 
 const kb = (v: string | undefined): number | null => (v !== undefined && /^\d+$/.test(v) ? Number(v) : null);

@@ -296,3 +296,19 @@ test("usuários: backend por box vem em linha própria (B) e boxesDesatualizadas
   assert.deepEqual(boxesDesatualizadas(r.usuarios, null), []);
   assert.match(LISTAR_SH, /\$bd\/VERSION/); assert.match(LISTAR_SH, /share\/meu-bot\/backend"/); assert.match(LISTAR_SH, /printf 'B\\t%s\\t%s\\n'/); assert.match(LISTAR_SH, /\[ -f "\$bd\/server\.js" \]/);
 });
+
+test("usuários: o script sai com 0 mesmo quando o último usuário não tem o backend do meu-bot", async () => {
+  // Rodado aqui mesmo: root e /etc/passwd trocados por um arquivo de teste com dois usuários, o último sem backend.
+  const { execFileSync } = await import("node:child_process");
+  const fs = await import("node:fs"); const os = await import("node:os"); const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "listar-"));
+  const com = path.join(dir, "com"); fs.mkdirSync(path.join(com, ".local/share/meu-bot/backend"), { recursive: true });
+  fs.writeFileSync(path.join(com, ".local/share/meu-bot/backend/.env"), "X=1\n"); fs.writeFileSync(path.join(com, ".local/share/meu-bot/backend/server.js"), ""); fs.writeFileSync(path.join(com, ".local/share/meu-bot/backend/VERSION"), "1.2.3\n");
+  const sem = path.join(dir, "sem"); fs.mkdirSync(sem);
+  const passwd = path.join(dir, "passwd");
+  fs.writeFileSync(passwd, `com:x:1001:1001::${com}:/bin/bash\nsem:x:1002:1002::${sem}:/bin/bash\n`);
+  const sh = LISTAR_SH.replace('[ "$(id -u)" = 0 ]', "true").replaceAll("/etc/passwd", passwd);
+  const out = execFileSync("bash", ["-s"], { input: sh, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+  assert.match(out, /^B\tcom\t1\.2\.3$/m);
+  assert.deepEqual(lerUsuarios(out).usuarios.map((u) => [u.nome, u.backendInstalado]), [["com", true], ["sem", false]]);
+});
