@@ -24,7 +24,6 @@ import { handleClient, handleShared, onShared } from "../ipc/registry";
 import { log } from "./backend";
 import { resumoDoInstalador } from "./backend-bundle-core";
 import { evento } from "../app/depuracao";
-import { atualizarModulos } from "../modulos/modulos";
 import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost, setApelidoMaquina } from "../app/settings";
 import { isPort } from "../app/settings-normalize";
 import { closeTunnel } from "./tunnel";
@@ -108,7 +107,6 @@ function probeCached(host: string): Promise<HostProbe> {
       ensureHermesPausa(host, probe);
       ensureCrmAtual(host, probe);
       ensureFinanceAtual(host, probe);
-      ensureModulosAtuais(host, probe);
     });
     return probe;
   }).finally(() => inflight.delete(host));
@@ -206,14 +204,6 @@ function ensureFinanceAtual(host: string, probe: HostProbe): void {
   log(`[finance] ${host}: financeiro ${probe.financeVersion ?? "sem versão"} → ${want}; atualizando em segundo plano`);
   void installFinance(host).then((r) => { log(`[finance] ${host}: ${r.ok ? "atualizado sozinho" : `atualização automática falhou: ${resumoDoInstalador(r.log)}`}`); })
     .catch((e: unknown) => { log(`[finance] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
-}
-
-/** Módulos de produto (apps com caps().modulos): os ligados numa versão anterior à deste app sobem sozinhos. */
-const modulosTried = new Set<string>();
-function ensureModulosAtuais(host: string, probe: HostProbe): void {
-  if (caps().modulos === null || !probe.reachable || host === LOCAL_HOST || modulosTried.has(host)) return;
-  modulosTried.add(host);
-  void atualizarModulos(host, log).catch((e: unknown) => { log(`[modulos] ${host}: atualização automática falhou: ${e instanceof Error ? e.message : String(e)}`); });
 }
 
 const current = (): PickerSource => { if (source === null) throw new Error("seletor sem fonte: initPicker não rodou"); return source; };
