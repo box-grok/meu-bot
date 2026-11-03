@@ -6,7 +6,7 @@
  * abaixo leem o banco em modo só-leitura na máquina e devolvem JSON numa linha; as funções puras viram isso nos
  * tipos do contrato. É a fronteira dona desse formato: o renderer nunca vê o esquema do Hermes.
  */
-import type { WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../../shared/ipc";
+import type { TypingChoice, TypingMode, WhatsappChat, WhatsappDmPolicy, WhatsappGroup, WhatsappGroupAgent, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappThreadMessage } from "../../shared/ipc";
 import { donosDe, souEu, type WaQuem } from "./whatsapp-marks";
 import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
@@ -570,6 +570,48 @@ def salvar():
     with open(tmp, "w") as f: dump(doc, f)
     os.chmod(tmp, 0o600); os.replace(tmp, p)
 `;
+
+// ------------------------------------------------------------------ "digitando…" (config.yaml do Hermes)
+/**
+ * "Digitando…" no Hermes: `platforms.whatsapp.typing_indicator` do config.yaml (gateway/config.py › PlatformConfig,
+ * desde a 0.22.2 que o app instala), lido na subida do gateway. Ligado (o padrão), o gateway pede ao bridge o estado
+ * "composing" assim que começa a processar a mensagem e renova a cada 2 s até a resposta sair (o `instant` do
+ * OpenClaw); desligado, nunca. Não há `thinking`/`message` nem intervalo. A chave também vale dentro de `extra:`
+ * (toplevel_or_extra), por isso os dois lugares são lidos e, ao gravar, a cópia em `extra` sai.
+ * Imprime `typing=true|false|` (vazio = chave ausente).
+ */
+export const HERMES_TYPING_SH = `${HERMES_PY_SH}; echo "typing=$("$PY" -c '
+import os
+try:
+    try:
+        from ruamel.yaml import YAML
+        c = YAML(typ="safe").load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+    except ImportError:
+        import yaml
+        c = yaml.safe_load(open(os.path.expanduser("~/.hermes/config.yaml"))) or {}
+except Exception:
+    c = {}
+w = (c.get("platforms") or {}).get("whatsapp") or {}
+w = w if isinstance(w, dict) else {}
+x = w.get("extra") if isinstance(w.get("extra"), dict) else {}
+v = w.get("typing_indicator")
+if v is None: v = x.get("typing_indicator")
+print("" if v is None else ("true" if (v if isinstance(v, bool) else str(v).strip().lower() in ("1", "true", "yes", "on")) else "false"))
+' 2>/dev/null)"`;
+
+/** `typing=` do Hermes no contrato da tela: ligado = `instant`, desligado = `never`, chave ausente = null (vale o padrão do Hermes, ligado). */
+export const hermesTypingModeDe = (v: string | undefined): TypingMode | null => v === "true" ? "instant" : v === "false" ? "never" : null;
+
+/** Grava `platforms.whatsapp.typing_indicator` (true = mostrar, false = nunca) com backup e escrita atômica; tira a cópia de `extra`. Imprime `typingset=ok`. */
+export const hermesTypingSetSh = (mode: TypingChoice): string => `${HERMES_PY_SH}; "$PY" -c '
+${HERMES_YAML_PY}
+w = sub(sub(doc, "platforms"), "whatsapp")
+w["typing_indicator"] = ${mode === "instant" ? "True" : "False"}
+x = w.get("extra")
+if isinstance(x, dict): x.pop("typing_indicator", None)
+salvar()
+print("typingset=ok")
+'`;
 
 /**
  * Depois de parear o Hermes (o `hermes whatsapp` faz isto no assistente interativo): liga o WhatsApp no .env e, sem

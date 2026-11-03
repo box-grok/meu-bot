@@ -243,9 +243,10 @@ echo gateway=openclaw; echo present=1; echo bin=; exit 0`;
 export const OPENCLAW_STATUS_SH = `if [ -n "\${ALVO:-}" ]; then echo gateway=openclaw; echo present=1; echo poralvo=1; exit 0; fi
 ${openclawStatusSh(ALVO_PADRAO)}`;
 
-/** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
 /** `typing=` do openclaw.json (entrada do agente ou padrão): um dos modos conhecidos, senão null (chave vazia = regra automática). */
 export const typingModeDe = (v: string | undefined): TypingMode | null => (TYPING_MODES as readonly string[]).includes(v ?? "") ? (v as TypingMode) : null;
+
+/** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
 export function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   if ((kv.get("bin") ?? "") === "") return { present: true, gateway: "openclaw", agent: "OpenClaw (não instalado)", ready: false, missing: "o OpenClaw ainda não está instalado nesta máquina", connected: false, state: "sem instalar", number: null, loggedOut: false, detail: "OpenClaw escolhido, ainda não instalado", dmPolicy: null, channelConfig: null };
   const agent = describeInstall("OpenClaw", kv);

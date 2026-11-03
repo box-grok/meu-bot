@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH, HERMES_GROUPS_PY, hermesGroupSessions, hermesGroupOfKey } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
+const { chatsFromHermes, threadFromHermes, hermesPeerOfKey, isHermesKey, HERMES_LIST_PY, HERMES_THREAD_PY, HERMES_SELF_SH, HERMES_END_SH, HERMES_GROUPS_PY, hermesGroupSessions, hermesGroupOfKey, HERMES_TYPING_SH, hermesTypingModeDe, hermesTypingSetSh } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-hermes-core.js");
 
 test("chaves do Hermes: contato pela chave dm; grupo e OpenClaw ficam de fora", () => {
   assert.equal(hermesPeerOfKey("agent:main:whatsapp:dm:5522925501274"), "5522925501274");
@@ -420,4 +420,14 @@ test("leitura do áudio do Hermes: local_command só conta como ouvindo com o co
   assert.equal(lerHermesAudio(`${base}prov=groq\n`).audioIn, true, "provedor na nuvem: confia no config");
   assert.equal(lerHermesAudio("stt=0\ntts=off\nprov=local_command\ncmd=1\n").audioIn, false, "desligado");
   assert.equal(lerHermesAudio("prov=local_command\ncmd=1\n"), null, "sem stt= e tts= não inventa");
+});
+
+test("\"digitando…\" no Hermes: typing= do config.yaml vira instant/never (ausente = null); gravar escreve o booleano e tira a cópia de extra", () => {
+  assert.equal(hermesTypingModeDe("true"), "instant"); assert.equal(hermesTypingModeDe("false"), "never");
+  assert.equal(hermesTypingModeDe(""), null, "chave ausente: vale o padrão do Hermes (ligado), mas a pessoa ainda não escolheu");
+  assert.equal(hermesTypingModeDe(undefined), null); assert.equal(hermesTypingModeDe("lixo"), null);
+  assert.ok(HERMES_TYPING_SH.includes('echo "typing=$(') && HERMES_TYPING_SH.includes('x.get("typing_indicator")'), "lê a chave solta e a de extra");
+  const on = hermesTypingSetSh("instant"), off = hermesTypingSetSh("never");
+  assert.ok(on.includes('w["typing_indicator"] = True') && off.includes('w["typing_indicator"] = False'));
+  assert.ok(on.includes('x.pop("typing_indicator", None)') && on.includes("salvar()") && on.includes('print("typingset=ok")'));
 });
