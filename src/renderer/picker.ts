@@ -2,7 +2,7 @@
 import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson, PlanName } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
-import { personSuffix } from "./lib/admin-view.js";
+import { maquinasParaAdotar, personSuffix } from "./lib/admin-view.js";
 import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
 import { describeProbe, enderecoLabel, hostLabel, setApelidoMaquina, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
@@ -446,15 +446,15 @@ function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
 }
 
 /**
- * No admin a lista é de pessoas: as máquinas do projeto que o ~/.ssh/config já tem (as que entraram agora e as que já
- * estavam) viram pessoas pelo mesmo caminho de "Adicionar pessoa" com o nome SSH, uma a uma, para o clique no ⇅ dar
- * o mesmo resultado que no meu-bot: a máquina aparece na lista. Quem não entra (máquina fora, sem a chave) é relatado.
+ * No admin a lista é de pessoas: toda máquina que o meu-bot mostraria neste Mac (o ~/.ssh/config inteiro, Includes
+ * dentro, mais o que o sync acabou de acrescentar) vira pessoa pelo mesmo caminho de "Adicionar pessoa" com o nome
+ * SSH, uma a uma, para o clique no ⇅ dar o mesmo resultado que no meu-bot: a máquina aparece na lista. Quem não entra
+ * (máquina fora, usuário que não existe mais, sem a chave) é relatado e volta a ser tentado no próximo clique.
  */
 async function adotarMaquinasDoProjeto(r: SshSyncResult, texto: string): Promise<string[]> {
   if (support === null) return [];
   const linhas: string[] = [];
-  const jaPessoa = new Set(support.people.map((p) => p.machine).filter((m): m is string => m !== null));
-  const faltam = [...r.added, ...r.kept].filter((h) => !jaPessoa.has(h));
+  const faltam = maquinasParaAdotar([...r.added, ...r.kept, ...Object.keys(enderecos)], support.people);
   if (faltam.length === 0) return linhas;
   if (!support.adminKey) return [`⚠ ${faltam.length === 1 ? `${faltam[0]} não entrou` : `${faltam.join(", ")} não entraram`} na lista: falta a chave ~/.ssh/meu-bot-admin neste Mac.`];
   const entraram: string[] = []; const falharam: string[] = [];

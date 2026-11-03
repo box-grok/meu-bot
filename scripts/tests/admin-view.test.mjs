@@ -181,3 +181,13 @@ test("admin: linhasPreparar vira ✓ / ✗ / • com o detalhe no passo", async 
   const l = linhasPreparar({ itens: [{ id: "swap", titulo: "Swap", estado: "ok", detalhe: "8 GB", opcional: false }, { id: "gh", titulo: "gh", estado: "falta", detalhe: "", opcional: false }, { id: "link-publico", titulo: "Link", estado: "humano", detalhe: "entre na Cloudflare", opcional: false, pagina: "link-publico" }] });
   assert.deepEqual(l, [{ text: "Swap", ok: true, step: " · 8 GB" }, { text: "gh", ok: false }, { text: "Link", ok: null, step: " · entre na Cloudflare" }]);
 });
+
+test("maquinasParaAdotar: todo alias do ~/.ssh/config menos local, suporte-* e quem já é pessoa", async () => {
+  const { maquinasParaAdotar } = await import("../../dist/renderer/lib/admin-view.js");
+  const people = [{ alias: "suporte-box-ab12", machine: "meu-root" }, { alias: "suporte-lv-cd34", machine: null }];
+  assert.deepEqual(
+    maquinasParaAdotar(["local", "grokbot-1", "suporte-box-ab12", "meu-root", "meu-root-hermes", "grokbot-1", "agente-box"], people),
+    ["grokbot-1", "meu-root-hermes", "agente-box"],
+  );
+  assert.deepEqual(maquinasParaAdotar([], people), []);
+});

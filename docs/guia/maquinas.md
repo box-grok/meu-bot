@@ -512,7 +512,8 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
 - O ⇅ "sincronizar ssh" passa a existir também no seletor do **meu-bot-admin**, na linha de "Adicionar", no lugar
   do antigo botão "Atualizar" (a caixa de entrada continua lida sozinha ao abrir e a cada 60 s, e também antes de
   cada sync). Num Mac novo do suporte ele enche o `~/.ssh/config` com as máquinas do projeto do mesmo jeito e, como
-  a lista do admin é de pessoas, segue até o fim: cada máquina do projeto que ainda não é pessoa (as que entraram e as que já
-  estavam) entra na lista pelo caminho de "Adicionar pessoa" com o nome SSH (`adotarMaquinasDoProjeto`, uma a uma,
-  com progresso na nota). Quem não entra (máquina fora, sem a chave `~/.ssh/meu-bot-admin`) é relatado e o resto
+  a lista do admin é de pessoas, segue até o fim: toda máquina que o meu-bot mostraria neste Mac (o `~/.ssh/config`
+  inteiro, Includes dentro, mais o que o sync acrescentou; `maquinasParaAdotar` em `lib/admin-view.ts` tira `local`,
+  `suporte-*` e quem já é pessoa) entra na lista pelo caminho de "Adicionar pessoa" com o nome SSH
+  (`adotarMaquinasDoProjeto`, uma a uma, com progresso na nota). Quem não entra (máquina fora, sem a chave `~/.ssh/meu-bot-admin`) é relatado e o resto
   segue. Os interruptores Intro/Onboarding seguem só no meu-bot da pessoa.
