@@ -57,7 +57,8 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
     refreshing = true;
     try {
       const r = await deps.api.supportRefresh();
-      if (r.warning !== null) { deps.noteEl.hidden = false; deps.noteEl.textContent = `⚠ ${r.warning}`; }
+      // Aviso da caixa (não respondeu) só fora do sync: a nota do sync é progresso e resultado, não pode ser coberta.
+      if (r.warning !== null && !syncing) { deps.noteEl.hidden = false; deps.noteEl.textContent = `⚠ ${r.warning}`; }
       deps.reinit(await deps.api.list(), deps.selected());
     } catch (err) { deps.showError("caixa de entrada", err); }
     finally { refreshing = false; }

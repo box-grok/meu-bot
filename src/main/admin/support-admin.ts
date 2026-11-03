@@ -119,10 +119,14 @@ function writeSshFiles(m: Map<string, Stored>): void {
 }
 
 /** Lê a caixa de entrada (na máquina do admin): os códigos válidos, por id. Quem junta ao salvo é `juntarCaixa`. */
+let avisouSemCaixa = false;
 async function pullInbox(): Promise<{ lidos: { key: string; code: SupportCode; seenAt: string }[]; warning: string | null }> {
   const lidos: { key: string; code: SupportCode; seenAt: string }[] = [];
   const alias = adminConfig().inbox.alias;
-  if (alias === "") return { lidos, warning: "sem caixa de entrada configurada (rode scripts/suporte-setup.mjs e reempacote o admin)" };
+  // Sem caixa de entrada o admin funciona do mesmo jeito: as pessoas entram por "Adicionar pessoa" (código colado ou
+  // "ssh <host>") e pelo ⇅ do seletor. Não é aviso para a nota a cada 60 s (ele cobria o resultado do sync); fica no
+  // log, uma vez, e no texto da lista vazia.
+  if (alias === "") { if (!avisouSemCaixa) { avisouSemCaixa = true; log("[suporte] sem caixa de entrada configurada (scripts/suporte-setup.mjs): só Adicionar pessoa e ⇅"); } return { lidos, warning: null }; }
   const r = await runSsh(alias, `for f in "$HOME"/suporte-inbox/*.code; do [ -f "$f" ] || continue; printf 'F\\t%s\\t%s\\t' "$(basename "$f" .code)" "$(stat -c %Y "$f")"; head -c 4096 "$f" | tr -d '\\n'; echo; done\n`, 20_000);
   if (r.code !== 0) return { lidos, warning: `não consegui ler a caixa de entrada em ${alias}` };
   for (const line of r.stdout.split("\n")) {
@@ -194,6 +198,28 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
   const host = text.trim().startsWith("MBS1.") ? null : parseSshAddTarget(text);
   const code = host !== null ? await adoptSshHost(host) : (() => { const d = decodeSupportCode(text); if (!d.ok) throw new Error(d.reason); return d.code; })();
   const m = load();
+  // "ssh <host>" de uma máquina que já é pessoa (outro alias para a mesma chave de host + usuário, como meu-root-hermes
+  // e meu-root): fica a entrada que existe, com apelido, plano e histórico; só o "visto" avança. Sobrescrever apagava
+  // tudo isso e trocava o nome dela pelo alias (3 nov). Código colado continua substituindo: é a própria pessoa mandando de novo.
+  const existente = host !== null ? m.get(machineId(code)) : undefined;
+  if (existente !== undefined && host !== null) {
+    const antes = toPerson(existente);
+    existente.seenAt = new Date().toISOString();
+    if (existente.code.machine !== host) {
+      // O alias foi renomeado no ~/.ssh/config (ou a pessoa entrou por código, sem alias): o nome e a máquina seguem o
+      // alias novo, a menos que o admin tenha dado um apelido próprio (apelido igual ao nome antigo não conta). O alias
+      // de suporte muda com o nome (o sufixo de 4 hex é da identidade e fica), por isso os arquivos ssh são reescritos.
+      if (existente.nickname === existente.code.name || existente.nickname === (existente.code.machine ?? "")) existente.nickname = "";
+      existente.code = { ...code, state: existente.code.state };
+      save(m);
+      writeSshFiles(m);
+      log(`[adotar] ${host}: era ${antes.name} (${antes.alias}); alias renomeado, pessoa mantida como ${toPerson(existente).name} (${supportAlias(existente.code)})`);
+    } else {
+      save(m);
+      log(`[adotar] ${host}: já é a pessoa ${antes.name} (${antes.alias}); mantida`);
+    }
+    return toPerson(existente);
+  }
   const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };
   m.set(machineId(code), s);
   save(m);

@@ -459,13 +459,23 @@ async function adotarMaquinasDoProjeto(r: SshSyncResult, texto: string): Promise
   const faltam = maquinasParaAdotar([...r.added, ...r.kept, ...Object.keys(enderecos)], support.people);
   if (faltam.length === 0) return linhas;
   if (!support.adminKey) return [`⚠ ${faltam.length === 1 ? `${faltam[0]} não entrou` : `${faltam.join(", ")} não entraram`} na lista: falta a chave ~/.ssh/meu-bot-admin neste Mac.`];
-  const entraram: string[] = []; const falharam: string[] = [];
+  const entraram: string[] = []; const falharam: string[] = []; const jaEram: string[] = []; const renomeadas: string[] = [];
+  // O sufixo de 4 hex do alias de suporte é da identidade da máquina (chave do host + usuário): é por ele que se
+  // reconhece "a mesma pessoa" mesmo quando o nome (e o alias) mudou por um alias renomeado no ~/.ssh/config.
+  const pessoasAntes = new Map(support.people.map((p) => [p.alias.slice(-4), p]));
   for (const h of faltam) {
-    noteEl.textContent = `${texto}
-adicionando ${h} à lista (${entraram.length + falharam.length + 1}/${faltam.length})…`;
-    try { await window.picker.supportAdd(h); entraram.push(h); } catch (err) { falharam.push(`${h} (${ipcErrorText(err)})`); }
+    noteEl.textContent = `${texto}\nadicionando ${h} à lista (${entraram.length + falharam.length + jaEram.length + renomeadas.length + 1}/${faltam.length})…`;
+    try {
+      const p = await window.picker.supportAdd(h);
+      const antes = pessoasAntes.get(p.alias.slice(-4));
+      if (antes === undefined) { entraram.push(h); pessoasAntes.set(p.alias.slice(-4), p); }
+      else if (antes.alias === p.alias) jaEram.push(`${h} = ${p.name}`);
+      else { renomeadas.push(`${antes.name} → ${p.name}`); pessoasAntes.set(p.alias.slice(-4), p); }
+    } catch (err) { falharam.push(`${h} (${ipcErrorText(err)})`); }
   }
   if (entraram.length > 0) linhas.push(`✓ na lista: ${entraram.join(", ")}.`);
+  if (renomeadas.length > 0) linhas.push(`✓ renomeadas pelo alias novo do ~/.ssh/config: ${renomeadas.join(", ")}.`);
+  if (jaEram.length > 0) linhas.push(`já estavam (mesma máquina e usuário): ${jaEram.join(", ")}.`);
   if (falharam.length > 0) linhas.push(`⚠ não entraram na lista: ${falharam.join("; ")}.`);
   return linhas;
 }

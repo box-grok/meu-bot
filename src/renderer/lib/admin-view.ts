@@ -203,7 +203,7 @@ export function timeAgo(iso: string, now: number = Date.now()): string {
 export const personSuffix = (p: SupportPerson, now: number = Date.now()): string =>
   ` · ${p.machine !== null ? `${p.machine} · ` : ""}${p.hostname}${p.port !== 22 ? `:${p.port}` : ""}${p.local ? " · só alcançável deste Mac" : ""}${p.seenAt !== "" ? ` · ${timeAgo(p.seenAt, now)}` : ""}`;
 
-export const EMPTY_PEOPLE_TEXT = "Ninguém ainda. Quando uma pessoa ligar \"Permitir suporte\" no meu-bot dela, ela aparece aqui sozinha. Ou use Adicionar pessoa com o código dela.";
+export const EMPTY_PEOPLE_TEXT = "Ninguém ainda. Clique em ⇅ para trazer as máquinas do seu ~/.ssh/config, ou use Adicionar pessoa com o código dela ou um host (ssh agente-box). Com a caixa de entrada configurada (scripts/suporte-setup.mjs), quem ligar \"Permitir suporte\" no meu-bot aparece aqui sozinho.";
 /**
  * Máquinas do ~/.ssh/config deste Mac que o ⇅ do admin ainda precisa pôr na lista: todo alias que o meu-bot mostraria
  * (menos "local"), tirando os aliases de suporte (`suporte-…`, são as próprias pessoas) e as máquinas que já são

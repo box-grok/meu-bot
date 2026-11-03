@@ -330,11 +330,6 @@ export const clientPickerSource: PickerSource = {
       forgetProbe(host);
       return r;
     });
-    // Compartilhado: no admin o canal de cliente viraria o stub "só lê", e o ⇅ falhava sem mexer em máquina nenhuma.
-    handleShared("picker:sync-ssh", (event) => {
-      if (!fromPicker(event)) throw new Error("origem inválida");
-      return syncSshConfig();
-    });
     // "Remover do seletor": sai do ~/.ssh/config (com backup) e os atalhos da mesa dela vão junto.
     handleClient("picker:remove-host", (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
@@ -402,6 +397,12 @@ export const clientPickerSource: PickerSource = {
 export function initPicker(src: PickerSource): void {
   source = src;
   handleShared("picker:list", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); return initPayload(); });
+  // ⇅ "sincronizar ssh": mexe só no ~/.ssh/config deste Mac, por isso é de todas as variantes. Registrado aqui, e não
+  // no registerIpc do seletor de cliente: o admin não roda aquele bloco, e o clique dava "No handler registered" (3 nov).
+  handleShared("picker:sync-ssh", (event) => {
+    if (!fromPicker(event)) throw new Error("origem inválida");
+    return syncSshConfig();
+  });
   // Plano de cada host (licenca.json por SSH, melhor esforço) para o selo "PRO"; local e máquinas fora do ar ficam de fora.
   // Um pod do Grok Bot demora até 90 s para aceitar o ssh: com 10 s a grokbot-1 nunca ganhava o selo.
   // Quais máquinas são este próprio Mac por SSH (Colima): `ssh -G` local, sem rede, cacheado por alias.
