@@ -5,7 +5,7 @@
  * monta `case "$MOTOR"` com a regra única (WA_MOTOR_SH); o parse é despachado pelo `gateway=` que o fragmento imprime.
  * O que é decidido pelos dados (chaves de sessão do Hermes vs. do OpenClaw) fica na fachada; o que é IO do motor, aqui.
  */
-import type { Gateway, WhatsappAlvoResolvido, WhatsappChat, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
+import type { Gateway, TypingChoice, WhatsappAlvoResolvido, WhatsappChat, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
 import type { WaQuem } from "./whatsapp-marks";
 import type { PauseBy } from "./whatsapp-pause";
 import { agenteEscolhido, WA_ALVO_SH, WA_MOTOR_SH } from "./whatsapp-capacidades";
@@ -53,6 +53,8 @@ export interface MotorWhatsapp {
   keepPaused(host: string, want: string, own: readonly string[]): Promise<void>;
   /** Quem o agente responde nas DMs; `home` (Hermes) aponta o home channel para o dono. A fachada devolve o estado. */
   setDmPolicy(host: string, policy: WhatsappReplyChoice, numbers: readonly string[], opts: { home?: DonoHome }): Promise<void>;
+  /** "Digitando…" no WhatsApp: mostrar sempre (`instant`) ou nunca (`never`). Motor sem isso lança erro (capacidade `digitando`). */
+  setTypingMode(host: string, mode: TypingChoice): Promise<void>;
   groupClearPlan(host: string, jid: string, grupos: () => Promise<WhatsappGroups>): Promise<{ sessoes: number }>;
   groupClear(host: string, jid: string, grupos: () => Promise<WhatsappGroups>): Promise<void>;
   groupThread(host: string, jid: string, n: number, grupos: () => Promise<WhatsappGroups>): Promise<WhatsappThreadMessage[]>;

@@ -9,6 +9,7 @@ import { createRequire } from "node:module";
 // O STATUS_SCRIPT do OpenClaw, num HOME de mentira com um `openclaw` falso que anota cada chamada: no caminho normal só
 // `channels status` sobe a CLI (cada chamada custa ~300 MB na VM; eram 7-8 por consulta, por janela, a cada minuto).
 const { STATUS_SCRIPT } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp.js");
+const core = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-openclaw-core.js");
 
 // Resposta real (agente-box, 1 nov, redigida): canal configurado e deslogado; o formato novo já traz channelAccounts.
 const CHANNELS_STATUS = { status: null, channels: { whatsapp: { configured: true, statusState: "connected", linked: true, running: true, connected: true, lifecycle: "running", self: { e164: "+5511999999999", jid: null, lid: null }, lastDisconnect: null } }, channelAccounts: { whatsapp: [{ accountId: "default", enabled: true, healthState: "healthy", lifecycle: "running" }] }, channelDefaultAccountId: { whatsapp: "default" } };
@@ -54,7 +55,7 @@ function status(m) {
 const CONFIG_PRONTA = {
   plugins: { entries: { whatsapp: { enabled: true } } },
   channels: { whatsapp: { dmPolicy: "open", allowFrom: ["*"], selfChatMode: true } },
-  agents: { defaults: { model: { primary: "anthropic/claude-opus-5-5", fallbacks: ["grok/grok-4.7"] } } },
+  agents: { defaults: { model: { primary: "anthropic/claude-opus-5-5", fallbacks: ["grok/grok-4.7"] }, typingMode: "instant" } },
   tools: { media: { models: [{ type: "cli", command: "/bin/sh", capabilities: ["audio"] }] } },
   tts: { auto: "inbound", provider: "tts-local-cli" },
   models: { providers: { grok: { models: [{ id: "grok-4.7" }] } } },
@@ -70,9 +71,22 @@ test("máquina pronta: uma chamada só da CLI (channels status) e o resto vem do
   assert.equal(kv.get("plugin"), "1"); assert.equal(kv.get("dmpolicy"), "open");
   assert.deepEqual(JSON.parse(kv.get("channel")), CONFIG_PRONTA.channels.whatsapp);
   assert.equal(kv.get("audioin"), "1"); assert.equal(kv.get("voz"), "inbound");
+  assert.equal(kv.get("typing"), "instant", "o typingMode vem do json, sem chamada da CLI");
   assert.equal(kv.get("me"), "5511999999999:12@s.whatsapp.net");
   assert.deepEqual(JSON.parse(kv.get("oc")), { linked: true, connected: true, state: "connected", lifecycle: "running", loggedOut: null, e164: "+5511999999999", starting: false, conta: true });
   assert.equal(kv.get("ocmodel"), "0"); assert.equal(kv.get("ocfallback"), "0"); // modelo e reserva já existem: nada a gravar (e nenhum config set nas chamadas)
+});
+
+test("typingMode: a entrada do agente vence o padrão; sem a chave, vazio (a regra automática do motor)", () => {
+  const vazio = maquina({ config: { ...CONFIG_PRONTA, agents: { defaults: { model: CONFIG_PRONTA.agents.defaults.model } } } });
+  const r1 = status(vazio); fs.rmSync(vazio.home, { recursive: true, force: true });
+  assert.equal(r1.kv.get("typing"), "", "chave vazia = automático");
+  assert.equal(core.openclawStatus(r1.kv).typingMode, null);
+  const entrada = maquina({ config: { ...CONFIG_PRONTA, agents: { ...CONFIG_PRONTA.agents, entries: { main: { typingMode: "never" } } } } });
+  const r2 = status(entrada); fs.rmSync(entrada.home, { recursive: true, force: true });
+  assert.equal(r2.kv.get("typing"), "never");
+  assert.equal(core.openclawStatus(r2.kv).typingMode, "never");
+  assert.equal(core.typingModeDe("instant"), "instant"); assert.equal(core.typingModeDe("lixo"), null); assert.equal(core.typingModeDe(undefined), null);
 });
 
 test("sem package.json ao lado do binário: `openclaw --version` uma vez, depois o cache enquanto o binário não muda", () => {

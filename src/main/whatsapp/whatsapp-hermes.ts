@@ -14,12 +14,12 @@ import { JID_RE } from "./whatsapp-grupos-core";
 import { HERMES_GRUPOS_LISTAR_SH, lerListagemHermes } from "./hermes-grupos-listar";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, donoStatus, donosDe, parseWaMarks, pausaVigente, pausadosDe, quemDe, waMarkSh, type WaQuem } from "./whatsapp-marks";
 import { chatsComPausados, mensagensDaPausa, parsePausados, waPausadosSh } from "./whatsapp-pausados";
-import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesEnvPara, hermesHomeChannelSh, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesWaEnv } from "./whatsapp-hermes-core";
+import { HERMES_DIR_SH, chatsFromHermes, gruposHermes, hermesPausaPlano, HERMES_END_SH, HERMES_GROUP_CFG_SH, HERMES_GROUPS_PY, hermesEstadoDoGrupo, hermesGroupCfgPara, hermesGroupCfgSetSh, parseHermesGroupCfg, HERMES_ID_RE, HERMES_LIST_PY, HERMES_SELF_SH, HERMES_THREAD_PY, hermesGroupSessions, threadFromHermes, type HermesGroupSession, HERMES_ENV_SET_PY, HERMES_ENV_VALUE_RE, HERMES_POLICY_PY, HERMES_PATH_SH, HERMES_BRIDGE_PORT_SH, HERMES_RESTART_SH, HERMES_TYPING_SH, HERMES_WA_ENSURE_SH, hermesEnvOf, hermesTypingModeDe, hermesTypingSetSh, hermesEnvPara, hermesHomeChannelSh, hermesNaoResponde, hermesPausaModo, hermesPrecisaReiniciar, politicaHermes, HERMES_PAUSA_SH, type HermesWaEnv } from "./whatsapp-hermes-core";
 import type { PauseBy } from "./whatsapp-pause";
 
 const ultimaLinha = (s: string): string => s.trim().split("\n").pop() ?? "";
 
-/** Ramo do STATUS_SCRIPT: versão, bridge, /health, sessão, "Logged out" no log, política do .env e modo de pausa. */
+/** Ramo do STATUS_SCRIPT: versão, bridge, /health, sessão, "Logged out" no log, política do .env, modo de pausa e o "digitando…". */
 export const HERMES_STATUS_SH = `${HERMES_PATH_SH}
   S=$HOME/.hermes/whatsapp
   echo gateway=hermes; echo present=1
@@ -34,6 +34,7 @@ export const HERMES_STATUS_SH = `${HERMES_PATH_SH}
   echo "loggedout=$(tail -8 "$S/bridge.log" 2>/dev/null | grep -c 'Logged out')"
   ${HERMES_POLICY_PY}
   ${HERMES_PAUSA_SH}
+  ${HERMES_TYPING_SH}
   echo "marks=$(cat "${WA_MARKS_FILE}" 2>/dev/null | tr -d '\\n')"
   exit 0`;
 
@@ -205,7 +206,7 @@ export function criarMotorHermes(run: Exec = runSsh): MotorWhatsapp {
       const pausados = pausadosDe(marks);
       const allowFrom = politica.dmPolicy === "allowlist" && pausaModo === "allowlist" ? [...new Set([...politica.allowFrom, ...pausados.map((n) => `+${n}`)])] : politica.allowFrom;
       const channelConfig = JSON.stringify({ WHATSAPP_MODE: env.mode, WHATSAPP_DM_POLICY: env.dm, WHATSAPP_ALLOWED_USERS: env.allow, WHATSAPP_ALLOW_ALL_USERS: env.all, pausados, pausaModo }, null, 2);
-      return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom, ...donoStatus(quem, marks) };
+      return { present: true, gateway, agent, ready, missing: null, connected, state, number, loggedOut, detail, dmPolicy: politica.dmPolicy, channelConfig, allowFrom, typingMode: hermesTypingModeDe(kv.get("typing")), ...donoStatus(quem, marks) };
     },
     chatsSh: HERMES_CHATS_SH,
     parseChats: (host, kv) => {
@@ -328,6 +329,17 @@ export function criarMotorHermes(run: Exec = runSsh): MotorWhatsapp {
       const erro = politicaNaoBate(policy, ficou);
       if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
       log(`[whatsapp] ${host} (hermes): dmPolicy=${policy} restart=${restart || "?"}`);
+    },
+    // `platforms.whatsapp.typing_indicator` do config.yaml (true = mostrar, false = nunca), lido na subida do gateway:
+    // grava, reinicia e relê para confirmar o que ficou (whatsapp-hermes-core.ts › HERMES_TYPING_SH).
+    setTypingMode: async (host, mode) => {
+      const r = await run(host, `set -e\n${hermesTypingSetSh(mode)}\n${HERMES_RESTART_SH}\n${HERMES_TYPING_SH}\n`, 120_000);
+      if (r.code !== 0 || !r.stdout.includes("typingset=ok")) throw new Error(`não consegui gravar o "digitando…" no config.yaml do Hermes: ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
+      const restart = /restart=(.*)/.exec(r.stdout)?.[1]?.trim() ?? "";
+      if (restart.startsWith("falhou")) throw new Error(`gravei, mas não consegui reiniciar o gateway do Hermes (${restart.slice(8)}); reinicie-o na máquina para valer`);
+      const ficou = hermesTypingModeDe(kvTrimOf(r.stdout).get("typing"));
+      if (ficou !== mode) throw new Error(`o "digitando…" não ficou gravado como escolhido (ficou "${ficou ?? "vazio"}"). Tente de novo.`);
+      log(`[whatsapp] ${host} (hermes): typing_indicator=${mode === "instant"} restart=${restart || "?"}`);
     },
     groupClearPlan: async (host, jid) => ({ sessoes: (await groupSessionsOf(host, jid)).filter((s) => !s.ended).length }),
     groupClear: async (host, jid) => {

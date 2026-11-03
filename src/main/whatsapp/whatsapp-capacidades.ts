@@ -79,7 +79,7 @@ export const alvoSemAlias = (a: WhatsappAlvoResolvido): string | null =>
 
 const NADA: WhatsappCapacidades = {
   parear: false, listarConversas: false, lerConversa: false, limparHistorico: false, gatewayProprio: false, gruposAtualizar: false,
-  pausar: false, pausaPrazo: false, pausaNativa: false, grupos: false, guarda: false, politicaDm: false, audio: false, politicaReinicia: false,
+  pausar: false, pausaPrazo: false, pausaNativa: false, grupos: false, guarda: false, politicaDm: false, audio: false, politicaReinicia: false, digitando: false, digitandoReinicia: false,
 };
 
 /** O que a máquina tem além do motor: como a pausa por contato é feita no Hermes (whatsapp-hermes-core.ts › hermesPausaModo) e se o gateway é desta conta. */
@@ -103,6 +103,8 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
       return {
         parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, gatewayProprio: proprio, gruposAtualizar: connected && proprio,
         pausar: connected, pausaPrazo: false, pausaNativa: false, grupos: connected, guarda: proprio, politicaDm: true, audio: true, politicaReinicia: false,
+        // "digitando…": `agents.defaults.typingMode`, que o gateway recarrega sem reiniciar (também num gateway de outro usuário).
+        digitando: true, digitandoReinicia: false,
       };
     // Hermes não tem banco de conversas; o histórico vem do hook `wa-mirror`, que grava em
     // ~/.hermes/wa-mirror/inbox.jsonl o que o agente atendeu (mensagem truncada em 500 caracteres,
@@ -115,11 +117,13 @@ export function capacidadesDe(gateway: Gateway | null, ready: boolean, connected
     // da pausa ficam guardadas (contorno #2). Sem ele, é tirar da WHATSAPP_ALLOWED_USERS com reinício, e o agente nem
     // vê as mensagens nesse período (contorno #1). `pausaNativa` é o dia em que o Hermes trouxer isso de fábrica.
     // Áudio: o app grava `stt` e `voice.auto_tts` no config.yaml (hermes-audio.ts); só não há escolha de voz.
+    // "Digitando…": `platforms.whatsapp.typing_indicator` no config.yaml (ligado/desligado), lido na subida: aplicar reinicia.
     case "hermes": {
       const prazo = connected && hermes.pausaModo !== "allowlist";
-      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, gatewayProprio: true, gruposAtualizar: connected, pausar: connected, pausaPrazo: prazo, pausaNativa: hermes.pausaModo === "nativa", grupos: connected, politicaDm: true, audio: true, politicaReinicia: true };
+      return { ...NADA, parear: true, listarConversas: connected, lerConversa: connected, limparHistorico: connected, gatewayProprio: true, gruposAtualizar: connected, pausar: connected, pausaPrazo: prazo, pausaNativa: hermes.pausaModo === "nativa", grupos: connected, politicaDm: true, audio: true, politicaReinicia: true, digitando: true, digitandoReinicia: true };
     }
-    // PicoClaw: pareia e tem política de quem o agente responde; o resto ainda não foi mapeado.
+    // PicoClaw: pareia e tem política de quem o agente responde; o resto ainda não foi mapeado. "Digitando…" não tem
+    // como ligar: o canal nativo do WhatsApp (whatsapp_native) não implementa o indicador (TypingCapable).
     case "picoclaw":
       return { ...NADA, parear: true, politicaDm: true, gatewayProprio: true };
     default:

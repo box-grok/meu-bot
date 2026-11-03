@@ -2,7 +2,8 @@
  * OpenClaw, parte pura: os trechos de shell que os scripts da máquina usam (status, pareamento, lista, grupos, logout,
  * política, trava do dono) e o parse do que eles imprimem. Nada aqui fala com a máquina; whatsapp-openclaw.ts é o IO.
  */
-import type { VoiceReplyMode, WhatsappAlvo, WhatsappDmPolicy, WhatsappStatus } from "../../shared/ipc";
+import type { TypingMode, VoiceReplyMode, WhatsappAlvo, WhatsappDmPolicy, WhatsappStatus } from "../../shared/ipc";
+import { TYPING_MODES } from "../../shared/ipc/whatsapp";
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
 import { OPENCLAW_WA_PLUGIN_VERSAO } from "../maquina/motor-versoes";
 import { donosDe, type WaQuem } from "./whatsapp-marks";
@@ -183,6 +184,7 @@ m = (c.get("tools") or {}).get("media") or {}
 print("audioin=%d" % any("audio" in (x.get("capabilities") or []) and (x.get("type") != "cli" or os.access(str(x.get("command") or ""), os.X_OK)) for x in (m.get("models") or []) if isinstance(x, dict)))
 t = c.get("tts") or {}
 print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))
+print("typing=%s" % (e.get("typingMode") or d.get("typingMode") or ""))
 PY`;
 export const OC_CONFIG_PY = ocConfigPy(ALVO_PADRAO);
 
@@ -244,6 +246,9 @@ echo gateway=openclaw; echo present=1; echo bin=; exit 0`;
 export const OPENCLAW_STATUS_SH = `if [ -n "\${ALVO:-}" ]; then echo gateway=openclaw; echo present=1; echo poralvo=1; exit 0; fi
 ${openclawStatusSh(ALVO_PADRAO)}`;
 
+/** `typing=` do openclaw.json (entrada do agente ou padrão): um dos modos conhecidos, senão null (chave vazia = regra automática). */
+export const typingModeDe = (v: string | undefined): TypingMode | null => (TYPING_MODES as readonly string[]).includes(v ?? "") ? (v as TypingMode) : null;
+
 /** `channels status --json` do OpenClaw; sem gateway no ar, sobra o número do creds.json. */
 export function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "capacidades"> {
   if ((kv.get("bin") ?? "") === "") return { present: true, gateway: "openclaw", agent: "OpenClaw (não instalado)", ready: false, missing: "o OpenClaw ainda não está instalado nesta máquina", connected: false, state: "sem instalar", number: null, loggedOut: false, detail: "OpenClaw escolhido, ainda não instalado", dmPolicy: null, channelConfig: null };
@@ -281,7 +286,7 @@ export function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "c
   const gwfix = kv.get("gwfix") ?? "";
   const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
   const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", ...lerAudioEstado(kv), audioOut, audioVoice, ...(repaired !== null ? { repaired } : {}) };
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", ...lerAudioEstado(kv), audioOut, audioVoice, typingMode: typingModeDe(kv.get("typing")), ...(repaired !== null ? { repaired } : {}) };
 }
 
 /** Política "só você" (ver setDmPolicy) da conta; também é o padrão gravado antes do primeiro login. */

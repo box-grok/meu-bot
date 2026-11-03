@@ -85,7 +85,8 @@
   guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`). Conta de antes da lixeira
   (`gmailEscreve === false`) vê no passo 5 o aviso para reconectar uma vez.
 - **Renumeração:** o Gmail entra como **16**, depois de 15 Entrada rápida (trilha: `after: "claude-login"`); os
-  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões). O mapa antigo → novo da seção de 31 out continua
+  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões); em 3 nov, com o "Ouvir áudios" fora (o Gmail
+  virou 15), o 16 "Digitando… no WhatsApp" entrou depois do 3 e os ocultos foram para 17 e 18 (docs/guia/whatsapp.md). O mapa antigo → novo da seção de 31 out continua
   valendo para os 15 primeiros.
 - **Fonte `google`:** `known` = a Conta Google da máquina já respondeu (`googleContaStatus`, mais o evento
   `google-conta:changed`); `access` pela licença como o Navegador. `refreshGmailGuia` roda no boot e ao abrir o guia.
@@ -409,7 +410,7 @@ linha numa tabela:
 | `extensao-crm/` | a extensão do Gmail (InboxSDK `@inboxsdk/core` 2.2.31 fixo, esbuild, DOM vanilla, pt-BR). `npm run build:extensao` → `build/extensao-crm/` (o app em dev carrega daí); o `package.mjs` copia para `Resources/extensao-crm/`. Id estável pelo `key` do manifesto (`scripts/id-da-extensao.mjs`). Dev: `npm run build:extensao && MEU_BOT_VARIANT=crm npm run dev` (ou `MEU_BOT_EXTENSAO_CRM_DIR=<pasta>` para outra cópia). |
 | `backend-colima/crm-modelo.js`, `crm-store.js`, `crm-api.js` | o CRM próprio no host: domínio puro, store em `~/.local/share/meu-bot/crm/db/` (JSON por pipeline, escritor único, feed `mudancas.jsonl`, lixeira, backup diário), rotas `/v1/crm/*` montadas no `server.js` (exige `personalizado`). |
 | `backend-colima/crm/crm.mjs`, `backend.mjs`, `importar-streak.mjs` | CLI do agente (mesmos subcomandos do `streak.mjs`, falando HTTP com o backend), helper do `.env`, importador do Streak (preserva as chaves; idempotente). `crm-job.mjs` escolhe a CLI pela licença: personalizado → `crm.mjs`; pro → `streak.mjs`. |
-| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 17 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
+| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 18 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
 | `src/main/backend.ts`, `backend-colima/server.js` | o `hello` leva `produto`; o backend guarda `apps[produto] = {version, lastSeen}` por device (um Mac pode ter o meu-bot e o meu-bot-crm: mesmo `deviceId`, não gasta `deviceLimit`); o admin vê em `appsText`. |
 
 Regras novas:
@@ -524,7 +525,7 @@ O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`ext
   `whatsapp:archive-crm`.
 - **Motor explícito na máquina:** `crm.json.motor: "proprio" | "streak"`; sem ele, quem tem a chave do Streak fica no
   Streak (nada muda em silêncio para quem já o usava com Pro), senão a licença decide (`motorCrm` em `crm-job.mjs`,
-  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 17 é `crm-gmail` quando
+  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 18 é `crm-gmail` quando
   `crmProprio && motor === "proprio"`, senão `crm-whatsapp` (Streak); `ctx.produto = { planoExigido, crmProprio, crmStreak }`.
 - **Extensões:** o meu-bot traz as duas (`CLIENT.extensoes`). O Autenticador carrega na cadeia `ready` da sessão; a do
   CRM entra por `sincronizarExtensaoCrm` (idempotente: carrega/`removeExtension`) em `browserOpen` (que recebe a

@@ -91,6 +91,7 @@ export function criarMotorPicoclaw(_run: Exec = runSsh): MotorWhatsapp {
     pause: async () => naoTem("pausa contatos"),
     keepPaused: async () => naoTem("pausa contatos"),
     setDmPolicy: async () => naoTem("muda quem responde"),
+    setTypingMode: async () => naoTem("liga ou desliga o \"digitando…\""),
     groupClearPlan: async () => ({ sessoes: 0 }),
     groupClear: async () => naoTem("limpa grupos"),
     groupThread: async () => [],

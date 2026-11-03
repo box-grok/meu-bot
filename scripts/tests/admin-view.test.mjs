@@ -42,7 +42,7 @@ test("progressLines: tour e tutoriais, com onde parou", () => {
   assert.deepEqual(l.map((x) => [x.text, x.ok, x.step]), [
     ["Tour do meu-bot: pulado", false, undefined],
     ["Ligar o suporte: concluído", true, undefined],
-    ["16 · Status line: 1 de 2", null, ' · parou em "instalar"'],
+    ["17 · Status line: 1 de 2", null, ' · parou em "instalar"'],
     ["Voz: em breve", null, undefined],
     ["WhatsApp: 0 de 4", false, undefined],
   ]);
@@ -50,7 +50,7 @@ test("progressLines: tour e tutoriais, com onde parou", () => {
 
 test("visibleActions: transcrição só com a capacidade audio, Ativar ou Desativar conforme o estado; nota explica quando não há", () => {
   assert.deepEqual(visibleActions(null).map((o) => o.id), ["restart-gateway", "restart-backend", "support-off"]);
-  const cap = (audio) => ({ parear: true, listarConversas: true, lerConversa: true, limparHistorico: true, pausar: true, grupos: true, guarda: true, politicaDm: true, audio, politicaReinicia: false });
+  const cap = (audio) => ({ parear: true, listarConversas: true, lerConversa: true, limparHistorico: true, pausar: true, grupos: true, guarda: true, politicaDm: true, audio, politicaReinicia: false, digitando: true, digitandoReinicia: false });
   const wa = (x) => ({ present: true, gateway: "openclaw", connected: true, number: null, detail: "", dmPolicy: null, capacidades: cap(true), ...x });
   const h = (whatsapp, sh = share) => ({ probe, whatsapp, progress: null, share: sh, xai: null });
   assert.deepEqual(visibleActions(h(wa({ audioIn: false }))).map((o) => o.id), ["restart-gateway", "restart-backend", "transcription", "support-off"]);

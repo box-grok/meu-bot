@@ -732,8 +732,9 @@ function renderReplyChoicePasso(txt: HTMLElement): void | false {
   }
 }
 export function ligarAgenteWhatsapp(): void {
-  // O estado do WhatsApp vai ao guia por fora do contexto (`status`); aqui só se a consulta já respondeu.
-  registrarFonte("whatsapp", () => ({ known: ctx.waStatus !== null, dados: {} }));
+  // O estado do WhatsApp vai ao guia por fora do contexto (`status`); aqui só se a consulta já respondeu, e a capacidade
+  // "digitando" como dado do contexto (o filtro de tutoriais visíveis só enxerga o contexto).
+  registrarFonte("whatsapp", () => ({ known: ctx.waStatus !== null, dados: { digitando: { possible: ctx.waStatus === null ? null : ctx.waStatus.capacidades.digitando } } }));
   registrarPassos({
     "agent-choice": (txt) => renderAgentChoice(txt),
     "reply-choice": renderReplyChoicePasso,
