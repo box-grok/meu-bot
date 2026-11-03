@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -50,9 +50,11 @@ export async function usuariosVisivel(host: string): Promise<boolean> {
   try { const r = await runSsh(host, `id -u\n`, 20_000); return r.code === 0 && r.stdout.trim() === "0"; } catch { return false; }
 }
 
+/** 60 s: logo depois de um preparo pesado (Hermes, OpenClaw, transcritor) a máquina ainda está ocupada e a leitura passava dos 30 s. */
+const LISTAR_PRAZO_MS = 60_000;
 export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
-  const [r, a] = await Promise.all([runSsh(host, `${LISTAR_SH}\n`, 30_000), acessoDesteMac(host).catch(() => null)]);
-  if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${r.stderr.trim().split("\n").pop() ?? "ssh falhou"}`);
+  const [r, a] = await Promise.all([runSsh(host, `${LISTAR_SH}\n`, LISTAR_PRAZO_MS), acessoDesteMac(host).catch(() => null)]);
+  if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${motivoSsh(r, LISTAR_PRAZO_MS)}`);
   const l = lerUsuarios(r.stdout);
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
@@ -299,7 +301,9 @@ echo "SEMEADO=ok"`;
  */
 async function prepararUsuario(host: string, nome: string, alias: string, onLine?: (line: string) => void): Promise<boolean> {
   const passo = (t: string): void => { log(`[usuarios] ${host}: ${nome}: ${t}`); if (t.trim() !== "") onLine?.(t); };
-  const v = await usuariosDaMaquina(host);
+  // Logo depois do preparo pesado a máquina pode demorar a responder: uma segunda tentativa antes de parar o onboarding
+  // (sem ela a conta nascia sem Claude Code e sem backend, e o meu-bot dizia "Esta máquina ainda não tem o backend").
+  const v = await usuariosDaMaquina(host).catch(() => usuariosDaMaquina(host));
   if (v.hermes !== "global") { passo("instalando o padrão da máquina (Hermes e transcritor para todos)"); await padraoDaMaquina(host); }
   passo("instalando o Claude Code");
   const cc = await installClaudeCode(alias, passo);

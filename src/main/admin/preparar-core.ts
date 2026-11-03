@@ -29,6 +29,13 @@ export const TITULOS: Record<PrepararId, string> = {
   openclaw: "OpenClaw para todos (/opt/openclaw)",
   "claude-global": "Claude Code Global", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
 };
+/**
+ * O que o "Criar usuário" aplica antes de criar a conta: o que falta, menos os agentes que a conta nova não usa. O
+ * onboarding semeia o Hermes (o agente do WhatsApp dela), então o OpenClaw para todos só entra pelo botão da aba
+ * Preparar máquina, quando o root pedir: o sistema é agnóstico e não impõe um segundo agente à máquina.
+ */
+export const FORA_DO_CRIAR_USUARIO: readonly PrepararId[] = ["openclaw"];
+export const faltamAoCriarUsuario = (faltam: readonly PrepararId[]): PrepararId[] => faltam.filter((id) => !FORA_DO_CRIAR_USUARIO.includes(id));
 const SO_ROOT = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }`;
 const TODOS_PACOTES: readonly string[] = [...PACOTES_BASE, ...PACOTES_TELA, PACOTE_CHROMIUM];
 

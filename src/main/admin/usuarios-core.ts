@@ -655,3 +655,10 @@ install -d -m 700 -o '${nome}' -g '${nome}' "$D" 2>/dev/null || mkdir -p "$D"
 ${alvoJson === null
     ? `rm -f "$F" && echo ALVO=ok || echo "ERRO=não consegui apagar o alvo"`
     : `printf '%s' '${Buffer.from(alvoJson, "utf8").toString("base64")}' | base64 -d > "$F.tmp" && chown '${nome}':'${nome}' "$F.tmp" && chmod 600 "$F.tmp" && mv "$F.tmp" "$F" && echo ALVO=ok || echo "ERRO=não consegui gravar o alvo"`}`;
+
+/** O porquê de um runSsh que falhou: a última linha do stderr; sem ela, o prazo estourado (o runSsh mata com SIGKILL e o code vem null) ou o código de saída. */
+export function motivoSsh(r: { code: number | null; stderr: string }, prazoMs: number): string {
+  const ultima = r.stderr.trim().split("\n").pop()?.trim() ?? "";
+  if (ultima !== "") return ultima;
+  return r.code === null ? `a máquina não respondeu em ${Math.round(prazoMs / 1000)} s (pode estar ocupada; tente de novo)` : `o ssh saiu com código ${r.code} sem dizer por quê`;
+}

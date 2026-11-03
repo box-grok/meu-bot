@@ -5,7 +5,7 @@
  * daqui para o "Criar usuário"), para não fechar um ciclo.
  */
 import type { PrepararId, PrepararVisao } from "../../shared/ipc";
-import { ORDEM_PREPARAR, PREPARAR_ESTADO_SH, lerPreparar, passosPreparar, type PrepararLido } from "./preparar-core";
+import { ORDEM_PREPARAR, PREPARAR_ESTADO_SH, TITULOS, faltamAoCriarUsuario, lerPreparar, passosPreparar, type PrepararLido } from "./preparar-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -76,9 +76,10 @@ export async function aplicarPreparar(host: string, ids?: unknown, onLine?: (lin
 export async function prepararMaquinaSuave(host: string, onLine?: (line: string) => void): Promise<void> {
   try {
     const v = await estadoPreparar(host);
-    if (v.faltam.length === 0) { onLine?.("máquina já preparada"); return; }
-    onLine?.(`preparando a máquina antes: ${v.faltam.join(", ")}`);
-    await aplicarPreparar(host, undefined, onLine);
+    const faltam = faltamAoCriarUsuario(v.faltam);
+    if (faltam.length === 0) { onLine?.("máquina já preparada"); return; }
+    onLine?.(`preparando a máquina antes: ${faltam.map((id) => TITULOS[id]).join(", ")}`);
+    await aplicarPreparar(host, faltam, onLine);
   } catch (e) {
     log(`[preparar] ${host}: preparo suave não rodou: ${e instanceof Error ? e.message : String(e)}`);
   }
