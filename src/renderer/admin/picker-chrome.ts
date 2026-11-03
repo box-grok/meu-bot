@@ -1,6 +1,7 @@
 /**
  * Variante: admin. O que o seletor do meu-bot-admin tem a mais: textos de "pessoas", o "Adicionar pessoa"
- * (colar o código MBS1.… ou um host do ~/.ssh/config), a leitura da caixa de entrada na primeira abertura e a linha vazia. O picker.ts
+ * (colar o código MBS1.… ou um host do ~/.ssh/config), o ⇅ "sincronizar ssh" na mesma linha (no lugar do antigo
+ * "Atualizar"), a leitura da caixa de entrada na primeira abertura e a linha vazia. O picker.ts
  * continua dono da lista e das linhas; aqui só o que é exclusivo do admin.
  */
 import type { PickerApi, PickerInit } from "../../shared/ipc";
@@ -13,6 +14,8 @@ export interface AdminPickerChromeDeps {
   filterEl: HTMLInputElement;
   noteEl: HTMLElement;
   api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtosAbrir">;
+  /** O ⇅ do meu-bot (picker.ts): enche o ~/.ssh/config com as máquinas do projeto e, no admin, põe cada uma na lista. */
+  syncSsh(): Promise<void>;
   /** Interruptor "arquivadas": mostrar ou não as pessoas arquivadas na lista. */
   setShowArchived(show: boolean): void;
   /** Redesenha o seletor com um payload novo, mantendo a seleção se der. */
@@ -32,9 +35,17 @@ export interface AdminPickerChrome {
 export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPickerChrome {
   const addBox = document.createElement("div");
   let refreshing = false;
-  const refreshBtn = el("button", "btn btn-ghost btn-small", "Atualizar"); refreshBtn.type = "button";
-  refreshBtn.title = "Lê agora a caixa de entrada (as máquinas avisam sozinhas a cada 30 min; \"Avisar o admin agora\" no meu-bot delas avisa na hora)";
-  refreshBtn.addEventListener("click", () => { void refreshPeople(); });
+  // No lugar do antigo "Atualizar": o mesmo ⇅ "sincronizar ssh" do meu-bot. A caixa de entrada continua sendo lida
+  // sozinha (ao abrir e a cada 60 s) e também neste clique, antes do sync, para nada se perder.
+  const syncBtn = el("button", "shortcut sync", "⇅"); syncBtn.type = "button";
+  syncBtn.title = "Sincronizar ssh: acrescenta ao ~/.ssh/config deste Mac as máquinas do projeto que ainda faltam e põe cada uma na lista (lê a caixa de entrada antes)";
+  syncBtn.setAttribute("aria-label", "sincronizar ssh");
+  let syncing = false;
+  syncBtn.addEventListener("click", () => {
+    if (syncing) return;
+    syncing = true; syncBtn.disabled = true;
+    void refreshPeople().then(() => deps.syncSsh()).finally(() => { syncing = false; syncBtn.disabled = false; });
+  });
   const archivedSwitch = el("label", "switch switch-row");
   const archivedBox = el("input"); archivedBox.type = "checkbox";
   archivedSwitch.append(archivedBox, el("span", "track"), el("span", "switch-label", "mostrar arquivadas"));
@@ -43,13 +54,13 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
 
   async function refreshPeople(): Promise<void> {
     if (refreshing) return;
-    refreshing = true; refreshBtn.disabled = true; refreshBtn.textContent = "Lendo a caixa…";
+    refreshing = true;
     try {
       const r = await deps.api.supportRefresh();
       if (r.warning !== null) { deps.noteEl.hidden = false; deps.noteEl.textContent = `⚠ ${r.warning}`; }
       deps.reinit(await deps.api.list(), deps.selected());
     } catch (err) { deps.showError("caixa de entrada", err); }
-    finally { refreshing = false; refreshBtn.disabled = false; refreshBtn.textContent = "Atualizar"; }
+    finally { refreshing = false; }
   }
 
   return {
@@ -81,7 +92,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       // Produtos (MVPs de bots verticais) moram numa janela própria (main/admin/produtos-janela.ts); daqui só se abre.
       const prodBtn = el("button", "btn btn-ghost btn-small", "◆ Produtos ↗"); prodBtn.type = "button"; prodBtn.title = "Abre a janela Produtos: registrar um novo bot personalizado (MVP) e ver o que já sai deste código";
       prodBtn.addEventListener("click", () => { void deps.api.produtosAbrir().catch((err: unknown) => deps.showError("produtos", err)); });
-      const row = el("div", "add-actions"); row.append(open, refreshBtn, prodBtn);
+      const row = el("div", "add-actions"); row.append(open, el("span", "foot-caption", "sincronizar ssh"), syncBtn, prodBtn);
       addBox.append(row, form, msg, archivedSwitch);
       deps.listEl.after(addBox);
     },

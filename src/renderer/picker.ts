@@ -498,7 +498,7 @@ ${adocao.join("\n")}`;
 }
 
 /** Variante: admin. O que o seletor de pessoas tem a mais (admin/picker-chrome.ts). */
-const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, reinit: (p, keep) => init(p, keep), selected: () => selected, showError, setShowArchived: (v) => { showArchivedPeople = v; pintarTipos(); applyFilter(); } });
+const adminChrome = mountAdminPickerChrome({ listEl, filterEl, noteEl, api: window.picker, syncSsh, reinit: (p, keep) => init(p, keep), selected: () => selected, showError, setShowArchived: (v) => { showArchivedPeople = v; pintarTipos(); applyFilter(); } });
 archiveBtn.addEventListener("click", () => {
   const alias = selected; const person = alias === null ? undefined : personOf(alias);
   if (alias === null || person === undefined) return;
