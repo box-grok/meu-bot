@@ -1,5 +1,5 @@
 /**
- * Navegador do agente no guia (tutorial 10): o lado da máquina (MCP + regra), o plano Pro e abrir a aba. Também
+ * Navegador do agente no guia (tutorial 9): o lado da máquina (MCP + regra), o plano Pro e abrir a aba. Também
  * `abrirLinkDoChat`, que outras telas usam para abrir um link numa aba do Navegador.
  */
 import { el } from "../lib/dom.js";
@@ -12,7 +12,7 @@ import { ctx, ehRemoto } from "../app/ctx.js";
 import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
-/** Lado da máquina do Navegador (tutorial 10): instalado? null = ainda não consultado. */
+/** Lado da máquina do Navegador (tutorial 9): instalado? null = ainda não consultado. */
 export let navInstState: boolean | null = null;
 let navInstBusy = false;
 let navInstLog: string[] = [];
@@ -23,7 +23,7 @@ export async function refreshNavInst(): Promise<void> {
   try { navInstState = await window.meuBot.navegadorInstalled(); } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
-/** Tutorial 10, passo 2: instalar o lado da máquina (MCP + regra). */
+/** Tutorial 9, passo 2: instalar o lado da máquina (MCP + regra). */
 export function renderNavInstall(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const row = el("div", "audio-row");
@@ -44,7 +44,7 @@ export function renderNavInstall(container: HTMLElement): void {
   if (navInstMsg !== null) box.append(el("p", `hint ${navInstMsg.bad ? "guide-pair-note" : "audio-ok"}`, navInstMsg.text));
   container.append(box);
 }
-/** Tutorial 10, passo 1: o plano desta máquina e o pedido ao admin. */
+/** Tutorial 9, passo 1: o plano desta máquina e o pedido ao admin. */
 export function renderNavPro(container: HTMLElement): void {
   const box = el("div", "audio-controls");
   const a = browserAccess(ctx.license, ctx.windowHost, ctx.caps.planoExigido, ctx.caps.produto);
@@ -74,7 +74,7 @@ export async function abrirLinkDoChat(url: string, externo: boolean): Promise<vo
   await ctx.openNavTab(url);
   if (ctx.navAccess !== "ok" || ctx.navPartition === null) void window.meuBot.openExternal(url);
 }
-/** Tutorial 10, passo 3: abrir a aba do Navegador. */
+/** Tutorial 9, passo 3: abrir a aba do Navegador. */
 export function renderNavOpen(container: HTMLElement, url?: string): void {
   const row = el("div", "audio-row");
   const b = el("button", "btn btn-primary btn-small", url !== undefined ? "Abrir o Gmail no Navegador" : ctx.navTabs.length > 0 ? "Ir para o Navegador" : "Abrir o Navegador"); b.type = "button";

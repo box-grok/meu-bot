@@ -12,7 +12,7 @@ export function paintFinanceLine(): void {
   const n = ctx.financeState?.estado?.pendencias ?? 0;
   const c = document.getElementById("financas-count"); if (c !== null) c.textContent = n > 0 ? `${n} para confirmar` : "";
 }
-/** Corpo dos passos do tutorial 13: atalhos para a página, para o chat e a instalação na máquina. */
+/** Corpo dos passos do tutorial 12: atalhos para a página, para o chat e a instalação na máquina. */
 export function renderFinanceStep(txt: HTMLElement, body: string): void {
   const row = el("div", "admin-actions");
   const abrir = el("button", "btn btn-ghost btn-small", "Abrir Finanças"); abrir.type = "button"; abrir.addEventListener("click", () => ctx.financePage?.open());
@@ -29,7 +29,7 @@ export function renderFinanceStep(txt: HTMLElement, body: string): void {
   else if (body === "finance-pendencias") { row.append(abrir); const n = ctx.financeState?.estado?.pendencias ?? 0; if (n > 0) txt.append(el("p", "hint", `${n} ${n === 1 ? "lançamento espera" : "lançamentos esperam"} você.`)); }
   if (row.childElementCount > 0) txt.append(row);
 }
-/** Liga os seis passos do tutorial 13 ao guia (todos passam por `renderFinanceStep`, que escolhe pelo body). */
+/** Liga os seis passos do tutorial 12 ao guia (todos passam por `renderFinanceStep`, que escolhe pelo body). */
 export function ligarFinanceiroGuia(): void {
   registrarFonte("finance", () => ({ known: ctx.navLicenseAsked && (!ehRemoto() || !financeOk(ctx.license, ctx.windowHost) || ctx.financeState !== null), dados: { finance: { access: ctx.navLicenseAsked ? financeOk(ctx.license, ctx.windowHost) : null, info: ctx.financeState } } }));
   const passo = (txt: HTMLElement, step: { body?: string }): void => renderFinanceStep(txt, step.body ?? "");

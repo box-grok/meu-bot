@@ -11,7 +11,7 @@ export function quemResumo(info: WhatsappGroups | null): string | null {
   return outros <= 1 ? "Quem chama: só você" : `Quem chama: você + ${outros - 1}`;
 }
 /**
- * Grupo do tutorial 11: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
+ * Grupo do tutorial 10: o que a pessoa escolheu (se ainda existe na máquina); sem escolha, o primeiro com o agente
  * ligado (máquina que já tem grupo configurado entra com os passos concluídos pelo estado real).
  */
 export function grupoAlvo(info: WhatsappGroups | null, escolhido: string | null): WhatsappGroup | null {

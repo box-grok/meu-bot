@@ -185,6 +185,36 @@
 - Toda menção "tutorial N" em `src/`, `scripts/`, `docs/` e nos textos da tela foi trocada pelo mapa; o `number` é
   usado só como rótulo (`tutorialBadge`, `guideTabTitle`, `tutorialNumber`), o progresso para o admin vai por id.
 
+## Tutorial 4 "Ouvir áudios" sai: o áudio é da máquina (3 nov 2026)
+
+- **Problema:** clicar em "Responder em áudio" numa box sem ffmpeg dava "ffmpeg não encontrado … (apt install
+  ffmpeg)", um apt que a pessoa não consegue rodar (sem root), e o painel mandava para o "Tutorial 4 · 0 de 2", que
+  pararia no mesmo ffmpeg. O `ensureTranscription` já ligava a transcrição sozinho depois de parear, mas no OpenClaw
+  ele criava um venv por usuário (~500 MB) que exige ffmpeg; a falha ficava numa linha de log que ninguém via.
+- **Agora, a máquina:** o transcritor compartilhado do root (`/opt/transcriber`, `transcritorSh`) ganha o
+  `bin/transcrever-texto` (imprime o texto; é o `cli` de `tools.media.models` do OpenClaw) ao lado do `bin/transcrever`
+  do Hermes; decodifica pelo PyAV, sem ffmpeg. O item "Transcritor de áudio" de Preparar máquina deixa de depender do
+  Hermes global (`TRANSCRITOR_ESTADO_SH`; máquina preparada antes acusa "aplicar de novo"). O
+  `install-transcricao.sh` prefere o compartilhado (nada baixado; o venv antigo do usuário sai) e só cai no caminho por
+  usuário quando ele não existe; sem ffmpeg e sem sudo sai com **3** (como o `install-tela.sh`), e o `install-voz.sh` idem.
+- **Agora, o app:** o status do WhatsApp traz `audioMaquina` (a máquina tem o transcritor do root ou o ffmpeg;
+  `transcritor-core.ts`, sonda nos dois motores), `audioDesligado` (marca `~/.local/share/meu-bot/audio-desligado`,
+  criada ao desligar e apagada ao ligar: o app não religa o que alguém desligou de propósito), `audioLigando` e
+  `audioErro`. O cliente registra um observador do `whatsapp:status` (`setObservadorStatus` em `ipc/shared.ts`): a
+  cada leitura, se conectado, com a capacidade `audio`, `audioIn` false, a máquina pronta e sem a marca, chama o
+  mesmo `ensureTranscription` (uma vez por máquina por sessão quando falha). Quando o admin prepara a máquina, a leitura
+  seguinte liga sozinha. O admin não registra observador: ele lê a máquina da pessoa, não instala nela.
+- **Tela:** a linha "Ouvir áudios" mora no painel de gerência do tutorial 3, antes de "Responder em áudio", e decide por
+  `estadoOuvir` (`lib/audio-ouvir-core.ts`, molde do Computador): ✓ ativo · ligando sozinho · "A transcrição precisa do
+  admin para ligar" (com "Conferir de novo") · o botão "Ativar transcrição" de reserva, com o motivo da falha
+  automática. No admin, "Ativar transcrição" some quando a máquina não tem o necessário e a nota aponta Preparar máquina.
+- **Tutorial 4 sai e a trilha é renumerada** (número = posição; nada persiste por número, tudo por id):
+  1→1 Claude · 2→2 Mais contas · 3→3 WhatsApp · 4 (Ouvir áudios) sai · 5→4 xAI · 6→5 Fallback · 7→6 Suporte ·
+  8→7 Objetivo · 9→8 Guarda · 10→9 Navegador · 11→10 Grupos · 12→11 Contas na máquina · 13→12 Financeiro ·
+  14→13 Link público · 15→14 Entrada rápida · 16→15 Gmail · 17→16 Status line (oculto) · 18→17 CRM (ocultos).
+  Toda menção "tutorial N" em `src/`, `backend-colima/` e `scripts/tests/` foi trocada pelo mapa (e as que já
+  estavam desatualizadas, acertadas); o diário abaixo mantém os números da época.
+
 ## Configurações enxutas e tutorial 15 "Entrada rápida" (30 out 2026)
 
 - **Saíram das Configurações** (pedido do produto: a pessoa leiga não deve mexer nisso): Conexão (modelo padrão e porta

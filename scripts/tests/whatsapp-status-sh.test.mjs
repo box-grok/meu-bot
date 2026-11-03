@@ -55,7 +55,7 @@ const CONFIG_PRONTA = {
   plugins: { entries: { whatsapp: { enabled: true } } },
   channels: { whatsapp: { dmPolicy: "open", allowFrom: ["*"], selfChatMode: true } },
   agents: { defaults: { model: { primary: "anthropic/claude-opus-5-5", fallbacks: ["grok/grok-4.7"] } } },
-  tools: { media: { models: [{ type: "cli", command: "/x", capabilities: ["audio"] }] } },
+  tools: { media: { models: [{ type: "cli", command: "/bin/sh", capabilities: ["audio"] }] } },
   tts: { auto: "inbound", provider: "tts-local-cli" },
   models: { providers: { grok: { models: [{ id: "grok-4.7" }] } } },
 };

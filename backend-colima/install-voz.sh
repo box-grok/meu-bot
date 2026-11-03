@@ -20,6 +20,18 @@ VOICE_URL=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/pt/pt_BR/fa
 D=$HOME/.local/share/meu-bot/voz
 BIN=$HOME/.local/bin/meu-bot-falar
 export PATH=$HOME/.openclaw/bin:$HOME/.local/bin:$PATH
+# ffmpeg é pacote do sistema: instala pelo apt quando este usuário é root ou tem sudo sem senha. Numa box (sem root) a
+# pendência é do admin: meu-bot-admin › Preparar máquina › Pacotes do sistema instala o ffmpeg para todos de uma vez.
+# Sai com 3 nesse caso (como o install-tela.sh): o app sabe que é com o admin.
+ffmpeg_ou_avisa() {
+  local para=$1
+  command -v ffmpeg >/dev/null 2>&1 && return 0
+  if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg >/dev/null 2>&1 || true
+  elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg >/dev/null 2>&1 || true; fi
+  command -v ffmpeg >/dev/null 2>&1 && { echo "ffmpeg instalado"; return 0; }
+  echo "Falta o ffmpeg e esta máquina não deixa instalar programas sem senha. O admin instala uma vez (pelo app dele: Preparar máquina › Pacotes do sistema) e aí $para."
+  return 1
+}
 
 command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw: a voz é para o agente do WhatsApp dele"; exit 2; }
 
@@ -74,7 +86,7 @@ CUR=$(openclaw config get tts.provider 2>/dev/null | tr -d '"' || true)
 case "$CUR" in ""|*unset*|tts-local-cli) ;; *) echo "o OpenClaw desta máquina já usa outra voz ($CUR); nada foi alterado"; exit 3 ;; esac
 
 [ "$(uname -m)" = x86_64 ] || { echo "a voz local só está pronta para x86_64 (esta máquina é $(uname -m))"; exit 1; }
-command -v ffmpeg >/dev/null 2>&1 || { echo "ffmpeg não encontrado: a voz precisa dele para virar nota de voz (apt install ffmpeg)"; exit 1; }
+ffmpeg_ou_avisa "a resposta em áudio funciona aqui" || exit 3
 mkdir -p "$D" "$HOME/.local/bin"
 ANTES=$(cat "$D/voz-atual" 2>/dev/null || echo faber)
 if [ "$VOZ" = faber ]; then

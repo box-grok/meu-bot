@@ -1,5 +1,5 @@
 /**
- * Objetivo do agente no WhatsApp (tutorial 8): tudo mora na máquina (objetivo.json, skill no workspace do agente).
+ * Objetivo do agente no WhatsApp (tutorial 7): tudo mora na máquina (objetivo.json, skill no workspace do agente).
  * Aqui ficam o estado lido da máquina, as ações (ler, gravar, salvar a skill) e os três passos do guia.
  */
 import type { ObjectiveChoice, ObjectiveInfo } from "../../shared/ipc";
@@ -11,7 +11,7 @@ import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
 export let objectiveState: ObjectiveInfo | null = null;
-/** Último recado do tutorial 8 (erro ou "skill salva"). */
+/** Último recado do tutorial 7 (erro ou "skill salva"). */
 export let objectiveMsg: { text: string; bad: boolean } | null = null;
 /** Rascunho do passo 1 antes de "Salvar objetivo" (cartão marcado e frase digitada). */
 export let objectiveDraft: { id: string; text: string } | null = null;
@@ -35,7 +35,7 @@ export async function objectiveDo(run: () => Promise<ObjectiveInfo>, okText: str
   finally { objectiveBusy = false; ctx.paintAcervoCount(); ctx.paintGuide(); if (ctx.pageShown(ctx.acervoPage)) ctx.acervoPage.render(); }
 }
 
-/** Tutorial 8, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
+/** Tutorial 7, passo 1: cartões de objetivo + frase, "Salvar objetivo" grava na máquina. */
 export function renderObjectiveChoice(container: HTMLElement): void {
   const cur = objectiveState?.objective ?? null;
   const draft = objectiveDraft ?? (cur === null ? null : { id: cur.id, text: cur.text });
@@ -71,7 +71,7 @@ export function renderObjectiveChoice(container: HTMLElement): void {
   container.append(row);
   if (objectiveMsg !== null && objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${objectiveMsg.text}`));
 }
-/** Tutorial 8, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
+/** Tutorial 7, passo 2: os três níveis; clicar grava na hora (como "quem o agente responde"). */
 export function renderObjectiveLevel(container: HTMLElement): void {
   const cur = objectiveState?.level ?? null;
   const cards = el("div", "reply-cards guide-cards");
@@ -89,7 +89,7 @@ export function renderObjectiveLevel(container: HTMLElement): void {
   container.append(cards);
   if (objectiveMsg !== null && objectiveMsg.bad) container.append(el("p", "hint bad", `✗ ${objectiveMsg.text}`));
 }
-/** Tutorial 8, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
+/** Tutorial 7, passo 3: resumo do que vai para a skill e o botão que grava no workspace do agente. */
 export function renderObjectiveSkill(container: HTMLElement): void {
   const st = objectiveState;
   const box = el("div", "audio-controls");

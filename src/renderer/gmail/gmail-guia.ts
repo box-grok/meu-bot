@@ -1,5 +1,5 @@
 /**
- * Gmail no guia (tutorial 16, Pro): o plano, a Conta Google da máquina e os três fatos que a página Gmail conta ao
+ * Gmail no guia (tutorial 15, Pro): o plano, a Conta Google da máquina e os três fatos que a página Gmail conta ao
  * guia (leu, buscou, lixeira + desfazer). O estado da conta vem do main (`googleContaStatus`) e do evento
  * `google-conta:changed`; os fatos chegam por `gmailGuiaFato`, que a página chama (`aoUsar`). Primeiro tutorial
  * feito pela receita "Como adicionar um tutorial" do ARQUITETURA.md.

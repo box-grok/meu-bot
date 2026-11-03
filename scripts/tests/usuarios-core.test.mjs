@@ -169,7 +169,13 @@ test("transcritor para todos: /opt/transcriber do root (755, como o /opt/hermes)
   assert.match(sh, /Systran\/faster-whisper-small/);
   assert.match(sh, /#!\/opt\/transcriber\/venv\/bin\/python\n"""meu-bot-transcritor/, "a marca que a leitura da máquina procura");
   assert.match(sh, /runuser -u nobody -- "\$T\/bin\/transcrever"/);
+  assert.match(sh, /runuser -u nobody -- "\$T\/bin\/transcrever-texto"/, "o comando do OpenClaw também é conferido como nobody");
+  assert.match(sh, /exec \/opt\/transcriber\/bin\/transcrever "\$1" - "\$2"/, "transcrever-texto imprime o texto (pasta de saída -; idioma vazio = pt)");
+  assert.match(sh, /chmod 755 "\$T\/bin\/transcrever" "\$T\/bin\/transcrever-texto"/);
+  assert.match(sh, /if str\(saida\) == "-":/);
   assert.match(sh, /echo "TRANSCRITOR=ok"/);
+  const { TRANSCRITOR_ESTADO_SH } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.match(TRANSCRITOR_ESTADO_SH, /meu-bot-transcritor \/opt\/transcriber\/bin\/transcrever .*-x \/opt\/transcriber\/bin\/transcrever-texto/, "completo = os dois comandos");
   assert.ok(!sh.includes("${"), "nada de interpolação perdida no script");
 });
 

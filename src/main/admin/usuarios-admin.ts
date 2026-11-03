@@ -267,7 +267,7 @@ async function padraoDaMaquina(host: string): Promise<void> {
   const v = /^HERMES=ok (\S+)$/m.exec(r.stdout)?.[1] ?? "";
   log(`[usuarios] ${host}: Hermes ${v} para todos em /opt/hermes`);
   void registrar(host, "maquina.hermes-global", v);
-  // O padrão da máquina inclui o transcritor compartilhado: cada Hermes só aponta para ele (tutorial 4).
+  // O padrão da máquina inclui o transcritor compartilhado: cada Hermes (e o OpenClaw) só aponta para ele.
   const t = await runSsh(host, `${transcritorSh()}\n`, 20 * 60_000);
   saida(t.stdout, /^TRANSCRITOR=ok$/m, `o Hermes ficou pronto, mas não consegui instalar o transcritor em /opt/transcriber: ${/^ERRO=(.*)$/m.exec(t.stdout)?.[1] ?? ((t.stderr.trim() || t.stdout.trim()).split("\n").pop() ?? "sem resposta")}`);
   log(`[usuarios] ${host}: transcritor para todos em /opt/transcriber`);

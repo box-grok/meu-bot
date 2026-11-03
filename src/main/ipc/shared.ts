@@ -5,7 +5,7 @@
 import { app, dialog, Menu, nativeTheme, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction } from "../../shared/ipc";
+import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction, WhatsappStatus } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
 import { log } from "../maquina/backend";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf, whatsappPausaModoOf } from "../whatsapp/whatsapp";
@@ -70,6 +70,15 @@ function appBuildId(): string {
   }
   return buildId;
 }
+
+/**
+ * Quem quiser agir a cada leitura do status do WhatsApp (o cliente liga a transcrição sozinho quando a máquina ficou
+ * pronta) registra aqui; devolve o status que a janela recebe (pode anotar `audioLigando`/`audioErro`). O admin não
+ * registra nada: ele lê a máquina da pessoa, não instala nela.
+ */
+type ObservadorStatus = (host: string, st: WhatsappStatus) => WhatsappStatus;
+let observadorStatus: ObservadorStatus | null = null;
+export function setObservadorStatus(fn: ObservadorStatus): void { observadorStatus = fn; }
 
 export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("window:info", (event) => {
@@ -188,7 +197,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     // O áudio do Hermes (config.yaml) já vem no próprio whatsappStatus. `force` (botão Atualizar) pula a validade do cache.
     const force = (payload as { force?: unknown } | null)?.force === true;
     const t0 = Date.now();
-    return whatsappStatus(h.host, { force }).then((st) => { log(`[whatsapp] status de ${h.host}: ${st.gateway ?? "-"} ${st.state} connected=${st.connected} em ${Date.now() - t0} ms${force ? " (forçado)" : ""}`); return st; });
+    return whatsappStatus(h.host, { force }).then((st) => { log(`[whatsapp] status de ${h.host}: ${st.gateway ?? "-"} ${st.state} connected=${st.connected} em ${Date.now() - t0} ms${force ? " (forçado)" : ""}`); return observadorStatus === null ? st : observadorStatus(h.host, st); });
   });
   handleShared("whatsapp:chats", (event) => {
     const h = hostFromEvent(event);
@@ -233,7 +242,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       menu.popup({ window: h.win, callback: () => setTimeout(() => pick(null), 0) });
     });
   });
-  // Grupos: a área "Grupos" da lista e o tutorial 11. As regras (nunca "*", nunca ligar sem quem aciona, desligar o
+  // Grupos: a área "Grupos" da lista e o tutorial 10. As regras (nunca "*", nunca ligar sem quem aciona, desligar o
   // último fecha o canal de grupos) moram em whatsapp-grupos-core.ts; as mudanças vão para a auditoria.
   const waJid = (payload: unknown): string => {
     const jid = (payload as { jid?: unknown } | null)?.jid;

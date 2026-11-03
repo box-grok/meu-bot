@@ -319,6 +319,9 @@ ele (a guarda). As automações de vendas dele ficaram de fora a pedido. O resto
 
 ## Tutorial 4: ouvir áudios, separado do tutorial 3 (29 out)
 
+> **3 nov:** este tutorial saiu. A transcrição é da máquina (transcritor do root para OpenClaw e Hermes) e o app a
+> liga sozinho; o que não dá, a tela diz que é com o admin. Ver "Tutorial 4 sai: o áudio é da máquina" em app.md.
+
 - **Por quê:** a transcrição era o passo "Áudio no WhatsApp" do tutorial 3, com "Pular: sem áudio por enquanto". Quem
   pulava terminava o 2 e o agente seguia respondendo "não consigo ouvir seu áudio", sem nada pendente na lista. Caso
   real: o Daniel, no meu-box-2 (Hermes), mandou um áudio e o gateway registrou `No STT provider available`.

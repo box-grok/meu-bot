@@ -17,3 +17,16 @@ test("vozes: catálogo do main, cópia do renderer e install-voz.sh conhecem os 
   assert.match(sh, /case "\$VOZ" in faber\|dora\|alex\)/);
   assert.match(sh, /pf_dora/); assert.match(sh, /pm_alex/);
 });
+
+test("ffmpeg que falta aponta o admin (Preparar máquina), não um apt que a box não consegue rodar", () => {
+  for (const f of ["backend-colima/install-voz.sh", "backend-colima/install-transcricao.sh", "src/main/maquina/hostProbe.ts"]) {
+    const s = readFileSync(join(root, f), "utf8");
+    assert.match(s, /Preparar máquina › /, f);
+    assert.doesNotMatch(s, /\(apt(-get)? install ffmpeg\)/, f);
+  }
+  for (const f of ["backend-colima/install-voz.sh", "backend-colima/install-transcricao.sh"]) {
+    const s = readFileSync(join(root, f), "utf8");
+    assert.match(s, /apt-get install -y -q ffmpeg/, f);
+    assert.ok(s.indexOf("ffmpeg_ou_avisa()") < s.indexOf('ffmpeg_ou_avisa "'), `${f}: a função vem antes do uso`);
+  }
+});

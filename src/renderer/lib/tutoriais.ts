@@ -20,7 +20,7 @@ export interface GuideContext {
   claude: { loggedIn: boolean | null; email: string | null; /** Responde pelo Claude Code Global do admin (a sessão já existe). */ global: boolean; firstReply: boolean; contasExtras: number; trocas: number };
   /**
    * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
-   * tutorial 5); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
+   * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
   xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
   /** Guarda do WhatsApp: `possible` = o agente da máquina aceita a guarda (capacidade `guarda`; null = sem status ainda); `installed` = está lá? (null = não consultado). */
@@ -35,33 +35,33 @@ export interface GuideContext {
    * provedores que o backend informa (null = ainda não consultado), com quem está disponível.
    */
   fallback: { primary: string | null; chain: readonly FallbackProvider[] | null };
-  /** Tutorial 8: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
+  /** Tutorial 7: objetivo e nível gravados na máquina e a skill salva (null = ainda não consultado). */
   objective: ObjectiveInfo | null;
-  /** Tutorial 18 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
+  /** Tutorial 17 (Pro): acesso pela licença (como o Navegador) e o estado na máquina (null = não consultado). */
   crm: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; info: CrmInfo | null; /** meu-bot-crm: pipelines do CRM da máquina e o padrão do WhatsApp (null = ainda não lido). */ local: CrmLocal | null };
   /**
-   * Tutorial 11: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
+   * Tutorial 10: grupos da máquina (null = não consultado), o grupo que a pessoa escolheu (jid; null = nenhum) e se
    * o agente já respondeu nesse grupo.
    */
   grupos: { info: WhatsappGroups | null; alvo: string | null; respondeu: boolean };
-  /** Tutorial 12: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
+  /** Tutorial 11: contas de CLI desta máquina (Cloudflare, GitHub); null = ainda não consultado. */
   contas: readonly ContaEstado[] | null;
-  /** Tutorial 14: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
+  /** Tutorial 13: o link público da pessoa nesta máquina (null = desligado pelo admin, máquina fora ou este Mac). */
   linkPublico: LinkPublicoInfo | null;
-  /** Tutorial 14: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
+  /** Tutorial 13: false = esta conta não tem link por desenho (a janela é do root: o link é das contas de usuário); o tutorial some. */
   linkPublicoPossivel: boolean;
   /**
-   * Tutorial 13 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
+   * Tutorial 12 (produto meu-bot-finance): `access` = a licença da máquina libera o financeiro (null = não lida);
    * `info` = o módulo na máquina e os números do backend (null = ainda não consultado).
    */
   finance: { access: boolean | null; info: FinanceInfo | null };
   /**
-   * Tutorial 16 (Pro): `access` pela licença (como o Navegador; null = não lida); a Conta Google da máquina
+   * Tutorial 15 (Pro): `access` pela licença (como o Navegador; null = não lida); a Conta Google da máquina
    * (`conectado` já desconta `precisaReconectar`; `gmailEscreve` null = sem status) e os fatos que a página Gmail conta
    * ao guia (leu, buscou, mandou para a lixeira, desfez), que viram `lembrar` nos passos.
    */
   gmail: { access: "ok" | "free" | "expired" | "unknown" | "assinatura" | null; conectado: boolean; precisaReconectar: boolean; gmailEscreve: boolean | null; lido: boolean; buscou: boolean; lixeira: boolean; desfez: boolean };
-  /** Tutorial 15: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
+  /** Tutorial 14: o atalho global da entrada rápida e se está registrado (null = as configurações ainda não chegaram). */
   quickEntry: { status: QuickEntryStatus | null; shortcut: string };
   /**
    * O que esta janela oferece de CRM, pela licença da máquina (não pela variante): `crmProprio` = o CRM próprio no Gmail
@@ -104,13 +104,13 @@ export const emptyContext = (): GuideContext => ({
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "chat" | "none";
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; audioTestado: boolean; linkNomeVisto: boolean; quickUsado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, audioTestado: false, linkNomeVisto: false, quickUsado: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; linkNomeVisto: boolean; quickUsado: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, linkNomeVisto: false, quickUsado: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "audioTestado" | "linkNomeVisto" | "quickUsado";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "linkNomeVisto" | "quickUsado";
 
 export interface GuideStep {
   id: string;
@@ -119,7 +119,7 @@ export interface GuideStep {
   text: string;
   target: GuideTarget;
   /** Corpo especial do passo no guia: cartões de quem responder, áudio, suporte ou a status line. */
-  body?: "contas-claude" | "agent-choice" | "reply-choice" | "audio-ouvir" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome" | "quick-atalho" | "quick-testar" | "gmail-pro" | "gmail-conectar" | "gmail-ler" | "gmail-buscar" | "gmail-lixeira";
+  body?: "contas-claude" | "agent-choice" | "reply-choice" | "support-name" | "support-switch" | "support-delivery" | "statusline-install" | "statusline-segments" | "statusline-test" | "claude-login" | "xai-prepare" | "xai-login" | "fallback-order" | "objective-choice" | "objective-level" | "objective-skill" | "guarda-install" | "navegador-pro" | "navegador-install" | "navegador-open" | "crm-pro" | "crm-install" | "crm-config" | "crm-test" | "crm-gmail" | "crm-importar" | "grupos-escolher" | "grupos-quem" | "grupos-modo" | "grupos-teste" | "crm-pipeline" | "cloudflare-entrar" | "conta-cloudflare" | "conta-github" | "finance-install" | "finance-contas" | "finance-renda" | "finance-testar" | "finance-foto" | "finance-pendencias" | "link-publico-ver" | "link-publico-testar" | "link-publico-nome" | "quick-atalho" | "quick-testar" | "gmail-pro" | "gmail-conectar" | "gmail-ler" | "gmail-buscar" | "gmail-lixeira";
   /** Concluído pelo estado real; `null` de status = ainda não consultado. */
   done: (status: WhatsappStatus | null, flags: GuideFlags, ctx: GuideContext) => boolean;
   /** Passo que a pessoa conclui com um botão no próprio cartão ("Testei, funcionou"). */
@@ -146,8 +146,8 @@ export interface Tutorial {
   id: string;
   /**
    * Número fixo do tutorial (o mesmo no app da pessoa, no admin e no GUIA), na ordem da trilha: o array é a ordem da
-   * lista, então os números sobem 1, 2, 3… sem buraco entre os que podem aparecer; os `oculto` ficam no fim (17, 18).
-   * Renumerados em 31 out 2026 (mapa antigo → novo em docs/guia/app.md).
+   * lista, então os números sobem 1, 2, 3… sem buraco entre os que podem aparecer; os `oculto` ficam no fim (16, 17).
+   * Renumerados em 31 out e em 3 nov 2026 (mapas antigo → novo em docs/guia/app.md).
    */
   number: number;
   title: string;
@@ -191,7 +191,7 @@ export interface Tutorial {
 const WHATSAPP_STEPS: GuideStep[] = [
   {
     id: "escolher", title: "Qual agente atende o seu WhatsApp?", target: "none", body: "agent-choice",
-    text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio (tutorial 4). Se não souber, fique com o recomendado.",
+    text: "Os dois fazem tudo deste tutorial: responder e escolher quem. Os dois também entendem áudio: a transcrição liga sozinha depois de parear. Se não souber, fique com o recomendado.",
     // Escolhido, ou a máquina já tem um dos dois atendendo (dá para trocar depois, no WhatsApp).
     done: (st) => st !== null && (st.escolha != null || (st.present && (st.gateway === "openclaw" || st.gateway === "hermes"))),
   },
@@ -303,34 +303,8 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: WHATSAPP_STEPS,
   },
   {
-    // Desmembrado do tutorial 3 (29 out): a transcrição era um passo pulável lá dentro, e quem pulava ficava com o
-    // tutorial 3 concluído e o agente respondendo "não consigo ouvir seu áudio" sem nada pendente apontando o porquê.
-    id: "audio-whatsapp",
-    number: 4,
-    needs: ["whatsapp"],
-    after: "whatsapp-openclaw",
-    title: "Ouvir áudios do WhatsApp",
-    short: "Áudio",
-    summary: "O agente transcreve os áudios que chegam no WhatsApp e responde sobre o que foi falado. Roda na própria máquina, sem custo e sem mandar o áudio para fora.",
-    minutes: 3,
-    icon: "chat",
-    steps: [
-      {
-        id: "transcricao", title: "Ativar a transcrição nesta máquina", target: "none", body: "audio-ouvir",
-        text: "Sem a transcrição, quem manda áudio ouve do agente que ele não consegue escutar. Clique em \"Ativar transcrição\": na primeira vez a máquina baixa o transcritor, leva de 1 a 3 minutos.",
-        done: (st) => st !== null && st.connected && st.audioIn === true,
-      },
-      {
-        id: "teste", title: "Testar com um áudio", target: "none",
-        text: "Com \"só eu\", mande um áudio curto para o seu próprio número; com \"todo mundo\", mande de outro celular. O agente deve responder sobre o que você falou.",
-        done: (_st, f) => f.audioTestado,
-        manual: { label: "Ele entendeu meu áudio", flag: "audioTestado" },
-      },
-    ],
-  },
-  {
     id: "xai-login",
-    number: 5,
+    number: 4,
     needs: ["xai"],
     after: "claude-login",
     needsXai: true,
@@ -360,7 +334,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "fallback-contas",
-    number: 6,
+    number: 5,
     needs: ["claude", "xai", "fallback"],
     after: "xai-login",
     needsXai: true,
@@ -373,7 +347,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
     steps: [
       {
         id: "contas", title: "As duas contas nesta máquina", target: "none",
-        text: "O fallback precisa das duas contas logadas nesta máquina: Claude (tutorial 1) e xAI (tutorial 5). Se uma falhar antes de responder, a outra assume sem você fazer nada.",
+        text: "O fallback precisa das duas contas logadas nesta máquina: Claude (tutorial 1) e xAI (tutorial 4). Se uma falhar antes de responder, a outra assume sem você fazer nada.",
         done: (_st, _f, c) => c.claude.loggedIn === true && c.xai.loggedIn === true,
       },
       {
@@ -391,7 +365,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "suporte",
-    number: 7,
+    number: 6,
     needs: ["support"],
     title: "Ligar o suporte",
     short: "Suporte",
@@ -414,7 +388,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "whatsapp-objetivo",
-    number: 8,
+    number: 7,
     needs: ["objective"],
     title: "O que você quer resolver pelo WhatsApp?",
     short: "Objetivo",
@@ -442,7 +416,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "guarda-whatsapp",
-    number: 9,
+    number: 8,
     needs: ["guarda"],
     needsGuarda: true,
     after: "whatsapp-openclaw",
@@ -468,7 +442,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "navegador",
-    number: 10,
+    number: 9,
     needs: ["navegador"],
     after: "claude-login",
     title: "Navegador do agente (Pro)",
@@ -504,7 +478,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "whatsapp-grupos",
-    number: 11,
+    number: 10,
     needs: ["grupos"],
     after: "whatsapp-openclaw",
     title: "O agente nos grupos do WhatsApp",
@@ -541,7 +515,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "contas-cli",
-    number: 12,
+    number: 11,
     needs: ["contas"],
     after: "claude-login",
     needsXai: true,
@@ -573,7 +547,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "financeiro",
-    number: 13,
+    number: 12,
     needs: ["finance"],
     after: "claude-login",
     needsFinance: true,
@@ -618,7 +592,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "link-publico",
-    number: 14,
+    number: 13,
     needs: ["linkpublico"],
     after: "claude-login",
     needsXai: true,
@@ -653,7 +627,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   {
     // Saiu das Configurações (30 out): a janela flutuante é sempre ativa; aqui a pessoa escolhe o atalho e experimenta.
     id: "entrada-rapida",
-    number: 15,
+    number: 14,
     needs: ["quickentry"],
     after: "claude-login",
     title: "Entrada rápida",
@@ -678,7 +652,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "gmail",
-    number: 16,
+    number: 15,
     needs: ["google"],
     after: "claude-login",
     title: "Gmail (Pro)",
@@ -716,7 +690,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "statusline",
-    number: 17,
+    number: 16,
     needs: ["statusline"],
     after: "claude-login",
     title: "Status line do Claude",
@@ -753,7 +727,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "crm-gmail",
-    number: 18,
+    number: 17,
     needs: ["crm", "navegador"],
     after: "navegador",
     needsCrmProprio: true,
@@ -796,7 +770,7 @@ export const TUTORIAIS: readonly Tutorial[] = [
   },
   {
     id: "crm-whatsapp",
-    number: 18,
+    number: 17,
     needs: ["crm"],
     after: "navegador",
     needsCrmStreak: true,

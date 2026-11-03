@@ -42,7 +42,7 @@ test("progressLines: tour e tutoriais, com onde parou", () => {
   assert.deepEqual(l.map((x) => [x.text, x.ok, x.step]), [
     ["Tour do meu-bot: pulado", false, undefined],
     ["Ligar o suporte: concluído", true, undefined],
-    ["17 · Status line: 1 de 2", null, ' · parou em "instalar"'],
+    ["16 · Status line: 1 de 2", null, ' · parou em "instalar"'],
     ["Voz: em breve", null, undefined],
     ["WhatsApp: 0 de 4", false, undefined],
   ]);
@@ -62,6 +62,10 @@ test("visibleActions: transcrição só com a capacidade audio, Ativar ou Desati
   assert.ok(!visibleActions(h(wa({ gateway: "hermes", audioIn: false, capacidades: cap(false) }))).some((o) => o.id === "transcription"), "sem a capacidade, nada de Ativar mesmo com audioIn=false");
   assert.match(transcriptionNote(h(null, { ...share, whatsapp: false })), /não compartilha/);
   assert.equal(transcriptionNote(h(wa({ audioIn: false }))), null);
+  // Máquina sem o transcritor do root nem ffmpeg: Ativar some (é com a aba Preparar máquina) e a nota diz isso.
+  assert.ok(!visibleActions(h(wa({ audioIn: false, audioMaquina: false }))).some((o) => o.id === "transcription"));
+  assert.match(transcriptionNote(h(wa({ audioIn: false, audioMaquina: false }))), /Preparar máquina/);
+  assert.ok(visibleActions(h(wa({ audioIn: false, audioMaquina: true }))).some((o) => o.id === "transcription"));
   assert.equal(actionResultText("Reiniciar", { ok: true, detail: "" }), "Reiniciar: feito");
   assert.equal(actionResultText("Reiniciar", { ok: false, detail: "exit 1" }), "Reiniciar: falhou · exit 1");
 });
