@@ -44,8 +44,24 @@ flock -n 9 || { echo "❌ já há uma listagem/ação de grupos em andamento nes
 echo $$ > "$LOCK"
 
 # 0) confere o que a listagem precisa ANTES de parar o gateway (máquina que atende clientes não fica parada à toa)
-NODE=/opt/node/bin/node; [[ -x "$NODE" ]] || NODE=$(command -v node)
-[[ -n "$NODE" ]] || { echo "❌ node não encontrado" >&2; exit 3; }
+# O Node: primeiro o que roda o gateway (o atalho `openclaw` de todos, em /usr/local/bin, é um `exec <node> …` e diz
+# qual), senão os lugares em que o meu-bot instala Node (/opt/node, /opt/openclaw/node, /opt/node24, ~/.local/node24,
+# ~/.local/node), por último o do PATH. O PATH de um SSH sem login não traz nenhum desses: por ele a listagem pelo app
+# parava em "node não encontrado" com o Node a um diretório de distância.
+achar_node() {
+  local w n
+  w=$(command -v openclaw 2>/dev/null)
+  if [[ -n "$w" && -f "$w" ]]; then
+    n=$(sed -n 's/^exec \([^ ]*\/node\) .*/\1/p' "$w" 2>/dev/null | head -n1)
+    [[ -n "$n" && -x "$n" ]] && { echo "$n"; return 0; }
+  fi
+  for n in /opt/node/bin/node /opt/openclaw/node/bin/node /opt/node*/bin/node "$HOME"/.local/node*/bin/node /usr/local/bin/node; do
+    [[ -x "$n" ]] && { echo "$n"; return 0; }
+  done
+  command -v node 2>/dev/null
+}
+NODE=$(achar_node)
+[[ -n "$NODE" ]] || { echo "❌ node não encontrado (nem no atalho openclaw, em /opt/node*, /opt/openclaw/node, ~/.local/node* ou no PATH)" >&2; exit 3; }
 "$NODE" "$S/wa-grupos.js" checar >&2 || { echo "❌ nada foi parado: corrija o problema acima e tente de novo." >&2; exit 3; }
 
 # 1) backup (mantém os 3 últimos)
