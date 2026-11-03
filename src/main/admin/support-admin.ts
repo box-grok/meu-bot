@@ -119,10 +119,14 @@ function writeSshFiles(m: Map<string, Stored>): void {
 }
 
 /** Lê a caixa de entrada (na máquina do admin): os códigos válidos, por id. Quem junta ao salvo é `juntarCaixa`. */
+let avisouSemCaixa = false;
 async function pullInbox(): Promise<{ lidos: { key: string; code: SupportCode; seenAt: string }[]; warning: string | null }> {
   const lidos: { key: string; code: SupportCode; seenAt: string }[] = [];
   const alias = adminConfig().inbox.alias;
-  if (alias === "") return { lidos, warning: "sem caixa de entrada configurada (rode scripts/suporte-setup.mjs e reempacote o admin)" };
+  // Sem caixa de entrada o admin funciona do mesmo jeito: as pessoas entram por "Adicionar pessoa" (código colado ou
+  // "ssh <host>") e pelo ⇅ do seletor. Não é aviso para a nota a cada 60 s (ele cobria o resultado do sync); fica no
+  // log, uma vez, e no texto da lista vazia.
+  if (alias === "") { if (!avisouSemCaixa) { avisouSemCaixa = true; log("[suporte] sem caixa de entrada configurada (scripts/suporte-setup.mjs): só Adicionar pessoa e ⇅"); } return { lidos, warning: null }; }
   const r = await runSsh(alias, `for f in "$HOME"/suporte-inbox/*.code; do [ -f "$f" ] || continue; printf 'F\\t%s\\t%s\\t' "$(basename "$f" .code)" "$(stat -c %Y "$f")"; head -c 4096 "$f" | tr -d '\\n'; echo; done\n`, 20_000);
   if (r.code !== 0) return { lidos, warning: `não consegui ler a caixa de entrada em ${alias}` };
   for (const line of r.stdout.split("\n")) {

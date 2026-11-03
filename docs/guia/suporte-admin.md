@@ -790,3 +790,9 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   alias novo, a menos que o admin tenha dado um apelido próprio (apelido igual ao nome antigo não conta e sai). O
   alias de suporte muda com o nome (o sufixo de 4 hex é da identidade e fica), então `meu-bot-suporte.conf` é
   reescrito e a janela aberta dela precisa reabrir. O seletor relata "renomeadas pelo alias novo: meu-root → meu-root-hermes".
+- **Sem caixa de entrada não é erro** (3 nov): `pullInbox` deixa de devolver o aviso "sem caixa de entrada configurada
+  (rode scripts/suporte-setup.mjs…)" a cada leitura (60 s), que no seletor cobria a nota do ⇅. O admin funciona igual
+  sem caixa: pessoas entram por "Adicionar pessoa" (código ou `ssh <host>`) e pelo ⇅. Fica uma linha no log, uma
+  vez, e a dica no texto da lista vazia. O aviso de caixa que não respondeu continua, mas não cobre a nota durante
+  um sync. E `picker:sync-ssh` passou do `registerIpc` do seletor de cliente para o bloco comum de `initPicker`:
+  o admin não roda aquele bloco, e o clique dava "No handler registered for 'picker:sync-ssh'".
