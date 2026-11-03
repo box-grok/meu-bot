@@ -78,3 +78,11 @@ export function listSshHostInfos(): SshHostInfo[] {
 export function listSshHosts(): string[] {
   return listSshHostInfos().map((h) => h.host);
 }
+/** O bloco de um alias (HostName e User), ou null quando o ~/.ssh/config não o tem. */
+export function sshHostInfo(host: string): SshHostInfo | null {
+  return listSshHostInfos().find((h) => h.host === host) ?? null;
+}
+/** Endereços de todos os aliases, prontos para o seletor. */
+export function sshEnderecos(): Record<string, { hostName: string | null; user: string | null }> {
+  return Object.fromEntries(listSshHostInfos().map((h) => [h.host, { hostName: h.hostName, user: h.user }]));
+}

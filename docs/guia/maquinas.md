@@ -494,3 +494,18 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   o seletor explica e "Reinstalar backend" vai para a mesma porta (`portaParaInstalar`, `porta-backend-core.ts`); o
   `install.sh` (1.10.0, junto com o #79) para o serviço próprio antes de reclamar de porta ocupada (`liberar_porta_propria`). Sessões e
   `providers.json` não voltam: o Grok precisa de "preparar" e login de novo.
+
+## Endereço na lista e "chave SSH mudou" no seletor (2 nov 2026)
+
+- Cada máquina da lista mostra, menor e depois do nome, o `HostName` do bloco dela no `~/.ssh/config` deste Mac (IP ou
+  nome DNS, como está lá) e o `User` quando o alias não o diz no próprio nome (`agente-root` já diz `root`; `vps` com
+  `User diego` vira `vps · meu.box · diego`). Duas máquinas com o mesmo apelido se distinguem pelo endereço, e os
+  aliases de uma mesma VM (um por usuário Linux) ficam visivelmente iguais. A busca também acha pelo endereço.
+  Regra pura em `enderecoLabel` (`src/renderer/lib/probe-text.ts`); o endereço vem em `PickerInit.enderecos`
+  (`sshEnderecos`, `src/main/maquina/sshConfig.ts`), sem SSH, então aparece mesmo com a máquina fora do ar.
+- A sondagem distingue "fora do ar" de **chave da máquina mudou** (`HostProbe.hostKeyChanged`, pelo stderr do ssh:
+  `Host key verification failed` ou `REMOTE HOST IDENTIFICATION HAS CHANGED`). O seletor explica que ou o sistema foi
+  reinstalado ou outra máquina responde nesse endereço, e dá o comando (`ssh-keygen -R <HostName>`) para quem
+  confirmou que é esperado. Antes aparecia só `inacessível por SSH: Host key verification failed`, e foi assim que
+  a VM `agente` reinstalada em 1 nov passou despercebida por um dia. `HostProbe.hostName` traz o mesmo HostName para
+  o texto da caixa de estado (`box@agente-box (187.127.41.175) · Debian 13`).

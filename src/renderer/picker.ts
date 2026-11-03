@@ -5,7 +5,7 @@ import { el } from "./lib/dom.js";
 import { personSuffix } from "./lib/admin-view.js";
 import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
-import { describeProbe, hostLabel, setApelidoMaquina, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
+import { describeProbe, enderecoLabel, hostLabel, setApelidoMaquina, setHostNicknames, type ProbeText } from "./lib/probe-text.js";
 
 declare global { interface Window { picker: PickerApi } }
 
@@ -75,6 +75,7 @@ let reliefShortcuts = new Set<string>();
 let pods = new Set<string>();
 
 let hosts: string[] = [];
+let enderecos: PickerInit["enderecos"] = {};
 /** meu-bot-admin: as pessoas do suporte (null = meu-bot normal). */
 let support: PickerInit["support"] = null;
 /**
@@ -105,11 +106,17 @@ function showError(prefix: string, err: unknown): void {
 /** Cor da máquina: no admin, pela máquina como a pessoa a chama no ~/.ssh dela (a mesma cor que ela vê); sem isso, pelo host. */
 const accentOf = (host: string): string => hostAccent(personOf(host)?.machine ?? host);
 
-/** Com apelido (deste Mac ou da máquina), o nome SSH continua visível, menor, logo depois: é por ele que se entra. */
+/**
+ * Depois do nome, menor: o nome SSH quando há apelido (é por ele que se entra) e o endereço do ~/.ssh/config (IP ou
+ * DNS, e o usuário se o alias não o diz). Duas máquinas com o mesmo apelido se distinguem pelo endereço.
+ */
 function pintarNomeSsh(host: string, nameEl: HTMLElement): void {
   nameEl.querySelector(".ssh-nome")?.remove();
-  if (personOf(host) !== undefined || host === "local" || rowLabel(host) === host) return;
-  nameEl.firstChild?.after(el("span", "seen ssh-nome", ` · ${host}`));
+  nameEl.querySelector(".endereco")?.remove();
+  if (personOf(host) !== undefined || host === "local") return;
+  const endereco = enderecoLabel(host, enderecos[host]);
+  if (endereco !== "") nameEl.firstChild?.after(el("span", "seen endereco", endereco));
+  if (rowLabel(host) !== host) nameEl.firstChild?.after(el("span", "seen ssh-nome", ` · ${host}`));
 }
 
 function buildRows(): void {
@@ -270,7 +277,7 @@ tiposEl.addEventListener("click", (ev) => {
 function visibleHosts(): string[] {
   const q = filterEl.value.trim().toLowerCase();
   const porTipo = q === "" && tiposComMaquina.length >= 2;
-  return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (!porTipo || tipoDe(h) === tipoAtivo) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q)));
+  return hosts.filter((h) => (showArchivedPeople || personOf(h)?.archived !== true) && (!porTipo || tipoDe(h) === tipoAtivo) && (q === "" || h.toLowerCase().includes(q) || rowLabel(h).toLowerCase().includes(q) || (enderecos[h]?.hostName ?? "").toLowerCase().includes(q)));
 }
 
 function applyFilter(): void {
@@ -514,6 +521,7 @@ async function loadPlans(): Promise<void> {
 }
 function init(payload: PickerInit, keepSelected: string | null = null): void {
   hosts = payload.hosts;
+  enderecos = payload.enderecos;
   support = payload.support;
   { const v = document.getElementById("pk-version"); if (v !== null) v.textContent = `v${payload.version}`; }
   setHostNicknames(payload.names);

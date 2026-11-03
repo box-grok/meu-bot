@@ -28,7 +28,7 @@ import { atualizarModulos } from "../modulos/modulos";
 import { settingsView, getBackendPort, getHostNames, getLastHost, getOpenDirect, isOnboardingDone, isPodHost, isValidHost, setBackendPortForHost, setHostName, setLastHost, setOnboardingDone, setOpenDirect, setPodHost, setApelidoMaquina } from "../app/settings";
 import { isPort } from "../app/settings-normalize";
 import { closeTunnel } from "./tunnel";
-import { listSshHosts } from "./sshConfig";
+import { listSshHosts, sshEnderecos } from "./sshConfig";
 import { removeHostFromSshConfig, syncSshConfig } from "./sshSync";
 import {
   createReliefShortcut, createShortcut, hasReliefShortcut, hasShortcut, removeReliefShortcut, removeShortcut, shortcutEmoji,
@@ -230,6 +230,7 @@ function initPayload(): PickerInit {
   const wanted = preselectOverride ?? getLastHost() ?? LOCAL_HOST;
   return {
     hosts,
+    enderecos: sshEnderecos(),
     support: current().support(),
     preselect: hosts.includes(wanted) ? wanted : (hosts[0] ?? LOCAL_HOST),
     open: hosts.filter((h) => windowForHost(h) !== undefined),

@@ -12,6 +12,7 @@ import { isVozId } from "../whatsapp/vozes-core";
 import { WA_MOTOR_SH } from "../whatsapp/whatsapp-capacidades";
 import { hermesPausaPluginSh, lerPausaPlugin, versaoDoPluginYaml, type PausaPluginFonte } from "../whatsapp/whatsapp-hermes-pausa-core";
 import { HERMES_PIPER_VOICE, HERMES_RESTART_SH, HERMES_VENV_PY_SH, HERMES_VOZ_LOCAL_SH, hermesAudioPatch, hermesConfigSetSh, hermesPmExtraSh, hermesSttLigarSh } from "../whatsapp/whatsapp-hermes-core";
+import { sshHostInfo } from "./sshConfig";
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -63,6 +64,10 @@ const lastLine = (s: string): string => s.trim().split("\n").filter((l) => l !==
 /** Link de verificação do Tailscale SSH ("# To authenticate, visit: https://login.tailscale.com/a/…"). */
 export const TAILSCALE_CHECK_RE = /https:\/\/login\.tailscale\.com\/a\/[A-Za-z0-9]+/;
 export const tailscaleCheckUrl = (text: string): string | null => TAILSCALE_CHECK_RE.exec(text)?.[0] ?? null;
+
+/** O ssh recusou pela chave da máquina (known_hosts): "Host key verification failed." ou o aviso "REMOTE HOST IDENTIFICATION HAS CHANGED". */
+export const HOST_KEY_CHANGED_RE = /host key verification failed|remote host identification has changed|host key for .+ has changed/i;
+export const hostKeyChanged = (stderr: string): boolean => HOST_KEY_CHANGED_RE.test(stderr);
 
 /**
  * Verificação do Tailscale SSH: o link só vale enquanto a sessão ssh que o pediu estiver viva, então
@@ -179,7 +184,7 @@ function parseKv(stdout: string): Map<string, string> {
 export async function probeHost(host: string, port: number): Promise<HostProbe> {
   if (host === LOCAL_HOST) return probeLocal(port);
   const base: HostProbe = {
-    host, reachable: false, user: null, apelido: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendSumiu: false, backendUnitPort: null, backendVersion: null, backendBusy: null,
+    host, hostName: sshHostInfo(host)?.hostName ?? null, reachable: false, hostKeyChanged: false, user: null, apelido: null, os: null, arch: null, backendInstalled: false, backendForeign: false, backendListening: false, backendSumiu: false, backendUnitPort: null, backendVersion: null, backendBusy: null,
     appPort: port, backendPort: null, portBusy: false, freePort: null,
     claudePath: null, claudeLoggedIn: false, node: null, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: false, guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: [], error: null,
   };
@@ -195,6 +200,8 @@ export async function probeHost(host: string, port: number): Promise<HostProbe> 
   if (r.code !== 0) {
     // O Tailscale SSH pediu a verificação extra: não é máquina fora, é aprovação pendente no navegador.
     if (tailscaleCheckUrl(r.stderr) !== null) return { ...base, tailscaleCheck: true, error: "o Tailscale SSH pede uma verificação extra no navegador antes de deixar entrar" };
+    // A chave da máquina não é a que este Mac conhece: sistema reinstalado ou outra máquina no mesmo endereço. Não é "fora do ar".
+    if (hostKeyChanged(r.stderr)) return { ...base, hostKeyChanged: true, error: "a chave SSH da máquina mudou" };
     return { ...base, error: lastLine(r.stderr) || (r.code === null ? "tempo esgotado" : `ssh saiu com código ${r.code}`) };
   }
   const kv = parseKv(r.stdout);
@@ -261,7 +268,7 @@ function probeLocal(port: number): HostProbe {
   let nodeVersion: string | null = null;
   if (node !== null) { try { nodeVersion = spawnSync(node, ["-v"], { encoding: "utf8", timeout: 5000 }).stdout.trim() || null; } catch { /* sem versão */ } }
   return {
-    host: LOCAL_HOST, reachable: true, user: os.userInfo().username, apelido: null, os: `macOS ${os.release()}`, arch: os.arch(),
+    host: LOCAL_HOST, hostName: null, reachable: true, hostKeyChanged: false, user: os.userInfo().username, apelido: null, os: `macOS ${os.release()}`, arch: os.arch(),
     backendInstalled: true, backendForeign: false, backendListening: localBackendAlive(), backendSumiu: false, backendUnitPort: null, backendVersion: null, backendBusy: null, appPort: port, backendPort: null, portBusy: false, freePort: null, claudePath: claude, claudeLoggedIn: claude !== null && claudeLoggedIn(),
     node: nodeVersion, diskTotalMb: null, diskFreeMb: null, memTotalMb: null, memFreeMb: null, swapTotalMb: null, swapFreeMb: null, backendAlerta: null, systemd: false, grokPod: false, tailscaleCheck: false, statusLine: localStatusLine(), guarda: null, guardaVersion: null, crm: null, crmVersion: null, finance: null, financeVersion: null, audioIn: null, gateway: null, models: ["claudecode", "agente"], error: node === null ? "Node.js não encontrado neste Mac" : null,
   };

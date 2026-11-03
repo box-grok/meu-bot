@@ -120,3 +120,27 @@ test("nome da máquina: o deste Mac vence o apelido gravado na máquina, que ven
   setApelidoMaquina("meu-box-3", null);
   assert.equal(hostLabel("meu-box-3"), "meu-box-3");
 });
+
+test("endereço na lista: HostName do ~/.ssh/config, e o usuário só quando o alias não o diz", async () => {
+  const { enderecoLabel } = await import("../../dist/renderer/lib/probe-text.js");
+  assert.equal(enderecoLabel("agente-root", { hostName: "187.127.41.175", user: "root" }), " · 187.127.41.175");
+  assert.equal(enderecoLabel("agente-box-lv", { hostName: "187.127.41.175", user: "box-lv" }), " · 187.127.41.175");
+  assert.equal(enderecoLabel("vps", { hostName: "meu.box", user: "diego" }), " · meu.box · diego");
+  assert.equal(enderecoLabel("vps", { hostName: "meu.box", user: null }), " · meu.box");
+  assert.equal(enderecoLabel("vps", { hostName: null, user: "diego" }), "");
+  assert.equal(enderecoLabel("10.0.0.5", { hostName: "10.0.0.5", user: "root" }), "");
+  assert.equal(enderecoLabel("vps", undefined), "");
+});
+
+test("chave SSH da máquina mudou: não é 'fora do ar', e o texto diz o que fazer", () => {
+  const p = describeProbe({ ...base, hostName: "187.127.41.175", reachable: false, hostKeyChanged: true, error: "a chave SSH da máquina mudou" });
+  assert.deepEqual(pick(p), { kind: "bad", install: null, canOpen: false });
+  assert.match(p.text, /chave SSH da máquina mudou/);
+  assert.match(p.text, /reinstalado/);
+  assert.match(p.text, /ssh-keygen -R 187\.127\.41\.175/);
+  assert.doesNotMatch(p.text, /inacessível/);
+  const fora = describeProbe({ ...base, hostName: "187.127.41.175", reachable: false, error: "timeout" });
+  assert.match(fora.text, /vm \(187\.127\.41\.175\) inacessível/);
+  const ok = describeProbe({ ...base, hostName: "187.127.41.175", backendInstalled: true, backendListening: true, models: ["claudecode"] });
+  assert.match(ok.text, /box@vm \(187\.127\.41\.175\) · Debian 13/);
+});
