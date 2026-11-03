@@ -198,10 +198,22 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
   // e meu-root): fica a entrada que existe, com apelido, plano e histórico; só o "visto" avança. Sobrescrever apagava
   // tudo isso e trocava o nome dela pelo alias (3 nov). Código colado continua substituindo: é a própria pessoa mandando de novo.
   const existente = host !== null ? m.get(machineId(code)) : undefined;
-  if (existente !== undefined) {
+  if (existente !== undefined && host !== null) {
+    const antes = toPerson(existente);
     existente.seenAt = new Date().toISOString();
-    save(m);
-    log(`[adotar] ${host}: já é a pessoa ${toPerson(existente).name} (${supportAlias(existente.code)}); mantida`);
+    if (existente.code.machine !== host) {
+      // O alias foi renomeado no ~/.ssh/config (ou a pessoa entrou por código, sem alias): o nome e a máquina seguem o
+      // alias novo, a menos que o admin tenha dado um apelido próprio (apelido igual ao nome antigo não conta). O alias
+      // de suporte muda com o nome (o sufixo de 4 hex é da identidade e fica), por isso os arquivos ssh são reescritos.
+      if (existente.nickname === existente.code.name || existente.nickname === (existente.code.machine ?? "")) existente.nickname = "";
+      existente.code = { ...code, state: existente.code.state };
+      save(m);
+      writeSshFiles(m);
+      log(`[adotar] ${host}: era ${antes.name} (${antes.alias}); alias renomeado, pessoa mantida como ${toPerson(existente).name} (${supportAlias(existente.code)})`);
+    } else {
+      save(m);
+      log(`[adotar] ${host}: já é a pessoa ${antes.name} (${antes.alias}); mantida`);
+    }
     return toPerson(existente);
   }
   const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };

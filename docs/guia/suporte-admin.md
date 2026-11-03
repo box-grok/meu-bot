@@ -786,3 +786,7 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   entrada, e o ⇅ do admin (que adota todo alias do `~/.ssh/config`) trocaria o nome da pessoa pelo alias e apagaria
   o plano Pro. Código colado (`MBS1.…`) continua substituindo: é a própria pessoa mandando de novo. O seletor relata
   esses aliases como "já estavam (mesma máquina e usuário)".
+- **Alias renomeado no `~/.ssh/config`** (`machine` da entrada ≠ alias adotado): o nome e a máquina da pessoa seguem o
+  alias novo, a menos que o admin tenha dado um apelido próprio (apelido igual ao nome antigo não conta e sai). O
+  alias de suporte muda com o nome (o sufixo de 4 hex é da identidade e fica), então `meu-bot-suporte.conf` é
+  reescrito e a janela aberta dela precisa reabrir. O seletor relata "renomeadas pelo alias novo: meu-root → meu-root-hermes".
