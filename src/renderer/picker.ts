@@ -445,6 +445,29 @@ function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
   return { kind, text: lines.join("\n") };
 }
 
+/**
+ * No admin a lista é de pessoas: as máquinas do projeto que o ~/.ssh/config já tem (as que entraram agora e as que já
+ * estavam) viram pessoas pelo mesmo caminho de "Adicionar pessoa" com o nome SSH, uma a uma, para o clique no ⇅ dar
+ * o mesmo resultado que no meu-bot: a máquina aparece na lista. Quem não entra (máquina fora, sem a chave) é relatado.
+ */
+async function adotarMaquinasDoProjeto(r: SshSyncResult, texto: string): Promise<string[]> {
+  if (support === null) return [];
+  const linhas: string[] = [];
+  const jaPessoa = new Set(support.people.map((p) => p.machine).filter((m): m is string => m !== null));
+  const faltam = [...r.added, ...r.kept].filter((h) => !jaPessoa.has(h));
+  if (faltam.length === 0) return linhas;
+  if (!support.adminKey) return [`⚠ ${faltam.length === 1 ? `${faltam[0]} não entrou` : `${faltam.join(", ")} não entraram`} na lista: falta a chave ~/.ssh/meu-bot-admin neste Mac.`];
+  const entraram: string[] = []; const falharam: string[] = [];
+  for (const h of faltam) {
+    noteEl.textContent = `${texto}
+adicionando ${h} à lista (${entraram.length + falharam.length + 1}/${faltam.length})…`;
+    try { await window.picker.supportAdd(h); entraram.push(h); } catch (err) { falharam.push(`${h} (${ipcErrorText(err)})`); }
+  }
+  if (entraram.length > 0) linhas.push(`✓ na lista: ${entraram.join(", ")}.`);
+  if (falharam.length > 0) linhas.push(`⚠ não entraram na lista: ${falharam.join("; ")}.`);
+  return linhas;
+}
+
 /** Acrescenta as máquinas do projeto ao ~/.ssh/config e recarrega a lista. */
 async function syncSsh(): Promise<void> {
   syncBtn.disabled = true;
@@ -456,7 +479,13 @@ async function syncSsh(): Promise<void> {
     const s = syncSummary(r);
     noteEl.className = `note ${s.kind}`;
     noteEl.textContent = s.text;
-    if (r.added.length > 0 || r.includesAdded > 0) {
+    const adocao = await adotarMaquinasDoProjeto(r, s.text);
+    if (adocao.length > 0) {
+      noteEl.className = `note ${adocao.some((l) => l.startsWith("⚠")) ? "warn" : s.kind}`;
+      noteEl.textContent = `${s.text}
+${adocao.join("\n")}`;
+    }
+    if (r.added.length > 0 || r.includesAdded > 0 || adocao.length > 0) {
       const keep = selected;
       init(await window.picker.list(), keep);
     }
