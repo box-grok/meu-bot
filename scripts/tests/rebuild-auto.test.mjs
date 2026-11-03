@@ -75,6 +75,10 @@ test("hook num branch: mudança no código roda só os testes, não empacota, e 
   const n = m.chamadas().length;
   const wt = join(m.d, "meu-bot-feature"); git(m.principal, "worktree", "add", "-q", "-b", "feature", wt, "origin/main");
   assert.equal(m.hook(wt).stdout.trim(), "", "a primeira resposta no worktree só marca o ponto de partida");
+  // O hook compara mtime (find -newer). No ext4 do CI o mtime anda em ticks de até 10 ms: o carimbo e a gravação logo
+  // abaixo cairiam no mesmo tick e a mudança sumiria (no APFS do Mac o mtime tem nanossegundos). Na vida real passam
+  // segundos entre uma resposta e a outra; aqui bastam 50 ms.
+  await new Promise((r) => setTimeout(r, 50));
   writeFileSync(join(wt, "src", "a.ts"), "feature");
   const h = m.hook(wt);
   assert.match(h.stdout, /Branch feature: 1 arquivo\(s\) do app mudaram\. O hook não empacota branches/);

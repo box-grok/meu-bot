@@ -85,8 +85,8 @@
   guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`). Conta de antes da lixeira
   (`gmailEscreve === false`) vê no passo 5 o aviso para reconectar uma vez.
 - **Renumeração:** o Gmail entra como **16**, depois de 15 Entrada rápida (trilha: `after: "claude-login"`); os
-  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões); em 3 nov o 17 "Digitando… no WhatsApp" entrou
-  depois do 16 e os ocultos foram para 18 e 19 (docs/guia/whatsapp.md). O mapa antigo → novo da seção de 31 out continua
+  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões); em 3 nov, com o "Ouvir áudios" fora (o Gmail
+  virou 15), o 16 "Digitando… no WhatsApp" entrou depois do 3 e os ocultos foram para 17 e 18 (docs/guia/whatsapp.md). O mapa antigo → novo da seção de 31 out continua
   valendo para os 15 primeiros.
 - **Fonte `google`:** `known` = a Conta Google da máquina já respondeu (`googleContaStatus`, mais o evento
   `google-conta:changed`); `access` pela licença como o Navegador. `refreshGmailGuia` roda no boot e ao abrir o guia.
@@ -185,6 +185,36 @@
   10→17 CRM no Gmail e CRM pelo WhatsApp (ocultos). O 11 antigo ("Extensões no Navegador") já tinha sido removido.
 - Toda menção "tutorial N" em `src/`, `scripts/`, `docs/` e nos textos da tela foi trocada pelo mapa; o `number` é
   usado só como rótulo (`tutorialBadge`, `guideTabTitle`, `tutorialNumber`), o progresso para o admin vai por id.
+
+## Tutorial 4 "Ouvir áudios" sai: o áudio é da máquina (3 nov 2026)
+
+- **Problema:** clicar em "Responder em áudio" numa box sem ffmpeg dava "ffmpeg não encontrado … (apt install
+  ffmpeg)", um apt que a pessoa não consegue rodar (sem root), e o painel mandava para o "Tutorial 4 · 0 de 2", que
+  pararia no mesmo ffmpeg. O `ensureTranscription` já ligava a transcrição sozinho depois de parear, mas no OpenClaw
+  ele criava um venv por usuário (~500 MB) que exige ffmpeg; a falha ficava numa linha de log que ninguém via.
+- **Agora, a máquina:** o transcritor compartilhado do root (`/opt/transcriber`, `transcritorSh`) ganha o
+  `bin/transcrever-texto` (imprime o texto; é o `cli` de `tools.media.models` do OpenClaw) ao lado do `bin/transcrever`
+  do Hermes; decodifica pelo PyAV, sem ffmpeg. O item "Transcritor de áudio" de Preparar máquina deixa de depender do
+  Hermes global (`TRANSCRITOR_ESTADO_SH`; máquina preparada antes acusa "aplicar de novo"). O
+  `install-transcricao.sh` prefere o compartilhado (nada baixado; o venv antigo do usuário sai) e só cai no caminho por
+  usuário quando ele não existe; sem ffmpeg e sem sudo sai com **3** (como o `install-tela.sh`), e o `install-voz.sh` idem.
+- **Agora, o app:** o status do WhatsApp traz `audioMaquina` (a máquina tem o transcritor do root ou o ffmpeg;
+  `transcritor-core.ts`, sonda nos dois motores), `audioDesligado` (marca `~/.local/share/meu-bot/audio-desligado`,
+  criada ao desligar e apagada ao ligar: o app não religa o que alguém desligou de propósito), `audioLigando` e
+  `audioErro`. O cliente registra um observador do `whatsapp:status` (`setObservadorStatus` em `ipc/shared.ts`): a
+  cada leitura, se conectado, com a capacidade `audio`, `audioIn` false, a máquina pronta e sem a marca, chama o
+  mesmo `ensureTranscription` (uma vez por máquina por sessão quando falha). Quando o admin prepara a máquina, a leitura
+  seguinte liga sozinha. O admin não registra observador: ele lê a máquina da pessoa, não instala nela.
+- **Tela:** a linha "Ouvir áudios" mora no painel de gerência do tutorial 3, antes de "Responder em áudio", e decide por
+  `estadoOuvir` (`lib/audio-ouvir-core.ts`, molde do Computador): ✓ ativo · ligando sozinho · "A transcrição precisa do
+  admin para ligar" (com "Conferir de novo") · o botão "Ativar transcrição" de reserva, com o motivo da falha
+  automática. No admin, "Ativar transcrição" some quando a máquina não tem o necessário e a nota aponta Preparar máquina.
+- **Tutorial 4 sai e a trilha é renumerada** (número = posição; nada persiste por número, tudo por id):
+  1→1 Claude · 2→2 Mais contas · 3→3 WhatsApp · 4 (Ouvir áudios) sai · 5→4 xAI · 6→5 Fallback · 7→6 Suporte ·
+  8→7 Objetivo · 9→8 Guarda · 10→9 Navegador · 11→10 Grupos · 12→11 Contas na máquina · 13→12 Financeiro ·
+  14→13 Link público · 15→14 Entrada rápida · 16→15 Gmail · 17→16 Status line (oculto) · 18→17 CRM (ocultos).
+  Toda menção "tutorial N" em `src/`, `backend-colima/` e `scripts/tests/` foi trocada pelo mapa (e as que já
+  estavam desatualizadas, acertadas); o diário abaixo mantém os números da época.
 
 ## Configurações enxutas e tutorial 15 "Entrada rápida" (30 out 2026)
 
@@ -380,7 +410,7 @@ linha numa tabela:
 | `extensao-crm/` | a extensão do Gmail (InboxSDK `@inboxsdk/core` 2.2.31 fixo, esbuild, DOM vanilla, pt-BR). `npm run build:extensao` → `build/extensao-crm/` (o app em dev carrega daí); o `package.mjs` copia para `Resources/extensao-crm/`. Id estável pelo `key` do manifesto (`scripts/id-da-extensao.mjs`). Dev: `npm run build:extensao && MEU_BOT_VARIANT=crm npm run dev` (ou `MEU_BOT_EXTENSAO_CRM_DIR=<pasta>` para outra cópia). |
 | `backend-colima/crm-modelo.js`, `crm-store.js`, `crm-api.js` | o CRM próprio no host: domínio puro, store em `~/.local/share/meu-bot/crm/db/` (JSON por pipeline, escritor único, feed `mudancas.jsonl`, lixeira, backup diário), rotas `/v1/crm/*` montadas no `server.js` (exige `personalizado`). |
 | `backend-colima/crm/crm.mjs`, `backend.mjs`, `importar-streak.mjs` | CLI do agente (mesmos subcomandos do `streak.mjs`, falando HTTP com o backend), helper do `.env`, importador do Streak (preserva as chaves; idempotente). `crm-job.mjs` escolhe a CLI pela licença: personalizado → `crm.mjs`; pro → `streak.mjs`. |
-| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 17 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
+| `src/renderer/lib/tutoriais.ts` | `GuideContext.produto`; tutorial 18 em duas versões excludentes: `crm-gmail` (`needsExtensaoGmail`) e `crm-whatsapp` (`needsCrmStreak`). |
 | `src/main/backend.ts`, `backend-colima/server.js` | o `hello` leva `produto`; o backend guarda `apps[produto] = {version, lastSeen}` por device (um Mac pode ter o meu-bot e o meu-bot-crm: mesmo `deviceId`, não gasta `deviceLimit`); o admin vê em `appsText`. |
 
 Regras novas:
@@ -495,7 +525,7 @@ O meu-bot-crm era o meu-bot com três chaves ligadas na tabela de produtos (`ext
   `whatsapp:archive-crm`.
 - **Motor explícito na máquina:** `crm.json.motor: "proprio" | "streak"`; sem ele, quem tem a chave do Streak fica no
   Streak (nada muda em silêncio para quem já o usava com Pro), senão a licença decide (`motorCrm` em `crm-job.mjs`,
-  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 17 é `crm-gmail` quando
+  `motorEfetivo` em `crm-core.ts`, `CrmInfo.motor`/`streakKey`). O tutorial 18 é `crm-gmail` quando
   `crmProprio && motor === "proprio"`, senão `crm-whatsapp` (Streak); `ctx.produto = { planoExigido, crmProprio, crmStreak }`.
 - **Extensões:** o meu-bot traz as duas (`CLIENT.extensoes`). O Autenticador carrega na cadeia `ready` da sessão; a do
   CRM entra por `sincronizarExtensaoCrm` (idempotente: carrega/`removeExtension`) em `browserOpen` (que recebe a

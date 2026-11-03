@@ -1,4 +1,4 @@
-/** Link público da pessoa no guia (tutorial 14): ver o link, publicar e tirar do ar, trocar o nome. */
+/** Link público da pessoa no guia (tutorial 13): ver o link, publicar e tirar do ar, trocar o nome. */
 import type { LinkPublicoInfo, LinkPublicoItem } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
@@ -8,10 +8,10 @@ import { registrarFonte } from "../tutoriais/fontes.js";
 import { abrirLinkDoChat } from "../navegador/navegador-guia.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
-/** Tutorial 14: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
+/** Tutorial 13: o link público da pessoa (null = desligado ou não consultado; `linkPublicoLido` separa os dois). */
 export let linkPublicoState: LinkPublicoInfo | null = null;
 export let linkPublicoLido = false;
-/** false = a janela é do root: sem link por desenho (o tutorial 14 some da lista). */
+/** false = a janela é do root: sem link por desenho (o tutorial 13 some da lista). */
 export let linkPublicoPossivel = true;
 let linkNomeMsg: { text: string; bad: boolean } | null = null;
 let linkNomeOcupado = false;
@@ -43,7 +43,7 @@ export async function refreshLinkPublico(): Promise<void> {
   try { const r = await window.meuBot.linkPublico(); linkPublicoState = r.info; linkPublicoPossivel = r.possivel; linkPublicoLido = true; } catch { /* máquina fora: fica o que havia */ }
   ctx.paintGuide();
 }
-/** Tutorial 14: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
+/** Tutorial 13: o link (passo 1), o que está no ar (passo 2) ou o campo para trocar o nome (passo 3). */
 export function renderLinkPublico(container: HTMLElement, parte: "ver" | "testar" | "nome"): void {
   const box = el("div", "audio-controls");
   const lp = linkPublicoState;

@@ -8,6 +8,7 @@ import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-cor
 import { OPENCLAW_WA_PLUGIN_VERSAO } from "../maquina/motor-versoes";
 import { donosDe, type WaQuem } from "./whatsapp-marks";
 import { isVozId } from "./vozes-core";
+import { AUDIO_ESTADO_SH, lerAudioEstado } from "./transcritor-core";
 import { describeInstall, phoneOf } from "./whatsapp-kv";
 
 /** O alvo de sempre: conta `default`, agente `main`, gateway próprio. */
@@ -180,7 +181,7 @@ fb = modelo.get("fallbacks") if isinstance(modelo, dict) else None
 grok = ((c.get("models") or {}).get("providers") or {}).get("grok") or {}
 print("ocfallback=%d" % (not fb and any(isinstance(m, dict) and m.get("id") for m in (grok.get("models") or []))))
 m = (c.get("tools") or {}).get("media") or {}
-print("audioin=%d" % any("audio" in (x.get("capabilities") or []) for x in (m.get("models") or []) if isinstance(x, dict)))
+print("audioin=%d" % any("audio" in (x.get("capabilities") or []) and (x.get("type") != "cli" or os.access(str(x.get("command") or ""), os.X_OK)) for x in (m.get("models") or []) if isinstance(x, dict)))
 t = c.get("tts") or {}
 print("voz=%s" % (t.get("auto") or "off" if t.get("provider") else ""))
 print("typing=%s" % (e.get("typingMode") or d.get("typingMode") or ""))
@@ -223,6 +224,8 @@ if command -v openclaw >/dev/null 2>&1; then
   ${WA_PLUGIN_SH}
   case "$OJ" in *plugin=1*) ;; *) echo "plugin=$(wa_plugin)" ;; esac
   echo "vozid=$(cat "$HOME/.local/share/meu-bot/voz/voz-atual" 2>/dev/null || { [ -s "$HOME/.local/share/meu-bot/voz/faber.onnx" ] && echo faber; })"
+  # A máquina tem o que a transcrição precisa (transcritor do root ou ffmpeg)? Foi desligada de propósito?
+  ${AUDIO_ESTADO_SH}
   # A única chamada da CLI no caminho normal. "token mismatch" = esta conta aponta para o gateway de outra: conserta e consulta de novo.
   CS=$(timeout 25 openclaw channels status --channel whatsapp --json 2>&1)
   if printf '%s' "$CS" | grep -q 'token mismatch'; then
@@ -283,7 +286,7 @@ export function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "c
   const gwfix = kv.get("gwfix") ?? "";
   const repaired = /^\d+$/.test(gwfix) ? `o gateway do OpenClaw desta conta apontava para o gateway de outra conta da máquina (token diferente); ganhou a porta própria ${gwfix}` : null;
   const unrepaired = gwfix === "fail" ? "o gateway do OpenClaw desta conta aponta para o gateway de outra conta da máquina (token diferente) e não consegui dar a ele uma porta própria; na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>" : null;
-  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", audioOut, audioVoice, typingMode: typingModeDe(kv.get("typing")), ...(repaired !== null ? { repaired } : {}) };
+  return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", ...lerAudioEstado(kv), audioOut, audioVoice, typingMode: typingModeDe(kv.get("typing")), ...(repaired !== null ? { repaired } : {}) };
 }
 
 /** Política "só você" (ver setDmPolicy) da conta; também é o padrão gravado antes do primeiro login. */

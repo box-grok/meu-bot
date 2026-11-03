@@ -61,6 +61,17 @@ export interface WhatsappStatus {
   allowFrom?: string[];
   /** O agente entende áudio (OpenClaw: transcritor em `tools.media.models`; Hermes: `stt` do config.yaml). Ausente = não se sabe. */
   audioIn?: boolean;
+  /**
+   * A máquina tem o que a transcrição precisa (o transcritor compartilhado do root em /opt/transcriber, ou o ffmpeg para
+   * o caminho por usuário). `false` = só o admin resolve (Preparar máquina). Ausente = não se sabe.
+   */
+  audioMaquina?: boolean;
+  /** A transcrição foi desligada de propósito (pelo admin ou pela pessoa): o app não a religa sozinho. */
+  audioDesligado?: boolean;
+  /** O app está ligando a transcrição agora (sozinho ou a pedido). */
+  audioLigando?: boolean;
+  /** A última tentativa automática de ligar a transcrição falhou com este motivo (a pessoa pode tentar à mão). */
+  audioErro?: string;
   /** Quando o agente responde em áudio (OpenClaw: `tts.auto`; Hermes: `voice.auto_tts`); null = sem voz configurada. */
   audioOut?: VoiceReplyMode | null;
   /** Voz das respostas em áudio instalada na máquina (null = nenhuma escolhida ainda; a faber de antes conta como faber). */
@@ -162,7 +173,7 @@ export interface WhatsappGroup {
   sessionId: string | null;
   /** Transcrição do Claude Code desta sessão na máquina (~/.claude/projects/…/<id>.jsonl), se achada. */
   transcript: string | null;
-  /** O agente já respondeu neste grupo (sessão atual, pelo banco do OpenClaw): tutorial 11, passo "Testar". */
+  /** O agente já respondeu neste grupo (sessão atual, pelo banco do OpenClaw): tutorial 10, passo "Testar". */
   agenteRespondeu: boolean;
   updatedAt: string | null;
   /** Excluído da lista (marca na máquina, whatsapp-lista.json; só a vista, o openclaw.json não muda). Volta sozinho quando o agente recebe mensagem nova do grupo. */

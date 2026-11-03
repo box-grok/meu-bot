@@ -43,6 +43,11 @@ export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 export const COTA_ESTADO_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"`;
 /** `HERMES=global|sem-transcritor|root|nenhum`: onde está o Hermes e se o transcritor compartilhado existe. Também no checklist. */
 export const HERMES_ESTADO_SH = `if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi`;
+/**
+ * `TRANSCRITOR=1|0`: o transcritor compartilhado completo (bin/transcrever do Hermes e bin/transcrever-texto do OpenClaw),
+ * sem depender de haver Hermes. Máquina preparada antes do transcrever-texto dá 0: aplicar o passo de novo completa.
+ */
+export const TRANSCRITOR_ESTADO_SH = `if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null && [ -x /opt/transcriber/bin/transcrever-texto ]; then echo TRANSCRITOR=1; else echo TRANSCRITOR=0; fi`;
 /** `OPENCLAW=global|root|nenhum`: o de todos (/usr/local/bin/openclaw nosso + /opt/openclaw), só o do root (qualquer outro no PATH do root), ou nenhum. */
 export const OPENCLAW_ESTADO_SH = `if grep -q meu-bot-openclaw-global /usr/local/bin/openclaw 2>/dev/null && [ -f /opt/openclaw/lib/node_modules/openclaw/dist/index.js ]; then echo OPENCLAW=global; elif command -v openclaw >/dev/null 2>&1 || [ -x /root/.local/bin/openclaw ]; then echo OPENCLAW=root; else echo OPENCLAW=nenhum; fi`;
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
@@ -472,9 +477,11 @@ const TRANSCRITOR_PIP = "faster-whisper==1.2.1 av==18.1.0";
 /**
  * Transcritor para todos os usuários da máquina, no mesmo padrão do /opt/hermes: /opt/transcriber com dono root e 755
  * (todos leem e executam, só o root grava). Um ambiente Python com o faster-whisper, o modelo small (copiado de
- * /opt/hermes/modelos quando já está lá, senão baixado) e o bin/transcrever, que cada Hermes chama como o próprio
- * usuário pelo provedor local_command (HERMES_LOCAL_STT_COMMAND). Evita ~1,5 GB por usuário (extra + modelo) e o
- * "tools not on PATH" do hermes pm. Idempotente; confere como `nobody`. Saída `TRANSCRITOR=ok` ou `ERRO=`.
+ * /opt/hermes/modelos quando já está lá, senão baixado) e dois comandos: bin/transcrever, que cada Hermes chama como o
+ * próprio usuário pelo provedor local_command (HERMES_LOCAL_STT_COMMAND; grava um .txt), e bin/transcrever-texto, que o
+ * OpenClaw chama pelo `cli` de tools.media.models (imprime o texto). Decodifica pelo PyAV: não depende do ffmpeg. Evita
+ * ~1,5 GB por usuário (extra + modelo) e o "tools not on PATH" do hermes pm. Idempotente; confere os dois como `nobody`.
+ * Saída `TRANSCRITOR=ok` ou `ERRO=`.
  */
 export function transcritorSh(): string {
   return `T=/opt/transcriber; L=/tmp/meu-bot-transcritor.log; M="$T/modelos/whisper-small"
@@ -494,7 +501,8 @@ cat > "$T/bin/transcrever" <<'PYEOF'
 
 Cada Hermes chama como o próprio usuário, pelo provedor local_command:
   HERMES_LOCAL_STT_COMMAND="/opt/transcriber/bin/transcrever {input_path} {output_dir} {language}"
-Grava <output_dir>/<nome do áudio>.txt com o texto.
+Grava <output_dir>/<nome do áudio>.txt com o texto. Com - no lugar da pasta, imprime o texto no stdout
+(é o que o bin/transcrever-texto faz para o OpenClaw).
 """
 import os, sys
 from pathlib import Path
@@ -511,6 +519,9 @@ def main() -> int:
     modelo = WhisperModel(MODELO, device="cpu", compute_type="int8", cpu_threads=min(4, os.cpu_count() or 1))
     partes, _info = modelo.transcribe(str(audio), language=None if idioma == "auto" else idioma, vad_filter=True)
     texto = " ".join(p.text.strip() for p in partes).strip()
+    if str(saida) == "-":
+        print(texto)
+        return 0
     saida.mkdir(parents=True, exist_ok=True)
     (saida / f"{audio.stem}.txt").write_text(texto + "\\n", encoding="utf-8")
     return 0
@@ -518,12 +529,14 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 PYEOF
-chown -R root:root "$T"; chmod -R u=rwX,go=rX "$T"; chmod 755 "$T/bin/transcrever"
+printf '#!/bin/sh\\n# meu-bot-transcritor: o mesmo transcritor, imprimindo o texto (OpenClaw, tools.media.models cli).\\nexec /opt/transcriber/bin/transcrever "$1" - "$2"\\n' > "$T/bin/transcrever-texto"
+chown -R root:root "$T"; chmod -R u=rwX,go=rX "$T"; chmod 755 "$T/bin/transcrever" "$T/bin/transcrever-texto"
 # Confere como um usuário sem privilégio, que é quem vai usar: um segundo de silêncio tem de virar um .txt.
 H=$(mktemp -d); chmod 777 "$H"
 runuser -u nobody -- "$T/venv/bin/python" -c 'import sys, wave; w = wave.open(sys.argv[1], "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000); w.writeframes(bytes(32000)); w.close()' "$H/teste.wav" >>"$L" 2>&1
 runuser -u nobody -- "$T/bin/transcrever" "$H/teste.wav" "$H/saida" pt >>"$L" 2>&1
-if [ -f "$H/saida/teste.txt" ]; then echo "TRANSCRITOR=ok"; else echo "ERRO=o transcritor instalou, mas um usuário comum não conseguiu rodar (log em $L)"; fi
+runuser -u nobody -- "$T/bin/transcrever-texto" "$H/teste.wav" >>"$L" 2>&1 && TX=1 || TX=0
+if [ -f "$H/saida/teste.txt" ] && [ "$TX" = 1 ]; then echo "TRANSCRITOR=ok"; else echo "ERRO=o transcritor instalou, mas um usuário comum não conseguiu rodar (log em $L)"; fi
 rm -rf "$H"`;
 }
 

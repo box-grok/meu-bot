@@ -10,6 +10,7 @@ import type { TypingChoice, TypingMode, WhatsappChat, WhatsappDmPolicy, Whatsapp
 import { donosDe, souEu, type WaQuem } from "./whatsapp-marks";
 import { JID_RE, parseCacheGrupos } from "./whatsapp-grupos-core";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
+import { TRANSCRITOR_BIN, lerAudioEstado } from "./transcritor-core";
 
 const digits = (s: string): string => s.replace(/\D/g, "");
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
@@ -660,7 +661,7 @@ if novos:
 m = sub(doc, "model")
 prov = str(m.get("provider") or "auto").strip().lower()
 grava = False
-# Modelo do WhatsApp: "whatsapp" (o agente com o nível de liberdade do tutorial 8, nivel-ferramentas.js) quando o
+# Modelo do WhatsApp: "whatsapp" (o agente com o nível de liberdade do tutorial 7, nivel-ferramentas.js) quando o
 # backend da máquina já o conhece (1.3.0+); num backend mais antigo, "agente" (o "whatsapp" daria erro lá).
 def vtupla(v):
     try: return tuple(int(x) for x in (v or "0").split(".")[:3])
@@ -704,9 +705,9 @@ export const STT_OCIOSO_S = 300;
 /**
  * Transcritor compartilhado da máquina: o root o instala uma vez em /opt/transcriber (dono root, 755, como o
  * /opt/hermes; ver transcritorSh no admin) e cada Hermes o chama como o próprio usuário, pelo provedor
- * `local_command`. Ninguém além do root grava lá; nenhum Hermes mexe no de outro.
+ * `local_command`. Ninguém além do root grava lá; nenhum Hermes mexe no de outro. Caminhos em transcritor-core.ts.
  */
-export const TRANSCRITOR_BIN = "/opt/transcriber/bin/transcrever";
+export { TRANSCRITOR_BIN };
 /** O Hermes só lê o comando do `local_command` do ambiente (HERMES_LOCAL_STT_COMMAND no ~/.hermes/.env), não do config. */
 export const HERMES_STT_COMANDO = `${TRANSCRITOR_BIN} {input_path} {output_dir} {language}`;
 /** Grava (ou troca) a linha do comando no ~/.hermes/.env deste usuário; o resto do arquivo fica como está. */
@@ -736,16 +737,20 @@ fi`;
  * pode ter tirado o /opt/transcriber). `bin` só muda nos testes.
  */
 export const hermesSttCmdSh = (bin: string = TRANSCRITOR_BIN): string => `echo "cmd=$(grep -q '^HERMES_LOCAL_STT_COMMAND=' "$HOME/.hermes/.env" 2>/dev/null && { ! grep -qF '${bin}' "$HOME/.hermes/.env" || [ -x ${bin} ]; } && echo 1 || echo 0)"`;
-/** O que a tela mostra do áudio do Hermes, a partir das linhas `stt= prov= whisper= cmd= tts=`; null = não deu para ler. */
-export function lerHermesAudio(out: string): { audioIn: boolean; audioOut: "off" | "inbound" | "always" } | null {
+/**
+ * O que a tela mostra do áudio do Hermes, a partir das linhas `stt= prov= whisper= cmd= tts=` (e `audiomaq= audiooff=`,
+ * quando vieram); null = não deu para ler.
+ */
+export function lerHermesAudio(out: string): { audioIn: boolean; audioOut: "off" | "inbound" | "always"; audioMaquina?: boolean; audioDesligado?: boolean } | null {
   const stt = /^stt=([01])$/m.exec(out); const tts = /^tts=(off|inbound|always)$/m.exec(out);
   if (stt === null || tts === null) return null;
+  const kv = new Map<string, string>(); for (const l of out.split("\n")) { const i = l.indexOf("="); if (i > 0) kv.set(l.slice(0, i), l.slice(i + 1).trim()); }
   const prov = /^prov=(.*)$/m.exec(out)?.[1]?.trim() ?? "";
   // Provedor local (ou nenhum, que o Hermes resolve como local) só ouve com o faster-whisper instalado; local_command
   // (o transcritor compartilhado da máquina) só com o comando no .env e, se for o nosso, o binário lá.
   const whisper = /^whisper=1$/m.test(out); const cmd = /^cmd=1$/m.test(out);
   const ouve = stt[1] === "1" && (prov === "local" || prov === "" ? whisper : prov === "local_command" ? cmd : true);
-  return { audioIn: ouve, audioOut: tts[1] as "off" | "inbound" | "always" };
+  return { audioIn: ouve, audioOut: tts[1] as "off" | "inbound" | "always", ...lerAudioEstado(kv) };
 }
 export function hermesAudioPatch(setup: { kind: "in"; off?: boolean; compartilhado?: boolean } | { kind: "out"; mode: "off" | "inbound" | "always" }): Record<string, unknown> {
   if (setup.kind === "in" && setup.off !== true && setup.compartilhado === true) return { "stt.enabled": true, "stt.provider": "local_command", "stt.language": "pt" };

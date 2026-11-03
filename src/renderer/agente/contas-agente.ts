@@ -283,7 +283,7 @@ export async function logoutClaude(relogin: boolean): Promise<void> {
 }
 
 // ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude: um
-// estado (xaiState) pintado nos controles do passo 2 do tutorial 5 (xaiGuide, criados uma vez) e no modal
+// estado (xaiState) pintado nos controles do passo 2 do tutorial 4 (xaiGuide, criados uma vez) e no modal
 // #xai-dialog (trocar de conta depois de concluído). O passo 1 (preparar: Hermes + proxy) tem seu bloco.
 const xaiLine = $<HTMLDivElement>("xai-line");
 const xaiLineText = $<HTMLSpanElement>("xai-line-text");
@@ -323,7 +323,7 @@ const xaiState = { running: false, preparing: false, url: null as string | null,
 const xaiModal: LoginControls = { box: xaiDialog, status: $<HTMLElement>("xai-status"), open: $<HTMLButtonElement>("xai-open"), codeRow: el("div"), code: el("input") as HTMLInputElement, send: el("button") as HTMLButtonElement, log: $<HTMLElement>("xai-steps"), start: $<HTMLButtonElement>("xai-start"), cancel: null };
 export const xaiGuide: LoginControls = buildLoginControls();
 const XAI_INTRO = (): string => `Máquina: ${hostLabel(ctx.windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
-/** Passo 1 do tutorial 5: preparar (Hermes + proxy). Status, botão e o mesmo log do estado. */
+/** Passo 1 do tutorial 4: preparar (Hermes + proxy). Status, botão e o mesmo log do estado. */
 export const xaiPrep = (() => {
   const box = el("div", "guide-login");
   const status = el("p", "hint");
@@ -357,7 +357,7 @@ export function paintXaiLogin(): void {
 
 function paintXaiLine(): void {
   if (xaiAuth === null) {
-    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" leva ao tutorial 5 (preparar + login).
+    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" leva ao tutorial 4 (preparar + login).
     if (xaiKey === null || !xaiKey.backend) { xaiLine.hidden = true; return; }
     xaiLine.hidden = false;
     xaiLine.className = "wa-line cl-line off";
@@ -370,20 +370,20 @@ function paintXaiLine(): void {
   xaiLineText.textContent = xaiAuth.loggedIn ? `xAI (Grok) · ${xaiAuth.email ?? "logada"}` : "xAI (Grok) · deslogada · o grok-4 não responde";
   xaiLineBtn.textContent = xaiAuth.loggedIn ? "sair" : "entrar";
 }
-/** Consulta a conta da xAI (e, sem Hermes, se há backend); o tutorial 5 e a lateral seguem o resultado. */
+/** Consulta a conta da xAI (e, sem Hermes, se há backend); o tutorial 4 e a lateral seguem o resultado. */
 export async function refreshXaiLine(): Promise<void> {
   try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
   if (xaiAuth === null && ctx.caps.login && ctx.windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
   paintXaiLine();
   if (ctx.tutorialsReady) { paintXaiLogin(); ctx.paintGuide(); }
 }
-/** Modal do login da xAI (trocar de conta quando o tutorial 5 já foi concluído). */
+/** Modal do login da xAI (trocar de conta quando o tutorial 4 já foi concluído). */
 function openXai(): void {
   if (!xaiState.running && !xaiState.preparing) { xaiState.status = ""; xaiState.log = []; xaiState.events = []; xaiState.url = null; xaiState.result = null; }
   paintXaiLogin();
   if (!xaiDialog.open) xaiDialog.showModal();
 }
-/** Máquina sem Hermes: instala Hermes + proxy da xAI (install-grok-oauth.sh). O passo 1 do tutorial 5. */
+/** Máquina sem Hermes: instala Hermes + proxy da xAI (install-grok-oauth.sh). O passo 1 do tutorial 4. */
 async function prepareXai(): Promise<void> {
   if (xaiState.running || xaiState.preparing) return;
   xaiState.preparing = true; xaiState.result = null; xaiState.log = [];
@@ -409,14 +409,14 @@ async function runXaiLogin(): Promise<void> {
 export const XAI_TUTORIAL = TUTORIAIS.find((t) => t.id === "xai-login") as Tutorial;
 export const FALLBACK_TUTORIAL = TUTORIAIS.find((t) => t.id === "fallback-contas") as Tutorial;
 /**
- * Porta única para "Entrar na xAI": enquanto o tutorial 5 não foi concluído (e o Grok é possível aqui), abre o
+ * Porta única para "Entrar na xAI": enquanto o tutorial 4 não foi concluído (e o Grok é possível aqui), abre o
  * guia (Preparar ou Entrar pulsando; nada roda sozinho); concluído, é trocar de conta: o modal já com o login.
  */
 function enterXai(): void {
   if (ctx.caps.install && !ctx.tutorialDone(XAI_TUTORIAL)) { ctx.tutNext = false; ctx.openGuide(XAI_TUTORIAL); return; }
   openXai(); void runXaiLogin();
 }
-/** Sai da conta da xAI no Hermes desta máquina; com `relogin`, já leva ao login (tutorial 5 ou modal). */
+/** Sai da conta da xAI no Hermes desta máquina; com `relogin`, já leva ao login (tutorial 4 ou modal). */
 export async function logoutXai(relogin: boolean): Promise<void> {
   xaiLineBtn.disabled = true;
   try { xaiAuth = await window.meuBot.xaiLogout(); paintXaiLine(); ctx.paintGuide(); if (relogin) enterXai(); }
@@ -432,10 +432,10 @@ function renderClaudeLoginPasso(txt: HTMLElement): void {
   paintLoginControls(clGuide, "guide");
   if (refocus) { clGuide.code.focus(); clGuide.code.setSelectionRange(sel[0], sel[1]); }
 }
-/** Primário do tutorial 6 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
+/** Primário do tutorial 5 → modelo padrão da máquina (Claude = agente, xAI = grok-4). */
 const PRIMARY_OF: Record<string, BackendModel> = { claude: "agente", xai: "grok-4" };
 /**
- * Passo "Escolher primário e reserva" (tutorial 6): a mesma escolha de Configurações › Fallback, salva na hora
+ * Passo "Escolher primário e reserva" (tutorial 5): a mesma escolha de Configurações › Fallback, salva na hora
  * (o modelo padrão desta máquina muda), com a linha da corrente e o estado das duas contas.
  */
 export function renderFallbackOrder(container: HTMLElement): void {

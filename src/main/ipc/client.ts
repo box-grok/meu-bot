@@ -7,7 +7,7 @@ import { VOZES, isVozId } from "../whatsapp/vozes-core";
 import { app, dialog, Menu, Notification } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { AudioSetup, ClaudeLoginEvent, ClaudeSessionRef, ExportFormat, LimiaresClaude, TabMenuAction, WhatsappEvent } from "../../shared/ipc";
+import type { AudioSetup, ClaudeLoginEvent, ClaudeSessionRef, ExportFormat, LimiaresClaude, TabMenuAction, WhatsappEvent, WhatsappStatus } from "../../shared/ipc";
 import { conversationToMarkdown, conversationTitle, slugify } from "../conversa/export";
 import { atualizarContaClaude, conferirContaClaude, criarContaClaude, deleteBackendSession, fetchAccountStatus, fetchAlertPrefs, fetchBackendSession, fetchContasClaude, limiaresContasClaude, log, removerContaClaude, reordenarContasClaude, runBackendTurn, saveAlertPrefs, usarAgoraContaClaude } from "../maquina/backend";
 import { lerLicenca, lerLicencaDaMaquina } from "../licenca/licenca-maquina";
@@ -20,7 +20,7 @@ import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
 import { eventoHook } from "../app/depuracao";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
-import { cancelPairing, runSsh, setDmPolicy, setTypingMode, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
+import { cancelPairing, esquecerWhatsapp, pairingInProgress, runSsh, setDmPolicy, setTypingMode, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
@@ -53,19 +53,40 @@ import { deliverNow, reportSupportProgress, resetSupport, setSupport, setSupport
 import { openMainWindow, sendWhenLoaded } from "../app/windows";
 import { hostFromEvent, ownedConversation, waNumber } from "./context";
 import { handleClient, onClient } from "./registry";
+import { setObservadorStatus } from "./shared";
 import { browserAgent, browserAgentInfo, browserExtensions, browserOpen, browserRemoveExtension, browserSetActive, browserSincronizarCrm, browserFavoriteAdd, browserFavoriteRemove, browserWorkspacesSet } from "../navegador/browser";
 import { registrar } from "../auditoria/auditoria";
 
 /**
- * Padrão do app: máquina cujo agente transcreve áudio (capacidade `audio`) entende áudios depois de parear. Depois de parear, se não há transcritor, instala
- * (uma vez; baixa ~500 MB) e conta pelo mesmo canal de eventos do pareamento. O admin pode desativar depois.
+ * Padrão do app: máquina cujo agente transcreve áudio (capacidade `audio`) entende áudios sem a pessoa fazer nada. Liga
+ * depois de parear e a cada leitura do status (observador abaixo) enquanto a máquina tiver o necessário (`audioMaquina`:
+ * o transcritor do root ou o ffmpeg) e ninguém tiver desligado de propósito (`audioDesligado`). Com a máquina sem o
+ * necessário não tenta: a tela diz que é com o admin, e quando ele prepara a máquina a leitura seguinte liga. Uma
+ * tentativa por máquina por sessão quando falha (o botão "Ativar transcrição" continua lá). Conta pelo canal de eventos
+ * do pareamento quando veio dele; fora dele, só no log, e a tela vê `audioLigando`/`audioErro` no status.
  */
-async function ensureTranscription(host: string, send: (ev: WhatsappEvent) => void): Promise<void> {
+const transcricaoEmCurso = new Set<string>();
+const transcricaoTentada = new Set<string>();
+const transcricaoErro = new Map<string, string>();
+const precisaLigarTranscricao = (st: WhatsappStatus): boolean => st.present && st.connected && st.capacidades.audio && st.audioIn === false && st.audioMaquina !== false && st.audioDesligado !== true;
+async function ensureTranscription(host: string, send?: (ev: WhatsappEvent) => void): Promise<void> {
+  if (transcricaoEmCurso.has(host) || transcricaoTentada.has(host) || pairingInProgress() !== null) return;
   const st = await whatsappStatus(host).catch(() => null);
-  if (st === null || !st.capacidades.audio || st.audioIn !== false) return;
-  send({ kind: "step", text: "ligando a transcrição de áudio (padrão do meu-bot; baixa ~500 MB só na primeira vez)…" });
-  const r = await installAudio(host, { kind: "in" }, (line) => send({ kind: "log", text: line }));
-  send({ kind: r.ok ? "step" : "log", text: r.ok ? "transcrição de áudio pronta: o agente entende áudios" : `a transcrição não ligou: ${r.log.at(-1) ?? "erro"}` });
+  if (st === null || !precisaLigarTranscricao(st)) return;
+  transcricaoEmCurso.add(host); transcricaoErro.delete(host);
+  send?.({ kind: "step", text: "ligando a transcrição de áudio (padrão do meu-bot)…" });
+  try {
+    const r = await installAudio(host, { kind: "in" }, (line) => { send?.({ kind: "log", text: line }); log(`[transcrição] ${host}: ${line}`); });
+    esquecerWhatsapp(host);
+    if (!r.ok) { transcricaoTentada.add(host); transcricaoErro.set(host, r.log.at(-1) ?? "erro"); }
+    send?.({ kind: r.ok ? "step" : "log", text: r.ok ? "transcrição de áudio pronta: o agente entende áudios" : `a transcrição não ligou: ${r.log.at(-1) ?? "erro"}` });
+  } finally { transcricaoEmCurso.delete(host); }
+}
+/** A cada status lido pela janela: dispara a ligação automática quando cabe e anota o que está acontecendo. */
+function observarStatusWhatsapp(host: string, st: WhatsappStatus): WhatsappStatus {
+  if (precisaLigarTranscricao(st) && !transcricaoTentada.has(host) && !transcricaoEmCurso.has(host) && pairingInProgress() === null) void ensureTranscription(host);
+  const ligando = transcricaoEmCurso.has(host); const erro = transcricaoErro.get(host);
+  return ligando || erro !== undefined ? { ...st, ...(ligando ? { audioLigando: true } : {}), ...(erro !== undefined ? { audioErro: erro } : {}) } : st;
 }
 
 /**
@@ -94,6 +115,7 @@ async function ensureHermesPausa(host: string, send: (ev: WhatsappEvent) => void
 }
 
 export function registerClientIpc(): void {
+  setObservadorStatus(observarStatusWhatsapp);
   // Pausa por contato com prazo no Hermes: instala (ou atualiza) o plugin meu-bot-pausa nesta máquina.
   handleClient("whatsapp:pausa-plugin", async (event) => {
     const h = hostFromEvent(event);
@@ -139,7 +161,7 @@ export function registerClientIpc(): void {
     if (h === null) throw new Error("origem inválida");
     return setSupportShare(h.host, payload);
   });
-  // Tutorial 8 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace, trava do nível).
+  // Tutorial 7 · objetivo do WhatsApp: tudo mora na máquina (objetivo.json, skill no workspace, trava do nível).
   handleClient("objective:info", (event) => {
     const h = hostFromEvent(event);
     if (h === null) throw new Error("origem inválida");
@@ -226,7 +248,7 @@ export function registerClientIpc(): void {
   handleClient("browser:permissoes-esquecer", (event, payload: unknown) => { const h = ctxOf(event); const o = (payload as { origem?: unknown } | null)?.origem; esquecerPermissoes(h.host, typeof o === "string" ? o : undefined); });
   handleClient("browser:request-pro", async (event) => { const h = ctxOf(event); const pedido = caps().planoExigido === "free" ? "pediu o plano Pro (aba Navegador)" : `pediu para liberar o ${caps().produto} (assinatura)`; await registrar(h.host, "plano.pedir", pedido); log(`[navegador] ${h.host}: ${pedido}`); });
   // Tutorial 17 · CRM pelo WhatsApp (Pro): estado, instalar plugin, gravar chave/pipeline/regras, testar, refazer.
-  // Financeiro (produto meu-bot-finance): página Finanças e tutorial 13. Tudo passa pelo gate da licença (o backend confere de novo).
+  // Financeiro (produto meu-bot-finance): página Finanças e tutorial 12. Tudo passa pelo gate da licença (o backend confere de novo).
   const fin = async (event: Electron.IpcMainInvokeEvent): Promise<string> => { const h = ctxOf(event); await assertFinance(h.host); return h.host; };
   const txt = (v: unknown, max = 200): string | undefined => (typeof v === "string" && v.trim() !== "" ? v.trim().slice(0, max) : undefined);
   const mesOk = (v: unknown): string => { if (typeof v !== "string" || !/^\d{4}-\d{2}$/.test(v)) throw new Error("mês inválido"); return v; };
@@ -382,6 +404,9 @@ export function registerClientIpc(): void {
       : p?.kind === "out" && (p.mode === "off" || p.mode === "inbound" || p.mode === "always") ? { kind: "out", mode: p.mode, ...(isVozId(voz) ? { voz } : {}) } : null;
     if (setup === null) throw new Error("pedido inválido");
     const r = await installAudio(h.host, setup);
+    esquecerWhatsapp(h.host);
+    // A pessoa ligou à mão: a próxima falha automática não fica presa a esta sessão.
+    if (setup.kind === "in") { transcricaoTentada.delete(h.host); transcricaoErro.delete(h.host); }
     if (r.ok && setup.kind === "out" && setup.voz !== undefined) void registrar(h.host, "audio.voz", VOZES.find((v) => v.id === setup.voz)?.rotulo.toLowerCase() ?? setup.voz);
     return r;
   });
@@ -512,9 +537,9 @@ export function registerClientIpc(): void {
     return entrarConta(h.host, p.id, p.navegador === true, p.trocar === true, (ev) => { if (!h.win.isDestroyed()) h.win.webContents.send("contas:evento", ev); });
   });
   handleClient("contas:instalar-gh", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return instalarGh(h.host); });
-  // Tutorial 14: a pessoa troca o nome do link público dela (o comando da máquina renomeia a pasta dela, sem root).
+  // Tutorial 13: a pessoa troca o nome do link público dela (o comando da máquina renomeia a pasta dela, sem root).
   handleClient("link-publico:nome", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoNome(h.host, (payload as { nome?: unknown } | null)?.nome); });
-  // Tutorial 14: o que está no ar, tirar do ar e publicar um arquivo deste Mac (o diálogo abre no main; o renderer nunca manda caminho), tudo como ela.
+  // Tutorial 13: o que está no ar, tirar do ar e publicar um arquivo deste Mac (o diálogo abre no main; o renderer nunca manda caminho), tudo como ela.
   handleClient("link-publico:lista", (event) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoLista(h.host); });
   handleClient("link-publico:remover", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoRemover(h.host, (payload as { nome?: unknown } | null)?.nome); });
   handleClient("link-publico:publicar", (event, payload: unknown) => { const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida"); return linkPublicoPublicar(h.host, h.win, (payload as { nome?: unknown } | null)?.nome); });

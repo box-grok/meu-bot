@@ -100,7 +100,7 @@ test("backend de outro agente na pasta herdada: não é instalado; instalar vai 
   assert.equal(t.install, "install"); assert.equal(t.port, 8081); assert.match(t.text, /outro agente desta máquina/);
 });
 
-test("guarda do WhatsApp: o seletor não oferece nem avisa (o tutorial 9 cuida)", () => {
+test("guarda do WhatsApp: o seletor não oferece nem avisa (o tutorial 8 cuida)", () => {
   const up = { ...base, backendInstalled: true, backendListening: true, models: ["claudecode"], gateway: "openclaw" };
   const sem = describeProbe({ ...up, guarda: false });
   assert.deepEqual(pick(sem), { kind: "ok", install: null, canOpen: true });

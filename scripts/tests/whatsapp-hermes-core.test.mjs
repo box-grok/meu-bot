@@ -336,15 +336,15 @@ test("transcritor compartilhado: o .env do usuário ganha (ou troca) só a linha
   assert.equal(HERMES_STT_COMANDO, "/opt/transcriber/bin/transcrever {input_path} {output_dir} {language}");
   const d = mkdtempSync(join(tmpdir(), "stt-env-")); mkdirSync(join(d, ".hermes"));
   writeFileSync(join(d, ".hermes/.env"), "WHATSAPP_MODE=bot\nHERMES_LOCAL_STT_COMMAND=velho\nX=1\n");
-  // sed -i do Linux; no macOS (onde os testes rodam) o sed -i pede sufixo: o teste usa o gsed se houver, senão um shim.
-  const r = spawnSync("bash", ["-c", `sed() { if [ "$1" = -i ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }\n${HERMES_STT_COMPARTILHADO_SH}\n${HERMES_STT_COMPARTILHADO_SH}`], { env: { ...process.env, HOME: d }, encoding: "utf8" });
+  // sed -i do Linux; no macOS (onde o desenvolvedor roda os testes) o sed -i pede sufixo: um shim só lá, o CI é Ubuntu.
+  const r = spawnSync("bash", ["-c", `sed() { if [ "$1" = -i ] && [ "$(uname)" = Darwin ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }\n${HERMES_STT_COMPARTILHADO_SH}\n${HERMES_STT_COMPARTILHADO_SH}`], { env: { ...process.env, HOME: d }, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(readFileSync(join(d, ".hermes/.env"), "utf8"), `WHATSAPP_MODE=bot\nX=1\nHERMES_LOCAL_STT_COMMAND="${HERMES_STT_COMANDO}"\n`, "duas vezes = uma linha só");
 });
 
 // Máquina falsa para os scripts do Hermes: HOME próprio, um `hermes` que grava cada chamada e aponta o "Python do
 // Hermes" para um falso, que grava o patch do config (o último argumento, em base64) e responde cfgset=ok como o de
-// verdade; e o sed -i do Linux (no macOS ele pede sufixo).
+// verdade; e o sed -i do Linux (no macOS ele pede sufixo; o shim só vale lá).
 async function maquinaFalsa() {
   const { mkdtempSync, writeFileSync, mkdirSync, chmodSync } = await import("node:fs");
   const { join } = await import("node:path"); const { tmpdir } = await import("node:os");
@@ -358,7 +358,7 @@ async function maquinaFalsa() {
 }
 async function rodar(d, script) {
   const { spawnSync } = await import("node:child_process"); const { join } = await import("node:path");
-  const sedLinux = `sed() { if [ "$1" = -i ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }`;
+  const sedLinux = `sed() { if [ "$1" = -i ] && [ "$(uname)" = Darwin ]; then shift; command sed -i "" "$@"; else command sed "$@"; fi; }`;
   return spawnSync("bash", ["-c", `set -e\n${sedLinux}\n${script}`], { env: { ...process.env, HOME: d, PATH: `${join(d, "bin")}:${process.env.PATH}` }, encoding: "utf8" });
 }
 async function ler(d, f) {

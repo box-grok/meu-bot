@@ -38,7 +38,7 @@ for par in "skill-crm-api.md:crm-api" "skill-streak-crm-api.md:streak-crm-api"; 
 done
 # Lê o arquivo cru (o backend pode ainda não ter migrado a licença antiga): "personalizado" virou Pro em 22 out.
 PLANO=$(python3 -c 'import json,os; print(json.load(open(os.path.expanduser("~/.local/share/meu-bot/licenca.json"))).get("plan","free"))' 2>/dev/null || echo free)
-if [ "$PLANO" = "pro" ] || [ "$PLANO" = "personalizado" ]; then FALTA="o CRM próprio está nesta máquina: escolha ou importe um pipeline no app"; else FALTA="falta a chave da API do Streak, pelo tutorial 10"; fi
+if [ "$PLANO" = "pro" ] || [ "$PLANO" = "personalizado" ]; then FALTA="o CRM próprio está nesta máquina: escolha ou importe um pipeline no app"; else FALTA="falta a chave da API do Streak, pelo tutorial 17"; fi
 if [ "$OC" = 0 ]; then
   echo "pronto: CRM instalado nesta máquina sem OpenClaw ($FALTA). O agente usa o CRM pela CLI crm.mjs e pela skill crm-api; as notas automáticas do WhatsApp (plugin) são só do OpenClaw."
 elif timeout 60 openclaw plugins inspect meu-bot-crm --runtime 2>/dev/null | grep -q "^Status: loaded"; then

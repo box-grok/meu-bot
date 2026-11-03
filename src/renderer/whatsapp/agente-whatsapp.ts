@@ -1,6 +1,7 @@
 import type { WhatsappAgente, WhatsappStatus, WhatsappReplyChoice, VoiceReplyMode, VozId, AudioSetup, WhatsappEvent } from "../../shared/ipc";
 import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
+import { estadoOuvir } from "../lib/audio-ouvir-core.js";
 import { TUTORIAIS } from "../lib/tutoriais.js";
 import { REPLY_NOTE, replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
 import { ctx } from "../app/ctx.js";
@@ -252,37 +253,45 @@ let waVozEscolhida: VozId | null = null;
 let waVozBusy: VozId | null = null;
 /** O que está sendo aplicado agora ("in" = transcrição; um modo = voz) e o último recado (erro ou aviso). */
 let waAudioBusy: "in" | VoiceReplyMode | null = null;
+/** A última tentativa daqui de ligar a transcrição saiu com código 3 (precisa do admin); o próximo status limpa. */
+let waAudioPrecisaAdmin = false;
 let waAudioMsg: { text: string; bad: boolean; kind: "in" | "out" } | null = null;
 /** O recado do áudio fica onde a ação foi feita: embaixo de "Ativar transcrição" ou dos cartões de voz. */
 const audioMsgEl = (kind: "in" | "out"): HTMLElement | null => waAudioMsg !== null && waAudioMsg.kind === kind ? el("p", `hint ${waAudioMsg.bad ? "guide-pair-note" : "audio-ok"}`, waAudioMsg.text) : null;
-/** Linha "Ouvir áudios": ativar a transcrição (ou o ✓) e o recado da última tentativa, embaixo. */
+/**
+ * Linha "Ouvir áudios": o estado vem de `estadoOuvir` (✓ ativo · ligando sozinho · precisa do admin, no molde do
+ * Computador · o botão de ativar à mão) e o recado da última tentativa daqui, embaixo.
+ */
 function renderOuvir(box: HTMLElement, st: typeof ctx.waStatus): void {
+  const e = estadoOuvir(st, waAudioBusy === "in", waAudioPrecisaAdmin);
   const hear = el("div", "audio-row");
   hear.append(el("strong", "", "Ouvir áudios"));
-  if (st?.audioIn === true) hear.append(el("span", "audio-ok", "✓ ativo: a transcrição roda na própria máquina"));
-  else {
-    const b = el("button", "btn btn-primary btn-small", waAudioBusy === "in" ? "Ativando… (na primeira vez baixa ~500 MB)" : "Ativar transcrição");
-    b.type = "button"; b.disabled = waAudioBusy !== null || st === null || !st.connected;
-    b.addEventListener("click", () => { void runAudioSetup({ kind: "in" }); });
+  if (e.kind === "ativo") hear.append(el("span", "audio-ok", e.texto));
+  else if (e.kind === "ligando") hear.append(el("span", "reply-saving", e.texto));
+  else if (e.kind === "precisa-admin") hear.append(el("span", "hint", e.titulo));
+  if (e.botao !== null) {
+    const b = el("button", e.acao === "ativar" ? "btn btn-primary btn-small" : "btn btn-ghost btn-small", e.botao);
+    b.type = "button"; b.disabled = waAudioBusy !== null || st === null || (e.acao === "ativar" && !st.connected);
+    b.addEventListener("click", () => { if (e.acao === "ativar") void runAudioSetup({ kind: "in" }); else void refreshWhatsapp(true); });
     hear.append(b);
   }
   box.append(hear);
+  if (e.kind === "precisa-admin" || (e.kind === "ativar" && waAudioMsg?.kind !== "in")) box.append(el("p", "hint", e.texto));
   { const m = audioMsgEl("in"); if (m !== null) box.append(m); }
 }
 /**
- * Áudio do agente do WhatsApp: ouvir (transcrição local, faster-whisper) e falar (voz local, Piper), com quando
- * responder em áudio. `parte`: "ouvir" no tutorial 4 (só a transcrição), "responder" no painel de gerência do
- * tutorial 3 (só a resposta em áudio e a voz); os instaladores rodam na máquina.
+ * Áudio do agente do WhatsApp no painel de gerência do tutorial 3: ouvir (transcrição, que o app liga sozinho; aqui o
+ * estado e o botão de reserva) e falar (voz local, Piper ou Kokoro), com quando responder em áudio. Os instaladores
+ * rodam na máquina.
  */
-export function renderAudioControls(container: HTMLElement, parte: "ouvir" | "responder"): void {
+export function renderAudioControls(container: HTMLElement): void {
   const st = ctx.waStatus;
   const box = el("div", "audio-controls");
   const hermes = st?.gateway === "hermes";
-  if (parte === "ouvir") { renderOuvir(box, st); container.append(box); return; }
   // Hermes: a pausa por contato com prazo vem do plugin meu-bot-pausa; o app instala sozinho, mas o botão fica aqui para quem ficou sem.
   if (hermes) renderPausaContato(box, st);
-  // Responder em áudio só acontece quando o agente entende o áudio que recebeu.
-  if (st?.audioIn !== true) box.append(el("p", "hint", "Responder em áudio depende da transcrição ligada: tutorial 4, Ouvir áudios do WhatsApp."));
+  // Responder em áudio só acontece quando o agente entende o áudio que recebeu: a linha de ouvir vem primeiro.
+  renderOuvir(box, st);
   // Mesma forma da linha "Ouvir áudios": rótulo e estado atual; os cartões abaixo, lado a lado.
   const current = st?.audioOut ?? "off";
   const speak = el("div", "audio-row");
@@ -376,7 +385,9 @@ async function runAudioSetup(setup: AudioSetup): Promise<void> {
   try {
     const r = await window.meuBot.whatsappAudio(setup);
     waAudioMsg = { text: r.log.at(-1) ?? (r.ok ? "pronto" : "não deu certo"), bad: !r.ok, kind: setup.kind };
-    await refreshWhatsapp();
+    // Código 3 = faltam pacotes e não há sudo: a linha vira "precisa do admin" até o próximo status dizer outra coisa.
+    if (setup.kind === "in") waAudioPrecisaAdmin = !r.ok && r.codigo === 3;
+    await refreshWhatsapp(true);
   } catch (err) {
     waAudioMsg = { text: ipcErrorText(err), bad: true, kind: setup.kind };
   } finally { acaoTerminou(); waAudioBusy = null; ctx.paintGuide(); }
@@ -575,13 +586,14 @@ export function refreshWhatsapp(force = false): Promise<void> {
   waRefreshing = true;
   if (ctx.waTimer !== null) { clearTimeout(ctx.waTimer); ctx.waTimer = null; }
   waInflight = (async () => {
-    try { const raw = await window.meuBot.whatsappStatus(force); waRealConectado = raw.connected; ctx.waStatus = comPareamento(raw); waCheckedAt = new Date(); if (raw.present) ctx.cacheWrite("waStatus", raw); else ctx.cacheDrop("waStatus"); } catch { ctx.waStatus = null; }
+    try { const raw = await window.meuBot.whatsappStatus(force); waRealConectado = raw.connected; ctx.waStatus = comPareamento(raw); waCheckedAt = new Date(); if (raw.audioIn === true || raw.audioMaquina === true) waAudioPrecisaAdmin = false; if (raw.present) ctx.cacheWrite("waStatus", raw); else ctx.cacheDrop("waStatus"); } catch { ctx.waStatus = null; }
     finally { waRefreshing = false; waInflight = null; }
     paintWhatsapp();
     if (ctx.waStatus?.capacidades.grupos === true && ctx.waGroups === null && ctx.waGroupsInflight === null && ctx.waGroupsAt === 0) void ctx.refreshWaGroups();
     if (waPairing && ctx.waStatus?.connected === true) waShowSuccess(ctx.waStatus.number);
     const soon = ctx.waStatus !== null && ctx.waStatus.present && !ctx.waStatus.connected;
-    agendarWa(waPairing && !waConnected ? 8_000 : soon ? 10_000 : 120_000);
+    // Ligando a transcrição sozinho: consulta logo, para o ✓ aparecer sem esperar os 2 min.
+    agendarWa(waPairing && !waConnected ? 8_000 : soon ? 10_000 : ctx.waStatus?.audioLigando === true ? 15_000 : 120_000);
   })();
   return waInflight;
 }
@@ -711,7 +723,7 @@ function renderReplyChoicePasso(txt: HTMLElement): void | false {
   renderReplyCards(cards, replyChoiceNow(st), waPolicySaving || !st.connected, chooseReply);
   txt.append(cards, el("div", "guide-note", REPLY_NOTE));
   renderChannelEditor(txt);
-  // Grupos têm a própria lista de quem conversa com o agente (tutorial 11).
+  // Grupos têm a própria lista de quem conversa com o agente (tutorial 10).
   if ((ctx.waGroups?.grupos.length ?? 0) > 0 && ctx.TUT_GRUPOS !== null) {
     const tg = ctx.TUT_GRUPOS;
     const p = el("p", "hint"); p.append("Isto vale para as conversas diretas. Nos grupos, quem conversa com o agente é outra lista: ");
@@ -726,7 +738,6 @@ export function ligarAgenteWhatsapp(): void {
   registrarPassos({
     "agent-choice": (txt) => renderAgentChoice(txt),
     "reply-choice": renderReplyChoicePasso,
-    "audio-ouvir": (txt) => renderAudioControls(txt, "ouvir"),
   });
   waRefreshBtn.addEventListener("click", () => {
     waRefreshBtn.disabled = true; waRefreshBtn.textContent = "Consultando a máquina…";

@@ -8,7 +8,7 @@
  * conferida, a autorização vira o token de acesso de uma conta do root e o pedido segue para api.anthropic.com; o
  * streaming e os cabeçalhos de limite voltam intactos, então o backend do usuário vê os rate_limit_event como sempre.
  *
- * - Rodízio do root: o mesmo registro de contas do tutorial 15, na pasta do root. Uma conta do root no limite passa
+ * - Rodízio do root: o mesmo registro de contas do tutorial 2, na pasta do root. Uma conta do root no limite passa
  *   para a próxima antes de responder; todas no limite, o 429 volta e o usuário cai para a conta própria dele.
  * - Renovação: só este processo renova o token (o refreshToken gira a cada renovação; cópias quebrariam), gravando de
  *   volta no mesmo .credentials.json, de forma atômica, então o `claude` do próprio root segue funcionando.

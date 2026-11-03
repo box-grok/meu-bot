@@ -1,4 +1,5 @@
-# Roda os testes em todo PR e push na main. Não usa segredos, então funciona
+# Roda os testes em todo PR e push na main, em Ubuntu (a fila de runners macOS do GitHub chegou a
+# cancelar jobs por falta de máquina; a suíte não depende do Mac). Não usa segredos, então funciona
 # também nos PRs que vêm de fork. Não trocar para pull_request_target.
 name: Testes
 
@@ -18,7 +19,7 @@ concurrency:
 
 jobs:
   testes:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5

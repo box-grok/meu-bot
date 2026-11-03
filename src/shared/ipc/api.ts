@@ -49,14 +49,14 @@ export interface MainEvents {
   "backend:install-progress": { line: string };
   /** Linha de progresso do instalador da guarda do WhatsApp (tutorial). */
   "guarda:progress": { line: string };
-  /** Linha de progresso do instalador do Navegador do agente (tutorial 10). */
+  /** Linha de progresso do instalador do Navegador do agente (tutorial 9). */
   "navegador:progress": { line: string };
   "gmail:progress": { line: string };
   /** Gmail: estado do "o agente pode usar" (socket + túnel reverso). */
   "gmail:agent": GmailAgenteState;
   /** Instalação do CRM pelo WhatsApp (tutorial 17): uma linha de progresso. */
   "crm:progress": { line: string };
-  /** Instalação do financeiro na máquina, linha a linha (tutorial 13). */
+  /** Instalação do financeiro na máquina, linha a linha (tutorial 12). */
   "finance:progress": { line: string };
   /** meu-bot-admin, backup e mudança de máquina: bytes recebidos ou uma linha da restauração. */
   "admin:backup-progress": { bytes?: number; line?: string };
@@ -191,7 +191,7 @@ export interface MeuBotSharedApi {
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
-  /** Link público desta pessoa na máquina (tutorial 14): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
+  /** Link público desta pessoa na máquina (tutorial 13): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
   linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
@@ -401,13 +401,13 @@ export interface MeuBotClientApi {
   resetCrm(): Promise<CrmInfo>;
   /** Salva só o nome (passo 1 do tutorial), sem ligar nada. */
   setSupportName(name: string): Promise<SupportInfo>;
-  /** Tutorial 8: estado na máquina (objetivo, nível, skill salva, skills do workspace). */
+  /** Tutorial 7: estado na máquina (objetivo, nível, skill salva, skills do workspace). */
   objectiveInfo(): Promise<ObjectiveInfo>;
-  /** Tutorial 8, passos 1 e 2: grava o objetivo e/ou o nível em objetivo.json na máquina. */
+  /** Tutorial 7, passos 1 e 2: grava o objetivo e/ou o nível em objetivo.json na máquina. */
   setObjective(patch: { objective?: ObjectiveChoice; level?: FreedomLevel }): Promise<ObjectiveInfo>;
-  /** Tutorial 8, passo 3: escreve a skill no workspace do OpenClaw e aplica a trava do nível. */
+  /** Tutorial 7, passo 3: escreve a skill no workspace do OpenClaw e aplica a trava do nível. */
   saveObjectiveSkill(): Promise<ObjectiveInfo & { detail: string }>;
-  /** "Refazer do zero" do tutorial 8: apaga a skill e o objetivo; o dono volta à liberdade total. */
+  /** "Refazer do zero" do tutorial 7: apaga a skill e o objetivo; o dono volta à liberdade total. */
   resetObjective(): Promise<ObjectiveInfo>;
   /** "Tentar de novo": entrega o aviso na caixa do admin agora. */
   supportDeliver(): Promise<SupportInfo>;
@@ -459,13 +459,13 @@ export interface MeuBotClientApi {
    * `trocar` = entrar com outra conta (a página não cai na conta que o Navegador já tem).
    */
   contasEntrar(id: ContaId, navegador: boolean, trocar: boolean): Promise<void>;
-  /** Tutorial 14: troca o nome do link público dela (`<nome>.<domínio>`); devolve o estado novo. */
+  /** Tutorial 13: troca o nome do link público dela (`<nome>.<domínio>`); devolve o estado novo. */
   linkPublicoNome(nome: string): Promise<LinkPublicoInfo>;
-  /** Tutorial 14: o que está no ar no link dela (`publicar --lista`, como ela); null = desligado, máquina fora ou este Mac. */
+  /** Tutorial 13: o que está no ar no link dela (`publicar --lista`, como ela); null = desligado, máquina fora ou este Mac. */
   linkPublicoLista(): Promise<LinkPublicoLista | null>;
-  /** Tutorial 14: tira um item do ar (`publicar --remover`, como ela); devolve a lista nova. */
+  /** Tutorial 13: tira um item do ar (`publicar --remover`, como ela); devolve a lista nova. */
   linkPublicoRemover(nome: string): Promise<LinkPublicoLista>;
-  /** Tutorial 14: escolhe um arquivo neste Mac (diálogo do main) e publica no link dela (um .md vira página; até 100 MB); `nome` = o nome no link, opcional. null = cancelou. */
+  /** Tutorial 13: escolhe um arquivo neste Mac (diálogo do main) e publica no link dela (um .md vira página; até 100 MB); `nome` = o nome no link, opcional. null = cancelou. */
   linkPublicoPublicar(nome?: string): Promise<LinkPublicoPublicado | null>;
   contasCancelar(): Promise<void>;
   contasSair(id: ContaId): Promise<ContaEstado[] | null>;
