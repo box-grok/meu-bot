@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 const D = join(import.meta.dirname, "..", "..", "backend-colima", "skills", "whatsapp-grupos");
 
@@ -22,4 +23,31 @@ test("skill whatsapp-grupos no pacote: genérica (sem conta, porta ou caminho de
   // A guarda leva a skill e nunca toca no cache da conta.
   const inst = readFileSync(join(D, "..", "..", "install-guarda.sh"), "utf8");
   assert.match(inst, /skills\/whatsapp-grupos/); assert.doesNotMatch(inst, /rm -rf "\$K/);
+});
+
+// wa-admin.sh acha o Node fora do PATH de um SSH sem login: pelo atalho `openclaw` (exec <node> …), senão pelos lugares
+// em que o meu-bot instala Node (/opt/node*, /opt/openclaw/node, ~/.local/node*). Era "node não encontrado" no host em que
+// o Node de todos está em /opt/node24 e o da conta em ~/.local/node.
+test("wa-admin.sh: achar_node vê o node do atalho openclaw e o de ~/.local/node*, não só /opt/node e o PATH", () => {
+  const fn = execFileSync("sed", ["-n", "/^achar_node()/,/^}/p", join(D, "scripts", "wa-admin.sh")], { encoding: "utf8" });
+  assert.match(fn, /achar_node\(\)/);
+  const t = mkdtempSync(join(tmpdir(), "wa-admin-node-"));
+  try {
+    const home = join(t, "home"); const bin = join(t, "bin");
+    mkdirSync(join(home, ".local/node24/bin"), { recursive: true }); mkdirSync(bin, { recursive: true });
+    const meu = join(home, ".local/node24/bin/node");
+    writeFileSync(meu, "#!/bin/sh\necho fake\n", { mode: 0o755 });
+    const acha = () => execFileSync("bash", ["-c", `${fn}\nachar_node`], { encoding: "utf8", env: { HOME: home, PATH: `${bin}:/usr/bin:/bin` } }).trim();
+    // Sem atalho: o de ~/.local/node24.
+    assert.equal(acha(), meu);
+    // Atalho de todos apontando para um node de verdade (o que roda o gateway): esse ganha.
+    const outro = join(t, "opt/node24/bin/node"); mkdirSync(join(t, "opt/node24/bin"), { recursive: true }); writeFileSync(outro, "#!/bin/sh\n", { mode: 0o755 });
+    writeFileSync(join(bin, "openclaw"), `#!/bin/sh\nexec ${outro} /x/openclaw.mjs "$@"\n`, { mode: 0o755 });
+    assert.equal(acha(), outro);
+    // Atalho apontando para um node que não existe mais: ignora e segue para o da conta.
+    writeFileSync(join(bin, "openclaw"), "#!/bin/sh\nexec /nao/existe/bin/node /x \"$@\"\n", { mode: 0o755 });
+    assert.equal(acha(), meu);
+    // Nada em lugar nenhum: vazio (o script então avisa e sai sem parar o gateway).
+    assert.equal(execFileSync("bash", ["-c", `${fn}\nachar_node; true`], { encoding: "utf8", env: { HOME: join(t, "vazio"), PATH: "/usr/bin:/bin" } }).trim(), "");
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });
