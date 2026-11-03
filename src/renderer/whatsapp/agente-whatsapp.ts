@@ -4,6 +4,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { TUTORIAIS } from "../lib/tutoriais.js";
 import { REPLY_NOTE, replyChoiceOf, REPLY_OPTIONS, listedNumbers, parseWaNumbers, replySelfTextoDono, REPLY_AVISO_SELF_CHAT, donoLinhaTexto, DONO_HINT } from "../lib/whatsapp-resposta.js";
 import { ctx } from "../app/ctx.js";
+import { abaDoPedido } from "../lib/whatsapp-preparar.js";
 import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
@@ -487,12 +488,21 @@ async function escolherAgente(agente: WhatsappAgente): Promise<void> {
   finally { waAgenteSaving = null; paintWhatsapp(); ctx.paintGuide(); }
 }
 
+/** Aba em que o pedido de preparar foi feito nesta janela; null antes do primeiro pedido. */
+let waPrepareTabId: string | null = null;
+/**
+ * "Pedir ao agente para preparar": uma conversa só. Clicar de novo volta para a aba que já tem o pedido (o agente pode
+ * ainda estar trabalhando nela); só abre outra se aquela foi fechada. Antes cada clique abria mais uma aba com o mesmo pedido.
+ */
 export function requestAgentPrepare(): void {
   const st = ctx.waStatus;
   if (st === null) return;
+  if (waDialog.open) waDialog.close();
+  const anterior = abaDoPedido(waPrepareTabId, (id) => ctx.tabs.has(id));
+  if (anterior !== null) { ctx.activate(anterior); return; }
   void (async () => {
-    if (waDialog.open) waDialog.close();
     const tab = await ctx.newTab();
+    waPrepareTabId = tab.id;
     await ctx.sendText(tab, waAgentPrompt(st));
   })();
 }

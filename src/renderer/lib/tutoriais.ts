@@ -843,7 +843,7 @@ export const tutorialNumber = (id: string): number | null => TUTORIAIS.find((t) 
 
 /** Rótulo do botão do passo atual, por alvo: o guia leva a pessoa ao lugar certo em vez de pedir para procurar. */
 export const GUIDE_ACTION_LABEL: Record<Exclude<GuideTarget, "none">, string> = {
-  "wa-line": "Abrir o WhatsApp", "wa-agent": "Abrir o WhatsApp", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp", "chat": "Ir para a conversa",
+  "wa-line": "Abrir o WhatsApp", "wa-agent": "Pedir ao agente para preparar", "wa-pair": "Gerar QR", "wa-policy": "Escolher no WhatsApp", "chat": "Ir para a conversa",
 };
 
 /** Título da aba do guia: "2 · WhatsApp 2/4", ou "2 · WhatsApp ✓" quando tudo está feito. */
