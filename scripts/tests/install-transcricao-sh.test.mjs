@@ -9,17 +9,20 @@ import path from "node:path";
 // compartilhado da máquina ele só aponta o OpenClaw (nada baixado); sem ele e sem ffmpeg/sudo, sai com 3 e aponta o admin.
 const SCRIPT = path.join(import.meta.dirname, "..", "..", "backend-colima", "install-transcricao.sh");
 
-function maquina({ models = "[]", transcritor = true, venvAntigo = false } = {}) {
+function maquina({ models = "[]", transcritor = true, venvAntigo = false, semPython = false, testeFalha = false } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "transcricao-"));
   const bin = path.join(home, "bin-falso"); fs.mkdirSync(bin);
   const w = (p, txt, mode) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, txt); if (mode) fs.chmodSync(p, mode); };
   w(path.join(bin, "timeout"), "#!/bin/bash\nshift; exec \"$@\"\n", 0o755);
+  // `python3` quebrado = sem o WAV do teste; `testeFalha` = o OpenClaw não confirma a transcrição.
+  if (semPython) w(path.join(bin, "python3"), "#!/bin/bash\nexit 1\n", 0o755);
+  if (testeFalha) w(path.join(home, "teste-falha"), "");
   w(path.join(bin, "sudo"), "#!/bin/bash\nexit 1\n", 0o755);
   w(path.join(bin, "openclaw"), `#!/bin/bash
 echo "$*" >> "$HOME/openclaw-chamadas.log"
 case "$*" in
   "config get tools.media.models") cat "$HOME/models.json";;
-  "capability audio transcribe --file "*) echo '{"ok": true}';;
+  "capability audio transcribe --file "*) [ -e "$HOME/teste-falha" ] && echo '{"ok": false}' || echo '{"ok": true}';;
   *) exit 0;;
 esac
 `, 0o755);
@@ -46,6 +49,23 @@ test("com o transcritor compartilhado da máquina: só aponta o OpenClaw para el
   assert.ok(!fs.existsSync(path.join(m.home, ".local/bin/meu-bot-transcrever")));
   assert.match(r.ultima, /transcritor compartilhado/);
   m.limpar();
+});
+
+test("compartilhado sem prova (sem python3, ou o teste do OpenClaw falhou): sai 4, o venv antigo fica e o OpenClaw volta para ele", () => {
+  for (const o of [{ semPython: true }, { testeFalha: true }]) {
+    const m = maquina({ venvAntigo: true, ...o });
+    const r = m.roda();
+    assert.equal(r.code, 4, r.out);
+    assert.ok(fs.existsSync(path.join(m.home, ".local/share/meu-bot/transcricao/venv/bin/python")), `${JSON.stringify(o)}: o transcritor antigo não some sem a prova`);
+    const sets = r.chamadas.filter((c) => c.startsWith("config set tools.media.models "));
+    assert.ok(sets.at(-1).includes(path.join(m.home, ".local/bin/meu-bot-transcrever")), `${JSON.stringify(o)}: volta para o transcritor deste usuário`);
+    assert.match(r.ultima, /continua com o transcritor deste usuário/);
+    m.limpar();
+  }
+  // Sem transcritor antigo, só avisa que não confirmou (nada a restaurar).
+  const s = maquina({ testeFalha: true });
+  const rs = s.roda(); assert.equal(rs.code, 4); assert.match(rs.ultima, /não confirmou/);
+  s.limpar();
 });
 
 test("sem o compartilhado, sem ffmpeg e sem sudo: sai com 3 (precisa do admin) e a última linha aponta Preparar máquina", () => {

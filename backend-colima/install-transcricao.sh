@@ -68,12 +68,20 @@ if [ -x "$TT" ]; then
   echo "ligando no OpenClaw o transcritor compartilhado da máquina ($TT)…"
   openclaw config set tools.media.models "[{\"type\":\"cli\",\"command\":\"$TT\",\"args\":[\"{{MediaPath}}\"],\"timeoutSeconds\":120,\"capabilities\":[\"audio\"]}]" --strict-json >/dev/null
   openclaw config set tools.media.audio.enabled true --strict-json >/dev/null
+  # Só vale como pronto com a prova: um WAV gerado aqui e o OpenClaw transcrevendo por ele. Sem python3 (sem WAV) ou com
+  # o teste falhando, não se apaga o transcritor antigo deste usuário (pode ser o único que funciona) e, se ele existe,
+  # o OpenClaw volta a apontar para ele.
   command -v python3 >/dev/null 2>&1 && teste_wav 2>/dev/null || true
-  if [ ! -s "$T/teste.wav" ] || confirma_openclaw "$T/teste.wav"; then
+  if [ -s "$T/teste.wav" ] && confirma_openclaw "$T/teste.wav"; then
     # O ambiente por usuário de antes (venv + modelo, ~500 MB da cota) não é mais usado.
     [ -d "$D" ] && { rm -rf "$D"; rm -f "$BIN"; echo "o transcritor antigo deste usuário saiu (~500 MB livres)"; }
     echo "pronto: o agente do WhatsApp agora entende áudio, com o transcritor compartilhado da máquina"
     exit 0
+  fi
+  if [ -x "$BIN" ]; then
+    openclaw config set tools.media.models "[{\"type\":\"cli\",\"command\":\"$BIN\",\"args\":[\"{{MediaPath}}\"],\"timeoutSeconds\":120,\"capabilities\":[\"audio\"]}]" --strict-json >/dev/null
+    echo "o transcritor compartilhado da máquina não passou no teste; o OpenClaw continua com o transcritor deste usuário"
+    exit 4
   fi
   echo "configurado com o transcritor compartilhado, mas o teste do OpenClaw não confirmou; mande um áudio para conferir"
   exit 4
