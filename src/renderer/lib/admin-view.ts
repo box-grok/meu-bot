@@ -204,4 +204,17 @@ export const personSuffix = (p: SupportPerson, now: number = Date.now()): string
   ` · ${p.machine !== null ? `${p.machine} · ` : ""}${p.hostname}${p.port !== 22 ? `:${p.port}` : ""}${p.local ? " · só alcançável deste Mac" : ""}${p.seenAt !== "" ? ` · ${timeAgo(p.seenAt, now)}` : ""}`;
 
 export const EMPTY_PEOPLE_TEXT = "Ninguém ainda. Quando uma pessoa ligar \"Permitir suporte\" no meu-bot dela, ela aparece aqui sozinha. Ou use Adicionar pessoa com o código dela.";
+/**
+ * Máquinas do ~/.ssh/config deste Mac que o ⇅ do admin ainda precisa pôr na lista: todo alias que o meu-bot mostraria
+ * (menos "local"), tirando os aliases de suporte (`suporte-…`, são as próprias pessoas) e as máquinas que já são
+ * pessoa (`machine`). Ordem de chegada, sem repetir.
+ */
+export function maquinasParaAdotar(aliases: readonly string[], people: readonly Pick<SupportPerson, "alias" | "machine">[]): string[] {
+  const fora = new Set<string>(["local"]);
+  for (const p of people) { fora.add(p.alias); if (p.machine !== null) fora.add(p.machine); }
+  const out: string[] = [];
+  for (const a of aliases) if (!fora.has(a) && !a.startsWith("suporte-") && !out.includes(a)) out.push(a);
+  return out;
+}
+
 export const MISSING_ADMIN_KEY_TEXT = "⚠ falta a chave ~/.ssh/meu-bot-admin neste Mac: rode node scripts/suporte-setup.mjs no projeto.";

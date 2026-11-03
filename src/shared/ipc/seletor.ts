@@ -28,11 +28,13 @@ export interface PickerSharedApi {
   tailscaleCredential(): Promise<TailscaleCredentialState>;
   /** Abre no navegador uma página fixa (allowlist no main): "tailscale-keys". */
   openKnownUrl(which: "tailscale-keys"): Promise<void>;
+  /** Acrescenta ao ~/.ssh/config deste Mac as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo); o admin também. */
+  syncSsh(): Promise<SshSyncResult>;
   cancel(): void;
   on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
 }
 
-/** Variante: cliente. Seletor do meu-bot normal: instalar, sincronizar o ~/.ssh/config, renomear, remover, Tailscale. */
+/** Variante: cliente. Seletor do meu-bot normal: instalar, renomear, remover, Tailscale. */
 export interface PickerClientApi {
   install(host: string): Promise<InstallBackendResult>;
   /** Instala a status line do Claude Code na máquina (statusline.sh + statusLine no settings.json); mesmo log de progresso. */
@@ -47,8 +49,6 @@ export interface PickerClientApi {
   removeHost(host: string): Promise<{ backup: string }>;
   /** Apelido da máquina no app (vazio tira); a chave SSH não muda. */
   renameHost(host: string, name: string): Promise<void>;
-  /** Acrescenta ao ~/.ssh/config as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo). */
-  syncSsh(): Promise<SshSyncResult>;
   /** Caixinha "abrir direto" do rodapé. */
   setOpenDirect(value: boolean): Promise<void>;
   /** Caixinha "onboarding feito" do rodapé. */

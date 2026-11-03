@@ -770,3 +770,10 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   andamento (`/health.ativos`, a mesma regra da atualização ociosa); auditoria `backend.instalar` por box; a
   mensagem final lista puladas e falhas. O guard do `admin:action` aceita `install-backend`, e um teste em
   `admin-view.test.mjs` confere todo id de `ADMIN_ACTIONS` contra o main.
+
+## Faixa de depuração ligada por padrão no admin (3 nov 2026)
+
+- `padraoDaVariante()` (`src/main/app/depuracao.ts`) passa a valer para o meu-bot-admin além do staging: a janela de
+  cada pessoa já abre com a faixa (build · branch · commit, batimento do main, túnel, o que chega de fora). Quem dá
+  suporte precisa ver o build e o que falhou sem ter de ligar nada antes. Continua desligável pela paleta (Cmd+K,
+  "Modo de depuração: desligar"), e a escolha gravada vence o padrão.

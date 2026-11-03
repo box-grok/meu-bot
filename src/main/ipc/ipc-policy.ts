@@ -28,6 +28,8 @@ export const SHARED_CHANNELS = [
   // seletor
   "picker:list", "picker:plans", "picker:locais", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",
+  // ⇅ "sincronizar ssh" mexe no ~/.ssh/config deste Mac, não na máquina de ninguém: o admin também o tem.
+  "picker:sync-ssh",
   // alívio do Grok Bot (relief.ts registra sozinho)
   "relief:close", "relief:open-reset",
 ] as const;
@@ -66,7 +68,7 @@ export const CLIENT_CHANNELS = [
   "support:info", "support:set", "support:progress", "support:name", "support:deliver", "support:code", "support:share", "support:reset",
   // seletor
   "picker:install", "picker:install-statusline", "picker:install-transcricao", "picker:install-claude", "picker:install-guarda", "picker:remove-host", "picker:rename-host",
-  "picker:sync-ssh", "picker:open-direct", "picker:onboarding-done", "picker:claude-login",
+  "picker:open-direct", "picker:onboarding-done", "picker:claude-login",
   "picker:approve-tailscale", "picker:tailscale-disable-check", "picker:tailscale-credential-save", "picker:tailscale-credential-forget",
 ] as const;
 
