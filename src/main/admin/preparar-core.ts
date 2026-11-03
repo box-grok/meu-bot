@@ -8,7 +8,7 @@
  */
 import type { ItemPreparar, PrepararId, PrepararVisao } from "../../shared/ipc";
 import type { Acao } from "../auditoria/auditoria-core";
-import { COTA_ESTADO_SH, COTA_LIGAR_SH, HERMES_ESTADO_SH, hermesGlobalSh, isolamentoTodosSh, reservaDe, reservaHostSh, swapLigarSh, transcritorSh } from "./usuarios-core";
+import { COTA_ESTADO_SH, COTA_LIGAR_SH, HERMES_ESTADO_SH, OPENCLAW_ESTADO_SH, hermesGlobalSh, isolamentoTodosSh, openclawGlobalSh, reservaDe, reservaHostSh, swapLigarSh, transcritorSh } from "./usuarios-core";
 import { CG_DIR, CG_SERVICO } from "./claude-global-core";
 import { LP_ETC } from "./link-publico-core";
 
@@ -20,12 +20,13 @@ export const PACOTES_TELA = ["xvfb", "x11-utils", "openbox", "x11vnc", "novnc", 
 export const PACOTE_CHROMIUM = "chromium";
 export const PACOTE_RE = /^[a-z0-9][a-z0-9.+-]{1,60}$/;
 /** Ordem de aplicação (dependências): swap e cota antes de qualquer apt; pacotes antes do gh; Hermes antes do transcritor (copia o modelo) e do Claude Global (usa o Node de /opt/hermes). */
-export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "claude-global", "chromium"];
+export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "chromium"];
 /** Ordem da lista na tela: o link público entre o Claude Global e o Chromium (os dois humanos juntos). */
-export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "claude-global", "link-publico", "chromium"];
+export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "link-publico", "chromium"];
 export const TITULOS: Record<PrepararId, string> = {
   swap: "Memória de reserva (swap de 8 GB)", cota: "Cota de disco por usuário", governanca: "Governança de RAM/CPU", pacotes: "Pacotes do sistema (jq, ffmpeg e a tela do bot)",
   gh: "GitHub CLI para todos (/usr/local/bin/gh)", hermes: "Hermes para todos (/opt/hermes)", transcritor: "Transcritor de áudio para todos (/opt/transcriber)",
+  openclaw: "OpenClaw para todos (/opt/openclaw)",
   "claude-global": "Claude Code Global", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
 };
 const SO_ROOT = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }`;
@@ -34,7 +35,7 @@ const TODOS_PACOTES: readonly string[] = [...PACOTES_BASE, ...PACOTES_TELA, PACO
 /**
  * Estado da máquina numa viagem SSH, só leitura: `ROOT`, `RAM=<kb>`, `SWAP=<kb>`, `COTA=0|1`, `RESERVA=0|1` (teto no
  * user.slice), `SEMISO=<boxes sem isolamento>`, `PACOTES=jq=1 ffmpeg=0 …` (dpkg, não `command -v`: o novnc não tem
- * binário), `GH=<versão>` (só o de /usr/local/bin: o de ~/.local/bin de um usuário não conta), `HERMES=…`,
+ * binário), `GH=<versão>` (só o de /usr/local/bin: o de ~/.local/bin de um usuário não conta), `HERMES=…`, `OPENCLAW=global|root|nenhum`,
  * `CG=<inst> <ativo> <login>`, `LP=<inst> <login> <tunel> <servico> <domínio>`, `OS=<id>`.
  */
 export const PREPARAR_ESTADO_SH = `${SO_ROOT}
@@ -47,6 +48,7 @@ S=""; for n in $(awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {prin
 P=""; for p in ${TODOS_PACOTES.join(" ")}; do if dpkg-query -W -f='\${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then P="$P $p=1"; else P="$P $p=0"; fi; done; echo "PACOTES=\${P# }"
 echo "GH=$(/usr/local/bin/gh --version 2>/dev/null | head -1 | awk '{print $3}')"
 ${HERMES_ESTADO_SH}
+${OPENCLAW_ESTADO_SH}
 CGI=0; [ -f /etc/systemd/system/${CG_SERVICO}.service ] && [ -f ${CG_DIR}/claude-global.js ] && CGI=1
 CGA=0; systemctl is-active --quiet ${CG_SERVICO} 2>/dev/null && CGA=1
 CGL=0; grep -q '"oauthAccount"' /root/.claude.json 2>/dev/null && [ -s /root/.claude/.credentials.json ] && CGL=1
@@ -75,6 +77,7 @@ export function lerPreparar(out: string): PrepararLido {
   const faltamPacotes = [...PACOTES_BASE, ...PACOTES_TELA].filter((p) => pacotes.get(p) !== true);
   const gh = (/^GH=(\S*)$/m.exec(out)?.[1] ?? "").trim();
   const hermes = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1] ?? null;
+  const openclaw = /^OPENCLAW=(global|root|nenhum)$/m.exec(out)?.[1] ?? null;
   const cg = /^CG=([01]) ([01]) ([01])$/m.exec(out);
   const lp = /^LP=([01]) ([01]) ([01]) ([01]) ?(\S*)$/m.exec(out);
   const os = (/^OS=(\S*)$/m.exec(out)?.[1] ?? "").trim();
@@ -89,6 +92,7 @@ export function lerPreparar(out: string): PrepararLido {
   porId.set("gh", gh !== "" ? item("gh", "ok", `gh ${gh}`) : item("gh", "falta", "cada conta teria de instalar o seu em ~/.local/bin"));
   porId.set("hermes", hermes === "global" || hermes === "sem-transcritor" ? item("hermes", "ok", "/opt/hermes para todos") : item("hermes", "falta", hermes === "root" ? "só o root tem o Hermes: os usuários não alcançam" : "cada usuário baixaria uma cópia"));
   porId.set("transcritor", hermes === "global" ? item("transcritor", "ok", "/opt/transcriber para todos") : item("transcritor", "falta", hermes === "sem-transcritor" ? "o Hermes global está sem o transcritor compartilhado" : "vem depois do Hermes para todos"));
+  porId.set("openclaw", openclaw === "global" ? item("openclaw", "ok", "/opt/openclaw para todos") : item("openclaw", "falta", openclaw === "root" ? "só o root tem o OpenClaw: os usuários não alcançam" : "cada usuário baixaria o Node 24 e uma cópia"));
   if (cg === null || cg[1] === "0") porId.set("claude-global", item("claude-global", "falta", "o intermediário do root ainda não está instalado", { pagina: "claude-global" }));
   else if (cg[3] === "0") porId.set("claude-global", item("claude-global", "humano", "entre no Claude Code do root (abre no Terminal, pela aba Claude Code Global)", { pagina: "claude-global" }));
   else if (cg[2] === "0") porId.set("claude-global", item("claude-global", "falta", "instalado, mas parado: instalar de novo sobe o serviço", { pagina: "claude-global" }));
@@ -163,6 +167,7 @@ export function passosPreparar(ids: readonly string[], v: PrepararLido): PassoPr
     else if (id === "gh") passos.push({ id, titulo: TITULOS.gh, sh: GH_GLOBAL_SH, ok: /^GH=ok /m, timeoutMs: 2 * 60_000, acao: "maquina.gh", alvo: ultimo(/^GH=ok (\S+)/m) });
     else if (id === "hermes") passos.push({ id, titulo: TITULOS.hermes, sh: comoRoot(hermesGlobalSh()), ok: /^HERMES=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.hermes-global", alvo: ultimo(/^HERMES=ok (\S+)/m) });
     else if (id === "transcritor") passos.push({ id, titulo: TITULOS.transcritor, sh: comoRoot(transcritorSh()), ok: /^TRANSCRITOR=ok$/m, timeoutMs: 20 * 60_000, acao: "maquina.transcritor", alvo: () => "/opt/transcriber" });
+    else if (id === "openclaw") passos.push({ id, titulo: TITULOS.openclaw, sh: comoRoot(openclawGlobalSh()), ok: /^OPENCLAW=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.openclaw-global", alvo: ultimo(/^OPENCLAW=ok (\S+)/m) });
     else if (id === "claude-global") passos.push({ id, titulo: TITULOS["claude-global"], sh: null, ok: /^CLAUDE_GLOBAL=ok/m, timeoutMs: 5 * 60_000, acao: "maquina.claude-global", alvo: () => "" });
     else if (id === "chromium" && estado("chromium") === "falta") passos.push({ id, titulo: TITULOS.chromium, sh: pacotesSh([PACOTE_CHROMIUM]), ok: /^PACOTES=ok/m, timeoutMs: 10 * 60_000, acao: "maquina.pacotes", alvo: () => PACOTE_CHROMIUM });
   }

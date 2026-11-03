@@ -16,10 +16,10 @@ const lerSh = (txt) => { const o = {}; for (const m of txt.matchAll(/^([A-Z_]+)=
 test("motor-versoes.sh e motor-versoes.ts dizem as mesmas versões (e só CHAVE=valor no .sh)", () => {
   const sh = ler("backend-colima/motor-versoes.sh");
   const vars = lerSh(sh);
-  assert.deepEqual(vars, { OPENCLAW_VERSAO: v.OPENCLAW_VERSAO, OPENCLAW_WA_PLUGIN_VERSAO: v.OPENCLAW_WA_PLUGIN_VERSAO, HERMES_VERSAO: v.HERMES_VERSAO, MOTOR_NODE: v.MOTOR_NODE });
+  assert.deepEqual(vars, { OPENCLAW_VERSAO: v.OPENCLAW_VERSAO, OPENCLAW_WA_PLUGIN_VERSAO: v.OPENCLAW_WA_PLUGIN_VERSAO, HERMES_VERSAO: v.HERMES_VERSAO, MOTOR_NODE: v.MOTOR_NODE, OPENCLAW_NODE: v.OPENCLAW_NODE });
   for (const l of sh.split("\n")) assert.ok(l === "" || l.startsWith("#") || /^[A-Z_]+=\S+$/.test(l), `linha que não é comentário nem CHAVE=valor: ${l}`);
   for (const x of [v.OPENCLAW_VERSAO, v.OPENCLAW_WA_PLUGIN_VERSAO, v.HERMES_VERSAO]) assert.match(x, /^\d+\.\d+\.\d+$/);
-  assert.match(v.MOTOR_NODE, /^v\d+\.\d+\.\d+$/);
+  assert.match(v.MOTOR_NODE, /^v\d+\.\d+\.\d+$/); assert.match(v.OPENCLAW_NODE, /^v\d+\.\d+\.\d+$/);
 });
 
 test("install-grok-oauth.sh, o Hermes de todos e o pedido ao agente usam as versões fixadas", () => {
@@ -30,6 +30,9 @@ test("install-grok-oauth.sh, o Hermes de todos e o pedido ao agente usam as vers
   assert.equal(/npm install -g openclaw@(\S+)`/.exec(prompt)?.[1], v.OPENCLAW_VERSAO, "o pedido instala o OpenClaw na versão fixada");
   assert.equal(/clawhub:@openclaw\/whatsapp@([\d.]+)/.exec(prompt)?.[1], v.OPENCLAW_WA_PLUGIN_VERSAO, "o pedido instala o plugin na versão fixada");
   assert.equal(/hermes-agent@([\d.]+)/.exec(prompt)?.[1], v.HERMES_VERSAO);
+  assert.ok(prompt.includes(`Node ${v.OPENCLAW_NODE}`), "o pedido diz qual Node 24 o OpenClaw de todos usa");
+  const { openclawGlobalSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.ok(openclawGlobalSh().includes(`V='${v.OPENCLAW_VERSAO}'`) && openclawGlobalSh().includes(`NV='${v.OPENCLAW_NODE}'`), "o OpenClaw de todos usa as versões fixadas");
 });
 
 const arquivos = (dir, out = []) => {
