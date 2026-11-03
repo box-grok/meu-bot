@@ -436,12 +436,14 @@ function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
   else lines.push(`✓ entraram no ~/.ssh/config: ${[...r.added, ...(r.includesAdded > 0 ? [`${r.includesAdded} Include`] : [])].join(", ")}${r.backup !== null ? ` (backup em ${r.backup.replace(/^.*\//, "")})` : ""}.`);
   if (r.kept.length > 0) lines.push(`mantidas como estavam: ${r.kept.join(", ")}.`);
   if (r.onlyLocal.length > 0) lines.push(`só neste Mac (o projeto não conhece): ${r.onlyLocal.join(", ")}.`);
+  if (r.sameTarget.length > 0) lines.push(`já existem com outro nome: ${r.sameTarget.map((x) => `${x.alias} = ${x.as}`).join(", ")}.`);
+  if (r.skipped.length > 0) lines.push(`removidas por você, não voltam: ${r.skipped.join(", ")}.`);
   let kind: "ok" | "warn" = "ok";
   if (r.missingKeys.length > 0) {
     kind = "warn";
     lines.push(`⚠ falta a chave ${r.missingKeys.map((k) => k.replace(/^.*\/\.ssh\//, "~/.ssh/")).join(", ")} neste Mac: copie do outro Mac, ou gere uma nova e coloque a .pub no authorized_keys de cada máquina (PLAYBOOK, seção 1).`);
   }
-  lines.push("O Cursor (Remote SSH) lê o mesmo arquivo, então as máquinas aparecem lá também.");
+  lines.push("O Cursor (Remote SSH) lê o mesmo arquivo (ou um que ele inclui), então as máquinas aparecem lá também.");
   return { kind, text: lines.join("\n") };
 }
 
