@@ -519,3 +519,15 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   canais de cliente para a compartilhada (`ipc-policy.ts`): no admin o canal de cliente vira o stub "só lê", e o
   primeiro clique no ⇅ falhava com "sincronização falhou: o meu-bot-admin só lê" sem tocar em máquina nenhuma. Quem não entra (máquina fora, sem a chave `~/.ssh/meu-bot-admin`) é relatado e o resto
   segue. Os interruptores Intro/Onboarding seguem só no meu-bot da pessoa.
+
+## OpenClaw para todos (3 nov 2026)
+
+- Motivo: o pedido "preparar" ao agente instalava o OpenClaw em `~/.local` de cada conta; no root ia para `/root/.local`
+  (pasta 700), e os outros usuários não alcançavam nem o comando. Cada conta ainda baixava o próprio Node 24 (o
+  `openclaw@2026.9.9` exige Node ≥ 24.16; o `MOTOR_NODE` do backend é 20).
+- Igual ao Hermes de todos: item "OpenClaw para todos (/opt/openclaw)" em Preparar no meu-bot-admin
+  (`openclawGlobalSh`, `usuarios-core.ts`): Node `OPENCLAW_NODE` em `/opt/openclaw/node`, pacote em
+  `/opt/openclaw/lib/node_modules/openclaw`, atalho `/usr/local/bin/openclaw` (marca `meu-bot-openclaw-global`),
+  conferido como `nobody`. Os dados continuam por usuário (`~/.openclaw`: onboard, token, plugin do WhatsApp, sessão).
+- A sondagem diz `OPENCLAW=global|root|nenhum`; "só o root tem" conta como falta. O pedido ao agente no tutorial do
+  WhatsApp passa a mandar instalar assim (para todos como root; `~/.local` só sem root).

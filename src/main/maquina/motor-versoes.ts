@@ -13,3 +13,5 @@ export const OPENCLAW_WA_PLUGIN_VERSAO = "2026.9.9";
 export const HERMES_VERSAO = "0.22.2";
 /** Node que os motores usam quando a máquina não tem um (o mesmo do backend, install.sh). */
 export const MOTOR_NODE = "v20.20.2";
+/** Node do OpenClaw de todos (/opt/openclaw/node): o openclaw@2026.9.9 exige Node ≥ 24.16, e o MOTOR_NODE é 20. */
+export const OPENCLAW_NODE = "v24.22.2";

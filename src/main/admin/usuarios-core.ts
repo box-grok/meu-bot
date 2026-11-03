@@ -4,7 +4,7 @@
  */
 import { deveAtualizar } from "../atualizacao/updater-core";
 import type { Capacidade, HermesNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
-import { HERMES_VERSAO, MOTOR_NODE } from "../maquina/motor-versoes";
+import { HERMES_VERSAO, MOTOR_NODE, OPENCLAW_NODE, OPENCLAW_VERSAO } from "../maquina/motor-versoes";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
 export const NOME_USUARIO_RE = /^[a-z][a-z0-9_-]{1,31}$/;
@@ -43,6 +43,8 @@ export const PROTEGIDOS = new Set(["openclaw", "hermes", "auditoria"]);
 export const COTA_ESTADO_SH = `if quotaon -pu / 2>/dev/null | grep -q " is on"; then cota=1; else cota=0; fi; echo "COTA=$cota"`;
 /** `HERMES=global|sem-transcritor|root|nenhum`: onde está o Hermes e se o transcritor compartilhado existe. Também no checklist. */
 export const HERMES_ESTADO_SH = `if grep -q meu-bot-hermes-global /usr/local/bin/hermes 2>/dev/null && [ -x /opt/hermes/bin/hermes ]; then if grep -q meu-bot-transcritor /opt/transcriber/bin/transcrever 2>/dev/null; then echo HERMES=global; else echo HERMES=sem-transcritor; fi; elif [ -x /root/.local/bin/hermes ]; then echo HERMES=root; else echo HERMES=nenhum; fi`;
+/** `OPENCLAW=global|root|nenhum`: o de todos (/usr/local/bin/openclaw nosso + /opt/openclaw), só o do root (qualquer outro no PATH do root), ou nenhum. */
+export const OPENCLAW_ESTADO_SH = `if grep -q meu-bot-openclaw-global /usr/local/bin/openclaw 2>/dev/null && [ -f /opt/openclaw/lib/node_modules/openclaw/dist/index.js ]; then echo OPENCLAW=global; elif command -v openclaw >/dev/null 2>&1 || [ -x /root/.local/bin/openclaw ]; then echo OPENCLAW=root; else echo OPENCLAW=nenhum; fi`;
 export const LISTAR_SH = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }
 echo ROOT
 echo "DISCO=$(df -k --output=size / 2>/dev/null | tail -1 | tr -d ' ')"
@@ -427,6 +429,41 @@ chmod 755 "$P/runtime/hermes-agent/.hermes" "$G" "$G/hermes"
 H=$(mktemp -d); chmod 777 "$H"
 O=$(runuser -u nobody -- env HOME="$H" "$W" --version 2>&1 | head -1); rm -rf "$H"
 case "$O" in *"v$V"*) echo "HERMES=ok $V" ;; *) echo "ERRO=o Hermes instalou, mas um usuário comum não conseguiu rodar: $O" ;; esac`;
+}
+
+/**
+ * OpenClaw para todos os usuários da máquina, no mesmo padrão do /opt/hermes: o programa em /opt/openclaw (Node 24
+ * próprio + pacote npm, dono root, só leitura para os outros) e o /usr/local/bin/openclaw apontando para lá. Os dados
+ * (onboard, token do gateway, plugin do WhatsApp, sessão) continuam por usuário (~/.openclaw). Antes, o pedido
+ * "preparar" ao agente instalava em ~/.local de cada conta (no root, em /root: os outros nem alcançam) e cada conta
+ * baixava o próprio Node 24. O npm do Node 24 só roda scripts de instalação dos pacotes liberados. Idempotente;
+ * o atalho que não for nosso fica guardado ao lado; confere como `nobody`. Saída `OPENCLAW=ok <versão>` ou `ERRO=`.
+ */
+export function openclawGlobalSh(): string {
+  return `D=/opt/openclaw; V='${OPENCLAW_VERSAO}'; NV='${OPENCLAW_NODE}'; W=/usr/local/bin/openclaw
+mkdir -p "$D" || { echo "ERRO=não consegui criar $D"; exit 0; }
+if [ "$("$D/node/bin/node" -v 2>/dev/null)" != "$NV" ]; then
+  case "$(uname -m)" in aarch64|arm64) a=arm64;; x86_64) a=x64;; *) echo "ERRO=arquitetura $(uname -m) não suportada"; exit 0;; esac
+  t=$(mktemp -d); curl -fsSL "https://nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz" -o "$t/node.tar.gz" || { rm -rf "$t"; echo "ERRO=não consegui baixar o Node $NV"; exit 0; }
+  rm -rf "$D/node"; mkdir -p "$D/node"; tar -xzf "$t/node.tar.gz" -C "$D/node" --strip-components=1; rm -rf "$t"
+fi
+export PATH="$D/node/bin:$PATH"
+P="$D/lib/node_modules/openclaw"
+grep -q "\"version\": \"$V\"" "$P/package.json" 2>/dev/null || npm install -g --prefix "$D" "openclaw@$V" --allow-scripts=openclaw,koffi,esbuild,protobufjs,@google/genai >/tmp/meu-bot-openclaw-global.log 2>&1 || { echo "ERRO=a instalação do OpenClaw $V falhou (log em /tmp/meu-bot-openclaw-global.log)"; exit 0; }
+[ -f "$P/dist/index.js" ] || { echo "ERRO=o OpenClaw instalou sem o dist/index.js (log em /tmp/meu-bot-openclaw-global.log)"; exit 0; }
+chmod -R a+rX "$D"
+[ -e "$W" ] && ! grep -q meu-bot-openclaw-global "$W" && cp -P "$W" "$W.antes-do-meu-bot"
+cat > "$W" <<'EOF'
+#!/bin/sh
+# meu-bot-openclaw-global: o OpenClaw de todos os usuários (programa em /opt/openclaw; os dados de cada um em ~/.openclaw).
+export PATH="/opt/openclaw/node/bin:$PATH"
+exec /opt/openclaw/node/bin/node /opt/openclaw/lib/node_modules/openclaw/dist/index.js "$@"
+EOF
+chmod 755 "$W"
+# Confere como um usuário sem privilégio, que é quem vai usar.
+H=$(mktemp -d); chmod 777 "$H"
+O=$(runuser -u nobody -- env HOME="$H" "$W" --version 2>&1 | head -1); rm -rf "$H"
+case "$O" in *"$V"*) echo "OPENCLAW=ok $V" ;; *) echo "ERRO=o OpenClaw instalou, mas um usuário comum não conseguiu rodar: $O" ;; esac`;
 }
 
 /** faster-whisper e o PyAV que funcionam juntos (o av 19 quebrou o decode_audio: "unexpected keyword metadata_errors"). */
