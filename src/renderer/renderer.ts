@@ -34,7 +34,6 @@ import { updateBlockerText, updateStateText } from "./lib/update-text.js";
 import { offlineBarText } from "./lib/offline-text.js";
 import { browserAccess, displayUrl, planoLiberaPro, proBlockText, tabLabel, type ProAccess, crmProprioOk, financeOk } from "./lib/pro.js";
 import { mountFinancePage } from "./finance/finance-page.js";
-import { mountModulosPage } from "./modulos/modulos-page.js";
 import { mountContaGoogle } from "./conta-google/conta-google-page.js";
 import { mountGmail } from "./gmail/gmail-page.js";
 import { gmailGuiaFato, ligarGmailGuia, refreshGmailGuia } from "./gmail/gmail-guia.js";
@@ -369,7 +368,7 @@ let usuariosAdmin: { open: () => void } | null = null;
 let appVersion = "";
 /** Build deste app (`WindowInfo.build`): o cache só devolve o que este mesmo build gravou. */
 let appBuild = "";
-let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", modulos: null, usuariosMac: false, addon: null, abreEm: null, addons: [] };
+let caps: Capabilities = { variant: "client", produto: "meu-bot", canal: "estavel", nome: "meu-bot", titulo: "meu-bot", chat: true, pair: true, login: true, manageWa: true, tunnel: true, install: true, supportClient: true, supportAdmin: false, navegador: true, planoExigido: "free", usuariosMac: false, addon: null, abreEm: null, addons: [] };
 const lastHostEl = $<HTMLParagraphElement>("last-host");
 const settingsError = $<HTMLParagraphElement>("settings-error");
 const cancelBtn = $<HTMLButtonElement>("btn-cancel");
@@ -1796,7 +1795,6 @@ let financePage: ReturnType<typeof mountFinancePage> | null = null;
 /** Página Gmail (31 out): montada na abertura, como a Conta Google; a paleta e a aba fixada a alcançam por aqui. */
 let gmailPage: ReturnType<typeof mountGmail> | null = null;
 let contaGooglePage: ReturnType<typeof mountContaGoogle> | null = null;
-let modulosPage: ReturnType<typeof mountModulosPage> | null = null;
 let financeState: FinanceInfo | null = null;
 ligarNavegador();
 ligarTerminal();
@@ -1936,13 +1934,6 @@ void (async () => {
     goToChat: goToChatFromGuide, onInfo: (i) => { financeState = i; paintFinanceLine(); paintGuide(); },
   });
   $<HTMLButtonElement>("financas-line").addEventListener("click", () => financePage?.open());
-  // Módulos de produto (meu-bot-diego): só nos apps que trazem o repositório de módulos.
-  if (caps.modulos !== null) {
-    const rotulo = caps.addons.find((a) => a.nome === caps.addon)?.rotulo ?? caps.nome;
-    modulosPage = mountModulosPage({ panelsEl, definePage, openPage, armConfirm, api: window.meuBot, rotulo });
-    const linha = $<HTMLButtonElement>("modulos-line"); linha.hidden = false;
-    linha.addEventListener("click", () => modulosPage?.open());
-  }
   // O app cujo add-on é o financeiro mostra o botão sempre (sem licença, a página diz como liberar).
   if (caps.addon === "meu-bot-finance") paintFinanceLine();
   void window.meuBot.getAccountStatus().then((s) => { account = s; paintContext(active()); checkSessionThreshold(); checkEspacoThreshold(); paintEspaco(s?.cota); paintGuide(); });
@@ -1976,7 +1967,6 @@ void (async () => {
   if (fixa === "tutoriais") openPage(tutoriaisPage);
   else if (fixa === "acervo") openPage(acervoPage);
   else if (fixa === "financas") financePage?.open();
-  else if (fixa === "modulos") modulosPage?.open();
   else if (fixa === "conta-google") contaGoogle.open();
   else if (fixa === "gmail") gmail.open();
   else if (fixa === "computador") computador.open();

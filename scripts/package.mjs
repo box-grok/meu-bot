@@ -2,7 +2,6 @@ import { packager } from "@electron/packager";
 import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { createRequire } from "node:module";
 import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 import { avisoSemGoogle, decideGoogleConta } from "./google-client.mjs";
 
@@ -20,19 +19,6 @@ const arch = archOf();
 for (const e of produto.extensoes) if (!existsSync(join("build", e, "manifest.json"))) {
   console.error(`✗ falta build/${e}/manifest.json: rode \`npm run build:extensao\` antes de empacotar o ${name}`);
   process.exit(1);
-}
-// Produto com módulos (meu-bot-diego): o repositório dele é um submódulo em produtos/<nome>; o manifesto precisa estar
-// lá e válido antes de empacotar (só este app o leva em Resources/<nome>/; os outros não levam nada dele).
-const modulos = produto.caps.modulos;
-if (modulos !== null) {
-  const manifesto = join("produtos", modulos, "modulos.json");
-  if (!existsSync(manifesto)) {
-    console.error(`✗ falta ${manifesto}: o ${name} leva o repositório ${modulos} (submódulo). Rode \`git submodule update --init produtos/${modulos}\` e tente de novo.`);
-    process.exit(1);
-  }
-  const { parseManifesto } = createRequire(import.meta.url)("../dist/main/modulos/modulos-core.js");
-  try { const m = parseManifesto(JSON.parse(readFileSync(manifesto, "utf8"))); console.log(`módulos de ${m.produto}: ${m.modulos.map((x) => `${x.id} ${x.versao}`).join(", ")}`); }
-  catch (e) { console.error(`✗ ${e instanceof Error ? e.message : String(e)}`); process.exit(1); }
 }
 // Client OAuth da Conta Google (config/google-conta-oauth.json, fora do git): sem ele o app sai sem Google. Aviso
 // destacado sempre; num release (`--versao`) o build falha, a menos que `--sem-google` permita de propósito.
@@ -72,8 +58,6 @@ for (const p of paths) {
   writeFileSync(join(res, "build.json"), `${JSON.stringify({ commit: git(["rev-parse", "--short", "HEAD"]), branch: git(["branch", "--show-current"]), em: new Date().toISOString() })}\n`);
   // Extensões embutidas (meu-bot-crm): Resources/<pasta da extensão>/ (manifest.json, content.js, popup.js, …).
   for (const e of produto.extensoes) cpSync(join("build", e), join(res, e), { recursive: true });
-  // Módulos do produto: a pasta do submódulo sem o .git (src/main/modulos/modulos.ts lê Resources/<nome>/).
-  if (modulos !== null) cpSync(join("produtos", modulos), join(res, modulos), { recursive: true, filter: (f) => !/(^|\/)\.git(\/|$)/.test(f) && !/(^|\/)node_modules(\/|$)/.test(f) });
   // Client OAuth do Google (Google Contatos → CRM): config/google-oauth.json local, fora do git; sem ele o app só
   // mostra "configure o Google". Vai junto só nos produtos com extensão do Gmail.
   if (produto.extensoes.includes("extensao-crm") && existsSync(join("config", "google-oauth.json"))) copyFileSync(join("config", "google-oauth.json"), join(res, "google-oauth.json"));

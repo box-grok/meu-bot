@@ -34,9 +34,7 @@ VIGIAR=(src scripts/tests scripts/package.mjs scripts/dist.mjs scripts/fuses.mjs
 TABELA="admin|meu-bot-admin|dist:admin
 meu-bot|meu-bot|dist
 staging|meu-bot-staging|dist:staging
-finance-staging|meu-bot-finance-staging|dist:finance-staging
-diego|meu-bot-diego|dist:diego
-diego-staging|meu-bot-diego-staging|dist:diego-staging"
+finance-staging|meu-bot-finance-staging|dist:finance-staging"
 # Checkout principal (o dono do .git; worktrees apontam para ele) e, ao lado dele, o worktree fixo de build.
 PRINCIPAL="$(cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .git)/.." && pwd)"
 BUILD="${MEU_BOT_BUILD_DIR:-$(dirname "$PRINCIPAL")/meu-bot-build-main}"
@@ -79,8 +77,6 @@ planejar() {
 preparar_build() {
   if [ -e "$BUILD/.git" ]; then git -C "$BUILD" checkout -q --detach origin/main || return 1
   else git worktree add -q --detach "$BUILD" origin/main || return 1; fi
-  # Submódulos (produtos/meu-bot-diego): o worktree nasce com a pasta vazia e o dist:diego-staging recusa sem o manifesto.
-  git -C "$BUILD" submodule update --init --recursive -q 2>/dev/null || log "aviso: submódulos não atualizaram em $BUILD"
   [ -e "$BUILD/node_modules" ] || ln -s "$PRINCIPAL/node_modules" "$BUILD/node_modules"
   [ -e "$BUILD/extensao-crm/node_modules" ] || { [ -d "$PRINCIPAL/extensao-crm/node_modules" ] && ln -s "$PRINCIPAL/extensao-crm/node_modules" "$BUILD/extensao-crm/node_modules"; }
   mkdir -p "$BUILD/build" "$BUILD/config"
