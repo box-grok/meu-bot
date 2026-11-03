@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const { capacidadesDe } = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-capacidades.js");
 
-const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "pausaPrazo", "pausaNativa", "grupos", "guarda", "politicaDm", "audio", "politicaReinicia", "gatewayProprio", "gruposAtualizar"];
+const CHAVES = ["parear", "listarConversas", "lerConversa", "limparHistorico", "pausar", "pausaPrazo", "pausaNativa", "grupos", "guarda", "politicaDm", "audio", "politicaReinicia", "gatewayProprio", "gruposAtualizar", "digitando", "digitandoReinicia"];
 
 test("Hermes: pausa com prazo vem do plugin meu-bot-pausa ou do nativo; sem os dois, pausar é pela lista (sem prazo); no OpenClaw não há prazo", () => {
   const sem = capacidadesDe("hermes", true, true);
@@ -43,6 +43,9 @@ test("Hermes: lista, lê e limpa pelo state.db, liga/desliga grupos e áudio (co
   const c = capacidadesDe("hermes", true, true);
   assert.ok(c.parear && c.listarConversas && c.lerConversa && c.limparHistorico && c.pausar && c.grupos && c.politicaDm && c.audio && c.politicaReinicia);
   assert.ok(!capacidadesDe("hermes", true, false).grupos, "grupos dependem do número conectado");
+  assert.ok(c.digitando && c.digitandoReinicia && capacidadesDe("hermes", true, false).digitando, "Hermes: typing_indicator no config.yaml, com reinício, sem depender de número conectado");
+  assert.ok(capacidadesDe("openclaw", true, false).digitando && capacidadesDe("openclaw", true, true, { proprio: false }).digitando, "OpenClaw: vale sem número conectado e num gateway de outro usuário");
+  assert.ok(!capacidadesDe("openclaw", true, true).digitandoReinicia, "no OpenClaw o typingMode vale sem reiniciar");
   assert.ok(capacidadesDe("hermes", true, false).politicaDm, "a política não depende de número conectado");
   assert.ok(!capacidadesDe("openclaw", true, true).politicaReinicia, "no OpenClaw a política vale sem reiniciar");
   // A guarda é um plugin do OpenClaw: oferecer no Hermes daria erro na primeira tentativa.
@@ -55,6 +58,7 @@ test("PicoClaw: pareia e tem política de quem responde; o resto segue fora até
   const c = capacidadesDe("picoclaw", true, true);
   assert.ok(c.parear && c.politicaDm);
   assert.ok(!c.listarConversas && !c.grupos && !c.guarda);
+  assert.ok(!c.digitando, "o canal nativo do WhatsApp do PicoClaw não mostra \"digitando…\" (tutorial 17 some lá)");
 });
 
 test("gateway desconhecido não ganha capacidade por engano", () => {

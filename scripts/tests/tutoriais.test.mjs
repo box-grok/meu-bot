@@ -19,15 +19,15 @@ test("tutoriais: ids únicos e cada passo com título, texto, alvo e regra de co
 test("selo: número, passos e minutos; sem número, só os dois", () => {
   assert.equal(tutorialBadge(t), "Tutorial 3 · 5 passos · 4 min");
   assert.equal(tutorialBadge({ ...t, minutes: 1, steps: [t.steps[0]] }, false), "1 passo · 1 min");
-  assert.equal(tutorialBadge(byId("statusline")), "Tutorial 17 · 4 passos · 3 min");
+  assert.equal(tutorialBadge(byId("statusline")), "Tutorial 18 · 4 passos · 3 min");
 });
 
 test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tutorial anterior; só o suporte exige o pacote", () => {
   // Renumerados em 31 out na ordem da trilha (a lista aparece na ordem do array): os que podem entrar na lista são 1..15,
-  // sem buracos; os ocultos por decisão de produto ficam no fim (17 status line; 18 o CRM, em duas versões pela
+  // sem buracos; os ocultos por decisão de produto ficam no fim (18 status line; 19 o CRM, em duas versões pela
   // licença/motor, CRM no Gmail com o CRM próprio ou CRM pelo Streak no resto, nunca juntas).
-  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 18]);
-  assert.deepEqual(TUTORIAIS.filter((x) => x.oculto !== true).map((x) => x.number), Array.from({ length: 16 }, (_, i) => i + 1), "a lista sai 1, 2, 3… sem buraco");
+  assert.deepEqual(TUTORIAIS.map((x) => x.number), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19]);
+  assert.deepEqual(TUTORIAIS.filter((x) => x.oculto !== true).map((x) => x.number), Array.from({ length: 17 }, (_, i) => i + 1), "a lista sai 1, 2, 3… sem buraco");
   for (let i = 1; i < TUTORIAIS.length; i++) assert.ok(TUTORIAIS[i - 1].number <= TUTORIAIS[i].number, `${TUTORIAIS[i].id} fora da ordem dos números`);
   for (const produto of [{ planoExigido: "free", crmProprio: false, crmStreak: true }, { planoExigido: "free", crmProprio: true, crmStreak: false }]) {
     const nums = visibleTutorials({ ...emptyContext(), produto }, () => true).map((x) => x.number);
@@ -36,7 +36,7 @@ test("trilha numerada: números 1..N únicos na ordem; `after` aponta para um tu
   assert.deepEqual(TUTORIAIS.slice(0, 8).map((x) => x.id), ["claude-login", "contas-claude", "whatsapp-openclaw", "audio-whatsapp", "xai-login", "fallback-contas", "suporte", "whatsapp-objetivo"]);
   for (const x of TUTORIAIS) if (x.after !== undefined) { const prev = byId(x.after); assert.ok(prev && prev.number < x.number, `${x.id} depois de ${x.after}`); }
   assert.deepEqual(TUTORIAIS.filter((x) => x.needsSupport).map((x) => x.id), ["suporte"]);
-  assert.equal(tutorialNumber("statusline"), 17); assert.equal(tutorialNumber("nada"), null);
+  assert.equal(tutorialNumber("statusline"), 18); assert.equal(tutorialNumber("nada"), null);
 });
 
 test("visibleTutorials: 2 e 5 só depois do 1 concluído; 6 só depois do 5; sem pré-requisito, some em vez de ir para arquivados", () => {
@@ -158,6 +158,29 @@ test("tutorial 4 (ouvir áudios): depois do 3; a transcrição ligada na máquin
   assert.ok(ids((x) => x.id === "whatsapp-openclaw").includes("audio-whatsapp"));
 });
 
+test("tutorial 17 (digitando…): depois do 3, só onde o agente aceita o ajuste; a escolha gravada conclui o passo 1, conferir é à mão", () => {
+  const d = TUTORIAIS.find((x) => x.id === "digitando-whatsapp");
+  assert.equal(d.number, 17); assert.equal(d.after, "whatsapp-openclaw"); assert.deepEqual(d.needs, ["whatsapp"]); assert.equal(d.needsDigitando, true);
+  assert.deepEqual(d.steps.map((s) => s.body), ["digitando-escolher", undefined]);
+  assert.equal(guideView(d, null, emptyFlags()).current, 0);
+  assert.equal(guideView(d, wa({ ready: true, connected: true }), emptyFlags()).current, 0, "chave vazia (automático) ainda não é escolha");
+  assert.equal(guideView(d, wa({ ready: true, connected: true, typingMode: null }), emptyFlags()).current, 0);
+  assert.equal(guideView(d, wa({ ready: true, connected: true, typingMode: "thinking" }), emptyFlags()).current, 0, "modo ajustado à mão fora dos dois cartões não conclui");
+  assert.equal(guideView(d, wa({ ready: true, connected: false, typingMode: "instant" }), emptyFlags()).current, 0, "desconectado não conta");
+  assert.equal(guideView(d, wa({ ready: true, connected: true, typingMode: "instant" }), emptyFlags()).current, 1, "mostrar: falta conferir");
+  assert.equal(guideView(d, wa({ ready: true, connected: true, typingMode: "never" }), emptyFlags()).current, 1, "não mostrar também é escolha");
+  assert.equal(guideView(d, wa({ ready: true, connected: true, typingMode: "never" }), { ...emptyFlags(), digitandoVisto: true }).finished, true);
+  assert.equal(guideView(d, wa({ ready: true, connected: true }), { ...emptyFlags(), digitandoVisto: true }).finished, false, "conferir não pula a escolha");
+  const done = (x) => x.id === "claude-login" || x.id === "whatsapp-openclaw";
+  const ids = (possible) => visibleTutorials({ ...emptyContext(), digitando: { possible } }, done).map((x) => x.id);
+  assert.ok(ids(true).includes("digitando-whatsapp"));
+  assert.ok(!ids(null).includes("digitando-whatsapp"), "sem status ainda, fica de fora (senão aparecia e sumia)");
+  assert.ok(!ids(false).includes("digitando-whatsapp"), "agente sem o ajuste (PicoClaw) não vê o tutorial");
+  assert.ok(!visibleTutorials({ ...emptyContext(), digitando: { possible: true } }, (x) => x.id === "claude-login").map((x) => x.id).includes("digitando-whatsapp"), "só com o 3 concluído");
+  for (const st of d.steps) assert.ok(!/OpenClaw/.test(st.title) && !/OpenClaw/.test(st.text), `passo ${st.id} sem nome de produto`);
+  assert.ok(!/OpenClaw/.test(d.summary));
+});
+
 test("título da aba do guia: progresso, e ✓ quando termina", () => {
   assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true }), emptyFlags())), "3 · WhatsApp 3/5");
   assert.equal(guideTabTitle(t, guideView(t, wa({ ready: true, connected: true, dmPolicy: "open" }), { policyChosen: true, tested: true })), "3 · WhatsApp ✓");
@@ -191,7 +214,7 @@ test("tutorial do suporte: some sem o pacote; passos pelo estado real; conclui q
 
 test("tutorial da status line: oculto da lista (o admin instala ao criar a conta); o guia continua existindo: instalar, depois os limites no rodapé", async () => {
   const sl = TUTORIAIS.find((x) => x.id === "statusline");
-  assert.equal(sl.number, 17); assert.equal(sl.oculto, true);
+  assert.equal(sl.number, 18); assert.equal(sl.oculto, true);
   assert.ok(!visibleTutorials(emptyContext()).includes(sl), "sem o 1 concluído não aparece");
   assert.ok(!visibleTutorials(emptyContext(), (x) => x.id === "claude-login").includes(sl), "nem com o 1 concluído: saiu da lista em 30 out");
   assert.ok(!visibleTutorials(emptyContext(), () => true).includes(sl));
@@ -272,7 +295,7 @@ test("tutorial 11 (grupos): escolher, quem aciona (nunca herdado), ligar e testa
   assert.equal(quemEscolhido(info({ quemAciona: ["5511999998888"], quemAcionaHerdado: true })), false);
 });
 
-test("tutorial 18 (CRM no Gmail): passo do primeiro pipeline antes do teste; conclui pelo pipeline padrão do WhatsApp", () => {
+test("tutorial 19 (CRM no Gmail): passo do primeiro pipeline antes do teste; conclui pelo pipeline padrão do WhatsApp", () => {
   const t10 = byId("crm-gmail");
   assert.deepEqual(t10.steps.map((s) => s.id), ["instalar", "gmail", "pipeline", "importar", "testar"]);
   const base = { ...emptyContext(), crm: { access: "ok", info: { installed: true }, local: null }, navegador: { ...emptyContext().navegador, extensaoEmbutida: true, tabs: 1 } };

@@ -209,6 +209,31 @@ PY`;
       if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
       log(`[whatsapp] ${host}: dmPolicy=${policy}`);
     },
+    // `agents.defaults.typingMode`; o gateway aplica sem reiniciar (hot reload de agents.*). Uma entrada do agente
+    // (`agents.entries.<id>.typingMode`) venceria o padrão, então sai antes. Relê o json para confirmar o que ficou.
+    setTypingMode: async (host, mode) => {
+      const a = alvo(host);
+      const script = `${PATH_SH}; set -e
+if python3 - '${a.agentId}' <<'PY'
+import json, os, sys
+c = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+e = ((c.get("agents") or {}).get("entries") or {}).get(sys.argv[1]) or {}
+raise SystemExit(0 if "typingMode" in e else 1)
+PY
+then timeout 60 openclaw config unset agents.entries.${a.agentId}.typingMode >/dev/null; fi
+timeout 60 openclaw config set agents.defaults.typingMode ${mode} >/dev/null
+python3 - <<'PY'
+import json, os
+c = json.load(open(os.path.expanduser("~/.openclaw/openclaw.json")))
+print("TYPING=%s" % (((c.get("agents") or {}).get("defaults") or {}).get("typingMode") or ""))
+PY
+`;
+      const r = await run(gw(host), script, 90_000);
+      if (r.code !== 0) throw new Error(`não consegui mudar o "digitando…": ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
+      const ficou = /^TYPING=(.*)$/m.exec(r.stdout)?.[1] ?? "";
+      if (ficou !== mode) throw new Error(`o "digitando…" não ficou gravado como escolhido (ficou "${ficou || "vazio"}"). Tente de novo.`);
+      log(`[whatsapp] ${host}: typingMode=${mode}`);
+    },
     groupClearPlan: async (_host, jid, grupos) => ({ sessoes: (await grupoSessionKey(jid, grupos)) === null ? 0 : 1 }),
     groupClear: async (host, jid, grupos) => {
       const key = await grupoSessionKey(jid, grupos);

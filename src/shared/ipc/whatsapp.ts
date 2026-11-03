@@ -10,6 +10,11 @@ import type { Gateway } from "./maquina";
  * O que a máquina sabe fazer no WhatsApp, independente de qual framework ela roda. A tela lê daqui
  * em vez de comparar o nome do gateway: uma VM com Hermes mostra o que o Hermes faz, e pronto.
  */
+/** Quando o agente mostra "digitando…": `instant` liga assim que ele começa; `never` nunca; `thinking`/`message` esperam raciocínio ou texto (só no OpenClaw; o Hermes é ligado/desligado, lido como `instant`/`never`). */
+export type TypingMode = "instant" | "never" | "thinking" | "message";
+export const TYPING_MODES: readonly TypingMode[] = ["instant", "never", "thinking", "message"];
+/** O que a tela oferece: mostrar sempre ou nunca (os outros modos ficam para quem edita a configuração à mão). */
+export type TypingChoice = "instant" | "never";
 export interface WhatsappCapacidades {
   parear: boolean; listarConversas: boolean; lerConversa: boolean; limparHistorico: boolean;
   /** O gateway do WhatsApp é desta própria conta da máquina (o app pode instalá-lo, religá-lo, pôr a guarda). Com gateway compartilhado, não. */
@@ -22,6 +27,10 @@ export interface WhatsappCapacidades {
   /** O próprio Hermes faz a pausa por contato (ainda não existe; quando existir, o app prefere o nativo ao plugin). */
   pausaNativa: boolean;
   grupos: boolean; guarda: boolean; politicaDm: boolean; audio: boolean;
+  /** O app liga/desliga o "digitando…" do agente (OpenClaw: `agents.defaults.typingMode`; Hermes: `platforms.whatsapp.typing_indicator`). */
+  digitando: boolean;
+  /** Aplicar o "digitando…" reinicia o gateway do WhatsApp da máquina (Hermes: a chave é lida na subida). */
+  digitandoReinicia: boolean;
   /** Aplicar "quem o agente responde" reinicia o gateway do WhatsApp da máquina (alguns segundos fora do ar). */
   politicaReinicia: boolean;
 }
@@ -56,6 +65,8 @@ export interface WhatsappStatus {
   audioOut?: VoiceReplyMode | null;
   /** Voz das respostas em áudio instalada na máquina (null = nenhuma escolhida ainda; a faber de antes conta como faber). */
   audioVoice?: VozId | null;
+  /** Quando o agente mostra "digitando…" (OpenClaw: `typingMode` do agente ou o padrão); null = chave vazia (OpenClaw: a regra automática; Hermes: o padrão, ligado). Ausente = PicoClaw, que não mostra. */
+  typingMode?: TypingMode | null;
   /** O que o app consertou sozinho nesta consulta (pt-BR), para a pessoa saber que a máquina mudou (ex.: gateway em porta própria). */
   repaired?: string;
   /** Agente que a pessoa escolheu para o WhatsApp desta máquina; null = ainda não escolheu (vale o que estiver instalado). */

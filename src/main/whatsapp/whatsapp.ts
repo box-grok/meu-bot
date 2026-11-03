@@ -6,7 +6,7 @@
  * O que é decidido pelos dados (chaves de sessão do Hermes vs. do OpenClaw) fica aqui; o IO de cada motor, no adaptador.
  * Capacidades: a tabela de whatsapp-capacidades.ts decide o que a tela pode oferecer, nunca o nome do motor.
  */
-import type { Gateway, WhatsappAgente, WhatsappAlvo, WhatsappChat, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
+import type { Gateway, TypingChoice, WhatsappAgente, WhatsappAlvo, WhatsappChat, WhatsappGroupPatch, WhatsappGroups, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "../../shared/ipc";
 import { agenteEscolhido, alvoSemAlias, alvoValido, capacidadesDe, WA_AGENTE_FILE, WA_ALVO_FILE, WA_ALVO_SH, WA_MOTOR_SH } from "./whatsapp-capacidades";
 import { ownSessionKeys, grupoToMarkdown, SAFE_KEY, threadToMarkdown, whatsappContextNote } from "./whatsapp-chats";
 import { WA_MARKS_FILE, waMarkSh, type WaDonoPatch, type WaGroupMarkPatch, type WaMarkPatch } from "./whatsapp-marks";
@@ -154,6 +154,18 @@ export async function setDmPolicy(host: string, policy: WhatsappReplyChoice, num
   await motor.setDmPolicy(host, policy, numbers, {});
   esquecerWhatsapp(host);
   return whatsappStatus(host);
+}
+
+/** "Digitando…" do agente no WhatsApp: mostrar sempre ou nunca (whatsapp-motor.ts › setTypingMode). Devolve o estado novo. */
+export async function setTypingMode(host: string, mode: TypingChoice): Promise<WhatsappStatus> {
+  if (host === LOCAL_HOST || !isValidHost(host)) throw new Error("este Mac não tem agente com WhatsApp");
+  const motor = await motorQueResponde(host, "ligar ou desligar o \"digitando…\"");
+  await motor.setTypingMode(host, mode);
+  esquecerWhatsapp(host);
+  // Uma consulta de status em voo (iniciada antes da gravação) é compartilhada pelo cache e traria o valor de antes:
+  // nesse caso, espera-a terminar e lê de novo, forçado, para a tela receber o que ficou gravado.
+  const st = await whatsappStatus(host);
+  return st.typingMode === mode ? st : whatsappStatus(host, { force: true });
 }
 
 /**

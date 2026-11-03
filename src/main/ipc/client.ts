@@ -20,7 +20,7 @@ import { crmCriarPipeline, crmDefinirPadrao, crmLocal } from "../crm/crm-local";
 import { caps } from "../app/variant";
 import { eventoHook } from "../app/depuracao";
 import { disableSshCheck, restoreLastPolicy } from "../maquina/tailscale";
-import { cancelPairing, runSsh, setDmPolicy, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
+import { cancelPairing, runSsh, setDmPolicy, setTypingMode, startPairing, whatsappBranch, whatsappEscolherAgente, whatsappLogout, whatsappSetDono, whatsappStatus } from "../whatsapp/whatsapp";
 import { pauseRuleSh } from "../whatsapp/whatsapp-pause";
 import { cancelClaudeLogin, claudeLogout, startClaudeLogin, submitClaudeLoginCode } from "../agente/claudeLogin";
 import { cancelXaiLogin, startXaiLogin, xaiLogout } from "../agente/xaiLogin";
@@ -399,6 +399,14 @@ export function registerClientIpc(): void {
     const numbers = Array.isArray(p?.numbers) ? p.numbers.filter((n): n is string => typeof n === "string") : [];
     if (policy === "list" && numbers.length === 0) throw new Error("a lista precisa de pelo menos um número");
     return setDmPolicy(h.host, policy, numbers).then((r) => { void registrar(h.host, "whatsapp.quem-responde", policy === "open" ? "todo mundo" : policy === "self" ? "só você" : `você e ${numbers.length} números`); return r; });
+  });
+  // "Digitando…" do agente no WhatsApp: mostrar sempre ou nunca (tutorial 17); o motor decide se reinicia o gateway.
+  handleClient("whatsapp:typing", (event, payload: unknown) => {
+    const h = hostFromEvent(event);
+    if (h === null) throw new Error("origem inválida");
+    const mode = (payload as { mode?: unknown } | null)?.mode;
+    if (mode !== "instant" && mode !== "never") throw new Error("modo inválido");
+    return setTypingMode(h.host, mode).then((r) => { void registrar(h.host, "whatsapp.digitando", mode === "instant" ? "mostrar" : "não mostrar"); return r; });
   });
   // Dono do agente: quem manda nele (null = volta ao número pareado). Reaplica "quem responde" e, no Hermes, o home channel.
   handleClient("whatsapp:dono", (event, payload: unknown) => {

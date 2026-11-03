@@ -461,6 +461,48 @@ Os avisos (Mac novo, vigia, cota) vão só pelo WhatsApp da pessoa: o e-mail pel
   aparecer como Hermes (como a janela já dizia); uma máquina com o binário do Hermes mas sem o WhatsApp dele e sem OpenClaw
   aparece como "Hermes sem bridge" em vez de "sem agente".
 
+## Tutorial 17: "digitando…" no WhatsApp, ligar ou desligar pela tela (3 nov 2026)
+
+- **Motivo:** a pessoa queria controlar o "digitando…" que o agente mostra enquanto prepara a resposta e achava que
+  "veio desativado". No OpenClaw isso é do próprio gateway (nada de código no agente, como num guia de wuzapi/mythos que
+  circulou): a chave `agents.defaults.typingMode` (`instant` liga assim que o agente começa; `never` nunca; `thinking` e
+  `message` esperam raciocínio ou texto). Vazia, vale a regra automática: conversa direta e grupo com menção mostram na
+  hora, grupo sem menção só quando o texto começa a sair. Renovação a cada `typingIntervalSeconds` (6 s). O gateway
+  recarrega `agents.*` sem reiniciar (`[reload] config hot reload applied (agents.defaults.typingMode)` no journal).
+- **Tutorial 17** (`digitando-whatsapp`, depois do 3, `needsDigitando`): passo 1 "Mostrar ou não" com dois cartões
+  (`instant` / `never`), concluído quando o status traz um dos dois com o número conectado (a chave vazia não conta: a
+  pessoa precisa escolher; `thinking`/`message` ajustados à mão aparecem como "ajustado à mão" e também não concluem);
+  passo 2 "Conferir no celular", à mão (`digitandoVisto`). Os ocultos passaram a 18 (status line) e 19 (CRM).
+- **Leitura:** `ocConfigPy` imprime `typing=` (entrada do agente, senão o padrão) e `openclawStatus` põe `typingMode`
+  no status (`typingModeDe`: modo conhecido ou null). Capacidade `digitando`: `true` no OpenClaw (também num gateway de
+  outro usuário), e no Hermes (`digitandoReinicia`: aplicar reinicia o gateway), `false` no PicoClaw, cujo canal nativo do WhatsApp
+  (`whatsapp_native`) não implementa o indicador (`TypingCapable`); o tutorial some lá (a fonte `whatsapp` agora preenche
+  `ctx.digitando.possible`, porque o filtro de tutoriais visíveis só enxerga o contexto).
+- **Gravação:** `whatsapp:typing` → `setTypingMode` (fachada em whatsapp.ts, mesma forma do `setDmPolicy`) →
+  `MotorWhatsapp.setTypingMode`. OpenClaw: apaga `agents.entries.<agente>.typingMode` se existir (venceria o padrão),
+  `openclaw config set agents.defaults.typingMode <modo>` e relê o json (`TYPING=`) para confirmar; `esquecerWhatsapp`
+  e devolve o status novo, que a tela grava direto (`comPareamento`). Auditoria `whatsapp.digitando`.
+  Pegadinha do cache: uma consulta de status em voo (iniciada antes da gravação) é compartilhada pelo `TtlCache` e
+  voltava com o valor antigo (a tela ficava em "✓ mostrando" depois de escolher "Não mostrar"); a fachada espera essa
+  consulta e, se o `typingMode` não bate, lê de novo forçado. Na tela, cada clique leva 12-14 s (ssh + CLI + status).
+- **Hermes (3 nov, à tarde):** a chave é `platforms.whatsapp.typing_indicator` do `~/.hermes/config.yaml`
+  (gateway/config.py › `PlatformConfig`, desde a 0.22.2 que o app instala): ligada (o padrão) o gateway pede ao bridge
+  o "composing" assim que começa a processar e renova a cada 2 s (o `instant` do OpenClaw); desligada, nunca. Não há
+  `thinking`/`message` nem intervalo. É lida na subida, então `setTypingMode` grava (`hermesTypingSetSh`, via
+  HERMES_YAML_PY com backup; tira a cópia de `extra`), reinicia (HERMES_RESTART_SH) e relê (`HERMES_TYPING_SH` imprime
+  `typing=true|false|`; `hermesTypingModeDe` → `instant`/`never`/null). O status do Hermes passou a trazer `typingMode`
+  pela mesma leitura. Chave ausente aparece como "ainda sem escolha", como a vazia do OpenClaw. A tela avisa do
+  reinício (`digitandoReinicia`). Pelo terminal: `hermes config get|set|unset platforms.whatsapp.typing_indicator` e
+  `systemctl --user restart hermes-gateway`. As máquinas do Grok rodam Hermes: era por isso que o tutorial 17 sumia
+  nelas (docs/TUTORIAL-digitando-whatsapp.md tem o passo a passo por motor).
+- **Pelo terminal** (o que a tela faz, para quem prefere): `openclaw config get agents.defaults.typingMode` (vazio =
+  automático), `openclaw config set agents.defaults.typingMode instant|never`, `openclaw config unset
+  agents.defaults.typingMode` para voltar ao automático. Em dúvida, `openclaw gateway restart`.
+- **Pegadinhas:** o journal do gateway **não registra** o envio do "digitando…" (a prova é o celular); `message` não
+  esconde de verdade nas versões recentes do plugin (openclaw/openclaw#111547), só `never`; "gravando áudio…" não existe
+  no OpenClaw 2026.9.9. Na `agente-box-openclaw` o agente já tinha gravado `instant` pelo chat em 3 nov, e o celular
+  confirmou.
+
 ## Status do OpenClaw com uma chamada só, cache no main e consulta mais espaçada (1 nov)
 
 - Motivo: cada chamada da CLI `openclaw` sobe um Node de ~300 MB na máquina. A consulta de estado fazia 7 ou 8 por vez

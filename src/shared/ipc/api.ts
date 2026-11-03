@@ -12,7 +12,7 @@ import type { LicensePatch, LicenseView } from "./licenca";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
 import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararId, PrepararVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
-import type { WaMarkPatch, WhatsappAlvo, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
+import type { TypingChoice, WaMarkPatch, WhatsappAlvo, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
   /** Modo de depuração: tique de 1 s do main (para a faixa saber se ele está preso) e a última marca. */
@@ -420,6 +420,8 @@ export interface MeuBotClientApi {
   whatsappCancel(): Promise<void>;
   /** OpenClaw: "self" = só você fala com o agente; "open" = responde todo mundo; "list" = você + `numbers` (só dígitos, com DDI). Vale sem reiniciar o gateway. */
   whatsappSetDmPolicy(policy: WhatsappReplyChoice, numbers?: readonly string[]): Promise<WhatsappStatus>;
+  /** "instant" = mostra "digitando…" assim que o agente começa a responder; "never" = nunca. OpenClaw aplica sem reiniciar; Hermes reinicia o gateway (capacidade `digitandoReinicia`). Devolve o estado novo. */
+  whatsappTyping(mode: TypingChoice): Promise<WhatsappStatus>;
   /** Quem manda no agente (null = volta ao número pareado). Reaplica "quem responde" e, no Hermes, o home channel (reinicia o gateway). */
   whatsappSetDono(numero: string | null): Promise<WhatsappStatus>;
   /** Grava qual agente atende o WhatsApp desta máquina; trocar desconecta o número do agente anterior. */

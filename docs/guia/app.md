@@ -85,7 +85,8 @@
   guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`). Conta de antes da lixeira
   (`gmailEscreve === false`) vê no passo 5 o aviso para reconectar uma vez.
 - **Renumeração:** o Gmail entra como **16**, depois de 15 Entrada rápida (trilha: `after: "claude-login"`); os
-  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões). O mapa antigo → novo da seção de 31 out continua
+  ocultos passam a 17 (status line) e 18 (CRM, nas duas versões); em 3 nov o 17 "Digitando… no WhatsApp" entrou
+  depois do 16 e os ocultos foram para 18 e 19 (docs/guia/whatsapp.md). O mapa antigo → novo da seção de 31 out continua
   valendo para os 15 primeiros.
 - **Fonte `google`:** `known` = a Conta Google da máquina já respondeu (`googleContaStatus`, mais o evento
   `google-conta:changed`); `access` pela licença como o Navegador. `refreshGmailGuia` roda no boot e ao abrir o guia.
