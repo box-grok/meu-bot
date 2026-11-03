@@ -108,3 +108,18 @@ test("preparar: OpenClaw para todos ao lado do Hermes (o app é agnóstico de mo
   // A ordem: depois do Hermes e do transcritor, antes do Claude Global.
   assert.deepEqual(ORDEM_PREPARAR.slice(ORDEM_PREPARAR.indexOf("transcritor"), ORDEM_PREPARAR.indexOf("transcritor") + 3), ["transcritor", "openclaw", "claude-global"]);
 });
+
+test("preparar: o Criar usuário não instala o OpenClaw (a conta nova usa o Hermes; o OpenClaw só pelo botão da aba)", () => {
+  const { faltamAoCriarUsuario } = createRequire(import.meta.url)("../../dist/main/admin/preparar-core.js");
+  const v = lerPreparar(saida({ transcritor: 0, openclaw: "nenhum" }));
+  assert.deepEqual(v.faltam, ["transcritor", "openclaw"]);
+  assert.deepEqual(faltamAoCriarUsuario(v.faltam), ["transcritor"]);
+  assert.deepEqual(faltamAoCriarUsuario(["openclaw"]), []);
+});
+
+test("motivoSsh: prazo estourado e stderr vazio dizem por quê (não sai mais 'não consegui ler os usuários da máquina:' sem nada)", () => {
+  const { motivoSsh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.equal(motivoSsh({ code: 255, stderr: "aviso\nssh: connect to host x port 22: Connection refused\n" }, 60_000), "ssh: connect to host x port 22: Connection refused");
+  assert.match(motivoSsh({ code: null, stderr: "" }, 60_000), /não respondeu em 60 s/);
+  assert.match(motivoSsh({ code: 1, stderr: "  \n" }, 60_000), /código 1/);
+});
