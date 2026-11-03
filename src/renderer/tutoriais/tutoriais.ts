@@ -32,7 +32,7 @@ function rememberTutorials(states: Map<string, TutorialState>): void {
 }
 export const tutState = (t: Tutorial): TutorialState => tutorialState(t, ctx.waStatus, loadGuideFlags(t), ctx.guideCtx(), loadTutMemory()[t.id] ?? null);
 export const tutorialDone = (t: Tutorial): boolean => tutState(t) === "done";
-/** Os tutoriais desta janela agora (pacote de suporte e trilha: o 3 e o 4 só depois do 1 concluído). */
+/** Os tutoriais desta janela agora (pacote de suporte e trilha: o 2 e o 4 só depois do 1 concluído). */
 export const visibleNow = (): Tutorial[] => visibleTutorials(ctx.guideCtx(), tutorialDone);
 /**
  * Tutoriais já vistos nesta máquina (ids), só cresce: a pessoa "vê" ao abrir Tutoriais. Novidade = visível,
@@ -344,7 +344,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
       const swap = el("button", "btn btn-ghost btn-small", "Sair e entrar com outra conta"); swap.type = "button";
       swap.addEventListener("click", () => ctx.armConfirm(swap, "Confirmar? o grok-4 para até entrar de novo", () => { void ctx.logoutXai(true); }));
       row.append(`xAI (Grok) · ${ctx.xaiAuth?.email ?? "logada"}. `, swap);
-      manage.append(row, el("p", "hint", "Para o Grok assumir quando o Claude falhar: tutorial 6 · Fallback (em breve)."));
+      manage.append(row, el("p", "hint", "Para o Grok assumir quando o Claude falhar: tutorial 5 · Fallback (em breve)."));
       panel.append(manage);
     } else if (t.id === "claude-login") {
       const manage = el("div", "guide-manage");
@@ -392,7 +392,7 @@ function renderGuide(t: Tutorial, panel: HTMLElement): void {
     manage.append(cards);
     ctx.renderChannelEditor(manage);
     manage.append(el("p", "hint strong-hint", "Áudio no WhatsApp"));
-    ctx.renderAudioControls(manage, "responder");
+    ctx.renderAudioControls(manage);
     const acts = el("div", "dialog-actions");
     const refresh = el("button", "btn btn-ghost btn-small", "Atualizar"); refresh.type = "button";
     refresh.addEventListener("click", () => { refresh.disabled = true; void ctx.refreshWhatsapp().finally(() => { refresh.disabled = false; }); });

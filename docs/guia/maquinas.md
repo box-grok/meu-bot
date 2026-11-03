@@ -474,7 +474,7 @@ numa infraestrutura prioritária nova antes de migrar uma pessoa para lá.
 | Pacotes | `jq`, `ffmpeg`, `xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot`; opcional `chromium` | `dpkg-query -W jq ffmpeg xvfb novnc chromium` |
 | gh | `/usr/local/bin/gh` (root 755) | `/usr/local/bin/gh --version` |
 | Hermes | `/opt/hermes` + `/usr/local/bin/hermes` | `hermes --version` como qualquer usuário |
-| Transcritor | `/opt/transcriber` (venv, modelo, `bin/transcrever`) | `grep meu-bot-transcritor /opt/transcriber/bin/transcrever` |
+| Transcritor | `/opt/transcriber` (venv, modelo, `bin/transcrever` do Hermes e `bin/transcrever-texto` do OpenClaw; sem ffmpeg) | `grep meu-bot-transcritor /opt/transcriber/bin/transcrever && test -x /opt/transcriber/bin/transcrever-texto` |
 | Claude Code Global | `/opt/meu-bot-claude-global`, `/etc/meu-bot/claude-global`, unit `meu-bot-claude-global`; login do root em `/root/.claude` (humano) | `systemctl is-active meu-bot-claude-global` |
 | Link Público | nginx + cloudflared, `/etc/meu-bot-link-publico/config.json`, `/var/www/publico` (1733), `/root/.cloudflared/cert.pem` (humano), túnel em `/etc/cloudflared/config.yml` | `systemctl is-active nginx cloudflared` |
 

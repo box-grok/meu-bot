@@ -94,6 +94,8 @@ export type MaquinaAlerta = "box" | "memoria" | "disco" | "lag";
 export interface InstallBackendResult {
   ok: boolean;
   log: string[];
+  /** Código de saída do instalador, quando houve um (3 = precisa do admin: faltam pacotes e não há sudo). */
+  codigo?: number | null;
 }
 
 export interface InstallProgressEvent {

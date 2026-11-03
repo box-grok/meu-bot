@@ -5,7 +5,7 @@ export interface FallbackProvider { name: string; available: boolean }
 export const FALLBACK_PRIMARIES: readonly string[] = ["agente", "grok-4"];
 /** A reserva de um primário: quem mais está disponível na corrente, em ordem (vazio = sem reserva). */
 export const fallbackReserve = (primary: string, chain: readonly FallbackProvider[]): string[] => chain.filter((p) => p.available && p.name !== primary).map((p) => p.name);
-/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 6, a partir do que o backend informa. */
+/** A linha "Primário: … Reserva: …" das Configurações e do tutorial 5, a partir do que o backend informa. */
 export function fallbackOrderText(primary: string, chain: readonly FallbackProvider[] | null): string {
   if (chain === null || chain.length === 0) return "O backend desta máquina ainda não informa a corrente de provedores.";
   if (!chain.some((p) => p.name === primary)) return `${primary} fica fora da corrente: sem reserva. Com agente ou grok-4 como primário a reserva é automática.`;

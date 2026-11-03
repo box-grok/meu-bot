@@ -8,7 +8,7 @@ const todos = [...PACOTES_BASE, ...PACOTES_TELA, "chromium"];
 const pacotes = (faltam = []) => todos.map((p) => `${p}=${faltam.includes(p) ? 0 : 1}`).join(" ");
 const saida = (o = {}) => [
   "ROOT", `RAM=${o.ram ?? 32000000}`, `SWAP=${o.swap ?? 8388604}`, `COTA=${o.cota ?? 1}`, `RESERVA=${o.reserva ?? 1}`, `SEMISO=${o.semiso ?? ""}`,
-  `PACOTES=${o.pacotes ?? pacotes()}`, `GH=${o.gh ?? "2.103.3"}`, `HERMES=${o.hermes ?? "global"}`, `OPENCLAW=${o.openclaw ?? "global"}`, `CG=${o.cg ?? "1 1 1"}`, `LP=${o.lp ?? "1 1 1 1 agentesgrok.com"}`, `OS=${o.os ?? "debian"}`,
+  `PACOTES=${o.pacotes ?? pacotes()}`, `GH=${o.gh ?? "2.103.3"}`, `HERMES=${o.hermes ?? "global"}`, `TRANSCRITOR=${o.transcritor ?? 1}`, `OPENCLAW=${o.openclaw ?? "global"}`, `CG=${o.cg ?? "1 1 1"}`, `LP=${o.lp ?? "1 1 1 1 agentesgrok.com"}`, `OS=${o.os ?? "debian"}`,
 ].join("\n") + "\n";
 
 test("preparar: máquina pronta → tudo ok, nada a aplicar; NAOROOT → root=false", () => {
@@ -23,7 +23,7 @@ test("preparar: máquina pronta → tudo ok, nada a aplicar; NAOROOT → root=fa
 });
 
 test("preparar: faltas saem na ordem de dependência, com o detalhe; o Chromium é opcional e fica fora de faltam", () => {
-  const v = lerPreparar(saida({ swap: 0, cota: 0, reserva: 0, semiso: "box-1 box-2", pacotes: pacotes(["ffmpeg", "xvfb", "chromium"]), gh: "", hermes: "sem-transcritor" }));
+  const v = lerPreparar(saida({ swap: 0, cota: 0, reserva: 0, semiso: "box-1 box-2", pacotes: pacotes(["ffmpeg", "xvfb", "chromium"]), gh: "", hermes: "sem-transcritor", transcritor: 0 }));
   assert.deepEqual(v.faltam, ["swap", "cota", "governanca", "pacotes", "gh", "transcritor"]);
   const por = Object.fromEntries(v.itens.map((i) => [i.id, i]));
   assert.match(por.pacotes.detalhe, /^faltam: ffmpeg, xvfb$/);
@@ -31,9 +31,15 @@ test("preparar: faltas saem na ordem de dependência, com o detalhe; o Chromium 
   assert.equal(por.hermes.estado, "ok"); assert.equal(por.transcritor.estado, "falta");
   assert.equal(por.chromium.estado, "falta"); assert.equal(por.chromium.opcional, true);
   assert.deepEqual(v.semIsolamento, ["box-1", "box-2"]);
-  // Hermes só no root: os dois faltam.
-  const r = lerPreparar(saida({ hermes: "root" }));
+  // Hermes só no root e sem transcritor: os dois faltam.
+  const r = lerPreparar(saida({ hermes: "root", transcritor: 0 }));
   assert.equal(r.itens.find((i) => i.id === "hermes").estado, "falta"); assert.equal(r.itens.find((i) => i.id === "transcritor").estado, "falta");
+  // O transcritor não depende do Hermes: máquina só com OpenClaw o tem (é ele que liga a transcrição sem ffmpeg).
+  const oc = lerPreparar(saida({ hermes: "nenhum", transcritor: 1 }));
+  assert.equal(oc.itens.find((i) => i.id === "transcritor").estado, "ok"); assert.match(oc.itens.find((i) => i.id === "transcritor").detalhe, /OpenClaw e Hermes/);
+  // Hermes global mas transcritor de antes do transcrever-texto: falta, com o detalhe de reaplicar.
+  const velho = lerPreparar(saida({ hermes: "global", transcritor: 0 }));
+  assert.equal(velho.itens.find((i) => i.id === "transcritor").estado, "falta"); assert.match(velho.itens.find((i) => i.id === "transcritor").detalhe, /aplicar de novo/);
 });
 
 test("preparar: Claude Global e Link Público (humano aponta a aba; link nunca entra em faltam); Chromium no Ubuntu é humano", () => {
@@ -49,7 +55,7 @@ test("preparar: Claude Global e Link Público (humano aponta a aba; link nunca e
 });
 
 test("preparar: passos na ordem, só do que falta; governança vira reserva e/ou isolamento; claude-global sem script; chromium só pedido", () => {
-  const v = lerPreparar(saida({ swap: 0, cota: 0, reserva: 0, semiso: "box-2", pacotes: pacotes(["jq", "chromium"]), gh: "", hermes: "nenhum", cg: "0 0 0" }));
+  const v = lerPreparar(saida({ swap: 0, cota: 0, reserva: 0, semiso: "box-2", pacotes: pacotes(["jq", "chromium"]), gh: "", hermes: "nenhum", transcritor: 0, cg: "0 0 0" }));
   const p = passosPreparar(["chromium", "transcritor", "gh", "link-publico", "inventado", "swap", "cota", "governanca", "pacotes", "hermes", "claude-global"], v);
   assert.deepEqual(p.map((x) => x.titulo), ["Memória de reserva (swap de 8 GB)", "Cota de disco por usuário", "Reserva de memória para o sistema", "Isolamento das boxes", "Pacotes do sistema (jq, ffmpeg e a tela do bot)", "GitHub CLI para todos (/usr/local/bin/gh)", "Hermes para todos (/opt/hermes)", "Transcritor de áudio para todos (/opt/transcriber)", "Claude Code Global", "Navegador na tela do bot (Chromium)"]);
   assert.deepEqual(p.map((x) => x.acao), ["maquina.swap", "maquina.cota", "maquina.reserva", "maquina.isolamento", "maquina.pacotes", "maquina.gh", "maquina.hermes-global", "maquina.transcritor", "maquina.claude-global", "maquina.pacotes"]);
@@ -81,7 +87,7 @@ test("preparar: pacotesSh valida nomes e protege contra o lock do apt; GH_GLOBAL
 test("preparar: o script de estado começa pelo guard de root, reaproveita os trechos de cota e Hermes e tem uma chave por item", () => {
   assert.match(PREPARAR_ESTADO_SH, /^\[ "\$\(id -u\)" = 0 \] \|\| \{ echo "NAOROOT"; exit 0; \}/);
   assert.ok(PREPARAR_ESTADO_SH.includes(COTA_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(HERMES_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(OPENCLAW_ESTADO_SH));
-  for (const k of ["RAM=", "SWAP=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
+  for (const k of ["RAM=", "SWAP=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "TRANSCRITOR=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
   assert.match(PREPARAR_ESTADO_SH, /\/usr\/local\/bin\/gh --version/); assert.match(PREPARAR_ESTADO_SH, /dpkg-query/);
   assert.deepEqual([...ORDEM_PREPARAR], ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "chromium"]);
 });

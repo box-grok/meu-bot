@@ -1,4 +1,4 @@
-/** Contas de linha de comando na máquina (tutorial 12): Cloudflare e GitHub, login pelo Navegador, instalar o gh. */
+/** Contas de linha de comando na máquina (tutorial 11): Cloudflare e GitHub, login pelo Navegador, instalar o gh. */
 import type { ContaEstado, ContaEvento, ContaId } from "../../shared/ipc";
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
@@ -9,7 +9,7 @@ import { registrarFonte } from "../tutoriais/fontes.js";
 import { abrirLinkDoChat } from "../navegador/navegador-guia.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
-/** Tutorial 12: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
+/** Tutorial 11: contas de CLI desta máquina (null = ainda não consultado) e o login em andamento. */
 export let contasState: ContaEstado[] | null = null;
 let contaLogin: { id: ContaId; trocar: boolean; url: string | null; codigo: string | null; texto: string; rodando: boolean; ok: boolean | null } | null = null;
 export async function refreshContas(): Promise<void> {

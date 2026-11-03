@@ -20,7 +20,7 @@ import { anotarApagadaSh } from "../conversa/apagadas-core";
 import { SHARE_FILE, SUPPORT_BLOCK_FILE, adminSshBlock, adoptScript, authorizedKeysScript, decodeSupportCode, knownHostsLine, legacyMachineId, machineId, parseAdoptHostKey, parseSshAddTarget, parseSshG, parseSupportProgress, parseSupportShare, removeDeliverySh, supportAlias, type SupportCode } from "../suporte/support-code";
 import { entregar, registrar, registroSh } from "../auditoria/auditoria";
 import type { Acao } from "../auditoria/auditoria-core";
-import { runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp/whatsapp";
+import { esquecerWhatsapp, runSsh, whatsappChats, whatsappClearSessions, whatsappStatus } from "../whatsapp/whatsapp";
 import { apelidoSh, apelidoLimpo } from "./usuarios-core";
 import { installAudio, installBackend, installClaudeCode, probeHost } from "../maquina/hostProbe";
 import { portaParaInstalar } from "../maquina/porta-backend-core";
@@ -683,6 +683,7 @@ export async function adminAction(host: string, action: AdminAction): Promise<{ 
   // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {
     const r = await installAudio(host, { kind: "in", ...(action === "transcription-off" ? { off: true } : {}) });
+    esquecerWhatsapp(host);
     await registrar(host, a.acao);
     return { ok: r.ok, detail: r.log.at(-1) ?? "" };
   }

@@ -33,7 +33,7 @@ const out = (o) => { process.stdout.write(`${JSON.stringify(o)}\n`); };
 const fail = (msg, code = 1) => { out({ erro: msg }); process.exit(code); };
 const argv0 = process.argv[2] ?? "";
 // `chave-set` é justamente o comando que configura: roda sem chave gravada.
-if (argv0 !== "chave-set" && (typeof cfg.apiKey !== "string" || cfg.apiKey === "")) fail("CRM não configurado nesta máquina: falta a chave da API do Streak (tutorial 10 do meu-bot)", 2);
+if (argv0 !== "chave-set" && (typeof cfg.apiKey !== "string" || cfg.apiKey === "")) fail("CRM não configurado nesta máquina: falta a chave da API do Streak (tutorial 17 do meu-bot)", 2);
 
 async function api(method, p, body, key = cfg.apiKey) {
   const res = await fetch(`${API}${p}`, { method, headers: { Authorization: `Basic ${Buffer.from(`${key}:`).toString("base64")}`, "Content-Type": "application/json", Accept: "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -57,7 +57,7 @@ const pos = []; const opt = {};
 for (let i = 1; i < argv.length; i++) { const a = argv[i]; if (a.startsWith("--")) { const k = a.slice(2); const v = argv[i + 1]; if (v !== undefined && !v.startsWith("--")) { opt[k] = v; i++; } else opt[k] = true; } else pos.push(a); }
 const norm = (s) => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 const digits = (s) => String(s ?? "").replace(/\D/g, "");
-const pipelineKey = () => { const k = opt.pipeline ?? cfg.pipelineKey; if (typeof k !== "string" || k === "") throw new Error("nenhum pipeline escolhido: rode `pipelines` e salve no tutorial 10 (ou passe --pipeline <key>)"); return k; };
+const pipelineKey = () => { const k = opt.pipeline ?? cfg.pipelineKey; if (typeof k !== "string" || k === "") throw new Error("nenhum pipeline escolhido: rode `pipelines` e salve no tutorial 17 (ou passe --pipeline <key>)"); return k; };
 
 async function pipelineInfo(key) {
   const p = await api("GET", `/v1/pipelines/${encodeURIComponent(key)}`);

@@ -1,4 +1,4 @@
-/** Guarda do WhatsApp no guia (tutorial 9): estado na máquina, ativar e o progresso do instalador. */
+/** Guarda do WhatsApp no guia (tutorial 8): estado na máquina, ativar e o progresso do instalador. */
 import { el } from "../lib/dom.js";
 import { carregando } from "../lib/carregando.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
@@ -6,7 +6,7 @@ import { ctx, ehRemoto } from "../app/ctx.js";
 import { registrarFonte } from "../tutoriais/fontes.js";
 import { registrarPassos } from "../tutoriais/passos.js";
 
-/** Guarda do WhatsApp nesta máquina (tutorial 9): null = não consultado ou sem OpenClaw. */
+/** Guarda do WhatsApp nesta máquina (tutorial 8): null = não consultado ou sem OpenClaw. */
 export let guardaState: boolean | null = null;
 let guardaBusy = false;
 let guardaLog: string[] = [];

@@ -736,7 +736,8 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
     `ffmpeg` da voz, e os da tela: `xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot`, lidos
     por `dpkg-query`, não por `command -v`: o novnc não tem binário) → `gh` em `/usr/local/bin` (binário oficial,
     versão pela URL final de `releases/latest`, sem a API) → Hermes em `/opt/hermes` → transcritor em
-    `/opt/transcriber` → Claude Code Global (instalar é automático; o login do root é humano) → Chromium
+    `/opt/transcriber` (desde 3 nov vale para OpenClaw e Hermes, `bin/transcrever` e `bin/transcrever-texto`, e não
+    depende do Hermes global; é o que liga a transcrição de todo mundo sem ffmpeg) → Claude Code Global (instalar é automático; o login do root é humano) → Chromium
     (opcional, marcado por padrão: o "gostinho" do Pro na box compartilhada inclui navegar na tela; no Ubuntu vira
     humano porque o apt entrega só o atalho do snap).
   - Link Público Global é sempre humano (domínio e login na Cloudflare): a lista só aponta para a aba.

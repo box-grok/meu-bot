@@ -173,7 +173,8 @@ export const visibleActions = (h: AdminHealth | null): readonly (typeof ADMIN_AC
     if (o.id !== "transcription" && o.id !== "transcription-off") return true;
     const wa = h?.whatsapp ?? null;
     if (wa === null || !wa.present || !wa.capacidades.audio) return false;
-    return o.id === "transcription" ? wa.audioIn === false : wa.audioIn === true;
+    // Ativar só quando a máquina tem o necessário (transcritor do root ou ffmpeg); sem isso é a aba Preparar máquina.
+    return o.id === "transcription" ? wa.audioIn === false && wa.audioMaquina !== false : wa.audioIn === true;
   });
 
 /** Por que não há ação de transcrição (null = há). */
@@ -182,6 +183,7 @@ export function transcriptionNote(h: AdminHealth | null): string | null {
   if (h.whatsapp === null) return h.share.whatsapp ? "Transcrição de áudio: a máquina não tem agente com WhatsApp." : "Transcrição de áudio: ela não compartilha o WhatsApp.";
   if (!h.whatsapp.present) return "Transcrição de áudio: a máquina não tem agente com WhatsApp (a transcrição é dele).";
   if (!h.whatsapp.capacidades.audio) return `Transcrição de áudio: o agente desta máquina (${h.whatsapp.gateway ?? "desconhecido"}) não transcreve áudio pelo app.`;
+  if (h.whatsapp.audioIn === false && h.whatsapp.audioMaquina === false) return "Transcrição de áudio: a máquina não tem o transcritor compartilhado nem o ffmpeg. Como root: Preparar máquina › Transcritor de áudio; o app da pessoa liga sozinho depois.";
   return null;
 }
 

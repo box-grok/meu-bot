@@ -63,7 +63,7 @@ async function lerStatusCompleto(host: string): Promise<WhatsappStatus> {
   // Hermes: ouvir e responder em áudio moram no config.yaml dele (hermes-audio.ts); uma leitura a mais, só com o WhatsApp pronto.
   const audio = st.gateway === "hermes" && st.ready ? await hermesAudioStatus(host) : null;
   const proprio = st.alvo?.proprio !== false;
-  return { ...st, ...(audio === null ? {} : { audioIn: audio.audioIn, audioOut: audio.audioOut }), capacidades: capacidadesDe(st.gateway, st.ready, st.connected, { pausaModo: whatsappPausaModoOf(host), proprio }) };
+  return { ...st, ...(audio === null ? {} : { audioIn: audio.audioIn, audioOut: audio.audioOut, ...(audio.audioMaquina !== undefined ? { audioMaquina: audio.audioMaquina } : {}), ...(audio.audioDesligado !== undefined ? { audioDesligado: audio.audioDesligado } : {}) }), capacidades: capacidadesDe(st.gateway, st.ready, st.connected, { pausaModo: whatsappPausaModoOf(host), proprio }) };
 }
 /**
  * A máquina tem um alvo gravado (conta nomeada ou gateway de outro usuário): o ramo do OpenClaw que rodou no alias dela
@@ -372,7 +372,7 @@ ${porMotor((m) => m.logoutSh, "echo OUT=none")}
   log(`[whatsapp] desconectado em ${host} (${out})`);
 }
 
-// ── Grupos (área "Grupos" da lista e tutorial 11). As regras ficam em whatsapp-grupos-core.ts (e no core do Hermes). ──
+// ── Grupos (área "Grupos" da lista e tutorial 10). As regras ficam em whatsapp-grupos-core.ts (e no core do Hermes). ──
 export function whatsappGroups(host: string, opts: { force?: boolean } = {}): Promise<WhatsappGroups> {
   return groupsCache.get(host, GROUPS_VALIDADE_MS, () => lerGroups(host), opts.force === true);
 }
