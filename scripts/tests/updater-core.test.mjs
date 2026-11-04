@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { escolherRelease, candidataDe, motivoReleaseTexto, decideDescarte, motivoManterTexto, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima, classificarRespostaFeed, decideReconfirmacao, alvosParaTrocar, travaAbandonada, TRAVA_VELHA_MS, pastaSoLeitura, decideReaproveitar } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
+const { escolherRelease, candidataDe, motivoReleaseTexto, decideDescarte, motivoManterTexto, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima, classificarRespostaFeed, decideReconfirmacao, alvosParaTrocar, travaAbandonada, TRAVA_VELHA_MS, pastaSoLeitura, decideReaproveitar, decideAlvoAplicacao, decideFimDaEspera } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
 import { generateKeyPairSync, sign } from "node:crypto";
 
 // Cada zip publicado vem com o .sig ao lado (o release assina); sem ele não há candidata (teste próprio abaixo).
@@ -324,4 +324,27 @@ test("decideReaproveitar: a versão preparada da sessão anterior só volta se a
   assert.deepEqual(decideReaproveitar(p, "0.80.0", () => true), { tipo: "descartar", motivo: "nao-e-mais-nova" });
   // O registro ficou mas a pasta extraída sumiu (limpeza do sistema, disco cheio): baixar de novo.
   assert.deepEqual(decideReaproveitar(p, "0.78.4", () => false), { tipo: "descartar", motivo: "sumiu" });
+});
+
+test("decideAlvoAplicacao: o diálogo acompanha uma versão mais nova, mas nunca anda para trás", () => {
+  // O caso comum: o botão mandou o que a tela mostrava.
+  assert.deepEqual(decideAlvoAplicacao("0.79.0", "0.79.0"), { tipo: "seguir", versao: "0.79.0", trocou: false });
+  // Uma verificação terminou entre o clique e agora e deixou uma MAIS NOVA pronta. É a mesma intenção da pessoa, e
+  // a nova já passou pela assinatura e pelo codesign: recusar só a obrigaria a clicar de novo pedindo isto.
+  assert.deepEqual(decideAlvoAplicacao("0.79.0", "0.80.0"), { tipo: "seguir", versao: "0.80.0", trocou: true });
+  assert.deepEqual(decideAlvoAplicacao("0.79.0-staging.1", "0.79.0-staging.2"), { tipo: "seguir", versao: "0.79.0-staging.2", trocou: true });
+  // Para trás, não: a release foi retirada e outra entrou no lugar, e quem confere é a pessoa.
+  const atras = decideAlvoAplicacao("0.80.0", "0.79.0");
+  assert.equal(atras.tipo, "recusar");
+  assert.match(atras.motivo, /0\.79\.0.*anterior à 0\.80\.0/);
+  assert.deepEqual(decideAlvoAplicacao("0.79.0", null), { tipo: "recusar", motivo: "não há atualização pronta" });
+});
+
+test("decideFimDaEspera: esgotada a espera, quem decide interromper a conversa é a pessoa", () => {
+  // Terminou no meio da espera: trocar é o esperado, ninguém é interrompido.
+  assert.equal(decideFimDaEspera(false, false), "trocar");
+  assert.equal(decideFimDaEspera(false, true), "trocar");
+  // Ainda respondendo: antes o app reiniciava por cima. Agora devolve a escolha, e só "Parar e atualizar" força.
+  assert.equal(decideFimDaEspera(true, false), "perguntar");
+  assert.equal(decideFimDaEspera(true, true), "trocar");
 });

@@ -3,7 +3,7 @@
  * túnel e o que chega de fora (ações do agente nos sockets, do Claude Code, hooks). Ligado por padrão no staging;
  * nas outras variantes pela paleta ou `--depuracao`.
  */
-export type OrigemDepuracao = "navegador" | "gmail" | "terminal" | "hook" | "nota" | "main";
+export type OrigemDepuracao = "navegador" | "gmail" | "terminal" | "hook" | "nota" | "main" | "atualizacao";
 /** Uma ação vinda de fora, como o main a viu. */
 export interface EventoDepuracao { em: number; origem: OrigemDepuracao; dono: string | null; rota: string; ok: boolean; ms: number | null; resumo: string; detalhe?: unknown }
 /** Tique de 1 s do main; `marca` = a última coisa síncrona que ele anunciou antes de fazer (Chaveiro, ssh). */

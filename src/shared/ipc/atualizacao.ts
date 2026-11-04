@@ -31,6 +31,11 @@ export interface UpdateState {
   progress: number | null;
   /** Em applying: esperando uma resposta ou um terminal terminar antes de reiniciar. */
   aguardando: boolean;
+  /**
+   * A troca foi pedida, a espera pela resposta em andamento esgotou e o app NÃO reiniciou: a escolha de parar o
+   * trabalho volta para a pessoa ("Parar e atualizar"). Antes o app reiniciava calado por cima da conversa.
+   */
+  ocupadoAoAplicar: boolean;
   /** Versão mínima que o backend da máquina exige (null = ele não disse); abaixo dela a janela bloqueia até atualizar. */
   minima: string | null;
   abaixoDaMinima: boolean;

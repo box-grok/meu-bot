@@ -316,6 +316,30 @@ export function decideReaproveitar(p: UpdatePreparada | null, atual: string, exi
   return { tipo: "usar", preparada: p };
 }
 
+/**
+ * O botão mandou a versão que a tela mostrava (`pedida`) e, entre o clique e agora, a preparada pode ter mudado.
+ * Seguir na mais nova é a mesma intenção da pessoa ("atualizar"), e a nova já passou pela assinatura e pelo
+ * codesign; obrigá-la a clicar de novo só para pedir exatamente isto era atrito sem ganho. Andar para TRÁS, não:
+ * aí alguma coisa aconteceu (a release foi retirada e outra entrou) e quem confere é a pessoa.
+ */
+export type AlvoAplicacao = { tipo: "seguir"; versao: string; trocou: boolean } | { tipo: "recusar"; motivo: string };
+export function decideAlvoAplicacao(pedida: string, pronta: string | null): AlvoAplicacao {
+  if (pronta === null) return { tipo: "recusar", motivo: "não há atualização pronta" };
+  const d = compareVersions(pronta, pedida);
+  if (d === 0) return { tipo: "seguir", versao: pronta, trocou: false };
+  if (d > 0) return { tipo: "seguir", versao: pronta, trocou: true };
+  return { tipo: "recusar", motivo: `A versão pronta agora é a ${pronta}, anterior à ${pedida} que você pediu; confira e clique de novo.` };
+}
+
+/**
+ * "Reiniciar e atualizar" com uma resposta em andamento. A espera é a mesma de antes; o que muda é o fim dela:
+ * em vez de atropelar a conversa calado, o app devolve a escolha para a pessoa ("Parar e atualizar"), e só o
+ * clique dela em cima disso (`forcar`) interrompe o trabalho. O reinício ocioso nunca chega aqui ocupado, porque
+ * `decideReinicioOcioso` já exige nada em andamento.
+ */
+export type FimDaEspera = "trocar" | "perguntar";
+export const decideFimDaEspera = (aindaOcupado: boolean, forcar: boolean): FimDaEspera => (!aindaOcupado || forcar ? "trocar" : "perguntar");
+
 /** Ciclo de verificação (como no Grok Bot): a cada hora, com até 5 min de jitter para os Macs não baterem juntos no GitHub. */
 export const CHECK_EVERY_MS = 60 * 60_000;
 export const CHECK_JITTER_MS = 5 * 60_000;

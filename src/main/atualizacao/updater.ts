@@ -29,12 +29,13 @@ import { appTitle, caps } from "../app/variant";
 import { broadcast, getLastFocusedHost } from "../app/windows";
 import { getAtualizarOcioso } from "../app/settings";
 import { run, runText } from "../app/proc";
-import { baixarComRetomada, DownloadError, semEspacoEmDisco } from "./update-download";
+import { baixarComRetomada, DownloadError, semEspacoEmDisco, sha256De } from "./update-download";
 import { noteNetworkError } from "../app/net";
+import { evento } from "../app/depuracao";
 import { offlineMessage } from "../app/net-core";
 import {
-  abaixoDaMinima, alvosParaTrocar, candidataDe, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
-  pastaSoLeitura, proximaVerificacaoMs, releasesUrl, repararTroca, TRAVA_VELHA_MS, travaAbandonada, verificaAssinatura,
+  abaixoDaMinima, alvosParaTrocar, candidataDe, assetName, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, decideAlvoAplicacao, decideFimDaEspera, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
+  pastaSoLeitura, proximaVerificacaoMs, releasesUrl, repararTroca, TENTATIVAS_ATE_VOLTAR, TRAVA_VELHA_MS, travaAbandonada, verificaAssinatura,
   type EscolhaRelease, type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
 } from "./updater-core";
 
@@ -54,7 +55,7 @@ const OCIOSO_POLL_MS = 60_000;
 /** Falha com a causa para a tela (`errorKind`); as frases são as que a pessoa vê. */
 class UpdateFalha extends Error { constructor(public readonly kind: UpdateErrorKind, msg: string) { super(msg); this.name = "UpdateFalha"; } }
 
-const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true };
+const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true };
 /** A versão preparada em disco (preparada.json); null = nada pronto. */
 let preparada: UpdatePreparada | null = null;
 let timer: NodeJS.Timeout | null = null;
@@ -80,6 +81,9 @@ let aoMudar: (() => void) | null = null;
 export const onUpdateState = (cb: () => void): void => { aoMudar = cb; };
 function publish(): void { broadcast("update:state", updateState()); aoMudar?.(); }
 function setPhase(phase: UpdatePhase): void { state.phase = phase; state.checking = phase === "checking"; if (phase !== "downloading") state.progress = null; if (phase !== "applying") state.aguardando = false; publish(); }
+
+/** Desfecho legível por máquina, no mesmo barramento das outras ações do main: "por que a atualização não pegou". */
+const registrar = (rota: string, ok: boolean, resumo: string, detalhe?: unknown): void => { evento({ origem: "atualizacao", dono: null, rota, ok, ms: null, resumo, detalhe }); };
 const erroTexto = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 const arch = (): string => (process.arch === "arm64" ? "arm64" : "x64");
@@ -161,6 +165,7 @@ function check(trigger: UpdateTrigger): Promise<void> {
         state.error = motivoReleaseTexto(escolha.versao, escolha.motivo); state.errorKind = "release";
         state.available = escolha.versao;
         log(`[atualização] ${state.error}`);
+        registrar("verificar", false, state.error, { motivo: escolha.motivo, versao: escolha.versao, trigger });
         setPhase(preparada !== null ? "ready" : "error");
         return;
       }
@@ -168,7 +173,7 @@ function check(trigger: UpdateTrigger): Promise<void> {
       if (cand === null) {
         // Nada mais novo que a instalada: uma preparada que sobrou foi retirada do ar (ou é a própria versão de agora).
         if (preparada !== null) { log(`[atualização] a ${preparada.para} não está mais na release: descartada`); limparPreparada(); }
-        state.available = null; setPhase("up-to-date"); return;
+        state.available = null; registrar("verificar", true, "nada mais novo", { trigger }); setPhase("up-to-date"); return;
       }
       state.available = cand.version;
       if (preparada !== null && preparada.para === cand.version) { setPhase("ready"); return; }
@@ -183,6 +188,7 @@ function check(trigger: UpdateTrigger): Promise<void> {
       if (f.kind === "disco") { limparPreparada(); log("[atualização] apaguei o que já tinha baixado para liberar espaço"); }
       state.error = f.msg; state.errorKind = f.kind;
       log(`[atualização] ${f.msg}`);
+      registrar("verificar", false, f.msg, { kind: f.kind, trigger });
       setPhase("error");
     } finally {
       if (abort === ac) abort = null;
@@ -275,10 +281,14 @@ async function preparar(cand: UpdateCandidate, signal: AbortSignal): Promise<voi
   }
   const em = new Date().toISOString();
   gravarJson(preparadaFile(), { versao: 1, para: cand.version, bundle, sha256, em } satisfies UpdatePreparada);
-  fs.rmSync(zip, { force: true });
+  // O zip FICA. Ele é a única prova de que o .app extraído veio da release que a assinatura Ed25519 conferiu: entre
+  // uma sessão e outra o bundle fica em userData, e sem o zip a reabertura só teria a plist e o codesign para
+  // conferir. A pasta inteira some na troca (ou em limparPreparada), então isto ocupa disco só enquanto há
+  // atualização pendente de instalar.
   preparada = { versao: 1, para: cand.version, bundle, sha256, em };
   state.ready = cand.version;
   log(`[atualização] ${cand.version} pronta em ${bundle}`);
+  registrar("preparar", true, `${cand.version} pronta`, { sha256, retomadas });
 }
 
 /** O .app extraído é desta variante, íntegro e assinado pela mesma identidade do app em execução (senão lança). */
@@ -300,11 +310,28 @@ async function reaproveitarPreparada(): Promise<void> {
   if (uso.tipo === "descartar") { log(`[atualização] descartei o que estava preparado: ${motivoPreparadaTexto(uso.motivo)}`); limparPreparada(); return; }
   const p = uso.preparada;
   try {
+    await conferirConteudo(p);
     await conferirBundle(p.bundle);
     preparada = p; state.ready = p.para; state.available = p.para;
     log(`[atualização] ${p.para} já estava preparada: pronta para instalar`);
+    registrar("reaproveitar", true, `${p.para} preparada e reconferida`);
     setPhase("ready");
-  } catch (e) { log(`[atualização] a ${p.para} preparada não passou na conferência (${erroTexto(e)}): descartada`); limparPreparada(); }
+  } catch (e) {
+    log(`[atualização] a ${p.para} preparada não passou na conferência (${erroTexto(e)}): descartada`);
+    registrar("reaproveitar", false, erroTexto(e), { versao: p.para });
+    limparPreparada();
+  }
+}
+
+/**
+ * O .app preparado veio mesmo da release que a assinatura conferiu? Refaz o sha256 do zip guardado e compara com o
+ * manifesto. O zip some junto com a pasta na troca, então "sumiu" quer dizer que alguém mexeu ali: baixar de novo.
+ */
+async function conferirConteudo(p: UpdatePreparada): Promise<void> {
+  const zip = path.join(updateDir(), assetName(appTitle(), p.para, arch()));
+  if (!fs.existsSync(zip)) throw new UpdateFalha("assinatura", "o arquivo de onde o app foi extraído não está mais lá");
+  const { sha256 } = await sha256De(zip);
+  if (sha256 !== p.sha256) throw new UpdateFalha("assinatura", "o arquivo baixado não bate com o que foi conferido na hora do download");
 }
 const motivoPreparadaTexto = (m: "ilegivel" | "nao-e-mais-nova" | "sumiu"): string =>
   m === "ilegivel" ? "o registro não está íntegro" : m === "nao-e-mais-nova" ? "não é mais nova que a instalada" : "a pasta do app preparado sumiu";
@@ -320,10 +347,15 @@ function limparPreparada(): void {
  * verificação é velha, reconfirma no GitHub antes (release retirada = nada muda); espera uma resposta em andamento
  * terminar (até 20 s no clique; o ocioso já exige nada em andamento). Troca os .app e reabre na mesma máquina.
  */
-export async function applyUpdate(expectedVersion: string, gatilho: Exclude<UpdateGatilho, "saida">): Promise<void> {
+export async function applyUpdate(expectedVersion: string, gatilho: Exclude<UpdateGatilho, "saida">, forcar = false): Promise<void> {
   if (inflight !== null) await inflight; // uma verificação no meio pode ter trocado a versão pronta
   if (preparada === null || state.ready === null) throw new Error("não há atualização pronta");
-  if (expectedVersion !== state.ready) throw new Error(`A versão pronta mudou para ${state.ready}; confira e clique de novo.`);
+  // Se ficou pronta uma versão MAIS NOVA entre o clique e agora, o diálogo acompanha em vez de recusar: é a mesma
+  // intenção, e a nova já passou pela assinatura e pelo codesign. Para trás, não.
+  const alvo = decideAlvoAplicacao(expectedVersion, state.ready);
+  if (alvo.tipo === "recusar") { registrar("aplicar", false, alvo.motivo, { pedida: expectedVersion, pronta: state.ready }); throw new Error(alvo.motivo); }
+  if (alvo.trocou) log(`[atualização] você pediu a ${expectedVersion} e a ${alvo.versao} ficou pronta no meio: sigo na mais nova`);
+  const expectedVersao = alvo.versao;
   if (state.phase === "applying") return;
   const idade = state.checkedAt === null ? Number.POSITIVE_INFINITY : Date.now() - Date.parse(state.checkedAt);
   if (idade > CONFIRMA_FEED_MS) {
@@ -336,18 +368,58 @@ export async function applyUpdate(expectedVersion: string, gatilho: Exclude<Upda
     if (r.tipo === "retirada") { log(`[atualização] a ${expectedVersion} foi retirada da release: descartada`); limparPreparada(); state.available = r.agora; setPhase("up-to-date"); throw new Error("A atualização foi retirada do ar; nada foi mudado."); }
   }
   setPhase("applying");
+  state.ocupadoAoAplicar = false;
   if (gatilho === "clique" && anyConversationBusy()) {
     state.aguardando = true; publish();
     const fim = Date.now() + ESPERA_OCUPADO_MS;
     while (anyConversationBusy() && Date.now() < fim) await new Promise((r) => setTimeout(r, 500));
-    state.aguardando = false; publish();
+    state.aguardando = false;
+    // Esgotou a espera e o bot continua respondendo. Antes o app reiniciava por cima da conversa sem avisar; agora
+    // a escolha de interromper é de quem está usando, e só o clique dela ("Parar e atualizar") chega aqui forçando.
+    if (decideFimDaEspera(anyConversationBusy(), forcar) === "perguntar") {
+      state.ocupadoAoAplicar = true;
+      setPhase("ready");
+      log(`[atualização] a ${expectedVersao} está pronta, mas há resposta em andamento: deixei a escolha com a pessoa`);
+      registrar("aplicar", false, "resposta em andamento: esperando a pessoa decidir", { versao: expectedVersao });
+      return;
+    }
+    if (forcar) log("[atualização] a pessoa escolheu parar o trabalho em andamento para atualizar");
+    publish();
   }
   let mine: string;
   try { mine = swapBundles(gatilho); } catch (e) {
     const ro = pastaSoLeitura(e); setPhase(ro ? "needs-move" : "ready");
-    throw ro ? new Error("O app está numa pasta só de leitura (ainda na imagem do instalador?). Arraste-o para a pasta Aplicativos e abra de lá.") : e;
+    registrar("trocar", false, ro ? "pasta só de leitura" : erroTexto(e), { versao: expectedVersao, gatilho });
+    throw ro ? new Error("O app está numa pasta só de leitura (ainda na imagem do instalador?). Mova-o para a pasta Aplicativos e abra de lá.") : e;
   }
+  registrar("trocar", true, `trocado para a ${expectedVersao}`, { gatilho, forcado: forcar });
   relancar(mine);
+}
+
+/**
+ * Item do botão "Mover para Aplicativos" quando o app está numa pasta sem escrita (a imagem do instalador, Downloads
+ * de outro usuário): copia o bundle para /Applications e reabre de lá. A cópia de origem fica onde está — numa imagem
+ * montada não dá para apagá-la, e numa pasta qualquer apagar o arquivo de alguém não é decisão do app.
+ */
+export async function moverParaAplicativos(): Promise<void> {
+  const mine = runningBundle();
+  if (mine === null) throw new Error("fora de um .app");
+  const destino = path.join("/Applications", path.basename(mine));
+  if (path.resolve(mine) === destino) throw new Error("o app já está na pasta Aplicativos");
+  if (fs.existsSync(destino)) throw new Error(`Já existe um ${path.basename(mine)} na pasta Aplicativos. Abra aquele, ou apague-o antes de mover este.`);
+  log(`[atualização] movendo ${mine} para ${destino}`);
+  try {
+    await run("ditto", [mine, destino], { timeoutMs: 300_000 });
+    // Sem Developer ID, a quarentena faria o Gatekeeper barrar o app na primeira abertura a partir de /Applications.
+    await run("xattr", ["-dr", "com.apple.quarantine", destino], { timeoutMs: 60_000 }).catch(() => undefined);
+  } catch (e) {
+    fs.rmSync(destino, { recursive: true, force: true });
+    registrar("mover", false, erroTexto(e), { destino });
+    throw new Error(`Não consegui copiar o app para a pasta Aplicativos: ${erroTexto(e)}`);
+  }
+  registrar("mover", true, `copiado para ${destino}`, { de: mine });
+  log(`[atualização] cópia pronta em ${destino}; a de ${path.dirname(mine)} continua lá`);
+  relancar(destino);
 }
 /** Reabre o app já na versão nova, na mesma máquina que a pessoa estava (sem `--host`, o seletor abre). */
 function relancar(mine: string): void {
@@ -513,14 +585,15 @@ function conferirPendente(): void {
     // perdida nos outros caminhos tinha o .antigo apagado 30 s depois, sumindo de vez.
     reporFaltantes(pend);
     const decisao = decideRollback(pend, state.current);
-    if (decisao === "voltar") { voltarParaAnterior(pend); voltar = true; return; }
+    if (decisao === "voltar") { registrar("abertura", false, `a ${pend.para} não ficou de pé em ${TENTATIVAS_ATE_VOLTAR} aberturas: voltando para a ${pend.de}`, { gatilho: pend.gatilho, fase: pend.fase }); voltarParaAnterior(pend); voltar = true; return; }
     if (decisao === "nao-pegou") {
       log(`[atualização] reabriu na ${pend.de} depois de pedir a ${pend.para} (${pend.gatilho ?? "?"}, registro em "${pend.fase}"): a troca não pegou; vou preparar de novo`);
+      registrar("abertura", false, `a troca para a ${pend.para} não pegou: reabriu na ${pend.de}`, { gatilho: pend.gatilho, fase: pend.fase });
       descartarAntigos(pend);
       fs.rmSync(pendenteFile(), { force: true });
       return;
     }
-    if (decisao === "descartar") { descartarAntigos(pend); fs.rmSync(pendenteFile(), { force: true }); return; }
+    if (decisao === "descartar") { registrar("abertura", true, `abriu na ${state.current}, fora da troca pedida (${pend.de} → ${pend.para}): só limpei o registro`); descartarAntigos(pend); fs.rmSync(pendenteFile(), { force: true }); return; }
     gravarJson(pendenteFile(), { ...pend, tentativas: pend.tentativas + 1 } satisfies UpdatePendente);
     setTimeout(() => confirmarTroca(mine, pend), CONFIRMA_MS).unref();
   });
@@ -536,6 +609,7 @@ function confirmarTroca(mine: string, pend: UpdatePendente): void {
     fs.rmSync(pendenteFile(), { force: true });
     const demorou = pend.pedidoEm !== null && Date.now() - Date.parse(pend.pedidoEm) > 10 * 60_000;
     log(`[atualização] ${pend.para} confirmada (ficou de pé${demorou ? ", bem depois do pedido" : ""}; ${pend.gatilho ?? "?"}); versão anterior apagada`);
+    registrar("abertura", true, `${pend.para} confirmada`, { gatilho: pend.gatilho, demorou, tentativas: pend.tentativas });
   });
   if (!feito) log(`[atualização] ${pend.para} confirmada, mas o descarte da anterior fica para a próxima abertura`);
 }

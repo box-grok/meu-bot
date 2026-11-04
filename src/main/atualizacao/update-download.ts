@@ -120,7 +120,8 @@ async function tentativa(o: DownloadOpts, retomar: { offset: number; validador: 
   return { fim: "completo", total };
 }
 
-async function sha256De(arquivo: string): Promise<{ sha256: string; bytes: number }> {
+/** sha256 de um arquivo inteiro, em fluxo: o download usa para o manifesto e o atualizador para reconferir depois. */
+export async function sha256De(arquivo: string): Promise<{ sha256: string; bytes: number }> {
   const h = createHash("sha256"); let bytes = 0;
   for await (const c of fs.createReadStream(arquivo)) { h.update(c as Buffer); bytes += (c as Buffer).length; }
   return { sha256: h.digest("hex"), bytes };
