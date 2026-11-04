@@ -140,7 +140,10 @@ export interface MeuBotSharedApi {
   /** "Verificar agora": consulta o GitHub fora do ciclo; devolve o estado ao fim. */
   checkUpdate(): Promise<UpdateState>;
   /** "Reiniciar e atualizar": só troca se a versão pronta ainda é a que o botão mostrou (`expectedVersion`). */
-  applyUpdate(expectedVersion: string): Promise<void>;
+  /** `forcar` = o clique em "Parar e atualizar": sem ele, uma resposta em andamento não é interrompida. */
+  applyUpdate(expectedVersion: string, forcar?: boolean): Promise<void>;
+  /** O app está numa pasta sem escrita: copia o bundle para /Applications e reabre de lá. */
+  moveAppToApplications(): Promise<void>;
   /** Internet deste Mac: sonda (com `force`, mesmo com resultado fresco) e devolve o estado. */
   netCheck(force?: boolean): Promise<NetState>;
   /** A máquina desta janela é este próprio Mac (colima)? O túnel para ela não precisa de internet. */

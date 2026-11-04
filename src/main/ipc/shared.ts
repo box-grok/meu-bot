@@ -16,7 +16,7 @@ import { closeTerminal, openTerminal, ownedTerminal, replayTerminal, resizeTermi
 import { isSupportAlias } from "../suporte/support-code";
 import { registrar, registrarVarios } from "../auditoria/auditoria";
 import { acaoDaMarca } from "../auditoria/auditoria-core";
-import { applyUpdate, checkNow, updateState } from "../atualizacao/updater";
+import { applyUpdate, checkNow, moverParaAplicativos, updateState } from "../atualizacao/updater";
 import { checkNow as netCheckNow, hostIsLocalAddr } from "../app/net";
 import { claudeAuthInfo } from "../agente/claudeLogin";
 import { xaiAuthInfo } from "../agente/xaiLogin";
@@ -459,12 +459,19 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("update:check", () => checkNow("explicito"));
   handleShared("net:check", (_event, payload: unknown) => netCheckNow((payload as { force?: unknown } | null)?.force === true));
   handleShared("host:local-addr", (event) => { const h = hostFromEvent(event)?.host; return h === undefined ? false : hostIsLocalAddr(h); });
-  // "Reiniciar e atualizar": só da janela de uma máquina, e só para a versão que o botão mostrou.
+  // "Reiniciar e atualizar": só da janela de uma máquina, e só para a versão que o botão mostrou. `forcar` é o
+  // clique da pessoa em "Parar e atualizar": sem ele, uma resposta em andamento não é interrompida.
   handleShared("update:apply", (event, payload: unknown) => {
     if (hostFromEvent(event) === null) throw new Error("origem inválida");
-    const v = (payload as { expectedVersion?: unknown } | null)?.expectedVersion;
+    const p = payload as { expectedVersion?: unknown; forcar?: unknown } | null;
+    const v = p?.expectedVersion;
     if (typeof v !== "string" || v === "") throw new Error("versão esperada inválida");
-    return applyUpdate(v, "clique");
+    return applyUpdate(v, "clique", p?.forcar === true);
+  });
+  // "Mover para Aplicativos": só da janela de uma máquina; o app está numa pasta sem escrita e não tem como trocar.
+  handleShared("update:mover", (event) => {
+    if (hostFromEvent(event) === null) throw new Error("origem inválida");
+    return moverParaAplicativos();
   });
 
   // Configurações e memória: deste Mac, valem para os dois apps.

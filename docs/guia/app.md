@@ -663,3 +663,47 @@ Junto, duas coisas que o Grok Bot tem e faltavam: a preferência "atualizar sozi
 `disabled` no HTML com "por enquanto, sempre ligado" (o resto do caminho já existia), e o menu do aplicativo não
 tinha atualização nenhuma. Agora tem "Verificar atualizações" e, com versão pronta, "Reiniciar para atualizar";
 como o Electron não tem item de menu reativo, o `refreshAppMenu` refaz o menu a cada mudança de estado.
+
+## Atualização: a fase passa a decidir, e a escolha volta para a pessoa (4 nov)
+
+Duas levas depois das quatro falhas caladas. A primeira fechou dívida de desenho; a segunda é produto.
+
+**O `fase` do `update-pendente.json` era estado morto.** Gravado em dois momentos, validado na leitura, nunca lido
+por decisão nenhuma. Ele agora carrega a diferença que importa: `"pedida"` quer dizer que o registro foi gravado e
+o processo morreu antes de terminar as renomeações, então `antigos` é o **plano**, não o que foi criado — e um
+`<app>.antigo` que esteja lá pode ser de outra sessão deste Mac. Em `"pedida"` o `decideDescarte` não apaga nada;
+em `"trocada"` apaga tudo menos a cópia cujo `<app>` não existe.
+
+Para `"pedida"` só sobrar quando o processo morreu mesmo, uma troca que para com o app ainda de pé agora se desfaz
+(`desfazerTroca`) e tira o registro do disco, em vez de deixar lá uma afirmação falsa.
+
+**Tudo o que mexe nos `.app` foi para dentro da mesma trava entre processos** que a troca já usava: o reparo, o
+descarte dos 30 s e a volta atrás. Era o buraco que sobrou do item "duas sessões se atropelam": a trava cobria a
+troca, não a limpeza. Reabrir ficou **fora** da trava, porque `app.exit` não roda o `finally` e a sessão nova
+encontraria a trava de pé por cinco minutos.
+
+**As decisões presas ao Electron viraram funções puras** em `updater-core.ts`, cada uma com teste:
+`classificarRespostaFeed` (404 sem release, 403/429 de limite com a hora em que libera, e qualquer outro status),
+`decideReconfirmacao`, `alvosParaTrocar`, `decideReaproveitar`, `travaAbandonada`, `pastaSoLeitura`,
+`decideAlvoAplicacao` e `decideFimDaEspera`.
+
+**A escolha de interromper uma resposta é de quem está usando.** A espera de 20 s continua igual; o que muda é o
+fim dela. Antes o app reiniciava por cima da conversa sem avisar. Agora ele volta para `ready` com
+`ocupadoAoAplicar`, a tela troca o botão para "Parar e atualizar", e só esse clique (`forcar` no IPC) interrompe o
+trabalho. O reinício ocioso nunca chega aqui ocupado, porque `decideReinicioOcioso` já exige nada em andamento.
+
+**Pasta sem escrita agora tem saída.** `moverParaAplicativos` copia o bundle para `/Applications` com `ditto`, tira
+a quarentena e reabre de lá. A cópia de origem fica onde está: numa imagem montada não dá para apagá-la, e numa
+pasta qualquer apagar o arquivo de alguém não é decisão do app. O botão aparece também no bloqueador de versão
+mínima, onde mover é o único caminho para destravar.
+
+**O diálogo acompanha uma versão mais nova.** `decideAlvoAplicacao` segue na pronta quando ela é mais nova que a
+pedida (mesma intenção, e a nova já passou pela assinatura e pelo codesign) e só recusa quando andaria para trás.
+
+**O zip da versão preparada deixou de ser apagado.** Ele é a única prova de que o `.app` extraído veio da release
+que a assinatura Ed25519 conferiu: entre uma sessão e outra o bundle fica em `userData`, e sem o zip a reabertura
+só teria a plist e o `codesign`. `conferirConteudo` refaz o sha256 e compara com o manifesto antes de reaproveitar.
+A pasta inteira some na troca, então isto ocupa disco só enquanto há atualização pendente.
+
+**O desfecho virou legível por máquina.** O atualizador passou a usar o barramento `evento()` de `depuracao.ts`,
+com as rotas `verificar`, `preparar`, `reaproveitar`, `trocar`, `mover` e `abertura`, cada uma com o motivo.

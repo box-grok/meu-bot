@@ -10,6 +10,48 @@ no [diário técnico](GUIA.md).
 
 ---
 
+## Ainda não lançado
+
+### A atualização pergunta antes de interromper, e sabe se recuperar
+
+#### Novo
+
+- **"Parar e atualizar".** Quando a versão nova fica pronta com o bot no meio de uma resposta, o app
+  espera. Esgotada a espera, ele mostra a escolha em vez de reiniciar por cima da conversa: parar agora,
+  ou deixar a resposta terminar.
+- **Mover para Aplicativos.** Abrindo o app de dentro da imagem do instalador, ou de uma pasta sem
+  escrita, agora há um botão que copia o app para a pasta Aplicativos e reabre de lá. Antes a tela só
+  mandava arrastar.
+- **Ações de atualização no menu do aplicativo:** "Verificar atualizações" e, com uma versão pronta,
+  "Reiniciar para atualizar".
+- **Registro legível do que aconteceu com a atualização.** Cada desfecho — verificou, preparou, trocou,
+  voltou atrás, não pegou — entra no modo de depuração com o motivo, em vez de só no log corrido.
+
+#### Melhorado
+
+- O aviso de reiniciar acompanha uma versão mais nova que fique pronta no meio. Antes ele recusava e
+  pedia para conferir e clicar de novo.
+- A preferência "atualizar sozinho quando o Mac estiver ocioso" pode ser desligada. Estava na tela, mas
+  travada em ligada.
+
+#### Corrigido
+
+- **O app podia parar de atualizar para sempre dizendo que estava em dia.** Uma versão publicada com o
+  arquivo faltando, sem assinatura, ou sem o arquivo desta arquitetura, aparecia como "você está na
+  versão mais recente". Agora o app diz o que houve e continua tentando.
+- **Disco cheio.** Antes virava um erro genérico e o que já tinha sido baixado ficava ocupando o espaço
+  que faltava. Agora o app apaga o que baixou, diz quanto resta livre e para de insistir.
+- **Duas contas do Mac usando o app ao mesmo tempo** podiam atrapalhar uma à outra na hora de atualizar,
+  a ponto de uma apagar a versão de reserva da outra. Agora elas se revezam.
+- **Troca interrompida.** Se o app fosse fechado no meio da atualização, uma das cópias podia sumir e a
+  versão de reserva era apagada trinta segundos depois. Agora a cópia é reposta em qualquer abertura, e
+  a reserva só sai quando o app está no lugar dela.
+- **O conteúdo da versão preparada é reconferido** antes de ser reaproveitado numa abertura seguinte.
+- Quando o GitHub limita as consultas, o app diz isso e a que horas libera, em vez de dar um erro
+  genérico.
+
+---
+
 ## 4 de novembro de 2026
 
 ### v0.78.4 · O app de mesa, o WhatsApp e as máquinas
