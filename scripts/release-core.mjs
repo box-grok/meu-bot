@@ -55,3 +55,23 @@ export function lerVersao(caminho, conteudo) {
 /** Os clients OAuth do Google que a release publica como assets avulsos (assinados): só os que existem em config/ neste Mac. */
 export const CLIENTES_GOOGLE = ["google-oauth.json", "google-conta-oauth.json"];
 export const clientesGoogleParaPublicar = (existe) => CLIENTES_GOOGLE.filter((n) => existe(`config/${n}`));
+
+/**
+ * Corpo da release: a seção "Ainda não lançado" do `docs/CHANGELOG.md`, que já é escrita em linguagem de quem usa.
+ * Sem ela a release sairia com a lista de commits do GitHub (`--generate-notes`), que descreve o diff, não a mudança.
+ * A seção vale para o staging e para a estável do mesmo commit: são a mesma mudança vista pela pessoa. Só depois que
+ * a estável sai é que a seção é renomeada para a versão publicada, e uma "Ainda não lançado" nova começa vazia.
+ * null = não há seção, ou ela só tem espaço: quem publica decide se escreve ou aceita a lista de commits.
+ */
+export function notasDaRelease(changelog) {
+  const linhas = String(changelog ?? "").split("\n");
+  const i = linhas.findIndex((l) => /^##\s+Ainda não lançado\s*$/.test(l));
+  if (i < 0) return null;
+  const corpo = [];
+  for (const l of linhas.slice(i + 1)) {
+    if (/^##\s/.test(l) || /^-{3,}\s*$/.test(l)) break;
+    corpo.push(l);
+  }
+  const texto = corpo.join("\n").trim();
+  return texto === "" ? null : texto;
+}

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
+import { componentesSemVersao, lerVersao, notasDaRelease, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
 
 test("release staging: o próximo N sai das tags dessa versão", () => {
   assert.equal(proximaStaging("0.2.0", []), 1);
@@ -41,4 +41,22 @@ test("lerVersao: VERSION em texto, package.json pelo campo version", () => {
   assert.equal(lerVersao("x/package.json", null), null);
   assert.equal(lerVersao("x/plugin.yaml", 'name: a\nversion: "1.2.3"\n'), "1.2.3", "plugin do Hermes: a linha version do yaml");
   assert.equal(lerVersao("x/plugin.yaml", "name: a\n"), null);
+});
+
+test("notasDaRelease: o corpo de \"Ainda não lançado\", que para na próxima seção", () => {
+  const cl = `# Changelog\n\n> nota de numeração\n\n---\n\n## Ainda não lançado\n\n### Um título\n\n#### Novo\n\n- Uma coisa.\n- Outra.\n\n---\n\n## 4 de novembro de 2026\n\n### v0.78.4\n\n- Não entra.\n`;
+  const n = notasDaRelease(cl);
+  assert.match(n, /^### Um título/, "começa no título da leva, sem o cabeçalho do arquivo");
+  assert.match(n, /- Outra\./);
+  assert.doesNotMatch(n, /Não entra/, "para antes da entrada já publicada");
+  assert.doesNotMatch(n, /numeração/, "não pega o que vem antes da seção");
+  assert.equal(n, n.trim(), "sem espaço sobrando nas pontas");
+});
+
+test("notasDaRelease: sem a seção, ou com ela vazia, devolve null (o release cai no --generate-notes)", () => {
+  assert.equal(notasDaRelease("# Changelog\n\n## 4 de novembro\n\n- algo\n"), null, "seção ausente");
+  assert.equal(notasDaRelease("## Ainda não lançado\n\n   \n\n## 4 de novembro\n"), null, "só espaço");
+  assert.equal(notasDaRelease("## Ainda não lançado\n"), null, "fim do arquivo logo depois");
+  assert.equal(notasDaRelease(null), null, "sem changelog nenhum");
+  assert.equal(notasDaRelease("## ainda não lançado\n\n- x\n"), null, "o título é exatamente esse, com maiúscula");
 });
