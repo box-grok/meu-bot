@@ -53,6 +53,14 @@
     <span id="update-text"></span>
     <button type="button" id="update-apply" class="btn btn-primary btn-small">Reiniciar e atualizar</button>
   </div>
+  <!-- Localizar na página (Cmd+F). Quem procura muda com o foco: o terminal e o Navegador têm os seus; aqui é o conteúdo da janela. -->
+  <div id="find-bar" class="find-bar" role="search" hidden>
+    <input id="find-input" type="search" class="find-input" placeholder="Localizar nesta página" autocomplete="off" spellcheck="false" aria-label="Localizar nesta página" />
+    <span id="find-count" class="find-count" role="status" aria-live="polite"></span>
+    <button type="button" id="find-prev" class="btn btn-ghost btn-small" title="Anterior (Shift+Enter)" aria-label="Resultado anterior">↑</button>
+    <button type="button" id="find-next" class="btn btn-ghost btn-small" title="Próximo (Enter)" aria-label="Próximo resultado">↓</button>
+    <button type="button" id="find-close" class="btn btn-ghost btn-small" title="Fechar (Esc)" aria-label="Fechar a busca">✕</button>
+  </div>
   <!-- Modo de depuração: build, batimento do processo principal, túnel e o que chega de fora (ligado no staging; paleta ou --depuracao nos outros). -->
   <div id="depuracao-bar" class="depuracao-bar" hidden role="status">
     <span id="dep-build" class="dep-build" title="versão · branch · commit deste build"></span>
@@ -319,6 +327,15 @@
       </div>
     </div>
   </dialog>
+  <!-- Folha de atalhos (Cmd+/): escrita à mão em busca-core.ts, porque os atalhos nascem em quatro lugares diferentes. -->
+  <dialog id="atalhos-folha" class="atalhos-folha">
+    <div class="atalhos-folha-topo">
+      <h2>Atalhos de teclado</h2>
+      <button type="button" id="atalhos-folha-fechar" class="btn btn-ghost btn-small" aria-label="Fechar">✕</button>
+    </div>
+    <div id="atalhos-folha-corpo" class="atalhos-folha-corpo"></div>
+  </dialog>
+
   <dialog id="settings-dialog">
     <form id="settings-form" method="dialog">
       <h2>Configurações</h2>
@@ -352,7 +369,16 @@
         </div>
         <!-- Como no Grok Bot: a versão pronta entra sozinha com o Mac ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. -->
         <label class="switch switch-row"><input id="atualizar-ocioso" type="checkbox" /><span class="track"></span><span class="switch-label">Atualizar sozinho quando o Mac estiver ocioso (sem resposta nem terminal em andamento)</span></label>
-        <p class="hint">A versão nova é baixada e conferida em segundo plano; a troca também acontece ao fechar o app. Por enquanto, sempre ligado.</p>
+        <p class="hint">A versão nova é baixada e conferida em segundo plano; a troca também acontece ao fechar o app. Com uma resposta em andamento, o app pergunta antes de interromper.</p>
+      </details>
+
+      <!-- Texto e desempenho: o corretor vale para as janelas abertas daqui em diante; a aceleração, só ao reabrir o app. -->
+      <details class="group" data-group="texto">
+        <summary>Texto e desempenho <span class="sum-hint" id="texto-sum">corretor ortográfico e aceleração por hardware</span></summary>
+        <label class="switch switch-row"><input id="corretor-ortografico" type="checkbox" /><span class="track"></span><span class="switch-label">Corrigir a ortografia enquanto eu digito</span></label>
+        <p class="hint">O erro fica sublinhado e o botão direito mostra as sugestões e "Adicionar ao dicionário". O idioma é o do seu Mac. Campos de endereço, código e chave continuam de fora. Vale nas janelas abertas a partir de agora.</p>
+        <label class="switch switch-row"><input id="aceleracao-hardware" type="checkbox" /><span class="track"></span><span class="switch-label">Usar aceleração por hardware</span></label>
+        <p class="hint">Deixe ligada. Desligue só se a janela piscar, rasgar ou ficar preta neste Mac: sem aceleração o app fica menos fluido e gasta mais bateria. <strong>Só vale depois de fechar e abrir o app.</strong></p>
       </details>
 
       <!-- Suporte (só no meu-bot com o pacote de suporte, em máquina por SSH): liga sozinho; aqui o nome, "avisar o admin

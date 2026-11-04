@@ -474,6 +474,17 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return moverParaAplicativos();
   });
 
+  // Busca na página (Cmd+F). Quem procura é o webContents da própria janela que pediu; o resultado volta pelo
+  // evento `found-in-page`, ligado uma vez em windows.ts quando a janela nasce.
+  handleShared("find:start", (event, payload: unknown) => {
+    const p = payload as { texto?: unknown; adiante?: unknown; proximo?: unknown } | null;
+    const texto = typeof p?.texto === "string" ? p.texto : "";
+    // Texto vazio faz o Chromium lançar; e parar é justamente o que se quer ao apagar o campo.
+    if (texto === "") { event.sender.stopFindInPage("clearSelection"); return; }
+    event.sender.findInPage(texto, { forward: p?.adiante !== false, findNext: p?.proximo === true });
+  });
+  handleShared("find:stop", (event) => { event.sender.stopFindInPage("clearSelection"); });
+
   // Configurações e memória: deste Mac, valem para os dois apps.
   // Abrir ao entrar no Mac: o sistema é a fonte da verdade (a pessoa pode mudar nos Ajustes); só o app empacotado se registra.
   const withLogin = (v: SettingsView): SettingsView => ({ ...v, openAtLogin: app.isPackaged && app.getLoginItemSettings().openAtLogin, openAtLoginAvailable: app.isPackaged });
@@ -490,6 +501,8 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
       ...(typeof u.notifications === "boolean" ? { notifications: u.notifications } : {}),
       ...(typeof u.openAtLogin === "boolean" ? { openAtLogin: u.openAtLogin } : {}),
       ...(typeof u.atualizarOcioso === "boolean" ? { atualizarOcioso: u.atualizarOcioso } : {}),
+      ...(typeof u.corretorOrtografico === "boolean" ? { corretorOrtografico: u.corretorOrtografico } : {}),
+      ...(typeof u.aceleracaoHardware === "boolean" ? { aceleracaoHardware: u.aceleracaoHardware } : {}),
       ...(typeof u.abaFixa === "string" ? { abaFixa: u.abaFixa as NonNullable<SettingsUpdate["abaFixa"]> } : {}),
       ...(typeof u.contextBudgetTokens === "number" ? { contextBudgetTokens: u.contextBudgetTokens } : {}),
       ...(typeof u.memoryEveryTurns === "number" ? { memoryEveryTurns: u.memoryEveryTurns } : {}),

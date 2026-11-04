@@ -9,7 +9,7 @@ import { onVersaoMinima } from "./maquina/backend";
 import { LOCAL_HOST } from "./maquina/localBackend";
 import { closeTunnel, ehSemBackend, ensureTunnel, log, markSuspect, onTunnelState, revalidate } from "./maquina/tunnel";
 import { loadConversations } from "./conversa/conversation";
-import { getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
+import { getAceleracaoHardware, getLastHost, getQuickEntry, getTheme, loadSettings, setLastHost, setQuickEntryStatusProvider } from "./app/settings";
 import { applyQuickEntryShortcut, disposeQuickEntry, initQuickEntry, quickEntryStatus } from "./app/quickEntry";
 import { loadMemory } from "./conversa/memory";
 import { appVariant, caps, produto, userDataName } from "./app/variant";
@@ -37,6 +37,11 @@ import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWi
 { const ud = userDataName(); const de = produto().herdaDe; if (ud !== null) useVariantUserData(ud, caps().supportAdmin ? migrateAdminPessoas : de !== null ? herdarDe(de) : undefined); }
 // O meu-bot adota a pasta do antigo meu-bot-crm (uma vez; a origem fica como backup). Depois de herdar, antes de ler qualquer coisa.
 { const fd = produto().fundeDe; if (fd !== null && !app.commandLine.hasSwitch("user-data-dir")) fundirDe(fd)(app.getPath("userData"), app.getPath("appData")); }
+
+// `app.disableHardwareAcceleration()` só vale ANTES do ready, então as configurações são lidas aqui, logo depois de
+// a pasta de dados estar decidida. `loadSettings` é idempotente: o whenReady torna a chamar sem efeito colateral.
+loadSettings();
+if (!getAceleracaoHardware()) app.disableHardwareAcceleration();
 
 // Staging (recompilado várias vezes por dia): o Chromium não guarda a chave dos cookies no Keychain. Com assinatura
 // própria (sem Team ID da Apple) cada build é "outro app" para o macOS e o pedido de senha voltava a cada rebuild,
@@ -83,6 +88,10 @@ app.whenReady().then(() => {
       if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:toggle-settings", {});
     },
     zoom: (action) => { changeWindowZoom(action); },
+    abrir: (oQue) => {
+      const win = BrowserWindow.getFocusedWindow() ?? lastFocusedWindow();
+      if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:abrir", { oQue });
+    },
     atualizacao: {
       estado: updateMenuState,
       verificar: () => { void checkUpdateNow("explicito"); },

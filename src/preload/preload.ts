@@ -78,6 +78,8 @@ const sharedApi: MeuBotSharedApi = {
   checkUpdate: () => ipcRenderer.invoke("update:check", {}),
   applyUpdate: (expectedVersion: string, forcar = false) => ipcRenderer.invoke("update:apply", { expectedVersion, forcar }),
   moveAppToApplications: () => ipcRenderer.invoke("update:mover"),
+  findInPage: (texto: string, opcoes: { adiante: boolean; proximo: boolean }) => ipcRenderer.invoke("find:start", { texto, ...opcoes }),
+  stopFindInPage: () => ipcRenderer.invoke("find:stop"),
   netCheck: (force?: boolean) => ipcRenderer.invoke("net:check", { force: force === true }),
   hostLocalAddr: () => ipcRenderer.invoke("host:local-addr", {}),
   whatsappChats: () => ipcRenderer.invoke("whatsapp:chats", {}),

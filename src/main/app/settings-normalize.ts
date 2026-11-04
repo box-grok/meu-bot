@@ -60,6 +60,10 @@ export interface SettingsFile {
   navEspacos: Record<string, NavWorkspaces>;
   /** Reiniciar sozinho na versão nova com o Mac ocioso (como o Grok Bot; ligado por padrão). */
   atualizarOcioso: boolean;
+  /** Corretor ortográfico enquanto se digita nos campos de texto do app. */
+  corretorOrtografico: boolean;
+  /** Aceleração por hardware do Chromium. Desligar ajuda em Mac com vídeo problemático; custa fluidez. */
+  aceleracaoHardware: boolean;
   /** Modo de depuração: true/false gravado pela pessoa; null = o padrão da variante (ligado no staging). */
   depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
@@ -155,7 +159,7 @@ const validHost = (v: unknown): string | null => (typeof v === "string" && isVal
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, depuracao: null, abaFixa: "padrao",
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, corretorOrtografico: true, aceleracaoHardware: true, depuracao: null, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -197,6 +201,8 @@ export function normalizeSettings(input: unknown): SettingsFile {
     navFavoritos: normalizeNavFavoritos(p["navFavoritos"]),
     navEspacos: normalizeNavEspacos(p["navEspacos"]),
     atualizarOcioso: typeof p["atualizarOcioso"] === "boolean" ? p["atualizarOcioso"] : true,
+    corretorOrtografico: typeof p["corretorOrtografico"] === "boolean" ? p["corretorOrtografico"] : true,
+    aceleracaoHardware: typeof p["aceleracaoHardware"] === "boolean" ? p["aceleracaoHardware"] : true,
     depuracao: p["depuracao"] === true ? true : p["depuracao"] === false ? false : null,
     abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",
   };

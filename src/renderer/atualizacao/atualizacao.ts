@@ -18,6 +18,8 @@ const updateNotesBtn = $<HTMLButtonElement>("update-notes-btn");
 const updateApply2 = $<HTMLButtonElement>("update-apply-2");
 const updateMoveBtn = $<HTMLButtonElement>("update-move-btn");
 export const atualizarOciosoInput = $<HTMLInputElement>("atualizar-ocioso");
+export const corretorInput = $<HTMLInputElement>("corretor-ortografico");
+export const aceleracaoInput = $<HTMLInputElement>("aceleracao-hardware");
 const updateBlocker = $<HTMLElement>("update-blocker");
 const updateBlockerTitle = $<HTMLElement>("update-blocker-title");
 const updateBlockerMsg = $<HTMLElement>("update-blocker-text");
@@ -78,6 +80,17 @@ function moveFromButton(btn: HTMLButtonElement, onError: (msg: string) => void):
   void window.meuBot.moveAppToApplications().catch((err: unknown) => { btn.disabled = false; btn.textContent = "Mover para Aplicativos"; onError(ipcErrorText(err)); });
 }
 
+/** Interruptor de configuração simples: salva, repinta e desfaz na tela se o main recusar. */
+function ligarInterruptor(input: HTMLInputElement, campo: (v: boolean) => Record<string, boolean>): void {
+  input.addEventListener("change", () => {
+    void window.meuBot.setSettings(campo(input.checked)).then(ctx.applySettings).catch((err: unknown) => {
+      input.checked = !input.checked;
+      updateLine.textContent = `Não salvou: ${ipcErrorText(err)}`;
+      updateLine.className = "update-line bad";
+    });
+  });
+}
+
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarAtualizacao(): void {
   updateCheckBtn.addEventListener("click", () => { updateCheckBtn.disabled = true; void window.meuBot.checkUpdate().then(paintUpdateState).catch(() => { updateCheckBtn.disabled = false; }); });
@@ -89,5 +102,8 @@ export function ligarAtualizacao(): void {
   updateBlockerMove.addEventListener("click", () => moveFromButton(updateBlockerMove, (msg) => { updateBlockerMsg.textContent = msg; }));
   updateBlockerApply.addEventListener("click", () => applyFromButton(updateBlockerApply, (msg) => { updateBlockerMsg.textContent = `Não consegui atualizar: ${msg}`; }));
   atualizarOciosoInput.addEventListener("change", () => { void window.meuBot.setSettings({ atualizarOcioso: atualizarOciosoInput.checked }).then(ctx.applySettings).catch((err: unknown) => { atualizarOciosoInput.checked = !atualizarOciosoInput.checked; updateLine.textContent = `Não salvou: ${ipcErrorText(err)}`; }); });
+  // Corretor e aceleração: o interruptor volta sozinho se o main recusar, para a tela nunca mostrar o que não valeu.
+  ligarInterruptor(corretorInput, (v) => ({ corretorOrtografico: v }));
+  ligarInterruptor(aceleracaoInput, (v) => ({ aceleracaoHardware: v }));
   window.meuBot.on("update:state", paintUpdateState);
 }

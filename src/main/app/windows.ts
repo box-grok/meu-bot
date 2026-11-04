@@ -3,11 +3,11 @@
  * presas a um host, roteia eventos por host e desmonta o túnel de uma máquina com carência quando
  * a última janela dela fecha.
  */
-import { BrowserWindow, nativeTheme, screen, session, shell } from "electron";
+import { BrowserWindow, Menu, nativeTheme, screen, session, shell } from "electron";
 import path from "node:path";
 import type { MainEventChannel, MainEvents } from "../../shared/ipc";
 import { hostBusy } from "../conversa/conversation";
-import { getBackendPort, getZoomLevel } from "./settings";
+import { getBackendPort, getCorretorOrtografico, getZoomLevel } from "./settings";
 import { posicaoNoCanto } from "./janela-core";
 import { zoomFactor, zoomState } from "./zoom-core";
 import { closeTunnel, ensureTunnel, log } from "../maquina/tunnel";
@@ -113,7 +113,9 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      spellcheck: false,
+      // Corretor ortográfico enquanto se digita, como no Grok Bot. Os campos que não querem (endereço, código
+      // colado, chave) continuam marcados com spellcheck="false" no próprio HTML, que vence esta preferência.
+      spellcheck: getCorretorOrtografico(),
       // Aba Navegador: as abas internas são <webview> (como no Rambox), na partição da máquina.
       webviewTag: true,
       // Zoom da interface (Cmd+= / Cmd+-): já nasce no nível guardado, como o Cursor faz com window.zoomLevel.
@@ -121,6 +123,12 @@ export function openMainWindow(host: string, origin: OpenOrigin): BrowserWindow 
     },
   });
   byId.set(win.id, { win, host });
+  ligarMenuDeTexto(win);
+  // Busca na página: o Chromium responde a cada findInPage por aqui, e a barra do renderer mostra "n de N".
+  win.webContents.on("found-in-page", (_e, r) => {
+    if (win.isDestroyed()) return;
+    win.webContents.send("find:result", { atual: r.activeMatchOrdinal, total: r.matches });
+  });
   // Reforça assim que o DOM existe: o Electron guarda níveis por página em <userData>/Preferences e o zoomFactor inicial é
   // só o padrão quando não há entrada; o settings.json é que manda. Os scripts (type=module) já rodaram: o renderer ouve.
   win.webContents.once("dom-ready", () => {
@@ -171,3 +179,31 @@ export function disposeWindows(): void {
 
 /** No macOS o app vive sem janelas; o Dock reabre pelo seletor. */
 export const hasMainWindows = (): boolean => allMainWindows().length > 0;
+
+/**
+ * Menu do botão direito num campo de texto: as sugestões do corretor, "Adicionar ao dicionário" e os comandos de
+ * edição. Sem isto o corretor só sublinharia o erro, sem dar o que fazer com ele. Só em campo editável: em cima do
+ * resto da interface o menu nativo do Chromium (copiar, inspecionar) continua valendo.
+ */
+function ligarMenuDeTexto(win: BrowserWindow): void {
+  win.webContents.on("context-menu", (_e, params) => {
+    if (!params.isEditable) return;
+    const sessao = win.webContents.session;
+    const itens: Electron.MenuItemConstructorOptions[] = [
+      ...params.dictionarySuggestions.map((sugestao) => ({ label: sugestao, click: () => win.webContents.replaceMisspelling(sugestao) })),
+      ...(params.dictionarySuggestions.length > 0 ? [{ type: "separator" as const }] : []),
+      ...(params.misspelledWord === "" ? [] : [
+        { label: params.dictionarySuggestions.length === 0 ? "Nenhuma sugestão" : "Adicionar ao dicionário", enabled: params.dictionarySuggestions.length > 0 || params.misspelledWord !== "", click: () => { void sessao.addWordToSpellCheckerDictionary(params.misspelledWord); } },
+        { type: "separator" as const },
+      ]),
+      { role: "undo", label: "Desfazer" },
+      { role: "redo", label: "Refazer" },
+      { type: "separator" },
+      { role: "cut", label: "Recortar" },
+      { role: "copy", label: "Copiar" },
+      { role: "paste", label: "Colar" },
+      { role: "selectAll", label: "Selecionar tudo" },
+    ];
+    Menu.buildFromTemplate(itens).popup({ window: win });
+  });
+}

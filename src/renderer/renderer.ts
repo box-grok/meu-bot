@@ -77,7 +77,8 @@ import { askAgentAbout, cancelAutoSend, goToChatFromGuide } from "./conversa/pon
 import { activityPage, ligarAtividade } from "./conversa/atividade.js";
 import { ligarRede, net, paintNet, setNet } from "./app/rede.js";
 import { alternarDepuracao, faixaLigada, ligarFaixaDepuracao } from "./depuracao/faixa.js";
-import { atualizarOciosoInput, lastUpdate, ligarAtualizacao, paintUpdateState } from "./atualizacao/atualizacao.js";
+import { aceleracaoInput, atualizarOciosoInput, corretorInput, lastUpdate, ligarAtualizacao, paintUpdateState } from "./atualizacao/atualizacao.js";
+import { abrirAtalhos, abrirBusca, buscaAberta, ligarAlvoWebview, ligarBusca, pararBusca, type AlvoWebview } from "./busca/busca.js";
 import { ligarConfiguracoes, maybeAskNotificationsOnce } from "./configuracoes/configuracoes.js";
 import { paintEspaco } from "./configuracoes/espaco.js";
 import { tam as tamEspaco } from "./lib/espaco.js";
@@ -1102,6 +1103,13 @@ function navHasFocus(): boolean {
   // Nada focado (clique numa área da barra do Navegador que não recebe foco) com o Navegador na frente: ainda é dele.
   return (a === null || a === document.body) && pageActive === navPage;
 }
+/**
+ * ⌘F não tem um dono só: com o terminal em foco ele busca no terminal (terminal.ts trata e nós saímos da frente);
+ * com o Navegador em foco, busca dentro da página aberta; no resto, no conteúdo da janela.
+ */
+const termHasFocus = (): boolean => document.activeElement?.closest(".term-panel") != null;
+const webviewDoNavegador = (): AlvoWebview => (navHasFocus() ? (navCurrent()?.wv as unknown as AlvoWebview) ?? null : null);
+
 function zoomWindow(action: ZoomAction): void { void window.meuBot.zoomWindow(action).catch(() => { /* a janela fica como está */ }); }
 /** Pinta o nível: variável CSS (a barra de título compensa os semáforos), rodapé, Configurações e, se mudou, o toast. */
 function applyZoomState(st: ZoomState, announce: boolean): void {
@@ -1484,6 +1492,8 @@ function applySettings(view: SettingsView): void {
   if (tutorialsReady) paintTutCount(); // o tour concluído sai da contagem de ativos
   lastHostEl.textContent = view.lastHost === null ? "" : `Última máquina aberta pelo seletor: ${hostLabel(view.lastHost)}.`;
   atualizarOciosoInput.checked = view.atualizarOcioso;
+  corretorInput.checked = view.corretorOrtografico;
+  aceleracaoInput.checked = view.aceleracaoHardware;
   applyZoomState({ level: view.zoomLevel, factor: Math.pow(1.2, view.zoomLevel), percent: Math.round(Math.pow(1.2, view.zoomLevel) * 100) }, false);
   document.documentElement.dataset["theme"] = view.theme;
   pintarFixada();
@@ -1734,6 +1744,17 @@ document.addEventListener("keydown", (ev) => {
     return;
   }
   if (mod && ev.key === "k") { ev.preventDefault(); if (paletteEl.hidden) openPalette(); else closePalette(); return; }
+  // Localizar na página. O terminal tem a sua busca e já tratou o ⌘F dele: aqui só se sai da frente.
+  if (mod && (ev.key === "f" || ev.key === "F") && !ev.shiftKey && !ev.altKey) {
+    if (termHasFocus()) return;
+    ev.preventDefault();
+    const sel = String(window.getSelection() ?? "");
+    abrirBusca(sel.trim());
+    return;
+  }
+  if (mod && ev.key === "/") { ev.preventDefault(); abrirAtalhos(); return; }
+  // Esc fecha a busca mesmo com o foco fora do campo dela.
+  if (ev.key === "Escape" && buscaAberta() && paletteEl.hidden) { ev.preventDefault(); pararBusca(); return; }
   // Barra de escrever recolhida e a pessoa começou a digitar fora de um campo: a barra volta e a tecla cai nela.
   if (composerHidden() && !mod && !ev.altKey && ev.key.length === 1 && (ev.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable], webview, dialog") == null) { setComposerHidden(false, { focar: true }); return; }
   if (!paletteEl.hidden) return;
@@ -1821,6 +1842,8 @@ let hostLocalAddr = false;
 ligarRede();
 ligarFaixaDepuracao();
 ligarAtualizacao();
+ligarAlvoWebview(webviewDoNavegador);
+ligarBusca();
 ligarConfiguracoes();
 // Todo body dos tutoriais precisa de alguém que o desenhe (cada módulo registra os seus no `ligar…()` dele).
 { const faltam = conferirPassos(TUTORIAIS); if (faltam.length > 0) console.error("passos de tutorial sem tela:", faltam.join(", ")); }

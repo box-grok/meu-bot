@@ -31,8 +31,6 @@ no [diário técnico](GUIA.md).
 
 - O aviso de reiniciar acompanha uma versão mais nova que fique pronta no meio. Antes ele recusava e
   pedia para conferir e clicar de novo.
-- A preferência "atualizar sozinho quando o Mac estiver ocioso" pode ser desligada. Estava na tela, mas
-  travada em ligada.
 
 #### Corrigido
 
@@ -49,6 +47,28 @@ no [diário técnico](GUIA.md).
 - **O conteúdo da versão preparada é reconferido** antes de ser reaproveitado numa abertura seguinte.
 - Quando o GitHub limita as consultas, o app diz isso e a que horas libera, em vez de dar um erro
   genérico.
+
+### A casca do app: localizar, atalhos, corretor e aceleração
+
+#### Novo
+
+- **Localizar na página, com ⌘F.** Uma faixa de busca com "3 de 12", ↑ e ↓, e Esc para fechar. Ela segue
+  o foco: com o terminal na frente, busca dentro do terminal; com o Navegador, dentro da página aberta;
+  no resto, no conteúdo da janela. Com texto selecionado, ele já entra no campo.
+- **Folha de atalhos, com ⌘/.** Todos os atalhos do app numa tela só, por assunto. Também em Ajuda ›
+  Atalhos de teclado.
+- **Corretor ortográfico enquanto você digita.** O erro fica sublinhado e o botão direito mostra as
+  sugestões e "Adicionar ao dicionário". O idioma é o do seu Mac. Campos de endereço, código e chave
+  continuam de fora. Dá para desligar em Configurações › Texto e desempenho.
+- **Preferência de aceleração por hardware.** Desligue se a janela piscar, rasgar ou ficar preta neste
+  Mac. Vale depois de fechar e abrir o app.
+- O menu Editar agora é completo: desfazer, refazer, recortar, copiar, colar, selecionar tudo,
+  Localizar e os comandos de fala do macOS.
+
+#### Corrigido
+
+- **A preferência "atualizar sozinho quando o Mac estiver ocioso" não ficava desligada.** O interruptor
+  salvava, mas o app continuava lendo "ligado" e a tela remarcava a caixa no primeiro repinte.
 
 ---
 

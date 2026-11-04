@@ -196,13 +196,22 @@ export const settingsView = (host?: string): SettingsView => ({
   openAtLogin: false, openAtLoginAvailable: false,
   hostNames: getHostNames(),
   navEspacos: host === undefined ? emptyWorkspaces() : navEspacos(host),
-  atualizarOcioso: true, // sempre ligado por enquanto (o interruptor está travado nas Configurações)
+  atualizarOcioso: file.atualizarOcioso,
+  corretorOrtografico: file.corretorOrtografico,
+  aceleracaoHardware: file.aceleracaoHardware,
   depuracao: file.depuracao,
   abaFixa: file.abaFixa,
 });
-/** "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta). */
-/** Sempre ligado por enquanto: o interruptor fica travado nas Configurações; um "false" gravado antes é ignorado. */
-export const getAtualizarOcioso = (): boolean => true;
+/**
+ * "Atualizar sozinho quando o Mac estiver ocioso" (o updater consulta a cada minuto com uma versão pronta).
+ * O interruptor saiu de travado nas Configurações, então o que está gravado é que manda: até aqui o main devolvia
+ * `true` fixo e a tela, ao repintar, desmarcava e remarcava o que a pessoa acabara de desligar.
+ */
+export const getAtualizarOcioso = (): boolean => file.atualizarOcioso;
+/** Corretor ortográfico enquanto se digita; vale para as janelas abertas a partir daqui. */
+export const getCorretorOrtografico = (): boolean => file.corretorOrtografico;
+/** Aceleração por hardware do Chromium. Lido no arranque: `app.disableHardwareAcceleration` só vale antes do ready. */
+export const getAceleracaoHardware = (): boolean => file.aceleracaoHardware;
 
 /** Aplica uma atualização vinda da janela da máquina `host` (o modelo por máquina grava nela). */
 export function updateSettings(update: SettingsUpdate, host?: string): SettingsView {
@@ -249,6 +258,8 @@ export function updateSettings(update: SettingsUpdate, host?: string): SettingsV
     file.onboarding = update.onboarding;
   }
   if (update.atualizarOcioso !== undefined) file.atualizarOcioso = update.atualizarOcioso === true;
+  if (update.corretorOrtografico !== undefined) file.corretorOrtografico = update.corretorOrtografico === true;
+  if (update.aceleracaoHardware !== undefined) file.aceleracaoHardware = update.aceleracaoHardware === true;
   if (update.abaFixa !== undefined) {
     if (!isAbaFixa(update.abaFixa)) throw new Error("Aba fixada inválida.");
     file.abaFixa = update.abaFixa;
