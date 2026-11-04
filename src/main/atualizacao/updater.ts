@@ -33,8 +33,8 @@ import { baixarComRetomada, DownloadError, semEspacoEmDisco } from "./update-dow
 import { noteNetworkError } from "../app/net";
 import { offlineMessage } from "../app/net-core";
 import {
-  abaixoDaMinima, antigosDescartaveis, candidataDe, CHECK_EVERY_MS, compareVersions, CONFIRMA_FEED_MS, decideReinicioOcioso, decideRollback, escolherRelease, feedAindaOferece, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
-  proximaVerificacaoMs, releasesUrl, repararTroca, verificaAssinatura,
+  abaixoDaMinima, alvosParaTrocar, candidataDe, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
+  pastaSoLeitura, proximaVerificacaoMs, releasesUrl, repararTroca, TRAVA_VELHA_MS, travaAbandonada, verificaAssinatura,
   type EscolhaRelease, type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
 } from "./updater-core";
 
@@ -194,22 +194,13 @@ function check(trigger: UpdateTrigger): Promise<void> {
 
 async function consultarFeed(signal: AbortSignal): Promise<EscolhaRelease> {
   const res = await fetch(releasesUrl(caps().canal), { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.any([signal, AbortSignal.timeout(FEED_TIMEOUT_MS)]) });
-  if (res.status === 404) return { tipo: "nada-novo" }; // ainda sem release: a instalada é a mais recente
-  if (!res.ok) throw new UpdateFalha("github", textoRespostaGithub(res));
+  const r = classificarRespostaFeed(res.status, res.headers.get("x-ratelimit-remaining"), res.headers.get("x-ratelimit-reset"));
+  if (r.tipo === "sem-release") return { tipo: "nada-novo" }; // o repositório ainda não publicou: a instalada é a mais recente
+  if (r.tipo === "falha") throw new UpdateFalha("github", r.msg);
   let corpo: unknown;
   // Corpo que não é JSON (portal de rede cativa, página de erro do proxy) não é falha de conexão: dizer o que é.
   try { corpo = await res.json(); } catch { throw new UpdateFalha("release", "o servidor de atualização respondeu algo que não consegui entender"); }
   return escolherRelease(corpo, { app: appTitle(), arch: arch(), current: state.current, canal: caps().canal });
-}
-
-/** Limite da API do GitHub (403/429 com a cota zerada) não é defeito do app nem da rede: a frase diz isso. */
-function textoRespostaGithub(res: Response): string {
-  if ((res.status === 403 || res.status === 429) && res.headers.get("x-ratelimit-remaining") === "0") {
-    const reset = Number(res.headers.get("x-ratelimit-reset"));
-    const volta = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
-    return `o GitHub limitou as consultas deste IP${volta === null ? "" : `; libera por volta das ${volta}`}`;
-  }
-  return `GitHub respondeu ${res.status}`;
 }
 
 /** Sem internet, a culpa não é do GitHub nem do app: a frase diz isso (e a volta da rede refaz a checagem). */
@@ -303,9 +294,11 @@ async function conferirBundle(bundle: string): Promise<void> {
 
 /** Na abertura: a versão preparada da sessão anterior ainda vale? Reconfere a integridade e já fica "pronta", sem baixar. */
 async function reaproveitarPreparada(): Promise<void> {
-  let p: UpdatePreparada | null = null;
-  try { p = parsePreparada(JSON.parse(fs.readFileSync(preparadaFile(), "utf8"))); } catch { return; }
-  if (p === null || compareVersions(p.para, state.current) <= 0 || !fs.existsSync(path.join(p.bundle, "Contents", "Info.plist"))) { limparPreparada(); return; }
+  let lido: unknown;
+  try { lido = JSON.parse(fs.readFileSync(preparadaFile(), "utf8")); } catch { return; } // nada preparado: o normal
+  const uso = decideReaproveitar(parsePreparada(lido), state.current, (b) => fs.existsSync(path.join(b, "Contents", "Info.plist")));
+  if (uso.tipo === "descartar") { log(`[atualização] descartei o que estava preparado: ${motivoPreparadaTexto(uso.motivo)}`); limparPreparada(); return; }
+  const p = uso.preparada;
   try {
     await conferirBundle(p.bundle);
     preparada = p; state.ready = p.para; state.available = p.para;
@@ -313,6 +306,8 @@ async function reaproveitarPreparada(): Promise<void> {
     setPhase("ready");
   } catch (e) { log(`[atualização] a ${p.para} preparada não passou na conferência (${erroTexto(e)}): descartada`); limparPreparada(); }
 }
+const motivoPreparadaTexto = (m: "ilegivel" | "nao-e-mais-nova" | "sumiu"): string =>
+  m === "ilegivel" ? "o registro não está íntegro" : m === "nao-e-mais-nova" ? "não é mais nova que a instalada" : "a pasta do app preparado sumiu";
 function limparPreparada(): void {
   preparada = null; state.ready = null;
   try { fs.rmSync(updateDir(), { recursive: true, force: true }); } catch { /* cortesia */ }
@@ -333,11 +328,12 @@ export async function applyUpdate(expectedVersion: string, gatilho: Exclude<Upda
   const idade = state.checkedAt === null ? Number.POSITIVE_INFINITY : Date.now() - Date.parse(state.checkedAt);
   if (idade > CONFIRMA_FEED_MS) {
     // Reconfirma só a release (sem preparar outra): retirada do ar, nada muda; sem internet, a preparada já conferida vale.
-    let escolha: EscolhaRelease | undefined;
+    let escolha: EscolhaRelease | null = null;
     try { escolha = await consultarFeed(new AbortController().signal); state.checkedAt = new Date().toISOString(); } catch (e) { log(`[atualização] não deu para reconfirmar no GitHub (${erroTexto(e)}); sigo com a ${expectedVersion} já conferida`); }
     // Só uma resposta conclusiva retira a preparada do ar: um feed que não deu para ler não descarta o que já conferimos.
-    if (escolha !== undefined && escolha.tipo === "inutilizavel") log(`[atualização] a reconfirmação não deu para ler (${motivoReleaseTexto(escolha.versao, escolha.motivo)}); sigo com a ${expectedVersion} já conferida`);
-    else if (escolha !== undefined && !feedAindaOferece(candidataDe(escolha), expectedVersion)) { log(`[atualização] a ${expectedVersion} foi retirada da release: descartada`); limparPreparada(); state.available = candidataDe(escolha)?.version ?? null; setPhase("up-to-date"); throw new Error("A atualização foi retirada do ar; nada foi mudado."); }
+    const r = decideReconfirmacao(escolha, expectedVersion);
+    if (r.tipo === "ilegivel") log(`[atualização] a reconfirmação não deu para ler (${r.motivo}); sigo com a ${expectedVersion} já conferida`);
+    if (r.tipo === "retirada") { log(`[atualização] a ${expectedVersion} foi retirada da release: descartada`); limparPreparada(); state.available = r.agora; setPhase("up-to-date"); throw new Error("A atualização foi retirada do ar; nada foi mudado."); }
   }
   setPhase("applying");
   if (gatilho === "clique" && anyConversationBusy()) {
@@ -348,12 +344,11 @@ export async function applyUpdate(expectedVersion: string, gatilho: Exclude<Upda
   }
   let mine: string;
   try { mine = swapBundles(gatilho); } catch (e) {
-    const ro = soLeitura(e); setPhase(ro ? "needs-move" : "ready");
+    const ro = pastaSoLeitura(e); setPhase(ro ? "needs-move" : "ready");
     throw ro ? new Error("O app está numa pasta só de leitura (ainda na imagem do instalador?). Arraste-o para a pasta Aplicativos e abra de lá.") : e;
   }
   relancar(mine);
 }
-const soLeitura = (e: unknown): boolean => { const c = (e as { code?: unknown })?.code; return c === "EROFS" || c === "EACCES" || c === "EPERM"; };
 /** Reabre o app já na versão nova, na mesma máquina que a pessoa estava (sem `--host`, o seletor abre). */
 function relancar(mine: string): void {
   const host = getLastFocusedHost();
@@ -380,25 +375,32 @@ function swapBundles(gatilho: UpdateGatilho): string {
   try { return trocarAlvos(mine, gatilho); } finally { soltar(); }
 }
 
-/** Quanto tempo uma trava de troca pode ficar de pé antes de contar como restos de uma sessão que morreu. */
-const TRAVA_VELHA_MS = 5 * 60_000;
 /**
- * Trava entre processos para a troca, ao lado do .app em execução. `mkdir` é atômico: quem criar o diretório ganha.
- * Não usa o temporário do sistema porque no macOS ele é privado por usuário, que é exatamente o caso a cobrir.
+ * Trava entre processos para mexer nos .app, ao lado do .app em execução. `mkdir` é atômico: quem criar o diretório
+ * ganha. Não usa o temporário do sistema porque no macOS ele é privado por usuário, que é exatamente o caso a cobrir.
+ * Vale para a troca e também para o descarte e a volta atrás, que mexem nos mesmos `<app>.antigo`.
  * Devolve como soltar, ou null se outra sessão está com ela.
  */
 function pegarTrava(bundle: string): (() => void) | null {
   const trava = path.join(path.dirname(bundle), `.${path.basename(bundle)}.troca`);
   try { fs.mkdirSync(trava); } catch (e) {
     if ((e as { code?: string }).code !== "EEXIST") throw e;
-    let idade = Number.POSITIVE_INFINITY;
+    let idade = Number.NaN;
     try { idade = Date.now() - fs.statSync(trava).mtimeMs; } catch { /* sumiu entre o mkdir e o stat: tenta pegar */ }
-    if (idade < TRAVA_VELHA_MS) return null;
-    log(`[atualização] trava de troca parada há ${Math.round(idade / 60_000)} min: assumindo que a sessão dona morreu`);
+    if (!travaAbandonada(idade)) return null;
+    log(`[atualização] trava de troca parada há ${Number.isFinite(idade) ? `${Math.round(idade / 60_000)} min` : "não sei quanto tempo"} (limite ${TRAVA_VELHA_MS / 60_000} min): assumindo que a sessão dona morreu`);
     try { fs.rmSync(trava, { recursive: true, force: true }); fs.mkdirSync(trava); } catch { return null; }
   }
   try { fs.writeFileSync(path.join(trava, "quem"), `${process.pid} ${new Date().toISOString()}\n`, { mode: 0o600 }); } catch { /* cortesia */ }
   return () => { try { fs.rmSync(trava, { recursive: true, force: true }); } catch { /* cortesia */ } };
+}
+
+/** Roda `f` com a trava dos .app na mão; devolve false sem fazer nada se outra sessão está mexendo agora. */
+function comTrava(bundle: string, oQue: string, f: () => void): boolean {
+  let soltar: (() => void) | null = null;
+  try { soltar = pegarTrava(bundle); } catch (e) { log(`[atualização] não consegui a trava para ${oQue}: ${erroTexto(e)}`); return false; }
+  if (soltar === null) { log(`[atualização] outra sessão está mexendo nos .app agora: deixei ${oQue} para depois`); return false; }
+  try { f(); return true; } finally { soltar(); }
 }
 
 /** A troca em si, já com a trava na mão. */
@@ -411,32 +413,46 @@ function trocarAlvos(mine: string, gatilho: UpdateGatilho): string {
   }
   // Outra sessão pode ter trocado uma cópia enquanto esperávamos a trava. Filtrar ANTES de gravar o registro é o
   // que impede esta sessão de reivindicar (e depois apagar) o .antigo que é a volta atrás daquela.
-  const aTrocar = [...targets].filter((t) => {
-    if (plistSync(t, "CFBundleShortVersionString") !== preparada?.para) return true;
-    log(`[atualização] ${t} já está na ${preparada.para}: não mexi`);
-    return false;
-  });
+  const { trocar: aTrocar, jaNaVersao } = alvosParaTrocar([...targets].map((caminho) => ({ caminho, versao: plistSync(caminho, "CFBundleShortVersionString") })), preparada.para);
+  for (const t of jaNaVersao) log(`[atualização] ${t} já está na ${preparada.para}: não mexi`);
   const pend: UpdatePendente = { de: state.current, para: preparada.para, antigos: aTrocar.map((t) => `${t}.antigo`), tentativas: 0, gatilho, pedidoEm: new Date().toISOString(), fase: "pedida" };
   gravarJson(pendenteFile(), pend);
   const antigos: string[] = [];
-  for (const t of aTrocar) {
-    const fresh = `${t}.novo`, old = `${t}.antigo`;
-    fs.rmSync(fresh, { recursive: true, force: true }); fs.rmSync(old, { recursive: true, force: true });
-    try {
-      execFileSync("ditto", [preparada.bundle, fresh]);
-      fs.renameSync(t, old); fs.renameSync(fresh, t);
-    } catch (e) {
-      // Uma cópia sem escrita (mesa de outro usuário) é pulada; o .app em execução precisa trocar.
-      if (t === mine) throw e;
-      log(`[atualização] não troquei a cópia ${t}: ${erroTexto(e)}`); fs.rmSync(fresh, { recursive: true, force: true }); continue;
+  try {
+    for (const t of aTrocar) {
+      const fresh = `${t}.novo`, old = `${t}.antigo`;
+      fs.rmSync(fresh, { recursive: true, force: true }); fs.rmSync(old, { recursive: true, force: true });
+      try {
+        execFileSync("ditto", [preparada.bundle, fresh]);
+        fs.renameSync(t, old); fs.renameSync(fresh, t);
+      } catch (e) {
+        // Uma cópia sem escrita (mesa de outro usuário) é pulada; o .app em execução precisa trocar.
+        if (t === mine) throw e;
+        log(`[atualização] não troquei a cópia ${t}: ${erroTexto(e)}`); fs.rmSync(fresh, { recursive: true, force: true }); continue;
+      }
+      antigos.push(old);
+      log(`[atualização] ${t} → ${preparada.para} (${gatilho})`);
     }
-    antigos.push(old);
-    log(`[atualização] ${t} → ${preparada.para} (${gatilho})`);
+  } catch (e) {
+    // A troca parou e o app NÃO vai reiniciar: desfazer é melhor que deixar um registro "pedida" no disco dizendo
+    // que a troca começou. Assim "pedida" só sobra quando o processo morreu de verdade no meio.
+    desfazerTroca(antigos);
+    fs.rmSync(pendenteFile(), { force: true });
+    throw e;
   }
   gravarJson(pendenteFile(), { ...pend, antigos, fase: "trocada" } satisfies UpdatePendente);
   fs.rmSync(updateDir(), { recursive: true, force: true });
   preparada = null; state.ready = null;
   return mine;
+}
+
+/** Desfaz uma troca que parou no meio com o app ainda de pé: cada `<app>.antigo` volta para o lugar do `<app>`. */
+function desfazerTroca(antigos: readonly string[]): void {
+  for (const old of antigos) {
+    const t = old.replace(/\.antigo$/, "");
+    try { fs.rmSync(t, { recursive: true, force: true }); fs.renameSync(old, t); log(`[atualização] desfiz a troca de ${t}`); }
+    catch (e) { log(`[atualização] não consegui desfazer a troca de ${t}: ${erroTexto(e)}`); }
+  }
 }
 
 /** Ao sair do app com uma atualização pronta, troca calado: a próxima abertura já é a nova. */
@@ -483,28 +499,45 @@ function conferirPendente(): void {
   let p: UpdatePendente | null = null;
   try { p = parsePendente(JSON.parse(fs.readFileSync(pendenteFile(), "utf8"))); } catch { return; }
   if (p === null) { fs.rmSync(pendenteFile(), { force: true }); return; }
-  // Repor o que ficou faltando vem ANTES de decidir, e vale para toda decisão. O registro em "pedida" quer dizer
-  // que a troca morreu em algum ponto entre gravar o pedido e terminar as renomeações, então pode haver um .app
-  // ausente mesmo quando esta abertura já é a versão nova. Antes isto só rodava no caminho "nao-pegou", e uma cópia
-  // perdida nos outros caminhos tinha o .antigo apagado 30 s depois, sumindo de vez.
-  reporFaltantes(p);
-  const decisao = decideRollback(p, state.current);
-  if (decisao === "voltar") { voltarParaAnterior(p); return; }
-  if (decisao === "nao-pegou") {
-    log(`[atualização] reabriu na ${p.de} depois de pedir a ${p.para} (${p.gatilho ?? "?"}, registro em "${p.fase}"): a troca não pegou; vou preparar de novo`);
-    descartarAntigos(p.antigos);
-    fs.rmSync(pendenteFile(), { force: true });
-    return;
-  }
-  if (decisao === "descartar") { descartarAntigos(p.antigos); fs.rmSync(pendenteFile(), { force: true }); return; }
-  gravarJson(pendenteFile(), { ...p, tentativas: p.tentativas + 1 } satisfies UpdatePendente);
   const pend = p;
-  setTimeout(() => {
-    descartarAntigos(pend.antigos);
+  const mine = runningBundle();
+  if (mine === null) return;
+  // Tudo o que mexe nos .app e nos .antigo vai sob a MESMA trava que a troca usa: com troca rápida de usuário, a
+  // outra sessão pode estar trocando agora, e o .antigo que ela acabou de criar é a volta atrás dela. Sem a trava,
+  // esta sessão o apagaria. Quando a trava está com a outra, o registro fica no disco para a próxima abertura.
+  let voltar = false;
+  const feito = comTrava(mine, "a conferência da troca pendente", () => {
+    // Repor o que ficou faltando vem ANTES de decidir, e vale para toda decisão. O registro em "pedida" quer dizer
+    // que a troca morreu em algum ponto entre gravar o pedido e terminar as renomeações, então pode haver um .app
+    // ausente mesmo quando esta abertura já é a versão nova. Antes isto só rodava no caminho "nao-pegou", e uma cópia
+    // perdida nos outros caminhos tinha o .antigo apagado 30 s depois, sumindo de vez.
+    reporFaltantes(pend);
+    const decisao = decideRollback(pend, state.current);
+    if (decisao === "voltar") { voltarParaAnterior(pend); voltar = true; return; }
+    if (decisao === "nao-pegou") {
+      log(`[atualização] reabriu na ${pend.de} depois de pedir a ${pend.para} (${pend.gatilho ?? "?"}, registro em "${pend.fase}"): a troca não pegou; vou preparar de novo`);
+      descartarAntigos(pend);
+      fs.rmSync(pendenteFile(), { force: true });
+      return;
+    }
+    if (decisao === "descartar") { descartarAntigos(pend); fs.rmSync(pendenteFile(), { force: true }); return; }
+    gravarJson(pendenteFile(), { ...pend, tentativas: pend.tentativas + 1 } satisfies UpdatePendente);
+    setTimeout(() => confirmarTroca(mine, pend), CONFIRMA_MS).unref();
+  });
+  // Reabrir fica FORA da trava: `app.exit` não roda o finally, e a sessão nova encontraria a trava de pé.
+  if (voltar) { relancar(mine); return; }
+  if (!feito) log("[atualização] a conferência da troca fica para a próxima abertura");
+}
+
+/** O app ficou de pé: a versão nova está confirmada e as cópias anteriores saem (sob a trava, como tudo que as toca). */
+function confirmarTroca(mine: string, pend: UpdatePendente): void {
+  const feito = comTrava(mine, "o descarte da versão anterior", () => {
+    descartarAntigos(pend);
     fs.rmSync(pendenteFile(), { force: true });
     const demorou = pend.pedidoEm !== null && Date.now() - Date.parse(pend.pedidoEm) > 10 * 60_000;
     log(`[atualização] ${pend.para} confirmada (ficou de pé${demorou ? ", bem depois do pedido" : ""}; ${pend.gatilho ?? "?"}); versão anterior apagada`);
-  }, CONFIRMA_MS).unref();
+  });
+  if (!feito) log(`[atualização] ${pend.para} confirmada, mas o descarte da anterior fica para a próxima abertura`);
 }
 
 /** Repõe todo `<app>.antigo` cujo `<app>` sumiu: uma troca que morreu entre tirar o velho e pôr o novo. */
@@ -514,16 +547,14 @@ function reporFaltantes(p: UpdatePendente): void {
     catch (e) { log(`[atualização] não consegui repor ${r.para}: ${erroTexto(e)}`); }
   }
 }
-/** Apaga as cópias anteriores, menos uma que ainda seja tudo o que resta daquela instalação. */
-function descartarAntigos(antigos: readonly string[]): void {
-  const podem = new Set(antigosDescartaveis(antigos, fs.existsSync));
-  for (const a of antigos) {
-    if (!podem.has(a)) { log(`[atualização] mantive ${a}: o app no lugar dele não existe`); continue; }
-    fs.rmSync(a, { recursive: true, force: true });
-  }
+/** Apaga as cópias anteriores que esta sessão criou e sabe que não fazem mais falta (decideDescarte decide). */
+function descartarAntigos(p: UpdatePendente): void {
+  const { apagar, manter } = decideDescarte(p.fase, p.antigos, fs.existsSync);
+  for (const m of manter) log(`[atualização] mantive ${m.caminho}: ${motivoManterTexto(m.motivo)}`);
+  for (const a of apagar) fs.rmSync(a, { recursive: true, force: true });
 }
 
-/** Restaura cada <app>.antigo no lugar do <app> e reabre na versão anterior. */
+/** Restaura cada <app>.antigo no lugar do <app>. Quem reabre é `conferirPendente`, já sem a trava na mão. */
 function voltarParaAnterior(p: UpdatePendente): void {
   log(`[atualização] ${p.para} não passou das primeiras aberturas: voltando para ${p.de}`);
   for (const old of p.antigos) {
@@ -539,6 +570,4 @@ function voltarParaAnterior(p: UpdatePendente): void {
     } catch (e) { log(`[atualização] não consegui voltar ${t}: ${erroTexto(e)}`); }
   }
   fs.rmSync(pendenteFile(), { force: true });
-  const mine = runningBundle();
-  if (mine !== null) relancar(mine); else app.exit(0);
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { escolherRelease, candidataDe, motivoReleaseTexto, antigosDescartaveis, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
+const { escolherRelease, candidataDe, motivoReleaseTexto, decideDescarte, motivoManterTexto, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima, classificarRespostaFeed, decideReconfirmacao, alvosParaTrocar, travaAbandonada, TRAVA_VELHA_MS, pastaSoLeitura, decideReaproveitar } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
 import { generateKeyPairSync, sign } from "node:crypto";
 
 // Cada zip publicado vem com o .sig ao lado (o release assina); sem ele não há candidata (teste próprio abaixo).
@@ -231,13 +231,97 @@ test("versão mínima do backend: só uma versão válida conta; abaixo dela o a
   assert.equal(abaixoDaMinima("0.3.0-staging.1", "0.3.0"), true, "o staging da 0.3.0 ainda é anterior à 0.3.0");
 });
 
-test("antigosDescartaveis: a cópia anterior só sai quando o app voltou ao lugar dela", () => {
+test("decideDescarte: a troca só apaga a cópia anterior quando terminou e o app está no lugar", () => {
   const existe = (p) => p === "/Applications/meu-bot.app";
   const antigos = ["/Applications/meu-bot.app.antigo", "/Users/x/Desktop/meu-bot.app.antigo"];
-  // A da mesa ficou sem o .app no lugar (a troca morreu entre tirar o velho e pôr o novo): apagá-la sumiria
-  // com aquela instalação. Era isso que acontecia 30 s depois de confirmar a versão nova.
-  assert.deepEqual(antigosDescartaveis(antigos, existe), ["/Applications/meu-bot.app.antigo"]);
-  assert.deepEqual(antigosDescartaveis(antigos, () => true), antigos, "com tudo no lugar, todas saem");
-  assert.deepEqual(antigosDescartaveis(antigos, () => false), [], "nenhuma no lugar: não apaga nada");
-  assert.deepEqual(antigosDescartaveis([], existe), []);
+
+  // Fase "trocada": a lista é o que esta sessão de fato criou. A da mesa ficou sem o .app no lugar (a troca morreu
+  // entre tirar o velho e pôr o novo): apagá-la sumiria com aquela instalação, e era isso que acontecia 30 s
+  // depois de confirmar a versão nova.
+  const t = decideDescarte("trocada", antigos, existe);
+  assert.deepEqual(t.apagar, ["/Applications/meu-bot.app.antigo"]);
+  assert.deepEqual(t.manter, [{ caminho: "/Users/x/Desktop/meu-bot.app.antigo", motivo: "app-ausente" }]);
+  assert.deepEqual(decideDescarte("trocada", antigos, () => true).apagar, antigos, "com tudo no lugar, todas saem");
+  assert.deepEqual(decideDescarte("trocada", antigos, () => false).apagar, [], "nenhuma no lugar: não apaga nada");
+  assert.deepEqual(decideDescarte("trocada", [], existe), { apagar: [], manter: [] });
+
+  // Fase "pedida": o processo morreu no meio das renomeações, então a lista é o PLANO. Um .antigo que esteja lá
+  // pode ter sido criado por outra sessão deste Mac (troca rápida de usuário) e é a volta atrás DELA.
+  const d = decideDescarte("pedida", antigos, () => true);
+  assert.deepEqual(d.apagar, [], "troca incompleta não autoriza apagar nada");
+  assert.deepEqual(d.manter.map((m) => m.motivo), ["troca-incompleta", "troca-incompleta"]);
+  assert.match(motivoManterTexto("troca-incompleta"), /outra sessão/);
+  assert.match(motivoManterTexto("app-ausente"), /não existe/);
+});
+
+test("classificarRespostaFeed: 404 sem release, 403 de limite e qualquer outro status são três coisas diferentes", () => {
+  const hora = () => "14:00";
+  // 404 é o repositório que ainda não publicou release: a instalada É a mais recente, e isso não é erro nenhum.
+  assert.deepEqual(classificarRespostaFeed(404, null, null, hora), { tipo: "sem-release" });
+  assert.deepEqual(classificarRespostaFeed(200, null, null, hora), { tipo: "ler" });
+
+  // 403 com a cota zerada é esperar, não defeito; o reset vem em segundos de época.
+  assert.deepEqual(classificarRespostaFeed(403, "0", "1762300800", hora), { tipo: "falha", msg: "o GitHub limitou as consultas deste IP; libera por volta das 14:00" });
+  assert.deepEqual(classificarRespostaFeed(429, "0", null, hora), { tipo: "falha", msg: "o GitHub limitou as consultas deste IP" }, "sem hora legível, a frase para antes");
+  assert.deepEqual(classificarRespostaFeed(429, "0", "lixo", hora), { tipo: "falha", msg: "o GitHub limitou as consultas deste IP" });
+
+  // 403 com cota de sobra é outra coisa (repositório privado ou renomeado): prometer que "libera às tantas" mandaria
+  // a pessoa esperar por nada.
+  assert.deepEqual(classificarRespostaFeed(403, "4999", "1762300800", hora), { tipo: "falha", msg: "GitHub respondeu 403" });
+  assert.deepEqual(classificarRespostaFeed(500, null, null, hora), { tipo: "falha", msg: "GitHub respondeu 500" });
+});
+
+test("decideReconfirmacao: só uma resposta conclusiva joga fora o que já foi baixado e conferido", () => {
+  const cand = (version) => ({ tipo: "candidata", candidata: { version, asset: {}, sig: {} } });
+  // Consulta que não aconteceu (sem internet): a preparada já conferida vale.
+  assert.deepEqual(decideReconfirmacao(null, "0.79.0"), { tipo: "segue" });
+  // Feed ilegível NÃO é "foi retirada": descartar aqui apagaria trabalho bom por causa de um proxy.
+  const ilegivel = decideReconfirmacao({ tipo: "inutilizavel", versao: "0.79.0", motivo: "sem-assinatura" }, "0.79.0");
+  assert.equal(ilegivel.tipo, "ilegivel");
+  assert.equal(ilegivel.motivo, motivoReleaseTexto("0.79.0", "sem-assinatura"));
+  // A release ainda oferece a preparada, ou já oferece uma mais nova: segue (a mais nova entra na próxima verificação).
+  assert.deepEqual(decideReconfirmacao(cand("0.79.0"), "0.79.0"), { tipo: "segue" });
+  assert.deepEqual(decideReconfirmacao(cand("0.80.0"), "0.79.0"), { tipo: "segue" });
+  // Conclusivo: nada mais novo, ou uma anterior à preparada = aquela saiu do ar.
+  assert.deepEqual(decideReconfirmacao({ tipo: "nada-novo" }, "0.79.0"), { tipo: "retirada", agora: null });
+  assert.deepEqual(decideReconfirmacao(cand("0.78.5"), "0.79.0"), { tipo: "retirada", agora: "0.78.5" });
+});
+
+test("alvosParaTrocar: a cópia que outra sessão já trocou fica de fora", () => {
+  const r = alvosParaTrocar([
+    { caminho: "/Applications/meu-bot.app", versao: "0.78.4" },
+    { caminho: "/Users/x/Applications/meu-bot.app", versao: "0.79.0" },
+    { caminho: "/Users/x/Desktop/meu-bot.app", versao: null },
+  ], "0.79.0");
+  // A de ~/Applications já está na versão de destino: mexer nela faria esta sessão reivindicar (e depois apagar)
+  // o .antigo que é a volta atrás da sessão que a trocou.
+  assert.deepEqual(r.trocar, ["/Applications/meu-bot.app", "/Users/x/Desktop/meu-bot.app"]);
+  assert.deepEqual(r.jaNaVersao, ["/Users/x/Applications/meu-bot.app"]);
+  // Versão ilegível (plutil falhou) conta como "precisa trocar": desconhecido não é "já está pronta".
+  assert.deepEqual(alvosParaTrocar([{ caminho: "/a.app", versao: null }], "0.79.0").trocar, ["/a.app"]);
+  assert.deepEqual(alvosParaTrocar([], "0.79.0"), { trocar: [], jaNaVersao: [] });
+});
+
+test("travaAbandonada e pastaSoLeitura", () => {
+  assert.equal(travaAbandonada(1000), false, "trava recém-criada é de uma sessão viva");
+  assert.equal(travaAbandonada(TRAVA_VELHA_MS - 1), false);
+  assert.equal(travaAbandonada(TRAVA_VELHA_MS), true);
+  // Não deu para ler a idade: tratar como lixo é o que destrava o app, e o mkdir seguinte ainda pode perder a corrida.
+  assert.equal(travaAbandonada(Number.NaN), true);
+
+  for (const code of ["EROFS", "EACCES", "EPERM"]) assert.equal(pastaSoLeitura({ code }), true, code);
+  assert.equal(pastaSoLeitura({ code: "ENOSPC" }), false, "disco cheio não é pasta só de leitura");
+  assert.equal(pastaSoLeitura(new Error("x")), false);
+  assert.equal(pastaSoLeitura(null), false);
+});
+
+test("decideReaproveitar: a versão preparada da sessão anterior só volta se ainda for mais nova e estiver no disco", () => {
+  const p = { versao: 1, para: "0.79.0", bundle: "/u/update/app/meu-bot.app", sha256: "a".repeat(64), em: "2026-11-04T10:00:00.000Z" };
+  assert.deepEqual(decideReaproveitar(p, "0.78.4", () => true), { tipo: "usar", preparada: p });
+  assert.deepEqual(decideReaproveitar(null, "0.78.4", () => true), { tipo: "descartar", motivo: "ilegivel" });
+  // A pessoa instalou a 0.79.0 por fora no meio tempo: o que estava preparado não serve mais.
+  assert.deepEqual(decideReaproveitar(p, "0.79.0", () => true), { tipo: "descartar", motivo: "nao-e-mais-nova" });
+  assert.deepEqual(decideReaproveitar(p, "0.80.0", () => true), { tipo: "descartar", motivo: "nao-e-mais-nova" });
+  // O registro ficou mas a pasta extraída sumiu (limpeza do sistema, disco cheio): baixar de novo.
+  assert.deepEqual(decideReaproveitar(p, "0.78.4", () => false), { tipo: "descartar", motivo: "sumiu" });
 });

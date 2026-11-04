@@ -69,6 +69,31 @@ export const STAGING_TAG = /^v?\d+\.\d+\.\d+-staging\.\d+$/;
 /** De onde o app lê as releases: o estável, a última (sem pre-release); o staging, a lista (as pre-releases). */
 export const releasesUrl = (canal: "estavel" | "staging"): string => `https://api.github.com/repos/${UPDATE_REPO}/releases${canal === "staging" ? "?per_page=30" : "/latest"}`;
 
+/** Hora do dia para as frases do atualizador; injetável para o teste não depender do fuso da máquina. */
+export type Hora = (d: Date) => string;
+const HORA_PADRAO: Hora = (d) => d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+/**
+ * O que a resposta do GitHub ao feed quer dizer, antes de olhar o corpo. Três desfechos, e a diferença entre eles é
+ * o que impede o app de errar o diagnóstico:
+ *
+ * - 404: o repositório ainda não publicou release nenhuma. A instalada É a mais recente, e isso não é erro.
+ * - 403 ou 429 com a cota zerada: o limite de consultas por IP. Não é defeito do app nem da rede, é esperar — e a
+ *   frase diz a hora em que libera, em vez de mandar a pessoa procurar problema onde não há.
+ * - qualquer outro status: o status mesmo, sem adivinhação. Um 403 com cota de sobra é repositório privado ou
+ *   renomeado, e prometer que "libera às tantas" mandaria a pessoa esperar por nada.
+ */
+export type RespostaFeed = { tipo: "sem-release" } | { tipo: "ler" } | { tipo: "falha"; msg: string };
+export function classificarRespostaFeed(status: number, remaining: string | null, reset: string | null, hora: Hora = HORA_PADRAO): RespostaFeed {
+  if (status === 404) return { tipo: "sem-release" };
+  if (status >= 200 && status < 300) return { tipo: "ler" };
+  if ((status === 403 || status === 429) && remaining === "0") {
+    const seg = Number(reset);
+    const volta = Number.isFinite(seg) && seg > 0 ? hora(new Date(seg * 1000)) : null;
+    return { tipo: "falha", msg: `o GitHub limitou as consultas deste IP${volta === null ? "" : `; libera por volta das ${volta}`}` };
+  }
+  return { tipo: "falha", msg: `GitHub respondeu ${status}` };
+}
+
 /** Por que uma release que o feed trouxe não dá para instalar. */
 export type MotivoRelease = "corpo-inesperado" | "tag-inesperada" | "sem-ativo" | "sem-assinatura";
 
@@ -204,12 +229,28 @@ export function repararTroca(antigos: readonly string[], existe: (p: string) => 
   for (const old of antigos) { const alvo = old.replace(/\.antigo$/, ""); if (existe(old) && !existe(alvo)) out.push({ de: old, para: alvo }); }
   return out;
 }
+/** Por que uma cópia anterior fica onde está em vez de ser apagada. */
+export type MotivoManter = "app-ausente" | "troca-incompleta";
 /**
- * Quais cópias anteriores podem ser apagadas: só aquelas cujo `<app>` voltou ao lugar. Uma `<app>.antigo` cujo
- * `<app>` não existe é tudo o que restou daquela instalação, e apagá-la deixaria a cópia sumida de vez. Puro.
+ * Quais cópias anteriores podem ser apagadas, e quais não. Duas regras, e as duas evitam apagar a única cópia que
+ * resta de uma instalação:
+ *
+ * - `fase: "pedida"` quer dizer que o registro foi gravado e o processo morreu antes de terminar as renomeações:
+ *   `antigos` é o PLANO, não o que foi criado. Um `<app>.antigo` que está lá pode ser de outra sessão deste Mac
+ *   (troca rápida de usuário), e apagá-lo tiraria a volta atrás dela. Em "pedida" nada é apagado.
+ * - `fase: "trocada"` lista o que esta sessão de fato criou, então pode apagar — menos a `<app>.antigo` cujo
+ *   `<app>` não existe, que é tudo o que sobrou daquela cópia.
  */
-export const antigosDescartaveis = (antigos: readonly string[], existe: (p: string) => boolean): string[] =>
-  antigos.filter((a) => existe(a.replace(/\.antigo$/, "")));
+export function decideDescarte(fase: "pedida" | "trocada", antigos: readonly string[], existe: (p: string) => boolean): { apagar: string[]; manter: { caminho: string; motivo: MotivoManter }[] } {
+  if (fase === "pedida") return { apagar: [], manter: antigos.map((caminho) => ({ caminho, motivo: "troca-incompleta" as const })) };
+  const apagar: string[] = [];
+  const manter: { caminho: string; motivo: MotivoManter }[] = [];
+  for (const a of antigos) { if (existe(a.replace(/\.antigo$/, ""))) apagar.push(a); else manter.push({ caminho: a, motivo: "app-ausente" }); }
+  return { apagar, manter };
+}
+/** A frase do log para uma cópia anterior que ficou. */
+export const motivoManterTexto = (motivo: MotivoManter): string =>
+  motivo === "app-ausente" ? "o app no lugar dele não existe" : "a troca não chegou ao fim e esta cópia pode ser de outra sessão";
 
 /** Aberturas da versão nova sem chegar a 30 s de vida antes de voltar à anterior. */
 export const TENTATIVAS_ATE_VOLTAR = 3;
@@ -227,6 +268,28 @@ export function decideRollback(p: UpdatePendente, versaoAtual: string): DecisaoP
 }
 
 /**
+ * Das cópias do app achadas no Mac (a que está rodando, ~/Applications, a mesa), quais ainda precisam trocar.
+ * Uma cópia que JÁ está na versão de destino foi trocada por outra sessão: mexer nela faria esta sessão reivindicar
+ * (e depois apagar) a `<app>.antigo` que é a volta atrás daquela. Filtrar aqui, antes de gravar o registro. Puro.
+ */
+export function alvosParaTrocar(alvos: readonly { caminho: string; versao: string | null }[], para: string): { trocar: string[]; jaNaVersao: string[] } {
+  const trocar: string[] = [], jaNaVersao: string[] = [];
+  for (const a of alvos) (a.versao === para ? jaNaVersao : trocar).push(a.caminho);
+  return { trocar, jaNaVersao };
+}
+
+/** Quanto tempo uma trava de troca pode ficar de pé antes de contar como restos de uma sessão que morreu. */
+export const TRAVA_VELHA_MS = 5 * 60_000;
+/** A trava achada no disco é de uma sessão viva ou é lixo de uma que morreu? `idadeMs` NaN (não deu para ler) = lixo. */
+export const travaAbandonada = (idadeMs: number, limite: number = TRAVA_VELHA_MS): boolean => !(idadeMs < limite);
+
+/** Erro de escrita que quer dizer "esta pasta não aceita a troca" (imagem do instalador, pasta de outro usuário). */
+export const pastaSoLeitura = (e: unknown): boolean => {
+  const c = (e as { code?: unknown } | null | undefined)?.code;
+  return c === "EROFS" || c === "EACCES" || c === "EPERM";
+};
+
+/**
  * Versão já baixada, verificada e extraída, guardada em disco (`userData/update/preparada.json`) para a próxima
  * abertura não baixar de novo: `bundle` = caminho do .app extraído; `sha256` = do zip de onde ele veio.
  */
@@ -241,6 +304,18 @@ export function parsePreparada(raw: unknown): UpdatePreparada | null {
 /** Forma de uma versão: x.y.z, com pre-release opcional (0.2.0-staging.3). */
 export const VERSAO_RE = /^\d+(\.\d+){1,3}(-[0-9A-Za-z.-]+)?$/;
 
+/**
+ * A versão preparada da sessão anterior ainda serve? Só a decisão; quem chama é que lê o disco e refaz a conferência
+ * de assinatura. "nao-e-mais-nova" cobre o caso de a pessoa ter instalado por fora no meio tempo.
+ */
+export type UsoPreparada = { tipo: "usar"; preparada: UpdatePreparada } | { tipo: "descartar"; motivo: "ilegivel" | "nao-e-mais-nova" | "sumiu" };
+export function decideReaproveitar(p: UpdatePreparada | null, atual: string, existeBundle: (b: string) => boolean): UsoPreparada {
+  if (p === null) return { tipo: "descartar", motivo: "ilegivel" };
+  if (compareVersions(p.para, atual) <= 0) return { tipo: "descartar", motivo: "nao-e-mais-nova" };
+  if (!existeBundle(p.bundle)) return { tipo: "descartar", motivo: "sumiu" };
+  return { tipo: "usar", preparada: p };
+}
+
 /** Ciclo de verificação (como no Grok Bot): a cada hora, com até 5 min de jitter para os Macs não baterem juntos no GitHub. */
 export const CHECK_EVERY_MS = 60 * 60_000;
 export const CHECK_JITTER_MS = 5 * 60_000;
@@ -254,6 +329,20 @@ export const CONFIRMA_FEED_MS = 60_000;
  * uma mais nova confirma (a mais nova entra na próxima verificação; a preparada continua válida).
  */
 export const feedAindaOferece = (cand: { version: string } | null, preparada: string): boolean => cand !== null && compareVersions(cand.version, preparada) >= 0;
+
+/**
+ * Antes de trocar, o app reconsulta o GitHub se a última verificação ficou velha. O que fazer com o resultado:
+ * "segue" (a release ainda oferece a preparada, ou a consulta não deu para fazer), "ilegivel" (respondeu algo que
+ * não dá para usar: isso NÃO descarta o que já foi baixado e conferido) ou "retirada" (resposta conclusiva dizendo
+ * que aquela versão saiu do ar). Só uma resposta conclusiva joga fora trabalho já feito.
+ */
+export type Reconfirmacao = { tipo: "segue" } | { tipo: "ilegivel"; motivo: string } | { tipo: "retirada"; agora: string | null };
+export function decideReconfirmacao(escolha: EscolhaRelease | null, preparadaPara: string): Reconfirmacao {
+  if (escolha === null) return { tipo: "segue" };
+  if (escolha.tipo === "inutilizavel") return { tipo: "ilegivel", motivo: motivoReleaseTexto(escolha.versao, escolha.motivo) };
+  const cand = candidataDe(escolha);
+  return feedAindaOferece(cand, preparadaPara) ? { tipo: "segue" } : { tipo: "retirada", agora: cand?.version ?? null };
+}
 
 /** Ociosidade que autoriza o reinício sozinho (como o Grok Bot: 10 min sem mexer, ou a tela bloqueada). */
 export const OCIOSO_SEG = 600;
