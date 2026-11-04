@@ -18,12 +18,12 @@ import { adminPickerSource } from "./admin/picker-source";
 import { migrateAdminPessoas } from "./admin/user-data";
 import { herdarDe, useVariantUserData, fundirDe, relatorioFusao } from "./app/user-data";
 import { registerIpc } from "./ipc/index";
-import { applyStagedOnQuit, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima } from "./atualizacao/updater";
+import { applyStagedOnQuit, applyUpdate as applyUpdateNow, checkIfStale as checkUpdateIfStale, checkNow as checkUpdateNow, disposeUpdater, initUpdater, lastUpdateErrorWasNetwork, noteVersaoMinima, onUpdateState, updateMenuState } from "./atualizacao/updater";
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
 import { installBrowserHooks } from "./navegador/browser";
 import { startTermApi } from "./terminal/term-api";
 import { getBackendPort } from "./app/settings";
-import { installAppMenu } from "./app/menu";
+import { installAppMenu, refreshAppMenu } from "./app/menu";
 import { changeWindowZoom } from "./app/zoom";
 import { clientPickerSource, initPicker, seletorPodeAbrirAgora, showPicker } from "./maquina/picker";
 import { registerUsuariosMacIpc, showUsuariosMac } from "./usuarios-mac/usuarios-mac-janela";
@@ -83,7 +83,14 @@ app.whenReady().then(() => {
       if (win !== null && !win.isDestroyed() && hostOfWindow(win) !== undefined) win.webContents.send("ui:toggle-settings", {});
     },
     zoom: (action) => { changeWindowZoom(action); },
+    atualizacao: {
+      estado: updateMenuState,
+      verificar: () => { void checkUpdateNow("explicito"); },
+      aplicar: (versao) => { void applyUpdateNow(versao, "clique").catch((e: unknown) => log(`[atualização] pelo menu: ${e instanceof Error ? e.message : String(e)}`)); },
+    },
   });
+  // O Electron não tem item de menu reativo: o menu se refaz a cada mudança para "Reiniciar para atualizar" aparecer.
+  onUpdateState(refreshAppMenu);
   initPicker(caps().supportAdmin ? adminPickerSource : clientPickerSource);
   if (caps().usuariosMac) registerUsuariosMacIpc();
   initRelief();

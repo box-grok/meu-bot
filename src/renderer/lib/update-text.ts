@@ -22,6 +22,7 @@ const ago = (iso: string | null, now: number): string => {
   if (s < 86_400) return `conferido há ${Math.round(s / 3600)} h`;
   return `conferido há ${Math.round(s / 86_400)} d`;
 };
+const maiuscula = (t: string): string => (t === "" ? t : t.charAt(0).toUpperCase() + t.slice(1));
 export const pct = (p: number | null): string => (p === null ? "" : `${Math.floor(p * 100)}%`);
 
 export function updateStateText(u: UpdateState, appName: string, now: number = Date.now()): UpdateText {
@@ -34,9 +35,14 @@ export function updateStateText(u: UpdateState, appName: string, now: number = D
     case "ready": return { text: `${appName} ${u.ready ?? ""} pronta para instalar.`, kind: "warn", showApply: true, short: null };
     case "applying": return { text: u.aguardando ? "Esperando a resposta em andamento terminar para atualizar…" : `Instalando a versão ${u.ready ?? ""}…`, kind: "warn", showApply: false, short: u.aguardando ? "atualiza quando a resposta terminar…" : "instalando…" };
     case "needs-move": return { text: "O app está numa pasta só de leitura (ainda na imagem do instalador?). Arraste-o para a pasta Aplicativos e abra de lá.", kind: "bad", showApply: false, short: null };
-    case "error": return u.errorKind === "rede" || u.error === "sem internet"
-      ? { text: "Sem internet; verifico as atualizações de novo quando a conexão voltar.", kind: "warn", showApply: false, short: null }
-      : { text: `Não consegui verificar atualizações: ${u.error ?? "erro"}.`, kind: "bad", showApply: false, short: null };
+    case "error": {
+      if (u.errorKind === "rede" || u.error === "sem internet") return { text: "Sem internet; verifico as atualizações de novo quando a conexão voltar.", kind: "warn", showApply: false, short: null };
+      // Disco cheio e release que não dá para instalar têm frase própria: a genérica mandaria a pessoa procurar no
+      // lugar errado, e esta é justamente a situação em que o app pararia de atualizar sem ninguém notar.
+      if (u.errorKind === "disco") return { text: `${maiuscula(u.error ?? "não há espaço em disco para a atualização")}. Libere espaço e eu tento de novo na próxima verificação.`, kind: "bad", showApply: false, short: "sem espaço para atualizar" };
+      if (u.errorKind === "release") return { text: `Há uma versão nova publicada e não consegui instalá-la: ${u.error ?? "motivo desconhecido"}. A instalada continua funcionando.`, kind: "bad", showApply: false, short: "atualização publicada com problema" };
+      return { text: `Não consegui verificar atualizações: ${u.error ?? "erro"}.`, kind: "bad", showApply: false, short: null };
+    }
     default: return { text: "Atualização automática só no app instalado.", kind: "muted", showApply: false, short: null };
   }
 }

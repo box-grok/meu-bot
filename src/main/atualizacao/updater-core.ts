@@ -69,33 +69,73 @@ export const STAGING_TAG = /^v?\d+\.\d+\.\d+-staging\.\d+$/;
 /** De onde o app lê as releases: o estável, a última (sem pre-release); o staging, a lista (as pre-releases). */
 export const releasesUrl = (canal: "estavel" | "staging"): string => `https://api.github.com/repos/${UPDATE_REPO}/releases${canal === "staging" ? "?per_page=30" : "/latest"}`;
 
+/** Por que uma release que o feed trouxe não dá para instalar. */
+export type MotivoRelease = "corpo-inesperado" | "tag-inesperada" | "sem-ativo" | "sem-assinatura";
+
+/**
+ * O que a consulta ao feed achou. Separar "nada-novo" de "inutilizavel" é o que impede o app de anunciar
+ * "tudo em dia" quando existe uma release que ele não conseguiu usar (zip que falhou no envio, release sem
+ * o .sig ao lado, nome de asset que não bate) e, por isso, parar de atualizar calado para sempre.
+ */
+export type EscolhaRelease =
+  | { tipo: "candidata"; candidata: UpdateCandidate }
+  | { tipo: "nada-novo" }
+  | { tipo: "inutilizavel"; versao: string | null; motivo: MotivoRelease };
+
+const NADA_NOVO: EscolhaRelease = { tipo: "nada-novo" };
+const inutilizavel = (versao: string | null, motivo: MotivoRelease): EscolhaRelease => ({ tipo: "inutilizavel", versao, motivo });
+/** A candidata, ou null: para quem só quer saber se dá para atualizar. */
+export const candidataDe = (e: EscolhaRelease): UpdateCandidate | null => (e.tipo === "candidata" ? e.candidata : null);
+
+/** A frase que a tela mostra quando achamos uma release e não deu para usar. */
+export function motivoReleaseTexto(versao: string | null, motivo: MotivoRelease): string {
+  const qual = versao === null ? "a release mais recente" : `a ${versao}`;
+  switch (motivo) {
+    case "corpo-inesperado": return "o servidor de atualização respondeu algo que não consegui entender";
+    case "tag-inesperada": return `${qual} está publicada com um número de versão que não reconheço`;
+    case "sem-ativo": return `${qual} não traz o arquivo deste app para esta arquitetura`;
+    case "sem-assinatura": return `${qual} foi publicada sem a assinatura ao lado do arquivo`;
+  }
+}
+
 /**
  * A atualização deste app na resposta da API do GitHub (o asset é o deste app nesta arquitetura; a versão vem do
  * `tag_name`, com ou sem "v"). Estável: `raw` é a /releases/latest e só vale release normal "x.y.z". Staging: `raw`
- * é a lista /releases e vale a maior pre-release com tag v*-staging.* que tenha o asset deste app. null = nada mais
- * novo que `current`.
+ * é a lista /releases e vale a maior pre-release com tag v*-staging.* que tenha o asset deste app.
+ *
+ * Uma release que não dá para usar nunca vira "nada-novo": o app precisa dizer o que houve em vez de se declarar
+ * atualizado. No staging, uma candidata utilizável ganha de qualquer problema em outra entrada da lista.
  */
-export function pickUpdate(raw: unknown, want: { app: string; arch: string; current: string; canal?: "estavel" | "staging" }): UpdateCandidate | null {
-  if (want.canal === "staging") {
-    if (!Array.isArray(raw)) return null;
-    let best: UpdateCandidate | null = null;
-    for (const r of raw) {
-      const c = candidato(r, want, true);
-      if (c !== null && (best === null || compareVersions(c.version, best.version) > 0)) best = c;
+export function escolherRelease(raw: unknown, want: { app: string; arch: string; current: string; canal?: "estavel" | "staging" }): EscolhaRelease {
+  if (want.canal !== "staging") return avaliarRelease(raw, want, false);
+  if (!Array.isArray(raw)) return inutilizavel(null, "corpo-inesperado");
+  let melhor: UpdateCandidate | null = null;
+  let problema: { versao: string | null; motivo: MotivoRelease } | null = null;
+  for (const r of raw) {
+    const e = avaliarRelease(r, want, true);
+    if (e.tipo === "candidata") {
+      if (melhor === null || compareVersions(e.candidata.version, melhor.version) > 0) melhor = e.candidata;
+    } else if (e.tipo === "inutilizavel" && (problema === null || (e.versao !== null && (problema.versao === null || compareVersions(e.versao, problema.versao) > 0)))) {
+      problema = { versao: e.versao, motivo: e.motivo };
     }
-    return best;
   }
-  return candidato(raw, want, false);
+  if (melhor !== null) return { tipo: "candidata", candidata: melhor };
+  return problema === null ? NADA_NOVO : inutilizavel(problema.versao, problema.motivo);
 }
-function candidato(raw: unknown, want: { app: string; arch: string; current: string }, staging: boolean): UpdateCandidate | null {
-  if (raw === null || typeof raw !== "object") return null;
+
+function avaliarRelease(raw: unknown, want: { app: string; arch: string; current: string }, staging: boolean): EscolhaRelease {
+  if (raw === null || typeof raw !== "object") return inutilizavel(null, "corpo-inesperado");
   const r = raw as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; assets?: unknown };
-  // Estável só aceita release normal; staging só pre-release.
-  if (typeof r.tag_name !== "string" || r.draft === true || (r.prerelease === true) !== staging) return null;
+  if (typeof r.tag_name !== "string") return inutilizavel(null, "corpo-inesperado");
+  // Rascunho, ou release do outro canal: não é para nós, e não é defeito nenhum.
+  if (r.draft === true || (r.prerelease === true) !== staging) return NADA_NOVO;
   const version = r.tag_name.replace(/^v/, "");
-  if (staging ? !STAGING_TAG.test(r.tag_name) : !/^\d+(\.\d+){0,3}$/.test(version)) return null;
-  if (compareVersions(version, want.current) <= 0) return null;
-  if (!Array.isArray(r.assets)) return null;
+  // Na lista do staging, uma tag de outro formato é só outra coisa publicada no repositório; no estável,
+  // a /releases/latest com uma tag que não reconhecemos é problema que a pessoa precisa saber.
+  if (staging ? !STAGING_TAG.test(r.tag_name) : !/^\d+(\.\d+){0,3}$/.test(version)) return staging ? NADA_NOVO : inutilizavel(null, "tag-inesperada");
+  if (compareVersions(version, want.current) <= 0) return NADA_NOVO;
+  // Uma entrada estragada no meio da lista do staging é ruído; na /releases/latest é a resposta inteira.
+  if (!Array.isArray(r.assets)) return staging ? NADA_NOVO : inutilizavel(version, "corpo-inesperado");
   const name = assetName(want.app, version, want.arch);
   const achar = (n: string): ReleaseAsset | null => {
     for (const a of r.assets as unknown[]) {
@@ -105,9 +145,15 @@ function candidato(raw: unknown, want: { app: string; arch: string; current: str
     }
     return null;
   };
-  // Sem o .sig ao lado não é candidata: zip que ninguém assinou nunca é instalado.
-  const asset = achar(name), sig = achar(`${name}.sig`);
-  return asset === null || sig === null ? null : { version, asset, sig };
+  const asset = achar(name);
+  // No staging publica-se um produto de cada vez, então uma pre-release sem o arquivo deste app é o normal e
+  // apenas se pula. No estável a /releases/latest tem que trazer todos: faltar o desta arquitetura é o defeito
+  // que antes virava "você está na versão mais recente" para sempre.
+  if (asset === null) return staging ? NADA_NOVO : inutilizavel(version, "sem-ativo");
+  // Sem o .sig ao lado não dá para instalar: zip que ninguém assinou nunca entra.
+  const sig = achar(`${name}.sig`);
+  if (sig === null) return inutilizavel(version, "sem-assinatura");
+  return { tipo: "candidata", candidata: { version, asset, sig } };
 }
 
 /**
@@ -158,6 +204,13 @@ export function repararTroca(antigos: readonly string[], existe: (p: string) => 
   for (const old of antigos) { const alvo = old.replace(/\.antigo$/, ""); if (existe(old) && !existe(alvo)) out.push({ de: old, para: alvo }); }
   return out;
 }
+/**
+ * Quais cópias anteriores podem ser apagadas: só aquelas cujo `<app>` voltou ao lugar. Uma `<app>.antigo` cujo
+ * `<app>` não existe é tudo o que restou daquela instalação, e apagá-la deixaria a cópia sumida de vez. Puro.
+ */
+export const antigosDescartaveis = (antigos: readonly string[], existe: (p: string) => boolean): string[] =>
+  antigos.filter((a) => existe(a.replace(/\.antigo$/, "")));
+
 /** Aberturas da versão nova sem chegar a 30 s de vida antes de voltar à anterior. */
 export const TENTATIVAS_ATE_VOLTAR = 3;
 /**
@@ -196,7 +249,7 @@ export const proximaVerificacaoMs = (random: () => number = Math.random): number
 export const CONFIRMA_FEED_MS = 60_000;
 
 /**
- * A release ainda oferece a versão preparada? `cand` = o que `pickUpdate` devolveu agora para a versão em
+ * A release ainda oferece a versão preparada? `cand` = a candidata que a consulta devolveu agora para a versão em
  * execução: null (nada mais novo) ou uma versão anterior à preparada significa que ela foi retirada; a própria ou
  * uma mais nova confirma (a mais nova entra na próxima verificação; a preparada continua válida).
  */

@@ -8,8 +8,12 @@
  * esperando uma resposta em andamento) · needs-move (o app está numa pasta só de leitura) · error.
  */
 export type UpdatePhase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "verifying" | "ready" | "applying" | "needs-move" | "error";
-/** Por que a última verificação falhou: rede (sem internet), github (a API), download, assinatura/integridade do zip ou do .app, outro. */
-export type UpdateErrorKind = "rede" | "github" | "download" | "assinatura" | "outro";
+/**
+ * Por que a última verificação falhou: rede (sem internet), github (a API respondeu mal ou limitou), release
+ * (achamos uma release e não dá para instalar: sem o arquivo desta arquitetura, sem assinatura, corpo estranho),
+ * download, assinatura/integridade do zip ou do .app, disco (sem espaço), outro.
+ */
+export type UpdateErrorKind = "rede" | "github" | "release" | "download" | "assinatura" | "disco" | "outro";
 /** Quem disparou a verificação (vai no registro). */
 export type UpdateTrigger = "inicio" | "periodico" | "explicito" | "rede-voltou" | "acordou" | "confirmar" | "versao-minima";
 export interface UpdateState {

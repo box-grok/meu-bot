@@ -32,6 +32,18 @@ export interface DownloadResult { sha256: string; bytes: number; retomadas: numb
 /** Erro que não adianta insistir (HTTP 4xx/5xx, resposta inconsistente); o resto é queda de rede, que tenta de novo. */
 export class DownloadError extends Error { name = "DownloadError"; }
 
+/**
+ * Disco cheio (ou cota do usuário estourada) em qualquer ponto da cadeia de causas. Dono desta leitura: quem
+ * escreve os bytes. O updater.ts importa daqui para classificar também a extração, em vez de reinterpretar o erro.
+ */
+export function semEspacoEmDisco(e: unknown): boolean {
+  for (let a: unknown = e, i = 0; a !== null && a !== undefined && i < 8; a = (a as { cause?: unknown }).cause, i += 1) {
+    const code = (a as { code?: unknown }).code;
+    if (code === "ENOSPC" || code === "EDQUOT") return true;
+  }
+  return false;
+}
+
 const TENTATIVAS = 15;
 const STALL_MS = 30_000;
 const esperaPadrao = (n: number): number => Math.min(60_000, 1_000 * 2 ** (n - 1));
@@ -135,6 +147,9 @@ export async function baixarComRetomada(o: DownloadOpts): Promise<DownloadResult
       return { sha256, bytes, retomadas };
     }
     ultimo = r.erro;
+    // Insistir num disco cheio só queima tempo (seriam 15 tentativas e uns 9 min de espera) e mantém o .partial
+    // ocupando o espaço que falta. Para na hora e libera.
+    if (semEspacoEmDisco(r.erro)) { await limpar(o.destino); throw Object.assign(new Error("o disco ficou sem espaço durante o download"), { cause: r.erro, code: "ENOSPC" }); }
     if (n === max) break;
     const ms = espera(n);
     if (ms > 0) await new Promise<void>((resolve) => { const t = setTimeout(resolve, ms); o.signal?.addEventListener("abort", () => { clearTimeout(t); resolve(); }, { once: true }); });
