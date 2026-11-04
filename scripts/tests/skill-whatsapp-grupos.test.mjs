@@ -47,7 +47,10 @@ test("wa-admin.sh: achar_node vê o node do atalho openclaw e o de ~/.local/node
     // Atalho apontando para um node que não existe mais: ignora e segue para o da conta.
     writeFileSync(join(bin, "openclaw"), "#!/bin/sh\nexec /nao/existe/bin/node /x \"$@\"\n", { mode: 0o755 });
     assert.equal(acha(), meu);
-    // Nada em lugar nenhum: vazio (o script então avisa e sai sem parar o gateway).
-    assert.equal(execFileSync("bash", ["-c", `${fn}\nachar_node; true`], { encoding: "utf8", env: { HOME: join(t, "vazio"), PATH: "/usr/bin:/bin" } }).trim(), "");
+    // Sem atalho, sem ~/.local/node* e sem node no PATH: só sobram os lugares fixos da máquina (/opt/node*, /usr/local/bin).
+    // Vazio quando esta máquina não tem nenhum (o script então avisa e sai sem parar o gateway); o runner do GitHub
+    // tem /usr/local/bin/node, e aí é esse que tem de sair.
+    const fixo = execFileSync("bash", ["-c", 'for n in /opt/node/bin/node /opt/openclaw/node/bin/node /opt/node*/bin/node /usr/local/bin/node; do [[ -x "$n" ]] && { echo "$n"; break; }; done; true'], { encoding: "utf8" }).trim();
+    assert.equal(execFileSync("bash", ["-c", `${fn}\nachar_node; true`], { encoding: "utf8", env: { HOME: join(t, "vazio"), PATH: "/usr/bin:/bin" } }).trim(), fixo);
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
