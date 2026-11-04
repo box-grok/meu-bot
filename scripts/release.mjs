@@ -5,7 +5,9 @@
 //   npm run release          → promoção: release v<versão> com os estáveis (meu-bot, meu-bot-admin), SÓ
 //                              num commit que já tem a tag v<versão>-staging.N (o staging aprovado); senão sai com 64.
 // <versão> é a do package.json (a próxima estável; "meu-bot 2.0" = `npm version 2.0.0 --no-git-tag-version`). Exige
-// `gh` logado (`gh auth login`) e a árvore limpa. Gera out/<app>-<v>-<arch>.zip com `ditto -c -k --keepParent`
+// `gh` logado (`gh auth login`) e a árvore limpa. As notas da release saem da seção "Ainda não lançado" do
+// docs/CHANGELOG.md (linguagem de quem usa); sem ela, caem na lista de commits do GitHub, com aviso.
+// Gera out/<app>-<v>-<arch>.zip com `ditto -c -k --keepParent`
 // (preserva symlinks e a assinatura). O .dmg continua sendo o instalador da primeira vez; a release só precisa dos .zip.
 // Cada zip sai assinado com a chave Ed25519 principal (no Chaveiro: o macOS pede a aprovação do dono) num <zip>.sig, e
 // cada .sig é conferido com UPDATE_PUBLIC_KEYS do build antes do upload: o app só instala o que confere com uma delas,
@@ -19,7 +21,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
-import { clientesGoogleParaPublicar, componentesSemVersao, lerVersao, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { clientesGoogleParaPublicar, componentesSemVersao, lerVersao, notasDaRelease, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
 const base = JSON.parse(readFileSync("package.json", "utf8")).version;
@@ -105,8 +107,22 @@ for (const n of clientes) {
   writeFileSync(`${dst}.sig`, `${s}\n`);
   zips.push(dst, `${dst}.sig`);
 }
+// As notas são o que a pessoa lê na página da release: vêm do CHANGELOG, não do histórico de commits.
+step("montando as notas da release");
+const notas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null);
+let comoNotas = ["--generate-notes"];
+if (notas === null) {
+  console.log('  ⚠ docs/CHANGELOG.md não tem uma seção "Ainda não lançado" com conteúdo: a release vai sair com a');
+  console.log("    lista de commits do GitHub, que descreve o diff e não a mudança. Escreva a seção e publique de novo.");
+} else {
+  const arquivo = join("out", `notas-${tag}.md`);
+  writeFileSync(arquivo, `${notas}\n\n---\n\nChangelog completo: https://github.com/diegofornalha/meu-bot/blob/${tag}/docs/CHANGELOG.md\n`);
+  comoNotas = ["--notes-file", arquivo];
+  console.log(`  ${notas.split("\n").filter((l) => l.startsWith("- ")).length} itens, de "Ainda não lançado" (${arquivo})`);
+}
+
 step(`criando a release ${tag}`);
 execFileSync("git", ["tag", tag]); execFileSync("git", ["push", "origin", tag], { stdio: "inherit" });
-execFileSync("gh", ["release", "create", tag, ...zips, "--title", `meu-bot ${version}`, "--generate-notes", ...(staging ? ["--prerelease"] : [])], { stdio: "inherit" });
+execFileSync("gh", ["release", "create", tag, ...zips, "--title", `meu-bot ${version}`, ...comoNotas, ...(staging ? ["--prerelease"] : [])], { stdio: "inherit" });
 console.log(`\n✓ ${tag} publicada com ${zips.join(", ")}. Os apps instalados atualizam sozinhos na próxima verificação (até 6 h) ou ao reabrir.`);
 if (!staging) console.log(`\n▸ próximo passo: suba a versão base para a próxima estável (ex.: npm version minor --no-git-tag-version) e commite; os builds locais e os staging seguintes saem dela.`);
