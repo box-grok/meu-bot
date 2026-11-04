@@ -1,26 +1,59 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { pickUpdate, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
+const { escolherRelease, candidataDe, motivoReleaseTexto, antigosDescartaveis, compareVersions, assetName, UPDATE_REPO, deveAtualizar, releasesUrl, precisaAtualizarBackend, verificaAssinatura, UPDATE_PUBLIC_KEYS, parsePendente, decideRollback, repararTroca, parsePreparada, proximaVerificacaoMs, CHECK_EVERY_MS, CHECK_JITTER_MS, feedAindaOferece, decideReinicioOcioso, parseVersaoMinima, abaixoDaMinima } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
 import { generateKeyPairSync, sign } from "node:crypto";
 
 // Cada zip publicado vem com o .sig ao lado (o release assina); sem ele não há candidata (teste próprio abaixo).
 const release = (tag, assets, extra = {}) => ({ tag_name: tag, draft: false, prerelease: false, assets: assets.flatMap((a) => (a.name.endsWith(".zip") ? [a, { ...a, name: `${a.name}.sig`, browser_download_url: `${a.browser_download_url}.sig`, size: 88 }] : [a])), ...extra });
 const asset = (name) => ({ name, browser_download_url: `https://github.com/${UPDATE_REPO}/releases/download/v0.2.0/${name}`, size: 123 });
 
-test("pickUpdate: só versão mais nova, só o asset deste app e arquitetura", () => {
+const escolher = (raw, want) => escolherRelease(raw, want);
+const pega = (raw, want) => candidataDe(escolherRelease(raw, want));
+
+test("escolherRelease: só versão mais nova, só o asset deste app e arquitetura", () => {
   const r = release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip"), asset("meu-bot-admin-0.2.0-arm64.zip")]);
-  const c = pickUpdate(r, { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  const c = pega(r, { app: "meu-bot", arch: "arm64", current: "0.1.0" });
   assert.equal(c.version, "0.2.0"); assert.equal(c.asset.name, "meu-bot-0.2.0-arm64.zip"); assert.equal(c.asset.size, 123);
-  assert.equal(pickUpdate(r, { app: "meu-bot-admin", arch: "arm64", current: "0.1.0" }).asset.name, "meu-bot-admin-0.2.0-arm64.zip");
-  assert.equal(pickUpdate(r, { app: "meu-bot", arch: "x64", current: "0.1.0" }), null, "sem asset para a arquitetura");
-  assert.equal(pickUpdate(r, { app: "meu-bot", arch: "arm64", current: "0.2.0" }), null, "já está nela");
-  assert.equal(pickUpdate(r, { app: "meu-bot", arch: "arm64", current: "0.3.0" }), null, "à frente");
-  assert.equal(pickUpdate(release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")], { prerelease: true }), { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null, "pré-release não conta");
-  assert.equal(pickUpdate(release("0.2.0", [asset("meu-bot-0.2.0-arm64.zip")]), { app: "meu-bot", arch: "arm64", current: "0.1.0" }).version, "0.2.0", "tag sem v vale");
-  assert.equal(pickUpdate(release("v0.2.0", [{ name: "meu-bot-0.2.0-arm64.zip", browser_download_url: "http://x/evil.zip", size: 1 }]), { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null, "só https");
-  assert.equal(pickUpdate({ message: "Not Found" }, { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null);
-  assert.equal(pickUpdate(null, { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null);
+  assert.equal(pega(r, { app: "meu-bot-admin", arch: "arm64", current: "0.1.0" }).asset.name, "meu-bot-admin-0.2.0-arm64.zip");
+  assert.equal(escolher(r, { app: "meu-bot", arch: "arm64", current: "0.2.0" }).tipo, "nada-novo", "já está nela");
+  assert.equal(escolher(r, { app: "meu-bot", arch: "arm64", current: "0.3.0" }).tipo, "nada-novo", "à frente");
+  assert.equal(escolher(release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")], { prerelease: true }), { app: "meu-bot", arch: "arm64", current: "0.1.0" }).tipo, "nada-novo", "pré-release não conta");
+  assert.equal(pega(release("0.2.0", [asset("meu-bot-0.2.0-arm64.zip")]), { app: "meu-bot", arch: "arm64", current: "0.1.0" }).version, "0.2.0", "tag sem v vale");
+});
+
+test("escolherRelease: release que existe e não dá para usar nunca vira nada-novo", () => {
+  // Era este o defeito: tudo abaixo devolvia null e o app anunciava "você está na versão mais recente",
+  // parando de atualizar para sempre sem ninguém notar.
+  const r = release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")]);
+  const semArch = escolher(r, { app: "meu-bot", arch: "x64", current: "0.1.0" });
+  assert.equal(semArch.tipo, "inutilizavel"); assert.equal(semArch.motivo, "sem-ativo"); assert.equal(semArch.versao, "0.2.0");
+
+  const httpSimples = escolher(release("v0.2.0", [{ name: "meu-bot-0.2.0-arm64.zip", browser_download_url: "http://x/evil.zip", size: 1 }]), { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  assert.equal(httpSimples.tipo, "inutilizavel"); assert.equal(httpSimples.motivo, "sem-ativo", "asset só por http não conta como presente");
+
+  const semSig = escolher({ tag_name: "v0.2.0", draft: false, prerelease: false, assets: [{ name: "meu-bot-0.2.0-arm64.zip", browser_download_url: "https://x/z.zip", size: 5 }] }, { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  assert.equal(semSig.tipo, "inutilizavel"); assert.equal(semSig.motivo, "sem-assinatura");
+
+  for (const corpo of [null, "texto", 42, { message: "Not Found" }, { tag_name: 7 }]) {
+    assert.equal(escolher(corpo, { app: "meu-bot", arch: "arm64", current: "0.1.0" }).motivo, "corpo-inesperado", `corpo ${JSON.stringify(corpo)}`);
+  }
+  const tagEstranha = escolher({ tag_name: "release-final", draft: false, prerelease: false, assets: [] }, { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  assert.equal(tagEstranha.motivo, "tag-inesperada");
+
+  const semAssets = escolher({ tag_name: "v0.2.0", draft: false, prerelease: false, assets: "nenhum" }, { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  assert.equal(semAssets.motivo, "corpo-inesperado"); assert.equal(semAssets.versao, "0.2.0");
+
+  // Rascunho é release não publicada: não é defeito, é "nada para mim".
+  assert.equal(escolher(release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")], { draft: true }), { app: "meu-bot", arch: "arm64", current: "0.1.0" }).tipo, "nada-novo");
+});
+
+test("motivoReleaseTexto: frase para a tela, com e sem a versão", () => {
+  assert.match(motivoReleaseTexto("0.9.0", "sem-ativo"), /0\.9\.0/);
+  assert.match(motivoReleaseTexto(null, "corpo-inesperado"), /não consegui entender/);
+  for (const m of ["corpo-inesperado", "tag-inesperada", "sem-ativo", "sem-assinatura"]) {
+    assert.equal(typeof motivoReleaseTexto(null, m), "string"); assert.ok(motivoReleaseTexto(null, m).length > 10, m);
+  }
 });
 
 test("compareVersions e assetName", () => {
@@ -41,7 +74,7 @@ test("compareVersions: ordem do semver com pre-release (staging)", () => {
   assert.equal(compareVersions("1.0.0-1", "1.0.0-alpha"), -1, "número < texto");
 });
 
-test("pickUpdate por canal: o estável ignora staging; o staging pega a maior pre-release com o asset dele", () => {
+test("escolherRelease por canal: o estável ignora staging; o staging pega a maior pre-release com o asset dele", () => {
   const rel = (tag, assets, extra = {}) => ({ tag_name: tag, draft: false, prerelease: /staging/.test(tag), assets: assets.flatMap((n) => [n, `${n}.sig`]).map((n) => ({ name: n, browser_download_url: `https://x/${n}`, size: 1 })), ...extra });
   const lista = [
     rel("v0.2.0-staging.2", ["meu-bot-staging-0.2.0-staging.2-arm64.zip"]),
@@ -50,12 +83,20 @@ test("pickUpdate por canal: o estável ignora staging; o staging pega a maior pr
     rel("v0.2.0-beta.1", ["meu-bot-staging-0.2.0-beta.1-arm64.zip"], { prerelease: true }),
     rel("v0.1.0", ["meu-bot-0.1.0-arm64.zip"]),
   ];
-  const st = pickUpdate(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.2.0-staging.1", canal: "staging" });
+  const st = pega(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.2.0-staging.1", canal: "staging" });
   assert.equal(st.version, "0.2.0-staging.10", "a .11 não tem o asset do meu-bot-staging; a beta não é tag de staging");
-  assert.equal(pickUpdate(lista, { app: "meu-bot-crm-staging", arch: "arm64", current: "0.2.0-staging.1", canal: "staging" }).version, "0.2.0-staging.11");
-  assert.equal(pickUpdate(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.2.0-staging.10", canal: "staging" }), null, "já está na maior");
-  assert.equal(pickUpdate(rel("v0.2.0-staging.3", ["meu-bot-0.2.0-staging.3-arm64.zip"]), { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null, "o estável ignora pre-release");
-  assert.equal(pickUpdate(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.1.0" }), null, "o estável não lê a lista");
+  assert.equal(pega(lista, { app: "meu-bot-crm-staging", arch: "arm64", current: "0.2.0-staging.1", canal: "staging" }).version, "0.2.0-staging.11");
+  assert.equal(escolher(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.2.0-staging.10", canal: "staging" }).tipo, "nada-novo", "já está na maior");
+  assert.equal(escolher(rel("v0.2.0-staging.3", ["meu-bot-0.2.0-staging.3-arm64.zip"]), { app: "meu-bot", arch: "arm64", current: "0.1.0" }).tipo, "nada-novo", "o estável ignora pre-release");
+  assert.equal(escolher(lista, { app: "meu-bot-staging", arch: "arm64", current: "0.1.0" }).motivo, "corpo-inesperado", "o estável não lê a lista: uma lista onde se espera um objeto é corpo estranho");
+  // Na lista do staging, uma candidata utilizável ganha de um problema em outra entrada.
+  const comProblema = [rel("v0.3.0-staging.1", []), rel("v0.2.0-staging.2", ["meu-bot-staging-0.2.0-staging.2-arm64.zip"])];
+  assert.equal(pega(comProblema, { app: "meu-bot-staging", arch: "arm64", current: "0.1.0", canal: "staging" }).version, "0.2.0-staging.2");
+  // No staging publica-se um produto de cada vez: pre-release sem o arquivo deste app é normal, não defeito.
+  assert.equal(escolher([rel("v0.3.0-staging.1", [])], { app: "meu-bot-staging", arch: "arm64", current: "0.1.0", canal: "staging" }).tipo, "nada-novo");
+  // Já um zip publicado sem o .sig ao lado é defeito em qualquer canal, e tem que aparecer.
+  const semSig = escolher([{ tag_name: "v0.3.0-staging.1", draft: false, prerelease: true, assets: [{ name: "meu-bot-staging-0.3.0-staging.1-arm64.zip", browser_download_url: "https://x/z.zip", size: 9 }] }], { app: "meu-bot-staging", arch: "arm64", current: "0.1.0", canal: "staging" });
+  assert.equal(semSig.tipo, "inutilizavel"); assert.equal(semSig.motivo, "sem-assinatura"); assert.equal(semSig.versao, "0.3.0-staging.1");
   assert.match(releasesUrl("staging"), /\/releases\?per_page=30$/); assert.match(releasesUrl("estavel"), /\/releases\/latest$/);
 });
 
@@ -80,10 +121,10 @@ test("precisaAtualizarBackend: só onde já está instalado, só para cima, só 
   assert.equal(precisaAtualizarBackend(p({ backendInstalled: false, backendVersion: null }), "1.1.0"), "nao", "outro backend na pasta herdada (Hermes) não é instalado: nunca reinstalar por cima");
 });
 
-test("pickUpdate: zip sem o .sig ao lado não é candidata; com ele, a candidata traz os dois", () => {
+test("escolherRelease: zip sem o .sig ao lado não é candidata; com ele, a candidata traz os dois", () => {
   const sem = { tag_name: "v0.2.0", draft: false, prerelease: false, assets: [{ name: "meu-bot-0.2.0-arm64.zip", browser_download_url: "https://x/z.zip", size: 5 }] };
-  assert.equal(pickUpdate(sem, { app: "meu-bot", arch: "arm64", current: "0.1.0" }), null);
-  const c = pickUpdate(release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")]), { app: "meu-bot", arch: "arm64", current: "0.1.0" });
+  assert.equal(candidataDe(escolherRelease(sem, { app: "meu-bot", arch: "arm64", current: "0.1.0" })), null);
+  const c = pega(release("v0.2.0", [asset("meu-bot-0.2.0-arm64.zip")]), { app: "meu-bot", arch: "arm64", current: "0.1.0" });
   assert.equal(c.sig.name, "meu-bot-0.2.0-arm64.zip.sig"); assert.match(c.sig.url, /^https:\/\/.*\.sig$/);
 });
 
@@ -188,4 +229,15 @@ test("versão mínima do backend: só uma versão válida conta; abaixo dela o a
   assert.equal(abaixoDaMinima("0.4.0", "0.3.0"), false);
   assert.equal(abaixoDaMinima("0.1.0", null), false, "backend antigo não exige nada");
   assert.equal(abaixoDaMinima("0.3.0-staging.1", "0.3.0"), true, "o staging da 0.3.0 ainda é anterior à 0.3.0");
+});
+
+test("antigosDescartaveis: a cópia anterior só sai quando o app voltou ao lugar dela", () => {
+  const existe = (p) => p === "/Applications/meu-bot.app";
+  const antigos = ["/Applications/meu-bot.app.antigo", "/Users/x/Desktop/meu-bot.app.antigo"];
+  // A da mesa ficou sem o .app no lugar (a troca morreu entre tirar o velho e pôr o novo): apagá-la sumiria
+  // com aquela instalação. Era isso que acontecia 30 s depois de confirmar a versão nova.
+  assert.deepEqual(antigosDescartaveis(antigos, existe), ["/Applications/meu-bot.app.antigo"]);
+  assert.deepEqual(antigosDescartaveis(antigos, () => true), antigos, "com tudo no lugar, todas saem");
+  assert.deepEqual(antigosDescartaveis(antigos, () => false), [], "nenhuma no lugar: não apaga nada");
+  assert.deepEqual(antigosDescartaveis([], existe), []);
 });

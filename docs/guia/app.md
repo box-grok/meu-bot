@@ -338,7 +338,7 @@ meu-bot é assinado ad-hoc, então o `autoUpdater` do Electron (Squirrel) não s
   (`diegofornalha/meu-bot`, público) com os dois .zip. O .dmg continua sendo o instalador da primeira vez.
 - No app (`src/main/updater.ts`, só empacotado; `MEU_BOT_NO_UPDATE=1` desliga): 20 s depois de abrir e a cada
   6 h consulta `/releases/latest` (sem token; 404 = ainda sem release), escolhe o asset desta variante e
-  arquitetura (`pickUpdate`, puro, testado), baixa para `userData/update`, extrai, confere a versão e o bundle
+  arquitetura (`escolherRelease`, puro, testado), baixa para `userData/update`, extrai, confere a versão e o bundle
   id do Info.plist e tira a quarentena (assinatura e identidade: ver a revisão de 22 out abaixo). Pronta, avisa as janelas (`update:ready`): faixa
   "meu-bot X pronto para instalar · Reiniciar e atualizar" (`update:apply` troca o .app que está rodando e as
   cópias em `~/Applications` e na mesa com o mesmo bundle id, e reabre). Sem clique, a troca acontece calada ao
@@ -353,7 +353,7 @@ mudou no meu-bot (o texto acima segue valendo onde não é contradito):
 
 - **Assinatura Ed25519 das releases:** `npm run chave-release` (uma vez) cria a privada em
   `~/.config/meu-bot/release-ed25519.pem` (fora do repo; guarde um backup) e mostra a pública, embutida em
-  `UPDATE_PUBLIC_KEY` (`updater-core.ts`). O `release.mjs` publica `<zip>.sig` ao lado de cada zip; `pickUpdate`
+  `UPDATE_PUBLIC_KEY` (`updater-core.ts`). O `release.mjs` publica `<zip>.sig` ao lado de cada zip; `escolherRelease`
   ignora release sem `.sig` e o `stage()` só extrai se `verificaAssinatura` conferir.
 - **Nada é reassinado:** o zip do `ditto` preserva a assinatura "meu-bot local" (conferido); o `stage()` exige
   `codesign --verify --deep --strict` e o mesmo designated requirement do app em execução. Assim o chaveiro
@@ -633,3 +633,33 @@ arquivos misturados); agora cada um vai para a própria subpasta, com os arquivo
 plugin), `financeiro/` (+ `finance/`), `guarda/` (+ `guarda/` e `skills/whatsapp-grupos/`) e `statusline/`. A cada
 envio a subpasta do componente recomeça do zero e o jeito antigo é varrido (`stageDe`/`limparStage` em
 src/main/maquina/hostProbe.ts). As desinstalações criam a subpasta se faltar; a do CRM ainda tenta o caminho antigo.
+
+## Atualização: quatro falhas caladas (4 nov)
+Vieram de uma leitura do atualizador ao lado do Grok Bot 0.78.4 (REA do `app.asar` dele mais o changelog público).
+Nenhuma aparecia em teste: todas falhavam em silêncio.
+
+- **O app podia parar de atualizar anunciando "tudo em dia".** O `pickUpdate` devolvia `null` em nove situações
+  diferentes e quem chamava traduzia todas como `up-to-date`. Uma release publicada com o zip faltando, sem o `.sig`
+  ou sem o arquivo desta arquitetura deixava o app parado para sempre, dizendo que estava atualizado. Virou
+  `escolherRelease`, que devolve `{tipo:"candidata"|"nada-novo"|"inutilizavel"}` com o motivo; o `errorKind` ganhou
+  `release` e a tela diz "há uma versão nova publicada e não consegui instalá-la: …". A distinção entre os canais é
+  de propósito: no staging publica-se um produto de cada vez, então pre-release sem o arquivo deste app é normal e
+  se pula; no estável a `/releases/latest` tem que trazer todos.
+- **Disco cheio não existia.** Caía no balde `outro` e, pior, a limpeza era condicionada a `e instanceof UpdateFalha`,
+  então a pasta de preparação e o `.partial` ficavam ocupando o disco que já faltava. O download agora para na
+  primeira falha de espaço em vez de insistir quinze vezes (`semEspacoEmDisco`, dono da leitura em
+  `update-download.ts`), o `errorKind` ganhou `disco` e o `check` apaga o que baixou. A frase diz quantos GB sobram.
+- **Duas sessões do mesmo Mac se atropelavam.** A trava de instância única do Electron é por `userData`, ou seja, por
+  usuário: com troca rápida de usuário, duas sessões trocavam a mesma pasta Aplicativos. Agora há uma trava entre
+  processos ao lado do `.app` (um `mkdir`, que é atômico; o temporário do sistema não serve porque no macOS é privado
+  por usuário), e cada alvo já na versão de destino é filtrado **antes** de gravar o registro pendente, para uma
+  sessão nunca reivindicar o `.antigo` que é a volta atrás da outra.
+- **Troca interrompida nem sempre era reparada.** O `repararTroca` só rodava no caminho `nao-pegou`. Se o app reabria
+  já na versão nova e uma das outras cópias tinha ficado para trás, ninguém repunha e o `.antigo` órfão era apagado
+  30 s depois, sumindo com aquela instalação. Agora o reparo roda antes de qualquer decisão, e o descarte usa
+  `antigosDescartaveis` (puro, testado): uma cópia anterior só sai quando o `.app` dela voltou ao lugar.
+
+Junto, duas coisas que o Grok Bot tem e faltavam: a preferência "atualizar sozinho com o Mac ocioso" estava
+`disabled` no HTML com "por enquanto, sempre ligado" (o resto do caminho já existia), e o menu do aplicativo não
+tinha atualização nenhuma. Agora tem "Verificar atualizações" e, com versão pronta, "Reiniciar para atualizar";
+como o Electron não tem item de menu reativo, o `refreshAppMenu` refaz o menu a cada mudança de estado.

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-const { baixarComRetomada, DownloadError } = createRequire(import.meta.url)("../../dist/main/atualizacao/update-download.js");
+const { baixarComRetomada, DownloadError, semEspacoEmDisco } = createRequire(import.meta.url)("../../dist/main/atualizacao/update-download.js");
 
 const CORPO = Buffer.alloc(300 * 1024); for (let i = 0; i < CORPO.length; i++) CORPO[i] = (i * 7 + 13) & 0xff;
 const SHA = createHash("sha256").update(CORPO).digest("hex");
@@ -135,3 +135,17 @@ test("servidor que para de mandar bytes: o vigia de inatividade derruba a tentat
     assert.equal(r.sha256, SHA); assert.equal(st.pedidos, 2); assert.equal(r.retomadas, 1);
   } finally { server.closeAllConnections?.(); server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("semEspacoEmDisco: acha o ENOSPC no fundo da cadeia de causas", () => {
+  assert.equal(semEspacoEmDisco(Object.assign(new Error("x"), { code: "ENOSPC" })), true);
+  assert.equal(semEspacoEmDisco(Object.assign(new Error("cota"), { code: "EDQUOT" })), true);
+  const fundo = Object.assign(new Error("de fora"), { cause: Object.assign(new Error("meio"), { cause: Object.assign(new Error("fundo"), { code: "ENOSPC" }) }) });
+  assert.equal(semEspacoEmDisco(fundo), true, "o download embrulha o erro em cause");
+  assert.equal(semEspacoEmDisco(Object.assign(new Error("recusado"), { code: "ECONNREFUSED" })), false);
+  assert.equal(semEspacoEmDisco(null), false);
+  assert.equal(semEspacoEmDisco(undefined), false);
+  // Cadeia circular não pode travar a classificação.
+  const a = new Error("a"); a.cause = a;
+  assert.equal(semEspacoEmDisco(a), false);
+});
+

@@ -4,7 +4,8 @@
  *
  * - Verifica: 10 s depois de abrir e a cada hora (com jitter), ao voltar a internet, ao acordar o Mac, por
  *   "Verificar agora" e quando o backend da máquina exige uma versão mínima. Consulta a release mais nova do
- *   repositório no GitHub (`pickUpdate`, puro).
+ *   repositório no GitHub (`escolherRelease`, puro). Uma release que existe e não dá para instalar vira erro
+ *   com motivo, nunca "tudo em dia".
  * - Prepara: baixa o `.sig` e o `.zip` desta variante em fluxo, com retomada e progresso (update-download.ts), só
  *   segue se a assinatura Ed25519 confere com uma de UPDATE_PUBLIC_KEYS, extrai em `userData/update/app`, confere
  *   que o app baixado tem a MESMA identidade de assinatura do que está rodando (nunca reassina: o chaveiro amarra
@@ -28,13 +29,13 @@ import { appTitle, caps } from "../app/variant";
 import { broadcast, getLastFocusedHost } from "../app/windows";
 import { getAtualizarOcioso } from "../app/settings";
 import { run, runText } from "../app/proc";
-import { baixarComRetomada, DownloadError } from "./update-download";
+import { baixarComRetomada, DownloadError, semEspacoEmDisco } from "./update-download";
 import { noteNetworkError } from "../app/net";
 import { offlineMessage } from "../app/net-core";
 import {
-  abaixoDaMinima, CHECK_EVERY_MS, compareVersions, CONFIRMA_FEED_MS, decideReinicioOcioso, decideRollback, feedAindaOferece, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
-  pickUpdate, proximaVerificacaoMs, releasesUrl, repararTroca, verificaAssinatura,
-  type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
+  abaixoDaMinima, antigosDescartaveis, candidataDe, CHECK_EVERY_MS, compareVersions, CONFIRMA_FEED_MS, decideReinicioOcioso, decideRollback, escolherRelease, feedAindaOferece, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
+  proximaVerificacaoMs, releasesUrl, repararTroca, verificaAssinatura,
+  type EscolhaRelease, type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
 } from "./updater-core";
 
 import type { UpdateErrorKind, UpdatePhase, UpdateState, UpdateTrigger } from "../../shared/ipc";
@@ -67,9 +68,17 @@ const minimaPorHost = new Map<string, string>();
 let ligado = false;
 
 export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso() });
+/** O que o menu do aplicativo precisa saber: a versão pronta e se dá para pedir uma verificação agora. */
+export const updateMenuState = (): { pronta: string | null; podeVerificar: boolean } => ({
+  pronta: ativo() ? state.ready : null,
+  podeVerificar: ativo() && state.phase !== "checking" && state.phase !== "downloading" && state.phase !== "verifying" && state.phase !== "applying",
+});
 /** A última verificação falhou por falta de internet (a faixa OFFLINE refaz quando a conexão voltar). */
 export const lastUpdateErrorWasNetwork = (): boolean => state.phase === "error" && state.errorKind === "rede";
-function publish(): void { broadcast("update:state", updateState()); }
+/** Quem mais quer saber que o estado mudou (hoje o menu do app, que precisa se refazer para mostrar o item). */
+let aoMudar: (() => void) | null = null;
+export const onUpdateState = (cb: () => void): void => { aoMudar = cb; };
+function publish(): void { broadcast("update:state", updateState()); aoMudar?.(); }
 function setPhase(phase: UpdatePhase): void { state.phase = phase; state.checking = phase === "checking"; if (phase !== "downloading") state.progress = null; if (phase !== "applying") state.aguardando = false; publish(); }
 const erroTexto = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -144,8 +153,18 @@ function check(trigger: UpdateTrigger): Promise<void> {
     log(`[atualização] verificando (${trigger})`);
     const ac = new AbortController(); abort = ac;
     try {
-      const cand = await consultarFeed(ac.signal);
+      const escolha = await consultarFeed(ac.signal);
       state.checkedAt = new Date().toISOString();
+      if (escolha.tipo === "inutilizavel") {
+        // Achamos uma release e não dá para instalar. Nunca anunciar "tudo em dia" por causa disso: era assim que o
+        // app parava de atualizar calado. Uma preparada já conferida continua valendo e segue oferecida.
+        state.error = motivoReleaseTexto(escolha.versao, escolha.motivo); state.errorKind = "release";
+        state.available = escolha.versao;
+        log(`[atualização] ${state.error}`);
+        setPhase(preparada !== null ? "ready" : "error");
+        return;
+      }
+      const cand = candidataDe(escolha);
       if (cand === null) {
         // Nada mais novo que a instalada: uma preparada que sobrou foi retirada do ar (ou é a própria versão de agora).
         if (preparada !== null) { log(`[atualização] a ${preparada.para} não está mais na release: descartada`); limparPreparada(); }
@@ -160,6 +179,8 @@ function check(trigger: UpdateTrigger): Promise<void> {
     } catch (e) {
       if (ac.signal.aborted) { setPhase(preparada !== null ? "ready" : "idle"); return; }
       const f = await classificar(e);
+      // Disco cheio: o que já baixou e extraiu tem que sair, senão a tentativa seguinte encontra menos espaço ainda.
+      if (f.kind === "disco") { limparPreparada(); log("[atualização] apaguei o que já tinha baixado para liberar espaço"); }
       state.error = f.msg; state.errorKind = f.kind;
       log(`[atualização] ${f.msg}`);
       setPhase("error");
@@ -171,20 +192,43 @@ function check(trigger: UpdateTrigger): Promise<void> {
   return inflight;
 }
 
-async function consultarFeed(signal: AbortSignal): Promise<UpdateCandidate | null> {
+async function consultarFeed(signal: AbortSignal): Promise<EscolhaRelease> {
   const res = await fetch(releasesUrl(caps().canal), { headers: { "User-Agent": `${appTitle()}/${state.current}`, Accept: "application/vnd.github+json" }, signal: AbortSignal.any([signal, AbortSignal.timeout(FEED_TIMEOUT_MS)]) });
-  if (res.status === 404) return null; // ainda sem release: a instalada é a mais recente
-  if (!res.ok) throw new UpdateFalha("github", `GitHub respondeu ${res.status}`);
-  return pickUpdate(await res.json(), { app: appTitle(), arch: arch(), current: state.current, canal: caps().canal });
+  if (res.status === 404) return { tipo: "nada-novo" }; // ainda sem release: a instalada é a mais recente
+  if (!res.ok) throw new UpdateFalha("github", textoRespostaGithub(res));
+  let corpo: unknown;
+  // Corpo que não é JSON (portal de rede cativa, página de erro do proxy) não é falha de conexão: dizer o que é.
+  try { corpo = await res.json(); } catch { throw new UpdateFalha("release", "o servidor de atualização respondeu algo que não consegui entender"); }
+  return escolherRelease(corpo, { app: appTitle(), arch: arch(), current: state.current, canal: caps().canal });
+}
+
+/** Limite da API do GitHub (403/429 com a cota zerada) não é defeito do app nem da rede: a frase diz isso. */
+function textoRespostaGithub(res: Response): string {
+  if ((res.status === 403 || res.status === 429) && res.headers.get("x-ratelimit-remaining") === "0") {
+    const reset = Number(res.headers.get("x-ratelimit-reset"));
+    const volta = Number.isFinite(reset) && reset > 0 ? new Date(reset * 1000).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : null;
+    return `o GitHub limitou as consultas deste IP${volta === null ? "" : `; libera por volta das ${volta}`}`;
+  }
+  return `GitHub respondeu ${res.status}`;
 }
 
 /** Sem internet, a culpa não é do GitHub nem do app: a frase diz isso (e a volta da rede refaz a checagem). */
 async function classificar(e: unknown): Promise<{ kind: UpdateErrorKind; msg: string }> {
   if (e instanceof UpdateFalha) return { kind: e.kind, msg: e.message };
+  // Antes da rede: um disco cheio não é queda de conexão, e dizer "sem internet" manda a pessoa para o lugar errado.
+  if (semEspacoEmDisco(e)) return { kind: "disco", msg: `não há espaço em disco para a atualização${espacoLivreTexto()}` };
   if (e instanceof DownloadError) return { kind: "download", msg: e.message };
   if (await noteNetworkError(e)) return { kind: "rede", msg: offlineMessage("update") };
   const msg = erroTexto(e);
   return { kind: /download|conexão/i.test(msg) ? "download" : "outro", msg };
+}
+
+/** Quanto sobra no disco do userData, para a frase do disco cheio dizer algo útil; vazio se não der para ler. */
+function espacoLivreTexto(): string {
+  try {
+    const st = fs.statfsSync(app.getPath("userData"));
+    return `; restam ${(Number(st.bavail) * Number(st.bsize) / 1e9).toFixed(1)} GB livres`;
+  } catch { return ""; }
 }
 
 /* ---------- preparar ---------- */
@@ -289,9 +333,11 @@ export async function applyUpdate(expectedVersion: string, gatilho: Exclude<Upda
   const idade = state.checkedAt === null ? Number.POSITIVE_INFINITY : Date.now() - Date.parse(state.checkedAt);
   if (idade > CONFIRMA_FEED_MS) {
     // Reconfirma só a release (sem preparar outra): retirada do ar, nada muda; sem internet, a preparada já conferida vale.
-    let cand: UpdateCandidate | null | undefined;
-    try { cand = await consultarFeed(new AbortController().signal); state.checkedAt = new Date().toISOString(); } catch (e) { log(`[atualização] não deu para reconfirmar no GitHub (${erroTexto(e)}); sigo com a ${expectedVersion} já conferida`); }
-    if (cand !== undefined && !feedAindaOferece(cand, expectedVersion)) { log(`[atualização] a ${expectedVersion} foi retirada da release: descartada`); limparPreparada(); state.available = cand?.version ?? null; setPhase("up-to-date"); throw new Error("A atualização foi retirada do ar; nada foi mudado."); }
+    let escolha: EscolhaRelease | undefined;
+    try { escolha = await consultarFeed(new AbortController().signal); state.checkedAt = new Date().toISOString(); } catch (e) { log(`[atualização] não deu para reconfirmar no GitHub (${erroTexto(e)}); sigo com a ${expectedVersion} já conferida`); }
+    // Só uma resposta conclusiva retira a preparada do ar: um feed que não deu para ler não descarta o que já conferimos.
+    if (escolha !== undefined && escolha.tipo === "inutilizavel") log(`[atualização] a reconfirmação não deu para ler (${motivoReleaseTexto(escolha.versao, escolha.motivo)}); sigo com a ${expectedVersion} já conferida`);
+    else if (escolha !== undefined && !feedAindaOferece(candidataDe(escolha), expectedVersion)) { log(`[atualização] a ${expectedVersion} foi retirada da release: descartada`); limparPreparada(); state.available = candidataDe(escolha)?.version ?? null; setPhase("up-to-date"); throw new Error("A atualização foi retirada do ar; nada foi mudado."); }
   }
   setPhase("applying");
   if (gatilho === "clique" && anyConversationBusy()) {
@@ -326,15 +372,54 @@ function swapBundles(gatilho: UpdateGatilho): string {
   if (mine === null) throw new Error("fora de um .app");
   // Pré-voo: sem escrita no .app ou na pasta dele (imagem .dmg, pasta de outro usuário) não há troca possível.
   fs.accessSync(mine, fs.constants.W_OK); fs.accessSync(path.dirname(mine), fs.constants.W_OK);
+  // A trava de instância única do Electron é por userData, ou seja, por usuário do Mac. Com troca rápida de
+  // usuário, duas sessões chegam aqui para a MESMA pasta Aplicativos. Esta trava é entre processos e mora ao lado
+  // do alvo, no único lugar que as duas sessões enxergam e onde já sabemos que dá para escrever.
+  const soltar = pegarTrava(mine);
+  if (soltar === null) throw new Error("outra sessão deste Mac está trocando o app agora; tente de novo em instantes.");
+  try { return trocarAlvos(mine, gatilho); } finally { soltar(); }
+}
+
+/** Quanto tempo uma trava de troca pode ficar de pé antes de contar como restos de uma sessão que morreu. */
+const TRAVA_VELHA_MS = 5 * 60_000;
+/**
+ * Trava entre processos para a troca, ao lado do .app em execução. `mkdir` é atômico: quem criar o diretório ganha.
+ * Não usa o temporário do sistema porque no macOS ele é privado por usuário, que é exatamente o caso a cobrir.
+ * Devolve como soltar, ou null se outra sessão está com ela.
+ */
+function pegarTrava(bundle: string): (() => void) | null {
+  const trava = path.join(path.dirname(bundle), `.${path.basename(bundle)}.troca`);
+  try { fs.mkdirSync(trava); } catch (e) {
+    if ((e as { code?: string }).code !== "EEXIST") throw e;
+    let idade = Number.POSITIVE_INFINITY;
+    try { idade = Date.now() - fs.statSync(trava).mtimeMs; } catch { /* sumiu entre o mkdir e o stat: tenta pegar */ }
+    if (idade < TRAVA_VELHA_MS) return null;
+    log(`[atualização] trava de troca parada há ${Math.round(idade / 60_000)} min: assumindo que a sessão dona morreu`);
+    try { fs.rmSync(trava, { recursive: true, force: true }); fs.mkdirSync(trava); } catch { return null; }
+  }
+  try { fs.writeFileSync(path.join(trava, "quem"), `${process.pid} ${new Date().toISOString()}\n`, { mode: 0o600 }); } catch { /* cortesia */ }
+  return () => { try { fs.rmSync(trava, { recursive: true, force: true }); } catch { /* cortesia */ } };
+}
+
+/** A troca em si, já com a trava na mão. */
+function trocarAlvos(mine: string, gatilho: UpdateGatilho): string {
+  if (preparada === null) throw new Error("não há atualização pronta");
   const id = plistSync(mine, "CFBundleIdentifier");
   const targets = new Set<string>([mine]);
   for (const p of [path.join(os.homedir(), "Applications", `${appTitle()}.app`), path.join(os.homedir(), "Desktop", `${appTitle()}.app`)]) {
     if (fs.existsSync(p) && plistSync(p, "CFBundleIdentifier") === id) targets.add(path.resolve(p));
   }
-  const pend: UpdatePendente = { de: state.current, para: preparada.para, antigos: [...targets].map((t) => `${t}.antigo`), tentativas: 0, gatilho, pedidoEm: new Date().toISOString(), fase: "pedida" };
+  // Outra sessão pode ter trocado uma cópia enquanto esperávamos a trava. Filtrar ANTES de gravar o registro é o
+  // que impede esta sessão de reivindicar (e depois apagar) o .antigo que é a volta atrás daquela.
+  const aTrocar = [...targets].filter((t) => {
+    if (plistSync(t, "CFBundleShortVersionString") !== preparada?.para) return true;
+    log(`[atualização] ${t} já está na ${preparada.para}: não mexi`);
+    return false;
+  });
+  const pend: UpdatePendente = { de: state.current, para: preparada.para, antigos: aTrocar.map((t) => `${t}.antigo`), tentativas: 0, gatilho, pedidoEm: new Date().toISOString(), fase: "pedida" };
   gravarJson(pendenteFile(), pend);
   const antigos: string[] = [];
-  for (const t of targets) {
+  for (const t of aTrocar) {
     const fresh = `${t}.novo`, old = `${t}.antigo`;
     fs.rmSync(fresh, { recursive: true, force: true }); fs.rmSync(old, { recursive: true, force: true });
     try {
@@ -398,24 +483,44 @@ function conferirPendente(): void {
   let p: UpdatePendente | null = null;
   try { p = parsePendente(JSON.parse(fs.readFileSync(pendenteFile(), "utf8"))); } catch { return; }
   if (p === null) { fs.rmSync(pendenteFile(), { force: true }); return; }
+  // Repor o que ficou faltando vem ANTES de decidir, e vale para toda decisão. O registro em "pedida" quer dizer
+  // que a troca morreu em algum ponto entre gravar o pedido e terminar as renomeações, então pode haver um .app
+  // ausente mesmo quando esta abertura já é a versão nova. Antes isto só rodava no caminho "nao-pegou", e uma cópia
+  // perdida nos outros caminhos tinha o .antigo apagado 30 s depois, sumindo de vez.
+  reporFaltantes(p);
   const decisao = decideRollback(p, state.current);
   if (decisao === "voltar") { voltarParaAnterior(p); return; }
   if (decisao === "nao-pegou") {
-    for (const r of repararTroca(p.antigos, fs.existsSync)) { try { fs.renameSync(r.de, r.para); log(`[atualização] repus ${r.para} (a troca tinha parado no meio)`); } catch (e) { log(`[atualização] não consegui repor ${r.para}: ${erroTexto(e)}`); } }
-    log(`[atualização] reabriu na ${p.de} depois de pedir a ${p.para} (${p.gatilho ?? "?"}): a troca não pegou; vou preparar de novo`);
-    for (const a of p.antigos) fs.rmSync(a, { recursive: true, force: true });
+    log(`[atualização] reabriu na ${p.de} depois de pedir a ${p.para} (${p.gatilho ?? "?"}, registro em "${p.fase}"): a troca não pegou; vou preparar de novo`);
+    descartarAntigos(p.antigos);
     fs.rmSync(pendenteFile(), { force: true });
     return;
   }
-  if (decisao === "descartar") { for (const a of p.antigos) fs.rmSync(a, { recursive: true, force: true }); fs.rmSync(pendenteFile(), { force: true }); return; }
+  if (decisao === "descartar") { descartarAntigos(p.antigos); fs.rmSync(pendenteFile(), { force: true }); return; }
   gravarJson(pendenteFile(), { ...p, tentativas: p.tentativas + 1 } satisfies UpdatePendente);
   const pend = p;
   setTimeout(() => {
-    for (const a of pend.antigos) fs.rmSync(a, { recursive: true, force: true });
+    descartarAntigos(pend.antigos);
     fs.rmSync(pendenteFile(), { force: true });
     const demorou = pend.pedidoEm !== null && Date.now() - Date.parse(pend.pedidoEm) > 10 * 60_000;
     log(`[atualização] ${pend.para} confirmada (ficou de pé${demorou ? ", bem depois do pedido" : ""}; ${pend.gatilho ?? "?"}); versão anterior apagada`);
   }, CONFIRMA_MS).unref();
+}
+
+/** Repõe todo `<app>.antigo` cujo `<app>` sumiu: uma troca que morreu entre tirar o velho e pôr o novo. */
+function reporFaltantes(p: UpdatePendente): void {
+  for (const r of repararTroca(p.antigos, fs.existsSync)) {
+    try { fs.renameSync(r.de, r.para); log(`[atualização] repus ${r.para} (a troca tinha parado no meio)`); }
+    catch (e) { log(`[atualização] não consegui repor ${r.para}: ${erroTexto(e)}`); }
+  }
+}
+/** Apaga as cópias anteriores, menos uma que ainda seja tudo o que resta daquela instalação. */
+function descartarAntigos(antigos: readonly string[]): void {
+  const podem = new Set(antigosDescartaveis(antigos, fs.existsSync));
+  for (const a of antigos) {
+    if (!podem.has(a)) { log(`[atualização] mantive ${a}: o app no lugar dele não existe`); continue; }
+    fs.rmSync(a, { recursive: true, force: true });
+  }
 }
 
 /** Restaura cada <app>.antigo no lugar do <app> e reabre na versão anterior. */
