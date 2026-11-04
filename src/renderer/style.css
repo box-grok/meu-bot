@@ -940,6 +940,24 @@ body.topbar-hidden .topbar { display: none; }
 .update-line.bad { color: var(--bad); }
 .update-bar { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 6px 12px; font-size: 12px; background: color-mix(in srgb, var(--accent) 12%, var(--card)); border-bottom: 1px solid var(--line); }
 .update-bar[hidden] { display: none; }
+
+/* Localizar na página (Cmd+F): uma faixa fina, no mesmo lugar das outras faixas de cima. */
+.find-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--card); border-bottom: 1px solid var(--line); }
+.find-bar[hidden] { display: none; }
+.find-input { flex: 1; min-width: 0; max-width: 420px; padding: 4px 8px; font: inherit; font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.find-input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.find-count { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch; }
+
+/* Folha de atalhos (Cmd+/). */
+.atalhos-folha { width: min(720px, 92vw); max-height: 80vh; padding: 0; color: var(--fg); background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.atalhos-folha::backdrop { background: rgb(0 0 0 / 40%); }
+.atalhos-folha-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+.atalhos-folha-topo h2 { margin: 0; font-size: 15px; }
+.atalhos-folha-corpo { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px 28px; padding: 18px; overflow-y: auto; }
+.atalhos-grupo h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.atalhos-grupo dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; align-items: baseline; }
+.atalhos-grupo dt { font-size: 12px; white-space: nowrap; padding: 2px 6px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 5px; }
+.atalhos-grupo dd { margin: 0; font-size: 13px; color: var(--muted); }
 /* Bloqueador de versão mínima: cobre a janela inteira até o app reiniciar na versão que o backend exige. */
 .update-blocker { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: color-mix(in srgb, var(--bg) 92%, transparent); -webkit-app-region: drag; }
 .update-blocker[hidden] { display: none; }

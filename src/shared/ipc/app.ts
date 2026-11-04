@@ -54,6 +54,10 @@ export interface SettingsView {
   hostNames: Record<string, string>;
   /** Reiniciar sozinho na versão nova quando o Mac está ocioso (10 min sem mexer ou tela bloqueada) e nada em andamento. */
   atualizarOcioso: boolean;
+  /** Corretor ortográfico enquanto se digita (sublinhado vermelho e sugestões no menu do botão direito). */
+  corretorOrtografico: boolean;
+  /** Aceleração por hardware do Chromium; mudar só vale depois de reabrir o app. */
+  aceleracaoHardware: boolean;
   /** Modo de depuração gravado (null = o padrão da variante: ligado no staging). */
   depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir a janela. */
@@ -83,6 +87,8 @@ export interface SettingsUpdate {
   onboarding?: "pending" | "done" | "skipped";
   openAtLogin?: boolean;
   atualizarOcioso?: boolean;
+  corretorOrtografico?: boolean;
+  aceleracaoHardware?: boolean;
   abaFixa?: AbaFixa;  /** Modo de depuração: true/false grava; null volta ao padrão da variante. */
   depuracao?: boolean | null;
 }

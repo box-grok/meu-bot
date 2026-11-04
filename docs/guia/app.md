@@ -707,3 +707,41 @@ A pasta inteira some na troca, então isto ocupa disco só enquanto há atualiza
 
 **O desfecho virou legível por máquina.** O atualizador passou a usar o barramento `evento()` de `depuracao.ts`,
 com as rotas `verificar`, `preparar`, `reaproveitar`, `trocar`, `mover` e `abertura`, cada uma com o motivo.
+
+## A casca do app: localizar, atalhos, corretor e aceleração (4 nov)
+
+Os cinco itens que faltavam fora do atualizador, conferidos contra o changelog público do Grok Bot.
+
+**Localizar na página (⌘F).** Não havia `findInPage` em lugar nenhum. ⌘F já tinha dono, porém: o terminal usa para
+a busca dele (`terminal.ts`, no `customKeyEventHandler` do xterm). Então o atalho é resolvido por foco, no `keydown`
+da janela: terminal em foco → sai da frente e o terminal trata; Navegador em foco → `findInPage` do `<webview>`
+ativo, que é a página que a pessoa está olhando; qualquer outro lugar → `find:start` no `webContents` da janela, com
+o resultado voltando por `found-in-page`, ligado uma vez em `windows.ts`.
+
+O item "Localizar…" entrou no menu Editar **sem acelerador no macOS**, pelo mesmo motivo que os itens de zoom: com
+acelerador, o menu capturaria ⌘F antes do renderer e o terminal perderia a busca dele. Isso obrigou a trocar
+`{ role: "editMenu" }` por um submenu escrito à mão, com os papéis padrão (senão ⌘C/⌘V param de funcionar).
+
+**Folha de atalhos (⌘/).** `ATALHOS` em `busca-core.ts`, escrita à mão de propósito: o app registra atalhos em
+quatro lugares que não sabem uns dos outros (menu do aplicativo, `keydown` da janela, terminal, Navegador), então
+uma lista "gerada" mentiria por omissão. O teste garante que não há tecla repetida dentro de um grupo e que o ⌘F,
+que aparece em três grupos, explica o foco em cada um.
+
+**Corretor ortográfico.** `spellcheck` saiu de `false` fixo para a preferência. No macOS o Electron usa o corretor
+do sistema, então não há lista de idiomas para configurar: vale o do Mac. Sem menu de contexto o sublinhado seria
+inútil, então entrou um `context-menu` em campo editável com `dictionarySuggestions`, `replaceMisspelling`,
+`addWordToSpellCheckerDictionary` e os comandos de edição. Os campos que não querem corretor (endereço, código
+colado, chave) continuam com `spellcheck="false"` no HTML, que vence a preferência.
+
+**Aceleração por hardware.** `app.disableHardwareAcceleration()` só vale antes do `ready`, e `loadSettings()` rodava
+dentro do `whenReady`. A leitura das configurações subiu para o topo do `main.ts`, logo depois de a pasta de dados
+estar decidida; `loadSettings` é idempotente, então a chamada do `whenReady` continua onde estava.
+
+**Ditado.** Não há API no Electron para começar o ditado do macOS: ele é um serviço do sistema, acionado pelo atalho
+do próprio Mac. O que dava para fazer foi garantir que o menu Editar existe com os papéis padrão, que é onde o
+sistema põe o item dele. Não foi verificado em app empacotado se o macOS de fato acrescenta "Iniciar ditado" a este
+menu.
+
+**Defeito achado no caminho.** `getAtualizarOcioso()` devolvia `true` fixo e `settingsView` também, de quando o
+interruptor era travado. Como a PR anterior destravou o interruptor na tela, ele salvava e a tela remarcava a caixa
+no primeiro repinte. Agora os dois leem o arquivo.

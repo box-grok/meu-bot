@@ -36,6 +36,10 @@ export interface MainEvents {
   "ui:quick-submit": { correlationId: string; text: string };
   /** Menu meu-bot › Configurações… (Cmd+,): abre, ou fecha se já está aberto. */
   "ui:toggle-settings": Record<string, never>;
+  /** Resultado da busca na página: `atual` de `total` (0 e 0 = nada encontrado). */
+  "find:result": { atual: number; total: number };
+  /** Menu Editar › Localizar (Cmd+F) e Ajuda › Atalhos (Cmd+/): a janela abre a barra ou a folha. */
+  "ui:abrir": { oQue: "busca" | "atalhos" };
   /** Aviso do backend no meio de um turno (ex.: caiu para outro provedor). */
   "chat:notice": { conversationId: string; text: string };
   /** O agente usou uma ferramenta (modo agente): o que rodou/leu e o resultado resumido. */
@@ -144,6 +148,10 @@ export interface MeuBotSharedApi {
   applyUpdate(expectedVersion: string, forcar?: boolean): Promise<void>;
   /** O app está numa pasta sem escrita: copia o bundle para /Applications e reabre de lá. */
   moveAppToApplications(): Promise<void>;
+  /** Busca na página (Cmd+F) no conteúdo desta janela; o resultado chega por `find:result`. */
+  findInPage(texto: string, opcoes: { adiante: boolean; proximo: boolean }): Promise<void>;
+  /** Fecha a busca e tira o realce. */
+  stopFindInPage(): Promise<void>;
   /** Internet deste Mac: sonda (com `force`, mesmo com resultado fresco) e devolve o estado. */
   netCheck(force?: boolean): Promise<NetState>;
   /** A máquina desta janela é este próprio Mac (colima)? O túnel para ela não precisa de internet. */

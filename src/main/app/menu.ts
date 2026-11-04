@@ -12,7 +12,14 @@ export interface MenuAtualizacao {
   verificar: () => void;
   aplicar: (versao: string) => void;
 }
-export interface MenuDeps { openPicker: () => void; toggleSettings: () => void; zoom: (action: ZoomAction) => void; atualizacao: MenuAtualizacao }
+export interface MenuDeps {
+  openPicker: () => void;
+  toggleSettings: () => void;
+  zoom: (action: ZoomAction) => void;
+  atualizacao: MenuAtualizacao;
+  /** Manda a janela em foco abrir a barra de busca ou a folha de atalhos. */
+  abrir: (oQue: "busca" | "atalhos") => void;
+}
 
 /** As dependências do menu montado, para `refreshAppMenu` refazer o menu sem o main.ts repassar tudo de novo. */
 let montado: MenuDeps | null = null;
@@ -44,7 +51,29 @@ export function installAppMenu(deps: MenuDeps): void {
         { role: "close", label: "Fechar janela", accelerator: "CommandOrControl+Shift+W" },
       ],
     },
-    { role: "editMenu", label: "Editar" },
+    {
+      label: "Editar",
+      submenu: [
+        { role: "undo", label: "Desfazer" },
+        { role: "redo", label: "Refazer" },
+        { type: "separator" },
+        { role: "cut", label: "Recortar" },
+        { role: "copy", label: "Copiar" },
+        { role: "paste", label: "Colar" },
+        { role: "delete", label: "Apagar" },
+        { role: "selectAll", label: "Selecionar tudo" },
+        { type: "separator" },
+        // Sem acelerador no macOS, pelo mesmo motivo do zoom: com ele, o menu capturaria Cmd+F antes do renderer,
+        // e é o renderer que decide, pelo foco, se a busca é do terminal, da página do Navegador ou da janela.
+        process.platform === "darwin"
+          ? { label: "Localizar…", click: () => deps.abrir("busca") }
+          : { label: "Localizar…", accelerator: "CommandOrControl+F", registerAccelerator: false, click: () => deps.abrir("busca") },
+        ...(process.platform === "darwin"
+          // No macOS os itens de fala ficam aqui, no lugar onde o sistema também põe o ditado dele.
+          ? [{ label: "Fala", submenu: [{ role: "startSpeaking" as const, label: "Começar a falar" }, { role: "stopSpeaking" as const, label: "Parar de falar" }] }]
+          : []),
+      ],
+    },
     {
       label: "Visualizar",
       submenu: [
@@ -55,6 +84,11 @@ export function installAppMenu(deps: MenuDeps): void {
       ],
     },
     { role: "windowMenu", label: "Janela" },
+    {
+      role: "help",
+      label: "Ajuda",
+      submenu: [{ label: "Atalhos de teclado", accelerator: "CommandOrControl+/", click: () => deps.abrir("atalhos") }],
+    },
   ];
   // Atualização no menu do aplicativo (no macOS, junto do "Sobre"; fora dele, em Arquivo), como faz o Grok Bot:
   // sem isto só se chega à atualização abrindo Configurações.
