@@ -29,7 +29,8 @@ nesta sessão** (branch de outra sessão: só avise o usuário).
    mudança já foi feita no checkout principal, leve-a para o worktree (`git stash` → `git -C ../meu-bot-<nome> stash pop`,
    ou `git diff | git -C ../meu-bot-<nome> apply`). Para o worktree empacotar: `ln -s` de `node_modules` e de
    `extensao-crm/node_modules` do checkout principal; cópia (não symlink: o `build:extensao` recusa) de
-   `build/extensao-autenticador`; cópia de `config/google-oauth.json` e `config/google-conta-oauth.json` (fora do git; sem
+   `build/extensao-autenticador`; cópia de `build/suporte` (o `suporte.json` do admin, fora do git; sem ele o
+   meu-bot-admin sai "sem caixa de entrada configurada"); cópia de `config/google-oauth.json` e `config/google-conta-oauth.json` (fora do git; sem
    eles o cliente sai sem Google e o `package.mjs` avisa). Rode `npm test` e `npm run dist…` de dentro do worktree.
 3. **Commit**: só os arquivos da mudança (`git add <arquivos>`, nada de `git add -A`, que pegaria `.env`, `out/` e afins).
    Mensagem no estilo do `git log`: `Área: o que muda` na primeira linha, em pt-BR, e um parágrafo com o porquê. Termine
