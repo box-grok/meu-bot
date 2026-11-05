@@ -801,3 +801,32 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   vez, e a dica no texto da lista vazia. O aviso de caixa que não respondeu continua, mas não cobre a nota durante
   um sync. E `picker:sync-ssh` passou do `registerIpc` do seletor de cliente para o bloco comum de `initPicker`:
   o admin não roda aquele bloco, e o clique dava "No handler registered for 'picker:sync-ssh'".
+
+## "Nova VPS" com um clique no seletor (5 nov)
+
+- **Problema:** ligar uma VPS nova ao meu-bot era um caminho manual e espalhado: alias no `~/.ssh/config` (só pela skill
+  `vps-hostinger`, fora do app), "Adicionar pessoa ssh <alias>" (que disparava a preparação silenciosa de Claude Code e
+  backend no root e cobrava login no Terminal), abrir a janela do root e "Aplicar o que falta" no Preparar máquina,
+  "Criar usuário" na aba Usuários. Em 4 nov a VM do agente mudou de IP e o caminho inteiro teve de ser refeito à mão.
+- **Agora:** botão **Nova VPS** ao lado de "Adicionar" no seletor de pessoas (`src/renderer/admin/picker-chrome.ts`).
+  Premissa: a VPS nasce com a chave pública deste Mac (`~/.ssh/id_ed25519.pub`) cadastrada no painel do provedor
+  (Hostinger: Configurações › Chaves SSH); senha nunca entra no app. O formulário pede endereço, nome curto, porta,
+  domínio do link público (opcional) e três caixinhas (Chromium, primeiro usuário `box-1`, VPS reinstalada). O job
+  (`src/main/admin/vps-nova-admin.ts`, canal `picker:vps-nova`, progresso em `picker:vps-nova-progresso`) encadeia:
+  1. entra como root pela chave (`motivoAcesso` classifica o stderr do ssh: só chave → cadastre a pública; senha →
+     idem ou `ssh-copy-id` uma vez; chave do servidor mudou → marque "reinstalada"; rede);
+  2. grava `Host <nome>-root` no `~/.ssh/config` deste Mac (`acrescentarBlocoSshConfig`, backup ao lado; se já existe,
+     pula) e confere que o alias entra;
+  3. põe a máquina na lista de pessoas com `addSupportCode(alias, { preparar: false })` (sem Claude Code nem backend no
+     root) e dá a ela o nome curto (os usuários nascem `<nome>-box-1`);
+  4. `aplicarPreparar` com tudo que falta (mais o Chromium se pedido) e, com domínio, `instalarLinkPublico`;
+  5. `criarUsuario("box-1")` ou, se já existe, `prepararUsuarioDeNovo`;
+  6. o bloco para o modelo `config/ssh-hosts.conf` é só **sugerido** (botão "Copiar"): o arquivo é do repositório e vai
+     dentro do .app.
+  Termina com o recado do que fica para o admin: entrar no Claude Code do root (Claude Code Global), Link Público
+  (Cloudflare e túnel) e o QR do WhatsApp no meu-bot de `box-1`. Auditoria: `maquina.vps-nova`. Rodar de novo na mesma
+  VPS pula o que já está feito (cada passo relê antes de escrever). A parte pura está em `vps-nova-core.ts`
+  (`parseVpsNova`, `motivoAcesso`, `blocoModeloDe`, `planoVpsNova`, `textoFinal`; teste `vps-nova-core.test.mjs`).
+- **Fora do clique, de propósito:** a caixa de entrada do suporte e a central de auditoria (hoje em
+  `agente-box@187.127.41.175`, fora do ar). Recriar em outra máquina é `node scripts/suporte-setup.mjs --caixa <alias
+  não-root> --root <alias root> --nome Lucas` e uma release nova (os .dmg das pessoas levam o `suporte.json`).

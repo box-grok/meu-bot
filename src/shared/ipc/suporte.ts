@@ -57,6 +57,12 @@ export interface SupportPerson {
   /** Último plano visto da conta (cache, para o selo no seletor); null = ainda desconhecido. */
   plan: PlanName | null;
 }
+/** Variante: admin. "Nova VPS" no seletor: o pedido do formulário (validado em vps-nova-core.ts). */
+export interface VpsNovaPedido { endereco: string; nome: string; usuario: string; porta: number; dominio: string; chromium: boolean; primeiroUsuario: boolean; reinstalada: boolean }
+/** Um passo do job "Nova VPS", como a tela mostra: feito, pendente, ou humano (fica para o admin). */
+export interface PassoVps { id: "acesso" | "alias" | "pessoa" | "preparar" | "usuario" | "modelo"; titulo: string; estado: "feito" | "pendente" | "humano"; detalhe: string }
+/** O resultado do job "Nova VPS": aliases, o plano e o recado final; `blocoModelo` é o bloco sugerido para config/ssh-hosts.conf. */
+export interface VpsNovaResultado { nome: string; aliasRoot: string; suporteAlias: string | null; aliasBox: string | null; plano: PassoVps[]; texto: string; blocoModelo: string }
 /** Uma conversa da pessoa com o meu-bot, vista pela transcrição do Claude Code na máquina dela (meu-bot-admin). */
 export interface BotChat {
   /** Sessão do Claude Code (nome do .jsonl) ou, com `source: "app"`, o id da conversa do app (diário do backend). */

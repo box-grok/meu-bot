@@ -4,24 +4,10 @@
  * os jobs do admin) fica em vps-nova-admin.ts. Premissa: a VPS nasce com a chave pública deste Mac cadastrada no
  * painel do provedor (Hostinger: Chaves SSH); senha nunca entra no app.
  */
+import type { PassoVps, VpsNovaPedido } from "../../shared/ipc";
 import { HOSTNAME_RE, USER_RE } from "../suporte/support-code";
 
-export interface VpsNovaPedido {
-  /** IP ou nome DNS da VPS. */
-  endereco: string;
-  /** Nome curto da máquina: vira o alias `<nome>-root` neste Mac e o nome da pessoa no admin. */
-  nome: string;
-  usuario: string;
-  porta: number;
-  /** Domínio do Link Público Global; "" = não instalar. */
-  dominio: string;
-  /** Instalar também o Chromium na tela do bot (300 a 600 MB de RAM por janela). */
-  chromium: boolean;
-  /** Criar o primeiro usuário (box-1) ao fim. */
-  primeiroUsuario: boolean;
-  /** Mesmo endereço, chave do servidor nova: o job pode tirar a chave antiga do known_hosts. */
-  reinstalada: boolean;
-}
+export type { PassoVps, VpsNovaPedido };
 
 /** Nome curto: minúsculas, dígitos e hífen, 2 a 25 caracteres, começa por letra (vai virar alias e nome de pessoa). */
 export const NOME_VPS_RE = /^[a-z][a-z0-9-]{1,24}$/;
@@ -81,8 +67,7 @@ export function blocoModeloDe(o: { nome: string; hostname: string; user: string;
 `;
 }
 
-export type PassoVpsId = "acesso" | "alias" | "pessoa" | "preparar" | "usuario" | "modelo";
-export interface PassoVps { id: PassoVpsId; titulo: string; estado: "feito" | "pendente" | "humano"; detalhe: string }
+export type PassoVpsId = PassoVps["id"];
 
 /** O que o job apurou (antes de agir, ou depois): cada campo null = ainda não se sabe. */
 export interface FatosVps {

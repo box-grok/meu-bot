@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { HostProbe, InstallBackendResult, PickerApi, PickerAdminApi, PickerClientApi, PickerSharedApi, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "../shared/ipc";
 
-const EVENTS = ["picker:init", "picker:install-progress"] as const;
+const EVENTS = ["picker:init", "picker:install-progress", "picker:vps-nova-progresso"] as const;
 
 /** Os dois apps. */
 const sharedApi: PickerSharedApi = {
@@ -53,6 +53,7 @@ const adminApi: PickerAdminApi = {
   supportRename: (alias: string, name: string) => ipcRenderer.invoke("picker:support-rename", { alias, name }),
   supportRemove: (alias: string, force: boolean) => ipcRenderer.invoke("picker:support-remove", { alias, force }),
   produtosAbrir: () => ipcRenderer.invoke("picker:produtos-abrir", {}),
+  vpsNova: (pedido: unknown) => ipcRenderer.invoke("picker:vps-nova", { pedido }),
 };
 
 const api: PickerApi = { ...sharedApi, ...clientApi, ...adminApi };

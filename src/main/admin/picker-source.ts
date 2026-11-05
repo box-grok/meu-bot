@@ -10,12 +10,13 @@ import { isSupportAlias } from "../suporte/support-code";
 import { windowForHost } from "../app/windows";
 import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
 import { registerProdutosIpc, showProdutos } from "./produtos-janela";
+import { vpsNova } from "./vps-nova-admin";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin-gestao · escolher pessoa",
   hosts: () => knownPeople().filter((p) => p.on).map((p) => p.alias),
   support: () => ({ people: knownPeople(), adminKey: adminKeyExists() }),
-  registerIpc: ({ fromPicker }) => {
+  registerIpc: ({ fromPicker, progressoLivre }) => {
     // Produtos (MVPs de bots verticais) moram numa janela própria; o seletor só a abre.
     registerProdutosIpc();
     handleAdmin("picker:produtos-abrir", (event) => { if (!fromPicker(event)) throw new Error("origem inválida"); showProdutos(); });
@@ -26,6 +27,11 @@ export const adminPickerSource: PickerSource = {
     handleAdmin("picker:support-add", (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
       return addSupportCode(String((payload as { code?: unknown } | null)?.code ?? ""));
+    });
+    // "Nova VPS": o job inteiro (src/main/admin/vps-nova-admin.ts), com o progresso na janela do seletor.
+    handleAdmin("picker:vps-nova", (event, payload: unknown) => {
+      if (!fromPicker(event)) throw new Error("origem inválida");
+      return vpsNova((payload as { pedido?: unknown } | null)?.pedido, progressoLivre);
     });
     handleAdmin("picker:support-archive", (event, payload: unknown) => {
       if (!fromPicker(event)) throw new Error("origem inválida");
