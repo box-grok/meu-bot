@@ -5,7 +5,7 @@
  * regra do Navegador: regravado inteiro a cada aplicação, nunca toca no resto do arquivo. Puro: só texto e script.
  */
 
-export const CONTEXTO_VERSAO = 1;
+export const CONTEXTO_VERSAO = 2;
 export const CONTEXTO_START = `<!-- meu-bot:maquina v${CONTEXTO_VERSAO} inicio -->`;
 export const CONTEXTO_END = `<!-- meu-bot:maquina v${CONTEXTO_VERSAO} fim -->`;
 
@@ -22,6 +22,7 @@ export const CONTEXTO_MD = [
   "- **Gateway do OpenClaw por conta:** `systemd --user openclaw-gateway.service`, drop-in `openclaw-gateway.service.d/meu-bot-leve.conf` (heap do Node limitada) e `plugins.allow` enxuto; o plugin `meu-bot-guarda` e o timer `meu-bot-vigia-gateway` são do meu-bot.",
   "- **Pacotes:** jq, ffmpeg, xvfb, x11-utils, openbox, x11vnc, novnc, python3-websockify, xdotool, scrot (a tela do bot), opcionalmente chromium; nginx e cloudflared (Link Público Global) e o serviço do Claude Code Global, quando ligados.",
   "- **Docker**, quando presente, é do provedor ou de testes do admin; os containers não são do meu-bot.",
+  "- **Backup e restauro:** o meu-bot do dono, no Mac dele, copia os conjuntos de cada conta (agente, credenciais, trabalho, CRM, financeiro) para o Google Drive dele, com cópia local no Mac; esta máquina não guarda o pacote. O que subiu e quando fica em `~/.local/share/meu-bot/backup-drive.json` da conta: leia-o quando perguntarem se o backup entrou. Restaurar ou mudar de máquina é pelo meu-bot (Conta Google › Restaurar uma cópia), nunca à mão nem pelo guia de migração do OpenClaw.",
   "O que estiver fora desta lista, aí sim descreva como achado.",
   CONTEXTO_END,
 ].join("\n");

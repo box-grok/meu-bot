@@ -12,6 +12,14 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### O agente sabe do backup
+
+#### Melhorado
+
+- **"Você consegue ver se o meu backup entrou?"** Perguntado pelo WhatsApp, o agente da conta dizia que não achava
+  backup nenhum e sugeria o guia de mudança de máquina do OpenClaw, porque a máquina não guardava registro do que o
+  meu-bot sobe ao Drive. Agora cada conjunto que sobe deixa na conta o quê, quando e onde, e o contexto dos agentes
+  diz que backup e restauro são pelo meu-bot (Conta Google › Restaurar uma cópia).
 ### Tutorial 11: o código do GitHub se cola sozinho
 
 #### Melhorado

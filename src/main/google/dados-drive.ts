@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
-import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoNoTar, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, slugMaquina, type ConjuntoDados } from "./google-core";
+import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoNoTar, caminhoDadosNoDrive, comandoPacoteSh, marcaBackupSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, slugMaquina, type ConjuntoDados } from "./google-core";
 import { CONFERIR_RESTAURO_SH, comandoRestaurarSh, copiasDeBackup, decisaoRestauroDados, homeAntigoDoTar, linhaSshRestaurar, parseConferirRestauro, type ArquivoDrive, type ArquivoLocal, type CopiaConjunto } from "./restauro-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
@@ -121,6 +121,11 @@ async function enviarConjunto(s: SessaoDrive, host: string, c: ConjuntoDados): P
   }
   const caminho = [...pastas, arquivo].join(" / ");
   log(`[dados-drive] ${c.id} de ${host} no Drive: ${caminho} (${pacote.length} bytes; ${apagados} antigo(s) apagado(s); cópia local em ${local})`);
+  // O registro na conta: o agente dela lê e responde "o backup de hoje entrou" (5 nov: ele dizia que não achava backup nenhum). Falhar aqui não desfaz o envio.
+  try {
+    const r = await runSsh(host, `${marcaBackupSh({ conjunto: c.id, nome: c.nome, arquivo, bytes: pacote.length, quando: new Date().toISOString(), caminho })}\n`, 30_000);
+    if (!/^MARCA=ok$/m.test(r.stdout)) log(`[dados-drive] ${host}: registro do backup não gravado na conta: ${(r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  } catch (e) { log(`[dados-drive] ${host}: registro do backup não gravado na conta: ${e instanceof Error ? e.message : String(e)}`); }
   return { conjunto: c.id, caminho, bytes: pacote.length, apagados, local };
 }
 

@@ -221,6 +221,33 @@ export function comandoPacoteSh(c: Pick<ConjuntoDados, "id" | "dirs" | "excluir"
     `if [ "$rc" -eq 1 ]; then echo "aviso: ${c.id}: arquivos mudaram durante o empacotamento (tar 1); o pacote saiu inteiro" >&2; rc=0; fi; exit $rc`;
 }
 
+/** Onde a conta guarda o que o meu-bot do dono subiu ao Drive: o agente dela lê isto quando perguntam "o backup entrou?". */
+export const MARCA_BACKUP = `${MB}/backup-drive.json`;
+const ID_CONJUNTO_RE = /^[a-z][a-z0-9-]{0,30}$/;
+/**
+ * Comando (como a conta, por SSH) que registra o conjunto que acabou de subir ao Drive em MARCA_BACKUP:
+ * `{ "conjuntos": { <id>: { nome, quando, arquivo, bytes, caminho } }, "onde": …, "restaurar": … }`, mantendo os outros
+ * conjuntos; JSON velho ilegível recomeça do zero. Imprime `MARCA=ok`. Sem python3 na máquina, `MARCA=sem-python3`.
+ */
+export function marcaBackupSh(e: { conjunto: string; nome: string; arquivo: string; bytes: number; quando: string; caminho: string }): string {
+  if (!ID_CONJUNTO_RE.test(e.conjunto)) throw new Error(`conjunto inválido: ${e.conjunto}`);
+  if (!Number.isInteger(e.bytes) || e.bytes < 0) throw new Error("bytes inválido");
+  if (Number.isNaN(Date.parse(e.quando))) throw new Error("data inválida");
+  const entrada = JSON.stringify({ id: e.conjunto, nome: e.nome, quando: e.quando, arquivo: e.arquivo, bytes: e.bytes, caminho: e.caminho });
+  return `command -v python3 >/dev/null 2>&1 || { echo MARCA=sem-python3; exit 0; }
+mkdir -p "$HOME/${MB}" && python3 - "$HOME/${MARCA_BACKUP}" '${entrada.replace(/'/g, "'\\''")}' <<'PY'
+import json, os, sys
+f = sys.argv[1]; e = json.loads(sys.argv[2])
+try: d = json.load(open(f, encoding="utf-8"))
+except Exception: d = {}
+if not isinstance(d, dict) or not isinstance(d.get("conjuntos"), dict): d = {"conjuntos": {}}
+d["conjuntos"][e.pop("id")] = e
+d["onde"] = "Google Drive da Conta Google do dono (pasta meu-bot), subido pelo meu-bot no Mac dele, com cópia local no Mac; esta máquina não guarda o pacote"
+d["restaurar"] = "pelo meu-bot no Mac do dono: Conta Google › Restaurar uma cópia (nunca à mão nem pelo guia de migração do OpenClaw)"
+tmp = f + ".tmp"; json.dump(d, open(tmp, "w", encoding="utf-8"), ensure_ascii=False, indent=2); os.replace(tmp, f); print("MARCA=ok")
+PY`;
+}
+
 export const CONJUNTOS_DADOS: readonly ConjuntoDados[] = [
   // As conversas arquivadas do WhatsApp também carregam token colado (1 JWT achado em 24/10): só cifrado.
   // `db/backup` é a cópia diária local: não se empacota cópia dentro de cópia.
