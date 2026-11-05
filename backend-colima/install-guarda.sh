@@ -65,6 +65,17 @@ printf '%s\n' "$OUT" | grep -v "^WARNING\|outside ClawHub" | tail -2 || true
 # Sem esta permissão o OpenClaw não entrega message_received a plugins de fora do catálogo: a guarda via só as
 # saídas e nunca fechava um ciclo (o anti-loop não disparava).
 timeout 60 openclaw config set plugins.entries.meu-bot-guarda.hooks.allowConversationAccess true --strict-json >/dev/null 2>&1 || echo "aviso: não consegui gravar hooks.allowConversationAccess (confira no openclaw.json)"
+# Gateway leve (plugins.allow nosso, do Preparar máquina ou do pareamento): a guarda precisa estar na lista para carregar.
+python3 - <<'PY' || true
+import json, os
+f = os.path.expanduser("~/.openclaw/openclaw.json")
+try: cfg = json.load(open(f))
+except Exception: raise SystemExit(0)
+allow = (cfg.get("plugins") or {}).get("allow")
+if isinstance(allow, list) and allow and "meu-bot-guarda" not in allow:
+    allow.append("meu-bot-guarda"); tmp = f + ".tmp"; json.dump(cfg, open(tmp, "w"), ensure_ascii=False, indent=2); os.replace(tmp, f)
+    print("plugins.allow: meu-bot-guarda acrescentada (gateway leve)")
+PY
 VER=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("version",""))' "$SRC/package.json" 2>/dev/null || true)
 if timeout 60 openclaw plugins inspect meu-bot-guarda --runtime 2>/dev/null | grep -q "^Status: loaded"; then
   printf '%s' "$VER" > "$SRC/.ok"

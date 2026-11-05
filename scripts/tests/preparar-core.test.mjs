@@ -8,13 +8,13 @@ const todos = [...PACOTES_BASE, ...PACOTES_TELA, "chromium"];
 const pacotes = (faltam = []) => todos.map((p) => `${p}=${faltam.includes(p) ? 0 : 1}`).join(" ");
 const saida = (o = {}) => [
   "ROOT", `RAM=${o.ram ?? 32000000}`, `SWAP=${o.swap ?? 8388604}`, `COTA=${o.cota ?? 1}`, `RESERVA=${o.reserva ?? 1}`, `SEMISO=${o.semiso ?? ""}`,
-  `PACOTES=${o.pacotes ?? pacotes()}`, `GH=${o.gh ?? "2.103.3"}`, `HERMES=${o.hermes ?? "global"}`, `TRANSCRITOR=${o.transcritor ?? 1}`, `OPENCLAW=${o.openclaw ?? "global"}`, `CG=${o.cg ?? "1 1 1"}`, `LP=${o.lp ?? "1 1 1 1 agentesgrok.com"}`, `OS=${o.os ?? "debian"}`,
+  `PACOTES=${o.pacotes ?? pacotes()}`, `GH=${o.gh ?? "2.103.3"}`, `HERMES=${o.hermes ?? "global"}`, `TRANSCRITOR=${o.transcritor ?? 1}`, `OPENCLAW=${o.openclaw ?? "global"}`, `OCLEVE=${o.ocleve ?? "2 2"}`, `CG=${o.cg ?? "1 1 1"}`, `LP=${o.lp ?? "1 1 1 1 agentesgrok.com"}`, `OS=${o.os ?? "debian"}`,
 ].join("\n") + "\n";
 
 test("preparar: máquina pronta → tudo ok, nada a aplicar; NAOROOT → root=false", () => {
   const v = lerPreparar(saida());
   assert.equal(v.root, true);
-  assert.deepEqual(v.itens.map((i) => [i.id, i.estado]), [["swap", "ok"], ["cota", "ok"], ["governanca", "ok"], ["pacotes", "ok"], ["gh", "ok"], ["hermes", "ok"], ["transcritor", "ok"], ["openclaw", "ok"], ["claude-global", "ok"], ["link-publico", "ok"], ["chromium", "ok"]]);
+  assert.deepEqual(v.itens.map((i) => [i.id, i.estado]), [["swap", "ok"], ["cota", "ok"], ["governanca", "ok"], ["pacotes", "ok"], ["gh", "ok"], ["hermes", "ok"], ["transcritor", "ok"], ["openclaw", "ok"], ["openclaw-leve", "ok"], ["claude-global", "ok"], ["link-publico", "ok"], ["chromium", "ok"]]);
   assert.deepEqual(v.faltam, []);
   assert.equal(v.ramKb, 32000000);
   assert.match(v.itens.find((i) => i.id === "link-publico").detalhe, /agentesgrok\.com/);
@@ -87,9 +87,9 @@ test("preparar: pacotesSh valida nomes e protege contra o lock do apt; GH_GLOBAL
 test("preparar: o script de estado começa pelo guard de root, reaproveita os trechos de cota e Hermes e tem uma chave por item", () => {
   assert.match(PREPARAR_ESTADO_SH, /^\[ "\$\(id -u\)" = 0 \] \|\| \{ echo "NAOROOT"; exit 0; \}/);
   assert.ok(PREPARAR_ESTADO_SH.includes(COTA_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(HERMES_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(OPENCLAW_ESTADO_SH));
-  for (const k of ["RAM=", "SWAP=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "TRANSCRITOR=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
+  for (const k of ["RAM=", "SWAP=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "TRANSCRITOR=", "OCLEVE=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
   assert.match(PREPARAR_ESTADO_SH, /\/usr\/local\/bin\/gh --version/); assert.match(PREPARAR_ESTADO_SH, /dpkg-query/);
-  assert.deepEqual([...ORDEM_PREPARAR], ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "chromium"]);
+  assert.deepEqual([...ORDEM_PREPARAR], ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"]);
 });
 
 test("preparar: OpenClaw para todos ao lado do Hermes (o app é agnóstico de motor): só no root ou em nenhum lugar → falta; passo como root com a versão fixada", () => {
@@ -106,7 +106,7 @@ test("preparar: OpenClaw para todos ao lado do Hermes (o app é agnóstico de mo
   for (const trecho of ["D=/opt/openclaw", "W=/usr/local/bin/openclaw", "nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz", "npm install -g --prefix \"$D\" \"openclaw@$V\"", "chmod -R a+rX \"$D\"", "meu-bot-openclaw-global", "runuser -u nobody", "OPENCLAW=ok $V", "for p in ffmpeg python3-venv; do dpkg-query -W -f='${Status}'", "install -y -q --no-install-recommends \"$p\""]) assert.ok(sh.includes(trecho), trecho);
   assert.ok(!sh.includes("latest"));
   // A ordem: depois do Hermes e do transcritor, antes do Claude Global.
-  assert.deepEqual(ORDEM_PREPARAR.slice(ORDEM_PREPARAR.indexOf("transcritor"), ORDEM_PREPARAR.indexOf("transcritor") + 3), ["transcritor", "openclaw", "claude-global"]);
+  assert.deepEqual(ORDEM_PREPARAR.slice(ORDEM_PREPARAR.indexOf("transcritor"), ORDEM_PREPARAR.indexOf("transcritor") + 4), ["transcritor", "openclaw", "openclaw-leve", "claude-global"]);
 });
 
 test("preparar: o Criar usuário não instala o OpenClaw (a conta nova usa o Hermes; o OpenClaw só pelo botão da aba)", () => {
@@ -115,6 +115,28 @@ test("preparar: o Criar usuário não instala o OpenClaw (a conta nova usa o Her
   assert.deepEqual(v.faltam, ["transcritor", "openclaw"]);
   assert.deepEqual(faltamAoCriarUsuario(v.faltam), ["transcritor"]);
   assert.deepEqual(faltamAoCriarUsuario(["openclaw"]), []);
+  assert.deepEqual(faltamAoCriarUsuario(["openclaw-leve", "swap"]), ["swap"], "o leve reinicia gateways: só pelo botão da aba");
+});
+
+test("preparar: OpenClaw leve: sem gateway é ok; gateways pesados viram falta com os nomes; o passo roda como root e registra na auditoria", () => {
+  const { lerOcLeve, OPENCLAW_LEVE, OPENCLAW_LEVE_ESTADO_SH, OC_LEVE_ENSURE_SH, openclawLeveSh } = createRequire(import.meta.url)("../../dist/main/admin/openclaw-leve-core.js");
+  assert.deepEqual(lerOcLeve("OCLEVE=3 1 box-1 box-2\n"), { total: 3, leves: 1, faltam: ["box-1", "box-2"] });
+  assert.deepEqual(lerOcLeve("OCLEVE=0 0\n"), { total: 0, leves: 0, faltam: [] }); assert.equal(lerOcLeve("ROOT\n"), null);
+  const por = (o) => Object.fromEntries(lerPreparar(saida(o)).itens.map((i) => [i.id, i]));
+  assert.equal(por({ ocleve: "0 0" })["openclaw-leve"].estado, "ok"); assert.match(por({ ocleve: "0 0" })["openclaw-leve"].detalhe, /nascem leves/);
+  assert.equal(por({ ocleve: "2 2" })["openclaw-leve"].estado, "ok"); assert.match(por({ ocleve: "2 2" })["openclaw-leve"].detalhe, /2 gateways leves.*768/);
+  const f = por({ ocleve: "3 1 root box-1" })["openclaw-leve"]; assert.equal(f.estado, "falta"); assert.match(f.detalhe, /pesados: root, box-1/);
+  assert.deepEqual(lerPreparar(saida({ ocleve: "3 1 root box-1" })).faltam, ["openclaw-leve"]);
+  // Saída antiga (sem a chave): nada a fazer.
+  assert.equal(lerPreparar(saida().replace(/^OCLEVE=.*\n/m, "")).itens.find((i) => i.id === "openclaw-leve").estado, "ok");
+  assert.ok(PREPARAR_ESTADO_SH.includes(OPENCLAW_LEVE_ESTADO_SH));
+  const p = passosPreparar(["openclaw-leve"], lerPreparar(saida({ ocleve: "3 1 root box-1" })));
+  assert.equal(p.length, 1); assert.equal(p[0].acao, "maquina.openclaw-leve"); assert.match(p[0].sh, /^\[ "\$\(id -u\)" = 0 \]/); assert.ok(p[0].ok.test("OCLEVE=ok 2 root box-1")); assert.equal(p[0].alvo("OCLEVE=ok 2 root box-1\n"), "2 root box-1");
+  // O ensure: drop-in sobrescrevendo o ExecStart (o unit zera NODE_OPTIONS e passa o flag na linha), allow só se nosso, sem reiniciar com RESTART=0.
+  assert.match(OC_LEVE_ENSURE_SH, /ExecStart=\\n%s/); assert.match(OC_LEVE_ENSURE_SH, new RegExp(`--max-old-space-size=${OPENCLAW_LEVE.heapMb}`)); assert.match(OC_LEVE_ENSURE_SH, /meu-bot-leve\.conf/);
+  assert.match(OC_LEVE_ENSURE_SH, /"meu-bot-guarda" not in cur: print\("allow=alheia"\)/); assert.match(OC_LEVE_ENSURE_SH, /base = \["whatsapp","meu-bot-guarda"\]/);
+  assert.match(OC_LEVE_ENSURE_SH, /\[ "\$RESTART" = 1 \] && systemctl --user is-active --quiet "\$U"/); assert.match(OC_LEVE_ENSURE_SH, /LEVE=sem-gateway/);
+  assert.match(openclawLeveSh(), /runuser -u "\$u" -- env RESTART=1 HOME="\$h"/); assert.match(openclawLeveSh(), /OCLEVE=ok \$N\$C/);
 });
 
 test("motivoSsh: prazo estourado e stderr vazio dizem por quê (não sai mais 'não consegui ler os usuários da máquina:' sem nada)", () => {

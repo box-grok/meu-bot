@@ -2,6 +2,7 @@
  * OpenClaw, parte pura: os trechos de shell que os scripts da máquina usam (status, pareamento, lista, grupos, logout,
  * política, trava do dono) e o parse do que eles imprimem. Nada aqui fala com a máquina; whatsapp-openclaw.ts é o IO.
  */
+import { OC_LEVE_ENSURE_SH } from "../admin/openclaw-leve-core";
 import type { TypingMode, VoiceReplyMode, WhatsappAlvo, WhatsappDmPolicy, WhatsappStatus } from "../../shared/ipc";
 import { TYPING_MODES } from "../../shared/ipc/whatsapp";
 import { DESCONHECIDO_DENY, NAV_DENY } from "../navegador/navegador-whatsapp-core";
@@ -77,6 +78,7 @@ print(int(any(p.get("id")=="whatsapp" and p.get("enabled",True) is not False for
  * ou modo remoto, não mexe. Imprime a porta nova em stdout; falha em silêncio (código 1).
  */
 export const GATEWAY_FIX_SH = `
+${OC_LEVE_ENSURE_SH}
 # GW_PROPRIO=1: o gateway do OpenClaw é desta conta (hoje sempre). Com gateway compartilhado (0), o app nunca instala,
 # religa nem muda a porta de gateway nenhum: foi o gw_ensure que religou o gateway do root da VM agente (1 nov).
 GW_PROPRIO=\${GW_PROPRIO:-1}
@@ -369,6 +371,8 @@ ${proprio ? `# Agente sem modelo: com o Claude Code logado, usa o Claude (senão
 [ "$(oc_fallback_ensure 2>/dev/null)" = set ] && echo '{"event":"meu-bot","step":"fallback-set"}'` : "# Gateway de outro usuário: modelo e reserva são do agente, já configurados por quem registrou a conta."}
 # Sem o serviço do gateway nesta conta: instala antes do QR (senão vincula e nunca conecta).
 if GWN=$(gw_ensure); then [ -n "$GWN" ] && echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-installed\\",\\"port\\":$GWN}"; else echo '{"event":"error","error":"esta conta não tem o gateway do OpenClaw como serviço e não consegui instalar. Na máquina: chmod go-w ~/.config ~/.config/systemd ~/.config/systemd/user; openclaw config set gateway.mode local; openclaw gateway install --port <porta livre>"}'; exit 2; fi
+${proprio ? `# Gateway leve (heap limitada e só os plugins usados): o drop-in vale no próximo início; o allow aplica a quente. Nunca para o QR.
+RESTART=0 oc_leve_ensure >/dev/null 2>&1 || true` : ""}
 # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
 if gw_mismatch; then
   if N=$(gw_fix); then echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-port\\",\\"port\\":$N}"; else echo '{"event":"error","error":"o gateway do OpenClaw desta conta aponta para o gateway de outra conta desta máquina (token diferente) e não consegui dar a ele uma porta própria. Na máquina: openclaw config set gateway.port <porta livre> && openclaw gateway install --force --port <porta livre>"}'; exit 2; fi

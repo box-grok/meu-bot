@@ -8,6 +8,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **OpenClaw leve.** Novo item em Preparar máquina: cada gateway do OpenClaw passa a carregar só o WhatsApp e os plugins
+  do meu-bot (de 43 para 4), com a memória do Node limitada; poupa ~430 MB por gateway na largada. Reinicia os gateways
+  (o WhatsApp de cada um volta em ~10 s), por isso só pelo botão da aba. Contas novas já nascem assim ao parear.
 - **Toda conta nova nasce com 2 GB de RAM** (era 1,25 GB). Medido em 5 nov: um gateway do OpenClaw com WhatsApp fica em
   1,5 GB e passa de 2 GB durante uma resposta, porque os processos do Claude contam na mesma caixa; com 1,25 GB a box
   batia no teto e perdia o agente. A linha "boxes: N de M" da aba Usuários passa a contar com 2 GB cada.
