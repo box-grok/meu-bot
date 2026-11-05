@@ -13,8 +13,8 @@
 #   houver outro transcritor configurado, não mexe (avisa e sai com 3). Vale sem reiniciar o gateway.
 # - Testa de ponta a ponta com `openclaw capability audio transcribe` num áudio gerado aqui.
 # Uso: install-transcricao.sh [off]   (sem argumento liga; `off` desliga)
-# Saídas: 0 ok · 1 erro (python3, venv) · 2 sem OpenClaw · 3 precisa do admin (outro transcritor configurado, ou falta
-# ffmpeg e não há sudo) · 4 configurou mas o teste do OpenClaw não confirmou.
+# Saídas: 0 ok · 1 erro (python3, pip) · 2 sem OpenClaw · 3 precisa do admin (outro transcritor configurado, ou falta
+# ffmpeg/python3-venv e não há sudo) · 4 configurou mas o teste do OpenClaw não confirmou.
 set -euo pipefail
 FW_VERSION=1.1.1
 MODEL=${MEU_BOT_WHISPER_MODEL:-small}
@@ -33,6 +33,22 @@ ffmpeg_ou_avisa() {
   elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q ffmpeg >/dev/null 2>&1 || true; fi
   command -v ffmpeg >/dev/null 2>&1 && { echo "ffmpeg instalado"; return 0; }
   echo "Esta máquina não deixa instalar programas sem senha. O admin prepara a máquina uma vez (pelo app dele: Preparar máquina › Transcritor de áudio, ou o ffmpeg em Pacotes do sistema) e aí $para."
+  return 1
+}
+# O venv precisa do pacote python3-venv, que o Debian/Ubuntu não trazem com o python3: instala pelo apt como root ou com
+# sudo sem senha. Uma tentativa sem ele deixa a pasta sem pip ("No module named pip"): refaz do zero. Sem como instalar,
+# a pendência é do admin (Preparar máquina › Pacotes do sistema), como o ffmpeg.
+venv_ou_avisa() {
+  local v=$1 para=$2
+  [ -x "$v/bin/python" ] && "$v/bin/python" -m pip --version >/dev/null 2>&1 && return 0
+  rm -rf "$v"
+  python3 -m venv "$v" >/dev/null 2>&1 && return 0
+  rm -rf "$v"
+  if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >/dev/null 2>&1 || true
+  elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >/dev/null 2>&1 || true; fi
+  python3 -m venv "$v" >/dev/null 2>&1 && { echo "python3-venv instalado"; return 0; }
+  rm -rf "$v"
+  echo "Falta o python3-venv (pacote do sistema) e esta máquina não deixa instalar programas sem senha. O admin instala uma vez (pelo app dele: Preparar máquina › Pacotes do sistema) e aí $para."
   return 1
 }
 command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw: a transcrição é para o agente do WhatsApp dele"; exit 2; }
@@ -91,10 +107,8 @@ ffmpeg_ou_avisa "a transcrição funciona aqui" || exit 3
 command -v python3 >/dev/null 2>&1 || { echo "python3 não encontrado"; exit 1; }
 
 mkdir -p "$D" "$HOME/.local/bin"
-if [ ! -x "$D/venv/bin/python" ]; then
-  echo "criando o ambiente Python em $D/venv…"
-  python3 -m venv "$D/venv" || { echo "não consegui criar o ambiente Python (falta o pacote python3-venv?)"; exit 1; }
-fi
+[ -x "$D/venv/bin/python" ] || echo "criando o ambiente Python em $D/venv…"
+venv_ou_avisa "$D/venv" "a transcrição funciona aqui" || exit 3
 echo "instalando o faster-whisper $FW_VERSION (só na primeira vez demora)…"
 "$D/venv/bin/python" -m pip install -q --disable-pip-version-check "faster-whisper==$FW_VERSION" requests
 

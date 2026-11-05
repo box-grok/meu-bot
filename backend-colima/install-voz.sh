@@ -33,6 +33,22 @@ ffmpeg_ou_avisa() {
   return 1
 }
 
+# O venv precisa do pacote python3-venv, que o Debian/Ubuntu não trazem com o python3: instala pelo apt como root ou com
+# sudo sem senha. Uma tentativa sem ele deixa a pasta sem pip ("No module named pip"): refaz do zero. Sem como instalar,
+# a pendência é do admin (Preparar máquina › Pacotes do sistema), como o ffmpeg.
+venv_ou_avisa() {
+  local v=$1 para=$2
+  [ -x "$v/bin/python" ] && "$v/bin/python" -m pip --version >/dev/null 2>&1 && return 0
+  rm -rf "$v"
+  python3 -m venv "$v" >/dev/null 2>&1 && return 0
+  rm -rf "$v"
+  if [ "$(id -u)" = 0 ]; then DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >/dev/null 2>&1 || true
+  elif sudo -n true 2>/dev/null; then sudo -n DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-venv >/dev/null 2>&1 || true; fi
+  python3 -m venv "$v" >/dev/null 2>&1 && { echo "python3-venv instalado"; return 0; }
+  rm -rf "$v"
+  echo "Falta o python3-venv (pacote do sistema) e esta máquina não deixa instalar programas sem senha. O admin instala uma vez (pelo app dele: Preparar máquina › Pacotes do sistema) e aí $para."
+  return 1
+}
 command -v openclaw >/dev/null 2>&1 || { echo "esta máquina não tem OpenClaw: a voz é para o agente do WhatsApp dele"; exit 2; }
 
 # O agente (chat do meu-bot e o dono pelo WhatsApp) também troca a voz a pedido: uma cópia deste script fica na máquina
@@ -112,7 +128,7 @@ if [ "$VOZ" != faber ]; then
   if [ ! -x "$K/venv/bin/python" ] || ! "$K/venv/bin/python" -c "import kokoro_onnx, soundfile" 2>/dev/null; then
     echo "preparando o Kokoro (uma vez)…"
     mkdir -p "$K"
-    python3 -m venv "$K/venv" >/dev/null 2>&1 || { echo "não consegui criar o ambiente Python (instale: apt install python3-venv)"; exit 1; }
+    venv_ou_avisa "$K/venv" "a voz $VOZ funciona aqui" || exit 3
     "$K/venv/bin/pip" -q install "$KOKORO_PKG" soundfile >/dev/null 2>&1 || { echo "não consegui instalar o $KOKORO_PKG"; exit 1; }
   fi
   if [ "$(stat -c %s "$K/kokoro-v1.0.onnx" 2>/dev/null || echo 0)" -lt 300000000 ]; then

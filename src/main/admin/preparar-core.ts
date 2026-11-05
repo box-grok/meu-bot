@@ -12,8 +12,12 @@ import { COTA_ESTADO_SH, COTA_LIGAR_SH, HERMES_ESTADO_SH, OPENCLAW_ESTADO_SH, TR
 import { CG_DIR, CG_SERVICO } from "./claude-global-core";
 import { LP_ETC } from "./link-publico-core";
 
-/** jq (status line do Claude) e ffmpeg (a voz das respostas e o áudio do Hermes): até aqui só entravam por `sudo -n`, que as boxes não têm. */
-export const PACOTES_BASE = ["jq", "ffmpeg"] as const;
+/**
+ * jq (status line do Claude), ffmpeg (a voz das respostas e o áudio do Hermes) e python3-venv (os ambientes Python da voz
+ * Kokoro e do transcritor por usuário; sem ele o `python3 -m venv` do Debian/Ubuntu deixa a pasta sem pip): até aqui só
+ * entravam por `sudo -n`, que as boxes não têm.
+ */
+export const PACOTES_BASE = ["jq", "ffmpeg", "python3-venv"] as const;
 /** A tela do bot (painel Computador): a mesma lista de backend-colima/install-tela.sh, que como usuário sai com 3 sem eles. */
 export const PACOTES_TELA = ["xvfb", "x11-utils", "openbox", "x11vnc", "novnc", "python3-websockify", "xdotool", "scrot"] as const;
 /** Navegador na tela do bot (o "gostinho" do Pro na box compartilhada); no Ubuntu o apt entrega um stub do snap, então vira passo humano. */

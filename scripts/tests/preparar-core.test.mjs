@@ -103,7 +103,7 @@ test("preparar: OpenClaw para todos ao lado do Hermes (o app é agnóstico de mo
   assert.equal(p.length, 1); assert.equal(p[0].acao, "maquina.openclaw-global"); assert.match(p[0].sh, /^\[ "\$\(id -u\)" = 0 \]/);
   assert.equal(p[0].alvo("OPENCLAW=ok 2026.9.9\n"), "2026.9.9");
   const sh = openclawGlobalSh();
-  for (const trecho of ["D=/opt/openclaw", "W=/usr/local/bin/openclaw", "nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz", "npm install -g --prefix \"$D\" \"openclaw@$V\"", "chmod -R a+rX \"$D\"", "meu-bot-openclaw-global", "runuser -u nobody", "OPENCLAW=ok $V"]) assert.ok(sh.includes(trecho), trecho);
+  for (const trecho of ["D=/opt/openclaw", "W=/usr/local/bin/openclaw", "nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz", "npm install -g --prefix \"$D\" \"openclaw@$V\"", "chmod -R a+rX \"$D\"", "meu-bot-openclaw-global", "runuser -u nobody", "OPENCLAW=ok $V", "for p in ffmpeg python3-venv; do dpkg-query -W -f='${Status}'", "install -y -q --no-install-recommends \"$p\""]) assert.ok(sh.includes(trecho), trecho);
   assert.ok(!sh.includes("latest"));
   // A ordem: depois do Hermes e do transcritor, antes do Claude Global.
   assert.deepEqual(ORDEM_PREPARAR.slice(ORDEM_PREPARAR.indexOf("transcritor"), ORDEM_PREPARAR.indexOf("transcritor") + 3), ["transcritor", "openclaw", "claude-global"]);
