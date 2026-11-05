@@ -622,12 +622,15 @@ export const configTemHost = (texto: string, alias: string): boolean =>
   texto.split("\n").some((l) => { const m = /^\s*Host\s+(.+)$/i.exec(l); return m !== null && m[1]!.trim().split(/\s+/).includes(alias); });
 
 /**
- * Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. 1,25 GB (30 out,
- * decisão de produto: 22 boxes em 32 GB): o uso próprio medido é ~0,3-0,4 GB, mas o transcritor de áudio roda dentro
- * da box e chega a ~0,6 GB por áudio, então perto do MemoryHigh (1152 MB) a box fica apertada durante um áudio; a
- * coluna Pressão mostra, e a medição com 10 boxes decide se muda.
+ * Tetos com que todo usuário novo nasce (mudam na linha dele): um agente travado não derruba a máquina. 2 GB (5 nov,
+ * decisão de produto: 14 boxes em 32 GB; era 1,25 GB desde 30 out). Medido na VM "meu": uma box com Hermes usa
+ * ~0,3-0,4 GB próprios, mas um gateway do OpenClaw fica em 1,0-1,5 GB de anon e vai a ~2,5 GB durante um turno,
+ * porque o cgroup da box inclui os processos `claude` filhos; com 1,25 GB ele batia no MemoryMax e morria. O
+ * transcritor de áudio (~0,6 GB por áudio) também roda dentro da box. A coluna Pressão mostra; o modelo escolhido em
+ * 5 nov continua um gateway por usuário Linux (o agente por cliente no gateway do root reprovou: o runtime claude-cli
+ * roda no host como root, fora da sandbox do OpenClaw). Ver docs/guia/maquinas.md "Medição do OpenClaw".
  */
-export const RECURSOS_PADRAO = { ramMb: 1280, cpuPct: 200 } as const;
+export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
 
 const CHAVE_PUB_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]{20,}( [\w@.:-]{0,80})?$/;
 /**

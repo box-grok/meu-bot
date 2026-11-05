@@ -442,8 +442,8 @@ meu-bot (`backend-colima`) é serviço nosso e tem pasta própria. Até aqui ele
   `cpu_threads = min(4, cota)`; `nice` não ajuda com cota).
 - **Valores:** `user.slice` MemoryMax = total − max(3 GB, 10%) (28,8 GB aqui), MemoryLow pela metade, CPUWeight 100;
   cada `user-<uid>.slice` mantém MemoryHigh/Max (90% do teto) e CPUQuota (200%) e ganha MemorySwapMax 256M, MemoryLow
-  640M e CPUWeight 100. Teto padrão por box: **1,25 GB** (decisão de produto de 30 out: 22 boxes em 32 GB; com 1,5 GB
-  seriam 19 e com 2 GB, 14). A ressalva: o aperto (MemoryHigh 1152 MB) começa na hora do áudio, porque o transcritor
+  640M e CPUWeight 100. Teto padrão por box: **2 GB desde 5 nov** (14 boxes em 32 GB; ver "Medição do OpenClaw" abaixo). Era 1,25 GB
+  (decisão de 30 out: 22 boxes em 32 GB; com 1,5 GB seriam 19 e com 2 GB, 14). A ressalva: o aperto (MemoryHigh 1152 MB) começa na hora do áudio, porque o transcritor
   roda dentro da box; a coluna Pressão mostra e a medição com 10 boxes decide se muda. As duas boxes de antes
   receberam o teto novo à mão em 30 out. O teto é `RECURSOS_PADRAO` (uma constante) e a capacidade acompanha.
 - **Como ler:** aba Usuários do admin, linha "boxes: N de M", coluna Pressão (folgada/apertada/estrangulada; título com
@@ -531,3 +531,38 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   conferido como `nobody`. Os dados continuam por usuário (`~/.openclaw`: onboard, token, plugin do WhatsApp, sessão).
 - A sondagem diz `OPENCLAW=global|root|nenhum`; "só o root tem" conta como falta. O pedido ao agente no tutorial do
   WhatsApp passa a mandar instalar assim (para todos como root; `~/.local` só sem root).
+
+## Medição do OpenClaw e teto de 2 GB por box (5 nov)
+
+- **Motivo:** o dono quer vários clientes por VM sem comprometer a máquina; um agente na VM `meu` (2 vCPU, 8 GB, swap
+  8 GB) viu o gateway do OpenClaw em ~800 MB e propôs (1) um gateway no root com um agente por cliente em container
+  Docker e (2) gateways mais leves (plugins desligados, heap limitada). Medido antes de decidir, no gateway do root
+  (OpenClaw 2026.9.9), com `memory.stat` do cgroup `user-0.slice/user@0.service/app.slice/openclaw-gateway.service`:
+
+| Cenário | plugins ativos | heap (flag) | RSS | anon (cgroup) | observação |
+|---|---|---|---|---|---|
+| pesado, processo de dias | 43 de 66 | 3972 | 1,24 GB | 1,37 GB (pico 1,88) | o unit zera `NODE_OPTIONS` e passa o flag no ExecStart |
+| pesado, 75 s após restart | 43 | 3972 | 1,31 GB | 1,48 GB | |
+| leve (`plugins.allow` whatsapp, meu-bot-guarda, anthropic), 75 s | 4 | 768 (drop-in sobrescrevendo o ExecStart) | 1,02 GB | 1,05 GB | WhatsApp conectado, sem erro |
+| leve, ~12 min depois | 4 | 768 | 1,29 GB | 1,63 GB | cresce com o uso |
+| leve, durante um turno do agente | 4 | 768 | 1,34-1,43 GB | 1,9-2,6 GB | o cgroup inclui os `claude` filhos |
+
+- **O que se aprendeu:** o "leve" poupa ~430 MB na largada, mas o gateway com WhatsApp vai a 1,5 GB em minutos e o
+  cgroup da box soma os processos `claude` que o runtime `claude-cli` sobe a cada turno (300-500 MB cada). Com o teto
+  de 1,25 GB uma box de OpenClaw batia no MemoryMax e perdia um agente; por isso o teto padrão sobe para **2 GB**
+  (`RECURSOS_PADRAO`, 14 boxes em 32 GB). Boxes com Hermes seguem em ~0,3-0,4 GB próprios.
+- **Portão do agente por cliente (reprovado):** `openclaw agents add teste1 … --bind whatsapp:teste1`,
+  `agents.entries.teste1.sandbox {mode:"all", scope:"agent", docker:{memory:"512m", cpus:1, pidsLimit:256}}`,
+  `tools.agentToAgent.enabled=false`, `tools.sessions.visibility="self"`; `openclaw sandbox explain --agent teste1`
+  diz "runtime: sandboxed, backend: docker". Mas um turno por `openclaw agent --agent teste1 -m "id -un; hostname;
+  cat /proc/1/cgroup"` respondeu `root`, `meu`, `0::/init.scope`, mesmo depois de reiniciar o gateway, e `openclaw
+  sandbox list` ficou vazio: o journal mostra `[agent/cli-backend] cli exec: provider=claude-cli`, ou seja, o agente
+  é o Claude CLI rodando **no host como root** com as ferramentas nativas dele; a sandbox Docker do OpenClaw só envolve
+  as ferramentas do próprio OpenClaw (valeria com um provedor por API, pago por token). Decisão de 5 nov: continua um
+  gateway por usuário Linux (isolamento pelo usuário); o "leve" entra como higiene no Preparar máquina.
+- **Fatos úteis:** o schema do `openclaw.json` tem `agents.*.sandbox.docker.{memory, memorySwap, cpus, pidsLimit, image,
+  network, readOnlyRoot, user, …}` e `tools.exec.security` (deny | allowlist | full) por agente; `openclaw agent
+  --agent <id> -m <texto> --json` roda um turno sem WhatsApp (bom para testar); `openclaw fleet` (células de tenant)
+  é experimental. O agente de teste e as pastas dele foram apagados; na VM `meu` ficaram o drop-in
+  `openclaw-gateway.service.d/meu-bot-leve.conf` (heap 768) e o `plugins.allow` (o que o passo "OpenClaw leve" vai
+  gravar), `tools.agentToAgent` desligado e `tools.sessions.visibility=self`.

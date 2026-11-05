@@ -8,6 +8,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **Toda conta nova nasce com 2 GB de RAM** (era 1,25 GB). Medido em 5 nov: um gateway do OpenClaw com WhatsApp fica em
+  1,5 GB e passa de 2 GB durante uma resposta, porque os processos do Claude contam na mesma caixa; com 1,25 GB a box
+  batia no teto e perdia o agente. A linha "boxes: N de M" da aba Usuários passa a contar com 2 GB cada.
 - **O agente do WhatsApp da conta nova é escolha do admin.** No "Criar usuário", ao lado do nome: Hermes (o padrão de
   sempre, com transcrição) ou OpenClaw. Com o OpenClaw, a conta nasce com a escolha gravada e o onboard acontece no
   pareamento, no meu-bot dela. O sistema é agnóstico: a mesma máquina recebe os dois.
