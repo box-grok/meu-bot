@@ -82,7 +82,9 @@
   (`lib/tutoriais.ts`, `gmail/gmail-guia.ts`, uma linha no `renderer.ts`) e o teste. Cinco passos: ter o Pro (pela
   licença, com "Pedir o Pro ao admin"), conectar a Conta Google (abre a página dela), ler uma mensagem, buscar na
   sintaxe do Gmail, mandar para a lixeira e desfazer. Os três últimos são fatos que a própria página Gmail conta ao
-  guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`). Conta de antes da lixeira
+  guia (`GmailDeps.aoUsar` → `gmailGuiaFato`) e ficam lembrados (`lembrar`); cada um tem também o botão manual dos outros
+  tutoriais ("Li uma mensagem", "Fiz uma busca", "Testei, funcionou": flags `gmailLido`, `gmailBuscou`, `gmailLixeira`),
+  para quem fez no Gmail de fora ou quando o fato não chega ao guia (5 nov 2026). Conta de antes da lixeira
   (`gmailEscreve === false`) vê no passo 5 o aviso para reconectar uma vez.
 - **Renumeração:** o Gmail entra como **16**, depois de 15 Entrada rápida (trilha: `after: "claude-login"`); os
   ocultos passam a 17 (status line) e 18 (CRM, nas duas versões); em 3 nov, com o "Ouvir áudios" fora (o Gmail
