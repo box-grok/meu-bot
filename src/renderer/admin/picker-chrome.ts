@@ -13,7 +13,7 @@ export interface AdminPickerChromeDeps {
   listEl: HTMLElement;
   filterEl: HTMLInputElement;
   noteEl: HTMLElement;
-  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtosAbrir">;
+  api: Pick<PickerApi, "supportAdd" | "supportRefresh" | "list" | "produtosAbrir" | "vpsNova" | "on">;
   /** O ⇅ do meu-bot (picker.ts): enche o ~/.ssh/config com as máquinas do projeto e, no admin, põe cada uma na lista. */
   syncSsh(): Promise<void>;
   /** Interruptor "arquivadas": mostrar ou não as pessoas arquivadas na lista. */
@@ -81,7 +81,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       const input = el("textarea"); input.rows = 2; input.placeholder = "Cole o código de suporte (MBS1.…) que a pessoa mandou, ou um host do seu ~/.ssh/config (ssh agente-box-lv)";
       const add = el("button", "btn btn-primary btn-small", "Adicionar"); add.type = "button";
       const msg = el("p", "add-msg"); msg.hidden = true;
-      open.addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) input.focus(); });
+      open.addEventListener("click", () => { form.hidden = !form.hidden; if (!form.hidden) { vpsForm.hidden = true; input.focus(); } });
       add.addEventListener("click", () => {
         add.disabled = true;
         void deps.api.supportAdd(input.value).then(async (p) => {
@@ -90,11 +90,48 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
         }).catch((err: unknown) => { msg.hidden = false; msg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { add.disabled = false; });
       });
       form.append(input, add);
+      // "Nova VPS": a VPS nasceu com a chave deste Mac cadastrada no painel; daqui um clique a leva ao fluxo inteiro
+      // (alias root neste Mac, pessoa na lista, Preparar máquina, primeiro usuário). Progresso linha a linha abaixo.
+      const vpsBtn = el("button", "btn btn-ghost btn-small", "Nova VPS"); vpsBtn.type = "button";
+      vpsBtn.title = "Leva uma VPS recém-criada ao fluxo do meu-bot: alias root no ~/.ssh/config deste Mac, pessoa na lista, Preparar máquina e o primeiro usuário. A VPS precisa ter a chave ~/.ssh/id_ed25519.pub deste Mac cadastrada no painel do provedor";
+      const vpsForm = el("div", "add-form vps-form"); vpsForm.hidden = true;
+      const campo = (placeholder: string, valor = ""): HTMLInputElement => { const i = el("input"); i.type = "text"; i.placeholder = placeholder; i.value = valor; i.spellcheck = false; return i; };
+      const endereco = campo("IP ou endereço da VPS (ex.: 187.41.115.200)");
+      const nome = campo("nome curto da máquina (vira <nome>-root e o nome na lista; ex.: agente)");
+      const porta = campo("porta (22)");
+      const dominio = campo("domínio do link público (opcional; ex.: meubot.com.br)");
+      const caixa = (texto: string, marcado: boolean, title: string): { wrap: HTMLLabelElement; box: HTMLInputElement } => { const box = el("input"); box.type = "checkbox"; box.checked = marcado; const wrap = el("label", "switch-row"); wrap.title = title; wrap.append(box, el("span", "", texto)); return { wrap, box }; };
+      const chromium = caixa("Chromium na tela do bot", false, "300 a 600 MB de RAM por janela aberta");
+      const usuario1 = caixa("Criar o primeiro usuário (box-1)", true, "Conta box-1 com meu-bot, backend, Hermes e transcrição; depois é só o QR do WhatsApp");
+      const reinstalada = caixa("VPS reinstalada (mesmo endereço, chave do servidor nova)", false, "Tira a chave antiga deste endereço do known_hosts antes de entrar");
+      const go = el("button", "btn btn-primary btn-small", "Entrar no fluxo"); go.type = "button";
+      const vpsLog = el("pre", "vps-log"); vpsLog.hidden = true;
+      const vpsMsg = el("p", "add-msg"); vpsMsg.hidden = true;
+      const bloco = el("pre", "vps-bloco"); bloco.hidden = true;
+      const copiar = el("button", "btn btn-ghost btn-small", "Copiar bloco para o config/ssh-hosts.conf"); copiar.type = "button"; copiar.hidden = true;
+      copiar.addEventListener("click", () => { void navigator.clipboard.writeText(bloco.textContent ?? "").then(() => { copiar.textContent = "✓ copiado"; }).catch(() => { copiar.textContent = "não consegui copiar: selecione o bloco"; }); });
+      deps.api.on("picker:vps-nova-progresso", (p) => {
+        const line = String((p as { line?: unknown } | null)?.line ?? "");
+        if (line === "") return;
+        vpsLog.hidden = false;
+        vpsLog.textContent = `${vpsLog.textContent ?? ""}${line}\n`.split("\n").slice(-16).join("\n");
+      });
+      vpsBtn.addEventListener("click", () => { vpsForm.hidden = !vpsForm.hidden; if (!vpsForm.hidden) { form.hidden = true; endereco.focus(); } });
+      go.addEventListener("click", () => {
+        go.disabled = true; vpsLog.textContent = ""; vpsLog.hidden = true; vpsMsg.hidden = true; bloco.hidden = true; copiar.hidden = true; copiar.textContent = "Copiar bloco para o config/ssh-hosts.conf";
+        void deps.api.vpsNova({ endereco: endereco.value, nome: nome.value, porta: porta.value.trim() === "" ? 22 : Number(porta.value), dominio: dominio.value, chromium: chromium.box.checked, primeiroUsuario: usuario1.box.checked, reinstalada: reinstalada.box.checked }).then(async (r) => {
+          vpsMsg.hidden = false; vpsMsg.textContent = r.texto;
+          if (!r.plano.some((x) => x.id === "modelo" && x.estado === "feito")) { bloco.hidden = false; bloco.textContent = r.blocoModelo; copiar.hidden = false; }
+          deps.noteEl.hidden = false; deps.noteEl.className = `note ${r.plano.some((x) => x.estado === "pendente") ? "warn" : "ok"}`; deps.noteEl.textContent = r.texto;
+          deps.reinit(await deps.api.list(), r.suporteAlias);
+        }).catch((err: unknown) => { vpsMsg.hidden = false; vpsMsg.textContent = `✗ ${ipcErrorText(err)}`; }).finally(() => { go.disabled = false; });
+      });
+      vpsForm.append(endereco, nome, porta, dominio, chromium.wrap, usuario1.wrap, reinstalada.wrap, go, vpsLog, vpsMsg, bloco, copiar);
       // Produtos (MVPs de bots verticais) moram numa janela própria (main/admin/produtos-janela.ts); daqui só se abre.
       const prodBtn = el("button", "btn btn-ghost btn-small", "◆ Produtos ↗"); prodBtn.type = "button"; prodBtn.title = "Abre a janela Produtos: registrar um novo bot personalizado (MVP) e ver o que já sai deste código";
       prodBtn.addEventListener("click", () => { void deps.api.produtosAbrir().catch((err: unknown) => deps.showError("produtos", err)); });
-      const row = el("div", "add-actions"); row.append(open, el("span", "foot-caption", "sincronizar ssh"), syncBtn, prodBtn);
-      addBox.append(row, form, msg, archivedSwitch);
+      const row = el("div", "add-actions"); row.append(open, vpsBtn, el("span", "foot-caption", "sincronizar ssh"), syncBtn, prodBtn);
+      addBox.append(row, form, msg, vpsForm, archivedSwitch);
       deps.listEl.after(addBox);
     },
     refreshPeopleOnce: () => {

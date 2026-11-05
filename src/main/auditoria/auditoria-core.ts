@@ -92,6 +92,7 @@ export const ACOES = {
   "usuarios.whatsapp-alvo": (a: string) => `mudou onde vive o WhatsApp do usuário ${a}`,
   "usuarios.ligado": (a: string) => `deixou o usuário ${a} sempre ligado (o agente dele roda sem ele conectado)`,
   "maquina.preparar": (a: string) => `preparou esta máquina${a ? ` (${a})` : ""}`,
+  "maquina.vps-nova": (a: string) => `trouxe esta VPS para o fluxo do meu-bot${a ? ` (${a})` : ""}`,
   "maquina.cota": (a: string) => `ligou a cota de disco por usuário nesta máquina${a ? ` (${a})` : ""}`,
   "maquina.pacotes": (a: string) => `instalou pacotes do sistema nesta máquina${a ? ` (${a})` : ""}`,
   "maquina.gh": (a: string) => `instalou o GitHub CLI para todos nesta máquina${a ? ` (${a})` : ""}`,

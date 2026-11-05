@@ -60,7 +60,10 @@ body.admin .logo { filter: hue-rotate(185deg) saturate(1.4); }
 .add-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .add-form { display: flex; flex-direction: column; gap: 6px; }
 .add-person > .btn, .add-form > .btn { align-self: flex-start; }
-.add-msg { margin: 0; font-size: 12px; color: var(--muted, #8a94a6); }
+.add-msg { margin: 0; font-size: 12px; color: var(--muted, #8a94a6); white-space: pre-wrap; }
+/* "Nova VPS": o progresso do job (últimas linhas) e o bloco sugerido para o config/ssh-hosts.conf. */
+.vps-form .switch-row { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted, #8a94a6); }
+.vps-log, .vps-bloco { margin: 0; padding: 6px 8px; border-radius: 6px; background: rgba(127, 127, 127, 0.12); font-size: 11px; line-height: 1.4; white-space: pre-wrap; max-height: 180px; overflow: auto; }
 .add-form input[type="text"] { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; padding: 8px; border-radius: 8px; border: 1px solid rgba(127,127,127,.35); background: transparent; color: inherit; }
 /* Produtos no seletor: a mesma vista da página, dentro da coluna do seletor. */
 .produtos-box { max-height: 60vh; overflow: auto; gap: 10px; }

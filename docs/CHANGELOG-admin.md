@@ -8,6 +8,11 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **Nova VPS com um clique.** No seletor de pessoas, ao lado de "Adicionar": com o endereço e um nome curto, o admin
+  leva uma VPS recém-criada ao fluxo inteiro: alias root neste Mac, máquina na lista, Preparar máquina (swap, cota,
+  governança, pacotes, gh, Hermes, transcritor, OpenClaw, Claude Global), primeiro usuário `box-1`, e o bloco pronto
+  para o modelo de máquinas. A VPS precisa nascer com a chave deste Mac cadastrada no painel do provedor; senha não
+  entra no app. Termina dizendo o que fica para você: login do root no Claude Code, Cloudflare do link público e o QR.
 - **Nome próprio: meu-bot-admin-gestao.** O app deixa de se chamar meu-bot-admin. Na primeira abertura ele traz as
   pessoas, configurações e produtos do app antigo, que fica no lugar como cópia de segurança. Quem tinha o
   meu-bot-admin instala o novo uma vez; dali em diante ele se atualiza sozinho.

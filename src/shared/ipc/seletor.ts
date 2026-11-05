@@ -1,7 +1,7 @@
 /** Contrato IPC · Janela do seletor de máquinas (picker). Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { PlanName } from "./licenca";
 import type { HostProbe, InstallBackendResult, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "./maquina";
-import type { SupportPerson } from "./suporte";
+import type { SupportPerson, VpsNovaResultado } from "./suporte";
 
 /** API exposta ao seletor de máquinas como window.picker. */
 /** Seletor, os dois apps. */
@@ -31,7 +31,7 @@ export interface PickerSharedApi {
   /** Acrescenta ao ~/.ssh/config deste Mac as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo); o admin também. */
   syncSsh(): Promise<SshSyncResult>;
   cancel(): void;
-  on(channel: "picker:init" | "picker:install-progress", callback: (payload: unknown) => void): () => void;
+  on(channel: "picker:init" | "picker:install-progress" | "picker:vps-nova-progresso", callback: (payload: unknown) => void): () => void;
 }
 
 /** Variante: cliente. Seletor do meu-bot normal: instalar, renomear, remover, Tailscale. */
@@ -80,5 +80,10 @@ export interface PickerAdminApi {
   supportRemove(alias: string, force: boolean): Promise<{ people: SupportPerson[]; cleared: number; detail: string }>;
   /** meu-bot-admin: abre (ou traz para a frente) a janela Produtos, onde um MVP nasce. */
   produtosAbrir(): Promise<void>;
+  /**
+   * meu-bot-admin: "Nova VPS": leva uma VPS recém-criada (chave deste Mac já cadastrada no painel) ao fluxo: alias root
+   * no ~/.ssh/config, pessoa na lista, Preparar máquina, primeiro usuário. Progresso em `picker:vps-nova-progresso`.
+   */
+  vpsNova(pedido: unknown): Promise<VpsNovaResultado>;
 }
 export type PickerApi = PickerSharedApi & PickerClientApi & PickerAdminApi;

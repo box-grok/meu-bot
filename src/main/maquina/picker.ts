@@ -50,6 +50,8 @@ export interface PickerIpcContext {
   forgetProbe(host: string): void;
   /** Linha de progresso de uma instalação, para a lista do seletor. */
   progress(host: string, line: string): void;
+  /** Linha de progresso de um job sem host na lista ainda ("Nova VPS" do admin), para a janela do seletor. */
+  progressoLivre(line: string): void;
   closePicker(): void;
 }
 
@@ -273,6 +275,7 @@ const ctx: PickerIpcContext = {
   },
   forgetProbe: (host) => { probes.delete(host); },
   progress: (host, line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:install-progress", { host, line }); },
+  progressoLivre: (line) => { if (pickerWin !== null && !pickerWin.isDestroyed()) pickerWin.webContents.send("picker:vps-nova-progresso", { line }); },
   closePicker: () => { pickerWin?.close(); },
 };
 const { fromPicker, hostArg } = ctx;
