@@ -125,6 +125,13 @@ fi
 K=$D/kokoro
 if [ "$VOZ" != faber ]; then
   command -v python3 >/dev/null 2>&1 || { echo "python3 não encontrado: a voz $VOZ precisa dele"; exit 1; }
+  # Numa box com teto de RAM (cgroup da conta), o Kokoro precisa de ~550 MB de pico além do que o gateway e os claude já
+  # usam; sem isso a síntese entra em thrashing no teto e o teste de voz do OpenClaw cai mudo depois de 2 min. Confere antes.
+  CG=/sys/fs/cgroup/user.slice/user-$(id -u).slice
+  if [ -r "$CG/memory.max" ] && [ "$(cat "$CG/memory.max")" != max ]; then
+    LIVRE=$(( ($(cat "$CG/memory.max") - $(cat "$CG/memory.current" 2>/dev/null || echo 0)) / 1048576 ))
+    [ "$LIVRE" -ge 700 ] || { echo "a voz $VOZ precisa de ~700 MB livres no teto de RAM desta conta e só há $LIVRE MB (teto de $(( $(cat "$CG/memory.max") / 1048576 )) MB). Peça ao admin para subir o teto de RAM na aba Usuários (3 GB é o padrão); a voz faber (Piper) não precisa disso."; exit 4; }
+  fi
   if [ ! -x "$K/venv/bin/python" ] || ! "$K/venv/bin/python" -c "import kokoro_onnx, soundfile" 2>/dev/null; then
     echo "preparando o Kokoro (uma vez)…"
     mkdir -p "$K"
@@ -180,7 +187,7 @@ if timeout 120 openclaw capability tts convert --text "Olá! Agora eu também re
   echo "pronto: o agente do WhatsApp responde em áudio ($MODE, voz $VOZ)"
 else
   # A voz nova não passou no teste: volta para a anterior (se estiver instalada) para não ficar sem áudio.
-  MSG=$(tail -c 300 "$T/out" | tr '\n' ' ')
+  MSG=$(tail -c 300 "$T/out" | tr '\n' ' '); [ -n "$(printf '%s' "$MSG" | tr -d ' ')" ] || MSG="sem resposta do OpenClaw em 120 s: a conta pode estar no teto de RAM"
   tem_motor() { case "$1" in faber) [ -x "$D/piper/piper" ] ;; *) [ -x "$K/venv/bin/python" ] && [ -s "$K/falar.py" ] ;; esac; }
   if [ "$ANTES" != "$VOZ" ] && tem_motor "$ANTES"; then grava_falar "$ANTES"; echo "a voz $VOZ não passou no teste ($MSG); voltei para a voz $ANTES"; exit 4; fi
   echo "configurado, mas o teste de voz do OpenClaw não confirmou: $MSG"

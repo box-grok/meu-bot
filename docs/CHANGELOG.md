@@ -12,6 +12,15 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Voz das respostas numa box apertada
+
+#### Corrigido
+
+- **"A voz alex não passou no teste ()"** numa box com teto de RAM de 2 GB: o Kokoro (vozes dora e alex) precisa de
+  ~550 MB de pico, e sem folga a síntese travava por minutos e o teste do OpenClaw caía sem dizer nada. Agora, antes
+  de baixar a voz, o instalador confere a folga no teto da conta e diz quanto falta e o que pedir ao admin; e o teste
+  mudo explica que a conta pode estar no teto. O admin cria as contas novas com 3 GB.
+
 ### Tutorial 11: o Cloudflare acha o Node
 
 #### Corrigido
