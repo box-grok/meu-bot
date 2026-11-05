@@ -614,3 +614,18 @@ Os avisos (Mac novo, vigia, cota) vão só pelo WhatsApp da pessoa: o e-mail pel
   drop-in `meu-bot-leve.conf` (ExecStart com `--max-old-space-size=768`) e o `plugins.allow` mínimo, sem reiniciar o
   gateway (o QR não pode esperar): o drop-in vale no próximo início e o allow aplica a quente. Detalhes e medição em
   `maquinas.md`, "OpenClaw leve" e "Medição do OpenClaw".
+
+## Conta criada pelo admin, WhatsApp no OpenClaw: modelo pelo Claude Code Global e o porteiro no gateway (5 nov)
+
+- **O que aconteceu:** a `box-1` da VM `meu` (criada pelo admin, com Claude Code Global) pareou o WhatsApp e a primeira
+  mensagem falhou: `No route-compatible authentication source is configured for openai`. O `oc_model_ensure` só gravava
+  o modelo com login próprio do Claude (`.credentials.json`/`oauthAccount`); a conta responde pelo porteiro
+  (`claude-global.json`), então ficou sem modelo e o OpenClaw caiu no `openai/gpt-6-astra` padrão. Com o modelo gravado
+  à mão, o turno ainda falhou: `Not logged in · Please run /login`, porque o gateway (criado no pareamento pelo
+  `gw_ensure`) não tinha o drop-in `meu-bot.conf` do porteiro: o `install-porteiro.sh` só o grava se o serviço já
+  existe, e o backend foi instalado antes do gateway.
+- **Agora:** `oc_model_ensure` também aceita `claude-global.json` com a chave (o mesmo critério de "logado" do
+  `hostProbe`); e `oc_porteiro_ensure` (em `GATEWAY_FIX_SH`, chamado no `openclawPairSh` com gateway próprio, antes do
+  leve) roda o `install-porteiro.sh` da máquina quando falta o drop-in e espera o gateway voltar. Evento
+  `porteiro-set` no pareamento. Testes em `whatsapp-status-sh.test.mjs` (fixture `claudeGlobal`) e
+  `openclaw-multi-conta.test.mjs` (gateway de outro usuário não mexe).

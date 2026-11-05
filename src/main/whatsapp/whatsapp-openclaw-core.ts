@@ -103,7 +103,8 @@ gw_fix() {
 oc_model_ensure() {
   M=$(openclaw config get agents.defaults.model 2>&1 || true)
   case "$M" in *unset*|"") ;; *) return 0 ;; esac
-  { [ -s "$HOME/.claude/.credentials.json" ] || grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null; } || return 0
+  # Login próprio do Claude, ou o Claude Code Global (claude-global.json com a chave: a conta responde pelo porteiro).
+  { [ -s "$HOME/.claude/.credentials.json" ] || grep -q '"oauthAccount"' "$HOME/.claude.json" 2>/dev/null || grep -q '"chave"' "$HOME/.local/share/meu-bot/claude-global.json" 2>/dev/null; } || return 0
   openclaw config set agents.defaults.models '{"anthropic/claude-opus-5-5":{"agentRuntime":{"id":"claude-cli"}},"anthropic/claude-sonnet-5-5":{"agentRuntime":{"id":"claude-cli"}},"anthropic/claude-haiku-5-5":{"agentRuntime":{"id":"claude-cli"}}}' --strict-json >/dev/null 2>&1 || return 1
   openclaw config set agents.defaults.model '{"primary":"anthropic/claude-opus-5-5"}' --strict-json >/dev/null 2>&1 || return 1
   echo set
@@ -123,6 +124,28 @@ except Exception: print("")' 2>/dev/null)
   [ -n "$M" ] || return 0
   openclaw config set agents.defaults.model.fallbacks "[\\"grok/$M\\"]" --strict-json >/dev/null 2>&1 || return 1
   echo set
+}
+# O gateway precisa do porteiro do claude na frente do PATH (o drop-in meu-bot.conf que o install-porteiro.sh grava): é
+# ele que escolhe a conta do Claude (rodízio, Claude Code Global). O instalador só grava o drop-in se o serviço já existe;
+# numa conta que pareia depois (o gw_ensure acabou de criar o serviço) grava aqui, no mesmo formato, e reinicia o gateway
+# esperando ele voltar. Sem o porteiro na conta (sem backend), nada a fazer. (box-1 da VM "meu", 5 nov: modelo gravado,
+# mas o claude cru de ~/.local/bin respondia "Not logged in".)
+oc_porteiro_ensure() {
+  [ "$GW_PROPRIO" = 1 ] || return 0
+  BIN="$HOME/.local/share/meu-bot/bin"; [ -x "$BIN/claude" ] || return 0
+  D="$HOME/.config/systemd/user/openclaw-gateway.service.d"; [ -f "$D/meu-bot.conf" ] && return 0
+  systemctl --user cat openclaw-gateway.service >/dev/null 2>&1 || return 0
+  atual=$(systemctl --user show -p Environment --value openclaw-gateway.service 2>/dev/null | tr ' ' '\n' | sed -n 's/^PATH=//p' | head -1)
+  [ -n "$atual" ] || atual="/usr/local/bin:/usr/bin:/bin"
+  case ":$atual:" in *":$BIN:"*) novo=$atual ;; *) novo="$BIN:$atual" ;; esac
+  mkdir -p "$D"
+  printf '# meu-bot: porteiro do claude (rodízio de contas) na frente do PATH do gateway. Gerado no pareamento (oc_porteiro_ensure); o install-porteiro.sh regrava igual.\n[Service]\nEnvironment=PATH=%s\nEnvironment=MEU_BOT_ORIGEM=whatsapp\n' "$novo" > "$D/meu-bot.conf"
+  systemctl --user daemon-reload >/dev/null 2>&1
+  if systemctl --user is-active --quiet openclaw-gateway.service; then
+    systemctl --user restart openclaw-gateway.service >/dev/null 2>&1
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do timeout 20 openclaw channels status --json >/dev/null 2>&1 && break; sleep 3; done
+  fi
+  echo porteiro
 }
 # Conta nova (outra conta de uma VM já usada, ou VM recém-criada) sem o serviço do gateway: sem ele o QR vincula,
 # mas o WhatsApp nunca fica "conectado". Instala como o onboarding do OpenClaw faria: modo local, primeira porta livre
@@ -371,7 +394,9 @@ ${proprio ? `# Agente sem modelo: com o Claude Code logado, usa o Claude (senão
 [ "$(oc_fallback_ensure 2>/dev/null)" = set ] && echo '{"event":"meu-bot","step":"fallback-set"}'` : "# Gateway de outro usuário: modelo e reserva são do agente, já configurados por quem registrou a conta."}
 # Sem o serviço do gateway nesta conta: instala antes do QR (senão vincula e nunca conecta).
 if GWN=$(gw_ensure); then [ -n "$GWN" ] && echo "{\\"event\\":\\"meu-bot\\",\\"step\\":\\"gateway-installed\\",\\"port\\":$GWN}"; else echo '{"event":"error","error":"esta conta não tem o gateway do OpenClaw como serviço e não consegui instalar. Na máquina: chmod go-w ~/.config ~/.config/systemd ~/.config/systemd/user; openclaw config set gateway.mode local; openclaw gateway install --port <porta livre>"}'; exit 2; fi
-${proprio ? `# Gateway leve (heap limitada e só os plugins usados): o drop-in vale no próximo início; o allow aplica a quente. Nunca para o QR.
+${proprio ? `# O porteiro do claude na frente do PATH do gateway (refaz o drop-in se o serviço nasceu agora; espera o gateway voltar).
+[ "$(oc_porteiro_ensure 2>/dev/null)" = porteiro ] && echo '{"event":"meu-bot","step":"porteiro-set"}'
+# Gateway leve (heap limitada e só os plugins usados): o drop-in vale no próximo início; o allow aplica a quente. Nunca para o QR.
 RESTART=0 oc_leve_ensure >/dev/null 2>&1 || true` : ""}
 # Esta conta apontando para o gateway de outra (token mismatch): o login falharia na hora. Dá uma porta própria antes.
 if gw_mismatch; then

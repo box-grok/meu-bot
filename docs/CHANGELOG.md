@@ -43,6 +43,9 @@ no [diário técnico](GUIA.md).
 
 #### Corrigido
 
+- **WhatsApp no OpenClaw numa conta criada pelo admin não respondia.** A conta usa o Claude Code Global (sem login
+  próprio) e o pareamento não gravava o modelo nem punha o porteiro do Claude no gateway: a primeira mensagem dava erro
+  de "openai" ou "Not logged in". Agora o pareamento cuida dos dois.
 - **A janela da máquina abria errada na 0.78.4:** sem a lateral certa (no admin, a de gestão virava a cara do app
   comum) e sem responder. Um canal novo do "localizar na página" não estava na lista permitida e derrubava a janela
   na abertura. Quem instalou a 0.78.4 recebe esta versão sozinho.

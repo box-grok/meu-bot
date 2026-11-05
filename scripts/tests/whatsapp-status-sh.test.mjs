@@ -14,7 +14,7 @@ const core = createRequire(import.meta.url)("../../dist/main/whatsapp/whatsapp-o
 // Resposta real (agente-box, 1 nov, redigida): canal configurado e deslogado; o formato novo já traz channelAccounts.
 const CHANNELS_STATUS = { status: null, channels: { whatsapp: { configured: true, statusState: "connected", linked: true, running: true, connected: true, lifecycle: "running", self: { e164: "+5511999999999", jid: null, lid: null }, lastDisconnect: null } }, channelAccounts: { whatsapp: [{ accountId: "default", enabled: true, healthState: "healthy", lifecycle: "running" }] }, channelDefaultAccountId: { whatsapp: "default" } };
 
-function maquina({ config, extensao = true, packageJson = true, cacheVersao = null } = {}) {
+function maquina({ claudeGlobal = false, config, extensao = true, packageJson = true, cacheVersao = null } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "wa-status-"));
   const bin = path.join(home, "bin-falso"); fs.mkdirSync(bin);
   const w = (p, txt, mode) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, txt); if (mode) fs.chmodSync(p, mode); };
@@ -40,8 +40,10 @@ esac
   w(path.join(home, ".openclaw/openclaw.json"), JSON.stringify(config));
   if (extensao) w(path.join(home, ".openclaw/extensions/whatsapp/package.json"), JSON.stringify({ name: "@openclaw/whatsapp", version: "2026.9.9" }));
   w(path.join(home, ".openclaw/credentials/whatsapp/default/creds.json"), JSON.stringify({ me: { id: "5511999999999:12@s.whatsapp.net" } }));
-  // Com a credencial do Claude, o oc_model_ensure grava o modelo (como numa VM nova com o Claude logado).
-  w(path.join(home, ".claude/.credentials.json"), "{}");
+  // Com a credencial do Claude, o oc_model_ensure grava o modelo (como numa VM nova com o Claude logado). `claudeGlobal`
+  // troca isso pelo claude-global.json do porteiro (conta criada pelo admin, sem login próprio: responde pelo Global).
+  if (claudeGlobal) w(path.join(home, ".local/share/meu-bot/claude-global.json"), JSON.stringify({ chave: "x", servidor: "http://127.0.0.1:1" }));
+  else w(path.join(home, ".claude/.credentials.json"), "{}");
   return { home, bin };
 }
 function status(m) {
@@ -100,6 +102,19 @@ test("sem package.json ao lado do binário: `openclaw --version` uma vez, depois
   fs.rmSync(m.home, { recursive: true, force: true });
   assert.deepEqual(b.chamadas, ["channels status --channel whatsapp --json"], "segunda consulta: a versão vem do cache");
   assert.equal(b.kv.get("ver"), "OpenClaw 2026.9.9 (abc1234)");
+});
+
+test("conta pelo Claude Code Global (sem login próprio): o modelo também é gravado (a box-1 da VM meu ficou sem modelo e caía no openai/gpt-6-astra)", () => {
+  const m = maquina({ config: { plugins: { entries: {} }, channels: {} }, extensao: false, claudeGlobal: true });
+  const { kv, chamadas } = status(m);
+  fs.rmSync(m.home, { recursive: true, force: true });
+  assert.ok(chamadas.some((c) => c.startsWith("config set agents.defaults.models ")), `modelo gravado pelo claude-global.json: ${chamadas.join(" | ")}`);
+  assert.equal(kv.get("ocmodel"), "set");
+  // Sem nada (nem login, nem Global): não grava modelo nenhum.
+  const n = maquina({ config: { plugins: { entries: {} }, channels: {} }, extensao: false, claudeGlobal: true });
+  fs.rmSync(path.join(n.home, ".local/share/meu-bot/claude-global.json"));
+  const r = status(n); fs.rmSync(n.home, { recursive: true, force: true });
+  assert.ok(!r.chamadas.some((c) => c.startsWith("config set agents.defaults.models ")), "sem login e sem Global, o modelo fica como está");
 });
 
 test("VM nova: sem modelo e sem reserva o script grava os dois (só então chama a CLI); plugin não achado pelos arquivos confirma pela CLI", () => {

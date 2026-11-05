@@ -66,6 +66,7 @@ test("pareamento e logout por conta: --account, GW_PROPRIO=0, sem reiniciar o ga
   assert.match(p, /channels\.whatsapp\.accounts\.box\.dmPolicy/);
   assert.doesNotMatch(p, /restart\(\) \{ if \[ -n "\$GW" \]/, "sem reiniciar o gateway inteiro");
   assert.doesNotMatch(p, /oc_model_ensure 2>\/dev\/null\)" = set/, "modelo é do agente, já configurado");
+  assert.doesNotMatch(p, /oc_porteiro_ensure 2>\/dev\/null\)" = porteiro/, "o PATH do gateway de outro usuário não é desta conta");
   const proprio = core.openclawPairSh({ ...core.ALVO_PADRAO, proprio: true });
   assert.match(proprio, /^GW_PROPRIO=1/m); assert.match(proprio, /restart\(\) \{ if \[ -n "\$GW" \]/); assert.match(proprio, /openclaw channels login --channel whatsapp >/);
   assert.match(core.openclawLogoutSh(BOX), /channels logout --channel whatsapp --account box/);
