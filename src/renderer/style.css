@@ -1147,7 +1147,10 @@ body.topbar-hidden .topbar { display: none; }
 .conta-perfil { display: flex; align-items: center; gap: 10px; }
 .conta-foto { width: 40px; height: 40px; border-radius: 50%; }
 .conta-evento { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
-.conta-google-panel .admin-field input, .gmail-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+.conta-restauro { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.conta-restauro-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+.conta-restauro-item input { margin: 0; }
+.conta-google-panel .admin-field input, .conta-google-panel .admin-field select, .gmail-panel .admin-field input { font: inherit; font-size: 13px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 /* Gmail (31 out): linha clicável abre a mensagem; o corpo é texto puro com as quebras do e-mail. */
 .gmail-panel .conta-msg.gmail-msg { cursor: pointer; border-radius: 6px; padding: 6px 6px; }
 .gmail-panel .conta-msg.gmail-msg:hover, .gmail-panel .conta-msg.gmail-msg:focus-visible { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: none; }

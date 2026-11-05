@@ -3,7 +3,7 @@
  * no Keychain, via main › conta-google.ts); aqui só se conecta, lê e escreve. A verificação de telefone/QR, quando o
  * Google pede, é feita pela pessoa na tela oficial. Fábrica com dependências explícitas, como finance-page.ts.
  */
-import type { BackupDadosProgresso, BackupDadosView, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
+import type { BackupCopiaOrigem, BackupCopiasView, BackupDadosProgresso, BackupDadosView, BackupRestauroProgresso, BackupRestauroResultado, GoogleContaStatus, MeuBotApi } from "../../shared/ipc";
 import type { LicenseView, PlanName } from "../../shared/ipc";
 import { browserAccess, proBlockText, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
@@ -12,7 +12,7 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { erroGoogleTexto } from "../lib/erro-google.js";
-import { aplicarProgresso, fmtBytes, terminou, textoAndamento } from "./backup-andamento.js";
+import { aplicarProgresso, aplicarRestauro, fmtBytes, terminou, textoAndamento, textoRestauro } from "./backup-andamento.js";
 
 export interface ContaGoogleDeps {
   panelsEl: HTMLElement;
@@ -27,7 +27,7 @@ export interface ContaGoogleDeps {
   licenseKnown: () => boolean;
   planoExigido: PlanName;
   produto: string;
-  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "on">;
+  api: Pick<MeuBotApi, "browserRequestPro" | "googleContaStatus" | "googleContaConectar" | "googleContaDesconectar" | "googleContaAdotarDoMac" | "backupDadosStatus" | "backupDadosAgora" | "backupDadosLigar" | "backupDadosAbrirPasta" | "backupDadosSenha" | "backupDadosLimparSenha" | "backupDadosCopias" | "backupDadosRestaurar" | "on">;
 }
 
 export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; refresh: () => Promise<void>; repintar: () => void } {
@@ -47,6 +47,22 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   // Gmail, Agenda e Planilha saíram da página (31 out): eram ferramentas de teste sem serventia aqui; o agente continua
   // usando as três pelo backend.
   deps.api.on("google-conta:changed", (st) => { status = st; if (!panel.hidden) { render(); if (st.conectado) void carregarDados(); } });
+  // Restaurar uma cópia (5 nov): de qualquer máquina, do Drive desta conta ou da pasta do Mac, por cima do que há.
+  let copias: BackupCopiasView | null = null; let copiasErro: string | null = null; let copiasAberto = false;
+  let maquinaEscolhida: string | null = null; let marcados = new Set<string>(); let substituir = false; let senhaRestauro = "";
+  let restauro: BackupRestauroProgresso[] | null = null; let restauroResultado: BackupRestauroResultado | null = null;
+  deps.api.on("backup-dados:restauro", (p) => { restauro = aplicarRestauro(restauro ?? [], p); if (!panel.hidden) render(); });
+  async function carregarCopias(): Promise<void> {
+    copias = null; copiasErro = null; render();
+    await deps.api.backupDadosCopias().then((c) => { copias = c; if (maquinaEscolhida === null || !c.maquinas.some((m) => m.maquina === maquinaEscolhida)) escolherMaquina(c.maquinas[0]?.maquina ?? null); }, (e: unknown) => { copiasErro = erroGoogleTexto(e); }).then(render);
+  }
+  /** Ao trocar de máquina, tudo marcado menos Credenciais (que troca o WhatsApp e a configuração do gateway). */
+  function escolherMaquina(m: string | null): void {
+    maquinaEscolhida = m; substituir = false;
+    marcados = new Set((copias?.maquinas.find((x) => x.maquina === m)?.conjuntos ?? []).filter((c) => c.conjunto !== "credenciais").map((c) => c.conjunto));
+  }
+  const origemTexto = (o: BackupCopiaOrigem): string => (o === "drive" ? "no Drive" : o === "local" ? "neste Mac" : "Drive e Mac");
+  const nomeConjunto = (id: string): string => copias?.maquinas.flatMap((m) => m.conjuntos).find((c) => c.conjunto === id)?.nome ?? id;
   deps.api.on("backup-dados:progress", (p) => {
     andamento = aplicarProgresso(andamento ?? [], p);
     // A diária (sem clique) termina aqui; a de "Guardar agora" termina quando o invoke devolve, em `agir`.
@@ -178,11 +194,79 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       }));
       acoes.append(btn("Abrir a pasta no Mac", "btn-ghost", () => { void agir(() => deps.api.backupDadosAbrirPasta(), "pasta aberta no Finder"); }));
       acoes.append(btn(backup.ligado ? "Desligar a cópia diária" : "Ligar a cópia diária", "btn-ghost", () => { void agir(async () => { backup = await deps.api.backupDadosLigar(!(backup?.ligado ?? true)); }, backup?.ligado === true ? "cópia diária desligada" : "cópia diária ligada"); }));
+      if (!copiasAberto) acoes.append(btn("Restaurar uma cópia…", "btn-ghost", () => { copiasAberto = true; restauroResultado = null; void carregarCopias(); }));
       bc.append(acoes);
+      if (copiasAberto) secaoRestauro(bc);
     }
     panel.append(bc);
 
     if (deps.openGmail !== undefined) { const abrir = deps.openGmail; const tg = el("div", "admin-actions"); tg.append(btn("Abrir o E-mail", "btn-ghost", abrir)); panel.append(tg); }
+  }
+  /** O cartão de restaurar: escolha da máquina de origem e dos conjuntos, andamento e resumo. */
+  function secaoRestauro(bc: HTMLElement): void {
+    const sc = el("div", "conta-restauro");
+    sc.append(el("strong", "", "Restaurar uma cópia nesta máquina"));
+    const fechar = (): void => { copiasAberto = false; restauroResultado = null; render(); };
+    if (restauro !== null) {
+      sc.append(carregando("Restaurando…", "backup-restauro", "Cada conjunto é lido, aberto e extraído na máquina; costuma levar perto de um minuto. Não feche a janela."));
+      const linha = textoRestauro(restauro);
+      if (linha !== "") sc.append(el("p", "hint", linha));
+      bc.append(sc); return;
+    }
+    if (restauroResultado !== null) {
+      const r = restauroResultado;
+      if (r.restaurados.length > 0) sc.append(el("p", "hint audio-ok", `Restaurado nesta máquina: ${r.restaurados.map(nomeConjunto).join(", ")}.`));
+      if (r.antes !== null) sc.append(el("p", "hint", `O que foi substituído ficou guardado na máquina, em ${r.antes}.`));
+      for (const e of r.erros) sc.append(el("p", "hint bad-hint", e));
+      for (const a of r.avisos) sc.append(el("p", "hint", a));
+      if (r.restaurados.includes("agente")) sc.append(el("p", "hint", "As conversas antigas do agente aparecem ao lado das de hoje ao retomar uma conversa."));
+      const ac = el("div", "admin-actions");
+      ac.append(btn("Restaurar outra", "btn-ghost", () => { restauroResultado = null; void carregarCopias(); }), btn("Fechar", "btn-ghost", fechar));
+      sc.append(ac); bc.append(sc); return;
+    }
+    sc.append(el("p", "hint", "Escolha de que máquina e o que volta. A cópia entra por cima do que há aqui: cada arquivo substituído fica guardado numa pasta de segurança na máquina, e o que só existe aqui continua. O WhatsApp só é trocado se você pedir."));
+    if (copias === null) {
+      if (copiasErro === null) sc.append(carregando("Procurando as cópias no Drive e neste Mac…"));
+      else sc.append(el("p", "hint bad-hint", `Não consegui listar as cópias: ${copiasErro}`), btn("Tentar de novo", "btn-ghost", () => { void carregarCopias(); }));
+      bc.append(sc); return;
+    }
+    if (copias.driveErro !== null) sc.append(el("p", "hint bad-hint", `Não li o Drive (${copias.driveErro}); mostrando só as cópias deste Mac.`));
+    if (copias.maquinas.length === 0) { sc.append(el("p", "hint", "Nenhuma cópia encontrada no Drive desta conta nem neste Mac."), btn("Fechar", "btn-ghost", fechar)); bc.append(sc); return; }
+    const sel = el("select");
+    for (const m of copias.maquinas) { const o = el("option", "", m.maquina === copias.atual ? `${m.maquina} (esta máquina)` : m.maquina); o.value = m.maquina; o.selected = m.maquina === maquinaEscolhida; sel.append(o); }
+    sel.disabled = busy; sel.addEventListener("change", () => { escolherMaquina(sel.value); render(); });
+    sc.append(field("Máquina de origem", sel));
+    const maq = copias.maquinas.find((m) => m.maquina === maquinaEscolhida);
+    if (maq === undefined) { bc.append(sc); return; }
+    if (maq.maquina === copias.atual) sc.append(el("p", "hint", "É a cópia desta própria máquina: o que há hoje vai para a pasta de segurança e volta o da cópia."));
+    for (const c of maq.conjuntos) {
+      const lab = el("label", "conta-restauro-item"); const cb = el("input"); cb.type = "checkbox"; cb.checked = marcados.has(c.conjunto); cb.disabled = busy;
+      cb.addEventListener("change", () => { if (cb.checked) marcados.add(c.conjunto); else marcados.delete(c.conjunto); render(); });
+      lab.append(cb, el("strong", "", c.nome), el("span", "hint", `${c.data} · ${fmtBytes(c.bytes)} · ${origemTexto(c.origem)}${c.cifrado ? " · cifrado" : ""}`));
+      sc.append(lab);
+    }
+    if (marcados.has("credenciais")) {
+      sc.append(el("p", "hint bad-hint", "Credenciais traz o pareamento do WhatsApp, os tokens e a configuração do gateway da máquina de origem. Só faz sentido com a máquina antiga desligada; o gateway daqui reinicia."));
+      const lab = el("label", "conta-restauro-item"); const cb = el("input"); cb.type = "checkbox"; cb.checked = substituir; cb.disabled = busy;
+      cb.addEventListener("change", () => { substituir = cb.checked; render(); });
+      lab.append(cb, el("span", "", "substituir o WhatsApp desta máquina pelo da cópia")); sc.append(lab);
+    }
+    if (!copias.temSenha && maq.conjuntos.some((c) => c.cifrado && marcados.has(c.conjunto))) {
+      const inp = input("senha do backup cifrado", senhaRestauro, 200); inp.type = "password"; inp.addEventListener("input", () => { senhaRestauro = inp.value; });
+      sc.append(el("p", "hint", "Há conjunto cifrado marcado e esta máquina não tem senha de backup gravada: informe a senha que cifrou a cópia. Ela vale só para esta restauração."), field("Senha", inp));
+    }
+    const ac = el("div", "admin-actions");
+    const go = btn("Restaurar nesta máquina", "btn-primary", () => {
+      if (marcados.size === 0) return;
+      deps.armConfirm(go, "Confirmar? entra por cima do que há; o substituído fica guardado", () => {
+        restauro = []; restauroResultado = null;
+        const pedido = { maquina: maq.maquina, conjuntos: [...marcados], substituirWhatsapp: substituir, ...(senhaRestauro.trim() !== "" ? { senha: senhaRestauro } : {}) };
+        void agir(async () => { try { restauroResultado = await deps.api.backupDadosRestaurar(pedido); senhaRestauro = ""; } finally { restauro = null; } }, "restauração concluída; veja o resumo no cartão");
+      });
+    });
+    go.disabled = busy || marcados.size === 0;
+    ac.append(go, btn("Fechar", "btn-ghost", fechar));
+    sc.append(ac); bc.append(sc);
   }
   const fmtData = (iso: string): string => { if (iso === "") return ""; const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 

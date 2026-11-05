@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame } from "electron";
-import type { FinanceAbcLado, FinanceAbcPor, AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, TypingChoice, WindowInfo, StatusLineSegments, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha, WhatsappAlvo } from "../shared/ipc";
+import type { BackupRestauroPedido, FinanceAbcLado, FinanceAbcPor, AdminAction, AlertPrefs, AudioSetup, BackendModel, SupportProgress, SupportShare, ConversationRef, ExportFormat, FreedomLevel, LicensePatch, MainEventChannel, MainEvents, MemoryView, ObjectiveChoice, MeuBotApi, MeuBotAdminApi, MeuBotClientApi, MeuBotSharedApi, SettingsUpdate, SettingsView, StoredConversationView, TabMenuAction, WaMarkPatch, WhatsappGroupAgent, WhatsappGroupPatch, TypingChoice, WindowInfo, StatusLineSegments, ContaId, ZoomAction, ZoomState, FinanceConta, FinanceMoeda, FinanceLancarInput, FinanceTipoLinha, WhatsappAlvo } from "../shared/ipc";
 
 // Preload roda em sandbox: não pode importar módulos do app, por isso a lista fica aqui.
 const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
@@ -52,6 +52,7 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "window:zoom-changed",
   "google-conta:changed",
   "backup-dados:progress",
+  "backup-dados:restauro",
   "depuracao:batimento",
   "depuracao:estado",
   "depuracao:evento",
@@ -122,6 +123,8 @@ const sharedApi: MeuBotSharedApi = {
   backupDadosAbrirPasta: () => ipcRenderer.invoke("backup-dados:abrir-pasta", {}),
   backupDadosSenha: (senha: string) => ipcRenderer.invoke("backup-dados:senha", { senha }),
   backupDadosLimparSenha: () => ipcRenderer.invoke("backup-dados:senha", { limpar: true }),
+  backupDadosCopias: () => ipcRenderer.invoke("backup-dados:copias", {}),
+  backupDadosRestaurar: (pedido: BackupRestauroPedido) => ipcRenderer.invoke("backup-dados:restaurar", pedido),
   gmailListar: (opts?: { busca?: string; max?: number; pagina?: string | undefined }) => ipcRenderer.invoke("gmail:listar", opts ?? {}),
   gmailLer: (id: string) => ipcRenderer.invoke("gmail:ler", { id }),
   gmailApagar: (id: string) => ipcRenderer.invoke("gmail:apagar", { id }),

@@ -3,7 +3,7 @@
  * `backup-dados:progress` por etapa de cada conjunto; aqui se guarda o mais novo de cada um e se monta a linha
  * "2 de 5 · CRM ✓ 1 KB · Agente enviando…". Antes o botão "Guardar agora" só ficava apagado por uns 40 s (1 nov).
  */
-import type { BackupDadosProgresso } from "../../shared/ipc";
+import type { BackupDadosProgresso, BackupRestauroProgresso } from "../../shared/ipc";
 
 /** "1 KB" / "6,0 MB", como a lista da última cópia sempre mostrou. */
 export function fmtBytes(bytes: number): string {
@@ -38,4 +38,27 @@ export function textoAndamento(lista: readonly BackupDadosProgresso[]): string {
 export function terminou(lista: readonly BackupDadosProgresso[]): boolean {
   const u = lista[lista.length - 1];
   return u !== undefined && u.indice === u.total && u.etapa !== "enviando";
+}
+
+// ---- Restauração de uma cópia (5 nov): o mesmo desenho, com as etapas de quem desce, abre e extrai ----------------
+
+/** Guarda o evento mais novo de cada conjunto. O primeiro evento do conjunto 1 começa uma restauração nova. */
+export function aplicarRestauro(lista: readonly BackupRestauroProgresso[], p: BackupRestauroProgresso): BackupRestauroProgresso[] {
+  const base = p.indice === 1 && !lista.some((x) => x.conjunto === p.conjunto) ? [] : lista.filter((x) => x.conjunto !== p.conjunto);
+  return [...base, p];
+}
+export function rotuloRestauro(p: BackupRestauroProgresso): string {
+  switch (p.etapa) {
+    case "baixando": return "baixando do Drive…";
+    case "decifrando": return "abrindo…";
+    case "restaurando": return "restaurando…";
+    case "restaurado": return p.detalhe !== null && p.detalhe !== "" ? `✓ (${p.detalhe})` : "✓";
+    case "erro": return "✗ erro";
+  }
+}
+/** A linha do andamento da restauração; vazia enquanto nenhuma etapa chegou. */
+export function textoRestauro(lista: readonly BackupRestauroProgresso[]): string {
+  const u = lista[lista.length - 1];
+  if (u === undefined) return "";
+  return `${u.indice} de ${u.total} · ${lista.map((p) => `${p.nome} ${rotuloRestauro(p)}`).join(" · ")}`;
 }
