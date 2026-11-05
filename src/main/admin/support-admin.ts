@@ -37,6 +37,12 @@ interface AdminConfig { admin: string; superAdmin: boolean; backupDestinatario: 
 interface Stored { code: SupportCode; seenAt: string; source: "caixa" | "colado"; archived: boolean; /** Apelido que o admin deu (vence o nome do código; vazio = nenhum). */ nickname: string; /** Último plano visto da conta (cache para o selo do seletor, sem SSH); ausente = desconhecido. */ plan?: PlanName; /** Entrou por "ssh <host>" (conta do admin, sem o meu-bot dela): o admin prepara Claude Code, login e backend. */ adotada?: true; /** Usuário de login criado/visto na aba "Usuários" da máquina com este id (a raiz): só aparece, ninguém o prepara. */ usuarioDe?: string }
 
 const configPath = (): string => (app.isPackaged ? path.join(process.resourcesPath, "config", "suporte.json") : path.join(app.getAppPath(), "build", "suporte", "suporte.json"));
+/** A caixa de entrada deste admin (alias no ~/.ssh/config; "" = sem caixa) e o nome dele, para o recado do "Nova VPS". */
+export function caixaDeEntrada(): { alias: string; admin: string } {
+  const c = adminConfig() as AdminConfig & { admin?: string };
+  return { alias: c.inbox.alias, admin: typeof c.admin === "string" ? c.admin : "" };
+}
+
 function adminConfig(): AdminConfig {
   try {
     const raw = JSON.parse(fs.readFileSync(configPath(), "utf8")) as { admin?: unknown; superAdmin?: unknown; backupDestinatario?: unknown; inbox?: { alias?: unknown }; pagamentoPadrao?: unknown };

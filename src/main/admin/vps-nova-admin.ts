@@ -5,7 +5,7 @@
  * para contas de pessoa), aplica o Preparar máquina, cria o primeiro usuário e termina apontando o que fica para o
  * admin. Cada passo relê antes de escrever: rodar de novo na mesma VPS pula o que já está feito. Puro: vps-nova-core.ts.
  */
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import type { PassoVps, VpsNovaResultado } from "../../shared/ipc";
@@ -15,12 +15,15 @@ import { acrescentarBlocoSshConfig, sshHostsTemplatePath } from "../maquina/sshS
 import { runSsh } from "../whatsapp/whatsapp";
 import { instalarLinkPublico } from "./link-publico-admin";
 import { aplicarPreparar, estadoPreparar } from "./preparar-admin";
-import { addSupportCode, adminKeyExists, renamePerson } from "./support-admin";
+import { addSupportCode, adminKeyExists, caixaDeEntrada, renamePerson } from "./support-admin";
 import { chaveDesteMac, criarUsuario, prepararUsuarioDeNovo, usuariosDaMaquina } from "./usuarios-admin";
 import { blocoSshUsuario, configTemHost } from "./usuarios-core";
 import { aliasRootDe, blocoModeloDe, motivoAcesso, parseVpsNova, planoVpsNova, TEXTO_ACESSO, textoFinal, type FatosVps } from "./vps-nova-core";
 
 const PRIMEIRO_USUARIO = "box-1";
+/** Quanto esperar a pessoa digitar a senha no Terminal (ssh-copy-id) antes de desistir. */
+const COPY_ID_WAIT_MS = 15 * 60_000;
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 /** Uma VPS de cada vez por endereço: o segundo clique só avisa. */
 const emAndamento = new Set<string>();
 
@@ -54,8 +57,24 @@ export async function vpsNova(raw: unknown, onLine: (line: string) => void): Pro
     onLine(`1/6 entrando em ${usuario}@${endereco} pela chave ${chave.arquivo}…`);
     if (reinstalada) await esqueceHostKey(endereco, porta);
     const arquivo = chave.arquivo.replace(/^~(?=\/)/, os.homedir());
-    const a = await sshDireto(["-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "StrictHostKeyChecking=accept-new", "-o", "IdentitiesOnly=yes", "-i", arquivo, "-p", String(porta), "--", `${usuario}@${endereco}`, "hostname; id -u"], 40_000);
-    const motivo = motivoAcesso(a.code, a.stderr);
+    const argsAcesso = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=20", "-o", "StrictHostKeyChecking=accept-new", "-o", "IdentitiesOnly=yes", "-i", arquivo, "-p", String(porta), "--", `${usuario}@${endereco}`, "hostname; id -u"];
+    let a = await sshDireto(argsAcesso, 40_000);
+    let motivo = motivoAcesso(a.code, a.stderr);
+    if (motivo === "senha") {
+      // A VPS aceita senha e a chave deste Mac ainda não está lá: o ssh-copy-id no Terminal (a senha nunca passa pelo
+      // app; é o mesmo caminho do login do Claude), e o job espera a chave entrar.
+      onLine(`a VPS aceita senha: abrindo o Terminal para o ssh-copy-id; digite a senha de ${usuario}@${endereco} lá (até 15 min)…`);
+      const cmd = `ssh-copy-id -i ${chave.arquivo}.pub -o StrictHostKeyChecking=accept-new -p ${porta} ${usuario}@${endereco}`;
+      spawn("osascript", ["-e", `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`, "-e", 'tell application "Terminal" to activate'], { stdio: "ignore" }).on("error", () => { /* sem Terminal: o laço abaixo esgota e explica */ });
+      const until = Date.now() + COPY_ID_WAIT_MS;
+      while (motivo === "senha" && Date.now() < until) {
+        await sleep(10_000);
+        a = await sshDireto(argsAcesso, 40_000);
+        motivo = motivoAcesso(a.code, a.stderr);
+      }
+      if (motivo === "senha") throw new Error("a chave não entrou em 15 min: cadastre ~/.ssh/id_ed25519.pub no painel do provedor, ou rode o ssh-copy-id no Terminal e clique de novo");
+      if (motivo === "ok") onLine("✓ chave deste Mac autorizada na VPS");
+    }
     if (motivo !== "ok") { fatos.acesso = motivo; throw new Error(TEXTO_ACESSO[motivo].replace("<endereço>", endereco)); }
     fatos.acesso = "ok";
     const [hostnameRemoto, uid] = a.stdout.trim().split("\n").map((s) => s.trim());
@@ -114,7 +133,12 @@ export async function vpsNova(raw: unknown, onLine: (line: string) => void): Pro
     onLine(fatos.modeloTemHost ? "6/6 o modelo config/ssh-hosts.conf já tem este alias" : "6/6 bloco para o config/ssh-hosts.conf pronto para copiar (o modelo é do repositório)");
 
     const plano: PassoVps[] = planoVpsNova(fatos);
-    const texto = textoFinal(nome, plano, { aliasBox, dominio });
+    // A caixa de entrada do suporte não entra no clique (é do admin, não da VPS; recriar exige o setup e uma release).
+    const caixa = caixaDeEntrada();
+    const avisoCaixa = caixa.alias === ""
+      ? `ℹ Este admin está sem caixa de entrada: as pessoas entram por "Adicionar pessoa" ou por "Nova VPS". Para esta VPS virar a caixa e a central de auditoria: node scripts/suporte-setup.mjs --caixa ${nome}-${PRIMEIRO_USUARIO} --root ${aliasRoot}${caixa.admin !== "" ? ` --nome "${caixa.admin}"` : ""}, e depois uma release (os apps das pessoas levam o suporte.json).`
+      : `ℹ A caixa de entrada do suporte continua em ${caixa.alias}; se ela estiver fora do ar, recrie nesta VPS com node scripts/suporte-setup.mjs --caixa ${nome}-${PRIMEIRO_USUARIO} --root ${aliasRoot}${caixa.admin !== "" ? ` --nome "${caixa.admin}"` : ""} e uma release.`;
+    const texto = `${textoFinal(nome, plano, { aliasBox, dominio })}\n${avisoCaixa}`;
     const resumo = plano.map((x) => `${x.id}=${x.estado}`).join(" ");
     log(`[vps-nova] ${nome} (${endereco}): ${resumo}`);
     void registrar(suporteAlias, "maquina.vps-nova", nome, resumo);

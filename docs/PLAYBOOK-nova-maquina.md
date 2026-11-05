@@ -6,6 +6,17 @@ comando, o que esperar e o que costuma dar errado. Quem executa é o Claude Code
 
 ---
 
+## VPS nova pelo admin, com um clique (5 nov)
+
+Para uma VPS recém-criada (Hostinger ou outro provedor), o caminho curto é o botão **Nova VPS** do seletor do
+meu-bot-admin-gestao (ao lado de "Adicionar"): endereço, nome curto e "Entrar no fluxo". Ele grava `<nome>-root` no
+`~/.ssh/config` deste Mac, põe a máquina na lista de pessoas, roda o Preparar máquina inteiro, cria `box-1` e sugere o
+bloco para o `config/ssh-hosts.conf` (commitar é com você). Pré-requisito: **cadastre a chave pública deste Mac
+(`~/.ssh/id_ed25519.pub`) no painel do provedor ao criar a VPS** (Hostinger: Configurações › Chaves SSH); se a VPS só
+tiver senha, o job abre o Terminal para o `ssh-copy-id` e espera. O que fica para você: login do root no Claude Code
+Global, a Cloudflare do link público e o QR do WhatsApp. O resto deste playbook continua valendo para o que o botão
+não cobre (Mac novo, Grok Bot, Colima, caixa de entrada).
+
 ## Mac novo: do clone ao seletor
 
 O que precisa existir num Mac novo antes de o seletor listar as máquinas, e como o Cursor entra nisso.

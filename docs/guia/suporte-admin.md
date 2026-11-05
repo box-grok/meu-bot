@@ -827,6 +827,11 @@ tira dos dois; ninguém instala nada na conta (Claude Code, login e backend fica
   (Cloudflare e túnel) e o QR do WhatsApp no meu-bot de `box-1`. Auditoria: `maquina.vps-nova`. Rodar de novo na mesma
   VPS pula o que já está feito (cada passo relê antes de escrever). A parte pura está em `vps-nova-core.ts`
   (`parseVpsNova`, `motivoAcesso`, `blocoModeloDe`, `planoVpsNova`, `textoFinal`; teste `vps-nova-core.test.mjs`).
+- **VPS que aceita senha (a chave deste Mac ainda não está lá):** o job abre o Terminal com `ssh-copy-id -i
+  ~/.ssh/id_ed25519.pub -p <porta> root@<endereço>` (a senha nunca passa pelo app, como no login do Claude) e espera até
+  15 min a chave entrar, conferindo a cada 10 s com BatchMode; depois segue sozinho. "VPS reinstalada" faz
+  `ssh-keygen -R` antes de entrar.
 - **Fora do clique, de propósito:** a caixa de entrada do suporte e a central de auditoria (hoje em
-  `agente-box@187.127.41.175`, fora do ar). Recriar em outra máquina é `node scripts/suporte-setup.mjs --caixa <alias
-  não-root> --root <alias root> --nome Lucas` e uma release nova (os .dmg das pessoas levam o `suporte.json`).
+  `agente-box@187.127.41.175`, fora do ar). O recado final do job diz onde a caixa está (ou que não há) e o comando
+  para recriá-la nesta VPS: `node scripts/suporte-setup.mjs --caixa <nome>-box-1 --root <nome>-root --nome <admin>` e
+  uma release nova (os .dmg das pessoas levam o `suporte.json`).
