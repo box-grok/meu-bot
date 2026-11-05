@@ -344,6 +344,9 @@ function select(host: string | null): void {
 
 /** Máquinas cuja porta a sondagem já ajustou sozinha nesta sessão (uma vez só: se não resolver, fica o botão). */
 const portaAdotada = new Set<string>();
+/** Hosts que a última sondagem não alcançou: "Excluir máquina" não perde tempo tentando limpar o WhatsApp lá. */
+const foraDoAr = new Set<string>();
+
 async function probe(host: string, force = false): Promise<void> {
   if (!force && results.has(host)) return;
   results.delete(host);
@@ -360,6 +363,7 @@ async function probe(host: string, force = false): Promise<void> {
     }
     // Admin não instala nem faz login na máquina da pessoa: só a sondagem. "Usar porta N" fica: é configuração deste Mac.
     results.set(host, support !== null ? { ...t, install: t.install === "porta" ? "porta" : null, login: false } : t);
+    if (p.reachable) foraDoAr.delete(host); else foraDoAr.add(host);
     if (p.tailscaleCheck) needsCheck.add(host); else needsCheck.delete(host);
     if (p.reachable) { if (p.grokPod) pods.add(host); else pods.delete(host); paintPod(host); anotarTipo(host, p.user); }
     // Apelido gravado na máquina (o admin dá na aba Usuários): aparece no lugar do nome SSH, se este Mac não deu um seu.
@@ -369,6 +373,7 @@ async function probe(host: string, force = false): Promise<void> {
     }
   } catch (err) {
     results.set(host, { kind: "bad", text: `✗ ${hostLabel(host)}: ${ipcErrorText(err)}`, install: null, canOpen: false });
+    foraDoAr.add(host);
   }
   paintState(host);
 }
@@ -444,6 +449,7 @@ function syncSummary(r: SshSyncResult): { kind: "ok" | "warn"; text: string } {
     lines.push(`⚠ falta a chave ${r.missingKeys.map((k) => k.replace(/^.*\/\.ssh\//, "~/.ssh/")).join(", ")} neste Mac: copie do outro Mac, ou gere uma nova e coloque a .pub no authorized_keys de cada máquina (PLAYBOOK, seção 1).`);
   }
   lines.push("O Cursor (Remote SSH) lê o mesmo arquivo (ou um que ele inclui), então as máquinas aparecem lá também.");
+  if (support !== null) lines.push("Pessoas do suporte não passam por aqui: o endereço delas vem do código que a pessoa manda. Máquina que mudou de IP ou foi reinstalada: \"Adicionar pessoa\" com o código novo ou com \"ssh <host>\", e \"Excluir máquina\" na antiga.");
   return { kind, text: lines.join("\n") };
 }
 
@@ -532,6 +538,18 @@ removePersonBtn.addEventListener("click", () => {
   if (alias === null || person === undefined) return;
   if (removePersonBtn.disabled) return;
   const force = removePersonBtn.dataset["armed"] === "force";
+  // O segundo caminho só tira da lista. Fica armado até a pessoa trocar de seleção (resetRemovePerson): antes
+  // sumia em 10 s, e quem não estava olhando na hora achava que o botão não fazia nada.
+  const armarMesmoAssim = (): void => {
+    removePersonBtn.disabled = false; removePersonBtn.dataset["armed"] = "force"; removePersonBtn.textContent = "Excluir máquina mesmo assim (só tira da lista)";
+  };
+  // A sondagem já viu a máquina fora do ar: limpar o WhatsApp lá levaria minutos de timeout para falhar do mesmo jeito.
+  if (!force && foraDoAr.has(alias)) {
+    noteEl.hidden = false; noteEl.className = "note warn";
+    noteEl.textContent = `⚠ ${person.name} está fora do ar: não dá para limpar o WhatsApp nem desligar o suporte lá. Clique de novo para só tirar da lista (ela volta se a pessoa mandar o código de novo).`;
+    armarMesmoAssim();
+    return;
+  }
   removePersonBtn.dataset["armed"] = ""; removePersonBtn.textContent = force ? "Tirando da lista…" : "Limpando o WhatsApp da máquina…"; removePersonBtn.disabled = true;
   void window.picker.supportRemove(alias, force).then(async (r) => {
     noteEl.hidden = false; noteEl.className = "note ok";
@@ -540,9 +558,7 @@ removePersonBtn.addEventListener("click", () => {
     init(await window.picker.list());
   }).catch((err: unknown) => {
     showError("excluir", err);
-    // A máquina não respondeu: o segundo caminho só tira da lista (10 s para decidir).
-    removePersonBtn.disabled = false; removePersonBtn.dataset["armed"] = "force"; removePersonBtn.textContent = "Excluir máquina mesmo assim (só tira da lista)";
-    window.setTimeout(() => { if (removePersonBtn.dataset["armed"] === "force") resetRemovePerson(); }, 10_000);
+    armarMesmoAssim();
   });
 });
 
