@@ -8,6 +8,10 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **Os agentes da máquina sabem o que é do meu-bot.** Novo item em Preparar máquina grava, no CLAUDE.md do root e das
+  contas e no AGENTS.md do OpenClaw, a lista do que o meu-bot deixa na máquina (contas, pastas, serviços, o usuário
+  `nova` do novnc) e a regra de não tratar isso como suspeito nem remover sem o admin pedir. Uma auditoria pedida ao
+  agente deixa de "achar" o que é nosso.
 - **Máquina de OpenClaw não baixa o Hermes à toa.** Com o OpenClaw para todos e nenhum Hermes na máquina, o item
   "Hermes para todos" fica opcional no Preparar máquina, e uma conta criada com OpenClaw garante só o transcritor de
   áudio compartilhado. Instalar o Hermes continua a um clique, quando alguma conta for usá-lo.

@@ -8,6 +8,7 @@
  */
 import type { ItemPreparar, PrepararId, PrepararVisao } from "../../shared/ipc";
 import type { Acao } from "../auditoria/auditoria-core";
+import { CONTEXTO_ESTADO_SH, CONTEXTO_VERSAO, contextoSh } from "./contexto-core";
 import { lerOcLeve, OPENCLAW_LEVE, OPENCLAW_LEVE_ESTADO_SH, openclawLeveSh } from "./openclaw-leve-core";
 import { COTA_ESTADO_SH, COTA_LIGAR_SH, HERMES_ESTADO_SH, OPENCLAW_ESTADO_SH, TRANSCRITOR_ESTADO_SH, hermesGlobalSh, isolamentoTodosSh, openclawGlobalSh, reservaDe, reservaHostSh, swapLigarSh, transcritorSh } from "./usuarios-core";
 import { CG_DIR, CG_SERVICO } from "./claude-global-core";
@@ -25,14 +26,14 @@ export const PACOTES_TELA = ["xvfb", "x11-utils", "openbox", "x11vnc", "novnc", 
 export const PACOTE_CHROMIUM = "chromium";
 export const PACOTE_RE = /^[a-z0-9][a-z0-9.+-]{1,60}$/;
 /** Ordem de aplicação (dependências): swap e cota antes de qualquer apt; pacotes antes do gh; Hermes antes do transcritor (só para reaproveitar o modelo; o transcritor vale para OpenClaw e Hermes) e do Claude Global (usa o Node de /opt/hermes). */
-export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"];
+export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "contexto", "chromium"];
 /** Ordem da lista na tela: o link público entre o Claude Global e o Chromium (os dois humanos juntos). */
-export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "link-publico", "chromium"];
+export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "contexto", "link-publico", "chromium"];
 export const TITULOS: Record<PrepararId, string> = {
   swap: "Memória de reserva (swap de 8 GB)", cota: "Cota de disco por usuário", governanca: "Governança de RAM/CPU", llmnr: "Rede: LLMNR desligado (o resolvedor não responde na porta 5355)", pacotes: "Pacotes do sistema (jq, ffmpeg e a tela do bot)",
   gh: "GitHub CLI para todos (/usr/local/bin/gh)", hermes: "Hermes para todos (/opt/hermes)", transcritor: "Transcritor de áudio para todos (/opt/transcriber)",
   openclaw: "OpenClaw para todos (/opt/openclaw)", "openclaw-leve": "OpenClaw leve (só os plugins usados, heap do Node limitada)",
-  "claude-global": "Claude Code Global", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
+  "claude-global": "Claude Code Global", contexto: "Contexto para os agentes (o que é do meu-bot nesta máquina)", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
 };
 /**
  * O que o "Criar usuário" aplica antes de criar a conta: o que falta, menos os agentes que a conta nova não usa. O
@@ -81,6 +82,7 @@ ${HERMES_ESTADO_SH}
 ${TRANSCRITOR_ESTADO_SH}
 ${OPENCLAW_ESTADO_SH}
 ${OPENCLAW_LEVE_ESTADO_SH}
+${CONTEXTO_ESTADO_SH}
 CGI=0; [ -f /etc/systemd/system/${CG_SERVICO}.service ] && [ -f ${CG_DIR}/claude-global.js ] && CGI=1
 CGA=0; systemctl is-active --quiet ${CG_SERVICO} 2>/dev/null && CGA=1
 CGL=0; grep -q '"oauthAccount"' /root/.claude.json 2>/dev/null && [ -s /root/.claude/.credentials.json ] && CGL=1
@@ -113,6 +115,7 @@ export function lerPreparar(out: string): PrepararLido {
   const transcritor = /^TRANSCRITOR=1$/m.test(out);
   const openclaw = /^OPENCLAW=(global|root|nenhum)$/m.exec(out)?.[1] ?? null;
   const ocLeve = lerOcLeve(out);
+  const ctx = /^CONTEXTO=(\d+) (\d+)$/m.exec(out);
   const cg = /^CG=([01]) ([01]) ([01])$/m.exec(out);
   const lp = /^LP=([01]) ([01]) ([01]) ([01]) ?(\S*)$/m.exec(out);
   const os = (/^OS=(\S*)$/m.exec(out)?.[1] ?? "").trim();
@@ -141,6 +144,11 @@ export function lerPreparar(out: string): PrepararLido {
   if (ocLeve === null || ocLeve.total === 0) porId.set("openclaw-leve", item("openclaw-leve", "ok", "nenhum gateway do OpenClaw ainda; os novos nascem leves"));
   else if (ocLeve.faltam.length === 0) porId.set("openclaw-leve", item("openclaw-leve", "ok", `${ocLeve.leves === 1 ? "1 gateway leve" : `${ocLeve.leves} gateways leves`} (heap ${OPENCLAW_LEVE.heapMb} MB, só os plugins usados)`));
   else porId.set("openclaw-leve", item("openclaw-leve", "falta", `pesados: ${ocLeve.faltam.join(", ")} (43 plugins e heap de metade da RAM; o leve poupa ~430 MB na largada; reinicia o gateway, o WhatsApp volta em ~10 s)`));
+  // O bloco "o que é do meu-bot nesta máquina" no CLAUDE.md e no AGENTS.md do root e das boxes: sem ele uma auditoria
+  // aponta o nosso como suspeito. Versão nova do texto = falta de novo (os marcadores levam a versão).
+  if (ctx === null) porId.set("contexto", item("contexto", "falta", `o CLAUDE.md do root ainda não diz o que é do meu-bot aqui (bloco v${CONTEXTO_VERSAO})`));
+  else if (Number(ctx[2]) >= Number(ctx[1]) && Number(ctx[1]) > 0) porId.set("contexto", item("contexto", "ok", `bloco v${CONTEXTO_VERSAO} em ${ctx[1]} arquivo${ctx[1] === "1" ? "" : "s"} (root e boxes)`));
+  else porId.set("contexto", item("contexto", "falta", `${Number(ctx[1]) - Number(ctx[2])} arquivo(s) sem o bloco v${CONTEXTO_VERSAO}: uma auditoria apontaria o meu-bot como suspeito`));
   if (cg === null || cg[1] === "0") porId.set("claude-global", item("claude-global", "falta", "o intermediário do root ainda não está instalado", { pagina: "claude-global" }));
   else if (cg[3] === "0") porId.set("claude-global", item("claude-global", "humano", "entre no Claude Code do root (abre no Terminal, pela aba Claude Code Global)", { pagina: "claude-global" }));
   else if (cg[2] === "0") porId.set("claude-global", item("claude-global", "falta", "instalado, mas parado: instalar de novo sobe o serviço", { pagina: "claude-global" }));
@@ -219,6 +227,7 @@ export function passosPreparar(ids: readonly string[], v: PrepararLido): PassoPr
     else if (id === "openclaw") passos.push({ id, titulo: TITULOS.openclaw, sh: comoRoot(openclawGlobalSh()), ok: /^OPENCLAW=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.openclaw-global", alvo: ultimo(/^OPENCLAW=ok (\S+)/m) });
     else if (id === "openclaw-leve") passos.push({ id, titulo: TITULOS["openclaw-leve"], sh: comoRoot(openclawLeveSh()), ok: /^OCLEVE=ok /m, timeoutMs: 5 * 60_000, acao: "maquina.openclaw-leve", alvo: ultimo(/^OCLEVE=ok (.*)$/m) });
     else if (id === "claude-global") passos.push({ id, titulo: TITULOS["claude-global"], sh: null, ok: /^CLAUDE_GLOBAL=ok/m, timeoutMs: 5 * 60_000, acao: "maquina.claude-global", alvo: () => "" });
+    else if (id === "contexto") passos.push({ id, titulo: TITULOS.contexto, sh: comoRoot(contextoSh()), ok: /^CONTEXTO=ok /m, timeoutMs: 60_000, acao: "maquina.contexto", alvo: ultimo(/^CONTEXTO=ok (\d+)/m) });
     else if (id === "chromium" && estado("chromium") === "falta") passos.push({ id, titulo: TITULOS.chromium, sh: pacotesSh([PACOTE_CHROMIUM]), ok: /^PACOTES=ok/m, timeoutMs: 10 * 60_000, acao: "maquina.pacotes", alvo: () => PACOTE_CHROMIUM });
   }
   return passos;
