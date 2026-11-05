@@ -49,6 +49,12 @@ export function backendStatusVisto(st: BackendStatusEvent): void {
 }
 
 function desenhar(box: HTMLElement): void {
+  // Instalou: só o recado. Com o botão ainda ali, a pessoa clicava de novo e reinstalava o backend recém-instalado.
+  if (falta !== true && !ocupado && recado !== null && !recado.bad) {
+    box.classList.remove("notice-warn");
+    box.append(el("p", "hint audio-ok", recado.text));
+    return;
+  }
   box.append(el("strong", "", "Esta máquina ainda não tem o backend do meu-bot"));
   box.append(el("p", "hint", "É ele que roda o Claude Code aqui e responde às suas mensagens. A instalação leva alguns minutos; depois é só seguir de onde parou."));
   const b = el("button", "btn btn-primary btn-small", ocupado ? "Instalando…" : recado?.bad === true ? "Tentar de novo" : "Instalar backend");
