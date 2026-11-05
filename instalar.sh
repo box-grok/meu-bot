@@ -10,8 +10,8 @@
 #   ./instalar.sh --abrir       gera, instala e abre o seletor
 #   ./instalar.sh --sem-suporte sem o pacote de suporte (por padrão ele entra quando build/suporte existe,
 #                               para este Mac também ver Configurações › Suporte e o tutorial "Ligar o suporte")
-#   ./instalar.sh --admin       gera e instala o meu-bot-admin (do super admin)
-#   ./instalar.sh --admin --como "Fulano"   o meu-bot-admin de outro admin (build/suporte/admins.json)
+#   ./instalar.sh --admin       gera e instala o meu-bot-admin-gestao (do super admin)
+#   ./instalar.sh --admin --como "Fulano"   o meu-bot-admin-gestao de outro admin (build/suporte/admins.json)
 #   ./instalar.sh --staging     o meu-bot-staging (canal de teste, ao lado do meu-bot)
 set -euo pipefail
 
@@ -26,7 +26,7 @@ for a in "$@"; do
     --como) prox=como ;;
     --abrir) abrir=1 ;;
     --sem-suporte) suporte=0 ;;
-    --admin) app=meu-bot-admin; dist=dist:admin; suporte=0 ;;
+    --admin) app=meu-bot-admin-gestao; dist=dist:admin; suporte=0 ;;
     --staging) staging=1 ;;
     -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "argumento desconhecido: $a (use --abrir, --sem-suporte, --admin, --staging, --como ou --help)" >&2; exit 2 ;;

@@ -75,7 +75,7 @@ for (const p of paths) {
     if (como !== "" && quem === undefined) throw new Error(`admin "${como}" não está em build/suporte/admins.json (rode scripts/suporte-setup.mjs --admin)`);
     const origem = quem !== undefined ? join("build", "suporte", "admins", `${quem.nome}.json`) : join("build", "suporte", "suporte.json");
     if (existsSync(origem)) copyFileSync(origem, join(res, "config", "suporte.json"));
-    if (quem !== undefined) console.log(`meu-bot-admin de ${quem.nome}${quem.super === true ? " (super admin)" : ""}`);
+    if (quem !== undefined) console.log(`meu-bot-admin-gestao de ${quem.nome}${quem.super === true ? " (super admin)" : ""}`);
   }
 }
 console.log("Empacotado em:", paths.join(", "), versao !== null ? `(versão ${versao})` : "");

@@ -12,6 +12,15 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### O app do admin tem nome próprio
+
+#### Melhorado
+
+- **O meu-bot-admin agora se chama meu-bot-admin-gestao.** É o app de gestão: suporte, licenças e plano, espelho das
+  máquinas, auditoria e produtos. Na primeira abertura ele traz sozinho as pessoas, configurações e produtos do
+  meu-bot-admin antigo, que fica no lugar como cópia de segurança. Quem tinha o meu-bot-admin instalado instala o
+  novo uma vez; dali em diante ele se atualiza sozinho.
+
 ### A atualização pergunta antes de interromper, e sabe se recuperar
 
 #### Novo

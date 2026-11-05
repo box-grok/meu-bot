@@ -70,7 +70,7 @@ export function mountAdminPickerChrome(deps: AdminPickerChromeDeps): AdminPicker
       const h1 = document.querySelector("h1"); if (h1 !== null) h1.textContent = "Suporte: escolha uma pessoa";
       const sub = document.querySelector(".sub"); if (sub !== null) sub.textContent = "Cada pessoa é uma janela de suporte. ↑↓ escolhe · Enter abre · Esc fecha";
       deps.filterEl.placeholder = "filtrar pessoas…";
-      document.title = "meu-bot-admin · escolher pessoa";
+      document.title = "meu-bot-admin-gestao · escolher pessoa";
       if (!support.adminKey) { deps.noteEl.hidden = false; deps.noteEl.textContent = MISSING_ADMIN_KEY_TEXT; }
       // O interruptor só aparece quando há alguém arquivado.
       archivedSwitch.hidden = !support.people.some((p) => p.archived);

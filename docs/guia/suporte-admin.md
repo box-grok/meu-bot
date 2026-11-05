@@ -9,7 +9,7 @@ Para dar suporte a 2–3 pessoas sem servidor. Um projeto, dois apps: o **meu-bo
 
 - Variante: `scripts/package.mjs --admin` (nome, bundle id `local.meu-bot-admin`, ícone, `variant.json` em
   Resources) e `scripts/fuses.mjs --admin` (instala
-  `~/Applications/meu-bot-admin.app` + atalho na mesa). `src/main/variant-core.ts` decide (puro, testado:
+  `~/Applications/meu-bot-admin-gestao.app` + atalho na mesa). `src/main/variant-core.ts` decide (puro, testado:
   `resolveVariant`, `capsFor`) e `src/main/variant.ts` só lê o arquivo (`appVariant`, `caps`, `isAdmin`,
   `appTitle`; dev: `MEU_BOT_VARIANT=admin`). Ver "Mapa de variantes" abaixo. Ícones: `npm run icons`
   (`scripts/icon.mjs`: qlmanage → sips → iconutil).

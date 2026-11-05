@@ -31,7 +31,7 @@ mkdir -p "$ESTADO" "$(dirname "$LOG")" "$RAIZ/.claude"
 # (build/ e dist/ ficam de fora: são saída do empacotamento; vigiá-los faria o ciclo disparar a si mesmo)
 VIGIAR=(src scripts/tests scripts/package.mjs scripts/dist.mjs scripts/fuses.mjs scripts/vendor.mjs scripts/icons.mjs config assets extensao-crm/src extensao-crm/package.json package.json package-lock.json)
 # variante | app em ~/Applications | script npm
-TABELA="admin|meu-bot-admin|dist:admin
+TABELA="admin|meu-bot-admin-gestao|dist:admin
 meu-bot|meu-bot|dist
 staging|meu-bot-staging|dist:staging
 finance-staging|meu-bot-finance-staging|dist:finance-staging"
