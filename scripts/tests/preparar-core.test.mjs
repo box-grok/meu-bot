@@ -133,7 +133,7 @@ test("preparar: máquina de OpenClaw sem Hermes: o Hermes vira opcional (fora de
 test("preparar: contexto para os agentes: bloco com marcadores no CLAUDE.md e no AGENTS.md do root e das boxes; falta quando algum arquivo não tem a versão atual", () => {
   const { CONTEXTO_MD, CONTEXTO_START, CONTEXTO_END, CONTEXTO_ESTADO_SH, contextoSh } = createRequire(import.meta.url)("../../dist/main/admin/contexto-core.js");
   assert.ok(CONTEXTO_MD.startsWith(CONTEXTO_START) && CONTEXTO_MD.endsWith(CONTEXTO_END));
-  for (const t of ["nova", "novnc", "box-", "/opt/openclaw", "/opt/hermes", "meu-bot-leve.conf", "meu-bot-sem-llmnr.conf", "/swapfile", "usrquota", "nunca remova", "auditoria"]) assert.ok(CONTEXTO_MD.includes(t), t);
+  for (const t of ["nova", "novnc", "box-", "/opt/openclaw", "/opt/hermes", "meu-bot-leve.conf", "meu-bot-sem-llmnr.conf", "/swapfile", "usrquota", "nunca remova", "auditoria", "backup-drive.json", "Restaurar uma cópia"]) assert.ok(CONTEXTO_MD.includes(t), t);
   const por = (o) => Object.fromEntries(lerPreparar(saida(o)).itens.map((i) => [i.id, i]));
   assert.equal(por({ contexto: "3 3" }).contexto.estado, "ok"); assert.equal(por({ contexto: "3 1" }).contexto.estado, "falta"); assert.match(por({ contexto: "3 1" }).contexto.detalhe, /2 arquivo/);
   assert.equal(por({ contexto: "0 0" }).contexto.estado, "falta");

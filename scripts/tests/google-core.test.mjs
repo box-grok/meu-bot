@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { achaSegredo, achaSegredoNoTar, ehPlaceholder, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
+import { achaSegredo, achaSegredoNoTar, ehPlaceholder, marcaBackupSh, MARCA_BACKUP, slugMaquina, chaveTelefone, emailDePessoaEu, faltantesNoGoogle, parseClienteOAuth, pessoaDoWhatsapp, temEscrita, pessoaParaContato, pkce, urlDeAutorizacao, parseIdToken, temEscopo, temTodosEscopos, ESCOPOS_CONTA, ESCOPOS_PEDIDOS, GMAIL_MODIFY, gmailMensagemDeRaw, agendaEventoDeRaw, planilhaValoresDeRaw , comandoPacoteSh, achaSegredoEmBuffer, CONJUNTOS_DADOS, caminhoDadosNoDrive, pacotesDadosAApagar, pacoteDadosRe, corpoUploadBinario, consultaFilhos } from "../../src/main/google/google-core.ts";
 
 test("parseClienteOAuth: JSON baixado do Google Cloud (installed) ou simples; inválido → null", () => {
   assert.deepEqual(parseClienteOAuth({ installed: { client_id: "123-abc.apps.googleusercontent.com", client_secret: "GOCSPX-segredo1" } }), { clientId: "123-abc.apps.googleusercontent.com", clientSecret: "GOCSPX-segredo1" });
@@ -319,4 +319,15 @@ test("achaSegredoNoTar: diz o arquivo onde achou; placeholder numa referência n
   assert.deepEqual(achaSegredoNoTar(sujo), { tipo: "token do GitHub", arquivo: "chat-workspace/.env.exemplo" });
   assert.deepEqual(achaSegredoNoTar(Buffer.from("texto solto com sk-abcdefghijklmnopqrstuvwxyz0123456789", "utf8")), { tipo: "chave de API (sk-…)", arquivo: null });
   assert.equal(achaSegredoNoTar(Buffer.from("nada aqui", "utf8")), null);
+});
+
+test("marcaBackupSh: registra o conjunto que subiu em backup-drive.json da conta (o agente lê); recusa id, bytes e data fora do formato", () => {
+  assert.equal(MARCA_BACKUP, ".local/share/meu-bot/backup-drive.json");
+  const sh = marcaBackupSh({ conjunto: "agente", nome: "Agente", arquivo: "agente-x-2026-11-05.tar.gz.age", bytes: 589101, quando: "2026-11-05T05:30:34.385Z", caminho: "meu-bot / x / Agente / agente-x-2026-11-05.tar.gz.age" });
+  for (const t of ['"id":"agente"', '"bytes":589101', "backup-drive.json", "MARCA=ok", "Restaurar uma cópia", "os.replace(tmp, f)"]) assert.ok(sh.includes(t), t);
+  assert.throws(() => marcaBackupSh({ conjunto: "x; rm -rf ~", nome: "", arquivo: "", bytes: 1, quando: "2026-11-05T00:00:00Z", caminho: "" }), /conjunto inválido/);
+  assert.throws(() => marcaBackupSh({ conjunto: "agente", nome: "", arquivo: "", bytes: 1.5, quando: "2026-11-05T00:00:00Z", caminho: "" }), /bytes/);
+  assert.throws(() => marcaBackupSh({ conjunto: "agente", nome: "", arquivo: "", bytes: 1, quando: "ontem", caminho: "" }), /data/);
+  // O nome do arquivo entra como dado (JSON), não como shell: uma aspa simples no caminho não fecha o printf.
+  assert.ok(marcaBackupSh({ conjunto: "crm", nome: "CRM", arquivo: "a'b", bytes: 1, quando: "2026-11-05T00:00:00Z", caminho: "" }).includes("a'\\''b"));
 });

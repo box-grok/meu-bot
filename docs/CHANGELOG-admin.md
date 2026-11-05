@@ -8,6 +8,10 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **Contexto para os agentes, versão 2: backup e restauro.** O bloco que o Preparar máquina grava no CLAUDE.md e no
+  AGENTS.md passa a dizer que o meu-bot do dono faz o backup das contas no Google Drive dele, onde fica o registro do
+  que subiu (`backup-drive.json` da conta) e que restaurar é pelo meu-bot. O item aparece como "atualizar" nas
+  máquinas com a versão 1.
 - **O limite de disco já vem com o mínimo da conta padrão.** Criar com 1% de um disco de 100 GB deixava a conta nascer
   na cota: a voz, o Claude Code, o OpenClaw dela e o wrangler do tutorial 11 ocupam 1,6 GB, e o Cloudflare morria em
   "Unknown system error -122" (disco cheio pela cota). O campo "% do disco" já vem com a menor porcentagem que dá 3 GB,
