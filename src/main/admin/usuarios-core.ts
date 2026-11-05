@@ -3,7 +3,8 @@
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
 import { deveAtualizar } from "../atualizacao/updater-core";
-import type { Capacidade, HermesNaMaquina, OpenclawNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
+import { WA_AGENTE_FILE } from "../whatsapp/whatsapp-capacidades";
+import type { MotorNovoUsuario, Capacidade, HermesNaMaquina, OpenclawNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
 import { HERMES_VERSAO, MOTOR_NODE, OPENCLAW_NODE, OPENCLAW_VERSAO } from "../maquina/motor-versoes";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
@@ -580,6 +581,25 @@ export function apelidoValido(v: unknown): string {
 export const apelidoSh = (nome: string, apelido: string): string => `id '${nome}' >/dev/null 2>&1 || { echo "ERRO=não existe o usuário ${nome}"; exit 0; }
 A=$(printf '%s' '${Buffer.from(apelido, "utf8").toString("base64")}' | base64 -d)
 usermod -c "$([ -n "$A" ] && printf '%s%s' '${GECOS_MARCA}' "$A")" '${nome}' && echo APELIDO=ok || echo "ERRO=não consegui gravar o apelido"`;
+
+/** Os agentes do WhatsApp com que uma conta nova pode nascer (o sistema é agnóstico; o admin escolhe por conta). */
+export const MOTORES_NOVO_USUARIO = ["hermes", "openclaw"] as const;
+/** O motor pedido no "Criar usuário": ausente = Hermes (o padrão de sempre); outro valor = erro. */
+export function motorDe(v: unknown): MotorNovoUsuario {
+  if (v === undefined || v === null || v === "") return "hermes";
+  if (v === "hermes" || v === "openclaw") return v;
+  throw new Error(`agente do WhatsApp desconhecido: ${String(v)} (hermes ou openclaw)`);
+}
+/**
+ * OpenClaw como agente do WhatsApp do usuário novo: só grava a escolha (WA_AGENTE_FILE); o onboard do OpenClaw, o plugin
+ * do WhatsApp e o gateway nascem no pareamento, no meu-bot dele (whatsapp-openclaw-core.ts). Com o OpenClaw para
+ * todos (/opt/openclaw) a conta não baixa nada. Saída `SEMEADO=ok`.
+ */
+export function openclawSemearSh(): string {
+  return `set -e
+mkdir -p "$(dirname "${WA_AGENTE_FILE}")"; printf '%s\n' openclaw > "${WA_AGENTE_FILE}"
+echo "SEMEADO=ok"`;
+}
 
 /** Nome do Host no ~/.ssh/config para o usuário de uma máquina: `<máquina>-<usuário>` (só letras, números, - e .). */
 export function aliasDoUsuario(maquina: string, nome: string): string {

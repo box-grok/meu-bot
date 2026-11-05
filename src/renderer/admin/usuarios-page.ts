@@ -39,7 +39,9 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let page: PageTab | null = null;
   let visao: UsuariosVisao | null = null;
   let erro: string | null = null;
-  let ocupado: string | null = null; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
+  let ocupado: string | null = null;
+  /** O agente do WhatsApp escolhido para a próxima conta (Hermes é o padrão de sempre). */
+  let motorNovo: "hermes" | "openclaw" = "hermes"; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
   /** Limite de disco já preenchido ao criar: 1% (dá para apagar e deixar sem limite). */
   const PCT_PADRAO = "1";
   /** O que a pessoa digitou depois do box-; null = ainda não mexeu (o campo mostra o próximo número da sequência). */
@@ -99,13 +101,13 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     // Mais boxes do que cabem na RAM com o teto padrão: avisa, não bloqueia (a conta é do admin; a coluna Pressão mostra o efeito).
     const cap = visao?.capacidade ?? null;
     const avisoCap = cap !== null && cap.boxes + 1 > cap.cabem ? ` Atenção: com este serão ${cap.boxes + 1} boxes, mais que as ${cap.cabem} que cabem na RAM com ${cap.padraoMb} MB cada; acompanhe a coluna Pressão.` : "";
-    if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
+    if (await rodar("criar", () => deps.api.adminUsuarioCriar(n, p, motorNovo), `✓ Usuário ${n} criado (sem sudo)${p > 0 ? `, com ${p}% do disco` : ""}.`)) {
       // Já entrou nos seletores (meu-bot e admin): a mensagem diz com que nome, ou o que faltou.
       const sel = visao?.seletores;
       if (sel !== undefined) msg = sel.aviso !== null ? { text: `Usuário ${n} criado, mas ${sel.aviso}. Tente "Nos seletores" na linha dele.`, bad: true }
         : visao?.preparo != null ? { text: `Usuário ${n} criado, mas a preparação parou: ${visao.preparo}. Use "Preparar" na linha dele para continuar de onde parou.`, bad: true }
-        : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
-        : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e Hermes com transcrição. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
+        : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e ${motorNovo === "openclaw" ? "OpenClaw escolhido para o WhatsApp" : "Hermes com transcrição"}. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
+        : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e ${motorNovo === "openclaw" ? "OpenClaw escolhido para o WhatsApp" : "Hermes com transcrição"}. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
       if (avisoCap !== "" && msg !== null) msg = { text: `${msg.text}${avisoCap}`, bad: true };
       nome = null; pctNovo = PCT_PADRAO; render();
     }
@@ -200,10 +202,14 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
     const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : pctNovo; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
     pin.addEventListener("input", () => { pctNovo = pin.value; });
+    // O agente do WhatsApp da conta nova: Hermes (padrão) ou OpenClaw. O sistema é agnóstico; o pareamento no meu-bot dela completa.
+    const motorSel = el("select") as HTMLSelectElement; motorSel.title = "Com que agente do WhatsApp a conta nasce. Hermes: o de todos em /opt/hermes, com transcrição. OpenClaw: a escolha fica gravada e o onboard acontece no pareamento, no meu-bot dela";
+    for (const [v, t] of [["hermes", "WhatsApp: Hermes"], ["openclaw", "WhatsApp: OpenClaw"]] as const) { const o = el("option", "", t); o.value = v; motorSel.append(o); }
+    motorSel.value = motorNovo; motorSel.addEventListener("change", () => { motorNovo = motorSel.value === "openclaw" ? "openclaw" : "hermes"; });
     const b = el("button", "btn btn-primary btn-small", ocupado === "criar" ? "Criando e preparando… (alguns minutos)" : "Criar"); b.type = "button"; b.disabled = ocupado !== null;
     b.addEventListener("click", () => { void criar(); });
     const campo = el("span", "usuarios-nome"); campo.append(prefixo, input);
-    linha.append(campo, pin, b); form.append(linha);
+    linha.append(campo, pin, motorSel, b); form.append(linha);
     // No lugar do texto descritivo: o que o job está fazendo agora (e o que fez, depois).
     if (jobLog.length > 0) { const ul = el("ul", "support-log"); for (const l of jobLog.slice(-40)) ul.append(el("li", "", l)); form.append(ul); ul.scrollTop = ul.scrollHeight; }
     if (msg !== null) form.append(el("p", `hint ${msg.bad ? "bad-hint" : "audio-ok"}`, msg.text));

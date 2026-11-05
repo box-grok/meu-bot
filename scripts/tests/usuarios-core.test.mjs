@@ -164,6 +164,16 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.equal(ler("ROOT\nHERMES=sem-transcritor\n").hermes, "sem-transcritor");
 });
 
+test("motor do usuário novo: Hermes por padrão, OpenClaw só grava a escolha (o pareamento faz o resto)", () => {
+  const { motorDe, openclawSemearSh, MOTORES_NOVO_USUARIO } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  assert.deepEqual([...MOTORES_NOVO_USUARIO], ["hermes", "openclaw"]);
+  assert.equal(motorDe(undefined), "hermes"); assert.equal(motorDe(""), "hermes"); assert.equal(motorDe("openclaw"), "openclaw");
+  assert.throws(() => motorDe("picoclaw"), /desconhecido/);
+  const sh = openclawSemearSh();
+  assert.match(sh, /openclaw > "\$HOME\/\.local\/share\/meu-bot\/whatsapp-agente"/);
+  assert.match(sh, /SEMEADO=ok/); assert.ok(!/hermes/.test(sh), "não toca no Hermes");
+});
+
 test("transcritor para todos: /opt/transcriber do root (755, como o /opt/hermes), modelo reaproveitado, conferido como nobody", () => {
   const { transcritorSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
   const sh = transcritorSh();

@@ -11,7 +11,7 @@ import type { AgendaEvento, BackupDadosProgresso, BackupDadosView, GmailAgenteSt
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
-import type { AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararId, PrepararVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
+import type { MotorNovoUsuario, AdminAction, AdminHealth, AuditoriaVisao, UsuariosVisao, PrepararId, PrepararVisao, BackupIndiceView, BackupRestauracao, BotChat, BotMenuAction, BotMessage, ProdutoMvp, SupportInfo, SupportProgress, SupportShare, CgEstado, LpEstado, LpAviso } from "./suporte";
 import type { TypingChoice, WaMarkPatch, WhatsappAlvo, WhatsappArchive, WhatsappChat, WhatsappEvent, WhatsappGroupAgent, WhatsappGroupArchive, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappGroups, WhatsappMenuAction, WhatsappAgente, WhatsappReplyChoice, WhatsappStatus, WhatsappThreadMessage } from "./whatsapp";
 
 export interface MainEvents {
@@ -497,7 +497,8 @@ export interface MeuBotAdminApi {
   /** Aba Usuários: só numa máquina em que o admin entra como root. */
   adminUsuariosVisivel(): Promise<boolean>;
   adminUsuarios(): Promise<UsuariosVisao>;
-  adminUsuarioCriar(nome: string, pct?: number): Promise<UsuariosVisao>;
+  /** `motor`: o agente do WhatsApp da conta nova (Hermes, o padrão, ou OpenClaw); o pareamento no meu-bot dela completa. */
+  adminUsuarioCriar(nome: string, pct?: number, motor?: MotorNovoUsuario): Promise<UsuariosVisao>;
   /** Limite de disco em % do disco principal (0 = sem limite). */
   adminUsuarioLimite(nome: string, pct: number): Promise<UsuariosVisao>;
   adminUsuarioApagar(nome: string): Promise<UsuariosVisao>;
