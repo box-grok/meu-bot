@@ -125,7 +125,7 @@ test("comandoRestaurarSh: trabalho da box-lv entra na box-1 (OpenClaw): sem .her
   const a = ambiente();
   const origem = join(a.raiz, "box-lv"); const destino = join(a.raiz, "box-1");
   const OLDSLUG = origem.replace(/\//g, "-"); const NEWSLUG = destino.replace(/\//g, "-");
-  escrever(origem, "agent-workspace/CLAUDE.md", "# da LV");
+  escrever(origem, "agent-workspace/CLAUDE.md", "# da LV\n\n<!-- meu-bot:navegador v3 inicio -->\nnavegador velho\n<!-- meu-bot:navegador v3 fim -->\n");
   escrever(origem, "chat-workspace/notas.md", "notas antigas");
   escrever(origem, ".hermes/SOUL.md", "hermes velho");
   escrever(origem, ".claude.json", JSON.stringify({ projects: { [`${origem}/agent-workspace`]: { allowedTools: ["Bash"] } }, oauthAccount: { emailAddress: "lv@x" } }));
@@ -137,7 +137,7 @@ test("comandoRestaurarSh: trabalho da box-lv entra na box-1 (OpenClaw): sem .her
   const pacote = join(a.raiz, "trabalho.tgz");
   empacotar(origem, ["agent-workspace", "chat-workspace", ".hermes", ".claude.json", ".local/share/meu-bot/crm.json", ".local/share/meu-bot/auditoria.jsonl", ".local/share/meu-bot/objetivo.json"], pacote);
   // O destino ja vive: tem o CLAUDE.md dele, conversas de hoje, o proprio ledger e o proprio .claude.json.
-  escrever(destino, "agent-workspace/CLAUDE.md", "# da box-1");
+  escrever(destino, "agent-workspace/CLAUDE.md", "# da box-1\n\n<!-- meu-bot:navegador v5 inicio -->\nnavegador novo\n<!-- meu-bot:navegador v5 fim -->\n\n<!-- meu-bot:maquina v1 inicio -->\no que e do meu-bot aqui\n<!-- meu-bot:maquina v1 fim -->\n");
   escrever(destino, "agent-workspace/so-daqui.md", "fica");
   escrever(destino, ".claude.json", JSON.stringify({ projects: { [`${destino}/agent-workspace`]: { allowedTools: ["Read"] } }, oauthAccount: { emailAddress: "box1@x" }, hasCompletedOnboarding: true }));
   escrever(destino, ".local/share/meu-bot/auditoria.jsonl", '{"hash":"meu"}\n');
@@ -148,9 +148,14 @@ test("comandoRestaurarSh: trabalho da box-lv entra na box-1 (OpenClaw): sem .her
   assert.match(r.stdout, /RESTAURADO=ok/);
   const antes = /ANTES=(\S+)/.exec(r.stdout)[1];
   // por cima: o da LV entrou, o que so a box-1 tinha ficou, e o sobrescrito esta na pasta de seguranca
-  assert.equal(readFileSync(join(destino, "agent-workspace/CLAUDE.md"), "utf8"), "# da LV");
+  const claudeMd = readFileSync(join(destino, "agent-workspace/CLAUDE.md"), "utf8");
+  assert.match(claudeMd, /^# da LV/, "o texto da LV entrou");
+  assert.match(claudeMd, /navegador v5 inicio -->\nnavegador novo/, "o bloco do meu-bot da maquina venceu o da copia");
+  assert.doesNotMatch(claudeMd, /navegador velho/);
+  assert.match(claudeMd, /meu-bot:maquina v1 inicio/, "o bloco que a copia nao tinha foi acrescentado");
+  assert.match(r.stdout, /BLOCOS=1/);
   assert.equal(readFileSync(join(destino, "agent-workspace/so-daqui.md"), "utf8"), "fica");
-  assert.equal(readFileSync(join(antes, "agent-workspace/CLAUDE.md"), "utf8"), "# da box-1");
+  assert.match(readFileSync(join(antes, "agent-workspace/CLAUDE.md"), "utf8"), /^# da box-1/);
   assert.equal(readFileSync(join(destino, "chat-workspace/notas.md"), "utf8"), "notas antigas");
   assert.match(r.stdout, /GUARDADOS=2/, "CLAUDE.md e .claude.json; a auditoria e barrada e nao conta");
   // maquina OpenClaw: o .hermes da LV nao entra; o ledger desta maquina nao muda
@@ -227,5 +232,19 @@ test("comandoRestaurarSh: credenciais com WhatsApp vivo recusa sem substituir; c
   r = roda(comandoRestaurarSh({ conjunto: conj("trabalho"), motor: "openclaw", homeAntigo: null, substituirWhatsapp: false }), a.env(destino), join(a.raiz, "mal.tgz"));
   assert.notEqual(r.status, 0); assert.match(r.stderr, /caminho perigoso/);
   assert.ok(!existsSync(join(destino, "fora.txt")) && !existsSync(join(a.raiz, "fora.txt")));
+  rmSync(a.raiz, { recursive: true, force: true });
+});
+
+test("comandoRestaurarSh: sem nada sobrescrito nao ha pasta de seguranca, e ANTES sai vazio", () => {
+  const a = ambiente();
+  const origem = join(a.raiz, "box-lv"); const destino = join(a.raiz, "box-1");
+  escrever(origem, ".local/share/meu-bot/finance/db/contas.json", "[]");
+  const pacote = join(a.raiz, "fin.tgz"); empacotar(origem, [".local"], pacote);
+  mkdirSync(destino, { recursive: true });
+  const r = roda(comandoRestaurarSh({ conjunto: conj("financeiro"), motor: "openclaw", homeAntigo: null, substituirWhatsapp: false }), a.env(destino), pacote);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /GUARDADOS=0/); assert.match(r.stdout, /^ANTES=$/m); assert.match(r.stdout, /BLOCOS=0/);
+  assert.equal(readdirSync(destino).filter((f) => f.startsWith(".meu-bot-antes")).length, 0);
+  assert.equal(readFileSync(join(destino, ".local/share/meu-bot/finance/db/contas.json"), "utf8"), "[]");
   rmSync(a.raiz, { recursive: true, force: true });
 });

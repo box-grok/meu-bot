@@ -62,6 +62,9 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     marcados = new Set((copias?.maquinas.find((x) => x.maquina === m)?.conjuntos ?? []).filter((c) => c.conjunto !== "credenciais").map((c) => c.conjunto));
   }
   const origemTexto = (o: BackupCopiaOrigem): string => (o === "drive" ? "no Drive" : o === "local" ? "neste Mac" : "Drive e Mac");
+  /** "2026-11-05" → "05/11/26": o dia da cópia tem que saltar aos olhos (pedido do dono, 5 nov). */
+  const fmtDia = (iso: string): string => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m === null ? iso : `${m[3]}/${m[2]}/${m[1].slice(2)}`; };
+  const diaMaisNovo = (conjuntos: readonly { data: string }[]): string => conjuntos.map((c) => c.data).sort().at(-1) ?? "";
   const nomeConjunto = (id: string): string => copias?.maquinas.flatMap((m) => m.conjuntos).find((c) => c.conjunto === id)?.nome ?? id;
   deps.api.on("backup-dados:progress", (p) => {
     andamento = aplicarProgresso(andamento ?? [], p);
@@ -233,7 +236,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     if (copias.driveErro !== null) sc.append(el("p", "hint bad-hint", `Não li o Drive (${copias.driveErro}); mostrando só as cópias deste Mac.`));
     if (copias.maquinas.length === 0) { sc.append(el("p", "hint", "Nenhuma cópia encontrada no Drive desta conta nem neste Mac."), btn("Fechar", "btn-ghost", fechar)); bc.append(sc); return; }
     const sel = el("select");
-    for (const m of copias.maquinas) { const o = el("option", "", m.maquina === copias.atual ? `${m.maquina} (esta máquina)` : m.maquina); o.value = m.maquina; o.selected = m.maquina === maquinaEscolhida; sel.append(o); }
+    for (const m of copias.maquinas) { const o = el("option", "", `${m.maquina} · dia ${fmtDia(diaMaisNovo(m.conjuntos))}${m.maquina === copias.atual ? " (esta máquina)" : ""}`); o.value = m.maquina; o.selected = m.maquina === maquinaEscolhida; sel.append(o); }
     sel.disabled = busy; sel.addEventListener("change", () => { escolherMaquina(sel.value); render(); });
     sc.append(field("Máquina de origem", sel));
     const maq = copias.maquinas.find((m) => m.maquina === maquinaEscolhida);
@@ -242,7 +245,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
     for (const c of maq.conjuntos) {
       const lab = el("label", "conta-restauro-item"); const cb = el("input"); cb.type = "checkbox"; cb.checked = marcados.has(c.conjunto); cb.disabled = busy;
       cb.addEventListener("change", () => { if (cb.checked) marcados.add(c.conjunto); else marcados.delete(c.conjunto); render(); });
-      lab.append(cb, el("strong", "", c.nome), el("span", "hint", `${c.data} · ${fmtBytes(c.bytes)} · ${origemTexto(c.origem)}${c.cifrado ? " · cifrado" : ""}`));
+      lab.append(cb, el("strong", "", c.nome), el("span", "hint", `dia ${fmtDia(c.data)} · ${fmtBytes(c.bytes)} · ${origemTexto(c.origem)}${c.cifrado ? " · cifrado" : ""}`));
       sc.append(lab);
     }
     if (marcados.has("credenciais")) {
@@ -251,9 +254,13 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
       cb.addEventListener("change", () => { substituir = cb.checked; render(); });
       lab.append(cb, el("span", "", "substituir o WhatsApp desta máquina pelo da cópia")); sc.append(lab);
     }
-    if (!copias.temSenha && maq.conjuntos.some((c) => c.cifrado && marcados.has(c.conjunto))) {
-      const inp = input("senha do backup cifrado", senhaRestauro, 200); inp.type = "password"; inp.addEventListener("input", () => { senhaRestauro = inp.value; });
-      sc.append(el("p", "hint", "Há conjunto cifrado marcado e esta máquina não tem senha de backup gravada: informe a senha que cifrou a cópia. Ela vale só para esta restauração."), field("Senha", inp));
+    // A cópia pode ter sido cifrada com outra senha (outro app deste Mac, outra máquina, senha trocada depois): a gravada é
+    // tentada primeiro e esta entra em seguida; sem senha gravada, só esta.
+    if (maq.conjuntos.some((c) => c.cifrado && marcados.has(c.conjunto))) {
+      const inp = input(copias.temSenha ? "só se a cópia foi cifrada com outra senha" : "senha do backup cifrado", senhaRestauro, 200); inp.type = "password"; inp.addEventListener("input", () => { senhaRestauro = inp.value; });
+      sc.append(el("p", "hint", copias.temSenha
+        ? "Os conjuntos cifrados abrem com a senha de backup gravada neste Mac. Se a cópia foi cifrada com outra senha (noutro app ou máquina, ou antes de você trocá-la), informe-a aqui; vale só para esta restauração."
+        : "Há conjunto cifrado marcado e esta máquina não tem senha de backup gravada: informe a senha que cifrou a cópia. Ela vale só para esta restauração."), field("Senha", inp));
     }
     const ac = el("div", "admin-actions");
     const go = btn("Restaurar nesta máquina", "btn-primary", () => {
