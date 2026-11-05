@@ -31,7 +31,7 @@ export interface AccountStatus {
   cota?: CotaInfo | null;
 }
 
-/** Grok por OAuth em máquina sem Hermes: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */
+/** Grok por OAuth em máquina ainda sem o preparo: há backend do meu-bot nela? (é o que o "entrar"/tutorial 4 prepara). */
 export interface XaiKeyStatus { backend: boolean }
 
 /** Quando o agente responde em áudio: nunca, só quando recebe áudio, ou sempre. */
@@ -66,7 +66,9 @@ export interface ObjectiveInfo {
 
 /** Conta do Claude Code na máquina. */
 /** `global`: a máquina responde pelo Claude Code Global do admin (a assinatura do root); a pessoa vê, sem mexer. */
-export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null; global?: boolean }
+export interface ClaudeAuthInfo { loggedIn: boolean; email: string | null; global?: boolean;
+  /** xAI: o proxy local do grok-4 (meu-bot-xai-proxy.service + providers.json) está nesta conta; sem ele o grok-4 não responde mesmo logada. */
+  proxy?: boolean }
 
 /** Janela de uso de uma conta do Claude: % usado e quando reseta (epoch s). */
 export interface ContaClaudeJanela { pct: number; resets: number | null }

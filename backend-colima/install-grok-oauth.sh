@@ -34,7 +34,6 @@ backend_restart() {
 NODE=$(grep -h '^ExecStart=' "$USER_UNIT" "$SYS_UNIT" 2>/dev/null | head -1 | awk '{print $1}' | sed 's/^ExecStart=//' || true)
 [ -n "$NODE" ] && [ -x "$NODE" ] && export PATH="$(dirname "$NODE"):$PATH"
 export PATH="$HOME/.local/bin:$PATH"
-command -v npm >/dev/null 2>&1 || { echo "npm não encontrado nesta máquina"; exit 1; }
 command -v systemctl >/dev/null 2>&1 || { echo "esta máquina não tem systemd; o proxy do Hermes precisa dele para ficar no ar"; exit 1; }
 
 # Porta do proxy: a que o serviço desta conta já usa, se ninguém de fora a ocupou; senão a primeira livre a partir
@@ -57,6 +56,8 @@ if [ -z "$PROXY_PORT" ]; then
 fi
 
 if ! hermes --version 2>/dev/null | grep -q "v$HERMES_VERSION"; then
+  # Só aqui o npm é necessário: numa máquina com o Hermes global em /usr/local/bin a conta pode nem ter npm no PATH.
+  command -v npm >/dev/null 2>&1 || { echo "npm não encontrado nesta máquina (preciso dele para instalar o Hermes)"; exit 1; }
   echo "instalando o Hermes $HERMES_VERSION em ~/.local (só na primeira vez demora)…"
   mkdir -p "$HOME/.local"
   npm install -g --prefix "$HOME/.local" "hermes-agent@$HERMES_VERSION" >/dev/null 2>&1 || { echo "a instalação do Hermes falhou"; exit 1; }

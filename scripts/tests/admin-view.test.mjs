@@ -13,7 +13,7 @@ const ADDONS_ROTULOS = ADDONS.map((a) => ({ nome: a.nome, rotulo: a.rotulo }));
 test("healthLines: sondagem e WhatsApp viram linhas com ✓/✗/•", () => {
   const sem = healthLines({ probe, whatsapp: null, progress: null, share, xai: null }, fmt);
   assert.deepEqual(sem.map((l) => l.ok), [true, false, true, null, false]);
-  assert.equal(sem[3].text, "xAI (Grok): sem Hermes nesta máquina");
+  assert.equal(sem[3].text, "xAI (Grok): não preparada nesta máquina");
   assert.equal(sem.some((l) => /meu-bot .*Mac dela|sem dados ainda/.test(l.text)), false, "versão do app dela fica nos devices da licença");
   assert.equal(sem[0].text, "entra por SSH (box · Ubuntu)");
   assert.equal(sem[1].text, "backend instalado mas parado");
