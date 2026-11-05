@@ -3,7 +3,7 @@
  * saída. O limite de disco é uma cota de usuário no disco principal (/), em % do tamanho dele.
  */
 import { deveAtualizar } from "../atualizacao/updater-core";
-import type { Capacidade, HermesNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
+import type { Capacidade, HermesNaMaquina, OpenclawNaMaquina, Pressao, PressaoBox, UsuarioMaquina } from "../../shared/ipc";
 import { HERMES_VERSAO, MOTOR_NODE, OPENCLAW_NODE, OPENCLAW_VERSAO } from "../maquina/motor-versoes";
 
 /** Nome de usuário Linux aceito: minúsculas, dígitos, hífen e sublinhado, começando por letra; até 32. */
@@ -60,6 +60,7 @@ echo "SWAP=$(free -k | awk '/^Swap:/ {print $2" "$3}')"
 echo "CPUS=$(nproc 2>/dev/null)"
 US=/sys/fs/cgroup/user.slice; [ -f "$US/memory.max" ] && echo "USERSLICE=$(cat $US/memory.max 2>/dev/null) $(cat $US/memory.current 2>/dev/null) $(awk '$1=="anon"{print $2}' $US/memory.stat 2>/dev/null) $(cat $US/memory.low 2>/dev/null)"
 ${HERMES_ESTADO_SH}
+${OPENCLAW_ESTADO_SH}
 awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {split($5, g, ","); ap = (substr(g[1], 1, 8) == "meu-bot=") ? substr(g[1], 9) : ""; print $1"\\t"$3"\\t"$6"\\t"$7"\\t"ap}' /etc/passwd | while IFS="$(printf '\\t')" read -r n u h s ap; do
   g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) su=1 ;; *) su=0 ;; esac
   [ -d "$h/.local/share/meu-bot" ] && mb=1 || mb=0
@@ -99,7 +100,7 @@ export function lerBox(c: readonly (string | undefined)[]): PressaoBox | null {
     cpuPeriodos: b(c[10]), cpuEstrangulados: b(c[11]), cpuEstranguladoUsec: b(c[12]),
   };
 }
-export type ListaUsuarios = { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; userSlice: { maxKb: number | null; usoKb: number; anonKb: number; lowKb: number } | null; cpus: number | null; hermes: HermesNaMaquina | null; usuarios: UsuarioMaquina[] };
+export type ListaUsuarios = { root: boolean; discoKb: number | null; cota: boolean; ram: { totalKb: number; usoKb: number; rootKb: number; swapKb: number; swapUsoKb: number } | null; userSlice: { maxKb: number | null; usoKb: number; anonKb: number; lowKb: number } | null; cpus: number | null; hermes: HermesNaMaquina | null; openclaw: OpenclawNaMaquina | null; usuarios: UsuarioMaquina[] };
 export function lerUsuarios(out: string): ListaUsuarios {
   const root = /^ROOT$/m.test(out);
   const discoKb = kb(/^DISCO=(\d+)$/m.exec(out)?.[1]);
@@ -136,7 +137,9 @@ export function lerUsuarios(out: string): ListaUsuarios {
   }
   const hm = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1];
   const hermes = hm === "global" || hm === "sem-transcritor" || hm === "root" || hm === "nenhum" ? hm : null;
-  return { root, discoKb, cota, ram, userSlice, cpus, hermes, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
+  const oc = /^OPENCLAW=(global|root|nenhum)$/m.exec(out)?.[1];
+  const openclaw = oc === "global" || oc === "root" || oc === "nenhum" ? oc : null;
+  return { root, discoKb, cota, ram, userSlice, cpus, hermes, openclaw, usuarios: usuarios.sort((a, b) => a.uid - b.uid) };
 }
 
 /**

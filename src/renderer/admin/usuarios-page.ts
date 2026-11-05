@@ -18,7 +18,7 @@ export interface UsuariosPageDeps {
   panelsEl: HTMLElement;
   definePage(id: string, title: string, panel: HTMLElement, render: () => void): PageTab;
   openPage(page: PageTab): void;
-  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminGovernanca" | "adminBackendsAtualizar" | "adminHermesGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
+  api: Pick<MeuBotApi, "adminUsuarios" | "adminUsuarioCriar" | "adminUsuarioLimite" | "adminUsuarioApagar" | "adminUsuarioMaiores" | "adminUsuarioApagarItem" | "adminUsuarioRecursos" | "adminSwapLigar" | "adminGovernanca" | "adminBackendsAtualizar" | "adminHermesGlobal" | "adminOpenclawGlobal" | "adminUsuarioApelido" | "adminUsuarioManterLigado" | "adminUsuarioPreparar" | "on" | "adminUsuarioNosSeletores" | "adminUsuariosSincronizar">;
 }
 const NOME_RE = /^[a-z][a-z0-9_-]{1,31}$/;
 /** O prefixo fixo dos usuários criados aqui (cópia de PREFIXO_USUARIO, src/main/admin/usuarios-core.ts). */
@@ -279,6 +279,16 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
         b.addEventListener("click", () => { void rodar("hermes", () => deps.api.adminHermesGlobal(), "✓ Hermes e transcritor instalados para todos: os usuários usam os mesmos programas, sem baixar uma cópia cada um."); });
         hg.append(b, el("span", "hint", completar ? "O Hermes já é de todos, mas falta o transcritor compartilhado (/opt/transcriber): sem ele, cada usuário instala o próprio para ouvir áudios." : v.hermes === "root" ? "O Hermes desta máquina está só na pasta do root: os outros usuários não conseguem usá-lo e cada um baixaria uma cópia." : "Esta máquina não tem Hermes."));
         lista.append(hg);
+      }
+      // O sistema é agnóstico: a máquina pode receber o OpenClaw e o Hermes. O mesmo instalador do "Preparar máquina".
+      if (v.openclaw === "global") lista.append(el("p", "hint", "OpenClaw: um só para todos os usuários (/opt/openclaw); os dados de cada um ficam na pasta dele."));
+      else if (v.openclaw !== null) {
+        const og = el("div", "admin-actions");
+        const b = el("button", "btn btn-ghost btn-small", ocupado === "openclaw" ? "Instalando…" : "Instalar OpenClaw para todos"); b.type = "button"; b.disabled = ocupado !== null;
+        b.title = "Instala o OpenClaw em /opt/openclaw, com o Node dele (só leitura para os outros), e aponta o comando openclaw de todos para lá; o do root continua como está";
+        b.addEventListener("click", () => { void rodar("openclaw", () => deps.api.adminOpenclawGlobal(), "✓ OpenClaw instalado para todos: os usuários usam o mesmo programa, sem baixar uma cópia cada um."); });
+        og.append(b, el("span", "hint", v.openclaw === "root" ? "O OpenClaw desta máquina está só na pasta do root: os outros usuários não o alcançam, e cada um acabaria baixando uma cópia." : "Esta máquina não tem o OpenClaw: sem o de todos, cada usuário baixaria o Node 24 e uma cópia."));
+        lista.append(og);
       }
       if (v.usuarios.length === 0) lista.append(el("p", "hint", "Nenhum usuário de login além do root."));
       else {

@@ -515,6 +515,8 @@ export interface MeuBotAdminApi {
   adminPrepararAplicar(ids?: PrepararId[]): Promise<PrepararVisao>;
   /** Instala o Hermes para todos os usuários da máquina (/opt/hermes); só root. */
   adminHermesGlobal(): Promise<UsuariosVisao>;
+  /** Instala o OpenClaw para todos os usuários da máquina (/opt/openclaw); só root. O mesmo passo do "Preparar máquina". */
+  adminOpenclawGlobal(): Promise<UsuariosVisao>;
   /** Onde vive o WhatsApp de um usuário da máquina (conta/agente num gateway de outro usuário); null volta ao padrão. */
   adminWhatsappAlvo(nome: string, alvo: WhatsappAlvo | null): Promise<{ nome: string; alvo: WhatsappAlvo | null }>;
   /** Apelido (nome de exibição) do usuário; vazio tira. */

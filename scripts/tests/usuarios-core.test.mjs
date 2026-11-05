@@ -153,6 +153,12 @@ test("usuários: Hermes para todos na mesma versão do install-grok-oauth.sh, co
   assert.equal(ler("ROOT\nHERMES=global\n").hermes, "global");
   assert.equal(ler("ROOT\nHERMES=root\n").hermes, "root");
   assert.equal(ler("ROOT\n").hermes, null);
+  // O OpenClaw é lido junto: a aba Usuários oferece "Instalar OpenClaw para todos" ao lado do Hermes.
+  assert.match(listar, /OPENCLAW=global/);
+  assert.equal(ler("ROOT\nOPENCLAW=global\n").openclaw, "global");
+  assert.equal(ler("ROOT\nOPENCLAW=root\n").openclaw, "root");
+  assert.equal(ler("ROOT\nOPENCLAW=nenhum\n").openclaw, "nenhum");
+  assert.equal(ler("ROOT\n").openclaw, null);
   // Hermes global sem o transcritor compartilhado: incompleto, o admin oferece completar.
   assert.match(listar, /meu-bot-transcritor \/opt\/transcriber\/bin\/transcrever/);
   assert.equal(ler("ROOT\nHERMES=sem-transcritor\n").hermes, "sem-transcritor");
