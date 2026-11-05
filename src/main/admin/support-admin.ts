@@ -193,8 +193,11 @@ export const knownPeople = (): SupportPerson[] => [...load().values()].map(toPer
 /**
  * "Adicionar pessoa" colando o código (plano B da entrega automática) ou um host do ~/.ssh/config do admin
  * ("ssh agente-box-lv"): aí o admin entra com o acesso que já tem e monta o código sozinho (adoptSshHost).
+ * `preparar: false` (o job "Nova VPS", para o root): entra na lista sem a preparação silenciosa de Claude Code,
+ * login e backend (prepareAdopted), que é para contas de pessoa, não para o root de uma máquina nova.
  */
-export async function addSupportCode(text: string): Promise<SupportPerson> {
+export async function addSupportCode(text: string, opts: { preparar?: boolean } = {}): Promise<SupportPerson> {
+  const preparar = opts.preparar !== false;
   const host = text.trim().startsWith("MBS1.") ? null : parseSshAddTarget(text);
   const code = host !== null ? await adoptSshHost(host) : (() => { const d = decodeSupportCode(text); if (!d.ok) throw new Error(d.reason); return d.code; })();
   const m = load();
@@ -220,7 +223,7 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
     }
     return toPerson(existente);
   }
-  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null ? { adotada: true as const } : {}) };
+  const s: Stored = { code, seenAt: new Date().toISOString(), source: "colado", archived: false, nickname: "", ...(host !== null && preparar ? { adotada: true as const } : {}) };
   // Mesmo endereço, usuário e porta de alguém da lista, mas chave do servidor diferente: a máquina foi reinstalada
   // (identidade nova). A entrada velha sairia da lista só por "Excluir máquina" e o admin recusaria entrar nela
   // (StrictHostKeyChecking). Ela é substituída pela nova, levando apelido, plano e usuário de login; some do conf.
@@ -242,7 +245,7 @@ export async function addSupportCode(text: string): Promise<SupportPerson> {
     // Confere que a chave do admin entra mesmo pelo alias novo (known_hosts e authorized_keys certos).
     const r = await runSsh(supportAlias(code), "true\n", 20_000);
     if (r.code !== 0) throw new Error(`adicionada, mas a chave do admin não entrou: ${lastLine(r)}`);
-    startPrepare(supportAlias(code));
+    if (preparar) startPrepare(supportAlias(code));
   }
   return toPerson(s);
 }

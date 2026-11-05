@@ -28,10 +28,22 @@ import { CG_ETC } from "./claude-global-core";
 import { ligarLinkPublicoPara, linkPublicoInstalado } from "./link-publico-admin";
 import { textoAvisos } from "./link-publico-core";
 import { prepararMaquinaSuave } from "./preparar-admin";
+import { acrescentarBlocoSshConfig } from "../maquina/sshSync";
 
 const sshG = (host: string): Promise<string> => new Promise((resolve) => {
   execFile("ssh", ["-G", "--", host], { timeout: 10_000 }, (err, stdout) => resolve(err ? "" : stdout));
 });
+
+/**
+ * A chave pública deste Mac que entra nas máquinas (a primeira dos candidatos que tem o .pub; depois ~/.ssh/id_ed25519 e
+ * id_rsa): `chave` já com o comentário meu-bot-admin, `arquivo` com ~ no lugar do home (para o IdentityFile).
+ */
+export function chaveDesteMac(candidatos: readonly string[] = []): { chave: string; arquivo: string } {
+  for (const f of [...candidatos, path.join(os.homedir(), ".ssh/id_ed25519"), path.join(os.homedir(), ".ssh/id_rsa")]) {
+    try { const pub = fs.readFileSync(`${f}.pub`, "utf8").trim(); if (/^(ssh-|ecdsa-)\S+ \S+/.test(pub)) return { chave: pub.split(/\s+/).slice(0, 2).join(" ") + " meu-bot-admin", arquivo: f.replace(os.homedir(), "~") }; } catch { /* próximo */ }
+  }
+  throw new Error("não achei a chave pública SSH deste Mac (~/.ssh/id_ed25519.pub)");
+}
 
 /** O endereço e a chave pública que este Mac usa para a máquina (a primeira IdentityFile que tem o .pub). */
 async function acessoDesteMac(host: string): Promise<{ hostname: string; port: string; chave: string; arquivo: string }> {
@@ -39,10 +51,7 @@ async function acessoDesteMac(host: string): Promise<{ hostname: string; port: s
   const hostname = /^hostname (.+)$/m.exec(g)?.[1]?.trim() ?? host;
   const port = /^port (\d+)$/m.exec(g)?.[1] ?? "22";
   const arquivos = [...g.matchAll(/^identityfile (.+)$/gm)].map((m) => (m[1] ?? "").trim().replace(/^~(?=\/)/, os.homedir()));
-  for (const f of [...arquivos, path.join(os.homedir(), ".ssh/id_ed25519"), path.join(os.homedir(), ".ssh/id_rsa")]) {
-    try { const pub = fs.readFileSync(`${f}.pub`, "utf8").trim(); if (/^(ssh-|ecdsa-)\S+ \S+/.test(pub)) return { hostname, port, chave: pub.split(/\s+/).slice(0, 2).join(" ") + " meu-bot-admin", arquivo: f.replace(os.homedir(), "~") }; } catch { /* próxima */ }
-  }
-  throw new Error("não achei a chave pública SSH deste Mac (~/.ssh/id_ed25519.pub)");
+  return { hostname, port, ...chaveDesteMac(arquivos) };
 }
 
 /** A linha "Usuários" aparece só quando o admin entra nesta máquina como root. */
@@ -404,15 +413,9 @@ const lerSshConfig = (): { texto: string; existe: boolean } => { try { return { 
  */
 async function garantirNoSshConfig(host: string, n: string): Promise<{ alias: string; novo: boolean }> {
   const { alias, maquina } = aliasNoMeuBot(host, n);
-  const { texto, existe } = lerSshConfig();
-  if (configTemHost(texto, alias)) return { alias, novo: false };
+  if (configTemHost(lerSshConfig().texto, alias)) return { alias, novo: false };
   const a = await acessoDesteMac(host);
-  const configPath = sshConfigPath();
-  if (existe) fs.copyFileSync(configPath, `${configPath}.bak-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`);
-  else fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
-  const sep = existe && texto !== "" && !texto.endsWith("\n") ? "\n" : "";
-  fs.appendFileSync(configPath, `${sep}\n${blocoSshUsuario({ alias, hostname: a.hostname, port: a.port, user: n, chave: a.arquivo, maquina })}`, { mode: 0o600 });
-  try { fs.chmodSync(configPath, 0o600); } catch { /* cortesia */ }
+  acrescentarBlocoSshConfig(blocoSshUsuario({ alias, hostname: a.hostname, port: a.port, user: n, chave: a.arquivo, maquina }));
   log(`[usuarios] ${host}: ${n} entrou no ~/.ssh/config como ${alias}`);
   return { alias, novo: true };
 }
