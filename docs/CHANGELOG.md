@@ -43,6 +43,9 @@ no [diário técnico](GUIA.md).
 
 #### Corrigido
 
+- **A janela da máquina abria errada na 0.78.4:** sem a lateral certa (no admin, a de gestão virava a cara do app
+  comum) e sem responder. Um canal novo do "localizar na página" não estava na lista permitida e derrubava a janela
+  na abertura. Quem instalou a 0.78.4 recebe esta versão sozinho.
 - **O app podia parar de atualizar para sempre dizendo que estava em dia.** Uma versão publicada com o
   arquivo faltando, sem assinatura, ou sem o arquivo desta arquitetura, aparecia como "você está na
   versão mais recente". Agora o app diz o que houve e continua tentando.
