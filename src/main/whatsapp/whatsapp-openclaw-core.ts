@@ -314,6 +314,28 @@ export function openclawStatus(kv: Map<string, string>): Omit<WhatsappStatus, "c
   return { present: true, gateway: "openclaw", agent, ready: true, missing: null, connected, state, number, loggedOut, detail: unrepaired ?? detail, dmPolicy, channelConfig, ...(allowFrom !== undefined ? { allowFrom } : {}), audioIn: kv.get("audioin") === "1", ...lerAudioEstado(kv), audioOut, audioVoice, typingMode: typingModeDe(kv.get("typing")), ...(repaired !== null ? { repaired } : {}) };
 }
 
+/**
+ * Enquanto o gateway sobe (reinício pela preparação, pelo vigia ou pelo `openclaw gateway restart`), por uns 15 s a CLI
+ * recusa ler o estado: "OpenClaw state at … is undergoing offline maintenance; retry when it finishes" (ou "ownership …
+ * could not be verified; retry after maintenance finishes"). Um clique nessa janela falhava na hora com o rodapé genérico
+ * do erro. Dentro do script, `openclaw` passa a ser esta função: repete só nesse caso, até 6 vezes de 5 s; qualquer outro
+ * erro sai como antes, com o stderr inteiro. stdout passa direto (quem lê `config get` continua lendo).
+ */
+export const OPENCLAW_ESPERA_SH = `openclaw() { local i rc f; f=$(mktemp); for i in 1 2 3 4 5 6; do command openclaw "$@" 2>"$f"; rc=$?; if [ $rc -eq 0 ] || ! grep -q "retry when it finishes\\|retry after maintenance finishes" "$f"; then break; fi; sleep 5; done; cat "$f" >&2; rm -f "$f"; return $rc; }`;
+/** Quantas tentativas × espera o OPENCLAW_ESPERA_SH pode somar, para o timeout de quem o roda. */
+export const OPENCLAW_ESPERA_MS = 6 * 5_000;
+/**
+ * O motivo de um `openclaw config …` que falhou, para a frase de erro: a CLI imprime várias linhas (título, "File:",
+ * "Problem:", dicas) e termina com um rodapé fixo ("Audit, status, health, logs, and doctor commands still run…"), que era o
+ * que aparecia na tela. Manutenção do estado vira uma frase em português; senão, a linha do "Problem:"; senão, a última.
+ */
+export function erroOpenclaw(stderr: string): string {
+  if (/retry when it finishes|retry after maintenance finishes/.test(stderr)) return "o OpenClaw desta máquina está reiniciando (estado em manutenção); espere uns segundos e tente de novo";
+  const problema = /^\s+- (?:<root>: )?(.+)$/m.exec(stderr);
+  const linha = problema?.[1] ?? stderr.trim().split("\n").filter((l) => l.trim() !== "" && !/^(Audit, status, health|Inspect:|Fix:|Resolve the read error|Run "openclaw doctor)/.test(l.trim())).pop() ?? "";
+  return linha.trim();
+}
+
 /** Política "só você" (ver setDmPolicy) da conta; também é o padrão gravado antes do primeiro login. */
 export const selfPolicyBaseSh = (a: WhatsappAlvo): string => `openclaw config set session.dmScope per-channel-peer && openclaw config set ${cfgDe(a)}.dmPolicy allowlist && openclaw config set ${cfgDe(a)}.allowFrom '[]' --strict-json && openclaw config set ${cfgDe(a)}.selfChatMode true --strict-json && openclaw config set ${cfgDe(a)}.groupPolicy disabled && openclaw config set ${cfgDe(a)}.responsePrefix '""' --strict-json`;
 export const SELF_POLICY_SH = selfPolicyBaseSh(ALVO_PADRAO);
