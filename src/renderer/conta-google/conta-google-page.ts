@@ -63,7 +63,7 @@ export function mountContaGoogle(deps: ContaGoogleDeps): { open: () => void; ref
   }
   const origemTexto = (o: BackupCopiaOrigem): string => (o === "drive" ? "no Drive" : o === "local" ? "neste Mac" : "Drive e Mac");
   /** "2026-11-05" → "05/11/26": o dia da cópia tem que saltar aos olhos (pedido do dono, 5 nov). */
-  const fmtDia = (iso: string): string => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m === null ? iso : `${m[3]}/${m[2]}/${m[1].slice(2)}`; };
+  const fmtDia = (iso: string): string => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso); return m === null ? iso : `${m[3]}/${m[2]}/${(m[1] ?? "").slice(2)}`; };
   const diaMaisNovo = (conjuntos: readonly { data: string }[]): string => conjuntos.map((c) => c.data).sort().at(-1) ?? "";
   const nomeConjunto = (id: string): string => copias?.maquinas.flatMap((m) => m.conjuntos).find((c) => c.conjunto === id)?.nome ?? id;
   deps.api.on("backup-dados:progress", (p) => {
