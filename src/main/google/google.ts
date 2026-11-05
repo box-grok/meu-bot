@@ -217,6 +217,10 @@ export interface SessaoDrive {
   api: (url: string, init?: RequestInit) => Promise<Record<string, unknown>>;
   /** Desce (criando o que faltar) a sequência de pastas a partir da raiz e devolve o id da última. */
   pasta: (pastas: readonly string[]) => Promise<string>;
+  /** A mesma descida, sem criar nada: null se alguma pasta do caminho não existe (restaurar nunca cria pasta). */
+  acharPasta: (pastas: readonly string[]) => Promise<string | null>;
+  /** Os bytes de um arquivo do Drive (`alt=media`); acima de `max` bytes, erro em vez de buffer gigante. */
+  baixar: (id: string, max: number) => Promise<Buffer>;
 }
 /**
  * Sessão autenticada no Drive com o token de Contatos do CRM (escopo `drive.file`: o app só enxerga o que ele
@@ -245,14 +249,31 @@ export function sessaoDriveCom(acesso: string): SessaoDrive {
     if (!r.ok) throw new Error(`Google Drive respondeu ${r.status}${typeof (j["error"] as { message?: unknown } | undefined)?.message === "string" ? `: ${(j["error"] as { message: string }).message}` : ""}`);
     return j;
   };
+  const acharFilha = async (nome: string, pai: string): Promise<string | null> => {
+    const achou = await api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaPasta(nome, pai), fields: "files(id)", spaces: "drive", pageSize: "1" })}`);
+    return Array.isArray(achou["files"]) && typeof (achou["files"][0] as { id?: unknown } | undefined)?.id === "string" ? (achou["files"][0] as { id: string }).id : null;
+  };
   const pasta = async (pastas: readonly string[]): Promise<string> => {
     let pai = "root";
     for (const p of pastas) {
-      const achou = await api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaPasta(p, pai), fields: "files(id)", spaces: "drive", pageSize: "1" })}`);
-      const id = Array.isArray(achou["files"]) && typeof (achou["files"][0] as { id?: unknown } | undefined)?.id === "string" ? (achou["files"][0] as { id: string }).id : null;
+      const id = await acharFilha(p, pai);
       pai = id ?? String((await api("https://www.googleapis.com/drive/v3/files?fields=id", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: p, mimeType: "application/vnd.google-apps.folder", parents: [pai] }) }))["id"]);
     }
     return pai;
   };
-  return { api, pasta };
+  const acharPasta = async (pastas: readonly string[]): Promise<string | null> => {
+    let pai = "root";
+    for (const p of pastas) { const id = await acharFilha(p, pai); if (id === null) return null; pai = id; }
+    return pai;
+  };
+  const baixar = async (id: string, max: number): Promise<Buffer> => {
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(id)}?alt=media`, { headers: auth, signal: AbortSignal.timeout(10 * 60_000) });
+    if (!r.ok) throw new Error(`Google Drive respondeu ${r.status} ao baixar o arquivo`);
+    const declarado = Number.parseInt(r.headers.get("content-length") ?? "0", 10);
+    if (declarado > max) throw new Error(`o arquivo tem ${Math.round(declarado / 1048576)} MB, acima do limite de ${Math.round(max / 1048576)} MB`);
+    const b = Buffer.from(await r.arrayBuffer());
+    if (b.length > max) throw new Error(`o arquivo passou de ${Math.round(max / 1048576)} MB`);
+    return b;
+  };
+  return { api, pasta, acharPasta, baixar };
 }

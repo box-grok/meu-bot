@@ -321,20 +321,21 @@ export function ehPlaceholder(valor: string): boolean {
   const corpo = valor.replace(/^(ghp_|sk-|AKIA|eyJ)/, "");
   return /^(.)\1*$/.test(corpo) || /^[xX0-9_.-]*[xX]{6,}[xX0-9_.-]*$/.test(corpo);
 }
+/** Uma entrada de um tar: nome (sem `./`), tipo (`0` arquivo, `5` pasta, `2` link…) e, para arquivo, os bytes (sem cópia). */
+export interface EntradaTar { nome: string; tipo: string; conteudo: Buffer | null }
 /**
- * Varre um tar (o pacote descomprimido) entrada por entrada e diz em que arquivo achou: a mensagem de erro deixa de
- * ser um "tem segredo em algum lugar" que ninguém consegue conferir. Cabeçalho inválido (não é tar): varre o buffer
- * inteiro como antes, sem nome de arquivo.
+ * Lê um tar (o pacote descomprimido) entrada por entrada, sem copiar os dados. null = não é um tar (buffer curto,
+ * texto solto, ou cabeçalho inválido no meio). Serve à varredura de segredos e à procura do home antigo na restauração.
  */
-export function achaSegredoNoTar(dados: Buffer): { tipo: string; arquivo: string | null } | null {
-  // Não começa com um cabeçalho de tar válido (buffer curto, texto solto): varre inteiro, sem nome de arquivo.
-  if (dados.length < 512 || !checksumTarOk(dados.subarray(0, 512))) { const tipo = achaSegredoEmBuffer(dados); return tipo === null ? null : { tipo, arquivo: null }; }
+export function lerTar(dados: Buffer): EntradaTar[] | null {
+  if (dados.length < 512 || !checksumTarOk(dados.subarray(0, 512))) return null;
+  const out: EntradaTar[] = [];
   let off = 0; let nomeLongo: string | null = null;
   const campo = (ini: number, n: number): string => dados.subarray(ini, ini + n).toString("latin1").replace(/\0.*$/s, "");
   while (off + 512 <= dados.length) {
     const h = dados.subarray(off, off + 512);
     if (h.every((b) => b === 0)) break;
-    if (!checksumTarOk(h)) return (() => { const tipo = achaSegredoEmBuffer(dados); return tipo === null ? null : { tipo, arquivo: null }; })();
+    if (!checksumTarOk(h)) return null;
     const tamanho = parseInt(campo(off + 124, 12).trim() || "0", 8);
     const tipoEntrada = String.fromCharCode(h[156] ?? 0);
     const prefixo = campo(off + 345, 155);
@@ -342,11 +343,26 @@ export function achaSegredoNoTar(dados: Buffer): { tipo: string; arquivo: string
     nomeLongo = null;
     const ini = off + 512; const fim = Math.min(dados.length, ini + tamanho);
     if (tipoEntrada === "L") nomeLongo = dados.subarray(ini, fim).toString("utf8").replace(/\0.*$/s, "");
-    else if (tipoEntrada === "0" || tipoEntrada === "\0" || tipoEntrada === "") {
-      const tipo = achaSegredoEmBuffer(dados.subarray(ini, fim));
-      if (tipo !== null) return { tipo, arquivo: nome.replace(/^\.\//, "") };
+    else {
+      const arquivo = tipoEntrada === "0" || tipoEntrada === "\0" || tipoEntrada === "";
+      out.push({ nome: nome.replace(/^\.\//, ""), tipo: arquivo ? "0" : tipoEntrada, conteudo: arquivo ? dados.subarray(ini, fim) : null });
     }
     off = ini + Math.ceil(tamanho / 512) * 512;
+  }
+  return out;
+}
+/**
+ * Varre um tar (o pacote descomprimido) entrada por entrada e diz em que arquivo achou: a mensagem de erro deixa de
+ * ser um "tem segredo em algum lugar" que ninguém consegue conferir. Cabeçalho inválido (não é tar): varre o buffer
+ * inteiro como antes, sem nome de arquivo.
+ */
+export function achaSegredoNoTar(dados: Buffer): { tipo: string; arquivo: string | null } | null {
+  const entradas = lerTar(dados);
+  if (entradas === null) { const tipo = achaSegredoEmBuffer(dados); return tipo === null ? null : { tipo, arquivo: null }; }
+  for (const e of entradas) {
+    if (e.conteudo === null) continue;
+    const tipo = achaSegredoEmBuffer(e.conteudo);
+    if (tipo !== null) return { tipo, arquivo: e.nome };
   }
   return null;
 }
