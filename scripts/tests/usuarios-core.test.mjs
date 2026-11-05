@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { lerUsuarios, NOME_USUARIO_RE, RESERVADOS, LISTAR_SH, limiteKbDe, caminhoDentro, lerMaiores, apagarSh, PROTEGIDOS, lingerSh, nivelUso } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+const { lerUsuarios, NOME_USUARIO_RE, RESERVADOS, LISTAR_SH, limiteKbDe, pctMinimo, conferirMinimo, MINIMO_CONTA_KB, caminhoDentro, lerMaiores, apagarSh, PROTEGIDOS, lingerSh, nivelUso } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
 
 test("usuários: lê a saída do script (só root vê), ordena por uid e ignora lixo", () => {
   const out = "ROOT\nDISCO=1000000\nCOTA=1\nU\tbox\t1002\t/home/box\t/bin/bash\t1\t1\t1\t500\t0\nU\tdebian\t1000\t/home/debian\t/bin/bash\t0\t0\t0\t20\t100000\nlixo\nU\tNome Ruim\t1005\t/x\t/bin/bash\t0\t0\t0\t\t\n";
@@ -327,4 +327,14 @@ test("usuários: o script sai com 0 mesmo quando o último usuário não tem o b
   const out = execFileSync("bash", ["-s"], { input: sh, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
   assert.match(out, /^B\tcom\t1\.2\.3$/m);
   assert.deepEqual(lerUsuarios(out).usuarios.map((u) => [u.nome, u.backendInstalado]), [["com", true], ["sem", false]]);
+});
+
+test("limite mínimo da conta padrão: 3 GB; pctMinimo é a menor % que dá isso; conferirMinimo recusa menos (0 = sem limite passa)", () => {
+  assert.equal(MINIMO_CONTA_KB, 3 * 1024 * 1024);
+  assert.equal(pctMinimo(100 * 1024 * 1024), 3, "disco de 100 GB: 1% dá 1 GB, 3% dá 3 GB");
+  assert.equal(pctMinimo(20 * 1024 * 1024), 15, "disco de 20 GB: 15%");
+  assert.equal(pctMinimo(1024 * 1024), 100, "disco de 1 GB: nem o disco inteiro dá; 100");
+  assert.throws(() => conferirMinimo(1, 100 * 1024 * 1024), /1% deste disco dá 1024 MB, menos que os 3 GB.*use pelo menos 3%/);
+  assert.doesNotThrow(() => conferirMinimo(3, 100 * 1024 * 1024));
+  assert.doesNotThrow(() => conferirMinimo(0, 100 * 1024 * 1024), "0 = sem limite");
 });

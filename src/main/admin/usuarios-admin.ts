@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { MotorNovoUsuario, UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import { RECURSOS_PADRAO, conferirMinimo, pctMinimo, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -69,7 +69,7 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, openclaw: l.openclaw, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion() };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, openclaw: l.openclaw, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion(), pctMinimo: l.discoKb === null ? null : pctMinimo(l.discoKb) };
 }
 
 /**
@@ -158,6 +158,7 @@ export async function definirLimite(host: string, nome: unknown, pct: unknown): 
   const p = typeof pct === "number" ? pct : Number.NaN;
   const v = await usuariosDaMaquina(host);
   if (v.discoKb === null) throw new Error("não consegui ler o tamanho do disco da máquina");
+  conferirMinimo(p, v.discoKb);
   const kb = limiteKbDe(p, v.discoKb);
   // Baixar abaixo do que já ocupa: o admin escolhe antes o que apagar (aba mostra as maiores pastas); aqui só recusa.
   const usado = v.usuarios.find((u) => u.nome === n)?.usadoKb ?? null;
@@ -196,7 +197,11 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   if (nome === null) throw new Error(`nome inválido: digite o que vem depois de ${PREFIXO_USUARIO} (minúsculas, números, - ou _, começando por letra, até 28)`);
   // 2) Limite pedido numa máquina em que o disco não foi lido: avisa antes de criar (criar e falhar no limite deixava
   // o usuário pela metade, e o próximo "Criar" dizia "já existe").
-  if (typeof pct === "number" && pct > 0 && (await usuariosDaMaquina(host)).discoKb === null) throw new Error("não consegui ler o tamanho do disco desta máquina: crie sem limite (deixe o % vazio) e ponha o limite depois, na linha do usuário");
+  if (typeof pct === "number" && pct > 0) {
+    const disco = (await usuariosDaMaquina(host)).discoKb;
+    if (disco === null) throw new Error("não consegui ler o tamanho do disco desta máquina: crie sem limite (deixe o % vazio) e ponha o limite depois, na linha do usuário");
+    conferirMinimo(pct, disco); // antes de criar: a conta nascia na cota e o preparo (ou o npx do Cloudflare) parava em EDQUOT
+  }
   const { chave } = await acessoDesteMac(host);
   // A reserva para o sistema entra antes da primeira box que vier a precisar dela (falhar aqui só avisa no log).
   await usuariosDaMaquina(host).then((v) => garantirReserva(host, v, false)).catch(() => undefined);

@@ -16,6 +16,13 @@ export const CF_ESCOPOS: readonly string[] = ["account:read", "user:read", "page
 /** O que o wrangler acrescenta sozinho e não conta como "amplo". */
 const CF_ESCOPOS_EXTRA = ["offline_access"];
 
+/**
+ * O wrangler 4 exige Node 22+. O `nodejs` do Debian é o 20 e vem sem npx; o Node 24 que o OpenClaw de todos traz para
+ * /opt fica fora do PATH das contas (o do Hermes é 20). Procura um Node 22+ com npx: o do PATH, depois os de /opt e um
+ * da própria conta; achou, entra na frente do PATH só para o comando (nada muda para o resto da máquina) e NODE22=1.
+ * Nenhum: a sondagem diz "ausente" e a tela diz o que pedir ao admin.
+ */
+const NODE22_PATH = `NODE22=0; for d in "" /opt/openclaw/node/bin /opt/node/bin /opt/hermes/node/bin "$HOME/.local/node/bin"; do N="\${d:+$d/}node"; X="\${d:+$d/}npx"; command -v "$N" >/dev/null 2>&1 && command -v "$X" >/dev/null 2>&1 || continue; M=$("$N" -v 2>/dev/null | sed 's/^v//; s/\\..*//'); [ "\${M:-0}" -ge 22 ] 2>/dev/null || continue; [ -n "$d" ] && export PATH="$d:$PATH"; NODE22=1; break; done`;
 const WRANGLER = "npx -y wrangler@4";
 /**
  * Comandos na máquina. `tty`: o wrangler só imprime o link com pseudo-terminal; o `gh` sem terminal não pergunta
@@ -23,7 +30,7 @@ const WRANGLER = "npx -y wrangler@4";
  * da máquina só chega por ele) usa código de dispositivo, como o GitHub.
  */
 export function comandoEntrar(id: ContaId, navegador: boolean): { cmd: string; tty: boolean } {
-  if (id === "cloudflare") return { cmd: `${WRANGLER} login --browser=false${navegador ? "" : " --device"} --scopes ${CF_ESCOPOS.join(" ")} 2>&1`, tty: true };
+  if (id === "cloudflare") return { cmd: `${NODE22_PATH}; ${WRANGLER} login --browser=false${navegador ? "" : " --device"} --scopes ${CF_ESCOPOS.join(" ")} 2>&1`, tty: true };
   return { cmd: "BROWSER=true gh auth login -h github.com -p https -w </dev/null 2>&1", tty: false };
 }
 /** Só esta conta do GitHub (o `gh` guarda várias): a anterior sai quando outra entra, uma conta por máquina. */
@@ -39,13 +46,13 @@ export const GITHUB_OUTRA_CONTA = "https://github.com/login?add_account=1&return
 export const SAIR_DO_SITE: Record<ContaId, string | null> = { cloudflare: "cloudflare.com", github: null };
 
 export function comandoSair(id: ContaId): string {
-  return id === "cloudflare" ? `${WRANGLER} logout </dev/null 2>&1 | tail -2` : "gh auth logout -h github.com </dev/null 2>&1 | tail -2";
+  return id === "cloudflare" ? `${NODE22_PATH}; ${WRANGLER} logout </dev/null 2>&1 | tail -2` : "gh auth logout -h github.com </dev/null 2>&1 | tail -2";
 }
-/** Um SSH só para as duas: cada bloco entre marcadores, `ausente` quando a ferramenta não existe na máquina. */
+/** Um SSH só para as duas: cada bloco entre marcadores, `ausente` quando a ferramenta não existe na máquina (Cloudflare: sem Node 22+ com npx). */
 export const STATUS_SH = [
   // Sem o arquivo de login não há o que perguntar: evita o npx baixar o wrangler (minutos) só para dizer "não logado".
   // Saída num arquivo, não num pipe, e com tempo-limite: o npm exec às vezes fica pendurado depois de responder.
-  `echo '<<cloudflare'; if ! command -v npx >/dev/null 2>&1; then echo ausente; elif [ ! -s "$HOME/.config/.wrangler/config/default.toml" ]; then echo 'You are not authenticated.'; else T=$(mktemp); timeout 60 ${WRANGLER} whoami </dev/null >"$T" 2>&1; head -60 "$T"; rm -f "$T"; fi; echo '>>'`,
+  `echo '<<cloudflare'; ${NODE22_PATH}; if [ "$NODE22" != 1 ]; then echo ausente; elif [ ! -s "$HOME/.config/.wrangler/config/default.toml" ]; then echo 'You are not authenticated.'; else T=$(mktemp); timeout 60 ${WRANGLER} whoami </dev/null >"$T" 2>&1; head -60 "$T"; rm -f "$T"; fi; echo '>>'`,
   "echo '<<github'; command -v gh >/dev/null 2>&1 && gh auth status -h github.com </dev/null 2>&1 | head -40 || echo ausente; echo '>>'",
 ].join("; ");
 

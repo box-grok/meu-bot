@@ -49,7 +49,7 @@ export function renderConta(container: HTMLElement, id: ContaId): void {
     });
     row.append(b);
   }
-  else if (st !== null && !st.presente) row.append(el("span", "hint", "Esta máquina não tem o Node (npx) para o Cloudflare."));
+  else if (st !== null && !st.presente) row.append(el("span", "hint", "Esta máquina não tem um Node 22 ou mais novo para o Cloudflare (o wrangler exige). Peça ao admin: em Preparar máquina, \"OpenClaw para todos\" traz o Node 24 em /opt, e este tutorial passa a usá-lo."));
   else {
     if (st?.conectado === true) row.append(el("span", "audio-ok", `✓ conectado${st.conta !== null ? ` · ${st.conta}` : ""}`));
     // Conectada: "Trocar de conta" (outra conta); "Conectar de novo" só quando o acesso é amplo (mesma conta, só sites).

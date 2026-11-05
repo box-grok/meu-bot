@@ -65,6 +65,8 @@ test("comando: Cloudflare só com os escopos de sites; código sem o Navegador; 
   assert.match(nav.cmd, new RegExp(`--scopes ${CF_ESCOPOS.join(" ")}`));
   assert.doesNotMatch(nav.cmd, /--device/);
   assert.match(comandoEntrar("cloudflare", false).cmd, /--device/);
+  // O wrangler exige Node 22+: antes dele, procura um (o do PATH, o do OpenClaw em /opt…) e põe na frente do PATH.
+  assert.match(nav.cmd, /NODE22=0; for d in "" \/opt\/openclaw\/node\/bin .*-ge 22 .*NODE22=1; break; done; npx -y wrangler@4 login/);
   assert.deepEqual(CF_ESCOPOS, ["account:read", "user:read", "pages:write", "zone:read"]);
   assert.equal(comandoEntrar("github", true).tty, false);
   assert.equal(isContaId("github"), true);
