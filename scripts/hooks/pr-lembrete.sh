@@ -3,6 +3,8 @@
 # branch (≠ main) com a árvore limpa, commits à frente de origin/main, último commit recente e nenhuma PR aberta no
 # diegofornalha/meu-bot, devolve `decision: block` com a razão: a sessão então abre a PR pela skill `contribuir`, com o
 # corpo certo (um shell não escreve "O que acontece / Por quê / Como conferir"). Nada é publicado daqui.
+# A PR conta vinda do fork (`box-grok`) ou direta no origin: a conta logada no `gh` (hoje `diegofornalha`, dona do
+# repositório) manda o branch para o próprio origin, e o head da PR é dela, não do fork.
 # Lembra uma vez por (branch, commit): carimbo em .claude/.pr-check-<branch>-<sha> (fora do git). `stop_hook_active` no
 # JSON de entrada é a volta da própria instrução: sai calado para não entrar em loop. `--check` mostra o que faria.
 # Fora da varredura: branches listados em .claude/pr-lembrete-ignorar (integração local, ex.: local-teste) e branches cujo
@@ -21,6 +23,9 @@ if [ "$modo" = hook ]; then
   case "$entrada" in *'"stop_hook_active":true'*|*'"stop_hook_active": true'*) exit 0;; esac
 fi
 command -v gh >/dev/null 2>&1 || exit 0
+# Donos de head aceitos: o fork, o dono do repositório e a conta logada (uma consulta só, antes do laço).
+conta=$(gh api user -q .login 2>>"$LOG" || true)
+donos="\"$DONO_FORK\", \"${REPO%%/*}\"${conta:+, \"$conta\"}"
 agora=$(date +%s)
 achados=()
 while IFS= read -r dir; do
@@ -38,7 +43,7 @@ while IFS= read -r dir; do
   carimbo="$RAIZ/.claude/.pr-check-$(printf '%s' "$branch" | tr '/' '_')-$sha"
   [ -e "$carimbo" ] && continue
   # `--head dono:branch` não acha PR vinda de fork no gh; `--head branch` acha, e o dono do head é conferido no JSON.
-  if ! pr=$(gh pr list -R "$REPO" --head "$branch" --state open --json number,headRepositoryOwner -q ".[] | select(.headRepositoryOwner.login == \"$DONO_FORK\") | .number" 2>>"$LOG"); then
+  if ! pr=$(gh pr list -R "$REPO" --head "$branch" --state open --json number,headRepositoryOwner -q ".[] | select(.headRepositoryOwner.login | IN($donos)) | .number" 2>>"$LOG"); then
     log "gh falhou para $branch (sem login ou sem rede); nada a fazer"; exit 0
   fi
   touch "$carimbo"
@@ -47,7 +52,7 @@ while IFS= read -r dir; do
 done < <(git -C "$RAIZ" worktree list --porcelain 2>/dev/null | awk '/^worktree /{sub(/^worktree /, ""); print}')
 
 [ "${#achados[@]}" -gt 0 ] || exit 0
-razao="Trabalho commitado sem pull request: $(printf '%s; ' "${achados[@]}")Se o branch é seu (você fez esses commits nesta sessão), abra a PR agora pela skill contribuir (push para o fork + gh pr create, com as seções da skill). Se o branch é de outra sessão, só diga isso ao usuário e pare."
+razao="Trabalho commitado sem pull request: $(printf '%s; ' "${achados[@]}")Se o branch é seu (você fez esses commits nesta sessão), abra a PR agora pela skill contribuir (push do branch + gh pr create, com as seções da skill). Se o branch é de outra sessão, só diga isso ao usuário e pare."
 log "lembrete: ${achados[*]}"
 if [ "$modo" = --check ]; then printf '%s\n' "$razao"; exit 0; fi
 razao_json=$(printf '%s' "$razao" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr '\n' ' ')
