@@ -38,7 +38,7 @@ export function registerAdminIpc(): void {
   handleAdmin("admin:usuarios", (event) => usuariosDaMaquina(adminHost(event)));
   // O job de criar/preparar manda cada passo à janela que pediu (log ao vivo na aba Usuários).
   const progresso = (event: Electron.IpcMainInvokeEvent) => (line: string): void => { if (!event.sender.isDestroyed()) event.sender.send("admin:usuarios-progresso", { line }); };
-  handleAdmin("admin:usuario-criar", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return criarUsuario(adminHost(event), p.nome, p.pct, progresso(event)); });
+  handleAdmin("admin:usuario-criar", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown; motor?: unknown }; return criarUsuario(adminHost(event), p.nome, p.pct, progresso(event), p.motor); });
   handleAdmin("admin:usuario-limite", (event, payload: unknown) => { const p = (payload ?? {}) as { nome?: unknown; pct?: unknown }; return definirLimite(adminHost(event), p.nome, p.pct); });
   handleAdmin("admin:usuario-apagar", (event, payload: unknown) => apagarUsuario(adminHost(event), (payload as { nome?: unknown } | null)?.nome));
   // Usuário de login nos dois seletores (meu-bot pelo ~/.ssh/config e admin), sem preparar a conta: um ou todos os que faltam.

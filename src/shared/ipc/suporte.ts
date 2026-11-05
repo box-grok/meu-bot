@@ -134,6 +134,8 @@ export interface LpUsuario { nome: string; ligado: boolean; link: string | null;
  */
 export interface LpEstado { instalado: boolean; nginx: boolean; login: boolean; loginUrl: string | null; tunel: string | null; servico: boolean; rota: boolean; dominio: string | null; usuarios: LpUsuario[] }
 /** "sem-transcritor" = Hermes global sem o /opt/transcriber (máquina de antes do padrão): falta completar. */
+/** O agente do WhatsApp com que um usuário novo nasce: o sistema é agnóstico, o admin escolhe por conta. */
+export type MotorNovoUsuario = "hermes" | "openclaw";
 export type HermesNaMaquina = "global" | "sem-transcritor" | "root" | "nenhum";
 /** Onde está o OpenClaw na máquina: de todos (/opt/openclaw), só do root, ou nenhum. */
 export type OpenclawNaMaquina = "global" | "root" | "nenhum";

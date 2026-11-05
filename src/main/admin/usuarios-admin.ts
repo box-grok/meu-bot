@@ -8,8 +8,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import type { MotorNovoUsuario, UsuariosVisao } from "../../shared/ipc";
+import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -190,8 +190,9 @@ export async function apagarUsuario(host: string, nome: unknown): Promise<Usuari
 }
 
 /** Cria um usuário comum (sem sudo, shell bash, home própria) com a chave SSH deste Mac. Devolve a lista nova. */
-export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unknown = 0, onLine?: (line: string) => void): Promise<UsuariosVisao> {
+export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unknown = 0, onLine?: (line: string) => void, motorPedido: unknown = undefined): Promise<UsuariosVisao> {
   const nome = nomeParaCriar(nomeDigitado);
+  const motor = motorDe(motorPedido);
   if (nome === null) throw new Error(`nome inválido: digite o que vem depois de ${PREFIXO_USUARIO} (minúsculas, números, - ou _, começando por letra, até 28)`);
   // 2) Limite pedido numa máquina em que o disco não foi lido: avisa antes de criar (criar e falhar no limite deixava
   // o usuário pela metade, e o próximo "Criar" dizia "já existe").
@@ -222,7 +223,7 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   // Onboarding: só devolve depois de tudo pronto. Falhou um passo: o usuário existe, a resposta diz onde parou.
   let preparo: string | null = sel.aviso === null ? null : "sem o seletor do meu-bot, não deu para preparar a conta";
   let global = false;
-  if (preparo === null) await prepararUsuario(host, nome, sel.alias, onLine).then((g) => { global = g; }).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); onLine?.(`✗ parou: ${preparo}`); });
+  if (preparo === null) await prepararUsuario(host, nome, sel.alias, onLine, motor).then((g) => { global = g; }).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); onLine?.(`✗ parou: ${preparo}`); });
   const v = await usuariosDaMaquina(host);
   return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo, global };
 }
@@ -322,8 +323,10 @@ echo "SEMEADO=ok"`;
  * com a transcrição ligada. Sobram para a pessoa só o login do Claude (tutorial 1) e o QR (tutorial 3). Para no
  * primeiro passo que falhar e diz qual; "Preparar" na linha do usuário retoma (cada passo pula o que já está feito).
  */
-async function prepararUsuario(host: string, nome: string, alias: string, onLine?: (line: string) => void): Promise<boolean> {
+async function prepararUsuario(host: string, nome: string, alias: string, onLine?: (line: string) => void, motorPedido?: MotorNovoUsuario): Promise<boolean> {
   const passo = (t: string): void => { log(`[usuarios] ${host}: ${nome}: ${t}`); if (t.trim() !== "") onLine?.(t); };
+  // O motor do WhatsApp: o pedido do "Criar usuário" ou, no "Preparar" de novo, o que a conta já tem gravado (Hermes se nada).
+  const motor: MotorNovoUsuario = motorPedido ?? await runSsh(alias, `cat "${WA_AGENTE_FILE}" 2>/dev/null || true\n`, 20_000).then((r) => (r.stdout.trim() === "openclaw" ? "openclaw" as const : "hermes" as const)).catch(() => "hermes" as const);
   // Logo depois do preparo pesado a máquina pode demorar a responder: uma segunda tentativa antes de parar o onboarding
   // (sem ela a conta nascia sem Claude Code e sem backend, e o meu-bot dizia "Esta máquina ainda não tem o backend").
   const v = await usuariosDaMaquina(host).catch(() => usuariosDaMaquina(host));
@@ -346,9 +349,15 @@ async function prepararUsuario(host: string, nome: string, alias: string, onLine
   passo("instalando a status line do Claude");
   const sl = await installStatusLine(alias, passo).catch((e: unknown) => ({ ok: false, log: [e instanceof Error ? e.message : String(e)] }));
   if (!sl.ok) passo(`✗ status line não instalou: ${sl.log.at(-1) ?? "?"} (a conta segue sem ela)`);
-  passo("deixando o Hermes como agente do WhatsApp, com a transcrição ligada");
-  const h = await runSsh(alias, `${hermesSemearSh()}\n`, 120_000);
-  if (!/^SEMEADO=ok$/m.test(h.stdout)) throw new Error(`não consegui preparar o Hermes: ${(h.stderr.trim() || h.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  if (motor === "openclaw") {
+    passo("deixando o OpenClaw como agente do WhatsApp (o onboard e o gateway nascem no pareamento, no meu-bot dele)");
+    const o = await runSsh(alias, `${openclawSemearSh()}\n`, 60_000);
+    if (!/^SEMEADO=ok$/m.test(o.stdout)) throw new Error(`não consegui gravar a escolha do OpenClaw: ${(o.stderr.trim() || o.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  } else {
+    passo("deixando o Hermes como agente do WhatsApp, com a transcrição ligada");
+    const h = await runSsh(alias, `${hermesSemearSh()}\n`, 120_000);
+    if (!/^SEMEADO=ok$/m.test(h.stdout)) throw new Error(`não consegui preparar o Hermes: ${(h.stderr.trim() || h.stdout.trim()).split("\n").pop() ?? "sem resposta"}`);
+  }
   // Claude Code Global: com o intermediário do root instalado, a conta já nasce respondendo pela assinatura do root.
   const cg = await runSsh(host, `[ -f ${CG_ETC}/config.json ] && echo CG=1 || echo CG=0\n`, 20_000);
   const comGlobal = /^CG=1$/m.test(cg.stdout);

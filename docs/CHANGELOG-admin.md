@@ -8,6 +8,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **O agente do WhatsApp da conta nova é escolha do admin.** No "Criar usuário", ao lado do nome: Hermes (o padrão de
+  sempre, com transcrição) ou OpenClaw. Com o OpenClaw, a conta nasce com a escolha gravada e o onboard acontece no
+  pareamento, no meu-bot dela. O sistema é agnóstico: a mesma máquina recebe os dois.
 - **Nova VPS com um clique.** No seletor de pessoas, ao lado de "Adicionar": com o endereço e um nome curto, o admin
   leva uma VPS recém-criada ao fluxo inteiro: alias root neste Mac, máquina na lista, Preparar máquina (swap, cota,
   governança, pacotes, gh, Hermes, transcritor, OpenClaw, Claude Global), primeiro usuário `box-1`, e o bloco pronto
