@@ -15,17 +15,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { gunzipSync } from "node:zlib";
-import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoNoTar, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, type ConjuntoDados } from "./google-core";
+import { CONJUNTOS_DADOS, ERRO_DRIVE_DESCONECTADA, ERRO_DRIVE_PERMISSAO, achaSegredoNoTar, caminhoDadosNoDrive, comandoPacoteSh, consultaFilhos, corpoUploadBinario, erroDriveAindaVale, pacoteDadosRe, pacotesDadosAApagar, slugMaquina, type ConjuntoDados } from "./google-core";
+import { CONFERIR_RESTAURO_SH, comandoRestaurarSh, copiasDeBackup, decisaoRestauroDados, homeAntigoDoTar, linhaSshRestaurar, parseConferirRestauro, type ArquivoDrive, type ArquivoLocal, type CopiaConjunto } from "./restauro-core";
 import { sessaoDriveCom, type SessaoDrive } from "./google";
 import { acessoValido, contaStatus } from "./conta-google";
-import { lerSenhaBackup } from "./senha-backup";
-import { cifrarPacote } from "./backup-cifra";
+import { lerSenhaBackup, temSenhaBackup } from "./senha-backup";
+import { cifrarPacote, decifrarPacote } from "./backup-cifra";
+import { runSsh } from "../whatsapp/whatsapp-ssh";
 import { gravar } from "./comum";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/tunnel";
 import { sendToHost } from "../app/windows";
 import { eventoHook } from "../app/depuracao";
-import type { BackupDadosEtapa, BackupDadosProgresso } from "../../shared/ipc";
+import type { BackupCopiasView, BackupDadosEtapa, BackupDadosProgresso, BackupRestauroEtapa, BackupRestauroPedido, BackupRestauroProgresso, BackupRestauroResultado } from "../../shared/ipc";
 
 const SSH_OPTS = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8", "-o", "ControlMaster=no", "-o", "ControlPath=none"];
 const INTERVALO = 24 * 60 * 60_000;
@@ -198,3 +200,128 @@ export function agendarDadosAoDrive(host: string, ligado: () => boolean): void {
 export function pararDadosAoDrive(host: string): void { const a = agendados.get(host); if (a) clearInterval(a.timer); agendados.delete(host); }
 /** A Conta Google acabou de (re)conectar: a cópia das máquinas agendadas sai agora, em vez de esperar o próximo ciclo com um erro velho na tela. */
 export function dispararDadosAoDrive(): void { for (const a of agendados.values()) a.rodar(); }
+
+// ---- Restaurar uma cópia nesta máquina (de qualquer máquina): a parte pura está em restauro-core.ts -----------------
+
+/** Um nível do Drive: as filhas de `pai` (pastas ou arquivos), com o bastante para listar cópias. */
+async function filhosNoDrive(s: SessaoDrive, pai: string): Promise<{ id: string; name: string; size: number; pasta: boolean }[]> {
+  const r = await s.api(`https://www.googleapis.com/drive/v3/files?${new URLSearchParams({ q: consultaFilhos(pai), fields: "files(id,name,size,mimeType)", spaces: "drive", pageSize: "200" })}`);
+  const lista = Array.isArray(r["files"]) ? (r["files"] as Record<string, unknown>[]) : [];
+  return lista.flatMap((f) => (typeof f["id"] === "string" && typeof f["name"] === "string" ? [{ id: f["id"], name: f["name"], size: Number.parseInt(String(f["size"] ?? "0"), 10) || 0, pasta: f["mimeType"] === "application/vnd.google-apps.folder" }] : []));
+}
+/** As cópias locais de todas as máquinas (`Documents/meu-bot/backup/<máquina>/`). */
+function copiasLocais(): ArquivoLocal[] {
+  const raiz = path.join(app.getPath("documents"), "meu-bot", "backup");
+  const out: ArquivoLocal[] = [];
+  let maquinas: string[] = [];
+  try { maquinas = fs.readdirSync(raiz); } catch { return out; }
+  for (const m of maquinas) {
+    const dir = path.join(raiz, m);
+    let nomes: string[] = [];
+    try { nomes = fs.readdirSync(dir); } catch { continue; }
+    for (const f of nomes) { try { const st = fs.statSync(path.join(dir, f)); if (st.isFile()) out.push({ name: f, bytes: st.size, caminho: path.join(dir, f) }); } catch { /* sumiu no meio */ } }
+  }
+  return out;
+}
+/** As cópias no Drive desta conta: `meu-bot/<máquina>/<Conjunto>/*` (o escopo `drive.file` só mostra o que este app subiu). */
+async function copiasNoDrive(s: SessaoDrive): Promise<ArquivoDrive[]> {
+  const raiz = await s.acharPasta(["meu-bot"]);
+  if (raiz === null) return [];
+  const maquinas = (await filhosNoDrive(s, raiz)).filter((f) => f.pasta);
+  const porMaquina = await Promise.all(maquinas.map(async (m) => {
+    const conjuntos = (await filhosNoDrive(s, m.id)).filter((f) => f.pasta);
+    const arquivos = await Promise.all(conjuntos.map((c) => filhosNoDrive(s, c.id)));
+    return arquivos.flat().filter((f) => !f.pasta).map((f) => ({ id: f.id, name: f.name, size: f.size }));
+  }));
+  return porMaquina.flat();
+}
+/** Fonte dos pacotes (com os caminhos que a tela não precisa ver). */
+let ultimasCopias = new Map<string, CopiaConjunto>();
+/**
+ * O que dá para restaurar nesta máquina: Drive (se a conta está conectada) + Mac, fundidos por nome. Sem Drive a
+ * lista continua valendo com o que há no Mac, e `driveErro` diz por quê.
+ */
+export async function listarCopias(host: string): Promise<BackupCopiasView> {
+  const st = contaStatus(host);
+  let drive: ArquivoDrive[] = []; let driveErro: string | null = null;
+  if (!st.conectado) driveErro = ERRO_DRIVE_DESCONECTADA;
+  else if (st.precisaReconectar) driveErro = ERRO_DRIVE_PERMISSAO;
+  else { try { drive = await copiasNoDrive(sessaoDriveCom(await acessoValido(host))); } catch (e) { driveErro = e instanceof Error ? e.message : String(e); } }
+  const maquinas = copiasDeBackup(drive, copiasLocais(), host);
+  ultimasCopias = new Map(maquinas.flatMap((m) => m.conjuntos.map((c) => [`${m.maquina}/${c.conjunto}`, c] as const)));
+  return { atual: slugMaquina(host), temSenha: temSenhaBackup(), driveErro, maquinas: maquinas.map((m) => ({ maquina: m.maquina, conjuntos: m.conjuntos.map(({ conjunto, nome, arquivo, bytes, data, cifrado, origem }) => ({ conjunto, nome, arquivo, bytes, data, cifrado, origem })) })) };
+}
+
+/** Manda o pacote claro pelo stdin do ssh para o script de restauração; exige `RESTAURADO=ok`. */
+function enviarParaRestaurar(host: string, linha: string, pacote: Buffer): Promise<string> {
+  return new Promise((res, rej) => {
+    const filho = spawn("ssh", [...SSH_OPTS, "--", host, linha], { stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = ""; let stderr = "";
+    filho.stdout.on("data", (d: Buffer) => { stdout += d.toString("utf8"); });
+    filho.stderr.on("data", (d: Buffer) => { stderr += d.toString("utf8"); });
+    filho.stdin.on("error", () => { /* o remoto recusou e fechou: o motivo vem no stderr */ });
+    filho.on("error", rej);
+    filho.on("close", (code) => {
+      if (code === 0 && /RESTAURADO=ok/.test(stdout)) res(stdout);
+      else rej(new Error(stderr.trim().split("\n").filter((l) => l !== "").pop() ?? `a máquina devolveu código ${code}`));
+    });
+    filho.stdin.end(pacote);
+  });
+}
+const emRestauro = new Set<string>();
+/**
+ * Restaura os conjuntos escolhidos de uma cópia nesta máquina, um por vez, na ordem de `CONJUNTOS_DADOS`; um que
+ * falhe não impede o seguinte. Pré-voo antes de encostar em qualquer coisa (espaço, WhatsApp vivo). O pacote vem
+ * do Mac quando há cópia local igual; senão desce do Drive. O cifrado abre com a senha do Keychain ou com a do
+ * pedido (que não é guardada). Cada etapa vai para as janelas da máquina.
+ */
+export async function restaurarDoDrive(host: string, p: BackupRestauroPedido): Promise<BackupRestauroResultado> {
+  if (emRestauro.has(host)) throw new Error("já há uma restauração em andamento nesta máquina");
+  emRestauro.add(host);
+  try {
+    const copias = await listarCopias(host);
+    const maq = copias.maquinas.find((m) => m.maquina === p.maquina);
+    if (maq === undefined) throw new Error(`não achei cópias da máquina ${p.maquina}`);
+    const escolhidos = CONJUNTOS_DADOS.filter((c) => p.conjuntos.includes(c.id)).map((c) => { const copia = ultimasCopias.get(`${maq.maquina}/${c.id}`); if (copia === undefined) throw new Error(`não há cópia de ${c.nome} da máquina ${maq.maquina}`); return { c, copia }; });
+    if (escolhidos.length === 0) throw new Error("escolha pelo menos um conjunto");
+    const conf = parseConferirRestauro((await runSsh(host, `${CONFERIR_RESTAURO_SH}\n`, 60_000)).stdout);
+    const decisao = decisaoRestauroDados(conf, p.conjuntos, escolhidos.reduce((n, e) => n + e.copia.bytes, 0), p.substituirWhatsapp, maq.maquina === copias.atual);
+    if (decisao.bloqueios.length > 0) throw new Error(decisao.bloqueios.join("; "));
+    const senhas = [p.senha ?? "", lerSenhaBackup() ?? ""].filter((x) => x.trim() !== "");
+    let sessao: SessaoDrive | null = null;
+    const restaurados: string[] = []; const erros: string[] = []; let antes: string | null = null;
+    const total = escolhidos.length;
+    for (const [i, { c, copia }] of escolhidos.entries()) {
+      const avisar = (etapa: BackupRestauroEtapa, detalhe: string | null = null): void => {
+        const ev: BackupRestauroProgresso = { conjunto: c.id, nome: c.nome, etapa, indice: i + 1, total, detalhe };
+        sendToHost(host, "backup-dados:restauro", ev);
+        eventoHook("backup-dados:restauro", `${host}: ${c.nome} (${i + 1}/${total}) ${etapa}${detalhe !== null ? `: ${detalhe}` : ""}`);
+      };
+      try {
+        let bruto: Buffer;
+        if (copia.local !== null && fs.existsSync(copia.local)) bruto = fs.readFileSync(copia.local);
+        else if (copia.driveId !== null) { avisar("baixando"); sessao ??= sessaoDriveCom(await acessoValido(host)); bruto = await sessao.baixar(copia.driveId, PACOTE_MAX); }
+        else throw new Error("a cópia não está nem no Drive nem no Mac");
+        let claro = bruto;
+        if (copia.cifrado) {
+          avisar("decifrando");
+          if (senhas.length === 0) throw new Error("o pacote é cifrado e não há senha: informe a senha do backup");
+          let abriu = false;
+          for (const senha of senhas) { try { claro = await decifrarPacote(bruto, senha); abriu = true; break; } catch { /* tenta a próxima */ } }
+          if (!abriu) throw new Error("a senha não abre este pacote (foi cifrado com outra?)");
+        }
+        avisar("restaurando");
+        // Só os conjuntos que podem carregar o home antigo por extenso; CRM e financeiro são dados puros.
+        const homeAntigo = c.id === "crm" || c.id === "financeiro" ? null : homeAntigoDoTar(gunzipSync(claro));
+        const saida = await enviarParaRestaurar(host, linhaSshRestaurar(comandoRestaurarSh({ conjunto: c, motor: conf.motor, homeAntigo, substituirWhatsapp: p.substituirWhatsapp })), claro);
+        antes = /ANTES=(\S+)/.exec(saida)?.[1] ?? antes;
+        const n = (k: string): string => new RegExp(`^${k}=(\\d+)$`, "m").exec(saida)?.[1] ?? "0";
+        const detalhe = [`${n("GUARDADOS")} guardado(s)`, n("MESCLADOS") !== "0" ? `${n("MESCLADOS")} projeto(s) do agente juntado(s)` : "", n("TROCADOS") !== "0" ? `caminho trocado em ${n("TROCADOS")} arquivo(s)` : "", n("BLOCOS") !== "0" ? `blocos do meu-bot mantidos em ${n("BLOCOS")} arquivo(s)` : ""].filter((x) => x !== "").join(", ");
+        restaurados.push(c.id); avisar("restaurado", detalhe);
+        log(`[dados-drive] ${host}: ${c.id} restaurado da cópia de ${maq.maquina} (${copia.arquivo}; ${detalhe})`);
+      } catch (e) { const m = e instanceof Error ? e.message : String(e); erros.push(`${c.nome}: ${m}`); avisar("erro", m); log(`[dados-drive] ${host}: ${c.id} não restaurado: ${m}`); }
+    }
+    if (restaurados.length > 0) void registrar(host, "backup.restaurar-dados", `${maq.maquina}: ${restaurados.join(", ")}`);
+    return { restaurados, erros, antes, avisos: decisao.avisos };
+  } finally { emRestauro.delete(host); }
+}

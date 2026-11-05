@@ -79,8 +79,39 @@ Os pacotes são feitos com `tar -C $HOME` e caminhos relativos, então **restaur
 - **Desligar:** `dadosNoDrive: false` no `settings.json`, ou o botão na tela.
 - **Auditoria:** registra `backup.dados-drive` com os conjuntos que subiram.
 
-**Restaurar numa VM nova:** `tar -xzf <pacote>.tar.gz -C ~` para os quatro sem cifra. Em seguida
-`POST /v1/crm/reindex`.
+**Restaurar pela interface (5 nov):** na aba Conta Google, "Backup no Drive" › **Restaurar uma cópia…**. A lista
+(`backup-dados:copias` → `listarCopias` em `dados-drive.ts`) funde o Drive desta conta (`meu-bot/<máquina>/<Conjunto>/`,
+escopo `drive.file`: só a conta que fez a cópia a vê) com a pasta do Mac, por nome de arquivo (`copiasDeBackup`,
+`restauro-core.ts`): uma máquina de origem qualquer, um item por conjunto (o mais novo), origem "no Drive", "neste
+Mac" ou "Drive e Mac". A pessoa escolhe a máquina e os conjuntos (tudo marcado menos Credenciais) e confirma.
+O job (`restaurarDoDrive`), um conjunto por vez e na ordem dos conjuntos:
+- **pré-voo** na máquina (`CONFERIR_RESTAURO_SH`: motor, espaço, WhatsApp pareado) e `decisaoRestauroDados`:
+  pouco espaço bloqueia; Credenciais com WhatsApp vivo só com a caixinha "substituir o WhatsApp desta máquina";
+- o pacote vem do Mac quando há cópia local igual; senão desce do Drive (`SessaoDrive.baixar`). O cifrado abre com a
+  senha do Keychain ou com uma senha digitada só para esta restauração (nunca guardada); senha errada é erro claro;
+- o **script da VM** (`comandoRestaurarSh`, vai em base64 na linha do ssh com o `.tar.gz` claro no stdin): recusa
+  caminho absoluto, `..` e arquivo que passa por link; guarda em `~/.meu-bot-antes-da-restauracao-<ts>/` cada
+  arquivo que vai ser sobrescrito (**nada é apagado**, e o que só existe na máquina continua lá); para o
+  `meu-bot-backend` (e o gateway, só em Credenciais) e religa no fim por `trap`; extrai por cima;
+- **o motor da máquina manda:** numa máquina OpenClaw o `.hermes` do pacote não entra, numa Hermes o `.openclaw`
+  não entra; o `auditoria.jsonl` desta máquina nunca é substituído (o ledger é dela);
+- **home antigo → novo** (`homeAntigoDoTar` lê `.claude.json`, `openclaw.json` ou o nome das pastas de projeto do
+  Claude Code): as pastas `.claude/projects/-home-<antigo>-*` são renomeadas e, se a nova já existe, **mescladas**
+  (as conversas antigas entram ao lado das de hoje); o caminho é trocado nos textos conhecidos e no `cwd` dos
+  transcripts; do `.claude.json` da cópia só entram os `projects` que a máquina não tinha (login e preferências
+  ficam os dela); links que apontavam para dentro do home antigo são religados.
+- **Os blocos `<!-- meu-bot:<nome> -->` dos arquivos de instrução são da máquina** (`agent-workspace/CLAUDE.md`,
+  `chat-workspace/CLAUDE.md`, `.openclaw/workspace/AGENTS.md`): o bloco que a máquina tinha volta por cima do de mesmo
+  nome que veio na cópia, e os que a cópia não tinha são acrescentados (o contexto da máquina não se perde ao
+  restaurar o Trabalho de outra). `ANTES` só é anunciado quando algo foi de fato sobrescrito.
+- **Senha:** a gravada no Keychain é tentada primeiro; o cartão sempre oferece um campo para outra quando há conjunto
+  cifrado marcado, porque a cópia pode ter sido cifrada noutro app deste Mac (cada variante tem o próprio
+  `backup-senha.bin`), noutra máquina, ou antes de uma troca de senha.
+- Auditoria: `backup.restaurar-dados` com a máquina de origem e os conjuntos. Caso que motivou: a LV saiu da VM
+  morta `agente-box-lv` (`/home/box-lv`, Hermes) para a `box-1` da VM `meu` (`/home/box-1`, OpenClaw).
+
+**Restaurar na mão** continua valendo: `tar -xzf <pacote>.tar.gz -C ~` para os sem cifra, e `POST /v1/crm/reindex`
+(ou reiniciar o `meu-bot-backend`).
 
 **Abrir o pacote cifrado:** o `age` de linha de comando não vem instalado, e um backup que não se abre não é
 backup. Use o script do repositório, que usa a mesma biblioteca do app e só precisa do Node:
@@ -96,7 +127,8 @@ lixo. `--saida <pasta>` escolhe onde gravar. O arquivo decifrado tem credenciais
 Não confundir com o **backup completo e mudança de máquina** (acima): aquele é manual, cobre a máquina inteira e
 depende da chave `~/.ssh/meu-bot-backup.age`. Este é automático, por conjunto, e a cifra é por senha do dono.
 **Religar o WhatsApp numa VM nova continua sendo o fluxo `ativar-whatsapp`/`desativar-whatsapp`** do
-`meu-bot-backup.sh`, que nunca faz `channels logout`: restaurar o arquivo não substitui esse passo.
+`meu-bot-backup.sh`, que nunca faz `channels logout`: restaurar o arquivo não substitui esse passo. Na restauração
+pela interface, Credenciais com "substituir" para e religa o gateway desta máquina; desligar a antiga é com você.
 
 ## Backup: tar 1 ("file changed as we read it") não é erro (25 out)
 

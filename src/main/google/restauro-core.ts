@@ -149,7 +149,9 @@ export interface PedidoRestauroSh { conjunto: ConjuntoDados; motor: MotorMaquina
  * anexos novos); cada arquivo que vai ser sobrescrito é guardado antes em `~/.meu-bot-antes-da-restauracao-<ts>/`,
  * no mesmo caminho relativo. Saída: `ANTES=<pasta>`, `GUARDADOS=<n>`, `MESCLADOS=<n>` (conversas do agente
  * juntadas num projeto que já existia), `TROCADOS=<n>` (arquivos em que o home antigo virou o novo) e
- * `RESTAURADO=ok`. Qualquer recusa sai com código ≠ 0 e o motivo no stderr. Os serviços parados voltam pelo `trap`.
+ * `BLOCOS=<n>` (arquivos de instrução em que os blocos `meu-bot:*` da máquina voltaram por cima dos da cópia) e
+ * `RESTAURADO=ok`. `ANTES` sai vazio quando nada foi sobrescrito. Qualquer recusa sai com código ≠ 0 e o motivo no
+ * stderr. Os serviços parados voltam pelo `trap`.
  */
 export function comandoRestaurarSh(p: PedidoRestauroSh): string {
   const excl = [...exclusoesPorMotor(p.motor), ...NUNCA_RESTAURA];
@@ -249,8 +251,41 @@ export function comandoRestaurarSh(p: PedidoRestauroSh): string {
     // Links que apontavam para dentro do home antigo passam a apontar para o mesmo lugar no novo.
     `  while IFS= read -r -d '' L; do ALVO=$(readlink "$L"); case "$ALVO" in "$OLD"/*) ln -sfn "$H\${ALVO#"$OLD"}" "$L" ;; esac; done < <(find ${caminhos === "" ? "." : caminhos} -type l -print0 2>/dev/null)`,
     "fi",
-    "religar",
-    'echo "ANTES=$ANTES"; echo "GUARDADOS=$GUARDADOS"; echo "MESCLADOS=$MESCLADOS"; echo "TROCADOS=$TROCADOS"; echo "RESTAURADO=ok"',
+    // Os blocos `<!-- meu-bot:<nome> vN inicio/fim -->` dos arquivos de instrução são da máquina (contexto, navegador,
+    // gmail…), não da cópia: o que ela tinha antes volta por cima do bloco de mesmo nome que veio no pacote.
+    'BLOCOS=$(python3 - "$H" "$ANTES" <<\'PY\'',
+    "import os, re, sys",
+    "home, antes = sys.argv[1:3]",
+    'RE = re.compile(r"<!-- meu-bot:([\\w-]+) v\\d+ inicio -->.*?<!-- meu-bot:\\1 v\\d+ fim -->\\n?", re.S)',
+    "n = 0",
+    'for rel in ("agent-workspace/CLAUDE.md", "chat-workspace/CLAUDE.md", ".openclaw/workspace/AGENTS.md", ".hermes/AGENTS.md"):',
+    "    meu = os.path.join(antes, rel); novo = os.path.join(home, rel)",
+    "    if not (os.path.isfile(meu) and os.path.isfile(novo)):",
+    "        continue",
+    "    try:",
+    '        a = open(meu, encoding="utf-8").read(); b = open(novo, encoding="utf-8").read()',
+    "    except (OSError, UnicodeDecodeError):",
+    "        continue",
+    "    blocos = {m.group(1): m.group(0) for m in RE.finditer(a)}",
+    "    if not blocos:",
+    "        continue",
+    "    vistos = set()",
+    "    def troca(m):",
+    "        nome = m.group(1); vistos.add(nome)",
+    "        return blocos.get(nome, m.group(0))",
+    "    c = RE.sub(troca, b)",
+    "    faltam = [t for nome, t in blocos.items() if nome not in vistos]",
+    "    if faltam:",
+    '        c = c.rstrip("\\n") + "\\n\\n" + "\\n".join(faltam)',
+    "    if c != b:",
+    '        open(novo, "w", encoding="utf-8").write(c); n += 1',
+    "print(n)",
+    "PY",
+    ")",
+    'religar',
+    // Sem nada sobrescrito a pasta de segurança não existe: não se anuncia pasta fantasma.
+    '[ "$GUARDADOS" -gt 0 ] || ANTES=""',
+    'echo "ANTES=$ANTES"; echo "GUARDADOS=$GUARDADOS"; echo "MESCLADOS=$MESCLADOS"; echo "TROCADOS=$TROCADOS"; echo "BLOCOS=$BLOCOS"; echo "RESTAURADO=ok"',
   ].join("\n");
 }
 
