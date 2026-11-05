@@ -630,7 +630,12 @@ export const configTemHost = (texto: string, alias: string): boolean =>
  * 5 nov continua um gateway por usuário Linux (o agente por cliente no gateway do root reprovou: o runtime claude-cli
  * roda no host como root, fora da sandbox do OpenClaw). Ver docs/guia/maquinas.md "Medição do OpenClaw".
  */
-export const RECURSOS_PADRAO = { ramMb: 2048, cpuPct: 200 } as const;
+/**
+ * 3 GB (5 nov, voz): o gateway do OpenClaw com WhatsApp fica em 1,0-1,5 GB e os claude filhos somam mais 0,3-0,5 GB; o
+ * Kokoro (vozes dora e alex) precisa de ~550 MB de pico para sintetizar. Com 2 GB a síntese entrava em thrashing no
+ * teto (3 min sem terminar, 1m27 de sys) e o teste de voz do OpenClaw caía; com 3 GB leva 1,5 s. 9 boxes em 32 GB.
+ */
+export const RECURSOS_PADRAO = { ramMb: 3072, cpuPct: 200 } as const;
 
 const CHAVE_PUB_RE = /^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp\d+) [A-Za-z0-9+/=]{20,}( [\w@.:-]{0,80})?$/;
 /**

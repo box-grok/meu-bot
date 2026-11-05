@@ -102,10 +102,10 @@ test("usuários: 'No meu-bot' gera o Host <máquina>-<usuário> e não duplica u
   assert.ok(!configTemHost("Host meu-root-box-10\n", "meu-root-box-1"));
 });
 
-test("usuários: todo usuário novo nasce com 2 GB de RAM e 200% de CPU (14 boxes em 32 GB; o gateway do OpenClaw com os claude filhos chega a 2,5 GB; a coluna Pressão mostra)", async () => {
+test("usuários: todo usuário novo nasce com 3 GB de RAM e 200% de CPU (9 boxes em 32 GB; gateway do OpenClaw + claude filhos + o Kokoro da voz em ~550 MB de pico; a coluna Pressão mostra)", async () => {
   const { RECURSOS_PADRAO, recursosSh } = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
-  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 2048, cpuPct: 200 });
-  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryHigh=1843M MemoryMax=2048M CPUQuota=200%/);
+  assert.deepEqual({ ...RECURSOS_PADRAO }, { ramMb: 3072, cpuPct: 200 });
+  assert.match(recursosSh("ana", RECURSOS_PADRAO.ramMb, RECURSOS_PADRAO.cpuPct), /MemoryHigh=2764M MemoryMax=3072M CPUQuota=200%/);
 });
 
 test("seletores: entram os comuns com a chave deste Mac; sudo, meu-bot, sistema e sem chave ficam de fora", () => {
@@ -284,7 +284,7 @@ test("capacidade: quantas boxes cabem no teto dos usuários com o teto padrão; 
   const usuarios = [u("box-1"), u("box-2"), u("root-like", { sudo: true }), u("hermes"), u("admin")];
   const cap = c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios });
   assert.deepEqual(cap, { boxes: 2, cabem: 14, capMb: 28_890, padraoMb: 2048, reservaAplicada: false, cpuNucleos: 8, cpuPrometidoPct: 400 });
-  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: c.RECURSOS_PADRAO.ramMb, usuarios }).cabem, 14, "o padrão de 2 GB (5 nov): 14 boxes em 32 GB com a reserva de 3 GB");
+  assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: c.RECURSOS_PADRAO.ramMb, usuarios }).cabem, 9, "o padrão de 3 GB (5 nov, voz): 9 boxes em 32 GB com a reserva de 3 GB");
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: 29_491_200, cpus: 8, padraoMb: 2048, usuarios }).reservaAplicada, true);
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 1536, usuarios }).cabem, 18);
   assert.equal(c.capacidadeDe({ totalKb: 32_870_400, userSliceMaxKb: null, cpus: 8, padraoMb: 2048, usuarios: [u("x", { cpuMaxPct: null })] }).cpuPrometidoPct, 800, "sem cota de CPU conta como a máquina inteira");

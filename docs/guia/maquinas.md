@@ -550,8 +550,12 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
 
 - **O que se aprendeu:** o "leve" poupa ~430 MB na largada, mas o gateway com WhatsApp vai a 1,5 GB em minutos e o
   cgroup da box soma os processos `claude` que o runtime `claude-cli` sobe a cada turno (300-500 MB cada). Com o teto
-  de 1,25 GB uma box de OpenClaw batia no MemoryMax e perdia um agente; por isso o teto padrão sobe para **2 GB**
-  (`RECURSOS_PADRAO`, 14 boxes em 32 GB). Boxes com Hermes seguem em ~0,3-0,4 GB próprios.
+  de 1,25 GB uma box de OpenClaw batia no MemoryMax e perdia um agente; por isso o teto padrão subiu para 2 GB
+  (14 boxes em 32 GB). Ainda em 5 nov, a voz natural: o Kokoro (dora/alex) precisa de ~550 MB de pico (medido no root,
+  1,1 s); numa box de 2 GB com o gateway em 1,0 GB e dois claude a síntese entrava em thrashing no teto (3 min sem
+  terminar, 1m27 de sys) e o `openclaw capability tts convert` do install-voz.sh caía mudo. Teto padrão: **3 GB**
+  (`RECURSOS_PADRAO`, 9 boxes em 32 GB); o install-voz.sh confere a folga no cgroup antes de baixar o Kokoro e diz o que
+  pedir ao admin. Boxes com Hermes seguem em ~0,3-0,4 GB próprios.
 - **Portão do agente por cliente (reprovado):** `openclaw agents add teste1 … --bind whatsapp:teste1`,
   `agents.entries.teste1.sandbox {mode:"all", scope:"agent", docker:{memory:"512m", cpus:1, pidsLimit:256}}`,
   `tools.agentToAgent.enabled=false`, `tools.sessions.visibility="self"`; `openclaw sandbox explain --agent teste1`
