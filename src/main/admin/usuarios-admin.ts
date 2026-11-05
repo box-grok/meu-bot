@@ -9,12 +9,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { MotorNovoUsuario, UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import { RECURSOS_PADRAO, conferirMinimo, pctMinimo, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
-import { refreshPickerIfOpen } from "../maquina/picker";
+import { refreshPickerIfOpen, resondarNoSeletor } from "../maquina/picker";
 import { bundledBackendVersion, fusoDesteMac, installBackend, installClaudeCode, installStatusLine, pausaPluginFonte, probeHost } from "../maquina/hostProbe";
 import { portaParaInstalar } from "../maquina/porta-backend-core";
 import { precisaAtualizarBackend } from "../atualizacao/updater-core";
@@ -69,7 +69,7 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, openclaw: l.openclaw, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion() };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, openclaw: l.openclaw, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion(), pctMinimo: l.discoKb === null ? null : pctMinimo(l.discoKb) };
 }
 
 /**
@@ -158,6 +158,7 @@ export async function definirLimite(host: string, nome: unknown, pct: unknown): 
   const p = typeof pct === "number" ? pct : Number.NaN;
   const v = await usuariosDaMaquina(host);
   if (v.discoKb === null) throw new Error("não consegui ler o tamanho do disco da máquina");
+  conferirMinimo(p, v.discoKb);
   const kb = limiteKbDe(p, v.discoKb);
   // Baixar abaixo do que já ocupa: o admin escolhe antes o que apagar (aba mostra as maiores pastas); aqui só recusa.
   const usado = v.usuarios.find((u) => u.nome === n)?.usadoKb ?? null;
@@ -196,7 +197,11 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   if (nome === null) throw new Error(`nome inválido: digite o que vem depois de ${PREFIXO_USUARIO} (minúsculas, números, - ou _, começando por letra, até 28)`);
   // 2) Limite pedido numa máquina em que o disco não foi lido: avisa antes de criar (criar e falhar no limite deixava
   // o usuário pela metade, e o próximo "Criar" dizia "já existe").
-  if (typeof pct === "number" && pct > 0 && (await usuariosDaMaquina(host)).discoKb === null) throw new Error("não consegui ler o tamanho do disco desta máquina: crie sem limite (deixe o % vazio) e ponha o limite depois, na linha do usuário");
+  if (typeof pct === "number" && pct > 0) {
+    const disco = (await usuariosDaMaquina(host)).discoKb;
+    if (disco === null) throw new Error("não consegui ler o tamanho do disco desta máquina: crie sem limite (deixe o % vazio) e ponha o limite depois, na linha do usuário");
+    conferirMinimo(pct, disco); // antes de criar: a conta nascia na cota e o preparo (ou o npx do Cloudflare) parava em EDQUOT
+  }
   const { chave } = await acessoDesteMac(host);
   // A reserva para o sistema entra antes da primeira box que vier a precisar dela (falhar aqui só avisa no log).
   await usuariosDaMaquina(host).then((v) => garantirReserva(host, v, false)).catch(() => undefined);
@@ -217,13 +222,14 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
   // Já entra nos dois seletores (meu-bot e admin); falhar aqui não desfaz o usuário: a resposta avisa.
   onLine?.("sempre ligado, com os tetos de RAM e CPU; entrando nos seletores do meu-bot e do admin");
-  const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
+  const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, aliasAdmin: null, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
   if (typeof pct === "number" && pct > 0) await definirLimite(host, nome, pct);
   // Onboarding: só devolve depois de tudo pronto. Falhou um passo: o usuário existe, a resposta diz onde parou.
   let preparo: string | null = sel.aviso === null ? null : "sem o seletor do meu-bot, não deu para preparar a conta";
   let global = false;
   if (preparo === null) await prepararUsuario(host, nome, sel.alias, onLine, motor).then((g) => { global = g; }).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); onLine?.(`✗ parou: ${preparo}`); });
+  resondarPessoa(sel);
   const v = await usuariosDaMaquina(host);
   return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo, global };
 }
@@ -381,7 +387,7 @@ export async function prepararUsuarioDeNovo(host: string, nome: unknown, onLine?
   const n = nomeValido(nome);
   const sel = await porNosSeletores(host, n);
   if (sel.aviso !== null) throw new Error(sel.aviso);
-  try { await prepararUsuario(host, n, sel.alias, onLine); } catch (e) { onLine?.(`✗ parou: ${e instanceof Error ? e.message : String(e)}`); throw e; }
+  try { await prepararUsuario(host, n, sel.alias, onLine); } catch (e) { onLine?.(`✗ parou: ${e instanceof Error ? e.message : String(e)}`); throw e; } finally { resondarPessoa(sel); }
   return usuariosDaMaquina(host);
 }
 
@@ -451,13 +457,19 @@ function tirarDoSshConfig(host: string, n: string): boolean {
 }
 
 /** O usuário nos dois seletores: o do meu-bot (~/.ssh/config) e o do admin (pessoa marcada, sem preparar a conta). */
-async function porNosSeletores(host: string, n: string): Promise<{ alias: string; novo: boolean; aviso: string | null }> {
+async function porNosSeletores(host: string, n: string): Promise<{ alias: string; aliasAdmin: string | null; novo: boolean; aviso: string | null }> {
   const meuBot = await garantirNoSshConfig(host, n);
-  let aviso: string | null = null; let noAdmin = false;
-  try { noAdmin = (await adicionarUsuario(host, meuBot.alias, n)).novo; } catch (e) { aviso = `não entrou no seletor do admin: ${e instanceof Error ? e.message : String(e)}`; }
+  let aviso: string | null = null; let noAdmin = false; let aliasAdmin: string | null = null;
+  try { const a = await adicionarUsuario(host, meuBot.alias, n); noAdmin = a.novo; aliasAdmin = a.alias; } catch (e) { aviso = `não entrou no seletor do admin: ${e instanceof Error ? e.message : String(e)}`; }
   if (meuBot.novo || noAdmin) { void registrar(host, "usuarios.seletor", n); refreshPickerIfOpen(); }
-  return { alias: meuBot.alias, novo: meuBot.novo || noAdmin, aviso };
+  return { alias: meuBot.alias, aliasAdmin, novo: meuBot.novo || noAdmin, aviso };
 }
+
+/**
+ * O seletor do admin sondou a pessoa assim que ela entrou na lista, no meio do preparo (Claude Code já lá, backend e
+ * login ainda não), e guardava essa foto até a janela fechar. Preparo terminado (ou parado), sonda de novo.
+ */
+const resondarPessoa = (sel: { alias: string; aliasAdmin: string | null }): void => resondarNoSeletor(sel.aliasAdmin === null ? [sel.alias] : [sel.alias, sel.aliasAdmin]);
 
 /** Botão "Nos seletores" da linha (refaz o que a sincronização faz, para um usuário). */
 export async function nosSeletores(host: string, nome: unknown): Promise<{ alias: string; novo: boolean; aviso: string | null }> {

@@ -1,24 +1,25 @@
 ---
 name: contribuir
-description: Leva uma correção do meu-bot feita neste Mac até um pull request no diegofornalha/meu-bot, pelo fork box-grok/meu-bot (esta conta só tem leitura no original). Use quando o usuário disser "manda PR", "abre um PR", "faz o fork e manda", "envia a correção", "escreve uma issue e manda PR" ou "aproveita que corrigiu e manda".
+description: Leva uma correção do meu-bot feita neste Mac até um pull request no diegofornalha/meu-bot, direto no origin quando o gh está logado como diegofornalha, ou pelo fork box-grok/meu-bot quando a conta só lê o original. Use quando o usuário disser "manda PR", "abre um PR", "faz o fork e manda", "envia a correção", "escreve uma issue e manda PR" ou "aproveita que corrigiu e manda".
 ---
 
-# Contribuir: fork → pull request
+# Contribuir: branch → pull request
 
-A conta do GitHub deste Mac (`box-grok`) só lê o `diegofornalha/meu-bot`: toda mudança vai por um branch no fork
-`box-grok/meu-bot` (remote `fork`) e chega no original por PR. Publicar é público: abra o PR quando o usuário pedir **ou
+Toda mudança vai por um branch e chega no `main` por PR. De onde o branch sai depende da conta logada no `gh`:
+`diegofornalha` (dona do repositório) empurra para o próprio `origin`; `box-grok` só lê o original e vai pelo fork
+`box-grok/meu-bot` (remote `fork`). Publicar é público: abra o PR quando o usuário pedir **ou
 quando o hook `scripts/hooks/pr-lembrete.sh` apontar, ao fim de uma resposta, commits sem PR num branch que você fez
 nesta sessão** (branch de outra sessão: só avise o usuário).
 
 ## Antes
 
 - `gh`: fica em `~/.local/bin/gh`, que pode não estar no PATH deste shell; use `export PATH="$HOME/.local/bin:$PATH"`
-  no começo do comando. `gh auth status` deve mostrar `box-grok`. Se não estiver logado, o usuário roda
-  `! gh auth login -h github.com -p https -w` e depois `! gh auth setup-git`.
+  no começo do comando. `gh auth status` diz a conta: `diegofornalha` → caminho **origin**; `box-grok` → caminho
+  **fork**. Se não estiver logado, o usuário roda `! gh auth login -h github.com -p https -w` e depois `! gh auth setup-git`.
 - Identidade dos commits, só neste repositório (não no global): `user.name cursor` (o nome da máquina) e
   `user.email box@agentesgrok.com`. Confira com `git config user.name`; se faltar, grave com `git config` sem `--global`.
-- Remote `fork`: `git remote get-url fork`. Se faltar: `gh repo fork diegofornalha/meu-bot --clone=false` (não falha se
-  o fork já existe) e `git remote add fork https://github.com/box-grok/meu-bot.git`.
+- Só no caminho fork, remote `fork`: `git remote get-url fork`. Se faltar: `gh repo fork diegofornalha/meu-bot --clone=false`
+  (não falha se o fork já existe) e `git remote add fork https://github.com/box-grok/meu-bot.git`.
 
 ## A sequência
 
@@ -35,9 +36,10 @@ nesta sessão** (branch de outra sessão: só avise o usuário).
 3. **Commit**: só os arquivos da mudança (`git add <arquivos>`, nada de `git add -A`, que pegaria `.env`, `out/` e afins).
    Mensagem no estilo do `git log`: `Área: o que muda` na primeira linha, em pt-BR, e um parágrafo com o porquê. Termine
    com a linha de coautoria que a conversa indicar.
-4. **Push**: `git push -u fork <branch>`.
+4. **Push**: origin → `git push -u origin <branch>`; fork → `git push -u fork <branch>`.
 5. **PR**: escreva o corpo num arquivo no scratchpad e rode
-   `gh pr create -R diegofornalha/meu-bot --head box-grok:<branch> --base main --title "<título>" --body-file <arquivo>`.
+   `gh pr create -R diegofornalha/meu-bot --head <branch> --base main --title "<título>" --body-file <arquivo>`
+   (no caminho fork, `--head box-grok:<branch>`). O hook `scripts/hooks/pr-lembrete.sh` reconhece a PR nos dois caminhos.
    Corpo com estas seções: **O que acontece** (o sintoma, como o usuário viu, a versão e a máquina), **Por quê** (a
    causa no código), **Correção** (arquivos e o que mudou), **Como conferir** (passos e o resultado esperado) e
    **Testes** (o que rodou e o que ainda não foi conferido na tela). Termine com a linha de atribuição que a conversa

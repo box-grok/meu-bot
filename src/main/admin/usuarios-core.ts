@@ -239,6 +239,24 @@ export function limiteKbDe(pct: number, discoKb: number): number {
   if (!Number.isInteger(pct) || pct < 0 || pct > 100) throw new Error("o limite é uma porcentagem inteira de 0 a 100 (0 = sem limite)");
   return pct === 0 ? 0 : Math.max(1024, Math.floor((discoKb * pct) / 100));
 }
+/**
+ * O que a conta padrão ocupa antes de qualquer trabalho: a voz (~680 MB), Claude Code (~320 MB), o OpenClaw da conta
+ * (~160 MB), o wrangler do tutorial 11 no cache do npm (~300 MB) e o resto dos caches: 1,6 GB medidos numa conta nova.
+ * Com 1% de um disco de 100 GB a conta nascia na cota e o npx parava em "Unknown system error -122" (EDQUOT). O limite
+ * tem de dar pelo menos 3 GB, para sobrar para o trabalho; 0 continua sendo "sem limite".
+ */
+export const MINIMO_CONTA_KB = 3 * 1024 * 1024;
+/** A menor porcentagem inteira do disco que dá MINIMO_CONTA_KB (100 se nem o disco inteiro der). */
+export function pctMinimo(discoKb: number): number {
+  for (let p = 1; p < 100; p++) if (limiteKbDe(p, discoKb) >= MINIMO_CONTA_KB) return p;
+  return 100;
+}
+/** Recusa um limite menor que o mínimo da conta padrão, dizendo quanto é e que % usar. */
+export function conferirMinimo(pct: number, discoKb: number): void {
+  const kb = limiteKbDe(pct, discoKb);
+  if (kb === 0 || kb >= MINIMO_CONTA_KB) return;
+  throw new Error(`${pct}% deste disco dá ${Math.floor(kb / 1024)} MB, menos que os ${Math.floor(MINIMO_CONTA_KB / 1024 / 1024)} GB que a conta padrão precisa (voz, Claude Code, OpenClaw, o wrangler e sobra para o trabalho): use pelo menos ${pctMinimo(discoKb)}% ou deixe sem limite`);
+}
 
 /**
  * Liga a cota de usuário no disco principal, uma vez por máquina e sem reiniciar: instala o pacote quota, guarda uma

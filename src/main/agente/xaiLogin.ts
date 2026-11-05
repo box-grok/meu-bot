@@ -1,6 +1,7 @@
 /**
- * Login OAuth da xAI no Hermes da máquina (credencial `xai-oauth`, usada pelo hermes proxy e, por
- * ele, pelo modelo grok-4 do backend). `hermes auth add xai-oauth --type oauth --no-browser` imprime
+ * Login OAuth da xAI na máquina. A credencial `xai-oauth` é guardada pelo hermes-agent (pacote npm), que é só a
+ * peça por baixo do proxy local do grok-4 (meu-bot-xai-proxy.service): o agente do WhatsApp da conta pode ser
+ * Hermes, OpenClaw ou nenhum. Por isso os textos para a pessoa falam da máquina, não do Hermes. `hermes auth add xai-oauth --type oauth --no-browser` imprime
  * um link de código de dispositivo e fica esperando a aprovação; o app abre o link no navegador do
  * Mac e espera. No fim remove credenciais antigas do mesmo provedor (uma vencida com prioridade 0
  * faz o proxy falhar com invalid_grant) e confere com `hermes auth status`.
@@ -11,6 +12,7 @@ import type { ClaudeAuthInfo, ClaudeLoginEvent } from "../../shared/ipc";
 import { log } from "../maquina/backend";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
+import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
 
 const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
@@ -35,19 +37,22 @@ function ssh(host: string, cmd: string, timeoutMs: number): Promise<{ code: numb
   });
 }
 
-/** null = máquina sem Hermes (ou inacessível). `email` leva o rótulo da credencial ativa. */
+/** Shell: `proxy=1` quando a unidade do proxy existe e o providers.json do backend aponta o grok-4 para ela. */
+const PROXY_SH = `${BACKEND_DIR_SH}; if [ -f "$HOME/.config/systemd/user/meu-bot-xai-proxy.service" ] && grep -q "127.0.0.1" "$BD/providers.json" 2>/dev/null; then echo proxy=1; else echo proxy=0; fi`;
+
+/** null = máquina sem o hermes-agent (ou inacessível). `email` leva o rótulo da credencial ativa; `proxy`, se o grok-4 já está preparado. */
 export async function xaiAuthInfo(host: string): Promise<ClaudeAuthInfo | null> {
   if (host === LOCAL_HOST || !isValidHost(host)) return null;
-  const r = await ssh(host, "command -v hermes >/dev/null 2>&1 || { echo present=0; exit 0; }; echo present=1; echo \"status=$(hermes auth status xai-oauth 2>&1 | head -1)\"; hermes auth list 2>/dev/null | sed -n '/^xai-oauth/,/^$/p' | grep '←' | head -1", 40_000);
+  const r = await ssh(host, `command -v hermes >/dev/null 2>&1 || { echo present=0; exit 0; }; echo present=1; echo "status=$(hermes auth status xai-oauth 2>&1 | head -1)"; hermes auth list 2>/dev/null | sed -n '/^xai-oauth/,/^$/p' | grep '←' | head -1; ${PROXY_SH}`, 40_000);
   if (r.code !== 0 || !r.out.includes("present=1")) return null;
   const status = /status=(.*)/.exec(r.out)?.[1] ?? "";
   const label = /#\d+\s+(\S+)/.exec(r.out.split("\n").find((l) => l.includes("←")) ?? "")?.[1] ?? null;
   // "not logged in" também casa com /logged in/: a negação vem primeiro.
-  return { loggedIn: /logged in/i.test(status) && !/not logged in/i.test(status), email: label };
+  return { loggedIn: /logged in/i.test(status) && !/not logged in/i.test(status), email: label, proxy: r.out.includes("proxy=1") };
 }
 
 export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void): Promise<void> {
-  if (host === LOCAL_HOST || !isValidHost(host)) { send({ kind: "done", ok: false, text: "esta máquina não tem o Hermes" }); return Promise.resolve(); }
+  if (host === LOCAL_HOST || !isValidHost(host)) { send({ kind: "done", ok: false, text: "o login da xAI é para uma máquina por SSH" }); return Promise.resolve(); }
   if (current !== null) { send({ kind: "done", ok: false, text: `já há um login da xAI em andamento em ${current.host}` }); return Promise.resolve(); }
   return new Promise((resolve) => {
     // `-tt`: sem pseudo-terminal o `hermes auth add` não imprime o link e fica parado. O stdin fica
@@ -56,7 +61,7 @@ export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void
     child.stdin.on("error", () => { /* pty fechou */ });
     current = { host, child };
     let buf = ""; let all = ""; let urlSent = false;
-    send({ kind: "log", text: `conectando a ${host} e pedindo o login da xAI ao Hermes` });
+    send({ kind: "log", text: `conectando a ${host} e pedindo o login da xAI` });
     const onData = (d: Buffer): void => {
       const s = d.toString("utf8").replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "\n"); buf += s; all += s;
       if (!urlSent) {
@@ -82,17 +87,18 @@ export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void
       try { child.stdin.end(); } catch { /* ok */ }
       void (async () => {
         const added = /Added xai-oauth OAuth credential #\d+:\s*"([^"]+)"/.exec(all)?.[1] ?? null;
-        let ok = false;
+        let ok = false; let proxy = false;
         if (added !== null) {
           // Uma chamada só: remove as credenciais antigas do provedor (uma vencida na frente derruba o
           // proxy com invalid_grant) e confere o status. Cada `hermes` leva segundos para iniciar.
-          const script = `L=$(hermes auth list 2>/dev/null | sed -n '/^xai-oauth/,/^$/p'); for id in $(echo "$L" | grep -v '${added}' | sed -n 's/.*oauth *id=\\([0-9a-f]*\\).*/\\1/p'); do hermes auth remove xai-oauth $id >/dev/null 2>&1 && echo "removed=$id"; done; echo "status=$(hermes auth status xai-oauth 2>&1 | head -1)"`;
+          const script = `L=$(hermes auth list 2>/dev/null | sed -n '/^xai-oauth/,/^$/p'); for id in $(echo "$L" | grep -v '${added}' | sed -n 's/.*oauth *id=\\([0-9a-f]*\\).*/\\1/p'); do hermes auth remove xai-oauth $id >/dev/null 2>&1 && echo "removed=$id"; done; echo "status=$(hermes auth status xai-oauth 2>&1 | head -1)"; ${PROXY_SH}`;
           const r = await ssh(host, script, 60_000);
           for (const m of r.out.matchAll(/removed=([0-9a-f]+)/g)) send({ kind: "log", text: `credencial antiga removida (${m[1]})` });
           ok = /status=.*logged in/i.test(r.out);
+          proxy = r.out.includes("proxy=1");
         }
         log(`[xai-login] ${host}: processo saiu com ${code}; logado=${ok}`);
-        send({ kind: "done", ok, text: ok ? `xAI logada no Hermes desta máquina (${added ?? "credencial nova"}); o grok-4 já usa a conta nova.` : `o login da xAI não concluiu (código ${code ?? "?"}).` });
+        send({ kind: "done", ok, text: ok ? `xAI logada nesta máquina (${added ?? "credencial nova"}); ${proxy ? "o grok-4 já usa a conta nova." : "falta preparar o Grok (passo 1) para o grok-4 responder."}` : `o login da xAI não concluiu (código ${code ?? "?"}).` });
         resolve();
       })();
     });

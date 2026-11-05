@@ -13,7 +13,7 @@ import { chatsFromSessions, gatewayFailures, peerOfSessionKey, politicaGravada, 
 import { JID_RE, aplicarPatch, envolverPatch, estadoDoGrupo, gruposDaMaquina, patchGrupo, threadDoGrupo } from "./whatsapp-grupos-core";
 import { WA_MARKS_FILE, applyWaGroupMarks, applyWaMarks, donosDe, parseWaMarks, quemDe, type WaQuem } from "./whatsapp-marks";
 import { SEND_POLICY_READ_SH, localWhenText, pauseNoteSh, pauseNoteText, pauseRulePrefixes, pauseRuleSh, pausedNumbersOfPolicy, sendPolicySh, withPauseRule, type PauseBy } from "./whatsapp-pause";
-import { CONTA_EFETIVA_PY, OPENCLAW_CHATS_SH, OPENCLAW_GROUPS_SH, OPENCLAW_LOGOUT_SH, OPENCLAW_PAIR_SH, OPENCLAW_RESTART_SH, OPENCLAW_STATUS_SH, WA_GRUPOS_DIR, cfgDe, credsMeSh, grupoThreadSh, openclawChatsSh, openclawGroupsSh, openclawLogoutSh, openclawPairSh, openclawStatus, openclawStatusSh, ownerLockSh, selfPolicySh, waConfigSh, workspaceSh } from "./whatsapp-openclaw-core";
+import { CONTA_EFETIVA_PY, OPENCLAW_CHATS_SH, OPENCLAW_ESPERA_MS, OPENCLAW_ESPERA_SH, OPENCLAW_GROUPS_SH, OPENCLAW_LOGOUT_SH, OPENCLAW_PAIR_SH, OPENCLAW_RESTART_SH, OPENCLAW_STATUS_SH, WA_GRUPOS_DIR, cfgDe, credsMeSh, erroOpenclaw, grupoThreadSh, openclawChatsSh, openclawGroupsSh, openclawLogoutSh, openclawPairSh, openclawStatus, openclawStatusSh, ownerLockSh, selfPolicySh, waConfigSh, workspaceSh } from "./whatsapp-openclaw-core";
 import type { WhatsappAlvoResolvido } from "../../shared/ipc";
 import { donoStatus } from "./whatsapp-marks";
 
@@ -202,8 +202,9 @@ ${CONTA_EFETIVA_PY}
 w = efetiva(json.load(open(os.path.expanduser("~/.openclaw/openclaw.json"))), sys.argv[1])
 print("POLICY=%s ALLOW=%s" % (w.get("dmPolicy",""), json.dumps(w.get("allowFrom",[]))))
 PY`;
-      const r = await run(gw(host), `${script}\n${confere}\n`, 60_000);
-      if (r.code !== 0) throw new Error(`não consegui mudar a política: ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
+      // O gateway pode estar subindo (preparação, vigia, reinício): o `openclaw` do script espera em vez de falhar na hora.
+      const r = await run(gw(host), `${OPENCLAW_ESPERA_SH}\n${script}\n${confere}\n`, 60_000 + OPENCLAW_ESPERA_MS);
+      if (r.code !== 0) throw new Error(`não consegui mudar a política: ${erroOpenclaw(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
       const ficou = politicaGravada(r.stdout);
       const erro = ficou === null ? null : politicaNaoBate(policy, ficou);
       if (erro !== null) throw new Error(`a política não ficou gravada como escolhida: ${erro}. Tente de novo.`);
@@ -229,7 +230,7 @@ print("TYPING=%s" % (((c.get("agents") or {}).get("defaults") or {}).get("typing
 PY
 `;
       const r = await run(gw(host), script, 90_000);
-      if (r.code !== 0) throw new Error(`não consegui mudar o "digitando…": ${ultimaLinha(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
+      if (r.code !== 0) throw new Error(`não consegui mudar o "digitando…": ${erroOpenclaw(r.stderr) || ultimaLinha(r.stdout) || "ssh falhou"}`);
       const ficou = /^TYPING=(.*)$/m.exec(r.stdout)?.[1] ?? "";
       if (ficou !== mode) throw new Error(`o "digitando…" não ficou gravado como escolhido (ficou "${ficou || "vazio"}"). Tente de novo.`);
       log(`[whatsapp] ${host}: typingMode=${mode}`);

@@ -282,9 +282,11 @@ export async function logoutClaude(relogin: boolean): Promise<void> {
   finally { clLineBtn.disabled = false; }
 }
 
-// ---- Linha "xAI (Grok)": OAuth da xAI no Hermes da máquina, que o grok-4 usa. Mesmo molde do Claude: um
+// ---- Linha "xAI (Grok)": OAuth da xAI na máquina, que o grok-4 usa pelo proxy local. Mesmo molde do Claude: um
 // estado (xaiState) pintado nos controles do passo 2 do tutorial 4 (xaiGuide, criados uma vez) e no modal
-// #xai-dialog (trocar de conta depois de concluído). O passo 1 (preparar: Hermes + proxy) tem seu bloco.
+// #xai-dialog (trocar de conta depois de concluído). O passo 1 (preparar: proxy + providers.json) tem seu bloco.
+// Preparado é `xaiAuth.proxy`: o comando `hermes` existir não basta (numa máquina com Hermes global para todos, cada
+// conta ainda precisa do próprio proxy; sem ele o login grava a credencial e o backend responde "modelo desconhecido").
 const xaiLine = $<HTMLDivElement>("xai-line");
 const xaiLineText = $<HTMLSpanElement>("xai-line-text");
 const xaiLineBtn = $<HTMLButtonElement>("xai-line-btn");
@@ -323,7 +325,9 @@ const xaiState = { running: false, preparing: false, url: null as string | null,
 const xaiModal: LoginControls = { box: xaiDialog, status: $<HTMLElement>("xai-status"), open: $<HTMLButtonElement>("xai-open"), codeRow: el("div"), code: el("input") as HTMLInputElement, send: el("button") as HTMLButtonElement, log: $<HTMLElement>("xai-steps"), start: $<HTMLButtonElement>("xai-start"), cancel: null };
 export const xaiGuide: LoginControls = buildLoginControls();
 const XAI_INTRO = (): string => `Máquina: ${hostLabel(ctx.windowHost)}. Abre o link da xAI no navegador, já com o código do dispositivo. Entre na conta e aprove; aqui não precisa colar nada.`;
-/** Passo 1 do tutorial 4: preparar (Hermes + proxy). Status, botão e o mesmo log do estado. */
+/** O grok-4 desta conta já está apontado para o proxy local? */
+const xaiPronta = (): boolean => xaiAuth !== null && xaiAuth.proxy === true;
+/** Passo 1 do tutorial 4: preparar (proxy + providers.json). Status, botão e o mesmo log do estado. */
 export const xaiPrep = (() => {
   const box = el("div", "guide-login");
   const status = el("p", "hint");
@@ -348,8 +352,8 @@ function paintXaiControls(c: LoginControls, variant: "modal" | "guide"): void {
 }
 export function paintXaiLogin(): void {
   paintXaiControls(xaiModal, "modal"); paintXaiControls(xaiGuide, "guide");
-  xaiPrep.status.textContent = xaiState.preparing ? xaiState.status : xaiAuth !== null ? "Hermes e proxy prontos nesta máquina." : xaiState.result === "fail" ? xaiState.status : "Instala o Hermes e o proxy da xAI nesta máquina; o backend reinicia no fim.";
-  xaiPrep.start.hidden = xaiState.preparing || xaiAuth !== null;
+  xaiPrep.status.textContent = xaiState.preparing ? xaiState.status : xaiPronta() ? "Proxy do Grok pronto nesta máquina." : xaiState.result === "fail" ? xaiState.status : "Instala o proxy local do Grok nesta conta e aponta o backend para ele; o backend reinicia no fim.";
+  xaiPrep.start.hidden = xaiState.preparing || xaiPronta();
   xaiPrep.start.textContent = xaiState.result === "fail" ? "Tentar de novo" : "Preparar";
   xaiPrep.start.classList.toggle("pulse", !xaiPrep.start.hidden);
   xaiPrep.log.hidden = !xaiState.preparing && xaiState.log.length === 0; xaiPrep.log.textContent = xaiState.log.join("\n");
@@ -357,7 +361,7 @@ export function paintXaiLogin(): void {
 
 function paintXaiLine(): void {
   if (xaiAuth === null) {
-    // Sem Hermes ainda: a linha aparece quando há backend; "entrar" leva ao tutorial 4 (preparar + login).
+    // Sem o preparo ainda: a linha aparece quando há backend; "entrar" leva ao tutorial 4 (preparar + login).
     if (xaiKey === null || !xaiKey.backend) { xaiLine.hidden = true; return; }
     xaiLine.hidden = false;
     xaiLine.className = "wa-line cl-line off";
@@ -366,11 +370,18 @@ function paintXaiLine(): void {
     return;
   }
   xaiLine.hidden = false;
+  if (xaiAuth.loggedIn && !xaiPronta()) {
+    // Credencial gravada, mas o backend desta conta ainda não conhece o grok-4: falta o passo 1.
+    xaiLine.className = "wa-line cl-line off";
+    xaiLineText.textContent = `xAI (Grok) · ${xaiAuth.email ?? "logada"} · falta preparar o Grok · o grok-4 não responde`;
+    xaiLineBtn.textContent = "preparar";
+    return;
+  }
   xaiLine.className = `wa-line cl-line ${xaiAuth.loggedIn ? "on" : "off"}`;
   xaiLineText.textContent = xaiAuth.loggedIn ? `xAI (Grok) · ${xaiAuth.email ?? "logada"}` : "xAI (Grok) · deslogada · o grok-4 não responde";
   xaiLineBtn.textContent = xaiAuth.loggedIn ? "sair" : "entrar";
 }
-/** Consulta a conta da xAI (e, sem Hermes, se há backend); o tutorial 4 e a lateral seguem o resultado. */
+/** Consulta a conta da xAI (e, sem o preparo, se há backend); o tutorial 4 e a lateral seguem o resultado. */
 export async function refreshXaiLine(): Promise<void> {
   try { xaiAuth = await window.meuBot.xaiAuth(); } catch { xaiAuth = null; }
   if (xaiAuth === null && ctx.caps.login && ctx.windowHost !== "local") { try { xaiKey = await window.meuBot.xaiKeyStatus(); } catch { xaiKey = null; } }
@@ -383,19 +394,19 @@ function openXai(): void {
   paintXaiLogin();
   if (!xaiDialog.open) xaiDialog.showModal();
 }
-/** Máquina sem Hermes: instala Hermes + proxy da xAI (install-grok-oauth.sh). O passo 1 do tutorial 4. */
+/** Conta sem o proxy: instala o proxy da xAI e aponta o backend (install-grok-oauth.sh). O passo 1 do tutorial 4. */
 async function prepareXai(): Promise<void> {
   if (xaiState.running || xaiState.preparing) return;
   xaiState.preparing = true; xaiState.result = null; xaiState.log = [];
-  xaiState.status = `Preparando o Grok em ${hostLabel(ctx.windowHost)} (Hermes + proxy local; na primeira vez baixa o Hermes)…`;
+  xaiState.status = `Preparando o Grok em ${hostLabel(ctx.windowHost)} (proxy local + backend; na primeira vez pode baixar o programa do proxy)…`;
   paintXaiLogin();
   try {
     const r = await window.meuBot.xaiPrepare();
     if (!r.ok) { xaiState.status = `✗ ${r.log.at(-1) ?? "não deu para preparar"}`; xaiState.result = "fail"; return; }
     xaiState.preparing = false;
     await refreshXaiLine();
-    if (xaiAuth === null) { xaiState.status = "✗ o Hermes foi instalado mas o app ainda não o enxerga; feche e abra a janela desta máquina."; xaiState.result = "fail"; return; }
-    xaiState.status = xaiAuth.loggedIn ? "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy." : "✓ Hermes e proxy prontos. Agora é entrar na conta da xAI.";
+    if (!xaiPronta()) { xaiState.status = "✗ o preparo terminou mas o app ainda não vê o proxy; feche e abra a janela desta máquina."; xaiState.result = "fail"; return; }
+    xaiState.status = xaiAuth?.loggedIn === true ? "✓ xAI já logada nesta máquina; o grok-4 responde pelo proxy." : "✓ Proxy do Grok pronto. Agora é entrar na conta da xAI.";
   } catch (err) { xaiState.status = `✗ ${ipcErrorText(err)}`; xaiState.result = "fail"; }
   finally { xaiState.preparing = false; paintXaiLogin(); ctx.paintGuide(); }
 }
@@ -416,7 +427,7 @@ function enterXai(): void {
   if (ctx.caps.install && !ctx.tutorialDone(XAI_TUTORIAL)) { ctx.tutNext = false; ctx.openGuide(XAI_TUTORIAL); return; }
   openXai(); void runXaiLogin();
 }
-/** Sai da conta da xAI no Hermes desta máquina; com `relogin`, já leva ao login (tutorial 4 ou modal). */
+/** Sai da conta da xAI nesta máquina; com `relogin`, já leva ao login (tutorial 4 ou modal). */
 export async function logoutXai(relogin: boolean): Promise<void> {
   xaiLineBtn.disabled = true;
   try { xaiAuth = await window.meuBot.xaiLogout(); paintXaiLine(); ctx.paintGuide(); if (relogin) enterXai(); }
@@ -475,7 +486,7 @@ export function ligarContasAgente(): void {
   registrarFonte("claude", () => ({ known: clAuth !== null, dados: { claude: { loggedIn: clAuth?.loggedIn ?? null, email: clAuth?.email ?? null, global: clAuth?.global === true, firstReply: firstReplyOnHost(), contasExtras: (contasClaudeView()?.contas ?? []).filter((c) => !c.padrao && c.global !== true && c.logada).length, trocas: (contasClaudeView()?.eventos ?? []).length } } }));
   registrarFonte("xai", () => ({
     known: !ehRemoto() || xaiAuth !== null || xaiKey !== null,
-    dados: { xai: { possible: !ctx.caps.install || ctx.windowHost === "local" ? false : xaiAuth !== null ? true : xaiKey === null ? null : xaiKey.backend, hermes: xaiAuth !== null ? true : xaiKey === null ? null : false, loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null } },
+    dados: { xai: { possible: !ctx.caps.install || ctx.windowHost === "local" ? false : xaiAuth !== null ? true : xaiKey === null ? null : xaiKey.backend, pronto: xaiAuth !== null ? xaiPronta() : xaiKey === null ? null : false, loggedIn: xaiAuth?.loggedIn ?? null, label: xaiAuth?.email ?? null } },
   }));
   registrarFonte("fallback", () => ({ known: ctx.account !== null, dados: { fallback: { primary: ctx.settings?.backendModelForHost ?? null, chain: ctx.account?.providers ?? null } } }));
   registrarPassos({
@@ -540,7 +551,7 @@ export function ligarContasAgente(): void {
   { const steps = el("div", "login-steps-box"); steps.hidden = true; xaiGuide.log.replaceWith(steps); xaiGuide.log = steps; }
   window.meuBot.on("xai-login:event", (ev: ClaudeLoginEvent) => {
     const appendLog = (t: string): void => { xaiState.log = [...xaiState.log, t].slice(-8); };
-    // Preparando (Hermes + proxy), as linhas são do instalador e vão para o log do passo 1; no login viram passos.
+    // Preparando (proxy + backend), as linhas são do instalador e vão para o log do passo 1; no login viram passos.
     if (!xaiState.preparing) { xaiState.events = [...xaiState.events, ev].slice(-60); if (ev.kind !== "done") xaiState.status = loginViewOf("xai", xaiState.events, true).headline; }
     switch (ev.kind) {
       case "url": xaiState.url = ev.url; break;
@@ -552,9 +563,9 @@ export function ligarContasAgente(): void {
         xaiState.status = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;
         if (ev.ok) {
           // Verde na hora, com o rótulo que veio no texto; a consulta de confirmação roda em segundo plano.
-          xaiAuth = { loggedIn: true, email: /\(([^)]+)\)/.exec(ev.text)?.[1] ?? xaiAuth?.email ?? null };
+          xaiAuth = { loggedIn: true, email: /\(([^)]+)\)/.exec(ev.text)?.[1] ?? xaiAuth?.email ?? null, proxy: xaiAuth?.proxy === true };
           paintXaiLine(); ctx.paintGuide();
-          const tab = ctx.active(); if (tab !== null) ctx.addNotice(tab, "✓ xAI logada no Hermes desta máquina; o grok-4 já usa a conta nova.", "info");
+          const tab = ctx.active(); if (tab !== null) ctx.addNotice(tab, `✓ ${ev.text}`, xaiPronta() ? "info" : "warn");
           void refreshXaiLine();
           setTimeout(() => { if (xaiDialog.open) xaiDialog.close(); }, 1200);
         }
@@ -569,8 +580,8 @@ export function ligarContasAgente(): void {
   }
   xaiClose.addEventListener("click", () => { if (xaiState.running) void window.meuBot.xaiLoginCancel(); xaiDialog.close(); });
   xaiLineBtn.addEventListener("click", () => {
-    if (xaiAuth !== null && xaiAuth.loggedIn) {
-      if (!window.confirm("Sair da conta da xAI no Hermes desta máquina? O grok-4 para de responder até entrar de novo.")) return;
+    if (xaiAuth !== null && xaiAuth.loggedIn && xaiPronta()) {
+      if (!window.confirm("Sair da conta da xAI nesta máquina? O grok-4 para de responder até entrar de novo.")) return;
       void logoutXai(true);
       return;
     }

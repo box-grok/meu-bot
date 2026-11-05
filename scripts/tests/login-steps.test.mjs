@@ -10,7 +10,7 @@ test("xAI: a sequência real vira passos; o código fica em destaque; o ruído d
   const at = () => loginView("xai", evs, ctx);
   assert.equal(loginView("xai", [], { machine: "agente-box", running: false }).headline.startsWith("Abre o link da xAI"), true, "intro parada");
   assert.deepEqual(states(at()), ["active", "pending", "pending", "pending"]);
-  evs.push({ kind: "log", text: "conectando a agente-box e pedindo o login da xAI ao Hermes" });
+  evs.push({ kind: "log", text: "conectando a agente-box e pedindo o login da xAI" });
   assert.deepEqual(states(at()), ["done", "active", "pending", "pending"]); assert.equal(at().headline, "Pedindo o login à xAI…");
   evs.push({ kind: "url", url: "https://accounts.x.ai/device?code=VTSE-5Q48" }, { kind: "log", text: "código do dispositivo: VTSE-5Q48 (a página já vem com ele; confira e aprove)" });
   let v = at(); assert.deepEqual(states(v), ["done", "done", "active", "pending"]); assert.equal(v.code, "VTSE-5Q48"); assert.match(v.headline, /aprove o dispositivo/);
@@ -19,14 +19,14 @@ test("xAI: a sequência real vira passos; o código fica em destaque; o ruído d
   evs.push({ kind: "log", text: 'Added xai-oauth OAuth credential #1: "xai-oauth-oauth-1"' }, { kind: "log", text: "Connection to 187.127.41.175 closed." });
   v = at(); assert.deepEqual(states(v), ["done", "done", "done", "active"]); assert.equal(v.headline, "Aprovado! Guardando a credencial…");
   assert.deepEqual(v.details, [], "nenhuma linha crua sobrou para a pessoa");
-  evs.push({ kind: "done", ok: true, text: "xAI logada no Hermes desta máquina (xai-oauth-oauth-1); o grok-4 já usa a conta nova." });
+  evs.push({ kind: "done", ok: true, text: "xAI logada nesta máquina (xai-oauth-oauth-1); o grok-4 já usa a conta nova." });
   v = loginView("xai", evs, { ...ctx, running: false });
   assert.deepEqual(states(v), ["done", "done", "done", "done"]); assert.equal(v.result, "ok"); assert.equal(v.code, null); assert.match(v.headline, /^✓ xAI logada/);
 });
 
 test("xAI: falha marca o passo em andamento como falhou e guarda as linhas desconhecidas nos detalhes", () => {
   const v = loginView("xai", [
-    { kind: "log", text: "conectando a colima e pedindo o login da xAI ao Hermes" },
+    { kind: "log", text: "conectando a colima e pedindo o login da xAI" },
     { kind: "log", text: "hermes: command not found" },
     { kind: "done", ok: false, text: "o login da xAI não concluiu (código 127)." },
   ], { machine: "colima", running: false });

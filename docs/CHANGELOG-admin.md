@@ -8,6 +8,11 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **O limite de disco já vem com o mínimo da conta padrão.** Criar com 1% de um disco de 100 GB deixava a conta nascer
+  na cota: a voz, o Claude Code, o OpenClaw dela e o wrangler do tutorial 11 ocupam 1,6 GB, e o Cloudflare morria em
+  "Unknown system error -122" (disco cheio pela cota). O campo "% do disco" já vem com a menor porcentagem que dá 3 GB,
+  e um limite menor que isso é recusado ao criar e ao salvar, dizendo que % usar (vazio continua sendo sem limite).
+
 - **Os agentes da máquina sabem o que é do meu-bot.** Novo item em Preparar máquina grava, no CLAUDE.md do root e das
   contas e no AGENTS.md do OpenClaw, a lista do que o meu-bot deixa na máquina (contas, pastas, serviços, o usuário
   `nova` do novnc) e a regra de não tratar isso como suspeito nem remover sem o admin pedir. Uma auditoria pedida ao
@@ -43,6 +48,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Corrigido
 
+- **Usuário recém-criado aparecia no seletor como "sem backend; Claude Code existe mas não está logado"** mesmo com
+  o preparo inteiro feito. O seletor sondava a pessoa assim que ela entrava na lista, no meio do preparo, e guardava
+  essa foto até a janela fechar. Agora, terminado o "Criar usuário" ou o "Preparar", a pessoa é sondada de novo.
 - **A janela da pessoa abria com a cara do meu-bot da pessoa** (Tutoriais, Acervo, Conta Google, caixa de mensagem)
   em vez da lateral de gestão. Um canal novo da busca na página não estava na lista permitida e derrubava a janela
   na abertura. Agora a lateral volta: Suporte com plano e licença, Auditoria e, como root, Usuários.
