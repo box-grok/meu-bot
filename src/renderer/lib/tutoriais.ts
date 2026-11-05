@@ -107,13 +107,13 @@ export const emptyContext = (): GuideContext => ({
 export type GuideTarget = "wa-line" | "wa-agent" | "wa-pair" | "wa-policy" | "chat" | "none";
 
 /** O que a pessoa marcou à mão (o app não tem como ver uma mensagem de teste chegar). */
-export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; linkNomeVisto: boolean; quickUsado: boolean; digitandoVisto: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
-export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, linkNomeVisto: false, quickUsado: false, digitandoVisto: false, number: null });
+export interface GuideFlags { policyChosen: boolean; tested: boolean; statusTested: boolean; claudeSeen: boolean; grokReplied: boolean; fallbackChosen: boolean; fallbackSeen: boolean; guardaSeen: boolean; navAgentUsed: boolean; crmSeen: boolean; crmImportSeen: boolean; claudeReplied: boolean; gruposTested: boolean; githubPulado: boolean; cloudflareLogado: boolean; financeFotoPulada: boolean; contasOrdemVista: boolean; contasTrocaVista: boolean; linkNomeVisto: boolean; quickUsado: boolean; digitandoVisto: boolean; gmailLido: boolean; gmailBuscou: boolean; gmailLixeira: boolean; /** Passos `lembrar` já vistos concluídos (fato que não se desfaz: abas fechadas não reabrem o tutorial). */ feitos?: string[]; number: string | null }
+export const emptyFlags = (): GuideFlags => ({ policyChosen: false, tested: false, statusTested: false, claudeSeen: false, grokReplied: false, fallbackChosen: false, fallbackSeen: false, guardaSeen: false, navAgentUsed: false, crmSeen: false, crmImportSeen: false, claudeReplied: false, gruposTested: false, githubPulado: false, cloudflareLogado: false, financeFotoPulada: false, contasOrdemVista: false, contasTrocaVista: false, linkNomeVisto: false, quickUsado: false, digitandoVisto: false, gmailLido: false, gmailBuscou: false, gmailLixeira: false, number: null });
 /**
  * Marcações que um passo pode pedir ("Testei, funcionou") ou que o app grava sozinho (`grokReplied`: resposta com
  * X-Provider grok-4; `fallbackChosen`: a pessoa escolheu o primário; `fallbackSeen`: uma resposta veio da reserva).
  */
-export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "linkNomeVisto" | "quickUsado" | "digitandoVisto";
+export type GuideFlagName = "policyChosen" | "tested" | "statusTested" | "claudeSeen" | "grokReplied" | "fallbackChosen" | "fallbackSeen" | "guardaSeen" | "navAgentUsed" | "crmSeen" | "crmImportSeen" | "claudeReplied" | "gruposTested" | "githubPulado" | "cloudflareLogado" | "financeFotoPulada" | "contasOrdemVista" | "contasTrocaVista" | "linkNomeVisto" | "quickUsado" | "digitandoVisto" | "gmailLido" | "gmailBuscou" | "gmailLixeira";
 
 export interface GuideStep {
   id: string;
@@ -679,17 +679,20 @@ export const TUTORIAIS: readonly Tutorial[] = [
       {
         id: "ler", title: "Abrir o Gmail e ler uma mensagem", target: "none", body: "gmail-ler", lembrar: true,
         text: "Abra a página Gmail e clique numa mensagem: o texto aparece aqui dentro, com os anexos pelo nome e um botão para abrir no Gmail.",
-        done: (_st, _f, c) => c.gmail.lido,
+        done: (_st, f, c) => c.gmail.lido || f.gmailLido,
+        manual: { label: "Li uma mensagem", flag: "gmailLido" },
       },
       {
         id: "buscar", title: "Buscar como no Gmail", target: "none", body: "gmail-buscar", lembrar: true,
         text: "Na caixa de busca vale a sintaxe do próprio Gmail: from:ana is:unread has:attachment. Faça uma busca qualquer.",
-        done: (_st, _f, c) => c.gmail.buscou,
+        done: (_st, f, c) => c.gmail.buscou || f.gmailBuscou,
+        manual: { label: "Fiz uma busca", flag: "gmailBuscou" },
       },
       {
         id: "lixeira", title: "Mandar para a lixeira e desfazer", target: "none", body: "gmail-lixeira", lembrar: true,
         text: "Abra uma mensagem, clique em \"Mover para a lixeira\" (duas vezes, para confirmar) e depois em \"Desfazer\". Nada se perde: a lixeira guarda por 30 dias.",
-        done: (_st, _f, c) => c.gmail.lixeira && c.gmail.desfez,
+        done: (_st, f, c) => (c.gmail.lixeira && c.gmail.desfez) || f.gmailLixeira,
+        manual: { label: "Testei, funcionou", flag: "gmailLixeira" },
       },
     ],
   },
