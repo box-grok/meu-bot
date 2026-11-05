@@ -91,6 +91,8 @@ export const seletorPodeAbrirAgora = (): boolean => seletorPodeAbrir(seletorSupr
 const probes = new Map<string, { probe: HostProbe; at: number }>();
 const PROBE_TTL_MS = 60_000;
 const inflight = new Map<string, Promise<HostProbe>>();
+/** Sobe a cada descarte pedido de fora (resondarNoSeletor): a sondagem que já estava em voo não grava o resultado velho. */
+const descartes = new Map<string, number>();
 
 export const knownModels = (host: string): string[] => probes.get(host)?.probe.models ?? [];
 
@@ -99,8 +101,9 @@ function probeCached(host: string): Promise<HostProbe> {
   if (hit !== undefined && Date.now() - hit.at < PROBE_TTL_MS) return Promise.resolve(hit.probe);
   const running = inflight.get(host);
   if (running !== undefined) return running;
+  const descarte = descartes.get(host) ?? 0;
   const p = probeHost(host, getBackendPort(host)).then((probe) => {
-    probes.set(host, { probe, at: Date.now() });
+    if ((descartes.get(host) ?? 0) === descarte) probes.set(host, { probe, at: Date.now() });
     // Só uma sondagem que entrou sabe dizer; inacessível não apaga o que já se sabia.
     if (probe.reachable) { setPodHost(host, probe.grokPod); if (setApelidoMaquina(host, probe.apelido)) broadcast("settings:changed", settingsView()); }
     // Backend antes dos plugins: o plugin do financeiro (e o do CRM) chamam a API dele.
@@ -530,6 +533,14 @@ export const isPickerOpen = (): boolean => pickerWin !== null && !pickerWin.isDe
 /** Reenvia a lista ao seletor aberto (sem focar nem trazer para a frente); fechado, não faz nada. */
 export function refreshPickerIfOpen(): void {
   if (pickerWin !== null && !pickerWin.isDestroyed() && !pickerWin.webContents.isLoading()) pickerWin.webContents.send("picker:init", { ...initPayload(), manterSelecao: true });
+}
+/**
+ * A conta acabou de ser preparada (Claude Code, backend, login pelo global): a sondagem que o seletor guardou dela é
+ * de antes e dizia "sem backend, sem login" até a janela fechar. Descarta a daqui e manda o seletor aberto sondar de novo.
+ */
+export function resondarNoSeletor(hosts: readonly string[]): void {
+  for (const h of hosts) { probes.delete(h); descartes.set(h, (descartes.get(h) ?? 0) + 1); }
+  if (pickerWin !== null && !pickerWin.isDestroyed() && !pickerWin.webContents.isLoading()) pickerWin.webContents.send("picker:init", { ...initPayload(), manterSelecao: true, resondar: [...hosts] });
 }
 /** Onde o seletor está agora (null = fechado): a janela Produtos do admin se cola à esquerda dele. */
 export const pickerBounds = (): Electron.Rectangle | null => (pickerWin !== null && !pickerWin.isDestroyed() ? pickerWin.getBounds() : null);

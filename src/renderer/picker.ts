@@ -600,6 +600,8 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   if (support !== null && hosts.length === 0) listEl.replaceChildren(adminChrome.emptyRow());
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
+  // A conta acabou de ser preparada: a sondagem guardada dela é de antes (dizia "sem backend, sem login"); vai de novo.
+  for (const h of payload.resondar ?? []) results.delete(h);
   // Todas em paralelo: a lista nunca espera a máquina lenta.
   for (const h of hosts) void probe(h);
   void loadPlans();
