@@ -316,7 +316,7 @@ export async function restaurarDoDrive(host: string, p: BackupRestauroPedido): P
         const saida = await enviarParaRestaurar(host, linhaSshRestaurar(comandoRestaurarSh({ conjunto: c, motor: conf.motor, homeAntigo, substituirWhatsapp: p.substituirWhatsapp })), claro);
         antes = /ANTES=(\S+)/.exec(saida)?.[1] ?? antes;
         const n = (k: string): string => new RegExp(`^${k}=(\\d+)$`, "m").exec(saida)?.[1] ?? "0";
-        const detalhe = [`${n("GUARDADOS")} guardado(s)`, n("MESCLADOS") !== "0" ? `${n("MESCLADOS")} projeto(s) do agente juntado(s)` : "", n("TROCADOS") !== "0" ? `caminho trocado em ${n("TROCADOS")} arquivo(s)` : ""].filter((x) => x !== "").join(", ");
+        const detalhe = [`${n("GUARDADOS")} guardado(s)`, n("MESCLADOS") !== "0" ? `${n("MESCLADOS")} projeto(s) do agente juntado(s)` : "", n("TROCADOS") !== "0" ? `caminho trocado em ${n("TROCADOS")} arquivo(s)` : "", n("BLOCOS") !== "0" ? `blocos do meu-bot mantidos em ${n("BLOCOS")} arquivo(s)` : ""].filter((x) => x !== "").join(", ");
         restaurados.push(c.id); avisar("restaurado", detalhe);
         log(`[dados-drive] ${host}: ${c.id} restaurado da cópia de ${maq.maquina} (${copia.arquivo}; ${detalhe})`);
       } catch (e) { const m = e instanceof Error ? e.message : String(e); erros.push(`${c.nome}: ${m}`); avisar("erro", m); log(`[dados-drive] ${host}: ${c.id} não restaurado: ${m}`); }

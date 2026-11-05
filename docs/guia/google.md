@@ -100,6 +100,13 @@ O job (`restaurarDoDrive`), um conjunto por vez e na ordem dos conjuntos:
   (as conversas antigas entram ao lado das de hoje); o caminho é trocado nos textos conhecidos e no `cwd` dos
   transcripts; do `.claude.json` da cópia só entram os `projects` que a máquina não tinha (login e preferências
   ficam os dela); links que apontavam para dentro do home antigo são religados.
+- **Os blocos `<!-- meu-bot:<nome> -->` dos arquivos de instrução são da máquina** (`agent-workspace/CLAUDE.md`,
+  `chat-workspace/CLAUDE.md`, `.openclaw/workspace/AGENTS.md`): o bloco que a máquina tinha volta por cima do de mesmo
+  nome que veio na cópia, e os que a cópia não tinha são acrescentados (o contexto da máquina não se perde ao
+  restaurar o Trabalho de outra). `ANTES` só é anunciado quando algo foi de fato sobrescrito.
+- **Senha:** a gravada no Keychain é tentada primeiro; o cartão sempre oferece um campo para outra quando há conjunto
+  cifrado marcado, porque a cópia pode ter sido cifrada noutro app deste Mac (cada variante tem o próprio
+  `backup-senha.bin`), noutra máquina, ou antes de uma troca de senha.
 - Auditoria: `backup.restaurar-dados` com a máquina de origem e os conjuntos. Caso que motivou: a LV saiu da VM
   morta `agente-box-lv` (`/home/box-lv`, Hermes) para a `box-1` da VM `meu` (`/home/box-1`, OpenClaw).
 
