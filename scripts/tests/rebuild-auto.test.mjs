@@ -13,7 +13,7 @@ const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encodi
 
 function maquina() {
   const d = mkdtempSync(join(tmpdir(), "mb-rebuild-"));
-  const home = join(d, "home"); mkdirSync(join(home, "Applications", "meu-bot-admin.app"), { recursive: true });
+  const home = join(d, "home"); mkdirSync(join(home, "Applications", "meu-bot-admin-gestao.app"), { recursive: true });
   const bin = join(d, "bin"); mkdirSync(bin);
   const calls = join(d, "calls");
   const sh = (nome, corpo) => { writeFileSync(join(bin, nome), `#!/bin/sh\n${corpo}\n`); chmodSync(join(bin, nome), 0o755); };
@@ -105,5 +105,5 @@ test("--check mostra branch, origin/main × instalado e o plano", () => {
   const out = m.hook(m.principal, "--check").stdout;
   assert.match(out, /^branch: main · checkout principal: .*meu-bot · worktree de build: .*meu-bot-build-main$/m);
   assert.match(out, /^origin\/main: [0-9a-f]{12} · instalado: nenhum$/m);
-  assert.match(out, /admin\|meu-bot-admin\|dist:admin\|so-build/);
+  assert.match(out, /admin\|meu-bot-admin-gestao\|dist:admin\|so-build/);
 });

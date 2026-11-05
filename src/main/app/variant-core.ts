@@ -82,7 +82,9 @@ function staging(base: Produto, variant: AppVariant, portaLocal: number): Produt
 
 export const PRODUTOS: readonly Produto[] = [
   CLIENT,
-  { variant: "admin", nome: "meu-bot-admin", bundleId: "local.meu-bot-admin", icone: "assets/icon-admin.icns", userData: "meu-bot-admin", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, addon: null, abreEm: null, caps: ADMIN,
+  // Até 4 nov chamava-se meu-bot-admin: a pasta de dados antiga é trazida na primeira abertura (admin/user-data.ts). A licença
+  // continua "meu-bot-admin" (é o nome contratado, não o do app).
+  { variant: "admin", nome: "meu-bot-admin-gestao", bundleId: "local.meu-bot-admin-gestao", icone: "assets/icon-admin.icns", userData: "meu-bot-admin-gestao", extensoes: [], canal: "estavel", licenca: "meu-bot-admin", herdaDe: null, portaLocal: 8790, fundeDe: null, addon: null, abreEm: null, caps: ADMIN,
     descricao: "Este app: suporte, licenças, espelho das máquinas, auditoria e o registro de produtos (MVPs)." },
   staging(CLIENT, "client-staging", 8791),
   // meu-bot-admin-mac: só as contas deste Mac (quem abre o meu-bot aqui; o bot de cada um roda numa VM, assunto do

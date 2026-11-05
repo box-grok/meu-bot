@@ -84,6 +84,6 @@ export type MacChannel = (typeof MAC_CHANNELS)[number];
 export type IpcChannel = SharedChannel | ClientChannel | AdminChannel;
 
 /** O que um canal de cliente responde no meu-bot-admin. */
-export const ADMIN_READONLY_MSG = "o meu-bot-admin só lê; use as ações de suporte";
+export const ADMIN_READONLY_MSG = "o meu-bot-admin-gestao só lê; use as ações de suporte";
 /** O que um canal de admin responde no meu-bot normal (ninguém chama; é só a recusa). */
 export const NOT_ADMIN_MSG = "origem inválida";

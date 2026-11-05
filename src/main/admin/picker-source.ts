@@ -12,7 +12,7 @@ import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerso
 import { registerProdutosIpc, showProdutos } from "./produtos-janela";
 
 export const adminPickerSource: PickerSource = {
-  title: "meu-bot-admin · escolher pessoa",
+  title: "meu-bot-admin-gestao · escolher pessoa",
   hosts: () => knownPeople().filter((p) => p.on).map((p) => p.alias),
   support: () => ({ people: knownPeople(), adminKey: adminKeyExists() }),
   registerIpc: ({ fromPicker }) => {

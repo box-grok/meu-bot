@@ -41,10 +41,10 @@ test("meu-bot traz as duas extensões e funde a pasta do antigo meu-bot-crm", ()
 });
 
 test("titleFor e userDataNameFor", () => {
-  assert.equal(titleFor("admin"), "meu-bot-admin");
+  assert.equal(titleFor("admin"), "meu-bot-admin-gestao");
   assert.equal(titleFor("client"), "meu-bot");
   assert.equal(userDataNameFor("client"), null, "o meu-bot fica na pasta padrão do Electron");
-  assert.equal(userDataNameFor("admin"), "meu-bot-admin");
+  assert.equal(userDataNameFor("admin"), "meu-bot-admin-gestao");
 });
 
 test("PRODUTOS: ids, nomes e bundle ids únicos; bundle id = local.<nome>; ícone .icns", () => {
