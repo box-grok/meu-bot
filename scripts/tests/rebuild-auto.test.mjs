@@ -28,6 +28,7 @@ function maquina() {
   git(seed, "add", "."); git(seed, "commit", "-qm", "um"); git(seed, "remote", "add", "origin", origin); git(seed, "push", "-q", "origin", "main");
   const principal = join(d, "meu-bot"); execFileSync("git", ["clone", "-q", origin, principal]);
   mkdirSync(join(principal, "node_modules")); mkdirSync(join(principal, "build", "extensao-autenticador"), { recursive: true }); mkdirSync(join(principal, "config")); writeFileSync(join(principal, "config", "google-oauth.json"), "{}");
+  mkdirSync(join(principal, "build", "suporte", "admins"), { recursive: true }); writeFileSync(join(principal, "build", "suporte", "suporte.json"), "{}");
   const env = { HOME: home, PATH: `${bin}:/usr/bin:/bin:/usr/local/bin`, MEU_BOT_REBUILD_DIR: join(d, "estado"), MEU_BOT_REBUILD_LOG: join(d, "rebuild.log") };
   const hook = (dir, ...args) => spawnSync("bash", [join(dir, "scripts", "hooks", "rebuild-auto.sh"), ...args], { encoding: "utf8", env, input: "{}", cwd: dir });
   const chamadas = () => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : []);
@@ -44,6 +45,7 @@ test("--run: empacota o origin/main num worktree fixo ao lado do checkout princi
   assert.equal(sha(m.build, "HEAD"), sha(m.origin, "main"));
   assert.equal(git(m.build, "branch", "--show-current"), "", "detached, não num branch");
   assert.ok(existsSync(join(m.build, "node_modules")) && existsSync(join(m.build, "config", "google-oauth.json")), "dependências e client do Google vieram do principal");
+  assert.ok(existsSync(join(m.build, "build", "suporte", "suporte.json")) && existsSync(join(m.build, "build", "suporte", "admins")), "build/suporte (o suporte.json do admin) veio do principal");
   const c = m.chamadas();
   assert.ok(c.includes("npm test em meu-bot-build-main") && c.includes("npm run dist:admin em meu-bot-build-main"), `testou e empacotou no worktree de build: ${c.join(" | ")}`);
   assert.equal(m.instalado(), `${sha(m.origin, "main")} ok`);

@@ -73,7 +73,7 @@ planejar() {
   printf '%s\n' ${abertos[@]+"${abertos[@]}"} ${resto[@]+"${resto[@]}"} | sed '/^$/d'
 }
 # O worktree de build em origin/main, com o que o git não guarda: dependências (link para o checkout principal) e os
-# arquivos locais do empacotamento (extensão do autenticador compilada e os clients do Google).
+# arquivos locais do empacotamento (extensão do autenticador compilada, os clients do Google e o suporte do admin).
 preparar_build() {
   if [ -e "$BUILD/.git" ]; then git -C "$BUILD" checkout -q --detach origin/main || return 1
   else git worktree add -q --detach "$BUILD" origin/main || return 1; fi
@@ -82,6 +82,10 @@ preparar_build() {
   mkdir -p "$BUILD/build" "$BUILD/config"
   [ -d "$BUILD/build/extensao-autenticador" ] || { [ -d "$PRINCIPAL/build/extensao-autenticador" ] && cp -R "$PRINCIPAL/build/extensao-autenticador" "$BUILD/build/"; }
   for f in google-oauth.json google-conta-oauth.json; do [ -f "$PRINCIPAL/config/$f" ] && cp "$PRINCIPAL/config/$f" "$BUILD/config/$f"; done
+  # build/suporte (suporte.json, admins.json, admins/<nome>.json; fora do git): é de onde o package.mjs tira o
+  # config/suporte.json do meu-bot-admin. Sem a cópia o admin saía "sem caixa de entrada configurada" e sem identidade.
+  # Recopiado sempre: o suporte-setup pode ter mudado a caixa ou os admins desde o último ciclo.
+  if [ -d "$PRINCIPAL/build/suporte" ]; then rm -rf "$BUILD/build/suporte"; cp -R "$PRINCIPAL/build/suporte" "$BUILD/build/"; fi
   return 0
 }
 

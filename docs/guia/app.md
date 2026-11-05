@@ -61,7 +61,7 @@
   de refatoração empacotava quatro variantes para ser sobrescrita minutos depois.
 - **Worktree por PR** (`CLAUDE.md`, skill `contribuir`): mudança que vira PR nasce em `../meu-bot-<nome>` a partir de
   `origin/main`; o checkout principal não troca de branch. O que o worktree precisa para empacotar: symlink de
-  `node_modules` e `extensao-crm/node_modules`, cópia de `build/extensao-autenticador` (o `build:extensao` recusa
+  `node_modules` e `extensao-crm/node_modules`, cópia de `build/suporte` (o `suporte.json` do admin) e de `build/extensao-autenticador` (o `build:extensao` recusa
   symlink) e dos `config/google-*oauth.json`.
 - **Conferência pelo DevTools remoto** (skill `testar-no-app`, `scripts/devtools.mjs`): lançar o binário instalado com
   `--remote-debugging-port` e dirigir o renderer (`paginas`, `eval`, `console`); antes, `grep -a` no `app.asar` para ter
