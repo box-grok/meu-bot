@@ -19,10 +19,10 @@ export interface GuideContext {
   /** `contasExtras` = contas isoladas logadas (além do login da máquina); `trocas` = trocas automáticas já vistas (eventos). */
   claude: { loggedIn: boolean | null; email: string | null; /** Responde pelo Claude Code Global do admin (a sessão já existe). */ global: boolean; firstReply: boolean; contasExtras: number; trocas: number };
   /**
-   * Grok pelo Hermes da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
-   * tutorial 4); `hermes` = o Hermes está instalado; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
+   * Grok pelo proxy local da máquina: `possible` = janela de máquina por SSH com o backend do meu-bot (false esconde o
+   * tutorial 4); `pronto` = proxy e providers.json preparados nesta conta; `loggedIn` = conta da xAI; `label` = rótulo da credencial.
    */
-  xai: { possible: boolean | null; hermes: boolean | null; loggedIn: boolean | null; label: string | null };
+  xai: { possible: boolean | null; pronto: boolean | null; loggedIn: boolean | null; label: string | null };
   /** Guarda do WhatsApp: `possible` = o agente da máquina aceita a guarda (capacidade `guarda`; null = sem status ainda); `installed` = está lá? (null = não consultado). */
   guarda: { installed: boolean | null; possible: boolean | null };
   /** Tutorial 16: o agente da máquina aceita ligar/desligar o "digitando…" (capacidade `digitando`; null = sem status ainda). */
@@ -84,7 +84,7 @@ export const emptyContext = (): GuideContext => ({
   support: null,
   statusLine: { installed: null, limits: false, segments: null },
   claude: { loggedIn: null, email: null, global: false, firstReply: false, contasExtras: 0, trocas: 0 },
-  xai: { possible: null, hermes: null, loggedIn: null, label: null },
+  xai: { possible: null, pronto: null, loggedIn: null, label: null },
   guarda: { installed: null, possible: null },
   digitando: { possible: null },
   navegador: { access: null, installed: null, tabs: 0, extensions: 0, agentOn: false, servicos: 0, extensaoEmbutida: false },
@@ -318,17 +318,17 @@ export const TUTORIAIS: readonly Tutorial[] = [
     summary: "Com a conta da xAI logada nesta máquina, o modelo grok-4 responde e pode servir de reserva do Claude.",
     minutes: 3,
     icon: "chat",
-    reset: { what: "sai da conta da xAI no Hermes desta máquina (o Hermes e o proxy ficam) e esquece a resposta de teste" },
+    reset: { what: "sai da conta da xAI nesta máquina (o proxy fica) e esquece a resposta de teste" },
     steps: [
       {
         id: "preparar", title: "Preparar o Grok nesta máquina", target: "none", body: "xai-prepare",
-        text: "O Grok responde pelo Hermes desta máquina, com a sua conta da xAI. Na primeira vez o app instala o Hermes e um proxy local; pode levar alguns minutos.",
-        done: (_st, _f, c) => c.xai.hermes === true,
+        text: "O grok-4 responde por um proxy local desta conta, com a sua conta da xAI. O app instala o proxy e aponta o backend para ele; na primeira vez pode levar alguns minutos.",
+        done: (_st, _f, c) => c.xai.pronto === true,
       },
       {
         id: "entrar", title: "Entrar na conta da xAI", target: "none", body: "xai-login",
         text: "Clique em Entrar: a página da xAI abre no navegador com um código já preenchido; você aprova por lá e volta. Aqui não há nada para colar.",
-        done: (_st, _f, c) => c.xai.hermes === true && c.xai.loggedIn === true,
+        done: (_st, _f, c) => c.xai.pronto === true && c.xai.loggedIn === true,
       },
       {
         id: "resposta", title: "Ver o grok-4 responder", target: "chat",

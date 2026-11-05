@@ -68,7 +68,7 @@ export interface MainEvents {
   "admin:usuarios-progresso": { line: string };
   /** Login do Claude Code em andamento. */
   "claude-login:event": ClaudeLoginEvent;
-  /** Login OAuth da xAI no Hermes em andamento (mesmo formato). */
+  /** Login OAuth da xAI em andamento (mesmo formato). */
   "xai-login:event": ClaudeLoginEvent;
   "contas:evento": ContaEvento;
   /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
@@ -200,7 +200,7 @@ export interface MeuBotSharedApi {
   exportWhatsapp(number: string, format: ExportFormat): Promise<{ path: string } | null>;
   /** Conta do Claude Code na máquina desta janela (null se não deu para consultar). */
   claudeAuth(): Promise<ClaudeAuthInfo | null>;
-  /** OAuth da xAI no Hermes da máquina (credencial xai-oauth); null se a máquina não tem Hermes. */
+  /** OAuth da xAI na máquina (credencial xai-oauth, guardada pelo hermes-agent que o proxy usa); null se a máquina não o tem. `proxy` diz se o grok-4 já está apontado para o proxy local. */
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
@@ -303,8 +303,8 @@ export interface MeuBotClientApi {
   supportInfo(): Promise<SupportInfo>;
   setSupport(on: boolean, name: string): Promise<SupportInfo>;
   supportCode(): Promise<string>;
-  /** Há backend do meu-bot nesta máquina? (decide se a linha "xAI (Grok)" aparece sem Hermes; o login é OAuth pelo Hermes). */
-  /** Prepara o Grok por OAuth na máquina (Hermes + proxy local); progresso em xai-login:event (log). */
+  /** Há backend do meu-bot nesta máquina? (decide se a linha "xAI (Grok)" aparece antes do preparo). */
+  /** Prepara o Grok por OAuth na máquina (proxy local + providers.json); progresso em xai-login:event (log). */
   xaiPrepare(): Promise<InstallBackendResult>;
   /** Status line do Claude na máquina desta janela: instalada? e instalar (progresso em statusline:progress). */
   statusLineInstalled(): Promise<boolean>;

@@ -31,7 +31,7 @@ export const LOGIN_STEPS: Record<LoginProvider, readonly { id: string; title: st
     { id: "conectar", title: "Conectar à máquina" },
     { id: "pedir", title: "Pedir o login à xAI" },
     { id: "aprovar", title: "Aprovar no navegador" },
-    { id: "guardar", title: "Guardar a credencial no Hermes" },
+    { id: "guardar", title: "Guardar a credencial nesta máquina" },
   ],
   claude: [
     { id: "conectar", title: "Conectar à máquina" },

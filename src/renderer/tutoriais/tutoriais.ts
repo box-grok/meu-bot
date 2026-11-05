@@ -158,9 +158,9 @@ function runGuideAction(target: GuideTarget, t: Tutorial): void {
   if (target === "chat") {
     if (t.id === "navegador") { if (!ctx.navAgent.on) void window.meuBot.browserAgent(true).then((st) => { ctx.navAgent = st; ctx.paintNav(); }); void ctx.goToChatFromGuide("Abra o site https://google.com no meu navegador e me diga o título da página.", "O agente vai abrir a página na aba Navegador e cada ação aparece aqui com 🌐; quando ele responder, o tutorial se conclui sozinho."); return; }
     if (t.id === "xai-login") {
-      // O passo 3 só aparece com Hermes e xAI logada, mas a promessa do grok-4 não sai sem os dois (a máquina sem Hermes responderia por outro modelo).
+      // O passo 3 só aparece com o Grok preparado e a xAI logada, mas a promessa do grok-4 não sai sem os dois (sem o proxy o backend nem conhece o grok-4).
       const x = ctx.guideCtx().xai;
-      if (x.hermes !== true || x.loggedIn !== true) { const tab = ctx.active(); if (tab !== null) ctx.addNotice(tab, "Esta máquina ainda não tem o Hermes com a conta da xAI; faça os passos 1 e 2 do tutorial.", "warn"); return; }
+      if (x.pronto !== true || x.loggedIn !== true) { const tab = ctx.active(); if (tab !== null) ctx.addNotice(tab, "Esta máquina ainda não tem o Grok preparado com a conta da xAI; faça os passos 1 e 2 do tutorial.", "warn"); return; }
       void ctx.goToChatFromGuide("Oi! Qual modelo está respondendo agora? Uma linha.", "A conversa muda para o grok-4. Se a xAI responder, a pill do túnel mostra \"respondeu grok-4\" e o tutorial se conclui sozinho; se outro modelo responder, volte ao passo 2.", "grok-4");
     }
     else if (t.id === "claude-login") void ctx.goToChatFromGuide("Oi! Você está aí? Me responde em uma linha.", "Quando a resposta chegar, o tutorial se conclui sozinho: é a sua conta do Claude respondendo nesta máquina.");

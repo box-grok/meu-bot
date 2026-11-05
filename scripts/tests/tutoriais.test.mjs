@@ -70,16 +70,17 @@ test("tutorial 1 · Entrar no Claude Code: login → e-mail (ou \"Vi minha conta
 test("tutorial 4 · Entrar na xAI (Grok): preparar → entrar → grok-4 respondeu; some onde o Grok não é possível", () => {
   const t4 = byId("xai-login");
   assert.equal(t4.after, "claude-login"); assert.equal(t4.needsXai, true); assert.ok(t4.comingSoon !== true);
-  const c = (xai) => ({ ...emptyContext(), xai: { possible: null, hermes: null, loggedIn: null, label: null, ...xai } });
+  const c = (xai) => ({ ...emptyContext(), xai: { possible: null, pronto: null, loggedIn: null, label: null, ...xai } });
   assert.equal(guideView(t4, null, emptyFlags(), c({})).current, 0, "não consultado: preparar");
-  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: false })).current, 0);
-  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: true, loggedIn: false })).current, 1, "Hermes pronto: entrar");
-  assert.equal(guideView(t4, null, emptyFlags(), c({ hermes: true, loggedIn: true })).current, 2, "logada: ver o grok-4 responder");
-  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ hermes: true, loggedIn: true })).finished, true);
-  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ hermes: true, loggedIn: false })).current, 1, "deslogou: volta a entrar");
+  assert.equal(guideView(t4, null, emptyFlags(), c({ pronto: false })).current, 0);
+  assert.equal(guideView(t4, null, emptyFlags(), c({ pronto: true, loggedIn: false })).current, 1, "proxy pronto: entrar");
+  assert.equal(guideView(t4, null, emptyFlags(), c({ pronto: false, loggedIn: true })).current, 0, "logada sem o proxy (Hermes global da máquina, conta sem preparo): volta ao preparar");
+  assert.equal(guideView(t4, null, emptyFlags(), c({ pronto: true, loggedIn: true })).current, 2, "logada: ver o grok-4 responder");
+  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ pronto: true, loggedIn: true })).finished, true);
+  assert.equal(guideView(t4, null, { ...emptyFlags(), grokReplied: true }, c({ pronto: true, loggedIn: false })).current, 1, "deslogou: volta a entrar");
   assert.equal(t4.steps[0].body, "xai-prepare"); assert.equal(t4.steps[1].body, "xai-login"); assert.equal(t4.steps[2].target, "chat");
   assert.equal(tutorialBadge(t4), "Tutorial 4 · 3 passos · 3 min");
-  assert.equal(guideTabTitle(t4, guideView(t4, null, emptyFlags(), c({ hermes: true }))), "4 · Grok 1/3");
+  assert.equal(guideTabTitle(t4, guideView(t4, null, emptyFlags(), c({ pronto: true }))), "4 · Grok 1/3");
   const done1 = (x) => x.id === "claude-login";
   const ids = (xai, fin = done1) => visibleTutorials(c(xai), fin).map((x) => x.id);
   assert.ok(ids({ possible: null }).includes("xai-login"), "sem consultar ainda, mostra");
@@ -93,8 +94,8 @@ test("tutorial 5 · Fallback: duas contas → escolher primário → ver a reser
   const t5 = byId("fallback-contas");
   assert.equal(t5.after, "xai-login"); assert.equal(t5.needsXai, true); assert.ok(t5.comingSoon !== true, "não é mais 'em breve'");
   const chain = [{ name: "agente", available: true }, { name: "grok-4", available: true }];
-  const c = (over) => ({ ...emptyContext(), claude: { loggedIn: true, email: "a@b", firstReply: true }, xai: { possible: true, hermes: true, loggedIn: true, label: "x" }, fallback: { primary: "agente", chain }, ...over });
-  assert.equal(guideView(t5, null, emptyFlags(), c({ xai: { possible: true, hermes: true, loggedIn: false, label: null } })).current, 0, "sem a xAI: passo 1");
+  const c = (over) => ({ ...emptyContext(), claude: { loggedIn: true, email: "a@b", firstReply: true }, xai: { possible: true, pronto: true, loggedIn: true, label: "x" }, fallback: { primary: "agente", chain }, ...over });
+  assert.equal(guideView(t5, null, emptyFlags(), c({ xai: { possible: true, pronto: true, loggedIn: false, label: null } })).current, 0, "sem a xAI: passo 1");
   assert.equal(guideView(t5, null, emptyFlags(), c({ claude: { loggedIn: false, email: null, firstReply: false } })).current, 0, "sem o Claude: passo 1");
   assert.equal(guideView(t5, null, emptyFlags(), c({})).current, 1, "duas contas: escolher");
   assert.equal(guideView(t5, null, { ...emptyFlags(), fallbackChosen: true }, c({ fallback: { primary: "claudecode", chain } })).current, 1, "primário fora da corrente não conta");
@@ -323,7 +324,7 @@ test("tutorial 11 · contas: entrar no Cloudflare, Cloudflare conectado; GitHub 
   assert.equal(guideView(t, null, { ...emptyFlags(), githubPulado: true }, c([cf(true), gh(false)])).finished, true);
   assert.equal(guideView(t, null, emptyFlags(), c([cf(true), gh(true)])).finished, true);
   assert.deepEqual(t.steps.map((s) => s.body), ["cloudflare-entrar", "conta-cloudflare", "conta-github"]);
-  const mac = { ...emptyContext(), xai: { possible: false, hermes: null, loggedIn: null, label: null } };
+  const mac = { ...emptyContext(), xai: { possible: false, pronto: null, loggedIn: null, label: null } };
   assert.ok(!visibleTutorials(mac, () => true).some((x) => x.id === "contas-cli"), "só em máquina por SSH");
 });
 
