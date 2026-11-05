@@ -294,6 +294,11 @@ async function padraoDaMaquina(host: string): Promise<void> {
   log(`[usuarios] ${host}: Hermes ${v} para todos em /opt/hermes`);
   void registrar(host, "maquina.hermes-global", v);
   // O padrão da máquina inclui o transcritor compartilhado: cada Hermes (e o OpenClaw) só aponta para ele.
+  await transcritorParaTodos(host);
+}
+
+/** O transcritor compartilhado (/opt/transcriber), do root; o OpenClaw e o Hermes usam o mesmo. Idempotente. */
+async function transcritorParaTodos(host: string): Promise<void> {
   const t = await runSsh(host, `${transcritorSh()}\n`, 20 * 60_000);
   saida(t.stdout, /^TRANSCRITOR=ok$/m, `o Hermes ficou pronto, mas não consegui instalar o transcritor em /opt/transcriber: ${/^ERRO=(.*)$/m.exec(t.stdout)?.[1] ?? ((t.stderr.trim() || t.stdout.trim()).split("\n").pop() ?? "sem resposta")}`);
   log(`[usuarios] ${host}: transcritor para todos em /opt/transcriber`);
@@ -330,7 +335,9 @@ async function prepararUsuario(host: string, nome: string, alias: string, onLine
   // Logo depois do preparo pesado a máquina pode demorar a responder: uma segunda tentativa antes de parar o onboarding
   // (sem ela a conta nascia sem Claude Code e sem backend, e o meu-bot dizia "Esta máquina ainda não tem o backend").
   const v = await usuariosDaMaquina(host).catch(() => usuariosDaMaquina(host));
-  if (v.hermes !== "global") { passo("instalando o padrão da máquina (Hermes e transcritor para todos)"); await padraoDaMaquina(host); }
+  // Conta com OpenClaw não precisa do Hermes para todos (~1 GB): só do transcritor compartilhado, que o OpenClaw também usa.
+  if (motor === "openclaw") { passo("garantindo o transcritor de áudio para todos (/opt/transcriber; o OpenClaw usa o mesmo)"); await transcritorParaTodos(host); }
+  else if (v.hermes !== "global") { passo("instalando o padrão da máquina (Hermes e transcritor para todos)"); await padraoDaMaquina(host); }
   passo("instalando o Claude Code");
   const cc = await installClaudeCode(alias, passo);
   if (!cc.ok) throw new Error(`o Claude Code não instalou: ${cc.log.at(-1) ?? "?"}`);
