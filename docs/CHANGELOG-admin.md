@@ -8,6 +8,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **LLMNR desligado por padrão.** Novo item em Preparar máquina: o resolvedor do Linux deixa de responder a vizinhos da
+  rede na porta 5355 (um serviço sem uso num servidor, e alvo clássico de envenenamento). Custa menos de um segundo de
+  DNS e nada do meu-bot sente; máquinas sem o systemd-resolved mostram "não se aplica".
 - **OpenClaw leve.** Novo item em Preparar máquina: cada gateway do OpenClaw passa a carregar só o WhatsApp e os plugins
   do meu-bot (de 43 para 4), com a memória do Node limitada; poupa ~430 MB por gateway na largada. Reinicia os gateways
   (o WhatsApp de cada um volta em ~10 s), por isso só pelo botão da aba. Contas novas já nascem assim ao parear.

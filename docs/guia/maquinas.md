@@ -469,6 +469,7 @@ numa infraestrutura prioritária nova antes de migrar uma pessoa para lá.
 | Item | Onde fica | Conferir |
 |---|---|---|
 | Swap 8 GB | `/swapfile`, `/etc/fstab`, `/etc/sysctl.d/90-meu-bot-swap.conf` (swappiness 10) | `swapon --show` |
+| LLMNR desligado (5 nov) | `/etc/systemd/resolved.conf.d/meu-bot-sem-llmnr.conf` (`LLMNR=no`); não se aplica sem systemd-resolved | `resolvectl status \| grep Protocols` mostra `-LLMNR`; `ss -lntu \| grep 5355` vazio |
 | Cota por usuário | `usrquota` no `/` em `/etc/fstab`, `quotaon` | `quotaon -pu /` |
 | Governança | `user.slice` (`MemoryMax` = total − max(3 GB, 10%), `MemoryLow` metade, `CPUWeight=100`); por box `MemorySwapMax=256M MemoryLow=640M CPUWeight=100` | `systemctl show user.slice -p MemoryMax -p MemoryLow -p CPUWeight`; `systemctl show user-<uid>.slice -p MemorySwapMax` |
 | Pacotes | `jq`, `ffmpeg`, `xvfb x11-utils openbox x11vnc novnc python3-websockify xdotool scrot`; opcional `chromium` | `dpkg-query -W jq ffmpeg xvfb novnc chromium` |
@@ -583,3 +584,16 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   da aba. Estado `OCLEVE=<gateways> <leves> <contas que faltam>`; auditoria `maquina.openclaw-leve`.
 - **Voltar atrás numa conta:** apagar o drop-in, `systemctl --user daemon-reload`, `openclaw config unset plugins.allow`,
   reiniciar o gateway.
+
+## LLMNR desligado no Preparar máquina (5 nov)
+
+- **Motivo:** auditoria da VM `meu`: o `systemd-resolved` do Debian vem com LLMNR (RFC 4795, o "DNS de vizinhança")
+  ligado, escutando UDP/TCP 5355 em todas as interfaces, inclusive a pública. Num servidor na nuvem não tem uso e
+  responde a qualquer vizinho do segmento (o "LLMNR poisoning" do Responder). O firewall da Hostinger já segura a
+  5355 de fora; o que sobra é higiene.
+- **Agora:** item "Rede: LLMNR desligado" no Preparar máquina (`LLMNR_ESTADO_SH`/`LLMNR_DESLIGAR_SH` em
+  `preparar-core.ts`): estado `LLMNR=on|off|na` (`na` = sem systemd-resolved: Termux, Colima, outros resolvedores →
+  "não se aplica"); aplicar grava `/etc/systemd/resolved.conf.d/meu-bot-sem-llmnr.conf` com `LLMNR=no` e reinicia o
+  resolvedor (< 1 s sem DNS; gateway e WhatsApp não sentem), conferindo `-LLMNR` e a 5355 fechada. Entra no "Criar
+  usuário" (não reinicia nada do meu-bot) e no "Nova VPS". Auditoria `maquina.llmnr`. O mDNS fica como está (já vem
+  desligado). Voltar: apagar o arquivo e `systemctl restart systemd-resolved`.

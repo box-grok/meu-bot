@@ -25,11 +25,11 @@ export const PACOTES_TELA = ["xvfb", "x11-utils", "openbox", "x11vnc", "novnc", 
 export const PACOTE_CHROMIUM = "chromium";
 export const PACOTE_RE = /^[a-z0-9][a-z0-9.+-]{1,60}$/;
 /** Ordem de aplicação (dependências): swap e cota antes de qualquer apt; pacotes antes do gh; Hermes antes do transcritor (só para reaproveitar o modelo; o transcritor vale para OpenClaw e Hermes) e do Claude Global (usa o Node de /opt/hermes). */
-export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"];
+export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"];
 /** Ordem da lista na tela: o link público entre o Claude Global e o Chromium (os dois humanos juntos). */
-export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "link-publico", "chromium"];
+export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "link-publico", "chromium"];
 export const TITULOS: Record<PrepararId, string> = {
-  swap: "Memória de reserva (swap de 8 GB)", cota: "Cota de disco por usuário", governanca: "Governança de RAM/CPU", pacotes: "Pacotes do sistema (jq, ffmpeg e a tela do bot)",
+  swap: "Memória de reserva (swap de 8 GB)", cota: "Cota de disco por usuário", governanca: "Governança de RAM/CPU", llmnr: "Rede: LLMNR desligado (o resolvedor não responde na porta 5355)", pacotes: "Pacotes do sistema (jq, ffmpeg e a tela do bot)",
   gh: "GitHub CLI para todos (/usr/local/bin/gh)", hermes: "Hermes para todos (/opt/hermes)", transcritor: "Transcritor de áudio para todos (/opt/transcriber)",
   openclaw: "OpenClaw para todos (/opt/openclaw)", "openclaw-leve": "OpenClaw leve (só os plugins usados, heap do Node limitada)",
   "claude-global": "Claude Code Global", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
@@ -50,11 +50,29 @@ const TODOS_PACOTES: readonly string[] = [...PACOTES_BASE, ...PACOTES_TELA, PACO
  * binário), `GH=<versão>` (só o de /usr/local/bin: o de ~/.local/bin de um usuário não conta), `HERMES=…`, `TRANSCRITOR=1|0`, `OPENCLAW=global|root|nenhum`,
  * `CG=<inst> <ativo> <login>`, `LP=<inst> <login> <tunel> <servico> <domínio>`, `OS=<id>`.
  */
+/**
+ * LLMNR (RFC 4795, o "DNS de vizinhança" que o systemd-resolved liga por padrão no Debian): num servidor na nuvem não
+ * tem uso e responde a qualquer vizinho do segmento na UDP/TCP 5355 (o "LLMNR poisoning" do Responder). `LLMNR=on|off|na`
+ * (na = sem systemd-resolved: Termux, Colima, outros resolvedores). Desligar: drop-in em resolved.conf.d (não briga
+ * com atualização do pacote) e reinício do resolvedor (< 1 s sem DNS; o gateway e o WhatsApp não sentem). Reversível:
+ * apagar o arquivo e reiniciar. Pedido do dono em 5 nov, a partir da auditoria da VM "meu".
+ */
+export const LLMNR_CONF = "/etc/systemd/resolved.conf.d/meu-bot-sem-llmnr.conf";
+export const LLMNR_ESTADO_SH = `if command -v resolvectl >/dev/null 2>&1 && systemctl is-active --quiet systemd-resolved 2>/dev/null; then if resolvectl status 2>/dev/null | grep -E '^ *Protocols:' | grep -q '+LLMNR' || (ss -lntu 2>/dev/null | grep -q ':5355 '); then echo LLMNR=on; else echo LLMNR=off; fi; else echo LLMNR=na; fi`;
+export const LLMNR_DESLIGAR_SH = `${SO_ROOT}
+if ! command -v resolvectl >/dev/null 2>&1 || ! systemctl is-active --quiet systemd-resolved 2>/dev/null; then echo "LLMNR=ok na"; exit 0; fi
+mkdir -p /etc/systemd/resolved.conf.d
+printf '[Resolve]\n# meu-bot: LLMNR desligado (servidor na nuvem: sem uso, e responde a qualquer vizinho na 5355). Para voltar, apague este arquivo e reinicie o systemd-resolved.\nLLMNR=no\n' > ${LLMNR_CONF}
+systemctl restart systemd-resolved || { echo "ERRO=o systemd-resolved não reiniciou"; exit 1; }
+for _ in 1 2 3 4 5; do sleep 1; if resolvectl status 2>/dev/null | grep -E '^ *Protocols:' | grep -q -- '-LLMNR' && ! (ss -lntu 2>/dev/null | grep -q ':5355 '); then echo "LLMNR=ok off"; exit 0; fi; done
+echo "ERRO=o resolvedor reiniciou, mas ainda anuncia LLMNR ou escuta na 5355"; exit 1`;
+
 export const PREPARAR_ESTADO_SH = `${SO_ROOT}
 echo ROOT
 echo "RAM=$(free -k | awk '/^Mem:/ {print $2}')"
 echo "SWAP=$(free -k | awk '/^Swap:/ {print $2}')"
 ${COTA_ESTADO_SH}
+${LLMNR_ESTADO_SH}
 R=$(systemctl show user.slice -p MemoryMax --value 2>/dev/null); if [ -n "$R" ] && [ "$R" != infinity ]; then echo RESERVA=1; else echo RESERVA=0; fi
 S=""; for n in $(awk -F: '$3>=1000 && $3<60000 && $7 !~ /(nologin|false)$/ {print $1}' /etc/passwd); do case "$n" in openclaw|hermes|auditoria) continue;; esac; g=" $(id -nG "$n" 2>/dev/null) "; case "$g" in *" sudo "*|*" wheel "*|*" admin "*) continue;; esac; u=$(id -u "$n" 2>/dev/null); [ -d "/sys/fs/cgroup/user.slice/user-$u.slice" ] || continue; [ "$(systemctl show "user-$u.slice" -p MemorySwapMax --value 2>/dev/null)" = infinity ] && S="$S $n"; done; echo "SEMISO=\${S# }"
 P=""; for p in ${TODOS_PACOTES.join(" ")}; do if dpkg-query -W -f='\${Status}' "$p" 2>/dev/null | grep -q "install ok installed"; then P="$P $p=1"; else P="$P $p=0"; fi; done; echo "PACOTES=\${P# }"
@@ -85,6 +103,7 @@ export function lerPreparar(out: string): PrepararLido {
   const swapKb = num(/^SWAP=(\d+)$/m.exec(out)?.[1]) ?? 0;
   const cota = /^COTA=1$/m.test(out);
   const reserva = /^RESERVA=1$/m.test(out);
+  const llmnr = /^LLMNR=(on|off|na)$/m.exec(out)?.[1] ?? null;
   const semIsolamento = (/^SEMISO=(.*)$/m.exec(out)?.[1] ?? "").split(/\s+/).filter((n) => /^[a-z_][a-z0-9_-]*$/.test(n));
   const pacotes = new Map<string, boolean>();
   for (const par of (/^PACOTES=(.*)$/m.exec(out)?.[1] ?? "").split(/\s+/)) { const m = /^([a-z0-9.+-]+)=([01])$/.exec(par); if (m !== null) pacotes.set(m[1]!, m[2] === "1"); }
@@ -104,6 +123,9 @@ export function lerPreparar(out: string): PrepararLido {
   porId.set("cota", cota ? item("cota", "ok", "usrquota ligada no disco principal") : item("cota", "falta", "sem cota não há limite de disco por pessoa"));
   porId.set("governanca", reserva && semIsolamento.length === 0 ? item("governanca", "ok", "reserva para o sistema e isolamento das boxes")
     : item("governanca", "falta", [!reserva ? "sem reserva para o sistema (teto no user.slice)" : "", semIsolamento.length > 0 ? `sem isolamento: ${semIsolamento.join(", ")}` : ""].filter((s) => s !== "").join(" · ")));
+  // Sem systemd-resolved (ou saída antiga sem a chave) não se aplica; ligado é falta (1 s sem DNS para desligar).
+  porId.set("llmnr", llmnr === "on" ? item("llmnr", "falta", "o resolvedor responde a qualquer vizinho da rede na porta 5355 (LLMNR poisoning); desligar custa < 1 s de DNS, nada do meu-bot sente")
+    : llmnr === "off" ? item("llmnr", "ok", "o resolvedor não anuncia LLMNR nem escuta na 5355") : item("llmnr", "ok", "não se aplica: esta máquina não usa o systemd-resolved"));
   porId.set("pacotes", faltamPacotes.length === 0 ? item("pacotes", "ok", "jq, ffmpeg e a tela do bot") : item("pacotes", "falta", `faltam: ${faltamPacotes.join(", ")}`));
   porId.set("gh", gh !== "" ? item("gh", "ok", `gh ${gh}`) : item("gh", "falta", "cada conta teria de instalar o seu em ~/.local/bin"));
   porId.set("hermes", hermes === "global" || hermes === "sem-transcritor" ? item("hermes", "ok", "/opt/hermes para todos") : item("hermes", "falta", hermes === "root" ? "só o root tem o Hermes: os usuários não alcançam" : "cada usuário baixaria uma cópia"));
@@ -185,7 +207,8 @@ export function passosPreparar(ids: readonly string[], v: PrepararLido): PassoPr
       const temReserva = !(v.itens.find((i) => i.id === "governanca")?.detalhe ?? "").includes("sem reserva");
       if (!temReserva && v.ramKb !== null) { const { capMb, lowMb } = reservaDe(v.ramKb); passos.push({ id, titulo: "Reserva de memória para o sistema", sh: reservaHostSh(capMb, lowMb), ok: /^RESERVA=ok /m, timeoutMs: 30_000, acao: "maquina.reserva", alvo: ultimo(/^RESERVA=ok (\d+)/m) }); }
       if (v.semIsolamento.length > 0) passos.push({ id, titulo: "Isolamento das boxes", sh: isolamentoTodosSh(), ok: /^ISOLAMENTO=ok /m, timeoutMs: 60_000, acao: "maquina.isolamento", alvo: ultimo(/^ISOLAMENTO=ok (.*)$/m) });
-    } else if (id === "pacotes") passos.push({ id, titulo: TITULOS.pacotes, sh: pacotesSh([...PACOTES_BASE, ...PACOTES_TELA]), ok: /^PACOTES=ok/m, timeoutMs: 10 * 60_000, acao: "maquina.pacotes", alvo: ultimo(/^PACOTES=ok \d+ ?(.*)$/m) });
+    } else if (id === "llmnr") passos.push({ id, titulo: TITULOS.llmnr, sh: LLMNR_DESLIGAR_SH, ok: /^LLMNR=ok /m, timeoutMs: 60_000, acao: "maquina.llmnr", alvo: ultimo(/^LLMNR=ok (\S+)/m) });
+    else if (id === "pacotes") passos.push({ id, titulo: TITULOS.pacotes, sh: pacotesSh([...PACOTES_BASE, ...PACOTES_TELA]), ok: /^PACOTES=ok/m, timeoutMs: 10 * 60_000, acao: "maquina.pacotes", alvo: ultimo(/^PACOTES=ok \d+ ?(.*)$/m) });
     else if (id === "gh") passos.push({ id, titulo: TITULOS.gh, sh: GH_GLOBAL_SH, ok: /^GH=ok /m, timeoutMs: 2 * 60_000, acao: "maquina.gh", alvo: ultimo(/^GH=ok (\S+)/m) });
     else if (id === "hermes") passos.push({ id, titulo: TITULOS.hermes, sh: comoRoot(hermesGlobalSh()), ok: /^HERMES=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.hermes-global", alvo: ultimo(/^HERMES=ok (\S+)/m) });
     else if (id === "transcritor") passos.push({ id, titulo: TITULOS.transcritor, sh: comoRoot(transcritorSh()), ok: /^TRANSCRITOR=ok$/m, timeoutMs: 20 * 60_000, acao: "maquina.transcritor", alvo: () => "/opt/transcriber" });

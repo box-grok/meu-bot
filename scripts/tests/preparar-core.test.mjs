@@ -7,14 +7,14 @@ const { COTA_ESTADO_SH, HERMES_ESTADO_SH, OPENCLAW_ESTADO_SH, openclawGlobalSh }
 const todos = [...PACOTES_BASE, ...PACOTES_TELA, "chromium"];
 const pacotes = (faltam = []) => todos.map((p) => `${p}=${faltam.includes(p) ? 0 : 1}`).join(" ");
 const saida = (o = {}) => [
-  "ROOT", `RAM=${o.ram ?? 32000000}`, `SWAP=${o.swap ?? 8388604}`, `COTA=${o.cota ?? 1}`, `RESERVA=${o.reserva ?? 1}`, `SEMISO=${o.semiso ?? ""}`,
+  "ROOT", `RAM=${o.ram ?? 32000000}`, `SWAP=${o.swap ?? 8388604}`, `COTA=${o.cota ?? 1}`, `LLMNR=${o.llmnr ?? "off"}`, `RESERVA=${o.reserva ?? 1}`, `SEMISO=${o.semiso ?? ""}`,
   `PACOTES=${o.pacotes ?? pacotes()}`, `GH=${o.gh ?? "2.103.3"}`, `HERMES=${o.hermes ?? "global"}`, `TRANSCRITOR=${o.transcritor ?? 1}`, `OPENCLAW=${o.openclaw ?? "global"}`, `OCLEVE=${o.ocleve ?? "2 2"}`, `CG=${o.cg ?? "1 1 1"}`, `LP=${o.lp ?? "1 1 1 1 agentesgrok.com"}`, `OS=${o.os ?? "debian"}`,
 ].join("\n") + "\n";
 
 test("preparar: máquina pronta → tudo ok, nada a aplicar; NAOROOT → root=false", () => {
   const v = lerPreparar(saida());
   assert.equal(v.root, true);
-  assert.deepEqual(v.itens.map((i) => [i.id, i.estado]), [["swap", "ok"], ["cota", "ok"], ["governanca", "ok"], ["pacotes", "ok"], ["gh", "ok"], ["hermes", "ok"], ["transcritor", "ok"], ["openclaw", "ok"], ["openclaw-leve", "ok"], ["claude-global", "ok"], ["link-publico", "ok"], ["chromium", "ok"]]);
+  assert.deepEqual(v.itens.map((i) => [i.id, i.estado]), [["swap", "ok"], ["cota", "ok"], ["governanca", "ok"], ["llmnr", "ok"], ["pacotes", "ok"], ["gh", "ok"], ["hermes", "ok"], ["transcritor", "ok"], ["openclaw", "ok"], ["openclaw-leve", "ok"], ["claude-global", "ok"], ["link-publico", "ok"], ["chromium", "ok"]]);
   assert.deepEqual(v.faltam, []);
   assert.equal(v.ramKb, 32000000);
   assert.match(v.itens.find((i) => i.id === "link-publico").detalhe, /agentesgrok\.com/);
@@ -87,9 +87,9 @@ test("preparar: pacotesSh valida nomes e protege contra o lock do apt; GH_GLOBAL
 test("preparar: o script de estado começa pelo guard de root, reaproveita os trechos de cota e Hermes e tem uma chave por item", () => {
   assert.match(PREPARAR_ESTADO_SH, /^\[ "\$\(id -u\)" = 0 \] \|\| \{ echo "NAOROOT"; exit 0; \}/);
   assert.ok(PREPARAR_ESTADO_SH.includes(COTA_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(HERMES_ESTADO_SH)); assert.ok(PREPARAR_ESTADO_SH.includes(OPENCLAW_ESTADO_SH));
-  for (const k of ["RAM=", "SWAP=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "TRANSCRITOR=", "OCLEVE=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
+  for (const k of ["RAM=", "SWAP=", "LLMNR=", "RESERVA=", "SEMISO=", "PACOTES=", "GH=", "TRANSCRITOR=", "OCLEVE=", "CG=", "LP=", "OS="]) assert.ok(PREPARAR_ESTADO_SH.includes(k), k);
   assert.match(PREPARAR_ESTADO_SH, /\/usr\/local\/bin\/gh --version/); assert.match(PREPARAR_ESTADO_SH, /dpkg-query/);
-  assert.deepEqual([...ORDEM_PREPARAR], ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"]);
+  assert.deepEqual([...ORDEM_PREPARAR], ["swap", "cota", "governanca", "llmnr", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"]);
 });
 
 test("preparar: OpenClaw para todos ao lado do Hermes (o app é agnóstico de motor): só no root ou em nenhum lugar → falta; passo como root com a versão fixada", () => {
@@ -116,6 +116,23 @@ test("preparar: o Criar usuário não instala o OpenClaw (a conta nova usa o Her
   assert.deepEqual(faltamAoCriarUsuario(v.faltam), ["transcritor"]);
   assert.deepEqual(faltamAoCriarUsuario(["openclaw"]), []);
   assert.deepEqual(faltamAoCriarUsuario(["openclaw-leve", "swap"]), ["swap"], "o leve reinicia gateways: só pelo botão da aba");
+});
+
+test("preparar: LLMNR: ligado é falta (1 s sem DNS para desligar); desligado ou sem systemd-resolved é ok; o passo grava o drop-in e confere a 5355", () => {
+  const { LLMNR_DESLIGAR_SH, LLMNR_ESTADO_SH, LLMNR_CONF } = createRequire(import.meta.url)("../../dist/main/admin/preparar-core.js");
+  const por = (o) => Object.fromEntries(lerPreparar(saida(o)).itens.map((i) => [i.id, i]));
+  assert.equal(por({ llmnr: "on" }).llmnr.estado, "falta"); assert.match(por({ llmnr: "on" }).llmnr.detalhe, /5355/);
+  assert.equal(por({ llmnr: "off" }).llmnr.estado, "ok"); assert.equal(por({ llmnr: "na" }).llmnr.estado, "ok"); assert.match(por({ llmnr: "na" }).llmnr.detalhe, /não se aplica/);
+  assert.equal(lerPreparar(saida().replace(/^LLMNR=.*\n/m, "")).itens.find((i) => i.id === "llmnr").estado, "ok", "saída antiga: nada a fazer");
+  assert.deepEqual(lerPreparar(saida({ llmnr: "on" })).faltam, ["llmnr"]);
+  assert.ok(PREPARAR_ESTADO_SH.includes(LLMNR_ESTADO_SH)); assert.match(LLMNR_ESTADO_SH, /resolvectl status/); assert.match(LLMNR_ESTADO_SH, /:5355 /);
+  const p = passosPreparar(["llmnr"], lerPreparar(saida({ llmnr: "on" })));
+  assert.equal(p.length, 1); assert.equal(p[0].acao, "maquina.llmnr"); assert.equal(p[0].alvo("LLMNR=ok off\n"), "off");
+  assert.match(LLMNR_DESLIGAR_SH, /^\[ "\$\(id -u\)" = 0 \]/); assert.ok(LLMNR_DESLIGAR_SH.includes(LLMNR_CONF)); assert.match(LLMNR_DESLIGAR_SH, /LLMNR=no/); assert.match(LLMNR_DESLIGAR_SH, /systemctl restart systemd-resolved/);
+  assert.match(LLMNR_DESLIGAR_SH, /LLMNR=ok na/); assert.match(LLMNR_DESLIGAR_SH, /-LLMNR/);
+  // Não reinicia gateway nem WhatsApp: pode entrar no Criar usuário.
+  const { faltamAoCriarUsuario } = createRequire(import.meta.url)("../../dist/main/admin/preparar-core.js");
+  assert.deepEqual(faltamAoCriarUsuario(["llmnr"]), ["llmnr"]);
 });
 
 test("preparar: OpenClaw leve: sem gateway é ok; gateways pesados viram falta com os nomes; o passo roda como root e registra na auditoria", () => {
