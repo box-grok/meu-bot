@@ -606,3 +606,17 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   **opcional** (como o Chromium): fora de `faltam`, só pelo clique no item. Hermes só no root continua obrigatório
   (alguém usa). E o preparo de uma conta criada com "WhatsApp: OpenClaw" garante só o transcritor compartilhado
   (`transcritorParaTodos`, o mesmo /opt/transcriber que o OpenClaw usa), não o Hermes.
+
+## Contexto para os agentes: o que é do meu-bot nesta máquina (5 nov)
+
+- **Motivo:** o Claude Code do root na VM `meu`, pedido para auditar a máquina, apontou o usuário `nova` como "sobra
+  de uma primeira tentativa" e sugeriu removê-lo. É o pós-instalação do pacote `novnc` (tela do bot), criado no
+  mesmo segundo em que o passo "Pacotes" do Preparar terminou. Sem contexto, tudo que o meu-bot deixa (contas
+  `box-*`, `/opt/*`, drop-ins, swap, cota, LLMNR) vira suspeita para um agente.
+- **Agora:** item "Contexto para os agentes" no Preparar máquina (`src/main/admin/contexto-core.ts`): um bloco com
+  marcadores `<!-- meu-bot:maquina v1 inicio/fim -->` (molde da regra do Navegador) no `agent-workspace/CLAUDE.md`
+  do root e de cada box (criado se faltar) e no `AGENTS.md` do workspace do OpenClaw onde ele existe. O texto lista o
+  que é nosso e onde está, diz que `nova` é do `novnc` e `auditoria` é a central, e fixa a regra: conferir a lista
+  antes de apontar suspeita; nunca remover ou "corrigir" sem o admin pedir; mudar é pelo admin, não pelo shell.
+  Estado `CONTEXTO=<arquivos> <com o bloco>`; subir `CONTEXTO_VERSAO` quando o texto mudar faz o item voltar a
+  "falta" em toda máquina. Entra no "Criar usuário" e no "Nova VPS"; auditoria `maquina.contexto`.

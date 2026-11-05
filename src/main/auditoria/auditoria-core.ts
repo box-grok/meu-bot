@@ -108,6 +108,7 @@ export const ACOES = {
   "cota.liberar": (a: string) => `apagou ${a || "um item"} para liberar espaço`,
   "maquina.hermes-global": (a: string) => `instalou o Hermes${a ? ` ${a}` : ""} para todos os usuários desta máquina`,
   "maquina.openclaw-global": (a: string) => `instalou o OpenClaw${a ? ` ${a}` : ""} para todos os usuários desta máquina`,
+  "maquina.contexto": (a: string) => `gravou o contexto do meu-bot para os agentes desta máquina${a ? ` (${a} arquivos)` : ""}`,
   "maquina.llmnr": (a: string) => `desligou o LLMNR do resolvedor desta máquina${a === "na" ? " (não se aplicava)" : ""}`,
   "maquina.openclaw-leve": (a: string) => `deixou os gateways do OpenClaw desta máquina leves${a ? ` (${a})` : ""}`,
   "usuarios.preparar": (a: string) => `preparou a conta de ${a} (Claude Code, backend do meu-bot, Hermes e transcrição)`,
