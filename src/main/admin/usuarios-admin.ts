@@ -14,7 +14,7 @@ import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
 import { adicionarUsuario, apelidoDoUsuarioNoSeletor, esquecerUsuario, pessoasPorMaquina, usuariosNoSeletor } from "./support-admin";
-import { refreshPickerIfOpen } from "../maquina/picker";
+import { refreshPickerIfOpen, resondarNoSeletor } from "../maquina/picker";
 import { bundledBackendVersion, fusoDesteMac, installBackend, installClaudeCode, installStatusLine, pausaPluginFonte, probeHost } from "../maquina/hostProbe";
 import { portaParaInstalar } from "../maquina/porta-backend-core";
 import { precisaAtualizarBackend } from "../atualizacao/updater-core";
@@ -217,13 +217,14 @@ export async function criarUsuario(host: string, nomeDigitado: unknown, pct: unk
   if (rec === null || !/^RECURSOS=ok$/m.test(rec.stdout)) log(`[usuarios] ${host}: ${nome} criado sem os tetos padrão`);
   // Já entra nos dois seletores (meu-bot e admin); falhar aqui não desfaz o usuário: a resposta avisa.
   onLine?.("sempre ligado, com os tetos de RAM e CPU; entrando nos seletores do meu-bot e do admin");
-  const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
+  const sel = await porNosSeletores(host, nome).catch((e: unknown) => ({ alias: aliasNoMeuBot(host, nome).alias, aliasAdmin: null, novo: false, aviso: e instanceof Error ? e.message : String(e) }));
   // Com limite pedido na criação: grava já (liga a cota na primeira vez).
   if (typeof pct === "number" && pct > 0) await definirLimite(host, nome, pct);
   // Onboarding: só devolve depois de tudo pronto. Falhou um passo: o usuário existe, a resposta diz onde parou.
   let preparo: string | null = sel.aviso === null ? null : "sem o seletor do meu-bot, não deu para preparar a conta";
   let global = false;
   if (preparo === null) await prepararUsuario(host, nome, sel.alias, onLine, motor).then((g) => { global = g; }).catch((e: unknown) => { preparo = e instanceof Error ? e.message : String(e); onLine?.(`✗ parou: ${preparo}`); });
+  resondarPessoa(sel);
   const v = await usuariosDaMaquina(host);
   return { ...v, seletores: { alias: sel.alias, aviso: sel.aviso }, preparo, global };
 }
@@ -381,7 +382,7 @@ export async function prepararUsuarioDeNovo(host: string, nome: unknown, onLine?
   const n = nomeValido(nome);
   const sel = await porNosSeletores(host, n);
   if (sel.aviso !== null) throw new Error(sel.aviso);
-  try { await prepararUsuario(host, n, sel.alias, onLine); } catch (e) { onLine?.(`✗ parou: ${e instanceof Error ? e.message : String(e)}`); throw e; }
+  try { await prepararUsuario(host, n, sel.alias, onLine); } catch (e) { onLine?.(`✗ parou: ${e instanceof Error ? e.message : String(e)}`); throw e; } finally { resondarPessoa(sel); }
   return usuariosDaMaquina(host);
 }
 
@@ -451,13 +452,19 @@ function tirarDoSshConfig(host: string, n: string): boolean {
 }
 
 /** O usuário nos dois seletores: o do meu-bot (~/.ssh/config) e o do admin (pessoa marcada, sem preparar a conta). */
-async function porNosSeletores(host: string, n: string): Promise<{ alias: string; novo: boolean; aviso: string | null }> {
+async function porNosSeletores(host: string, n: string): Promise<{ alias: string; aliasAdmin: string | null; novo: boolean; aviso: string | null }> {
   const meuBot = await garantirNoSshConfig(host, n);
-  let aviso: string | null = null; let noAdmin = false;
-  try { noAdmin = (await adicionarUsuario(host, meuBot.alias, n)).novo; } catch (e) { aviso = `não entrou no seletor do admin: ${e instanceof Error ? e.message : String(e)}`; }
+  let aviso: string | null = null; let noAdmin = false; let aliasAdmin: string | null = null;
+  try { const a = await adicionarUsuario(host, meuBot.alias, n); noAdmin = a.novo; aliasAdmin = a.alias; } catch (e) { aviso = `não entrou no seletor do admin: ${e instanceof Error ? e.message : String(e)}`; }
   if (meuBot.novo || noAdmin) { void registrar(host, "usuarios.seletor", n); refreshPickerIfOpen(); }
-  return { alias: meuBot.alias, novo: meuBot.novo || noAdmin, aviso };
+  return { alias: meuBot.alias, aliasAdmin, novo: meuBot.novo || noAdmin, aviso };
 }
+
+/**
+ * O seletor do admin sondou a pessoa assim que ela entrou na lista, no meio do preparo (Claude Code já lá, backend e
+ * login ainda não), e guardava essa foto até a janela fechar. Preparo terminado (ou parado), sonda de novo.
+ */
+const resondarPessoa = (sel: { alias: string; aliasAdmin: string | null }): void => resondarNoSeletor(sel.aliasAdmin === null ? [sel.alias] : [sel.alias, sel.aliasAdmin]);
 
 /** Botão "Nos seletores" da linha (refaz o que a sincronização faz, para um usuário). */
 export async function nosSeletores(host: string, nome: unknown): Promise<{ alias: string; novo: boolean; aviso: string | null }> {

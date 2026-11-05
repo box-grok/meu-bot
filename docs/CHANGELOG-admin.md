@@ -40,6 +40,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Corrigido
 
+- **Usuário recém-criado aparecia no seletor como "sem backend; Claude Code existe mas não está logado"** mesmo com
+  o preparo inteiro feito. O seletor sondava a pessoa assim que ela entrava na lista, no meio do preparo, e guardava
+  essa foto até a janela fechar. Agora, terminado o "Criar usuário" ou o "Preparar", a pessoa é sondada de novo.
 - **A janela da pessoa abria com a cara do meu-bot da pessoa** (Tutoriais, Acervo, Conta Google, caixa de mensagem)
   em vez da lateral de gestão. Um canal novo da busca na página não estava na lista permitida e derrubava a janela
   na abertura. Agora a lateral volta: Suporte com plano e licença, Auditoria e, como root, Usuários.
