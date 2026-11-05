@@ -185,6 +185,7 @@ test("comandoRestaurarSh: agente: as conversas da LV entram ao lado das de hoje 
   const OLDSLUG = origem.replace(/\//g, "-"); const NEWSLUG = destino.replace(/\//g, "-");
   escrever(origem, `.claude/projects/${OLDSLUG}-agent-workspace/antiga.jsonl`, `{"cwd":"${origem}/agent-workspace","type":"user"}\n`);
   escrever(origem, `.claude/projects/${OLDSLUG}-agent-workspace/memory/MEMORY.md`, "memoria da LV");
+  escrever(origem, `.claude/projects/${OLDSLUG}-agent-workspace/memory/papel.md`, `a memoria fica em ${origem}/.openclaw/workspace/MEMORY.md`);
   escrever(origem, `.claude/projects/${OLDSLUG}-chat-workspace/c.jsonl`, "{}\n");
   escrever(origem, ".claude/skills/minha/SKILL.md", "skill da LV");
   const pacote = join(a.raiz, "agente.tgz");
@@ -199,6 +200,7 @@ test("comandoRestaurarSh: agente: as conversas da LV entram ao lado das de hoje 
   assert.ok(existsSync(join(proj, "antiga.jsonl")), "a da LV entrou ao lado");
   assert.match(readFileSync(join(proj, "antiga.jsonl"), "utf8"), new RegExp(`"cwd":"${destino.replace(/[/.]/g, "\\$&")}/agent-workspace"`), "cwd trocado");
   assert.equal(readFileSync(join(proj, "memory/MEMORY.md"), "utf8"), "memoria da box-1", "o que a box-1 ja tinha vence");
+  assert.equal(readFileSync(join(proj, "memory/papel.md"), "utf8"), `a memoria fica em ${destino}/.openclaw/workspace/MEMORY.md`, "nota de memoria com o caminho novo");
   assert.ok(existsSync(join(destino, `.claude/projects/${NEWSLUG}-chat-workspace/c.jsonl`)), "pasta que nao existia e renomeada");
   assert.ok(!existsSync(join(destino, `.claude/projects/${OLDSLUG}-agent-workspace`)), "nada fica com o nome antigo");
   assert.equal(readFileSync(join(destino, ".claude/skills/minha/SKILL.md"), "utf8"), "skill da LV");

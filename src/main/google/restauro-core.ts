@@ -224,7 +224,10 @@ export function comandoRestaurarSh(p: PedidoRestauroSh): string {
     'padrao = re.compile(re.escape(old) + r"(?=[/\\"\'\\s:]|$)")',
     'fixos = [".claude.json", ".openclaw/openclaw.json", ".hermes/agente-rene/backend-sdk-claude/.env", ".local/share/meu-bot/backend/.env", ".local/share/meu-bot/crm.json", ".claude/settings.json"]',
     'newslug = new.replace("/", "-")',
-    'arqs = [os.path.join(new, f) for f in fixos] + glob.glob(os.path.join(new, ".claude", "projects", newslug + "*", "**", "*.jsonl"), recursive=True) + glob.glob(os.path.join(new, ".claude", "projects", newslug + "*", "*.jsonl"))',
+    // As notas de memória do agente (`memory/*.md`) também citam caminhos ("a memória fica em /home/<antigo>/…"), e o
+    // agente lê essas notas toda conversa: um caminho velho ali o manda procurar no lugar errado (LV, 5 nov).
+    'proj = os.path.join(new, ".claude", "projects", newslug + "*")',
+    'arqs = [os.path.join(new, f) for f in fixos] + glob.glob(os.path.join(proj, "**", "*.jsonl"), recursive=True) + glob.glob(os.path.join(proj, "*.jsonl")) + glob.glob(os.path.join(proj, "memory", "**", "*.md"), recursive=True)',
     "n = 0",
     "for a in dict.fromkeys(arqs):",
     "    try:",
