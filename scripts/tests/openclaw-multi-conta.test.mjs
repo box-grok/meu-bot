@@ -169,3 +169,40 @@ test("lista e grupos no gateway, por conta: self da conta e a vista efetiva; o p
   // Conferência de um patch de grupo pela vista efetiva (o patch em si vai em accounts.box).
   assert.deepEqual(aplicarPatch(wa, { channels: { whatsapp: { groupPolicy: "allowlist" } } }).groupPolicy, "allowlist");
 });
+
+test("OPENCLAW_ESPERA_SH: repete só enquanto o OpenClaw pede retry (estado em manutenção); outro erro sai na hora com o stderr", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "oc-espera-"));
+  // Um `openclaw` falso: falha com a frase da manutenção N vezes (contador em arquivo), depois responde; `boom` falha sempre.
+  fs.writeFileSync(path.join(dir, "openclaw"), `#!/bin/bash
+if [ "$1" = boom ]; then echo "OpenClaw config is invalid" >&2; echo "  - <root>: JSON5 parse failed" >&2; echo "Audit, status, health, logs, and doctor commands still run with invalid config." >&2; exit 1; fi
+n=$(cat "$CONTADOR" 2>/dev/null || echo 0); echo $((n + 1)) > "$CONTADOR"
+if [ "$n" -lt 2 ]; then echo "OpenClaw config could not be read" >&2; echo "  - <root>: read failed: Error: OpenClaw state at x.sqlite is undergoing offline maintenance; retry when it finishes." >&2; exit 1; fi
+echo "Updated $2 $3"
+`, { mode: 0o755 });
+  const contador = path.join(dir, "n");
+  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, CONTADOR: contador };
+  // Espera curta no teste: o `sleep 5` do prelúdio vira `sleep 0` (o resto do script é o mesmo).
+  const sh = core.OPENCLAW_ESPERA_SH.replace("sleep 5", "sleep 0");
+  assert.match(core.OPENCLAW_ESPERA_SH, /sleep 5/); assert.match(sh, /command openclaw "\$@"/); assert.equal(core.OPENCLAW_ESPERA_MS, 30_000);
+  const out = execFileSync("bash", ["-c", `${sh}\nopenclaw config set a.b 1 && echo FIM`], { env, encoding: "utf8" });
+  assert.match(out, /Updated set a\.b\nFIM/); assert.equal(fs.readFileSync(contador, "utf8").trim(), "3");
+  // Esgotou as 6 tentativas: falha com o stderr do OpenClaw (o app traduz com erroOpenclaw).
+  fs.writeFileSync(contador, "-10");
+  assert.throws(() => execFileSync("bash", ["-c", `${sh}\nopenclaw config set a.b 1`], { env, encoding: "utf8", stdio: "pipe" }), (e) => /retry when it finishes/.test(e.stderr) && e.status === 1);
+  assert.equal(fs.readFileSync(contador, "utf8").trim(), "-4");
+  // Outro erro: uma tentativa só.
+  fs.writeFileSync(contador, "0");
+  assert.throws(() => execFileSync("bash", ["-c", `${sh}\nopenclaw boom`], { env, encoding: "utf8", stdio: "pipe" }), (e) => /JSON5 parse failed/.test(e.stderr));
+  assert.equal(fs.readFileSync(contador, "utf8").trim(), "0");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("erroOpenclaw: manutenção vira frase em português; senão a linha do Problem:, nunca o rodapé fixo", () => {
+  const manut = "OpenClaw config could not be read\nFile: ~/.openclaw/openclaw.json\nProblem:\n  - <root>: read failed: Error: OpenClaw state at /home/x/.openclaw/state/openclaw.sqlite is undergoing offline maintenance; retry when it finishes.\n\nResolve the read error shown above, then retry.\nInspect: openclaw config validate\nAudit, status, health, logs, and doctor commands still run when config cannot be read.\n";
+  assert.match(core.erroOpenclaw(manut), /reiniciando.*manutenção.*tente de novo/);
+  const inval = "OpenClaw config is invalid\nFile: ~/.openclaw/openclaw.json\nProblem:\n  - <root>: JSON5 parse failed: SyntaxError: JSON5: invalid end of input at 1:1\n\nInspect: openclaw config validate\nAudit, status, health, logs, and doctor commands still run with invalid config.\nRun \"openclaw doctor --fix\" to repair the config, then retry.\n";
+  assert.equal(core.erroOpenclaw(inval), "JSON5 parse failed: SyntaxError: JSON5: invalid end of input at 1:1");
+  assert.equal(core.erroOpenclaw("ssh: connect to host x port 22: Connection refused\n"), "ssh: connect to host x port 22: Connection refused");
+  assert.equal(core.erroOpenclaw("qualquer coisa\nAudit, status, health, logs, and doctor commands still run with invalid config.\n"), "qualquer coisa");
+  assert.equal(core.erroOpenclaw(""), "");
+});
