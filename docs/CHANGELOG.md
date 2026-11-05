@@ -12,6 +12,18 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Tutorial 11: o código do GitHub se cola sozinho
+
+#### Melhorado
+
+- **Conectar o GitHub sem digitar nem clicar.** O `gh` imprime um código de uso único e a página do GitHub abre no
+  Navegador do app; agora, quando ela carrega (depois do login, se precisar), o app passa pelo "Continue" da conta,
+  cola o código, envia e autoriza o GitHub CLI, só para o código deste login. O código continua à mostra com o
+  "Copiar", para o caso de a página mudar.
+- **A aba que o tutorial abre tem o selo "🎓 Tutorial 11"** na tira do Navegador, como as abas que uma conversa está
+  usando têm o selo dela; antes aparecia como "da pessoa".
+- **O 🤖 do Navegador vem ligado.** O agente podia usar o Navegador só depois de você ligar o 🤖 em cada máquina; agora
+  é o padrão, como o 📱 do WhatsApp. Desligar continua lembrado por máquina.
 ### Voz das respostas numa box apertada
 
 #### Corrigido

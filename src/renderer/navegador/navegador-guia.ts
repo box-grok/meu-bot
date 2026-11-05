@@ -69,9 +69,9 @@ export function renderNavPro(container: HTMLElement): void {
  * Link de uma mensagem: site (http/https) abre numa aba do Navegador do próprio app, onde o agente também enxerga;
  * Cmd+clique, outros esquemas (mailto:…) ou Navegador indisponível (sem módulo/assinatura) → navegador do Mac.
  */
-export async function abrirLinkDoChat(url: string, externo: boolean): Promise<void> {
+export async function abrirLinkDoChat(url: string, externo: boolean, rotulo?: string): Promise<void> {
   if (externo || !ctx.caps.navegador || !/^https?:\/\//i.test(url)) { void window.meuBot.openExternal(url); return; }
-  await ctx.openNavTab(url);
+  await ctx.openNavTab(url, true, rotulo);
   if (ctx.navAccess !== "ok" || ctx.navPartition === null) void window.meuBot.openExternal(url);
 }
 /** Tutorial 9, passo 3: abrir a aba do Navegador. */

@@ -298,7 +298,7 @@ export async function browserOpen(win: BrowserWindow, host: string, lic: Licenca
   await Promise.race([Promise.all([...workers.values()].filter((w) => w.host === host).map((w) => w.up)), new Promise((r) => setTimeout(r, 4_000))]);
   windowHosts.set(win.id, host);
   log(`[navegador ${host}] aberto na janela ${win.id}`);
-  // O interruptor do agente é lembrado por máquina: ligado da última vez, religa sozinho (o -R sobe com o túnel).
+  // O interruptor do agente vem ligado por padrão e desligar é lembrado por máquina: ao abrir, liga (o -R sobe com o túnel).
   if (isNavAgentHost(host) && !agentOn.has(host)) browserAgent(host, true);
   return { partition: partitionOf(host), extensions: extensionsOf(ses, host), agent: browserAgentInfo(host), favoritos: navFavoritos(host), espacos: navEspacos(host) };
 }
@@ -449,6 +449,36 @@ export function browserDonos(host: string, donos: Record<number, DonoInfo>): voi
   for (const win of BrowserWindow.getAllWindows()) if (!win.isDestroyed() && windowHosts.get(win.id) === host) win.webContents.send("browser:donos", { donos });
 }
 
+/**
+ * "Quando uma aba desta máquina chegar numa página, roda este script nela" (o código do GitHub no tutorial 11: o gh
+ * imprime o código, a página abre no Navegador e o app cola o código e autoriza sozinho). A cada carga que case com
+ * `pagina`, roda o script: false = nada a fazer ainda; outro valor vai a `feito` e, quando `fim` o reconhece, encerra.
+ * Devolve o cancelamento.
+ */
+interface AoChegar { host: string; pagina: (url: string) => boolean; js: string; feito: (r: unknown) => void; fim: (r: unknown) => boolean }
+const aoChegar = new Set<AoChegar>();
+export function browserAoChegar(host: string, pagina: (url: string) => boolean, js: string, ttlMs: number, feito: (r: unknown) => void, fim: (r: unknown) => boolean): () => void {
+  const p: AoChegar = { host, pagina, js, feito, fim };
+  aoChegar.add(p);
+  const t = setTimeout(() => aoChegar.delete(p), ttlMs);
+  // A aba pode já estar na página (o link abriu antes do registro): tenta nas abertas agora.
+  for (const v of views.values()) if (v.host === host && !v.wc.isDestroyed()) void rodarAoChegar(v.wc, host);
+  return () => { clearTimeout(t); aoChegar.delete(p); };
+}
+async function rodarAoChegar(wc: WebContents, host: string): Promise<void> {
+  for (const p of [...aoChegar]) {
+    if (p.host !== host || !aoChegar.has(p) || wc.isDestroyed()) continue;
+    const url = wc.getURL();
+    if (!p.pagina(url)) continue;
+    try {
+      const r: unknown = await wc.executeJavaScript(p.js, true);
+      if (r === false || r === null || r === undefined) continue;
+      if (p.fim(r)) aoChegar.delete(p);
+      p.feito(r);
+    } catch (e) { log(`[navegador ${host}] script ao chegar em ${url.slice(0, 80)} falhou: ${e instanceof Error ? e.message : String(e)}`); }
+  }
+}
+
 // Cada <webview> anexado a uma janela que abriu o navegador: popups viram aba interna; Cmd+… volta ao app.
 // Registrado pelo main.ts no boot (não no import: os testes puros carregam módulos do main sem Electron).
 export function installBrowserHooks(): void { app.on("browser-window-created", onWindowCreated); }
@@ -459,6 +489,7 @@ function onWindowCreated(_e: Electron.Event, win: BrowserWindow): void {
     views.set(wc.id, { wc, host, winId: win.id });
     googleLoginUa(wc);
     retornoParaMaquina(wc, host);
+    wc.on("did-finish-load", () => { void rodarAoChegar(wc, host); });
     wc.on("destroyed", () => { views.delete(wc.id); consoleLog.delete(wc.id); esquecerAba(wc.id); });
     wc.on("console-message", (ev) => {
       if (ev.level !== "warning" && ev.level !== "error") return;

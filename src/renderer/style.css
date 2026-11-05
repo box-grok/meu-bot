@@ -1064,6 +1064,7 @@ body.topbar-hidden .topbar { display: none; }
 .conta-codigo { font: 600 18px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; padding: 4px 10px; border-radius: 6px; background: var(--panel-2, rgba(127,127,127,0.12)); user-select: all; }
 /* Selo do Claude Code (Navegador e terminal). */
 .nav-tab-id.dono.claude-code { color: #d97757; border-color: #d97757; }
+.nav-tab-id.dono.tutorial { color: var(--accent); border-color: var(--accent); }
 .term-head .nav-tab-id { margin-left: 6px; }
 .tab-page .nav-tab-id { margin-left: 4px; font-size: 9px; }
 /* Coluna vazia da tela dividida: a cobrinha no espaço reservado; a coluna alvo ganha um fio no topo. */

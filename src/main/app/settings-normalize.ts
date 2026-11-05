@@ -42,6 +42,8 @@ export interface SettingsFile {
   podHosts: string[];
   /** Máquinas em que "🤖 agente pode usar" o Navegador ficou ligado (religa sozinho ao abrir a aba). */
   navAgentHosts: string[];
+  /** 🤖 do Navegador desligado pela pessoa nestas máquinas: ligado é o padrão (5 nov); `navAgentHosts` (lista de ligados) ficou só por compatibilidade. */
+  navAgentDesligados: string[];
   /**
    * Máquinas em que a pessoa **desligou** "o agente pode usar o Gmail". Ligado é o padrão (31 out): com a conta Google
    * conectada e o Pro na máquina, a ponte sobe sozinha quando o túnel fica pronto; só quem desligou fica fora.
@@ -159,7 +161,7 @@ const validHost = (v: unknown): string | null => (typeof v === "string" && isVal
 export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
-  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, corretorOrtografico: true, aceleracaoHardware: true, depuracao: null, abaFixa: "padrao",
+  quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navAgentDesligados: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, corretorOrtografico: true, aceleracaoHardware: true, depuracao: null, abaFixa: "padrao",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -195,6 +197,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     openDirect: typeof p["openDirect"] === "boolean" ? p["openDirect"] : true,
     podHosts: Array.isArray(p["podHosts"]) ? [...new Set((p["podHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     navAgentHosts: Array.isArray(p["navAgentHosts"]) ? [...new Set((p["navAgentHosts"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
+    navAgentDesligados: Array.isArray(p["navAgentDesligados"]) ? [...new Set((p["navAgentDesligados"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     // `gmailAgentHosts` (lista de ligados, até 31 out) deixou de existir: ligado virou o padrão; o arquivo antigo é só ignorado.
     gmailAgentDesligados: Array.isArray(p["gmailAgentDesligados"]) ? [...new Set((p["gmailAgentDesligados"] as unknown[]).filter((h): h is string => typeof h === "string" && isValidHost(h)))] : [],
     hostNames: normalizeHostNames(p["hostNames"]),

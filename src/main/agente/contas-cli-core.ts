@@ -122,3 +122,43 @@ export function loginConcluiu(id: ContaId, saida: string): boolean {
 }
 
 export const NOME_CONTA: Record<ContaId, string> = { cloudflare: "Cloudflare", github: "GitHub" };
+
+/**
+ * As páginas do GitHub no caminho do código (lidas em 5 nov 2026): `/login/device/select_account` ("Continue as
+ * <conta>"), `/login/device` (as oito caixinhas do código) e `/login/device/confirmation` ("Authorize GitHub CLI").
+ * A de login antes delas e a de sucesso depois ficam de fora.
+ */
+export const ehPaginaDoCodigoGithub = (url: string): boolean => /^https:\/\/github\.com\/login\/device(?:\/select_account|\/confirmation)?\/?(?:[?#]|$)/.test(url);
+const CODIGO_GH_RE = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+/**
+ * JavaScript que o Navegador roda nas páginas do código (markup lido em 5 nov 2026): em `select_account`, clica no
+ * `input[type=submit][value=Continue]` ("continuar", espera a próxima carga); na do código, preenche as oito caixinhas
+ * `input.js-user-code-field` (maxlength 1; o traço é um campo fixo) pelo setter nativo (a página ouve o evento input) e
+ * clica no "Continue" (`input[name=commit]`). Um campo único `user-code` fica como reserva, se o GitHub voltar a ele.
+ * Na página seguinte ("Authorize GitHub CLI", form `/login/device/authorize`), autoriza também, com duas travas: o
+ * título tem de ser o do GitHub CLI e o `user_code` escondido na página tem de ser o código deste login (nunca autoriza
+ * outro app nem outro código). O GitHub deixa o botão desabilitado por um script dele; o envio do formulário com o
+ * botão "Authorize" (requestSubmit) é o que vale. Devolve "continuar" (seletor de conta), "colado" (código enviado),
+ * "ja" (já estava preenchido, não reenvia), "autorizado" (fim) ou false sem nada reconhecível. null = código fora do formato.
+ */
+export function scriptColarCodigoGithub(codigo: string): string | null {
+  if (!CODIGO_GH_RE.test(codigo)) return null;
+  return `(() => {
+  const code = ${JSON.stringify(codigo)};
+  const set = (e, v) => { const d = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(e), "value"); if (d && d.set) d.set.call(e, v); else e.value = v; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); };
+  const envia = (f) => { if (!f) return; const b = f.querySelector('button[type="submit"], input[type="submit"]'); if (b) b.click(); else if (f.requestSubmit) f.requestSubmit(); else f.submit(); };
+  const aut = document.querySelector('form[action="/login/device/authorize"]');
+  if (aut) {
+    const uc = aut.querySelector('input[name="user_code"]'); const b = aut.querySelector('button[name="authorize"][value="1"]'); const h = document.querySelector("h1, h2");
+    if (!uc || !b || uc.value !== code || !/Authorize GitHub CLI/i.test((h && h.textContent) || "")) return false;
+    return new Promise((res) => setTimeout(() => { if (b.disabled) { b.disabled = false; if (aut.requestSubmit) aut.requestSubmit(b); else b.click(); } else b.click(); res("autorizado"); }, 1200));
+  }
+  const one = document.querySelector('input[name="user-code"], #user-code, input[autocomplete="one-time-code"]');
+  if (one) { if (one.value === code) return "ja"; set(one, code); envia(one.form || one.closest("form")); return "colado"; }
+  const many = [...document.querySelectorAll('input.js-user-code-field, input[maxlength="1"]')].filter((e, i, a) => a.indexOf(e) === i && !e.readOnly); const chars = code.replace("-", "").split("");
+  if (many.length === chars.length) { if (many.map((e) => e.value).join("") === chars.join("")) return "ja"; many.forEach((e, i) => set(e, chars[i])); envia(many[0].form || many[0].closest("form")); return "colado"; }
+  const cont = [...document.querySelectorAll('input[type="submit"], button[type="submit"], button')].find((b) => /^\s*continue(\s+as\s+.+)?\s*$/i.test((b.value || b.textContent || "").trim()));
+  if (cont) { cont.click(); return "continuar"; }
+  return false;
+})()`;
+}
