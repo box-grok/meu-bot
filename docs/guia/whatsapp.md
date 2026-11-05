@@ -607,3 +607,10 @@ Os avisos (Mac novo, vigia, cota) vão só pelo WhatsApp da pessoa: o e-mail pel
   lê-la, na fixada; não há mais a tentativa sem versão. `--accept-capabilities` primeiro (sem terminal, a pergunta do
   instalador travava), e sem a opção se o runtime não a conhece.
 - Regra: um motor nunca sobe de versão em segundo plano; mudar a versão é um PR que altera os dois arquivos.
+
+## O gateway do OpenClaw nasce leve no pareamento (5 nov)
+
+- No `openclawPairSh`, com gateway próprio (`GW_PROPRIO=1`), depois do `gw_ensure`: `RESTART=0 oc_leve_ensure` grava o
+  drop-in `meu-bot-leve.conf` (ExecStart com `--max-old-space-size=768`) e o `plugins.allow` mínimo, sem reiniciar o
+  gateway (o QR não pode esperar): o drop-in vale no próximo início e o allow aplica a quente. Detalhes e medição em
+  `maquinas.md`, "OpenClaw leve" e "Medição do OpenClaw".

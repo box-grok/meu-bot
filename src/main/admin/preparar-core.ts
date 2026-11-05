@@ -8,6 +8,7 @@
  */
 import type { ItemPreparar, PrepararId, PrepararVisao } from "../../shared/ipc";
 import type { Acao } from "../auditoria/auditoria-core";
+import { lerOcLeve, OPENCLAW_LEVE, OPENCLAW_LEVE_ESTADO_SH, openclawLeveSh } from "./openclaw-leve-core";
 import { COTA_ESTADO_SH, COTA_LIGAR_SH, HERMES_ESTADO_SH, OPENCLAW_ESTADO_SH, TRANSCRITOR_ESTADO_SH, hermesGlobalSh, isolamentoTodosSh, openclawGlobalSh, reservaDe, reservaHostSh, swapLigarSh, transcritorSh } from "./usuarios-core";
 import { CG_DIR, CG_SERVICO } from "./claude-global-core";
 import { LP_ETC } from "./link-publico-core";
@@ -24,13 +25,13 @@ export const PACOTES_TELA = ["xvfb", "x11-utils", "openbox", "x11vnc", "novnc", 
 export const PACOTE_CHROMIUM = "chromium";
 export const PACOTE_RE = /^[a-z0-9][a-z0-9.+-]{1,60}$/;
 /** Ordem de aplicação (dependências): swap e cota antes de qualquer apt; pacotes antes do gh; Hermes antes do transcritor (só para reaproveitar o modelo; o transcritor vale para OpenClaw e Hermes) e do Claude Global (usa o Node de /opt/hermes). */
-export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "chromium"];
+export const ORDEM_PREPARAR: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "chromium"];
 /** Ordem da lista na tela: o link público entre o Claude Global e o Chromium (os dois humanos juntos). */
-export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "claude-global", "link-publico", "chromium"];
+export const ORDEM_LISTA: readonly PrepararId[] = ["swap", "cota", "governanca", "pacotes", "gh", "hermes", "transcritor", "openclaw", "openclaw-leve", "claude-global", "link-publico", "chromium"];
 export const TITULOS: Record<PrepararId, string> = {
   swap: "Memória de reserva (swap de 8 GB)", cota: "Cota de disco por usuário", governanca: "Governança de RAM/CPU", pacotes: "Pacotes do sistema (jq, ffmpeg e a tela do bot)",
   gh: "GitHub CLI para todos (/usr/local/bin/gh)", hermes: "Hermes para todos (/opt/hermes)", transcritor: "Transcritor de áudio para todos (/opt/transcriber)",
-  openclaw: "OpenClaw para todos (/opt/openclaw)",
+  openclaw: "OpenClaw para todos (/opt/openclaw)", "openclaw-leve": "OpenClaw leve (só os plugins usados, heap do Node limitada)",
   "claude-global": "Claude Code Global", "link-publico": "Link Público Global", chromium: "Navegador na tela do bot (Chromium)",
 };
 /**
@@ -38,7 +39,7 @@ export const TITULOS: Record<PrepararId, string> = {
  * onboarding semeia o Hermes (o agente do WhatsApp dela), então o OpenClaw para todos só entra pelo botão da aba
  * Preparar máquina, quando o root pedir: o sistema é agnóstico e não impõe um segundo agente à máquina.
  */
-export const FORA_DO_CRIAR_USUARIO: readonly PrepararId[] = ["openclaw"];
+export const FORA_DO_CRIAR_USUARIO: readonly PrepararId[] = ["openclaw", "openclaw-leve"];
 export const faltamAoCriarUsuario = (faltam: readonly PrepararId[]): PrepararId[] => faltam.filter((id) => !FORA_DO_CRIAR_USUARIO.includes(id));
 const SO_ROOT = `[ "$(id -u)" = 0 ] || { echo "NAOROOT"; exit 0; }`;
 const TODOS_PACOTES: readonly string[] = [...PACOTES_BASE, ...PACOTES_TELA, PACOTE_CHROMIUM];
@@ -61,6 +62,7 @@ echo "GH=$(/usr/local/bin/gh --version 2>/dev/null | head -1 | awk '{print $3}')
 ${HERMES_ESTADO_SH}
 ${TRANSCRITOR_ESTADO_SH}
 ${OPENCLAW_ESTADO_SH}
+${OPENCLAW_LEVE_ESTADO_SH}
 CGI=0; [ -f /etc/systemd/system/${CG_SERVICO}.service ] && [ -f ${CG_DIR}/claude-global.js ] && CGI=1
 CGA=0; systemctl is-active --quiet ${CG_SERVICO} 2>/dev/null && CGA=1
 CGL=0; grep -q '"oauthAccount"' /root/.claude.json 2>/dev/null && [ -s /root/.claude/.credentials.json ] && CGL=1
@@ -91,6 +93,7 @@ export function lerPreparar(out: string): PrepararLido {
   const hermes = /^HERMES=(global|sem-transcritor|root|nenhum)$/m.exec(out)?.[1] ?? null;
   const transcritor = /^TRANSCRITOR=1$/m.test(out);
   const openclaw = /^OPENCLAW=(global|root|nenhum)$/m.exec(out)?.[1] ?? null;
+  const ocLeve = lerOcLeve(out);
   const cg = /^CG=([01]) ([01]) ([01])$/m.exec(out);
   const lp = /^LP=([01]) ([01]) ([01]) ([01]) ?(\S*)$/m.exec(out);
   const os = (/^OS=(\S*)$/m.exec(out)?.[1] ?? "").trim();
@@ -107,6 +110,11 @@ export function lerPreparar(out: string): PrepararLido {
   // Vale para OpenClaw e Hermes, sem depender de haver Hermes: é o que liga a transcrição de todo mundo sem ffmpeg.
   porId.set("transcritor", transcritor ? item("transcritor", "ok", "/opt/transcriber para todos (OpenClaw e Hermes)") : item("transcritor", "falta", hermes === "global" ? "o transcritor está incompleto (sem o transcrever-texto do OpenClaw): aplicar de novo completa" : "sem ele cada usuário baixaria ~500 MB e dependeria do ffmpeg"));
   porId.set("openclaw", openclaw === "global" ? item("openclaw", "ok", "/opt/openclaw para todos") : item("openclaw", "falta", openclaw === "root" ? "só o root tem o OpenClaw: os usuários não alcançam" : "cada usuário baixaria o Node 24 e uma cópia"));
+  // Gateways que já existem (do root e das contas): leve = drop-in nosso + plugins.allow com a guarda. Sem gateway ainda,
+  // nada a fazer: os novos nascem leves no pareamento. Reinicia os gateways de pé, por isso fica fora do Criar usuário.
+  if (ocLeve === null || ocLeve.total === 0) porId.set("openclaw-leve", item("openclaw-leve", "ok", "nenhum gateway do OpenClaw ainda; os novos nascem leves"));
+  else if (ocLeve.faltam.length === 0) porId.set("openclaw-leve", item("openclaw-leve", "ok", `${ocLeve.leves === 1 ? "1 gateway leve" : `${ocLeve.leves} gateways leves`} (heap ${OPENCLAW_LEVE.heapMb} MB, só os plugins usados)`));
+  else porId.set("openclaw-leve", item("openclaw-leve", "falta", `pesados: ${ocLeve.faltam.join(", ")} (43 plugins e heap de metade da RAM; o leve poupa ~430 MB na largada; reinicia o gateway, o WhatsApp volta em ~10 s)`));
   if (cg === null || cg[1] === "0") porId.set("claude-global", item("claude-global", "falta", "o intermediário do root ainda não está instalado", { pagina: "claude-global" }));
   else if (cg[3] === "0") porId.set("claude-global", item("claude-global", "humano", "entre no Claude Code do root (abre no Terminal, pela aba Claude Code Global)", { pagina: "claude-global" }));
   else if (cg[2] === "0") porId.set("claude-global", item("claude-global", "falta", "instalado, mas parado: instalar de novo sobe o serviço", { pagina: "claude-global" }));
@@ -182,6 +190,7 @@ export function passosPreparar(ids: readonly string[], v: PrepararLido): PassoPr
     else if (id === "hermes") passos.push({ id, titulo: TITULOS.hermes, sh: comoRoot(hermesGlobalSh()), ok: /^HERMES=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.hermes-global", alvo: ultimo(/^HERMES=ok (\S+)/m) });
     else if (id === "transcritor") passos.push({ id, titulo: TITULOS.transcritor, sh: comoRoot(transcritorSh()), ok: /^TRANSCRITOR=ok$/m, timeoutMs: 20 * 60_000, acao: "maquina.transcritor", alvo: () => "/opt/transcriber" });
     else if (id === "openclaw") passos.push({ id, titulo: TITULOS.openclaw, sh: comoRoot(openclawGlobalSh()), ok: /^OPENCLAW=ok /m, timeoutMs: 15 * 60_000, acao: "maquina.openclaw-global", alvo: ultimo(/^OPENCLAW=ok (\S+)/m) });
+    else if (id === "openclaw-leve") passos.push({ id, titulo: TITULOS["openclaw-leve"], sh: comoRoot(openclawLeveSh()), ok: /^OCLEVE=ok /m, timeoutMs: 5 * 60_000, acao: "maquina.openclaw-leve", alvo: ultimo(/^OCLEVE=ok (.*)$/m) });
     else if (id === "claude-global") passos.push({ id, titulo: TITULOS["claude-global"], sh: null, ok: /^CLAUDE_GLOBAL=ok/m, timeoutMs: 5 * 60_000, acao: "maquina.claude-global", alvo: () => "" });
     else if (id === "chromium" && estado("chromium") === "falta") passos.push({ id, titulo: TITULOS.chromium, sh: pacotesSh([PACOTE_CHROMIUM]), ok: /^PACOTES=ok/m, timeoutMs: 10 * 60_000, acao: "maquina.pacotes", alvo: () => PACOTE_CHROMIUM });
   }

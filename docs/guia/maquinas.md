@@ -566,3 +566,20 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   é experimental. O agente de teste e as pastas dele foram apagados; na VM `meu` ficaram o drop-in
   `openclaw-gateway.service.d/meu-bot-leve.conf` (heap 768) e o `plugins.allow` (o que o passo "OpenClaw leve" vai
   gravar), `tools.agentToAgent` desligado e `tools.sessions.visibility=self`.
+
+## OpenClaw leve (5 nov)
+
+- **O que é:** o passo "OpenClaw leve" do Preparar máquina e, no pareamento, o gateway já nascendo leve: o drop-in
+  `~/.config/systemd/user/openclaw-gateway.service.d/meu-bot-leve.conf` sobrescreve o `ExecStart` do unit que o
+  `openclaw gateway install` gera trocando o `--max-old-space-size=<metade da RAM>` por 768 (é por ali, não por
+  `NODE_OPTIONS`, que o unit zera), e `plugins.allow` fica só com o WhatsApp, a guarda, os nossos `meu-bot-*` e os
+  provedores de modelo em uso (`agents.defaults.model`, `agents.entries.*.model`, `models.providers`); o `memory-core`
+  é isento pelo próprio OpenClaw. Lista alheia (sem a guarda) não é tocada. Código: `src/main/admin/openclaw-leve-core.ts`
+  (`OC_LEVE_ENSURE_SH`, `OPENCLAW_LEVE_ESTADO_SH`, `openclawLeveSh`), passo `openclaw-leve` em `preparar-core.ts`,
+  chamada com `RESTART=0` no `openclawPairSh` (o drop-in vale no próximo início; o allow aplica a quente; nunca para o
+  QR). O `install-guarda.sh` acrescenta `meu-bot-guarda` a um allow nosso que não a tenha.
+- **Efeito:** ~430 MB a menos na largada do gateway (medição acima); ele continua crescendo com o uso. O passo reinicia
+  os gateways de pé (o WhatsApp de cada um volta em ~10 s), por isso fica fora do "Criar usuário" e só roda pelo botão
+  da aba. Estado `OCLEVE=<gateways> <leves> <contas que faltam>`; auditoria `maquina.openclaw-leve`.
+- **Voltar atrás numa conta:** apagar o drop-in, `systemctl --user daemon-reload`, `openclaw config unset plugins.allow`,
+  reiniciar o gateway.
