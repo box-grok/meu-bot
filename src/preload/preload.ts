@@ -55,6 +55,11 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   "depuracao:batimento",
   "depuracao:estado",
   "depuracao:evento",
+  // Localizar na página (Cmd+F) e Editar › Localizar / Ajuda › Atalhos. Faltaram aqui no dia em que nasceram (4 nov):
+  // `on("find:result")` lançava "Canal não permitido" na abertura e derrubava o renderer inteiro, em todas as variantes.
+  // O teste "todo canal de MainEvents está na lista do preload" (ipc-policy.test.mjs) não deixa repetir.
+  "find:result",
+  "ui:abrir",
 ];
 
 /** Os dois apps. */

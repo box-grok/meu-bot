@@ -16,6 +16,30 @@ function preloadChannels(file) {
   return [...src.matchAll(/ipcRenderer\.(?:invoke|send)\("([a-z:-]+)"/g)].map((m) => m[1]);
 }
 
+/** Os canais que o main emite para a janela principal (`MainEvents`, src/shared/ipc/api.ts), pelo nome das chaves. */
+function mainEventsDeclarados() {
+  const src = readFileSync(join(here, "..", "..", "src", "shared", "ipc", "api.ts"), "utf8");
+  const corpo = src.slice(src.indexOf("export interface MainEvents"));
+  const bloco = corpo.slice(0, corpo.indexOf("\n}"));
+  return [...bloco.matchAll(/^\s*"([a-z-]+:[a-z-]+)":/gm)].map((m) => m[1]);
+}
+/** A lista que o preload da janela principal aceita em `on()` (MAIN_EVENT_CHANNELS, compilada). */
+function preloadMainEvents() {
+  const src = readFileSync(join(here, "..", "..", "dist", "preload", "preload.js"), "utf8");
+  const i = src.indexOf("MAIN_EVENT_CHANNELS");
+  const bloco = src.slice(i, src.indexOf("];", i));
+  return [...bloco.matchAll(/"([a-z-]+:[a-z-]+)"/g)].map((m) => m[1]);
+}
+
+// 4 nov: `find:result` e `ui:abrir` entraram em MainEvents sem entrar na lista do preload; `on("find:result")` na abertura
+// lançava "Canal não permitido" e derrubava o renderer inteiro (a janela do admin ficava com a cara do cliente).
+test("todo canal de MainEvents está na lista do preload (senão `on()` derruba o renderer na abertura)", () => {
+  const declarados = mainEventsDeclarados(), aceitos = new Set(preloadMainEvents());
+  assert.ok(declarados.length >= 40, `MainEvents lido do fonte: ${declarados.length} canais`);
+  const faltam = declarados.filter((c) => !aceitos.has(c));
+  assert.deepEqual(faltam, [], `canais de MainEvents fora de MAIN_EVENT_CHANNELS (preload.ts): ${faltam.join(", ")}`);
+});
+
 test("cada canal está numa lista só", () => {
   assert.equal(new Set(all).size, all.length, "canal repetido entre as listas");
   for (const c of SHARED_CHANNELS) assert.ok(!client.has(c) && !admin.has(c), c);
