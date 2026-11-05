@@ -12,6 +12,14 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Tutorial 11: o Cloudflare acha o Node
+
+#### Corrigido
+
+- **"Esta máquina não tem o Node (npx) para o Cloudflare" numa máquina com OpenClaw para todos.** O wrangler exige
+  Node 22 ou mais novo; o do sistema (Debian) é o 20 e vem sem npx, mas o Node 24 do OpenClaw em /opt serve: o tutorial
+  passa a procurá-lo e a usá-lo só nesse comando. Quando não há nenhum, a frase diz o que pedir ao admin.
+
 ### O app do admin tem nome próprio
 
 #### Melhorado

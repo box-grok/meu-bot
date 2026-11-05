@@ -42,10 +42,11 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
   let ocupado: string | null = null;
   /** O agente do WhatsApp escolhido para a próxima conta (Hermes é o padrão de sempre). */
   let motorNovo: "hermes" | "openclaw" = "hermes"; // o que está rodando ("criar", "limite:maria", "apagar:maria"…)
-  /** Limite de disco já preenchido ao criar: 1% (dá para apagar e deixar sem limite). */
+  /** Limite de disco já preenchido ao criar: a menor % que dá os 3 GB da conta padrão (a máquina informa); 1% enquanto não informou. Dá para apagar e deixar sem limite. */
   const PCT_PADRAO = "1";
-  /** O que a pessoa digitou depois do box-; null = ainda não mexeu (o campo mostra o próximo número da sequência). */
-  let nome: string | null = null; let pctNovo = PCT_PADRAO;
+  const pctPadrao = (): string => (visao?.pctMinimo != null ? String(visao.pctMinimo) : PCT_PADRAO);
+  /** O que a pessoa digitou depois do box-; null = ainda não mexeu (o campo mostra o próximo número da sequência). Idem o %: null = o padrão. */
+  let nome: string | null = null; let pctNovo: string | null = null;
   const nomeAgora = (): string => nome ?? proximoBox(visao?.usuarios.map((u) => u.nome) ?? []);
   let msg: { text: string; bad: boolean } | null = null;
   /** % digitado na linha de cada usuário (antes de salvar). */
@@ -96,7 +97,8 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     const n = comPrefixo(digitado);
     if (digitado === "" || !NOME_RE.test(n)) { msg = { text: "Nome inválido: minúsculas, números, - ou _, começando por letra (2 a 32).", bad: true }; render(); return; }
     // Sem o tamanho do disco (df falhou na máquina), não há como calcular a fatia: cria sem limite.
-    const p = visao?.discoKb === null ? 0 : pctNovo.trim() === "" ? 0 : Number(pctNovo);
+    const pctTxt = pctNovo ?? pctPadrao();
+    const p = visao?.discoKb === null ? 0 : pctTxt.trim() === "" ? 0 : Number(pctTxt);
     if (!Number.isInteger(p) || p < 0 || p > 100) { msg = { text: "Limite: uma porcentagem inteira de 0 a 100 (vazio = sem limite).", bad: true }; render(); return; }
     // Mais boxes do que cabem na RAM com o teto padrão: avisa, não bloqueia (a conta é do admin; a coluna Pressão mostra o efeito).
     const cap = visao?.capacidade ?? null;
@@ -109,7 +111,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
         : visao?.global === true ? { text: `✓ ${n} está pronto: Claude Code Global, backend do meu-bot e ${motorNovo === "openclaw" ? "OpenClaw escolhido para o WhatsApp" : "Hermes com transcrição"}. No meu-bot (aba Usuário, ${sel.alias}) falta só ler o QR do WhatsApp.`, bad: false }
         : { text: `✓ ${n} está pronto: Claude Code, backend do meu-bot e ${motorNovo === "openclaw" ? "OpenClaw escolhido para o WhatsApp" : "Hermes com transcrição"}. No meu-bot (aba Usuário, ${sel.alias}) falta só entrar no Claude e ler o QR do WhatsApp.`, bad: false };
       if (avisoCap !== "" && msg !== null) msg = { text: `${msg.text}${avisoCap}`, bad: true };
-      nome = null; pctNovo = PCT_PADRAO; render();
+      nome = null; pctNovo = null; render();
     }
   }
   async function salvarRecursos(u: UsuarioMaquina): Promise<void> {
@@ -200,7 +202,8 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
     // Quem digita "box-3" vê "box-3" (o prefixo fixo já está na frente), não "box-box-3".
     input.addEventListener("input", () => { let v = input.value.toLowerCase(); if (v.startsWith(PREFIXO)) v = v.slice(PREFIXO.length); nome = v; if (input.value !== v) input.value = v; });
     input.addEventListener("keydown", (ev) => { if (ev.key === "Enter") void criar(); });
-    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : pctNovo; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
+    const pin = el("input") as HTMLInputElement; pin.type = "number"; pin.min = "0"; pin.max = "100"; pin.step = "1"; pin.placeholder = visao?.discoKb === null ? "sem limite (disco não lido)" : "% do disco"; pin.value = visao?.discoKb === null ? "" : (pctNovo ?? pctPadrao());
+    pin.title = visao?.pctMinimo != null ? `Limite de disco da conta. ${visao.pctMinimo}% é o mínimo neste disco: a conta padrão ocupa 1,6 GB (voz, Claude Code, OpenClaw, wrangler) e precisa de sobra. Vazio = sem limite` : "Limite de disco da conta (vazio = sem limite)"; pin.disabled = ocupado !== null || visao?.discoKb === null; pin.style.width = "110px";
     pin.addEventListener("input", () => { pctNovo = pin.value; });
     // O agente do WhatsApp da conta nova: Hermes (padrão) ou OpenClaw. O sistema é agnóstico; o pareamento no meu-bot dela completa.
     const motorSel = el("select") as HTMLSelectElement; motorSel.title = "Com que agente do WhatsApp a conta nasce. Hermes: o de todos em /opt/hermes, com transcrição. OpenClaw: a escolha fica gravada e o onboard acontece no pareamento, no meu-bot dela";
