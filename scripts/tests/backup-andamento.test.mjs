@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aplicarProgresso, fmtBytes, rotuloEtapa, terminou, textoAndamento } from "../../dist/renderer/conta-google/backup-andamento.js";
+import { aplicarProgresso, aplicarRestauro, fmtBytes, rotuloEtapa, rotuloRestauro, terminou, textoAndamento, textoRestauro } from "../../dist/renderer/conta-google/backup-andamento.js";
 
 const p = (conjunto, indice, etapa, extra = {}) => ({ conjunto, nome: conjunto.toUpperCase(), etapa, indice, total: 3, bytes: null, detalhe: null, ...extra });
 
@@ -39,4 +39,18 @@ test("terminou: só quando o último conjunto saiu do 'enviando'", () => {
   assert.equal(terminou([p("crm", 1, "enviado"), p("x", 3, "enviando")]), false);
   assert.equal(terminou([p("crm", 1, "enviado"), p("x", 3, "erro")]), true);
   assert.equal(terminou([p("x", 3, "ausente")]), true);
+});
+
+test("restauração: o primeiro evento do conjunto 1 zera a lista; as etapas seguintes do mesmo conjunto só o atualizam", () => {
+  const r = (conjunto, indice, etapa, detalhe = null) => ({ conjunto, nome: conjunto.toUpperCase(), etapa, indice, total: 2, detalhe });
+  let l = aplicarRestauro([r("x", 1, "restaurado"), r("y", 2, "erro")], r("agente", 1, "baixando"));
+  assert.deepEqual(l.map((p) => p.conjunto), ["agente"], "restauração nova");
+  l = aplicarRestauro(l, r("agente", 1, "decifrando"));
+  assert.deepEqual(l.map((p) => p.etapa), ["decifrando"], "a etapa 'decifrando' do conjunto 1 nao zera");
+  l = aplicarRestauro(l, r("agente", 1, "restaurado", "2 guardado(s)"));
+  l = aplicarRestauro(l, r("trabalho", 2, "restaurando"));
+  assert.equal(textoRestauro(l), "2 de 2 · AGENTE ✓ (2 guardado(s)) · TRABALHO restaurando…");
+  assert.equal(rotuloRestauro(r("a", 1, "baixando")), "baixando do Drive…");
+  assert.equal(rotuloRestauro(r("a", 1, "erro", "senha")), "✗ erro");
+  assert.equal(textoRestauro([]), "");
 });

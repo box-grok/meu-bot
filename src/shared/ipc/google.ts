@@ -16,6 +16,19 @@ export type BackupDadosEtapa = "enviando" | "enviado" | "pulado" | "ausente" | "
  * `detalhe` é o motivo do pulo ou a mensagem do erro.
  */
 export interface BackupDadosProgresso { conjunto: string; nome: string; etapa: BackupDadosEtapa; indice: number; total: number; bytes: number | null; detalhe: string | null }
+/** Onde a cópia de um conjunto está: no Drive da conta, na pasta do Mac, ou nos dois (mesmo arquivo). */
+export type BackupCopiaOrigem = "drive" | "local" | "ambos";
+/** A cópia mais nova de um conjunto de uma máquina, para a pessoa escolher o que restaurar. `data` é o dia (AAAA-MM-DD). */
+export interface BackupCopiaConjunto { conjunto: string; nome: string; arquivo: string; bytes: number; data: string; cifrado: boolean; origem: BackupCopiaOrigem }
+export interface BackupCopiaMaquina { maquina: string; conjuntos: BackupCopiaConjunto[] }
+/** As cópias que dá para restaurar nesta máquina (de qualquer máquina): `atual` é o nome desta, na forma que entra no arquivo. `driveErro` = o Drive não foi lido (sem conta, sem permissão, rede); as locais valem mesmo assim. */
+export interface BackupCopiasView { atual: string; maquinas: BackupCopiaMaquina[]; temSenha: boolean; driveErro: string | null }
+export interface BackupRestauroPedido { maquina: string; conjuntos: string[]; /** Credenciais traz o pareamento do WhatsApp da origem; só entra por cima de um WhatsApp vivo com isto. */ substituirWhatsapp: boolean; /** Senha só para esta restauração (pacote cifrado sem senha gravada, ou com outra senha); não é guardada. */ senha?: string }
+export type BackupRestauroEtapa = "baixando" | "decifrando" | "restaurando" | "restaurado" | "erro";
+/** Andamento da restauração (evento `backup-dados:restauro`, um por etapa de cada conjunto escolhido). */
+export interface BackupRestauroProgresso { conjunto: string; nome: string; etapa: BackupRestauroEtapa; indice: number; total: number; detalhe: string | null }
+/** `antes`: a pasta na máquina onde ficou o que foi sobrescrito (a última, se vários conjuntos). */
+export interface BackupRestauroResultado { restaurados: string[]; erros: string[]; antes: string | null; avisos: string[] }
 export interface GmailMensagem { id: string; de: string; assunto: string; data: string; resumo: string; naoLida: boolean }
 /** Uma página da caixa (ou de uma busca): `proxima` é o token da página seguinte, null no fim. */
 export interface GmailLista { email: string | null; naoLidas: number; mensagens: GmailMensagem[]; proxima: string | null; busca: string }

@@ -21,6 +21,17 @@ no [diário técnico](GUIA.md).
   meu-bot-admin antigo, que fica no lugar como cópia de segurança. Quem tinha o meu-bot-admin instalado instala o
   novo uma vez; dali em diante ele se atualiza sozinho.
 
+### Restaurar a cópia do Drive sem sair do app
+
+#### Novo
+
+- **Restaurar a cópia do Drive pela aba Conta Google.** Em "Backup no Drive" › "Restaurar uma cópia…", escolha
+  a máquina de origem (pode ser outra, que já morreu) e o que volta: CRM, financeiro, conversas e skills do
+  agente, trabalho, credenciais. A cópia entra por cima do que há; cada arquivo substituído fica guardado numa
+  pasta de segurança na máquina, e o que só existe nela continua. As conversas antigas do agente aparecem ao
+  lado das de hoje. O WhatsApp só é trocado se você marcar "substituir", e o Hermes de uma máquina antiga não
+  entra numa máquina OpenClaw (nem o contrário).
+
 ### A atualização pergunta antes de interromper, e sabe se recuperar
 
 #### Novo

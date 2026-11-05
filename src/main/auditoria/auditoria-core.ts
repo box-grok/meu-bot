@@ -129,6 +129,7 @@ export const ACOES = {
   "usuarios.recursos": (a: string) => `mudou os tetos de RAM e CPU do usuário ${a}`,
   "usuarios.liberar": (a: string) => `apagou arquivos do usuário ${a} para liberar espaço`,
   "backup.dados-drive": (a: string) => `guardou uma cópia dos dados desta máquina no Google Drive do dono${a ? ` (${a})` : ""}`,
+  "backup.restaurar-dados": (a: string) => `restaurou nesta máquina uma cópia do Google Drive${a ? ` (${a})` : ""}`,
   "gmail.apagar": (a: string) => `moveu um e-mail para a lixeira do Gmail${a ? ` (${a})` : ""}`,
   "gmail.restaurar": (a: string) => `tirou um e-mail da lixeira do Gmail${a ? ` (${a})` : ""}`,
 } satisfies Record<string, (alvo: string) => string>;

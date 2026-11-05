@@ -32,11 +32,12 @@ import { knownModels, showPicker } from "../maquina/picker";
 import { broadcast, sendToHost } from "../app/windows";
 import { adotarContaDoMac, contaConectar, contaDesconectar, contaStatus, garantirFotoPerfil, onContaDesconectada } from "../google/conta-google";
 import { garantirClientesGoogle } from "../google/cliente-release";
-import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, pastaBackupDados } from "../google/dados-drive";
+import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, listarCopias, pastaBackupDados, restaurarDoDrive } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
 import { getDadosNoDrive, setDadosNoDrive } from "../app/settings";
 import { agendaCriar, agendaProximos, gmailApagar, gmailLer, gmailListar, gmailRestaurar, planilhaEscrever, planilhaLer } from "../google/apis";
 import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-core";
+import { CONJUNTOS_DADOS } from "../google/google-core";
 import { gmailAgenteParar } from "../google/gmail-api";
 import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
@@ -146,6 +147,20 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     if (p.limpar === true) limparSenhaBackup();
     else definirSenhaBackup(typeof p.senha === "string" ? p.senha : "");
     return { ligado: getDadosNoDrive(), temSenha: temSenhaBackup(), ...estadoDadosDrive(h.host) };
+  });
+  // Restaurar uma cópia (de qualquer máquina) nesta: a lista vem do Drive e do Mac; o pedido é conferido aqui antes de
+  // chegar ao main (máquina no formato do nome de arquivo, conjuntos conhecidos, senha só string).
+  handleShared("backup-dados:copias", (event) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    return listarCopias(h.host);
+  });
+  handleShared("backup-dados:restaurar", (event, payload: unknown) => {
+    const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");
+    const p = (payload ?? {}) as { maquina?: unknown; conjuntos?: unknown; substituirWhatsapp?: unknown; senha?: unknown };
+    if (typeof p.maquina !== "string" || !/^[\w.-]{1,40}$/.test(p.maquina)) throw new Error("máquina de origem inválida");
+    const conjuntos = Array.isArray(p.conjuntos) ? p.conjuntos.filter((c): c is string => typeof c === "string" && CONJUNTOS_DADOS.some((x) => x.id === c)) : [];
+    if (conjuntos.length === 0) throw new Error("escolha pelo menos um conjunto");
+    return restaurarDoDrive(h.host, { maquina: p.maquina, conjuntos, substituirWhatsapp: p.substituirWhatsapp === true, ...(typeof p.senha === "string" && p.senha.trim() !== "" ? { senha: p.senha } : {}) });
   });
   handleShared("backup-dados:ligar", (event, payload: unknown) => {
     const h = hostFromEvent(event); if (h === null) throw new Error("origem inválida");

@@ -7,7 +7,7 @@ import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
 import type { FinanceAbc, FinanceAbcLado, FinanceAbcPor, FinanceCategoria, FinanceConfig, FinanceConta, FinanceImportacao, FinanceInfo, FinanceLancamento, FinanceLancarInput, FinanceMoeda, FinanceTipoLinha } from "./financeiro";
-import type { AgendaEvento, BackupDadosProgresso, BackupDadosView, GmailAgenteState, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
+import type { AgendaEvento, BackupCopiasView, BackupDadosProgresso, BackupDadosView, BackupRestauroPedido, BackupRestauroProgresso, BackupRestauroResultado, GmailAgenteState, GmailApagado, GmailDetalhe, GmailLista, GoogleContaStatus, PlanilhaLeitura } from "./google";
 import type { LicensePatch, LicenseView } from "./licenca";
 import type { BackendStatusEvent, InstallBackendResult, TailscaleSshResult } from "./maquina";
 import type { BrowserAgentState, BrowserExtensionInfo, BrowserOpenInfo, NavFavorito, NavWorkspaces } from "./navegador";
@@ -112,6 +112,8 @@ export interface MainEvents {
   "google-conta:changed": GoogleContaStatus;
   /** Cópia no Drive em curso: uma etapa de um conjunto (só para as janelas da máquina que está copiando). */
   "backup-dados:progress": BackupDadosProgresso;
+  /** Restauração de uma cópia em curso: uma etapa de um conjunto (só para as janelas da máquina que recebe). */
+  "backup-dados:restauro": BackupRestauroProgresso;
 }
 
 export type MainEventChannel = keyof MainEvents;
@@ -224,6 +226,10 @@ export interface MeuBotSharedApi {
   backupDadosSenha(senha: string): Promise<BackupDadosView>;
   /** Apaga a senha: o pacote cifrado deixa de ser enviado (o que já está no Drive continua lá). */
   backupDadosLimparSenha(): Promise<BackupDadosView>;
+  /** As cópias que dá para restaurar nesta máquina: de todas as máquinas, no Drive desta conta e na pasta do Mac. */
+  backupDadosCopias(): Promise<BackupCopiasView>;
+  /** Restaura os conjuntos escolhidos de uma cópia nesta máquina (por cima do que há; o sobrescrito fica numa pasta de segurança). Andamento em `backup-dados:restauro`. */
+  backupDadosRestaurar(pedido: BackupRestauroPedido): Promise<BackupRestauroResultado>;
   /** Página Gmail (Pro): uma página da caixa de entrada, ou de uma busca na sintaxe do Gmail; `pagina` é o token de `proxima`. */
   gmailListar(opts?: { busca?: string; max?: number; pagina?: string | undefined }): Promise<GmailLista>;
   gmailLer(id: string): Promise<GmailDetalhe>;
