@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import { RECURSOS_PADRAO, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -60,7 +60,7 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
-  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion() };
+  return { usuarios: l.usuarios, hostname: a?.hostname ?? null, port: a?.port ?? null, chave: a?.arquivo ?? null, discoKb: l.discoKb, cota: l.cota, hermes: l.hermes, openclaw: l.openclaw, ram: l.ram, userSlice: l.userSlice, cpus: l.cpus, capacidade, governanca: governancaDe(l), backendDoApp: bundledBackendVersion() };
 }
 
 /**
@@ -259,6 +259,20 @@ export async function definirRecursos(host: string, nome: unknown, ramMb: unknow
 export async function instalarHermesGlobal(host: string): Promise<UsuariosVisao> {
   await usuariosDaMaquina(host); // confere root
   await padraoDaMaquina(host);
+  return usuariosDaMaquina(host);
+}
+
+/**
+ * OpenClaw para todos os usuários da máquina (/opt/openclaw + /usr/local/bin/openclaw), o mesmo passo do "Preparar
+ * máquina", oferecido também na aba Usuários ao lado do Hermes: o sistema é agnóstico, a máquina pode receber os dois.
+ */
+export async function instalarOpenclawGlobal(host: string): Promise<UsuariosVisao> {
+  await usuariosDaMaquina(host); // confere root
+  const r = await runSsh(host, `${openclawGlobalSh()}\n`, 15 * 60_000);
+  saida(r.stdout, /^OPENCLAW=ok /m, `não consegui instalar o OpenClaw para todos: ${/^ERRO=(.*)$/m.exec(r.stdout)?.[1] ?? ((r.stderr.trim() || r.stdout.trim()).split("\n").pop() ?? "sem resposta")}`);
+  const v = /^OPENCLAW=ok (\S+)$/m.exec(r.stdout)?.[1] ?? "";
+  log(`[usuarios] ${host}: OpenClaw ${v} para todos em /opt/openclaw`);
+  void registrar(host, "maquina.openclaw-global", v);
   return usuariosDaMaquina(host);
 }
 

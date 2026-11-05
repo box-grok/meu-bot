@@ -315,6 +315,7 @@ const adminApi: MeuBotAdminApi = {
   adminPrepararEstado: () => ipcRenderer.invoke("admin:preparar-estado", {}),
   adminPrepararAplicar: (ids?: string[]) => ipcRenderer.invoke("admin:preparar-aplicar", { ids }),
   adminHermesGlobal: () => ipcRenderer.invoke("admin:hermes-global", {}),
+  adminOpenclawGlobal: () => ipcRenderer.invoke("admin:openclaw-global", {}),
   adminWhatsappAlvo: (nome: string, alvo: WhatsappAlvo | null) => ipcRenderer.invoke("admin:whatsapp-alvo", { nome, alvo }),
   adminUsuarioApelido: (nome: string, apelido: string) => ipcRenderer.invoke("admin:usuario-apelido", { nome, apelido }),
   adminUsuarioManterLigado: (nome: string) => ipcRenderer.invoke("admin:usuario-ligado", { nome }),
