@@ -35,9 +35,9 @@ export interface SupportCode {
   machine?: string;
 }
 
-const HOSTNAME_RE = /^[A-Za-z0-9._:-]{1,253}$/;
+export const HOSTNAME_RE = /^[A-Za-z0-9._:-]{1,253}$/;
 const MACHINE_RE = /^[A-Za-z0-9._-]{1,64}$/;
-const USER_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/;
+export const USER_RE = /^[A-Za-z_][A-Za-z0-9_.-]{0,31}$/;
 const HOSTKEY_RE = /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]+={0,3}$/;
 const PUBKEY_RE = /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]+={0,3}( .*)?$/;
 

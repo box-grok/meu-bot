@@ -60,6 +60,23 @@ export function syncSshConfig(): SshSyncResult {
  * "Remover do seletor": tira o host do ~/.ssh/config (backup antes; o Cursor e o ssh deixam de ver a
  * máquina também). Host que vem de um Include não é mexido: diz de onde ele vem.
  */
+/**
+ * Acrescenta um bloco ao fim do ~/.ssh/config deste Mac (backup `config.bak-<data>` antes, 0600 depois). Não confere se o
+ * Host já existe: quem chama confere (`configTemHost`). Usado pelo bloco de usuário da aba Usuários e pelo alias root
+ * do job "Nova VPS".
+ */
+export function acrescentarBlocoSshConfig(bloco: string): { backup: string | null } {
+  const configPath = path.join(os.homedir(), ".ssh", "config");
+  let texto = "", existe = false;
+  try { texto = fs.readFileSync(configPath, "utf8"); existe = true; } catch { fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 }); }
+  let backup: string | null = null;
+  if (existe) { backup = `${configPath}.bak-${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}`; fs.copyFileSync(configPath, backup); }
+  const sep = existe && texto !== "" && !texto.endsWith("\n") ? "\n" : "";
+  fs.appendFileSync(configPath, `${sep}\n${bloco}`, { mode: 0o600 });
+  try { fs.chmodSync(configPath, 0o600); } catch { /* cortesia */ }
+  return { backup };
+}
+
 export function removeHostFromSshConfig(host: string): { backup: string; removed: "block" | "alias" } {
   const configPath = path.join(os.homedir(), ".ssh", "config");
   let current = "";
