@@ -597,3 +597,12 @@ pessoa conversa pela box dela; o root fica para as abas de admin.
   resolvedor (< 1 s sem DNS; gateway e WhatsApp não sentem), conferindo `-LLMNR` e a 5355 fechada. Entra no "Criar
   usuário" (não reinicia nada do meu-bot) e no "Nova VPS". Auditoria `maquina.llmnr`. O mDNS fica como está (já vem
   desligado). Voltar: apagar o arquivo e `systemctl restart systemd-resolved`.
+
+## Máquina de OpenClaw: o Hermes para todos vira opcional (5 nov)
+
+- **Motivo:** na `meu` o dono usa OpenClaw, e o Preparar máquina ainda pedia "Hermes para todos" como obrigatório: o
+  "Aplicar o que falta", o "Criar usuário" e o "Nova VPS" baixariam ~1 GB de um agente que ninguém usa.
+- **Agora:** com OpenClaw para todos e nenhum Hermes na máquina (`HERMES=nenhum`), o item fica em "falta" mas
+  **opcional** (como o Chromium): fora de `faltam`, só pelo clique no item. Hermes só no root continua obrigatório
+  (alguém usa). E o preparo de uma conta criada com "WhatsApp: OpenClaw" garante só o transcritor compartilhado
+  (`transcritorParaTodos`, o mesmo /opt/transcriber que o OpenClaw usa), não o Hermes.

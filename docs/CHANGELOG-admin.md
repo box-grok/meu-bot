@@ -8,6 +8,9 @@ As versões são as mesmas do meu-bot (um número para todos os apps); aqui entr
 
 ### Novo
 
+- **Máquina de OpenClaw não baixa o Hermes à toa.** Com o OpenClaw para todos e nenhum Hermes na máquina, o item
+  "Hermes para todos" fica opcional no Preparar máquina, e uma conta criada com OpenClaw garante só o transcritor de
+  áudio compartilhado. Instalar o Hermes continua a um clique, quando alguma conta for usá-lo.
 - **LLMNR desligado por padrão.** Novo item em Preparar máquina: o resolvedor do Linux deixa de responder a vizinhos da
   rede na porta 5355 (um serviço sem uso num servidor, e alvo clássico de envenenamento). Custa menos de um segundo de
   DNS e nada do meu-bot sente; máquinas sem o systemd-resolved mostram "não se aplica".

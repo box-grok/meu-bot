@@ -118,6 +118,18 @@ test("preparar: o Criar usuário não instala o OpenClaw (a conta nova usa o Her
   assert.deepEqual(faltamAoCriarUsuario(["openclaw-leve", "swap"]), ["swap"], "o leve reinicia gateways: só pelo botão da aba");
 });
 
+test("preparar: máquina de OpenClaw sem Hermes: o Hermes vira opcional (fora de faltam, do Criar usuário e do Nova VPS); sem OpenClaw continua obrigatório", () => {
+  const oc = lerPreparar(saida({ openclaw: "global", hermes: "nenhum", transcritor: 1 }));
+  const h = oc.itens.find((i) => i.id === "hermes"); assert.equal(h.estado, "falta"); assert.equal(h.opcional, true); assert.match(h.detalhe, /usa o OpenClaw/);
+  assert.deepEqual(oc.faltam, []);
+  const nada = lerPreparar(saida({ openclaw: "nenhum", hermes: "nenhum", transcritor: 0 }));
+  assert.equal(nada.itens.find((i) => i.id === "hermes").opcional, false); assert.deepEqual(nada.faltam, ["hermes", "transcritor", "openclaw"]);
+  const root = lerPreparar(saida({ openclaw: "global", hermes: "root" }));
+  assert.equal(root.itens.find((i) => i.id === "hermes").opcional, false, "Hermes só no root: alguém usa, instalar para todos continua obrigatório");
+  // Pedido de propósito, o passo existe.
+  assert.equal(passosPreparar(["hermes"], oc).length, 1);
+});
+
 test("preparar: LLMNR: ligado é falta (1 s sem DNS para desligar); desligado ou sem systemd-resolved é ok; o passo grava o drop-in e confere a 5355", () => {
   const { LLMNR_DESLIGAR_SH, LLMNR_ESTADO_SH, LLMNR_CONF } = createRequire(import.meta.url)("../../dist/main/admin/preparar-core.js");
   const por = (o) => Object.fromEntries(lerPreparar(saida(o)).itens.map((i) => [i.id, i]));

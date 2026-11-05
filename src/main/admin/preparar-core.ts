@@ -128,7 +128,11 @@ export function lerPreparar(out: string): PrepararLido {
     : llmnr === "off" ? item("llmnr", "ok", "o resolvedor não anuncia LLMNR nem escuta na 5355") : item("llmnr", "ok", "não se aplica: esta máquina não usa o systemd-resolved"));
   porId.set("pacotes", faltamPacotes.length === 0 ? item("pacotes", "ok", "jq, ffmpeg e a tela do bot") : item("pacotes", "falta", `faltam: ${faltamPacotes.join(", ")}`));
   porId.set("gh", gh !== "" ? item("gh", "ok", `gh ${gh}`) : item("gh", "falta", "cada conta teria de instalar o seu em ~/.local/bin"));
-  porId.set("hermes", hermes === "global" || hermes === "sem-transcritor" ? item("hermes", "ok", "/opt/hermes para todos") : item("hermes", "falta", hermes === "root" ? "só o root tem o Hermes: os usuários não alcançam" : "cada usuário baixaria uma cópia"));
+  // Máquina de OpenClaw (para todos) sem nenhum Hermes: o Hermes vira opcional, como o Chromium. O "Aplicar o que falta",
+  // o "Criar usuário" e o "Nova VPS" não baixam ~1 GB de um agente que ninguém usa; o botão da aba continua lá.
+  porId.set("hermes", hermes === "global" || hermes === "sem-transcritor" ? item("hermes", "ok", "/opt/hermes para todos")
+    : hermes === "nenhum" && openclaw === "global" ? item("hermes", "falta", "a máquina usa o OpenClaw; instale só se alguma conta for usar o Hermes (~1 GB)", { opcional: true })
+    : item("hermes", "falta", hermes === "root" ? "só o root tem o Hermes: os usuários não alcançam" : "cada usuário baixaria uma cópia"));
   // Vale para OpenClaw e Hermes, sem depender de haver Hermes: é o que liga a transcrição de todo mundo sem ffmpeg.
   porId.set("transcritor", transcritor ? item("transcritor", "ok", "/opt/transcriber para todos (OpenClaw e Hermes)") : item("transcritor", "falta", hermes === "global" ? "o transcritor está incompleto (sem o transcrever-texto do OpenClaw): aplicar de novo completa" : "sem ele cada usuário baixaria ~500 MB e dependeria do ffmpeg"));
   porId.set("openclaw", openclaw === "global" ? item("openclaw", "ok", "/opt/openclaw para todos") : item("openclaw", "falta", openclaw === "root" ? "só o root tem o OpenClaw: os usuários não alcançam" : "cada usuário baixaria o Node 24 e uma cópia"));
