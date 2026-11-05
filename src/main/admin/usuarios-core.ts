@@ -447,11 +447,17 @@ case "$O" in *"v$V"*) echo "HERMES=ok $V" ;; *) echo "ERRO=o Hermes instalou, ma
  * (onboard, token do gateway, plugin do WhatsApp, sessão) continuam por usuário (~/.openclaw). Antes, o pedido
  * "preparar" ao agente instalava em ~/.local de cada conta (no root, em /root: os outros nem alcançam) e cada conta
  * baixava o próprio Node 24. O npm do Node 24 só roda scripts de instalação dos pacotes liberados. Idempotente;
- * o atalho que não for nosso fica guardado ao lado; confere como `nobody`. Saída `OPENCLAW=ok <versão>` ou `ERRO=`.
+ * o atalho que não for nosso fica guardado ao lado; confere como `nobody`. Junto vão os pacotes do sistema que o áudio
+ * do agente usa (ffmpeg e python3-venv: a voz e a transcrição por usuário criam um venv, e sem o pacote o
+ * `python3 -m venv` do Debian/Ubuntu deixa a pasta sem pip); como root entram uma vez para todas as contas, e faltar
+ * só avisa (`AVISO=`). Saída `OPENCLAW=ok <versão>` ou `ERRO=`.
  */
+/** Pacotes do sistema que o áudio do agente do WhatsApp usa em cada conta (os mesmos entram em PACOTES_BASE do Preparar máquina). */
+export const PACOTES_AUDIO = ["ffmpeg", "python3-venv"] as const;
 export function openclawGlobalSh(): string {
   return `D=/opt/openclaw; V='${OPENCLAW_VERSAO}'; NV='${OPENCLAW_NODE}'; W=/usr/local/bin/openclaw
 mkdir -p "$D" || { echo "ERRO=não consegui criar $D"; exit 0; }
+if command -v apt-get >/dev/null 2>&1; then for p in ${PACOTES_AUDIO.join(" ")}; do dpkg-query -W -f='\${Status}' "$p" 2>/dev/null | grep -q "install ok installed" || DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y -q --no-install-recommends "$p" >>/tmp/meu-bot-openclaw-global.log 2>&1 || echo "AVISO=não consegui instalar o pacote $p (log em /tmp/meu-bot-openclaw-global.log)"; done; fi
 if [ "$("$D/node/bin/node" -v 2>/dev/null)" != "$NV" ]; then
   case "$(uname -m)" in aarch64|arm64) a=arm64;; x86_64) a=x64;; *) echo "ERRO=arquitetura $(uname -m) não suportada"; exit 0;; esac
   t=$(mktemp -d); curl -fsSL "https://nodejs.org/dist/$NV/node-$NV-linux-$a.tar.gz" -o "$t/node.tar.gz" || { rm -rf "$t"; echo "ERRO=não consegui baixar o Node $NV"; exit 0; }

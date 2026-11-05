@@ -9,13 +9,19 @@ import path from "node:path";
 // compartilhado da máquina ele só aponta o OpenClaw (nada baixado); sem ele e sem ffmpeg/sudo, sai com 3 e aponta o admin.
 const SCRIPT = path.join(import.meta.dirname, "..", "..", "backend-colima", "install-transcricao.sh");
 
-function maquina({ models = "[]", transcritor = true, venvAntigo = false, semPython = false, testeFalha = false } = {}) {
+function maquina({ models = "[]", transcritor = true, venvAntigo = false, semPython = false, semVenv = false, testeFalha = false } = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "transcricao-"));
   const bin = path.join(home, "bin-falso"); fs.mkdirSync(bin);
   const w = (p, txt, mode) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, txt); if (mode) fs.chmodSync(p, mode); };
   w(path.join(bin, "timeout"), "#!/bin/bash\nshift; exec \"$@\"\n", 0o755);
   // `python3` quebrado = sem o WAV do teste; `testeFalha` = o OpenClaw não confirma a transcrição.
   if (semPython) w(path.join(bin, "python3"), "#!/bin/bash\nexit 1\n", 0o755);
+  // `semVenv` = máquina sem o pacote python3-venv: `python3 -m venv` falha; tem ffmpeg, e o venv de antes ficou sem pip.
+  if (semVenv) {
+    w(path.join(bin, "ffmpeg"), "#!/bin/bash\nexit 0\n", 0o755);
+    w(path.join(bin, "python3"), "#!/bin/bash\n[ \"$1 $2\" = \"-m venv\" ] && exit 1; exec /usr/bin/python3 \"$@\"\n", 0o755);
+    w(path.join(home, ".local/share/meu-bot/transcricao/venv/bin/python"), "#!/bin/bash\nexit 1\n", 0o755);
+  }
   if (testeFalha) w(path.join(home, "teste-falha"), "");
   w(path.join(bin, "sudo"), "#!/bin/bash\nexit 1\n", 0o755);
   w(path.join(bin, "openclaw"), `#!/bin/bash
@@ -73,6 +79,16 @@ test("sem o compartilhado, sem ffmpeg e sem sudo: sai com 3 (precisa do admin) e
   const r = m.roda();
   assert.equal(r.code, 3, r.out);
   assert.match(r.ultima, /não deixa instalar programas sem senha/); assert.match(r.ultima, /Preparar máquina/);
+  assert.ok(!r.chamadas.some((c) => c.startsWith("config set")), "nada gravado no OpenClaw");
+  m.limpar();
+});
+
+test("sem o compartilhado e sem o python3-venv (venv de antes sem pip): refaz, não consegue, sai com 3 e aponta o admin", () => {
+  const m = maquina({ transcritor: false, semVenv: true });
+  const r = m.roda();
+  assert.equal(r.code, 3, r.out);
+  assert.match(r.ultima, /python3-venv/); assert.match(r.ultima, /Preparar máquina/);
+  assert.ok(!fs.existsSync(path.join(m.home, ".local/share/meu-bot/transcricao/venv")), "o venv quebrado (sem pip) não fica para a próxima vez");
   assert.ok(!r.chamadas.some((c) => c.startsWith("config set")), "nada gravado no OpenClaw");
   m.limpar();
 });
