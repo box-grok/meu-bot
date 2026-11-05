@@ -23,7 +23,7 @@ interface WebviewEl extends HTMLElement {
   insertCSS(css: string): Promise<string>; removeInsertedCSS(key: string): Promise<void>; executeJavaScript(code: string): Promise<unknown>;
 }
 /** `cssKeys`: recortes aplicados neste documento (id do recorte → chaves do insertCSS); zera a cada navegação. */
-interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; }
+interface NavTab { id: string; wv: WebviewEl; title: string; url: string; favicon: string | null; loading: boolean; failed: string | null; cssKeys: Map<string, string[]>; /** Aba fixa de um serviço do espaço de trabalho (id do serviço). */ serviceId?: string; /** Aba aberta por um tutorial ("Tutorial 11"): selo na tira, como o dono de uma conversa. */ rotulo?: string; }
 /** canGoBack/canGoForward lançam antes do dom-ready do <webview> (aba recém-criada): até lá, nem voltar nem avançar; o dom-ready repinta. */
 const navPode = (f: () => boolean): boolean => { try { return f(); } catch { return false; } };
 export let navPage: PageTab | null = null;
@@ -295,7 +295,7 @@ function navNormalize(raw: string): string {
   if (/^[\w.-]+\.[a-z]{2,}(\/|$|:|\?)/i.test(t) || /^localhost(:|\/|$)/.test(t)) return `https://${t}`;
   return `https://www.google.com/search?q=${encodeURIComponent(t)}`;
 }
-function navNewTab(url: string = navHome(), activate = true, serviceId?: string): NavTab | null {
+function navNewTab(url: string = navHome(), activate = true, serviceId?: string, rotulo?: string): NavTab | null {
   if (navEls === null || navPartition === null) return null;
   const wv = document.createElement("webview") as WebviewEl;
   wv.setAttribute("partition", navPartition);
@@ -304,7 +304,7 @@ function navNewTab(url: string = navHome(), activate = true, serviceId?: string)
   wv.setAttribute("webpreferences", "zoomFactor=1");
   wv.className = "nav-view";
   wv.hidden = true;
-  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map(), ...(serviceId !== undefined ? { serviceId } : {}) };
+  const tab: NavTab = { id: `nav-${++navSeq}`, wv, title: "", url, favicon: null, loading: true, failed: null, cssKeys: new Map(), ...(serviceId !== undefined ? { serviceId } : {}), ...(rotulo !== undefined ? { rotulo } : {}) };
   const sync = (): void => { const antes = tab.url; tab.url = wv.getURL(); tab.title = wv.getTitle(); tab.loading = wv.isLoading(); paintNav(); if (tab.url !== antes) navSalvarAbas(); };
   wv.addEventListener("did-start-loading", () => { tab.loading = true; tab.failed = null; paintNav(); });
   wv.addEventListener("did-stop-loading", sync);
@@ -436,10 +436,10 @@ export function paintNav(): void {
     let wcId: number | null = null; try { wcId = t.wv.getWebContentsId(); } catch { /* ainda não anexada */ }
     if (wcId !== null) {
       const d = navDonos[wcId];
-      const v = d === undefined ? null : navDonoView(d);
-      const ref = `navegador · ${hostLabel(ctx.windowHost)} · aba ${wcId} · ${t.url}${d === undefined ? " · da pessoa" : ` · dono: ${origemNome(d.origem)} ${v!.nome} · ${d.id}${v!.sessao !== null ? ` · sessão ${v!.sessao}` : ""}`}`;
-      const chip = el("button", `nav-tab-id${d !== undefined ? ` dono ${d.origem}` : ""}`, v === null ? `aba ${wcId}` : `${v.icone} ${v.curto || v.nome}`); chip.type = "button";
-      chip.title = `${v === null ? `Aba ${wcId} (da pessoa)` : `Aba ${wcId} · em uso por ${v.nome}${v.curto !== "" ? ` · ID ${v.curto}` : ""}`}\n\nClique para copiar o ID`;
+      const v = d === undefined ? (t.rotulo !== undefined ? { icone: "🎓", nome: t.rotulo, curto: "", sessao: null } : null) : navDonoView(d);
+      const ref = `navegador · ${hostLabel(ctx.windowHost)} · aba ${wcId} · ${t.url}${d === undefined ? (t.rotulo !== undefined ? ` · aberta pelo ${t.rotulo}` : " · da pessoa") : ` · dono: ${origemNome(d.origem)} ${v!.nome} · ${d.id}${v!.sessao !== null ? ` · sessão ${v!.sessao}` : ""}`}`;
+      const chip = el("button", `nav-tab-id${d !== undefined ? ` dono ${d.origem}` : t.rotulo !== undefined ? " dono tutorial" : ""}`, v === null ? `aba ${wcId}` : `${v.icone} ${v.curto || v.nome}`); chip.type = "button";
+      chip.title = `${v === null ? `Aba ${wcId} (da pessoa)` : d === undefined ? `Aba ${wcId} · aberta pelo ${t.rotulo}` : `Aba ${wcId} · em uso por ${v.nome}${v.curto !== "" ? ` · ID ${v.curto}` : ""}`}\n\nClique para copiar o ID`;
       chip.addEventListener("click", (ev) => { ev.stopPropagation(); ctx.copyReference(ref); });
       tabEl.append(chip);
     }
@@ -513,7 +513,7 @@ function paintNavMenu(): void {
   m.append(el("p", "hint", ctx.crmProprio() ? "O CRM do meu-bot já vem no Gmail e o Autenticador guarda seus códigos de dois fatores na máquina; outras extensões de conteúdo também funcionam. Se o Streak ainda estiver instalado, pode removê-lo aqui." : "Extensões rodam só neste navegador, com as APIs que o Electron oferece: as de conteúdo (como o Streak no Gmail) funcionam; popups de botão ainda não."));
 }
 /** Abre a aba Navegador (ou traz para a frente). Sem Pro, abre bloqueada com a explicação e o pedido ao admin. */
-export async function openNavTab(url?: string, frente = true): Promise<void> {
+export async function openNavTab(url?: string, frente = true, rotulo?: string): Promise<void> {
   if (!ctx.caps.chat) return; // só o meu-bot da pessoa (o admin não tem conversas nem licença própria)
   navMarcarAberto(true);
   if (navPage === null) {
@@ -622,7 +622,7 @@ export async function openNavTab(url?: string, frente = true): Promise<void> {
     paintNav();
   }
   if (navAccess === "ok" && navPartition !== null) {
-    if (url !== undefined) navNewTab(navNormalize(url));
+    if (url !== undefined) navNewTab(navNormalize(url), true, undefined, rotulo);
     else if (navTabs.length === 0) {
       // Reabrindo o app: as abas de antes, na mesma ordem e com a mesma na frente; sem nenhuma guardada, a página inicial.
       const salvas = navAbasSalvas();

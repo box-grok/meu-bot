@@ -118,9 +118,9 @@ export function ligarContasCliGuia(): void {
     if (ev.kind === "url") {
       contaLogin.url = ev.url; contaLogin.codigo = ev.codigo;
       contaLogin.texto = contaLogin.trocar
-        ? ev.id === "github" ? "A página abriu no Navegador: entre com a outra conta do GitHub, cole o código abaixo e autorize. A conta antiga sai desta máquina quando a nova entrar." : "A página abriu no Navegador, já fora da conta antiga: entre com a outra conta do Cloudflare e autorize."
-        : ev.codigo !== null ? "A página abriu no Navegador: cole o código abaixo e autorize." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
-      void abrirLinkDoChat(ev.url, false);
+        ? ev.id === "github" ? "A página abriu no Navegador: entre com a outra conta do GitHub; daí o código é colado e o acesso autorizado sozinhos (se travar, cole o código abaixo e autorize). A conta antiga sai desta máquina quando a nova entrar." : "A página abriu no Navegador, já fora da conta antiga: entre com a outra conta do Cloudflare e autorize."
+        : ev.codigo !== null ? "A página abriu no Navegador: o código é colado e o acesso autorizado sozinhos quando ela carregar (se travar, cole o código abaixo e autorize)." : "A página abriu no Navegador: entre na conta e autorize. Aqui atualiza sozinho.";
+      void abrirLinkDoChat(ev.url, false, "Tutorial 11");
     } else if (ev.kind === "log") contaLogin.texto = ev.text;
     else {
       contaLogin.ok = ev.ok; contaLogin.texto = ev.ok ? `✓ ${ev.text}` : `✗ ${ev.text}`;

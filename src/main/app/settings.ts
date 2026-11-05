@@ -114,13 +114,16 @@ export function setHostName(host: string, name: string): void {
 }
 
 export const isPodHost = (host: string): boolean => file.podHosts.includes(host);
-/** "🤖 agente pode usar" o Navegador: lembrado por máquina, para sobreviver a reinícios do app. */
-export const isNavAgentHost = (host: string): boolean => file.navAgentHosts.includes(host);
+/** "🤖 agente pode usar" o Navegador: ligado por padrão (5 nov); desligar fica lembrado por máquina, para sobreviver a reinícios do app. */
+export const isNavAgentHost = (host: string): boolean => !file.navAgentDesligados.includes(host);
 export function setNavAgentHost(host: string, on: boolean): void {
   if (!isValidHost(host)) return;
-  const next = file.navAgentHosts.filter((h) => h !== host);
-  if (on) next.push(host);
-  file.navAgentHosts = next;
+  const off = file.navAgentDesligados.filter((h) => h !== host);
+  if (!on) off.push(host);
+  file.navAgentDesligados = off;
+  const ligados = file.navAgentHosts.filter((h) => h !== host);
+  if (on) ligados.push(host);
+  file.navAgentHosts = ligados;
   persist();
 }
 /** "O agente pode usar o Gmail": lembrado por máquina (religa sozinho com a conta conectada). */

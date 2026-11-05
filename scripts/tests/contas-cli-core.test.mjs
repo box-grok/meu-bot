@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE } = createRequire(import.meta.url)("../../dist/main/agente/contas-cli-core.js");
+const { comandoEntrar, comandoSairDoGithub, lerStatus, lerLink, loginConcluiu, isContaId, CF_ESCOPOS, GITHUB_OUTRA_CONTA, SAIR_DO_SITE, ehPaginaDoCodigoGithub, scriptColarCodigoGithub } = createRequire(import.meta.url)("../../dist/main/agente/contas-cli-core.js");
 
 const WHOAMI_AMPLO = `👋 You are logged in with an OAuth Token, associated with the email lv@exemplo.com.
 Scope (Access)
@@ -85,4 +85,19 @@ test("trocar de conta: GitHub com várias contas vale a ativa; sair só da anter
   assert.equal(comandoSairDoGithub("x; rm -rf ~"), null, "nome fora do formato do GitHub não vira comando");
   assert.match(GITHUB_OUTRA_CONTA, /^https:\/\/github\.com\/login\?add_account=1&return_to=%2Flogin%2Fdevice$/);
   assert.deepEqual(SAIR_DO_SITE, { cloudflare: "cloudflare.com", github: null });
+});
+
+test("código do GitHub colado sozinho: só na página do código, só com código no formato, pelo setter nativo e enviando o formulário", () => {
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login/device"), true);
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login/device?skip_account_picker=true"), true);
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login/device/select_account"), true, "o 'Continue as <conta>' antes do código");
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login/device/confirmation"), true, "o 'Authorize GitHub CLI'");
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login?return_to=%2Flogin%2Fdevice"), false, "a página de login antes dela não tem o campo");
+  assert.equal(ehPaginaDoCodigoGithub("https://github.com/login/device/success"), false);
+  assert.equal(ehPaginaDoCodigoGithub("https://evil.example/github.com/login/device"), false);
+  const js = scriptColarCodigoGithub("AB12-CD34");
+  assert.ok(js !== null && js.includes('"AB12-CD34"') && js.includes("input.js-user-code-field") && js.includes('input[name="user-code"]') && js.includes("requestSubmit") && js.includes("continuar"));
+  assert.ok(js.includes('form[action="/login/device/authorize"]') && js.includes("Authorize GitHub CLI") && js.includes('uc.value !== code') && js.includes('"autorizado"'), "autoriza só o GitHub CLI e só com o código deste login");
+  assert.equal(scriptColarCodigoGithub("ab12-cd34"), null, "minúsculas não são o formato do gh");
+  assert.equal(scriptColarCodigoGithub('AB12"); alert(1); ("'), null, "nada fora do formato vira script");
 });

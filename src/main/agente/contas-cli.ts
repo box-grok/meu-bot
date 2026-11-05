@@ -6,8 +6,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import type { ContaEvento } from "../../shared/ipc";
 import { log } from "../maquina/backend";
-import { sairDoSite } from "../navegador/browser";
-import { comandoEntrar, comandoSair, comandoSairDoGithub, GITHUB_OUTRA_CONTA, INSTALAR_GH_SH, lerLink, SAIR_DO_SITE, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
+import { browserAoChegar, sairDoSite } from "../navegador/browser";
+import { comandoEntrar, comandoSair, comandoSairDoGithub, ehPaginaDoCodigoGithub, GITHUB_OUTRA_CONTA, INSTALAR_GH_SH, lerLink, SAIR_DO_SITE, scriptColarCodigoGithub, lerStatus, loginConcluiu, NOME_CONTA, STATUS_SH, type ContaEstado, type ContaId } from "./contas-cli-core";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 
@@ -64,19 +64,28 @@ export async function entrarConta(host: string, id: ContaId, navegador: boolean,
     child.stdin?.on("error", () => { /* pty fechou */ });
     atual = { host, id, child };
     let saida = ""; let enviado = false;
+    // GitHub: o código de uso único é colado sozinho quando a aba do Navegador chegar na página que o pede.
+    let pararColar: (() => void) | null = null;
     send({ kind: "log", id, text: `pedindo o login do ${nome} na máquina…` });
     const onData = (d: Buffer): void => {
       saida = (saida + d.toString("utf8")).slice(-20_000);
       if (enviado) return;
       const { url, codigo } = lerLink(id, saida);
-      if (url !== null) { enviado = true; send({ kind: "url", id, url: trocar && id === "github" ? GITHUB_OUTRA_CONTA : url, codigo }); }
+      if (url === null) return;
+      enviado = true;
+      send({ kind: "url", id, url: trocar && id === "github" ? GITHUB_OUTRA_CONTA : url, codigo });
+      const js = id === "github" && codigo !== null && navegador ? scriptColarCodigoGithub(codigo) : null;
+      if (js !== null) pararColar = browserAoChegar(host, ehPaginaDoCodigoGithub, js, 600_000, (r) => {
+        const texto = r === "continuar" ? "passei do \"Continue\" da conta do GitHub; colando o código…" : r === "autorizado" ? "código colado e acesso autorizado no GitHub; concluindo…" : "o código já foi colado na página do GitHub; autorizando…";
+        log(`[contas] ${host}: GitHub no Navegador: ${String(r)}`); send({ kind: "log", id, text: texto });
+      }, (r) => r === "autorizado");
     };
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     const timer = setTimeout(() => { send({ kind: "log", id, text: "tempo esgotado (10 min)" }); child.kill("SIGTERM"); }, 600_000);
     child.on("error", (e) => { send({ kind: "done", id, ok: false, text: `não consegui iniciar: ${e.message}` }); });
     child.on("close", (code) => {
-      clearTimeout(timer);
+      clearTimeout(timer); pararColar?.();
       atual = null;
       try { child.stdin?.end(); } catch { /* ok */ }
       void (async () => {
