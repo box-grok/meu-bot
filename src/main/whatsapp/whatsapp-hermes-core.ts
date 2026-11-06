@@ -470,7 +470,7 @@ except Exception:
     print("")
 ' 2>/dev/null | tr -dc 0-9); [ -n "$HBP" ] || HBP=$(cat "$HOME/.hermes/platforms/whatsapp/bridge_port" 2>/dev/null | tr -dc 0-9); [ -n "$HBP" ] || { U=$(id -u); if [ "$U" = 0 ]; then HBP=3000; else HBP=$((3100 + (U > 1000 ? U - 1000 : 0))); fi; }`;
 
-/** Imprime `gcfg=<json>` com a política de grupos: config.yaml (platforms.whatsapp, chaves soltas ou em `extra`) e, faltando, o .env. */
+/** Imprime `gcfg=<json>` com a política de grupos como o Hermes a vê: o .env primeiro, depois o config.yaml (platforms.whatsapp, chaves soltas ou em `extra`). */
 export const HERMES_GROUP_CFG_SH = `${HERMES_PY_SH}; "$PY" -c '
 import json, os, re
 e = {}
@@ -494,17 +494,21 @@ except Exception:
 w = (c.get("platforms") or {}).get("whatsapp") or {}
 if not isinstance(w, dict): w = {}
 x = w.get("extra") if isinstance(w.get("extra"), dict) else {}
+# Mesma ordem do Hermes (plugins/platforms/whatsapp/adapter.py, _YAML_BRIDGE): a variável do .env vence o YAML.
 def pick(k, envk):
+    if e.get(envk) not in (None, ""): return e[envk]
     if k in w: return w[k]
     if k in x: return x[k]
-    return e.get(envk)
+    return None
 print("gcfg=" + json.dumps({"group_policy": pick("group_policy", "WHATSAPP_GROUP_POLICY"), "group_allow_from": pick("group_allow_from", "WHATSAPP_GROUP_ALLOWED_USERS"), "require_mention": pick("require_mention", "WHATSAPP_REQUIRE_MENTION"), "free_response_chats": pick("free_response_chats", "WHATSAPP_FREE_RESPONSE_CHATS")}, ensure_ascii=True))
 '`;
 
 /**
  * Grava a política de grupos em ~/.hermes/config.yaml (platforms.whatsapp), com backup ao lado e escrita atômica.
  * ruamel (round-trip) preserva comentários e os prompts por grupo; sem ele, PyYAML sem reordenar. As mesmas chaves
- * em `extra:` saem, para a precedência não enganar. Imprime `cfgset=ok`.
+ * em `extra:` saem, e as variáveis equivalentes saem do ~/.hermes/.env: no Hermes o .env vence o YAML, e uma
+ * WHATSAPP_GROUP_POLICY=disabled esquecida lá deixava o grupo "ligado" na tela e recusado no bridge (box-2, 6 nov).
+ * Imprime `cfgset=ok`.
  */
 export function hermesGroupCfgSetSh(cfg: HermesGroupCfg): string {
   const b64 = Buffer.from(JSON.stringify({ group_policy: cfg.policy, group_allow_from: cfg.allow, require_mention: cfg.requireMention, free_response_chats: cfg.free }), "utf8").toString("base64");
@@ -536,6 +540,16 @@ if os.path.exists(p): shutil.copy2(p, p + ".bak-meu-bot-" + time.strftime("%Y%m%
 tmp = p + ".tmp"
 with open(tmp, "w") as f: dump(doc, f)
 os.chmod(tmp, 0o600); os.replace(tmp, p)
+import re
+ep = os.path.expanduser("~/.hermes/.env")
+fora = ("WHATSAPP_GROUP_POLICY", "WHATSAPP_GROUP_ALLOWED_USERS", "WHATSAPP_GROUP_ALLOW_FROM", "WHATSAPP_REQUIRE_MENTION", "WHATSAPP_FREE_RESPONSE_CHATS")
+if os.path.exists(ep):
+    linhas = open(ep).read().splitlines(True)
+    resto = [l for l in linhas if not (lambda m: m is not None and m.group(1) in fora)(re.match(r"\\s*(?:export\\s+)?([A-Z0-9_]+)\\s*=", l))]
+    if len(resto) != len(linhas):
+        shutil.copy2(ep, ep + ".bak-meu-bot-" + time.strftime("%Y%m%d-%H%M%S"))
+        with open(ep + ".tmp", "w") as f: f.writelines(resto)
+        os.chmod(ep + ".tmp", 0o600); os.replace(ep + ".tmp", ep)
 print("cfgset=ok")
 ' '${b64}'`;
 }
