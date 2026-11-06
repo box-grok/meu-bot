@@ -1,7 +1,7 @@
 /** Contrato IPC · A superfície exposta às telas (window.meuBot) e os eventos do main. Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { BatimentoDepuracao, EstadoDepuracao, EventoDepuracao } from "./depuracao";
 import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoStatus, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
-import type { AlertPrefs, BackendModel, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
+import type { AlertPrefs, BackendModel, ControleRemotoView, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
@@ -95,6 +95,10 @@ export interface MainEvents {
   "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number };
   /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
   "term:ask": { kind: "new" };
+  /** Controle remoto (MCP), ferramenta `pagina_abrir`: põe esta página na frente da janela. */
+  "ui:abrir-pagina": { pagina: "tutoriais" | "acervo" | "financas" | "conta-google" | "gmail" | "computador" | "navegador" };
+  /** Controle remoto (MCP) ligou/desligou, trocou de porta ou de token: a seção das Configurações repinta em todas as janelas. */
+  "controle-remoto:changed": ControleRemotoView;
   /** Controle local (term-api.ts): mais uma coluna com a página à direita; juntar tira uma (id/pagina) ou todas. */
   "ui:split": { alvo: "terminal"; id: string } | { alvo: "navegador" | "tutoriais" | "acervo" | "vazia" } | { alvo: "juntar"; id?: string; pagina?: "navegador" | "tutoriais" | "acervo" };
   /** Quem está usando cada aba do Navegador (wcId → conversa): selo e ID na faixa de abas. */
@@ -207,6 +211,11 @@ export interface MeuBotSharedApi {
   /** Link público desta pessoa na máquina (tutorial 13): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
   linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
+  /** Controle remoto (MCP): estado, ligar/desligar (ligar gera o token; desligar apaga), trocar a porta (1024–65535) e gerar outro token. Tudo vale na hora. */
+  controleRemotoStatus(): Promise<ControleRemotoView>;
+  controleRemotoLigar(ligado: boolean): Promise<ControleRemotoView>;
+  controleRemotoPorta(porta: number): Promise<ControleRemotoView>;
+  controleRemotoRegenerar(): Promise<ControleRemotoView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
   /** `forcar`: repete a busca do client na release agora, mesmo tendo tentado há pouco. */
   googleContaStatus(forcar?: boolean): Promise<GoogleContaStatus>;

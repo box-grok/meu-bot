@@ -61,6 +61,8 @@ const MAIN_EVENT_CHANNELS: readonly MainEventChannel[] = [
   // O teste "todo canal de MainEvents está na lista do preload" (ipc-policy.test.mjs) não deixa repetir.
   "find:result",
   "ui:abrir",
+  "ui:abrir-pagina",
+  "controle-remoto:changed",
 ];
 
 /** Os dois apps. */
@@ -113,6 +115,10 @@ const sharedApi: MeuBotSharedApi = {
   contasStatus: () => ipcRenderer.invoke("contas:status", {}),
   linkPublico: () => ipcRenderer.invoke("link-publico:status", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
+  controleRemotoStatus: () => ipcRenderer.invoke("controle-remoto:status", {}),
+  controleRemotoLigar: (ligado: boolean) => ipcRenderer.invoke("controle-remoto:ligar", { ligado }),
+  controleRemotoPorta: (porta: number) => ipcRenderer.invoke("controle-remoto:porta", { porta }),
+  controleRemotoRegenerar: () => ipcRenderer.invoke("controle-remoto:regenerar", {}),
   googleContaStatus: (forcar?: boolean) => ipcRenderer.invoke("google-conta:status", { forcar }),
   googleContaConectar: () => ipcRenderer.invoke("google-conta:conectar", {}),
   googleContaDesconectar: () => ipcRenderer.invoke("google-conta:desconectar", {}),

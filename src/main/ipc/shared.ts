@@ -5,7 +5,7 @@
 import { app, dialog, Menu, nativeTheme, shell } from "electron";
 import fs from "node:fs";
 import path from "node:path";
-import type { SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction, WhatsappStatus } from "../../shared/ipc";
+import type { ControleRemotoView, SettingsUpdate, SettingsView, WhatsappGroupMenuAction, WhatsappGroupPatch, WhatsappMenuAction, WhatsappStatus } from "../../shared/ipc";
 import { slugify } from "../conversa/export";
 import { log } from "../maquina/backend";
 import { whatsappChats, whatsappClearPlan, whatsappClearSessions, whatsappKeepPaused, whatsappExportBody, whatsappLearnNames, whatsappPause, whatsappSetMarks, whatsappStatus, whatsappThread, whatsappGroups, whatsappGroupClear, whatsappGroupClearPlan, whatsappGroupThread, whatsappRefreshGroups, whatsappSetGroup, whatsappGatewayOf, whatsappPausaModoOf } from "../whatsapp/whatsapp";
@@ -34,7 +34,10 @@ import { adotarContaDoMac, contaConectar, contaDesconectar, contaStatus, garanti
 import { garantirClientesGoogle } from "../google/cliente-release";
 import { dispararDadosAoDrive, enviarDadosAoDrive, estadoDadosDrive, listarCopias, pastaBackupDados, restaurarDoDrive } from "../google/dados-drive";
 import { definirSenhaBackup, limparSenhaBackup, temSenhaBackup } from "../google/senha-backup";
-import { getDadosNoDrive, setDadosNoDrive } from "../app/settings";
+import { getControleRemoto, getDadosNoDrive, setControleRemoto, setDadosNoDrive } from "../app/settings";
+import { estadoControleRemoto, portaControleRemoto, reiniciarControleRemoto, startControleRemoto, stopControleRemoto } from "../controle-remoto/controle-remoto";
+import { PORTA_MAX, PORTA_MIN, gerarToken, isPortaMcp } from "../controle-remoto/controle-remoto-core";
+import { produto } from "../app/variant";
 import { agendaCriar, agendaProximos, gmailApagar, gmailLer, gmailListar, gmailRestaurar, planilhaEscrever, planilhaLer } from "../google/apis";
 import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-core";
 import { CONJUNTOS_DADOS } from "../google/google-core";
@@ -542,6 +545,28 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     broadcast("settings:changed", settingsView());
     if (clean.openAtLogin !== undefined && app.isPackaged) app.setLoginItemSettings({ openAtLogin: clean.openAtLogin });
     return withLogin(view);
+  });
+
+  // Controle remoto (MCP), molde do Remote Control do Rambox: ligar gera o token e sobe o servidor; desligar derruba e
+  // apaga o token; porta e token novos reiniciam na hora. Cada mudança avisa as outras janelas.
+  const mcpAvisar = (): ControleRemotoView => { const v = estadoControleRemoto(); broadcast("controle-remoto:changed", v); return v; };
+  handleShared("controle-remoto:status", () => estadoControleRemoto());
+  handleShared("controle-remoto:ligar", async (_event, payload: unknown) => {
+    const ligado = (payload as { ligado?: unknown } | null)?.ligado === true;
+    if (ligado) { setControleRemoto({ ligado: true, ...(getControleRemoto().token === "" ? { token: gerarToken() } : {}) }); await startControleRemoto(); }
+    else { stopControleRemoto(); setControleRemoto({ ligado: false, token: "" }); }
+    return mcpAvisar();
+  });
+  handleShared("controle-remoto:porta", async (_event, payload: unknown) => {
+    const porta = (payload as { porta?: unknown } | null)?.porta;
+    if (!isPortaMcp(porta)) throw new Error(`Porta inválida: use um número de ${PORTA_MIN} a ${PORTA_MAX}.`);
+    if (porta !== portaControleRemoto()) { setControleRemoto({ porta: porta === produto().portaMcp ? null : porta }); await reiniciarControleRemoto(); }
+    return mcpAvisar();
+  });
+  handleShared("controle-remoto:regenerar", async () => {
+    setControleRemoto({ token: gerarToken() });
+    await reiniciarControleRemoto();
+    return mcpAvisar();
   });
 
   const memoryView = () => ({ ...getMemory(), limits: { notas: NOTAS_MAX, perfil: PERFIL_MAX } });

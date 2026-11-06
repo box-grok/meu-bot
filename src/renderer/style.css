@@ -298,6 +298,10 @@ dialog details.group > :not(summary) { margin-top: 8px; }
 dialog details.group > label, dialog details.group > .row, dialog details.group > p { display: flex; }
 dialog details.group > p { margin: 8px 0 0; }
 dialog details.group textarea, dialog details.group input, dialog details.group select { background: var(--card); }
+/* Controle remoto (MCP): token e porta em monoespaçado; a linha de botões alinha com o campo. */
+dialog input.mono { font-family: var(--mono); font-size: 12px; flex: 1; min-width: 0; }
+dialog details.group label > .row { align-items: center; }
+#mcp-porta { width: 110px; }
 /* Onboarding guiado: cartão flutuante no alto da área de conversa; a interface continua usável. */
 /* Tela vazia: a cobrinha no fundo sólido do tema, centrada no painel; a legenda é discreta como o rodapé. */
 .rest { position: absolute; inset: 0; background: var(--bg); }

@@ -3,10 +3,11 @@ import { byId as $, el } from "../lib/dom.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { ctx } from "../app/ctx.js";
 import { paintEspaco } from "./espaco.js";
+import { carregarControleRemoto, ligarControleRemoto } from "./controle-remoto.js";
 
 function openSettings(): void {
   if (ctx.dialog.open) return;
-  ctx.paintSupport(); void ctx.refreshSupportState(); void loadAlertPrefs(); paintEspaco(ctx.account?.cota);
+  ctx.paintSupport(); void ctx.refreshSupportState(); void loadAlertPrefs(); paintEspaco(ctx.account?.cota); carregarControleRemoto();
   void window.meuBot.updateState().then(ctx.paintUpdateState).catch(() => undefined);
   ctx.settingsError.hidden = true;
   for (const g of ctx.settingsGroups) g.open = false;
@@ -72,6 +73,7 @@ async function saveAlertPrefs(): Promise<void> {
 
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarConfiguracoes(): void {
+  ligarControleRemoto();
   ctx.settingsBtn.addEventListener("click", () => openSettings());
   window.meuBot.on("ui:toggle-settings", () => { if (ctx.dialog.open) ctx.dialog.close(); else openSettings(); });
   window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = ctx.tabs.get(conversationId); if (tab !== undefined) { ctx.addNotice(tab, text, "warn"); ctx.offerClaudeLogin(tab, text); } });
