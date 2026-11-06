@@ -26,6 +26,7 @@ export interface TunnelInfo {
 
 /** Onde o backend guarda a chave do endpoint OpenAI-compatível, na VM. */
 import { BACKEND_DIR_CANONICAL, BACKEND_DIR_SH } from "./backend-dir-core";
+import { pendenteUnico } from "./pendente-core";
 const BACKEND_KEY_NAME = "OPENAI_COMPAT_KEY";
 const CONTROL_PERSIST_S = 600;
 const FORWARD_RESTART_BUDGET = 5;
@@ -338,8 +339,7 @@ onLocalBackendExit((reason) => markDegraded(LOCAL_HOST, reason));
 
 /** "local": sem SSH; o backend é um processo filho deste Mac. */
 function ensureLocal(h: HostTunnel, onStatus?: (detail: string) => void): Promise<TunnelInfo> {
-  if (h.pending !== undefined) return h.pending;
-  h.pending = (async () => {
+  return pendenteUnico(h, async () => {
     try {
       if (h.state !== "ready" || !localBackendAlive()) setState(h, "connecting", "subindo backend local");
       const info = await ensureLocalBackend(onStatus);
@@ -348,11 +348,8 @@ function ensureLocal(h: HostTunnel, onStatus?: (detail: string) => void): Promis
     } catch (err) {
       setState(h, "error", err instanceof Error ? err.message : String(err));
       throw err;
-    } finally {
-      h.pending = undefined;
     }
-  })();
-  return h.pending;
+  });
 }
 
 /** Garante túnel vivo para host:remotePort e devolve porta local + chave. Reconstrói o que estiver ruim. */
@@ -362,7 +359,7 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
   if (host === LOCAL_HOST) return ensureLocal(h, onStatus);
   if (h.pending !== undefined) return h.pending;
   h.lastRemotePort = remotePort;
-  h.pending = (async () => {
+  return pendenteUnico(h, async () => {
     try {
       const live = h.live;
       const sameTarget = live !== undefined && live.remotePort === remotePort;
@@ -393,11 +390,8 @@ export function ensureTunnel(host: string, remotePort: number, onStatus?: (detai
     } catch (err) {
       setState(h, "error", err instanceof Error ? err.message : String(err));
       throw err;
-    } finally {
-      h.pending = undefined;
     }
-  })();
-  return h.pending;
+  });
 }
 
 // ---- Túnel reverso: `ssh -R 127.0.0.1:P:<socket>` como cliente do master, um por chave ("nav" = Navegador,
