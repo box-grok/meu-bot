@@ -386,6 +386,14 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
   const q = waGroups;
   if (q === null) { container.append(carregando("Lendo os grupos…")); return; }
   const self = q.self;
+  // Hermes: a lista dos grupos é a das conversas diretas, e gravar por aqui só daria erro. Mostra a lista e onde mudar.
+  if (q.quemListaUnica === true) {
+    const box = el("div", "wa-list-editor grupos-quem");
+    box.append(el("p", q.quemAciona === "todos" ? "guide-note bad" : "hint", `Hoje quem pode conversar com ele: ${waQuemTexto(q)}.`),
+      el("p", "hint", "Neste agente, quem pode chamá-lo nos grupos é a mesma lista de quem ele responde no privado. Para mudar, use \"Quem o agente responde\", na tela do WhatsApp desta máquina."));
+    container.append(box);
+    return;
+  }
   if (grupoQuemDraft === null) grupoQuemDraft = { nums: q.quemAciona === "todos" ? [] : [...new Set(q.quemAciona)].filter((n) => n !== self), todosArmado: false, bad: null };
   const d = grupoQuemDraft;
   const box = el("div", "wa-list-editor grupos-quem");

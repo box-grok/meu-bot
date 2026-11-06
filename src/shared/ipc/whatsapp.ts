@@ -194,6 +194,8 @@ export interface WhatsappGroups {
   skill: boolean;
   /** Número do próprio agente (só dígitos). */
   self: string | null;
+  /** Quem aciona nos grupos é a mesma lista das conversas diretas (Hermes): o app não grava uma lista só dos grupos. */
+  quemListaUnica?: boolean;
 }
 /** Mudança pedida num grupo: ligar/desligar e/ou quem aciona (lista de números ou "todos", que exige confirmação). */
 export interface WhatsappGroupPatch { agente?: WhatsappGroupAgent; quemAciona?: string[] | "todos" }

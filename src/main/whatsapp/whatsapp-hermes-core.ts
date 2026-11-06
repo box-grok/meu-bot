@@ -894,5 +894,5 @@ export function gruposHermes(cfg: HermesGroupCfg | null, data: unknown, self: st
   for (const g of byJid.values()) g.agente = hermesEstadoDoGrupo(cfg, g.jid);
   const peso = (g: WhatsappGroup): number => (g.agente === "desligado" ? 1 : 0);
   const grupos = [...byJid.values()].sort((a, b) => peso(a) - peso(b) || (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "") || (a.nome ?? a.jid).localeCompare(b.nome ?? b.jid));
-  return { grupos, quemAciona, quemAcionaHerdado: false, todosAdmitidos: hermesTodosAdmitidos(cfg), cacheEm: lido.em, skill: false, self: self === null ? null : (self.split(/[:@]/)[0] ?? "").replace(/\D/g, "") || null };
+  return { grupos, quemAciona, quemAcionaHerdado: false, quemListaUnica: true, todosAdmitidos: hermesTodosAdmitidos(cfg), cacheEm: lido.em, skill: false, self: self === null ? null : (self.split(/[:@]/)[0] ?? "").replace(/\D/g, "") || null };
 }
