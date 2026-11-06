@@ -25,6 +25,8 @@ export const SHARED_CHANNELS = [
   "net:check", "host:local-addr",
   // modo de depuração (faixa no topo): estado e ligar/desligar
   "depuracao:estado", "depuracao:ligar",
+  // controle remoto (MCP) deste Mac: os dois apps têm terminal e janelas para um cliente MCP controlar
+  "controle-remoto:status", "controle-remoto:ligar", "controle-remoto:porta", "controle-remoto:regenerar",
   // seletor
   "picker:list", "picker:plans", "picker:locais", "picker:probe", "picker:choose", "picker:use-port", "picker:shortcut", "picker:relief-shortcut", "picker:relieve",
   "picker:open-grokbot-reset", "picker:open-url", "picker:tailscale-credential", "picker:cancel",

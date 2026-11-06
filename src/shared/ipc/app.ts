@@ -96,6 +96,28 @@ export interface SettingsUpdate {
 export interface AlertPrefs { whatsapp: boolean }
 
 /**
+ * Controle remoto (MCP), como o Remote Control do Rambox: um servidor em 127.0.0.1:<porta>/mcp para um cliente MCP
+ * deste Mac (Claude Code, Cursor) controlar o app. O que a tela Configurações › Controle remoto mostra.
+ */
+export interface ControleRemotoView {
+  ligado: boolean;
+  porta: number;
+  /** A porta padrão desta variante (Produto.portaMcp). */
+  portaPadrao: number;
+  /** Token inteiro (a tela mascara e copia); "" quando desligado. */
+  token: string;
+  /** O servidor está de pé agora? (ligado mas com a porta ocupada = false, com `erro`). */
+  rodando: boolean;
+  erro: string | null;
+  url: string;
+  /** Nome do servidor nos clientes: o nome do app (meu-bot, meu-bot-staging…). */
+  nome: string;
+  /** Comando `claude mcp add …` pronto e o trecho do mcp.json do Cursor, com o token. */
+  configClaudeCode: string;
+  configCursor: string;
+}
+
+/**
  * Qual produto é este app: meu-bot (de cada pessoa, com o CRM próprio liberado pela licença), meu-bot-admin (suporte)
  * e os staging. Tabela em src/main/variant-core.ts.
  */

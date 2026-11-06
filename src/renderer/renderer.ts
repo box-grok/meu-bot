@@ -1818,6 +1818,8 @@ let financePage: ReturnType<typeof mountFinancePage> | null = null;
 /** Página Gmail (31 out): montada na abertura, como a Conta Google; a paleta e a aba fixada a alcançam por aqui. */
 let gmailPage: ReturnType<typeof mountGmail> | null = null;
 let contaGooglePage: ReturnType<typeof mountContaGoogle> | null = null;
+/** Página Computador, para o controle remoto (`pagina_abrir`) alcançar como as outras. */
+let computadorPage: ReturnType<typeof mountComputador> | null = null;
 let financeState: FinanceInfo | null = null;
 ligarNavegador();
 ligarTerminal();
@@ -1833,6 +1835,16 @@ window.meuBot.on("ui:split", (msg) => {
   if (msg.alvo === "navegador") { void openNavTab(undefined, false).then(() => { if (navPage !== null) splitOn(navPage); }); return; }
   const page = msg.alvo === "tutoriais" ? tutoriaisPage : acervoPage;
   openPage(page, false); splitOn(page);
+});
+// Controle remoto (MCP), `pagina_abrir`: a mesma escolha da aba fixada ao abrir a janela.
+window.meuBot.on("ui:abrir-pagina", ({ pagina }) => {
+  if (pagina === "tutoriais") openPage(tutoriaisPage);
+  else if (pagina === "acervo") openPage(acervoPage);
+  else if (pagina === "financas") financePage?.open();
+  else if (pagina === "conta-google") contaGooglePage?.open();
+  else if (pagina === "gmail") gmailPage?.open();
+  else if (pagina === "computador") computadorPage?.open();
+  else if (pagina === "navegador") void openNavTab();
 });
 // Clique foca o último terminal; Option+clique (ou o "+" na aba) abre mais um.
 $<HTMLButtonElement>("terminal-line").addEventListener("click", (ev) => { void openTerminalTab(ev.altKey ? "new" : "focus"); });
@@ -1949,6 +1961,7 @@ void (async () => {
   gmailPage = gmail;
   $<HTMLButtonElement>("gmail-line").addEventListener("click", () => gmail.open());
   const computador = mountComputador({ panelsEl, definePage, openPage, api: window.meuBot, host: () => windowHost, local: () => windowHost === "local", license: () => license, licenseKnown: () => navLicenseAsked, planoExigido: caps.planoExigido, produto: caps.produto });
+  computadorPage = computador;
   $<HTMLButtonElement>("computador-line").addEventListener("click", () => computador.open());
   // Etiqueta "Pro" na lateral, como no Navegador (só no produto free; nos apps com assinatura tudo é um pacote só).
   $<HTMLElement>("conta-google-count").textContent = caps.planoExigido === "free" ? "Pro" : "";

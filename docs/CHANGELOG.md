@@ -12,6 +12,16 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Controle remoto (MCP)
+
+#### Novo
+
+- **Deixe o Claude Code ou o Cursor controlarem o app.** Configurações › Controle remoto (MCP): ligue, copie a
+  configuração pronta para o seu cliente e pronto: ele passa a abrir janelas e páginas, usar os terminais e as abas do
+  Navegador, tirar print da janela e trocar o tema, tudo aparecendo na tela com o selo de quem fez. Só aceita conexões
+  deste próprio Mac e só com o token, que é gerado ao ligar e apagado ao desligar; "Regenerar" invalida o antigo na
+  hora. A porta é própria de cada app (meu-bot 7830, staging 7831…) e pode ser trocada; nada precisa de "Salvar".
+
 ### O agente sabe do backup
 
 #### Melhorado

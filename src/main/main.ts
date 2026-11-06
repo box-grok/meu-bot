@@ -22,7 +22,8 @@ import { applyStagedOnQuit, applyUpdate as applyUpdateNow, checkIfStale as check
 import { checkNow as checkNetNow, disposeNet, initNet, onBackOnline } from "./app/net";
 import { installBrowserHooks } from "./navegador/browser";
 import { startTermApi } from "./terminal/term-api";
-import { getBackendPort } from "./app/settings";
+import { startControleRemoto, stopControleRemoto } from "./controle-remoto/controle-remoto";
+import { getBackendPort, getControleRemoto } from "./app/settings";
 import { installAppMenu, refreshAppMenu } from "./app/menu";
 import { changeWindowZoom } from "./app/zoom";
 import { clientPickerSource, initPicker, seletorPodeAbrirAgora, showPicker } from "./maquina/picker";
@@ -111,6 +112,8 @@ app.whenReady().then(() => {
   initNet();
   installBrowserHooks();
   void startTermApi().catch((e: unknown) => { log(`[terminal] controle local não subiu: ${e instanceof Error ? e.message : String(e)}`); });
+  // Controle remoto (MCP): só se a pessoa ligou em Configurações; porta ocupada fica como erro no estado, não derruba nada.
+  if (getControleRemoto().ligado) void startControleRemoto().catch((e: unknown) => { log(`[mcp] não subiu: ${e instanceof Error ? e.message : String(e)}`); });
   onBackOnline(() => {
     markSuspect(); void revalidate();
     const hosts = new Set(allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && h !== LOCAL_HOST));
@@ -157,4 +160,4 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("will-quit", () => { disposeNet(); disposeUpdater(); disposeQuickEntry(); disposeWindows(); closeTunnel(); applyStagedOnQuit(); });
+app.on("will-quit", () => { stopControleRemoto(); disposeNet(); disposeUpdater(); disposeQuickEntry(); disposeWindows(); closeTunnel(); applyStagedOnQuit(); });

@@ -381,6 +381,36 @@
         <p class="hint">Deixe ligada. Desligue só se a janela piscar, rasgar ou ficar preta neste Mac: sem aceleração o app fica menos fluido e gasta mais bateria. <strong>Só vale depois de fechar e abrir o app.</strong></p>
       </details>
 
+      <!-- Controle remoto (MCP), do Remote Control do Rambox: um servidor em 127.0.0.1 para um cliente MCP deste Mac (Claude
+           Code, Cursor) controlar o app. Tudo aqui vale na hora, sem Salvar: ligar gera o token, desligar apaga. -->
+      <details class="group" data-group="mcp" id="mcp-group">
+        <summary>Controle remoto (MCP) <span class="sum-hint" id="mcp-sum">deixe o Claude Code ou o Cursor controlarem este app</span></summary>
+        <p class="hint">Um cliente MCP rodando neste Mac (Claude Code, Cursor…) passa a ver e usar o app: abre janelas e páginas, lista e digita nos terminais, navega nas abas do Navegador, tira print e troca o tema. Só aceita conexões deste próprio Mac, e cada ação aparece no app com o selo de quem a fez.</p>
+        <label class="switch switch-row"><input id="mcp-ligado" type="checkbox" /><span class="track"></span><span class="switch-label">Ativar o controle remoto via Model Context Protocol</span></label>
+        <p id="mcp-status" class="hint">Desligado.</p>
+        <label>Token Bearer
+          <div class="row">
+            <input id="mcp-token" type="text" class="mono" readonly placeholder="O token é gerado ao ativar" />
+            <button type="button" id="mcp-mostrar" class="btn btn-ghost btn-small" title="Mostrar o token inteiro">Mostrar</button>
+            <button type="button" id="mcp-copiar-token" class="btn btn-ghost btn-small">Copiar</button>
+            <button type="button" id="mcp-regenerar" class="btn btn-ghost btn-small" title="Gera outro token na hora; quem usava o antigo precisa reconectar">Regenerar</button>
+          </div>
+        </label>
+        <p class="hint">É a chave que o cliente MCP precisa apresentar. Regenerar invalida a antiga na hora.</p>
+        <label>Porta
+          <div class="row">
+            <input id="mcp-porta" type="number" min="1024" max="65535" step="1" />
+            <span id="mcp-porta-hint" class="hint"></span>
+          </div>
+        </label>
+        <p class="hint">Copie a configuração pronta para o seu cliente (já vai com a porta e o token):</p>
+        <div class="row">
+          <button type="button" id="mcp-copiar-claude" class="btn btn-ghost btn-small" title="Comando claude mcp add … para colar no terminal">Claude Code</button>
+          <button type="button" id="mcp-copiar-cursor" class="btn btn-ghost btn-small" title="Trecho do mcp.json do Cursor">Cursor</button>
+        </div>
+        <p id="mcp-aviso" class="hint" hidden></p>
+      </details>
+
       <!-- Suporte (só no meu-bot com o pacote de suporte, em máquina por SSH): liga sozinho; aqui o nome, "avisar o admin
            agora", o código para mandar à mão, o que o admin vê e o registro. Só o admin desliga. -->
       <details class="group" data-group="suporte" id="support-group" hidden>

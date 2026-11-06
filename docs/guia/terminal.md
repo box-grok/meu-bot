@@ -48,6 +48,10 @@ Inspirado em `~/Desktop/terminal/apps` (FastAPI + `pty` do Python + xterm.js), s
 
 ## Terminal controlado de fora, divisão por arrasto e trava de leitura (22 out)
 
+> Desde 6 nov o caminho principal é o **controle remoto (MCP) embutido** (Configurações › Controle remoto; detalhes em
+> [app.md](app.md)): mesmas ferramentas por HTTP em `127.0.0.1:<porta>/mcp` com Bearer, sem precisar do repositório.
+> O `app-mcp.mjs` abaixo segue como alternativa stdio.
+
 - **MCP de controle do app para o Claude Code** (`scripts/app-mcp.mjs`, um arquivo, sem npm; registrado com
   `claude mcp add --scope user meu-bot-app -- node …/scripts/app-mcp.mjs`): fala com os sockets de `/tmp/<app>-<uid>/`
   (`term.sock` e `nav-<máquina>.sock`) e expõe `apps`, `app_abrir`, `terminais`, `terminal_abrir/ler/digitar`,

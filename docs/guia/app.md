@@ -2,6 +2,30 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
+## Controle remoto (MCP) embutido no app (6 nov 2026)
+
+Molde do Remote Control do Rambox (lido do `app.asar` dele): um servidor MCP **dentro do processo principal**, para
+um cliente MCP deste Mac (Claude Code, Cursor) controlar o app sem precisar do repositório clonado. O
+`scripts/app-mcp.mjs` continua como caminho stdio (Claude Desktop, ou quando o app está fechado: `apps`/`app_abrir`).
+
+- **Servidor** (`src/main/controle-remoto/controle-remoto.ts`): HTTP em `127.0.0.1:<porta>`, só `POST /mcp` (GET → 405:
+  sem SSE), `Authorization: Bearer <token>`, **sem sessão** (cada pedido é um JSON-RPC completo; resposta JSON pura),
+  `Host` e `Origin` só no loopback (anti DNS rebinding), corpo ≤ 1 MB. Porta ocupada vira `erro` no estado, não exceção.
+- **Núcleo puro** (`controle-remoto-core.ts`, testado): catálogo das ferramentas com schema e anotações MCP
+  (`readOnlyHint`…), `roteador` (para onde cada uma vai), `pedidoOk`, `responderJsonRpc` (initialize, ping,
+  tools/list, tools/call, notificações, lote), `gerarToken` (32 bytes hex), `configClaudeCode`/`configCursor`.
+- **Ferramentas**: as do app-mcp menos `apps`/`app_abrir`, repassadas aos sockets `term.sock` e `nav-<máquina>.sock`
+  com o cabeçalho `X-Meu-Bot-Dono` (o cliente diz o nome em `X-Meu-Bot-Cliente`: o selo fica "Cursor (MCP) · digitou"),
+  mais as do app: `app` (janelas, máquinas, tema), `janela_abrir`, `pagina_abrir` (evento novo `ui:abrir-pagina`),
+  `tema` e `print_janela` (`capturePage`, ≤ 1280 px). As do app entram na faixa de depuração com origem `mcp`.
+- **Configuração** (`settings.json`: `mcpLigado`, `mcpPorta` null = padrão da variante, `mcpToken`) e porta por produto
+  (`Produto.portaMcp`: 7830 meu-bot, 7831 staging, 7832 finance-staging, 7833 admin, 7834 admin-mac; fora da 7822 do
+  Rambox). IPC `controle-remoto:status|ligar|porta|regenerar` (shared); ligar gera o token e sobe; desligar derruba e
+  apaga o token; porta/token novos reiniciam. `controle-remoto:changed` repinta as outras janelas.
+- **Tela** (`renderer/configuracoes/controle-remoto.ts`, grupo `#mcp-group`): interruptor, status, token mascarado
+  (Mostrar/Copiar/Regenerar), porta (aplica no change) e os botões que copiam o `claude mcp add --transport http …` e o
+  trecho do `mcp.json` do Cursor. Claude Desktop ficou de fora (o conector remoto dele não aceita cabeçalho fixo).
+
 ## Modo de depuração: selo ao lado do PRO, ferramenta `nota` e a skill (1 nov 2026, fase 3)
 
 - **Selo "DEPURAÇÃO"** ao lado do PRO nas duas barras (`#dep-badge`, `#mini-dep`): apagado em cinza com o modo
