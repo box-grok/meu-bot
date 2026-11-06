@@ -31,7 +31,7 @@ export function conversationReferenceText(conversationId: string, machine: strin
 /** Conversa do WhatsApp: número, chave da sessão do OpenClaw e o UUID atual; uma linha por sessão (principal inclusive). */
 export function waReferenceText(chat: Pick<WhatsappChat, "number" | "sessionKeys" | "sessionIds">, machine: string): string {
   const head = `whatsapp · ${machine} · +${chat.number}`;
-  if (chat.sessionKeys.length === 0) return `${head} · (sem sessão no OpenClaw ainda)`;
+  if (chat.sessionKeys.length === 0) return `${head} · (sem sessão do agente ainda)`;
   return chat.sessionKeys.map((k) => { const id = chat.sessionIds[k]; return `${head} · ${k}${id === undefined ? "" : ` · sessão ${id}`}`; }).join("\n");
 }
 
@@ -41,7 +41,7 @@ export function waReferenceText(chat: Pick<WhatsappChat, "number" | "sessionKeys
  */
 export function grupoReferenceText(g: Pick<WhatsappGroup, "jid" | "nome" | "sessionKey" | "sessionId" | "transcript"> & { apelido?: string | null }, machine: string): string {
   const head = `whatsapp · ${machine} · grupo "${g.apelido ?? g.nome ?? "sem nome"}" · ${g.jid}`;
-  if (g.sessionKey === null) return `${head} · (sem sessão no OpenClaw ainda: o agente não recebeu nada deste grupo)`;
+  if (g.sessionKey === null) return `${head} · (sem sessão do agente ainda: ele não recebeu nada deste grupo; no Hermes, confira se o grupo não está sendo recusado em ~/.hermes/whatsapp/bridge.log)`;
   const linha = `${head} · ${g.sessionKey}${g.sessionId === null ? "" : ` · sessão ${g.sessionId}`}`;
   return g.transcript === null ? linha : `${linha}\nwhatsapp · ${machine} · ${g.transcript}`;
 }
