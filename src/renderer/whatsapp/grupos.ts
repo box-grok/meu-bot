@@ -351,8 +351,14 @@ function renderWaGroup(g: WaGroupPage): void {
   idBtn.addEventListener("click", () => ctx.copyReference(ref));
   head.replaceChildren(el("strong", "", `👥 ${waGroupTitle(g.grupo)}`), el("span", "wa-chat-num", g.grupo.membros !== null ? `${g.grupo.membros} membros` : "grupo"), idBtn,
     el("span", "wa-chat-hint", g.stale === true ? "atualizando…" : "somente leitura · atualiza sozinho"));
-  // O editor da lista tem campo de texto: só redesenha o resumo quando ele não está em uso.
-  if (!summary.contains(document.activeElement)) summary.replaceWith(summary = waGroupSummary(g));
+  // O editor da lista tem campo de texto: só deixa de redesenhar o resumo enquanto há algo digitado nele. Botão com foco
+  // (um "+ membro" recém-clicado) não segura o redesenho: senão o botão continua ali e cada clique repete o número.
+  const foco = document.activeElement;
+  const noCampo = foco instanceof HTMLInputElement && summary.contains(foco);
+  if (!(noCampo && foco.value !== "")) {
+    summary.replaceWith(summary = waGroupSummary(g));
+    if (noCampo) summary.querySelector<HTMLInputElement>(".grupos-add input")?.focus();
+  }
   panel.dataset["rendered"] = "1";
   const key = g.msgs.map(ctx.waMsgKey).join("\n");
   if (!g.loaded) { list.replaceChildren(ctx.waSkeleton()); g.shown = undefined; }
@@ -380,7 +386,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
   const q = waGroups;
   if (q === null) { container.append(carregando("Lendo os grupos…")); return; }
   const self = q.self;
-  if (grupoQuemDraft === null) grupoQuemDraft = { nums: q.quemAciona === "todos" ? [] : q.quemAciona.filter((n) => n !== self), todosArmado: false, bad: null };
+  if (grupoQuemDraft === null) grupoQuemDraft = { nums: q.quemAciona === "todos" ? [] : [...new Set(q.quemAciona)].filter((n) => n !== self), todosArmado: false, bad: null };
   const d = grupoQuemDraft;
   const box = el("div", "wa-list-editor grupos-quem");
   if (q.quemAciona === "todos") box.append(el("p", "guide-note bad", "Hoje qualquer pessoa do grupo conversa com o agente. Salve uma lista abaixo para voltar ao controle."));
@@ -399,7 +405,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
     const sug = el("div", "grupos-sug"); sug.append(el("span", "hint", "Membros do grupo:"));
     for (const n of membros) {
       const b = el("button", "btn btn-ghost btn-small", `+ ${waNumberLabel(n)}`); b.type = "button";
-      b.addEventListener("click", () => { d.nums.push(n); ctx.paintGuide(); afterWaGroups(); });
+      b.addEventListener("click", () => { if (!d.nums.includes(n)) d.nums.push(n); ctx.paintGuide(); afterWaGroups(); });
       sug.append(b);
     }
     box.append(sug);
@@ -417,7 +423,7 @@ export function renderGruposQuem(container: HTMLElement, grupo: WhatsappGroup): 
   const saving = waGroupSaving !== null;
   const save = el("button", "btn btn-primary btn-small", saving ? "gravando…" : "Salvar quem pode conversar"); save.type = "button";
   save.disabled = saving || d.nums.length === 0;
-  save.addEventListener("click", () => { void setWaGroup(grupo.jid, { quemAciona: d.nums.map((n) => `+${n}`) }).then((ok) => { if (ok) grupoQuemDraft = null; afterWaGroups(); }); });
+  save.addEventListener("click", () => { void setWaGroup(grupo.jid, { quemAciona: [...new Set(d.nums)].map((n) => `+${n}`) }).then((ok) => { if (ok) grupoQuemDraft = null; afterWaGroups(); }); });
   box.append(save);
   // "Todo mundo do grupo": não é uma opção da lista; fica recolhido, com aviso vermelho e confirmação extra.
   const det = el("details", "grupos-todos");
