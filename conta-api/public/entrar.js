@@ -1,14 +1,14 @@
 // Página de login da conta meu-bot. O app abre esta página com ?state&challenge&esquema&app&v; a pessoa entra com
-// Google (popup) ou com um link por e-mail; o ID token do Firebase vai para a API (POST /sessao), que devolve um
+// Google (popup), com e-mail e senha, ou com um link por e-mail; o ID token do Firebase vai para a API (POST /sessao), que devolve um
 // código de uso único; e a página manda a pessoa de volta com <esquema>://auth?code&state. Sem os parâmetros do app
 // a página oferece baixar o app (SITE_ORIGIN) ou ir ao console (não há "entrar no site": a conta vive no app). Com esquema=web (o console da conta),
 // a volta é para `retorno` (só a origem do console) com #code&state, em vez de um deep link.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
-const secoes = ["escolha", "aguardando", "email-enviado", "pronto", "erro", "sem-app"];
+const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pronto", "erro", "sem-app"];
 const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const CHAVE_EMAIL = "meu-bot-conta-email";
@@ -30,6 +30,7 @@ if (!pedidoOk) {
   // Sem os parâmetros do app (URL digitada, link velho): em vez de um erro, o caminho para baixar o app ou ir ao console.
   $("sub").textContent = "Abra o meu-bot e clique em Entrar: ele volta para cá já com o seu login.";
   if (typeof cfg.site === "string" && cfg.site !== "") $("baixar-app").href = cfg.site;
+  $("ir-signup").href = "/signup";
   const ic = $("ir-console");
   if (typeof cfg.console === "string" && cfg.console !== "") ic.href = `${cfg.console}/account/overview`; else ic.hidden = true;
   mostrar("sem-app");
@@ -81,12 +82,24 @@ if (!pedidoOk) {
     catch (e) { falhou(e?.code === "auth/popup-closed-by-user" ? "A janela do Google foi fechada antes de terminar." : `Google: ${e?.message ?? e}`); }
   });
 
+  // E-mail com senha entra na hora; sem senha, vai um link por e-mail (o que a pessoa sempre teve).
   $("form-email").addEventListener("submit", async (ev) => {
     ev.preventDefault();
-    const email = $("email").value.trim().toLowerCase();
+    const email = $("email").value.trim().toLowerCase(), senha = $("senha").value;
     if (!email) return;
     $("btn-email").disabled = true;
     try {
+      if (senha !== "") {
+        mostrar("aguardando");
+        try { const cred = await signInWithEmailAndPassword(auth, email, senha); await concluir(cred.user, "password"); }
+        catch (e) {
+          const c = e?.code ?? "";
+          if (c === "auth/invalid-credential" || c === "auth/wrong-password" || c === "auth/user-not-found" || c === "auth/invalid-login-credentials") { mostrar("escolha"); $("senha").value = ""; $("senha").focus(); $("senha").placeholder = "Senha errada, ou esta conta ainda não tem senha"; }
+          else if (c === "auth/too-many-requests") falhou("Muitas tentativas de senha; espere um pouco ou peça um link por e-mail.");
+          else falhou(`Senha: ${e?.message ?? e}`);
+        }
+        return;
+      }
       await sendSignInLinkToEmail(auth, email, { url: location.href, handleCodeInApp: true });
       try { localStorage.setItem(CHAVE_EMAIL, email); } catch { /* sem localStorage: a volta pede o e-mail */ }
       $("email-destino").textContent = email;
@@ -94,8 +107,19 @@ if (!pedidoOk) {
     } catch (e) { falhou(`E-mail: ${e?.message ?? e}`); }
     finally { $("btn-email").disabled = false; }
   });
+  // "Esqueci a senha" (também serve para criar a primeira): o e-mail do Firebase leva ao formulário de definir senha.
+  $("esqueci").addEventListener("click", async () => {
+    const email = $("email").value.trim().toLowerCase();
+    if (!email) { $("email").focus(); $("email").reportValidity(); return; }
+    $("esqueci").disabled = true;
+    try { await sendPasswordResetEmail(auth, email); $("senha-destino").textContent = email; mostrar("senha-enviada"); }
+    catch (e) { falhou(e?.code === "auth/user-not-found" ? "Não há conta com esse e-mail: entre com o Google ou peça um link." : `Senha: ${e?.message ?? e}`); }
+    finally { $("esqueci").disabled = false; }
+  });
+  $("senha-voltar").addEventListener("click", () => mostrar("escolha"));
 
   $("tentar").addEventListener("click", () => mostrar("escolha"));
+  $("ir-signup").href = `/signup${location.search}`;
 
   if (isSignInWithEmailLink(auth, location.href)) {
     // Voltou pelo link do e-mail: o e-mail fica guardado neste navegador; se não está (outro navegador), pergunta.

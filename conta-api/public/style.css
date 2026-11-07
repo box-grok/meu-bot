@@ -30,7 +30,7 @@ h1 { font-size: 20px; margin: 0; }
 .ou::before, .ou::after { content: ""; flex: 1; height: 1px; background: var(--borda); }
 .form label { display: block; font-size: 13px; color: var(--sub); margin-bottom: 6px; }
 .linha { display: flex; gap: 8px; }
-.linha input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; }
+.linha input, .form > input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; }
 .codigo { margin-top: 14px; }
 .codigo summary { cursor: pointer; color: var(--sub); font-size: 14px; }
 code { display: block; margin-top: 8px; padding: 10px; border-radius: 8px; background: var(--codigo); border: 1px solid var(--borda); font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; user-select: all; }
@@ -45,3 +45,13 @@ code { display: block; margin-top: 8px; padding: 10px; border-radius: 8px; backg
 .lembrado-texto span { color: var(--sub); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .link { margin-left: auto; background: none; border: 0; color: var(--sub); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
 .link:hover { color: var(--texto); }
+.link.inline { margin: 0; color: var(--primario); font-size: inherit; }
+.form .dica { margin-top: 8px; }
+.form > input { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+.form .dupla { display: flex; gap: 8px; }
+.form .dupla label { flex: 1; min-width: 0; }
+.form label span { display: block; font-size: 13px; color: var(--sub); margin-bottom: 6px; }
+.form label input { width: 100%; box-sizing: border-box; margin-bottom: 10px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; }
+.erro-campo { margin: 0 0 10px; color: var(--mau, #b42318); font-size: 13px; }
+.rodape-link { text-align: center; margin-top: 16px; }
+.rodape-link a { color: var(--primario); font-weight: 600; }
