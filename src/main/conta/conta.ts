@@ -88,6 +88,9 @@ const ouvintesSaida = new Set<() => void>();
 /** Quem quer saber quando a sessão acaba (Sair, ou a API a derrubou): o main fecha as janelas e volta ao seletor. */
 export function aoSair(cb: () => void): void { ouvintesSaida.add(cb); }
 const saiu = (): void => { for (const cb of ouvintesSaida) { try { cb(); } catch (e) { log(`[conta] ao sair: ${e instanceof Error ? e.message : String(e)}`); } } };
+const ouvintesRetorno = new Set<() => void>();
+/** Qualquer retorno pelo esquema do app (login concluído ou "Abrir o meu-bot" clicado de novo): o main traz o app para a frente. */
+export function aoRetorno(cb: () => void): void { ouvintesRetorno.add(cb); }
 
 /** Pedido à API: JSON de ida e volta; `status` 0 = sem resposta (rede, tempo). */
 async function api(metodo: "GET" | "POST", rota: string, corpo: unknown = null, bearer: string | null = null): Promise<{ status: number; corpo: unknown }> {
@@ -118,6 +121,7 @@ let trocando = false;
 export async function aoRetornarAuth(url: string): Promise<void> {
   const r = parseRetornoAuth(url, esquemaDe(produto()));
   if (r === null) return;
+  for (const cb of ouvintesRetorno) { try { cb(); } catch (e) { log(`[conta] ao voltar: ${e instanceof Error ? e.message : String(e)}`); } }
   // O macOS pode entregar a mesma URL duas vezes (open-url e argv da segunda instância): a segunda cópia é ignorada.
   if (trocando) { log("[conta] retorno do login repetido enquanto o primeiro ainda está sendo trocado; ignorado"); return; }
   trocando = true;
@@ -133,7 +137,6 @@ async function trocarRetorno(r: Exclude<ReturnType<typeof parseRetornoAuth>, nul
   gravarSessao(s); gravarPendente(null); erro = null;
   log(`[conta] entrou: ${s.conta.email} (${s.conta.licenca.plan}, ${s.conta.devices.length} device(s))`);
   avisar();
-  app.focus({ steal: true }); // a pessoa estava no navegador: o app volta para a frente com a conta na tela
 }
 
 /** Token de acesso válido (renova pelo refresh quando perto de vencer); null = sem sessão (a tela mostra "Entrar"). */
