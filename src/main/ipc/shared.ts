@@ -42,6 +42,7 @@ import { agendaCriar, agendaProximos, gmailApagar, gmailLer, gmailListar, gmailR
 import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-core";
 import { CONJUNTOS_DADOS } from "../google/google-core";
 import { gmailAgenteParar } from "../google/gmail-api";
+import { atualizarConta, cancelarEntrada, contaView, entrar as contaEntrar, sair as contaSair } from "../conta/conta";
 import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
 import { caps, compilacao } from "../app/variant";
@@ -101,6 +102,11 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("ui:open-picker", () => showPicker());
   // Modo de depuração (faixa no topo): estado com os últimos eventos, e ligar/desligar para todas as janelas.
   handleShared("depuracao:estado", () => estadoDepuracao());
+  // Conta meu-bot deste Mac (não é da máquina da janela): entrar abre o navegador; a sessão volta pelo deep link.
+  handleShared("conta:get", (_event, payload: unknown) => ((payload as { forcar?: unknown } | null)?.forcar === true ? atualizarConta() : contaView()));
+  handleShared("conta:entrar", () => contaEntrar());
+  handleShared("conta:cancelar", () => cancelarEntrada());
+  handleShared("conta:sair", () => contaSair());
   handleShared("depuracao:ligar", (_event, payload: unknown) => { const on = (payload as { on?: unknown } | null)?.on; return setDepuracao(on === true ? true : on === false ? false : null); });
   // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
   // Conta Google da máquina da janela (cada VM tem a sua; desconectar numa não mexe nas outras).

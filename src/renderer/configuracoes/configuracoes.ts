@@ -4,6 +4,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import { ctx } from "../app/ctx.js";
 import { paintEspaco } from "./espaco.js";
 import { carregarControleRemoto, ligarControleRemoto } from "./controle-remoto.js";
+import { aoMudarConta, blocoConta, contaAtual } from "../conta/conta.js";
 
 function openSettings(): void {
   if (ctx.dialog.open) return;
@@ -36,18 +37,23 @@ const licensePanel = $<HTMLDetailsElement>("license-panel");
 const licenseBody = $<HTMLElement>("license-body");
 const licenseSum = $<HTMLElement>("license-sum");
 async function loadLicensePanel(): Promise<void> {
-  if (!ctx.caps.chat || ctx.windowHost === "local") { licensePanel.hidden = true; return; }
+  // A conta meu-bot é deste Mac: aparece em toda janela da pessoa (também em "este Mac"). A licença abaixo é da máquina.
+  if (!ctx.caps.chat) { licensePanel.hidden = true; return; }
   licensePanel.hidden = false;
+  const conta = contaAtual();
+  const contaTxt = conta !== null && conta.situacao === "dentro" && conta.conta !== null ? conta.conta.email : "entrar";
+  const bloco = blocoConta();
+  if (ctx.windowHost === "local") { licenseSum.textContent = contaTxt; licenseBody.replaceChildren(bloco); return; }
   const view = await ctx.refreshLicense();
-  if (view === null) { licenseSum.textContent = "plano e devices"; licenseBody.replaceChildren(el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
+  if (view === null) { licenseSum.textContent = `${contaTxt} · plano e devices`; licenseBody.replaceChildren(bloco, el("p", "hint strong-hint", "Licença desta máquina"), el("p", "hint", "A máquina ainda não tem o backend novo: reinstale o backend para ver o plano e os devices.")); return; }
   const l = view.license;
-  licenseSum.textContent = `${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
+  licenseSum.textContent = `${contaTxt} · ${l.plan === "pro" ? "Pro" : "Free"} · ${view.devices.length} device${view.devices.length === 1 ? "" : "s"}`;
   const ul = el("ul", "admin-health");
   for (const line of licenseSummary(view, Date.now(), ctx.caps.addons)) ul.append(el("li", line.ok === null ? "" : line.ok ? "ok" : "bad", line.text));
   const devs = el("ul", "admin-health");
   for (const d of view.devices) { const dl = deviceLine(d); devs.append(el("li", d.status === "pending" ? "bad" : "ok", d.status === "pending" ? `${dl.text} · pedido enviado ao admin` : dl.text)); }
   if (view.devices.length === 0) devs.append(el("li", "", "Nenhum device ainda."));
-  licenseBody.replaceChildren(ul, el("p", "hint strong-hint", "Seus devices"), devs);
+  licenseBody.replaceChildren(bloco, el("p", "hint strong-hint", "Licença desta máquina"), ul, el("p", "hint strong-hint", "Seus devices"), devs);
 }
 async function loadAlertPrefs(): Promise<void> {
   void loadLicensePanel();
@@ -74,6 +80,8 @@ async function saveAlertPrefs(): Promise<void> {
 /** Liga eventos e o estado inicial desta parte; o renderer.ts chama uma vez, no ponto em que isto rodava antes. */
 export function ligarConfiguracoes(): void {
   ligarControleRemoto();
+  // Entrou ou saiu com o painel aberto: o resumo da linha "Sua conta" acompanha (o bloco em si se repinta sozinho).
+  aoMudarConta(() => { if (ctx.dialog.open && !licensePanel.hidden) void loadLicensePanel(); });
   ctx.settingsBtn.addEventListener("click", () => openSettings());
   window.meuBot.on("ui:toggle-settings", () => { if (ctx.dialog.open) ctx.dialog.close(); else openSettings(); });
   window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = ctx.tabs.get(conversationId); if (tab !== undefined) { ctx.addNotice(tab, text, "warn"); ctx.offerClaudeLogin(tab, text); } });
