@@ -30,6 +30,7 @@ if (!pedidoOk) {
   // Sem os parâmetros do app (URL digitada, link velho): em vez de um erro, o caminho para baixar o app ou ir ao console.
   $("sub").textContent = "Abra o meu-bot e clique em Entrar: ele volta para cá já com o seu login.";
   if (typeof cfg.site === "string" && cfg.site !== "") $("baixar-app").href = cfg.site;
+  $("ir-signup").href = "/signup";
   const ic = $("ir-console");
   if (typeof cfg.console === "string" && cfg.console !== "") ic.href = `${cfg.console}/account/overview`; else ic.hidden = true;
   mostrar("sem-app");
@@ -118,6 +119,7 @@ if (!pedidoOk) {
   $("senha-voltar").addEventListener("click", () => mostrar("escolha"));
 
   $("tentar").addEventListener("click", () => mostrar("escolha"));
+  $("ir-signup").href = `/signup${location.search}`;
 
   if (isSignInWithEmailLink(auth, location.href)) {
     // Voltou pelo link do e-mail: o e-mail fica guardado neste navegador; se não está (outro navegador), pergunta.

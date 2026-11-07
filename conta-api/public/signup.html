@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Criar conta no meu-bot</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="cartao" id="cartao">
+    <header class="topo">
+      <div class="marca" aria-hidden="true">mb</div>
+      <div>
+        <h1>Criar conta</h1>
+        <p class="sub" id="sub">Com e-mail e senha. Depois de confirmar o e-mail você volta ao app.</p>
+      </div>
+    </header>
+
+    <section id="formulario" hidden>
+      <button type="button" class="btn btn-google" id="btn-google">
+        <span class="g" aria-hidden="true">G</span> Criar com o Google
+      </button>
+      <div class="ou"><span>ou</span></div>
+      <form id="form-cadastro" class="form">
+        <div class="dupla">
+          <label><span>Nome</span><input id="nome" type="text" autocomplete="given-name" maxlength="60" required></label>
+          <label><span>Sobrenome</span><input id="sobrenome" type="text" autocomplete="family-name" maxlength="60"></label>
+        </div>
+        <label><span>E-mail</span><input id="email" type="email" autocomplete="email" inputmode="email" placeholder="voce@exemplo.com" required></label>
+        <label><span>Senha</span><input id="senha" type="password" autocomplete="new-password" minlength="8" placeholder="pelo menos 8 caracteres" required></label>
+        <p class="erro-campo" id="erro-campo" hidden></p>
+        <button type="submit" class="btn btn-primary" id="btn-criar">Criar conta</button>
+      </form>
+      <p class="sub rodape-link">Já tem conta? <a id="ir-entrar" href="/entrar">Entrar</a></p>
+    </section>
+
+    <section id="aguardando" hidden>
+      <p class="forte">Criando a conta…</p>
+    </section>
+
+    <section id="confirmar" hidden>
+      <p class="forte">Confirme o seu e-mail.</p>
+      <p class="sub">Enviamos um link para <strong id="confirmar-email"></strong>. Clique nele e depois continue aqui.</p>
+      <p><a class="btn btn-primary" id="continuar" href="/entrar">Já confirmei: continuar</a></p>
+      <p><button type="button" class="btn btn-ghost" id="reenviar">Reenviar o e-mail</button> <span class="sub" id="reenviado" hidden>Reenviado.</span></p>
+    </section>
+
+    <section id="erro" hidden>
+      <p class="forte">Não deu para criar a conta.</p>
+      <p class="sub" id="erro-texto"></p>
+      <p><button type="button" class="btn btn-ghost" id="tentar">Tentar de novo</button></p>
+    </section>
+
+    <footer class="rodape">
+      <span id="app-info"></span>
+      <span class="canal" id="canal"></span>
+    </footer>
+  </main>
+  <script src="/config.js"></script>
+  <script type="module" src="/signup.js"></script>
+</body>
+</html>
