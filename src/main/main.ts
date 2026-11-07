@@ -34,7 +34,7 @@ import { listSshHosts } from "./maquina/sshConfig";
 import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
 import { esquemaDe } from "./app/variant-core";
 import { aoReceberUrl, instalarOpenUrl, registrarEsquema, tratarArgv } from "./conta/deep-link";
-import { aoRetornarAuth } from "./conta/conta";
+import { aoRetornarAuth, aoRetorno, aoSair, contaEntrada } from "./conta/conta";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
@@ -74,6 +74,8 @@ function openFromArgs(argv: readonly string[]): void {
   if (relief !== null) { showRelief(relief); return; }
   const host = hostFromArgv(argv);
   if (host === null) { showPicker(); return; }
+  // Portão da conta: sem sessão neste Mac, o atalho da mesa cai no seletor (que abre no cartão de login).
+  if (!contaEntrada()) { showPicker({ preselect: host }); return; }
   if (host !== LOCAL_HOST && !listSshHosts().includes(host)) { showPicker({ error: `A máquina "${host}" do atalho não está no ~/.ssh/config.`, preselect: host }); return; }
   setLastHost(host);
   openMainWindow(host, "shortcut");
@@ -143,6 +145,15 @@ app.whenReady().then(() => {
   // conta.ts confere o state e troca o code pela sessão.
   registrarEsquema(ESQUEMA);
   aoReceberUrl((url) => { void aoRetornarAuth(url); });
+  // Saiu da conta (ou a API derrubou a sessão): as janelas de máquina fecham e o seletor volta, no cartão de login.
+  aoSair(() => { if (caps().usuariosMac) return; for (const w of allMainWindows()) w.close(); showPicker(); });
+  // A pessoa estava no navegador e clicou em "Abrir o meu-bot" (ou o login concluiu): o app vem para a frente, na
+  // janela que estava em uso; sem janela de máquina, o seletor.
+  aoRetorno(() => {
+    const w = lastFocusedWindow();
+    if (w !== null && !w.isDestroyed()) { if (w.isMinimized()) w.restore(); w.show(); w.focus(); } else showPicker();
+    app.focus({ steal: true });
+  });
   // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho; no Windows/Linux a
   // URL do deep link também pode vir aqui.
   openFromArgs(process.argv);

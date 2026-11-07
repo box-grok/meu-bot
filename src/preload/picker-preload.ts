@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { HostProbe, InstallBackendResult, PickerApi, PickerAdminApi, PickerClientApi, PickerSharedApi, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "../shared/ipc";
+import type { ContaView, HostProbe, InstallBackendResult, PickerApi, PickerAdminApi, PickerClientApi, PickerSharedApi, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "../shared/ipc";
 
-const EVENTS = ["picker:init", "picker:install-progress", "picker:vps-nova-progresso"] as const;
+const EVENTS = ["picker:init", "picker:install-progress", "picker:vps-nova-progresso", "conta:changed"] as const;
 
 /** Os dois apps. */
 const sharedApi: PickerSharedApi = {
@@ -19,6 +19,13 @@ const sharedApi: PickerSharedApi = {
   tailscaleCredential: (): Promise<TailscaleCredentialState> => ipcRenderer.invoke("picker:tailscale-credential", {}),
   openKnownUrl: (which: "tailscale-keys"): Promise<void> => ipcRenderer.invoke("picker:open-url", { which }),
   cancel: (): void => ipcRenderer.send("picker:cancel"),
+  // Conta meu-bot deste Mac: o seletor é o portão (entra aqui) e mostra o avatar depois.
+  contaGet: (forcar?: boolean): Promise<ContaView> => ipcRenderer.invoke("conta:get", { forcar }),
+  contaEntrar: (): Promise<ContaView> => ipcRenderer.invoke("conta:entrar", {}),
+  contaCancelar: (): Promise<ContaView> => ipcRenderer.invoke("conta:cancelar", {}),
+  contaSair: (): Promise<ContaView> => ipcRenderer.invoke("conta:sair", {}),
+  contaAbrirConsole: (caminho: string): Promise<void> => ipcRenderer.invoke("conta:console", { caminho }),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("shell:open-external", { url }),
   on: (channel, callback) => {
     if (!(EVENTS as readonly string[]).includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);
     const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => callback(payload);

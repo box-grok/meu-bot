@@ -118,6 +118,7 @@ const sharedApi: MeuBotSharedApi = {
   contaEntrar: () => ipcRenderer.invoke("conta:entrar", {}),
   contaCancelar: () => ipcRenderer.invoke("conta:cancelar", {}),
   contaSair: () => ipcRenderer.invoke("conta:sair", {}),
+  contaAbrirConsole: (caminho: string) => ipcRenderer.invoke("conta:console", { caminho }),
   linkPublico: () => ipcRenderer.invoke("link-publico:status", {}),
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   controleRemotoStatus: () => ipcRenderer.invoke("controle-remoto:status", {}),

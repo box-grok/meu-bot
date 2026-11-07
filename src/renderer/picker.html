@@ -2,9 +2,10 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'" />
   <title>meu-bot · escolher máquina</title>
   <link rel="stylesheet" href="picker.css" />
+  <link rel="stylesheet" href="conta.css" />
   <link rel="stylesheet" href="admin.css" />
 </head>
 <body class="pre">
@@ -55,7 +56,24 @@
     <pre id="pk-log" class="log" hidden></pre>
   </section>
   <p id="pk-note" class="note" hidden></p>
+  <!-- Portão da conta: sem sessão neste Mac, só este cartão aparece; entrou, ele some e a lista volta. -->
+  <section id="pk-portao" class="portao" hidden>
+    <div class="portao-cartao">
+      <div class="portao-marca" aria-hidden="true">mb</div>
+      <h2 id="pk-portao-titulo">Entre com sua conta meu-bot</h2>
+      <p class="portao-sub" id="pk-portao-sub">Você entra no navegador, com Google ou link por e-mail, e volta sozinho para cá.</p>
+      <p class="error" id="pk-portao-erro" hidden></p>
+      <div class="portao-acoes">
+        <button type="button" class="btn btn-primary" id="pk-portao-entrar">Continuar com seu navegador</button>
+        <button type="button" class="btn btn-ghost" id="pk-portao-reabrir" hidden>Reabrir o navegador</button>
+        <button type="button" class="btn btn-ghost btn-small" id="pk-portao-cancelar" hidden>Cancelar</button>
+      </div>
+      <p class="portao-nota">Conta nova começa com 14 dias de teste do Pro. Quem já tem máquina continua vendo tudo depois de entrar.</p>
+    </div>
+  </section>
   <footer class="foot">
+    <button type="button" id="pk-avatar" class="conta-btn" title="Sua conta" aria-haspopup="menu" aria-expanded="false" hidden></button>
+    <span class="foot-conta" id="pk-conta-texto" hidden></span>
     <span class="foot-caption">sincronizar ssh</span>
     <button type="button" id="pk-sync" class="shortcut" title="Acrescenta ao ~/.ssh/config deste Mac as máquinas do projeto que ainda faltam (o Cursor lê o mesmo arquivo)">⇅</button>
     <!-- Ligado = tem: Intro ligado mostra a abertura animada; Onboarding ligado faz o guia na próxima janela. (No settings.json ficam openDirect e onboarding, invertidos.) -->

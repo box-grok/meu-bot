@@ -1,5 +1,6 @@
 /** Contrato IPC · Janela do seletor de máquinas (picker). Só tipos (nada é emitido); reexportado por src/shared/ipc.ts. */
 import type { PlanName } from "./licenca";
+import type { ContaView } from "./conta";
 import type { HostProbe, InstallBackendResult, PickerInit, SshSyncResult, TailscaleCredentialState, TailscaleSshResult } from "./maquina";
 import type { SupportPerson, VpsNovaResultado } from "./suporte";
 
@@ -31,7 +32,14 @@ export interface PickerSharedApi {
   /** Acrescenta ao ~/.ssh/config deste Mac as máquinas do modelo versionado que faltam (o Cursor lê o mesmo arquivo); o admin também. */
   syncSsh(): Promise<SshSyncResult>;
   cancel(): void;
-  on(channel: "picker:init" | "picker:install-progress" | "picker:vps-nova-progresso", callback: (payload: unknown) => void): () => void;
+  /** Conta meu-bot deste Mac (o seletor é o portão: sem sessão, só o cartão de login aparece). */
+  contaGet(forcar?: boolean): Promise<ContaView>;
+  contaEntrar(): Promise<ContaView>;
+  contaCancelar(): Promise<ContaView>;
+  contaSair(): Promise<ContaView>;
+  contaAbrirConsole(caminho: string): Promise<void>;
+  openExternal(url: string): Promise<void>;
+  on(channel: "picker:init" | "picker:install-progress" | "picker:vps-nova-progresso" | "conta:changed", callback: (payload: unknown) => void): () => void;
 }
 
 /** Variante: cliente. Seletor do meu-bot normal: instalar, renomear, remover, Tailscale. */

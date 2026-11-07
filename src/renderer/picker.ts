@@ -1,7 +1,9 @@
 /** Seletor de máquinas: lista imediata, sondagens em paralelo, teclado completo. */
-import type { HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson, PlanName } from "../shared/ipc";
+import type { ContaView, HostProbe, PickerApi, PickerInit, SshSyncResult, SupportPerson, PlanName } from "../shared/ipc";
 import { hostAccent } from "./lib/host-color.js";
 import { el } from "./lib/dom.js";
+import { montarMenuConta } from "./lib/conta-menu.js";
+import { resumoPlano } from "./lib/conta-resumo.js";
 import { maquinasParaAdotar, personSuffix } from "./lib/admin-view.js";
 import { mountAdminPickerChrome } from "./admin/picker-chrome.js";
 import { ipcErrorText } from "./lib/ipc-error.js";
@@ -610,6 +612,42 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
 
 // Reenvio porque a lista mudou com o seletor aberto: mantém a máquina selecionada.
 window.picker.on("picker:init", (p) => { const init0 = p as PickerInit; init(init0, init0.manterSelecao === true ? selected : null); });
+
+/* ---------- Portão da conta (molde Rambox): sem sessão, só o cartão de login; entrou, a lista e o avatar no rodapé ---------- */
+let conta: ContaView | null = null;
+const portao = document.getElementById("pk-portao") as HTMLElement;
+const portaoErro = document.getElementById("pk-portao-erro") as HTMLElement;
+const portaoSub = document.getElementById("pk-portao-sub") as HTMLElement;
+const portaoEntrar = document.getElementById("pk-portao-entrar") as HTMLButtonElement;
+const portaoCancelar = document.getElementById("pk-portao-cancelar") as HTMLButtonElement;
+const portaoReabrir = document.getElementById("pk-portao-reabrir") as HTMLButtonElement;
+const portaoTitulo = document.getElementById("pk-portao-titulo") as HTMLElement;
+const contaTexto = document.getElementById("pk-conta-texto") as HTMLElement;
+const menuConta = montarMenuConta([document.getElementById("pk-avatar") as HTMLButtonElement], {
+  api: window.picker, view: () => conta, aoMudar: (v) => contaMudou(v),
+  extras: () => [{ ico: "📣", texto: "Novidades", acao: () => { void window.picker.openExternal("https://github.com/diegofornalha/meu-bot/blob/main/docs/CHANGELOG.md").catch(() => undefined); } }],
+});
+function contaMudou(v: ContaView): void {
+  conta = v;
+  const dentro = v.situacao === "dentro" && v.conta !== null;
+  document.body.classList.toggle("portao", !dentro);
+  portao.hidden = dentro;
+  if (!dentro) {
+    const entrando = v.situacao === "entrando";
+    portaoEntrar.hidden = entrando; portaoReabrir.hidden = !entrando; portaoCancelar.hidden = !entrando; portaoEntrar.disabled = false; portaoReabrir.disabled = false;
+    portaoTitulo.textContent = entrando ? "Aguardando login…" : "Entre com sua conta meu-bot";
+    portaoSub.textContent = entrando ? "Conclua o login na janela do navegador que acabou de abrir." : "Você entra no navegador, com Google ou link por e-mail, e volta sozinho para cá.";
+    portaoErro.hidden = !(v.situacao === "erro" && v.erro !== null); portaoErro.textContent = v.erro ?? "";
+  }
+  contaTexto.hidden = !dentro;
+  if (dentro && v.conta !== null) { const r = resumoPlano(v.conta); contaTexto.textContent = `${v.conta.nome ?? v.conta.email} · ${r.prazo ?? r.rotulo}`; }
+  menuConta.fechar(); menuConta.pintar();
+}
+portaoEntrar.addEventListener("click", () => { portaoEntrar.disabled = true; void window.picker.contaEntrar().then(contaMudou).catch((err: unknown) => { portaoEntrar.disabled = false; portaoErro.hidden = false; portaoErro.textContent = `Não consegui abrir o login: ${ipcErrorText(err)}`; }); });
+portaoCancelar.addEventListener("click", () => { void window.picker.contaCancelar().then(contaMudou).catch(() => undefined); });
+portaoReabrir.addEventListener("click", () => { portaoReabrir.disabled = true; void window.picker.contaEntrar().then(contaMudou).catch(() => { portaoReabrir.disabled = false; }); });
+window.picker.on("conta:changed", (p) => contaMudou(p as ContaView));
+void window.picker.contaGet().then(contaMudou).catch(() => undefined);
 window.picker.on("picker:install-progress", (p) => {
   const ev = p as { host: string; line: string };
   if (ev.host !== selected) return;

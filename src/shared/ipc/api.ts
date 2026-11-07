@@ -217,6 +217,8 @@ export interface MeuBotSharedApi {
   contaEntrar(): Promise<ContaView>;
   contaCancelar(): Promise<ContaView>;
   contaSair(): Promise<ContaView>;
+  /** Abre o console da conta no navegador já entrado (código de uso único emitido com a sessão do app). */
+  contaAbrirConsole(caminho: string): Promise<void>;
   /** Link público desta pessoa na máquina (tutorial 13): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
   linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
