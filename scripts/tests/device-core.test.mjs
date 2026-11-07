@@ -27,5 +27,5 @@ test("montarDevicePedido: alias junto, nome sem .local e sem caracteres de contr
   assert.equal(p.alias, aliasLegado("Mac da Ana", "ana\u0007"));
   assert.equal(p.name, "Mac da Ana"); assert.equal(p.user, "ana"); assert.equal(p.app, "meu-bot-staging");
   const m = montarDevicePedido({ id: "33333333-3333-4333-8333-333333333333", hostname: "Mac da Ana.local", user: "ana", platform: "darwin", app: "meu-bot-staging", versao: "0.79.0" }, false);
-  assert.deepEqual(m, { id: "33333333-3333-4333-8333-333333333333", alias: p.alias, name: "", user: "", platform: "", app: "meu-bot-staging", versao: "0.79.0" }, "dados de uso desligados: só id, alias, app e versão");
+  assert.deepEqual(m, { id: "33333333-3333-4333-8333-333333333333", alias: aliasLegado("Mac da Ana", "ana"), name: "", user: "", platform: "", app: "meu-bot-staging", versao: "0.79.0" }, "dados de uso desligados: só id, alias, app e versão");
 });
