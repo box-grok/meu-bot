@@ -9,7 +9,7 @@
  */
 import type { Env } from "./tipos.js";
 import { autenticar, cors, json } from "./http.js";
-import { postSair, postSessao } from "./rotas/sessao.js";
+import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
 import { getConta } from "./rotas/conta.js";
 import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
@@ -83,7 +83,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rota === "GET /health") res = json({ ok: true, canal: env.CANAL });
   else if (rota === "POST /sessao") res = await postSessao(req, env);
   else if (rota === "POST /token") res = await postToken(req, env);
-  else if (rota === "POST /sessao/sair" || rota === "GET /conta" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
+  else if (rota === "POST /sessao/sair" || rota === "POST /sessao/console" || rota === "GET /conta" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
     const auth = await autenticar(req, env);
     const atender = /^POST \/admin\/pedidos\/([A-Za-z0-9-]{1,40})\/atender$/.exec(rota);
     const licenca = /^PATCH \/admin\/contas\/([A-Za-z0-9-]{1,40})\/licenca$/.exec(rota);
@@ -91,6 +91,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     if (auth === null) res = json({ erro: "entre de novo" }, 401, { "www-authenticate": "Bearer" });
     else if (rota === "GET /conta") res = await getConta(auth, env);
     else if (rota === "POST /sessao/sair") res = await postSair(auth, env);
+    else if (rota === "POST /sessao/console") res = await postSessaoConsole(auth, env, req);
     else if (rota === "GET /admin/visao") res = await getAdminVisao(auth, env, url);
     else if (atender !== null) res = await postAtenderPedido(auth, env, atender[1]!);
     else if (licenca !== null) res = await patchLicenca(auth, env, licenca[1]!, req);
