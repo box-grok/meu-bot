@@ -60,18 +60,15 @@
         <div class="painel">
           <div class="perfil"><img id="pf-foto" alt="" hidden><span class="avatar grande" id="pf-inicial" aria-hidden="true">?</span>
             <div><h2 id="pf-nome"></h2><p class="sub" id="pf-email"></p></div></div>
+          <details class="recolhido" id="pf-editar"><summary>Mudar o nome</summary>
           <form class="editor-form perfil-form" id="pf-form">
             <label><span>Nome</span><input name="nomeProprio" type="text" maxlength="80" autocomplete="given-name"></label>
             <label><span>Sobrenome</span><input name="sobrenome" type="text" maxlength="80" autocomplete="family-name"></label>
             <label class="largo"><span>E-mail</span><input id="pf-email-campo" type="email" disabled></label>
-            <label><span>País</span><input name="pais" type="text" maxlength="80" autocomplete="country-name"></label>
-            <label><span>Cidade</span><input name="cidade" type="text" maxlength="80" autocomplete="address-level2"></label>
-            <label><span>Setor</span><input name="setor" type="text" maxlength="80" placeholder="comércio, saúde, software…"></label>
-            <label><span>Cargo</span><input name="cargo" type="text" maxlength="80" autocomplete="organization-title"></label>
-            <label><span>Tamanho do time</span><select name="tamanhoEquipe"><option value="">—</option><option value="1">Só eu</option><option value="2-10">2 a 10</option><option value="11-50">11 a 50</option><option value="51-200">51 a 200</option><option value="201+">Mais de 200</option></select></label>
             <div class="acoes"><button type="submit" class="btn btn-primary" id="pf-salvar">Salvar</button><span class="sub" id="pf-salvo" hidden>Salvo.</span></div>
             <p class="sub" id="pf-login"></p>
           </form>
+          </details>
         </div>
 
         <div class="painel">
@@ -81,9 +78,10 @@
         </div>
 
         <div class="painel">
-          <h2>Dados de uso do produto</h2>
+          <details class="recolhido"><summary>Dados de uso do produto</summary>
           <label class="toggle"><input type="checkbox" id="pf-dados-uso"><span>Guardar na conta o nome, o usuário e a versão dos apps de cada Mac onde eu entro</span></label>
           <p class="sub">Desligado, a conta guarda só o id e o status de cada device (nem o nome do Mac, nem quando foi visto): o admin vê "device" e o status, e a lista de Devices fica sem nome. O que já estava guardado é apagado na hora. Isso vale para o que a conta guarda sobre seus Macs; o que a máquina (VM) registra para funcionar não muda.</p>
+          </details>
         </div>
 
         <div class="painel perigo">

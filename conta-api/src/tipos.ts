@@ -27,15 +27,14 @@ export interface ContaLinha {
   id: string; firebase_uid: string; email: string; email_verificado: number; nome: string | null; foto: string | null;
   criada_em: string; atualizada_em: string; apagada_em: string | null;
   /** O que a pessoa digitou no console (0002_perfil.sql); `nome` continua sendo o do Firebase. */
-  nome_proprio: string | null; sobrenome: string | null; pais: string | null; cidade: string | null; setor: string | null; cargo: string | null; tamanho_equipe: string | null;
+  nome_proprio: string | null; sobrenome: string | null;
   /** JSON: provedores de login já usados (google.com, emailLink, password). */
   provedores: string;
   /** 1 = a conta guarda nome, usuário, plataforma e apps dos devices; 0 = só id e status. */
   dados_uso: number;
 }
-export type TamanhoEquipe = "1" | "2-10" | "11-50" | "51-200" | "201+";
 /** O perfil editável (console › Perfil), como a API devolve e recebe (`PATCH /conta`). */
-export interface PerfilApi { nomeProprio: string | null; sobrenome: string | null; pais: string | null; cidade: string | null; setor: string | null; cargo: string | null; tamanhoEquipe: TamanhoEquipe | null }
+export interface PerfilApi { nomeProprio: string | null; sobrenome: string | null }
 export interface LicencaLinha {
   conta_id: string; plan: string; status: string; interval: string | null; member_since: string; trial_end: string | null;
   expires_at: string | null; device_limit: number; produtos: string; pagamento: string | null; updated_at: string; updated_by: string;

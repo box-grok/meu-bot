@@ -41,11 +41,10 @@ test("parseContaInfo: e-mail em minúsculas, devices e máquinas fora do formato
   assert.equal(parseContaInfo({ ...conta(), id: "x" }), null);
   assert.equal(parseContaInfo({ ...conta(), email: "semarroba" }), null);
   assert.equal(parseContaInfo({ ...conta(), licenca: "lixo" }).licenca.plan, "free", "licença ilegível vira a default");
-  assert.deepEqual({ nomeLogin: c.nomeLogin, perfil: c.perfil, provedores: c.provedores, dadosUso: c.dadosUso }, { nomeLogin: null, perfil: { nomeProprio: null, sobrenome: null, pais: null, cidade: null, setor: null, cargo: null, tamanhoEquipe: null }, provedores: [], dadosUso: true }, "API antiga: perfil vazio, dados de uso ligados");
-  const d = parseContaInfo({ ...conta(), nomeLogin: "Ana do Google", perfil: { nomeProprio: "Ana", tamanhoEquipe: "2-10", cidade: 7 }, provedores: ["google.com", "facebook.com", 3], dadosUso: false }, AGORA);
-  assert.equal(d.nomeLogin, "Ana do Google"); assert.equal(d.perfil.nomeProprio, "Ana"); assert.equal(d.perfil.tamanhoEquipe, "2-10"); assert.equal(d.perfil.cidade, null);
+  assert.deepEqual({ nomeLogin: c.nomeLogin, perfil: c.perfil, provedores: c.provedores, dadosUso: c.dadosUso }, { nomeLogin: null, perfil: { nomeProprio: null, sobrenome: null }, provedores: [], dadosUso: true }, "API antiga: perfil vazio, dados de uso ligados");
+  const d = parseContaInfo({ ...conta(), nomeLogin: "Ana do Google", perfil: { nomeProprio: "Ana", sobrenome: 7, cidade: "Rio" }, provedores: ["google.com", "facebook.com", 3], dadosUso: false }, AGORA);
+  assert.equal(d.nomeLogin, "Ana do Google"); assert.deepEqual(d.perfil, { nomeProprio: "Ana", sobrenome: null }, "só nome e sobrenome; o resto cai");
   assert.deepEqual(d.provedores, ["google.com"], "provedor fora da lista cai"); assert.equal(d.dadosUso, false);
-  assert.equal(parseContaInfo({ ...conta(), perfil: { tamanhoEquipe: "muitos" } }).perfil.tamanhoEquipe, null);
   assert.deepEqual(parsePrefs({ dadosUso: false }), { dadosUso: false }); assert.deepEqual(parsePrefs(null), { dadosUso: true }); assert.deepEqual(parsePrefs({ dadosUso: "x" }), { dadosUso: true });
 });
 
