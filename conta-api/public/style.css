@@ -55,3 +55,7 @@ code { display: block; margin-top: 8px; padding: 10px; border-radius: 8px; backg
 .erro-campo { margin: 0 0 10px; color: var(--mau, #b42318); font-size: 13px; }
 .rodape-link { text-align: center; margin-top: 16px; }
 .rodape-link a { color: var(--primario); font-weight: 600; }
+.voltar { display: inline-block; margin-bottom: 14px; color: var(--sub); font-size: 14px; text-decoration: none; }
+.voltar:hover { color: var(--texto); }
+.selo-enterprise { display: inline-flex; align-items: center; gap: 6px; margin: -6px 0 16px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--borda); background: var(--ghost); color: var(--sub); font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+.selo-enterprise code { text-transform: none; letter-spacing: 0; font-weight: 600; }

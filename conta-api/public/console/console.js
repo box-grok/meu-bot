@@ -238,6 +238,9 @@ function pintarOrgConfig(o, gerencia) {
   form.elements.nome.disabled = form.elements.dominioEmail.disabled = !gerencia; $("org-salvar").hidden = !gerencia; $("org-salvo").hidden = true; $("org-salvar").disabled = false;
   form.elements.assentos.disabled = o.meuPapel !== "super";
   $("org-url").textContent = o.url; $("org-url").href = o.url;
+  const loginUrl = `${cfg.auth}/enterprise/${o.slug}`;
+  $("org-login-url").textContent = loginUrl; $("org-login-url").href = loginUrl;
+  $("org-login-copiar").onclick = () => { void copiarLink(loginUrl, $("org-login-copiar")); };
   $("org-host").textContent = `${o.slug}.${(cfg.console || "").replace(/^https:\/\/console(-staging)?\./, "")}`;
   const dona = o.meuPapel === "dona" || o.meuPapel === "super";
   $("org-perigo-titulo").textContent = dona ? "Apagar organização" : "Sair da organização";
