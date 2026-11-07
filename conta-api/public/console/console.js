@@ -398,9 +398,22 @@ function pintarAdminContas(v) {
     tr.append(el("td", "", l.expiresAt ? data(l.expiresAt) : l.trialEnd ? data(l.trialEnd) : "-"));
     const dv = el("td", "", `${ativos}/${l.deviceLimit}`); if (pend > 0) dv.append(document.createTextNode(" "), selo(`${pend} pendente${pend === 1 ? "" : "s"}`, "mau")); tr.append(dv);
     tr.append(el("td", "", String(c.maquinas)), el("td", "", String(c.pedidos)), el("td", "", data(c.criadaEm)));
-    const acao = el("td"); const b = el("button", "btn btn-ghost", "Mudar"); b.type = "button"; b.addEventListener("click", () => editorLicenca(tr, c)); acao.append(b); tr.append(acao);
+    const acao = el("td", "acoes-linha"); const b = el("button", "btn btn-ghost", "Mudar"); b.type = "button"; b.addEventListener("click", () => editorLicenca(tr, c));
+    const bs = el("button", "btn btn-ghost", "E-mail de senha"); bs.type = "button"; bs.title = `Manda a ${c.email} o e-mail para criar ou redefinir a senha (o mesmo de "Esqueci a senha").`;
+    bs.addEventListener("click", () => { void adminSenha(c, bs); });
+    acao.append(b, bs); tr.append(acao);
     tb.append(tr);
   }
+}
+/** O admin manda o e-mail de senha de uma conta; o botão vira "enviado" por um tempo. */
+async function adminSenha(c, botao) {
+  const s = sessaoGuardada(); if (s === null) return;
+  botao.disabled = true;
+  const r = await api("POST", `/admin/contas/${encodeURIComponent(c.id)}/senha`, {}, s.acesso);
+  if (r.status !== 200) { botao.disabled = false; mostrarErro(erroDe(r)); return; }
+  mostrarErro(null);
+  const texto = botao.textContent; botao.textContent = "E-mail enviado";
+  setTimeout(() => { botao.textContent = texto; botao.disabled = false; }, 8000);
 }
 /** Linha de edição abaixo da conta: plano, status, vale até, limite de devices, add-ons, pagamento. Salva com PATCH. */
 function editorLicenca(tr, c) {

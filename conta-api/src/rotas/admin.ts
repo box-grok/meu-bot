@@ -8,6 +8,7 @@ import type { Env } from "../tipos.js";
 import { atenderPedido, auditar, contaPorId, contarSupers, gravarLicenca, gravarPerfil, removerPerfil, visaoAdmin } from "../db.js";
 import { UUID_RE, validaBusca, validaEmail, validaPapel, validaPatchLicenca } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
+import { enviarEmailSenha } from "./conta.js";
 
 export async function getAdminVisao(auth: Autenticado, env: Env, url: URL): Promise<Response> {
   if (auth.claims.adm === null) return json({ erro: "só admin" }, 403);
@@ -30,6 +31,14 @@ export async function patchLicenca(auth: Autenticado, env: Env, id: string, req:
   const licenca = await gravarLicenca(env.DB, conta, patch);
   await auditar(env.DB, auth.conta.email, "licenca.alterada", conta.id, JSON.stringify(patch).slice(0, 500));
   return json({ ok: true, licenca });
+}
+/** `POST /admin/contas/:id/senha`: manda à pessoa o e-mail de criar/redefinir senha (o mesmo de "Esqueci a senha"). */
+export async function postAdminSenha(auth: Autenticado, env: Env, id: string): Promise<Response> {
+  if (auth.claims.adm === null) return json({ erro: "só admin" }, 403);
+  if (!UUID_RE.test(id)) return json({ erro: "id da conta fora do formato" }, 400);
+  const conta = await contaPorId(env.DB, id);
+  if (conta === null) return json({ erro: "conta não existe" }, 404);
+  return enviarEmailSenha(env, conta, auth.conta.email);
 }
 /** Perfis de acesso: só o super admin. `PUT /admin/perfis/:email {papel}` cria ou muda; `DELETE /admin/perfis/:email` remove. */
 export async function putPerfil(auth: Autenticado, env: Env, emailRaw: string, req: Request): Promise<Response> {
