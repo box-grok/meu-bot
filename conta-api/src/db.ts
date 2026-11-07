@@ -65,6 +65,14 @@ export async function apagarConta(db: D1Database, conta: ContaLinha, agora = ago
     db.prepare("DELETE FROM membros WHERE conta_id = ?1").bind(conta.id),
   ]);
 }
+/** Todas as sessões (apps) da conta saem; os tokens de acesso de 1 h ainda valem até vencer. */
+export async function revogarSessoesDaConta(db: D1Database, contaId: string, agora = agoraIso()): Promise<void> {
+  await db.prepare("UPDATE sessoes SET revogada_em = ?2 WHERE conta_id = ?1 AND revogada_em IS NULL").bind(contaId, agora).run();
+}
+/** Marca um provedor de login como usado (o super admin acabou de definir a senha, por exemplo). */
+export async function gravarProvedor(db: D1Database, conta: ContaLinha, provedor: string): Promise<void> {
+  await db.prepare("UPDATE contas SET provedores = ?2 WHERE id = ?1").bind(conta.id, unirProvedores(conta.provedores, [provedor])).run();
+}
 /** Houve uma conta apagada com este e-mail? (quem apaga e volta não ganha trial de novo). */
 export async function houveContaApagada(db: D1Database, email: string): Promise<boolean> {
   const r = await db.prepare("SELECT 1 AS um FROM contas WHERE apagada_em IS NOT NULL AND email LIKE 'apagada:%:' || ?1 LIMIT 1").bind(email).first<{ um: number }>();

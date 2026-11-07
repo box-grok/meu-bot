@@ -3,7 +3,7 @@
  * `PATCH /conta` (o perfil editável do console e o toggle de dados de uso), `DELETE /conta` (apagar a própria conta)
  * e `POST /conta/senha` (e-mail do Firebase para criar ou redefinir a senha).
  */
-import type { Env } from "../tipos.js";
+import type { ContaLinha, Env } from "../tipos.js";
 import { apagarConta, auditar, contarLimite, gravarPerfilConta, montarContaApi, orgsDaConta, papelAdmin } from "../db.js";
 import { janelaMinuto, validaPatchPerfil } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
@@ -43,13 +43,17 @@ const LIMITE_SENHA_POR_MIN = 2;
  * da página de login. Sem o provedor E-mail/senha ativado no projeto, o Firebase responde OPERATION_NOT_ALLOWED.
  */
 export async function postSenha(auth: Autenticado, env: Env): Promise<Response> {
-  if (await contarLimite(env.DB, `senha:${auth.conta.id}`, janelaMinuto()) > LIMITE_SENHA_POR_MIN) return json({ erro: "já mandamos o e-mail; espere um minuto antes de pedir outro" }, 429);
+  return enviarEmailSenha(env, auth.conta, auth.conta.email);
+}
+/** O e-mail de senha para `conta`, pedido por `quem` (a própria pessoa ou um admin); rate limit por conta destino. */
+export async function enviarEmailSenha(env: Env, conta: ContaLinha, quem: string): Promise<Response> {
+  if (await contarLimite(env.DB, `senha:${conta.id}`, janelaMinuto()) > LIMITE_SENHA_POR_MIN) return json({ erro: "já mandamos o e-mail; espere um minuto antes de pedir outro" }, 429);
   let r: Response;
   try {
     r = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${encodeURIComponent(env.FIREBASE_API_KEY)}`, {
       method: "POST",
       headers: { "content-type": "application/json", referer: `https://${env.FIREBASE_AUTH_DOMAIN}/`, "x-firebase-locale": "pt-BR" },
-      body: JSON.stringify({ requestType: "PASSWORD_RESET", email: auth.conta.email }),
+      body: JSON.stringify({ requestType: "PASSWORD_RESET", email: conta.email }),
     });
   } catch (e) { console.log(`[senha] firebase indisponível: ${e instanceof Error ? e.message : String(e)}`); return json({ erro: "o Firebase não respondeu; tente de novo" }, 502); }
   if (!r.ok) {
@@ -60,6 +64,6 @@ export async function postSenha(auth: Autenticado, env: Env): Promise<Response> 
     if (msg.startsWith("EMAIL_NOT_FOUND")) return json({ erro: "o Firebase não conhece este e-mail; entre de novo com o Google antes" }, 400);
     return json({ erro: "o Firebase recusou o pedido; tente de novo mais tarde" }, 502);
   }
-  await auditar(env.DB, auth.conta.email, "senha.email", auth.conta.id, null);
+  await auditar(env.DB, quem, "senha.email", conta.id, quem === conta.email ? null : "pelo admin");
   return json({ ok: true });
 }

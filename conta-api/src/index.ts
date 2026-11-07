@@ -7,7 +7,7 @@
  *   no GitHub; www. redireciona para ela;
  * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET|PATCH|DELETE /conta, POST /conta/senha,
  *   GET /health; organizações GET|POST /orgs, GET /orgs/:slug/publico (sem login), GET|PATCH|DELETE /orgs/:slug, POST /orgs/:slug/membros, PATCH|DELETE /orgs/:slug/membros/:email;
- *   para admins GET /admin/visao, PATCH /admin/contas/:id/licenca, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email, PATCH /admin/orgs/:slug).
+ *   para admins GET /admin/visao, PATCH /admin/contas/:id/licenca, POST|PUT /admin/contas/:id/senha, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email, PATCH /admin/orgs/:slug).
  * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
  */
 import type { Env } from "./tipos.js";
@@ -15,7 +15,7 @@ import { autenticar, cors, json } from "./http.js";
 import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
 import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
-import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
+import { deletePerfil, getAdminVisao, patchLicenca, postAdminSenha, postAtenderPedido, putAdminSenha, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
 import { deleteMembro, deleteOrg, getOrg, getOrgPublico, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
 
@@ -101,6 +101,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     const auth = await autenticar(req, env);
     const atender = /^POST \/admin\/pedidos\/([A-Za-z0-9-]{1,40})\/atender$/.exec(rota);
     const licenca = /^PATCH \/admin\/contas\/([A-Za-z0-9-]{1,40})\/licenca$/.exec(rota);
+    const senhaAdmin = /^(POST|PUT) \/admin\/contas\/([A-Za-z0-9-]{1,40})\/senha$/.exec(rota);
     const perfil = /^(PUT|DELETE) \/admin\/perfis\/([^/]{3,200})$/.exec(rota);
     const org = /^(GET|PATCH|DELETE) \/orgs\/([a-z0-9-]{1,40})$/.exec(rota);
     const membroNovo = /^POST \/orgs\/([a-z0-9-]{1,40})\/membros$/.exec(rota);
@@ -122,6 +123,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     else if (rota === "GET /admin/visao") res = await getAdminVisao(auth, env, url);
     else if (atender !== null) res = await postAtenderPedido(auth, env, atender[1]!);
     else if (licenca !== null) res = await patchLicenca(auth, env, licenca[1]!, req);
+    else if (senhaAdmin !== null) res = senhaAdmin[1] === "PUT" ? await putAdminSenha(auth, env, senhaAdmin[2]!, req) : await postAdminSenha(auth, env, senhaAdmin[2]!);
     else if (perfil !== null) res = perfil[1] === "PUT" ? await putPerfil(auth, env, perfil[2]!, req) : await deletePerfil(auth, env, perfil[2]!);
     else res = json({ erro: "rota desconhecida" }, 404);
   } else res = json({ erro: "rota desconhecida" }, 404);

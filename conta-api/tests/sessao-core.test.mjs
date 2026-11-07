@@ -124,3 +124,9 @@ test("provedores: JSON com defesa, união ordenada, e o metodo da página desemp
   assert.deepEqual(provedoresDoLogin(["password"], "password"), ["password"]);
   assert.deepEqual(provedoresDoLogin(["google.com", "password"], null), ["google.com", "password"]);
 });
+
+test("validaSenhaNova: 8 a 128 sem caracteres de controle", async () => {
+  const { validaSenhaNova } = await import("../dist/sessao-core.js");
+  assert.equal(validaSenhaNova("abcdefgh"), "abcdefgh"); assert.equal(validaSenhaNova("curta"), null);
+  assert.equal(validaSenhaNova("a".repeat(129)), null); assert.equal(validaSenhaNova("abc\u0007defgh"), null); assert.equal(validaSenhaNova(8), null);
+});
