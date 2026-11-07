@@ -7,7 +7,7 @@ import type { ContaView } from "../../shared/ipc";
 import { el } from "./dom.js";
 import { resumoPlano } from "./conta-resumo.js";
 
-export interface ContaMenuApi { contaEntrar(): Promise<ContaView>; contaCancelar(): Promise<ContaView>; contaSair(): Promise<ContaView>; openExternal(url: string): Promise<void> }
+export interface ContaMenuApi { contaEntrar(): Promise<ContaView>; contaCancelar(): Promise<ContaView>; contaSair(): Promise<ContaView>; contaAbrirConsole(caminho: string): Promise<void>; openExternal(url: string): Promise<void> }
 export interface ItemExtra { ico: string; texto: string; acao: () => void; atalho?: string }
 export interface ContaMenuDeps {
   api: ContaMenuApi;
@@ -59,7 +59,8 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
     if (menu !== null) { fechar(); return; }
     const m = el("div", "conta-menu"); m.setAttribute("role", "menu");
     const c = v.conta;
-    const externo = (caminho: string): void => { void deps.api.openExternal(`${v.urlConsole}${caminho}`).catch(() => undefined); };
+    // O console abre já entrado: o main pede um código com a sessão do app e o põe no #fragment da URL.
+    const externo = (caminho: string): void => { void deps.api.contaAbrirConsole(caminho).catch(() => undefined); };
     const chama = (p: Promise<ContaView>): void => { void p.then(deps.aoMudar).catch(() => undefined); };
     if (v.situacao === "dentro" && c !== null) {
       const r = resumoPlano(c);

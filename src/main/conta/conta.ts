@@ -162,6 +162,25 @@ export async function atualizarConta(): Promise<ContaView> {
   else log(`[conta] GET /conta falhou (${resp.status}): ${erroDaApi(resp.status, resp.corpo)}`);
   return avisar();
 }
+/**
+ * Perfil / Plano / Devices do menu: abre o console no navegador já entrado. Com sessão, pede à API um código de uso
+ * único (60 s) preso a um PKCE novo e abre `<console><caminho>#code&verifier`; o console troca no POST /token. Sem
+ * sessão (ou API fora), abre o caminho puro e o console pede o login.
+ */
+export async function abrirConsole(caminho: string): Promise<void> {
+  const c = /^\/[A-Za-z0-9/_-]{0,80}$/.test(caminho) ? caminho : "/account/overview";
+  const base = `${urls().console}${c}`;
+  const tok = await tokenDeAcesso();
+  if (tok !== null) {
+    const p = novoLogin();
+    const resp = await api("POST", "/sessao/console", { challenge: p.challenge, state: p.state }, tok);
+    const code = resp.status === 200 && resp.corpo !== null && typeof resp.corpo === "object" ? (resp.corpo as { code?: unknown }).code : undefined;
+    if (typeof code === "string") { await shell.openExternal(`${base}#code=${encodeURIComponent(code)}&verifier=${encodeURIComponent(p.verifier)}`); return; }
+    log(`[conta] console: a API não deu o código (${resp.status}: ${erroDaApi(resp.status, resp.corpo)}); abrindo sem sessão`);
+  }
+  await shell.openExternal(base);
+}
+
 /** "Sair": encerra a família de sessões na API (melhor esforço) e apaga a cópia local. */
 export async function sair(): Promise<ContaView> {
   const s = lerSessao();

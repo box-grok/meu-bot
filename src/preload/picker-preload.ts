@@ -24,6 +24,7 @@ const sharedApi: PickerSharedApi = {
   contaEntrar: (): Promise<ContaView> => ipcRenderer.invoke("conta:entrar", {}),
   contaCancelar: (): Promise<ContaView> => ipcRenderer.invoke("conta:cancelar", {}),
   contaSair: (): Promise<ContaView> => ipcRenderer.invoke("conta:sair", {}),
+  contaAbrirConsole: (caminho: string): Promise<void> => ipcRenderer.invoke("conta:console", { caminho }),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke("shell:open-external", { url }),
   on: (channel, callback) => {
     if (!(EVENTS as readonly string[]).includes(channel)) throw new Error(`Canal não permitido: ${String(channel)}`);

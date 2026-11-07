@@ -37,6 +37,7 @@ export interface PickerSharedApi {
   contaEntrar(): Promise<ContaView>;
   contaCancelar(): Promise<ContaView>;
   contaSair(): Promise<ContaView>;
+  contaAbrirConsole(caminho: string): Promise<void>;
   openExternal(url: string): Promise<void>;
   on(channel: "picker:init" | "picker:install-progress" | "picker:vps-nova-progresso" | "conta:changed", callback: (payload: unknown) => void): () => void;
 }
