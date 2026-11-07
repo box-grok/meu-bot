@@ -63,7 +63,7 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname.startsWith("/__/auth/") || url.pathname.startsWith("/__/firebase/")) return handlerFirebase(req, env, url);
   // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
   if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN }), {});
   const res = await env.ASSETS.fetch(req);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
 }

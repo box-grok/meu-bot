@@ -24,6 +24,7 @@ h1 { font-size: 20px; margin: 0; }
 .btn:disabled { opacity: .6; cursor: default; }
 .btn-primary { background: var(--primario); color: var(--primario-texto); border-color: transparent; }
 .btn-ghost { background: var(--ghost); width: auto; }
+.btn-largo { width: 100%; }
 .btn-google .g { font-weight: 800; color: #4285f4; }
 .ou { display: flex; align-items: center; gap: 10px; color: var(--sub); font-size: 13px; margin: 16px 0; }
 .ou::before, .ou::after { content: ""; flex: 1; height: 1px; background: var(--borda); }

@@ -1,14 +1,14 @@
 // Página de login da conta meu-bot. O app abre esta página com ?state&challenge&esquema&app&v; a pessoa entra com
 // Google (popup) ou com um link por e-mail; o ID token do Firebase vai para a API (POST /sessao), que devolve um
 // código de uso único; e a página manda a pessoa de volta com <esquema>://auth?code&state. Sem os parâmetros do app
-// a página só explica o que é (não há "entrar no site": a conta vive no app). Com esquema=web (o console da conta),
+// a página oferece baixar o app (SITE_ORIGIN) ou ir ao console (não há "entrar no site": a conta vive no app). Com esquema=web (o console da conta),
 // a volta é para `retorno` (só a origem do console) com #code&state, em vez de um deep link.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
-const secoes = ["escolha", "aguardando", "email-enviado", "pronto", "erro"];
+const secoes = ["escolha", "aguardando", "email-enviado", "pronto", "erro", "sem-app"];
 const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const CHAVE_EMAIL = "meu-bot-conta-email";
@@ -27,9 +27,12 @@ if (paraConsole) $("sub").textContent = "Você volta ao console sozinho depois d
 function falhou(texto) { $("erro-texto").textContent = texto; mostrar("erro"); }
 
 if (!pedidoOk) {
-  $("sub").textContent = "Esta página é aberta pelo app meu-bot quando você clica em Entrar. Abra o app e clique lá.";
-  falhou("O link está incompleto: abra pelo botão Entrar do meu-bot.");
-  $("tentar").hidden = true;
+  // Sem os parâmetros do app (URL digitada, link velho): em vez de um erro, o caminho para baixar o app ou ir ao console.
+  $("sub").textContent = "Abra o meu-bot e clique em Entrar: ele volta para cá já com o seu login.";
+  if (typeof cfg.site === "string" && cfg.site !== "") $("baixar-app").href = cfg.site;
+  const ic = $("ir-console");
+  if (typeof cfg.console === "string" && cfg.console !== "") ic.href = `${cfg.console}/account/overview`; else ic.hidden = true;
+  mostrar("sem-app");
 } else {
   const app = initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId });
   const auth = getAuth(app);
