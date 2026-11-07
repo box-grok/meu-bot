@@ -33,12 +33,20 @@
       </button>
       <div class="ou"><span>ou</span></div>
       <form id="form-email" class="form">
-        <label for="email">Receber um link por e-mail</label>
+        <label for="email">Entrar com e-mail</label>
+        <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="voce@exemplo.com" required>
         <div class="linha">
-          <input id="email" type="email" autocomplete="email" inputmode="email" placeholder="voce@exemplo.com" required>
-          <button type="submit" class="btn btn-ghost" id="btn-email">Enviar link</button>
+          <input id="senha" type="password" autocomplete="current-password" placeholder="Senha (se você criou uma)" minlength="6">
+          <button type="submit" class="btn btn-ghost" id="btn-email">Entrar</button>
         </div>
+        <p class="sub dica">Sem senha? Deixe em branco: mandamos um link por e-mail. <button type="button" class="link inline" id="esqueci">Esqueci a senha</button></p>
       </form>
+    </section>
+
+    <section id="senha-enviada" hidden>
+      <p class="forte">E-mail enviado.</p>
+      <p class="sub">Abra o e-mail <strong id="senha-destino"></strong>, defina a senha pelo link e volte aqui para entrar.</p>
+      <p><button type="button" class="btn btn-ghost" id="senha-voltar">Voltar</button></p>
     </section>
 
     <section id="aguardando" hidden>
