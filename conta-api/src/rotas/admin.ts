@@ -5,8 +5,9 @@
  * assinada (PR 5/6 do plano). Tudo fica na auditoria.
  */
 import type { Env } from "../tipos.js";
-import { atenderPedido, auditar, contaPorId, contarSupers, gravarLicenca, gravarPerfil, removerPerfil, visaoAdmin } from "../db.js";
-import { UUID_RE, validaBusca, validaEmail, validaPapel, validaPatchLicenca } from "../sessao-core.js";
+import { atenderPedido, auditar, contaPorId, contarSupers, gravarLicenca, gravarPerfil, gravarProvedor, removerPerfil, revogarSessoesDaConta, visaoAdmin } from "../db.js";
+import { definirSenhaFirebase } from "../firebase-admin.js";
+import { UUID_RE, validaBusca, validaEmail, validaPapel, validaPatchLicenca, validaSenhaNova } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
 import { enviarEmailSenha } from "./conta.js";
 
@@ -39,6 +40,26 @@ export async function postAdminSenha(auth: Autenticado, env: Env, id: string): P
   const conta = await contaPorId(env.DB, id);
   if (conta === null) return json({ erro: "conta não existe" }, 404);
   return enviarEmailSenha(env, conta, auth.conta.email);
+}
+/**
+ * `PUT /admin/contas/:id/senha {senha}`: o super admin define a senha de uma conta na hora (Firebase, pela conta
+ * de serviço). A pessoa sai de todos os Macs (sessões revogadas) e passa a entrar com e-mail e senha.
+ */
+export async function putAdminSenha(auth: Autenticado, env: Env, id: string, req: Request): Promise<Response> {
+  if (auth.claims.adm !== "super") return json({ erro: "só o super admin define a senha de alguém; admin manda o e-mail" }, 403);
+  if (!UUID_RE.test(id)) return json({ erro: "id da conta fora do formato" }, 400);
+  if (typeof env.FIREBASE_ADMIN_SA !== "string" || env.FIREBASE_ADMIN_SA === "") return json({ erro: "o Worker não tem a conta de serviço do Firebase (secret FIREBASE_ADMIN_SA); use o e-mail de senha" }, 501);
+  const corpo = await lerJson(req);
+  const senha = validaSenhaNova(corpo !== null && typeof corpo === "object" ? (corpo as { senha?: unknown }).senha : undefined);
+  if (senha === null) return json({ erro: "senha: de 8 a 128 caracteres" }, 400);
+  const conta = await contaPorId(env.DB, id);
+  if (conta === null) return json({ erro: "conta não existe" }, 404);
+  const r = await definirSenhaFirebase(env.FIREBASE_ADMIN_SA, env.FIREBASE_PROJECT_ID, conta.firebase_uid, senha);
+  if (!r.ok) { console.log(`[senha] accounts:update recusado: ${r.erro}`); return json({ erro: r.erro.startsWith("USER_NOT_FOUND") ? "o Firebase não conhece esta conta" : `o Firebase recusou: ${r.erro.slice(0, 120)}` }, 502); }
+  await gravarProvedor(env.DB, conta, "password");
+  await revogarSessoesDaConta(env.DB, conta.id);
+  await auditar(env.DB, auth.conta.email, "senha.definida", conta.id, "pelo super admin; sessões revogadas");
+  return json({ ok: true });
 }
 /** Perfis de acesso: só o super admin. `PUT /admin/perfis/:email {papel}` cria ou muda; `DELETE /admin/perfis/:email` remove. */
 export async function putPerfil(auth: Autenticado, env: Env, emailRaw: string, req: Request): Promise<Response> {

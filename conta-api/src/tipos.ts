@@ -21,6 +21,8 @@ export interface Env {
   SESSAO_HMAC_KEY: string;
   /** Secret: privada Ed25519 da licença (PKCS#8 DER base64); só a partir da PR 5. */
   LICENCA_PRIVATE_KEY?: string;
+  /** Secret: JSON da conta de serviço do Firebase (só para o super admin definir senhas); sem ele, só o e-mail. */
+  FIREBASE_ADMIN_SA?: string;
 }
 
 export interface ContaLinha {

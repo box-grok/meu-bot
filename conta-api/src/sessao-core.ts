@@ -216,6 +216,8 @@ export function parseProvedores(raw: string | null | undefined): string[] {
 export const unirProvedores = (atuais: string | null | undefined, novos: string[]): string => JSON.stringify([...new Set([...parseProvedores(atuais), ...novos.filter((x) => PROVEDORES_RE.test(x))])].sort());
 /** Os provedores deste login: o token diz "password" para senha e para link por e-mail; o `metodo` da página desempata. */
 export const provedoresDoLogin = (doToken: string[], metodo: MetodoLogin | null): string[] => doToken.map((p) => (p === "password" && metodo === "emailLink" ? "emailLink" : p));
+/** Senha que o super admin define para alguém: 8 a 128 caracteres, sem controle. */
+export const validaSenhaNova = (v: unknown): string | null => (typeof v === "string" && v.length >= 8 && v.length <= 128 && /^[^\p{C}]+$/u.test(v) ? v : null);
 /** E-mail de um perfil de acesso (minúsculas) e o papel; null se fora do formato. */
 export const validaEmail = (v: unknown): string | null => (typeof v === "string" && /^[^\s@]{1,100}@[^\s@]{1,100}\.[^\s@]{1,50}$/.test(v.trim()) ? v.trim().toLowerCase() : null);
 export const validaPapel = (v: unknown): "super" | "admin" | null => (v === "super" || v === "admin" ? v : null);

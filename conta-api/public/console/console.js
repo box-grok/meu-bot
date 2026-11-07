@@ -398,10 +398,7 @@ function pintarAdminContas(v) {
     tr.append(el("td", "", l.expiresAt ? data(l.expiresAt) : l.trialEnd ? data(l.trialEnd) : "-"));
     const dv = el("td", "", `${ativos}/${l.deviceLimit}`); if (pend > 0) dv.append(document.createTextNode(" "), selo(`${pend} pendente${pend === 1 ? "" : "s"}`, "mau")); tr.append(dv);
     tr.append(el("td", "", String(c.maquinas)), el("td", "", String(c.pedidos)), el("td", "", data(c.criadaEm)));
-    const acao = el("td", "acoes-linha"); const b = el("button", "btn btn-ghost", "Mudar"); b.type = "button"; b.addEventListener("click", () => editorLicenca(tr, c));
-    const bs = el("button", "btn btn-ghost", "E-mail de senha"); bs.type = "button"; bs.title = `Manda a ${c.email} o e-mail para criar ou redefinir a senha (o mesmo de "Esqueci a senha").`;
-    bs.addEventListener("click", () => { void adminSenha(c, bs); });
-    acao.append(b, bs); tr.append(acao);
+    const acao = el("td"); const b = el("button", "btn btn-ghost", "Mudar"); b.type = "button"; b.addEventListener("click", () => editorLicenca(tr, c)); acao.append(b); tr.append(acao);
     tb.append(tr);
   }
 }
@@ -433,10 +430,15 @@ function editorLicenca(tr, c) {
   const instrucoes = input("instrucoes", "text", l.pagamento?.instrucoes ?? "", "Pix, link, contato…");
   const link = input("link", "url", l.pagamento?.link ?? "", "https://…");
   form.append(campo("Plano", plan), campo("Status", status), campo("Vale até", ate), campo("Devices", limite), campo("Add-ons", produtos), campo("Como pagar", instrucoes), campo("Link", link));
+  // Senha: o super admin define na hora (em branco não muda); qualquer admin manda o e-mail de redefinição.
+  const superAdmin = conta !== null && conta.admin === "super";
+  const senha = input("senha", "password", "", superAdmin ? "nova senha (em branco: não muda)" : "só o super admin define"); senha.autocomplete = "new-password"; senha.minLength = 8; senha.maxLength = 128; senha.disabled = !superAdmin;
+  form.append(campo("Senha", senha));
   const salvar = el("button", "btn btn-primary", "Salvar"); salvar.type = "submit";
+  const emailSenha = el("button", "btn btn-ghost", "E-mail de senha"); emailSenha.type = "button"; emailSenha.title = `Manda a ${c.email} o e-mail para criar ou redefinir a senha (o mesmo de "Esqueci a senha").`; emailSenha.addEventListener("click", () => { void adminSenha(c, emailSenha); });
   const cancelar = el("button", "btn btn-ghost", "Cancelar"); cancelar.type = "button"; cancelar.addEventListener("click", () => linha.remove());
-  const acoes = el("div", "acoes"); acoes.append(salvar, cancelar); form.append(acoes);
-  const aviso = el("p", "sub", "Vale na conta e no console; o que libera o Pro no app ainda é a licença da máquina (próxima versão).");
+  const acoes = el("div", "acoes"); acoes.append(salvar, emailSenha, cancelar); form.append(acoes);
+  const aviso = el("p", "sub", "Vale na conta e no console; o que libera o Pro no app ainda é a licença da máquina (próxima versão). Senha preenchida: troca no Firebase e desconecta a pessoa de todos os Macs.");
   form.append(aviso);
   form.addEventListener("submit", async (ev) => {
     ev.preventDefault(); salvar.disabled = true;
@@ -446,6 +448,11 @@ function editorLicenca(tr, c) {
     const s = sessaoGuardada(); if (s === null) return;
     const r = await api("PATCH", `/admin/contas/${encodeURIComponent(c.id)}/licenca`, patch, s.acesso);
     if (r.status !== 200) { salvar.disabled = false; mostrarErro(erroDe(r)); return; }
+    if (senha.value !== "") {
+      // Troca a senha no Firebase e desconecta a pessoa de todos os Macs; ela passa a entrar com e-mail e senha.
+      const rs = await api("PUT", `/admin/contas/${encodeURIComponent(c.id)}/senha`, { senha: senha.value }, s.acesso);
+      if (rs.status !== 200) { salvar.disabled = false; mostrarErro(`Licença salva, mas a senha não: ${erroDe(rs)}`); return; }
+    }
     mostrarErro(null);
     await carregarVisao(visaoBusca).catch((e) => mostrarErro(e?.message ?? String(e)));
     if (conta !== null) mostrarConsole(conta);
