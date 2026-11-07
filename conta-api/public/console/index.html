@@ -60,6 +60,7 @@
         <div class="painel">
           <div class="perfil"><img id="pf-foto" alt="" hidden><span class="avatar grande" id="pf-inicial" aria-hidden="true">?</span>
             <div><h2 id="pf-nome"></h2><p class="sub" id="pf-email"></p></div></div>
+          <details class="recolhido" id="pf-editar"><summary>Mudar o nome</summary>
           <form class="editor-form perfil-form" id="pf-form">
             <label><span>Nome</span><input name="nomeProprio" type="text" maxlength="80" autocomplete="given-name"></label>
             <label><span>Sobrenome</span><input name="sobrenome" type="text" maxlength="80" autocomplete="family-name"></label>
@@ -67,6 +68,7 @@
             <div class="acoes"><button type="submit" class="btn btn-primary" id="pf-salvar">Salvar</button><span class="sub" id="pf-salvo" hidden>Salvo.</span></div>
             <p class="sub" id="pf-login"></p>
           </form>
+          </details>
         </div>
 
         <div class="painel">
@@ -76,9 +78,10 @@
         </div>
 
         <div class="painel">
-          <h2>Dados de uso do produto</h2>
+          <details class="recolhido"><summary>Dados de uso do produto</summary>
           <label class="toggle"><input type="checkbox" id="pf-dados-uso"><span>Guardar na conta o nome, o usuário e a versão dos apps de cada Mac onde eu entro</span></label>
           <p class="sub">Desligado, a conta guarda só o id e o status de cada device (nem o nome do Mac, nem quando foi visto): o admin vê "device" e o status, e a lista de Devices fica sem nome. O que já estava guardado é apagado na hora. Isso vale para o que a conta guarda sobre seus Macs; o que a máquina (VM) registra para funcionar não muda.</p>
+          </details>
         </div>
 
         <div class="painel perigo">

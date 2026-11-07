@@ -310,7 +310,7 @@ async function perfilSalvar() {
   if (r.status !== 200) { $("pf-salvar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
   mostrarConsole(r.corpo);
-  $("pf-salvo").hidden = false;
+  $("pf-editar").open = true; $("pf-salvo").hidden = false;
 }
 async function dadosUsoMudar(cb) {
   const s = sessaoGuardada(); if (s === null) return;
