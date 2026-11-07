@@ -6,8 +6,8 @@ import { existsSync } from "node:fs";
 
 const DIST = new URL("../dist/main/app/variant-core.js", import.meta.url);
 if (!existsSync(DIST)) { console.error("✗ falta dist/main/app/variant-core.js: rode `npm run build:main` antes"); process.exit(1); }
-const { PRODUTOS } = createRequire(import.meta.url)("../dist/main/app/variant-core.js");
-export { PRODUTOS };
+const { PRODUTOS, esquemaDe } = createRequire(import.meta.url)("../dist/main/app/variant-core.js");
+export { PRODUTOS, esquemaDe };
 
 /** Produto pedido na linha de comando; desconhecido sai com 64 listando os ids. */
 export function produtoFromArgv(argv = process.argv) {

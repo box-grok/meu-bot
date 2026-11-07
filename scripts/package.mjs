@@ -2,7 +2,7 @@ import { packager } from "@electron/packager";
 import { copyFileSync, cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
+import { archOf, esquemaDe, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 import { avisoSemGoogle, decideGoogleConta } from "./google-client.mjs";
 
 // `--variant <id>` (ou `--admin`) empacota outro produto da tabela (src/main/app/variant-core.ts): mesmo código, outro
@@ -39,6 +39,9 @@ const paths = await packager({
   appBundleId: produto.bundleId,
   icon: produto.icone,
   appCategoryType: "public.app-category.productivity",
+  // Deep link do login da conta (`meu-bot://auth?…`): CFBundleURLTypes no Info.plist, um esquema por produto
+  // (src/main/app/variant-core.ts esquemaDe), para o staging não roubar o retorno do estável.
+  protocols: [{ name: name, schemes: [esquemaDe(produto)] }],
   // Textos do aviso do macOS quando um site do Navegador pede câmera/microfone (Google, Meet…): em pt-BR.
   extendInfo: { NSCameraUsageDescription: "O Navegador do meu-bot usa a câmera quando um site pede e você permite (ex.: verificação do Google, videochamadas).", NSMicrophoneUsageDescription: "O Navegador do meu-bot usa o microfone quando um site pede e você permite (ex.: videochamadas, áudio)." },
   ...(versao !== null ? {
