@@ -620,6 +620,8 @@ const portaoErro = document.getElementById("pk-portao-erro") as HTMLElement;
 const portaoSub = document.getElementById("pk-portao-sub") as HTMLElement;
 const portaoEntrar = document.getElementById("pk-portao-entrar") as HTMLButtonElement;
 const portaoCancelar = document.getElementById("pk-portao-cancelar") as HTMLButtonElement;
+const portaoReabrir = document.getElementById("pk-portao-reabrir") as HTMLButtonElement;
+const portaoTitulo = document.getElementById("pk-portao-titulo") as HTMLElement;
 const contaTexto = document.getElementById("pk-conta-texto") as HTMLElement;
 const menuConta = montarMenuConta([document.getElementById("pk-avatar") as HTMLButtonElement], {
   api: window.picker, view: () => conta, aoMudar: (v) => contaMudou(v),
@@ -632,8 +634,9 @@ function contaMudou(v: ContaView): void {
   portao.hidden = dentro;
   if (!dentro) {
     const entrando = v.situacao === "entrando";
-    portaoEntrar.hidden = entrando; portaoCancelar.hidden = !entrando; portaoEntrar.disabled = false;
-    portaoSub.textContent = entrando ? `A página ${v.urlLogin.replace(/^https:\/\//, "")} abriu no seu navegador. Entre lá; o seletor segue sozinho.` : "Você entra no navegador, com Google ou link por e-mail, e volta sozinho para cá.";
+    portaoEntrar.hidden = entrando; portaoReabrir.hidden = !entrando; portaoCancelar.hidden = !entrando; portaoEntrar.disabled = false; portaoReabrir.disabled = false;
+    portaoTitulo.textContent = entrando ? "Aguardando login…" : "Entre com sua conta meu-bot";
+    portaoSub.textContent = entrando ? "Conclua o login na janela do navegador que acabou de abrir." : "Você entra no navegador, com Google ou link por e-mail, e volta sozinho para cá.";
     portaoErro.hidden = !(v.situacao === "erro" && v.erro !== null); portaoErro.textContent = v.erro ?? "";
   }
   contaTexto.hidden = !dentro;
@@ -642,6 +645,7 @@ function contaMudou(v: ContaView): void {
 }
 portaoEntrar.addEventListener("click", () => { portaoEntrar.disabled = true; void window.picker.contaEntrar().then(contaMudou).catch((err: unknown) => { portaoEntrar.disabled = false; portaoErro.hidden = false; portaoErro.textContent = `Não consegui abrir o login: ${ipcErrorText(err)}`; }); });
 portaoCancelar.addEventListener("click", () => { void window.picker.contaCancelar().then(contaMudou).catch(() => undefined); });
+portaoReabrir.addEventListener("click", () => { portaoReabrir.disabled = true; void window.picker.contaEntrar().then(contaMudou).catch(() => { portaoReabrir.disabled = false; }); });
 window.picker.on("conta:changed", (p) => contaMudou(p as ContaView));
 void window.picker.contaGet().then(contaMudou).catch(() => undefined);
 window.picker.on("picker:install-progress", (p) => {

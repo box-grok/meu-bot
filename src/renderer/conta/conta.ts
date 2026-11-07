@@ -57,10 +57,12 @@ export function blocoConta(): HTMLElement {
       return;
     }
     if (c.situacao === "entrando") {
-      const cancelar = el("button", "btn btn-ghost", "Cancelar"); cancelar.type = "button";
+      const reabrir = el("button", "btn btn-ghost", "Reabrir o navegador"); reabrir.type = "button";
+      reabrir.addEventListener("click", () => { reabrir.disabled = true; void window.meuBot.contaEntrar().then(mudou).catch(() => { reabrir.disabled = false; }); });
+      const cancelar = el("button", "btn btn-ghost btn-small", "Cancelar"); cancelar.type = "button";
       cancelar.addEventListener("click", () => { void window.meuBot.contaCancelar().then(mudou).catch(() => undefined); });
-      const acoes = el("div", "actions"); acoes.append(cancelar);
-      box.append(el("p", "", "Aguardando o login no navegador…"), el("p", "hint", `A página ${c.urlLogin.replace(/^https:\/\//, "")} abriu no seu navegador. Entre com o Google ou peça o link por e-mail; o app volta sozinho quando terminar.`), acoes);
+      const acoes = el("div", "actions"); acoes.append(reabrir, cancelar);
+      box.append(el("p", "", "Aguardando login…"), el("p", "hint", "Conclua o login na janela do navegador que acabou de abrir."), acoes);
       return;
     }
     const entrar = el("button", "btn btn-primary", "Continuar com seu navegador"); entrar.type = "button";

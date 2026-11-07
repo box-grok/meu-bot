@@ -103,7 +103,8 @@ async function api(metodo: "GET" | "POST", rota: string, corpo: unknown = null, 
 /** "Entrar": abre a página de login no navegador do sistema e fica esperando o deep link. */
 export async function entrar(): Promise<ContaView> {
   erro = null;
-  const p = novoLogin();
+  // "Reabrir o navegador": com um login pendente ainda válido, abre a mesma página (mesmo state), sem invalidar a aba anterior.
+  const p = lerPendente() ?? novoLogin();
   gravarPendente(p);
   const url = urlDeLogin(urls().auth, { esquema: esquemaDe(produto()), state: p.state, challenge: p.challenge, app: produto().nome, versao: app.getVersion() });
   log(`[conta] login: abrindo ${urls().auth} no navegador (state ${p.state.slice(0, 6)}…)`);
