@@ -100,7 +100,8 @@ const str = (v: unknown, re: RegExp): string | null => (typeof v === "string" &&
 
 /** Como a pessoa entrou na página (o Firebase reporta "password" tanto para senha quanto para link por e-mail). */
 export type MetodoLogin = "google" | "emailLink" | "password";
-export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null; metodo: MetodoLogin | null }
+/** `org`: slug da organização quando o login veio de auth.<host>/org/<slug> (só membro entra por ali). */
+export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null; metodo: MetodoLogin | null; org: string | null }
 /** `POST /sessao` da página: ID token do Firebase mais o que o app pôs na URL de login. */
 export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string } {
   if (!isObj(raw)) return { erro: "corpo inválido" };
@@ -110,7 +111,9 @@ export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string 
   if (state === null) return { erro: "state ausente ou fora do formato" };
   if (challenge === null) return { erro: "challenge (PKCE) ausente ou fora do formato" };
   if (esquema === null) return { erro: "esquema do app ausente ou fora do formato" };
-  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE), metodo: str(raw.metodo, /^(google|emailLink|password)$/) as MetodoLogin | null };
+  const org = raw.org === undefined || raw.org === null || raw.org === "" ? null : str(raw.org, /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/);
+  if (raw.org !== undefined && raw.org !== null && raw.org !== "" && org === null) return { erro: "org: endereço da organização fora do formato" };
+  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE), metodo: str(raw.metodo, /^(google|emailLink|password)$/) as MetodoLogin | null, org };
 }
 
 export interface DeviceValido { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string }

@@ -6,7 +6,7 @@
  * - agentesgrok.com: a home ("Baixar para macOS", public/site/), com /download/mac apontando para a release mais nova
  *   no GitHub; www. redireciona para ela;
  * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET|PATCH|DELETE /conta, POST /conta/senha,
- *   GET /health; organizações GET|POST /orgs, GET|PATCH|DELETE /orgs/:slug, POST /orgs/:slug/membros, PATCH|DELETE /orgs/:slug/membros/:email;
+ *   GET /health; organizações GET|POST /orgs, GET /orgs/:slug/publico (sem login), GET|PATCH|DELETE /orgs/:slug, POST /orgs/:slug/membros, PATCH|DELETE /orgs/:slug/membros/:email;
  *   para admins GET /admin/visao, PATCH /admin/contas/:id/licenca, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email, PATCH /admin/orgs/:slug).
  * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
  */
@@ -17,7 +17,7 @@ import { postToken } from "./rotas/token.js";
 import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
 import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
-import { deleteMembro, deleteOrg, getOrg, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
+import { deleteMembro, deleteOrg, getOrg, getOrgPublico, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
 
 const SEGURANCA: Record<string, string> = {
   "x-content-type-options": "nosniff",
@@ -66,7 +66,9 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
   // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
   if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN }), {});
-  const res = await env.ASSETS.fetch(req);
+  // /org/<slug>: a mesma página de login, com o cabeçalho da organização (o JS lê o slug do caminho).
+  const alvo = /^\/org\/[a-z0-9-]{1,40}\/?$/.test(url.pathname) ? new Request(new URL("/entrar", url.origin).toString(), req) : req;
+  const res = await env.ASSETS.fetch(alvo);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
 }
 
@@ -87,6 +89,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   let res: Response;
   if (rota === "GET /health") res = json({ ok: true, canal: env.CANAL });
   else if (rota === "POST /sessao") res = await postSessao(req, env);
+  else if (/^GET \/orgs\/[a-z0-9-]{1,40}\/publico$/.test(rota)) res = await getOrgPublico(env, rota.split("/")[2]!);
   else if (rota === "POST /token") res = await postToken(req, env);
   else if (rota === "POST /sessao/sair" || rota === "POST /sessao/console" || rota === "GET /conta" || rota === "PATCH /conta" || rota === "DELETE /conta" || rota === "POST /conta/senha" || /^(GET|POST|PATCH|DELETE) \/orgs(\/|$)/.test(rota) || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
     const auth = await autenticar(req, env);

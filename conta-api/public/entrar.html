@@ -9,13 +9,23 @@
 </head>
 <body>
   <main class="cartao" id="cartao">
+    <!-- Login pela página de uma organização (auth/org/<slug>): seta para o login pessoal, nome da organização e o selo. -->
+    <a class="voltar" id="org-pessoal" href="/entrar" hidden>← Entrar com sua conta pessoal</a>
     <header class="topo">
       <div class="marca" aria-hidden="true">mb</div>
       <div>
-        <h1>Entrar no meu-bot</h1>
+        <h1 id="titulo">Entrar no meu-bot</h1>
         <p class="sub" id="sub">Você volta ao app sozinho depois de entrar.</p>
       </div>
     </header>
+    <p class="selo-enterprise" id="org-selo" hidden><span>▣</span> Enterprise · <code id="org-slug"></code></p>
+
+    <section id="org-nao-achada" hidden>
+      <p class="forte">Organização não encontrada.</p>
+      <p class="sub">Não há organização com o endereço <code id="org-slug-errado"></code>. Confira o endereço com quem te convidou, ou entre com a sua conta pessoal.</p>
+      <p><a class="btn btn-primary" id="org-entrar" href="/entrar">Entrar</a></p>
+      <p><a class="btn btn-ghost btn-largo" id="org-criar" href="/signup">Criar conta</a></p>
+    </section>
 
     <section id="escolha" hidden>
       <!-- Quem entrou da última vez neste navegador (Firebase lembra): um clique, sem a janela do Google. -->

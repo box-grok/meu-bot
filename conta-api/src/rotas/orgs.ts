@@ -22,6 +22,14 @@ async function orgDe(auth: Autenticado, env: Env, slugRaw: string): Promise<{ or
   return auth.claims.adm === "super" ? { org, papel: "super" } : null;
 }
 const semOrg = (): Response => json({ erro: "organização não encontrada" }, 404);
+
+/** `GET /orgs/:slug/publico`, sem Bearer: só nome e endereço, para a página de login desenhar "Entrar na <nome>". */
+export async function getOrgPublico(env: Env, slugRaw: string): Promise<Response> {
+  const slug = validaSlug(slugRaw);
+  const org = slug === null ? null : await orgPorSlug(env.DB, slug);
+  if (org === null) return semOrg();
+  return json({ slug: org.slug, nome: org.nome });
+}
 const gerencia = (p: Papel): boolean => p === "dona" || p === "admin" || p === "super";
 
 export async function getOrgs(auth: Autenticado, env: Env): Promise<Response> {

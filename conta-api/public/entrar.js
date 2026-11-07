@@ -8,7 +8,9 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkTo
 
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
-const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pronto", "erro", "sem-app"];
+const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pronto", "erro", "sem-app", "org-nao-achada"];
+// /org/<slug>: login pela página da organização; só membro entra, e a API confere.
+const orgSlug = /^\/org\/([a-z0-9-]{1,40})\/?$/.exec(location.pathname)?.[1] ?? null;
 const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const CHAVE_EMAIL = "meu-bot-conta-email";
@@ -26,7 +28,21 @@ if (paraConsole) $("sub").textContent = "Você volta ao console sozinho depois d
 
 function falhou(texto) { $("erro-texto").textContent = texto; mostrar("erro"); }
 
-if (!pedidoOk) {
+// Cabeçalho da organização: nome e endereço vêm da API (sem login); endereço desconhecido vira a tela "não encontrada".
+let orgOk = true;
+if (orgSlug !== null) {
+  for (const id of ["org-pessoal", "org-entrar"]) $(id).href = `/entrar${location.search}`;
+  $("org-criar").href = `/signup${location.search}`;
+  $("org-pessoal").hidden = false;
+  let org = null;
+  try { const r = await fetch(`${cfg.api}/orgs/${encodeURIComponent(orgSlug)}/publico`); if (r.ok) org = await r.json(); } catch { org = null; }
+  if (org === null || typeof org.nome !== "string") { orgOk = false; $("org-slug-errado").textContent = orgSlug; $("titulo").textContent = "Entrar numa organização"; $("sub").textContent = ""; mostrar("org-nao-achada"); }
+  else { $("titulo").textContent = `Entrar na ${org.nome}`; $("org-slug").textContent = orgSlug; $("org-selo").hidden = false; document.title = `Entrar na ${org.nome} · meu-bot`; }
+}
+
+if (!orgOk) {
+  // A tela "organização não encontrada" já está na frente; nada de Firebase.
+} else if (!pedidoOk) {
   // Sem os parâmetros do app (URL digitada, link velho): em vez de um erro, o caminho para baixar o app ou ir ao console.
   $("sub").textContent = "Abra o meu-bot e clique em Entrar: ele volta para cá já com o seu login.";
   if (typeof cfg.site === "string" && cfg.site !== "") $("baixar-app").href = cfg.site;
@@ -47,7 +63,7 @@ if (!pedidoOk) {
     mostrar("aguardando");
     let idToken;
     try { idToken = await user.getIdToken(true); } catch (e) { pintarLembrado(null); falhou("A sessão lembrada venceu; entre de novo."); return; }
-    const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined, metodo }) });
+    const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined, metodo, org: orgSlug ?? undefined }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || typeof j.code !== "string") { falhou(j.erro ?? `a API respondeu ${r.status}`); return; }
     if (paraConsole) { location.replace(`${pedido.retorno}#code=${encodeURIComponent(j.code)}&state=${encodeURIComponent(pedido.state)}`); return; }
