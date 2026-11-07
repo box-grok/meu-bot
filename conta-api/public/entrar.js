@@ -4,7 +4,7 @@
 // a página só explica o que é (não há "entrar no site": a conta vive no app). Com esquema=web (o console da conta),
 // a volta é para `retorno` (só a origem do console) com #code&state, em vez de um deep link.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserLocalPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
@@ -34,11 +34,13 @@ if (!pedidoOk) {
   const app = initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId });
   const auth = getAuth(app);
   auth.languageCode = "pt-BR";
-  await setPersistence(auth, browserSessionPersistence).catch(() => undefined);
+  // Lembra quem entrou neste navegador (como o Rambox): da próxima vez, "Continuar como …" sem a janela do Google.
+  await setPersistence(auth, browserLocalPersistence).catch(() => undefined);
 
   async function concluir(user) {
     mostrar("aguardando");
-    const idToken = await user.getIdToken(true);
+    let idToken;
+    try { idToken = await user.getIdToken(true); } catch (e) { pintarLembrado(null); falhou("A sessão lembrada venceu; entre de novo."); return; }
     const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || typeof j.code !== "string") { falhou(j.erro ?? `a API respondeu ${r.status}`); return; }
@@ -51,9 +53,26 @@ if (!pedidoOk) {
     location.href = volta;
   }
 
+  // Quem já entrou neste navegador: cartão com nome, e-mail e "Continuar"; "Não é você?" esquece e mostra as opções.
+  function pintarLembrado(user) {
+    const tem = user !== null && typeof user.email === "string";
+    $("lembrado").hidden = !tem;
+    if (!tem) return;
+    const nome = user.displayName || user.email;
+    $("lembrado-nome").textContent = nome; $("lembrado-email").textContent = user.displayName ? user.email : "";
+    const foto = typeof user.photoURL === "string" && /^https:\/\//.test(user.photoURL);
+    $("lembrado-foto").hidden = !foto; $("lembrado-inicial").hidden = foto;
+    if (foto) $("lembrado-foto").src = user.photoURL; else $("lembrado-inicial").textContent = nome.trim().charAt(0).toUpperCase();
+    $("btn-lembrado").textContent = `Continuar como ${(user.displayName || user.email).split(" ")[0]}`;
+  }
+  const lembrado = await new Promise((r) => { const parar = auth.onAuthStateChanged((u) => { parar(); r(u); }); });
+  pintarLembrado(lembrado);
+  $("btn-lembrado").addEventListener("click", async () => { const u = auth.currentUser; if (u === null) { pintarLembrado(null); return; } try { await concluir(u); } catch (e) { falhou(`${e?.message ?? e}`); } });
+  $("lembrado-nao").addEventListener("click", async () => { try { await signOut(auth); } catch { /* ok */ } pintarLembrado(null); });
+
   $("btn-google").addEventListener("click", async () => {
     mostrar("aguardando");
-    try { const cred = await signInWithPopup(auth, new GoogleAuthProvider()); await concluir(cred.user); }
+    try { const prov = new GoogleAuthProvider(); prov.setCustomParameters({ prompt: "select_account" }); const cred = await signInWithPopup(auth, prov); await concluir(cred.user); }
     catch (e) { falhou(e?.code === "auth/popup-closed-by-user" ? "A janela do Google foi fechada antes de terminar." : `Google: ${e?.message ?? e}`); }
   });
 
