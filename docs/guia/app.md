@@ -34,6 +34,10 @@ cliente (um `claude mcp add` ou um trecho de `mcp.json`); o app só gera o texto
   mascarada (Mostrar/Copiar/Gerar outra), porta (aplica no change) e os botões que copiam o `claude mcp add
   --transport http …` e o trecho do `mcp.json` do Cursor. Claude Desktop ficou de fora (o conector remoto dele não
   aceita cabeçalho fixo; para ele é o `app-mcp.mjs`).
+- **Fumaça com cliente real** (`scripts/mcp-fumaca.sh [app]`): com o app aberto e o controle ligado, lê porta e chave
+  do `settings.json`, confere por `curl` (initialize anuncia 2025-06-18, `tools/list` com ≥ 20 ferramentas, GET → 405,
+  sem chave → 401), registra `<app>-fumaca` no Claude Code em escopo local e exige `✔ Connected`; remove o registro ao
+  sair, mesmo em falha. É o que roda quem mexer no protocolo ou no `term.sock`; o teste unitário cobre só o núcleo puro.
 
 ## Modo de depuração: selo ao lado do PRO, ferramenta `nota` e a skill (1 nov 2026, fase 3)
 

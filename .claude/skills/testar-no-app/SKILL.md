@@ -58,7 +58,8 @@ O app caiu ou há erro novo no log: pare e mostre o trecho do log.
    Com o controle externo ligado (Configurações › Controle externo (MCP)), as mesmas ferramentas valem por HTTP:
    `claude mcp add --transport http <app> http://127.0.0.1:<porta>/mcp --header "Authorization: Bearer <token>"`
    (o botão "Claude Code" da seção copia o comando pronto; `terminal_digitar` e `nav_js` só com "Executar comandos
-   e código" ligado).
+   e código" ligado). Mexeu no protocolo ou no `term.sock`? `scripts/mcp-fumaca.sh` prova que o Claude Code ainda
+   conecta (registra em escopo local e remove ao sair).
 1. **Ver**: `osascript -e 'tell application "<app>" to activate'`, `screencapture -x <scratchpad>/tela.png`,
    `sips -Z 1600` para reduzir e Read na imagem. A captura funciona sem permissão extra.
 2. **Navegar até a mudança sem Acessibilidade (o normal neste Mac): DevTools remoto.** Antes, confirme que o app
