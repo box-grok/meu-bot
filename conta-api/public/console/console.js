@@ -20,6 +20,8 @@ const selo = (texto, tom) => el("span", `selo${tom ? ` ${tom}` : ""}`, texto);
 const inicial = (c) => (c.nome ?? c.email).trim().charAt(0).toUpperCase() || "?";
 
 $("canal").textContent = $("entrada-canal").textContent = cfg.canal === "staging" ? "staging" : "";
+// Sem sessão, o rodapé do cartão leva à home do ambiente (site-staging. em staging, agentesgrok.com em produção).
+if (typeof cfg.site === "string" && cfg.site !== "") $("entrada-home").href = cfg.site;
 
 // ---- sessão
 let conta = null;
