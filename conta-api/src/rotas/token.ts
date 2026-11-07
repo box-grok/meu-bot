@@ -1,0 +1,60 @@
+/**
+ * `POST /token`: o app troca o código do deep link (mais o verifier do PKCE e o device deste Mac) por um refresh
+ * token rotativo e um token de acesso de 1 h; ou renova com `grant: "refresh"` (o refresh antigo morre; reusar um
+ * já trocado derruba a família inteira). As duas formas devolvem a conta inteira (ContaApi).
+ */
+import type { Env, SessaoLinha } from "../tipos.js";
+import { auditar, codigoPor, contaPorId, criarSessao, devicePor, devicesDaConta, gravarDevice, licencaDaConta, montarContaApi, papelAdmin, revogarFamilia, revogarSessao, sessaoPorHash, usarCodigo } from "../db.js";
+import { ACESSO_TTL_S, admitirDevice, agoraIso, assinarJwt, maisSegundos, pkceConfere, refreshTtlS, segredo, sha256Hex, uuid, validaPedidoToken } from "../sessao-core.js";
+import { json, lerJson } from "../http.js";
+
+async function emitir(env: Env, conta: { id: string; email: string }, s: Omit<SessaoLinha, "refresh_hash" | "revogada_em">, refresh: string): Promise<Response> {
+  const hash = await sha256Hex(refresh);
+  await criarSessao(env.DB, { ...s, refresh_hash: hash });
+  const linha = await contaPorId(env.DB, conta.id);
+  if (linha === null) return json({ erro: "conta não existe mais" }, 401);
+  const adm = await papelAdmin(env.DB, linha.email, env.ADMIN_BOOTSTRAP_EMAIL);
+  const agoraS = Math.floor(Date.now() / 1000);
+  const acesso = await assinarJwt({ sub: conta.id, sid: s.id, dev: s.device_id, adm, iat: agoraS, exp: agoraS + ACESSO_TTL_S }, env.SESSAO_HMAC_KEY);
+  return json({ refresh, acesso, expiraEm: maisSegundos(ACESSO_TTL_S), conta: await montarContaApi(env.DB, linha, adm, s.device_id) });
+}
+
+export async function postToken(req: Request, env: Env): Promise<Response> {
+  const pedido = validaPedidoToken(await lerJson(req));
+  if ("erro" in pedido) return json({ erro: pedido.erro }, 400);
+  const agora = agoraIso();
+
+  if (pedido.grant === "code") {
+    const c = await codigoPor(env.DB, pedido.code);
+    if (c === null || c.usado_em !== null || Date.parse(c.expira_em) < Date.now()) return json({ erro: "código inválido, usado ou vencido; entre de novo" }, 401);
+    if (!(await pkceConfere(pedido.verifier, c.challenge))) return json({ erro: "o código não é deste app (PKCE)" }, 401);
+    if (!(await usarCodigo(env.DB, pedido.code, agora))) return json({ erro: "código já usado" }, 401);
+    const conta = await contaPorId(env.DB, c.conta_id);
+    if (conta === null) return json({ erro: "conta não existe mais" }, 401);
+    // O device deste Mac: conhecido (pelo uuid ou pelo alias antigo) mantém o status; novo cabe até o limite da licença.
+    const d = pedido.device;
+    const atual = await devicePor(env.DB, conta.id, d.id, d.alias);
+    const [licenca, todos] = await Promise.all([licencaDaConta(env.DB, conta), devicesDaConta(env.DB, conta.id)]);
+    const ativos = todos.filter((x) => x.status !== "pending" && x.id !== atual?.id).length;
+    const status = admitirDevice(atual, ativos, licenca.deviceLimit);
+    await gravarDevice(env.DB, conta.id, { ...d, status }, atual, agora);
+    if (atual === null) await auditar(env.DB, conta.email, status === "pending" ? "device.pedido" : "device.novo", conta.id, `${d.name || d.id} · ${d.app} ${d.versao}`, agora);
+    const familia = uuid();
+    await auditar(env.DB, conta.email, "login.entrou", conta.id, `${c.esquema} · ${d.app} ${d.versao}`, agora);
+    return emitir(env, conta, { id: uuid(), conta_id: conta.id, familia, device_id: d.id, app: d.app, versao_app: d.versao, criada_em: agora, usada_em: agora, expira_em: maisSegundos(refreshTtlS(env.CANAL)) }, segredo(32));
+  }
+
+  const s = await sessaoPorHash(env.DB, await sha256Hex(pedido.refresh));
+  if (s === null) return json({ erro: "sessão desconhecida; entre de novo" }, 401);
+  if (s.revogada_em !== null) {
+    // Um refresh já trocado voltou: alguém está com uma cópia. Derruba a cadeia toda.
+    await revogarFamilia(env.DB, s.familia, agora);
+    await auditar(env.DB, s.conta_id, "login.refresh-reusado", s.conta_id, s.familia, agora);
+    return json({ erro: "sessão encerrada por segurança; entre de novo" }, 401);
+  }
+  if (Date.parse(s.expira_em) < Date.now()) return json({ erro: "sessão vencida; entre de novo" }, 401);
+  const conta = await contaPorId(env.DB, s.conta_id);
+  if (conta === null) return json({ erro: "conta não existe mais" }, 401);
+  await revogarSessao(env.DB, s.id, agora);
+  return emitir(env, conta, { id: uuid(), conta_id: conta.id, familia: s.familia, device_id: s.device_id, app: s.app, versao_app: s.versao_app, criada_em: agora, usada_em: agora, expira_em: maisSegundos(refreshTtlS(env.CANAL)) }, segredo(32));
+}

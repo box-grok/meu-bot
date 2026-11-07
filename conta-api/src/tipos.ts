@@ -1,0 +1,77 @@
+/** Tipos da API da conta: o ambiente do Worker, as linhas do D1 e o que a API devolve ao app. */
+
+export interface Env {
+  DB: D1Database;
+  ASSETS: Fetcher;
+  CANAL: "producao" | "staging";
+  /** Origem da página de login (CORS do /sessao) e da API (a página chama esta). */
+  AUTH_ORIGIN: string;
+  API_ORIGIN: string;
+  FIREBASE_PROJECT_ID: string;
+  FIREBASE_API_KEY: string;
+  FIREBASE_AUTH_DOMAIN: string;
+  /** Primeiro super admin: entra em `admins` no primeiro login dele. */
+  ADMIN_BOOTSTRAP_EMAIL: string;
+  /** Secret: chave HMAC (base64) dos tokens de acesso. */
+  SESSAO_HMAC_KEY: string;
+  /** Secret: privada Ed25519 da licença (PKCS#8 DER base64); só a partir da PR 5. */
+  LICENCA_PRIVATE_KEY?: string;
+}
+
+export interface ContaLinha {
+  id: string; firebase_uid: string; email: string; email_verificado: number; nome: string | null; foto: string | null;
+  criada_em: string; atualizada_em: string; apagada_em: string | null;
+}
+export interface LicencaLinha {
+  conta_id: string; plan: string; status: string; interval: string | null; member_since: string; trial_end: string | null;
+  expires_at: string | null; device_limit: number; produtos: string; pagamento: string | null; updated_at: string; updated_by: string;
+}
+export interface DeviceLinha {
+  conta_id: string; id: string; alias_legado: string | null; name: string | null; user: string | null; platform: string | null;
+  status: string; requested_at: string | null; first_seen: string; last_seen: string; apps: string;
+}
+export interface MaquinaLinha { id: string; conta_id: string | null; apelido: string | null; vinculada_por: string; criada_em: string; ultima_emissao_em: string | null; ultimo_hello_em: string | null }
+export interface SessaoLinha {
+  id: string; conta_id: string; refresh_hash: string; familia: string; device_id: string | null; app: string | null; versao_app: string | null;
+  criada_em: string; usada_em: string; expira_em: string; revogada_em: string | null;
+}
+export interface CodigoLinha { code: string; conta_id: string; state: string; challenge: string; esquema: string; app: string | null; versao_app: string | null; criado_em: string; expira_em: string; usado_em: string | null }
+
+/** Mesmo esquema de License em src/shared/ipc/licenca.ts (o app confere o alinhamento por teste). */
+export interface License {
+  plan: "free" | "pro";
+  status: "free" | "trialing" | "active" | "expired";
+  interval: "month" | "year" | null;
+  memberSince: string;
+  trialEnd: string | null;
+  expiresAt: string | null;
+  deviceLimit: number;
+  produtos: string[];
+  pagamento: { instrucoes: string; link: string | null } | null;
+  updatedAt: string;
+  updatedBy: "admin" | "system";
+}
+/** Um device da conta como a API o devolve (o app monta o LicenseDevice da tela a partir daqui). */
+export interface DeviceApi {
+  id: string; alias: string | null; name: string; user: string; platform: string; status: "active" | "pending";
+  requestedAt: string | null; firstSeen: string; lastSeen: string; apps: Record<string, { version: string; lastSeen: string }>;
+  /** É o device desta sessão. */
+  este: boolean;
+}
+/** O que `GET /conta` e `POST /token` devolvem: a conta como o app a mostra. */
+export interface ContaApi {
+  id: string;
+  email: string;
+  nome: string | null;
+  foto: string | null;
+  admin: "super" | "admin" | null;
+  licenca: License;
+  devices: DeviceApi[];
+  maquinas: { id: string; apelido: string | null; vinculadaPor: string }[];
+  /** Pedidos abertos desta conta (Pro, add-on, device). */
+  pedidos: number;
+}
+/** O que o app manda no `POST /token` para se registrar como device. */
+export interface DevicePedido { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string }
+/** Claims do token de acesso (HS256, 1 h). */
+export interface AcessoClaims { sub: string; sid: string; dev: string | null; adm: "super" | "admin" | null; iat: number; exp: number }

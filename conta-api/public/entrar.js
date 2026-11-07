@@ -1,0 +1,85 @@
+// Página de login da conta meu-bot. O app abre esta página com ?state&challenge&esquema&app&v; a pessoa entra com
+// Google (popup) ou com um link por e-mail; o ID token do Firebase vai para a API (POST /sessao), que devolve um
+// código de uso único; e a página manda a pessoa de volta com <esquema>://auth?code&state. Sem os parâmetros do app
+// a página só explica o que é (não há "entrar no site": a conta vive no app).
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+const cfg = window.MEU_BOT_CONTA;
+const $ = (id) => document.getElementById(id);
+const secoes = ["escolha", "aguardando", "email-enviado", "pronto", "erro"];
+const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
+const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
+const CHAVE_EMAIL = "meu-bot-conta-email";
+
+// Os parâmetros do app ficam na URL (o link do e-mail volta para esta mesma URL, então sobrevivem).
+const q = new URLSearchParams(location.search);
+const pedido = { state: q.get("state") ?? "", challenge: q.get("challenge") ?? "", esquema: q.get("esquema") ?? "", app: q.get("app") ?? "", v: q.get("v") ?? "" };
+const pedidoOk = TOKEN_RE.test(pedido.state) && CHALLENGE_RE.test(pedido.challenge) && ESQUEMA_RE.test(pedido.esquema);
+
+$("canal").textContent = cfg.canal === "staging" ? "staging" : "";
+$("app-info").textContent = pedido.app ? `${pedido.app}${pedido.v ? ` ${pedido.v}` : ""}` : "";
+
+function falhou(texto) { $("erro-texto").textContent = texto; mostrar("erro"); }
+
+if (!pedidoOk) {
+  $("sub").textContent = "Esta página é aberta pelo app meu-bot quando você clica em Entrar. Abra o app e clique lá.";
+  falhou("O link está incompleto: abra pelo botão Entrar do meu-bot.");
+  $("tentar").hidden = true;
+} else {
+  const app = initializeApp({ apiKey: cfg.apiKey, authDomain: cfg.authDomain, projectId: cfg.projectId });
+  const auth = getAuth(app);
+  auth.languageCode = "pt-BR";
+  await setPersistence(auth, browserSessionPersistence).catch(() => undefined);
+
+  async function concluir(user) {
+    mostrar("aguardando");
+    const idToken = await user.getIdToken(true);
+    const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || typeof j.code !== "string") { falhou(j.erro ?? `a API respondeu ${r.status}`); return; }
+    const volta = `${pedido.esquema}://auth?code=${encodeURIComponent(j.code)}&state=${encodeURIComponent(pedido.state)}`;
+    $("abrir-app").href = volta;
+    $("codigo").textContent = j.code;
+    mostrar("pronto");
+    // O navegador pergunta "abrir o meu-bot?" e o app recebe a URL; a página fica como está, com o botão para repetir.
+    location.href = volta;
+  }
+
+  $("btn-google").addEventListener("click", async () => {
+    mostrar("aguardando");
+    try { const cred = await signInWithPopup(auth, new GoogleAuthProvider()); await concluir(cred.user); }
+    catch (e) { falhou(e?.code === "auth/popup-closed-by-user" ? "A janela do Google foi fechada antes de terminar." : `Google: ${e?.message ?? e}`); }
+  });
+
+  $("form-email").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const email = $("email").value.trim().toLowerCase();
+    if (!email) return;
+    $("btn-email").disabled = true;
+    try {
+      await sendSignInLinkToEmail(auth, email, { url: location.href, handleCodeInApp: true });
+      try { localStorage.setItem(CHAVE_EMAIL, email); } catch { /* sem localStorage: a volta pede o e-mail */ }
+      $("email-destino").textContent = email;
+      mostrar("email-enviado");
+    } catch (e) { falhou(`E-mail: ${e?.message ?? e}`); }
+    finally { $("btn-email").disabled = false; }
+  });
+
+  $("tentar").addEventListener("click", () => mostrar("escolha"));
+
+  if (isSignInWithEmailLink(auth, location.href)) {
+    // Voltou pelo link do e-mail: o e-mail fica guardado neste navegador; se não está (outro navegador), pergunta.
+    let email = null;
+    try { email = localStorage.getItem(CHAVE_EMAIL); } catch { email = null; }
+    if (!email) email = window.prompt("Confirme o e-mail que recebeu o link:");
+    if (!email) { mostrar("escolha"); }
+    else {
+      mostrar("aguardando");
+      try { const cred = await signInWithEmailLink(auth, email.trim().toLowerCase(), location.href); try { localStorage.removeItem(CHAVE_EMAIL); } catch { /* ok */ } await concluir(cred.user); }
+      catch (e) { falhou(`O link não serviu (${e?.code ?? e}). Peça um novo.`); }
+    }
+  } else {
+    mostrar("escolha");
+  }
+}
