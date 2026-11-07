@@ -187,7 +187,9 @@ export async function sair(): Promise<ContaView> {
   if (s !== null) { const resp = await api("POST", "/sessao/sair", {}, s.acesso); if (resp.status !== 200) log(`[conta] sair: a API respondeu ${resp.status} (${erroDaApi(resp.status, resp.corpo)}); a cópia local sai mesmo assim`); }
   apagarSessao(); gravarPendente(null); erro = null;
   log("[conta] saiu");
-  const v = avisar();
+  avisar();
   saiu();
-  return v;
+  // Como o Rambox: sair já abre a página de login no navegador (trocar de conta é o caso comum); o seletor fica no
+  // portão "aguardando", com Cancelar.
+  return entrar();
 }
