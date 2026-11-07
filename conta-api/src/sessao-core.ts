@@ -124,7 +124,9 @@ export function validaDevice(raw: unknown): DeviceValido | { erro: string } {
   return { id, alias, name: campo("name"), user: campo("user"), platform: str(raw.platform, /^(darwin|win32|linux)$/) ?? "", app, versao };
 }
 
-export type PedidoToken = { grant: "code"; code: string; verifier: string; device: DeviceValido } | { grant: "refresh"; refresh: string };
+/** Esquema reservado do console web: o código volta para o console (sem device nem refresh), não para um app. */
+export const ESQUEMA_WEB = "web";
+export type PedidoToken = { grant: "code"; code: string; verifier: string; device: DeviceValido } | { grant: "refresh"; refresh: string } | { grant: "web"; code: string; verifier: string };
 export function validaPedidoToken(raw: unknown): PedidoToken | { erro: string } {
   if (!isObj(raw)) return { erro: "corpo inválido" };
   if (raw.grant === "code") {
@@ -140,7 +142,13 @@ export function validaPedidoToken(raw: unknown): PedidoToken | { erro: string } 
     if (refresh === null) return { erro: "refresh ausente ou fora do formato" };
     return { grant: "refresh", refresh };
   }
-  return { erro: "grant desconhecido (code | refresh)" };
+  if (raw.grant === "web") {
+    const code = str(raw.code, TOKEN_RE), verifier = str(raw.verifier, VERIFIER_RE);
+    if (code === null) return { erro: "code ausente ou fora do formato" };
+    if (verifier === null) return { erro: "verifier (PKCE) ausente ou fora do formato" };
+    return { grant: "web", code, verifier };
+  }
+  return { erro: "grant desconhecido (code | refresh | web)" };
 }
 
 /** Admissão de um device (cópia de admitDevice do backend-colima/licenca.js): conhecido mantém; novo cabe até o limite. */
