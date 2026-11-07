@@ -178,7 +178,82 @@ function mergeApps(prev, produto, version, now = Date.now()) {
   return apps;
 }
 
+// ---- Licença da CONTA assinada (licenca.json v2). Cópia de src/main/conta/licenca-assinada-core.ts: a API da conta
+// (conta.agentesgrok.com) assina os bytes JSON exatos do payload com Ed25519; `payload` guarda esses bytes em
+// base64url e `sig` a assinatura crua em base64. O backend verifica com as públicas abaixo e usa o payload como
+// verdade; os campos de topo do arquivo são só espelho legível. O teste licenca-assinada-core confere que as duas
+// cópias (chaves e decisão) batem.
+const { createPublicKey, verify } = require('node:crypto');
+/** Chaves públicas Ed25519 da licença (SPKI DER em base64): a principal assina; a reserva serve para trocar de chave. */
+const LICENCA_PUBLIC_KEYS = [
+  { id: 'licenca-2026-11', chave: 'MCowBQYDK2VwAyEA+E6wqc9j/NjhAhNLnLtDT1GLmA0cchXaepFJ0rLt3Zg=' },
+];
+const DEVICE_ID_RE = /^(?:[a-f0-9]{12}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const B64URL_RE = /^[A-Za-z0-9_-]+$/;
+
+/** A assinatura Ed25519 crua (base64) confere com alguma das chaves (SPKI DER base64)? Qualquer erro = não. */
+function verificaAssinatura(bytes, sig, chaves) {
+  let s;
+  try { s = Buffer.from(String(sig).trim(), 'base64'); } catch { return false; }
+  if (s.length !== 64) return false;
+  for (const chave of chaves) {
+    try { if (verify(null, bytes, createPublicKey({ key: Buffer.from(chave, 'base64'), format: 'der', type: 'spki' }), s)) return true; } catch { /* chave inválida: tenta a próxima */ }
+  }
+  return false;
+}
+function parseLicencaAssinada(raw) {
+  if (!isObj(raw)) return null;
+  const { kid, payload, sig } = raw;
+  if (typeof kid !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(kid)) return null;
+  if (typeof payload !== 'string' || payload === '' || !B64URL_RE.test(payload)) return null;
+  if (typeof sig !== 'string' || !/^[A-Za-z0-9+/]{86}==\s*$/.test(sig)) return null;
+  return { kid, payload, sig: sig.trim() };
+}
+/** O payload decodificado, validado campo a campo; null se não é o que a API emite. */
+function parsePayloadLicenca(raw, now = Date.now()) {
+  if (!isObj(raw) || raw.v !== 2) return null;
+  const { conta, maquina, emitidaEm, exp, devices } = raw;
+  if (!isObj(conta) || typeof conta.id !== 'string' || !UUID_RE.test(conta.id) || typeof conta.email !== 'string' || conta.email === '') return null;
+  if (typeof maquina !== 'string' || !UUID_RE.test(maquina)) return null;
+  if (!isIso(emitidaEm) || !isIso(exp) || Date.parse(exp) < Date.parse(emitidaEm)) return null;
+  if (!isObj(raw.licenca) || !Array.isArray(devices)) return null;
+  const ds = [];
+  for (const d of devices) {
+    if (!isObj(d) || typeof d.id !== 'string' || !DEVICE_ID_RE.test(d.id)) return null;
+    if (d.status !== 'active' && d.status !== 'pending') return null;
+    ds.push({ id: d.id, status: d.status });
+  }
+  return { v: 2, conta: { id: conta.id, email: conta.email }, maquina, emitidaEm, exp, licenca: parseLicense(raw.licenca, now), devices: ds };
+}
+/**
+ * Verifica um licenca.json (o objeto inteiro, ou só o bloco `assinada`): assinatura pela chave `kid` (ou qualquer
+ * aceita), payload no formato da API e ainda não vencido; `maquina` dado = tem de ser desta máquina. Nunca lança.
+ * Devolve { ok: true, payload, kid } ou { ok: false, motivo: 'sem-assinatura' | 'formato' | 'assinatura' | 'expirada' }.
+ */
+function verificaLicencaAssinada(raw, opts = {}) {
+  const chaves = opts.chaves || LICENCA_PUBLIC_KEYS, now = opts.now === undefined ? Date.now() : opts.now;
+  if (!isObj(raw)) return { ok: false, motivo: 'sem-assinatura' };
+  // O licenca.json inteiro (bloco em `assinada`; v1 legado não o tem) ou o bloco sozinho (tem `payload` e `sig`).
+  const bloco = 'assinada' in raw ? raw.assinada : 'payload' in raw && 'sig' in raw ? raw : undefined;
+  if (bloco === undefined || bloco === null) return { ok: false, motivo: 'sem-assinatura' };
+  const a = parseLicencaAssinada(bloco);
+  if (a === null) return { ok: false, motivo: 'formato' };
+  const bytes = Buffer.from(a.payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+  const daKid = chaves.filter((k) => k.id === a.kid).map((k) => k.chave);
+  if (!verificaAssinatura(bytes, a.sig, daKid.length > 0 ? daKid : chaves.map((k) => k.chave))) return { ok: false, motivo: 'assinatura' };
+  let json;
+  try { json = JSON.parse(bytes.toString('utf8')); } catch { return { ok: false, motivo: 'formato' }; }
+  const payload = parsePayloadLicenca(json, now);
+  if (payload === null) return { ok: false, motivo: 'formato' };
+  if (opts.maquina !== undefined && payload.maquina !== opts.maquina) return { ok: false, motivo: 'formato' };
+  if (Date.parse(payload.exp) < now) return { ok: false, motivo: 'expirada' };
+  return { ok: true, payload, kid: a.kid };
+}
+
 module.exports = {
+  LICENCA_PUBLIC_KEYS, DEVICE_ID_RE, UUID_RE, verificaLicencaAssinada, parsePayloadLicenca, parseLicencaAssinada,
   ADDONS, ADDONS_DO_PERSONALIZADO, NAO_ADDON: [...NAO_ADDON],
   PLANS,
   isActive,

@@ -110,6 +110,15 @@ export function nomesReservados(): Set<string> {
   return r;
 }
 
+/**
+ * Esquema de URL (deep link) de um produto: `meu-bot://`, `meu-bot-staging://`… É o próprio nome do app, que já é
+ * único e válido como scheme (RFC 3986: letra, depois letras, dígitos e hífen). Um por variante, para o staging não
+ * roubar o retorno do login do estável. Entra no Info.plist (CFBundleURLTypes, scripts/package.mjs) e no
+ * `setAsDefaultProtocolClient` (src/main/conta/deep-link.ts).
+ */
+export const ESQUEMA_RE = /^[a-z][a-z0-9-]*$/;
+export const esquemaDe = (p: Produto): string => p.nome;
+
 export function produtoDe(v: AppVariant): Produto {
   const p = PRODUTOS.find((x) => x.variant === v);
   if (p === undefined) throw new Error(`produto desconhecido: ${v}`);

@@ -28,6 +28,7 @@
     "icons": "npm run build:main && node scripts/icons.mjs",
     "assinatura": "node scripts/assinatura.mjs --criar",
     "chave-release": "node scripts/chave-release.mjs",
+    "chave-licenca": "node scripts/chave-licenca.mjs",
     "dist:finance-staging": "node scripts/dist.mjs --variant finance-staging"
   },
   "devDependencies": {
