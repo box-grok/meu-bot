@@ -75,10 +75,15 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
 
 /** O console não carrega Firebase: só o próprio JS e a API. */
 const cspDoConsole = (env: Env): string => ["default-src 'self'", "script-src 'self'", `connect-src 'self' ${env.API_ORIGIN}`, "img-src 'self' data: https:", "style-src 'self'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
-/** /account/* e a raiz são a mesma página (o JS escolhe a seção pelo caminho); o resto são os assets de public/console/. */
+/**
+ * O console é uma página só: /account/*, /organizations/*, /enterprise/<slug> e qualquer outro caminho servem o
+ * index.html (o JS escolhe a seção pelo caminho e manda o desconhecido para a visão geral); só o que tem extensão
+ * de arquivo é asset de public/console/. Antes, um caminho desconhecido era um 404 vazio, que o navegador mostra
+ * como página de erro.
+ */
 async function consolePagina(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, canal: env.CANAL }), {});
-  const caminho = url.pathname === "/" || url.pathname === "/account" || url.pathname.startsWith("/account/") || url.pathname === "/organizations" || url.pathname.startsWith("/organizations/") ? "/console/index.html" : url.pathname;
+  const caminho = /\.[a-z0-9]{1,8}$/i.test(url.pathname) && !url.pathname.endsWith(".html") ? url.pathname : "/console/index.html";
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Tudo sem cache: o console muda junto com a API, e um JS velho de 5 min já mostrou tela errada depois de um deploy.
   return comCabecalhos(res, { "content-security-policy": cspDoConsole(env), "cache-control": "no-store" });
