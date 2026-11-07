@@ -18,11 +18,11 @@ import { gravar, temKeychain } from "../google/comum";
 import { log } from "../maquina/tunnel";
 import { parseRetornoAuth } from "./deep-link-core";
 import { deviceIdentidade, devicePedido } from "./device";
-import { URLS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin, type LoginPendente, type SessaoGuardada } from "./conta-core";
+import { FOTO_MAX, URLS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin, type LoginPendente, type SessaoGuardada } from "./conta-core";
 
 const ARQ = (): string => path.join(app.getPath("userData"), "conta.bin");
 const ARQ_LOGIN = (): string => path.join(app.getPath("userData"), "conta-login.json");
-const urls = (): { auth: string; api: string } => URLS[produto().canal];
+const urls = (): { auth: string; api: string; console: string } => URLS[produto().canal];
 const TEMPO_API_MS = 20_000;
 
 let sessao: SessaoGuardada | null | undefined; // undefined = ainda não lida neste processo
@@ -39,10 +39,11 @@ function lerSessao(): SessaoGuardada | null {
     const s = parseSessao(JSON.parse(safeStorage.decryptString(fs.readFileSync(f))));
     if (s === null) log("[conta] conta.bin não tem uma sessão válida; ignorado");
     sessao = s;
+    if (s !== null) garantirFoto(s);
   } catch (e) { log(`[conta] não decifrou conta.bin: ${e instanceof Error ? e.message : String(e)}`); return null; } // Chaveiro negado: tenta de novo na próxima leitura
   return sessao;
 }
-function gravarSessao(s: SessaoGuardada): void { sessao = s; gravar(ARQ(), safeStorage.encryptString(JSON.stringify(s))); }
+function gravarSessao(s: SessaoGuardada): void { sessao = s; gravar(ARQ(), safeStorage.encryptString(JSON.stringify(s))); garantirFoto(s); }
 function apagarSessao(): void { sessao = null; try { fs.rmSync(ARQ(), { force: true }); } catch { /* ok */ } }
 function lerPendente(): LoginPendente | null {
   if (pendente === undefined) { try { pendente = parseLoginPendente(JSON.parse(fs.readFileSync(ARQ_LOGIN(), "utf8"))); } catch { pendente = null; } }
@@ -56,7 +57,28 @@ function gravarPendente(p: LoginPendente | null): void {
 
 export function contaView(): ContaView {
   const s = lerSessao(), p = lerPendente();
-  return { situacao: s !== null ? "dentro" : erro !== null ? "erro" : p !== null ? "entrando" : "fora", conta: s?.conta ?? null, erro, keychain: temKeychain(), canal: produto().canal, device: deviceIdentidade().id, urlLogin: urls().auth };
+  return { situacao: s !== null ? "dentro" : erro !== null ? "erro" : p !== null ? "entrando" : "fora", conta: s?.conta ?? null, foto: s?.fotoLocal ?? null, erro, keychain: temKeychain(), canal: produto().canal, device: deviceIdentidade().id, urlLogin: urls().auth, urlConsole: urls().console };
+}
+/** A foto do perfil vem de fora (Google) e a CSP da janela só deixa `data:`: o main baixa uma vez e guarda junto da sessão. */
+let fotoBuscando: string | null = null;
+function garantirFoto(s: SessaoGuardada): void {
+  const url = s.conta.foto;
+  if (url === null || s.fotoLocal !== null || fotoBuscando === url) return;
+  fotoBuscando = url;
+  void (async () => {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(TEMPO_API_MS) });
+      const tipo = r.headers.get("content-type") ?? "";
+      if (!r.ok || !/^image\/(png|jpeg|webp|gif)/.test(tipo)) return;
+      const bytes = Buffer.from(await r.arrayBuffer());
+      if (bytes.length > FOTO_MAX) return;
+      const atual = lerSessao();
+      if (atual === null || atual.conta.foto !== url) return;
+      gravarSessao({ ...atual, fotoLocal: `data:${tipo.split(";")[0]};base64,${bytes.toString("base64")}` });
+      avisar();
+    } catch (e) { log(`[conta] foto do perfil não veio: ${e instanceof Error ? e.message : String(e)}`); }
+    finally { fotoBuscando = null; }
+  })();
 }
 const avisar = (): ContaView => { const v = contaView(); broadcast("conta:changed", v); return v; };
 
@@ -110,7 +132,7 @@ export async function tokenDeAcesso(): Promise<string | null> {
 async function renovar(s: SessaoGuardada): Promise<SessaoGuardada | null> {
   const resp = await api("POST", "/token", { grant: "refresh", refresh: s.refresh });
   const novo = resp.status === 200 ? parseSessao(resp.corpo) : null;
-  if (novo !== null) { gravarSessao(novo); erro = null; avisar(); return novo; }
+  if (novo !== null) { gravarSessao({ ...novo, fotoLocal: novo.conta.foto === s.conta.foto ? s.fotoLocal : null }); erro = null; avisar(); return novo; }
   if (sessaoAcabou(resp.status)) { apagarSessao(); erro = erroDaApi(resp.status, resp.corpo); log(`[conta] sessão acabou: ${erro}`); avisar(); return null; }
   log(`[conta] renovar falhou (${resp.status}): ${erroDaApi(resp.status, resp.corpo)}; a sessão continua até a próxima tentativa`);
   return s; // rede ou API fora: o acesso guardado ainda pode valer
@@ -121,7 +143,7 @@ export async function atualizarConta(): Promise<ContaView> {
   const s = lerSessao();
   if (tok === null || s === null) return contaView();
   const resp = await api("GET", "/conta", null, tok);
-  if (resp.status === 200) { const c = parseContaInfo(resp.corpo); if (c !== null) { gravarSessao({ ...s, conta: c }); erro = null; } }
+  if (resp.status === 200) { const c = parseContaInfo(resp.corpo); if (c !== null) { gravarSessao({ ...s, conta: c, fotoLocal: c.foto === s.conta.foto ? s.fotoLocal : null }); erro = null; } }
   else if (sessaoAcabou(resp.status)) { apagarSessao(); erro = erroDaApi(resp.status, resp.corpo); log(`[conta] sessão acabou: ${erro}`); }
   else log(`[conta] GET /conta falhou (${resp.status}): ${erroDaApi(resp.status, resp.corpo)}`);
   return avisar();

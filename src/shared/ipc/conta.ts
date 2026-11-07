@@ -43,6 +43,8 @@ export type ContaSituacao = "fora" | "entrando" | "dentro" | "erro";
 export interface ContaView {
   situacao: ContaSituacao;
   conta: ContaInfo | null;
+  /** Foto do perfil já baixada pelo main, em data URL (a janela não carrega imagem de fora); null = sem foto ainda. */
+  foto: string | null;
   erro: string | null;
   /** O Chaveiro cifra o arquivo da sessão (no staging é só ofuscação: use-mock-keychain). */
   keychain: boolean;
@@ -52,4 +54,6 @@ export interface ContaView {
   device: string;
   /** Página de login (para a tela dizer onde o navegador foi). */
   urlLogin: string;
+  /** Console da conta no navegador (perfil, plano, devices): o menu da conta leva até lá. */
+  urlConsole: string;
 }

@@ -29,6 +29,7 @@ test("urlDeLogin: página do canal com esquema, state, challenge, app e versão 
   assert.equal(u.origin, "https://auth-staging.agentesgrok.com"); assert.equal(u.pathname, "/entrar");
   assert.equal(u.searchParams.get("esquema"), "meu-bot-staging"); assert.equal(u.searchParams.get("v"), "0.79.0"); assert.equal(u.searchParams.get("challenge"), "c");
   assert.equal(URLS.estavel.api, "https://conta.agentesgrok.com");
+  assert.equal(URLS.staging.console, "https://console-staging.agentesgrok.com");
 });
 
 test("parseContaInfo: e-mail em minúsculas, devices e máquinas fora do formato caem, licença pelo parse da máquina", () => {
@@ -44,7 +45,9 @@ test("parseContaInfo: e-mail em minúsculas, devices e máquinas fora do formato
 
 test("parseSessao: a resposta do /token e o conta.bin; refresh, acesso (JWT) e expiraEm obrigatórios", () => {
   const s = parseSessao(sessao(), AGORA);
-  assert.equal(s.conta.email, "ana@exemplo.com"); assert.equal(s.expiraEm, "2026-11-07T13:00:00.000Z");
+  assert.equal(s.conta.email, "ana@exemplo.com"); assert.equal(s.expiraEm, "2026-11-07T13:00:00.000Z"); assert.equal(s.fotoLocal, null);
+  assert.equal(parseSessao({ ...sessao(), fotoLocal: "data:image/png;base64,iVBORw0KGgo=" }).fotoLocal, "data:image/png;base64,iVBORw0KGgo=");
+  assert.equal(parseSessao({ ...sessao(), fotoLocal: "https://x/y.png" }).fotoLocal, null, "só data URL de imagem");
   assert.equal(parseSessao({ ...sessao(), acesso: "nao-e-jwt" }), null);
   assert.equal(parseSessao({ ...sessao(), expiraEm: "amanhã" }), null);
   assert.equal(parseSessao({ ...sessao(), conta: null }), null);

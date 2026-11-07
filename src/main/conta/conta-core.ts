@@ -9,9 +9,9 @@ import type { ContaDevice, ContaInfo, ContaMaquina } from "../../shared/ipc";
 import { DEVICE_ID_RE, parseLicense, UUID_RE } from "../licenca/licenca";
 
 /** Página de login e API, por canal: o staging nunca fala com a produção (conta e D1 separados). */
-export const URLS: Record<Canal, { auth: string; api: string }> = {
-  estavel: { auth: "https://auth.agentesgrok.com", api: "https://conta.agentesgrok.com" },
-  staging: { auth: "https://auth-staging.agentesgrok.com", api: "https://conta-staging.agentesgrok.com" },
+export const URLS: Record<Canal, { auth: string; api: string; console: string }> = {
+  estavel: { auth: "https://auth.agentesgrok.com", api: "https://conta.agentesgrok.com", console: "https://console.agentesgrok.com" },
+  staging: { auth: "https://auth-staging.agentesgrok.com", api: "https://conta-staging.agentesgrok.com", console: "https://console-staging.agentesgrok.com" },
 };
 /** Code do deep link e `state`: 32 bytes em base64url (43 caracteres), como TOKEN_RE do Worker. */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -43,7 +43,10 @@ export function urlDeLogin(auth: string, p: { esquema: string; state: string; ch
 }
 
 /** O que o app guarda cifrado (conta.bin): a sessão e a última cópia da conta. É o mesmo formato que `POST /token` devolve. */
-export interface SessaoGuardada { refresh: string; acesso: string; expiraEm: string; conta: ContaInfo }
+export interface SessaoGuardada { refresh: string; acesso: string; expiraEm: string; conta: ContaInfo; /** Foto do perfil em data URL (a CSP da janela não deixa carregar de fora); null = não buscada ou sem foto. */ fotoLocal: string | null }
+/** Teto da foto guardada em data URL; um avatar do Google fica bem abaixo. */
+export const FOTO_MAX = 512 * 1024;
+export const fotoLocalOk = (v: unknown): v is string => typeof v === "string" && /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(v) && v.length <= FOTO_MAX * 1.4;
 
 const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
 const strOuNull = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
@@ -90,7 +93,7 @@ export function parseSessao(raw: unknown, now: number = Date.now()): SessaoGuard
   if (refresh === null || !TOKEN_RE.test(refresh) || acesso === null || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(acesso) || expiraEm === null) return null;
   const conta = parseContaInfo(r.conta, now);
   if (conta === null) return null;
-  return { refresh, acesso, expiraEm, conta };
+  return { refresh, acesso, expiraEm, conta, fotoLocal: fotoLocalOk(r.fotoLocal) ? r.fotoLocal : null };
 }
 /** O token de acesso está perto de vencer (ou a data não é legível): renova antes de usar. */
 export function deveRenovar(expiraEm: string, now: number = Date.now()): boolean {
