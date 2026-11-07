@@ -42,6 +42,9 @@ test("validaPedidoSessao: campos do app e o idToken no formato de JWT", () => {
   assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot" }).app, null, "app é opcional");
   assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", metodo: "emailLink" }).metodo, "emailLink");
   assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", metodo: "facebook" }).metodo, null, "método fora da lista é ignorado");
+  assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", org: "coflow" }).org, "coflow");
+  assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", org: "" }).org, null, "org vazia é como ausente");
+  assert.match(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", org: "Co Flow" }).erro, /org/);
   assert.match(validaPedidoSessao({ idToken: "x", state: segredo(), challenge: segredo(), esquema: "meu-bot" }).erro, /idToken/);
   assert.match(validaPedidoSessao({ idToken: "a.b.c", state: "s", challenge: segredo(), esquema: "meu-bot" }).erro, /state/);
   assert.match(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: "c", esquema: "meu-bot" }).erro, /challenge/);

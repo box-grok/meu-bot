@@ -1,6 +1,6 @@
 /** Acesso ao D1: consultas tipadas, uma função por intenção. O que sai do banco é dado; quem decide é a rota. */
-import type { AdminContaResumo, AdminPedido, AdminPerfil, AdminVisao, CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, PerfilApi, SessaoLinha } from "./tipos.js";
-import { agoraIso, nomeExibicao, parseProvedores, provedoresDoLogin, unirProvedores, uuid, type MetodoLogin, type PatchLicenca, type PatchPerfil } from "./sessao-core.js";
+import type { AdminContaResumo, AdminOrg, AdminPedido, AdminPerfil, AdminVisao, CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, MembroApi, MembroLinha, OrgApi, OrgLinha, OrgResumo, PapelOrg, PerfilApi, SessaoLinha } from "./tipos.js";
+import { agoraIso, nomeExibicao, parseProvedores, provedoresDoLogin, unirProvedores, uuid, type MetodoLogin, type PatchLicenca, type PatchOrg, type PatchPerfil } from "./sessao-core.js";
 import type { UsuarioFirebase } from "./firebase.js";
 
 export async function contaPorUid(db: D1Database, uid: string): Promise<ContaLinha | null> {
@@ -62,6 +62,7 @@ export async function apagarConta(db: D1Database, conta: ContaLinha, agora = ago
       .bind(conta.id, agora, `apagada:${conta.id}:${conta.email}`, `apagada:${conta.id}:${conta.firebase_uid}`),
     db.prepare("UPDATE sessoes SET revogada_em = ?2 WHERE conta_id = ?1 AND revogada_em IS NULL").bind(conta.id, agora),
     db.prepare("UPDATE devices SET name = NULL, user = NULL, platform = NULL, apps = '{}' WHERE conta_id = ?1").bind(conta.id),
+    db.prepare("DELETE FROM membros WHERE conta_id = ?1").bind(conta.id),
   ]);
 }
 /** Houve uma conta apagada com este e-mail? (quem apaga e volta não ganha trial de novo). */
@@ -180,13 +181,13 @@ export async function auditar(db: D1Database, quem: string, acao: string, contaI
 
 /** A conta como o app a vê: licença, devices (com "este"), máquinas, pedidos e o papel de admin. */
 export async function montarContaApi(db: D1Database, conta: ContaLinha, admin: "super" | "admin" | null, deviceAtual: string | null): Promise<ContaApi> {
-  const [licenca, devices, maquinas, pedidos] = await Promise.all([licencaDaConta(db, conta), devicesDaConta(db, conta.id), maquinasDaConta(db, conta.id), pedidosAbertos(db, conta.id)]);
+  const [licenca, devices, maquinas, pedidos, orgs] = await Promise.all([licencaDaConta(db, conta), devicesDaConta(db, conta.id), maquinasDaConta(db, conta.id), pedidosAbertos(db, conta.id), orgsDaConta(db, conta.id)]);
   const ds: DeviceApi[] = devices.map((d) => {
     let apps: DeviceApi["apps"] = {};
     try { const a: unknown = JSON.parse(d.apps); if (a !== null && typeof a === "object") apps = a as DeviceApi["apps"]; } catch { apps = {}; }
     return { id: d.id, alias: d.alias_legado, name: d.name ?? "", user: d.user ?? "", platform: d.platform ?? "", status: d.status === "pending" ? "pending" : "active", requestedAt: d.requested_at, firstSeen: d.first_seen, lastSeen: d.last_seen, apps, este: deviceAtual !== null && (d.id === deviceAtual || d.alias_legado === deviceAtual) };
   });
-  return { id: conta.id, email: conta.email, nome: nomeExibicao(conta), nomeLogin: conta.nome, foto: conta.foto, perfil: perfilDaLinha(conta), provedores: parseProvedores(conta.provedores), dadosUso: conta.dados_uso !== 0, admin, licenca, devices: ds, maquinas: maquinas.map((m) => ({ id: m.id, apelido: m.apelido, vinculadaPor: m.vinculada_por })), pedidos };
+  return { id: conta.id, email: conta.email, nome: nomeExibicao(conta), nomeLogin: conta.nome, foto: conta.foto, perfil: perfilDaLinha(conta), provedores: parseProvedores(conta.provedores), dadosUso: conta.dados_uso !== 0, admin, licenca, devices: ds, maquinas: maquinas.map((m) => ({ id: m.id, apelido: m.apelido, vinculadaPor: m.vinculada_por })), pedidos, orgs };
 }
 
 // ---- Admin: a visão de todas as contas. `busca` filtra por e-mail ou nome (LIKE, escapado); até 500 contas.
@@ -199,14 +200,16 @@ interface PedidoLinha { id: string; conta_id: string; tipo: string; detalhe: str
 export async function visaoAdmin(db: D1Database, busca: string): Promise<AdminVisao> {
   const like = `%${busca.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
   const contas = (await db.prepare("SELECT * FROM contas WHERE apagada_em IS NULL AND (?1 = '' OR email LIKE ?2 ESCAPE '\\' OR nome LIKE ?2 ESCAPE '\\' OR nome_proprio LIKE ?2 ESCAPE '\\' OR sobrenome LIKE ?2 ESCAPE '\\') ORDER BY criada_em DESC LIMIT 500").bind(busca, like).all<ContaLinha>()).results;
-  const [licencas, devices, maquinas, pedidosN, admins, pedidos] = await Promise.all([
+  const [licencas, devices, maquinas, pedidosN, admins, pedidos, orgsLinhas] = await Promise.all([
     db.prepare("SELECT * FROM licencas").all<LicencaLinha>(),
     db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all<DeviceLinha>(),
     db.prepare("SELECT conta_id, COUNT(*) AS n FROM maquinas WHERE conta_id IS NOT NULL GROUP BY conta_id").all<{ conta_id: string; n: number }>(),
     db.prepare("SELECT conta_id, COUNT(*) AS n FROM pedidos WHERE atendido_em IS NULL GROUP BY conta_id").all<{ conta_id: string; n: number }>(),
     db.prepare("SELECT email, papel, criado_em FROM admins ORDER BY criado_em").all<{ email: string; papel: string; criado_em: string }>(),
     db.prepare("SELECT p.*, c.email, c.nome FROM pedidos p JOIN contas c ON c.id = p.conta_id WHERE p.atendido_em IS NULL ORDER BY p.criado_em DESC LIMIT 500").all<PedidoLinha>(),
+    db.prepare("SELECT o.id, o.slug, o.nome, o.assentos, o.criada_em, c.email AS dona, (SELECT COUNT(*) FROM membros m WHERE m.org_id = o.id) AS membros FROM organizacoes o JOIN contas c ON c.id = o.dona_conta_id WHERE o.apagada_em IS NULL ORDER BY o.criada_em DESC LIMIT 500").all<{ id: string; slug: string; nome: string; assentos: number; criada_em: string; dona: string; membros: number }>(),
   ]);
+  const orgs: AdminOrg[] = orgsLinhas.results.map((o) => ({ id: o.id, slug: o.slug, nome: o.nome, dona: o.dona, membros: o.membros, assentos: o.assentos, criadaEm: o.criada_em }));
   const lic = new Map(licencas.results.map((l) => [l.conta_id, l]));
   const devs = new Map<string, DeviceApi[]>();
   for (const d of devices.results) { const lista = devs.get(d.conta_id) ?? []; lista.push(deviceApi(d)); devs.set(d.conta_id, lista); }
@@ -215,10 +218,10 @@ export async function visaoAdmin(db: D1Database, busca: string): Promise<AdminVi
   const adm = new Map(admins.results.map((a) => [a.email, a.papel === "super" ? "super" as const : "admin" as const]));
   const resumo: AdminContaResumo[] = contas.map((c) => ({ id: c.id, email: c.email, nome: nomeExibicao(c), foto: c.foto, admin: adm.get(c.email) ?? null, criadaEm: c.criada_em, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [], maquinas: maq.get(c.id) ?? 0, pedidos: ped.get(c.id) ?? 0 }));
   const todas = busca === "" ? resumo : (await db.prepare("SELECT id, criada_em FROM contas WHERE apagada_em IS NULL").all<{ id: string; criada_em: string }>()).results.map((c) => ({ id: c.id, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [] }));
-  const totais = { contas: todas.length, pro: todas.filter((c) => c.licenca.plan === "pro").length, devicesPendentes: devices.results.filter((d) => d.status === "pending").length, pedidosAbertos: pedidos.results.length };
+  const totais = { contas: todas.length, pro: todas.filter((c) => c.licenca.plan === "pro").length, devicesPendentes: devices.results.filter((d) => d.status === "pending").length, pedidosAbertos: pedidos.results.length, orgs: orgs.length };
   const emails = new Set((await db.prepare("SELECT email FROM contas WHERE apagada_em IS NULL").all<{ email: string }>()).results.map((c) => c.email));
   const perfis: AdminPerfil[] = admins.results.map((a) => ({ email: a.email, papel: a.papel === "super" ? "super" : "admin", criadoEm: a.criado_em, entrou: emails.has(a.email) }));
-  return { contas: resumo, perfis, pedidos: pedidos.results.map((p): AdminPedido => ({ id: p.id, tipo: p.tipo, detalhe: p.detalhe, maquinaId: p.maquina_id, criadoEm: p.criado_em, atendidoEm: p.atendido_em, atendidoPor: p.atendido_por, conta: { id: p.conta_id, email: p.email, nome: p.nome } })), totais };
+  return { contas: resumo, perfis, pedidos: pedidos.results.map((p): AdminPedido => ({ id: p.id, tipo: p.tipo, detalhe: p.detalhe, maquinaId: p.maquina_id, criadoEm: p.criado_em, atendidoEm: p.atendido_em, atendidoPor: p.atendido_por, conta: { id: p.conta_id, email: p.email, nome: p.nome } })), orgs, totais };
 }
 /** Marca um pedido como atendido; false se não existe ou já estava atendido. */
 export async function atenderPedido(db: D1Database, id: string, quem: string, agora = agoraIso()): Promise<boolean> {
@@ -254,4 +257,81 @@ export async function removerPerfil(db: D1Database, email: string): Promise<bool
 }
 export async function contarSupers(db: D1Database): Promise<number> {
   return (await db.prepare("SELECT COUNT(*) AS n FROM admins WHERE papel = 'super'").first<{ n: number }>())?.n ?? 0;
+}
+
+// ---- Organizações (molde Rambox Enterprise). Membro = (org, e-mail); o convite é a linha sem conta_id.
+const papelOrg = (p: string): PapelOrg => (p === "dona" || p === "admin" ? p : "membro");
+export async function orgPorSlug(db: D1Database, slug: string): Promise<OrgLinha | null> {
+  return (await db.prepare("SELECT * FROM organizacoes WHERE slug = ?1 AND apagada_em IS NULL").bind(slug).first<OrgLinha>()) ?? null;
+}
+/** Cria a organização com a criadora como dona (membro ativo). false = slug já em uso. */
+export async function criarOrg(db: D1Database, conta: ContaLinha, nova: { nome: string; slug: string }, agora = agoraIso()): Promise<OrgLinha | null> {
+  const id = uuid();
+  try {
+    await db.batch([
+      db.prepare("INSERT INTO organizacoes (id, slug, nome, dona_conta_id, dominio_email, assentos, criada_em, atualizada_em) VALUES (?1, ?2, ?3, ?4, NULL, 5, ?5, ?5)").bind(id, nova.slug, nova.nome, conta.id, agora),
+      db.prepare("INSERT INTO membros (org_id, email, conta_id, papel, status, convidado_por, convidado_em, entrou_em) VALUES (?1, ?2, ?3, 'dona', 'ativo', NULL, ?4, ?4)").bind(id, conta.email, conta.id, agora),
+    ]);
+  } catch (e) {
+    if (/UNIQUE/i.test(e instanceof Error ? e.message : String(e))) return null;
+    throw e;
+  }
+  return orgPorSlug(db, nova.slug);
+}
+/** As organizações de que a conta é membro, com o papel dela e a ocupação. */
+export async function orgsDaConta(db: D1Database, contaId: string): Promise<OrgResumo[]> {
+  const r = await db.prepare("SELECT o.id, o.slug, o.nome, o.assentos, m.papel, (SELECT COUNT(*) FROM membros x WHERE x.org_id = o.id) AS membros FROM membros m JOIN organizacoes o ON o.id = m.org_id WHERE m.conta_id = ?1 AND o.apagada_em IS NULL ORDER BY o.criada_em").bind(contaId).all<{ id: string; slug: string; nome: string; assentos: number; papel: string; membros: number }>();
+  return r.results.map((o) => ({ id: o.id, slug: o.slug, nome: o.nome, papel: papelOrg(o.papel), membros: o.membros, assentos: o.assentos }));
+}
+export async function membroPor(db: D1Database, orgId: string, email: string): Promise<MembroLinha | null> {
+  return (await db.prepare("SELECT * FROM membros WHERE org_id = ?1 AND email = ?2").bind(orgId, email).first<MembroLinha>()) ?? null;
+}
+export async function contarMembros(db: D1Database, orgId: string): Promise<number> {
+  return (await db.prepare("SELECT COUNT(*) AS n FROM membros WHERE org_id = ?1").bind(orgId).first<{ n: number }>())?.n ?? 0;
+}
+export async function contarDonas(db: D1Database, orgId: string): Promise<number> {
+  return (await db.prepare("SELECT COUNT(*) AS n FROM membros WHERE org_id = ?1 AND papel = 'dona'").bind(orgId).first<{ n: number }>())?.n ?? 0;
+}
+/** A organização inteira como o console a mostra: membros (com nome e foto de quem já tem conta), dona, ocupação. */
+export async function montarOrgApi(db: D1Database, org: OrgLinha, meuEmail: string, meuPapel: PapelOrg | "super", consoleOrigin: string): Promise<OrgApi> {
+  const [membros, dona] = await Promise.all([
+    db.prepare("SELECT m.*, c.nome, c.nome_proprio, c.sobrenome, c.foto FROM membros m LEFT JOIN contas c ON c.id = m.conta_id WHERE m.org_id = ?1 ORDER BY CASE m.papel WHEN 'dona' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, m.convidado_em").bind(org.id).all<MembroLinha & { nome: string | null; nome_proprio: string | null; sobrenome: string | null; foto: string | null }>(),
+    db.prepare("SELECT email, nome, nome_proprio, sobrenome FROM contas WHERE id = ?1").bind(org.dona_conta_id).first<{ email: string; nome: string | null; nome_proprio: string | null; sobrenome: string | null }>(),
+  ]);
+  const lista: MembroApi[] = membros.results.map((m) => ({ email: m.email, nome: m.conta_id === null ? null : nomeExibicao(m), foto: m.foto, papel: papelOrg(m.papel), status: m.status === "ativo" ? "ativo" : "convidado", convidadoPor: m.convidado_por, convidadoEm: m.convidado_em, entrouEm: m.entrou_em, eu: m.email === meuEmail }));
+  return { id: org.id, slug: org.slug, nome: org.nome, dominioEmail: org.dominio_email, assentos: org.assentos, ocupados: lista.length, criadaEm: org.criada_em, dona: { email: dona?.email ?? "", nome: dona ? nomeExibicao(dona) : null }, meuPapel, membros: lista, url: `${consoleOrigin}/organizations/${org.slug}/members` };
+}
+/** Convida (linha sem conta) ou já ativa, se o e-mail tem conta. */
+export async function gravarConvite(db: D1Database, org: OrgLinha, email: string, papel: "admin" | "membro", quem: string, agora = agoraIso()): Promise<"convidado" | "ativo"> {
+  const conta = (await db.prepare("SELECT id FROM contas WHERE email = ?1 AND apagada_em IS NULL").bind(email).first<{ id: string }>()) ?? null;
+  const status = conta === null ? "convidado" : "ativo";
+  await db.prepare("INSERT INTO membros (org_id, email, conta_id, papel, status, convidado_por, convidado_em, entrou_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)").bind(org.id, email, conta?.id ?? null, papel, status, quem, agora, conta === null ? null : agora).run();
+  return status;
+}
+export async function mudarPapel(db: D1Database, orgId: string, email: string, papel: PapelOrg): Promise<void> {
+  await db.prepare("UPDATE membros SET papel = ?3 WHERE org_id = ?1 AND email = ?2").bind(orgId, email, papel).run();
+}
+export async function removerMembro(db: D1Database, orgId: string, email: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM membros WHERE org_id = ?1 AND email = ?2").bind(orgId, email).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+/** No login: os convites para este e-mail viram membros ativos desta conta. */
+export async function aceitarConvites(db: D1Database, conta: ContaLinha, agora = agoraIso()): Promise<number> {
+  const r = await db.prepare("UPDATE membros SET conta_id = ?2, status = 'ativo', entrou_em = ?3 WHERE email = ?1 AND conta_id IS NULL").bind(conta.email, conta.id, agora).run();
+  return r.meta.changes ?? 0;
+}
+export async function gravarOrg(db: D1Database, org: OrgLinha, patch: PatchOrg, agora = agoraIso()): Promise<OrgLinha> {
+  const nome = patch.nome ?? org.nome, dominio = patch.dominioEmail === undefined ? org.dominio_email : patch.dominioEmail;
+  await db.prepare("UPDATE organizacoes SET nome = ?2, dominio_email = ?3, atualizada_em = ?4 WHERE id = ?1").bind(org.id, nome, dominio, agora).run();
+  return { ...org, nome, dominio_email: dominio, atualizada_em: agora };
+}
+export async function gravarAssentos(db: D1Database, org: OrgLinha, assentos: number, agora = agoraIso()): Promise<void> {
+  await db.prepare("UPDATE organizacoes SET assentos = ?2, atualizada_em = ?3 WHERE id = ?1").bind(org.id, assentos, agora).run();
+}
+/** Soft delete: o slug fica reservado (renomeado para continuar único) e os membros saem. */
+export async function apagarOrg(db: D1Database, org: OrgLinha, agora = agoraIso()): Promise<void> {
+  await db.batch([
+    db.prepare("UPDATE organizacoes SET apagada_em = ?2, slug = ?3, atualizada_em = ?2 WHERE id = ?1").bind(org.id, agora, `apagada:${org.id}:${org.slug}`),
+    db.prepare("DELETE FROM membros WHERE org_id = ?1").bind(org.id),
+  ]);
 }

@@ -4,7 +4,7 @@
  * `POST /sessao/sair` (o app): revoga a família de refresh desta sessão.
  */
 import type { Env } from "../tipos.js";
-import { auditar, contarLimite, criarCodigo, houveContaApagada, iniciarTrialSeNovo, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
+import { aceitarConvites, auditar, contarLimite, criarCodigo, houveContaApagada, iniciarTrialSeNovo, membroPor, orgPorSlug, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
 import { buscaJwksGoogle, verificarIdToken } from "../firebase.js";
 import { agoraIso, CHALLENGE_RE, CODE_TTL_S, ESQUEMA_WEB, janelaMinuto, LIMITE_SESSAO_POR_MIN, maisSegundos, segredo, TOKEN_RE, validaPedidoSessao } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
@@ -17,9 +17,21 @@ export async function postSessao(req: Request, env: Env): Promise<Response> {
   const u = await verificarIdToken(pedido.idToken, env.FIREBASE_PROJECT_ID, buscaJwksGoogle);
   if ("erro" in u) { console.log(`[sessao] id token recusado: ${u.erro}`); return json({ erro: "login não reconhecido; entre de novo" }, 401); }
   if (!u.emailVerificado) return json({ erro: "confirme o e-mail antes de entrar" }, 403);
+  // Login pela página da organização (auth/org/<slug>): a organização precisa existir, e isso se confere antes de criar conta.
+  const org = pedido.org === null ? null : await orgPorSlug(env.DB, pedido.org);
+  if (pedido.org !== null && org === null) return json({ erro: "organização não encontrada; confira o endereço" }, 404);
   const agora = agoraIso();
   const conta = await upsertConta(env.DB, u, agora, pedido.metodo);
   await papelAdmin(env.DB, conta.email, env.ADMIN_BOOTSTRAP_EMAIL, agora);
+  // Convites de organização para este e-mail viram membros ativos agora.
+  const aceitos = await aceitarConvites(env.DB, conta, agora);
+  if (aceitos > 0) await auditar(env.DB, conta.email, "org.convite-aceito", conta.id, `${aceitos} convite${aceitos === 1 ? "" : "s"}`, agora);
+  if (org !== null) {
+    // Só membro entra pela página da organização (o convite acabou de ser aceito acima, se havia).
+    const m = await membroPor(env.DB, org.id, conta.email);
+    if (m === null || m.conta_id !== conta.id) { await auditar(env.DB, conta.email, "login.org-recusado", conta.id, org.slug, agora); return json({ erro: `${conta.email} não faz parte da organização ${org.nome}; peça o convite a quem a administra` }, 403); }
+    await auditar(env.DB, conta.email, "login.org", conta.id, org.slug, agora);
+  }
   // Primeira entrada: trial do Pro (TRIAL_DIAS), como no Rambox; o admin muda depois pelo console.
   const dias = Number.parseInt(env.TRIAL_DIAS ?? "14", 10);
   // Quem apagou a conta e voltou com o mesmo e-mail não ganha outro trial.

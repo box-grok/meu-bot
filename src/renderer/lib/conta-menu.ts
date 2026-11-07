@@ -71,6 +71,7 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
       m.append(topo);
       if (r.prazo !== null) m.append(item(r.vencido ? "⚠" : "🎁", r.prazo, `cm-trial${r.vencido ? " vencido" : ""}`, () => externo("/account/plan")));
       m.append(item("👤", "Perfil", "", () => externo("/account/profile")), item("▤", "Plano e pagamento", "", () => externo("/account/plan")), item("▭", "Devices", "", () => externo("/account/devices")));
+      for (const o of c.orgs) m.append(item("▣", o.nome, "", () => externo(`/organizations/${o.slug}/members`)));
       if (c.admin !== null) m.append(item("★", "Console do admin", "", () => externo("/account/overview")));
       m.append(el("div", "cm-sep"));
     } else {

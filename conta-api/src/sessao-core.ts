@@ -100,7 +100,8 @@ const str = (v: unknown, re: RegExp): string | null => (typeof v === "string" &&
 
 /** Como a pessoa entrou na página (o Firebase reporta "password" tanto para senha quanto para link por e-mail). */
 export type MetodoLogin = "google" | "emailLink" | "password";
-export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null; metodo: MetodoLogin | null }
+/** `org`: slug da organização quando o login veio de auth.<host>/org/<slug> (só membro entra por ali). */
+export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null; metodo: MetodoLogin | null; org: string | null }
 /** `POST /sessao` da página: ID token do Firebase mais o que o app pôs na URL de login. */
 export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string } {
   if (!isObj(raw)) return { erro: "corpo inválido" };
@@ -110,7 +111,9 @@ export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string 
   if (state === null) return { erro: "state ausente ou fora do formato" };
   if (challenge === null) return { erro: "challenge (PKCE) ausente ou fora do formato" };
   if (esquema === null) return { erro: "esquema do app ausente ou fora do formato" };
-  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE), metodo: str(raw.metodo, /^(google|emailLink|password)$/) as MetodoLogin | null };
+  const org = raw.org === undefined || raw.org === null || raw.org === "" ? null : str(raw.org, /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/);
+  if (raw.org !== undefined && raw.org !== null && raw.org !== "" && org === null) return { erro: "org: endereço da organização fora do formato" };
+  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE), metodo: str(raw.metodo, /^(google|emailLink|password)$/) as MetodoLogin | null, org };
 }
 
 export interface DeviceValido { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string }
@@ -220,3 +223,65 @@ export const validaPapel = (v: unknown): "super" | "admin" | null => (v === "sup
 export const validaBusca = (v: unknown): string => (typeof v === "string" && /^[^\p{C}]{0,80}$/u.test(v) ? v.trim().toLowerCase() : "");
 /** Janela do rate limit: minuto corrente em ISO sem segundos. */
 export const janelaMinuto = (agoraMs = Date.now()): string => new Date(agoraMs).toISOString().slice(0, 16);
+
+// ---- Organizações (molde Rambox Enterprise): slug, papéis, convites e assentos.
+/** O slug é o futuro `<slug>.agentesgrok.com`: minúsculas, dígitos e hífen no meio, 2 a 40 caracteres. */
+export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+/** Hosts nossos e nomes que confundiriam (nunca viram organização). */
+export const SLUGS_RESERVADOS = new Set(["auth", "conta", "console", "site", "www", "api", "admin", "mail", "app", "apps", "download", "account", "organizations", "orgs", "teams", "staging", "auth-staging", "conta-staging", "console-staging", "site-staging", "meu-bot", "meubot", "agentesgrok", "suporte", "ajuda", "blog", "docs", "status", "dev", "test", "teste", "cdn", "static", "assets", "login", "entrar", "ns1", "ns2", "smtp", "imap", "ftp", "new", "nova"]);
+export const validaSlug = (v: unknown): string | null => (typeof v === "string" && SLUG_RE.test(v) && v.length >= 2 && !SLUGS_RESERVADOS.has(v) ? v : null);
+/** Sugere um slug a partir do nome ("Coflow Tecnologia" → "coflow-tecnologia"); pode sair vazio ou reservado: quem valida é validaSlug. */
+export const slugDoNome = (nome: string): string => nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+export type PapelOrg = "dona" | "admin" | "membro";
+export const validaPapelOrg = (v: unknown): PapelOrg | null => (v === "dona" || v === "admin" || v === "membro" ? v : null);
+const NOME_ORG_RE = /^[^\p{C}]{2,80}$/u;
+const DOMINIO_RE = /^(?=.{3,120}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+/** `POST /orgs`: nome (2 a 80, sem controle) e slug (válido e fora da lista reservada). */
+export function validaNovaOrg(raw: unknown): { nome: string; slug: string } | { erro: string } {
+  if (!isObj(raw)) return { erro: "corpo inválido" };
+  const nome = typeof raw.nome === "string" ? raw.nome.trim() : "";
+  if (!NOME_ORG_RE.test(nome)) return { erro: "nome: 2 a 80 caracteres" };
+  const slug = validaSlug(raw.slug);
+  if (slug === null) return { erro: typeof raw.slug === "string" && SLUGS_RESERVADOS.has(raw.slug) ? "esse endereço é reservado; escolha outro" : "endereço: letras minúsculas, dígitos e hífen, 2 a 40 caracteres" };
+  return { nome, slug };
+}
+/** `PATCH /orgs/:slug`: nome e/ou domínio de e-mail (null limpa). */
+export interface PatchOrg { nome?: string; dominioEmail?: string | null }
+export function validaPatchOrg(raw: unknown): PatchOrg | { erro: string } {
+  if (!isObj(raw)) return { erro: "corpo inválido" };
+  const p: PatchOrg = {};
+  if (raw.nome !== undefined) { const nome = typeof raw.nome === "string" ? raw.nome.trim() : ""; if (!NOME_ORG_RE.test(nome)) return { erro: "nome: 2 a 80 caracteres" }; p.nome = nome; }
+  if (raw.dominioEmail !== undefined) {
+    const v = raw.dominioEmail;
+    if (v === null || v === "") p.dominioEmail = null;
+    else if (typeof v === "string" && DOMINIO_RE.test(v.trim().toLowerCase().replace(/^@/, ""))) p.dominioEmail = v.trim().toLowerCase().replace(/^@/, "");
+    else return { erro: "dominioEmail: um domínio como empresa.com.br, ou null" };
+  }
+  if (Object.keys(p).length === 0) return { erro: "nada para mudar" };
+  return p;
+}
+/** `POST /orgs/:slug/membros`: e-mail e papel (admin ou membro; dona só por promoção). */
+export function validaConvite(raw: unknown): { email: string; papel: "admin" | "membro" } | { erro: string } {
+  if (!isObj(raw)) return { erro: "corpo inválido" };
+  const email = validaEmail(raw.email);
+  if (email === null) return { erro: "e-mail fora do formato" };
+  const papel = raw.papel === undefined ? "membro" : raw.papel;
+  if (papel !== "admin" && papel !== "membro") return { erro: "papel: admin ou membro" };
+  return { email, papel };
+}
+/** Com domínio definido, só e-mails daquele domínio entram (subdomínios não). */
+export const emailNoDominio = (email: string, dominio: string | null): boolean => dominio === null || email.toLowerCase().endsWith(`@${dominio.toLowerCase()}`);
+/** Assentos livres: ativos e convidados ocupam; nunca negativo. */
+export const assentosLivres = (assentos: number, ocupados: number): number => Math.max(0, assentos - ocupados);
+/** `PATCH /admin/orgs/:slug`: assentos de 1 a 1000. */
+export const validaAssentos = (v: unknown): number | null => (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 1000 ? v : null);
+/**
+ * `coflow.agentesgrok.com` → "coflow": o host de uma organização (PR do subdomínio). Hosts nossos (auth., console.,
+ * www.…) e nomes reservados dão null; o site (`siteHost`) é o domínio-base.
+ */
+export function slugDoHost(host: string, siteHost: string): string | null {
+  const h = host.toLowerCase().replace(/:\d+$/, ""), base = siteHost.toLowerCase().replace(/^https?:\/\//, "");
+  if (!h.endsWith(`.${base}`)) return null;
+  const slug = h.slice(0, -(base.length + 1));
+  return validaSlug(slug);
+}
