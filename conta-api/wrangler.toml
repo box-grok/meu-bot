@@ -27,7 +27,7 @@ custom_domain = true
 [[d1_databases]]
 binding = "DB"
 database_name = "conta"
-database_id = "PREENCHER-NO-PRIMEIRO-DEPLOY"
+database_id = "f5468dd6-bd19-492c-be4b-3ba40e12f3c5"
 migrations_dir = "migrations"
 
 [vars]
