@@ -96,15 +96,17 @@ export interface SettingsUpdate {
 export interface AlertPrefs { whatsapp: boolean }
 
 /**
- * Controle remoto (MCP), como o Remote Control do Rambox: um servidor em 127.0.0.1:<porta>/mcp para um cliente MCP
- * deste Mac (Claude Code, Cursor) controlar o app. O que a tela Configurações › Controle remoto mostra.
+ * Controle externo (MCP), como o Remote Control do Rambox: um servidor em 127.0.0.1:<porta>/mcp para um cliente MCP
+ * deste Mac (Claude Code, Cursor) controlar o app. O que a tela Configurações › Controle externo mostra.
  */
 export interface ControleRemotoView {
   ligado: boolean;
+  /** Ferramentas que executam comando no terminal e código nas páginas liberadas (interruptor próprio, desligado por padrão). */
+  execucao: boolean;
   porta: number;
   /** A porta padrão desta variante (Produto.portaMcp). */
   portaPadrao: number;
-  /** Token inteiro (a tela mascara e copia); "" quando desligado. */
+  /** Token inteiro (a tela mascara e copia); "" até ligar a primeira vez. Fica gravado ao desligar. */
   token: string;
   /** O servidor está de pé agora? (ligado mas com a porta ocupada = false, com `erro`). */
   rodando: boolean;

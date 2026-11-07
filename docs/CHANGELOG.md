@@ -12,15 +12,19 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
-### Controle remoto (MCP)
+### Controle externo (MCP)
 
 #### Novo
 
-- **Deixe o Claude Code ou o Cursor controlarem o app.** Configurações › Controle remoto (MCP): ligue, copie a
-  configuração pronta para o seu cliente e pronto: ele passa a abrir janelas e páginas, usar os terminais e as abas do
-  Navegador, tirar print da janela e trocar o tema, tudo aparecendo na tela com o selo de quem fez. Só aceita conexões
-  deste próprio Mac e só com o token, que é gerado ao ligar e apagado ao desligar; "Regenerar" invalida o antigo na
-  hora. A porta é própria de cada app (meu-bot 7830, staging 7831…) e pode ser trocada; nada precisa de "Salvar".
+- **O Claude Code ou o Cursor usando o app por você.** Configurações › Controle externo (MCP): ligue, copie o texto
+  pronto e cole no seu cliente (no Claude Code é um comando no terminal; no Cursor, um trecho do mcp.json). A partir
+  daí ele abre janelas e páginas, lê os terminais e as abas do Navegador, clica, tira print e troca o tema, tudo
+  aparecendo na tela com o selo de quem fez. Rodar comandos no terminal e código nas páginas fica atrás de um
+  segundo interruptor, desligado até você ligar. Só aceita conexões deste próprio Mac e só com a chave, que fica
+  guardada ao desligar; "Gerar outra" é o que invalida a anterior. A porta é própria de cada app (meu-bot 7830,
+  staging 7831…) e pode ser trocada; nada precisa de "Salvar".
+- **Ferramentas novas também pelo `app-mcp.mjs`:** `app`, `janela_abrir`, `pagina_abrir`, `tema` e `print_janela`
+  entraram como rotas do `term.sock`, então quem usa o caminho antigo (stdio) ganha as mesmas.
 
 ### O agente sabe do backup
 

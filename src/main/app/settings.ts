@@ -70,10 +70,11 @@ export const getQuickEntry = (): { enabled: boolean; shortcut: string } => ({ en
 /** Cópia diária do CRM e do financeiro no Drive do dono; desligada aqui, para quem não quer nada fora da máquina. */
 export const getDadosNoDrive = (): boolean => file.dadosNoDrive;
 export function setDadosNoDrive(ligado: boolean): void { if (file.dadosNoDrive === ligado) return; file.dadosNoDrive = ligado; persist(); }
-/** Controle remoto (MCP): ligado, porta gravada (null = padrão da variante) e token; quem sobe o servidor é controle-remoto.ts. */
-export const getControleRemoto = (): { ligado: boolean; porta: number | null; token: string } => ({ ligado: file.mcpLigado, porta: file.mcpPorta, token: file.mcpToken });
-export function setControleRemoto(patch: { ligado?: boolean; porta?: number | null; token?: string }): void {
+/** Controle externo (MCP): ligado, execução (comandos/código) liberada, porta gravada (null = padrão da variante) e token; quem sobe o servidor é controle-remoto.ts. */
+export const getControleRemoto = (): { ligado: boolean; execucao: boolean; porta: number | null; token: string } => ({ ligado: file.mcpLigado, execucao: file.mcpExecucao, porta: file.mcpPorta, token: file.mcpToken });
+export function setControleRemoto(patch: { ligado?: boolean; execucao?: boolean; porta?: number | null; token?: string }): void {
   if (patch.ligado !== undefined) file.mcpLigado = patch.ligado;
+  if (patch.execucao !== undefined) file.mcpExecucao = patch.execucao;
   if (patch.porta !== undefined) file.mcpPorta = patch.porta;
   if (patch.token !== undefined) file.mcpToken = patch.token;
   persist();

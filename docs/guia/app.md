@@ -2,29 +2,38 @@
 
 > Parte do diário técnico do meu-bot, dividido por assunto em 27 out 2026. Índice: [../GUIA.md](../GUIA.md). Mapa do código: [../ARQUITETURA.md](../ARQUITETURA.md).
 
-## Controle remoto (MCP) embutido no app (6 nov 2026)
+## Controle externo (MCP) embutido no app (6 nov 2026)
 
-Molde do Remote Control do Rambox (lido do `app.asar` dele): um servidor MCP **dentro do processo principal**, para
-um cliente MCP deste Mac (Claude Code, Cursor) controlar o app sem precisar do repositório clonado. O
-`scripts/app-mcp.mjs` continua como caminho stdio (Claude Desktop, ou quando o app está fechado: `apps`/`app_abrir`).
+Desenho do Remote Control do Rambox (lido do `app.asar` dele; os textos da tela são nossos): um servidor MCP
+**dentro do processo principal**, para um cliente MCP deste Mac (Claude Code, Cursor) usar o app sem precisar do
+repositório clonado nem de `node` instalado. O `scripts/app-mcp.mjs` continua como caminho stdio (Claude Desktop,
+ou quando o app está fechado: `apps`/`app_abrir`) e tem as mesmas ferramentas. A configuração ainda é feita no
+cliente (um `claude mcp add` ou um trecho de `mcp.json`); o app só gera o texto certo, com variante, porta e chave.
 
-- **Servidor** (`src/main/controle-remoto/controle-remoto.ts`): HTTP em `127.0.0.1:<porta>`, só `POST /mcp` (GET → 405:
-  sem SSE), `Authorization: Bearer <token>`, **sem sessão** (cada pedido é um JSON-RPC completo; resposta JSON pura),
-  `Host` e `Origin` só no loopback (anti DNS rebinding), corpo ≤ 1 MB. Porta ocupada vira `erro` no estado, não exceção.
-- **Núcleo puro** (`controle-remoto-core.ts`, testado): catálogo das ferramentas com schema e anotações MCP
-  (`readOnlyHint`…), `roteador` (para onde cada uma vai), `pedidoOk`, `responderJsonRpc` (initialize, ping,
-  tools/list, tools/call, notificações, lote), `gerarToken` (32 bytes hex), `configClaudeCode`/`configCursor`.
-- **Ferramentas**: as do app-mcp menos `apps`/`app_abrir`, repassadas aos sockets `term.sock` e `nav-<máquina>.sock`
-  com o cabeçalho `X-Meu-Bot-Dono` (o cliente diz o nome em `X-Meu-Bot-Cliente`: o selo fica "Cursor (MCP) · digitou"),
-  mais as do app: `app` (janelas, máquinas, tema), `janela_abrir`, `pagina_abrir` (evento novo `ui:abrir-pagina`),
-  `tema` e `print_janela` (`capturePage`, ≤ 1280 px). As do app entram na faixa de depuração com origem `mcp`.
-- **Configuração** (`settings.json`: `mcpLigado`, `mcpPorta` null = padrão da variante, `mcpToken`) e porta por produto
-  (`Produto.portaMcp`: 7830 meu-bot, 7831 staging, 7832 finance-staging, 7833 admin, 7834 admin-mac; fora da 7822 do
-  Rambox). IPC `controle-remoto:status|ligar|porta|regenerar` (shared); ligar gera o token e sobe; desligar derruba e
-  apaga o token; porta/token novos reiniciam. `controle-remoto:changed` repinta as outras janelas.
-- **Tela** (`renderer/configuracoes/controle-remoto.ts`, grupo `#mcp-group`): interruptor, status, token mascarado
-  (Mostrar/Copiar/Regenerar), porta (aplica no change) e os botões que copiam o `claude mcp add --transport http …` e o
-  trecho do `mcp.json` do Cursor. Claude Desktop ficou de fora (o conector remoto dele não aceita cabeçalho fixo).
+- **Rotas do app no `term.sock`** (`term-api.ts`): `GET /app`, `POST /janela`, `/pagina` (evento novo `ui:abrir-pagina`),
+  `/tema`, `/print` (`capturePage`, ≤ 1280 px). Servem ao `app-mcp.mjs` e ao servidor embutido, que repassa **tudo**
+  pelos sockets (`term.sock`, `nav-<máquina>.sock`) com `X-Meu-Bot-Dono`; o cliente diz o nome em `X-Meu-Bot-Cliente`
+  e o selo fica "Cursor (MCP) · digitou". Posse de abas e registro de depuração continuam os mesmos.
+- **Servidor** (`src/main/controle-remoto/controle-remoto.ts`): HTTP em `127.0.0.1:<porta>`, só `POST /mcp` (GET,
+  DELETE e OPTIONS → 405: sem SSE, sem sessão, sem CORS), `Authorization: Bearer <token>`, `Host` e `Origin` só no
+  loopback (anti DNS rebinding), corpo ≤ 1 MB. **Nenhum cabeçalho CORS**: o `corsHeaders` do CRM fica fora de
+  propósito (de nada adiantaria checar Origin e depois liberar `*`). Porta ocupada vira `erro` no estado.
+- **Protocolo** (`controle-remoto-core.ts`, puro e testado): revisão 2025-06-18 do MCP; anuncia a do cliente se a
+  conhece (2024-11-05, 2025-03-26, 2025-06-18), senão a nossa mais nova. Sem lote JSON-RPC (saiu do MCP nessa
+  revisão: array → -32600). Sem `structuredContent` (não declaramos `outputSchema`; o resultado é texto JSON, e
+  `png_base64` vira `content` de imagem). `initialize`, `ping`, `tools/list`, `tools/call`, notificações → 202.
+- **Dois interruptores**: ligar/desligar o servidor, e "Executar comandos e código", que libera `terminal_digitar` e
+  `nav_js` (execução arbitrária em sessões já logadas; o Rambox deixa o equivalente fora do build de produção).
+  Desligado, elas nem aparecem em `tools/list` e a chamada volta `isError`. A chave **fica guardada ao desligar**
+  (religar não obriga a reconfigurar os clientes); "Gerar outra" é o que invalida.
+- **Configuração** (`settings.json`: `mcpLigado`, `mcpExecucao`, `mcpPorta` null = padrão da variante, `mcpToken`) e
+  porta por produto (`Produto.portaMcp`: 7830 meu-bot, 7831 staging, 7832 finance-staging, 7833 admin, 7834 admin-mac;
+  fora da 7822 do Rambox). IPC `controle-remoto:status|ligar|execucao|porta|regenerar` (shared);
+  `controle-remoto:changed` repinta as outras janelas.
+- **Tela** (`renderer/configuracoes/controle-remoto.ts`, grupo `#mcp-group`): os dois interruptores, status, chave
+  mascarada (Mostrar/Copiar/Gerar outra), porta (aplica no change) e os botões que copiam o `claude mcp add
+  --transport http …` e o trecho do `mcp.json` do Cursor. Claude Desktop ficou de fora (o conector remoto dele não
+  aceita cabeçalho fixo; para ele é o `app-mcp.mjs`).
 
 ## Modo de depuração: selo ao lado do PRO, ferramenta `nota` e a skill (1 nov 2026, fase 3)
 

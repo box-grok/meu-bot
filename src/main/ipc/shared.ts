@@ -547,14 +547,20 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
     return withLogin(view);
   });
 
-  // Controle remoto (MCP), molde do Remote Control do Rambox: ligar gera o token e sobe o servidor; desligar derruba e
-  // apaga o token; porta e token novos reiniciam na hora. Cada mudança avisa as outras janelas.
+  // Controle externo (MCP), molde do Remote Control do Rambox: ligar gera o token (na primeira vez) e sobe o servidor;
+  // desligar derruba e mantém o token (religar não obriga a reconfigurar os clientes; "Gerar outro" é o que invalida);
+  // porta e token novos reiniciam na hora. Cada mudança avisa as outras janelas.
   const mcpAvisar = (): ControleRemotoView => { const v = estadoControleRemoto(); broadcast("controle-remoto:changed", v); return v; };
   handleShared("controle-remoto:status", () => estadoControleRemoto());
   handleShared("controle-remoto:ligar", async (_event, payload: unknown) => {
     const ligado = (payload as { ligado?: unknown } | null)?.ligado === true;
     if (ligado) { setControleRemoto({ ligado: true, ...(getControleRemoto().token === "" ? { token: gerarToken() } : {}) }); await startControleRemoto(); }
-    else { stopControleRemoto(); setControleRemoto({ ligado: false, token: "" }); }
+    else { stopControleRemoto(); setControleRemoto({ ligado: false }); }
+    return mcpAvisar();
+  });
+  // Execução (terminal_digitar, nav_js) é lida a cada pedido pelo servidor: não precisa reiniciar.
+  handleShared("controle-remoto:execucao", (_event, payload: unknown) => {
+    setControleRemoto({ execucao: (payload as { ligado?: unknown } | null)?.ligado === true });
     return mcpAvisar();
   });
   handleShared("controle-remoto:porta", async (_event, payload: unknown) => {

@@ -211,9 +211,10 @@ export interface MeuBotSharedApi {
   /** Link público desta pessoa na máquina (tutorial 13): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
   linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;
-  /** Controle remoto (MCP): estado, ligar/desligar (ligar gera o token; desligar apaga), trocar a porta (1024–65535) e gerar outro token. Tudo vale na hora. */
+  /** Controle externo (MCP): estado, ligar/desligar (ligar gera o token na primeira vez; desligar o mantém), liberar execução de comandos/código, trocar a porta (1024–65535) e gerar outro token. Tudo vale na hora. */
   controleRemotoStatus(): Promise<ControleRemotoView>;
   controleRemotoLigar(ligado: boolean): Promise<ControleRemotoView>;
+  controleRemotoExecucao(ligado: boolean): Promise<ControleRemotoView>;
   controleRemotoPorta(porta: number): Promise<ControleRemotoView>;
   controleRemotoRegenerar(): Promise<ControleRemotoView>;
   /** Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): estado, conectar/desconectar e as APIs. */
