@@ -25,7 +25,7 @@ const cspDaPagina = (env: Env): string => [
   "default-src 'self'",
   "script-src 'self' https://www.gstatic.com https://apis.google.com",
   "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://apis.google.com " + env.API_ORIGIN,
-  "frame-src https://*.firebaseapp.com https://accounts.google.com",
+  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
   "img-src 'self' data: https:",
   "style-src 'self'",
   "base-uri 'none'",
@@ -41,7 +41,23 @@ function comCabecalhos(res: Response, extra: Record<string, string>): Response {
 const configJs = (cfg: Record<string, string>): Response =>
   new Response(`window.MEU_BOT_CONTA = ${JSON.stringify(cfg)};\n`, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
 
+/**
+ * O handler do Firebase Auth no NOSSO domínio: `/__/auth/*` é repassado a `<projeto>.firebaseapp.com`. Sem isso, o
+ * popup do Google termina em firebaseapp.com e tenta avisar a página pelo armazenamento desse domínio, que Brave e
+ * Safari isolam como terceiro: a janela fica parada no handler. Com `authDomain` = este host, tudo é primeira parte.
+ */
+async function handlerFirebase(req: Request, env: Env, url: URL): Promise<Response> {
+  const destino = new URL(`https://${env.FIREBASE_PROJECT_ID}.firebaseapp.com${url.pathname}${url.search}`);
+  const h = new Headers(req.headers);
+  h.delete("host"); h.delete("cookie");
+  const r = await fetch(new Request(destino.toString(), { method: req.method, headers: h, body: req.method === "GET" || req.method === "HEAD" ? null : req.body, redirect: "manual" }));
+  const saida = new Headers(r.headers);
+  saida.delete("content-security-policy"); saida.delete("set-cookie");
+  return new Response(r.body, { status: r.status, statusText: r.statusText, headers: saida });
+}
+
 async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname.startsWith("/__/auth/") || url.pathname.startsWith("/__/firebase/")) return handlerFirebase(req, env, url);
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN }), {});
   const res = await env.ASSETS.fetch(req);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
