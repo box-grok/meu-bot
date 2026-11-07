@@ -31,3 +31,9 @@ h2 { font-size: 20px; margin: 0 0 12px; }
 .passos li { margin: 0 0 10px; }
 .rodape { margin-top: auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 24px; max-width: 980px; width: 100%; margin-left: auto; margin-right: auto; color: var(--sub); font-size: 13px; }
 .rodape a { color: var(--sub); }
+.passos-lista { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 14px; }
+.passos-lista li { padding: 14px 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--fundo); }
+.passos-lista li strong { display: block; font-size: 17px; margin: 2px 0 4px; }
+.passos-lista li p { margin: 0; color: var(--sub); }
+.passo-n { font-size: 12px; letter-spacing: .6px; text-transform: uppercase; color: var(--primario); font-weight: 700; }
+.sub a { color: var(--primario); }
