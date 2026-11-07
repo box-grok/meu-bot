@@ -1,7 +1,7 @@
 // Sessão da conta, a parte pura: PKCE, JWT HS256, validação dos pedidos, admissão de device.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { admitirDevice, assinarJwt, b64url, deB64url, janelaMinuto, pkceConfere, segredo, sha256Hex, validaDevice, validaPedidoSessao, validaPedidoToken, verificarJwt } from "../dist/sessao-core.js";
+import { validaPatchLicenca, validaBusca, admitirDevice, assinarJwt, b64url, deB64url, janelaMinuto, pkceConfere, segredo, sha256Hex, validaDevice, validaPedidoSessao, validaPedidoToken, verificarJwt } from "../dist/sessao-core.js";
 
 const CHAVE = b64url(crypto.getRandomValues(new Uint8Array(32)));
 const DEV = { id: "33333333-3333-4333-8333-333333333333", alias: "0123456789ab", name: "Mac da Ana", user: "ana", platform: "darwin", app: "meu-bot-staging", versao: "0.79.0" };
@@ -77,4 +77,18 @@ test("admitirDevice: conhecido mantém o status; novo cabe até o limite", () =>
 
 test("janelaMinuto: minuto corrente em ISO", () => {
   assert.equal(janelaMinuto(Date.parse("2026-11-06T12:34:56Z")), "2026-11-06T12:34");
+});
+
+test("validaPatchLicenca: só os campos mandados, nos formatos; validaBusca limpa", () => {
+  const p = validaPatchLicenca({ plan: "pro", expiresAt: "2027-01-31", deviceLimit: 3, produtos: ["meu-bot-finance", "meu-bot-finance"], pagamento: { instrucoes: "Pix 123", link: null } });
+  assert.deepEqual(p, { plan: "pro", expiresAt: "2027-01-31T00:00:00.000Z", deviceLimit: 3, produtos: ["meu-bot-finance"], pagamento: { instrucoes: "Pix 123", link: null } });
+  assert.deepEqual(validaPatchLicenca({ expiresAt: null, pagamento: null }), { expiresAt: null, pagamento: null });
+  assert.match(validaPatchLicenca({ plan: "ouro" }).erro, /plan/);
+  assert.match(validaPatchLicenca({ deviceLimit: 0 }).erro, /deviceLimit/);
+  assert.match(validaPatchLicenca({ expiresAt: "amanhã" }).erro, /expiresAt/);
+  assert.match(validaPatchLicenca({ produtos: ["Maiúsculo"] }).erro, /produtos/);
+  assert.match(validaPatchLicenca({ pagamento: { instrucoes: "x", link: "ftp://x" } }).erro, /link/);
+  assert.match(validaPatchLicenca({}).erro, /nada/);
+  assert.equal(validaBusca("  Ana@Exemplo.com "), "ana@exemplo.com");
+  assert.equal(validaBusca("a\u0007b"), ""); assert.equal(validaBusca(5), "");
 });

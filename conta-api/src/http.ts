@@ -19,7 +19,7 @@ export function cors(req: Request, env: Env, res: Response): Response {
   if (origem === null || (origem !== env.AUTH_ORIGIN && origem !== env.CONSOLE_ORIGIN)) return res;
   const h = new Headers(res.headers);
   h.set("access-control-allow-origin", origem);
-  h.set("access-control-allow-methods", "GET, POST, OPTIONS");
+  h.set("access-control-allow-methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
   h.set("access-control-allow-headers", "content-type, authorization");
   h.set("access-control-max-age", "600");
   h.set("vary", "origin");

@@ -1,6 +1,6 @@
 /** Acesso ao D1: consultas tipadas, uma função por intenção. O que sai do banco é dado; quem decide é a rota. */
-import type { CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, SessaoLinha } from "./tipos.js";
-import { agoraIso, uuid } from "./sessao-core.js";
+import type { AdminContaResumo, AdminPedido, AdminPerfil, AdminVisao, CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, SessaoLinha } from "./tipos.js";
+import { agoraIso, uuid, type PatchLicenca } from "./sessao-core.js";
 import type { UsuarioFirebase } from "./firebase.js";
 
 export async function contaPorUid(db: D1Database, uid: string): Promise<ContaLinha | null> {
@@ -133,4 +133,71 @@ export async function montarContaApi(db: D1Database, conta: ContaLinha, admin: "
     return { id: d.id, alias: d.alias_legado, name: d.name ?? "", user: d.user ?? "", platform: d.platform ?? "", status: d.status === "pending" ? "pending" : "active", requestedAt: d.requested_at, firstSeen: d.first_seen, lastSeen: d.last_seen, apps, este: deviceAtual !== null && (d.id === deviceAtual || d.alias_legado === deviceAtual) };
   });
   return { id: conta.id, email: conta.email, nome: conta.nome, foto: conta.foto, admin, licenca, devices: ds, maquinas: maquinas.map((m) => ({ id: m.id, apelido: m.apelido, vinculadaPor: m.vinculada_por })), pedidos };
+}
+
+// ---- Admin: a visão de todas as contas. `busca` filtra por e-mail ou nome (LIKE, escapado); até 500 contas.
+const deviceApi = (d: DeviceLinha): DeviceApi => {
+  let apps: DeviceApi["apps"] = {};
+  try { const a: unknown = JSON.parse(d.apps); if (a !== null && typeof a === "object") apps = a as DeviceApi["apps"]; } catch { apps = {}; }
+  return { id: d.id, alias: d.alias_legado, name: d.name ?? "", user: d.user ?? "", platform: d.platform ?? "", status: d.status === "pending" ? "pending" : "active", requestedAt: d.requested_at, firstSeen: d.first_seen, lastSeen: d.last_seen, apps, este: false };
+};
+interface PedidoLinha { id: string; conta_id: string; tipo: string; detalhe: string | null; maquina_id: string | null; criado_em: string; atendido_em: string | null; atendido_por: string | null; email: string; nome: string | null }
+export async function visaoAdmin(db: D1Database, busca: string): Promise<AdminVisao> {
+  const like = `%${busca.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const contas = (await db.prepare("SELECT * FROM contas WHERE apagada_em IS NULL AND (?1 = '' OR email LIKE ?2 ESCAPE '\\' OR nome LIKE ?2 ESCAPE '\\') ORDER BY criada_em DESC LIMIT 500").bind(busca, like).all<ContaLinha>()).results;
+  const [licencas, devices, maquinas, pedidosN, admins, pedidos] = await Promise.all([
+    db.prepare("SELECT * FROM licencas").all<LicencaLinha>(),
+    db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all<DeviceLinha>(),
+    db.prepare("SELECT conta_id, COUNT(*) AS n FROM maquinas WHERE conta_id IS NOT NULL GROUP BY conta_id").all<{ conta_id: string; n: number }>(),
+    db.prepare("SELECT conta_id, COUNT(*) AS n FROM pedidos WHERE atendido_em IS NULL GROUP BY conta_id").all<{ conta_id: string; n: number }>(),
+    db.prepare("SELECT email, papel, criado_em FROM admins ORDER BY criado_em").all<{ email: string; papel: string; criado_em: string }>(),
+    db.prepare("SELECT p.*, c.email, c.nome FROM pedidos p JOIN contas c ON c.id = p.conta_id WHERE p.atendido_em IS NULL ORDER BY p.criado_em DESC LIMIT 500").all<PedidoLinha>(),
+  ]);
+  const lic = new Map(licencas.results.map((l) => [l.conta_id, l]));
+  const devs = new Map<string, DeviceApi[]>();
+  for (const d of devices.results) { const lista = devs.get(d.conta_id) ?? []; lista.push(deviceApi(d)); devs.set(d.conta_id, lista); }
+  const maq = new Map(maquinas.results.map((m) => [m.conta_id, m.n]));
+  const ped = new Map(pedidosN.results.map((m) => [m.conta_id, m.n]));
+  const adm = new Map(admins.results.map((a) => [a.email, a.papel === "super" ? "super" as const : "admin" as const]));
+  const resumo: AdminContaResumo[] = contas.map((c) => ({ id: c.id, email: c.email, nome: c.nome, foto: c.foto, admin: adm.get(c.email) ?? null, criadaEm: c.criada_em, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [], maquinas: maq.get(c.id) ?? 0, pedidos: ped.get(c.id) ?? 0 }));
+  const todas = busca === "" ? resumo : (await db.prepare("SELECT id, criada_em FROM contas WHERE apagada_em IS NULL").all<{ id: string; criada_em: string }>()).results.map((c) => ({ id: c.id, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [] }));
+  const totais = { contas: todas.length, pro: todas.filter((c) => c.licenca.plan === "pro").length, devicesPendentes: devices.results.filter((d) => d.status === "pending").length, pedidosAbertos: pedidos.results.length };
+  const emails = new Set((await db.prepare("SELECT email FROM contas WHERE apagada_em IS NULL").all<{ email: string }>()).results.map((c) => c.email));
+  const perfis: AdminPerfil[] = admins.results.map((a) => ({ email: a.email, papel: a.papel === "super" ? "super" : "admin", criadoEm: a.criado_em, entrou: emails.has(a.email) }));
+  return { contas: resumo, perfis, pedidos: pedidos.results.map((p): AdminPedido => ({ id: p.id, tipo: p.tipo, detalhe: p.detalhe, maquinaId: p.maquina_id, criadoEm: p.criado_em, atendidoEm: p.atendido_em, atendidoPor: p.atendido_por, conta: { id: p.conta_id, email: p.email, nome: p.nome } })), totais };
+}
+/** Marca um pedido como atendido; false se não existe ou já estava atendido. */
+export async function atenderPedido(db: D1Database, id: string, quem: string, agora = agoraIso()): Promise<boolean> {
+  const r = await db.prepare("UPDATE pedidos SET atendido_em = ?2, atendido_por = ?3 WHERE id = ?1 AND atendido_em IS NULL").bind(id, agora, quem).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+/** O admin muda a licença de uma conta: lê a atual (ou a default), aplica o patch e grava (upsert). Devolve a nova. */
+export async function gravarLicenca(db: D1Database, conta: ContaLinha, patch: PatchLicenca, agora = agoraIso()): Promise<License> {
+  const atual = await licencaDaConta(db, conta);
+  const nova: License = { ...atual, ...patch, updatedAt: agora, updatedBy: "admin" } as License;
+  if (patch.plan === "pro" && patch.status === undefined && atual.status === "free") nova.status = "active";
+  if (patch.plan === "free" && patch.status === undefined) nova.status = "free";
+  await db.prepare("INSERT INTO licencas (conta_id, plan, status, interval, member_since, trial_end, expires_at, device_limit, produtos, pagamento, updated_at, updated_by) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'admin') ON CONFLICT(conta_id) DO UPDATE SET plan = excluded.plan, status = excluded.status, interval = excluded.interval, trial_end = excluded.trial_end, expires_at = excluded.expires_at, device_limit = excluded.device_limit, produtos = excluded.produtos, pagamento = excluded.pagamento, updated_at = excluded.updated_at, updated_by = 'admin'")
+    .bind(conta.id, nova.plan, nova.status, nova.interval, nova.memberSince, nova.trialEnd, nova.expiresAt, nova.deviceLimit, JSON.stringify(nova.produtos), nova.pagamento === null ? null : JSON.stringify(nova.pagamento), agora).run();
+  return nova;
+}
+/** Conta sem linha de licença (acabou de entrar pela primeira vez) ganha o trial do Pro por `dias`; 0 = fica free. */
+export async function iniciarTrialSeNovo(db: D1Database, conta: ContaLinha, dias: number, agora = agoraIso()): Promise<boolean> {
+  if (!(dias > 0)) return false;
+  const tem = await db.prepare("SELECT conta_id FROM licencas WHERE conta_id = ?1").bind(conta.id).first();
+  if (tem !== null && tem !== undefined) return false;
+  const fim = new Date(Date.parse(agora) + dias * 24 * 60 * 60 * 1000).toISOString();
+  await db.prepare("INSERT OR IGNORE INTO licencas (conta_id, plan, status, interval, member_since, trial_end, expires_at, device_limit, produtos, pagamento, updated_at, updated_by) VALUES (?1, 'pro', 'trialing', NULL, ?2, ?3, ?3, 1, '[]', NULL, ?2, 'system')").bind(conta.id, agora, fim).run();
+  return true;
+}
+/** Perfis de acesso (só o super admin mexe): grava/atualiza um admin; remove. Regras de "último super" ficam na rota. */
+export async function gravarPerfil(db: D1Database, email: string, papel: "super" | "admin", agora = agoraIso()): Promise<void> {
+  await db.prepare("INSERT INTO admins (email, papel, criado_em) VALUES (?1, ?2, ?3) ON CONFLICT(email) DO UPDATE SET papel = excluded.papel").bind(email, papel, agora).run();
+}
+export async function removerPerfil(db: D1Database, email: string): Promise<boolean> {
+  const r = await db.prepare("DELETE FROM admins WHERE email = ?1").bind(email).run();
+  return (r.meta.changes ?? 0) > 0;
+}
+export async function contarSupers(db: D1Database): Promise<number> {
+  return (await db.prepare("SELECT COUNT(*) AS n FROM admins WHERE papel = 'super'").first<{ n: number }>())?.n ?? 0;
 }

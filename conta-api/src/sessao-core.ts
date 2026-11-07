@@ -157,5 +157,31 @@ export function admitirDevice(conhecido: { status: string } | null, ativos: numb
   return ativos < limite ? "active" : "pending";
 }
 
+/** O que o admin pode mudar na licença de uma conta (campos omitidos ficam como estão), como LicensePatch do app. */
+export interface PatchLicenca { plan?: "free" | "pro"; status?: "free" | "trialing" | "active" | "expired"; interval?: "month" | "year" | null; trialEnd?: string | null; expiresAt?: string | null; deviceLimit?: number; produtos?: string[]; pagamento?: { instrucoes: string; link: string | null } | null }
+const DATA_RE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)?$/;
+const dataOuNull = (v: unknown): string | null | undefined => (v === null ? null : typeof v === "string" && DATA_RE.test(v) && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : undefined);
+export function validaPatchLicenca(raw: unknown): PatchLicenca | { erro: string } {
+  if (!isObj(raw)) return { erro: "corpo inválido" };
+  const p: PatchLicenca = {};
+  if (raw.plan !== undefined) { if (raw.plan !== "free" && raw.plan !== "pro") return { erro: "plan: free ou pro" }; p.plan = raw.plan; }
+  if (raw.status !== undefined) { if (raw.status !== "free" && raw.status !== "trialing" && raw.status !== "active" && raw.status !== "expired") return { erro: "status: free, trialing, active ou expired" }; p.status = raw.status; }
+  if (raw.interval !== undefined) { if (raw.interval !== null && raw.interval !== "month" && raw.interval !== "year") return { erro: "interval: month, year ou null" }; p.interval = raw.interval; }
+  if (raw.trialEnd !== undefined) { const d = dataOuNull(raw.trialEnd); if (d === undefined) return { erro: "trialEnd: data ISO ou null" }; p.trialEnd = d; }
+  if (raw.expiresAt !== undefined) { const d = dataOuNull(raw.expiresAt); if (d === undefined) return { erro: "expiresAt: data ISO ou null" }; p.expiresAt = d; }
+  if (raw.deviceLimit !== undefined) { if (typeof raw.deviceLimit !== "number" || !Number.isInteger(raw.deviceLimit) || raw.deviceLimit < 1 || raw.deviceLimit > 50) return { erro: "deviceLimit: inteiro de 1 a 50" }; p.deviceLimit = raw.deviceLimit; }
+  if (raw.produtos !== undefined) { if (!Array.isArray(raw.produtos) || !raw.produtos.every((x) => typeof x === "string" && /^[a-z][a-z0-9-]{1,40}$/.test(x))) return { erro: "produtos: lista de nomes (letras, dígitos, hífen)" }; p.produtos = [...new Set(raw.produtos as string[])].sort(); }
+  if (raw.pagamento !== undefined) {
+    if (raw.pagamento === null) p.pagamento = null;
+    else { if (!isObj(raw.pagamento) || typeof raw.pagamento.instrucoes !== "string" || raw.pagamento.instrucoes.length > 500) return { erro: "pagamento: {instrucoes (até 500), link (https ou null)} ou null" }; const link = raw.pagamento.link; if (link !== undefined && link !== null && (typeof link !== "string" || !/^https?:\/\/\S{1,300}$/.test(link))) return { erro: "pagamento.link: http(s) ou null" }; p.pagamento = { instrucoes: raw.pagamento.instrucoes.trim(), link: typeof link === "string" ? link : null }; }
+  }
+  if (Object.keys(p).length === 0) return { erro: "nada para mudar" };
+  return p;
+}
+/** E-mail de um perfil de acesso (minúsculas) e o papel; null se fora do formato. */
+export const validaEmail = (v: unknown): string | null => (typeof v === "string" && /^[^\s@]{1,100}@[^\s@]{1,100}\.[^\s@]{1,50}$/.test(v.trim()) ? v.trim().toLowerCase() : null);
+export const validaPapel = (v: unknown): "super" | "admin" | null => (v === "super" || v === "admin" ? v : null);
+/** `?busca=` do admin: até 80 caracteres sem controle; o resto vira vazio (lista tudo). */
+export const validaBusca = (v: unknown): string => (typeof v === "string" && /^[^\p{C}]{0,80}$/u.test(v) ? v.trim().toLowerCase() : "");
 /** Janela do rate limit: minuto corrente em ISO sem segundos. */
 export const janelaMinuto = (agoraMs = Date.now()): string => new Date(agoraMs).toISOString().slice(0, 16);
