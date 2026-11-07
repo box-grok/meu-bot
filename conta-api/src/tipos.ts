@@ -8,6 +8,8 @@ export interface Env {
   AUTH_ORIGIN: string;
   API_ORIGIN: string;
   CONSOLE_ORIGIN: string;
+  /** A home (agentesgrok.com): "Baixar para macOS". `www.` redireciona para ela. */
+  SITE_ORIGIN: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_API_KEY: string;
   FIREBASE_AUTH_DOMAIN: string;

@@ -1,0 +1,47 @@
+:root {
+  color-scheme: light dark;
+  --fundo: #f5f6f8; --cartao: #ffffff; --texto: #1b1f24; --sub: #5a6270; --borda: #dfe3e8;
+  --primario: #1f6feb; --primario-texto: #ffffff; --ghost: #eef1f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --fundo: #0f1115; --cartao: #171a20; --texto: #e8eaed; --sub: #9aa3ad; --borda: #2a2f37; --primario: #3b82f6; --ghost: #232833; }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body { font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--fundo); color: var(--texto); display: flex; flex-direction: column; min-height: 100vh; }
+a { color: inherit; }
+.topo { display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; max-width: 980px; width: 100%; margin: 0 auto; }
+.marca { display: flex; align-items: center; gap: 10px; font-weight: 700; text-decoration: none; }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--primario); color: var(--primario-texto); display: grid; place-items: center; font-weight: 700; }
+.links { display: flex; gap: 18px; font-size: 14px; }
+.links a { color: var(--sub); text-decoration: none; } .links a:hover { color: var(--texto); }
+.hero { text-align: center; padding: 56px 24px 32px; max-width: 760px; margin: 0 auto; }
+.selo { display: inline-block; font-size: 12px; letter-spacing: .6px; text-transform: uppercase; color: var(--sub); border: 1px solid var(--borda); border-radius: 999px; padding: 4px 12px; margin: 0 0 18px; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px; }
+h2 { font-size: 20px; margin: 0 0 12px; }
+.sub { color: var(--sub); margin: 0 auto; max-width: 600px; }
+.acao { margin: 28px 0 12px; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 26px; border-radius: 12px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.btn-primary { background: var(--primario); color: var(--primario-texto); border-color: transparent; font-size: 18px; }
+.btn-ghost { background: var(--ghost); }
+.versao { margin: 0; font-size: 14px; color: var(--sub); min-height: 1.5em; }
+.requisitos { margin: 6px 0 0; font-size: 13px; color: var(--sub); }
+.passos { max-width: 680px; margin: 12px auto 40px; padding: 24px; background: var(--cartao); border: 1px solid var(--borda); border-radius: 16px; }
+.passos ol { margin: 0 0 12px; padding-left: 22px; }
+.passos li { margin: 0 0 10px; }
+.rodape { margin-top: auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 24px; max-width: 980px; width: 100%; margin-left: auto; margin-right: auto; color: var(--sub); font-size: 13px; }
+.rodape a { color: var(--sub); }
+/* Obrigado: três colunas com o símbolo do meu-bot se preenchendo a cada passo (1/3, 2/3, inteiro). */
+.passos-tres { max-width: 980px; background: color-mix(in srgb, var(--primario) 7%, var(--cartao)); border-color: color-mix(in srgb, var(--primario) 25%, var(--borda)); padding: 32px 28px; }
+.passos-tres h2 { text-align: center; margin-bottom: 26px; }
+.colunas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.colunas li { display: flex; flex-direction: column; align-items: flex-start; }
+.colunas h3 { font-size: 19px; margin: 14px 0 0; font-weight: 600; width: 100%; padding-bottom: 12px; border-bottom: 1px solid var(--borda); }
+.colunas p { margin: 12px 0 0; color: var(--sub); }
+.colunas p a { color: var(--primario); text-decoration: none; } .colunas p a:hover { text-decoration: underline; }
+.passo-ico { display: block; margin: 0 auto 4px; }
+.ico-borda { fill: color-mix(in srgb, var(--primario) 10%, var(--cartao)); stroke: var(--primario); stroke-width: 4; }
+.ico-cheio { fill: var(--primario); }
+.ico-num { font: 700 56px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #fff; paint-order: stroke; stroke: var(--primario); stroke-width: 6px; stroke-linejoin: round; }
+.centro { text-align: center; margin-top: 24px; }
+@media (max-width: 720px) { .colunas { grid-template-columns: 1fr; } .passos-tres { padding: 22px 18px; } }

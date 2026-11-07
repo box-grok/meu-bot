@@ -27,6 +27,12 @@ custom_domain = true
 [[routes]]
 pattern = "console.agentesgrok.com"
 custom_domain = true
+[[routes]]
+pattern = "agentesgrok.com"
+custom_domain = true
+[[routes]]
+pattern = "www.agentesgrok.com"
+custom_domain = true
 
 [[d1_databases]]
 binding = "DB"
@@ -39,6 +45,7 @@ CANAL = "producao"
 AUTH_ORIGIN = "https://auth.agentesgrok.com"
 API_ORIGIN = "https://conta.agentesgrok.com"
 CONSOLE_ORIGIN = "https://console.agentesgrok.com"
+SITE_ORIGIN = "https://agentesgrok.com"
 FIREBASE_PROJECT_ID = "meu-bot-conta"
 FIREBASE_API_KEY = "AIzaSyD8rfzsg5iLBqegRmzfmVoBcE5d-sqruRw"
 # O handler do Firebase servido aqui mesmo (/__/auth/* no Worker): popup e link funcionam no Brave e no Safari.
@@ -63,6 +70,9 @@ custom_domain = true
 [[env.staging.routes]]
 pattern = "console-staging.agentesgrok.com"
 custom_domain = true
+[[env.staging.routes]]
+pattern = "site-staging.agentesgrok.com"
+custom_domain = true
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "conta-staging"
@@ -73,6 +83,7 @@ CANAL = "staging"
 AUTH_ORIGIN = "https://auth-staging.agentesgrok.com"
 API_ORIGIN = "https://conta-staging.agentesgrok.com"
 CONSOLE_ORIGIN = "https://console-staging.agentesgrok.com"
+SITE_ORIGIN = "https://site-staging.agentesgrok.com"
 FIREBASE_PROJECT_ID = "meu-bot-conta"
 FIREBASE_API_KEY = "AIzaSyD8rfzsg5iLBqegRmzfmVoBcE5d-sqruRw"
 FIREBASE_AUTH_DOMAIN = "auth-staging.agentesgrok.com"

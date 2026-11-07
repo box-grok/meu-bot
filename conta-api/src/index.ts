@@ -3,6 +3,8 @@
  * - auth.agentesgrok.com: a página de login (static assets em public/) e o /config.js com o projeto Firebase;
  * - console.agentesgrok.com: o console da conta (public/console/, uma página para /account/*), que entra pela página
  *   de login com `esquema=web` e fala com a API só com o token de acesso (sem Firebase nem device no console);
+ * - agentesgrok.com: a home ("Baixar para macOS", public/site/), com /download/mac apontando para a release mais nova
+ *   no GitHub; www. redireciona para ela;
  * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET /conta, GET /health; para admins
  *   GET /admin/visao e POST /admin/pedidos/:id/atender).
  * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
@@ -13,6 +15,7 @@ import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
 import { getConta } from "./rotas/conta.js";
 import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
+import { downloadMac, REPO } from "./release-github.js";
 
 const SEGURANCA: Record<string, string> = {
   "x-content-type-options": "nosniff",
@@ -101,11 +104,30 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   return comCabecalhos(cors(req, env, res), {});
 }
 
+/** A home: página, "obrigado" (que dispara o download), a versão mais nova em JSON e o redirecionamento ao asset do GitHub. */
+const cspDoSite = "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL }), {});
+  // "Console da conta" e "Não tem uma conta?" na home: sem depender de JS, o site manda ao console do ambiente certo.
+  if (url.pathname === "/console" || url.pathname.startsWith("/account")) return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}${url.pathname.startsWith("/account") ? url.pathname : "/account/overview"}`, 302), { "cache-control": "no-store" });
+  if (url.pathname === "/download/mac" || url.pathname === "/download/mac.json") {
+    const d = await downloadMac();
+    if (url.pathname.endsWith(".json")) return comCabecalhos(json(d ?? { erro: "release não encontrada" }, d === null ? 503 : 200, { "cache-control": "public, max-age=300" }), {});
+    return comCabecalhos(Response.redirect(d?.url ?? `https://github.com/${REPO}/releases/latest`, 302), { "cache-control": "no-store" });
+  }
+  const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : url.pathname;
+  const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
+  return comCabecalhos(res, { "content-security-policy": cspDoSite, "cache-control": "no-store" });
+}
+
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const origem = `https://${url.host}`;
     try {
+      if (origem === env.SITE_ORIGIN) return await sitePagina(req, env, url);
+      if (origem === env.SITE_ORIGIN.replace("https://", "https://www.")) return comCabecalhos(Response.redirect(`${env.SITE_ORIGIN}${url.pathname}${url.search}`, 301), {});
       return origem === env.AUTH_ORIGIN ? await pagina(req, env, url) : origem === env.CONSOLE_ORIGIN ? await consolePagina(req, env, url) : await api(req, env, url);
     } catch (e) {
       console.log(`[conta-api] ${req.method} ${url.pathname}: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
