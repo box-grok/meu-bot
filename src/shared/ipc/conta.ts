@@ -22,9 +22,8 @@ export interface ContaDevice {
 }
 /** Uma máquina (VM com backend) vinculada à conta. */
 export interface ContaMaquina { id: string; apelido: string | null; vinculadaPor: string }
-export type ContaTamanhoEquipe = "1" | "2-10" | "11-50" | "51-200" | "201+";
-/** O perfil que a pessoa edita no console (console.agentesgrok.com/account/profile). */
-export interface ContaPerfil { nomeProprio: string | null; sobrenome: string | null; pais: string | null; cidade: string | null; setor: string | null; cargo: string | null; tamanhoEquipe: ContaTamanhoEquipe | null }
+/** O perfil que a pessoa edita no console (console.agentesgrok.com/account/profile): nome e sobrenome. */
+export interface ContaPerfil { nomeProprio: string | null; sobrenome: string | null }
 /** A conta como a API a devolve (`POST /token`, `GET /conta`). */
 export interface ContaInfo {
   id: string;

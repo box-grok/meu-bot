@@ -181,11 +181,9 @@ export function validaPatchLicenca(raw: unknown): PatchLicenca | { erro: string 
   return p;
 }
 // ---- Perfil da conta (console › Perfil), molde Rambox.
-export const TAMANHOS_EQUIPE = ["1", "2-10", "11-50", "51-200", "201+"] as const;
-export type TamanhoEquipe = (typeof TAMANHOS_EQUIPE)[number];
 /** `PATCH /conta`: campos omitidos ficam; null ou "" limpa; texto livre até 80 sem caracteres de controle. */
-export interface PatchPerfil { nomeProprio?: string | null; sobrenome?: string | null; pais?: string | null; cidade?: string | null; setor?: string | null; cargo?: string | null; tamanhoEquipe?: TamanhoEquipe | null; dadosUso?: boolean }
-const TEXTOS_PERFIL = ["nomeProprio", "sobrenome", "pais", "cidade", "setor", "cargo"] as const;
+export interface PatchPerfil { nomeProprio?: string | null; sobrenome?: string | null; dadosUso?: boolean }
+const TEXTOS_PERFIL = ["nomeProprio", "sobrenome"] as const;
 export function validaPatchPerfil(raw: unknown): PatchPerfil | { erro: string } {
   if (!isObj(raw)) return { erro: "corpo inválido" };
   const p: PatchPerfil = {};
@@ -195,12 +193,6 @@ export function validaPatchPerfil(raw: unknown): PatchPerfil | { erro: string } 
     if (v === null) { p[k] = null; continue; }
     if (typeof v !== "string" || !CAMPO_RE.test(v)) return { erro: `${k}: texto até 80 caracteres` };
     const t = v.trim(); p[k] = t === "" ? null : t;
-  }
-  if (raw.tamanhoEquipe !== undefined) {
-    const v = raw.tamanhoEquipe;
-    if (v === null || v === "") p.tamanhoEquipe = null;
-    else if (typeof v === "string" && (TAMANHOS_EQUIPE as readonly string[]).includes(v)) p.tamanhoEquipe = v as TamanhoEquipe;
-    else return { erro: `tamanhoEquipe: ${TAMANHOS_EQUIPE.join(", ")} ou null` };
   }
   if (raw.dadosUso !== undefined) { if (typeof raw.dadosUso !== "boolean") return { erro: "dadosUso: true ou false" }; p.dadosUso = raw.dadosUso; }
   if (Object.keys(p).length === 0) return { erro: "nada para mudar" };

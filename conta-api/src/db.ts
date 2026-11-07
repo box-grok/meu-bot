@@ -11,7 +11,7 @@ export async function contaPorId(db: D1Database, id: string): Promise<ContaLinha
 }
 /**
  * Cria ou atualiza a conta a partir do que o Firebase diz (e-mail, nome, foto podem mudar) e acumula os provedores
- * deste login. O que a pessoa digitou no console (nome próprio, sobrenome, cidade…) não é tocado.
+ * deste login. O que a pessoa digitou no console (nome próprio, sobrenome) não é tocado.
  */
 export async function upsertConta(db: D1Database, u: UsuarioFirebase, agora = agoraIso(), metodo: MetodoLogin | null = null): Promise<ContaLinha> {
   const atual = await contaPorUid(db, u.uid);
@@ -21,7 +21,7 @@ export async function upsertConta(db: D1Database, u: UsuarioFirebase, agora = ag
     const provedores = unirProvedores("[]", novos);
     await db.prepare("INSERT INTO contas (id, firebase_uid, email, email_verificado, nome, foto, criada_em, atualizada_em, provedores) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)")
       .bind(id, u.uid, u.email, u.emailVerificado ? 1 : 0, u.nome, u.foto, agora, provedores).run();
-    return { id, firebase_uid: u.uid, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, criada_em: agora, atualizada_em: agora, apagada_em: null, nome_proprio: null, sobrenome: null, pais: null, cidade: null, setor: null, cargo: null, tamanho_equipe: null, provedores, dados_uso: 1 };
+    return { id, firebase_uid: u.uid, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, criada_em: agora, atualizada_em: agora, apagada_em: null, nome_proprio: null, sobrenome: null, provedores, dados_uso: 1 };
   }
   const provedores = unirProvedores(atual.provedores, novos);
   await db.prepare("UPDATE contas SET email = ?2, email_verificado = ?3, nome = ?4, foto = ?5, atualizada_em = ?6, provedores = ?7 WHERE id = ?1")
@@ -29,23 +29,18 @@ export async function upsertConta(db: D1Database, u: UsuarioFirebase, agora = ag
   return { ...atual, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, atualizada_em: agora, provedores };
 }
 /** O perfil editável como a API devolve. */
-export const perfilDaLinha = (c: ContaLinha): PerfilApi => ({ nomeProprio: c.nome_proprio, sobrenome: c.sobrenome, pais: c.pais, cidade: c.cidade, setor: c.setor, cargo: c.cargo, tamanhoEquipe: (["1", "2-10", "11-50", "51-200", "201+"] as const).find((t) => t === c.tamanho_equipe) ?? null });
+export const perfilDaLinha = (c: ContaLinha): PerfilApi => ({ nomeProprio: c.nome_proprio, sobrenome: c.sobrenome });
 /** `PATCH /conta`: aplica o patch sobre a linha e grava; desligar dados de uso também limpa o que os devices já guardaram. */
 export async function gravarPerfilConta(db: D1Database, conta: ContaLinha, patch: PatchPerfil, agora = agoraIso()): Promise<ContaLinha> {
   const nova: ContaLinha = {
     ...conta,
     nome_proprio: patch.nomeProprio !== undefined ? patch.nomeProprio : conta.nome_proprio,
     sobrenome: patch.sobrenome !== undefined ? patch.sobrenome : conta.sobrenome,
-    pais: patch.pais !== undefined ? patch.pais : conta.pais,
-    cidade: patch.cidade !== undefined ? patch.cidade : conta.cidade,
-    setor: patch.setor !== undefined ? patch.setor : conta.setor,
-    cargo: patch.cargo !== undefined ? patch.cargo : conta.cargo,
-    tamanho_equipe: patch.tamanhoEquipe !== undefined ? patch.tamanhoEquipe : conta.tamanho_equipe,
     dados_uso: patch.dadosUso !== undefined ? (patch.dadosUso ? 1 : 0) : conta.dados_uso,
     atualizada_em: agora,
   };
-  await db.prepare("UPDATE contas SET nome_proprio = ?2, sobrenome = ?3, pais = ?4, cidade = ?5, setor = ?6, cargo = ?7, tamanho_equipe = ?8, dados_uso = ?9, atualizada_em = ?10 WHERE id = ?1")
-    .bind(conta.id, nova.nome_proprio, nova.sobrenome, nova.pais, nova.cidade, nova.setor, nova.cargo, nova.tamanho_equipe, nova.dados_uso, agora).run();
+  await db.prepare("UPDATE contas SET nome_proprio = ?2, sobrenome = ?3, dados_uso = ?4, atualizada_em = ?5 WHERE id = ?1")
+    .bind(conta.id, nova.nome_proprio, nova.sobrenome, nova.dados_uso, agora).run();
   if (conta.dados_uso === 1 && nova.dados_uso === 0) await limparDadosDeUso(db, conta.id);
   return nova;
 }
@@ -63,7 +58,7 @@ export async function limparDadosDeUso(db: D1Database, contaId: string): Promise
  */
 export async function apagarConta(db: D1Database, conta: ContaLinha, agora = agoraIso()): Promise<void> {
   await db.batch([
-    db.prepare("UPDATE contas SET apagada_em = ?2, email = ?3, firebase_uid = ?4, nome = NULL, foto = NULL, nome_proprio = NULL, sobrenome = NULL, pais = NULL, cidade = NULL, setor = NULL, cargo = NULL, tamanho_equipe = NULL, provedores = '[]', atualizada_em = ?2 WHERE id = ?1")
+    db.prepare("UPDATE contas SET apagada_em = ?2, email = ?3, firebase_uid = ?4, nome = NULL, foto = NULL, nome_proprio = NULL, sobrenome = NULL, provedores = '[]', atualizada_em = ?2 WHERE id = ?1")
       .bind(conta.id, agora, `apagada:${conta.id}:${conta.email}`, `apagada:${conta.id}:${conta.firebase_uid}`),
     db.prepare("UPDATE sessoes SET revogada_em = ?2 WHERE conta_id = ?1 AND revogada_em IS NULL").bind(conta.id, agora),
     db.prepare("UPDATE devices SET name = NULL, user = NULL, platform = NULL, apps = '{}' WHERE conta_id = ?1").bind(conta.id),
