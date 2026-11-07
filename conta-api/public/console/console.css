@@ -111,3 +111,13 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .painel.perigo { border-color: var(--mau); }
 .btn-perigo { color: var(--mau); border-color: var(--mau); }
 .btn-perigo:disabled { color: var(--sub); border-color: var(--borda); }
+/* Organizações (molde Rambox): grupo no menu, cabeçalho com o tenant e as abas Membros | Configurações. */
+.menu .grupo { margin: 14px 12px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--lateral-sub); }
+.menu a .selo { margin-left: auto; font-size: 10px; padding: 1px 6px; background: rgba(255,255,255,.1); color: var(--lateral-sub); }
+.org-cabecalho { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.org-cabecalho code { font-size: 15px; font-weight: 600; }
+.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--borda); }
+.abas a { padding: 8px 14px; text-decoration: none; color: var(--sub); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.abas a.ativo { color: var(--texto); border-bottom-color: var(--primario); }
+.editor-form .largo { flex-basis: 100%; }
+.tabela .copiar { margin-left: 6px; }

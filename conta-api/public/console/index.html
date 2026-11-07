@@ -33,6 +33,10 @@
         <a href="/account/plan" data-secao="plan"><span class="ico" aria-hidden="true">▤</span>Plano</a>
         <a href="/account/support" data-secao="support"><span class="ico" aria-hidden="true">?</span>Suporte</a>
         <a href="/account/access" data-secao="access" id="menu-access" hidden><span class="ico" aria-hidden="true">⚙</span>Perfis de acesso</a>
+        <div class="grupo">Organizações</div>
+        <div id="menu-orgs"></div>
+        <a href="/organizations/new" data-secao="org-nova"><span class="ico" aria-hidden="true">+</span>Criar organização</a>
+        <a href="/account/organizations" data-secao="orgs" id="menu-orgs-todas" hidden><span class="ico" aria-hidden="true">▣</span>Todas as organizações</a>
       </nav>
       <div class="quem">
         <img id="quem-foto" alt="" hidden>
@@ -140,6 +144,62 @@
           <p class="sub">Admin vê e muda planos, devices e pedidos de todas as contas; super admin também controla esta lista. Quem entra aqui recebe o papel no próximo login.</p>
           <form class="busca" id="ad-perfil-form"><input id="ad-perfil-email" type="email" placeholder="e-mail de quem vai ser admin" autocomplete="off" required><select id="ad-perfil-papel"><option value="admin">admin</option><option value="super">super admin</option></select><button type="submit" class="btn btn-primary">Adicionar</button></form>
           <div class="painel tabela-rolagem"><table class="tabela" id="ad-perfis"><thead><tr><th>E-mail</th><th>Papel</th><th>Já entrou</th><th>Desde</th><th></th></tr></thead><tbody></tbody></table></div>
+        </div>
+      </section>
+
+      <!-- Organizações (molde Rambox Enterprise: /organizations/<slug>/members). -->
+      <section data-secao="org-nova" hidden>
+        <div class="painel">
+          <h2>Nova organização</h2>
+          <p class="sub">Uma organização junta o seu time: você vira a dona, convida as pessoas por e-mail e cada uma entra com a própria conta. Começa com 5 assentos.</p>
+          <form class="editor-form perfil-form" id="org-nova-form">
+            <label><span>Nome</span><input name="nome" type="text" maxlength="80" required placeholder="Coflow"></label>
+            <label><span>Endereço</span><input name="slug" type="text" maxlength="40" required pattern="[a-z0-9][a-z0-9-]{0,38}[a-z0-9]" placeholder="coflow" autocapitalize="off" spellcheck="false"></label>
+            <p class="sub largo" id="org-nova-previa"></p>
+            <div class="acoes"><button type="submit" class="btn btn-primary" id="org-nova-criar">Criar organização</button></div>
+          </form>
+        </div>
+      </section>
+
+      <section data-secao="org" hidden>
+        <div class="org-cabecalho">
+          <div><code id="org-slug"></code> <span class="selo">tenant</span> <span class="sub" id="org-papel"></span></div>
+          <nav class="abas" id="org-abas"><a href="#" data-aba="members">Membros</a><a href="#" data-aba="settings">Configurações</a></nav>
+        </div>
+        <div id="org-membros">
+          <p class="sub" id="org-resumo"></p>
+          <form class="busca" id="org-convite-form"><input id="org-convite-email" type="email" placeholder="e-mail de quem vai entrar" autocomplete="off" required><select id="org-convite-papel"><option value="membro">membro</option><option value="admin">admin</option></select><button type="submit" class="btn btn-primary" id="org-convidar">Convidar</button></form>
+          <p class="sub" id="org-convite-nota"></p>
+          <div class="painel tabela-rolagem"><table class="tabela" id="org-tabela"><thead><tr><th>Membro</th><th>Papel</th><th>Status</th><th>Entrou em</th><th></th></tr></thead><tbody></tbody></table></div>
+          <p class="sub">Convite é o e-mail cadastrado: mande o link para a pessoa; quando ela entrar com esse e-mail (Google ou link por e-mail), já cai aqui como membro.</p>
+        </div>
+        <div id="org-config" hidden>
+          <div class="painel">
+            <h2>Organização</h2>
+            <form class="editor-form perfil-form" id="org-form">
+              <label><span>Nome</span><input name="nome" type="text" maxlength="80" required></label>
+              <label><span>Domínio de e-mail</span><input name="dominioEmail" type="text" maxlength="120" placeholder="coflow.com.br"></label>
+              <label><span>Assentos</span><input name="assentos" type="number" min="1" max="1000" disabled></label>
+              <p class="sub largo">Com um domínio definido, só e-mails dele podem ser convidados. Assentos: quem muda é o super admin (peça mais ao suporte).</p>
+              <div class="acoes"><button type="submit" class="btn btn-primary" id="org-salvar">Salvar</button><span class="sub" id="org-salvo" hidden>Salvo.</span></div>
+            </form>
+          </div>
+          <div class="painel">
+            <h2>Endereço</h2>
+            <p class="sub">O console desta organização: <a id="org-url" href="#"></a>. O endereço próprio <code id="org-host"></code> chega na próxima versão.</p>
+          </div>
+          <div class="painel perigo" id="org-perigo">
+            <h2 id="org-perigo-titulo">Apagar organização</h2>
+            <p class="sub" id="org-perigo-texto"></p>
+            <button type="button" class="btn btn-ghost btn-perigo" id="org-apagar"></button>
+          </div>
+        </div>
+      </section>
+
+      <section data-secao="orgs" hidden>
+        <div class="admin aberto">
+          <h2>Todas as organizações <span class="selo">super admin</span></h2>
+          <div class="painel tabela-rolagem"><table class="tabela" id="ad-orgs"><thead><tr><th>Endereço</th><th>Nome</th><th>Dona</th><th>Membros</th><th>Assentos</th><th>Criada em</th><th></th></tr></thead><tbody></tbody></table></div>
         </div>
       </section>
     </main>

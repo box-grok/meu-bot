@@ -4,7 +4,7 @@
  * e `POST /conta/senha` (e-mail do Firebase para criar ou redefinir a senha).
  */
 import type { Env } from "../tipos.js";
-import { apagarConta, auditar, contarLimite, gravarPerfilConta, montarContaApi, papelAdmin } from "../db.js";
+import { apagarConta, auditar, contarLimite, gravarPerfilConta, montarContaApi, orgsDaConta, papelAdmin } from "../db.js";
 import { janelaMinuto, validaPatchPerfil } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
 
@@ -28,6 +28,8 @@ export async function patchConta(auth: Autenticado, env: Env, req: Request): Pro
 /** Apagar a própria conta. Admin não apaga a sua (o super admin tira o perfil de acesso antes): evita um super órfão. */
 export async function deleteConta(auth: Autenticado, env: Env): Promise<Response> {
   if ((await papelAdmin(env.DB, auth.conta.email, env.ADMIN_BOOTSTRAP_EMAIL)) !== null) return json({ erro: "um admin não apaga a própria conta; peça ao super admin para remover seu perfil de acesso antes" }, 403);
+  const donaDe = (await orgsDaConta(env.DB, auth.conta.id)).filter((o) => o.papel === "dona");
+  if (donaDe.length > 0) return json({ erro: `você é dona de ${donaDe.map((o) => o.nome).join(", ")}: promova outra dona ou apague a organização antes` }, 403);
   await apagarConta(env.DB, auth.conta);
   await auditar(env.DB, auth.conta.email, "conta.apagada", auth.conta.id, null);
   return json({ ok: true });

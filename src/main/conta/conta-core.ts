@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { Canal } from "../app/variant-core";
-import type { ContaDevice, ContaInfo, ContaMaquina, ContaPerfil, ContaTamanhoEquipe } from "../../shared/ipc";
+import type { ContaDevice, ContaInfo, ContaMaquina, ContaOrg, ContaPerfil, ContaTamanhoEquipe } from "../../shared/ipc";
 import { DEVICE_ID_RE, parseLicense, UUID_RE } from "../licenca/licenca";
 
 /** Página de login e API, por canal: o staging nunca fala com a produção (conta e D1 separados). */
@@ -69,6 +69,15 @@ function parseMaquina(raw: unknown): ContaMaquina | null {
   if (id === null || !UUID_RE.test(id)) return null;
   return { id, apelido: strOuNull(r.apelido), vinculadaPor: str(r.vinculadaPor) ?? "" };
 }
+const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+function parseOrg(raw: unknown): ContaOrg | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = str(r.id), slug = str(r.slug), nome = strOuNull(r.nome);
+  if (id === null || !UUID_RE.test(id) || slug === null || !SLUG_RE.test(slug) || nome === null) return null;
+  const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+  return { id, slug, nome, papel: r.papel === "dona" || r.papel === "admin" ? r.papel : "membro", membros: n(r.membros), assentos: n(r.assentos) };
+}
 const TAMANHOS_EQUIPE: readonly ContaTamanhoEquipe[] = ["1", "2-10", "11-50", "51-200", "201+"];
 const PROVEDOR_RE = /^(google\.com|password|emailLink)$/;
 /** O perfil editável, campo a campo; o que não vier (API antiga) fica null. */
@@ -94,6 +103,7 @@ export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInf
     devices: Array.isArray(r.devices) ? r.devices.map(parseDevice).filter((d): d is ContaDevice => d !== null) : [],
     maquinas: Array.isArray(r.maquinas) ? r.maquinas.map(parseMaquina).filter((m): m is ContaMaquina => m !== null) : [],
     pedidos: typeof r.pedidos === "number" && Number.isFinite(r.pedidos) && r.pedidos >= 0 ? Math.floor(r.pedidos) : 0,
+    orgs: Array.isArray(r.orgs) ? r.orgs.map(parseOrg).filter((o): o is ContaOrg => o !== null) : [],
   };
 }
 /** conta-prefs.json (em claro, sobrevive ao "Sair"): o que o app precisa saber antes de ter sessão. Hoje só `dadosUso`. */

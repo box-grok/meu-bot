@@ -45,7 +45,10 @@ export interface ContaInfo {
   maquinas: ContaMaquina[];
   /** Pedidos abertos desta conta (Pro, add-on, device). */
   pedidos: number;
+  /** Organizações de que a conta é membro (console › /organizations/<slug>/members). */
+  orgs: ContaOrg[];
 }
+export interface ContaOrg { id: string; slug: string; nome: string; papel: "dona" | "admin" | "membro"; membros: number; assentos: number }
 /**
  * Onde a conta está: fora (nunca entrou ou saiu), entrando (o navegador está aberto na página de login, até 10 min),
  * dentro (sessão guardada neste Mac), erro (o último passo falhou; `erro` diz o quê; o botão "Entrar" volta).

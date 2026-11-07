@@ -4,7 +4,7 @@
  * `POST /sessao/sair` (o app): revoga a família de refresh desta sessão.
  */
 import type { Env } from "../tipos.js";
-import { auditar, contarLimite, criarCodigo, houveContaApagada, iniciarTrialSeNovo, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
+import { aceitarConvites, auditar, contarLimite, criarCodigo, houveContaApagada, iniciarTrialSeNovo, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
 import { buscaJwksGoogle, verificarIdToken } from "../firebase.js";
 import { agoraIso, CHALLENGE_RE, CODE_TTL_S, ESQUEMA_WEB, janelaMinuto, LIMITE_SESSAO_POR_MIN, maisSegundos, segredo, TOKEN_RE, validaPedidoSessao } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
@@ -20,6 +20,9 @@ export async function postSessao(req: Request, env: Env): Promise<Response> {
   const agora = agoraIso();
   const conta = await upsertConta(env.DB, u, agora, pedido.metodo);
   await papelAdmin(env.DB, conta.email, env.ADMIN_BOOTSTRAP_EMAIL, agora);
+  // Convites de organização para este e-mail viram membros ativos agora.
+  const aceitos = await aceitarConvites(env.DB, conta, agora);
+  if (aceitos > 0) await auditar(env.DB, conta.email, "org.convite-aceito", conta.id, `${aceitos} convite${aceitos === 1 ? "" : "s"}`, agora);
   // Primeira entrada: trial do Pro (TRIAL_DIAS), como no Rambox; o admin muda depois pelo console.
   const dias = Number.parseInt(env.TRIAL_DIAS ?? "14", 10);
   // Quem apagou a conta e voltou com o mesmo e-mail não ganha outro trial.

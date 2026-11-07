@@ -37,6 +37,9 @@ test("parseContaInfo: e-mail em minúsculas, devices e máquinas fora do formato
   assert.equal(c.email, "ana@exemplo.com"); assert.equal(c.licenca.plan, "pro"); assert.equal(c.pedidos, 2);
   assert.equal(c.devices.length, 1); assert.equal(c.devices[0].este, true); assert.equal(c.devices[0].apps["meu-bot"].version, "0.79.0");
   assert.equal(c.maquinas.length, 1);
+  assert.deepEqual(c.orgs, [], "API antiga: sem organizações");
+  const o = parseContaInfo({ ...conta(), orgs: [{ id: UUID, slug: "coflow", nome: "Coflow", papel: "dona", membros: 3, assentos: 5 }, { id: UUID, slug: "Co Flow", nome: "x" }, { id: "x", slug: "ok", nome: "x" }, { id: UUID, slug: "outra", nome: "Outra", papel: "chefe" }] }, AGORA).orgs;
+  assert.deepEqual(o, [{ id: UUID, slug: "coflow", nome: "Coflow", papel: "dona", membros: 3, assentos: 5 }, { id: UUID, slug: "outra", nome: "Outra", papel: "membro", membros: 0, assentos: 0 }], "organizações fora do formato caem; papel estranho vira membro");
   assert.equal(parseContaInfo({ ...conta(), foto: "http://inseguro" }).foto, null);
   assert.equal(parseContaInfo({ ...conta(), id: "x" }), null);
   assert.equal(parseContaInfo({ ...conta(), email: "semarroba" }), null);
