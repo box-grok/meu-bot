@@ -51,6 +51,9 @@ if (orgSlug !== null) {
 
 if (!orgOk) {
   // A tela "organização não encontrada" já está na frente; nada de Firebase.
+} else if (!pedidoOk && orgSlug !== null && typeof cfg.console === "string" && cfg.console !== "") {
+  // Página da organização aberta à mão (link que o admin mandou): o console começa o login dela e volta em Membros.
+  location.replace(`${cfg.console}/enterprise/${encodeURIComponent(orgSlug)}`);
 } else if (!pedidoOk) {
   // Sem os parâmetros do app (URL digitada, link velho): em vez de um erro, o caminho para baixar o app ou ir ao console.
   $("sub").textContent = "Abra o meu-bot e clique em Entrar: ele volta para cá já com o seu login.";

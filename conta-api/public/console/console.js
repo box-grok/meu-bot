@@ -40,14 +40,15 @@ async function api(metodo, rota, corpo, acesso) {
 }
 const erroDe = (r) => (r.corpo && typeof r.corpo.erro === "string" ? r.corpo.erro : `a API respondeu ${r.status}`);
 
-async function entrar() {
+/** Começa o login no auth; com `org`, pela página da organização (auth/enterprise/<slug>) e volta em Membros dela. */
+async function entrar(org = null) {
   const verifier = aleatorio(48);
   const challenge = b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
   const state = aleatorio(32);
   ss.set(CH_LOGIN, { state, verifier, em: Date.now() });
-  const retorno = `${cfg.console}${secaoAtual() === null ? "/account/overview" : location.pathname}`;
+  const retorno = `${cfg.console}${org !== null ? `/organizations/${org}/members` : secaoAtual() === null ? "/account/overview" : location.pathname}`;
   const q = new URLSearchParams({ esquema: "web", state, challenge, app: "meu-bot-console", retorno });
-  location.href = `${cfg.auth}/entrar?${q.toString()}`;
+  location.href = `${cfg.auth}/${org !== null ? `enterprise/${encodeURIComponent(org)}` : "entrar"}?${q.toString()}`;
 }
 async function trocarCodigo(code, state, verifierDoApp = null) {
   let verifier = verifierDoApp;
@@ -608,7 +609,20 @@ window.addEventListener("popstate", () => { if (conta !== null) mostrarConsole(c
 (async () => {
   const hash = new URLSearchParams(location.hash.slice(1));
   const code = hash.get("code"), state = hash.get("state"), verifier = hash.get("verifier");
+  // /enterprise/<slug> (como o Rambox): porta de entrada da organização pelo site. Já entrado, vai para Membros;
+  // senão começa o login pela página da organização. /enterprise sem endereço pergunta o endereço no auth.
+  const ent = /^\/enterprise\/([a-z0-9-]{2,40})\/?$/.exec(location.pathname)?.[1] ?? null;
+  if (/^\/enterprise\/?$/.test(location.pathname)) { location.replace(`${cfg.auth}/enterprise`); return; }
   try {
+    if (ent !== null && code === null) {
+      const c = await lerConta();
+      if (c === null) { await entrar(ent); return; }
+      history.replaceState(null, "", `/organizations/${ent}/members`);
+      conta = c;
+      await carregarVisao("").catch((e) => mostrarErro(`Visão do admin: ${e?.message ?? e}`));
+      mostrarConsole(c);
+      return;
+    }
     if (code !== null && (state !== null || verifier !== null)) {
       history.replaceState(null, "", location.pathname);
       if (!TOKEN_RE.test(code) || (state !== null && !TOKEN_RE.test(state)) || (verifier !== null && !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier))) throw new Error("retorno do login fora do formato");
