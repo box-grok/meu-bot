@@ -55,7 +55,7 @@ export async function putAdminSenha(auth: Autenticado, env: Env, id: string, req
   const conta = await contaPorId(env.DB, id);
   if (conta === null) return json({ erro: "conta não existe" }, 404);
   const r = await definirSenhaFirebase(env.FIREBASE_ADMIN_SA, env.FIREBASE_PROJECT_ID, conta.firebase_uid, senha);
-  if (!r.ok) { console.log(`[senha] accounts:update recusado: ${r.erro}`); return json({ erro: r.erro.startsWith("USER_NOT_FOUND") ? "o Firebase não conhece esta conta" : `o Firebase recusou: ${r.erro.slice(0, 120)}` }, 502); }
+  if (!r.ok) { console.log(`[senha] accounts:update recusado para ${conta.email}: ${r.erro}`); return json({ erro: r.erro.startsWith("USER_NOT_FOUND") ? `o Firebase não conhece a conta ${conta.email} (uid ${conta.firebase_uid.slice(0, 8)}…): ela nunca entrou pelo login, só existe no banco` : `o Firebase recusou: ${r.erro.slice(0, 120)}` }, 502); }
   await gravarProvedor(env.DB, conta, "password");
   await revogarSessoesDaConta(env.DB, conta.id);
   await auditar(env.DB, auth.conta.email, "senha.definida", conta.id, "pelo super admin; sessões revogadas");
