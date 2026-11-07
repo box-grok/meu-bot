@@ -171,7 +171,8 @@ export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
   quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navAgentDesligados: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, corretorOrtografico: true, aceleracaoHardware: true, depuracao: null, abaFixa: "padrao",
-  mcpLigado: false, mcpExecucao: false, mcpPorta: null, mcpToken: "",
+  // "Executar comandos e código" vem ligado (7 nov): o controle externo só existe com mcpLigado, e quem o liga quer o cliente agindo.
+  mcpLigado: false, mcpExecucao: true, mcpPorta: null, mcpToken: "",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -219,7 +220,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     depuracao: p["depuracao"] === true ? true : p["depuracao"] === false ? false : null,
     abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",
     mcpLigado: p["mcpLigado"] === true,
-    mcpExecucao: p["mcpExecucao"] === true,
+    mcpExecucao: typeof p["mcpExecucao"] === "boolean" ? p["mcpExecucao"] : true,
     mcpPorta: isPortaMcp(p["mcpPorta"]) ? p["mcpPorta"] : null,
     mcpToken: isToken(p["mcpToken"]) ? p["mcpToken"] : "",
   };
