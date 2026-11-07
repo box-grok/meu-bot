@@ -16,6 +16,10 @@ const nowIso = (now: number): string => new Date(now).toISOString();
 const PRODUTO_NOME_RE = /^meu-bot-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Nomes que não são add-on (catálogo em app/variant-core.ts). */
 const NAO_ADDON_SET = new Set(NAO_ADDON);
+/** Id de device: o alias antigo (12 hex de hostname+usuário) ou o uuid v4 do device.json (conta meu-bot). Cópia em backend-colima/licenca.js. */
+export const DEVICE_ID_RE = /^(?:[a-f0-9]{12}|[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
+/** Id de máquina (uuid v4 do backend-colima, maquina.json) e de conta (uuid v4 da API da conta). */
+export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export const parseProdutos = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === "string" && PRODUTO_NOME_RE.test(x) && !NAO_ADDON_SET.has(x)))].sort() : []);
 
 /** Orientação de pagamento gravada pelo admin (texto até 2000, link só http(s)); vazia/inválida = null. Igual ao licenca.js. */
@@ -144,7 +148,7 @@ export function parseDevices(raw: unknown): LicenseDevice[] {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return [];
   const out: LicenseDevice[] = [];
   for (const [id, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (!/^[a-f0-9]{12}$/.test(id) || v === null || typeof v !== "object") continue;
+    if (!DEVICE_ID_RE.test(id) || v === null || typeof v !== "object") continue;
     const e = v as Record<string, unknown>;
     const status: LicenseDevice["status"] = e.status === "pending" ? "pending" : "active";
     out.push({

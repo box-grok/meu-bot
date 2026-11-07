@@ -10,7 +10,7 @@ import { join } from "node:path";
 const req = createRequire(import.meta.url);
 const root = join(import.meta.dirname, "..", "..");
 const V = req("../../dist/main/app/variant-core.js");
-const { PRODUTOS, ADDONS, NAO_ADDON, ADDONS_DO_PERSONALIZADO, PAGINAS_INICIAIS, nomesReservados, capsFor } = V;
+const { PRODUTOS, ADDONS, NAO_ADDON, ADDONS_DO_PERSONALIZADO, PAGINAS_INICIAIS, nomesReservados, capsFor, esquemaDe, ESQUEMA_RE } = V;
 const fonte = (rel) => readFileSync(join(root, rel), "utf8");
 const unicos = (xs) => new Set(xs).size === xs.length;
 
@@ -22,6 +22,12 @@ test("produtos: nome, bundle id e pasta de dados únicos; portas únicas entre o
   // Só os apps com chat sobem backend local (o admin e o admin-mac não); abertos juntos, não podem dividir a porta.
   const daPessoa = PRODUTOS.filter((p) => p.caps.chat);
   assert.ok(unicos(daPessoa.map((p) => p.portaLocal)), "porta local repetida entre apps da pessoa");
+});
+
+test("produtos: cada app tem um esquema de URL (deep link do login) próprio e válido como scheme", () => {
+  const esquemas = PRODUTOS.map(esquemaDe);
+  assert.ok(unicos(esquemas), "esquema repetido: o staging roubaria o retorno do login do estável");
+  for (const e of esquemas) assert.match(e, ESQUEMA_RE, `${e}: scheme inválido (RFC 3986: letra, depois letras, dígitos e hífen)`);
 });
 
 test("produtos: ícone .icns e o .svg de origem existem; staging herda de um app da tabela", () => {
