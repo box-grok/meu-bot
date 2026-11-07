@@ -66,7 +66,8 @@ export const FERRAMENTAS: readonly Ferramenta[] = [
   { name: "nav_voltar", description: "Volta uma página.", inputSchema: S({ ...MAQ, ...ABA }), annotations: ACTION },
   { name: "nav_js", description: "Roda JavaScript na página e devolve o resultado (até 8000 caracteres).", inputSchema: S({ ...MAQ, ...ABA, codigo: { type: "string" } }, ["codigo"]), annotations: DESTRUCTIVE },
   { name: "nav_fechar", description: "Fecha uma aba deste cliente.", inputSchema: S({ ...MAQ, ...ABA }), annotations: DESTRUCTIVE },
-  { name: "nota", description: "Escreve uma linha na faixa de depuração do app (\"vou pedir ao agente para…\"): a pessoa acompanha de fora o que você vai fazer. Só aparece com o modo de depuração ligado.", inputSchema: S({ texto: { type: "string" } }, ["texto"]), annotations: WRITE },
+  { name: "terminal_fechar", description: "Encerra um terminal que você abriu (a aba some, como no × dela).", inputSchema: S({ id: { type: "string" } }, ["id"]), annotations: DESTRUCTIVE },
+  { name: "nota", description: "Escreve uma linha na faixa de depuração do app (\"vou pedir ao agente para…\"): a pessoa acompanha de fora o que você vai fazer. Só aparece com o modo de depuração ligado: a resposta traz visivel=false quando ninguém viu (ligue com depuracao on=true).", inputSchema: S({ texto: { type: "string" } }, ["texto"]), annotations: WRITE },
   { name: "depuracao", description: "Liga (on=true), desliga (on=false) ou volta ao padrão da variante (on=null) o modo de depuração do app; sem on, só consulta.", inputSchema: S({ on: { type: ["boolean", "null"] } }), annotations: WRITE },
 ];
 export const ferramenta = (nome: string): Ferramenta | undefined => FERRAMENTAS.find((f) => f.name === nome);
@@ -96,6 +97,7 @@ export function roteador(nome: string, args: Record<string, unknown>): Destino {
     case "terminal_abrir": return { alvo: "terminal", rota: "abrir", corpo: comMaq({}) };
     case "terminal_ler": return { alvo: "terminal", rota: "ler", corpo: resto };
     case "terminal_digitar": return { alvo: "terminal", rota: "digitar", corpo: resto };
+    case "terminal_fechar": return { alvo: "terminal", rota: "fechar", corpo: { id: resto["id"] } };
     case "tela_dividir": return { alvo: "terminal", rota: "dividir", corpo: comMaq(resto) };
     case "tela_juntar": return { alvo: "terminal", rota: "juntar", corpo: comMaq(resto) };
     case "nota": return { alvo: "terminal", rota: "nota", corpo: { texto: resto["texto"] } };

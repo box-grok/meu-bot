@@ -66,6 +66,7 @@ const TOOLS = [
   { name: 'terminal_abrir', description: 'Abre uma aba de terminal nova na janela da máquina e devolve o id e o prompt.', inputSchema: S({ ...APP, ...MAQ }) },
   { name: 'terminal_ler', description: 'Últimas linhas da tela de um terminal (sem cores).', inputSchema: S({ ...APP, id: { type: 'string' }, linhas: { type: 'number' } }, ['id']) },
   { name: 'terminal_digitar', description: 'Digita no terminal (a pessoa vê na hora). texto com enter=true roda o comando; ou tecla: enter, tab, esc, ctrl+c, ctrl+d, cima, baixo…', inputSchema: S({ ...APP, id: { type: 'string' }, texto: { type: 'string' }, enter: { type: 'boolean' }, tecla: { type: 'string' } }, ['id']) },
+  { name: 'terminal_fechar', description: 'Encerra um terminal que você abriu (a aba some, como no × dela).', inputSchema: S({ ...APP, id: { type: 'string' } }, ['id']) },
   { name: 'tela_dividir', description: 'Mais uma coluna na tela do app: um terminal (id) ou uma página (navegador, tutoriais, acervo, vazia).', inputSchema: S({ ...APP, ...MAQ, id: { type: 'string' }, pagina: { type: 'string', enum: ['navegador', 'tutoriais', 'acervo', 'vazia'] } }) },
   { name: 'tela_juntar', description: 'Tira uma coluna (id do terminal ou pagina) ou todas (sem argumentos).', inputSchema: S({ ...APP, ...MAQ, id: { type: 'string' }, pagina: { type: 'string', enum: ['navegador', 'tutoriais', 'acervo'] } }) },
   { name: 'nav_abas', description: 'Abas do Navegador do app (id, url, título, quem usa).', inputSchema: S({ ...APP, ...MAQ }) },
@@ -79,7 +80,7 @@ const TOOLS = [
   { name: 'nav_voltar', description: 'Volta uma página.', inputSchema: S({ ...APP, ...MAQ, ...ABA }) },
   { name: 'nav_js', description: 'Roda JavaScript na página e devolve o resultado (até 8000 caracteres).', inputSchema: S({ ...APP, ...MAQ, ...ABA, codigo: { type: 'string' } }, ['codigo']) },
   { name: 'nav_fechar', description: 'Fecha uma aba desta conversa.', inputSchema: S({ ...APP, ...MAQ, ...ABA }) },
-  { name: 'nota', description: 'Escreve uma linha na faixa de depuração do app ("vou pedir ao agente para…"): a pessoa acompanha de fora o que você vai fazer. Só aparece com o modo de depuração ligado.', inputSchema: S({ ...APP, texto: { type: 'string' } }, ['texto']) },
+  { name: 'nota', description: 'Escreve uma linha na faixa de depuração do app ("vou pedir ao agente para…"): a pessoa acompanha de fora o que você vai fazer. Só aparece com o modo de depuração ligado: a resposta traz visivel=false quando ninguém viu (ligue com depuracao on=true).', inputSchema: S({ ...APP, texto: { type: 'string' } }, ['texto']) },
   { name: 'depuracao', description: 'Liga (on=true), desliga (on=false) ou volta ao padrão da variante (on=null) o modo de depuração do app; sem on, só consulta.', inputSchema: S({ ...APP, on: { type: ['boolean', 'null'] } }) },
   // O app em si (rotas /app, /janela, /pagina, /tema, /print do term.sock; 6 nov).
   { name: 'app', description: 'Este app: nome, versão, tema, as janelas de máquina abertas (qual em foco) e as máquinas conhecidas.', inputSchema: S(APP) },
@@ -109,6 +110,7 @@ async function call(name, args) {
   if (name === 'terminal_abrir') return pedir(path.join(a.dir, 'term.sock'), 'abrir', { maquina });
   if (name === 'terminal_ler') return pedir(path.join(a.dir, 'term.sock'), 'ler', resto);
   if (name === 'terminal_digitar') return pedir(path.join(a.dir, 'term.sock'), 'digitar', resto);
+  if (name === 'terminal_fechar') return pedir(path.join(a.dir, 'term.sock'), 'fechar', { id: resto.id });
   if (name === 'tela_dividir') return pedir(path.join(a.dir, 'term.sock'), 'dividir', { ...resto, maquina });
   if (name === 'tela_juntar') return pedir(path.join(a.dir, 'term.sock'), 'juntar', { ...resto, maquina });
   if (name === 'nota') return pedir(path.join(a.dir, 'term.sock'), 'nota', { texto: resto.texto });
