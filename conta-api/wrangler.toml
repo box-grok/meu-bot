@@ -41,7 +41,8 @@ API_ORIGIN = "https://conta.agentesgrok.com"
 CONSOLE_ORIGIN = "https://console.agentesgrok.com"
 FIREBASE_PROJECT_ID = "meu-bot-conta"
 FIREBASE_API_KEY = "AIzaSyD8rfzsg5iLBqegRmzfmVoBcE5d-sqruRw"
-FIREBASE_AUTH_DOMAIN = "meu-bot-conta.firebaseapp.com"
+# O handler do Firebase servido aqui mesmo (/__/auth/* no Worker): popup e link funcionam no Brave e no Safari.
+FIREBASE_AUTH_DOMAIN = "auth.agentesgrok.com"
 ADMIN_BOOTSTRAP_EMAIL = "diegofornalha@gmail.com"
 # Conta nova (primeiro login) começa em trial do Pro por estes dias; 0 desliga (começa free).
 TRIAL_DIAS = "14"
@@ -74,7 +75,7 @@ API_ORIGIN = "https://conta-staging.agentesgrok.com"
 CONSOLE_ORIGIN = "https://console-staging.agentesgrok.com"
 FIREBASE_PROJECT_ID = "meu-bot-conta"
 FIREBASE_API_KEY = "AIzaSyD8rfzsg5iLBqegRmzfmVoBcE5d-sqruRw"
-FIREBASE_AUTH_DOMAIN = "meu-bot-conta.firebaseapp.com"
+FIREBASE_AUTH_DOMAIN = "auth-staging.agentesgrok.com"
 ADMIN_BOOTSTRAP_EMAIL = "diegofornalha@gmail.com"
 # Conta nova (primeiro login) começa em trial do Pro por estes dias; 0 desliga (começa free).
 TRIAL_DIAS = "14"

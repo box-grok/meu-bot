@@ -9,7 +9,7 @@
  */
 import type { Env } from "./tipos.js";
 import { autenticar, cors, json } from "./http.js";
-import { postSair, postSessao } from "./rotas/sessao.js";
+import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
 import { getConta } from "./rotas/conta.js";
 import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
@@ -25,7 +25,7 @@ const cspDaPagina = (env: Env): string => [
   "default-src 'self'",
   "script-src 'self' https://www.gstatic.com https://apis.google.com",
   "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://apis.google.com " + env.API_ORIGIN,
-  "frame-src https://*.firebaseapp.com https://accounts.google.com",
+  "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
   "img-src 'self' data: https:",
   "style-src 'self'",
   "base-uri 'none'",
@@ -41,7 +41,25 @@ function comCabecalhos(res: Response, extra: Record<string, string>): Response {
 const configJs = (cfg: Record<string, string>): Response =>
   new Response(`window.MEU_BOT_CONTA = ${JSON.stringify(cfg)};\n`, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
 
+/**
+ * O handler do Firebase Auth no NOSSO domínio: `/__/auth/*` é repassado a `<projeto>.firebaseapp.com`. Sem isso, o
+ * popup do Google termina em firebaseapp.com e tenta avisar a página pelo armazenamento desse domínio, que Brave e
+ * Safari isolam como terceiro: a janela fica parada no handler. Com `authDomain` = este host, tudo é primeira parte.
+ */
+async function handlerFirebase(req: Request, env: Env, url: URL): Promise<Response> {
+  const destino = new URL(`https://${env.FIREBASE_PROJECT_ID}.firebaseapp.com${url.pathname}${url.search}`);
+  const h = new Headers(req.headers);
+  h.delete("host"); h.delete("cookie");
+  const r = await fetch(new Request(destino.toString(), { method: req.method, headers: h, body: req.method === "GET" || req.method === "HEAD" ? null : req.body, redirect: "manual" }));
+  const saida = new Headers(r.headers);
+  saida.delete("content-security-policy"); saida.delete("set-cookie");
+  return new Response(r.body, { status: r.status, statusText: r.statusText, headers: saida });
+}
+
 async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname.startsWith("/__/auth/") || url.pathname.startsWith("/__/firebase/")) return handlerFirebase(req, env, url);
+  // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
+  if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN }), {});
   const res = await env.ASSETS.fetch(req);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
@@ -65,7 +83,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rota === "GET /health") res = json({ ok: true, canal: env.CANAL });
   else if (rota === "POST /sessao") res = await postSessao(req, env);
   else if (rota === "POST /token") res = await postToken(req, env);
-  else if (rota === "POST /sessao/sair" || rota === "GET /conta" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
+  else if (rota === "POST /sessao/sair" || rota === "POST /sessao/console" || rota === "GET /conta" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
     const auth = await autenticar(req, env);
     const atender = /^POST \/admin\/pedidos\/([A-Za-z0-9-]{1,40})\/atender$/.exec(rota);
     const licenca = /^PATCH \/admin\/contas\/([A-Za-z0-9-]{1,40})\/licenca$/.exec(rota);
@@ -73,6 +91,7 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     if (auth === null) res = json({ erro: "entre de novo" }, 401, { "www-authenticate": "Bearer" });
     else if (rota === "GET /conta") res = await getConta(auth, env);
     else if (rota === "POST /sessao/sair") res = await postSair(auth, env);
+    else if (rota === "POST /sessao/console") res = await postSessaoConsole(auth, env, req);
     else if (rota === "GET /admin/visao") res = await getAdminVisao(auth, env, url);
     else if (atender !== null) res = await postAtenderPedido(auth, env, atender[1]!);
     else if (licenca !== null) res = await patchLicenca(auth, env, licenca[1]!, req);

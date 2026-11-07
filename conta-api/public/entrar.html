@@ -18,6 +18,16 @@
     </header>
 
     <section id="escolha" hidden>
+      <!-- Quem entrou da última vez neste navegador (Firebase lembra): um clique, sem a janela do Google. -->
+      <div id="lembrado" class="lembrado" hidden>
+        <div class="lembrado-quem">
+          <img id="lembrado-foto" alt="" hidden><span class="lembrado-inicial" id="lembrado-inicial" aria-hidden="true"></span>
+          <div class="lembrado-texto"><strong id="lembrado-nome"></strong><span id="lembrado-email"></span></div>
+          <button type="button" class="link" id="lembrado-nao">Não é você?</button>
+        </div>
+        <button type="button" class="btn btn-primary" id="btn-lembrado">Continuar</button>
+        <div class="ou"><span>ou</span></div>
+      </div>
       <button type="button" class="btn btn-google" id="btn-google">
         <span class="g" aria-hidden="true">G</span> Entrar com Google
       </button>
@@ -43,7 +53,7 @@
 
     <section id="pronto" hidden>
       <p class="forte">Pronto. Pode voltar ao meu-bot.</p>
-      <p class="sub">O app deve ter aberto sozinho. Se não abriu:</p>
+      <p class="sub" id="pronto-sub">Se o app não abriu sozinho, clique abaixo. Na pergunta do navegador, marque <strong>"Sempre permitir"</strong>: da próxima vez ele abre sem clique.</p>
       <p><a class="btn btn-primary" id="abrir-app" href="#">Abrir o meu-bot</a></p>
       <details class="codigo">
         <summary>Não abriu? Cole o código no app</summary>

@@ -1,6 +1,7 @@
 // Console da conta meu-bot (console.agentesgrok.com/account/*): só leitura nesta versão. Entra pela mesma página de
 // login do app (auth.agentesgrok.com) com esquema=web: o console gera state + PKCE, a página devolve #code&state, e
-// POST /token {grant:"web"} vira um token de acesso de 1 h guardado só nesta aba (sessionStorage). Sem Firebase aqui.
+// POST /token {grant:"web"} vira um token de acesso de 1 h guardado neste navegador (localStorage: outra aba, inclusive
+// a que o app abre, reaproveita). Vindo do app, a URL traz #code&verifier (código emitido com a sessão do app): entra sem login.
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
 const CH_SESSAO = "meu-bot-console-sessao", CH_LOGIN = "meu-bot-console-login";
@@ -10,7 +11,7 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 
 const b64url = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 const aleatorio = (n) => b64url(crypto.getRandomValues(new Uint8Array(n)));
-const ss = { get(k) { try { return JSON.parse(sessionStorage.getItem(k) ?? "null"); } catch { return null; } }, set(k, v) { try { if (v === null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* sem storage: a sessão dura a página */ } } };
+const ss = { get(k) { try { return JSON.parse(localStorage.getItem(k) ?? "null"); } catch { return null; } }, set(k, v) { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch { /* sem storage: a sessão dura a página */ } } };
 const data = (iso) => { const t = Date.parse(iso ?? ""); return Number.isNaN(t) ? "-" : new Date(t).toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" }); };
 const dataHora = (iso) => { const t = Date.parse(iso ?? ""); return Number.isNaN(t) ? "-" : new Date(t).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const PLANO = { free: "Free", pro: "Pro" }, STATUS = { free: "Free", trialing: "Trial", active: "Ativo", expired: "Expirado" }, CICLO = { month: "mensal", year: "anual" };
@@ -44,11 +45,15 @@ async function entrar() {
   const q = new URLSearchParams({ esquema: "web", state, challenge, app: "meu-bot-console", retorno });
   location.href = `${cfg.auth}/entrar?${q.toString()}`;
 }
-async function trocarCodigo(code, state) {
-  const p = ss.get(CH_LOGIN);
-  ss.set(CH_LOGIN, null);
-  if (p === null || p.state !== state || Date.now() - p.em > 10 * 60 * 1000) throw new Error("o retorno não é deste login (ou passou de 10 min); entre de novo");
-  const r = await api("POST", "/token", { grant: "web", code, verifier: p.verifier });
+async function trocarCodigo(code, state, verifierDoApp = null) {
+  let verifier = verifierDoApp;
+  if (verifier === null) {
+    const p = ss.get(CH_LOGIN);
+    ss.set(CH_LOGIN, null);
+    if (p === null || p.state !== state || Date.now() - p.em > 10 * 60 * 1000) throw new Error("o retorno não é deste login (ou passou de 10 min); entre de novo");
+    verifier = p.verifier;
+  }
+  const r = await api("POST", "/token", { grant: "web", code, verifier });
   if (r.status !== 200 || !r.corpo || typeof r.corpo.acesso !== "string") throw new Error(erroDe(r));
   ss.set(CH_SESSAO, { acesso: r.corpo.acesso, expiraEm: r.corpo.expiraEm });
   return r.corpo.conta;
@@ -319,12 +324,12 @@ window.addEventListener("popstate", () => { if (conta !== null) mostrarConsole(c
 
 (async () => {
   const hash = new URLSearchParams(location.hash.slice(1));
-  const code = hash.get("code"), state = hash.get("state");
+  const code = hash.get("code"), state = hash.get("state"), verifier = hash.get("verifier");
   try {
-    if (code !== null && state !== null) {
+    if (code !== null && (state !== null || verifier !== null)) {
       history.replaceState(null, "", location.pathname);
-      if (!TOKEN_RE.test(code) || !TOKEN_RE.test(state)) throw new Error("retorno do login fora do formato");
-      conta = await trocarCodigo(code, state);
+      if (!TOKEN_RE.test(code) || (state !== null && !TOKEN_RE.test(state)) || (verifier !== null && !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier))) throw new Error("retorno do login fora do formato");
+      conta = await trocarCodigo(code, state ?? "", verifier);
       await carregarVisao("").catch((e) => mostrarErro(`Visão do admin: ${e?.message ?? e}`));
       mostrarConsole(conta);
       return;

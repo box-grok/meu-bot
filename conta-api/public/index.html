@@ -15,7 +15,9 @@
         <p class="sub">A conta que liga o seu plano e os seus Macs ao meu-bot.</p>
       </div>
     </header>
-    <p class="sub">Não há login por aqui: abra o app meu-bot e clique em <strong>Entrar</strong> em Configurações › Sua conta. Ele traz você para esta página e leva de volta sozinho.</p>
+    <p class="sub">Esta é só a página de login, aberta pelo app meu-bot (Entrar) ou pelo console da conta. Para ver seu plano, devices e máquinas, use o <a href="/account/overview" id="link-console">console da conta</a>.</p>
+    <script src="/config.js"></script>
+    <script>document.getElementById("link-console").href = `${window.MEU_BOT_CONTA.console}/account/overview`;</script>
   </main>
 </body>
 </html>
