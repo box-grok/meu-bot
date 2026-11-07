@@ -22,12 +22,23 @@ export interface ContaDevice {
 }
 /** Uma máquina (VM com backend) vinculada à conta. */
 export interface ContaMaquina { id: string; apelido: string | null; vinculadaPor: string }
+export type ContaTamanhoEquipe = "1" | "2-10" | "11-50" | "51-200" | "201+";
+/** O perfil que a pessoa edita no console (console.agentesgrok.com/account/profile). */
+export interface ContaPerfil { nomeProprio: string | null; sobrenome: string | null; pais: string | null; cidade: string | null; setor: string | null; cargo: string | null; tamanhoEquipe: ContaTamanhoEquipe | null }
 /** A conta como a API a devolve (`POST /token`, `GET /conta`). */
 export interface ContaInfo {
   id: string;
   email: string;
+  /** Nome de exibição: o digitado no console, senão o do login. */
   nome: string | null;
+  /** O nome que veio do login (Google ou e-mail). */
+  nomeLogin: string | null;
   foto: string | null;
+  perfil: ContaPerfil;
+  /** Provedores de login já usados: "google.com", "emailLink", "password". */
+  provedores: string[];
+  /** Console › "Dados de uso do produto": false = o app manda só o mínimo ao registrar este Mac como device. */
+  dadosUso: boolean;
   admin: "super" | "admin" | null;
   licenca: License;
   devices: ContaDevice[];

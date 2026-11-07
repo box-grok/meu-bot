@@ -1,6 +1,6 @@
 /** Acesso ao D1: consultas tipadas, uma função por intenção. O que sai do banco é dado; quem decide é a rota. */
-import type { AdminContaResumo, AdminPedido, AdminPerfil, AdminVisao, CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, SessaoLinha } from "./tipos.js";
-import { agoraIso, uuid, type PatchLicenca } from "./sessao-core.js";
+import type { AdminContaResumo, AdminPedido, AdminPerfil, AdminVisao, CodigoLinha, ContaApi, ContaLinha, DeviceApi, DeviceLinha, License, LicencaLinha, MaquinaLinha, PerfilApi, SessaoLinha } from "./tipos.js";
+import { agoraIso, nomeExibicao, parseProvedores, provedoresDoLogin, unirProvedores, uuid, type MetodoLogin, type PatchLicenca, type PatchPerfil } from "./sessao-core.js";
 import type { UsuarioFirebase } from "./firebase.js";
 
 export async function contaPorUid(db: D1Database, uid: string): Promise<ContaLinha | null> {
@@ -9,18 +9,70 @@ export async function contaPorUid(db: D1Database, uid: string): Promise<ContaLin
 export async function contaPorId(db: D1Database, id: string): Promise<ContaLinha | null> {
   return (await db.prepare("SELECT * FROM contas WHERE id = ?1 AND apagada_em IS NULL").bind(id).first<ContaLinha>()) ?? null;
 }
-/** Cria ou atualiza a conta a partir do que o Firebase diz (e-mail, nome, foto podem mudar). */
-export async function upsertConta(db: D1Database, u: UsuarioFirebase, agora = agoraIso()): Promise<ContaLinha> {
+/**
+ * Cria ou atualiza a conta a partir do que o Firebase diz (e-mail, nome, foto podem mudar) e acumula os provedores
+ * deste login. O que a pessoa digitou no console (nome próprio, sobrenome, cidade…) não é tocado.
+ */
+export async function upsertConta(db: D1Database, u: UsuarioFirebase, agora = agoraIso(), metodo: MetodoLogin | null = null): Promise<ContaLinha> {
   const atual = await contaPorUid(db, u.uid);
+  const novos = provedoresDoLogin(u.provedores, metodo);
   if (atual === null) {
     const id = uuid();
-    await db.prepare("INSERT INTO contas (id, firebase_uid, email, email_verificado, nome, foto, criada_em, atualizada_em) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)")
-      .bind(id, u.uid, u.email, u.emailVerificado ? 1 : 0, u.nome, u.foto, agora).run();
-    return { id, firebase_uid: u.uid, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, criada_em: agora, atualizada_em: agora, apagada_em: null };
+    const provedores = unirProvedores("[]", novos);
+    await db.prepare("INSERT INTO contas (id, firebase_uid, email, email_verificado, nome, foto, criada_em, atualizada_em, provedores) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?8)")
+      .bind(id, u.uid, u.email, u.emailVerificado ? 1 : 0, u.nome, u.foto, agora, provedores).run();
+    return { id, firebase_uid: u.uid, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, criada_em: agora, atualizada_em: agora, apagada_em: null, nome_proprio: null, sobrenome: null, pais: null, cidade: null, setor: null, cargo: null, tamanho_equipe: null, provedores, dados_uso: 1 };
   }
-  await db.prepare("UPDATE contas SET email = ?2, email_verificado = ?3, nome = ?4, foto = ?5, atualizada_em = ?6 WHERE id = ?1")
-    .bind(atual.id, u.email, u.emailVerificado ? 1 : 0, u.nome, u.foto, agora).run();
-  return { ...atual, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, atualizada_em: agora };
+  const provedores = unirProvedores(atual.provedores, novos);
+  await db.prepare("UPDATE contas SET email = ?2, email_verificado = ?3, nome = ?4, foto = ?5, atualizada_em = ?6, provedores = ?7 WHERE id = ?1")
+    .bind(atual.id, u.email, u.emailVerificado ? 1 : 0, u.nome, u.foto, agora, provedores).run();
+  return { ...atual, email: u.email, email_verificado: u.emailVerificado ? 1 : 0, nome: u.nome, foto: u.foto, atualizada_em: agora, provedores };
+}
+/** O perfil editável como a API devolve. */
+export const perfilDaLinha = (c: ContaLinha): PerfilApi => ({ nomeProprio: c.nome_proprio, sobrenome: c.sobrenome, pais: c.pais, cidade: c.cidade, setor: c.setor, cargo: c.cargo, tamanhoEquipe: (["1", "2-10", "11-50", "51-200", "201+"] as const).find((t) => t === c.tamanho_equipe) ?? null });
+/** `PATCH /conta`: aplica o patch sobre a linha e grava; desligar dados de uso também limpa o que os devices já guardaram. */
+export async function gravarPerfilConta(db: D1Database, conta: ContaLinha, patch: PatchPerfil, agora = agoraIso()): Promise<ContaLinha> {
+  const nova: ContaLinha = {
+    ...conta,
+    nome_proprio: patch.nomeProprio !== undefined ? patch.nomeProprio : conta.nome_proprio,
+    sobrenome: patch.sobrenome !== undefined ? patch.sobrenome : conta.sobrenome,
+    pais: patch.pais !== undefined ? patch.pais : conta.pais,
+    cidade: patch.cidade !== undefined ? patch.cidade : conta.cidade,
+    setor: patch.setor !== undefined ? patch.setor : conta.setor,
+    cargo: patch.cargo !== undefined ? patch.cargo : conta.cargo,
+    tamanho_equipe: patch.tamanhoEquipe !== undefined ? patch.tamanhoEquipe : conta.tamanho_equipe,
+    dados_uso: patch.dadosUso !== undefined ? (patch.dadosUso ? 1 : 0) : conta.dados_uso,
+    atualizada_em: agora,
+  };
+  await db.prepare("UPDATE contas SET nome_proprio = ?2, sobrenome = ?3, pais = ?4, cidade = ?5, setor = ?6, cargo = ?7, tamanho_equipe = ?8, dados_uso = ?9, atualizada_em = ?10 WHERE id = ?1")
+    .bind(conta.id, nova.nome_proprio, nova.sobrenome, nova.pais, nova.cidade, nova.setor, nova.cargo, nova.tamanho_equipe, nova.dados_uso, agora).run();
+  if (conta.dados_uso === 1 && nova.dados_uso === 0) await limparDadosDeUso(db, conta.id);
+  return nova;
+}
+/** Dados de uso desligados: os devices ficam só com id, alias, status e primeira vez; as sessões perdem app e versão. */
+export async function limparDadosDeUso(db: D1Database, contaId: string): Promise<void> {
+  await db.batch([
+    db.prepare("UPDATE devices SET name = NULL, user = NULL, platform = NULL, apps = '{}', last_seen = first_seen WHERE conta_id = ?1").bind(contaId),
+    db.prepare("UPDATE sessoes SET app = NULL, versao_app = NULL WHERE conta_id = ?1").bind(contaId),
+  ]);
+}
+/**
+ * Apaga a conta (soft): marca `apagada_em`, libera e-mail e uid (UNIQUE) com o prefixo "apagada:", zera o que
+ * identifica a pessoa, revoga todas as sessões e limpa os devices. Licença, pedidos e auditoria ficam para o histórico
+ * do admin. Entrar de novo com o mesmo Google cria uma conta nova.
+ */
+export async function apagarConta(db: D1Database, conta: ContaLinha, agora = agoraIso()): Promise<void> {
+  await db.batch([
+    db.prepare("UPDATE contas SET apagada_em = ?2, email = ?3, firebase_uid = ?4, nome = NULL, foto = NULL, nome_proprio = NULL, sobrenome = NULL, pais = NULL, cidade = NULL, setor = NULL, cargo = NULL, tamanho_equipe = NULL, provedores = '[]', atualizada_em = ?2 WHERE id = ?1")
+      .bind(conta.id, agora, `apagada:${conta.id}:${conta.email}`, `apagada:${conta.id}:${conta.firebase_uid}`),
+    db.prepare("UPDATE sessoes SET revogada_em = ?2 WHERE conta_id = ?1 AND revogada_em IS NULL").bind(conta.id, agora),
+    db.prepare("UPDATE devices SET name = NULL, user = NULL, platform = NULL, apps = '{}' WHERE conta_id = ?1").bind(conta.id),
+  ]);
+}
+/** Houve uma conta apagada com este e-mail? (quem apaga e volta não ganha trial de novo). */
+export async function houveContaApagada(db: D1Database, email: string): Promise<boolean> {
+  const r = await db.prepare("SELECT 1 AS um FROM contas WHERE apagada_em IS NOT NULL AND email LIKE 'apagada:%:' || ?1 LIMIT 1").bind(email).first<{ um: number }>();
+  return r !== null && r !== undefined;
 }
 
 /** O papel de admin deste e-mail; o primeiro login do ADMIN_BOOTSTRAP_EMAIL entra como super se a tabela está vazia. */
@@ -75,19 +127,26 @@ export async function devicePor(db: D1Database, contaId: string, id: string, ali
   return r ?? null;
 }
 export interface DeviceGravar { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string; status: "active" | "pending" }
-/** Grava o device (novo ou visto de novo); `apps[app]` recebe versão e hora. Device achado pelo alias antigo ganha o id novo. */
-export async function gravarDevice(db: D1Database, contaId: string, d: DeviceGravar, atual: DeviceLinha | null, agora = agoraIso()): Promise<void> {
+/**
+ * Grava o device (novo ou visto de novo); `apps[app]` recebe versão e hora. Device achado pelo alias antigo ganha o id
+ * novo. Com `dadosUso` false (console › Dados de uso), a conta guarda só id, alias, status e a primeira vez: nome,
+ * usuário, plataforma e apps ficam vazios, mesmo que um app antigo os mande.
+ */
+export async function gravarDevice(db: D1Database, contaId: string, d: DeviceGravar, atual: DeviceLinha | null, agora = agoraIso(), dadosUso = true): Promise<void> {
   let apps: Record<string, { version: string; lastSeen: string }> = {};
-  if (atual !== null) { try { const a: unknown = JSON.parse(atual.apps); if (a !== null && typeof a === "object") apps = a as typeof apps; } catch { apps = {}; } }
-  apps[d.app] = { version: d.versao, lastSeen: agora };
+  if (dadosUso) {
+    if (atual !== null) { try { const a: unknown = JSON.parse(atual.apps); if (a !== null && typeof a === "object") apps = a as typeof apps; } catch { apps = {}; } }
+    apps[d.app] = { version: d.versao, lastSeen: agora };
+  }
+  const name = dadosUso ? d.name : null, user = dadosUso ? d.user : null, platform = dadosUso ? d.platform : null;
   const requested = d.status === "pending" ? (atual?.requested_at ?? agora) : null;
   if (atual === null) {
     await db.prepare("INSERT INTO devices (conta_id, id, alias_legado, name, user, platform, status, requested_at, first_seen, last_seen, apps) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10)")
-      .bind(contaId, d.id, d.alias, d.name, d.user, d.platform, d.status, requested, agora, JSON.stringify(apps)).run();
+      .bind(contaId, d.id, d.alias, name, user, platform, d.status, requested, agora, JSON.stringify(apps)).run();
     return;
   }
   await db.prepare("UPDATE devices SET id = ?3, alias_legado = COALESCE(?4, alias_legado), name = ?5, user = ?6, platform = ?7, status = ?8, requested_at = ?9, last_seen = ?10, apps = ?11 WHERE conta_id = ?1 AND id = ?2")
-    .bind(contaId, atual.id, d.id, d.alias, d.name, d.user, d.platform, d.status, requested, agora, JSON.stringify(apps)).run();
+    .bind(contaId, atual.id, d.id, d.alias, name, user, platform, d.status, requested, dadosUso ? agora : atual.last_seen, JSON.stringify(apps)).run();
 }
 
 export async function maquinasDaConta(db: D1Database, contaId: string): Promise<MaquinaLinha[]> {
@@ -132,7 +191,7 @@ export async function montarContaApi(db: D1Database, conta: ContaLinha, admin: "
     try { const a: unknown = JSON.parse(d.apps); if (a !== null && typeof a === "object") apps = a as DeviceApi["apps"]; } catch { apps = {}; }
     return { id: d.id, alias: d.alias_legado, name: d.name ?? "", user: d.user ?? "", platform: d.platform ?? "", status: d.status === "pending" ? "pending" : "active", requestedAt: d.requested_at, firstSeen: d.first_seen, lastSeen: d.last_seen, apps, este: deviceAtual !== null && (d.id === deviceAtual || d.alias_legado === deviceAtual) };
   });
-  return { id: conta.id, email: conta.email, nome: conta.nome, foto: conta.foto, admin, licenca, devices: ds, maquinas: maquinas.map((m) => ({ id: m.id, apelido: m.apelido, vinculadaPor: m.vinculada_por })), pedidos };
+  return { id: conta.id, email: conta.email, nome: nomeExibicao(conta), nomeLogin: conta.nome, foto: conta.foto, perfil: perfilDaLinha(conta), provedores: parseProvedores(conta.provedores), dadosUso: conta.dados_uso !== 0, admin, licenca, devices: ds, maquinas: maquinas.map((m) => ({ id: m.id, apelido: m.apelido, vinculadaPor: m.vinculada_por })), pedidos };
 }
 
 // ---- Admin: a visão de todas as contas. `busca` filtra por e-mail ou nome (LIKE, escapado); até 500 contas.
@@ -144,7 +203,7 @@ const deviceApi = (d: DeviceLinha): DeviceApi => {
 interface PedidoLinha { id: string; conta_id: string; tipo: string; detalhe: string | null; maquina_id: string | null; criado_em: string; atendido_em: string | null; atendido_por: string | null; email: string; nome: string | null }
 export async function visaoAdmin(db: D1Database, busca: string): Promise<AdminVisao> {
   const like = `%${busca.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-  const contas = (await db.prepare("SELECT * FROM contas WHERE apagada_em IS NULL AND (?1 = '' OR email LIKE ?2 ESCAPE '\\' OR nome LIKE ?2 ESCAPE '\\') ORDER BY criada_em DESC LIMIT 500").bind(busca, like).all<ContaLinha>()).results;
+  const contas = (await db.prepare("SELECT * FROM contas WHERE apagada_em IS NULL AND (?1 = '' OR email LIKE ?2 ESCAPE '\\' OR nome LIKE ?2 ESCAPE '\\' OR nome_proprio LIKE ?2 ESCAPE '\\' OR sobrenome LIKE ?2 ESCAPE '\\') ORDER BY criada_em DESC LIMIT 500").bind(busca, like).all<ContaLinha>()).results;
   const [licencas, devices, maquinas, pedidosN, admins, pedidos] = await Promise.all([
     db.prepare("SELECT * FROM licencas").all<LicencaLinha>(),
     db.prepare("SELECT * FROM devices ORDER BY last_seen DESC").all<DeviceLinha>(),
@@ -159,7 +218,7 @@ export async function visaoAdmin(db: D1Database, busca: string): Promise<AdminVi
   const maq = new Map(maquinas.results.map((m) => [m.conta_id, m.n]));
   const ped = new Map(pedidosN.results.map((m) => [m.conta_id, m.n]));
   const adm = new Map(admins.results.map((a) => [a.email, a.papel === "super" ? "super" as const : "admin" as const]));
-  const resumo: AdminContaResumo[] = contas.map((c) => ({ id: c.id, email: c.email, nome: c.nome, foto: c.foto, admin: adm.get(c.email) ?? null, criadaEm: c.criada_em, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [], maquinas: maq.get(c.id) ?? 0, pedidos: ped.get(c.id) ?? 0 }));
+  const resumo: AdminContaResumo[] = contas.map((c) => ({ id: c.id, email: c.email, nome: nomeExibicao(c), foto: c.foto, admin: adm.get(c.email) ?? null, criadaEm: c.criada_em, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [], maquinas: maq.get(c.id) ?? 0, pedidos: ped.get(c.id) ?? 0 }));
   const todas = busca === "" ? resumo : (await db.prepare("SELECT id, criada_em FROM contas WHERE apagada_em IS NULL").all<{ id: string; criada_em: string }>()).results.map((c) => ({ id: c.id, licenca: licencaDaLinha(lic.get(c.id) ?? null, c.criada_em), devices: devs.get(c.id) ?? [] }));
   const totais = { contas: todas.length, pro: todas.filter((c) => c.licenca.plan === "pro").length, devicesPendentes: devices.results.filter((d) => d.status === "pending").length, pedidosAbertos: pedidos.results.length };
   const emails = new Set((await db.prepare("SELECT email FROM contas WHERE apagada_em IS NULL").all<{ email: string }>()).results.map((c) => c.email));

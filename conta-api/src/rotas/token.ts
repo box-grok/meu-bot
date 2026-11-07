@@ -46,7 +46,7 @@ export async function postToken(req: Request, env: Env): Promise<Response> {
     const [licenca, todos] = await Promise.all([licencaDaConta(env.DB, conta), devicesDaConta(env.DB, conta.id)]);
     const ativos = todos.filter((x) => x.status !== "pending" && x.id !== atual?.id).length;
     const status = admitirDevice(atual, ativos, licenca.deviceLimit);
-    await gravarDevice(env.DB, conta.id, { ...d, status }, atual, agora);
+    await gravarDevice(env.DB, conta.id, { ...d, status }, atual, agora, conta.dados_uso !== 0);
     if (atual === null) await auditar(env.DB, conta.email, status === "pending" ? "device.pedido" : "device.novo", conta.id, `${d.name || d.id} · ${d.app} ${d.versao}`, agora);
     const familia = uuid();
     await auditar(env.DB, conta.email, "login.entrou", conta.id, `${c.esquema} · ${d.app} ${d.versao}`, agora);

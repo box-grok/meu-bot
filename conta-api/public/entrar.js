@@ -37,11 +37,13 @@ if (!pedidoOk) {
   // Lembra quem entrou neste navegador (como o Rambox): da próxima vez, "Continuar como …" sem a janela do Google.
   await setPersistence(auth, browserLocalPersistence).catch(() => undefined);
 
-  async function concluir(user) {
+  // O Firebase chama senha e link por e-mail de "password": a página diz qual foi, e a conta registra o provedor certo.
+  const metodoDe = (user) => ((user.providerData ?? []).some((p) => p.providerId === "google.com") ? "google" : "emailLink");
+  async function concluir(user, metodo = metodoDe(user)) {
     mostrar("aguardando");
     let idToken;
     try { idToken = await user.getIdToken(true); } catch (e) { pintarLembrado(null); falhou("A sessão lembrada venceu; entre de novo."); return; }
-    const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined }) });
+    const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined, metodo }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || typeof j.code !== "string") { falhou(j.erro ?? `a API respondeu ${r.status}`); return; }
     if (paraConsole) { location.replace(`${pedido.retorno}#code=${encodeURIComponent(j.code)}&state=${encodeURIComponent(pedido.state)}`); return; }
@@ -72,7 +74,7 @@ if (!pedidoOk) {
 
   $("btn-google").addEventListener("click", async () => {
     mostrar("aguardando");
-    try { const prov = new GoogleAuthProvider(); prov.setCustomParameters({ prompt: "select_account" }); const cred = await signInWithPopup(auth, prov); await concluir(cred.user); }
+    try { const prov = new GoogleAuthProvider(); prov.setCustomParameters({ prompt: "select_account" }); const cred = await signInWithPopup(auth, prov); await concluir(cred.user, "google"); }
     catch (e) { falhou(e?.code === "auth/popup-closed-by-user" ? "A janela do Google foi fechada antes de terminar." : `Google: ${e?.message ?? e}`); }
   });
 
@@ -100,7 +102,7 @@ if (!pedidoOk) {
     if (!email) { mostrar("escolha"); }
     else {
       mostrar("aguardando");
-      try { const cred = await signInWithEmailLink(auth, email.trim().toLowerCase(), location.href); try { localStorage.removeItem(CHAVE_EMAIL); } catch { /* ok */ } await concluir(cred.user); }
+      try { const cred = await signInWithEmailLink(auth, email.trim().toLowerCase(), location.href); try { localStorage.removeItem(CHAVE_EMAIL); } catch { /* ok */ } await concluir(cred.user, "emailLink"); }
       catch (e) { falhou(`O link não serviu (${e?.code ?? e}). Peça um novo.`); }
     }
   } else {

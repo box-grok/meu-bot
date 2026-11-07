@@ -5,15 +5,15 @@
  *   de login com `esquema=web` e fala com a API só com o token de acesso (sem Firebase nem device no console);
  * - agentesgrok.com: a home ("Baixar para macOS", public/site/), com /download/mac apontando para a release mais nova
  *   no GitHub; www. redireciona para ela;
- * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET /conta, GET /health; para admins
- *   GET /admin/visao e POST /admin/pedidos/:id/atender).
+ * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET|PATCH|DELETE /conta, POST /conta/senha,
+ *   GET /health; para admins GET /admin/visao, PATCH /admin/contas/:id/licenca, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email).
  * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
  */
 import type { Env } from "./tipos.js";
 import { autenticar, cors, json } from "./http.js";
 import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
-import { getConta } from "./rotas/conta.js";
+import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
 import { deletePerfil, getAdminVisao, patchLicenca, postAtenderPedido, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
 
@@ -86,13 +86,16 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   if (rota === "GET /health") res = json({ ok: true, canal: env.CANAL });
   else if (rota === "POST /sessao") res = await postSessao(req, env);
   else if (rota === "POST /token") res = await postToken(req, env);
-  else if (rota === "POST /sessao/sair" || rota === "POST /sessao/console" || rota === "GET /conta" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
+  else if (rota === "POST /sessao/sair" || rota === "POST /sessao/console" || rota === "GET /conta" || rota === "PATCH /conta" || rota === "DELETE /conta" || rota === "POST /conta/senha" || rota.startsWith("GET /admin/") || rota.startsWith("POST /admin/") || rota.startsWith("PATCH /admin/") || rota.startsWith("PUT /admin/") || rota.startsWith("DELETE /admin/")) {
     const auth = await autenticar(req, env);
     const atender = /^POST \/admin\/pedidos\/([A-Za-z0-9-]{1,40})\/atender$/.exec(rota);
     const licenca = /^PATCH \/admin\/contas\/([A-Za-z0-9-]{1,40})\/licenca$/.exec(rota);
     const perfil = /^(PUT|DELETE) \/admin\/perfis\/([^/]{3,200})$/.exec(rota);
     if (auth === null) res = json({ erro: "entre de novo" }, 401, { "www-authenticate": "Bearer" });
     else if (rota === "GET /conta") res = await getConta(auth, env);
+    else if (rota === "PATCH /conta") res = await patchConta(auth, env, req);
+    else if (rota === "DELETE /conta") res = await deleteConta(auth, env);
+    else if (rota === "POST /conta/senha") res = await postSenha(auth, env);
     else if (rota === "POST /sessao/sair") res = await postSair(auth, env);
     else if (rota === "POST /sessao/console") res = await postSessaoConsole(auth, env, req);
     else if (rota === "GET /admin/visao") res = await getAdminVisao(auth, env, url);

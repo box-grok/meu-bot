@@ -19,10 +19,12 @@ import { log } from "../maquina/tunnel";
 import { sendToPicker } from "../maquina/picker";
 import { parseRetornoAuth } from "./deep-link-core";
 import { deviceIdentidade, devicePedido } from "./device";
-import { FOTO_MAX, URLS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin, type LoginPendente, type SessaoGuardada } from "./conta-core";
+import { FOTO_MAX, URLS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parsePrefs, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin, type ContaPrefs, type LoginPendente, type SessaoGuardada } from "./conta-core";
 
 const ARQ = (): string => path.join(app.getPath("userData"), "conta.bin");
 const ARQ_LOGIN = (): string => path.join(app.getPath("userData"), "conta-login.json");
+/** Preferências da conta em claro (hoje só "dados de uso"): o app precisa delas antes de ter sessão, e "Sair" não as apaga. */
+const ARQ_PREFS = (): string => path.join(app.getPath("userData"), "conta-prefs.json");
 const urls = (): { auth: string; api: string; console: string } => URLS[produto().canal];
 const TEMPO_API_MS = 20_000;
 
@@ -44,7 +46,14 @@ function lerSessao(): SessaoGuardada | null {
   } catch (e) { log(`[conta] não decifrou conta.bin: ${e instanceof Error ? e.message : String(e)}`); return null; } // Chaveiro negado: tenta de novo na próxima leitura
   return sessao;
 }
-function gravarSessao(s: SessaoGuardada): void { sessao = s; gravar(ARQ(), safeStorage.encryptString(JSON.stringify(s))); garantirFoto(s); }
+function gravarSessao(s: SessaoGuardada): void { sessao = s; gravar(ARQ(), safeStorage.encryptString(JSON.stringify(s))); garantirFoto(s); gravarPrefs({ dadosUso: s.conta.dadosUso }); }
+function lerPrefs(): ContaPrefs {
+  try { return parsePrefs(JSON.parse(fs.readFileSync(ARQ_PREFS(), "utf8"))); } catch { return parsePrefs(null); }
+}
+function gravarPrefs(p: ContaPrefs): void {
+  if (lerPrefs().dadosUso === p.dadosUso) return;
+  try { gravar(ARQ_PREFS(), JSON.stringify(p)); log(`[conta] dados de uso: ${p.dadosUso ? "ligados" : "desligados"}`); } catch (e) { log(`[conta] não gravou conta-prefs.json: ${e instanceof Error ? e.message : String(e)}`); }
+}
 function apagarSessao(): void { sessao = null; try { fs.rmSync(ARQ(), { force: true }); } catch { /* ok */ } }
 function lerPendente(): LoginPendente | null {
   if (pendente === undefined) { try { pendente = parseLoginPendente(JSON.parse(fs.readFileSync(ARQ_LOGIN(), "utf8"))); } catch { pendente = null; } }
@@ -131,7 +140,7 @@ async function trocarRetorno(r: Exclude<ReturnType<typeof parseRetornoAuth>, nul
   if (!r.ok) { erro = r.erro; log(`[conta] retorno do login recusado: ${r.erro}`); avisar(); return; }
   const p = lerPendente();
   if (!retornoConfere(p, r.retorno.state)) { erro = p === null ? "o login demorou mais de 10 min ou não foi pedido por este app; clique em Entrar de novo" : "o retorno não é deste login (state diferente); clique em Entrar de novo"; log(`[conta] retorno do login: ${erro}`); avisar(); return; }
-  const resp = await api("POST", "/token", { grant: "code", code: r.retorno.code, verifier: p!.verifier, device: devicePedido() });
+  const resp = await api("POST", "/token", { grant: "code", code: r.retorno.code, verifier: p!.verifier, device: devicePedido(lerPrefs().dadosUso) });
   const s = resp.status === 200 ? parseSessao(resp.corpo) : null;
   if (s === null) { erro = resp.status === 200 ? "a API devolveu uma sessão fora do formato" : erroDaApi(resp.status, resp.corpo); log(`[conta] POST /token falhou (${resp.status}): ${erro}`); avisar(); return; }
   gravarSessao(s); gravarPendente(null); erro = null;

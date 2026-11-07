@@ -1,4 +1,4 @@
-// Console da conta meu-bot (console.agentesgrok.com/account/*): só leitura nesta versão. Entra pela mesma página de
+// Console da conta meu-bot (console.agentesgrok.com/account/*). Entra pela mesma página de
 // login do app (auth.agentesgrok.com) com esquema=web: o console gera state + PKCE, a página devolve #code&state, e
 // POST /token {grant:"web"} vira um token de acesso de 1 h guardado neste navegador (localStorage: outra aba, inclusive
 // a que o app abre, reaproveita). Vindo do app, a URL traz #code&verifier (código emitido com a sessão do app): entra sem login.
@@ -272,12 +272,71 @@ function pintarOverview(c) {
     ...(c.pedidos > 0 ? [cartao("✉", "Pedidos abertos", document.createTextNode(String(c.pedidos)))] : []),
   );
 }
+const CAMPOS_PERFIL = ["nomeProprio", "sobrenome", "pais", "cidade", "setor", "cargo", "tamanhoEquipe"];
+/** Perfil (molde Rambox): cabeçalho, formulário editável, login e segurança, dados de uso, apagar conta. */
 function pintarPerfil(c) {
-  $("pf-nome").textContent = c.nome ?? "(sem nome)"; $("pf-email").textContent = c.email;
+  $("pf-nome").textContent = c.nome ?? "(sem nome)"; $("pf-email").textContent = c.admin ? `${c.email} · admin (${c.admin})` : c.email;
   const foto = typeof c.foto === "string" && /^https:\/\//.test(c.foto);
   $("pf-foto").hidden = !foto; $("pf-inicial").hidden = foto; if (foto) $("pf-foto").src = c.foto; $("pf-inicial").textContent = inicial(c);
-  const dl = $("pf-lista"); dl.replaceChildren();
-  for (const [k, v] of [["E-mail", c.email], ["Nome", c.nome ?? "-"], ["Papel", c.admin ? `admin (${c.admin})` : "pessoa"], ["Id da conta", c.id]]) { dl.append(el("dt", "", k), el("dd", "", v)); }
+  const form = $("pf-form"), perfil = c.perfil ?? {};
+  for (const k of CAMPOS_PERFIL) form.elements[k].value = perfil[k] ?? "";
+  $("pf-email-campo").value = c.email;
+  $("pf-salvo").hidden = true; $("pf-salvar").disabled = false;
+  const digitado = (perfil.nomeProprio ?? "") !== "" || (perfil.sobrenome ?? "") !== "";
+  $("pf-login").textContent = c.nomeLogin && digitado && c.nomeLogin !== c.nome ? `No login (Google ou e-mail) você aparece como "${c.nomeLogin}"; aqui e no app vale o nome que você digitou. A foto vem do Google.` : "Nome e foto vêm do login até você digitar o seu aqui; o que você digitar vale no app e para o admin.";
+  // Login e segurança
+  const provs = Array.isArray(c.provedores) ? c.provedores : [];
+  const dl = $("pf-seguranca"); dl.replaceChildren();
+  const linha = (rotulo, ...conteudo) => { dl.append(el("dt", "", rotulo)); const dd = el("dd"); dd.append(...conteudo); dl.append(dd); };
+  linha("Google", provs.includes("google.com") ? selo("conectado", "ok") : selo("não conectado"), el("span", "sub", provs.includes("google.com") ? "" : `Entre com o Google (${c.email}) na próxima vez para conectar.`));
+  linha("Link por e-mail", provs.includes("emailLink") ? selo("já usado", "ok") : selo("disponível"), el("span", "sub", `Um link de entrada vai para ${c.email} sempre que você pedir na página de login.`));
+  const temSenha = provs.includes("password");
+  const bSenha = el("button", "btn btn-ghost", temSenha ? "Redefinir senha" : "Criar senha"); bSenha.type = "button"; bSenha.id = "pf-senha";
+  bSenha.addEventListener("click", () => { void senhaPedir(bSenha, c.email); });
+  linha("Senha", temSenha ? selo("configurada", "ok") : selo("não configurada"), bSenha, el("span", "sub", temSenha ? "" : "Mandamos um e-mail com o link para criar a senha."));
+  // Dados de uso
+  const cb = $("pf-dados-uso"); cb.checked = c.dadosUso !== false; cb.disabled = false;
+  // Apagar
+  const ap = $("pf-apagar"); ap.disabled = c.admin !== null; ap.dataset.confirma = ""; ap.textContent = "Apagar minha conta";
+  ap.title = c.admin !== null ? "Um admin não apaga a própria conta: peça ao super admin para remover seu perfil de acesso antes." : "";
+}
+/** Salva o formulário do perfil (PATCH /conta devolve a conta inteira). */
+async function perfilSalvar() {
+  const s = sessaoGuardada(); if (s === null) return;
+  const form = $("pf-form"), patch = {};
+  for (const k of CAMPOS_PERFIL) patch[k] = form.elements[k].value.trim() === "" ? null : form.elements[k].value;
+  $("pf-salvar").disabled = true; $("pf-salvo").hidden = true;
+  const r = await api("PATCH", "/conta", patch, s.acesso);
+  if (r.status !== 200) { $("pf-salvar").disabled = false; mostrarErro(erroDe(r)); return; }
+  mostrarErro(null);
+  mostrarConsole(r.corpo);
+  $("pf-salvo").hidden = false;
+}
+async function dadosUsoMudar(cb) {
+  const s = sessaoGuardada(); if (s === null) return;
+  const querido = cb.checked; cb.disabled = true;
+  const r = await api("PATCH", "/conta", { dadosUso: querido }, s.acesso);
+  if (r.status !== 200) { cb.checked = !querido; cb.disabled = false; mostrarErro(erroDe(r)); return; }
+  mostrarErro(null);
+  mostrarConsole(r.corpo);
+}
+async function senhaPedir(botao, email) {
+  const s = sessaoGuardada(); if (s === null) return;
+  botao.disabled = true;
+  const r = await api("POST", "/conta/senha", {}, s.acesso);
+  if (r.status !== 200) { botao.disabled = false; mostrarErro(erroDe(r)); return; }
+  mostrarErro(null);
+  botao.replaceWith(el("span", "sub", `E-mail enviado para ${email}. Abra o link para definir a senha; depois ela aparece aqui como configurada no próximo login.`));
+}
+async function contaApagar(botao) {
+  const s = sessaoGuardada(); if (s === null) return;
+  if (botao.dataset.confirma !== "1") { botao.dataset.confirma = "1"; botao.textContent = "Confirmar: apagar a conta agora"; return; }
+  botao.disabled = true;
+  const r = await api("DELETE", "/conta", undefined, s.acesso);
+  if (r.status !== 200) { botao.disabled = false; botao.dataset.confirma = ""; botao.textContent = "Apagar minha conta"; mostrarErro(erroDe(r)); return; }
+  ss.set(CH_SESSAO, null); conta = null; visao = null;
+  history.replaceState(null, "", "/account/overview");
+  mostrarEntrada("Conta apagada. Entrar de novo cria uma conta nova.");
 }
 function pintarDevices(c) {
   const l = c.licenca, ativos = c.devices.filter((d) => d.status !== "pending").length;
@@ -316,6 +375,9 @@ function pintarSuporte(c) {
 // ---- arranque
 $("btn-entrar").addEventListener("click", () => { $("btn-entrar").disabled = true; void entrar(); });
 $("btn-sair").addEventListener("click", () => { void sair(); });
+$("pf-form").addEventListener("submit", (ev) => { ev.preventDefault(); void perfilSalvar(); });
+$("pf-dados-uso").addEventListener("change", (ev) => { void dadosUsoMudar(ev.currentTarget); });
+$("pf-apagar").addEventListener("click", (ev) => { void contaApagar(ev.currentTarget); });
 $("ad-perfil-form").addEventListener("submit", (ev) => { ev.preventDefault(); const email = $("ad-perfil-email").value.trim().toLowerCase(); if (!email) return; void perfilGravar(email, $("ad-perfil-papel").value, $("ad-perfil-form").querySelector("button")).then(() => { $("ad-perfil-email").value = ""; }); });
 $("ad-busca-form").addEventListener("submit", (ev) => { ev.preventDefault(); void carregarVisao($("ad-busca").value.trim()).then(() => { if (conta !== null) mostrarConsole(conta); }).catch((e) => mostrarErro(e?.message ?? String(e))); });
 // Os links do menu são caminhos reais (o Worker serve a mesma página para /account/*), mas trocar de seção não precisa recarregar.

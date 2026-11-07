@@ -6,7 +6,19 @@
  */
 import { deB64url, parseJsonB64url } from "./sessao-core.js";
 
-export interface UsuarioFirebase { uid: string; email: string; emailVerificado: boolean; nome: string | null; foto: string | null }
+/** `provedores`: o que a claim `firebase` do token diz (sign_in_provider e identities), já filtrado: google.com, password. */
+export interface UsuarioFirebase { uid: string; email: string; emailVerificado: boolean; nome: string | null; foto: string | null; provedores: string[] }
+const PROVEDOR_RE = /^(google\.com|password)$/;
+/** Provedores da claim `firebase` ({sign_in_provider, identities: {"google.com": [...], email: [...]}}); fora da lista cai. */
+export function provedoresDasClaims(claims: Record<string, unknown>): string[] {
+  const f = claims.firebase;
+  if (f === null || typeof f !== "object") return [];
+  const o = f as Record<string, unknown>;
+  const lista: string[] = [];
+  if (typeof o.sign_in_provider === "string" && PROVEDOR_RE.test(o.sign_in_provider)) lista.push(o.sign_in_provider);
+  if (o.identities !== null && typeof o.identities === "object") for (const k of Object.keys(o.identities as Record<string, unknown>)) if (PROVEDOR_RE.test(k)) lista.push(k);
+  return [...new Set(lista)].sort();
+}
 export interface JwkRsa { kid: string; kty: string; alg?: string; use?: string; n: string; e: string }
 export type BuscaJwks = () => Promise<JwkRsa[]>;
 
@@ -27,7 +39,7 @@ export function validaClaimsFirebase(claims: Record<string, unknown>, projectId:
   if (!EMAIL_RE.test(email)) return { erro: "token sem e-mail" };
   const nome = typeof claims.name === "string" && claims.name.trim() !== "" ? claims.name.trim().slice(0, 120) : null;
   const foto = typeof claims.picture === "string" && /^https:\/\/\S{1,500}$/.test(claims.picture) ? claims.picture : null;
-  return { uid, email, emailVerificado: claims.email_verified === true, nome, foto };
+  return { uid, email, emailVerificado: claims.email_verified === true, nome, foto, provedores: provedoresDasClaims(claims) };
 }
 
 /** Importa uma chave do JWKS do Google (RSA pública, RS256). */

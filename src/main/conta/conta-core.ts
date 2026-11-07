@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { Canal } from "../app/variant-core";
-import type { ContaDevice, ContaInfo, ContaMaquina } from "../../shared/ipc";
+import type { ContaDevice, ContaInfo, ContaMaquina, ContaPerfil, ContaTamanhoEquipe } from "../../shared/ipc";
 import { DEVICE_ID_RE, parseLicense, UUID_RE } from "../licenca/licenca";
 
 /** Página de login e API, por canal: o staging nunca fala com a produção (conta e D1 separados). */
@@ -69,6 +69,14 @@ function parseMaquina(raw: unknown): ContaMaquina | null {
   if (id === null || !UUID_RE.test(id)) return null;
   return { id, apelido: strOuNull(r.apelido), vinculadaPor: str(r.vinculadaPor) ?? "" };
 }
+const TAMANHOS_EQUIPE: readonly ContaTamanhoEquipe[] = ["1", "2-10", "11-50", "51-200", "201+"];
+const PROVEDOR_RE = /^(google\.com|password|emailLink)$/;
+/** O perfil editável, campo a campo; o que não vier (API antiga) fica null. */
+export function parsePerfil(raw: unknown): ContaPerfil {
+  const r = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const t = strOuNull(r.tamanhoEquipe);
+  return { nomeProprio: strOuNull(r.nomeProprio), sobrenome: strOuNull(r.sobrenome), pais: strOuNull(r.pais), cidade: strOuNull(r.cidade), setor: strOuNull(r.setor), cargo: strOuNull(r.cargo), tamanhoEquipe: TAMANHOS_EQUIPE.find((x) => x === t) ?? null };
+}
 /** A conta como a API devolve; null se faltar o essencial (id, e-mail). A licença passa pelo mesmo parse da máquina. */
 export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInfo | null {
   if (raw === null || typeof raw !== "object") return null;
@@ -77,7 +85,10 @@ export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInf
   if (id === null || !UUID_RE.test(id) || email === null || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
   const foto = strOuNull(r.foto);
   return {
-    id, email: email.toLowerCase(), nome: strOuNull(r.nome), foto: foto !== null && /^https:\/\//.test(foto) ? foto : null,
+    id, email: email.toLowerCase(), nome: strOuNull(r.nome), nomeLogin: strOuNull(r.nomeLogin), foto: foto !== null && /^https:\/\//.test(foto) ? foto : null,
+    perfil: parsePerfil(r.perfil),
+    provedores: Array.isArray(r.provedores) ? r.provedores.filter((p): p is string => typeof p === "string" && PROVEDOR_RE.test(p)) : [],
+    dadosUso: r.dadosUso !== false,
     admin: r.admin === "super" || r.admin === "admin" ? r.admin : null,
     licenca: parseLicense(r.licenca, now),
     devices: Array.isArray(r.devices) ? r.devices.map(parseDevice).filter((d): d is ContaDevice => d !== null) : [],
@@ -85,6 +96,9 @@ export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInf
     pedidos: typeof r.pedidos === "number" && Number.isFinite(r.pedidos) && r.pedidos >= 0 ? Math.floor(r.pedidos) : 0,
   };
 }
+/** conta-prefs.json (em claro, sobrevive ao "Sair"): o que o app precisa saber antes de ter sessão. Hoje só `dadosUso`. */
+export interface ContaPrefs { dadosUso: boolean }
+export const parsePrefs = (raw: unknown): ContaPrefs => ({ dadosUso: !(raw !== null && typeof raw === "object" && (raw as Record<string, unknown>).dadosUso === false) });
 /** Resposta do `POST /token` (grant code ou refresh) e o conteúdo de conta.bin: os dois têm o mesmo formato. */
 export function parseSessao(raw: unknown, now: number = Date.now()): SessaoGuardada | null {
   if (raw === null || typeof raw !== "object") return null;

@@ -32,7 +32,7 @@ export function deviceIdentidade(): DeviceJson {
   lido = novo;
   return novo;
 }
-/** O device que o app manda no `POST /token`. */
-export function devicePedido(): DevicePedido {
-  return montarDevicePedido({ id: deviceIdentidade().id, hostname: os.hostname(), user: os.userInfo().username, platform: process.platform, app: produto().nome, versao: app.getVersion() });
+/** O device que o app manda no `POST /token`; `dadosUso` false manda só o mínimo. */
+export function devicePedido(dadosUso = true): DevicePedido {
+  return montarDevicePedido({ id: deviceIdentidade().id, hostname: os.hostname(), user: os.userInfo().username, platform: process.platform, app: produto().nome, versao: app.getVersion() }, dadosUso);
 }

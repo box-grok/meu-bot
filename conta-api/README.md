@@ -29,3 +29,8 @@ O que isso exige de quem mexer aqui:
   com essa justificativa, como foi feito no fork `box-grok/meu-bot`.
 - Se o Google recusar a mudança alegando "uso de outra API nos últimos 7 dias", confira se foi um teste seu (um
   `curl` de geocoding, por exemplo) e aplique com o override.
+- **O Worker também usa a chave**, em `POST /conta/senha` (`accounts:sendOobCode`, o e-mail de criar/redefinir senha):
+  como a restrição é por referer, esse `fetch` manda `Referer: https://<FIREBASE_AUTH_DOMAIN>/`. Se a lista de referers
+  mudar, esse host precisa continuar nela.
+- **Senha** (console › Perfil › Login e segurança › "Criar senha") exige o provedor **E-mail/senha** ativado em
+  Authentication › Sign-in method do projeto; sem ele o Firebase responde `OPERATION_NOT_ALLOWED` e o console avisa.
