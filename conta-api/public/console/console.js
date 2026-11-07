@@ -481,7 +481,7 @@ function pintarOverview(c) {
     ...(c.pedidos > 0 ? [cartao("✉", "Pedidos abertos", document.createTextNode(String(c.pedidos)))] : []),
   );
 }
-const CAMPOS_PERFIL = ["nomeProprio", "sobrenome", "pais", "cidade", "setor", "cargo", "tamanhoEquipe"];
+const CAMPOS_PERFIL = ["nomeProprio", "sobrenome"];
 /** Perfil (molde Rambox): cabeçalho, formulário editável, login e segurança, dados de uso, apagar conta. */
 function pintarPerfil(c) {
   $("pf-nome").textContent = c.nome ?? "(sem nome)"; $("pf-email").textContent = c.admin ? `${c.email} · admin (${c.admin})` : c.email;
@@ -519,7 +519,7 @@ async function perfilSalvar() {
   if (r.status !== 200) { $("pf-salvar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
   mostrarConsole(r.corpo);
-  $("pf-salvo").hidden = false;
+  $("pf-editar").open = true; $("pf-salvo").hidden = false;
 }
 async function dadosUsoMudar(cb) {
   const s = sessaoGuardada(); if (s === null) return;

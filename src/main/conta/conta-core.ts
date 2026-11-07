@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import type { Canal } from "../app/variant-core";
-import type { ContaDevice, ContaInfo, ContaMaquina, ContaOrg, ContaPerfil, ContaTamanhoEquipe } from "../../shared/ipc";
+import type { ContaDevice, ContaInfo, ContaMaquina, ContaOrg, ContaPerfil } from "../../shared/ipc";
 import { DEVICE_ID_RE, parseLicense, UUID_RE } from "../licenca/licenca";
 
 /** Página de login e API, por canal: o staging nunca fala com a produção (conta e D1 separados). */
@@ -78,13 +78,11 @@ function parseOrg(raw: unknown): ContaOrg | null {
   const n = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
   return { id, slug, nome, papel: r.papel === "dona" || r.papel === "admin" ? r.papel : "membro", membros: n(r.membros), assentos: n(r.assentos) };
 }
-const TAMANHOS_EQUIPE: readonly ContaTamanhoEquipe[] = ["1", "2-10", "11-50", "51-200", "201+"];
 const PROVEDOR_RE = /^(google\.com|password|emailLink)$/;
 /** O perfil editável, campo a campo; o que não vier (API antiga) fica null. */
 export function parsePerfil(raw: unknown): ContaPerfil {
   const r = raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
-  const t = strOuNull(r.tamanhoEquipe);
-  return { nomeProprio: strOuNull(r.nomeProprio), sobrenome: strOuNull(r.sobrenome), pais: strOuNull(r.pais), cidade: strOuNull(r.cidade), setor: strOuNull(r.setor), cargo: strOuNull(r.cargo), tamanhoEquipe: TAMANHOS_EQUIPE.find((x) => x === t) ?? null };
+  return { nomeProprio: strOuNull(r.nomeProprio), sobrenome: strOuNull(r.sobrenome) };
 }
 /** A conta como a API devolve; null se faltar o essencial (id, e-mail). A licença passa pelo mesmo parse da máquina. */
 export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInfo | null {

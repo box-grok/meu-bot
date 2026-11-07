@@ -121,3 +121,7 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .abas a.ativo { color: var(--texto); border-bottom-color: var(--primario); }
 .editor-form .largo { flex-basis: 100%; }
 .tabela .copiar { margin-left: 6px; }
+.recolhido > summary { cursor: pointer; font-weight: 600; font-size: 15px; list-style: none; display: flex; align-items: center; gap: 8px; }
+.recolhido > summary::before { content: "▸"; color: var(--sub); font-size: 12px; transition: transform .15s; }
+.recolhido[open] > summary::before { transform: rotate(90deg); }
+.recolhido[open] > summary { margin-bottom: 10px; }
