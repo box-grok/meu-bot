@@ -31,9 +31,17 @@ h2 { font-size: 20px; margin: 0 0 12px; }
 .passos li { margin: 0 0 10px; }
 .rodape { margin-top: auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 24px; max-width: 980px; width: 100%; margin-left: auto; margin-right: auto; color: var(--sub); font-size: 13px; }
 .rodape a { color: var(--sub); }
-.passos-lista { list-style: none; padding: 0; margin: 0 0 14px; display: grid; gap: 14px; }
-.passos-lista li { padding: 14px 16px; border: 1px solid var(--borda); border-radius: 12px; background: var(--fundo); }
-.passos-lista li strong { display: block; font-size: 17px; margin: 2px 0 4px; }
-.passos-lista li p { margin: 0; color: var(--sub); }
-.passo-n { font-size: 12px; letter-spacing: .6px; text-transform: uppercase; color: var(--primario); font-weight: 700; }
-.sub a { color: var(--primario); }
+/* Obrigado: três colunas com o símbolo do meu-bot se preenchendo a cada passo (1/3, 2/3, inteiro). */
+.passos-tres { max-width: 980px; background: color-mix(in srgb, var(--primario) 7%, var(--cartao)); border-color: color-mix(in srgb, var(--primario) 25%, var(--borda)); padding: 32px 28px; }
+.passos-tres h2 { text-align: center; margin-bottom: 26px; }
+.colunas { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px; }
+.colunas li { display: flex; flex-direction: column; align-items: flex-start; }
+.colunas h3 { font-size: 19px; margin: 14px 0 0; font-weight: 600; width: 100%; padding-bottom: 12px; border-bottom: 1px solid var(--borda); }
+.colunas p { margin: 12px 0 0; color: var(--sub); }
+.colunas p a { color: var(--primario); text-decoration: none; } .colunas p a:hover { text-decoration: underline; }
+.passo-ico { display: block; margin: 0 auto 4px; }
+.ico-borda { fill: color-mix(in srgb, var(--primario) 10%, var(--cartao)); stroke: var(--primario); stroke-width: 4; }
+.ico-cheio { fill: var(--primario); }
+.ico-num { font: 700 56px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; fill: #fff; paint-order: stroke; stroke: var(--primario); stroke-width: 6px; stroke-linejoin: round; }
+.centro { text-align: center; margin-top: 24px; }
+@media (max-width: 720px) { .colunas { grid-template-columns: 1fr; } .passos-tres { padding: 22px 18px; } }

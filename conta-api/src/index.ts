@@ -115,7 +115,8 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   }
   const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
-  return comCabecalhos(res, { "content-security-policy": cspDoSite, "cache-control": caminho.endsWith(".html") ? "no-store" : "public, max-age=300" });
+  // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
+  return comCabecalhos(res, { "content-security-policy": cspDoSite, "cache-control": "no-store" });
 }
 
 export default {

@@ -3,7 +3,7 @@
 (() => {
   const cfg = window.MEU_BOT_CONTA || {};
   const $ = (id) => document.getElementById(id);
-  if (typeof cfg.console === "string") $("link-console").href = `${cfg.console}/account/overview`;
+  if (typeof cfg.console === "string") { $("link-console").href = `${cfg.console}/account/overview`; const lc = $("link-conta"); if (lc) lc.href = `${cfg.console}/account/overview`; }
   const mb = (n) => (n > 0 ? `${(n / 1048576).toFixed(0)} MB` : "");
   const data = (iso) => { const t = Date.parse(iso || ""); return Number.isNaN(t) ? "" : new Date(t).toLocaleDateString("pt-BR", { day: "numeric", month: "short", year: "numeric" }); };
   fetch("/download/mac.json", { headers: { accept: "application/json" } })

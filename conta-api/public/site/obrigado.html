@@ -23,26 +23,41 @@
     <p class="sub">Caso contrário, <a id="btn-denovo" href="/download/mac">use este link para iniciar o download</a>.</p>
   </main>
 
-  <section class="passos">
+  <section class="passos passos-tres">
     <h2>O download foi concluído? Próximo…</h2>
-    <ol class="passos-lista">
+    <ol class="colunas">
       <li>
-        <span class="passo-n">Passo 1</span>
-        <strong>Abra o arquivo baixado</strong>
-        <p>Clique no arquivo baixado no canto inferior esquerdo ou superior direito do seu navegador. Ele abre a pasta com o <em>meu-bot</em>: arraste o app para a pasta Aplicativos.</p>
+        <svg class="passo-ico" viewBox="0 0 120 120" width="112" height="112" aria-hidden="true">
+            <defs><clipPath id="forma1"><rect x="10" y="10" width="100" height="100" rx="28"/></clipPath></defs>
+            <rect x="10" y="10" width="100" height="100" rx="28" class="ico-borda"/>
+            <rect class="ico-cheio" clip-path="url(#forma1)" x="0" y="76" width="120" height="44"/>
+            <text x="60" y="80" class="ico-num" text-anchor="middle">1</text>
+          </svg>
+        <h3>1. Abra o arquivo baixado</h3>
+        <p>Clique no arquivo baixado no canto inferior esquerdo ou superior direito do seu navegador. Ele abre a pasta com o <em>meu-bot</em>: arraste o app para Aplicativos.</p>
       </li>
       <li>
-        <span class="passo-n">Passo 2</span>
-        <strong>Abra o app pela primeira vez</strong>
-        <p>Clique com o botão direito no <em>meu-bot</em> em Aplicativos e escolha <em>Abrir</em>. O macOS pergunta só desta vez, porque o app ainda não é notarizado pela Apple.</p>
+        <svg class="passo-ico" viewBox="0 0 120 120" width="112" height="112" aria-hidden="true">
+            <defs><clipPath id="forma2"><rect x="10" y="10" width="100" height="100" rx="28"/></clipPath></defs>
+            <rect x="10" y="10" width="100" height="100" rx="28" class="ico-borda"/>
+            <rect class="ico-cheio" clip-path="url(#forma2)" x="0" y="43" width="120" height="77"/>
+            <text x="60" y="80" class="ico-num" text-anchor="middle">2</text>
+          </svg>
+        <h3>2. Abra o app pela primeira vez</h3>
+        <p>Botão direito no <em>meu-bot</em> em Aplicativos › <em>Abrir</em>. O macOS pergunta só desta vez, porque o app ainda não é notarizado pela Apple.</p>
       </li>
       <li>
-        <span class="passo-n">Passo 3</span>
-        <strong>Acesse com sua conta</strong>
-        <p>O app abre o navegador; entre com Google ou link por e-mail e volte para o app, já com o seu plano e os seus Macs. Não tem uma conta? Ela é criada nesse mesmo login, com 14 dias de teste do Pro.</p>
+        <svg class="passo-ico" viewBox="0 0 120 120" width="112" height="112" aria-hidden="true">
+            <defs><clipPath id="forma3"><rect x="10" y="10" width="100" height="100" rx="28"/></clipPath></defs>
+            <rect x="10" y="10" width="100" height="100" rx="28" class="ico-borda"/>
+            <rect class="ico-cheio" clip-path="url(#forma3)" x="0" y="10" width="120" height="110"/>
+            <text x="60" y="80" class="ico-num" text-anchor="middle">3</text>
+          </svg>
+        <h3>3. Acesse com sua conta</h3>
+        <p>O app abre o navegador; entre com Google ou link por e-mail e volte com o seu plano e os seus Macs. <a id="link-conta" href="#">Não tem uma conta?</a> Ela nasce nesse login, com 14 dias de teste do Pro.</p>
       </li>
     </ol>
-    <p class="sub">Dali em diante o app se atualiza sozinho: baixa a versão nova, confere a assinatura e só pede para reiniciar.</p>
+    <p class="sub centro">Dali em diante o app se atualiza sozinho: baixa a versão nova, confere a assinatura e só pede para reiniciar.</p>
   </section>
 
   <footer class="rodape">
@@ -52,6 +67,7 @@
 
   <script src="/config.js"></script>
   <script src="/site/site.js"></script>
-  <script>setTimeout(() => { location.href = "/download/mac"; }, 900);</script>
+  <!-- ?ver=1 só mostra a página (sem disparar o download): para olhar o desenho. -->
+  <script>if (!/[?&]ver=1/.test(location.search)) setTimeout(() => { location.href = "/download/mac"; }, 900);</script>
 </body>
 </html>
