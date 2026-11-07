@@ -117,6 +117,7 @@ const sharedApi: MeuBotSharedApi = {
   setSettings: (update: SettingsUpdate): Promise<SettingsView> => ipcRenderer.invoke("settings:set", update),
   controleRemotoStatus: () => ipcRenderer.invoke("controle-remoto:status", {}),
   controleRemotoLigar: (ligado: boolean) => ipcRenderer.invoke("controle-remoto:ligar", { ligado }),
+  controleRemotoExecucao: (ligado: boolean) => ipcRenderer.invoke("controle-remoto:execucao", { ligado }),
   controleRemotoPorta: (porta: number) => ipcRenderer.invoke("controle-remoto:porta", { porta }),
   controleRemotoRegenerar: () => ipcRenderer.invoke("controle-remoto:regenerar", {}),
   googleContaStatus: (forcar?: boolean) => ipcRenderer.invoke("google-conta:status", { forcar }),

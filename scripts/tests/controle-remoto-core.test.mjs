@@ -2,38 +2,55 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 const req = createRequire(import.meta.url);
-const { FERRAMENTAS, PAGINAS, ferramenta, roteador, donoDe, pedidoOk, responderJsonRpc, gerarToken, isToken, isPortaMcp, configClaudeCode, configCursor, urlMcp, erroRpc } = req("../../dist/main/controle-remoto/controle-remoto-core.js");
+const { FERRAMENTAS, FERRAMENTAS_EXECUCAO, PAGINAS_APP, VERSAO_PROTOCOLO, ferramenta, ferramentasVisiveis, negociarVersao, roteador, donoDe, pedidoOk, responderJsonRpc, gerarToken, isToken, isPortaMcp, configClaudeCode, configCursor, urlMcp, erroRpc } = req("../../dist/main/controle-remoto/controle-remoto-core.js");
 const { PRODUTOS } = req("../../dist/main/app/variant-core.js");
 const { normalizeSettings, defaultSettings } = req("../../dist/main/app/settings-normalize.js");
 
 const TOKEN = "a".repeat(64);
 const okReq = (extra = {}) => ({ method: "POST", url: "/mcp", headers: { host: "127.0.0.1:7830", authorization: `Bearer ${TOKEN}`, "content-type": "application/json", ...extra } });
+const INFO = { nome: "meu-bot", versao: "1.2.3", execucao: true };
 
 test("catálogo: as ferramentas do app-mcp (menos apps/app_abrir) mais as do app; cada uma com schema e anotações", () => {
   const nomes = FERRAMENTAS.map((f) => f.name);
   for (const n of ["terminais", "terminal_abrir", "terminal_ler", "terminal_digitar", "tela_dividir", "tela_juntar", "nav_abas", "nav_abrir", "nav_ler", "nav_clicar", "nav_digitar", "nav_tecla", "nav_print", "nav_recarregar", "nav_voltar", "nav_js", "nav_fechar", "nota", "depuracao", "app", "janela_abrir", "pagina_abrir", "tema", "print_janela"]) assert.ok(nomes.includes(n), `falta ${n}`);
   assert.ok(!nomes.includes("apps") && !nomes.includes("app_abrir"), "de dentro do app não se abre outro app");
   assert.equal(new Set(nomes).size, nomes.length, "nome repetido");
-  for (const f of FERRAMENTAS) { assert.equal(f.inputSchema.type, "object"); assert.equal(typeof f.annotations.readOnlyHint, "boolean"); assert.ok(f.description.length > 10); }
+  for (const f of FERRAMENTAS) { assert.equal(f.inputSchema.type, "object"); assert.equal(typeof f.annotations.readOnlyHint, "boolean"); assert.ok(f.description.length > 10); assert.equal("outputSchema" in f, false, "sem outputSchema o resultado vai só como texto"); }
   assert.equal(ferramenta("nav_fechar").annotations.destructiveHint, true);
+  assert.equal(ferramenta("terminal_digitar").annotations.destructiveHint, true, "rodar um comando no shell da pessoa é destrutivo para o cliente pedir confirmação");
+  assert.equal(ferramenta("nav_js").annotations.destructiveHint, true);
+  assert.equal(ferramenta("nav_clicar").annotations.destructiveHint, false);
   assert.equal(ferramenta("terminais").annotations.readOnlyHint, true);
-  assert.deepEqual(ferramenta("pagina_abrir").inputSchema.properties.pagina.enum, [...PAGINAS]);
+  assert.deepEqual(ferramenta("pagina_abrir").inputSchema.properties.pagina.enum, [...PAGINAS_APP]);
 });
 
-test("roteador: terminal, Navegador (com a máquina à parte) e app; desconhecida lança", () => {
+test("execução arbitrária (terminal_digitar, nav_js) só aparece com o interruptor ligado", () => {
+  assert.deepEqual([...FERRAMENTAS_EXECUCAO], ["terminal_digitar", "nav_js"]);
+  const sem = ferramentasVisiveis(false).map((f) => f.name);
+  assert.ok(!sem.includes("terminal_digitar") && !sem.includes("nav_js"));
+  assert.ok(sem.includes("terminal_ler") && sem.includes("nav_clicar") && sem.includes("nav_digitar"), "ler, clicar e digitar em campos continuam");
+  assert.equal(ferramentasVisiveis(true).length, FERRAMENTAS.length);
+});
+
+test("roteador: tudo vai para um socket do app (terminal, com as rotas do app, ou Navegador); desconhecida lança", () => {
   assert.deepEqual(roteador("terminais", {}), { alvo: "terminal", rota: "terminais" });
   assert.deepEqual(roteador("terminal_abrir", { maquina: "colima" }), { alvo: "terminal", rota: "abrir", corpo: { maquina: "colima" } });
+  assert.deepEqual(roteador("terminal_abrir", {}), { alvo: "terminal", rota: "abrir", corpo: {} });
   assert.deepEqual(roteador("terminal_ler", { id: "t1", linhas: 20 }), { alvo: "terminal", rota: "ler", corpo: { id: "t1", linhas: 20 } });
   assert.deepEqual(roteador("tela_dividir", { pagina: "navegador", maquina: "colima" }), { alvo: "terminal", rota: "dividir", corpo: { pagina: "navegador", maquina: "colima" } });
   assert.deepEqual(roteador("nota", { texto: "oi", maquina: "x" }), { alvo: "terminal", rota: "nota", corpo: { texto: "oi" } });
   assert.deepEqual(roteador("depuracao", { on: null }), { alvo: "terminal", rota: "depuracao", corpo: { on: null } });
   assert.deepEqual(roteador("depuracao", {}), { alvo: "terminal", rota: "depuracao", corpo: {} });
+  // as do app: rotas /app, /janela, /pagina, /tema, /print do term.sock (as mesmas do scripts/app-mcp.mjs)
+  assert.deepEqual(roteador("app", {}), { alvo: "terminal", rota: "app", corpo: {} });
+  assert.deepEqual(roteador("janela_abrir", { maquina: "colima" }), { alvo: "terminal", rota: "janela", corpo: { maquina: "colima" } });
+  assert.deepEqual(roteador("pagina_abrir", { pagina: "gmail", maquina: "colima" }), { alvo: "terminal", rota: "pagina", corpo: { pagina: "gmail", maquina: "colima" } });
+  assert.deepEqual(roteador("tema", { tema: "dark" }), { alvo: "terminal", rota: "tema", corpo: { tema: "dark" } });
+  assert.deepEqual(roteador("print_janela", {}), { alvo: "terminal", rota: "print", corpo: {} });
   assert.deepEqual(roteador("nav_abas", {}), { alvo: "navegador", rota: "abas" });
   assert.deepEqual(roteador("nav_abas", { maquina: "colima" }), { alvo: "navegador", rota: "abas", maquina: "colima" });
   assert.deepEqual(roteador("nav_abrir", { url: "https://x", nova: true, maquina: "colima" }), { alvo: "navegador", rota: "abrir", corpo: { url: "https://x", nova: true }, maquina: "colima" });
   assert.deepEqual(roteador("nav_print", { aba: 5 }), { alvo: "navegador", rota: "print", corpo: { aba: 5 } });
-  assert.deepEqual(roteador("tema", { tema: "dark" }), { alvo: "app", acao: "tema", args: { tema: "dark" } });
-  assert.deepEqual(roteador("print_janela", {}), { alvo: "app", acao: "print_janela", args: {} });
   assert.throws(() => roteador("inexistente", {}), /desconhecida/);
 });
 
@@ -45,7 +62,7 @@ test("donoDe: sem nome vira Cliente MCP; com nome, o nome limpo vira selo", () =
   assert.equal(donoDe("a".repeat(80)).rotulo.length, 30 + " (MCP)".length);
 });
 
-test("pedidoOk: só POST /mcp do loopback com Bearer e JSON; cada recusa com o status certo", () => {
+test("pedidoOk: só POST /mcp do loopback com Bearer e JSON; cada recusa com o status certo; OPTIONS (CORS) nunca passa", () => {
   assert.deepEqual(pedidoOk(okReq(), 7830, TOKEN), { ok: true });
   assert.deepEqual(pedidoOk(okReq({ origin: "http://127.0.0.1:7830" }), 7830, TOKEN), { ok: true });
   assert.deepEqual(pedidoOk(okReq({ origin: "http://localhost:7830" }), 7830, TOKEN), { ok: true });
@@ -53,7 +70,8 @@ test("pedidoOk: só POST /mcp do loopback com Bearer e JSON; cada recusa com o s
   assert.equal(pedidoOk({ ...okReq(), url: "/x" }, 7830, TOKEN).status, 404);
   assert.equal(pedidoOk({ ...okReq(), url: "/mcp?x=1" }, 7830, TOKEN).ok, true, "query não atrapalha");
   assert.equal(pedidoOk({ ...okReq(), method: "GET" }, 7830, TOKEN).status, 405, "sem SSE: GET recusa");
-  assert.equal(pedidoOk({ ...okReq(), method: "DELETE" }, 7830, TOKEN).status, 405);
+  assert.equal(pedidoOk({ ...okReq(), method: "DELETE" }, 7830, TOKEN).status, 405, "sem sessão: nada para encerrar");
+  assert.equal(pedidoOk({ ...okReq(), method: "OPTIONS" }, 7830, TOKEN).status, 405, "preflight de CORS não existe aqui");
   assert.equal(pedidoOk(okReq({ host: "evil.com:7830" }), 7830, TOKEN).status, 421, "DNS rebinding");
   assert.equal(pedidoOk(okReq({ host: "127.0.0.1:7831" }), 7830, TOKEN).status, 421, "porta errada");
   assert.equal(pedidoOk(okReq({ origin: "https://evil.com" }), 7830, TOKEN).status, 403, "página de fora");
@@ -64,8 +82,15 @@ test("pedidoOk: só POST /mcp do loopback com Bearer e JSON; cada recusa com o s
   assert.equal(pedidoOk(okReq({ "content-type": "text/plain" }), 7830, TOKEN).status, 415);
 });
 
-test("JSON-RPC: initialize, ping, tools/list, tools/call (texto, imagem, erro), notificação sem resposta, lote, método desconhecido", async () => {
-  const info = { nome: "meu-bot", versao: "1.2.3" };
+test("versão do protocolo: anuncia 2025-06-18; ecoa a do cliente só se a conhece", () => {
+  assert.equal(VERSAO_PROTOCOLO, "2025-06-18");
+  assert.equal(negociarVersao("2024-11-05"), "2024-11-05");
+  assert.equal(negociarVersao("2025-03-26"), "2025-03-26");
+  assert.equal(negociarVersao("2026-01-01"), "2025-06-18", "revisão que não conhecemos: a nossa mais nova");
+  assert.equal(negociarVersao(undefined), "2025-06-18");
+});
+
+test("JSON-RPC: initialize, ping, tools/list, tools/call (texto, imagem, erro), notificação sem resposta, lote recusado, método desconhecido", async () => {
   const chamadas = [];
   const chamar = async (nome, args) => {
     chamadas.push([nome, args]);
@@ -74,34 +99,47 @@ test("JSON-RPC: initialize, ping, tools/list, tools/call (texto, imagem, erro), 
     if (nome === "terminais") return { terminais: [] };
     return undefined;
   };
-  const init = await responderJsonRpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }, chamar, info);
+  const init = await responderJsonRpc({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } }, chamar, INFO);
   assert.equal(init.result.protocolVersion, "2024-11-05"); assert.deepEqual(init.result.serverInfo, { name: "meu-bot", version: "1.2.3" }); assert.deepEqual(init.result.capabilities, { tools: {} }); assert.match(init.result.instructions, /nota/);
-  const semVersao = await responderJsonRpc({ jsonrpc: "2.0", id: 2, method: "initialize", params: {} }, chamar, info);
-  assert.equal(semVersao.result.protocolVersion, "2025-03-26");
-  assert.deepEqual(await responderJsonRpc({ jsonrpc: "2.0", id: 3, method: "ping" }, chamar, info), { jsonrpc: "2.0", id: 3, result: {} });
-  const lista = await responderJsonRpc({ jsonrpc: "2.0", id: 4, method: "tools/list" }, chamar, info);
+  const semVersao = await responderJsonRpc({ jsonrpc: "2.0", id: 2, method: "initialize", params: {} }, chamar, INFO);
+  assert.equal(semVersao.result.protocolVersion, "2025-06-18");
+  assert.deepEqual(await responderJsonRpc({ jsonrpc: "2.0", id: 3, method: "ping" }, chamar, INFO), { jsonrpc: "2.0", id: 3, result: {} });
+  const lista = await responderJsonRpc({ jsonrpc: "2.0", id: 4, method: "tools/list" }, chamar, INFO);
   assert.equal(lista.result.tools.length, FERRAMENTAS.length);
-  assert.equal(await responderJsonRpc({ jsonrpc: "2.0", method: "notifications/initialized" }, chamar, info), null);
-  const t = await responderJsonRpc({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "terminais", arguments: {} } }, chamar, info);
-  assert.deepEqual(t.result, { content: [{ type: "text", text: JSON.stringify({ terminais: [] }) }], structuredContent: { terminais: [] }, isError: false });
-  const ok = await responderJsonRpc({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "tema", arguments: { tema: "dark" } } }, chamar, info);
-  assert.deepEqual(ok.result.structuredContent, { ok: true }, "sem retorno vira {ok:true}");
-  const img = await responderJsonRpc({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "nav_print", arguments: {} } }, chamar, info);
+  assert.equal(await responderJsonRpc({ jsonrpc: "2.0", method: "notifications/initialized" }, chamar, INFO), null);
+  const t = await responderJsonRpc({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "terminais", arguments: {} } }, chamar, INFO);
+  assert.deepEqual(t.result, { content: [{ type: "text", text: JSON.stringify({ terminais: [] }) }], isError: false }, "só texto: sem structuredContent (não há outputSchema)");
+  const ok = await responderJsonRpc({ jsonrpc: "2.0", id: 6, method: "tools/call", params: { name: "tema", arguments: { tema: "dark" } } }, chamar, INFO);
+  assert.equal(ok.result.content[0].text, JSON.stringify({ ok: true }), "sem retorno vira {ok:true}");
+  const img = await responderJsonRpc({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "nav_print", arguments: {} } }, chamar, INFO);
   assert.deepEqual(img.result, { content: [{ type: "image", data: "AAAA", mimeType: "image/png" }], isError: false });
-  const erro = await responderJsonRpc({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "nota", arguments: {} } }, chamar, info);
+  const erro = await responderJsonRpc({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "nota", arguments: {} } }, chamar, INFO);
   assert.deepEqual(erro.result, { content: [{ type: "text", text: "Erro: falta texto" }], isError: true });
-  const desconhecida = await responderJsonRpc({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "sumir", arguments: {} } }, chamar, info);
+  const desconhecida = await responderJsonRpc({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "sumir", arguments: {} } }, chamar, INFO);
   assert.equal(desconhecida.error.code, -32602);
-  const metodo = await responderJsonRpc({ jsonrpc: "2.0", id: 10, method: "resources/list" }, chamar, info);
+  const metodo = await responderJsonRpc({ jsonrpc: "2.0", id: 10, method: "resources/list" }, chamar, INFO);
   assert.equal(metodo.error.code, -32601);
-  assert.equal((await responderJsonRpc("texto", chamar, info)).error.code, -32600);
-  assert.equal((await responderJsonRpc({ jsonrpc: "2.0", id: 11 }, chamar, info)).error.code, -32600);
-  const lote = await responderJsonRpc([{ jsonrpc: "2.0", id: 12, method: "ping" }, { jsonrpc: "2.0", method: "notifications/x" }], chamar, info);
-  assert.deepEqual(lote, [{ jsonrpc: "2.0", id: 12, result: {} }]);
-  assert.equal(await responderJsonRpc([{ jsonrpc: "2.0", method: "notifications/x" }], chamar, info), null);
-  assert.equal((await responderJsonRpc([], chamar, info)).error.code, -32600);
+  assert.equal((await responderJsonRpc("texto", chamar, INFO)).error.code, -32600);
+  assert.equal((await responderJsonRpc({ jsonrpc: "2.0", id: 11 }, chamar, INFO)).error.code, -32600);
+  const lote = await responderJsonRpc([{ jsonrpc: "2.0", id: 12, method: "ping" }], chamar, INFO);
+  assert.equal(lote.error.code, -32600, "lote saiu do MCP em 2025-06-18"); assert.match(lote.error.message, /lote/);
   assert.deepEqual(chamadas.map((c) => c[0]), ["terminais", "tema", "nav_print", "nota"], "a desconhecida nunca chega ao app");
   assert.deepEqual(erroRpc(null, -32000, "x"), { jsonrpc: "2.0", id: null, error: { code: -32000, message: "x" } });
+});
+
+test("execução desligada: tools/list esconde terminal_digitar e nav_js, e chamar dá isError sem tocar o app", async () => {
+  const chamadas = [];
+  const chamar = async (nome) => { chamadas.push(nome); return { ok: true }; };
+  const info = { ...INFO, execucao: false };
+  const lista = await responderJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" }, chamar, info);
+  assert.equal(lista.result.tools.length, FERRAMENTAS.length - 2);
+  const r = await responderJsonRpc({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "terminal_digitar", arguments: { id: "t1", texto: "rm -rf /", enter: true } } }, chamar, info);
+  assert.equal(r.result.isError, true); assert.match(r.result.content[0].text, /desligada/);
+  const js = await responderJsonRpc({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "nav_js", arguments: { codigo: "1" } } }, chamar, info);
+  assert.equal(js.result.isError, true);
+  const ler = await responderJsonRpc({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "terminal_ler", arguments: { id: "t1" } } }, chamar, info);
+  assert.equal(ler.result.isError, false);
+  assert.deepEqual(chamadas, ["terminal_ler"]);
 });
 
 test("token e porta: 64 hex; porta 1024–65535; a configuração pronta leva nome, porta e token", () => {
@@ -122,11 +160,11 @@ test("produtos: cada app tem a própria porta do MCP, nenhuma é a 7822 do Rambo
   assert.equal(PRODUTOS.find((p) => p.variant === "client-staging").portaMcp, 7831);
 });
 
-test("settings: desligado e sem token por padrão; token inválido cai para vazio; porta fora da faixa vira padrão (null)", () => {
+test("settings: desligado, sem execução e sem token por padrão; token inválido cai para vazio; porta fora da faixa vira padrão (null)", () => {
   const d = defaultSettings();
-  assert.deepEqual([d.mcpLigado, d.mcpPorta, d.mcpToken], [false, null, ""]);
-  const s = normalizeSettings({ mcpLigado: true, mcpPorta: 7900, mcpToken: TOKEN });
-  assert.deepEqual([s.mcpLigado, s.mcpPorta, s.mcpToken], [true, 7900, TOKEN]);
-  const ruim = normalizeSettings({ mcpLigado: "sim", mcpPorta: 80, mcpToken: "curto" });
-  assert.deepEqual([ruim.mcpLigado, ruim.mcpPorta, ruim.mcpToken], [false, null, ""]);
+  assert.deepEqual([d.mcpLigado, d.mcpExecucao, d.mcpPorta, d.mcpToken], [false, false, null, ""]);
+  const s = normalizeSettings({ mcpLigado: true, mcpExecucao: true, mcpPorta: 7900, mcpToken: TOKEN });
+  assert.deepEqual([s.mcpLigado, s.mcpExecucao, s.mcpPorta, s.mcpToken], [true, true, 7900, TOKEN]);
+  const ruim = normalizeSettings({ mcpLigado: "sim", mcpExecucao: 1, mcpPorta: 80, mcpToken: "curto" });
+  assert.deepEqual([ruim.mcpLigado, ruim.mcpExecucao, ruim.mcpPorta, ruim.mcpToken], [false, false, null, ""]);
 });

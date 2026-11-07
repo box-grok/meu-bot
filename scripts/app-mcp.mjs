@@ -81,8 +81,15 @@ const TOOLS = [
   { name: 'nav_fechar', description: 'Fecha uma aba desta conversa.', inputSchema: S({ ...APP, ...MAQ, ...ABA }) },
   { name: 'nota', description: 'Escreve uma linha na faixa de depuração do app ("vou pedir ao agente para…"): a pessoa acompanha de fora o que você vai fazer. Só aparece com o modo de depuração ligado.', inputSchema: S({ ...APP, texto: { type: 'string' } }, ['texto']) },
   { name: 'depuracao', description: 'Liga (on=true), desliga (on=false) ou volta ao padrão da variante (on=null) o modo de depuração do app; sem on, só consulta.', inputSchema: S({ ...APP, on: { type: ['boolean', 'null'] } }) },
+  // O app em si (rotas /app, /janela, /pagina, /tema, /print do term.sock; 6 nov).
+  { name: 'app', description: 'Este app: nome, versão, tema, as janelas de máquina abertas (qual em foco) e as máquinas conhecidas.', inputSchema: S(APP) },
+  { name: 'janela_abrir', description: 'Abre (ou traz à frente) a janela de uma máquina do ~/.ssh/config, ou "local" para este Mac.', inputSchema: S({ ...APP, maquina: { type: 'string' } }, ['maquina']) },
+  { name: 'pagina_abrir', description: 'Põe uma página na frente da janela: tutoriais, acervo, financas, conta-google, gmail, computador, navegador.', inputSchema: S({ ...APP, ...MAQ, pagina: { type: 'string', enum: ['tutoriais', 'acervo', 'financas', 'conta-google', 'gmail', 'computador', 'navegador'] } }, ['pagina']) },
+  { name: 'tema', description: 'Troca o tema do app (system, light, dark); vale para todas as janelas.', inputSchema: S({ ...APP, tema: { type: 'string', enum: ['system', 'light', 'dark'] } }, ['tema']) },
+  { name: 'print_janela', description: 'Captura a janela inteira do app (a da máquina pedida, ou a em foco) como imagem.', inputSchema: S({ ...APP, ...MAQ }) },
 ];
 const NAV_ROTAS = { nav_abas: 'abas', nav_abrir: 'abrir', nav_ler: 'ler', nav_clicar: 'clicar', nav_digitar: 'digitar', nav_tecla: 'tecla', nav_print: 'print', nav_recarregar: 'recarregar', nav_voltar: 'voltar', nav_js: 'js', nav_fechar: 'fechar' };
+const APP_ROTAS = { app: 'app', janela_abrir: 'janela', pagina_abrir: 'pagina', tema: 'tema', print_janela: 'print' };
 
 async function call(name, args) {
   const { app, maquina, ...resto } = args;
@@ -106,15 +113,22 @@ async function call(name, args) {
   if (name === 'tela_juntar') return pedir(path.join(a.dir, 'term.sock'), 'juntar', { ...resto, maquina });
   if (name === 'nota') return pedir(path.join(a.dir, 'term.sock'), 'nota', { texto: resto.texto });
   if (name === 'depuracao') return pedir(path.join(a.dir, 'term.sock'), 'depuracao', 'on' in resto ? { on: resto.on } : {});
+  if (name === 'app') return pedir(path.join(a.dir, 'term.sock'), 'app');
+  if (APP_ROTAS[name]) return pedir(path.join(a.dir, 'term.sock'), APP_ROTAS[name], { ...resto, ...(maquina === undefined ? {} : { maquina }) });
   const rota = NAV_ROTAS[name]; if (!rota) throw new Error(`ferramenta desconhecida: ${name}`);
   return pedir(navSock(a, maquina), rota, rota === 'abas' ? undefined : resto);
 }
 
 const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
 const rl = readline.createInterface({ input: process.stdin });
-/** Chamadas em andamento: ao fechar a entrada, espera-as terminar (app_abrir leva segundos) antes de sair. */
+/**
+ * Chamadas em andamento: ao fechar a entrada, espera-as terminar (app_abrir leva segundos) antes de sair. A saída
+ * espera o stdout esvaziar: num pipe a escrita é assíncrona, e um `process.exit` logo depois de um PNG (nav_print,
+ * print_janela) cortava a resposta em 64 KB.
+ */
 let pendentes = 0; let fechando = false;
-const terminou = () => { pendentes -= 1; if (fechando && pendentes === 0) process.exit(0); };
+const sair = () => { process.stdout.write('', () => process.exit(0)); };
+const terminou = () => { pendentes -= 1; if (fechando && pendentes === 0) sair(); };
 rl.on('line', async (line) => {
   pendentes += 1;
   try { await tratar(line); } finally { terminou(); }
@@ -131,10 +145,10 @@ async function tratar(line) {
     try {
       if (!TOOLS.some((t) => t.name === name)) throw new Error(`ferramenta desconhecida: ${name}`);
       const r = await call(name, args);
-      if (name === 'nav_print') return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'image', data: r.png_base64, mimeType: 'image/png' }] } });
+      if (name === 'nav_print' || name === 'print_janela') return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'image', data: r.png_base64, mimeType: 'image/png' }] } });
       return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(r) }] } });
     } catch (e) { return send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `Erro: ${e.message}` }], isError: true } }); }
   }
   if (id !== undefined) send({ jsonrpc: '2.0', id, error: { code: -32601, message: `método não suportado: ${method}` } });
 }
-rl.on('close', () => { fechando = true; if (pendentes === 0) process.exit(0); });
+rl.on('close', () => { fechando = true; if (pendentes === 0) sair(); });

@@ -10,15 +10,27 @@
  *   largura da janela comportar) · POST /juntar {id?|pagina?, maquina?}: tira essa coluna, ou todas
  * · POST /nota {texto}: uma linha de quem está dirigindo o app de fora, para a faixa de depuração ("vou pedir ao agente…")
  * · POST /depuracao {on: true|false|null}: liga/desliga o modo de depuração (null = padrão da variante)
+ * Rotas do app em si (6 nov; o scripts/app-mcp.mjs e o controle externo por MCP usam as duas famílias):
+ * · GET /app: nome, versão, tema, janelas abertas (qual em foco) e máquinas conhecidas
+ * · POST /janela {maquina}: abre (ou traz) a janela de uma máquina do ~/.ssh/config, ou "local"
+ * · POST /pagina {pagina, maquina?}: põe uma página na frente (tutoriais, acervo, financas, conta-google, gmail, computador, navegador)
+ * · POST /tema {tema: system|light|dark} · POST /print {maquina?}: a janela inteira como PNG (png_base64, ≤ 1280 px)
  * Quem pede vem no cabeçalho `X-Meu-Bot-Dono` (o mesmo do Navegador, nav-donos-core.ts) e aparece como selo no
  * terminal ("✳️ Claude Code (Mac) · digitou"), para a pessoa saber quem está mexendo.
  */
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow, nativeTheme } from "electron";
+import type { Theme } from "../../shared/ipc";
 import { controlDir } from "../app/control-dir";
-import { hostOfWindow, lastFocusedWindow } from "../app/windows";
+import { allMainWindows, broadcast, hostOfWindow, lastFocusedWindow, openMainWindow, sendWhenLoaded, windowForHost } from "../app/windows";
+import { setLastHost, settingsView, updateSettings } from "../app/settings";
+import { isTheme } from "../app/settings-normalize";
+import { appTitle, produto } from "../app/variant";
+import { LOCAL_HOST } from "../maquina/localBackend";
+import { listSshHosts } from "../maquina/sshConfig";
+import { PAGINAS_APP } from "../controle-remoto/controle-remoto-core";
 import { liveTerminals, replayTerminal, terminalById, waitNewTerminal, writeTerminal } from "./terminal";
 import { entradaDigitar, textoDoTerminal } from "./term-api-core";
 import { parseDono, type Dono } from "../navegador/nav-donos-core";
@@ -27,7 +39,7 @@ import { estado as estadoDepuracao, evento as eventoDepuracao, registrarAcao, se
 
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
 
-interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown; on?: unknown }
+interface Req { id?: unknown; maquina?: unknown; linhas?: unknown; texto?: unknown; enter?: unknown; tecla?: unknown; pagina?: unknown; on?: unknown; tema?: unknown }
 const PAGINAS = ["navegador", "tutoriais", "acervo", "vazia"] as const;
 
 /** Janela da máquina pedida (ou a última focada que tenha máquina). */
@@ -119,6 +131,37 @@ async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
       const e = b.on === true ? setDepuracao(true) : b.on === false ? setDepuracao(false) : b.on === null ? setDepuracao(null) : estadoDepuracao();
       return { ligado: e.ligado, gravado: e.gravado, padraoDaVariante: e.padraoDaVariante, forcado: e.forcado };
     }
+    // O app em si (as mesmas ações do Remote Control do Rambox: estado, janela, página, tema, print).
+    case "/app": {
+      const foco = lastFocusedWindow();
+      return { app: appTitle().replace(/\s.*$/, ""), variante: produto().variant, versao: app.getVersion(), tema: settingsView().theme, janelas: allMainWindows().map((w) => ({ maquina: hostOfWindow(w), foco: w === foco })), maquinas: [LOCAL_HOST, ...listSshHosts()] };
+    }
+    case "/janela": {
+      const host = typeof b.maquina === "string" ? b.maquina : "";
+      if (host !== LOCAL_HOST && !listSshHosts().includes(host)) throw new Error(`a máquina "${host}" não está no ~/.ssh/config (use "local" para este Mac); veja /app`);
+      setLastHost(host);
+      const existia = windowForHost(host) !== undefined;
+      openMainWindow(host, "menu");
+      return { ok: true, maquina: host, nova: !existia };
+    }
+    case "/pagina": {
+      const pagina = PAGINAS_APP.find((p) => p === b.pagina);
+      if (pagina === undefined) throw new Error(`página desconhecida; use uma de: ${PAGINAS_APP.join(", ")}`);
+      const w = janela(b.maquina);
+      sendWhenLoaded(w, "ui:abrir-pagina", { pagina });
+      return { ok: true, pagina, maquina: hostOfWindow(w) };
+    }
+    case "/tema": {
+      if (!isTheme(b.tema)) throw new Error("tema inválido: system, light ou dark");
+      const view = updateSettings({ theme: b.tema as Theme });
+      nativeTheme.themeSource = view.theme;
+      broadcast("settings:changed", settingsView());
+      return { ok: true, tema: view.theme };
+    }
+    case "/print": {
+      const img = await janela(b.maquina).webContents.capturePage();
+      return { png_base64: (img.getSize().width > 1280 ? img.resize({ width: 1280 }) : img).toPNG().toString("base64") };
+    }
     default: throw Object.assign(new Error(`rota desconhecida: ${route}`), { status: 404 });
   }
 }
@@ -149,8 +192,8 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
     const r = await act(route, body, dono);
     send(200, r);
     if (route !== "/terminais" && route !== "/ler") log(`[terminal] controle (${dono.origem}: ${dono.id}): ${route}${typeof body.id === "string" ? ` ${body.id}` : ""}`);
-    // /nota já entrou no fluxo como "nota" dentro do act(); as outras rotas entram como ações do terminal.
-    if (route !== "/nota") registrarAcao({ origem: "terminal", dono, rota: route, corpo: body as Record<string, unknown>, t0, resultado: r });
+    // /nota já entrou no fluxo como "nota" dentro do act(); as outras rotas entram como ações do terminal (o /print sem o PNG).
+    if (route !== "/nota") registrarAcao({ origem: "terminal", dono, rota: route, corpo: body as Record<string, unknown>, t0, resultado: route === "/print" ? { png: true } : r });
   } catch (e) {
     const st = (e as { status?: number }).status ?? 400;
     const msg = e instanceof Error ? e.message : String(e);

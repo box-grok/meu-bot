@@ -71,11 +71,13 @@ export interface SettingsFile {
   depuracao: boolean | null;
   /** Aba fixada (📌) que fica na frente ao abrir; "padrao" até a pessoa escolher. */
   abaFixa: AbaFixa;
-  /** Controle remoto (MCP): servidor em 127.0.0.1 para um cliente MCP deste Mac controlar o app. Desligado até a pessoa ligar. */
+  /** Controle externo (MCP): servidor em 127.0.0.1 para um cliente MCP deste Mac controlar o app. Desligado até a pessoa ligar. */
   mcpLigado: boolean;
-  /** Porta do controle remoto; null = a padrão da variante (Produto.portaMcp). */
+  /** As ferramentas que executam comando no terminal e código nas páginas (terminal_digitar, nav_js); desligadas por padrão. */
+  mcpExecucao: boolean;
+  /** Porta do controle externo; null = a padrão da variante (Produto.portaMcp). */
   mcpPorta: number | null;
-  /** Bearer token do controle remoto (64 hex); "" = nenhum (gerado ao ligar, apagado ao desligar). */
+  /** Bearer token do controle externo (64 hex); "" = nenhum (gerado ao ligar; fica gravado ao desligar, "Gerar outro" troca). */
   mcpToken: string;
 }
 export const ABAS_FIXAVEIS: readonly AbaFixa[] = ["padrao", "conversa", "tutoriais", "acervo", "conta-google", "gmail", "computador", "financas", "navegador", "usuarios"];
@@ -169,7 +171,7 @@ export const defaultSettings = (): SettingsFile => ({
   version: 1, lastHost: null, backendModel: DEFAULT_MODEL, defaultModelByHost: {}, backendPort: DEFAULT_PORT, backendPortByHost: {}, zoomLevel: 0,
   theme: "system", notifications: true, contextBudgetTokens: DEFAULT_BUDGET, memoryEveryTurns: DEFAULT_MEMORY_EVERY,
   quickEntryEnabled: true, dadosNoDrive: true, quickEntryShortcut: DEFAULT_SHORTCUT, podHosts: [], navAgentHosts: [], navAgentDesligados: [], gmailAgentDesligados: [], navFavoritos: {}, onboarding: "pending", openDirect: true, hostNames: {}, navEspacos: {}, atualizarOcioso: true, corretorOrtografico: true, aceleracaoHardware: true, depuracao: null, abaFixa: "padrao",
-  mcpLigado: false, mcpPorta: null, mcpToken: "",
+  mcpLigado: false, mcpExecucao: false, mcpPorta: null, mcpToken: "",
 });
 
 /** Aceita qualquer JSON (inclusive o formato v2 com `sshHost`) e devolve um SettingsFile válido. */
@@ -217,6 +219,7 @@ export function normalizeSettings(input: unknown): SettingsFile {
     depuracao: p["depuracao"] === true ? true : p["depuracao"] === false ? false : null,
     abaFixa: isAbaFixa(p["abaFixa"]) ? p["abaFixa"] : "padrao",
     mcpLigado: p["mcpLigado"] === true,
+    mcpExecucao: p["mcpExecucao"] === true,
     mcpPorta: isPortaMcp(p["mcpPorta"]) ? p["mcpPorta"] : null,
     mcpToken: isToken(p["mcpToken"]) ? p["mcpToken"] : "",
   };
