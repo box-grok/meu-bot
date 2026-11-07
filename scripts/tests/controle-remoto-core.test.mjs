@@ -164,9 +164,10 @@ test("produtos: cada app tem a própria porta do MCP, nenhuma é a 7822 do Rambo
 
 test("settings: desligado, sem execução e sem token por padrão; token inválido cai para vazio; porta fora da faixa vira padrão (null)", () => {
   const d = defaultSettings();
-  assert.deepEqual([d.mcpLigado, d.mcpExecucao, d.mcpPorta, d.mcpToken], [false, false, null, ""]);
+  assert.deepEqual([d.mcpLigado, d.mcpExecucao, d.mcpPorta, d.mcpToken], [false, true, null, ""], "execução vem ligada por padrão (7 nov); o controle externo em si vem desligado");
   const s = normalizeSettings({ mcpLigado: true, mcpExecucao: true, mcpPorta: 7900, mcpToken: TOKEN });
   assert.deepEqual([s.mcpLigado, s.mcpExecucao, s.mcpPorta, s.mcpToken], [true, true, 7900, TOKEN]);
   const ruim = normalizeSettings({ mcpLigado: "sim", mcpExecucao: 1, mcpPorta: 80, mcpToken: "curto" });
-  assert.deepEqual([ruim.mcpLigado, ruim.mcpExecucao, ruim.mcpPorta, ruim.mcpToken], [false, false, null, ""]);
+  assert.deepEqual([ruim.mcpLigado, ruim.mcpExecucao, ruim.mcpPorta, ruim.mcpToken], [false, true, null, ""], "execução fora do formato cai no padrão (ligada); só `false` explícito desliga");
+  assert.equal(normalizeSettings({ mcpExecucao: false }).mcpExecucao, false);
 });
