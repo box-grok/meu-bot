@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Console · meu-bot</title>
+  <link rel="stylesheet" href="/console/console.css">
+</head>
+<body>
+  <!-- Sem sessão: o cartão de entrada (a página de login é a mesma do app, com esquema=web). -->
+  <main class="entrada" id="entrada" hidden>
+    <section class="cartao">
+      <header class="topo">
+        <div class="marca" aria-hidden="true">mb</div>
+        <div><h1>Console da conta</h1><p class="sub">Plano, devices e máquinas da sua conta meu-bot.</p></div>
+      </header>
+      <p class="sub" id="entrada-texto">Entre com a mesma conta que você usa no app.</p>
+      <p class="erro" id="entrada-erro" hidden></p>
+      <button type="button" class="btn btn-primary" id="btn-entrar">Entrar com Google ou e-mail</button>
+      <p class="rodape"><span>meu-bot</span><span class="canal" id="entrada-canal"></span></p>
+    </section>
+  </main>
+
+  <!-- Com sessão: menu lateral + a seção escolhida pelo caminho (/account/overview…). -->
+  <div class="console" id="console" hidden>
+    <aside class="lateral">
+      <div class="logo"><span class="marca" aria-hidden="true">mb</span><span>meu-bot</span><span class="canal" id="canal"></span></div>
+      <nav class="menu" id="menu">
+        <a href="/account/overview" data-secao="overview"><span class="ico" aria-hidden="true">▦</span>Visão geral</a>
+        <a href="/account/profile" data-secao="profile"><span class="ico" aria-hidden="true">◉</span>Perfil</a>
+        <a href="/account/devices" data-secao="devices"><span class="ico" aria-hidden="true">▭</span>Devices</a>
+        <a href="/account/plan" data-secao="plan"><span class="ico" aria-hidden="true">▤</span>Plano</a>
+        <a href="/account/support" data-secao="support"><span class="ico" aria-hidden="true">?</span>Suporte</a>
+      </nav>
+      <div class="quem">
+        <img id="quem-foto" alt="" hidden>
+        <span class="avatar" id="quem-inicial" aria-hidden="true">?</span>
+        <div class="quem-texto"><strong id="quem-nome"></strong><span id="quem-email"></span></div>
+        <button type="button" class="btn btn-ghost btn-sair" id="btn-sair" title="Sair">Sair</button>
+      </div>
+    </aside>
+
+    <main class="conteudo">
+      <header class="cabecalho"><h1 id="titulo">Visão geral</h1><span class="sub" id="atualizado"></span></header>
+      <p class="erro" id="erro" hidden></p>
+
+      <section data-secao="overview" hidden>
+        <div class="cartoes" id="ov-cartoes"></div>
+      </section>
+
+      <section data-secao="profile" hidden>
+        <div class="painel">
+          <div class="perfil"><img id="pf-foto" alt="" hidden><span class="avatar grande" id="pf-inicial" aria-hidden="true">?</span>
+            <div><h2 id="pf-nome"></h2><p class="sub" id="pf-email"></p></div></div>
+          <dl class="lista" id="pf-lista"></dl>
+          <p class="sub">Nome e foto vêm do login (Google ou e-mail). O e-mail é a sua identidade na conta: para trocá-lo, fale com o admin.</p>
+        </div>
+      </section>
+
+      <section data-secao="devices" hidden>
+        <p class="sub" id="dv-resumo"></p>
+        <div class="painel tabela-rolagem"><table class="tabela" id="dv-tabela"><thead><tr><th>Mac</th><th>Usuário</th><th>Apps</th><th>Status</th><th>Visto</th></tr></thead><tbody></tbody></table></div>
+        <p class="sub" id="dv-maquinas"></p>
+        <p class="sub">Um device é um Mac onde você entrou com a conta no app. Além do limite do plano, o Mac fica pendente até o admin liberar.</p>
+      </section>
+
+      <section data-secao="plan" hidden>
+        <div class="cartoes" id="pl-cartoes"></div>
+        <div class="painel" id="pl-pagamento" hidden><h2>Como pagar</h2><p id="pl-instrucoes"></p><p><a class="btn btn-primary" id="pl-link" target="_blank" rel="noopener" hidden>Abrir o link de pagamento</a></p></div>
+        <p class="sub">Quem muda o plano, o prazo e os add-ons é o admin do seu meu-bot. No app, o bloqueio Pro tem "Pedir o Pro ao admin".</p>
+      </section>
+
+      <section data-secao="support" hidden>
+        <div class="painel">
+          <h2>Suporte</h2>
+          <p>O suporte é feito pelo app: <strong>Configurações › Suporte</strong> mostra quem cuida do seu meu-bot, o código para mandar à mão e o que o admin vê da sua máquina.</p>
+          <p class="sub" id="sp-pedidos"></p>
+          <p class="sub">Esta conta: <code id="sp-conta"></code></p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/config.js"></script>
+  <script type="module" src="/console/console.js"></script>
+</body>
+</html>

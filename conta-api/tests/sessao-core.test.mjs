@@ -61,6 +61,9 @@ test("validaDevice e validaPedidoToken: uuid ou alias, campos livres sem control
   assert.match(validaPedidoToken({ grant: "code", code: "x", verifier: segredo(32) + segredo(32), device: DEV }).erro, /code/);
   assert.match(validaPedidoToken({ grant: "code", code: segredo(), verifier: "curto", device: DEV }).erro, /verifier/);
   assert.equal(validaPedidoToken({ grant: "refresh", refresh: segredo() }).grant, "refresh");
+  const web = validaPedidoToken({ grant: "web", code: segredo(), verifier: segredo(32) + segredo(32) });
+  assert.equal(web.grant, "web"); assert.equal("device" in web, false, "o console não tem device");
+  assert.match(validaPedidoToken({ grant: "web", code: segredo(), verifier: "curto" }).erro, /verifier/);
   assert.match(validaPedidoToken({ grant: "senha" }).erro, /grant/);
 });
 

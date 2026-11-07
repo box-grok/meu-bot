@@ -4,9 +4,10 @@ export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
   CANAL: "producao" | "staging";
-  /** Origem da página de login (CORS do /sessao) e da API (a página chama esta). */
+  /** Origem da página de login e do console (CORS da API) e da API (as páginas chamam esta). */
   AUTH_ORIGIN: string;
   API_ORIGIN: string;
+  CONSOLE_ORIGIN: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_API_KEY: string;
   FIREBASE_AUTH_DOMAIN: string;

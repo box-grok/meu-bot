@@ -1,7 +1,8 @@
 // Página de login da conta meu-bot. O app abre esta página com ?state&challenge&esquema&app&v; a pessoa entra com
 // Google (popup) ou com um link por e-mail; o ID token do Firebase vai para a API (POST /sessao), que devolve um
 // código de uso único; e a página manda a pessoa de volta com <esquema>://auth?code&state. Sem os parâmetros do app
-// a página só explica o que é (não há "entrar no site": a conta vive no app).
+// a página só explica o que é (não há "entrar no site": a conta vive no app). Com esquema=web (o console da conta),
+// a volta é para `retorno` (só a origem do console) com #code&state, em vez de um deep link.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithPopup, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 
@@ -14,11 +15,14 @@ const CHAVE_EMAIL = "meu-bot-conta-email";
 
 // Os parâmetros do app ficam na URL (o link do e-mail volta para esta mesma URL, então sobrevivem).
 const q = new URLSearchParams(location.search);
-const pedido = { state: q.get("state") ?? "", challenge: q.get("challenge") ?? "", esquema: q.get("esquema") ?? "", app: q.get("app") ?? "", v: q.get("v") ?? "" };
-const pedidoOk = TOKEN_RE.test(pedido.state) && CHALLENGE_RE.test(pedido.challenge) && ESQUEMA_RE.test(pedido.esquema);
+const pedido = { state: q.get("state") ?? "", challenge: q.get("challenge") ?? "", esquema: q.get("esquema") ?? "", app: q.get("app") ?? "", v: q.get("v") ?? "", retorno: q.get("retorno") ?? "" };
+const paraConsole = pedido.esquema === "web";
+const retornoOk = !paraConsole || (typeof cfg.console === "string" && cfg.console !== "" && (pedido.retorno === cfg.console || pedido.retorno.startsWith(`${cfg.console}/`)) && !pedido.retorno.includes("#"));
+const pedidoOk = TOKEN_RE.test(pedido.state) && CHALLENGE_RE.test(pedido.challenge) && ESQUEMA_RE.test(pedido.esquema) && retornoOk;
 
 $("canal").textContent = cfg.canal === "staging" ? "staging" : "";
-$("app-info").textContent = pedido.app ? `${pedido.app}${pedido.v ? ` ${pedido.v}` : ""}` : "";
+$("app-info").textContent = paraConsole ? "console da conta" : pedido.app ? `${pedido.app}${pedido.v ? ` ${pedido.v}` : ""}` : "";
+if (paraConsole) $("sub").textContent = "Você volta ao console sozinho depois de entrar.";
 
 function falhou(texto) { $("erro-texto").textContent = texto; mostrar("erro"); }
 
@@ -38,6 +42,7 @@ if (!pedidoOk) {
     const r = await fetch(`${cfg.api}/sessao`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ idToken, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app || undefined, v: pedido.v || undefined }) });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || typeof j.code !== "string") { falhou(j.erro ?? `a API respondeu ${r.status}`); return; }
+    if (paraConsole) { location.replace(`${pedido.retorno}#code=${encodeURIComponent(j.code)}&state=${encodeURIComponent(pedido.state)}`); return; }
     const volta = `${pedido.esquema}://auth?code=${encodeURIComponent(j.code)}&state=${encodeURIComponent(pedido.state)}`;
     $("abrir-app").href = volta;
     $("codigo").textContent = j.code;

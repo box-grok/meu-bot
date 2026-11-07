@@ -13,10 +13,10 @@ export async function lerJson(req: Request): Promise<unknown> {
   try { const t = await req.text(); if (t.length > 65536) return null; return JSON.parse(t); } catch { return null; }
 }
 
-/** Só a página de login chama a API pelo navegador: a origem dela é a única permitida. */
+/** Pelo navegador só a página de login e o console chamam a API: as duas origens são as únicas permitidas. */
 export function cors(req: Request, env: Env, res: Response): Response {
   const origem = req.headers.get("origin");
-  if (origem === null || origem !== env.AUTH_ORIGIN) return res;
+  if (origem === null || (origem !== env.AUTH_ORIGIN && origem !== env.CONSOLE_ORIGIN)) return res;
   const h = new Headers(res.headers);
   h.set("access-control-allow-origin", origem);
   h.set("access-control-allow-methods", "GET, POST, OPTIONS");

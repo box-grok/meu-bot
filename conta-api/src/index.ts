@@ -1,8 +1,10 @@
 /**
- * Worker da conta meu-bot. Um Worker, dois hosts:
+ * Worker da conta meu-bot. Um Worker, três hosts:
  * - auth.agentesgrok.com: a página de login (static assets em public/) e o /config.js com o projeto Firebase;
+ * - console.agentesgrok.com: o console da conta (public/console/, uma página para /account/*), que entra pela página
+ *   de login com `esquema=web` e fala com a API só com o token de acesso (sem Firebase nem device no console);
  * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET /conta, GET /health).
- * Em staging, auth-staging./conta-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
+ * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
  */
 import type { Env } from "./tipos.js";
 import { autenticar, cors, json } from "./http.js";
@@ -34,13 +36,23 @@ function comCabecalhos(res: Response, extra: Record<string, string>): Response {
   return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
 }
 
+const configJs = (cfg: Record<string, string>): Response =>
+  new Response(`window.MEU_BOT_CONTA = ${JSON.stringify(cfg)};\n`, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } });
+
 async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
-  if (url.pathname === "/config.js") {
-    const cfg = { apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL };
-    return comCabecalhos(new Response(`window.MEU_BOT_CONTA = ${JSON.stringify(cfg)};\n`, { headers: { "content-type": "application/javascript; charset=utf-8", "cache-control": "no-store" } }), {});
-  }
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN }), {});
   const res = await env.ASSETS.fetch(req);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
+}
+
+/** O console não carrega Firebase: só o próprio JS e a API. */
+const cspDoConsole = (env: Env): string => ["default-src 'self'", "script-src 'self'", `connect-src 'self' ${env.API_ORIGIN}`, "img-src 'self' data: https:", "style-src 'self'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
+/** /account/* e a raiz são a mesma página (o JS escolhe a seção pelo caminho); o resto são os assets de public/console/. */
+async function consolePagina(req: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, canal: env.CANAL }), {});
+  const caminho = url.pathname === "/" || url.pathname === "/account" || url.pathname.startsWith("/account/") ? "/console/index.html" : url.pathname;
+  const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  return comCabecalhos(res, { "content-security-policy": cspDoConsole(env), "cache-control": caminho.endsWith(".html") ? "no-store" : "public, max-age=300" });
 }
 
 async function api(req: Request, env: Env, url: URL): Promise<Response> {
@@ -61,9 +73,9 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    const ehPagina = `https://${url.host}` === env.AUTH_ORIGIN;
+    const origem = `https://${url.host}`;
     try {
-      return ehPagina ? await pagina(req, env, url) : await api(req, env, url);
+      return origem === env.AUTH_ORIGIN ? await pagina(req, env, url) : origem === env.CONSOLE_ORIGIN ? await consolePagina(req, env, url) : await api(req, env, url);
     } catch (e) {
       console.log(`[conta-api] ${req.method} ${url.pathname}: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
       return comCabecalhos(json({ erro: "falha interna; tente de novo" }, 500), {});

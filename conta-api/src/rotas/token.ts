@@ -1,11 +1,12 @@
 /**
  * `POST /token`: o app troca o código do deep link (mais o verifier do PKCE e o device deste Mac) por um refresh
  * token rotativo e um token de acesso de 1 h; ou renova com `grant: "refresh"` (o refresh antigo morre; reusar um
- * já trocado derruba a família inteira). As duas formas devolvem a conta inteira (ContaApi).
+ * já trocado derruba a família inteira). `grant: "web"` é o console: o código (esquema "web") vira só um token de
+ * acesso de 1 h, sem device nem refresh (vencido, o console entra de novo pelo Firebase). Todas devolvem a conta (ContaApi).
  */
 import type { Env, SessaoLinha } from "../tipos.js";
 import { auditar, codigoPor, contaPorId, criarSessao, devicePor, devicesDaConta, gravarDevice, licencaDaConta, montarContaApi, papelAdmin, revogarFamilia, revogarSessao, sessaoPorHash, usarCodigo } from "../db.js";
-import { ACESSO_TTL_S, admitirDevice, agoraIso, assinarJwt, maisSegundos, pkceConfere, refreshTtlS, segredo, sha256Hex, uuid, validaPedidoToken } from "../sessao-core.js";
+import { ACESSO_TTL_S, ESQUEMA_WEB, admitirDevice, agoraIso, assinarJwt, maisSegundos, pkceConfere, refreshTtlS, segredo, sha256Hex, uuid, validaPedidoToken } from "../sessao-core.js";
 import { json, lerJson } from "../http.js";
 
 async function emitir(env: Env, conta: { id: string; email: string }, s: Omit<SessaoLinha, "refresh_hash" | "revogada_em">, refresh: string): Promise<Response> {
@@ -24,13 +25,21 @@ export async function postToken(req: Request, env: Env): Promise<Response> {
   if ("erro" in pedido) return json({ erro: pedido.erro }, 400);
   const agora = agoraIso();
 
-  if (pedido.grant === "code") {
+  if (pedido.grant === "code" || pedido.grant === "web") {
     const c = await codigoPor(env.DB, pedido.code);
     if (c === null || c.usado_em !== null || Date.parse(c.expira_em) < Date.now()) return json({ erro: "código inválido, usado ou vencido; entre de novo" }, 401);
+    if ((c.esquema === ESQUEMA_WEB) !== (pedido.grant === "web")) return json({ erro: "o código não é deste tipo de login" }, 401);
     if (!(await pkceConfere(pedido.verifier, c.challenge))) return json({ erro: "o código não é deste app (PKCE)" }, 401);
     if (!(await usarCodigo(env.DB, pedido.code, agora))) return json({ erro: "código já usado" }, 401);
     const conta = await contaPorId(env.DB, c.conta_id);
     if (conta === null) return json({ erro: "conta não existe mais" }, 401);
+    if (pedido.grant === "web") {
+      const adm = await papelAdmin(env.DB, conta.email, env.ADMIN_BOOTSTRAP_EMAIL);
+      const agoraS = Math.floor(Date.now() / 1000);
+      const acesso = await assinarJwt({ sub: conta.id, sid: `web:${uuid()}`, dev: null, adm, iat: agoraS, exp: agoraS + ACESSO_TTL_S }, env.SESSAO_HMAC_KEY);
+      await auditar(env.DB, conta.email, "login.entrou", conta.id, "console web", agora);
+      return json({ acesso, expiraEm: maisSegundos(ACESSO_TTL_S), conta: await montarContaApi(env.DB, conta, adm, null) });
+    }
     // O device deste Mac: conhecido (pelo uuid ou pelo alias antigo) mantém o status; novo cabe até o limite da licença.
     const d = pedido.device;
     const atual = await devicePor(env.DB, conta.id, d.id, d.alias);
