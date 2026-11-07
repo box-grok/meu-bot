@@ -11,7 +11,8 @@ ou quando o app está fechado: `apps`/`app_abrir`) e tem as mesmas ferramentas. 
 cliente (um `claude mcp add` ou um trecho de `mcp.json`); o app só gera o texto certo, com variante, porta e chave.
 
 - **Rotas do app no `term.sock`** (`term-api.ts`): `GET /app`, `POST /janela`, `/pagina` (evento novo `ui:abrir-pagina`),
-  `/tema`, `/print` (`capturePage`, ≤ 1280 px). Servem ao `app-mcp.mjs` e ao servidor embutido, que repassa **tudo**
+  `/tema`, `/print` (`capturePage`, ≤ 1280 px); e `POST /fechar {id}` encerra um terminal (`terminal_fechar`, destrutiva).
+  `/nota` devolve `visivel: false` com o modo de depuração desligado (foi só ao log). Servem ao `app-mcp.mjs` e ao servidor embutido, que repassa **tudo**
   pelos sockets (`term.sock`, `nav-<máquina>.sock`) com `X-Meu-Bot-Dono`; o cliente diz o nome em `X-Meu-Bot-Cliente`
   e o selo fica "Cursor (MCP) · digitou". Posse de abas e registro de depuração continuam os mesmos.
 - **Servidor** (`src/main/controle-remoto/controle-remoto.ts`): HTTP em `127.0.0.1:<porta>`, só `POST /mcp` (GET,

@@ -5,10 +5,11 @@
  * hora, para a pessoa ver.
  *
  * API (JSON): GET /terminais · POST /abrir {maquina?} (aba nova na janela da máquina) · POST /ler {id, linhas?}
- * · POST /digitar {id, texto, enter?} | {id, tecla}
+ * · POST /digitar {id, texto, enter?} | {id, tecla} · POST /fechar {id}: encerra a sessão e a aba (como o × da aba)
  * · POST /dividir {id} | {pagina: "navegador"|"tutoriais"|"acervo"|"vazia", maquina?}: mais uma coluna à direita (quantas a
  *   largura da janela comportar) · POST /juntar {id?|pagina?, maquina?}: tira essa coluna, ou todas
- * · POST /nota {texto}: uma linha de quem está dirigindo o app de fora, para a faixa de depuração ("vou pedir ao agente…")
+ * · POST /nota {texto}: uma linha de quem está dirigindo o app de fora, para a faixa de depuração ("vou pedir ao agente…");
+ *   devolve `visivel: false` quando o modo está desligado (a nota foi só ao log, ninguém viu)
  * · POST /depuracao {on: true|false|null}: liga/desliga o modo de depuração (null = padrão da variante)
  * Rotas do app em si (6 nov; o scripts/app-mcp.mjs e o controle externo por MCP usam as duas famílias):
  * · GET /app: nome, versão, tema, janelas abertas (qual em foco) e máquinas conhecidas
@@ -31,11 +32,11 @@ import { appTitle, produto } from "../app/variant";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { listSshHosts } from "../maquina/sshConfig";
 import { PAGINAS_APP } from "../controle-remoto/controle-remoto-core";
-import { liveTerminals, replayTerminal, terminalById, waitNewTerminal, writeTerminal } from "./terminal";
+import { closeTerminal, liveTerminals, replayTerminal, terminalById, waitNewTerminal, writeTerminal } from "./terminal";
 import { entradaDigitar, textoDoTerminal } from "./term-api-core";
 import { parseDono, type Dono } from "../navegador/nav-donos-core";
 import { log } from "../maquina/backend";
-import { estado as estadoDepuracao, evento as eventoDepuracao, registrarAcao, setDepuracao } from "../app/depuracao";
+import { estado as estadoDepuracao, evento as eventoDepuracao, modoDepuracao, registrarAcao, setDepuracao } from "../app/depuracao";
 
 export const termSocketPath = (): string => path.join(controlDir(), "term.sock");
 
@@ -125,7 +126,13 @@ async function act(route: string, b: Req, dono: Dono): Promise<unknown> {
       const texto = typeof b.texto === "string" ? b.texto.trim().slice(0, 500) : "";
       if (texto === "") throw new Error("falta texto");
       eventoDepuracao({ origem: "nota", dono: `${dono.rotulo} (${dono.origem})`, rota: "/nota", ok: true, ms: null, resumo: texto });
-      return { ok: true };
+      // Com o modo desligado a nota vai só ao log: quem anunciou precisa saber que ninguém viu na tela.
+      return { ok: true, visivel: modoDepuracao() };
+    }
+    case "/fechar": {
+      const s = sessao(b.id);
+      closeTerminal(s);
+      return { ok: true, id: s.id };
     }
     case "/depuracao": {
       const e = b.on === true ? setDepuracao(true) : b.on === false ? setDepuracao(false) : b.on === null ? setDepuracao(null) : estadoDepuracao();

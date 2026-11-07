@@ -12,7 +12,7 @@ const INFO = { nome: "meu-bot", versao: "1.2.3", execucao: true };
 
 test("catálogo: as ferramentas do app-mcp (menos apps/app_abrir) mais as do app; cada uma com schema e anotações", () => {
   const nomes = FERRAMENTAS.map((f) => f.name);
-  for (const n of ["terminais", "terminal_abrir", "terminal_ler", "terminal_digitar", "tela_dividir", "tela_juntar", "nav_abas", "nav_abrir", "nav_ler", "nav_clicar", "nav_digitar", "nav_tecla", "nav_print", "nav_recarregar", "nav_voltar", "nav_js", "nav_fechar", "nota", "depuracao", "app", "janela_abrir", "pagina_abrir", "tema", "print_janela"]) assert.ok(nomes.includes(n), `falta ${n}`);
+  for (const n of ["terminais", "terminal_abrir", "terminal_ler", "terminal_digitar", "terminal_fechar", "tela_dividir", "tela_juntar", "nav_abas", "nav_abrir", "nav_ler", "nav_clicar", "nav_digitar", "nav_tecla", "nav_print", "nav_recarregar", "nav_voltar", "nav_js", "nav_fechar", "nota", "depuracao", "app", "janela_abrir", "pagina_abrir", "tema", "print_janela"]) assert.ok(nomes.includes(n), `falta ${n}`);
   assert.ok(!nomes.includes("apps") && !nomes.includes("app_abrir"), "de dentro do app não se abre outro app");
   assert.equal(new Set(nomes).size, nomes.length, "nome repetido");
   for (const f of FERRAMENTAS) { assert.equal(f.inputSchema.type, "object"); assert.equal(typeof f.annotations.readOnlyHint, "boolean"); assert.ok(f.description.length > 10); assert.equal("outputSchema" in f, false, "sem outputSchema o resultado vai só como texto"); }
@@ -37,6 +37,8 @@ test("roteador: tudo vai para um socket do app (terminal, com as rotas do app, o
   assert.deepEqual(roteador("terminal_abrir", { maquina: "colima" }), { alvo: "terminal", rota: "abrir", corpo: { maquina: "colima" } });
   assert.deepEqual(roteador("terminal_abrir", {}), { alvo: "terminal", rota: "abrir", corpo: {} });
   assert.deepEqual(roteador("terminal_ler", { id: "t1", linhas: 20 }), { alvo: "terminal", rota: "ler", corpo: { id: "t1", linhas: 20 } });
+  assert.deepEqual(roteador("terminal_fechar", { id: "t1", maquina: "x" }), { alvo: "terminal", rota: "fechar", corpo: { id: "t1" } });
+  assert.equal(ferramenta("terminal_fechar").annotations.destructiveHint, true);
   assert.deepEqual(roteador("tela_dividir", { pagina: "navegador", maquina: "colima" }), { alvo: "terminal", rota: "dividir", corpo: { pagina: "navegador", maquina: "colima" } });
   assert.deepEqual(roteador("nota", { texto: "oi", maquina: "x" }), { alvo: "terminal", rota: "nota", corpo: { texto: "oi" } });
   assert.deepEqual(roteador("depuracao", { on: null }), { alvo: "terminal", rota: "depuracao", corpo: { on: null } });

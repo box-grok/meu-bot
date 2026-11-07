@@ -25,6 +25,8 @@ no [diário técnico](GUIA.md).
   staging 7831…) e pode ser trocada; nada precisa de "Salvar".
 - **Ferramentas novas também pelo `app-mcp.mjs`:** `app`, `janela_abrir`, `pagina_abrir`, `tema` e `print_janela`
   entraram como rotas do `term.sock`, então quem usa o caminho antigo (stdio) ganha as mesmas.
+- **`terminal_fechar` e uma `nota` honesta.** O cliente consegue encerrar o terminal que abriu (antes a aba ficava lá),
+  e a `nota` responde `visivel: false` quando o modo de depuração está desligado: quem anunciou sabe que ninguém viu.
 
 ### O agente sabe do backup
 
