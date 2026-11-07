@@ -42,7 +42,7 @@ import { agendaCriar, agendaProximos, gmailApagar, gmailLer, gmailListar, gmailR
 import { validaBusca, validaId, validaMax, validaPagina } from "../google/gmail-core";
 import { CONJUNTOS_DADOS } from "../google/google-core";
 import { gmailAgenteParar } from "../google/gmail-api";
-import { atualizarConta, cancelarEntrada, contaView, entrar as contaEntrar, sair as contaSair } from "../conta/conta";
+import { abrirConsole, atualizarConta, cancelarEntrada, contaView, entrar as contaEntrar, sair as contaSair } from "../conta/conta";
 import { changeWindowZoom, currentZoom } from "../app/zoom";
 import { parseZoomAction } from "../app/zoom-core";
 import { caps, compilacao } from "../app/variant";
@@ -107,6 +107,7 @@ export function registerSharedIpc(deps: SharedIpcDeps): void {
   handleShared("conta:entrar", () => contaEntrar());
   handleShared("conta:cancelar", () => cancelarEntrada());
   handleShared("conta:sair", () => contaSair());
+  handleShared("conta:console", (_event, payload: unknown) => abrirConsole(typeof (payload as { caminho?: unknown } | null)?.caminho === "string" ? (payload as { caminho: string }).caminho : "/account/overview"));
   handleShared("depuracao:ligar", (_event, payload: unknown) => { const on = (payload as { on?: unknown } | null)?.on; return setDepuracao(on === true ? true : on === false ? false : null); });
   // Conta Google geral deste Mac (login + Gmail + Agenda + Sheets): conta do Mac, não vai à máquina (sem host/túnel).
   // Conta Google da máquina da janela (cada VM tem a sua; desconectar numa não mexe nas outras).

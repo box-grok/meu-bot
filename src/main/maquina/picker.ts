@@ -6,6 +6,8 @@
  * (admin/picker-source.ts) a lista são as pessoas do suporte. Os handlers comuns ficam em initPicker.
  */
 import { caps } from "../app/variant";
+import type { MainEventChannel, MainEvents } from "../../shared/ipc";
+import { contaEntrada } from "../conta/conta";
 import { parseLicense } from "../licenca/licenca";
 import { deveAtualizar, precisaAtualizarBackend } from "../atualizacao/updater-core";
 import { app, BrowserWindow, screen, shell } from "electron";
@@ -441,6 +443,7 @@ export function initPicker(src: PickerSource): void {
   });
   handleShared("picker:choose", (event, payload: unknown) => {
     if (!fromPicker(event)) throw new Error("origem inválida");
+    if (!podeAbrirMaquina()) throw new Error("entre com sua conta meu-bot para abrir uma máquina");
     const host = hostArg(payload);
     setLastHost(host);
     lastError = null;
@@ -528,7 +531,13 @@ export function showPicker(opts: { error?: string; preselect?: string } = {}): v
   void win.loadFile(path.join(__dirname, "..", "..", "renderer", "picker.html"));
 }
 
+/** Portão da conta: só abre máquina quem entrou (o admin-mac não tem conta: é a janela das contas deste Mac). */
+export const podeAbrirMaquina = (): boolean => caps().usuariosMac || contaEntrada();
 export const isPickerOpen = (): boolean => pickerWin !== null && !pickerWin.isDestroyed();
+/** Um evento do main para o seletor (a conta mudou); nada se ele não está aberto. */
+export function sendToPicker<K extends MainEventChannel>(channel: K, payload: MainEvents[K]): void {
+  if (pickerWin !== null && !pickerWin.isDestroyed() && !pickerWin.webContents.isLoading()) pickerWin.webContents.send(channel, payload);
+}
 
 /** Reenvia a lista ao seletor aberto (sem focar nem trazer para a frente); fechado, não faz nada. */
 export function refreshPickerIfOpen(): void {
