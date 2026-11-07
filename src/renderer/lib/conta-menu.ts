@@ -76,7 +76,7 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
     } else {
       m.append(el("div", "cm-dica", v.situacao === "entrando" ? "Aguardando o login no navegador…" : "Você ainda não entrou com sua conta meu-bot neste Mac."));
       if (v.situacao === "entrando") m.append(item("✕", "Cancelar o login", "", () => chama(deps.api.contaCancelar())));
-      else m.append(item("→", "Entrar com Google ou e-mail", "", () => chama(deps.api.contaEntrar())));
+      else m.append(item("→", "Continuar com seu navegador", "", () => chama(deps.api.contaEntrar())));
       if (v.situacao === "erro" && v.erro !== null) m.append(el("div", "cm-dica", `O último login não terminou: ${v.erro}`));
       m.append(el("div", "cm-sep"));
     }

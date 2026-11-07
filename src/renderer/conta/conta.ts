@@ -63,7 +63,7 @@ export function blocoConta(): HTMLElement {
       box.append(el("p", "", "Aguardando o login no navegador…"), el("p", "hint", `A página ${c.urlLogin.replace(/^https:\/\//, "")} abriu no seu navegador. Entre com o Google ou peça o link por e-mail; o app volta sozinho quando terminar.`), acoes);
       return;
     }
-    const entrar = el("button", "btn btn-primary", "Entrar com Google ou e-mail"); entrar.type = "button";
+    const entrar = el("button", "btn btn-primary", "Continuar com seu navegador"); entrar.type = "button";
     entrar.addEventListener("click", () => { entrar.disabled = true; void window.meuBot.contaEntrar().then(mudou).catch((err: unknown) => { entrar.disabled = false; box.append(el("p", "error", `Não consegui abrir o login: ${ipcErrorText(err)}`)); }); });
     const acoes = el("div", "actions"); acoes.append(entrar);
     box.append(el("p", "", "Você ainda não entrou com sua conta meu-bot neste Mac."), el("p", "hint", "O login abre no seu navegador e volta para o app sozinho. O plano free continua funcionando sem conta."));

@@ -633,7 +633,7 @@ function contaMudou(v: ContaView): void {
   if (!dentro) {
     const entrando = v.situacao === "entrando";
     portaoEntrar.hidden = entrando; portaoCancelar.hidden = !entrando; portaoEntrar.disabled = false;
-    portaoSub.textContent = entrando ? `A página ${v.urlLogin.replace(/^https:\/\//, "")} abriu no seu navegador. Entre lá; o seletor segue sozinho.` : "Google ou link por e-mail. O login abre no seu navegador e volta sozinho para cá.";
+    portaoSub.textContent = entrando ? `A página ${v.urlLogin.replace(/^https:\/\//, "")} abriu no seu navegador. Entre lá; o seletor segue sozinho.` : "Você entra no navegador, com Google ou link por e-mail, e volta sozinho para cá.";
     portaoErro.hidden = !(v.situacao === "erro" && v.erro !== null); portaoErro.textContent = v.erro ?? "";
   }
   contaTexto.hidden = !dentro;
