@@ -20,6 +20,14 @@ export interface ContaMenuDeps {
 
 export const inicialDe = (c: ContaView["conta"]): string => (c === null ? "?" : (c.nome ?? c.email).trim().charAt(0).toUpperCase() || "?");
 const fotoOk = (v: ContaView): string | null => (v.foto !== null && v.foto.startsWith("data:image/") ? v.foto : null);
+/** A foto dentro do elemento; se não carregar (bloqueio, bytes ruins), fica a inicial do nome no lugar. */
+function porFoto(alvo: HTMLElement, v: ContaView): void {
+  const foto = fotoOk(v);
+  if (foto === null) { alvo.textContent = inicialDe(v.conta); return; }
+  const img = document.createElement("img"); img.src = foto; img.alt = "";
+  img.addEventListener("error", () => { alvo.replaceChildren(); alvo.textContent = inicialDe(v.conta); });
+  alvo.replaceChildren(img);
+}
 
 export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps): { pintar: () => void; fechar: () => void } {
   let menu: HTMLElement | null = null;
@@ -33,8 +41,7 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
       const c = v.conta;
       if (v.situacao === "dentro" && c !== null) {
         b.classList.remove("fora");
-        const foto = fotoOk(v);
-        if (foto !== null) { const img = document.createElement("img"); img.src = foto; img.alt = ""; b.append(img); } else b.textContent = inicialDe(c);
+        porFoto(b, v);
         b.title = `${c.email} · ${resumoPlano(c).rotulo}`;
       } else { b.classList.add("fora"); b.textContent = "⚇"; b.title = v.situacao === "entrando" ? "Aguardando o login no navegador…" : "Entrar com sua conta meu-bot"; }
     }
@@ -57,7 +64,7 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
     if (v.situacao === "dentro" && c !== null) {
       const r = resumoPlano(c);
       const topo = el("div", "cm-topo");
-      const av = el("div", "cm-avatar"); const foto = fotoOk(v); if (foto !== null) { const img = document.createElement("img"); img.src = foto; img.alt = ""; av.append(img); } else av.textContent = inicialDe(c);
+      const av = el("div", "cm-avatar"); porFoto(av, v);
       topo.append(av, el("span", `cm-selo ${r.selo}`, r.rotulo), el("span", "cm-nome", c.nome ?? c.email));
       if (c.nome !== null) topo.append(el("span", "cm-email", c.email));
       m.append(topo);
