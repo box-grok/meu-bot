@@ -8,9 +8,11 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, sendSignInLinkTo
 
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
-const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pronto", "erro", "sem-app", "org-nao-achada"];
-// /org/<slug>: login pela página da organização; só membro entra, e a API confere.
-const orgSlug = /^\/org\/([a-z0-9-]{1,40})\/?$/.exec(location.pathname)?.[1] ?? null;
+const secoes = ["escolha", "aguardando", "email-enviado", "senha-enviada", "pronto", "erro", "sem-app", "org-nao-achada", "org-qual"];
+// /enterprise/<slug> (ou /org/<slug>): login pela página da organização; só membro entra, e a API confere.
+// /enterprise sem slug: pergunta o endereço da organização e vai para /enterprise/<slug>.
+const orgSlug = /^\/(?:enterprise|org)\/([a-z0-9-]{1,40})\/?$/.exec(location.pathname)?.[1] ?? null;
+const perguntaOrg = orgSlug === null && /^\/(?:enterprise|org)\/?$/.test(location.pathname);
 const mostrar = (id) => { for (const s of secoes) $(s).hidden = s !== id; };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/, CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/, ESQUEMA_RE = /^[a-z][a-z0-9-]{1,40}$/;
 const CHAVE_EMAIL = "meu-bot-conta-email";
@@ -30,6 +32,13 @@ function falhou(texto) { $("erro-texto").textContent = texto; mostrar("erro"); }
 
 // Cabeçalho da organização: nome e endereço vêm da API (sem login); endereço desconhecido vira a tela "não encontrada".
 let orgOk = true;
+if (perguntaOrg) {
+  orgOk = false;
+  $("org-pessoal").href = `/entrar${location.search}`; $("org-pessoal").hidden = false;
+  $("titulo").textContent = "Entrar numa organização"; $("sub").textContent = "O endereço é o que aparece no console dela (ex.: coflow).";
+  $("form-org").addEventListener("submit", (ev) => { ev.preventDefault(); const slug = $("org-id").value.trim().toLowerCase().replace(/^https?:\/\/[^/]+\/(?:enterprise|org)\//, "").replace(/\/.*$/, ""); if (slug === "") return; location.href = `/enterprise/${encodeURIComponent(slug)}${location.search}`; });
+  mostrar("org-qual");
+}
 if (orgSlug !== null) {
   for (const id of ["org-pessoal", "org-entrar"]) $(id).href = `/entrar${location.search}`;
   $("org-criar").href = `/signup${location.search}`;

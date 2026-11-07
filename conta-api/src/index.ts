@@ -66,8 +66,9 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
   // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
   if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN }), {});
-  // /org/<slug>: a mesma página de login, com o cabeçalho da organização (o JS lê o slug do caminho).
-  const alvo = /^\/org\/[a-z0-9-]{1,40}\/?$/.test(url.pathname) ? new Request(new URL("/entrar", url.origin).toString(), req) : req;
+  // /enterprise e /enterprise/<slug> (como o Rambox; /org/<slug> é apelido): a mesma página de login; sem slug ela
+  // pergunta o endereço da organização, com slug mostra o cabeçalho dela (o JS lê o caminho).
+  const alvo = /^\/(?:enterprise|org)(?:\/[a-z0-9-]{1,40})?\/?$/.test(url.pathname) ? new Request(new URL("/entrar", url.origin).toString(), req) : req;
   const res = await env.ASSETS.fetch(alvo);
   return comCabecalhos(res, { "content-security-policy": cspDaPagina(env) });
 }

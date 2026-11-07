@@ -20,6 +20,17 @@
     </header>
     <p class="selo-enterprise" id="org-selo" hidden><span>▣</span> Enterprise · <code id="org-slug"></code></p>
 
+    <section id="org-qual" hidden>
+      <form id="form-org" class="form">
+        <label for="org-id">Endereço da organização</label>
+        <div class="linha">
+          <input id="org-id" type="text" autocomplete="organization" autocapitalize="off" spellcheck="false" placeholder="coflow" required>
+          <button type="submit" class="btn btn-primary" id="btn-org">Continuar</button>
+        </div>
+        <p class="sub dica">Quem te convidou tem o link certo: ele termina em <code>/enterprise/&lt;endereço&gt;</code>.</p>
+      </form>
+    </section>
+
     <section id="org-nao-achada" hidden>
       <p class="forte">Organização não encontrada.</p>
       <p class="sub">Não há organização com o endereço <code id="org-slug-errado"></code>. Confira o endereço com quem te convidou, ou entre com a sua conta pessoal.</p>
