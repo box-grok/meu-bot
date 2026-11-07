@@ -1,7 +1,7 @@
 // Sessão da conta, a parte pura: PKCE, JWT HS256, validação dos pedidos, admissão de device.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validaPatchLicenca, validaBusca, admitirDevice, assinarJwt, b64url, deB64url, janelaMinuto, pkceConfere, segredo, sha256Hex, validaDevice, validaPedidoSessao, validaPedidoToken, verificarJwt } from "../dist/sessao-core.js";
+import { validaPatchLicenca, validaBusca, admitirDevice, assinarJwt, b64url, deB64url, janelaMinuto, pkceConfere, segredo, sha256Hex, validaDevice, validaPedidoSessao, validaPedidoToken, verificarJwt, nomeExibicao, parseProvedores, provedoresDoLogin, unirProvedores, validaPatchPerfil } from "../dist/sessao-core.js";
 
 const CHAVE = b64url(crypto.getRandomValues(new Uint8Array(32)));
 const DEV = { id: "33333333-3333-4333-8333-333333333333", alias: "0123456789ab", name: "Mac da Ana", user: "ana", platform: "darwin", app: "meu-bot-staging", versao: "0.79.0" };
@@ -40,6 +40,8 @@ test("validaPedidoSessao: campos do app e o idToken no formato de JWT", () => {
   const ok = validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot-staging", app: "meu-bot-staging", v: "0.79.0" });
   assert.equal(ok.esquema, "meu-bot-staging"); assert.equal(ok.app, "meu-bot-staging"); assert.equal(ok.versao, "0.79.0");
   assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot" }).app, null, "app é opcional");
+  assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", metodo: "emailLink" }).metodo, "emailLink");
+  assert.equal(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: segredo(), esquema: "meu-bot", metodo: "facebook" }).metodo, null, "método fora da lista é ignorado");
   assert.match(validaPedidoSessao({ idToken: "x", state: segredo(), challenge: segredo(), esquema: "meu-bot" }).erro, /idToken/);
   assert.match(validaPedidoSessao({ idToken: "a.b.c", state: "s", challenge: segredo(), esquema: "meu-bot" }).erro, /state/);
   assert.match(validaPedidoSessao({ idToken: "a.b.c", state: segredo(), challenge: "c", esquema: "meu-bot" }).erro, /challenge/);
@@ -91,4 +93,32 @@ test("validaPatchLicenca: só os campos mandados, nos formatos; validaBusca limp
   assert.match(validaPatchLicenca({}).erro, /nada/);
   assert.equal(validaBusca("  Ana@Exemplo.com "), "ana@exemplo.com");
   assert.equal(validaBusca("a\u0007b"), ""); assert.equal(validaBusca(5), "");
+});
+
+test("validaPatchPerfil: só o que veio, aparado; vazio limpa; controle, tamanho fora da lista e dadosUso não-booleano recusam", () => {
+  assert.deepEqual(validaPatchPerfil({ nomeProprio: "  Ana ", sobrenome: "", cidade: null, tamanhoEquipe: "2-10", dadosUso: false, outro: 1 }), { nomeProprio: "Ana", sobrenome: null, cidade: null, tamanhoEquipe: "2-10", dadosUso: false });
+  assert.deepEqual(validaPatchPerfil({ tamanhoEquipe: "" }), { tamanhoEquipe: null });
+  assert.match(validaPatchPerfil({ nomeProprio: "a\u0007b" }).erro, /nomeProprio/);
+  assert.match(validaPatchPerfil({ cargo: "x".repeat(81) }).erro, /cargo/);
+  assert.match(validaPatchPerfil({ tamanhoEquipe: "muitos" }).erro, /tamanhoEquipe/);
+  assert.match(validaPatchPerfil({ dadosUso: "sim" }).erro, /dadosUso/);
+  assert.match(validaPatchPerfil({}).erro, /nada/); assert.match(validaPatchPerfil({ outro: 1 }).erro, /nada/);
+  assert.match(validaPatchPerfil("x").erro, /corpo/);
+});
+
+test("nomeExibicao: o digitado vence; só nome próprio serve; senão o do login; nada vira null", () => {
+  assert.equal(nomeExibicao({ nome_proprio: "Ana", sobrenome: "Souza", nome: "Ana S. (Google)" }), "Ana Souza");
+  assert.equal(nomeExibicao({ nome_proprio: " Ana ", sobrenome: null, nome: "Outro" }), "Ana");
+  assert.equal(nomeExibicao({ nome_proprio: null, sobrenome: "", nome: "Do Login" }), "Do Login");
+  assert.equal(nomeExibicao({ nome_proprio: null, sobrenome: null, nome: null }), null);
+});
+
+test("provedores: JSON com defesa, união ordenada, e o metodo da página desempata password/emailLink", () => {
+  assert.deepEqual(parseProvedores('["password","google.com","lixo","google.com"]'), ["google.com", "password"]);
+  assert.deepEqual(parseProvedores("{"), []); assert.deepEqual(parseProvedores(null), []);
+  assert.equal(unirProvedores('["google.com"]', ["password", "emailLink"]), '["emailLink","google.com","password"]');
+  assert.equal(unirProvedores("lixo", ["facebook.com", "google.com"]), '["google.com"]');
+  assert.deepEqual(provedoresDoLogin(["password"], "emailLink"), ["emailLink"]);
+  assert.deepEqual(provedoresDoLogin(["password"], "password"), ["password"]);
+  assert.deepEqual(provedoresDoLogin(["google.com", "password"], null), ["google.com", "password"]);
 });

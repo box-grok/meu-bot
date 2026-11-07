@@ -1,7 +1,7 @@
 // Verificação do ID token do Firebase sem Admin SDK: assinatura RS256 contra o JWKS, e as claims do projeto.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validaClaimsFirebase, verificarIdToken } from "../dist/firebase.js";
+import { provedoresDasClaims, validaClaimsFirebase, verificarIdToken } from "../dist/firebase.js";
 import { b64url } from "../dist/sessao-core.js";
 
 const PROJ = "meu-bot-conta";
@@ -11,7 +11,7 @@ const claimsOk = () => ({ iss: `https://securetoken.google.com/${PROJ}`, aud: PR
 
 test("validaClaimsFirebase: aceita o token do projeto; e-mail normalizado; recusa iss/aud/exp/sub errados", () => {
   const u = validaClaimsFirebase(claimsOk(), PROJ, AGORA);
-  assert.deepEqual(u, { uid: "uid-1", email: "ana@exemplo.com", emailVerificado: true, nome: "Ana", foto: "https://foto/x.png" });
+  assert.deepEqual(u, { uid: "uid-1", email: "ana@exemplo.com", emailVerificado: true, nome: "Ana", foto: "https://foto/x.png", provedores: [] });
   assert.match(validaClaimsFirebase({ ...claimsOk(), iss: "https://securetoken.google.com/outro" }, PROJ, AGORA).erro, /iss/);
   assert.match(validaClaimsFirebase({ ...claimsOk(), aud: "outro" }, PROJ, AGORA).erro, /aud/);
   assert.match(validaClaimsFirebase({ ...claimsOk(), exp: AGORA - 1 }, PROJ, AGORA).erro, /vencido/);
@@ -20,6 +20,14 @@ test("validaClaimsFirebase: aceita o token do projeto; e-mail normalizado; recus
   assert.match(validaClaimsFirebase({ ...claimsOk(), email: "semarroba" }, PROJ, AGORA).erro, /e-mail/);
   assert.equal(validaClaimsFirebase({ ...claimsOk(), email_verified: false }, PROJ, AGORA).emailVerificado, false);
   assert.equal(validaClaimsFirebase({ ...claimsOk(), picture: "http://inseguro" }, PROJ, AGORA).foto, null);
+});
+
+test("provedoresDasClaims: sign_in_provider e identities, só google.com e password, sem repetir", () => {
+  assert.deepEqual(provedoresDasClaims({ firebase: { sign_in_provider: "google.com", identities: { "google.com": ["1"], email: ["a@b.c"] } } }), ["google.com"]);
+  assert.deepEqual(provedoresDasClaims({ firebase: { sign_in_provider: "password", identities: { "google.com": ["1"], email: ["a@b.c"] } } }), ["google.com", "password"]);
+  assert.deepEqual(provedoresDasClaims({ firebase: { sign_in_provider: "facebook.com", identities: { "lixo; DROP": [] } } }), [], "provedor fora da lista cai");
+  assert.deepEqual(provedoresDasClaims({ firebase: "x" }), []); assert.deepEqual(provedoresDasClaims({}), []);
+  assert.deepEqual(validaClaimsFirebase({ ...claimsOk(), firebase: { sign_in_provider: "google.com" } }, PROJ, AGORA).provedores, ["google.com"]);
 });
 
 test("verificarIdToken: assinado pela chave do JWKS passa; outra chave, kid desconhecido ou payload mexido não", async () => {

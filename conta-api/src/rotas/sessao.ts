@@ -4,7 +4,7 @@
  * `POST /sessao/sair` (o app): revoga a família de refresh desta sessão.
  */
 import type { Env } from "../tipos.js";
-import { auditar, contarLimite, criarCodigo, iniciarTrialSeNovo, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
+import { auditar, contarLimite, criarCodigo, houveContaApagada, iniciarTrialSeNovo, papelAdmin, revogarFamilia, sessaoPorId, upsertConta } from "../db.js";
 import { buscaJwksGoogle, verificarIdToken } from "../firebase.js";
 import { agoraIso, CHALLENGE_RE, CODE_TTL_S, ESQUEMA_WEB, janelaMinuto, LIMITE_SESSAO_POR_MIN, maisSegundos, segredo, TOKEN_RE, validaPedidoSessao } from "../sessao-core.js";
 import { json, lerJson, type Autenticado } from "../http.js";
@@ -18,11 +18,13 @@ export async function postSessao(req: Request, env: Env): Promise<Response> {
   if ("erro" in u) { console.log(`[sessao] id token recusado: ${u.erro}`); return json({ erro: "login não reconhecido; entre de novo" }, 401); }
   if (!u.emailVerificado) return json({ erro: "confirme o e-mail antes de entrar" }, 403);
   const agora = agoraIso();
-  const conta = await upsertConta(env.DB, u, agora);
+  const conta = await upsertConta(env.DB, u, agora, pedido.metodo);
   await papelAdmin(env.DB, conta.email, env.ADMIN_BOOTSTRAP_EMAIL, agora);
   // Primeira entrada: trial do Pro (TRIAL_DIAS), como no Rambox; o admin muda depois pelo console.
   const dias = Number.parseInt(env.TRIAL_DIAS ?? "14", 10);
-  if (await iniciarTrialSeNovo(env.DB, conta, Number.isFinite(dias) ? dias : 14, agora)) await auditar(env.DB, conta.email, "licenca.trial", conta.id, `${dias} dias`, agora);
+  // Quem apagou a conta e voltou com o mesmo e-mail não ganha outro trial.
+  if (conta.criada_em === agora && await houveContaApagada(env.DB, conta.email)) await auditar(env.DB, conta.email, "licenca.trial-negado", conta.id, "conta apagada antes com este e-mail", agora);
+  else if (await iniciarTrialSeNovo(env.DB, conta, Number.isFinite(dias) ? dias : 14, agora)) await auditar(env.DB, conta.email, "licenca.trial", conta.id, `${dias} dias`, agora);
   const code = segredo(32);
   await criarCodigo(env.DB, { code, conta_id: conta.id, state: pedido.state, challenge: pedido.challenge, esquema: pedido.esquema, app: pedido.app, versao_app: pedido.versao, criado_em: agora, expira_em: maisSegundos(CODE_TTL_S) });
   await auditar(env.DB, conta.email, "login.codigo", conta.id, `${pedido.esquema}${pedido.app === null ? "" : ` · ${pedido.app} ${pedido.versao ?? ""}`}`.trim(), agora);

@@ -98,7 +98,9 @@ export function parseJsonB64url(s: string): Record<string, unknown> | null {
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown, re: RegExp): string | null => (typeof v === "string" && re.test(v) ? v : null);
 
-export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null }
+/** Como a pessoa entrou na página (o Firebase reporta "password" tanto para senha quanto para link por e-mail). */
+export type MetodoLogin = "google" | "emailLink" | "password";
+export interface PedidoSessao { idToken: string; state: string; challenge: string; esquema: string; app: string | null; versao: string | null; metodo: MetodoLogin | null }
 /** `POST /sessao` da página: ID token do Firebase mais o que o app pôs na URL de login. */
 export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string } {
   if (!isObj(raw)) return { erro: "corpo inválido" };
@@ -108,7 +110,7 @@ export function validaPedidoSessao(raw: unknown): PedidoSessao | { erro: string 
   if (state === null) return { erro: "state ausente ou fora do formato" };
   if (challenge === null) return { erro: "challenge (PKCE) ausente ou fora do formato" };
   if (esquema === null) return { erro: "esquema do app ausente ou fora do formato" };
-  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE) };
+  return { idToken, state, challenge, esquema, app: str(raw.app, APP_RE), versao: str(raw.v, VERSAO_RE), metodo: str(raw.metodo, /^(google|emailLink|password)$/) as MetodoLogin | null };
 }
 
 export interface DeviceValido { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string }
@@ -178,6 +180,47 @@ export function validaPatchLicenca(raw: unknown): PatchLicenca | { erro: string 
   if (Object.keys(p).length === 0) return { erro: "nada para mudar" };
   return p;
 }
+// ---- Perfil da conta (console › Perfil), molde Rambox.
+export const TAMANHOS_EQUIPE = ["1", "2-10", "11-50", "51-200", "201+"] as const;
+export type TamanhoEquipe = (typeof TAMANHOS_EQUIPE)[number];
+/** `PATCH /conta`: campos omitidos ficam; null ou "" limpa; texto livre até 80 sem caracteres de controle. */
+export interface PatchPerfil { nomeProprio?: string | null; sobrenome?: string | null; pais?: string | null; cidade?: string | null; setor?: string | null; cargo?: string | null; tamanhoEquipe?: TamanhoEquipe | null; dadosUso?: boolean }
+const TEXTOS_PERFIL = ["nomeProprio", "sobrenome", "pais", "cidade", "setor", "cargo"] as const;
+export function validaPatchPerfil(raw: unknown): PatchPerfil | { erro: string } {
+  if (!isObj(raw)) return { erro: "corpo inválido" };
+  const p: PatchPerfil = {};
+  for (const k of TEXTOS_PERFIL) {
+    const v = raw[k];
+    if (v === undefined) continue;
+    if (v === null) { p[k] = null; continue; }
+    if (typeof v !== "string" || !CAMPO_RE.test(v)) return { erro: `${k}: texto até 80 caracteres` };
+    const t = v.trim(); p[k] = t === "" ? null : t;
+  }
+  if (raw.tamanhoEquipe !== undefined) {
+    const v = raw.tamanhoEquipe;
+    if (v === null || v === "") p.tamanhoEquipe = null;
+    else if (typeof v === "string" && (TAMANHOS_EQUIPE as readonly string[]).includes(v)) p.tamanhoEquipe = v as TamanhoEquipe;
+    else return { erro: `tamanhoEquipe: ${TAMANHOS_EQUIPE.join(", ")} ou null` };
+  }
+  if (raw.dadosUso !== undefined) { if (typeof raw.dadosUso !== "boolean") return { erro: "dadosUso: true ou false" }; p.dadosUso = raw.dadosUso; }
+  if (Object.keys(p).length === 0) return { erro: "nada para mudar" };
+  return p;
+}
+/** O nome que se mostra: o digitado no console (nome próprio + sobrenome); senão o que veio do login. */
+export const nomeExibicao = (c: { nome_proprio: string | null; sobrenome: string | null; nome: string | null }): string | null => {
+  const digitado = [c.nome_proprio, c.sobrenome].filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim()).join(" ");
+  return digitado !== "" ? digitado : c.nome;
+};
+/** Provedores que a conta conhece. "emailLink" é nosso: o Firebase chama os dois de "password". */
+export const PROVEDORES_RE = /^(google\.com|password|emailLink)$/;
+/** Lê a coluna `provedores` (JSON) com defesa: lixo vira lista vazia. */
+export function parseProvedores(raw: string | null | undefined): string[] {
+  try { const p: unknown = JSON.parse(raw ?? "[]"); return Array.isArray(p) ? [...new Set(p.filter((x): x is string => typeof x === "string" && PROVEDORES_RE.test(x)))].sort() : []; } catch { return []; }
+}
+/** A união do que já havia com os provedores deste login, como JSON para a coluna. */
+export const unirProvedores = (atuais: string | null | undefined, novos: string[]): string => JSON.stringify([...new Set([...parseProvedores(atuais), ...novos.filter((x) => PROVEDORES_RE.test(x))])].sort());
+/** Os provedores deste login: o token diz "password" para senha e para link por e-mail; o `metodo` da página desempata. */
+export const provedoresDoLogin = (doToken: string[], metodo: MetodoLogin | null): string[] => doToken.map((p) => (p === "password" && metodo === "emailLink" ? "emailLink" : p));
 /** E-mail de um perfil de acesso (minúsculas) e o papel; null se fora do formato. */
 export const validaEmail = (v: unknown): string | null => (typeof v === "string" && /^[^\s@]{1,100}@[^\s@]{1,100}\.[^\s@]{1,50}$/.test(v.trim()) ? v.trim().toLowerCase() : null);
 export const validaPapel = (v: unknown): "super" | "admin" | null => (v === "super" || v === "admin" ? v : null);
