@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
-const { URLS, LOGIN_PENDENTE_MS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin } = createRequire(import.meta.url)("../../dist/main/conta/conta-core.js");
+const { URLS, LOGIN_PENDENTE_MS, deveRenovar, erroDaApi, novoLogin, parseContaInfo, parseLoginPendente, parsePrefs, parseSessao, retornoConfere, sessaoAcabou, urlDeLogin } = createRequire(import.meta.url)("../../dist/main/conta/conta-core.js");
 
 const AGORA = Date.parse("2026-11-07T12:00:00Z");
 const UUID = "077a1dd5-1fd3-45bc-9eef-506a7fd71201";
@@ -41,6 +41,12 @@ test("parseContaInfo: e-mail em minúsculas, devices e máquinas fora do formato
   assert.equal(parseContaInfo({ ...conta(), id: "x" }), null);
   assert.equal(parseContaInfo({ ...conta(), email: "semarroba" }), null);
   assert.equal(parseContaInfo({ ...conta(), licenca: "lixo" }).licenca.plan, "free", "licença ilegível vira a default");
+  assert.deepEqual({ nomeLogin: c.nomeLogin, perfil: c.perfil, provedores: c.provedores, dadosUso: c.dadosUso }, { nomeLogin: null, perfil: { nomeProprio: null, sobrenome: null, pais: null, cidade: null, setor: null, cargo: null, tamanhoEquipe: null }, provedores: [], dadosUso: true }, "API antiga: perfil vazio, dados de uso ligados");
+  const d = parseContaInfo({ ...conta(), nomeLogin: "Ana do Google", perfil: { nomeProprio: "Ana", tamanhoEquipe: "2-10", cidade: 7 }, provedores: ["google.com", "facebook.com", 3], dadosUso: false }, AGORA);
+  assert.equal(d.nomeLogin, "Ana do Google"); assert.equal(d.perfil.nomeProprio, "Ana"); assert.equal(d.perfil.tamanhoEquipe, "2-10"); assert.equal(d.perfil.cidade, null);
+  assert.deepEqual(d.provedores, ["google.com"], "provedor fora da lista cai"); assert.equal(d.dadosUso, false);
+  assert.equal(parseContaInfo({ ...conta(), perfil: { tamanhoEquipe: "muitos" } }).perfil.tamanhoEquipe, null);
+  assert.deepEqual(parsePrefs({ dadosUso: false }), { dadosUso: false }); assert.deepEqual(parsePrefs(null), { dadosUso: true }); assert.deepEqual(parsePrefs({ dadosUso: "x" }), { dadosUso: true });
 });
 
 test("parseSessao: a resposta do /token e o conta.bin; refresh, acesso (JWT) e expiraEm obrigatórios", () => {
