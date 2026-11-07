@@ -95,3 +95,19 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .modo-admin .pessoal { margin-top: 24px; padding-top: 14px; border-top: 1px dashed var(--borda); }
 .modo-admin .pessoal > summary { display: block; cursor: pointer; font-weight: 600; margin-bottom: 10px; }
 .admin.aberto { border-top: 0; margin-top: 0; padding-top: 0; }
+/* Perfil (console › Perfil): formulário, segurança, toggle e a zona de apagar */
+.perfil-form { padding: 0; }
+.perfil-form label { flex: 1 1 200px; }
+.perfil-form label.largo { flex-basis: 100%; max-width: 420px; }
+.perfil-form input, .perfil-form select { width: 100%; }
+.perfil-form .acoes { flex-basis: 100%; align-items: center; margin-top: 4px; }
+.perfil-form .acoes .sub { color: var(--ok); }
+.painel h2 { margin: 0 0 6px; font-size: 16px; }
+.seguranca { grid-template-columns: max-content 1fr; align-items: center; }
+.seguranca dd { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seguranca .btn { padding: 5px 10px; font-size: 13px; }
+.toggle { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; cursor: pointer; margin: 8px 0; }
+.toggle input { width: 18px; height: 18px; margin: 1px 0 0; accent-color: var(--primario); flex: none; }
+.painel.perigo { border-color: var(--mau); }
+.btn-perigo { color: var(--mau); border-color: var(--mau); }
+.btn-perigo:disabled { color: var(--sub); border-color: var(--borda); }
