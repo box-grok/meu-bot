@@ -32,6 +32,9 @@ import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
 import { initRelief, showRelief } from "./app/relief";
 import { listSshHosts } from "./maquina/sshConfig";
 import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
+import { esquemaDe } from "./app/variant-core";
+import { aoReceberUrl, instalarOpenUrl, registrarEsquema, tratarArgv } from "./conta/deep-link";
+import { parseRetornoAuth } from "./conta/deep-link-core";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
@@ -50,11 +53,17 @@ if (!getAceleracaoHardware()) app.disableHardwareAcceleration();
 // troca: os logins do Navegador e o que o safeStorage guardou (Google, Tailscale) precisam ser refeitos.
 if (appVariant().endsWith("-staging")) app.commandLine.appendSwitch("use-mock-keychain");
 
-// Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas.
+// Esquema do deep link do login da conta (`meu-bot://auth?…`, um por produto). O `open-url` do macOS precisa estar
+// ligado antes do `ready`: com o app fechado, o clique no link o abre e o evento chega ainda no arranque.
+const ESQUEMA = esquemaDe(produto());
+instalarOpenUrl(ESQUEMA);
+
+// Uma instância só: abrir o app de novo (Dock, Finder, `open -a`) mostra o seletor de máquinas; chegando pelo deep
+// link do login (Windows/Linux: a URL vem nos argumentos da instância nova), só o retorno é tratado, sem seletor.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", (_event, argv) => openFromArgs(argv));
+  app.on("second-instance", (_event, argv) => { if (!tratarArgv(argv, ESQUEMA)) openFromArgs(argv); });
 }
 
 /** `--host=<x>` abre a janela da máquina direto (atalho da mesa); qualquer outra coisa abre o seletor. */
@@ -130,8 +139,18 @@ app.whenReady().then(() => {
     const qe = getQuickEntry();
     applyQuickEntryShortcut(qe.enabled, qe.shortcut);
   }
-  // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho.
+  // Deep link do login da conta: registra o esquema e passa a ouvir as URLs (as que chegaram antes saem agora).
+  // Por enquanto só confirma na tela que o retorno chegou e foi lido; o login em si entra com src/main/conta/conta.ts.
+  registrarEsquema(ESQUEMA);
+  aoReceberUrl((url) => {
+    const r = parseRetornoAuth(url, ESQUEMA);
+    log(`[conta] retorno do login: ${r === null ? "não é deste esquema" : r.ok ? `code e state lidos (state ${r.retorno.state.slice(0, 6)}…)` : r.erro}`);
+    void dialog.showMessageBox({ type: r !== null && r.ok ? "info" : "warning", title: "meu-bot", message: r !== null && r.ok ? "Retorno do login recebido." : "O link de retorno do login não serviu.", detail: r === null ? "A URL não é deste app." : r.ok ? `Código e state chegaram pelo deep link ${ESQUEMA}://auth. O login da conta ainda não está ligado nesta versão.` : r.erro, buttons: ["OK"] });
+  });
+  // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho; no Windows/Linux a
+  // URL do deep link também pode vir aqui.
   openFromArgs(process.argv);
+  tratarArgv(process.argv, ESQUEMA);
   // Modo de depuração: o tique de 1 s do main para a faixa da janela (ligado no staging, pela paleta ou --depuracao).
   ligarDepuracao(broadcast);
   // Clicar no app (Dock, Finder) abre sempre o seletor; para ir direto a uma máquina existe o atalho dela. O clique numa
