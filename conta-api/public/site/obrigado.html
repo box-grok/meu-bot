@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Obrigado por baixar o meu-bot</title>
+  <link rel="stylesheet" href="/site/site.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/"><span class="logo" aria-hidden="true">mb</span><span>meu-bot</span></a>
+    <nav class="links">
+      <a href="https://github.com/diegofornalha/meu-bot/blob/main/docs/CHANGELOG.md" rel="noopener">Novidades</a>
+      <a id="link-console" href="#">Console da conta</a>
+    </nav>
+  </header>
+
+  <main class="hero">
+    <p class="selo">macOS · Apple Silicon</p>
+    <h1>Obrigado por baixar o meu-bot</h1>
+    <p class="sub">O download começa sozinho em instantes. <span id="versao"></span></p>
+    <p class="acao"><a class="btn btn-ghost" id="btn-denovo" href="/download/mac">Não começou? Baixar de novo</a></p>
+  </main>
+
+  <section class="passos">
+    <h2>Instalar em três passos</h2>
+    <ol>
+      <li><strong>Abra o arquivo .zip</strong> e arraste o <em>meu-bot</em> para a pasta Aplicativos.</li>
+      <li><strong>Na primeira abertura</strong>, clique com o botão direito no app e escolha <em>Abrir</em> (o app ainda não é notarizado pela Apple; o macOS pergunta só desta vez).</li>
+      <li><strong>Entre com sua conta</strong>: o app abre o navegador, você entra com Google ou link por e-mail e volta sozinho. Conta nova começa com 14 dias de teste do Pro.</li>
+    </ol>
+    <p class="sub">Dali em diante o app se atualiza sozinho: baixa a versão nova, confere a assinatura e só pede para reiniciar.</p>
+  </section>
+
+  <footer class="rodape">
+    <span>meu-bot · agentesgrok.com</span>
+    <a href="https://github.com/diegofornalha/meu-bot/releases" rel="noopener">Todas as versões</a>
+  </footer>
+
+  <script src="/config.js"></script>
+  <script src="/site/site.js"></script>
+  <script>setTimeout(() => { location.href = "/download/mac"; }, 900);</script>
+</body>
+</html>
