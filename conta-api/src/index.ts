@@ -72,7 +72,7 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
 const cspDoConsole = (env: Env): string => ["default-src 'self'", "script-src 'self'", `connect-src 'self' ${env.API_ORIGIN}`, "img-src 'self' data: https:", "style-src 'self'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
 /** /account/* e a raiz são a mesma página (o JS escolhe a seção pelo caminho); o resto são os assets de public/console/. */
 async function consolePagina(req: Request, env: Env, url: URL): Promise<Response> {
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, canal: env.CANAL }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, canal: env.CANAL }), {});
   const caminho = url.pathname === "/" || url.pathname === "/account" || url.pathname.startsWith("/account/") ? "/console/index.html" : url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Tudo sem cache: o console muda junto com a API, e um JS velho de 5 min já mostrou tela errada depois de um deploy.

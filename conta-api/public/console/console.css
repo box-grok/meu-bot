@@ -30,6 +30,7 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .cartao .marca { width: 44px; height: 44px; border-radius: 12px; }
 .cartao .btn { width: 100%; margin-top: 16px; }
 .cartao .rodape { display: flex; justify-content: space-between; margin: 20px 0 0; color: var(--sub); font-size: 12px; }
+.cartao .rodape a { color: var(--sub); text-decoration: none; } .cartao .rodape a:hover { color: var(--texto); text-decoration: underline; }
 
 /* console */
 .console { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
