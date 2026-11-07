@@ -95,12 +95,11 @@ test("validaPatchLicenca: só os campos mandados, nos formatos; validaBusca limp
   assert.equal(validaBusca("a\u0007b"), ""); assert.equal(validaBusca(5), "");
 });
 
-test("validaPatchPerfil: só o que veio, aparado; vazio limpa; controle, tamanho fora da lista e dadosUso não-booleano recusam", () => {
-  assert.deepEqual(validaPatchPerfil({ nomeProprio: "  Ana ", sobrenome: "", cidade: null, tamanhoEquipe: "2-10", dadosUso: false, outro: 1 }), { nomeProprio: "Ana", sobrenome: null, cidade: null, tamanhoEquipe: "2-10", dadosUso: false });
-  assert.deepEqual(validaPatchPerfil({ tamanhoEquipe: "" }), { tamanhoEquipe: null });
+test("validaPatchPerfil: só nome, sobrenome e dadosUso; aparado; vazio limpa; controle e dadosUso não-booleano recusam", () => {
+  assert.deepEqual(validaPatchPerfil({ nomeProprio: "  Ana ", sobrenome: "", dadosUso: false, cidade: "Rio", outro: 1 }), { nomeProprio: "Ana", sobrenome: null, dadosUso: false }, "campos que saíram (cidade…) são ignorados");
+  assert.deepEqual(validaPatchPerfil({ sobrenome: null }), { sobrenome: null });
   assert.match(validaPatchPerfil({ nomeProprio: "a\u0007b" }).erro, /nomeProprio/);
-  assert.match(validaPatchPerfil({ cargo: "x".repeat(81) }).erro, /cargo/);
-  assert.match(validaPatchPerfil({ tamanhoEquipe: "muitos" }).erro, /tamanhoEquipe/);
+  assert.match(validaPatchPerfil({ sobrenome: "x".repeat(81) }).erro, /sobrenome/);
   assert.match(validaPatchPerfil({ dadosUso: "sim" }).erro, /dadosUso/);
   assert.match(validaPatchPerfil({}).erro, /nada/); assert.match(validaPatchPerfil({ outro: 1 }).erro, /nada/);
   assert.match(validaPatchPerfil("x").erro, /corpo/);

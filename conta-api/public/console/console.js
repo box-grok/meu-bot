@@ -481,7 +481,7 @@ function pintarOverview(c) {
     ...(c.pedidos > 0 ? [cartao("✉", "Pedidos abertos", document.createTextNode(String(c.pedidos)))] : []),
   );
 }
-const CAMPOS_PERFIL = ["nomeProprio", "sobrenome", "pais", "cidade", "setor", "cargo", "tamanhoEquipe"];
+const CAMPOS_PERFIL = ["nomeProprio", "sobrenome"];
 /** Perfil (molde Rambox): cabeçalho, formulário editável, login e segurança, dados de uso, apagar conta. */
 function pintarPerfil(c) {
   $("pf-nome").textContent = c.nome ?? "(sem nome)"; $("pf-email").textContent = c.admin ? `${c.email} · admin (${c.admin})` : c.email;
@@ -502,7 +502,7 @@ function pintarPerfil(c) {
   const temSenha = provs.includes("password");
   const bSenha = el("button", "btn btn-ghost", temSenha ? "Redefinir senha" : "Criar senha"); bSenha.type = "button"; bSenha.id = "pf-senha";
   bSenha.addEventListener("click", () => { void senhaPedir(bSenha, c.email); });
-  linha("Senha", temSenha ? selo("configurada", "ok") : selo("não configurada"), bSenha, el("span", "sub", temSenha ? "" : "Mandamos um e-mail com o link para criar a senha."));
+  linha("Senha", temSenha ? selo("configurada", "ok") : selo("não configurada"), bSenha, el("span", "sub", temSenha ? "Na página de login, use e-mail e senha." : "Mandamos um e-mail com o link para criar a senha; depois entre com e-mail e senha na página de login."));
   // Dados de uso
   const cb = $("pf-dados-uso"); cb.checked = c.dadosUso !== false; cb.disabled = false;
   // Apagar
@@ -519,7 +519,7 @@ async function perfilSalvar() {
   if (r.status !== 200) { $("pf-salvar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
   mostrarConsole(r.corpo);
-  $("pf-salvo").hidden = false;
+  $("pf-editar").open = true; $("pf-salvo").hidden = false;
 }
 async function dadosUsoMudar(cb) {
   const s = sessaoGuardada(); if (s === null) return;
@@ -535,7 +535,7 @@ async function senhaPedir(botao, email) {
   const r = await api("POST", "/conta/senha", {}, s.acesso);
   if (r.status !== 200) { botao.disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
-  botao.replaceWith(el("span", "sub", `E-mail enviado para ${email}. Abra o link para definir a senha; depois ela aparece aqui como configurada no próximo login.`));
+  botao.replaceWith(el("span", "sub", `E-mail enviado para ${email}. Abra o link para definir a senha; depois entre com e-mail e senha na página de login, e ela aparece aqui como configurada.`));
 }
 async function contaApagar(botao) {
   const s = sessaoGuardada(); if (s === null) return;
