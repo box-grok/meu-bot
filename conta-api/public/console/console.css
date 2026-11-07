@@ -76,3 +76,22 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
   .menu { flex-direction: row; flex-wrap: wrap; }
   .conteudo { padding: 16px; }
 }
+.admin { margin-top: 28px; padding-top: 18px; border-top: 1px dashed var(--borda); }
+.admin h2 { display: flex; align-items: center; gap: 8px; }
+.busca { display: flex; gap: 8px; margin: 0 0 12px; max-width: 520px; }
+.busca input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; }
+.tabela .btn { padding: 5px 10px; font-size: 13px; }
+.tabela .conta { display: flex; flex-direction: column; } .tabela .conta span { color: var(--sub); font-size: 12px; }
+.editor td { background: var(--ghost); }
+.editor-form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; padding: 6px 2px; }
+.editor-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--sub); }
+.editor-form input, .editor-form select { padding: 7px 9px; border-radius: 8px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; font-size: 14px; min-width: 120px; }
+.editor-form .acoes { display: flex; gap: 8px; }
+.editor-form .sub { flex-basis: 100%; margin: 0; }
+/* modo admin: a visão de todos primeiro; a própria conta recolhida em "Minha conta" */
+.pessoal > summary { display: none; }
+.modo-admin section[data-secao] { display: flex; flex-direction: column; }
+.modo-admin .admin { order: -1; border-top: 0; margin-top: 0; padding-top: 0; }
+.modo-admin .pessoal { margin-top: 24px; padding-top: 14px; border-top: 1px dashed var(--borda); }
+.modo-admin .pessoal > summary { display: block; cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+.admin.aberto { border-top: 0; margin-top: 0; padding-top: 0; }

@@ -13,6 +13,8 @@ export interface Env {
   FIREBASE_AUTH_DOMAIN: string;
   /** Primeiro super admin: entra em `admins` no primeiro login dele. */
   ADMIN_BOOTSTRAP_EMAIL: string;
+  /** Dias de trial do Pro para conta nova ("14"); "0" = começa free. */
+  TRIAL_DIAS?: string;
   /** Secret: chave HMAC (base64) dos tokens de acesso. */
   SESSAO_HMAC_KEY: string;
   /** Secret: privada Ed25519 da licença (PKCS#8 DER base64); só a partir da PR 5. */
@@ -72,6 +74,11 @@ export interface ContaApi {
   /** Pedidos abertos desta conta (Pro, add-on, device). */
   pedidos: number;
 }
+/** `GET /admin/visao`: todas as contas (com licença, devices e máquinas), os pedidos abertos e os totais. Só admin. */
+export interface AdminContaResumo { id: string; email: string; nome: string | null; foto: string | null; admin: "super" | "admin" | null; criadaEm: string; licenca: License; devices: DeviceApi[]; maquinas: number; pedidos: number }
+export interface AdminPedido { id: string; tipo: string; detalhe: string | null; maquinaId: string | null; criadoEm: string; atendidoEm: string | null; atendidoPor: string | null; conta: { id: string; email: string; nome: string | null } }
+export interface AdminPerfil { email: string; papel: "super" | "admin"; criadoEm: string; entrou: boolean }
+export interface AdminVisao { contas: AdminContaResumo[]; pedidos: AdminPedido[]; perfis: AdminPerfil[]; totais: { contas: number; pro: number; devicesPendentes: number; pedidosAbertos: number } }
 /** O que o app manda no `POST /token` para se registrar como device. */
 export interface DevicePedido { id: string; alias: string | null; name: string; user: string; platform: string; app: string; versao: string }
 /** Claims do token de acesso (HS256, 1 h). */
