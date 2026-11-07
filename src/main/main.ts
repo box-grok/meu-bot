@@ -34,7 +34,7 @@ import { listSshHosts } from "./maquina/sshConfig";
 import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
 import { esquemaDe } from "./app/variant-core";
 import { aoReceberUrl, instalarOpenUrl, registrarEsquema, tratarArgv } from "./conta/deep-link";
-import { parseRetornoAuth } from "./conta/deep-link-core";
+import { aoRetornarAuth } from "./conta/conta";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
 // O admin traz o pessoas.json antigo; um produto da pessoa (meu-bot-finance-staging…) nasce como cópia do meu-bot dela.
@@ -139,14 +139,10 @@ app.whenReady().then(() => {
     const qe = getQuickEntry();
     applyQuickEntryShortcut(qe.enabled, qe.shortcut);
   }
-  // Deep link do login da conta: registra o esquema e passa a ouvir as URLs (as que chegaram antes saem agora).
-  // Por enquanto só confirma na tela que o retorno chegou e foi lido; o login em si entra com src/main/conta/conta.ts.
+  // Deep link do login da conta: registra o esquema e passa a ouvir as URLs (as que chegaram antes saem agora);
+  // conta.ts confere o state e troca o code pela sessão.
   registrarEsquema(ESQUEMA);
-  aoReceberUrl((url) => {
-    const r = parseRetornoAuth(url, ESQUEMA);
-    log(`[conta] retorno do login: ${r === null ? "não é deste esquema" : r.ok ? `code e state lidos (state ${r.retorno.state.slice(0, 6)}…)` : r.erro}`);
-    void dialog.showMessageBox({ type: r !== null && r.ok ? "info" : "warning", title: "meu-bot", message: r !== null && r.ok ? "Retorno do login recebido." : "O link de retorno do login não serviu.", detail: r === null ? "A URL não é deste app." : r.ok ? `Código e state chegaram pelo deep link ${ESQUEMA}://auth. O login da conta ainda não está ligado nesta versão.` : r.erro, buttons: ["OK"] });
-  });
+  aoReceberUrl((url) => { void aoRetornarAuth(url); });
   // Abertura: pelo seletor (Enter reabre a última máquina), ou direto na máquina de um atalho; no Windows/Linux a
   // URL do deep link também pode vir aqui.
   openFromArgs(process.argv);

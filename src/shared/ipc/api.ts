@@ -3,6 +3,7 @@ import type { BatimentoDepuracao, EstadoDepuracao, EventoDepuracao } from "./dep
 import type { AccountStatus, AudioSetup, ClaudeAuthInfo, ClaudeLoginEvent, ContaEstado, ContaEvento, ContaId, ContasClaudeView, LinkPublicoInfo, LinkPublicoStatus, CotaInfo, LinkPublicoLista, LinkPublicoPublicado, FreedomLevel, LimiaresClaude, ObjectiveChoice, ObjectiveInfo, StatusLineSegments, XaiKeyStatus } from "./agente";
 import type { AlertPrefs, BackendModel, ControleRemotoView, DonoInfo, NetState, SettingsUpdate, SettingsView, WindowInfo, ZoomAction, ZoomState } from "./app";
 import type { UpdateState } from "./atualizacao";
+import type { ContaView } from "./conta";
 import type { TelaEndereco, TelaInstalacao, TelaStatus } from "./computador";
 import type { ClaudeSessionRef, ContextEvent, ConversationRef, DoneEvent, ErrorEvent, ExportFormat, MemoryView, StoredConversationView, TabMenuAction, ToolEvent } from "./conversa";
 import type { CrmDiag, CrmInfo, CrmLocal } from "./crm";
@@ -71,6 +72,8 @@ export interface MainEvents {
   /** Login OAuth da xAI em andamento (mesmo formato). */
   "xai-login:event": ClaudeLoginEvent;
   "contas:evento": ContaEvento;
+  /** Conta meu-bot deste Mac mudou (entrou, saiu, erro no retorno do login, cópia relida). */
+  "conta:changed": ContaView;
   /** Terminal: bytes crus do shell (o xterm decodifica) e o fim da sessão. */
   "term:data": { id: string; data: Uint8Array };
   "term:exit": { id: string; code: number; detail: string | null };
@@ -208,6 +211,12 @@ export interface MeuBotSharedApi {
   xaiAuth(): Promise<ClaudeAuthInfo | null>;
   /** Contas de CLI desta máquina (Cloudflare, GitHub); null = máquina fora do alcance. */
   contasStatus(): Promise<ContaEstado[] | null>;
+  /** Conta meu-bot deste Mac (login no navegador do sistema, volta por deep link). `forcar` relê a conta na API. */
+  contaGet(forcar?: boolean): Promise<ContaView>;
+  /** Abre a página de login no navegador; a sessão chega pelo deep link e vem em `conta:changed`. */
+  contaEntrar(): Promise<ContaView>;
+  contaCancelar(): Promise<ContaView>;
+  contaSair(): Promise<ContaView>;
   /** Link público desta pessoa na máquina (tutorial 13): `info` null = desligado, máquina fora ou este Mac; `possivel` false = conta root (sem link por desenho). */
   linkPublico(): Promise<LinkPublicoStatus>;
   setSettings(update: SettingsUpdate): Promise<SettingsView>;

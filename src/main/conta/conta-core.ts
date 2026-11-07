@@ -1,0 +1,109 @@
+/**
+ * Conta meu-bot, a parte pura (sem Electron, testável): endereços por canal, o login pendente (state + PKCE, como
+ * `pkce()` de src/main/google/google-core.ts), a URL da página, o que a API devolve e o que o app guarda. Tudo que
+ * vem da API ou do disco passa por um parse: dado, nunca comando. O lado de fora é conta-api/ (Cloudflare Worker).
+ */
+import { createHash, randomBytes } from "node:crypto";
+import type { Canal } from "../app/variant-core";
+import type { ContaDevice, ContaInfo, ContaMaquina } from "../../shared/ipc";
+import { DEVICE_ID_RE, parseLicense, UUID_RE } from "../licenca/licenca";
+
+/** Página de login e API, por canal: o staging nunca fala com a produção (conta e D1 separados). */
+export const URLS: Record<Canal, { auth: string; api: string }> = {
+  estavel: { auth: "https://auth.agentesgrok.com", api: "https://conta.agentesgrok.com" },
+  staging: { auth: "https://auth-staging.agentesgrok.com", api: "https://conta-staging.agentesgrok.com" },
+};
+/** Code do deep link e `state`: 32 bytes em base64url (43 caracteres), como TOKEN_RE do Worker. */
+export const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
+const VERIFIER_RE = /^[A-Za-z0-9._~-]{43,128}$/;
+/** Quanto tempo o login no navegador pode levar; depois disso o retorno é recusado e a pessoa entra de novo. */
+export const LOGIN_PENDENTE_MS = 10 * 60 * 1000;
+/** Renova o token de acesso quando faltam menos de 5 min (ele vale 1 h). */
+export const RENOVAR_ANTES_MS = 5 * 60 * 1000;
+
+export interface LoginPendente { state: string; verifier: string; challenge: string; em: string }
+/** State + PKCE S256 novos para um login. */
+export function novoLogin(now: number = Date.now()): LoginPendente {
+  const verifier = randomBytes(48).toString("base64url");
+  return { state: randomBytes(32).toString("base64url"), verifier, challenge: createHash("sha256").update(verifier).digest("base64url"), em: new Date(now).toISOString() };
+}
+/** O login pendente gravado em disco (o app pode reabrir no meio): válido se inteiro e com menos de 10 min. */
+export function parseLoginPendente(raw: unknown, now: number = Date.now()): LoginPendente | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.state !== "string" || !TOKEN_RE.test(r.state) || typeof r.verifier !== "string" || !VERIFIER_RE.test(r.verifier) || typeof r.challenge !== "string" || !TOKEN_RE.test(r.challenge) || typeof r.em !== "string") return null;
+  const em = Date.parse(r.em);
+  if (Number.isNaN(em) || now - em > LOGIN_PENDENTE_MS || em > now + 60_000) return null;
+  return { state: r.state, verifier: r.verifier, challenge: r.challenge, em: r.em };
+}
+/** URL da página de login com o que a página devolve no `POST /sessao` (esquema do deep link, state, challenge, app e versão). */
+export function urlDeLogin(auth: string, p: { esquema: string; state: string; challenge: string; app: string; versao: string }): string {
+  const q = new URLSearchParams({ esquema: p.esquema, state: p.state, challenge: p.challenge, app: p.app, v: p.versao });
+  return `${auth}/entrar?${q.toString()}`;
+}
+
+/** O que o app guarda cifrado (conta.bin): a sessão e a última cópia da conta. É o mesmo formato que `POST /token` devolve. */
+export interface SessaoGuardada { refresh: string; acesso: string; expiraEm: string; conta: ContaInfo }
+
+const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+const strOuNull = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+const iso = (v: unknown): string | null => (typeof v === "string" && ISO_RE.test(v) ? v : null);
+
+function parseDevice(raw: unknown): ContaDevice | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = str(r.id);
+  if (id === null || !DEVICE_ID_RE.test(id)) return null;
+  const apps: ContaDevice["apps"] = {};
+  if (r.apps !== null && typeof r.apps === "object") for (const [k, v] of Object.entries(r.apps as Record<string, unknown>)) { const a = v as Record<string, unknown> | null; if (a !== null && typeof a === "object" && typeof a.version === "string" && typeof a.lastSeen === "string") apps[k] = { version: a.version, lastSeen: a.lastSeen }; }
+  return { id, alias: strOuNull(r.alias), name: str(r.name) ?? "", user: str(r.user) ?? "", platform: str(r.platform) ?? "", status: r.status === "pending" ? "pending" : "active", requestedAt: strOuNull(r.requestedAt), firstSeen: str(r.firstSeen) ?? "", lastSeen: str(r.lastSeen) ?? "", apps, este: r.este === true };
+}
+function parseMaquina(raw: unknown): ContaMaquina | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = str(r.id);
+  if (id === null || !UUID_RE.test(id)) return null;
+  return { id, apelido: strOuNull(r.apelido), vinculadaPor: str(r.vinculadaPor) ?? "" };
+}
+/** A conta como a API devolve; null se faltar o essencial (id, e-mail). A licença passa pelo mesmo parse da máquina. */
+export function parseContaInfo(raw: unknown, now: number = Date.now()): ContaInfo | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = str(r.id), email = str(r.email);
+  if (id === null || !UUID_RE.test(id) || email === null || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  const foto = strOuNull(r.foto);
+  return {
+    id, email: email.toLowerCase(), nome: strOuNull(r.nome), foto: foto !== null && /^https:\/\//.test(foto) ? foto : null,
+    admin: r.admin === "super" || r.admin === "admin" ? r.admin : null,
+    licenca: parseLicense(r.licenca, now),
+    devices: Array.isArray(r.devices) ? r.devices.map(parseDevice).filter((d): d is ContaDevice => d !== null) : [],
+    maquinas: Array.isArray(r.maquinas) ? r.maquinas.map(parseMaquina).filter((m): m is ContaMaquina => m !== null) : [],
+    pedidos: typeof r.pedidos === "number" && Number.isFinite(r.pedidos) && r.pedidos >= 0 ? Math.floor(r.pedidos) : 0,
+  };
+}
+/** Resposta do `POST /token` (grant code ou refresh) e o conteúdo de conta.bin: os dois têm o mesmo formato. */
+export function parseSessao(raw: unknown, now: number = Date.now()): SessaoGuardada | null {
+  if (raw === null || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const refresh = str(r.refresh), acesso = str(r.acesso), expiraEm = iso(r.expiraEm);
+  if (refresh === null || !TOKEN_RE.test(refresh) || acesso === null || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(acesso) || expiraEm === null) return null;
+  const conta = parseContaInfo(r.conta, now);
+  if (conta === null) return null;
+  return { refresh, acesso, expiraEm, conta };
+}
+/** O token de acesso está perto de vencer (ou a data não é legível): renova antes de usar. */
+export function deveRenovar(expiraEm: string, now: number = Date.now()): boolean {
+  const t = Date.parse(expiraEm);
+  return Number.isNaN(t) || t - now < RENOVAR_ANTES_MS;
+}
+/** Texto do erro de uma resposta da API para a tela: o `erro` do corpo quando há, senão o status. */
+export function erroDaApi(status: number, corpo: unknown): string {
+  const e = corpo !== null && typeof corpo === "object" ? (corpo as Record<string, unknown>).erro : undefined;
+  if (typeof e === "string" && e.trim() !== "") return e.trim().slice(0, 200);
+  return status === 429 ? "muitas tentativas; espere um minuto" : status >= 500 ? `a API da conta respondeu ${status}` : `pedido recusado (${status})`;
+}
+/** 401 da API: a sessão não vale mais (vencida, revogada, conta apagada): o app sai sozinho e pede para entrar de novo. */
+export const sessaoAcabou = (status: number): boolean => status === 401;
+/** Retorno do deep link confere com o login pendente? (state igual: o code é de outro login ou de outro app senão.) */
+export const retornoConfere = (pendente: LoginPendente | null, state: string): boolean => pendente !== null && pendente.state === state;

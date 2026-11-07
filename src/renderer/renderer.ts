@@ -80,6 +80,7 @@ import { alternarDepuracao, faixaLigada, ligarFaixaDepuracao } from "./depuracao
 import { aceleracaoInput, atualizarOciosoInput, corretorInput, lastUpdate, ligarAtualizacao, paintUpdateState } from "./atualizacao/atualizacao.js";
 import { abrirAtalhos, abrirBusca, buscaAberta, ligarAlvoWebview, ligarBusca, pararBusca, type AlvoWebview } from "./busca/busca.js";
 import { ligarConfiguracoes, maybeAskNotificationsOnce } from "./configuracoes/configuracoes.js";
+import { ligarConta } from "./conta/conta.js";
 import { paintEspaco } from "./configuracoes/espaco.js";
 import { tam as tamEspaco } from "./lib/espaco.js";
 import type { CotaInfo } from "../shared/ipc";
@@ -1857,6 +1858,7 @@ ligarAtualizacao();
 ligarAlvoWebview(webviewDoNavegador);
 ligarBusca();
 ligarConfiguracoes();
+ligarConta();
 // Todo body dos tutoriais precisa de alguém que o desenhe (cada módulo registra os seus no `ligar…()` dele).
 { const faltam = conferirPassos(TUTORIAIS); if (faltam.length > 0) console.error("passos de tutorial sem tela:", faltam.join(", ")); }
 { const faltam = conferirFontes(); if (faltam.length > 0) console.error("fontes do guia sem registro:", faltam.join(", ")); }

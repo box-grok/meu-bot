@@ -5,6 +5,7 @@ import { ipcErrorText } from "../lib/ipc-error.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { type ProAccess, proBlockText, tabLabel, displayUrl, browserAccess, pagamentoDoBloqueio } from "../lib/pro.js";
 import { blocoPagamento } from "../lib/aviso-pagamento.js";
+import { aoMudarConta, contaAtual, contaEntrou } from "../conta/conta.js";
 import { hostLabel } from "../lib/probe-text.js";
 import { type RecortesPref, parseRecortesPref, recortesPara, recorteOculto, type Recorte, recorteTitulo } from "../lib/recortes.js";
 import { NAV_ZOOM_STEPS, caberAuto, larguraMinima, zoomParaCaber } from "../lib/nav-caber-core.js";
@@ -403,6 +404,8 @@ function navClose(id: string): void {
   else paintNav();
   navSalvarAbas();
 }
+// Entrou ou saiu da conta com o bloqueio na tela: o botão "Entrar" some ou volta.
+aoMudarConta(() => { if (navEls !== null && navAccess !== "ok") paintNav(); });
 export function paintNav(): void {
   if (navEls === null || navPage === null) return;
   const e = navEls;
@@ -415,6 +418,12 @@ export function paintNav(): void {
     const pg = pagamentoDoBloqueio(a, ctx.license);
     if (pg !== null) e.block.append(blocoPagamento(pg));
     const row = el("div", "actions");
+    // Sem conta meu-bot neste Mac: "Entrar" primeiro (a conta é o caminho para o plano e os devices); o pedido ao admin continua ao lado.
+    if (t.askAdmin && contaAtual() !== null && !contaEntrou()) {
+      const entrar = el("button", "btn btn-ghost", contaAtual()?.situacao === "entrando" ? "Aguardando o login no navegador…" : "Entrar na conta meu-bot"); entrar.type = "button"; entrar.disabled = contaAtual()?.situacao === "entrando";
+      entrar.addEventListener("click", () => { entrar.disabled = true; void window.meuBot.contaEntrar().catch((err: unknown) => { entrar.disabled = false; e.note.hidden = false; e.note.textContent = `Não consegui abrir o login: ${ipcErrorText(err)}`; }); });
+      row.append(entrar);
+    }
     if (t.askAdmin) {
       const b = el("button", "btn btn-primary", ctx.navAskedPro ? "Pedido enviado ao admin ✓" : a === "assinatura" ? "Avisar o admin" : a === "expired" ? "Pedir a renovação ao admin" : "Pedir o Pro ao admin"); b.type = "button"; b.disabled = ctx.navAskedPro;
       b.addEventListener("click", () => { b.disabled = true; void window.meuBot.browserRequestPro().then(() => { ctx.navAskedPro = true; paintNav(); }).catch((err: unknown) => { b.disabled = false; e.note.hidden = false; e.note.textContent = `Não consegui registrar o pedido: ${ipcErrorText(err)}`; }); });
