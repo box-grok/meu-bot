@@ -126,3 +126,4 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .abas a.ativo { color: var(--texto); border-bottom-color: var(--primario); }
 .editor-form .largo { flex-basis: 100%; }
 .tabela .copiar { margin-left: 6px; }
+.acoes-linha { display: flex; gap: 6px; flex-wrap: wrap; }

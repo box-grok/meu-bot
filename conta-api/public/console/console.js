@@ -317,9 +317,24 @@ function pintarAdminOrgs(v) {
     tr.append(el("td", "", o.nome), el("td", "", o.dona), el("td", "", String(o.membros)));
     const tdA = el("td"); const inp = el("input"); inp.type = "number"; inp.min = "1"; inp.max = "1000"; inp.value = String(o.assentos); inp.style.width = "80px"; tdA.append(inp); tr.append(tdA);
     tr.append(el("td", "", data(o.criadaEm)));
-    const td = el("td"); const b = el("button", "btn btn-ghost", "Salvar"); b.type = "button"; b.addEventListener("click", () => { void adminAssentos(o.slug, Number(inp.value), b); }); td.append(b); tr.append(td);
+    const td = el("td", "acoes-linha"); const b = el("button", "btn btn-ghost", "Salvar"); b.type = "button"; b.addEventListener("click", () => { void adminAssentos(o.slug, Number(inp.value), b); });
+    const rm = el("button", "btn btn-ghost btn-perigo", "Remover"); rm.type = "button"; rm.title = `Apaga a organização ${o.nome} e tira todos os membros dela. Não dá para desfazer.`;
+    rm.addEventListener("click", () => { void adminRemoverOrg(o, rm); });
+    td.append(b, rm); tr.append(td);
     tb.append(tr);
   }
+}
+/** O super admin apaga uma organização (DELETE /orgs/:slug aceita o papel super): dois cliques, como nos perfis. */
+async function adminRemoverOrg(o, botao) {
+  const s = sessaoGuardada(); if (s === null) return;
+  if (botao.dataset.confirma !== "1") { botao.dataset.confirma = "1"; botao.textContent = `Confirmar: apagar ${o.slug}`; return; }
+  botao.disabled = true;
+  const r = await api("DELETE", `/orgs/${encodeURIComponent(o.slug)}`, undefined, s.acesso);
+  if (r.status !== 200) { botao.disabled = false; botao.dataset.confirma = ""; botao.textContent = "Remover"; mostrarErro(erroDe(r)); return; }
+  mostrarErro(null); if (orgAtual !== null && orgAtual.slug === o.slug) orgAtual = null;
+  const c = await lerConta().catch(() => null); if (c !== null) conta = c;
+  await carregarVisao(visaoBusca).catch((e) => mostrarErro(e?.message ?? String(e)));
+  if (conta !== null) mostrarConsole(conta);
 }
 async function adminAssentos(slug, assentos, botao) {
   const s = sessaoGuardada(); if (s === null) return;
