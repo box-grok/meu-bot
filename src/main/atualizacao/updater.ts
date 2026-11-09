@@ -34,7 +34,7 @@ import { noteNetworkError } from "../app/net";
 import { evento } from "../app/depuracao";
 import { offlineMessage } from "../app/net-core";
 import {
-  abaixoDaMinima, alvosParaTrocar, candidataDe, assetName, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, decideAlvoAplicacao, decideFimDaEspera, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
+  abaixoDaMinima, alvosParaTrocar, candidataDe, decideIdentidade, requisitoDeveloperId, assetName, CHECK_EVERY_MS, classificarRespostaFeed, compareVersions, decideAlvoAplicacao, decideFimDaEspera, CONFIRMA_FEED_MS, decideDescarte, decideReaproveitar, decideReconfirmacao, decideReinicioOcioso, decideRollback, escolherRelease, motivoManterTexto, motivoReleaseTexto, OCIOSO_SEG, parsePendente, parsePreparada, parseVersaoMinima,
   pastaSoLeitura, proximaVerificacaoMs, releasesUrl, repararTroca, TENTATIVAS_ATE_VOLTAR, TRAVA_VELHA_MS, travaAbandonada, verificaAssinatura,
   type EscolhaRelease, type EstadoSistema, type UpdateCandidate, type UpdateGatilho, type UpdatePendente, type UpdatePreparada,
 } from "./updater-core";
@@ -295,11 +295,15 @@ async function preparar(cand: UpdateCandidate, signal: AbortSignal): Promise<voi
 async function conferirBundle(bundle: string): Promise<void> {
   const mine = runningBundle();
   if (mine !== null && (await plist(bundle, "CFBundleIdentifier")) !== (await plist(mine, "CFBundleIdentifier"))) throw new UpdateFalha("assinatura", "o app baixado é de outra variante");
-  // A quarentena sai (sem Developer ID o Gatekeeper bloquearia o app); a assinatura fica como veio do release.
+  // A quarentena sai: o zip já passou pela assinatura Ed25519, e um app sem Developer ID (as releases até a troca) o
+  // Gatekeeper bloquearia. A assinatura de código fica como veio do release.
   await run("xattr", ["-dr", "com.apple.quarantine", bundle], { timeoutMs: 60_000 }).catch(() => undefined);
   try { await run("codesign", ["--verify", "--deep", "--strict", bundle], { timeoutMs: 300_000 }); } catch { throw new UpdateFalha("assinatura", "o app baixado não tem uma assinatura de código íntegra"); }
   const dele = await requisito(bundle), meu = mine === null ? null : await requisito(mine);
-  if (dele === null || meu === null || dele !== meu) throw new UpdateFalha("assinatura", "o app baixado é assinado por outra identidade: descartado");
+  const ehDeveloperId = dele !== null && dele !== meu && await run("codesign", ["--verify", `-R=${requisitoDeveloperId()}`, bundle], { timeoutMs: 300_000 }).then(() => true, () => false);
+  const decisao = decideIdentidade(dele, meu, ehDeveloperId);
+  if (decisao === "recusa") throw new UpdateFalha("assinatura", "o app baixado é assinado por outra identidade: descartado");
+  if (decisao === "developer-id") log("[updater] o app baixado é assinado com Developer ID da Apple: troca de identidade aceita (uma vez)");
 }
 
 /** Na abertura: a versão preparada da sessão anterior ainda vale? Reconfere a integridade e já fica "pronta", sem baixar. */
