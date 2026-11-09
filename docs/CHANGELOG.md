@@ -22,6 +22,15 @@ no [diário técnico](GUIA.md).
   pessoa direto ao lugar. Ids: `seguranca`, `espaco`, `sobre`, `texto`, `mcp`, `suporte`, `conta`, mais os apelidos em
   inglês e os do Grok Bot. Abre na janela em uso; sem janela, reabre a última máquina; id desconhecido só abre as
   Configurações. O staging tem o esquema próprio (`meu-bot-staging://`), como no login.
+### Admin: a pressão da box não fica vermelha para sempre
+
+#### Corrigido
+
+- **Uma morte por memória de dias atrás não mantém a box "estrangulada".** Na aba Usuários, a coluna Pressão só pinta a
+  box de estrangulada ou apertada por morte por memória ou teto batido quando isso aconteceu agora há pouco (desde a
+  leitura anterior, por 10 minutos); o acumulado desde que a box subiu aparece no título da célula, como histórico.
+  Antes, um único processo morto pelo Linux 13 dias antes deixava a box "estrangulada" mesmo depois de subir a RAM máx e
+  com a espera por memória em zero.
 
 ### Claude Code Global: no limite, troca de conta na hora
 

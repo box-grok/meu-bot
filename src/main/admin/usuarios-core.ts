@@ -151,28 +151,55 @@ export function boxesDesatualizadas(usuarios: readonly UsuarioMaquina[], doApp: 
   return usuarios.filter((u) => u.backendInstalado && !u.sudo && !RESERVADOS.has(u.nome) && !PROTEGIDOS.has(u.nome) && deveAtualizar(u.backendVersao, doApp)).map((u) => u.nome);
 }
 
+/** O que aconteceu desde a leitura anterior, dentro da janela: é isso que pinta a box, não o acumulado. */
+export interface Recentes { oom: number; max: number }
+/** A marca da leitura anterior de uma box: os contadores acumulados e quando (e quanto) cada um subiu pela última vez. */
+export interface MarcaBox { evMax: number; oomKill: number; maxEm: number | null; maxQtd: number; oomEm: number | null; oomQtd: number }
+/** Por quanto tempo uma morte/teto batido visto numa leitura segue contando como "agora há pouco". */
+export const JANELA_RECENTE_MS = 10 * 60_000;
+/**
+ * Compara a leitura com a marca anterior: cada incremento de `oom_kill`/`max` vira "recente" e fica valendo por
+ * JANELA_RECENTE_MS a partir de quando foi visto. Sem marca (primeira leitura desde que o admin abriu) nada é recente:
+ * o acumulado é histórico, não sinal. Contador menor que antes = fatia recriada (reinício): marca nova, sem tempos.
+ */
+export function recentesDe(antes: MarcaBox | undefined, b: PressaoBox, agora: number): { marca: MarcaBox; recentes: Recentes } {
+  const marca: MarcaBox = { evMax: b.evMax, oomKill: b.oomKill, maxEm: null, maxQtd: 0, oomEm: null, oomQtd: 0 };
+  if (antes !== undefined && b.oomKill >= antes.oomKill && b.evMax >= antes.evMax) {
+    const dOom = b.oomKill - antes.oomKill; const dMax = b.evMax - antes.evMax;
+    if (dOom > 0) { marca.oomEm = agora; marca.oomQtd = dOom; } else { marca.oomEm = antes.oomEm; marca.oomQtd = antes.oomQtd; }
+    if (dMax > 0) { marca.maxEm = agora; marca.maxQtd = dMax; } else { marca.maxEm = antes.maxEm; marca.maxQtd = antes.maxQtd; }
+  }
+  const vale = (em: number | null): boolean => em !== null && agora - em < JANELA_RECENTE_MS;
+  return { marca, recentes: { oom: vale(marca.oomEm) ? marca.oomQtd : 0, max: vale(marca.maxEm) ? marca.maxQtd : 0 } };
+}
+
 /**
  * Pressão de uma box, para quem não pensa. Sinais que valem: a memória anônima (a que o kernel não solta) perto do
- * MemoryHigh, a PSI (quanto tempo os processos dela ficaram parados esperando memória/CPU), bater no MemoryMax e o
- * OOM matar alguém. O que não vale: `memory.current` (70% é cache descartável) e `events high` (uma box saudável tem
- * centenas: é só o kernel recolhendo cache no MemoryHigh). Contadores `max`/`oom_kill` são cumulativos desde que a
- * fatia subiu (zeram só ao recriar a fatia ou reiniciar).
+ * MemoryHigh, a PSI (quanto tempo os processos dela ficaram parados esperando memória/CPU), e bater no MemoryMax ou o
+ * OOM matar alguém **agora há pouco** (`recentes`, de `recentesDe`). O que não vale: `memory.current` (70% é cache
+ * descartável), `events high` (uma box saudável tem centenas: é só o kernel recolhendo cache no MemoryHigh) e os
+ * contadores `max`/`oom_kill` acumulados, que só zeram ao recriar a fatia ou reiniciar: uma morte de 13 dias atrás não
+ * pode manter a box "estrangulada" com a pressão em zero. O acumulado entra no motivo só como histórico.
  */
-export function pressaoDe(b: PressaoBox | null, ramMaxMb: number | null): Pressao | null {
+export function pressaoDe(b: PressaoBox | null, ramMaxMb: number | null, recentes: Recentes = { oom: 0, max: 0 }): Pressao | null {
   if (b === null) return null;
   const highMb = ramMaxMb === null ? null : Math.floor(ramMaxMb * 0.9);
   const anonMb = Math.round(b.anonKb / 1024);
   const dicaMem = `aumente a RAM máx dele (hoje ${ramMaxMb === null ? "sem teto" : `${ramMaxMb} MB`}) ou veja o que pesa na box`;
   const dicaCpu = "a box está pesada de CPU: aumente o CPU % dele ou veja o que roda";
-  if (b.oomKill > 0) return { estado: "estrangulada", motivo: `o Linux já matou ${b.oomKill} processo${b.oomKill === 1 ? "" : "s"} dele por falta de memória desde que a box subiu`, dica: dicaMem };
-  if (b.psiMem60 >= 25) return { estado: "estrangulada", motivo: `${b.psiMem60}% do último minuto parada esperando memória`, dica: dicaMem };
-  if (b.psiCpu60 >= 50) return { estado: "estrangulada", motivo: `${b.psiCpu60}% do último minuto parada esperando CPU`, dica: dicaCpu };
-  if (b.evMax > 0 && b.psiMem60 >= 10) return { estado: "estrangulada", motivo: `encostou no teto de memória ${b.evMax} vez${b.evMax === 1 ? "" : "es"} e segue apertada (${b.psiMem60}%)`, dica: dicaMem };
-  if (b.psiMem60 >= 10) return { estado: "apertada", motivo: `${b.psiMem60}% do último minuto esperando memória`, dica: dicaMem };
-  if (b.psiCpu60 >= 25) return { estado: "apertada", motivo: `${b.psiCpu60}% do último minuto esperando CPU`, dica: dicaCpu };
-  if (b.evMax > 0) return { estado: "apertada", motivo: `já encostou no teto de memória ${b.evMax} vez${b.evMax === 1 ? "" : "es"}`, dica: dicaMem };
-  if (highMb !== null && anonMb >= highMb * 0.85) return { estado: "apertada", motivo: `${anonMb} MB de memória própria, perto do aperto em ${highMb} MB`, dica: dicaMem };
-  return { estado: "folgada", motivo: `${anonMb} MB de memória própria${highMb !== null ? ` de ${highMb} MB` : ""}, sem espera`, dica: "" };
+  const vezes = (n: number): string => `${n} vez${n === 1 ? "" : "es"}`;
+  const mortes = (n: number): string => `${n} morte${n === 1 ? "" : "s"} por memória`;
+  const historico = b.oomKill > 0 || b.evMax > 0 ? ` · desde que a box subiu: ${mortes(b.oomKill)}, ${vezes(b.evMax)} no teto` : "";
+  const r = (estado: Pressao["estado"], motivo: string, dica: string): Pressao => ({ estado, motivo: motivo + historico, dica });
+  if (recentes.oom > 0) return r("estrangulada", `o Linux matou ${recentes.oom} processo${recentes.oom === 1 ? "" : "s"} dele por falta de memória agora há pouco`, dicaMem);
+  if (b.psiMem60 >= 25) return r("estrangulada", `${b.psiMem60}% do último minuto parada esperando memória`, dicaMem);
+  if (b.psiCpu60 >= 50) return r("estrangulada", `${b.psiCpu60}% do último minuto parada esperando CPU`, dicaCpu);
+  if (recentes.max > 0 && b.psiMem60 >= 10) return r("estrangulada", `encostou no teto de memória ${vezes(recentes.max)} agora há pouco e segue apertada (${b.psiMem60}%)`, dicaMem);
+  if (b.psiMem60 >= 10) return r("apertada", `${b.psiMem60}% do último minuto esperando memória`, dicaMem);
+  if (b.psiCpu60 >= 25) return r("apertada", `${b.psiCpu60}% do último minuto esperando CPU`, dicaCpu);
+  if (recentes.max > 0) return r("apertada", `encostou no teto de memória ${vezes(recentes.max)} agora há pouco`, dicaMem);
+  if (highMb !== null && anonMb >= highMb * 0.85) return r("apertada", `${anonMb} MB de memória própria, perto do aperto em ${highMb} MB`, dicaMem);
+  return r("folgada", `${anonMb} MB de memória própria${highMb !== null ? ` de ${highMb} MB` : ""}, sem espera`, "");
 }
 
 /** Quanto do total fica para o sistema (sshd, nginx, túnel, journald): o maior entre 3 GB e 10%. */

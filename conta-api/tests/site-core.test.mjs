@@ -1,0 +1,12 @@
+// http → https: o Worker atende os dois esquemas, então o redirecionamento é dele (e o HSTS, em SEGURANCA).
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { paraHttps } from "../dist/site-core.js";
+
+test("paraHttps: http vira https com caminho e query; https e lixo ficam null", () => {
+  assert.equal(paraHttps("http://agentesgrok.com/"), "https://agentesgrok.com/");
+  assert.equal(paraHttps("http://agentesgrok.com/obrigado?ver=1#x"), "https://agentesgrok.com/obrigado?ver=1#x");
+  assert.equal(paraHttps("http://console.agentesgrok.com:80/account/plan"), "https://console.agentesgrok.com/account/plan");
+  assert.equal(paraHttps("https://agentesgrok.com/"), null);
+  assert.equal(paraHttps("nada"), null);
+});

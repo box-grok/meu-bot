@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { MotorNovoUsuario, UsuariosVisao } from "../../shared/ipc";
-import { RECURSOS_PADRAO, conferirMinimo, pctMinimo, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
+import { RECURSOS_PADRAO, pressaoDe, recentesDe, type MarcaBox, conferirMinimo, pctMinimo, motivoSsh, PREFIXO_USUARIO, boxesDesatualizadas, capacidadeDe, governancaDe, isolamentoTodosSh, reservaDe, reservaHostSh, nomeParaCriar, motorDe, openclawSemearSh, usuarioComChavesSh, lingerSh, aliasDoUsuario, blocoSshUsuario, candidatosAoSeletor, configTemHost, removerBlocoUsuario, semChaveDesteMac, apelidoSh, apelidoValido, swapLigarSh, recursosSh, apagarItemSh, caminhoDentro, lerMaiores, maioresSh, apagarSh, hermesGlobalSh, openclawGlobalSh, transcritorSh, COTA_LIGAR_SH, limiteKbDe, limiteSh, LISTAR_SH, lerUsuarios, NOME_USUARIO_RE, PROTEGIDOS, RESERVADOS, whatsappAlvoSh } from "./usuarios-core";
 import { runSsh } from "../whatsapp/whatsapp";
 import { registrar } from "../auditoria/auditoria";
 import { log } from "../maquina/backend";
@@ -59,6 +59,8 @@ export async function usuariosVisivel(host: string): Promise<boolean> {
   try { const r = await runSsh(host, `id -u\n`, 20_000); return r.code === 0 && r.stdout.trim() === "0"; } catch { return false; }
 }
 
+/** A marca da última leitura de cada box (`host\0uid`), enquanto o admin estiver aberto: dá o "agora há pouco" da pressão. */
+const marcasDasBoxes = new Map<string, MarcaBox>();
 /** 60 s: logo depois de um preparo pesado (Hermes, OpenClaw, transcritor) a máquina ainda está ocupada e a leitura passava dos 30 s. */
 const LISTAR_PRAZO_MS = 60_000;
 export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
@@ -66,6 +68,14 @@ export async function usuariosDaMaquina(host: string): Promise<UsuariosVisao> {
   if (r.code !== 0) throw new Error(`não consegui ler os usuários da máquina: ${motivoSsh(r, LISTAR_PRAZO_MS)}`);
   const l = lerUsuarios(r.stdout);
   if (!l.root) throw new Error("o admin não entra como root nesta máquina: só root cria usuários");
+  // Pressão: só o que subiu desde a leitura anterior desta máquina pinta a box; o acumulado do cgroup é histórico.
+  const agora = Date.now();
+  for (const u of l.usuarios) {
+    if (u.box === null) continue;
+    const chave = `${host}\0${u.uid}`;
+    const { marca, recentes } = recentesDe(marcasDasBoxes.get(chave), u.box, agora);
+    marcasDasBoxes.set(chave, marca); u.pressao = pressaoDe(u.box, u.ramMaxMb, recentes);
+  }
   // O apelido da máquina é a fonte: o seletor do admin acompanha (inclusive os dados antes desta versão).
   for (const u of l.usuarios) if (u.apelido !== "") apelidoDoUsuarioNoSeletor(host, u.nome, u.apelido);
   const capacidade = l.ram === null ? null : capacidadeDe({ totalKb: l.ram.totalKb, userSliceMaxKb: l.userSlice?.maxKb ?? null, cpus: l.cpus, padraoMb: RECURSOS_PADRAO.ramMb, usuarios: l.usuarios });
