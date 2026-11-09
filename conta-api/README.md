@@ -60,9 +60,11 @@ Enterprise com assentos cobrados.
 
 ## Analytics (Google Analytics 4 no site, na página de login e no console)
 
-`GA_ID` (`wrangler.toml`, por ambiente) é a lista de IDs de métricas (`G-…`, separados por vírgula). Produção manda só
-para a propriedade **agentesintegrados** (`G-FCKW62SB1K`); staging manda também para **meu-bot-conta** (a propriedade
-criada pelo Firebase), que serve de laboratório. Vazio desliga tudo. O Worker põe a lista no `/config.js` de cada host
+`GA_ID` (`wrangler.toml`, por ambiente) é o ID de métricas do fluxo Web (`G-…`). Uma propriedade por ambiente:
+produção = **meu-bot-conta** (`G-12CJ787RGJ`, criada pelo Firebase, conta box@agentesgrok.com); staging =
+**agentesintegrados** (`G-FCKW62SB1K`, de diegofornalha, fluxo "agentesgrok-site-staging"). Vazio desliga tudo. A var
+aceita vários IDs separados por vírgula, mas dois containers do Google na mesma página duplicam o `page_view` (o segundo
+ignora `send_page_view: false`): deixe um por ambiente. O Worker põe a lista no `/config.js` de cada host
 (`ga`) e libera na CSP de cada host os domínios da tag (`googletagmanager.com`, `google-analytics.com`,
 `analytics.google.com`) **só** quando há ID (`src/analytics-core.ts`). As páginas carregam `public/analytics.js` logo
 depois de `/config.js`; ele expõe `window.meuBotGa = { pagina, evento }` e, sem ID, as duas funções não fazem nada.
@@ -98,5 +100,6 @@ O que o Analytics não faz sozinho, na propriedade (Administrador): eventos prin
 `download_iniciado`, `login_concluido`, `cadastro_concluido`, `org_criada`, depois de aparecerem na lista de eventos);
 dimensões personalizadas de evento para cada parâmetro acima (senão não aparecem nos relatórios); retenção de dados em
 14 meses; sinais do Google desligados; encobrir dados com as chaves `code, state, verifier, challenge, retorno, oobCode,
-apiKey`; referências indesejadas `accounts.google.com`, `*.firebaseapp.com`; URL do fluxo `https://agentesgrok.com`;
-fuso horário de Brasília e moeda BRL. Conferir cada evento em staging pelo DebugView antes de publicar em produção.
+apiKey`; referências indesejadas `accounts.google.com`, `*.firebaseapp.com`; URL do fluxo (`https://agentesgrok.com` na de
+produção, `https://site-staging.agentesgrok.com` na de staging); fuso horário de Brasília e moeda BRL. Conferir cada
+evento em staging pelo DebugView antes de publicar em produção; a mesma configuração vale nas duas propriedades.
