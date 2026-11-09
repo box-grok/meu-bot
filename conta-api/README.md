@@ -112,3 +112,11 @@ com as 7 chaves, e as 20 dimensões personalizadas de evento. Ficaram à mão, n
 `*.firebaseapp.com`; a tela abre fora do Navegador) e **eventos principais** (Administrador › Eventos › estrela em
 `baixar_mac`, `download_iniciado`, `login_concluido`, `cadastro_concluido`, `org_criada`, que só aparecem na lista até
 24 h depois do primeiro disparo).
+
+**page_view duplicado em produção.** A tag da propriedade meu-bot-conta manda um `page_view` automático com a URL real
+a cada carregamento, ignorando `send_page_view: false`, o `set` de `page_location` e a troca da URL durante o
+carregamento (testado em staging apontado para ela; a de staging não faz isso). O nosso `page_view` leva `manual: true`,
+e na propriedade existe a regra Administrador › Fluxo › Modificar eventos "page_view automático da tag vira
+page_view_tag" (`event_name` igual a `page_view` e `manual` não é igual a `true` → `event_name = page_view_tag`), que
+tira o automático da métrica de visualizações. O fragmento (`#code&verifier`) nunca vai no pedido; as chaves da query
+são encobertas. Se um dia a tag passar a respeitar o `send_page_view`, a regra simplesmente deixa de casar.

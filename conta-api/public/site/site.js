@@ -5,6 +5,8 @@
   const $ = (id) => document.getElementById(id);
   // Analytics (public/analytics.js, no-op sem GA_ID): a visualização desta página e o evento "baixar_mac" no clique do
   // botão da home e quando a página de obrigado dispara o download (origem diz de onde veio).
+  // Staging se apresenta: selo ao lado da marca, para ninguém confundir com o site de produção.
+  if (cfg.canal === "staging") { const m = document.querySelector(".marca"); if (m) { const s = document.createElement("span"); s.className = "selo-canal"; s.textContent = "staging"; m.append(s); } document.title += " · staging"; }
   const ga = window.meuBotGa || { pagina() {}, evento() {} };
   ga.pagina();
   const bb = $("btn-baixar"); if (bb) bb.addEventListener("click", () => ga.evento("baixar_mac", { origem: "home" }));
