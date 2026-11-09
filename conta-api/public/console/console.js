@@ -4,6 +4,12 @@
 // a que o app abre, reaproveita). Vindo do app, a URL traz #code&verifier (código emitido com a sessão do app): entra sem login.
 const cfg = window.MEU_BOT_CONTA;
 const $ = (id) => document.getElementById(id);
+// Analytics (public/analytics.js; no-op sem GA_ID). O console é uma página só: cada troca real de seção vira um page_view
+// com o caminho anonimizado (/organizations/<slug>/… → /organizations/_/…); repintar a mesma seção não conta.
+const ga = window.meuBotGa || { pagina() { /* sem Analytics */ }, evento() { /* sem Analytics */ } };
+const caminhoAnonimo = (c) => c.replace(/^\/organizations\/(?!new(?:\/|$))[^/]+/, "/organizations/_").replace(/^\/enterprise\/[^/]+/, "/enterprise/_");
+let ultimoCaminhoMedido = null;
+function medirPagina(secao) { const cam = caminhoAnonimo(location.pathname); if (cam === ultimoCaminhoMedido) return; ultimoCaminhoMedido = cam; ga.pagina(cam, { secao }); }
 const CH_SESSAO = "meu-bot-console-sessao", CH_LOGIN = "meu-bot-console-login";
 const SECOES = ["overview", "profile", "devices", "plan", "support", "access", "organizations"];
 const TITULOS = { overview: "Visão geral", profile: "Perfil", devices: "Devices", plan: "Plano", support: "Suporte", access: "Perfis de acesso", orgs: "Organizações", "org-nova": "Nova organização" };
@@ -88,6 +94,7 @@ async function atender(id, botao) {
   if (conta !== null) mostrarConsole(conta);
 }
 async function sair() {
+  ga.evento("console_saida");
   const s = sessaoGuardada();
   if (s !== null) await api("POST", "/sessao/sair", {}, s.acesso).catch(() => undefined);
   ss.set(CH_SESSAO, null);
@@ -119,6 +126,7 @@ async function orgCarregar(slug) {
 function mostrarErro(texto) { $("erro").hidden = texto === null; $("erro").textContent = texto ?? ""; }
 function mostrarEntrada(erro) {
   $("console").hidden = true; $("entrada").hidden = false;
+  ultimoCaminhoMedido = null; ga.pagina(caminhoAnonimo(location.pathname), { secao: "entrada" });
   $("entrada-erro").hidden = erro === null; $("entrada-erro").textContent = erro ?? "";
 }
 function mostrarConsole(c) {
@@ -132,6 +140,7 @@ function mostrarConsole(c) {
   for (const s of document.querySelectorAll("section[data-secao]")) s.hidden = s.dataset.secao !== secao;
   $("titulo").textContent = TITULOS[secao] ?? "";
   document.title = `${TITULOS[secao] ?? "Organização"} · Console meu-bot`;
+  medirPagina(secao);
   $("atualizado").textContent = `lido às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
   pintarQuem(c);
   const admin = visao !== null;
@@ -176,6 +185,7 @@ async function orgCriar() {
   const r = await api("POST", "/orgs", { nome, slug }, s.acesso);
   if (r.status !== 200) { $("org-nova-criar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
+  ga.evento("org_criada");
   orgAtual = r.corpo;
   await recarregarConta();
   history.pushState(null, "", `/organizations/${slug}/members`);
@@ -272,6 +282,7 @@ async function orgApagar(botao) {
   const r = dona ? await api("DELETE", `/orgs/${encodeURIComponent(orgAtual.slug)}`, undefined, s.acesso) : await api("DELETE", `/orgs/${encodeURIComponent(orgAtual.slug)}/membros/${encodeURIComponent(conta.email)}`, undefined, s.acesso);
   if (r.status !== 200) { botao.disabled = false; botao.dataset.confirma = ""; mostrarErro(erroDe(r)); return; }
   mostrarErro(null); orgAtual = null;
+  if (dona) ga.evento("org_apagada"); else ga.evento("membro_removido", { eu: true });
   await recarregarConta();
   if (visao !== null) await carregarVisao(visaoBusca).catch(() => undefined);
   history.pushState(null, "", "/account/overview");
@@ -284,6 +295,7 @@ async function convidar() {
   const r = await api("POST", `/orgs/${encodeURIComponent(orgAtual.slug)}/membros`, { email, papel: $("org-convite-papel").value }, s.acesso);
   if (r.status !== 200) { $("org-convidar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null); orgAtual = r.corpo; $("org-convite-email").value = "";
+  ga.evento("convite_enviado", { papel: $("org-convite-papel").value, status: (r.corpo.membros || []).find((m) => m.email === email)?.status ?? "convidado" });
   pintarOrg(orgAtual, "members");
 }
 async function membroPapel(slug, email, papel, controle) {
@@ -300,6 +312,7 @@ async function membroRemover(slug, email, eu, botao) {
   const r = await api("DELETE", `/orgs/${encodeURIComponent(slug)}/membros/${encodeURIComponent(email)}`, undefined, s.acesso);
   if (r.status !== 200) { botao.disabled = false; botao.dataset.confirma = ""; botao.textContent = eu ? "Sair" : "Remover"; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
+  ga.evento("membro_removido", { eu });
   if (eu) { orgAtual = null; await recarregarConta(); history.pushState(null, "", "/account/overview"); if (conta !== null) mostrarConsole(conta); return; }
   orgAtual = r.corpo; pintarOrg(orgAtual, "members");
 }
@@ -470,6 +483,7 @@ function editorLicenca(tr, c) {
       if (rs.status !== 200) { salvar.disabled = false; mostrarErro(`Licença salva, mas a senha não: ${erroDe(rs)}`); return; }
     }
     mostrarErro(null);
+    ga.evento("plano_alterado", { plan: plan.value, status: status.value });
     await carregarVisao(visaoBusca).catch((e) => mostrarErro(e?.message ?? String(e)));
     if (conta !== null) mostrarConsole(conta);
   });
@@ -559,6 +573,7 @@ async function perfilSalvar() {
   const r = await api("PATCH", "/conta", patch, s.acesso);
   if (r.status !== 200) { $("pf-salvar").disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
+  ga.evento("perfil_salvo");
   mostrarConsole(r.corpo);
   $("pf-editar").open = true; $("pf-salvo").hidden = false;
 }
@@ -568,6 +583,7 @@ async function dadosUsoMudar(cb) {
   const r = await api("PATCH", "/conta", { dadosUso: querido }, s.acesso);
   if (r.status !== 200) { cb.checked = !querido; cb.disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
+  ga.evento("dados_uso_alterado", { ligado: querido });
   mostrarConsole(r.corpo);
 }
 async function senhaPedir(botao, email) {
@@ -576,6 +592,7 @@ async function senhaPedir(botao, email) {
   const r = await api("POST", "/conta/senha", {}, s.acesso);
   if (r.status !== 200) { botao.disabled = false; mostrarErro(erroDe(r)); return; }
   mostrarErro(null);
+  ga.evento("senha_pedida");
   botao.replaceWith(el("span", "sub", `E-mail enviado para ${email}. Abra o link para definir a senha; depois entre com e-mail e senha na página de login, e ela aparece aqui como configurada.`));
 }
 async function contaApagar(botao) {
@@ -584,6 +601,7 @@ async function contaApagar(botao) {
   botao.disabled = true;
   const r = await api("DELETE", "/conta", undefined, s.acesso);
   if (r.status !== 200) { botao.disabled = false; botao.dataset.confirma = ""; botao.textContent = "Apagar minha conta"; mostrarErro(erroDe(r)); return; }
+  ga.evento("conta_apagada");
   ss.set(CH_SESSAO, null); conta = null; visao = null;
   history.replaceState(null, "", "/account/overview");
   mostrarEntrada("Conta apagada. Entrar de novo cria uma conta nova.");
@@ -662,6 +680,7 @@ window.addEventListener("popstate", () => { if (conta !== null) mostrarConsole(c
       history.replaceState(null, "", location.pathname);
       if (!TOKEN_RE.test(code) || (state !== null && !TOKEN_RE.test(state)) || (verifier !== null && !/^[A-Za-z0-9._~-]{43,128}$/.test(verifier))) throw new Error("retorno do login fora do formato");
       conta = await trocarCodigo(code, state ?? "", verifier);
+      ga.evento("console_entrada", { via: verifier !== null ? "app" : "login", admin: conta.admin !== null });
       await carregarVisao("").catch((e) => mostrarErro(`Visão do admin: ${e?.message ?? e}`));
       mostrarConsole(conta);
       return;

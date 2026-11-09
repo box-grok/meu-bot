@@ -46,9 +46,10 @@ AUTH_ORIGIN = "https://auth.agentesgrok.com"
 API_ORIGIN = "https://conta.agentesgrok.com"
 CONSOLE_ORIGIN = "https://console.agentesgrok.com"
 SITE_ORIGIN = "https://agentesgrok.com"
-# Google Analytics 4 do site: IDs de métricas dos fluxos Web, separados por vírgula (cada propriedade recebe tudo);
-# vazio desliga a tag e fecha a CSP para scripts de fora. agentesintegrados (do usuário) e meu-bot-conta (do Firebase).
-GA_ID = "G-FCKW62SB1K,G-12CJ787RGJ"
+# Google Analytics 4 das páginas (site, login, console): IDs de métricas dos fluxos Web, separados por vírgula (cada
+# propriedade recebe tudo); vazio desliga a tag e fecha a CSP para scripts de fora. Produção só manda para a
+# propriedade agentesintegrados (do usuário); staging manda também para meu-bot-conta (do Firebase), o laboratório.
+GA_ID = "G-FCKW62SB1K"
 FIREBASE_PROJECT_ID = "meu-bot-conta"
 FIREBASE_API_KEY = "AIzaSyD8rfzsg5iLBqegRmzfmVoBcE5d-sqruRw"
 # O handler do Firebase servido aqui mesmo (/__/auth/* no Worker): popup e link funcionam no Brave e no Safari.

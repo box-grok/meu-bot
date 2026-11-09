@@ -17,6 +17,7 @@ import { postToken } from "./rotas/token.js";
 import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
 import { deletePerfil, getAdminFirebase, getAdminVisao, patchLicenca, postAdminSenha, postAtenderPedido, putAdminSenha, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
+import { CSP_GA, gaIds } from "./analytics-core.js";
 import { deleteMembro, deleteOrg, getOrg, getOrgPublico, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
 
 const SEGURANCA: Record<string, string> = {
@@ -25,11 +26,17 @@ const SEGURANCA: Record<string, string> = {
   "x-frame-options": "DENY",
 };
 
+/**
+ * Google Analytics: GA_ID (lista de IDs) vai no /config.js de cada host como `ga`, e a CSP de cada host libera a tag do
+ * Google (gtag.js) e os destinos dos dados só quando há ID. Sem GA_ID, nada muda nas três páginas.
+ */
+const gaDoEnv = (env: Env): string => gaIds(env.GA_ID).join(",");
+const extraGa = (env: Env): { script: string; connect: string; img: string } => (gaIds(env.GA_ID).length > 0 ? { script: ` ${CSP_GA.script}`, connect: ` ${CSP_GA.connect}`, img: ` ${CSP_GA.img}` } : { script: "", connect: "", img: "" });
 /** A página de login precisa do SDK do Firebase (gstatic) e de falar com o Firebase Auth e com a API da conta. */
 const cspDaPagina = (env: Env): string => [
   "default-src 'self'",
-  "script-src 'self' https://www.gstatic.com https://apis.google.com",
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://apis.google.com " + env.API_ORIGIN,
+  `script-src 'self' https://www.gstatic.com https://apis.google.com${extraGa(env).script}`,
+  `connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://apis.google.com ${env.API_ORIGIN}${extraGa(env).connect}`,
   "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com",
   "img-src 'self' data: https:",
   "style-src 'self'",
@@ -65,7 +72,7 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname.startsWith("/__/auth/") || url.pathname.startsWith("/__/firebase/")) return handlerFirebase(req, env, url);
   // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
   if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, ga: gaDoEnv(env) }), {});
   // /enterprise e /enterprise/<slug> (como o Rambox; /org/<slug> é apelido): a mesma página de login; sem slug ela
   // pergunta o endereço da organização, com slug mostra o cabeçalho dela (o JS lê o caminho).
   const alvo = /^\/(?:enterprise|org)(?:\/[a-z0-9-]{1,40})?\/?$/.test(url.pathname) ? new Request(new URL("/entrar", url.origin).toString(), req) : req;
@@ -74,7 +81,7 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
 }
 
 /** O console não carrega Firebase: só o próprio JS e a API. */
-const cspDoConsole = (env: Env): string => ["default-src 'self'", "script-src 'self'", `connect-src 'self' ${env.API_ORIGIN}`, "img-src 'self' data: https:", "style-src 'self'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
+const cspDoConsole = (env: Env): string => ["default-src 'self'", `script-src 'self'${extraGa(env).script}`, `connect-src 'self' ${env.API_ORIGIN}${extraGa(env).connect}`, "img-src 'self' data: https:", "style-src 'self'", "base-uri 'none'", "form-action 'self'", "frame-ancestors 'none'"].join("; ");
 /**
  * O console é uma página só: /account/*, /organizations/*, /enterprise/<slug> e qualquer outro caminho servem o
  * index.html (o JS escolhe a seção pelo caminho e manda o desconhecido para a visão geral); só o que tem extensão
@@ -82,7 +89,7 @@ const cspDoConsole = (env: Env): string => ["default-src 'self'", "script-src 's
  * como página de erro.
  */
 async function consolePagina(req: Request, env: Env, url: URL): Promise<Response> {
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, canal: env.CANAL }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, canal: env.CANAL, ga: gaDoEnv(env) }), {});
   const caminho = /\.[a-z0-9]{1,8}$/i.test(url.pathname) && !url.pathname.endsWith(".html") ? url.pathname : "/console/index.html";
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Tudo sem cache: o console muda junto com a API, e um JS velho de 5 min já mostrou tela errada depois de um deploy.
@@ -133,22 +140,18 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 }
 
 /** A home: página, "obrigado" (que dispara o download), a versão mais nova em JSON e o redirecionamento ao asset do GitHub. */
-/** Com GA_ID, a CSP libera só a tag do Google (gtag.js) e os destinos onde ela entrega os dados; sem GA_ID, só o próprio site. */
-const GA_ID_RE = /^G-[A-Z0-9]{6,12}$/;
-/** Os IDs válidos de GA_ID (lista separada por vírgula), já limpos; null se não sobra nenhum. */
-const gaId = (env: Env): string | null => { const ids = (env.GA_ID ?? "").split(",").map((x) => x.trim()).filter((x) => GA_ID_RE.test(x)); return ids.length > 0 ? [...new Set(ids)].join(",") : null; };
 const cspDoSite = (env: Env): string => {
-  const ga = gaId(env) !== null;
+  const ga = extraGa(env);
   return [
     "default-src 'self'",
-    `script-src 'self'${ga ? " https://www.googletagmanager.com" : ""}`,
-    `connect-src 'self'${ga ? " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" : ""}`,
-    `img-src 'self' data:${ga ? " https://*.google-analytics.com https://*.googletagmanager.com" : ""}`,
+    `script-src 'self'${ga.script}`,
+    `connect-src 'self'${ga.connect}`,
+    `img-src 'self' data:${ga.img}`,
     "style-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
   ].join("; ");
 };
 async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL, ga: gaId(env) ?? "" }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL, ga: gaDoEnv(env) }), {});
   // "Console da conta" e "Não tem uma conta?" na home: sem depender de JS, o site manda ao console do ambiente certo.
   if (url.pathname === "/console" || url.pathname.startsWith("/account")) return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}${url.pathname.startsWith("/account") ? url.pathname : "/account/overview"}`, 302), { "cache-control": "no-store" });
   if (url.pathname === "/download/mac" || url.pathname === "/download/mac.json") {
