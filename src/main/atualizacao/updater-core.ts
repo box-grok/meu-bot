@@ -35,6 +35,29 @@ export function verificaAssinatura(zip: Buffer, sig: string, chaves: string | re
   return false;
 }
 
+/**
+ * Times da Apple (Team ID do certificado Developer ID Application) que assinam as releases. Vazio até o Developer ID
+ * existir: aí vale qualquer Developer ID, porque quem garante a origem é a assinatura Ed25519 do zip (acima), conferida
+ * antes. Com o Team ID aqui, só esse time passa.
+ */
+export const TEAM_IDS_RELEASE: readonly string[] = [];
+/** Requisito de código (`codesign --verify -R`) de um app assinado com Developer ID e, se houver, de um dos times. */
+export function requisitoDeveloperId(times: readonly string[] = TEAM_IDS_RELEASE): string {
+  const base = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";
+  const ok = times.filter((t) => /^[A-Z0-9]{10}$/.test(t));
+  return ok.length === 0 ? base : `${base} and (${ok.map((t) => `certificate leaf[subject.OU] = "${t}"`).join(" or ")})`;
+}
+/**
+ * O app baixado pode substituir o meu? Igual ao meu (designated requirement) passa; diferente só passa se ele é Developer
+ * ID (a troca de "meu-bot local" para a assinatura da Apple, uma vez). O caminho inverso (Developer ID → local) não passa,
+ * porque o local não satisfaz o requisito. `null` = não deu para ler a assinatura: recusa.
+ */
+export function decideIdentidade(dele: string | null, meu: string | null, deleEhDeveloperId: boolean): "mesma" | "developer-id" | "recusa" {
+  if (dele === null || meu === null) return "recusa";
+  if (dele === meu) return "mesma";
+  return deleEhDeveloperId ? "developer-id" : "recusa";
+}
+
 /** Nome do asset de um app numa release: `meu-bot-0.2.0-arm64.zip` (o .app zipado com ditto). */
 export const assetName = (app: string, version: string, arch: string): string => `${app}-${version}-${arch}.zip`;
 

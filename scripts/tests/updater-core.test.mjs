@@ -348,3 +348,25 @@ test("decideFimDaEspera: esgotada a espera, quem decide interromper a conversa �
   assert.equal(decideFimDaEspera(true, false), "perguntar");
   assert.equal(decideFimDaEspera(true, true), "trocar");
 });
+
+test("decideIdentidade: igual passa; de local para Developer ID passa uma vez; o inverso e o ilegível não", () => {
+  const { decideIdentidade } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
+  const local = 'identifier "local.meu-bot" and certificate root = H"abc"';
+  const devid = 'identifier "local.meu-bot" and anchor apple generic and certificate leaf[subject.OU] = "ABCDE12345"';
+  assert.equal(decideIdentidade(local, local, false), "mesma");
+  assert.equal(decideIdentidade(devid, devid, true), "mesma");
+  assert.equal(decideIdentidade(devid, local, true), "developer-id");
+  assert.equal(decideIdentidade(local, devid, false), "recusa");
+  assert.equal(decideIdentidade('identifier "x" and certificate root = H"outro"', local, false), "recusa");
+  assert.equal(decideIdentidade(null, local, true), "recusa");
+  assert.equal(decideIdentidade(devid, null, true), "recusa");
+});
+
+test("requisitoDeveloperId: sem time aceita qualquer Developer ID; com time, só ele; Team ID malformado é ignorado", () => {
+  const { requisitoDeveloperId, TEAM_IDS_RELEASE } = createRequire(import.meta.url)("../../dist/main/atualizacao/updater-core.js");
+  const base = "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists";
+  assert.ok(Array.isArray(TEAM_IDS_RELEASE));
+  assert.equal(requisitoDeveloperId([]), base);
+  assert.equal(requisitoDeveloperId(["ABCDE12345"]), `${base} and (certificate leaf[subject.OU] = "ABCDE12345")`);
+  assert.equal(requisitoDeveloperId(['A" or 1', "ABCDE12345", "XYZ9876543"]), `${base} and (certificate leaf[subject.OU] = "ABCDE12345" or certificate leaf[subject.OU] = "XYZ9876543")`);
+});

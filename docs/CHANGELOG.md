@@ -12,6 +12,9 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Atualização: pronto para o app assinado pela Apple
+- O atualizador passa a aceitar uma versão nova assinada com o Developer ID da Apple, uma única vez, na troca da assinatura local pela da Apple. Isso prepara o app notarizado, que vai abrir direto em qualquer Mac sem passar por Privacidade e Segurança. O caminho inverso continua recusado.
+
 ### Controle externo: o Navegador abre sozinho
 
 #### Melhorado
