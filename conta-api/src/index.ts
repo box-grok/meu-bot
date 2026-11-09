@@ -190,11 +190,24 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   // robots.txt e llms.txt vivem em public/site/ e saem na raiz do host; privacidade e termos também.
   const raiz: Record<string, string> = { "/robots.txt": "/site/robots.txt", "/llms.txt": "/site/llms.txt", "/privacidade": "/site/privacidade.html", "/termos": "/site/termos.html" };
   const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : raiz[url.pathname] ?? url.pathname;
-  const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  let res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  // Caminho que não existe: a página 404 do site (com status 404), em vez do corpo vazio dos assets.
+  if (res.status === 404 && !url.pathname.startsWith("/site/")) res = new Response((await env.ASSETS.fetch(new Request(new URL("/site/404.html", url.origin).toString()))).body, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+  // A home é um HTML só para os dois canais, mas cada host entrega só a sua parte: em produção os blocos do ensaio
+  // (data-canal="staging" e a faixa) saem do HTML, porque o Google lê o que está escondido; em staging saem os de produção.
+  if (caminho === "/site/index.html") res = porCanal(res, env.CANAL === "staging" ? "staging" : "producao");
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
   // Staging é a mesma home em revisão: fora do Google, para não competir com agentesgrok.com.
   const robos = env.CANAL === "staging" ? { "x-robots-tag": "noindex, nofollow" } : {};
   return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store", ...robos });
+}
+/** Tira do HTML os blocos do outro canal e, em staging, mostra os do ensaio e a faixa (o site.js faz o mesmo, mas o Google não roda JS). */
+function porCanal(res: Response, canal: "staging" | "producao"): Response {
+  const outro = canal === "staging" ? "producao" : "staging";
+  const rw = new HTMLRewriter().on(`[data-canal="${outro}"]`, { element(e) { e.remove(); } });
+  if (canal === "staging") rw.on(`[data-canal="staging"], #rascunho`, { element(e) { e.removeAttribute("hidden"); } });
+  else rw.on("#rascunho", { element(e) { e.remove(); } });
+  return rw.transform(res);
 }
 
 export default {

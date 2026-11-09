@@ -1,13 +1,20 @@
 # meu-bot
 
-> App para macOS (Apple Silicon) que põe um agente de IA no WhatsApp da pessoa, com um Navegador em que o agente trabalha dentro, o Gmail e a própria máquina (terminal) num app só. Conta com teste gratuito de 14 dias do plano Pro; o plano Free continua sem conta.
+> App para macOS (Apple Silicon) que põe um agente de IA no WhatsApp da pessoa, com um Navegador em que o agente trabalha dentro, o Gmail e a própria máquina (terminal) num app só. Usa o Grok, da xAI, como modelo (login com a conta Grok no app; também aceita a conta do Claude). A Coflow, que faz o meu-bot, é parceira da xAI.
 
-Feito com o Grok, da xAI (a Coflow, que faz o meu-bot, é parceira da xAI; login com a conta Grok no app). Site oficial: https://agentesgrok.com. Código aberto em https://github.com/diegofornalha/meu-bot (TypeScript, Electron). Idioma: português do Brasil.
+Site oficial: https://agentesgrok.com. Código aberto em https://github.com/diegofornalha/meu-bot (TypeScript, Electron). Idioma: português do Brasil. Responsável: Coflow, CNPJ 41.490.672/0001-00.
+
+## Planos
+
+- Teste com o seu número: 14 dias grátis, sem cartão, tudo liberado. No fim, nada é cobrado.
+- Agente com o chip da Coflow: R$ 97 por mês, num número dedicado ao agente.
+- Com o seu próprio chip: sob cotação.
 
 ## Páginas
 
-- [Baixar para macOS](https://agentesgrok.com/): a home, com a versão mais nova, o tamanho e os três passos depois do download.
-- [Novidades (CHANGELOG)](https://github.com/diegofornalha/meu-bot/blob/main/docs/CHANGELOG.md): o que muda a cada versão.
+- [Home](https://agentesgrok.com/): o que o meu-bot faz, Grok e xAI, planos, dúvidas e o download para macOS.
+- [Novidades](https://agentesgrok.com/novidades): o que muda a cada versão (releases).
+- [Política de privacidade](https://agentesgrok.com/privacidade) e [Termos de uso](https://agentesgrok.com/termos).
 - [Todas as versões](https://github.com/diegofornalha/meu-bot/releases): releases assinadas; o app se atualiza sozinho.
 - [Console da conta](https://console.agentesgrok.com/account/overview): plano, devices, organizações (requer login; não indexar).
 
@@ -16,3 +23,6 @@ Feito com o Grok, da xAI (a Coflow, que faz o meu-bot, é parceira da xAI; login
 - A versão mais nova em JSON: https://agentesgrok.com/download/mac.json (`versao`, `url`, `tamanho`, `publicadoEm`).
 - O download direto: https://agentesgrok.com/download/mac (redireciona para o .zip da release no GitHub).
 - Requisitos: Mac com chip Apple (M1 ou mais novo); macOS pergunta na primeira abertura porque o app ainda não é notarizado.
+- Não existe número oficial do Grok no WhatsApp; o meu-bot é um produto independente da Coflow que usa o Grok.
+
+<!-- rev 2026-11-09b -->
