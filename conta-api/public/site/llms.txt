@@ -1,0 +1,18 @@
+# meu-bot
+
+> App para macOS (Apple Silicon) que põe um agente de IA no WhatsApp da pessoa, com um Navegador em que o agente trabalha dentro, o Gmail e a própria máquina (terminal) num app só. Conta com teste gratuito de 14 dias do plano Pro; o plano Free continua sem conta.
+
+Site oficial: https://agentesgrok.com. Código aberto em https://github.com/diegofornalha/meu-bot (TypeScript, Electron). Idioma: português do Brasil.
+
+## Páginas
+
+- [Baixar para macOS](https://agentesgrok.com/): a home, com a versão mais nova, o tamanho e os três passos depois do download.
+- [Novidades (CHANGELOG)](https://github.com/diegofornalha/meu-bot/blob/main/docs/CHANGELOG.md): o que muda a cada versão.
+- [Todas as versões](https://github.com/diegofornalha/meu-bot/releases): releases assinadas; o app se atualiza sozinho.
+- [Console da conta](https://console.agentesgrok.com/account/overview): plano, devices, organizações (requer login; não indexar).
+
+## Para agentes
+
+- A versão mais nova em JSON: https://agentesgrok.com/download/mac.json (`versao`, `url`, `tamanho`, `publicadoEm`).
+- O download direto: https://agentesgrok.com/download/mac (redireciona para o .zip da release no GitHub).
+- Requisitos: Mac com chip Apple (M1 ou mais novo); macOS pergunta na primeira abertura porque o app ainda não é notarizado.
