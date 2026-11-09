@@ -29,6 +29,9 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
    `! gh auth refresh -h github.com`).
 4. **`npm run release:staging`**: publica a pre-release `v<versão>-staging.N` com os apps staging (meu-bot-staging,
    meu-bot-finance-staging), cada zip com o `.sig`. Os staging instalados a partir de release atualizam calados ao fechar.
+   O app das pessoas (meu-bot, meu-bot-staging: campo `instalador` em `variant-core.ts`) sai também como instalador
+   `.dmg` (`scripts/dmg.mjs`, Python do sistema; o ambiente fica em `build/.venv-dmg`), que é o que o site entrega; o
+   atualizador segue no `.zip` + `.sig`.
    As notas da release saem da seção "Ainda não lançado" do `docs/CHANGELOG.md` — escreva-a antes, em linguagem de
    quem usa; sem ela o release avisa e cai na lista de commits do GitHub, que descreve o diff e não a mudança.
 5. **O usuário testa e aprova**, pelo roteiro de dez minutos em [`docs/ROTEIRO-upgrade.md`](../../../docs/ROTEIRO-upgrade.md):

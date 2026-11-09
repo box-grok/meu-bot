@@ -13,9 +13,10 @@ import { execFileSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { archOf, produtoFromArgv } from "./produtos.mjs";
+import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 
-const DMGBUILD = "dmgbuild==1.6.7";
+// 1.6.5: a última que instala no Python 3.9 do macOS (/usr/bin/python3); a 1.6.7 pede um Python mais novo.
+const DMGBUILD = "dmgbuild==1.6.5";
 const root = resolve(import.meta.dirname, "..");
 // --admin: o meu-bot-admin (só para o admin; leva as máquinas dele). --suporte: o .dmg das pessoas leva o
 // pacote de suporte de build/suporte (scripts/suporte-setup.mjs): pública do admin, chave só de entrega e
@@ -25,7 +26,8 @@ const admin = produto.variant === "admin";
 const support = process.argv.includes("--suporte");
 const name = produto.nome;
 const keepHosts = admin || process.argv.includes("--com-minhas-maquinas");
-const version = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+// --versao: o release passa a da release (ex.: 0.80.0-staging.1), para o .dmg ter o mesmo nome base do .zip.
+const version = versaoFromArgv() ?? JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
 const arch = archOf();
 const appSrc = join(root, "out", `${name}-darwin-${arch}`, `${name}.app`);
 const out = join(root, "out", `${name}-${version}-${arch}${support ? "-suporte" : ""}.dmg`);
@@ -42,7 +44,11 @@ if (!existsSync(appSrc)) { console.error(`✗ não achei ${appSrc}. Rode antes: 
 
 const work = mkdtempSync(join(tmpdir(), "meu-bot-dmg-"));
 try {
-  if (!existsSync(join(venv, "bin", "dmgbuild"))) {
+  // Ambiente de um Python que já não existe (atualização do Homebrew, outro Mac): o dmgbuild fica "bad interpreter".
+  let venvOk = existsSync(join(venv, "bin", "dmgbuild"));
+  if (venvOk) { try { run(join(venv, "bin", "python"), ["-c", "import dmgbuild"]); } catch { venvOk = false; } }
+  if (!venvOk) {
+    rmSync(venv, { recursive: true, force: true });
     step(`preparando o ${DMGBUILD} em build/.venv-dmg (só na primeira vez)`);
     mkdirSync(join(root, "build"), { recursive: true });
     run("python3", ["-m", "venv", venv]);
