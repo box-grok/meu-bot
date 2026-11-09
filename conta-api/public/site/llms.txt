@@ -21,7 +21,7 @@ Site oficial: https://agentesgrok.com. Código aberto em https://github.com/dieg
 ## Para agentes
 
 - A versão mais nova em JSON: https://agentesgrok.com/download/mac.json (`versao`, `url`, `tamanho`, `publicadoEm`).
-- O download direto: https://agentesgrok.com/download/mac (redireciona para o .zip da release no GitHub).
+- O download direto: https://agentesgrok.com/download/mac (redireciona para o instalador .dmg da release no GitHub: abrir e arrastar o meu-bot para Aplicativos).
 - Requisitos: Mac com chip Apple (M1 ou mais novo); macOS pergunta na primeira abertura porque o app ainda não é notarizado.
 - Não existe número oficial do Grok no WhatsApp; o meu-bot é um produto independente da Coflow que usa o Grok.
 

@@ -9,26 +9,30 @@ export interface DownloadMac { versao: string; url: string; tamanho: number; pub
 
 export const REPO = "diegofornalha/meu-bot";
 export type CanalSite = "producao" | "staging";
+/** O instalador (.dmg, janela de arrastar para Aplicativos) vem antes; o .zip (o do atualizador) é a reserva. */
 const ASSET_RE: Record<CanalSite, RegExp> = {
-  producao: /^meu-bot-(\d+\.\d+\.\d+)-arm64\.zip$/,
-  staging: /^meu-bot-staging-(\d+\.\d+\.\d+-staging\.\d+)-arm64\.zip$/,
+  producao: /^meu-bot-(\d+\.\d+\.\d+)-arm64\.(dmg|zip)$/,
+  staging: /^meu-bot-staging-(\d+\.\d+\.\d+-staging\.\d+)-arm64\.(dmg|zip)$/,
 };
 const GH = { headers: { accept: "application/vnd.github+json", "user-agent": "meu-bot-site (conta-api)" }, cf: { cacheTtl: 600, cacheEverything: true } } as RequestInit;
 
-/** Escolhe o asset do app da pessoa (não o admin, não o .sig) numa resposta de /releases/latest; null se não há. */
+/** Escolhe o asset do app da pessoa numa release: o .dmg se houver, senão o .zip (nunca o admin nem o .sig); null se não há. */
 export function escolherAsset(release: unknown, canal: CanalSite = "producao"): DownloadMac | null {
   if (release === null || typeof release !== "object") return null;
   const r = release as { tag_name?: unknown; published_at?: unknown; assets?: unknown };
   if (!Array.isArray(r.assets)) return null;
+  let zip: DownloadMac | null = null;
   for (const a of r.assets) {
     if (a === null || typeof a !== "object") continue;
     const x = a as { name?: unknown; browser_download_url?: unknown; size?: unknown };
     if (typeof x.name !== "string" || typeof x.browser_download_url !== "string") continue;
     const m = ASSET_RE[canal].exec(x.name);
     if (m === null) continue;
-    return { versao: m[1]!, url: x.browser_download_url, tamanho: typeof x.size === "number" ? x.size : 0, publicadoEm: typeof r.published_at === "string" ? r.published_at : "", nome: x.name };
+    const d = { versao: m[1]!, url: x.browser_download_url, tamanho: typeof x.size === "number" ? x.size : 0, publicadoEm: typeof r.published_at === "string" ? r.published_at : "", nome: x.name };
+    if (m[2] === "dmg") return d;
+    zip ??= d;
   }
-  return null;
+  return zip;
 }
 
 /** Numa resposta de /releases (mais nova primeiro), o asset de staging da primeira release que o tiver; rascunho fica fora. */

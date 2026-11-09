@@ -23,6 +23,8 @@ export function recusaPromocao(versao, tagsNoHead) {
 
 /** Produtos que cada canal publica: staging = as linhas staging; estável = as estáveis (o admin inclusive). */
 export const produtosDoCanal = (produtos, canal) => produtos.filter((p) => p.canal === canal);
+/** Os do canal que também saem com o instalador .dmg (o app das pessoas: campo `instalador` em variant-core.ts). */
+export const produtosComInstalador = (produtos, canal) => produtosDoCanal(produtos, canal).filter((p) => p.instalador === true);
 
 /**
  * Componentes que mudaram desde a última release sem subir a versão (as máquinas só atualizam para cima: sem a

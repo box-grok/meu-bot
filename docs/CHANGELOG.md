@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Baixar o meu-bot: um instalador de verdade
+#### Melhorado
+- O botão de download do site entrega um instalador: abre uma janela com o meu-bot e a pasta Aplicativos, e é só arrastar. Antes vinha um .zip e o app ficava solto em Downloads. Vale para o site e para o site de staging, cada um com o seu app.
+
 ---
 
 ## 9 de novembro de 2026 · v0.79.3

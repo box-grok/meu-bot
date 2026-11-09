@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { componentesSemVersao, lerVersao, notasDaRelease, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
+import { componentesSemVersao, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
 
 test("release staging: o próximo N sai das tags dessa versão", () => {
   assert.equal(proximaStaging("0.2.0", []), 1);
@@ -59,4 +59,13 @@ test("notasDaRelease: sem a seção, ou com ela vazia, devolve null (o release c
   assert.equal(notasDaRelease("## Ainda não lançado\n"), null, "fim do arquivo logo depois");
   assert.equal(notasDaRelease(null), null, "sem changelog nenhum");
   assert.equal(notasDaRelease("## ainda não lançado\n\n- x\n"), null, "o título é exatamente esse, com maiúscula");
+});
+
+test("instalador .dmg: só o app das pessoas, nos dois canais (nem admin nem finance-staging)", async () => {
+  const P = [{ nome: "meu-bot", canal: "estavel", instalador: true }, { nome: "meu-bot-admin", canal: "estavel", instalador: false }, { nome: "meu-bot-staging", canal: "staging", instalador: true }, { nome: "meu-bot-finance-staging", canal: "staging", instalador: false }, { nome: "sem-campo", canal: "estavel" }];
+  assert.deepEqual(produtosComInstalador(P, "estavel").map((p) => p.nome), ["meu-bot"]);
+  assert.deepEqual(produtosComInstalador(P, "staging").map((p) => p.nome), ["meu-bot-staging"]);
+  // A tabela de verdade (dist/): o cliente e o staging dele levam; os admin e o financeiro, não.
+  const { PRODUTOS } = await import("../produtos.mjs");
+  assert.deepEqual(PRODUTOS.filter((p) => p.instalador).map((p) => p.variant).sort(), ["client", "client-staging"]);
 });

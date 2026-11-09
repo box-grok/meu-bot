@@ -29,3 +29,17 @@ test("escolherStaging: a pre-release de staging mais nova (app meu-bot-staging),
   // A estável continua ignorando o asset de staging.
   assert.equal(escolherAsset({ assets: [z("meu-bot-staging-0.79.3-staging.1-arm64.zip")] }), null);
 });
+
+test("escolherAsset: o instalador .dmg vem antes do .zip; sem .dmg, o .zip (releases antigas)", () => {
+  const z = (name) => ({ name, browser_download_url: "https://github.com/x/" + name, size: 7 });
+  const com = { published_at: "p", assets: [z("meu-bot-0.79.3-arm64.zip"), z("meu-bot-0.79.3-arm64.zip.sig"), z("meu-bot-admin-gestao-0.79.3-arm64.zip"), z("meu-bot-0.79.3-arm64.dmg")] };
+  assert.equal(escolherAsset(com).nome, "meu-bot-0.79.3-arm64.dmg");
+  assert.equal(escolherAsset(com).versao, "0.79.3");
+  assert.equal(escolherAsset({ assets: [z("meu-bot-0.78.4-arm64.zip")] }).nome, "meu-bot-0.78.4-arm64.zip");
+  assert.equal(escolherAsset({ assets: [z("meu-bot-admin-gestao-0.79.3-arm64.dmg")] }), null);
+  const st = [{ published_at: "s", assets: [z("meu-bot-staging-0.80.0-staging.1-arm64.zip"), z("meu-bot-finance-staging-0.80.0-staging.1-arm64.dmg"), z("meu-bot-staging-0.80.0-staging.1-arm64.dmg")] }];
+  assert.equal(escolherStaging(st).nome, "meu-bot-staging-0.80.0-staging.1-arm64.dmg");
+  assert.equal(escolherStaging(st).versao, "0.80.0-staging.1");
+  // O site de produção nunca pega o instalador do staging.
+  assert.equal(escolherAsset(st[0]), null);
+});

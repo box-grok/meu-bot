@@ -21,7 +21,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from "n
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
-import { clientesGoogleParaPublicar, componentesSemVersao, lerVersao, notasDaRelease, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
+import { clientesGoogleParaPublicar, componentesSemVersao, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
 const base = JSON.parse(readFileSync("package.json", "utf8")).version;
@@ -93,6 +93,14 @@ for (const p of produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel")) {
   if (!verificaAssinatura(readFileSync(zip), sig)) { console.error("✗ a assinatura não confere com nenhuma chave de UPDATE_PUBLIC_KEYS: nada foi publicado"); process.exit(1); }
   writeFileSync(`${zip}.sig`, `${sig}\n`);
   zips.push(zip, `${zip}.sig`);
+  // O instalador (janela de arrastar para Aplicativos) é o que o site entrega; o atualizador segue no .zip + .sig.
+  if (produtosComInstalador([p], p.canal).length > 0) {
+    step(`instalador de ${name}`);
+    execFileSync("node", ["scripts/dmg.mjs", "--variant", p.variant, "--versao", version], { stdio: "inherit" });
+    const dmg = join("out", `${name}-${version}-${arch}.dmg`);
+    if (!existsSync(dmg)) { console.error(`✗ não achei ${dmg}: nada foi publicado`); process.exit(1); }
+    zips.push(dmg);
+  }
 }
 // Client OAuth do Google como asset avulso e assinado: o app que veio sem (Mac que empacotou sem config/) baixa daqui
 // sozinho e confere com UPDATE_PUBLIC_KEYS (src/main/google/cliente-release.ts). Sem os arquivos neste Mac, avisa.
