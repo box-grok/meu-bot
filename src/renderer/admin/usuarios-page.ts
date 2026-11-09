@@ -321,7 +321,7 @@ export function mountUsuariosPage(deps: UsuariosPageDeps): { open: () => void } 
           // Pressão: folgada / apertada / estrangulada, com o motivo e o que fazer no título.
           const pr = u.pressao;
           const tdPr = el("td", pr === null ? "" : pr.estado === "estrangulada" ? "notice-error usuarios-pressao" : pr.estado === "apertada" ? "notice-warn usuarios-pressao" : "usuarios-pressao", pr === null ? "—" : pr.estado);
-          if (pr !== null && u.box !== null) tdPr.title = `${pr.motivo}${pr.dica !== "" ? `. ${pr.dica}` : ""} · PSI mem 60 s: ${u.box.psiMem60}% · PSI CPU 60 s: ${u.box.psiCpu60}% · teto batido: ${u.box.evMax}× · mortes por memória: ${u.box.oomKill} · CPU segurada pela cota: ${cpuSegurada(u.box)}% do tempo`;
+          if (pr !== null && u.box !== null) tdPr.title = `${pr.motivo}${pr.dica !== "" ? `. ${pr.dica}` : ""} · PSI mem 60 s: ${u.box.psiMem60}% · PSI CPU 60 s: ${u.box.psiCpu60}% · teto batido desde que a box subiu: ${u.box.evMax}× · mortes por memória desde que a box subiu: ${u.box.oomKill} · CPU segurada pela cota: ${cpuSegurada(u.box)}% do tempo`;
           const tdPct = el("td");
           const ip = el("input") as HTMLInputElement; ip.type = "number"; ip.min = "0"; ip.max = "100"; ip.step = "1"; ip.style.width = "64px";
           ip.value = rascunho.get(u.nome) ?? (pct === null ? "" : String(pct)); ip.placeholder = "—"; ip.disabled = ocupado !== null || u.sudo;
