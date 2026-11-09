@@ -80,7 +80,8 @@ nesta versão: o rodapé do site diz que medimos visitas sem anúncios e sem dad
 | Página | Evento | Parâmetros (listas fechadas) |
 |---|---|---|
 | site | `page_view` | `page_location` limpo |
-| site | `baixar_mac` | `origem`: `home`, `obrigado`, `obrigado-ver`, `obrigado-link` |
+| site | `baixar_mac` | `origem`: `home`, `obrigado`, `obrigado-ver`, `obrigado-link`; na `/lp`: `lp-hero`, `lp-free`, `lp-pro`, `lp-final`, `lp-fixo` |
+| site `/lp` | `link_celular` | `via`: `whatsapp`, `email` (no celular, o download vira "mandar o link para o meu Mac") |
 | site | `download_iniciado` | `versao` (da release) |
 | login | `page_view` | `tipo`: `app`, `console`, `sem-app`, `org-pergunta`, `org-nao-achada`, `org-redirect` |
 | login | `login_iniciado`, `login_concluido` | `metodo`: `google`, `lembrado`, `senha`, `link`; `destino`: `app`, `console`; `org: true` na página da organização |
