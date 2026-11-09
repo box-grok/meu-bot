@@ -17,6 +17,7 @@ import { postToken } from "./rotas/token.js";
 import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
 import { deletePerfil, getAdminFirebase, getAdminVisao, patchLicenca, postAdminSenha, postAtenderPedido, putAdminSenha, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
+import { lerReleases, novidadesHtml, sitemapXml } from "./novidades-core.js";
 import { CSP_GA, gaIds } from "./analytics-core.js";
 import { paraHttps } from "./site-core.js";
 import { deleteMembro, deleteOrg, getOrg, getOrgPublico, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
@@ -158,6 +159,15 @@ const cspDoSite = (env: Env): string => {
     "style-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
   ].join("; ");
 };
+/** Data da última revisão de /privacidade e /termos (vai no sitemap); mude junto com o texto das páginas. */
+const REVISAO_LEGAL = "2026-11-09";
+/** As releases estáveis do GitHub para /novidades (mesmo cache de 10 min do download). [] = GitHub fora ou sem release. */
+async function listarReleases(): Promise<ReturnType<typeof lerReleases>> {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, { headers: { accept: "application/vnd.github+json", "user-agent": "meu-bot-site (conta-api)" }, cf: { cacheTtl: 600, cacheEverything: true } });
+    return r.ok ? lerReleases(await r.json()) : [];
+  } catch { return []; }
+}
 async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL, ga: gaDoEnv(env) }), {});
   // "Console da conta" e "Não tem uma conta?" na home: sem depender de JS, o site manda ao console do ambiente certo.
@@ -167,14 +177,37 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
     if (url.pathname.endsWith(".json")) return comCabecalhos(json(d ?? { erro: "release não encontrada" }, d === null ? 503 : 200, { "cache-control": "public, max-age=300" }), {});
     return comCabecalhos(Response.redirect(d?.url ?? `https://github.com/${REPO}/releases/latest`, 302), { "cache-control": "no-store" });
   }
-  // robots.txt, sitemap.xml e llms.txt vivem em public/site/ e saem na raiz do host.
-  const raiz: Record<string, string> = { "/robots.txt": "/site/robots.txt", "/sitemap.xml": "/site/sitemap.xml", "/llms.txt": "/site/llms.txt" };
+  // /sitemap.xml é montado aqui: a home e /novidades levam a data da release mais nova; privacidade e termos, a da revisão.
+  if (url.pathname === "/sitemap.xml") {
+    const d = await downloadMac();
+    return comCabecalhos(new Response(sitemapXml(env.SITE_ORIGIN, d?.publicadoEm ?? null, REVISAO_LEGAL), { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } }), {});
+  }
+  // /novidades: as releases estáveis do GitHub (cache de 10 min no edge) dentro de public/site/novidades.html.
+  if (url.pathname === "/novidades") {
+    const [modelo, releases] = await Promise.all([env.ASSETS.fetch(new Request(new URL("/site/novidades.html", url.origin).toString())).then((r) => r.text()), listarReleases()]);
+    return comCabecalhos(new Response(modelo.replace("<!--RELEASES-->", novidadesHtml(releases)), { headers: { "content-type": "text/html; charset=utf-8" } }), { "content-security-policy": cspDoSite(env), "cache-control": "no-store" });
+  }
+  // robots.txt e llms.txt vivem em public/site/ e saem na raiz do host; privacidade e termos também.
+  const raiz: Record<string, string> = { "/robots.txt": "/site/robots.txt", "/llms.txt": "/site/llms.txt", "/privacidade": "/site/privacidade.html", "/termos": "/site/termos.html" };
   const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : raiz[url.pathname] ?? url.pathname;
-  const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  let res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
+  // Caminho que não existe: a página 404 do site (com status 404), em vez do corpo vazio dos assets.
+  if (res.status === 404 && !url.pathname.startsWith("/site/")) res = new Response((await env.ASSETS.fetch(new Request(new URL("/site/404.html", url.origin).toString()))).body, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
+  // A home é um HTML só para os dois canais, mas cada host entrega só a sua parte: em produção os blocos do ensaio
+  // (data-canal="staging" e a faixa) saem do HTML, porque o Google lê o que está escondido; em staging saem os de produção.
+  if (caminho === "/site/index.html") res = porCanal(res, env.CANAL === "staging" ? "staging" : "producao");
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
   // Staging é a mesma home em revisão: fora do Google, para não competir com agentesgrok.com.
   const robos = env.CANAL === "staging" ? { "x-robots-tag": "noindex, nofollow" } : {};
   return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store", ...robos });
+}
+/** Tira do HTML os blocos do outro canal e, em staging, mostra os do ensaio e a faixa (o site.js faz o mesmo, mas o Google não roda JS). */
+function porCanal(res: Response, canal: "staging" | "producao"): Response {
+  const outro = canal === "staging" ? "producao" : "staging";
+  const rw = new HTMLRewriter().on(`[data-canal="${outro}"]`, { element(e) { e.remove(); } });
+  if (canal === "staging") rw.on(`[data-canal="staging"], #rascunho`, { element(e) { e.removeAttribute("hidden"); } });
+  else rw.on("#rascunho", { element(e) { e.remove(); } });
+  return rw.transform(res);
 }
 
 export default {
