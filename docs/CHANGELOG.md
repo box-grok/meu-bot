@@ -22,6 +22,7 @@ no [diário técnico](GUIA.md).
   pessoa direto ao lugar. Ids: `seguranca`, `espaco`, `sobre`, `texto`, `mcp`, `suporte`, `conta`, mais os apelidos em
   inglês e os do Grok Bot. Abre na janela em uso; sem janela, reabre a última máquina; id desconhecido só abre as
   Configurações. O staging tem o esquema próprio (`meu-bot-staging://`), como no login.
+
 ### Admin: a pressão da box não fica vermelha para sempre
 
 #### Corrigido
