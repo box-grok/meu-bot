@@ -91,3 +91,24 @@ test("rodízio do root: ordem, ligar/desligar e conferir, como o tutorial 2 (o l
   assert.throws(() => core.cgContaEditarSh({ id: "c-aaaaaaaa'); process.exit(); ('", ativa: true }), /inválido/);
   assert.throws(() => core.cgContaEditarSh({}), /inválido/);
 });
+
+test("intermediário: todas as contas no limite → 429 com os cabeçalhos de limite da Anthropic (status rejected, reset) e a hora na mensagem", () => {
+  const cab = {}; let corpo = "";
+  const res = { writeHead: (st, h) => { cab.status = st; Object.assign(cab, h); }, end: (b) => { corpo = b; } };
+  const ate = Math.floor(Date.now() / 1000) + 1800;
+  const reset = relay.respostaEsgotado(res, ate);
+  assert.equal(reset, ate);
+  assert.equal(cab.status, 429);
+  assert.equal(cab["anthropic-ratelimit-unified-status"], "rejected", "é isto que faz o Claude Code emitir o rate_limit_event rejeitado em vez de tentar de novo");
+  assert.equal(cab["anthropic-ratelimit-unified-reset"], String(ate));
+  assert.equal(cab["anthropic-ratelimit-unified-representative-window"], "five_hour");
+  assert.ok(Number(cab["retry-after"]) > 1700 && Number(cab["retry-after"]) <= 1800);
+  const j = JSON.parse(corpo);
+  assert.equal(j.error.type, "rate_limit_error");
+  assert.match(j.error.message, /no limite até \d{2}:\d{2}/);
+  // Sem `ate` conhecido: o padrão do rodízio (60 min), nunca um reset no passado.
+  const r2 = relay.respostaEsgotado(res, null);
+  assert.ok(r2 > Math.floor(Date.now() / 1000) + 3000);
+  const r3 = relay.respostaEsgotado(res, Math.floor(Date.now() / 1000) - 10);
+  assert.ok(r3 > Math.floor(Date.now() / 1000));
+});

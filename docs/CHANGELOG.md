@@ -12,6 +12,18 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Claude Code Global: no limite, troca de conta na hora
+
+#### Corrigido
+
+- **O agente não fica mais "trabalhando" para sempre quando o Claude Code Global esgota.** Com todas as contas do
+  rodízio do admin no limite, o intermediário respondia um 429 sem os cabeçalhos de limite, e o Claude Code ficava
+  tentando de novo por minutos, sem avisar ninguém; o Daniel no WhatsApp mostrava "waiting for response" sem fim.
+  Agora a resposta é igual à de um limite de verdade (status rejeitado e a hora em que a primeira conta volta), e a
+  mensagem diz a hora. O porteiro do `claude` (WhatsApp pelo OpenClaw, Terminal) troca para a próxima conta no mesmo
+  turno, relançando a pergunta sem a pessoa ver o erro; sem outra conta livre, a resposta diz "no limite até HH:MM"
+  na hora, e não depois de minutos. O backend do app já fazia a troca no mesmo turno e passa a receber o sinal certo.
+
 ### Controle externo (MCP)
 
 #### Novo

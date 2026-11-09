@@ -36,7 +36,7 @@ function maquina() {
 }
 const STREAM = ["-p", "--output-format", "stream-json", "--verbose"];
 
-test("porteiro: a conta da frente atende; no limite marca esgotada, anota a troca e sai com 1; a chamada seguinte vai pela padrão", () => {
+test("porteiro: a conta da frente atende; no limite antes de qualquer conteúdo, marca esgotada, anota a troca e segue na padrão no mesmo turno", () => {
   const m = maquina();
   const r1 = m.claude(STREAM);
   assert.equal(r1.status, 0, r1.stderr);
@@ -44,18 +44,24 @@ test("porteiro: a conta da frente atende; no limite marca esgotada, anota a troc
   assert.equal(m.log()[0].split("|")[1], m.segunda.home, "chamada 1 na Segunda (ordem 1; padrão por último)");
   assert.equal(m.uso()[m.segunda.id].sessao.pct, 42, "o uso visto no stream vai para o registro");
   assert.match(r1.stderr, /usando a conta do Claude "Segunda"|^$/);
-  // Chamada 2: o claude falso rejeita (rate_limit_event rejected + result de erro).
+  // Chamada 2: o claude falso rejeita (rate_limit_event rejected + result de erro) antes de qualquer conteúdo:
+  // o porteiro mata o processo, marca a Segunda esgotada e relança na padrão, no mesmo turno. Quem chamou vê só a
+  // resposta boa (chamada 3 do falso), nunca o result de limite.
   const r2 = m.claude(STREAM);
-  assert.equal(r2.status, 1);
-  assert.match(r2.stdout, /"type":"result"/, "a saída passa intacta, inclusive o result");
+  assert.equal(r2.status, 0, r2.stderr);
+  assert.match(r2.stdout, /olá da chamada 3 em padrao/);
+  assert.doesNotMatch(r2.stdout, /hit your limit|"status":"rejected"/, "o limite da conta esgotada não chega a quem chamou");
+  assert.equal((r2.stdout.match(/"subtype":"init"/g) || []).length, 1, "um init só: o da conta que respondeu");
+  assert.match(r2.stderr, /no limite; seguindo na conta "Login padrão" neste mesmo turno/);
   assert.equal(m.uso()[m.segunda.id].estado, "esgotada");
   const ev = m.eventos(); assert.equal(ev.length, 1);
   assert.deepEqual([ev[0].origem, ev[0].de, ev[0].para], ["cli", "Segunda", "Login padrão"]);
-  // Chamada 3: processo novo → padrão (CLAUDE_CONFIG_DIR vazio), mesmo stream.
+  assert.equal(m.log()[1].split("|")[1], m.segunda.home, "chamada 2 do falso: a Segunda, que rejeitou");
+  assert.equal(m.log()[2].split("|")[1], "", "chamada 3 do falso: a padrão, sem CLAUDE_CONFIG_DIR");
+  // Chamada seguinte: processo novo → padrão direto (a Segunda continua esgotada).
   const r3 = m.claude(STREAM);
   assert.equal(r3.status, 0, r3.stderr);
-  assert.equal(m.log()[2].split("|")[1], "", "padrão = sem CLAUDE_CONFIG_DIR");
-  assert.match(r3.stdout, /olá da chamada 3 em padrao/);
+  assert.match(r3.stdout, /olá da chamada 4 em padrao/);
   m.limpar();
 });
 
