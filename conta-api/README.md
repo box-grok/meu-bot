@@ -57,3 +57,46 @@ vê todas (`GET /admin/visao` → `orgs`; console › Todas as organizações). 
 organização (`slugDoHost` já existe; falta o registro `*` no DNS e a rota curinga). Apagar é soft delete: o slug vira
 `apagada:<id>:<slug>` e continua reservado. Depois: times com permissões por área, login com a cara da empresa, plano
 Enterprise com assentos cobrados.
+
+## Analytics (Google Analytics 4 no site, na página de login e no console)
+
+`GA_ID` (`wrangler.toml`, por ambiente) é a lista de IDs de métricas (`G-…`, separados por vírgula). Produção manda só
+para a propriedade **agentesintegrados** (`G-FCKW62SB1K`); staging manda também para **meu-bot-conta** (a propriedade
+criada pelo Firebase), que serve de laboratório. Vazio desliga tudo. O Worker põe a lista no `/config.js` de cada host
+(`ga`) e libera na CSP de cada host os domínios da tag (`googletagmanager.com`, `google-analytics.com`,
+`analytics.google.com`) **só** quando há ID (`src/analytics-core.ts`). As páginas carregam `public/analytics.js` logo
+depois de `/config.js`; ele expõe `window.meuBotGa = { pagina, evento }` e, sem ID, as duas funções não fazem nada.
+
+Regras: `send_page_view: false` em todo `config` e `page_view` à mão com `page_location = origem + caminho` (sem query
+nem fragmento: o console recebe `#code&verifier`, o login tem `?state&challenge`); o caminho de uma organização vai
+anonimizado (`/organizations/_/members`); nenhum parâmetro leva e-mail, nome, slug, código, token ou id de conta; sem
+sinais de anúncios (`allow_google_signals: false`); todo evento leva `ambiente` (`staging` | `producao`) e, em staging,
+o `config` tem `debug_mode` (os eventos aparecem no DebugView do Analytics na hora). O evento sai sempre **antes** da
+linha que navega (deep link, `location.replace` para o console, redirecionamento do download). Não há aviso de cookies
+nesta versão: o rodapé do site diz que medimos visitas sem anúncios e sem dados pessoais.
+
+| Página | Evento | Parâmetros (listas fechadas) |
+|---|---|---|
+| site | `page_view` | `page_location` limpo |
+| site | `baixar_mac` | `origem`: `home`, `obrigado`, `obrigado-ver`, `obrigado-link` |
+| site | `download_iniciado` | `versao` (da release) |
+| login | `page_view` | `tipo`: `app`, `console`, `sem-app`, `org-pergunta`, `org-nao-achada`, `org-redirect` |
+| login | `login_iniciado`, `login_concluido` | `metodo`: `google`, `lembrado`, `senha`, `link`; `destino`: `app`, `console`; `org: true` na página da organização |
+| login | `login_falhou` | `motivo`: `popup-fechado`, `google`, `senha`, `muitas-tentativas`, `sem-conta`, `link-invalido`, `api`, `sessao-vencida`, `outro`; `metodo`; `destino` |
+| login | `link_enviado`, `senha_recuperar` | `destino` |
+| login | `app_aberto` | `repeticao`: `false` (automático), `true` (botão "Abrir o meu-bot") |
+| login | `sem_app_visto` | `acao`: `visto`, `baixar`, `console`, `signup` |
+| login | `login_org_visto`, `login_org_perguntado` | `com_slug`, `achada` |
+| cadastro | `cadastro_iniciado`, `cadastro_concluido`, `cadastro_falhou` | `metodo`: `senha`, `google`; `motivo`: `senha-curta`, `email-em-uso`, `senha-fraca`, `email-invalido`, `popup-fechado`, `google`, `outro` |
+| console | `page_view` | `secao` (`overview`, `plan`, `org`, `entrada`…), caminho anonimizado |
+| console | `console_entrada`, `console_saida` | `via`: `app`, `login`; `admin` |
+| console | `org_criada`, `org_apagada`, `convite_enviado`, `membro_removido` | `papel`, `status`, `eu` |
+| console | `plano_alterado`, `perfil_salvo`, `dados_uso_alterado`, `senha_pedida`, `conta_apagada` | `plan`, `status`, `ligado` |
+| todas | `click`, `scroll`, `file_download`, `form_start`, `form_submit` | medição otimizada do GA4 (automática) |
+
+O que o Analytics não faz sozinho, na propriedade (Administrador): eventos principais (`baixar_mac`,
+`download_iniciado`, `login_concluido`, `cadastro_concluido`, `org_criada`, depois de aparecerem na lista de eventos);
+dimensões personalizadas de evento para cada parâmetro acima (senão não aparecem nos relatórios); retenção de dados em
+14 meses; sinais do Google desligados; encobrir dados com as chaves `code, state, verifier, challenge, retorno, oobCode,
+apiKey`; referências indesejadas `accounts.google.com`, `*.firebaseapp.com`; URL do fluxo `https://agentesgrok.com`;
+fuso horário de Brasília e moeda BRL. Conferir cada evento em staging pelo DebugView antes de publicar em produção.
