@@ -271,11 +271,38 @@ test("pressão: folgada, apertada e estrangulada pelos sinais certos (anon, PSI,
   assert.equal(c.pressaoDe(b(), 2048).estado, "folgada");
   assert.equal(c.pressaoDe(b({ anonKb: 1600 * 1024 }), 2048).estado, "apertada", "anon ≥ 85% do MemoryHigh (1843)");
   assert.equal(c.pressaoDe(b({ anonKb: 1600 * 1024 }), null).estado, "folgada", "sem teto a regra do anon não vale");
-  assert.equal(c.pressaoDe(b({ psiMem60: 12 }), 2048).estado, "apertada"); assert.equal(c.pressaoDe(b({ evMax: 1 }), 2048).estado, "apertada");
+  assert.equal(c.pressaoDe(b({ psiMem60: 12 }), 2048).estado, "apertada");
   assert.equal(c.pressaoDe(b({ psiCpu60: 30 }), 2048).estado, "apertada"); assert.match(c.pressaoDe(b({ psiCpu60: 30 }), 2048).dica, /CPU/);
-  assert.equal(c.pressaoDe(b({ oomKill: 1 }), 2048).estado, "estrangulada"); assert.equal(c.pressaoDe(b({ psiCpu60: 60 }), 2048).estado, "estrangulada");
-  assert.equal(c.pressaoDe(b({ psiMem60: 30 }), 2048).estado, "estrangulada"); assert.equal(c.pressaoDe(b({ evMax: 2, psiMem60: 12 }), 2048).estado, "estrangulada");
+  assert.equal(c.pressaoDe(b({ psiCpu60: 60 }), 2048).estado, "estrangulada"); assert.equal(c.pressaoDe(b({ psiMem60: 30 }), 2048).estado, "estrangulada");
+  // Contadores acumulados (desde que a fatia subiu) são histórico: sozinhos não pintam nada.
+  const antiga = c.pressaoDe(b({ oomKill: 1, evMax: 438 }), 2048);
+  assert.equal(antiga.estado, "folgada"); assert.match(antiga.motivo, /desde que a box subiu: 1 morte por memória, 438 vezes no teto/);
+  assert.equal(c.pressaoDe(b({ evMax: 1 }), 2048).estado, "folgada"); assert.equal(c.pressaoDe(b({ evMax: 2, psiMem60: 12 }), 2048).estado, "apertada", "só a PSI decide");
+  // O que subiu agora há pouco (recentes) é sinal.
+  const morte = c.pressaoDe(b({ oomKill: 1 }), 2048, { oom: 1, max: 0 });
+  assert.equal(morte.estado, "estrangulada"); assert.match(morte.motivo, /matou 1 processo dele por falta de memória agora há pouco · desde que a box subiu: 1 morte/);
+  assert.equal(c.pressaoDe(b({ evMax: 3 }), 2048, { oom: 0, max: 1 }).estado, "apertada");
+  assert.equal(c.pressaoDe(b({ evMax: 3, psiMem60: 12 }), 2048, { oom: 0, max: 2 }).estado, "estrangulada");
   assert.equal(c.pressaoDe(null, 2048), null);
+});
+
+test("pressão: recentesDe só conta o que subiu desde a leitura anterior, por 10 min; primeira leitura e fatia recriada não contam", () => {
+  const c = createRequire(import.meta.url)("../../dist/main/admin/usuarios-core.js");
+  const b = (o = {}) => ({ usoKb: 0, anonKb: 0, picoKb: null, swapKb: 0, evHigh: 0, evMax: 438, oomKill: 1, psiMem10: 0, psiMem60: 0, psiCpu60: 0, cpuPeriodos: 0, cpuEstrangulados: 0, cpuEstranguladoUsec: 0, ...o });
+  const t0 = 1_000_000;
+  const r1 = c.recentesDe(undefined, b(), t0);
+  assert.deepEqual(r1.recentes, { oom: 0, max: 0 }, "primeira leitura: o acumulado é histórico");
+  assert.deepEqual(r1.marca, { evMax: 438, oomKill: 1, maxEm: null, maxQtd: 0, oomEm: null, oomQtd: 0 });
+  const r2 = c.recentesDe(r1.marca, b(), t0 + 60_000);
+  assert.deepEqual(r2.recentes, { oom: 0, max: 0 }, "nada subiu");
+  const r3 = c.recentesDe(r2.marca, b({ oomKill: 2, evMax: 441 }), t0 + 120_000);
+  assert.deepEqual(r3.recentes, { oom: 1, max: 3 }); assert.equal(r3.marca.oomEm, t0 + 120_000); assert.equal(r3.marca.maxEm, t0 + 120_000);
+  const r4 = c.recentesDe(r3.marca, b({ oomKill: 2, evMax: 441 }), t0 + 120_000 + 5 * 60_000);
+  assert.deepEqual(r4.recentes, { oom: 1, max: 3 }, "5 min depois ainda conta");
+  const r5 = c.recentesDe(r4.marca, b({ oomKill: 2, evMax: 441 }), t0 + 120_000 + c.JANELA_RECENTE_MS);
+  assert.deepEqual(r5.recentes, { oom: 0, max: 0 }, "passou a janela");
+  const r6 = c.recentesDe(r3.marca, b({ oomKill: 0, evMax: 2 }), t0 + 180_000);
+  assert.deepEqual(r6.recentes, { oom: 0, max: 0 }, "contador menor = fatia recriada"); assert.equal(r6.marca.oomEm, null); assert.equal(r6.marca.evMax, 2);
 });
 
 test("capacidade: quantas boxes cabem no teto dos usuários com o teto padrão; CPU prometida; governança diz o que falta", () => {
