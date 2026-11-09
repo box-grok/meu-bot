@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+---
+
+## 9 de novembro de 2026 · v0.79.3
+
 ### Atualização: pronto para o app assinado pela Apple
 - O atualizador passa a aceitar uma versão nova assinada com o Developer ID da Apple, uma única vez, na troca da assinatura local pela da Apple. Isso prepara o app notarizado, que vai abrir direto em qualquer Mac sem passar por Privacidade e Segurança. O caminho inverso continua recusado.
 

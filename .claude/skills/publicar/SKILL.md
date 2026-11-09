@@ -8,6 +8,13 @@ description: Leva uma mudança do meu-bot (app, financeiro, CRM, backend) do des
 Como o Brave (Sparkle) e o Cursor: o app baixa a versão nova sozinho, só instala o que a chave da release assinou e o
 usuário só reinicia. Detalhes em `docs/guia/app.md`, seção "Revisão no molde do Brave/Sparkle".
 
+## Onde publicar
+
+As releases saem do Mac que tem o `gh` logado como **diegofornalha** (`gh auth status`; o `box-grok` recebe 403 ao
+empurrar a tag) e a chave privada da release no Chaveiro (`npm run chave-release -- --testar` responde `✓ ok`). A
+estável também precisa de `build/suporte/` (o admin). Sem um desses, pare e diga o que falta; não tente de outro lugar.
+Publique do checkout principal só se ele estiver limpo e no `origin/main`; senão, de um worktree (abaixo).
+
 ## A sequência
 
 1. **Desenvolver e testar localmente**: `npm test`, depois a skill `rebuildar`. Os builds locais saem com a versão do
@@ -28,11 +35,22 @@ usuário só reinicia. Detalhes em `docs/guia/app.md`, seção "Revisão no mold
    instalar a nova por cima da antiga, sem desinstalar, e conferir a versão preparada, a recusa do que não
    confere, a troca, as preferências e abas, e a volta atrás matando o processo no meio. É onde um atualizador
    quebra; nenhum teste automatizado encena a pessoa no meio da troca. Não promova sem a aprovação explícita dele.
-6. **`npm run release`** no MESMO commit (ele recusa se o HEAD não tiver a tag `-staging.N` dessa versão): publica
+6. **`npm run release`** no MESMO commit (ele recusa se o HEAD não tiver a tag `-staging.N` dessa versão). Se o `main`
+   andou depois do staging (merges de outras pessoas), há dois caminhos; diga qual ao usuário:
+   - promover o que ele testou: `git worktree add --detach ../meu-bot-release v<versão>-staging.N`, prepare o worktree
+     como na skill `contribuir` (node_modules, `build/` inteiro com `build/suporte`, `config/google-*.json`) e rode o
+     `npm run release` de lá; os merges novos ficam para a próxima versão;
+   - incluir os merges: novo `npm run release:staging` (`-staging.N+1`) e o usuário testa de novo.
+   Publica
    `v<versão>` com o meu-bot e o meu-bot-admin. Os apps dos usuários baixam, verificam a assinatura e mostram
    "Reiniciar e atualizar" (ou aplicam ao fechar). Na abertura seguinte, o seletor atualiza o backend (só ocioso)
    e os plugins de cada máquina.
-7. **Subir a versão base** para a próxima estável (`npm version minor --no-git-tag-version`), commitar e dar push.
+7. **Subir a versão base** para a próxima estável (`npm version minor --no-git-tag-version`) e, no `docs/CHANGELOG.md`,
+   transformar "Ainda não lançado" na seção datada da versão publicada (`## <dia> de <mês> de <ano> · v<versão>`), com
+   um "Ainda não lançado" novo e vazio em cima. Vai num PR (worktree próprio, skill `contribuir`).
+8. **Conferir no ar:** `curl -s https://agentesgrok.com/download/mac.json` traz a estável nova e
+   `https://site-staging.agentesgrok.com/download/mac.json` o staging mais novo, até 10 min depois (cache do edge). Se a
+   release veio junto com mudanças em `conta-api/`, publique o site também (skill `publicar-site`).
 
 ## Regras
 
