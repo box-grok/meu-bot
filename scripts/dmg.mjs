@@ -15,8 +15,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { archOf, produtoFromArgv, versaoFromArgv } from "./produtos.mjs";
 
-// 1.6.5: a última que instala no Python 3.9 do macOS (/usr/bin/python3); a 1.6.7 pede um Python mais novo.
-const DMGBUILD = "dmgbuild==1.6.5";
+// 1.6.7, não a 1.6.5: a 1.6.5 grava no .DS_Store um bookmark (pBBk) da arte com o caminho do volume na hora do build, e
+// num volume montado com outro nome ("meu-bot-staging 1") o Finder segue o bookmark e mostra o fundo liso, sem o
+// "arraste para instalar". A 1.6.7 pede Python 3.10+, que o macOS não traz (/usr/bin/python3 é 3.9): pythonNovo() acha um.
+const DMGBUILD_VERSAO = "1.6.7";
+const DMGBUILD = `dmgbuild==${DMGBUILD_VERSAO}`;
 const root = resolve(import.meta.dirname, "..");
 // --admin: o meu-bot-admin (só para o admin; leva as máquinas dele). --suporte: o .dmg das pessoas leva o
 // pacote de suporte de build/suporte (scripts/suporte-setup.mjs): pública do admin, chave só de entrega e
@@ -38,6 +41,16 @@ const venv = join(root, "build", ".venv-dmg");
 
 const run = (cmd, args) => execFileSync(cmd, args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 const step = (t) => console.log(`▸ ${t}`);
+/** Um Python 3.10+ para o ambiente do dmgbuild: $DMG_PYTHON, o do uv, python3.1x do PATH ou o python3 se já for novo. */
+function pythonNovo() {
+  const novo = (py) => { try { return run(py, ["-c", "import sys; print(sys.version_info >= (3, 10))"]).trim() === "True"; } catch { return false; } };
+  const candidatos = [process.env.DMG_PYTHON];
+  try { candidatos.push(run("uv", ["python", "find", ">=3.10"]).trim()); } catch { /* sem uv */ }
+  candidatos.push("python3.13", "python3.12", "python3.11", "python3.10", "/opt/homebrew/bin/python3", "python3");
+  const py = candidatos.find((c) => typeof c === "string" && c !== "" && novo(c));
+  if (py === undefined) throw new Error("o instalador precisa de Python 3.10 ou mais novo (o do macOS é 3.9): rode `uv python install 3.12` ou `brew install python@3.12`");
+  return py;
+}
 const py = (s) => JSON.stringify(s); // string JSON também é literal válido em Python
 
 if (!existsSync(appSrc)) { console.error(`✗ não achei ${appSrc}. Rode antes: npm run dist`); process.exit(1); }
@@ -46,12 +59,13 @@ const work = mkdtempSync(join(tmpdir(), "meu-bot-dmg-"));
 try {
   // Ambiente de um Python que já não existe (atualização do Homebrew, outro Mac): o dmgbuild fica "bad interpreter".
   let venvOk = existsSync(join(venv, "bin", "dmgbuild"));
-  if (venvOk) { try { run(join(venv, "bin", "python"), ["-c", "import dmgbuild"]); } catch { venvOk = false; } }
+  // Também refaz o ambiente de outra versão do dmgbuild (o 1.6.5 de antes, num Python 3.9).
+  if (venvOk) { try { venvOk = run(join(venv, "bin", "python"), ["-c", "import dmgbuild; print(dmgbuild.__version__)"]).trim() === DMGBUILD_VERSAO; } catch { venvOk = false; } }
   if (!venvOk) {
     rmSync(venv, { recursive: true, force: true });
     step(`preparando o ${DMGBUILD} em build/.venv-dmg (só na primeira vez)`);
     mkdirSync(join(root, "build"), { recursive: true });
-    run("python3", ["-m", "venv", venv]);
+    run(pythonNovo(), ["-m", "venv", venv]);
     run(join(venv, "bin", "pip"), ["install", "-q", DMGBUILD]);
   }
 
