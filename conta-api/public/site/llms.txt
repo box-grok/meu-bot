@@ -2,7 +2,7 @@
 
 > App para macOS (Apple Silicon) que põe um agente de IA no WhatsApp da pessoa, com um Navegador em que o agente trabalha dentro, o Gmail e a própria máquina (terminal) num app só. Conta com teste gratuito de 14 dias do plano Pro; o plano Free continua sem conta.
 
-Site oficial: https://agentesgrok.com. Código aberto em https://github.com/diegofornalha/meu-bot (TypeScript, Electron). Idioma: português do Brasil.
+Feito com o Grok, da xAI (a Coflow, que faz o meu-bot, é parceira da xAI; login com a conta Grok no app). Site oficial: https://agentesgrok.com. Código aberto em https://github.com/diegofornalha/meu-bot (TypeScript, Electron). Idioma: português do Brasil.
 
 ## Páginas
 
