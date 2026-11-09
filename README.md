@@ -10,7 +10,6 @@ fazer, e ele pede confirmação antes de qualquer coisa importante.
 </p>
 
 <p align="center"><b>Baixe, arraste para Aplicativos e pronto.</b><br>
-O link de download está na descrição deste repositório, aqui ao lado. 👉</p>
 
 ## O que ele faz
 
