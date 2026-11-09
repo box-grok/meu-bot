@@ -169,11 +169,12 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   }
   // robots.txt, sitemap.xml e llms.txt vivem em public/site/ e saem na raiz do host.
   const raiz: Record<string, string> = { "/robots.txt": "/site/robots.txt", "/sitemap.xml": "/site/sitemap.xml", "/llms.txt": "/site/llms.txt" };
-  // /lp: a landing page em revisão (noindex até a aprovação; ver public/site/lp.html).
-  const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : url.pathname === "/lp" ? "/site/lp.html" : raiz[url.pathname] ?? url.pathname;
+  const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : raiz[url.pathname] ?? url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
-  return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store" });
+  // Staging é a mesma home em revisão: fora do Google, para não competir com agentesgrok.com.
+  const robos = env.CANAL === "staging" ? { "x-robots-tag": "noindex, nofollow" } : {};
+  return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store", ...robos });
 }
 
 export default {
