@@ -1,6 +1,7 @@
 /**
- * Deep link da conta meu-bot, a parte pura: ler a URL `<esquema>://auth?code=…&state=…` com que a página de login
- * (auth.agentesgrok.com) devolve a pessoa ao app, e achá-la nos argumentos (Windows/Linux e segunda instância).
+ * Deep link do meu-bot, a parte pura: ler a URL `<esquema>://auth?code=…&state=…` com que a página de login
+ * (auth.agentesgrok.com) devolve a pessoa ao app, o `<esquema>://app/v1/settings?id=…` que abre uma seção das
+ * Configurações (o mesmo formato do Grok Bot), e achá-la nos argumentos (Windows/Linux e segunda instância).
  * O esquema é o do produto (esquemaDe em app/variant-core.ts): `meu-bot://`, `meu-bot-staging://`… Vem de fora =
  * dado, nunca comando: qualquer app pode registrar o mesmo esquema e mandar o que quiser; o que protege o login é o
  * `state` (tem de bater com o login pendente deste processo) e o PKCE (o `code` é inútil sem o verifier).
@@ -29,6 +30,31 @@ export function parseRetornoAuth(url: string, esquema: string): ParseRetorno {
   const code = u.searchParams.get("code") ?? "", state = u.searchParams.get("state") ?? "";
   if (!TOKEN_RE.test(code) || !TOKEN_RE.test(state)) return { ok: false, erro: "o link de retorno do login veio sem código ou sem state" };
   return { ok: true, retorno: { code, state } };
+}
+
+/** Seções das Configurações que um link pode abrir (`data-group` dos `<details class="group">` em index.html). */
+export const GRUPOS_CONFIG = ["seguranca", "espaco", "sobre", "texto", "mcp", "suporte", "conta"] as const;
+export type GrupoConfig = (typeof GRUPOS_CONFIG)[number];
+/** Ids no molde do Grok Bot (`grokbot://app/v1/settings?id=update-status`) e em inglês, para o mesmo link servir nos dois. */
+const APELIDOS_GRUPO: Record<string, GrupoConfig> = {
+  "update-status": "sobre", "automatic-updates": "sobre", "update-channel": "sobre", about: "sobre", atualizacao: "sobre",
+  security: "seguranca", storage: "espaco", support: "suporte", account: "conta", text: "texto",
+};
+export interface LinkConfiguracoes { /** null = id desconhecido (abre as Configurações sem seção). */ grupo: GrupoConfig | null; id: string }
+/**
+ * `<esquema>://app/v1/settings?id=<grupo>` (o formato do Grok Bot) ou `<esquema>://settings?id=<grupo>`: abrir as
+ * Configurações da janela em uso naquela seção. null = não é um link de Configurações (é o retorno do login ou lixo).
+ * Só navega: nenhum parâmetro vira ação. Id em qualquer caixa; desconhecido abre as Configurações e fica no log.
+ */
+export function parseLinkConfiguracoes(url: string, esquema: string): LinkConfiguracoes | null {
+  if (!ehUrlDoEsquema(url, esquema)) return null;
+  let u: URL;
+  try { u = new URL(url); } catch { return null; }
+  const caminho = `${u.host}${u.pathname}`.replace(/^\/+/, "").replace(/\/+$/, "").toLowerCase();
+  if (caminho !== "app/v1/settings" && caminho !== "settings") return null;
+  const id = (u.searchParams.get("id") ?? "").trim().toLowerCase().slice(0, 40);
+  const grupo = (GRUPOS_CONFIG as readonly string[]).includes(id) ? (id as GrupoConfig) : APELIDOS_GRUPO[id] ?? null;
+  return { grupo, id };
 }
 
 /** A URL deste esquema entre os argumentos do processo (primeira execução no Windows/Linux, ou segunda instância). */

@@ -37,6 +37,8 @@ export interface MainEvents {
   "ui:quick-submit": { correlationId: string; text: string };
   /** Menu meu-bot › Configurações… (Cmd+,): abre, ou fecha se já está aberto. */
   "ui:toggle-settings": Record<string, never>;
+  /** Deep link `<esquema>://app/v1/settings?id=…`: abrir as Configurações nesta seção (null = só abrir). */
+  "ui:settings": { grupo: string | null };
   /** Resultado da busca na página: `atual` de `total` (0 e 0 = nada encontrado). */
   "find:result": { atual: number; total: number };
   /** Menu Editar › Localizar (Cmd+F) e Ajuda › Atalhos (Cmd+/): a janela abre a barra ou a folha. */

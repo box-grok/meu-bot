@@ -12,6 +12,17 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Link direto para uma seção das Configurações
+
+#### Novo
+
+- **`meu-bot://app/v1/settings?id=sobre` abre as Configurações naquela seção**, no mesmo formato do atalho do Grok Bot
+  (`grokbot://app/v1/settings?id=update-status`, que também funciona aqui e cai em "Sobre e atualização"). Serve para
+  o admin mandar o link certo ("abra `meu-bot://app/v1/settings?id=mcp`") e para páginas do site e da conta levarem a
+  pessoa direto ao lugar. Ids: `seguranca`, `espaco`, `sobre`, `texto`, `mcp`, `suporte`, `conta`, mais os apelidos em
+  inglês e os do Grok Bot. Abre na janela em uso; sem janela, reabre a última máquina; id desconhecido só abre as
+  Configurações. O staging tem o esquema próprio (`meu-bot-staging://`), como no login.
+
 ### Claude Code Global: no limite, troca de conta na hora
 
 #### Corrigido
