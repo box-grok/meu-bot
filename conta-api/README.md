@@ -103,3 +103,12 @@ dimensões personalizadas de evento para cada parâmetro acima (senão não apar
 apiKey`; referências indesejadas `accounts.google.com`, `*.firebaseapp.com`; URL do fluxo (`https://agentesgrok.com` na de
 produção, `https://site-staging.agentesgrok.com` na de staging); fuso horário de Brasília e moeda BRL. Conferir cada
 evento em staging pelo DebugView antes de publicar em produção; a mesma configuração vale nas duas propriedades.
+
+Feito em 9 nov 2026 nas duas propriedades, pelo Navegador do meu-bot: fuso (São Paulo) e moeda, URL do fluxo, medição
+otimizada ligada **sem** "alterações de página por histórico do navegador" (o console mede as seções à mão; ligada, a tag
+mandaria um page_view duplicado a cada pushState), sinais do Google desligados, retenção de 14 meses, encobrir dados
+com as 7 chaves, e as 20 dimensões personalizadas de evento. Ficaram à mão, no Analytics: **referências indesejadas**
+(Fluxo › Tag do Google › Definir as configurações da tag › Listar referências indesejadas: `accounts.google.com`,
+`*.firebaseapp.com`; a tela abre fora do Navegador) e **eventos principais** (Administrador › Eventos › estrela em
+`baixar_mac`, `download_iniciado`, `login_concluido`, `cadastro_concluido`, `org_criada`, que só aparecem na lista até
+24 h depois do primeiro disparo).
