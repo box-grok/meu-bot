@@ -952,6 +952,9 @@ export function ligarNavegador(): void {
   window.meuBot.on("browser:agent", (st) => { ctx.navAgent = st; paintNav(); });
   window.meuBot.on("browser:favorites", (list) => { navFavs = list; paintNavFavs(); });
   window.meuBot.on("browser:ask", (msg) => {
+    // Controle externo (MCP) com a aba Navegador fechada: abre em segundo plano (restaura as abas de antes) para o
+    // socket do agente subir; a tela da pessoa não muda e ela vê o selo de quem usa quando abrir a aba.
+    if (msg.kind === "open") { if (navPage === null) void openNavTab(undefined, false); return; }
     if (msg.kind === "new-tab") {
       // Pedido do WhatsApp (fundo): a aba nasce em segundo plano e a tela da pessoa não muda.
       navPedidosNovos.push({ url: msg.url, fundo: msg.fundo === true });
