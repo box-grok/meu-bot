@@ -9,7 +9,8 @@
  * streaming e os cabeçalhos de limite voltam intactos, então o backend do usuário vê os rate_limit_event como sempre.
  *
  * - Rodízio do root: o mesmo registro de contas do tutorial 2, na pasta do root. Uma conta do root no limite passa
- *   para a próxima antes de responder; todas no limite, o 429 volta e o usuário cai para a conta própria dele.
+ *   para a próxima antes de responder; todas no limite, volta um 429 com os cabeçalhos de limite da Anthropic
+ *   (status rejected e a hora do reset), e o usuário cai para a conta própria dele na hora.
  * - Renovação: só este processo renova o token (o refreshToken gira a cada renovação; cópias quebrariam), gravando de
  *   volta no mesmo .credentials.json, de forma atômica, então o `claude` do próprio root segue funcionando.
  * - Só passam os caminhos de mensagens. A API OAuth aceita mais coisa com o mesmo token (criar chave de API, por
@@ -167,6 +168,30 @@ function erro(res, status, tipo, msg) {
   res.writeHead(status, { 'content-type': 'application/json' });
   res.end(JSON.stringify({ type: 'error', error: { type: tipo, message: msg } }));
 }
+const hora = (epochS) => new Date(epochS * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+/**
+ * Todas as contas do root no limite: responde como a Anthropic responde um limite de verdade (429 com
+ * `anthropic-ratelimit-unified-status: rejected` e o reset), e não um 429 qualquer. Com o 429 nu, o Claude Code
+ * entendia "transitório" e ficava tentando de novo por minutos, sem emitir o rate_limit_event rejeitado que faz o
+ * porteiro (OpenClaw, terminal) e o backend (app) caírem para a próxima conta; a pessoa via "trabalhando" sem fim.
+ * `ate` é o epoch (s) em que a primeira conta volta; sem ele, o padrão do rodízio.
+ */
+function respostaEsgotado(res, ate) {
+  const agora = Math.floor(Date.now() / 1000);
+  const reset = Number.isFinite(ate) && ate > agora ? Math.floor(ate) : agora + contasClaude.ESGOTADA_PADRAO_S;
+  res.writeHead(429, {
+    'content-type': 'application/json',
+    'retry-after': String(Math.max(1, reset - agora)),
+    'anthropic-ratelimit-unified-status': 'rejected',
+    'anthropic-ratelimit-unified-reset': String(reset),
+    'anthropic-ratelimit-unified-representative-window': 'five_hour',
+    'anthropic-ratelimit-unified-5h-status': 'rejected',
+    'anthropic-ratelimit-unified-5h-utilization': '1',
+    'anthropic-ratelimit-unified-5h-reset': String(reset),
+  });
+  res.end(JSON.stringify({ type: 'error', error: { type: 'rate_limit_error', message: `o Claude Code Global está no limite até ${hora(reset)}; quem tem conta própria segue por ela` } }));
+  return reset;
+}
 
 async function atender(req, res, corpo, usuario) {
   const tentadas = [];
@@ -174,9 +199,13 @@ async function atender(req, res, corpo, usuario) {
   for (;;) {
     const c = contas.escolher({ excluir: tentadas, permitirAviso: true });
     if (!c) {
-      if (ultimo429) { anotarUso(usuario, null, 429); res.writeHead(ultimo429.statusCode, ultimo429.headers); return ultimo429.pipe(res); }
       anotarUso(usuario, null, 429);
-      return erro(res, 429, 'rate_limit_error', 'o Claude Code Global está sem conta disponível agora');
+      // O 429 da própria Anthropic traz os cabeçalhos de limite: passa intacto. Sem ele (todas já marcadas antes
+      // deste pedido), a resposta sintética leva os mesmos cabeçalhos, senão o Claude Code fica tentando de novo.
+      if (ultimo429) { res.writeHead(ultimo429.statusCode, ultimo429.headers); return ultimo429.pipe(res); }
+      let ate = null; try { ate = contas.proximaDisponivelEm(); } catch (_) { ate = null; }
+      log(`${usuario}: todas as contas do root no limite${ate ? ` (a primeira volta ${hora(ate)})` : ''}`);
+      return respostaEsgotado(res, ate);
     }
     tentadas.push(c.id);
     let r;
@@ -228,4 +257,4 @@ if (require.main === module) {
   servir(porta);
 }
 
-module.exports = { servir, usuarioDaChave, cabecalhos, anotarUsoDaConta, PERMITIDO, CHAVE_RE, USUARIO_RE, carregarChaves };
+module.exports = { servir, usuarioDaChave, cabecalhos, anotarUsoDaConta, respostaEsgotado, PERMITIDO, CHAVE_RE, USUARIO_RE, carregarChaves };
