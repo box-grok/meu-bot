@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Política de privacidade · meu-bot</title>
+  <meta name="description" content="O que o meu-bot e o site agentesgrok.com guardam sobre você, onde fica, por quanto tempo e como pedir correção ou exclusão. Responsável: Coflow.">
+  <link rel="canonical" href="https://agentesgrok.com/privacidade">
+  <link rel="icon" href="/site/icone.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site/site.css">
+</head>
+<body>
+  <header class="topo">
+    <a class="marca" href="/"><span class="logo" aria-hidden="true">mb</span><span>meu-bot</span></a>
+    <nav class="links">
+      <a href="/novidades">Novidades</a>
+      <a href="/termos">Termos de uso</a>
+      <a id="link-console" href="/console">Console da conta</a>
+    </nav>
+  </header>
+
+  <main class="legal">
+    <h1>Política de privacidade</h1>
+    <p class="meta">Última revisão: 9 de novembro de 2026. Vale para o site agentesgrok.com, a conta meu-bot e o app meu-bot para macOS.</p>
+
+    <h2>Quem é o responsável</h2>
+    <p>O meu-bot é um produto da <strong>Coflow</strong>, nome fantasia de Bianca Lima Sivero Carreira, CNPJ 41.490.672/0001-00, que responde como controladora dos dados descritos aqui, nos termos da Lei Geral de Proteção de Dados (Lei 13.709/2018). Para falar com a gente sobre os seus dados, use o <a href="/console">console da conta</a> (menu da conta › Suporte) ou abra um chamado no <a href="https://github.com/diegofornalha/meu-bot/issues" rel="noopener">GitHub do projeto</a>.</p>
+
+    <h2>O que guardamos na conta meu-bot</h2>
+    <ul>
+      <li><strong>Cadastro</strong>: o e-mail e o nome que vêm do seu login (Google, link por e-mail ou senha, pelo Firebase Authentication), e a foto de perfil, se o Google a fornecer.</li>
+      <li><strong>Plano</strong>: plano, situação (teste, ativo, vencido), data de início do teste e os Macs em que você entrou (nome do computador e quando entrou), para aplicar o limite de Macs da conta.</li>
+      <li><strong>Organizações</strong>: nome e endereço da organização que você cria e os e-mails que você convida.</li>
+      <li><strong>Dados de uso</strong>: só se você ligar "enviar dados de uso" no console. Desligado, nada é enviado.</li>
+    </ul>
+    <p>A conta fica na Cloudflare (Workers e banco D1), com a autenticação no Firebase, do Google. Esses provedores guardam os dados nos servidores deles, inclusive fora do Brasil, sob os próprios contratos de proteção de dados.</p>
+
+    <h2>O que fica só na sua máquina</h2>
+    <p>O app e o agente rodam no seu Mac ou na máquina que você conecta. <strong>As conversas do WhatsApp, os e-mails do Gmail, o que o agente faz no navegador, as senhas e os tokens de acesso ficam nessa máquina</strong>, sob a sua conta de usuário, e não são enviados para a Coflow. O agente usa o modelo de IA que você escolhe (Grok, da xAI, ou Claude, da Anthropic) com a sua própria conta nesses serviços; o que você manda a eles segue as políticas deles.</p>
+    <p>Quando você liga o acesso ao Gmail, o app pede ao Google só as permissões necessárias para ler, buscar e organizar e-mails em seu nome, no seu Mac. O app não vende, não compartilha e não usa esses dados para outra finalidade; apagar um e-mail exige a sua confirmação, e o que vai para a lixeira pode ser recuperado por 30 dias. Esse uso segue a <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Política de dados do usuário dos serviços de API do Google</a>, inclusive os requisitos de uso limitado.</p>
+
+    <h2>O site e as medições</h2>
+    <p>O site agentesgrok.com e as páginas de login e do console usam o Google Analytics 4 para medir visitas e cliques (por exemplo, quantas pessoas baixaram o app). Fazemos isso sem sinais de publicidade, sem remarketing e sem enviar e-mail, nome ou qualquer identificador seu: os endereços de página vão sem parâmetros, e os parâmetros de login são encobertos. Os cookies do Google Analytics servem só para distinguir visitas; os cookies de sessão do console servem para manter você logado.</p>
+
+    <h2>Por quanto tempo</h2>
+    <ul>
+      <li>Conta: enquanto ela existir. Você apaga a conta no console (Perfil › Apagar conta); os dados são removidos na hora, e as cópias de segurança são descartadas em até 30 dias.</li>
+      <li>Medições do site: 14 meses, o prazo configurado no Google Analytics.</li>
+      <li>Registros técnicos (erros e acessos ao servidor): até 30 dias.</li>
+    </ul>
+
+    <h2>Os seus direitos</h2>
+    <p>Você pode pedir a confirmação do tratamento, o acesso, a correção, a portabilidade e a exclusão dos seus dados, e revogar consentimentos, como prevê o artigo 18 da LGPD. Boa parte disso você faz sozinho no console (perfil, dados de uso, Macs, apagar a conta). Para o resto, fale com a gente pelos canais acima; respondemos em até 15 dias.</p>
+
+    <h2>Mudanças nesta política</h2>
+    <p>Quando esta política mudar, a data no topo muda junto e a versão nova fica publicada nesta mesma página. Mudanças que ampliem o uso dos seus dados serão avisadas no console antes de valer.</p>
+  </main>
+
+  <footer class="rodape">
+    <span>meu-bot é um produto da Coflow · CNPJ 41.490.672/0001-00</span>
+    <span><a href="/privacidade">Privacidade</a> · <a href="/termos">Termos de uso</a> · <a href="https://github.com/diegofornalha/meu-bot" rel="noopener">GitHub</a></span>
+  </footer>
+  <script src="/config.js"></script>
+  <script src="/analytics.js"></script>
+  <script src="/site/site.js"></script>
+</body>
+</html>
