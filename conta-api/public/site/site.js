@@ -4,6 +4,8 @@
   const cfg = window.MEU_BOT_CONTA || {};
   const $ = (id) => document.getElementById(id);
   // Staging se apresenta: faixa no topo da home, selo ao lado da marca e o título, para ninguém confundir com produção.
+  // Planos e respostas por canal: produção vende (R$ 97/mês com o chip da Coflow); staging é o ensaio, grátis para beta testers.
+  for (const el of document.querySelectorAll("[data-canal]")) el.hidden = el.dataset.canal !== (cfg.canal === "staging" ? "staging" : "producao");
   if (cfg.canal === "staging") {
     const r = $("rascunho"); if (r) r.hidden = false;
     const m = document.querySelector(".marca"); if (m) { const s = document.createElement("span"); s.className = "selo-canal"; s.textContent = "staging"; m.append(s); }
@@ -22,6 +24,7 @@
       const a = e.target instanceof Element ? e.target.closest("[data-ev]") : null;
       if (!a) return;
       if (a.dataset.ev === "link_celular") ga.evento("link_celular", { via: a.dataset.via || "whatsapp" });
+      else if (a.dataset.ev === "plano_interesse") ga.evento("plano_interesse", { plano: a.dataset.plano || "chip-coflow" });
       else ga.evento("baixar_mac", { origem: a.dataset.origem || "home" });
     });
   }
