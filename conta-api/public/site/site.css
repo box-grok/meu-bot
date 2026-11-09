@@ -31,6 +31,7 @@ h2 { font-size: 20px; margin: 0 0 12px; }
 .passos li { margin: 0 0 10px; }
 .rodape { margin-top: auto; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 18px 24px; max-width: 980px; width: 100%; margin-left: auto; margin-right: auto; color: var(--sub); font-size: 13px; }
 .rodape a { color: var(--sub); }
+.rodape .privacidade { flex-basis: 100%; font-size: 12px; opacity: .8; }
 /* Obrigado: três colunas com o símbolo do meu-bot se preenchendo a cada passo (1/3, 2/3, inteiro). */
 .passos-tres { max-width: 980px; background: color-mix(in srgb, var(--primario) 7%, var(--cartao)); border-color: color-mix(in srgb, var(--primario) 25%, var(--borda)); padding: 32px 28px; }
 .passos-tres h2 { text-align: center; margin-bottom: 26px; }
