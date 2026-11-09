@@ -27,6 +27,9 @@
       if (!d || typeof d.versao !== "string") { $("versao").textContent = "Versão mais nova em github.com/diegofornalha/meu-bot/releases"; return; }
       versao = d.versao;
       $("versao").textContent = ["Versão " + d.versao, data(d.publicadoEm), mb(d.tamanho)].filter(Boolean).join(" · ");
+      // Dados estruturados ganham a versão e a data da release (o Google executa o JS ao indexar).
+      const ld = $("ld-app");
+      if (ld) { try { const j = JSON.parse(ld.textContent); j.softwareVersion = d.versao; if (d.publicadoEm) j.datePublished = d.publicadoEm.slice(0, 10); if (d.tamanho > 0) j.fileSize = mb(d.tamanho); ld.textContent = JSON.stringify(j); } catch { /* fica como está */ } }
     })
     .catch(() => { $("versao").textContent = ""; });
 })();

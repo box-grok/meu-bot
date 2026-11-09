@@ -1,0 +1,6 @@
+# agentesgrok.com: a home do meu-bot. O console e a página de login ficam em outros hosts, fora do índice.
+User-agent: *
+Allow: /
+Disallow: /obrigado
+Disallow: /download/
+Sitemap: https://agentesgrok.com/sitemap.xml

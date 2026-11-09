@@ -72,6 +72,7 @@ async function pagina(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname.startsWith("/__/auth/") || url.pathname.startsWith("/__/firebase/")) return handlerFirebase(req, env, url);
   // A raiz do host de login não é uma página: quem chega aqui à mão vai para o console da conta.
   if (url.pathname === "/" || url.pathname === "/index.html") return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}/account/overview`, 302), {});
+  if (url.pathname === "/robots.txt") return comCabecalhos(robotsFechado(), {});
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ apiKey: env.FIREBASE_API_KEY, authDomain: env.FIREBASE_AUTH_DOMAIN, projectId: env.FIREBASE_PROJECT_ID, api: env.API_ORIGIN, canal: env.CANAL, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, ga: gaDoEnv(env) }), {});
   // /enterprise e /enterprise/<slug> (como o Rambox; /org/<slug> é apelido): a mesma página de login; sem slug ela
   // pergunta o endereço da organização, com slug mostra o cabeçalho dela (o JS lê o caminho).
@@ -89,6 +90,7 @@ const cspDoConsole = (env: Env): string => ["default-src 'self'", `script-src 's
  * como página de erro.
  */
 async function consolePagina(req: Request, env: Env, url: URL): Promise<Response> {
+  if (url.pathname === "/robots.txt") return comCabecalhos(robotsFechado(), {});
   if (url.pathname === "/config.js") return comCabecalhos(configJs({ api: env.API_ORIGIN, auth: env.AUTH_ORIGIN, console: env.CONSOLE_ORIGIN, site: env.SITE_ORIGIN, canal: env.CANAL, ga: gaDoEnv(env) }), {});
   const caminho = /\.[a-z0-9]{1,8}$/i.test(url.pathname) && !url.pathname.endsWith(".html") ? url.pathname : "/console/index.html";
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
@@ -139,6 +141,8 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
   return comCabecalhos(cors(req, env, res), {});
 }
 
+/** Login e console não são para indexar: robots.txt fecha tudo nesses hosts (a home tem o dela em public/site/). */
+const robotsFechado = (): Response => new Response("User-agent: *\nDisallow: /\n", { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
 /** A home: página, "obrigado" (que dispara o download), a versão mais nova em JSON e o redirecionamento ao asset do GitHub. */
 const cspDoSite = (env: Env): string => {
   const ga = extraGa(env);
@@ -159,7 +163,9 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
     if (url.pathname.endsWith(".json")) return comCabecalhos(json(d ?? { erro: "release não encontrada" }, d === null ? 503 : 200, { "cache-control": "public, max-age=300" }), {});
     return comCabecalhos(Response.redirect(d?.url ?? `https://github.com/${REPO}/releases/latest`, 302), { "cache-control": "no-store" });
   }
-  const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : url.pathname;
+  // robots.txt, sitemap.xml e llms.txt vivem em public/site/ e saem na raiz do host.
+  const raiz: Record<string, string> = { "/robots.txt": "/site/robots.txt", "/sitemap.xml": "/site/sitemap.xml", "/llms.txt": "/site/llms.txt" };
+  const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : raiz[url.pathname] ?? url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
   return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store" });
