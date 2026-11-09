@@ -18,9 +18,13 @@ import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
 import { deletePerfil, getAdminFirebase, getAdminVisao, patchLicenca, postAdminSenha, postAtenderPedido, putAdminSenha, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
 import { CSP_GA, gaIds } from "./analytics-core.js";
+import { paraHttps } from "./site-core.js";
 import { deleteMembro, deleteOrg, getOrg, getOrgPublico, getOrgs, patchAdminOrg, patchMembro, patchOrg, postMembro, postOrg } from "./rotas/orgs.js";
 
 const SEGURANCA: Record<string, string> = {
+  // HSTS: um ano, só este host (auth., console. e conta. passam por aqui e ganham o seu). Sem includeSubDomains de
+  // propósito: os subdomínios do `publicar` e as máquinas não são deste Worker.
+  "strict-transport-security": "max-age=31536000",
   "x-content-type-options": "nosniff",
   "referrer-policy": "no-referrer",
   "x-frame-options": "DENY",
@@ -176,6 +180,9 @@ export default {
     const url = new URL(req.url);
     const origem = `https://${url.host}`;
     try {
+      // http:// chega aqui com o conteúdo inteiro (o Worker atende os dois): vira 301 para o https antes de qualquer rota.
+      const seguro = paraHttps(req.url);
+      if (seguro !== null) return comCabecalhos(Response.redirect(seguro, 301), {});
       if (origem === env.SITE_ORIGIN) return await sitePagina(req, env, url);
       if (origem === env.SITE_ORIGIN.replace("https://", "https://www.")) return comCabecalhos(Response.redirect(`${env.SITE_ORIGIN}${url.pathname}${url.search}`, 301), {});
       return origem === env.AUTH_ORIGIN ? await pagina(req, env, url) : origem === env.CONSOLE_ORIGIN ? await consolePagina(req, env, url) : await api(req, env, url);
