@@ -60,3 +60,11 @@ h2 { font-size: 20px; margin: 0 0 12px; }
 .novidades .release h2 { margin-top: 0; }
 .novidades .release h3, .novidades .release h4 { font-size: 16px; margin: 16px 0 6px; }
 .novidades .release code { font-size: 13px; background: var(--ghost); padding: 1px 5px; border-radius: 5px; }
+
+/* Obrigado, passo 2: o caminho do "Abrir Mesmo Assim" grifado, com o ⚠️ pulsando (quem pede menos movimento vê parado). */
+.colunas p.alerta { display: flex; gap: 10px; align-items: flex-start; margin-top: 12px; padding: 12px 14px; border-radius: 12px; color: var(--texto); background: color-mix(in srgb, #f5a524 16%, var(--cartao)); border: 1px solid color-mix(in srgb, #f5a524 55%, var(--borda)); box-shadow: 0 0 0 0 rgb(245 165 36 / .45); animation: alerta-brilho 2.4s ease-in-out infinite; }
+.colunas p.alerta strong { font-weight: 650; }
+.alerta-ico { font-size: 20px; line-height: 1.2; flex: none; display: inline-block; transform-origin: 50% 80%; animation: alerta-ico 2.4s ease-in-out infinite; }
+@keyframes alerta-brilho { 0%, 100% { box-shadow: 0 0 0 0 rgb(245 165 36 / .40); } 50% { box-shadow: 0 0 0 7px rgb(245 165 36 / 0); } }
+@keyframes alerta-ico { 0%, 60%, 100% { transform: rotate(0) scale(1); } 66% { transform: rotate(-12deg) scale(1.15); } 74% { transform: rotate(10deg) scale(1.15); } 82% { transform: rotate(-6deg) scale(1.08); } 90% { transform: rotate(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .colunas p.alerta, .alerta-ico { animation: none; } }
