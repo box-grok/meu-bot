@@ -10,6 +10,8 @@ export interface Env {
   CONSOLE_ORIGIN: string;
   /** A home (agentesgrok.com): "Baixar para macOS". `www.` redireciona para ela. */
   SITE_ORIGIN: string;
+  /** Google Analytics 4 do site: um ou mais IDs "G-…" separados por vírgula; vazio ou ausente = sem tag. */
+  GA_ID?: string;
   FIREBASE_PROJECT_ID: string;
   FIREBASE_API_KEY: string;
   FIREBASE_AUTH_DOMAIN: string;

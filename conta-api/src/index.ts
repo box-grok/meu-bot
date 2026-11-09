@@ -133,9 +133,22 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
 }
 
 /** A home: página, "obrigado" (que dispara o download), a versão mais nova em JSON e o redirecionamento ao asset do GitHub. */
-const cspDoSite = "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+/** Com GA_ID, a CSP libera só a tag do Google (gtag.js) e os destinos onde ela entrega os dados; sem GA_ID, só o próprio site. */
+const GA_ID_RE = /^G-[A-Z0-9]{6,12}$/;
+/** Os IDs válidos de GA_ID (lista separada por vírgula), já limpos; null se não sobra nenhum. */
+const gaId = (env: Env): string | null => { const ids = (env.GA_ID ?? "").split(",").map((x) => x.trim()).filter((x) => GA_ID_RE.test(x)); return ids.length > 0 ? [...new Set(ids)].join(",") : null; };
+const cspDoSite = (env: Env): string => {
+  const ga = gaId(env) !== null;
+  return [
+    "default-src 'self'",
+    `script-src 'self'${ga ? " https://www.googletagmanager.com" : ""}`,
+    `connect-src 'self'${ga ? " https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com" : ""}`,
+    `img-src 'self' data:${ga ? " https://*.google-analytics.com https://*.googletagmanager.com" : ""}`,
+    "style-src 'self'", "base-uri 'none'", "form-action 'none'", "frame-ancestors 'none'",
+  ].join("; ");
+};
 async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
-  if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL }), {});
+  if (url.pathname === "/config.js") return comCabecalhos(configJs({ console: env.CONSOLE_ORIGIN, canal: env.CANAL, ga: gaId(env) ?? "" }), {});
   // "Console da conta" e "Não tem uma conta?" na home: sem depender de JS, o site manda ao console do ambiente certo.
   if (url.pathname === "/console" || url.pathname.startsWith("/account")) return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}${url.pathname.startsWith("/account") ? url.pathname : "/account/overview"}`, 302), { "cache-control": "no-store" });
   if (url.pathname === "/download/mac" || url.pathname === "/download/mac.json") {
@@ -146,7 +159,7 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
-  return comCabecalhos(res, { "content-security-policy": cspDoSite, "cache-control": "no-store" });
+  return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store" });
 }
 
 export default {
