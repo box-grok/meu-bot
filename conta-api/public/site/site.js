@@ -4,12 +4,14 @@
   const cfg = window.MEU_BOT_CONTA || {};
   const $ = (id) => document.getElementById(id);
   // Google Analytics 4 (só quando o Worker manda o ID): visualizações de página do site, sem sinais de anúncios.
-  if (typeof cfg.ga === "string" && /^G-[A-Z0-9]{6,12}$/.test(cfg.ga)) {
+  // Pode haver mais de um ID (vírgula): cada propriedade recebe as mesmas visualizações e eventos.
+  const gaIds = typeof cfg.ga === "string" ? cfg.ga.split(",").filter((x) => /^G-[A-Z0-9]{6,12}$/.test(x)) : [];
+  if (gaIds.length > 0) {
     window.dataLayer = window.dataLayer || [];
     window.gtag = function () { window.dataLayer.push(arguments); };
     window.gtag("js", new Date());
-    window.gtag("config", cfg.ga, { allow_google_signals: false, allow_ad_personalization_signals: false });
-    const s = document.createElement("script"); s.async = true; s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(cfg.ga)}`; document.head.append(s);
+    for (const id of gaIds) window.gtag("config", id, { allow_google_signals: false, allow_ad_personalization_signals: false });
+    const s = document.createElement("script"); s.async = true; s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(gaIds[0])}`; document.head.append(s);
   }
   /** Evento do Analytics (só com a tag ligada): "baixar_mac" no clique do botão e quando a página de obrigado dispara o download. */
   const evento = (nome, params) => { if (typeof window.gtag === "function") window.gtag("event", nome, params); };
