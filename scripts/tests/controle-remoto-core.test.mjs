@@ -171,3 +171,16 @@ test("settings: desligado, sem execução e sem token por padrão; token inváli
   assert.deepEqual([ruim.mcpLigado, ruim.mcpExecucao, ruim.mcpPorta, ruim.mcpToken], [false, true, null, ""], "execução fora do formato cai no padrão (ligada); só `false` explícito desliga");
   assert.equal(normalizeSettings({ mcpExecucao: false }).mcpExecucao, false);
 });
+
+test("decidirNavegador: socket quando a aba está aberta; abrir quando só a janela está; erro quando nem a janela, ou quando há várias e ninguém disse qual", () => {
+  const { decidirNavegador } = createRequire(import.meta.url)("../../dist/main/controle-remoto/controle-remoto-core.js");
+  assert.deepEqual(decidirNavegador(undefined, ["box-2"], ["box-2"]), { acao: "socket", host: "box-2" });
+  assert.deepEqual(decidirNavegador(undefined, [], ["box-2"]), { acao: "abrir", host: "box-2" }, "aba fechada, janela aberta: o app abre a aba");
+  assert.deepEqual(decidirNavegador("box-2", [], ["box-2", "vps"]), { acao: "abrir", host: "box-2" });
+  assert.deepEqual(decidirNavegador("vps", ["box-2"], ["box-2", "vps"]), { acao: "abrir", host: "vps" });
+  assert.equal(decidirNavegador(undefined, [], []).acao, "erro");
+  assert.match(decidirNavegador(undefined, [], []).erro, /nenhuma janela de máquina/);
+  assert.match(decidirNavegador(undefined, ["a", "b"], ["a", "b"]).erro, /várias máquinas.*maquina/);
+  assert.match(decidirNavegador(undefined, [], ["a", "b"]).erro, /várias máquinas abertas/);
+  assert.match(decidirNavegador("outra", ["a"], ["a"]).erro, /"outra" não está aberta.*abertas: a/);
+});

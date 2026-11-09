@@ -12,6 +12,15 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Controle externo: o Navegador abre sozinho
+
+#### Melhorado
+
+- **O "🤖 agente pode usar" não depende mais de a aba Navegador estar aberta.** Quando o Claude Code ou o Cursor pedem o
+  Navegador de uma máquina cuja janela está aberta mas a aba não, o app abre a aba em segundo plano, espera o serviço
+  subir e atende; antes dava "nenhuma aba Navegador aberta". Sem janela da máquina, ou com o 🤖 desligado nela, o erro
+  diz exatamente isso.
+
 ### Link direto para uma seção das Configurações
 
 #### Novo

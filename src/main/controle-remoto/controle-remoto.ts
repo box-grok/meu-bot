@@ -7,18 +7,18 @@
  * Desligado até a pessoa ligar em Configurações; o token fica gravado ao desligar (religar não obriga a reconfigurar
  * os clientes; "Gerar outro" é o que invalida).
  */
-import { app } from "electron";
+import { app, type BrowserWindow } from "electron";
 import fs from "node:fs";
 import http from "node:http";
 import type { ControleRemotoView } from "../../shared/ipc";
 import { registrarAcao } from "../app/depuracao";
 import { getControleRemoto, setControleRemoto } from "../app/settings";
 import { appTitle, produto } from "../app/variant";
-import { allMainWindows, hostOfWindow } from "../app/windows";
+import { allMainWindows, hostOfWindow, sendWhenLoaded } from "../app/windows";
 import { log } from "../maquina/backend";
 import { navSocketPath } from "../navegador/nav-api";
 import { termSocketPath } from "../terminal/term-api";
-import { MAX_CORPO, configClaudeCode, configCursor, donoDe, erroRpc, gerarToken, pedidoOk, responderJsonRpc, roteador, urlMcp } from "./controle-remoto-core";
+import { MAX_CORPO, configClaudeCode, configCursor, decidirNavegador, donoDe, erroRpc, gerarToken, pedidoOk, responderJsonRpc, roteador, urlMcp } from "./controle-remoto-core";
 
 let servidor: http.Server | null = null;
 let portaAtiva = 0;
@@ -96,21 +96,34 @@ async function handle(req: http.IncomingMessage, res: http.ServerResponse): Prom
 
 /* ---------- As ferramentas: tudo pelos sockets do próprio app ---------- */
 type Dono = ReturnType<typeof donoDe>;
-function chamar(nome: string, args: Record<string, unknown>, dono: Dono): Promise<unknown> {
+async function chamar(nome: string, args: Record<string, unknown>, dono: Dono): Promise<unknown> {
   const d = roteador(nome, args);
-  return pedir(d.alvo === "terminal" ? termSocketPath() : socketNavegador(d.maquina), d.rota, d.corpo, dono);
+  return pedir(d.alvo === "terminal" ? termSocketPath() : await socketNavegador(d.maquina), d.rota, d.corpo, dono);
 }
 
-/** O Navegador da máquina pedida (ou da única aberta): o socket só existe com a aba Navegador aberta e o 🤖 ligado. */
-function socketNavegador(maquina: string | undefined): string {
-  const abertos = allMainWindows().map((w) => hostOfWindow(w)).filter((h): h is string => h !== undefined && fs.existsSync(navSocketPath(h)));
-  if (maquina !== undefined) {
-    if (!abertos.includes(maquina)) throw new Error(`o Navegador de "${maquina}" não está aberto (abertos: ${abertos.join(", ") || "nenhum"}); abra a aba Navegador no app`);
-    return navSocketPath(maquina);
+/** Quanto tempo esperar o socket do Navegador subir depois de pedir à janela que abra a aba. */
+const NAV_ABRIR_PRAZO_MS = 15_000;
+/**
+ * O Navegador da máquina pedida (ou da única aberta). O socket só existe com a aba Navegador aberta e o 🤖 ligado;
+ * com a aba fechada mas a janela da máquina aberta, pede ao renderer que abra a aba (em segundo plano) e espera o
+ * socket. Sem socket no prazo, o 🤖 "agente pode usar" está desligado nessa máquina: só a pessoa religa.
+ */
+async function socketNavegador(maquina: string | undefined): Promise<string> {
+  const janelas = allMainWindows().map((w) => ({ win: w, host: hostOfWindow(w) })).filter((x): x is { win: BrowserWindow; host: string } => x.host !== undefined);
+  const abertos = janelas.map((x) => x.host).filter((h) => fs.existsSync(navSocketPath(h)));
+  const d = decidirNavegador(maquina, abertos, janelas.map((x) => x.host));
+  if (d.acao === "erro") throw new Error(d.erro);
+  const caminho = navSocketPath(d.host);
+  if (d.acao === "socket") return caminho;
+  const win = janelas.find((x) => x.host === d.host)!.win;
+  log(`[controle remoto] Navegador de ${d.host} fechado: pedindo à janela que abra a aba`);
+  sendWhenLoaded(win, "browser:ask", { kind: "open" });
+  const fim = Date.now() + NAV_ABRIR_PRAZO_MS;
+  while (Date.now() < fim) {
+    await new Promise((r) => setTimeout(r, 300));
+    if (fs.existsSync(caminho)) return caminho;
   }
-  if (abertos.length === 1) return navSocketPath(abertos[0]!);
-  if (abertos.length === 0) throw new Error("nenhuma aba Navegador aberta (ou o 🤖 agente pode usar está desligado); abra-a no app");
-  throw new Error(`o Navegador está aberto em várias máquinas (${abertos.join(", ")}): diga qual em "maquina"`);
+  throw new Error(`o Navegador de "${d.host}" não subiu em ${NAV_ABRIR_PRAZO_MS / 1000} s: o 🤖 "agente pode usar" deve estar desligado nessa máquina; ligue na aba Navegador`);
 }
 
 /** Pedido a um socket do próprio app, com a identidade de quem pede (o selo "✳️ Cursor (MCP) · digitou"). */

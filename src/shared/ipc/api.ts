@@ -97,7 +97,7 @@ export interface MainEvents {
   /** Navegador: atalho Cmd+<tecla> apertado com o foco dentro de um webview (o app trata). */
   "browser:key": { key: string; shift: boolean };
   /** Navegador: o agente (pelas ações) pede uma aba nova, ativar ou fechar uma aba (id do webContents). */
-  "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "activate" | "close"; wcId: number };
+  "browser:ask": { kind: "new-tab"; url: string; fundo?: boolean } | { kind: "open" } | { kind: "activate" | "close"; wcId: number };
   /** Terminal: o controle local (term-api.ts) pede uma aba nova de terminal nesta janela. */
   "term:ask": { kind: "new" };
   /** Controle remoto (MCP), ferramenta `pagina_abrir`: põe esta página na frente da janela. */

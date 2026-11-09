@@ -79,6 +79,25 @@ export const ferramenta = (nome: string): Ferramenta | undefined => FERRAMENTAS.
 export const FERRAMENTAS_EXECUCAO: readonly string[] = ["terminal_digitar", "nav_js"];
 export const ferramentasVisiveis = (execucao: boolean): Ferramenta[] => FERRAMENTAS.filter((f) => execucao || !FERRAMENTAS_EXECUCAO.includes(f.name));
 
+/**
+ * Qual Navegador atende um pedido do MCP: o socket só existe com a aba Navegador aberta e o 🤖 ligado (`abertos`), mas
+ * uma janela de máquina aberta (`janelas`) basta para o app abrir a aba sozinho e o socket subir. Puro, testado.
+ */
+export type DecisaoNavegador = { acao: "socket" | "abrir"; host: string } | { acao: "erro"; erro: string };
+export function decidirNavegador(maquina: string | undefined, abertos: readonly string[], janelas: readonly string[]): DecisaoNavegador {
+  const lista = (xs: readonly string[]): string => xs.join(", ") || "nenhuma";
+  if (maquina !== undefined) {
+    if (abertos.includes(maquina)) return { acao: "socket", host: maquina };
+    if (janelas.includes(maquina)) return { acao: "abrir", host: maquina };
+    return { acao: "erro", erro: `a máquina "${maquina}" não está aberta no app (abertas: ${lista(janelas)}); abra a janela dela` };
+  }
+  if (abertos.length === 1) return { acao: "socket", host: abertos[0]! };
+  if (abertos.length > 1) return { acao: "erro", erro: `o Navegador está aberto em várias máquinas (${lista(abertos)}): diga qual em "maquina"` };
+  if (janelas.length === 1) return { acao: "abrir", host: janelas[0]! };
+  if (janelas.length === 0) return { acao: "erro", erro: "nenhuma janela de máquina aberta no app; abra uma pelo seletor" };
+  return { acao: "erro", erro: `o app tem várias máquinas abertas (${lista(janelas)}): diga qual em "maquina"` };
+}
+
 /** Para onde cada ferramenta vai: socket do terminal (term-api.ts, que também tem as rotas do app) ou do Navegador (nav-api.ts). */
 export type Destino =
   | { alvo: "terminal"; rota: string; corpo?: Record<string, unknown> }
