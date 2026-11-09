@@ -173,7 +173,7 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   // "Console da conta" e "Não tem uma conta?" na home: sem depender de JS, o site manda ao console do ambiente certo.
   if (url.pathname === "/console" || url.pathname.startsWith("/account")) return comCabecalhos(Response.redirect(`${env.CONSOLE_ORIGIN}${url.pathname.startsWith("/account") ? url.pathname : "/account/overview"}`, 302), { "cache-control": "no-store" });
   if (url.pathname === "/download/mac" || url.pathname === "/download/mac.json") {
-    const d = await downloadMac();
+    const d = await downloadMac(fetch, env.CANAL === "staging" ? "staging" : "producao");
     if (url.pathname.endsWith(".json")) return comCabecalhos(json(d ?? { erro: "release não encontrada" }, d === null ? 503 : 200, { "cache-control": "public, max-age=300" }), {});
     return comCabecalhos(Response.redirect(d?.url ?? `https://github.com/${REPO}/releases/latest`, 302), { "cache-control": "no-store" });
   }
