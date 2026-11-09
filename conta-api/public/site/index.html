@@ -38,7 +38,8 @@
     "inLanguage": "pt-BR",
     "isAccessibleForFree": true,
     "offers": [
-      { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "BRL" }
+      { "@type": "Offer", "name": "Teste com o seu número", "description": "14 dias grátis, sem cartão", "price": "0", "priceCurrency": "BRL" },
+      { "@type": "Offer", "name": "Agente com o chip da Coflow", "description": "por mês, com um número dedicado ao agente", "price": "97", "priceCurrency": "BRL" }
     ],
     "publisher": { "@type": "Organization", "name": "Coflow", "url": "https://agentesgrok.com/", "taxID": "41.490.672/0001-00" },
     "sameAs": ["https://github.com/diegofornalha/meu-bot"]
@@ -124,17 +125,32 @@
   <details class="mt24"><summary>Por que o macOS pede confirmação na primeira abertura?</summary><p>O app ainda não é notarizado pela Apple. Na primeira vez, clique com o botão direito no meu-bot e escolha <em>Abrir</em>. Isso só acontece uma vez.</p></details>
 </section>
 
-<!-- 6. Planos: o que o código faz hoje. Pro = Navegador, Gmail e CRM do agente; sem cobrança automática. -->
-<section id="precos">
+<!-- 6. Planos. Produção: teste com o próprio número, R$ 97/mês com o chip do agente da Coflow, próprio chip sob cotação.
+     Staging é o ensaio: grátis para beta testers. O site.js mostra a seção do canal (sem JS, fica a de produção). -->
+<section id="precos" data-canal="producao">
   <h2>Planos</h2>
+  <p class="sub">Teste com o seu número sem pagar. Para contratar, o agente atende num chip nosso, pronto para usar.</p>
+  <div class="grid3 precos mt24">
+    <div class="card"><h3>Teste com o seu número</h3><div class="preco">R$ 0 <small>por 14 dias</small></div>
+      <ul class="ok"><li>Sem cartão de crédito</li><li>O agente no seu WhatsApp, no seu Mac</li><li>Navegador, Gmail e CRM do agente liberados no teste</li></ul>
+      <p class="mini">No fim dos 14 dias nada é cobrado: a conta volta ao básico até você contratar.</p>
+      <a class="btn sec soMac" href="/obrigado" data-ev="baixar_mac" data-origem="teste">Testar grátis por 14 dias</a></div>
+    <div class="card dest"><h3>Agente com o chip da Coflow</h3><div class="preco">R$ 97 <small>/mês</small></div>
+      <ul class="ok"><li>Um número nosso, dedicado ao seu agente</li><li>Pronto para usar: você conecta no app e configura</li><li>Navegador, Gmail e CRM do agente</li><li>Mais de um Mac na mesma conta</li></ul>
+      <a class="btn" href="/console" data-ev="plano_interesse" data-plano="chip-coflow">Contratar pelo console</a></div>
+    <div class="card"><h3>Com o seu próprio chip</h3><div class="preco">Sob cotação</div>
+      <ul class="ok"><li>O agente no seu número</li><li>Personalização do atendimento</li><li>Tudo do plano com o chip da Coflow</li></ul>
+      <p class="mini">Cada caso é diferente: a gente conversa e passa o valor.</p>
+      <a class="btn sec" href="/console" data-ev="plano_interesse" data-plano="proprio-chip">Pedir cotação</a></div>
+  </div>
+</section>
+<section id="precos-beta" data-canal="staging" hidden>
+  <h2>Ensaio: grátis para beta testers</h2>
+  <p class="sub">Esta é a versão de ensaio do meu-bot. Quem entra agora usa tudo sem pagar e, em troca, conta para a gente o que funcionou e o que não funcionou.</p>
   <div class="grid2 precos mt24">
-    <div class="card"><h3>Free</h3><div class="preco">R$ 0</div>
-      <ul class="ok"><li>Agente no WhatsApp, no seu número</li><li>Conversas e terminal no app</li><li>Um Mac na conta</li><li>Atualizações automáticas</li></ul>
-      <a class="btn sec soMac" href="/obrigado" data-ev="baixar_mac" data-origem="free">Baixar grátis</a></div>
-    <div class="card dest"><h3>Pro</h3><div class="preco">14 dias grátis <small>para conta nova</small></div>
-      <ul class="ok"><li>Tudo do Free</li><li>Navegador e Gmail do agente</li><li>CRM do WhatsApp</li><li>Mais de um Mac na mesma conta</li></ul>
-      <p class="mini">No fim do teste, a conta volta para o Free sozinha, sem cobrança. Para continuar no Pro, você fala com a gente pelo console da conta.</p>
-      <a class="btn soMac" href="/obrigado" data-ev="baixar_mac" data-origem="pro">Testar o Pro grátis</a></div>
+    <div class="card dest"><h3>Beta tester</h3><div class="preco">R$ 0 <small>durante o ensaio</small></div>
+      <ul class="ok"><li>Agente no WhatsApp, no seu número</li><li>Navegador, Gmail e CRM do agente</li><li>Mais de um Mac na mesma conta</li><li>Seu feedback direto com quem faz o produto</li></ul>
+      <a class="btn soMac" href="/obrigado" data-ev="baixar_mac" data-origem="beta">Entrar no ensaio</a></div>
   </div>
 </section>
 
@@ -144,7 +160,7 @@
   <details><summary>Funciona no Windows ou em Mac Intel?</summary><p>Por enquanto, só em Mac com chip Apple (M1 ou mais novo). Se o seu Mac é Intel, <a href="https://github.com/diegofornalha/meu-bot/issues" rel="noopener">avise a gente</a> e te contamos quando houver outra versão.</p></details>
   <details><summary>Meu WhatsApp corre risco de bloqueio?</summary><p>O meu-bot conecta pelo mesmo protocolo do WhatsApp Web, não pela API oficial da Meta. É o seu número, respondendo a quem fala com você. O que leva a bloqueio é comportamento de spam: disparo em massa, lista fria, mensagem igual para muita gente. Use com os seus clientes e não com listas compradas. A conexão pela API oficial da Meta está nos planos.</p></details>
   <details><summary>O agente pode mandar algo errado para meu cliente?</summary><p>Você define o que ele responde sozinho e o que precisa da sua aprovação. Em ações sensíveis, ele sempre pergunta antes, e você pode pausar um contato ou o agente inteiro a qualquer momento.</p></details>
-  <details><summary>O que acontece no fim dos 14 dias?</summary><p>A conta volta para o Free sozinha. Não há cartão cadastrado, então nada é cobrado. O Navegador, o Gmail e o CRM do agente ficam desligados até você ativar o Pro.</p></details>
+  <details><summary>O que acontece no fim dos 14 dias?</summary><p data-canal="producao">Nada é cobrado: não há cartão cadastrado. O Navegador, o Gmail e o CRM do agente ficam desligados até você contratar, por R$ 97 por mês com o chip da Coflow ou sob cotação com o seu próprio chip.</p><p data-canal="staging" hidden>Nesta versão de ensaio, nada muda: beta tester continua usando tudo sem pagar enquanto o ensaio durar.</p></details>
   <details><summary>Meus dados vão para onde?</summary><p>O app e o agente rodam na sua máquina; conversas e senhas ficam nela. Este site mede visitas com o Google Analytics, sem anúncios e sem dados pessoais. A conta meu-bot guarda só e-mail, nome e o plano.</p></details>
 </section>
 

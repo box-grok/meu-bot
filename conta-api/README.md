@@ -80,7 +80,8 @@ nesta versão: o rodapé do site diz que medimos visitas sem anúncios e sem dad
 | Página | Evento | Parâmetros (listas fechadas) |
 |---|---|---|
 | site | `page_view` | `page_location` limpo |
-| site | `baixar_mac` | `origem`: na home, qual CTA: `hero`, `free`, `pro`, `final`, `fixo`; na obrigado: `obrigado`, `obrigado-ver`, `obrigado-link` |
+| site | `baixar_mac` | `origem`: na home, qual CTA: `hero`, `teste`, `final`, `fixo` (staging: `beta`); na obrigado: `obrigado`, `obrigado-ver`, `obrigado-link` |
+| site | `plano_interesse` | `plano`: `chip-coflow` (R$ 97/mês), `proprio-chip` (cotação); os botões levam ao console da conta |
 | site | `link_celular` | `via`: `whatsapp`, `email` (no celular e no Windows, o download vira "mandar o link para o meu Mac") |
 | site | `download_iniciado` | `versao` (da release) |
 | login | `page_view` | `tipo`: `app`, `console`, `sem-app`, `org-pergunta`, `org-nao-achada`, `org-redirect` |
