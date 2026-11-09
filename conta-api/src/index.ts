@@ -172,7 +172,9 @@ async function sitePagina(req: Request, env: Env, url: URL): Promise<Response> {
   const caminho = url.pathname === "/" || url.pathname === "/index.html" ? "/site/index.html" : url.pathname === "/obrigado" ? "/site/obrigado.html" : raiz[url.pathname] ?? url.pathname;
   const res = await env.ASSETS.fetch(new Request(new URL(caminho, url.origin).toString(), { method: "GET", headers: req.headers }));
   // Sem cache (como no console): o site muda junto com o Worker, e um CSS velho de 5 min já mostrou a página quebrada.
-  return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store" });
+  // Staging é a mesma home em revisão: fora do Google, para não competir com agentesgrok.com.
+  const robos = env.CANAL === "staging" ? { "x-robots-tag": "noindex, nofollow" } : {};
+  return comCabecalhos(res, { "content-security-policy": cspDoSite(env), "cache-control": "no-store", ...robos });
 }
 
 export default {
