@@ -27,12 +27,17 @@
   const base = { send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false };
   if (ambiente === "staging") base.debug_mode = true;
   // `set` vale para todos os IDs; o config de cada ID repete as opções num objeto próprio, porque o gtag guarda a referência.
+  // A tag da propriedade de produção (criada pelo Firebase) ainda manda um page_view automático com a URL real, ignorando
+  // tudo isto (testado: set, config antes/depois do carregamento, URL trocada durante o carregamento). Por isso o nosso
+  // page_view leva `manual: true`, e no Analytics uma regra "Modificar eventos" renomeia o automático para page_view_tag;
+  // as chaves sensíveis da query (state, challenge, code…) são encobertas na propriedade. O fragmento (#code&verifier)
+  // nunca vai: o gtag não manda fragmento.
   window.gtag("set", { ...base });
   for (const id of ids) window.gtag("config", id, { ...base });
   const s = document.createElement("script"); s.async = true; s.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(ids[0])}`; document.head.append(s);
   /** Um evento com `ambiente`; os parâmetros vêm de listas fechadas (nada pessoal). */
   const evento = (nome, params) => { window.gtag("event", nome, { ambiente, ...(params || {}) }); };
   /** Uma visualização de página com a URL limpa (SPA do console chama a cada troca de seção). */
-  const pagina = (caminho, params) => { const cam = fixar(caminho); window.gtag("event", "page_view", { ambiente, page_location: `${location.origin}${cam}`, page_path: cam, page_title: document.title, ...(params || {}) }); };
+  const pagina = (caminho, params) => { const cam = fixar(caminho); window.gtag("event", "page_view", { ambiente, manual: true, page_location: `${location.origin}${cam}`, page_path: cam, page_title: document.title, ...(params || {}) }); };
   window.meuBotGa = { pagina, evento, ligado: true, ambiente };
 })();
