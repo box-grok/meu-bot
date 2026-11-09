@@ -31,9 +31,10 @@ import { registerUsuariosMacIpc, showUsuariosMac } from "./usuarios-mac/usuarios
 import { hostFromArgv, reliefHostFromArgv } from "./app/shortcuts";
 import { initRelief, showRelief } from "./app/relief";
 import { listSshHosts } from "./maquina/sshConfig";
-import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost } from "./app/windows";
+import { allMainWindows, broadcast, disposeWindows, getLastFocusedHost, hostOfWindow, lastFocusedWindow, openMainWindow, sendToHost, sendWhenLoaded } from "./app/windows";
 import { esquemaDe } from "./app/variant-core";
 import { aoReceberUrl, instalarOpenUrl, registrarEsquema, tratarArgv } from "./conta/deep-link";
+import { parseLinkConfiguracoes } from "./conta/deep-link-core";
 import { aoRetornarAuth, aoRetorno, aoSair, contaEntrada } from "./conta/conta";
 
 // Cada produto além do meu-bot tem userData próprio (senão dividiria pasta e trava de instância). Antes de tudo.
@@ -144,7 +145,20 @@ app.whenReady().then(() => {
   // Deep link do login da conta: registra o esquema e passa a ouvir as URLs (as que chegaram antes saem agora);
   // conta.ts confere o state e troca o code pela sessão.
   registrarEsquema(ESQUEMA);
-  aoReceberUrl((url) => { void aoRetornarAuth(url); });
+  // `meu-bot://app/v1/settings?id=sobre` (molde do Grok Bot): abre as Configurações da janela em uso naquela seção;
+  // sem janela de máquina, reabre a última; sem nenhuma, o seletor. Qualquer outra URL é o retorno do login.
+  aoReceberUrl((url) => {
+    const cfg = parseLinkConfiguracoes(url, ESQUEMA);
+    if (cfg === null) { void aoRetornarAuth(url); return; }
+    log(`[deep link] configurações: id "${cfg.id}" → ${cfg.grupo ?? "sem seção"}`);
+    const focada = BrowserWindow.getFocusedWindow() ?? lastFocusedWindow();
+    const ultimo = getLastFocusedHost();
+    const win = focada !== null && !focada.isDestroyed() && hostOfWindow(focada) !== undefined ? focada : ultimo !== null ? openMainWindow(ultimo, "shortcut") : null;
+    if (win === null) { showPicker(); return; }
+    if (win.isMinimized()) win.restore();
+    win.show(); win.focus(); app.focus({ steal: true });
+    sendWhenLoaded(win, "ui:settings", { grupo: cfg.grupo });
+  });
   // Saiu da conta (ou a API derrubou a sessão): as janelas de máquina fecham e o seletor volta, no cartão de login.
   aoSair(() => { if (caps().usuariosMac) return; for (const w of allMainWindows()) w.close(); showPicker(); });
   // A pessoa estava no navegador e clicou em "Abrir o meu-bot" (ou o login concluiu): o app vem para a frente, na

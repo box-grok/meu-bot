@@ -84,6 +84,15 @@ export function ligarConfiguracoes(): void {
   aoMudarConta(() => { if (ctx.dialog.open && !licensePanel.hidden) void loadLicensePanel(); });
   ctx.settingsBtn.addEventListener("click", () => openSettings());
   window.meuBot.on("ui:toggle-settings", () => { if (ctx.dialog.open) ctx.dialog.close(); else openSettings(); });
+  // Deep link `meu-bot://app/v1/settings?id=…`: abre (ou mantém aberto) e expande a seção; seção escondida nesta
+  // janela (sem cota, sem suporte, sem licença) ou id desconhecido = só as Configurações.
+  window.meuBot.on("ui:settings", ({ grupo }) => {
+    openSettings();
+    const g = grupo === null ? undefined : ctx.settingsGroups.find((d) => d.dataset["group"] === grupo);
+    if (g === undefined || g.hidden) return;
+    for (const other of ctx.settingsGroups) other.open = other === g;
+    g.scrollIntoView({ block: "start" });
+  });
   window.meuBot.on("chat:notice", ({ conversationId, text }) => { const tab = ctx.tabs.get(conversationId); if (tab !== undefined) { ctx.addNotice(tab, text, "warn"); ctx.offerClaudeLogin(tab, text); } });
   window.meuBot.on("chat:account", ({ host, status }) => {
     if (host !== ctx.windowHost) return;

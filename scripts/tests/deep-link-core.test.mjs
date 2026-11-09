@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
-const { parseRetornoAuth, urlDeArgv, ehUrlDoEsquema } = createRequire(import.meta.url)("../../dist/main/conta/deep-link-core.js");
+const { parseRetornoAuth, urlDeArgv, ehUrlDoEsquema, parseLinkConfiguracoes, GRUPOS_CONFIG } = createRequire(import.meta.url)("../../dist/main/conta/deep-link-core.js");
 const CODE = "a".repeat(43), STATE = "b".repeat(43);
 
 test("parseRetornoAuth: URL boa devolve code e state; host ou caminho servem", () => {
@@ -39,4 +39,17 @@ test("urlDeArgv e ehUrlDoEsquema: acha a URL entre os argumentos; só a do esque
   assert.equal(urlDeArgv(["--host=box"], "meu-bot"), null);
   assert.equal(ehUrlDoEsquema("Meu-Bot://auth", "meu-bot"), true);
   assert.equal(ehUrlDoEsquema("meu-bot:auth", "meu-bot"), false, "sem as barras não é a forma que a página manda");
+});
+
+test("parseLinkConfiguracoes: o formato do Grok Bot e o curto abrem a seção; apelidos do Grok Bot caem na nossa; id desconhecido abre sem seção", () => {
+  assert.deepEqual(parseLinkConfiguracoes("meu-bot://app/v1/settings?id=update-status", "meu-bot"), { grupo: "sobre", id: "update-status" });
+  assert.deepEqual(parseLinkConfiguracoes("meu-bot://settings?id=MCP", "meu-bot"), { grupo: "mcp", id: "mcp" });
+  assert.deepEqual(parseLinkConfiguracoes("meu-bot:///app/v1/settings/?id=security", "meu-bot"), { grupo: "seguranca", id: "security" });
+  for (const g of GRUPOS_CONFIG) assert.equal(parseLinkConfiguracoes(`meu-bot-staging://app/v1/settings?id=${g}`, "meu-bot-staging").grupo, g);
+  assert.deepEqual(parseLinkConfiguracoes("meu-bot://app/v1/settings?id=reset-computer", "meu-bot"), { grupo: null, id: "reset-computer" }, "card que não temos: abre sem seção");
+  assert.deepEqual(parseLinkConfiguracoes("meu-bot://app/v1/settings", "meu-bot"), { grupo: null, id: "" });
+  assert.equal(parseLinkConfiguracoes("meu-bot://app/v1/settings?id=sobre", "meu-bot-staging"), null, "esquema de outro produto não é nosso");
+  assert.equal(parseLinkConfiguracoes("meu-bot://auth?code=x&state=y", "meu-bot"), null, "o retorno do login segue para parseRetornoAuth");
+  assert.equal(parseLinkConfiguracoes("meu-bot://app/v2/settings?id=sobre", "meu-bot"), null);
+  assert.equal(parseLinkConfiguracoes("meu-bot://%zz", "meu-bot"), null, "URL inválida não derruba");
 });
