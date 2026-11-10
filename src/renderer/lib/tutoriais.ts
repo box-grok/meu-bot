@@ -912,7 +912,7 @@ export function guideView(t: Tutorial, status: WhatsappStatus | null, flags: Gui
 
 /**
  * Os tutoriais desta janela: o do suporte só com o pacote de suporte disponível; o do Grok só onde ele é
- * possível (null = ainda não consultado = mostra); o da guarda só onde ela é possível (null = esconde); os da trilha (`after`) só depois que o anterior foi
+ * possível, inclusive na máquina "local" (null = ainda não consultado = mostra); o da guarda só onde ela é possível (null = esconde); os da trilha (`after`) só depois que o anterior foi
  * concluído (`finished` é do chamador: concluir depende de flags e da máquina). Um `after` escondido esconde
  * quem depende dele (o 6 some junto com o 5).
  */

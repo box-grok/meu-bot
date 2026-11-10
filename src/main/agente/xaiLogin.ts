@@ -13,6 +13,7 @@ import { log } from "../maquina/backend";
 import { LOCAL_HOST } from "../maquina/localBackend";
 import { isValidHost } from "../app/settings";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
+import { cancelXaiLoginLocal, startXaiLoginLocal, xaiAuthInfoLocal, xaiLogoutLocal } from "./xaiLocal";
 
 const SSH_OPTS = [
   "-o", "BatchMode=yes", "-o", "ConnectTimeout=30", "-o", "ServerAliveInterval=10", "-o", "ServerAliveCountMax=3",
@@ -42,7 +43,8 @@ const PROXY_SH = `${BACKEND_DIR_SH}; if [ -f "$HOME/.config/systemd/user/meu-bot
 
 /** null = máquina sem o hermes-agent (ou inacessível). `email` leva o rótulo da credencial ativa; `proxy`, se o grok-4 já está preparado. */
 export async function xaiAuthInfo(host: string): Promise<ClaudeAuthInfo | null> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return null;
+  if (host === LOCAL_HOST) return xaiAuthInfoLocal();
+  if (!isValidHost(host)) return null;
   const r = await ssh(host, `command -v hermes >/dev/null 2>&1 || { echo present=0; exit 0; }; echo present=1; echo "status=$(hermes auth status xai-oauth 2>&1 | head -1)"; hermes auth list 2>/dev/null | sed -n '/^xai-oauth/,/^$/p' | grep '←' | head -1; ${PROXY_SH}`, 40_000);
   if (r.code !== 0 || !r.out.includes("present=1")) return null;
   const status = /status=(.*)/.exec(r.out)?.[1] ?? "";
@@ -52,7 +54,8 @@ export async function xaiAuthInfo(host: string): Promise<ClaudeAuthInfo | null> 
 }
 
 export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void): Promise<void> {
-  if (host === LOCAL_HOST || !isValidHost(host)) { send({ kind: "done", ok: false, text: "o login da xAI é para uma máquina por SSH" }); return Promise.resolve(); }
+  if (host === LOCAL_HOST) return startXaiLoginLocal(send);
+  if (!isValidHost(host)) { send({ kind: "done", ok: false, text: "máquina inválida" }); return Promise.resolve(); }
   if (current !== null) { send({ kind: "done", ok: false, text: `já há um login da xAI em andamento em ${current.host}` }); return Promise.resolve(); }
   return new Promise((resolve) => {
     // `-tt`: sem pseudo-terminal o `hermes auth add` não imprime o link e fica parado. O stdin fica
@@ -106,12 +109,14 @@ export function startXaiLogin(host: string, send: (ev: ClaudeLoginEvent) => void
 }
 
 export function cancelXaiLogin(): void {
+  if (cancelXaiLoginLocal()) return;
   if (current === null) return;
   try { current.child.kill("SIGTERM"); } catch { /* ok */ }
 }
 
 export async function xaiLogout(host: string): Promise<ClaudeAuthInfo | null> {
-  if (host === LOCAL_HOST || !isValidHost(host)) return null;
+  if (host === LOCAL_HOST) return xaiLogoutLocal();
+  if (!isValidHost(host)) return null;
   await ssh(host, "hermes auth logout xai-oauth 2>&1 | tail -2", 40_000);
   log(`[xai-login] ${host}: logout pedido`);
   return xaiAuthInfo(host);

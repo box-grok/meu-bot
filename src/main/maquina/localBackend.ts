@@ -54,6 +54,9 @@ export function claudeLoggedIn(): boolean {
 }
 
 const dir = (): string => path.join(app.getPath("userData"), "backend-local");
+/** Pasta do backend local (server.js, .env, providers.json). */
+export const localBackendDir = dir;
+export const localBackendPort = localPort;
 
 interface LocalState { child: ChildProcess; apiKey: string; startedAt: number }
 let state: LocalState | undefined;
