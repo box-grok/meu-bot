@@ -43,3 +43,18 @@ test("sem escolha gravada, o prelúdio grava o OpenClaw; uma escolha existente f
   const r2 = spawnSync("/bin/bash", ["-s"], { input: c.scriptLocal("cat \"$HOME/.local/share/meu-bot/whatsapp-agente\""), encoding: "utf8", env: { ...process.env, HOME: home } });
   assert.equal(r2.stdout.trim(), "picoclaw");
 });
+
+test("tail -F --pid: segue o arquivo e para quando o processo sai (o pareamento lê o QR assim)", { skip: !noMac && "só no macOS" }, () => {
+  const d = mkdtempSync(join(tmpdir(), "mb-wa-tail-"));
+  const r = bash(`L='${d}/log'; : > "$L"; ( echo linha1 >> "$L"; sleep 1; echo "linha 2" >> "$L"; sleep 1 ) & P=$!; tail -n +1 -F --pid=$P "$L" 2>/dev/null & T=$!; wait $P; wait $T; echo fim`);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /linha1\nlinha 2\n[\s\S]*fim/);
+  const s = bash(`printf 'a\\nb\\nc\\n' > '${d}/x'; tail -n 2 '${d}/x'`);
+  assert.equal(s.stdout, "b\nc\n", "sem --pid é o tail de sempre");
+});
+
+test("as funções do prelúdio valem num bash filho (os instaladores rodam como `bash arquivo.sh`)", { skip: !noMac && "só no macOS" }, () => {
+  const r = bash("bash -c 'type -t timeout; type -t stat; type -t tail; timeout 1 sleep 3; echo rc=$?'");
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^function\nfunction\nfunction\nrc=124$/m);
+});

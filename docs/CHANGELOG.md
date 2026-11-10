@@ -12,6 +12,12 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### "Este Mac": Grok, WhatsApp e áudios
+#### Novo
+- **Grok (xAI) na janela "Este Mac"**: o tutorial 4 aparece também aqui. O app instala o proxy do Grok numa pasta própria, sem mexer num Hermes que você já tenha, e a página da xAI abre para você entrar.
+- **WhatsApp na janela "Este Mac"**, pelo OpenClaw: o tutorial 3 instala o agente com um serviço do Mac (ele responde mesmo com o meu-bot fechado, enquanto o Mac estiver ligado), mostra o QR e conecta o número. O passo concluído diz qual agente ficou ("Agente: OpenClaw").
+- **Ouvir áudios neste Mac**: "Ativar transcrição" passa a valer aqui; os áudios do WhatsApp viram texto no próprio Mac, sem sair dele. Responder em áudio continua só nas máquinas.
+
 ### Super admin: escolher a versão do app
 #### Novo
 - Quem entra com uma conta super admin vê em Configurações › Sobre e atualização a lista "Versões publicadas" do canal do app, e pode instalar qualquer uma delas, inclusive uma mais velha, para reproduzir um problema ou sair de uma versão com defeito. A versão escolhida fica fixada (o app para de se atualizar sozinho) até alguém clicar em "Voltar a atualizar sozinho". O papel é conferido com o servidor da conta a cada uso, e a assinatura de cada release continua obrigatória.
