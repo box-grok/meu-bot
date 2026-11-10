@@ -192,7 +192,7 @@ function ensureCrmAtual(host: string, probe: HostProbe): void {
  */
 const backendTried = new Set<string>();
 async function ensureBackendAtual(host: string, probe: HostProbe): Promise<void> {
-  if (!probe.reachable || host === LOCAL_HOST || backendTried.has(host)) return;
+  if (!probe.reachable || host === LOCAL_HOST || ehEsteMacPorSsh(probe) || backendTried.has(host)) return;
   const want = bundledBackendVersion();
   const decisao = precisaAtualizarBackend(probe, want);
   if (decisao === "nao") return;
