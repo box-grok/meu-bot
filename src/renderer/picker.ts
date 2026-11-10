@@ -301,9 +301,9 @@ function paintDetail(): void {
   removeBtn.hidden = selected === "local" || support !== null;
   renameBtn.hidden = selected === "local";
   renameBtn.title = support !== null ? "Apelido para esta pessoa no admin (vazio volta ao nome que ela deu). O alias não muda." : "Apelido desta máquina no app (seletor, título da janela). A chave SSH não muda.";
-  archiveBtn.hidden = support === null;
+  archiveBtn.hidden = support === null || selected === "local";
   archiveBtn.textContent = personOf(selected)?.archived === true ? "Desarquivar" : "Arquivar";
-  removePersonBtn.hidden = support === null;
+  removePersonBtn.hidden = support === null || selected === "local";
   if (removePersonBtn.dataset["host"] !== selected) resetRemovePerson();
   if (renameBtn.hidden) renameForm.hidden = true;
   const isPod = pods.has(selected);
@@ -599,7 +599,8 @@ function init(payload: PickerInit, keepSelected: string | null = null): void {
   pintarTipos();
   buildRows();
   void window.picker.locais().then((ls) => { let mudou = false; for (const h of ls) if (!locais.has(h)) { locais.add(h); mudou = true; } if (mudou) { pintarTipos(); applyFilter(); } }).catch(() => { /* sem a lista: fica pela sondagem */ });
-  if (support !== null && hosts.length === 0) listEl.replaceChildren(adminChrome.emptyRow());
+  // "este Mac" está sempre na lista do admin: sem nenhuma pessoa, o texto de como trazer pessoas vem logo abaixo dele.
+  if (support !== null && hosts.every((h) => h === "local")) listEl.append(adminChrome.emptyRow());
   const wanted = keepSelected !== null && hosts.includes(keepSelected) ? keepSelected : payload.preselect;
   select(hosts.includes(wanted) ? wanted : (hosts[0] ?? null));
   // A conta acabou de ser preparada: a sondagem guardada dela é de antes (dizia "sem backend, sem login"); vai de novo.
