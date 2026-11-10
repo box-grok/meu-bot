@@ -33,6 +33,7 @@
         <a href="/account/plan" data-secao="plan"><span class="ico" aria-hidden="true">▤</span>Plano</a>
         <a href="/account/support" data-secao="support"><span class="ico" aria-hidden="true">?</span>Suporte</a>
         <a href="/account/access" data-secao="access" id="menu-access" hidden><span class="ico" aria-hidden="true">⚙</span>Perfis de acesso</a>
+        <a href="/support-window" data-secao="janelas" id="menu-janelas" hidden><span class="ico" aria-hidden="true">◧</span>Janelas de suporte</a>
         <div class="grupo">Organizações</div>
         <div id="menu-orgs"></div>
         <a href="/organizations/new" data-secao="org-nova"><span class="ico" aria-hidden="true">+</span>Criar organização</a>
@@ -192,6 +193,16 @@
             <p class="sub" id="org-perigo-texto"></p>
             <button type="button" class="btn btn-ghost btn-perigo" id="org-apagar"></button>
           </div>
+        </div>
+      </section>
+
+      <section data-secao="janelas" hidden>
+        <div class="admin aberto">
+          <h2>Janelas de suporte <span class="selo">super admin</span></h2>
+          <p class="sub">O último retrato de cada pessoa do suporte (VPS, usuários e este Mac), enviado pelo meu-bot-admin-gestao quando ele lê a máquina: ao abrir, a cada 30 min e a cada janela aberta. Só leitura; as ações seguem no app.</p>
+          <div class="janelas-filtro"><input id="janelas-busca" type="search" placeholder="filtrar por pessoa, máquina, conta ou versão…" aria-label="Filtrar janelas de suporte"> <button class="btn btn-ghost" type="button" id="janelas-recarregar">Recarregar</button></div>
+          <p class="sub" id="janelas-estado"></p>
+          <div id="ad-janelas"></div>
         </div>
       </section>
 

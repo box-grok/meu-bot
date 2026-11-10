@@ -82,7 +82,7 @@ const ABERTURAS_FILE = path.join(MEU_BOT_DIR, 'aberturas.jsonl');
 const ABERTURAS_MAX = 300;
 function anotarAbertura(m) {
   try {
-    const linha = JSON.stringify({ em: new Date().toISOString(), id: m.id, mac: m.name, user: m.user, produto: typeof m.produto === 'string' && m.produto !== '' ? m.produto : 'meu-bot', versao: m.app });
+    const linha = JSON.stringify({ em: new Date().toISOString(), id: m.id, mac: m.name, user: m.user, produto: typeof m.produto === 'string' && m.produto !== '' ? m.produto : 'meu-bot', versao: m.app, ...(typeof m.conta === 'string' ? { conta: m.conta } : {}) });
     fs.mkdirSync(MEU_BOT_DIR, { recursive: true });
     fs.appendFileSync(ABERTURAS_FILE, `${linha}\n`, { mode: 0o600 });
     const todas = fs.readFileSync(ABERTURAS_FILE, 'utf8').split('\n').filter(Boolean);
@@ -888,7 +888,8 @@ const server = http.createServer(async (req, res) => {
     let m;
     try { m = JSON.parse(await readBody(req, 64 * 1024) || '{}'); } catch (_) { return json(res, 400, { error: { message: 'JSON inválido', type: 'invalid_request_error' } }); }
     const ok = m && /^[a-f0-9]{12}$/.test(m.id) && [m.name, m.user, m.platform, m.app].every((v) => typeof v === 'string' && MACHINE_FIELD_RE.test(v))
-      && (m.produto === undefined || (typeof m.produto === 'string' && /^meu-bot(-[a-z0-9-]{1,30})?$/.test(m.produto)));
+      && (m.produto === undefined || (typeof m.produto === 'string' && /^meu-bot(-[a-z0-9-]{1,30})?$/.test(m.produto)))
+      && (m.conta === undefined || (typeof m.conta === 'string' && /^[^@\s]{1,64}@[^@\s]{1,120}$/.test(m.conta)));
     if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
     const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app, produto: m.produto });
     anotarAbertura(m);

@@ -12,7 +12,7 @@ let ultimoCaminhoMedido = null;
 function medirPagina(secao) { const cam = caminhoAnonimo(location.pathname); if (cam === ultimoCaminhoMedido) return; ultimoCaminhoMedido = cam; ga.pagina(cam, { secao }); }
 const CH_SESSAO = "meu-bot-console-sessao", CH_LOGIN = "meu-bot-console-login";
 const SECOES = ["overview", "profile", "devices", "plan", "support", "access", "organizations"];
-const TITULOS = { overview: "Visão geral", profile: "Perfil", devices: "Devices", plan: "Plano", support: "Suporte", access: "Perfis de acesso", orgs: "Organizações", "org-nova": "Nova organização" };
+const TITULOS = { janelas: "Janelas de suporte", overview: "Visão geral", profile: "Perfil", devices: "Devices", plan: "Plano", support: "Suporte", access: "Perfis de acesso", orgs: "Organizações", "org-nova": "Nova organização" };
 const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 const PAPEL_ORG = { dona: "dona", admin: "admin", membro: "membro" };
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
@@ -109,6 +109,7 @@ function rota() {
   const m = /^\/account\/([a-z]+)\/?$/.exec(location.pathname);
   if (m !== null && SECOES.includes(m[1])) return { secao: m[1] === "organizations" ? "orgs" : m[1], slug: null, aba: null };
   if (/^\/organizations\/new\/?$/.test(location.pathname)) return { secao: "org-nova", slug: null, aba: null };
+  if (/^\/support-window\/?$/.test(location.pathname)) return { secao: "janelas", slug: null, aba: null };
   const o = /^\/organizations\/([a-z0-9-]{2,40})(?:\/(members|settings))?\/?$/.exec(location.pathname);
   if (o !== null && SLUG_RE.test(o[1])) return { secao: "org", slug: o[1], aba: o[2] ?? "members" };
   return null;
@@ -147,15 +148,67 @@ function mostrarConsole(c) {
   $("console").classList.toggle("modo-admin", admin);
   $("menu-access").hidden = !(admin && c.admin === "super");
   $("menu-orgs-todas").hidden = !(admin && c.admin === "super");
+  $("menu-janelas").hidden = !(admin && c.admin === "super");
   for (const id of ["ad-overview", "ad-plan", "ad-devices", "ad-support"]) $(id).hidden = !admin;
   for (const d of document.querySelectorAll("details.pessoal")) d.open = !admin;
-  if ((secao === "access" || secao === "orgs") && !(admin && c.admin === "super")) { history.replaceState(null, "", "/account/overview"); mostrarConsole(c); return; }
+  if ((secao === "access" || secao === "orgs" || secao === "janelas") && !(admin && c.admin === "super")) { history.replaceState(null, "", "/account/overview"); mostrarConsole(c); return; }
   if (secao === "org-nova") { pintarOrgNova(); return; }
+  if (secao === "janelas") { void pintarJanelas(); return; }
   if (secao === "orgs") { pintarAdminOrgs(visao); return; }
   if (secao === "org") { void abrirOrg(r.slug, r.aba); return; }
   ({ overview: pintarOverview, profile: pintarPerfil, devices: pintarDevices, plan: pintarPlano, support: pintarSuporte, access: () => undefined })[secao](c);
   if (admin) ({ overview: pintarAdminTotais, profile: () => undefined, devices: pintarAdminDevices, plan: pintarAdminContas, support: pintarAdminPedidos, access: pintarAdminPerfis })[secao](visao);
 }
+
+// ---- janelas de suporte (/support-window): o último resumo de cada pessoa que o meu-bot-admin-gestao leu
+let janelas = [];
+const marca = (ok) => (ok === true ? "✓" : ok === false ? "✗" : "•");
+const classeOk = (ok) => (ok === true ? "j-ok" : ok === false ? "j-mau" : "j-neutro");
+function blocoLinhas(titulo, linhas) {
+  const box = el("div", "j-bloco"); box.append(el("div", "j-titulo", titulo));
+  const ul = el("ul", "j-linhas");
+  for (const l of linhas) { const li = el("li", classeOk(l.ok)); li.append(el("span", "j-marca", marca(l.ok)), document.createTextNode(l.texto)); ul.append(li); }
+  box.append(ul); return box;
+}
+function pintarJanelaCartao(p) {
+  const r = p.resumo ?? {}; const card = el("article", "painel j-cartao");
+  const topo = el("div", "j-topo");
+  topo.append(el("strong", "", p.nome));
+  if (p.maquina) topo.append(el("span", "selo", p.maquina));
+  const ac = r.acesso;
+  if (ac) topo.append(el("span", ac.usuario === "root" ? "selo j-root" : "selo", ac.usuario === "root" ? "root" : `usuário ${ac.usuario}`), el("span", "j-end", `${ac.usuario}@${ac.endereco}${ac.porta !== 22 ? `:${ac.porta}` : ""}`));
+  const falhas = (r.saude ?? []).filter((l) => l.ok === false).length;
+  topo.append(el("span", falhas > 0 ? "selo j-selo-mau" : "selo ok", falhas > 0 ? `${falhas} alerta${falhas > 1 ? "s" : ""}` : "ok"));
+  card.append(topo, el("p", "sub", `lido ${dataHora(p.atualizadoEm)} · pelo app de ${p.enviadoPor}`));
+  const grade = el("div", "j-grade");
+  grade.append(blocoLinhas("Saúde da máquina", r.saude ?? []));
+  if ((r.licenca ?? []).length > 0) grade.append(blocoLinhas("Conta e licença", r.licenca));
+  grade.append((r.uso ?? []).length > 0 ? blocoLinhas("Uso do app (última versão de cada app)", r.uso) : blocoLinhas("Uso do app", [{ texto: "sem aberturas registradas (backend antigo ou ninguém abriu ainda)", ok: null }]));
+  card.append(grade);
+  if ((r.aberturas ?? []).length > 0) {
+    const d = el("details", "j-hist"); d.append(el("summary", "", `Aberturas recentes (${r.aberturas.length})`));
+    const ul = el("ul", "j-linhas"); for (const t of r.aberturas) ul.append(el("li", "j-neutro", t)); d.append(ul); card.append(d);
+  }
+  return card;
+}
+function filtrarJanelas() {
+  const q = $("janelas-busca").value.trim().toLowerCase();
+  const box = $("ad-janelas"); box.replaceChildren();
+  const lista = q === "" ? janelas : janelas.filter((p) => JSON.stringify(p).toLowerCase().includes(q));
+  $("janelas-estado").textContent = janelas.length === 0 ? "Nenhuma janela ainda: abra o meu-bot-admin-gestao logado como admin (ele envia em até 1 min)." : `${lista.length} de ${janelas.length} pessoa${janelas.length > 1 ? "s" : ""}`;
+  for (const p of lista) box.append(pintarJanelaCartao(p));
+}
+async function pintarJanelas() {
+  const s = sessaoGuardada(); if (s === null) return;
+  $("janelas-estado").textContent = "lendo…";
+  const r = await api("GET", "/admin/suporte", undefined, s.acesso);
+  if (r.status !== 200) { mostrarErro(erroDe(r)); $("janelas-estado").textContent = ""; return; }
+  mostrarErro(null);
+  janelas = Array.isArray(r.corpo?.pessoas) ? r.corpo.pessoas : [];
+  filtrarJanelas();
+}
+$("janelas-busca").addEventListener("input", filtrarJanelas);
+$("janelas-recarregar").addEventListener("click", () => { void pintarJanelas(); });
 
 // ---- organizações (molde Rambox Enterprise)
 function pintarMenuOrgs(c) {

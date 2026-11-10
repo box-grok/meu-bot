@@ -22,7 +22,8 @@ export function parseAberturas(raw: string, max = 30): Abertura[] {
     const produto = texto(r["produto"], 40);
     const versao = texto(r["versao"], 40);
     if (Number.isNaN(Date.parse(em)) || !PRODUTO_RE.test(produto) || !VERSAO_RE.test(versao)) continue;
-    out.push({ em, produto, versao, mac: texto(r["mac"], 80), user: texto(r["user"], 40) });
+    const conta = texto(r["conta"], 190);
+    out.push({ em, produto, versao, mac: texto(r["mac"], 80), user: texto(r["user"], 40), conta: /^[^@\s]+@[^@\s]+$/.test(conta) ? conta : "" });
   }
   return out.reverse().slice(0, max);
 }

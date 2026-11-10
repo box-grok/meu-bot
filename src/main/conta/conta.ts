@@ -112,6 +112,19 @@ async function api(metodo: "GET" | "POST", rota: string, corpo: unknown = null, 
   } catch (e) { return { status: 0, corpo: { erro: `sem resposta da API da conta (${e instanceof Error ? e.name === "TimeoutError" ? "tempo esgotado" : e.message : String(e)})` } }; }
 }
 
+/**
+ * meu-bot-admin-gestao: manda o resumo de uma janela de suporte para a API (POST /admin/suporte), que o super admin vê
+ * no console (/support-window). Só com conta de admin; sem sessão ou sem rede, false e nada mais.
+ */
+export async function enviarResumoSuporte(corpo: unknown): Promise<boolean> {
+  if (lerSessao()?.conta.admin == null) return false;
+  const token = await tokenDeAcesso();
+  if (token === null) return false;
+  const r = await api("POST", "/admin/suporte", corpo, token);
+  if (r.status !== 200) log(`[suporte] resumo não foi para o console: HTTP ${r.status}`);
+  return r.status === 200;
+}
+
 /** "Entrar": abre a página de login no navegador do sistema e fica esperando o deep link. */
 export async function entrar(): Promise<ContaView> {
   erro = null;

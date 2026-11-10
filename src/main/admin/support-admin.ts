@@ -33,6 +33,8 @@ import { log } from "../maquina/backend";
 import net from "node:net";
 import { PRODUTOS } from "../app/variant-core";
 import { parseAberturas } from "./aberturas-core";
+import { resumoDaSaude } from "./suporte-resumo-core";
+import { enviarResumoSuporte } from "../conta/conta";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 /** `pagamentoPadrao`: orientação de pagamento (Pix, link) gravada em toda licença que ainda não tem uma, ao mexer nela. */
@@ -450,7 +452,9 @@ export async function adminHealth(host: string): Promise<AdminHealth> {
     readAberturas(host),
   ]);
   if (license !== null) rememberPlan(host, license.license.plan);
-  return { probe, whatsapp: wa, progress, share, xai, license, aberturas, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
+  const h: AdminHealth = { probe, whatsapp: wa, progress, share, xai, license, aberturas, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
+  void enviarResumo(host, h);
+  return h;
 }
 
 /** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
@@ -524,6 +528,33 @@ export async function removeDevice(host: string, deviceId: string): Promise<Lice
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
+/** Manda ao console o resumo desta pessoa (id da máquina, nome, apelido e as linhas). Falha não atrapalha a tela. */
+async function enviarResumo(alias: string, h: AdminHealth): Promise<void> {
+  const s = [...load().values()].find((v) => supportAlias(v.code) === alias);
+  if (s === undefined) return;
+  try { await enviarResumoSuporte({ id: machineId(s.code), nome: toPerson(s).name, maquina: s.code.machine ?? null, acesso: { usuario: s.code.user, endereco: s.code.hostname, porta: s.code.port }, resumo: resumoDaSaude(h) }); }
+  catch (e) { log(`[suporte] resumo de ${alias} não foi: ${e instanceof Error ? e.message : String(e)}`); }
+}
+/**
+ * Visão macro no console: o admin-gestao lê a saúde de todas as pessoas com o suporte ligado (não arquivadas), uma
+ * por vez, 1 min depois de abrir e a cada 30 min, e cada leitura manda o resumo (adminHealth → enviarResumo). Assim
+ * o console mostra todas as máquinas (VPS e este Mac), não só as que o admin abriu.
+ */
+const VARREDURA_MS = 30 * 60_000;
+let varrendo = false;
+async function varrerSuporte(): Promise<void> {
+  if (varrendo) return;
+  varrendo = true;
+  try {
+    for (const p of knownPeople().filter((x) => x.on && !x.archived)) {
+      try { await adminHealth(p.alias); } catch (e) { log(`[suporte] varredura: ${p.alias}: ${e instanceof Error ? e.message : String(e)}`); }
+    }
+  } finally { varrendo = false; }
+}
+export function iniciarVarreduraSuporte(): void {
+  setTimeout(() => { void varrerSuporte(); }, 60_000).unref();
+  setInterval(() => { void varrerSuporte(); }, VARREDURA_MS).unref();
+}
 /** As aberturas recentes do app (aberturas.jsonl do backend); null sem o arquivo. */
 async function readAberturas(host: string): Promise<Abertura[] | null> {
   const r = await runSsh(host, `tail -n 60 "$HOME/.local/share/meu-bot/aberturas.jsonl" 2>/dev/null\n`, 20_000).catch(() => null);
