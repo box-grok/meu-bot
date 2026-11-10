@@ -54,3 +54,20 @@ export function rotuloCredencialXai(list: string): string | null {
 
 /** `hermes --version` é da versão pedida? */
 export const hermesNaVersao = (versionOut: string, versao: string = HERMES_VERSION_LOCAL): boolean => versionOut.includes(`v${versao}`);
+
+/**
+ * Proxy da xAI órfão de uma abertura anterior: o `hermes` do PATH é um wrapper node que sobe um python; o SIGTERM no
+ * wrapper deixava o python vivo (adotado pelo launchd) segurando a porta, e cada novo proxy morria em "address already
+ * in use" a cada 15 s. É nosso quando roda o Hermes DESTA pasta do meu-bot como `proxy start` na porta deste app
+ * (cada app tem a sua, então não derruba o proxy de outro meu-bot aberto). Qualquer outro programa fica intocado.
+ */
+export function ehNossoProxyOrfao(comando: string, prefixoHermes: string, porta: number): boolean {
+  const c = comando.trim();
+  if (c === "" || prefixoHermes === "") return false;
+  if (!c.includes(`${prefixoHermes.replace(/\/+$/, "")}/`)) return false;
+  const t = c.split(/\s+/);
+  const i = t.indexOf("proxy");
+  if (i < 0 || t[i + 1] !== "start") return false;
+  const p = t.indexOf("--port");
+  return p >= 0 && t[p + 1] === String(porta);
+}

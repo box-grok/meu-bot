@@ -12,6 +12,10 @@ no [diário técnico](GUIA.md).
 
 ## Ainda não lançado
 
+### Grok neste Mac: o proxy volta depois de fechar e reabrir o app
+#### Corrigido
+- Depois de fechar o app (ou de ele se atualizar), o Grok do "Este Mac" podia ficar preso num proxy da abertura anterior, e o app tentava subir outro a cada 15 s sem conseguir ("address already in use" no `xai-proxy.log`). Agora o app encerra o proxy inteiro ao fechar, e ao abrir encerra sozinho um que tenha sobrado.
+
 ---
 
 ## 10 de novembro de 2026 · v0.80.0
