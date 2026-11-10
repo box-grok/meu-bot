@@ -37,7 +37,7 @@ export function paintUpdateState(u: UpdateState): void {
   const t = updateStateText(u, ctx.caps.nome);
   updateCheckDot.textContent = t.short ?? "";
   updateCheckDot.hidden = t.short === null;
-  aboutVersion.textContent = `${ctx.caps.nome} ${u.current}${u.commit === "" ? "" : ` · ${u.commit}`}${u.buildLocal ? " (build local)" : ""} · ${navigator.userAgent.includes("Intel") ? "Intel" : "Apple Silicon"}`;
+  aboutVersion.textContent = `${ctx.caps.nome} ${u.current}${u.commit === "" ? "" : ` · ${u.commit}`}${u.buildLocal ? " (build local)" : ""} · ${u.arch === "arm64" ? "Apple Silicon" : "Intel"}`;
   aboutSum.textContent = `versão ${u.current}`;
   updateLine.textContent = t.text;
   updateLine.className = `update-line ${t.kind === "muted" ? "" : t.kind}`.trim();

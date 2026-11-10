@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { updateStateText, updateBlockerText, updateNowButton, notasUrl, APLICAR, PARAR_E_APLICAR, ATUALIZAR_AGORA } from "../../dist/renderer/lib/update-text.js";
 
-const base = { current: "0.1.0", available: null, ready: null, checking: false, error: null, errorKind: null, checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "" };
+const base = { current: "0.1.0", available: null, ready: null, checking: false, error: null, errorKind: null, checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "", arch: "arm64" };
 const NOW = Date.parse("2026-10-17T05:00:00Z");
 
 test("cada fase vira uma frase, como no Rambox", () => {

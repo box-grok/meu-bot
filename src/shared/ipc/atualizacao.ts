@@ -44,6 +44,8 @@ export interface UpdateState {
    * não muda a cada merge e nada publicado é mais novo; a tela diz isso em vez de "versão mais recente".
    */
   buildLocal: boolean;
+  /** Arquitetura do processo (process.arch): o user agent do Chromium no Mac diz "Intel" até no Apple Silicon. */
+  arch: "arm64" | "x64";
   /** Commit de onde o build saiu (Resources/build.json); "" se não se sabe. */
   commit: string;
   /** Preferência "atualizar sozinho quando o Mac estiver ocioso" (Configurações › Sobre e atualização). */

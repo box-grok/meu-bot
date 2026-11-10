@@ -55,7 +55,7 @@ const OCIOSO_POLL_MS = 60_000;
 /** Falha com a causa para a tela (`errorKind`); as frases são as que a pessoa vê. */
 class UpdateFalha extends Error { constructor(public readonly kind: UpdateErrorKind, msg: string) { super(msg); this.name = "UpdateFalha"; } }
 
-const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "" };
+const state: UpdateState = { current: app.getVersion(), available: null, ready: null, checking: false, error: null, errorKind: null, phase: "idle", checkedAt: null, progress: null, aguardando: false, ocupadoAoAplicar: false, minima: null, abaixoDaMinima: false, atualizarOcioso: true, buildLocal: false, commit: "", arch: process.arch === "arm64" ? "arm64" : "x64" };
 /** A versão preparada em disco (preparada.json); null = nada pronto. */
 let preparada: UpdatePreparada | null = null;
 let timer: NodeJS.Timeout | null = null;
@@ -68,7 +68,7 @@ let abort: AbortController | null = null;
 const minimaPorHost = new Map<string, string>();
 let ligado = false;
 
-export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso(), buildLocal: compilacao().origem === "local", commit: compilacao().commit });
+export const updateState = (): UpdateState => ({ ...state, atualizarOcioso: getAtualizarOcioso(), buildLocal: compilacao().origem === "local", commit: compilacao().commit, arch: arch() });
 /** O que o menu do aplicativo precisa saber: a versão pronta e se dá para pedir uma verificação agora. */
 export const updateMenuState = (): { pronta: string | null; podeVerificar: boolean; buildLocal: boolean } => ({
   buildLocal: compilacao().origem === "local",
@@ -87,7 +87,7 @@ function setPhase(phase: UpdatePhase): void { state.phase = phase; state.checkin
 const registrar = (rota: string, ok: boolean, resumo: string, detalhe?: unknown): void => { evento({ origem: "atualizacao", dono: null, rota, ok, ms: null, resumo, detalhe }); };
 const erroTexto = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
-const arch = (): string => (process.arch === "arm64" ? "arm64" : "x64");
+const arch = (): "arm64" | "x64" => (process.arch === "arm64" ? "arm64" : "x64");
 const updateDir = (): string => path.join(app.getPath("userData"), "update");
 const preparadaFile = (): string => path.join(updateDir(), "preparada.json");
 /** Fora de updateDir (a troca apaga a pasta): o registro da troca que ainda precisa provar que abre. */
