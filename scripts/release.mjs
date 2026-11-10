@@ -23,6 +23,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { CHAVE_RELEASE_ANTIGA, lerChaveArquivo, lerChavePrincipal } from "./chave-release.mjs";
 import { componentesPendentes } from "./release-checar.mjs";
+import { lerFragmentos } from "./changelog-fragmentos.mjs";
 import { clientesGoogleParaPublicar, faltasParaPublicar, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "./release-core.mjs";
 
 const staging = process.argv.includes("--staging");
@@ -76,7 +77,7 @@ step("conferindo as versões dos componentes da máquina");
 const { PRODUTOS } = await import("./produtos.mjs");
 if (conferir) {
   const produtos = produtosDoCanal(PRODUTOS, staging ? "staging" : "estavel");
-  const notasConferidas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null);
+  const notasConferidas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null, lerFragmentos());
   const { erros, avisos } = faltasParaPublicar({ produtos, existe: existsSync, notas: notasConferidas });
   const commit = execSync("git log -1 --format=%h", { encoding: "utf8" }).trim();
   for (const e of erros) console.error(`✗ ${e}`);
@@ -127,7 +128,7 @@ for (const n of clientes) {
 }
 // As notas são o que a pessoa lê na página da release: vêm do CHANGELOG, não do histórico de commits.
 step("montando as notas da release");
-const notas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null);
+const notas = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null, lerFragmentos());
 let comoNotas = ["--generate-notes"];
 if (notas === null) {
   console.log('  ⚠ docs/CHANGELOG.md não tem uma seção "Ainda não lançado" com conteúdo: a release vai sair com a');

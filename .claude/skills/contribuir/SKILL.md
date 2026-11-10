@@ -35,8 +35,11 @@ nesta sessão** (branch de outra sessão: só avise o usuário).
    eles o cliente sai sem Google e o `package.mjs` avisa). Rode `npm test` e `npm run dist…` de dentro do worktree.
    **Para a release automática não travar**, no mesmo PR: mudou componente da máquina (backend, financeiro, CRM,
    guarda; lista em `COMPONENTES`, `src/main/maquina/backend-bundle-core.ts`) → suba a versão dele (o CI roda
-   `scripts/release-checar.mjs` e recusa sem); mudança que a pessoa vê → um item em "Ainda não lançado" do
-   `docs/CHANGELOG.md`, em linguagem de quem usa (vira as notas da release).
+   `scripts/release-checar.mjs` e recusa sem); mudança que a pessoa vê → o item dela num arquivo novo,
+   `docs/changelog/<branch>.md` (formato no `docs/changelog/README.md`), em linguagem de quem usa (vira as notas da
+   release). **Não escreva direto em "Ainda não lançado" do `docs/CHANGELOG.md`**: toda PR mexia nas mesmas linhas e
+   cada merge deixava as outras em conflito. Se uma PR antiga ainda conflitar no CHANGELOG, mova o item dela para o
+   arquivo da pasta ao juntar o `main`.
 3. **Commit**: só os arquivos da mudança (`git add <arquivos>`, nada de `git add -A`, que pegaria `.env`, `out/` e afins).
    Mensagem no estilo do `git log`: `Área: o que muda` na primeira linha, em pt-BR, e um parágrafo com o porquê. Termine
    com a linha de coautoria que a conversa indicar.

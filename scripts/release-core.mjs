@@ -65,17 +65,34 @@ export const clientesGoogleParaPublicar = (existe) => CLIENTES_GOOGLE.filter((n)
  * a estável sai é que a seção é renomeada para a versão publicada, e uma "Ainda não lançado" nova começa vazia.
  * null = não há seção, ou ela só tem espaço: quem publica decide se escreve ou aceita a lista de commits.
  */
-export function notasDaRelease(changelog) {
+export function notasDaRelease(changelog, fragmentos = "") {
   const linhas = String(changelog ?? "").split("\n");
   const i = linhas.findIndex((l) => /^##\s+Ainda não lançado\s*$/.test(l));
-  if (i < 0) return null;
   const corpo = [];
-  for (const l of linhas.slice(i + 1)) {
-    if (/^##\s/.test(l) || /^-{3,}\s*$/.test(l)) break;
-    corpo.push(l);
+  if (i >= 0) {
+    for (const l of linhas.slice(i + 1)) {
+      if (/^##\s/.test(l) || /^-{3,}\s*$/.test(l)) break;
+      corpo.push(l);
+    }
   }
-  const texto = corpo.join("\n").trim();
+  // Os arquivos de docs/changelog/ (um por PR) vêm antes do que ainda estiver escrito direto no CHANGELOG.
+  const texto = [String(fragmentos ?? "").trim(), corpo.join("\n").trim()].filter((t) => t !== "").join("\n\n");
   return texto === "" ? null : texto;
+}
+
+/**
+ * Itens do CHANGELOG ainda não lançados, um arquivo por PR em `docs/changelog/<branch>.md`: cada PR escreve no seu
+ * arquivo, e não no topo do CHANGELOG, onde toda PR mexia nas mesmas linhas e dava conflito. `arquivos` é
+ * [{ nome, texto }]; o README.md da pasta e o que não é .md ficam de fora. Ordem pelo nome (estável entre máquinas).
+ */
+export const PASTA_FRAGMENTOS = "docs/changelog";
+export function juntarFragmentos(arquivos) {
+  return [...(arquivos ?? [])]
+    .filter((a) => /\.md$/i.test(a.nome) && !/^readme\.md$/i.test(a.nome))
+    .sort((a, b) => (a.nome < b.nome ? -1 : a.nome > b.nome ? 1 : 0))
+    .map((a) => String(a.texto ?? "").trim())
+    .filter((t) => t !== "")
+    .join("\n\n");
 }
 
 /**
@@ -171,8 +188,10 @@ export function dataPorExtenso(d) {
  * Depois da estável: "Ainda não lançado" vira "## <data> · v<versão>" e um "Ainda não lançado" novo, vazio, entra em
  * cima. null = não há a seção (nada a fazer).
  */
-export function fecharChangelog(texto, versao, data) {
+export function fecharChangelog(texto, versao, data, fragmentos = "") {
   const re = /^##[ \t]+Ainda não lançado[ \t]*$/m;
   if (!re.test(texto)) return null;
-  return texto.replace(re, `## Ainda não lançado\n\n---\n\n## ${data} · v${versao}`);
+  // Os arquivos de docs/changelog/ entram no topo da seção datada (quem chama apaga os arquivos no mesmo commit).
+  const f = String(fragmentos ?? "").trim();
+  return texto.replace(re, () => `## Ainda não lançado\n\n---\n\n## ${data} · v${versao}${f === "" ? "" : `\n\n${f}`}`);
 }

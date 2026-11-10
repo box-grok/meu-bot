@@ -1,13 +1,14 @@
 // Confere, já no PR, o que faria a release recusar (e a release automática travar): componente da máquina (backend,
 // financeiro, CRM, guarda) que mudou desde a última release sem subir a versão. Também avisa (sem falhar) quando o PR
-// muda o app sem escrever nada em "Ainda não lançado" do docs/CHANGELOG.md, que vira as notas da release.
+// muda o app sem escrever o item dele em docs/changelog/<branch>.md (que vira as notas da release), ou quando escreve
+// direto em "Ainda não lançado" do docs/CHANGELOG.md, onde toda PR mexe nas mesmas linhas e dá conflito.
 //   node scripts/release-checar.mjs            (precisa do dist/main: rode depois do `npm run build`)
 // O release.mjs usa a mesma conferência (componentesPendentes) antes de empacotar.
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { componentesSemVersao, lerVersao, notasDaRelease } from "./release-core.mjs";
+import { componentesSemVersao, lerVersao, notasDaRelease, PASTA_FRAGMENTOS } from "./release-core.mjs";
 
 const git = (args) => { try { return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return null; } };
 
@@ -36,6 +37,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     const app = mudou.some((f) => /^(src|backend-colima|conta-api|crm|guarda|extensao-crm)\//.test(f));
     const antes = mb ? notasDaRelease(git(["show", `${mb}:docs/CHANGELOG.md`])) : null;
     const agora = notasDaRelease(existsSync("docs/CHANGELOG.md") ? readFileSync("docs/CHANGELOG.md", "utf8") : null);
-    if (app && antes === agora) console.log('::warning file=docs/CHANGELOG.md::Este PR muda o app mas não escreve nada em "Ainda não lançado": a release automática sai com as notas sem esta mudança.');
+    const fragmento = mudou.some((f) => f.startsWith(`${PASTA_FRAGMENTOS}/`) && /\.md$/i.test(f) && !/\/readme\.md$/i.test(f));
+    if (app && antes === agora && !fragmento) console.log(`::warning file=docs/CHANGELOG.md::Este PR muda o app mas não escreve o item dele: crie ${PASTA_FRAGMENTOS}/<branch>.md (veja o README da pasta), que vira as notas da release.`);
+    // Item novo direto no topo do CHANGELOG: é o que dava conflito entre PRs.
+    if (antes !== agora) console.log(`::warning file=docs/CHANGELOG.md::Este PR escreve direto em "Ainda não lançado" do CHANGELOG, o que dá conflito com as outras PRs: mova o item para ${PASTA_FRAGMENTOS}/<branch>.md.`);
   }
 }

@@ -66,3 +66,14 @@ test("CHANGELOG depois da estável: a seção ganha a data e um 'Ainda não lan�
   assert.equal(fecharChangelog("# nada", "0.80.0", "x"), null);
   assert.equal(dataPorExtenso(new Date("2026-11-10T02:00:00Z")), "9 de novembro de 2026");
 });
+
+test("CHANGELOG depois da estável: os itens de docs/changelog/ entram no topo da seção datada", () => {
+  const t = "# C\n\n## Ainda não lançado\n\n### Direto\n- d\n\n---\n\n## 9 de novembro de 2026 · v0.79.3\n";
+  assert.equal(fecharChangelog(t, "0.80.0", "10 de novembro de 2026", "### Do arquivo\n- f\n"),
+    "# C\n\n## Ainda não lançado\n\n---\n\n## 10 de novembro de 2026 · v0.80.0\n\n### Do arquivo\n- f\n\n### Direto\n- d\n\n---\n\n## 9 de novembro de 2026 · v0.79.3\n");
+  // Seção vazia (o normal com a pasta): a seção datada fica só com os arquivos.
+  assert.equal(fecharChangelog("## Ainda não lançado\n\n---\n\n## 9 de novembro\n", "0.80.0", "10 de novembro", "### A\n- a"),
+    "## Ainda não lançado\n\n---\n\n## 10 de novembro · v0.80.0\n\n### A\n- a\n\n---\n\n## 9 de novembro\n");
+  // "$&" num item não vira a seção casada (replace com função).
+  assert.match(fecharChangelog("## Ainda não lançado\n", "1.0.0", "d", "- custa $& 10"), /- custa \$& 10/);
+});

@@ -55,8 +55,8 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
    O app das pessoas (meu-bot, meu-bot-staging: campo `instalador` em `variant-core.ts`) sai também como instalador
    `.dmg` (`scripts/dmg.mjs`, Python do sistema; o ambiente fica em `build/.venv-dmg`), que é o que o site entrega; o
    atualizador segue no `.zip` + `.sig`.
-   As notas da release saem da seção "Ainda não lançado" do `docs/CHANGELOG.md` — escreva-a antes, em linguagem de
-   quem usa; sem ela o release avisa e cai na lista de commits do GitHub, que descreve o diff e não a mudança.
+   As notas da release saem dos arquivos de `docs/changelog/` (um por PR) mais o que ainda estiver em "Ainda não
+   lançado" do `docs/CHANGELOG.md` — escreva-os antes, em linguagem de quem usa; sem ela o release avisa e cai na lista de commits do GitHub, que descreve o diff e não a mudança.
 5. **O usuário testa e aprova**, pelo roteiro de dez minutos em [`docs/ROTEIRO-upgrade.md`](../../../docs/ROTEIRO-upgrade.md):
    instalar a nova por cima da antiga, sem desinstalar, e conferir a versão preparada, a recusa do que não
    confere, a troca, as preferências e abas, e a volta atrás matando o processo no meio. É onde um atualizador
@@ -75,7 +75,8 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
    e os plugins de cada máquina.
 7. **Subir a versão base** para a próxima estável (`npm version minor --no-git-tag-version`) e, no `docs/CHANGELOG.md`,
    transformar "Ainda não lançado" na seção datada da versão publicada (`## <dia> de <mês> de <ano> · v<versão>`), com
-   um "Ainda não lançado" novo e vazio em cima. Vai num PR (worktree próprio, skill `contribuir`).
+   os itens de `docs/changelog/` no topo dela (e os arquivos apagados) e um "Ainda não lançado" novo e vazio em cima
+   (o `fecharChangelog` da release automática faz isso). Vai num PR (worktree próprio, skill `contribuir`).
 8. **Conferir no ar:** `curl -s https://agentesgrok.com/download/mac.json` traz a estável nova e
    `https://site-staging.agentesgrok.com/download/mac.json` o staging mais novo, até 10 min depois (cache do edge). Se a
    release veio junto com mudanças em `conta-api/`, publique o site também (skill `publicar-site`).
