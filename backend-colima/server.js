@@ -453,6 +453,11 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
     const onAbort = () => fail('aborted', 'cliente fechou a conexão');
     if (signal) { if (signal.aborted) onAbort(); else signal.addEventListener('abort', onAbort, { once: true }); }
 
+    /** Login recusado: a conta sai de rotação (volta sozinha quando a pessoa entra de novo) e o erro é 'auth'. */
+    function deslogada() {
+      contas.marcar(contaId, 'bloqueada', contaId === 'global' ? 'o Claude Code Global recusou: o admin precisa conferir' : 'login vencido: entre de novo nesta conta');
+      fail('auth', conta && conta.home ? `Claude Code deslogado na conta "${conta.rotulo}": entre de novo` : 'Claude Code deslogado nesta máquina: rode `claude /login`');
+    }
     function fail(code, msg) {
       if (finished) return; finished = true; clearTimeout(timer);
       try { child.kill('SIGTERM'); } catch (_) {}
@@ -519,7 +524,10 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         if (resultText && LIMIT_RE.test(resultText) && !released) { fail('model_limit', resultText.trim().split('\n')[0].slice(0, 200)); return; }
         // Limite de passos desta mensagem: a resposta parava no meio sem dizer nada. Avisa e diz como seguir.
         if (ev.subtype === 'error_max_turns' && text) emit(`\n\n_(Parei aqui: cheguei ao limite de ${maxTurns} passos desta mensagem. Mande "continua" que eu sigo de onde parei.)_`);
-        if (ev.is_error && !text) { fail(looksLikeResumeFailure(ev, stderr) ? 'resume_failed' : 'cli_failed', resultText || ev.subtype || 'erro da CLI'); }
+        if (ev.is_error && !text) {
+          if (contasClaude.pareceDeslogado(`${resultText.slice(0, 300)}\n${stderr.slice(-500)}`)) { deslogada(); return; }
+          fail(looksLikeResumeFailure(ev, stderr) ? 'resume_failed' : 'cli_failed', resultText || ev.subtype || 'erro da CLI');
+        }
       }
     }
 
@@ -534,10 +542,8 @@ function runClaude({ prompt, system, cwd, maxTurns, bypass, resume, signal, onDe
         const code2 = looksLikeResumeFailure(null, stderr) ? 'resume_failed' : 'cli_failed';
         const e = new Error(`CLI saiu com código ${code} sem texto`); e.code = code2; e.stderr = stderr.slice(-2000); return reject(e);
       }
-      if (/^\s*not logged in/i.test(text) || /please run \/?login/i.test(text) || /authentication_failed|invalid.*(oauth|token)|login expired/i.test(`${text.slice(0, 300)}\n${stderr.slice(-500)}`)) {
-        contas.marcar(contaId, 'bloqueada', contaId === 'global' ? 'o Claude Code Global recusou: o admin precisa conferir' : 'login vencido: entre de novo nesta conta');
-        const e = new Error(conta && conta.home ? `Claude Code deslogado na conta "${conta.rotulo}": entre de novo` : 'Claude Code deslogado na VM: rode `claude /login` lá'); e.code = 'auth'; return reject(e);
-      }
+      // fail() só age com o turno em aberto: reabre para ele rejeitar e marcar a conta.
+      if (contasClaude.pareceDeslogado(`${text.slice(0, 300)}\n${stderr.slice(-500)}`)) { finished = false; deslogada(); return; }
       resolve({ text, usage, sessionId, deltas, blockOpen });
     });
   });
@@ -700,6 +706,17 @@ async function chatCompletions(req, res) {
             plan = { ...flatten(messages), resume: null }; resumed = false;
             plan = { ...plan, system: plan.system ? `${identity}\n\n${plan.system}` : identity };
             continue;
+          }
+          // Conta com o login vencido (já marcada bloqueada): o mesmo turno segue na próxima conta logada.
+          if (e.code === 'auth' && !firstDeltaAt && tries < 8) {
+            tentadas.push(conta.id);
+            const proxima = contas.escolher({ excluir: tentadas, permitirAviso: true });
+            if (proxima !== null) {
+              log(`conta ${conta.id} (${conta.rotulo}) com o login vencido; continuando na conta ${proxima.id} (${proxima.rotulo})`);
+              avisar(conta.rotulo, proxima.rotulo, 'login vencido nesta conta; a conversa continua na próxima conta', 'conta');
+              conta = proxima; model = limiteModeloAtivo(conta.id) ? MODEL_FALLBACK : undefined;
+              continue;
+            }
           }
           const limite = e.code === 'conta_limite' || (e.code === 'model_limit' && model === undefined);
           if (limite && !firstDeltaAt && tries < 8) {

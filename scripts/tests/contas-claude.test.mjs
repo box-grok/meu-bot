@@ -202,3 +202,14 @@ test("conta global (Claude Code Global do admin): primeira da fila, travada, sem
   assert.equal(reg.conta("global"), null, "o admin desligou: some");
   assert.equal(reg.escolher().id, extra.id);
 });
+
+test("pareceDeslogado: login vencido que não renovou tira a conta da fila (10 nov 2026)", () => {
+  const { pareceDeslogado } = contasClaude;
+  assert.equal(pareceDeslogado("Failed to authenticate: OAuth session expired and could not be refreshed"), true);
+  assert.equal(pareceDeslogado("Not logged in · Please run /login"), true);
+  assert.equal(pareceDeslogado('API Error: 401 {"type":"authentication_failed"}'), true);
+  assert.equal(pareceDeslogado("OAuth token has expired"), true);
+  assert.equal(pareceDeslogado("Claro, aqui está o resumo da reunião."), false);
+  assert.equal(pareceDeslogado(""), false);
+  assert.equal(pareceDeslogado(undefined), false);
+});
