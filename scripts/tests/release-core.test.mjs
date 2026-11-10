@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { componentesSemVersao, faltasParaPublicar, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
+import { componentesSemVersao, faltasParaPublicar, juntarFragmentos, lerVersao, notasDaRelease, produtosComInstalador, produtosDoCanal, proximaStaging, recusaPromocao } from "../release-core.mjs";
 
 test("release staging: o próximo N sai das tags dessa versão", () => {
   assert.equal(proximaStaging("0.2.0", []), 1);
@@ -81,4 +81,26 @@ test("faltasParaPublicar (--conferir): admin sem build/suporte para; notas vazia
   const semNotas = faltasParaPublicar({ produtos: [app], existe: nada, notas: null });
   assert.equal(semNotas.erros.length, 0); assert.equal(semNotas.avisos.length, 1);
   assert.equal(faltasParaPublicar({ produtos: [], existe: nada, notas: "- x" }).erros.length, 1);
+});
+
+test("juntarFragmentos: um arquivo por PR em docs/changelog/, sem o README, na ordem do nome", () => {
+  const t = juntarFragmentos([
+    { nome: "zeta.md", texto: "### Zeta\n- z\n" },
+    { nome: "README.md", texto: "# Como escrever\n" },
+    { nome: "alfa.md", texto: "\n### Alfa\n- a\n\n" },
+    { nome: "vazio.md", texto: "   \n" },
+    { nome: "nota.txt", texto: "fora" },
+  ]);
+  assert.equal(t, "### Alfa\n- a\n\n### Zeta\n- z");
+  assert.equal(juntarFragmentos([]), "");
+  assert.equal(juntarFragmentos(undefined), "");
+});
+
+test("notasDaRelease com docs/changelog/: os arquivos vêm antes do que estiver escrito direto na seção", () => {
+  const cl = "## Ainda não lançado\n\n### Antigo\n- direto no CHANGELOG\n\n---\n\n## 4 de novembro\n- não\n";
+  assert.equal(notasDaRelease(cl, "### Novo\n- do arquivo"), "### Novo\n- do arquivo\n\n### Antigo\n- direto no CHANGELOG");
+  // Só arquivos (a seção vazia, como fica depois da estável), ou nem a seção: as notas saem deles.
+  assert.equal(notasDaRelease("## Ainda não lançado\n\n---\n\n## 4 de novembro\n- não\n", "### Novo\n- x"), "### Novo\n- x");
+  assert.equal(notasDaRelease(null, "### Novo\n- x"), "### Novo\n- x");
+  assert.equal(notasDaRelease("## Ainda não lançado\n\n---\n", "  "), null, "sem nada dos dois lados");
 });

@@ -21,6 +21,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dataPorExtenso, decideRodada, fecharChangelog, proximaBase, stagingMaisNovo } from "./release-core.mjs";
 import { bundleDoStaging, saudeDesteMac } from "./release-saude.mjs";
+import { arquivosDeFragmento, lerFragmentos } from "./changelog-fragmentos.mjs";
 
 const AQUI = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const HOME = homedir();
@@ -117,7 +118,10 @@ function subirBase(sha, base) {
   if (!rodar("git", ["checkout", "-q", "-B", branch, sha], WT)) return "não criei o branch da versão";
   if (!rodar("npm", ["version", nova, "--no-git-tag-version"], WT)) return "npm version falhou";
   const cl = join(WT, "docs", "CHANGELOG.md");
-  if (existsSync(cl)) { const novo = fecharChangelog(readFileSync(cl, "utf8"), base, dataPorExtenso(new Date())); if (novo !== null) writeFileSync(cl, novo); }
+  // Os itens de docs/changelog/ (um por PR) entram na seção datada e saem da pasta no mesmo commit.
+  const fragmentos = arquivosDeFragmento(WT);
+  if (existsSync(cl)) { const novo = fecharChangelog(readFileSync(cl, "utf8"), base, dataPorExtenso(new Date()), lerFragmentos(WT)); if (novo !== null) writeFileSync(cl, novo); }
+  if (fragmentos.length > 0 && !rodar("git", ["rm", "-q", ...fragmentos], WT)) return "não tirei os itens de docs/changelog/";
   const msg = `Versão: base sobe para ${nova} depois da estável ${base}\n\nFeito pela release automática (scripts/release-auto.mjs): "Ainda não lançado" do CHANGELOG vira a seção da v${base}.`;
   const ok = rodar("git", ["add", "package.json", "package-lock.json", "docs/CHANGELOG.md"], WT) && rodar("git", ["commit", "-q", "-m", msg], WT)
     && rodar("git", ["push", "-q", "-f", "-u", "origin", branch], WT)

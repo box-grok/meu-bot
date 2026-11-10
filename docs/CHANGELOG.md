@@ -1,7 +1,8 @@
 # Changelog
 
 O que mudou no meu-bot, em linguagem de quem usa. Cada item é uma frase; detalhe de implementação fica
-no [diário técnico](GUIA.md).
+no [diário técnico](GUIA.md). O que ainda não saiu fica em [`changelog/`](changelog/README.md), um arquivo por PR,
+e entra aqui na seção da versão quando ela vira estável.
 
 > **Sobre a numeração.** O meu-bot foi de 0.4.0 direto para 0.78.4. Não houve 77 versões no meio: o salto
 > alinha a numeração com a do Grok Bot, de onde este app nasceu, para dar para comparar os dois lado a
