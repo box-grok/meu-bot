@@ -2,19 +2,23 @@
  * Variante: admin. O seletor do meu-bot-admin lista pessoas, não máquinas: os aliases `suporte-…` das pessoas
  * com suporte ligado (admin/support-admin.ts). Os handlers só dele: atualizar pela caixa de entrada e
  * "Adicionar pessoa" colando o código, arquivar, apelido e "Excluir máquina" (limpa o WhatsApp dela e desliga o
- * suporte). Nada de instalar nem de mexer no ~/.ssh/config: a máquina é dela.
+ * suporte). Nada de instalar nem de mexer no ~/.ssh/config: a máquina é dela. "este Mac" vem primeiro enquanto
+ * este Mac ainda não é pessoa: o Abrir o adota (esteMacComoPessoa, SSH em 127.0.0.1) e dali em diante ele é uma
+ * pessoa da lista como as outras, com o espelho e as ações de suporte.
  */
 import type { PickerSource } from "../maquina/picker";
 import { handleAdmin } from "../ipc/registry";
 import { isSupportAlias } from "../suporte/support-code";
 import { windowForHost } from "../app/windows";
-import { addSupportCode, adminKeyExists, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
+import { LOCAL_HOST } from "../maquina/localBackend";
+import { addSupportCode, adminKeyExists, aliasDoEsteMac, esteMacComoPessoa, archivePerson, knownPeople, removePerson, renamePerson, supportPeople } from "./support-admin";
 import { registerProdutosIpc, showProdutos } from "./produtos-janela";
 import { vpsNova } from "./vps-nova-admin";
 
 export const adminPickerSource: PickerSource = {
   title: "meu-bot-admin-gestao · escolher pessoa",
-  hosts: () => knownPeople().filter((p) => p.on).map((p) => p.alias),
+  hosts: () => [...(aliasDoEsteMac() === null ? [LOCAL_HOST] : []), ...knownPeople().filter((p) => p.on).map((p) => p.alias)],
+  abrirComo: async (host) => (host === LOCAL_HOST ? esteMacComoPessoa() : host),
   support: () => ({ people: knownPeople(), adminKey: adminKeyExists() }),
   registerIpc: ({ fromPicker, progressoLivre }) => {
     // Produtos (MVPs de bots verticais) moram numa janela própria; o seletor só a abre.
