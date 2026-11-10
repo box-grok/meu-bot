@@ -78,6 +78,8 @@ function prepararWorktree(sha) {
   else if (!rodar("git", ["worktree", "add", "-q", "--detach", WT, sha], PRINCIPAL)) return false;
   for (const nm of ["node_modules", "extensao-crm/node_modules"]) if (!existsSync(join(WT, nm)) && existsSync(join(PRINCIPAL, nm))) symlinkSync(join(PRINCIPAL, nm), join(WT, nm));
   // build/ inteiro (extensão do autenticador, suporte do admin, venv do .dmg…) e os clients do Google: fora do git.
+  // Apaga a cópia da rodada anterior antes: o cpSync por cima de um venv já copiado quebra com EEXIST.
+  rmSync(join(WT, "build"), { recursive: true, force: true });
   if (existsSync(join(PRINCIPAL, "build"))) cpSync(join(PRINCIPAL, "build"), join(WT, "build"), { recursive: true, force: true, verbatimSymlinks: true });
   for (const f of ["google-oauth.json", "google-conta-oauth.json"]) if (existsSync(join(PRINCIPAL, "config", f))) cpSync(join(PRINCIPAL, "config", f), join(WT, "config", f));
   const sujo = shOu("git", ["status", "--porcelain"], WT);
