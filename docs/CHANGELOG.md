@@ -15,6 +15,30 @@ no [diário técnico](GUIA.md).
 ### Baixar o meu-bot: um instalador de verdade
 #### Melhorado
 - O botão de download do site entrega um instalador: abre uma janela com o meu-bot e a pasta Aplicativos, e é só arrastar. Antes vinha um .zip e o app ficava solto em Downloads. Vale para o site e para o site de staging, cada um com o seu app.
+- No site, o passo "Abrir Mesmo Assim" (Privacidade e Segurança) vem grifado e com um ⚠️ animado, para ninguém passar batido.
+
+### Conversa: login do Claude vencido não trava mais o turno
+#### Corrigido
+- Quando o login de uma das contas do Claude vence, ela sai da fila e a conversa continua na próxima conta, em vez de parar com erro.
+
+### Navegador
+#### Melhorado
+- A aba Navegador abre com fundo branco, como uma aba nova do Chrome, em vez de escura.
+
+### Admin: "este Mac" no seletor
+#### Novo
+- O meu-bot-admin-gestao mostra "este Mac" no seletor, como o meu-bot, e abre como pessoa do suporte (por SSH local).
+- O card "Uso do app" mostra o histórico de aberturas do app: produção ou staging, versão e Mac.
+- Depois de desligar o suporte deste Mac, aparece "Religar o suporte deste Mac", e religar mantém o plano.
+#### Melhorado
+- Este Mac usa o plano da conta meu-bot, mostra o backend dos apps na saúde e não oferece mais Instalar/Reiniciar backend nem ações de VM, que não se aplicam a ele.
+- O seletor do admin não mostra mais o falso "sem backend".
+- Numa instalação nova, o controle externo (MCP) já vem ligado.
+
+### Console da conta (agentesgrok.com)
+#### Novo
+- O super admin vê as janelas de suporte de todas as pessoas pelo site.
+- Na tabela de devices do admin, cada Mac mostra quantos devices a conta já usa e o limite do plano, com o aviso "no limite" quando o próximo Mac novo entraria como pendente.
 
 ---
 
