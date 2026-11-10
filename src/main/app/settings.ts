@@ -22,7 +22,10 @@ export function loadSettings(): void {
   try {
     file = normalizeSettings(JSON.parse(fs.readFileSync(settingsPath(), "utf8")));
   } catch {
-    file = defaultSettings();
+    // Instalação nova (nem há settings.json): o controle externo (MCP) já nasce ligado, só em 127.0.0.1 e com token.
+    // Quem já tinha o app (arquivo existe, com ou sem a chave) segue com o que está gravado, que é desligado.
+    const novo = !fs.existsSync(settingsPath());
+    file = { ...defaultSettings(), ...(novo ? { mcpLigado: true } : {}) };
   }
 }
 

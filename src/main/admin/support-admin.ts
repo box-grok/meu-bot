@@ -30,6 +30,8 @@ import { broadcast } from "../app/windows";
 import { xaiAuthInfo } from "../agente/xaiLogin";
 import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from "../app/settings";
 import { log } from "../maquina/backend";
+import net from "node:net";
+import { PRODUTOS } from "../app/variant-core";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 /** `pagamentoPadrao`: orientação de pagamento (Pix, link) gravada em toda licença que ainda não tem uma, ao mexer nela. */
@@ -316,6 +318,21 @@ async function adoptSshHost(host: string): Promise<SupportCode> {
   return { v: 1, name: host.slice(0, 40), ...target, hostKey, state: "on", at: new Date().toISOString(), ...(/^[A-Za-z0-9._-]{1,64}$/.test(host) ? { machine: host } : {}) };
 }
 
+/** A porta responde em 127.0.0.1 (1,5 s)? */
+const portaNoAr = (porta: number): Promise<boolean> => new Promise((resolve) => {
+  const s = net.connect({ host: "127.0.0.1", port: porta });
+  const fim = (ok: boolean): void => { s.destroy(); resolve(ok); };
+  s.setTimeout(1500, () => fim(false)); s.once("connect", () => fim(true)); s.once("error", () => fim(false));
+});
+/**
+ * O backend do "este Mac" é o de cada app meu-bot com chat (meu-bot, staging…): sobe com o app, na portaLocal dele.
+ * O admin roda neste mesmo Mac, então confere as portas direto, sem SSH. Admins ficam de fora (não têm backend).
+ */
+async function appsDoMac(): Promise<{ nome: string; porta: number; noAr: boolean }[]> {
+  const apps = PRODUTOS.filter((p) => p.caps.chat);
+  return Promise.all(apps.map(async (p) => ({ nome: p.nome, porta: p.portaLocal, noAr: await portaNoAr(p.portaLocal) })));
+}
+
 /** Este Mac como pessoa do suporte: o próprio usuário, por SSH em 127.0.0.1 (Sessão remota do macOS). */
 const ESTE_MAC = { name: "este Mac", hostname: "127.0.0.1", port: 22, machine: "este-mac" } as const;
 const ehEsteMac = (c: SupportCode): boolean => c.hostname === ESTE_MAC.hostname && c.user === os.userInfo().username && c.port === ESTE_MAC.port;
@@ -431,7 +448,7 @@ export async function adminHealth(host: string): Promise<AdminHealth> {
     readLicenseView(host).catch(() => null),
   ]);
   if (license !== null) rememberPlan(host, license.license.plan);
-  return { probe, whatsapp: wa, progress, share, xai, license };
+  return { probe, whatsapp: wa, progress, share, xai, license, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
 }
 
 /** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
@@ -741,7 +758,7 @@ export async function adminAction(host: string, action: AdminAction): Promise<{ 
   if (action === "support-off") return turnSupportOff(host);
   if (action === "support-on") return religarEsteMac(host);
   // Este Mac: o backend é o dos apps; o instalador das VMs aqui subia em primeiro plano e não voltava.
-  if ((action === "install-backend" || action === "restart-backend") && host === aliasDoEsteMac()) return { ok: false, detail: "neste Mac o backend é o dos apps meu-bot: feche e abra o app" };
+  if ((action === "install-backend" || action === "restart-backend" || action === "restart-gateway") && host === aliasDoEsteMac()) return { ok: false, detail: "neste Mac o backend é o dos apps meu-bot (feche e abra o app) e o gateway do WhatsApp só existe nas máquinas" };
   if (action === "install-backend") return instalarBackend(host);
   // No registro (a pessoa vê; o super admin audita), quem fez é este admin, pelo nome do app dele.
   if (action === "transcription" || action === "transcription-off") {

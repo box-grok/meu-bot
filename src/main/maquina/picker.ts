@@ -132,9 +132,14 @@ function probeCached(host: string): Promise<HostProbe> {
  * Padrão do app: máquina com Hermes ganha a pausa por contato com prazo (plugin meu-bot-pausa) sozinha, como a guarda
  * no OpenClaw. Uma tentativa por máquina por sessão, em segundo plano; só sobe de versão. Com pausa nativa, nada.
  */
+/**
+ * Este Mac por SSH (o "este Mac" do admin: 127.0.0.1): os instaladores automáticos (pausa, guarda, CRM) são das máquinas
+ * Linux; aqui falhavam a cada abertura (zsh, sem systemd). O Mac fica fora deles, como o host local.
+ */
+const ehEsteMacPorSsh = (p: HostProbe): boolean => p.hostName === "127.0.0.1" || p.hostName === "localhost";
 const pausaTried = new Set<string>();
 function ensureHermesPausa(host: string, probe: HostProbe): void {
-  if (!probe.reachable || probe.gateway !== "hermes" || probe.hermesPausa === null || probe.hermesPausa === undefined || host === LOCAL_HOST || pausaTried.has(host)) return;
+  if (!probe.reachable || probe.gateway !== "hermes" || probe.hermesPausa === null || probe.hermesPausa === undefined || host === LOCAL_HOST || ehEsteMacPorSsh(probe) || pausaTried.has(host)) return;
   const want = bundledHermesPausaVersion();
   if (want === null) return;
   const missing = probe.hermesPausa === false;
@@ -151,7 +156,7 @@ function ensureHermesPausa(host: string, probe: HostProbe): void {
 const guardaTried = new Set<string>();
 function ensureGuarda(host: string, probe: HostProbe): void {
   // `guarda === null` = a sondagem não encontrou agente que aceite a guarda (hostProbe.ts só a preenche onde ela cabe).
-  if (!probe.reachable || probe.guarda === null || host === LOCAL_HOST || guardaTried.has(host)) return;
+  if (!probe.reachable || probe.guarda === null || host === LOCAL_HOST || ehEsteMacPorSsh(probe) || guardaTried.has(host)) return;
   const want = bundledGuardaVersion();
   const missing = probe.guarda === false;
   // Só sobe de versão (o estável e o staging dividem a máquina: um não rebaixa a guarda do outro).
@@ -171,7 +176,7 @@ function ensureGuarda(host: string, probe: HostProbe): void {
  */
 const crmTried = new Set<string>();
 function ensureCrmAtual(host: string, probe: HostProbe): void {
-  if (!probe.reachable || probe.crm !== true || host === LOCAL_HOST || crmTried.has(host)) return;
+  if (!probe.reachable || probe.crm !== true || host === LOCAL_HOST || ehEsteMacPorSsh(probe) || crmTried.has(host)) return;
   const want = bundledCrmVersion();
   if (!deveAtualizar(probe.crmVersion ?? null, want)) return;
   crmTried.add(host);
