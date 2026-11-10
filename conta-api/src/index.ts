@@ -7,7 +7,7 @@
  *   no GitHub; www. redireciona para ela;
  * - conta.agentesgrok.com: a API (POST /sessao, POST /token, POST /sessao/sair, GET|PATCH|DELETE /conta, POST /conta/senha,
  *   GET /health; organizações GET|POST /orgs, GET /orgs/:slug/publico (sem login), GET|PATCH|DELETE /orgs/:slug, POST /orgs/:slug/membros, PATCH|DELETE /orgs/:slug/membros/:email;
- *   para admins GET /admin/visao, PATCH /admin/contas/:id/licenca, POST|PUT /admin/contas/:id/senha, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email, PATCH /admin/orgs/:slug).
+ *   para admins GET /admin/visao, POST /admin/suporte (o admin-gestao envia o resumo de uma janela de suporte), GET /admin/suporte (só super: console /support-window), PATCH /admin/contas/:id/licenca, POST|PUT /admin/contas/:id/senha, POST /admin/pedidos/:id/atender, PUT|DELETE /admin/perfis/:email, PATCH /admin/orgs/:slug).
  * Em staging, *-staging. com D1 próprio. Tudo que chega é dado: as rotas validam campo a campo.
  */
 import type { Env } from "./tipos.js";
@@ -15,6 +15,7 @@ import { autenticar, cors, json } from "./http.js";
 import { postSair, postSessao, postSessaoConsole } from "./rotas/sessao.js";
 import { postToken } from "./rotas/token.js";
 import { deleteConta, getConta, patchConta, postSenha } from "./rotas/conta.js";
+import { getSuporteResumos, postSuporteResumo } from "./rotas/suporte.js";
 import { deletePerfil, getAdminFirebase, getAdminVisao, patchLicenca, postAdminSenha, postAtenderPedido, putAdminSenha, putPerfil } from "./rotas/admin.js";
 import { downloadMac, REPO } from "./release-github.js";
 import { lerReleases, novidadesHtml, sitemapXml } from "./novidades-core.js";
@@ -136,6 +137,8 @@ async function api(req: Request, env: Env, url: URL): Promise<Response> {
     else if (rota === "POST /sessao/sair") res = await postSair(auth, env);
     else if (rota === "POST /sessao/console") res = await postSessaoConsole(auth, env, req);
     else if (rota === "GET /admin/visao") res = await getAdminVisao(auth, env, url);
+    else if (rota === "POST /admin/suporte") res = await postSuporteResumo(auth, env, req);
+    else if (rota === "GET /admin/suporte") res = await getSuporteResumos(auth, env);
     else if (atender !== null) res = await postAtenderPedido(auth, env, atender[1]!);
     else if (licenca !== null) res = await patchLicenca(auth, env, licenca[1]!, req);
     else if (firebaseAdmin !== null) res = await getAdminFirebase(auth, env, firebaseAdmin[1]!);

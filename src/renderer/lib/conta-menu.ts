@@ -72,7 +72,10 @@ export function montarMenuConta(botoes: HTMLButtonElement[], deps: ContaMenuDeps
       if (r.prazo !== null) m.append(item(r.vencido ? "⚠" : "🎁", r.prazo, `cm-trial${r.vencido ? " vencido" : ""}`, () => externo("/account/plan")));
       m.append(item("👤", "Perfil", "", () => externo("/account/profile")), item("▤", "Plano e pagamento", "", () => externo("/account/plan")), item("▭", "Devices", "", () => externo("/account/devices")));
       for (const o of c.orgs) m.append(item("▣", o.nome, "", () => externo(`/organizations/${o.slug}/members`)));
-      if (c.admin !== null) m.append(item("★", "Console do admin", "", () => externo("/account/overview")));
+      // Super admin: as Janelas de suporte (visão geral de todas as pessoas: VPS, usuários e este Mac) no site; o resto do
+      // console fica a um clique de lá. Admin comum segue com o console.
+      if (c.admin === "super") m.append(item("◧", "Janelas de suporte", "", () => externo("/support-window")));
+      else if (c.admin !== null) m.append(item("★", "Console do admin", "", () => externo("/account/overview")));
       m.append(el("div", "cm-sep"));
     } else {
       m.append(el("div", "cm-dica", v.situacao === "entrando" ? "Aguardando login… conclua na janela do navegador." : "Você ainda não entrou com sua conta meu-bot neste Mac."));

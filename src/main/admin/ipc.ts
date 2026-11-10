@@ -8,6 +8,8 @@ import { Menu } from "electron";
 import type { BotMenuAction } from "../../shared/ipc";
 import { isSupportAlias } from "../suporte/support-code";
 import type { LicensePatch } from "../../shared/ipc";
+import { caps } from "../app/variant";
+import { iniciarVarreduraSuporte } from "./support-admin";
 import { adminAction, adminBotChats, adminBotDelete, adminBotThread, adminHealth, adminLogs, approveDevice, removeDevice, setLicense } from "./support-admin";
 import { hostFromEvent, windowFromEvent } from "../ipc/context";
 import { handleAdmin } from "../ipc/registry";
@@ -26,6 +28,8 @@ const adminHost = (event: Electron.IpcMainInvokeEvent): string => {
 };
 
 export function registerAdminIpc(): void {
+  // Visão macro no console (/support-window): o admin com suporte varre todas as pessoas e manda o resumo de cada uma.
+  if (caps().supportAdmin) iniciarVarreduraSuporte();
   // Produtos (MVPs de bots verticais): registro local do admin, em qualquer janela do meu-bot-admin.
   handleAdmin("admin:produtos-list", () => listProdutos());
   handleAdmin("admin:health", (event) => adminHealth(adminHost(event)));

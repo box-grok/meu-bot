@@ -154,11 +154,11 @@ const quandoCurto = (iso: string): string => new Date(iso).toLocaleString("pt-BR
 export function usoResumo(ab: readonly Abertura[], now: number = Date.now()): HealthLine[] {
   const ultima = new Map<string, Abertura>();
   for (const a of ab) if (!ultima.has(a.produto)) ultima.set(a.produto, a);
-  return [...ultima.values()].map((a) => ({ text: `${canalDoProduto(a.produto) === "staging" ? "Staging" : "Produção"} (${a.produto}): versão ${a.versao} · aberto ${agoText(a.em, now) || quandoCurto(a.em)}`, ok: null }));
+  return [...ultima.values()].map((a) => ({ text: `${canalDoProduto(a.produto) === "staging" ? "Staging" : "Produção"} (${a.produto}): versão ${a.versao}${a.conta !== "" ? ` · conta ${a.conta}` : ""} · aberto ${agoText(a.em, now) || quandoCurto(a.em)}`, ok: null }));
 }
 /** Uma linha do histórico: quando, app (canal), versão e o Mac. */
 export const aberturaTexto = (a: Abertura): string =>
-  `${quandoCurto(a.em)} · ${a.produto} (${canalDoProduto(a.produto)}) ${a.versao}${a.mac !== "" ? ` · ${a.mac}` : ""}`;
+  `${quandoCurto(a.em)} · ${a.produto} (${canalDoProduto(a.produto)}) ${a.versao}${a.conta !== "" ? ` · ${a.conta}` : ""}${a.mac !== "" ? ` · Mac ${a.mac}` : ""}`;
 export const USO_VAZIO_TEXTO = "Ainda sem registro: as aberturas aparecem aqui quando o app da pessoa abrir com o backend atualizado.";
 
 export function progressLines(prog: SupportProgress): HealthLine[] {

@@ -129,3 +129,19 @@ code { padding: 2px 6px; border-radius: 6px; background: var(--codigo); border: 
 .editor-form .largo { flex-basis: 100%; }
 .tabela .copiar { margin-left: 6px; }
 .acoes-linha { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* Janelas de suporte (/support-window) */
+.janelas-filtro { display: flex; gap: 8px; margin: 12px 0 4px; flex-wrap: wrap; }
+.janelas-filtro input { flex: 1 1 260px; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--borda); background: var(--cartao); color: var(--texto); font: inherit; }
+.j-cartao .j-topo { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.j-cartao .j-topo strong { font-size: 16px; }
+.j-end { color: var(--sub); font-size: 12px; font-family: ui-monospace, Menlo, monospace; }
+.selo.j-root, .selo.j-selo-mau { background: var(--mau-fundo); color: var(--mau); }
+.j-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.j-bloco { border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+.j-titulo { font-size: 11px; letter-spacing: .6px; text-transform: uppercase; color: var(--sub); margin-bottom: 6px; }
+.j-linhas { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.j-linhas li { padding: 2px 0; overflow-wrap: anywhere; }
+.j-marca { display: inline-block; width: 1.2em; }
+.j-ok .j-marca { color: var(--ok); } .j-mau .j-marca, .j-mau { color: var(--mau); } .j-neutro .j-marca { color: var(--sub); }
+.j-hist { margin-top: 10px; font-size: 13px; } .j-hist summary { cursor: pointer; color: var(--sub); }
