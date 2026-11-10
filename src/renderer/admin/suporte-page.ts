@@ -11,7 +11,7 @@ import { carregando } from "../lib/carregando.js";
 import type { PageTab } from "../lib/pages-types.js";
 import { ipcErrorText } from "../lib/ipc-error.js";
 import { cacheAgeText, type Cached } from "../lib/cache.js";
-import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, ESTE_MAC_MAQUINA, ESTE_MAC_BACKEND_TEXTO, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
+import { actionResultText, dateInputToIso, deviceParts, healthLines, isoToDateInput, licenseSummary, progressEmptyText, progressLines, progressUpdatedText, transcriptionNote, visibleActions, usoResumo, aberturaTexto, USO_VAZIO_TEXTO, ESTE_MAC_MAQUINA, ESTE_MAC_BACKEND_TEXTO, produtoLabel, type HealthLine, type AddonRotulo } from "../lib/admin-view.js";
 import type { LicensePatch, LicenseView } from "../../shared/ipc";
 
 export interface SuportePageDeps {
@@ -228,6 +228,24 @@ export function mountSuportePage(deps: SuportePageDeps): SuportePage {
       if (state.licMsg !== null) lc.append(el("p", `hint ${state.licMsg.bad ? "guide-pair-note" : "audio-ok"}`, state.licMsg.text));
     }
     panel.append(lc);
+
+    // Uso do app: qual app (produção ou staging) e qual versão abriram nesta máquina, e o histórico das aberturas.
+    if (hp !== null) {
+      const uso = el("div", "admin-card");
+      uso.append(el("strong", "", "Uso do app"));
+      const ab = hp.aberturas ?? null;
+      if (ab === null || ab.length === 0) uso.append(el("p", "hint", USO_VAZIO_TEXTO));
+      else {
+        uso.append(list(usoResumo(ab)));
+        const hist = el("details", "admin-uso-hist");
+        hist.append(el("summary", "", `Aberturas recentes (${ab.length})`));
+        const ul = el("ul", "admin-uso-lista");
+        for (const a of ab) ul.append(el("li", "", aberturaTexto(a)));
+        hist.append(ul);
+        uso.append(hist);
+      }
+      panel.append(uso);
+    }
 
     // Progresso nos tutoriais (onde a pessoa está e onde travou)
     const pg = el("div", "admin-card");

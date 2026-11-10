@@ -2,7 +2,7 @@
  * Variante: admin. Textos e linhas da página "Suporte" do meu-bot-admin e do seletor de pessoas, sem DOM.
  * Puro: testável com node --test. O desenho fica em admin/suporte-page.ts e admin/picker-chrome.ts.
  */
-import type { AdminAction, AdminHealth, LicenseDevice, LicenseView, PrepararVisao, SupportPerson, SupportProgress } from "../../shared/ipc";
+import type { Abertura, AdminAction, AdminHealth, LicenseDevice, LicenseView, PrepararVisao, SupportPerson, SupportProgress } from "../../shared/ipc";
 import { tutorialNumber } from "./tutoriais.js";
 
 /** Preparar máquina: um item por linha; ok → ✓, falta → ✗ com o detalhe, humano → • com o que a pessoa faz. */
@@ -146,6 +146,20 @@ export function deviceLine(d: LicenseDevice, now: number = Date.now()): HealthLi
   const p = deviceParts(d, now);
   return { text: `${p.name} · ${p.meta} · ${p.status}${p.seen !== "" ? ` · ${p.seen}` : ""}`, ok: p.ok };
 }
+
+/** Canal pelo nome do app: meu-bot-staging (e outros -staging) é staging; o resto é produção. */
+export const canalDoProduto = (produto: string): "staging" | "produção" => (/-staging$/.test(produto) ? "staging" : "produção");
+const quandoCurto = (iso: string): string => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** Uso do app: a última abertura de cada app (produção, staging…), mais recente primeiro, com a versão. */
+export function usoResumo(ab: readonly Abertura[], now: number = Date.now()): HealthLine[] {
+  const ultima = new Map<string, Abertura>();
+  for (const a of ab) if (!ultima.has(a.produto)) ultima.set(a.produto, a);
+  return [...ultima.values()].map((a) => ({ text: `${canalDoProduto(a.produto) === "staging" ? "Staging" : "Produção"} (${a.produto}): versão ${a.versao} · aberto ${agoText(a.em, now) || quandoCurto(a.em)}`, ok: null }));
+}
+/** Uma linha do histórico: quando, app (canal), versão e o Mac. */
+export const aberturaTexto = (a: Abertura): string =>
+  `${quandoCurto(a.em)} · ${a.produto} (${canalDoProduto(a.produto)}) ${a.versao}${a.mac !== "" ? ` · ${a.mac}` : ""}`;
+export const USO_VAZIO_TEXTO = "Ainda sem registro: as aberturas aparecem aqui quando o app da pessoa abrir com o backend atualizado.";
 
 export function progressLines(prog: SupportProgress): HealthLine[] {
   const lines: HealthLine[] = [

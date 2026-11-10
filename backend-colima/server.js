@@ -73,6 +73,22 @@ const APP_CONVERSAS = path.join(os.homedir(), '.local', 'share', 'meu-bot', 'con
 const MEU_BOT_DIR = path.join(os.homedir(), '.local', 'share', 'meu-bot');
 const MACHINES_FILE = path.join(MEU_BOT_DIR, 'maquinas.json');
 const ALERTS_FILE = path.join(MEU_BOT_DIR, 'alertas.json');
+/**
+ * Histórico de aberturas (uma linha JSON por hello): quando, qual app (meu-bot = produção, meu-bot-staging…), a
+ * versão e o Mac. O maquinas.json guarda só a última versão por app; o admin lê este arquivo para ver o uso ao longo
+ * do tempo. Fica nas últimas ABERTURAS_MAX linhas.
+ */
+const ABERTURAS_FILE = path.join(MEU_BOT_DIR, 'aberturas.jsonl');
+const ABERTURAS_MAX = 300;
+function anotarAbertura(m) {
+  try {
+    const linha = JSON.stringify({ em: new Date().toISOString(), id: m.id, mac: m.name, user: m.user, produto: typeof m.produto === 'string' && m.produto !== '' ? m.produto : 'meu-bot', versao: m.app });
+    fs.mkdirSync(MEU_BOT_DIR, { recursive: true });
+    fs.appendFileSync(ABERTURAS_FILE, `${linha}\n`, { mode: 0o600 });
+    const todas = fs.readFileSync(ABERTURAS_FILE, 'utf8').split('\n').filter(Boolean);
+    if (todas.length > ABERTURAS_MAX + 100) fs.writeFileSync(ABERTURAS_FILE, `${todas.slice(-ABERTURAS_MAX).join('\n')}\n`, { mode: 0o600 });
+  } catch (e) { log(`aberturas: não anotei (${e.message})`); }
+}
 /** Licença da conta (plano, status, validade, limite de devices): o admin é dono e grava por SSH; o app só lê. */
 const LICENSE_FILE = path.join(MEU_BOT_DIR, 'licenca.json');
 /**
@@ -875,6 +891,7 @@ const server = http.createServer(async (req, res) => {
       && (m.produto === undefined || (typeof m.produto === 'string' && /^meu-bot(-[a-z0-9-]{1,30})?$/.test(m.produto)));
     if (!ok) return json(res, 400, { error: { message: 'máquina inválida', type: 'invalid_request_error' } });
     const r = await announceMachine({ id: m.id, name: m.name, user: m.user, platform: m.platform, app: m.app, produto: m.produto });
+    anotarAbertura(m);
     return json(res, 200, { ...r, appMinima: appMinima() });
   }
   // Licença e devices da conta: o app mostra o próprio painel (plano/status/membro desde) e a tabela de máquinas.

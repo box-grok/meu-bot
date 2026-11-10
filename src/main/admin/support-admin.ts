@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { app } from "electron";
-import type { AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, Pagamento, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
+import type { Abertura, AdminAction, AdminHealth, BotChat, BotMessage, LicensePatch, LicenseView, Pagamento, SupportPerson, SupportProgress, SupportShare, PlanName } from "../../shared/ipc";
 import { applyLicensePatch, parseLicense, parsePagamento } from "../licenca/licenca";
 import { LICENSE_PATH, MACHINES_PATH, readLicenseViewSsh as readLicenseView } from "../licenca/licenca-maquina";
 import { BACKEND_DIR_SH } from "../maquina/backend-dir-core";
@@ -32,6 +32,7 @@ import { getBackendPort, isValidHost, setBackendPortForHost, settingsView } from
 import { log } from "../maquina/backend";
 import net from "node:net";
 import { PRODUTOS } from "../app/variant-core";
+import { parseAberturas } from "./aberturas-core";
 
 /** `superAdmin`: este app lê a central de auditoria (página Auditoria). `backupDestinatario`: chave age pública do super admin (backups). */
 /** `pagamentoPadrao`: orientação de pagamento (Pix, link) gravada em toda licença que ainda não tem uma, ao mexer nela. */
@@ -440,15 +441,16 @@ export async function readShare(host: string): Promise<SupportShare> {
 /** Saúde da máquina da pessoa: a sondagem do seletor + (se ela deixa) o WhatsApp e o progresso nos tutoriais. */
 export async function adminHealth(host: string): Promise<AdminHealth> {
   const share = await readShare(host);
-  const [probe, wa, progress, xai, license] = await Promise.all([
+  const [probe, wa, progress, xai, license, aberturas] = await Promise.all([
     probeHost(host, getBackendPort(host)),
     share.whatsapp ? whatsappStatus(host).catch(() => null) : Promise.resolve(null),
     share.progress ? readProgress(host) : Promise.resolve(null),
     xaiAuthInfo(host).catch(() => null),
     readLicenseView(host).catch(() => null),
+    readAberturas(host),
   ]);
   if (license !== null) rememberPlan(host, license.license.plan);
-  return { probe, whatsapp: wa, progress, share, xai, license, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
+  return { probe, whatsapp: wa, progress, share, xai, license, aberturas, ...(host === aliasDoEsteMac() ? { appsDoMac: await appsDoMac() } : {}) };
 }
 
 /** Licença (billing/plano) não é conteúdo pessoal: é a administração da conta, então não passa pelo compartilha.json. */
@@ -522,6 +524,12 @@ export async function removeDevice(host: string, deviceId: string): Promise<Lice
 }
 
 /** O que o meu-bot dela gravou (~/.local/share/meu-bot/progresso.json); dado de fora, validado. */
+/** As aberturas recentes do app (aberturas.jsonl do backend); null sem o arquivo. */
+async function readAberturas(host: string): Promise<Abertura[] | null> {
+  const r = await runSsh(host, `tail -n 60 "$HOME/.local/share/meu-bot/aberturas.jsonl" 2>/dev/null\n`, 20_000).catch(() => null);
+  if (r === null || r.stdout.trim() === "") return null;
+  return parseAberturas(r.stdout);
+}
 async function readProgress(host: string): Promise<SupportProgress | null> {
   const r = await runSsh(host, `head -c 16384 "$HOME/.local/share/meu-bot/progresso.json" 2>/dev/null\n`, 20_000).catch(() => null);
   if (r === null || r.stdout.trim() === "") return null;

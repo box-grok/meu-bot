@@ -284,7 +284,7 @@ async function readyTunnel(host: string, out: Sender | null, signal?: AbortSigna
     try {
       const tunnel = await ensureTunnel(host, porta, status);
       falha = await preflight(tunnel.localPort, tunnel.apiKey);
-      if (falha === null) { diagnosticoEm.delete(host); if (host !== LOCAL_HOST && !announced.has(host)) setTimeout(() => announceMachine(host), 0); return tunnel; }
+      if (falha === null) { diagnosticoEm.delete(host); if (!announced.has(host)) setTimeout(() => announceMachine(host), 0); return tunnel; }
     } catch (err) {
       if (err instanceof TunnelFatalError) throw err;
       lastErr = err; sshErr = err instanceof Error ? err.message : String(err);
@@ -411,8 +411,8 @@ export async function saveAlertPrefs(host: string, prefs: AlertPrefs): Promise<v
  * "Este Mac usou o meu-bot desta máquina": o app se apresenta ao backend uma vez por abertura e por máquina
  * (POST /v1/meu-bot/hello). Um Mac que o backend nunca viu vira aviso para a pessoa (WhatsApp dela, e e-mail se
  * ela quiser) e uma linha no registro que ela e o admin veem. Como o aviso de "login numa máquina nova" do Rambox.
- * Host "local" fica de fora: é este Mac com o próprio backend, sem máquina remota para avisar. readyTunnel não
- * agenda o hello nesse caso; um chamado direto só marca `announced` e volta. Falha de túnel sobe no catch de
+ * Host "local" também se apresenta (desde 10 nov 2026): o backend local grava no mesmo ~/.local/share/meu-bot, e o
+ * admin vê no "este Mac" qual app (produção ou staging) e qual versão abriram. Falha de túnel sobe no catch de
  * readyTunnel, antes desta função.
  */
 const announced = new Set<string>();
@@ -421,7 +421,6 @@ let versaoMinimaListener: ((host: string, minima: unknown) => void) | null = nul
 export const onVersaoMinima = (cb: (host: string, minima: unknown) => void): void => { versaoMinimaListener = cb; };
 export function announceMachine(host: string): void {
   if (announced.has(host)) return;
-  if (host === LOCAL_HOST) { announced.add(host); return; }
   announced.add(host);
   const name = os.hostname().replace(/\.local$/, "");
   const user = os.userInfo().username;
