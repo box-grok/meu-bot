@@ -38,6 +38,8 @@ Publique do checkout principal só se ele estiver limpo e no `origin/main`; sen�
    instalar a nova por cima da antiga, sem desinstalar, e conferir a versão preparada, a recusa do que não
    confere, a troca, as preferências e abas, e a volta atrás matando o processo no meio. É onde um atualizador
    quebra; nenhum teste automatizado encena a pessoa no meio da troca. Não promova sem a aprovação explícita dele.
+   O checklist de antes e depois (staging no ar, `npm run release -- --conferir`, estável chegou certa) é a skill
+   `aprovar-estavel`.
 6. **`npm run release`** no MESMO commit (ele recusa se o HEAD não tiver a tag `-staging.N` dessa versão). Se o `main`
    andou depois do staging (merges de outras pessoas), há dois caminhos; diga qual ao usuário:
    - promover o que ele testou: `git worktree add --detach ../meu-bot-release v<versão>-staging.N`, prepare o worktree
